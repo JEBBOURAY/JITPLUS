@@ -55,13 +55,13 @@ importers:
         version: 19.2.3(@types/react@19.1.17)
       '@vitejs/plugin-react':
         specifier: ^4.3.3
-        version: 4.7.0(vite@5.4.21(@types/node@22.19.11)(lightningcss@1.31.1)(terser@5.46.0))
+        version: 4.7.0(vite@5.4.21(@types/node@25.5.0)(lightningcss@1.31.1)(terser@5.46.0))
       typescript:
         specifier: ^5.6.3
         version: 5.9.3
       vite:
         specifier: ^5.4.11
-        version: 5.4.21(@types/node@22.19.11)(lightningcss@1.31.1)(terser@5.46.0)
+        version: 5.4.21(@types/node@25.5.0)(lightningcss@1.31.1)(terser@5.46.0)
 
   apps/backend:
     dependencies:
@@ -108,11 +108,11 @@ importers:
         specifier: ^5.8.0
         version: 5.22.0(prisma@5.22.0)
       '@sentry/nestjs':
-        specifier: ^10.0.0
-        version: 10.42.0(@nestjs/common@10.4.22(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@10.4.22)
+        specifier: ^10.43.0
+        version: 10.43.0(@nestjs/common@10.4.22(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@10.4.22)
       '@sentry/profiling-node':
-        specifier: ^10.0.0
-        version: 10.42.0
+        specifier: ^10.43.0
+        version: 10.43.0
       bcryptjs:
         specifier: ^3.0.3
         version: 3.0.3
@@ -129,11 +129,11 @@ importers:
         specifier: ^1.8.1
         version: 1.8.1
       firebase-admin:
-        specifier: ^13.6.1
-        version: 13.6.1
+        specifier: ^13.7.0
+        version: 13.7.0
       google-auth-library:
-        specifier: ^10.5.0
-        version: 10.5.0
+        specifier: ^10.6.1
+        version: 10.6.1
       helmet:
         specifier: ^8.1.0
         version: 8.1.0
@@ -144,8 +144,8 @@ importers:
         specifier: ^9.0.3
         version: 9.0.3
       nodemailer:
-        specifier: ^8.0.1
-        version: 8.0.1
+        specifier: ^8.0.2
+        version: 8.0.2
       passport:
         specifier: ^0.7.0
         version: 0.7.0
@@ -171,8 +171,8 @@ importers:
         specifier: ^4.8.3
         version: 4.8.3
       twilio:
-        specifier: ^5.12.2
-        version: 5.12.2
+        specifier: ^5.13.0
+        version: 5.13.0
     devDependencies:
       '@nestjs/cli':
         specifier: ^10.3.0
@@ -199,8 +199,8 @@ importers:
         specifier: ^9.0.10
         version: 9.0.10
       '@types/multer':
-        specifier: ^2.0.0
-        version: 2.0.0
+        specifier: ^2.1.0
+        version: 2.1.0
       '@types/node':
         specifier: ^20.11.0
         version: 20.19.33
@@ -1522,27 +1522,27 @@ packages:
   '@firebase/auth-interop-types@0.2.4':
     resolution: {integrity: sha512-JPgcXKCuO+CWqGDnigBtvo09HeBs5u/Ktc2GaFj2m01hLarbxthLNm7Fk8iOP1aqAtXV+fnnGj7U28xmk7IwVA==}
 
-  '@firebase/component@0.7.0':
-    resolution: {integrity: sha512-wR9En2A+WESUHexjmRHkqtaVH94WLNKt6rmeqZhSLBybg4Wyf0Umk04SZsS6sBq4102ZsDBFwoqMqJYj2IoDSg==}
+  '@firebase/component@0.7.1':
+    resolution: {integrity: sha512-mFzsm7CLHR60o08S23iLUY8m/i6kLpOK87wdEFPLhdlCahaxKmWOwSVGiWoENYSmFJJoDhrR3gKSCxz7ENdIww==}
     engines: {node: '>=20.0.0'}
 
-  '@firebase/database-compat@2.1.0':
-    resolution: {integrity: sha512-8nYc43RqxScsePVd1qe1xxvWNf0OBnbwHxmXJ7MHSuuTVYFO3eLyLW3PiCKJ9fHnmIz4p4LbieXwz+qtr9PZDg==}
+  '@firebase/database-compat@2.1.1':
+    resolution: {integrity: sha512-heAEVZ9Z8c8PnBUcmGh91JHX0cXcVa1yESW/xkLuwaX7idRFyLiN8sl73KXpR8ZArGoPXVQDanBnk6SQiekRCQ==}
     engines: {node: '>=20.0.0'}
 
-  '@firebase/database-types@1.0.16':
-    resolution: {integrity: sha512-xkQLQfU5De7+SPhEGAXFBnDryUWhhlFXelEg2YeZOQMCdoe7dL64DDAd77SQsR+6uoXIZY5MB4y/inCs4GTfcw==}
+  '@firebase/database-types@1.0.17':
+    resolution: {integrity: sha512-4eWaM5fW3qEIHjGzfi3cf0Jpqi1xQsAdT6rSDE1RZPrWu8oGjgrq6ybMjobtyHQFgwGCykBm4YM89qDzc+uG/w==}
 
-  '@firebase/database@1.1.0':
-    resolution: {integrity: sha512-gM6MJFae3pTyNLoc9VcJNuaUDej0ctdjn3cVtILo3D5lpp0dmUHHLFN/pUKe7ImyeB1KAvRlEYxvIHNF04Filg==}
+  '@firebase/database@1.1.1':
+    resolution: {integrity: sha512-LwIXe8+mVHY5LBPulWECOOIEXDiatyECp/BOlu0gOhe+WOcKjWHROaCbLlkFTgHMY7RHr5MOxkLP/tltWAH3dA==}
     engines: {node: '>=20.0.0'}
 
   '@firebase/logger@0.5.0':
     resolution: {integrity: sha512-cGskaAvkrnh42b3BA3doDWeBmuHFO/Mx5A83rbRDYakPjO9bJtRL3dX7javzc2Rr/JHZf4HlterTW2lUkfeN4g==}
     engines: {node: '>=20.0.0'}
 
-  '@firebase/util@1.13.0':
-    resolution: {integrity: sha512-0AZUyYUfpMNcztR5l09izHwXkZpghLgCUaAGjtMwXnCg3bj4ml5VgiwqOMOxJ+Nw4qN/zJAaOQBcJ7KGkWStqQ==}
+  '@firebase/util@1.14.0':
+    resolution: {integrity: sha512-/gnejm7MKkVIXnSJGpc9L2CvvvzJvtDPeAEq5jAwgVlf/PeNxot+THx/bpD20wQ8uL5sz0xqgXy1nisOYMU+mw==}
     engines: {node: '>=20.0.0'}
 
   '@google-cloud/firestore@7.11.6':
@@ -2978,19 +2978,19 @@ packages:
     resolution: {integrity: sha512-xCLip2mBwCdRrvXHtVEULX0NffUTYZZBhEUGht0WFL+GNdNQ7gmBOGOczhZlrf2hgFFtDO0fs1xiP9bqq5orEQ==}
     engines: {node: '>=18'}
 
-  '@sentry/core@10.42.0':
-    resolution: {integrity: sha512-L4rMrXMqUKBanpjpMT+TuAVk6xAijz6AWM6RiEYpohAr7SGcCEc1/T0+Ep1eLV8+pwWacfU27OvELIyNeOnGzA==}
+  '@sentry/core@10.43.0':
+    resolution: {integrity: sha512-l0SszQAPiQGWl/ferw8GP3ALyHXiGiRKJaOvNmhGO+PrTQyZTZ6OYyPnGijAFRg58dE1V3RCH/zw5d2xSUIiNg==}
     engines: {node: '>=18'}
 
-  '@sentry/nestjs@10.42.0':
-    resolution: {integrity: sha512-ISfULcCtwo3vrLZUy/lxv5LFDWdUz+qkaPpvTw0t1CyMcrhHMBVshUfxXklbnvGmwSAeXioDT4XyKMZKYViEFA==}
+  '@sentry/nestjs@10.43.0':
+    resolution: {integrity: sha512-jlvSySsewPZoMRI7EWlEmgfl2CXsg8V6kGE2EM8goBiycM0ioUVMb068RfutkjQzeKXWKpqdHZV0Ax9rPJqZog==}
     engines: {node: '>=18'}
     peerDependencies:
       '@nestjs/common': ^8.0.0 || ^9.0.0 || ^10.0.0 || ^11.0.0
       '@nestjs/core': ^8.0.0 || ^9.0.0 || ^10.0.0 || ^11.0.0
 
-  '@sentry/node-core@10.42.0':
-    resolution: {integrity: sha512-9tf3fPV6M071aps72D+PEtdQPTuj+SuqO2+PpTfdPP5ZL4TTKYo3VK0li76SL+5wGdTFGV5qmsokHq9IRBA0iA==}
+  '@sentry/node-core@10.43.0':
+    resolution: {integrity: sha512-w2H3NSkNMoYOS7o7mR55BM7+xL++dPxMSv1/XDfsra9FYHGppO+Mxk667Ee5k+uDi+wNIioICIh+5XOvZh4+HQ==}
     engines: {node: '>=18'}
     peerDependencies:
       '@opentelemetry/api': ^1.9.0
@@ -3016,12 +3016,12 @@ packages:
       '@opentelemetry/semantic-conventions':
         optional: true
 
-  '@sentry/node@10.42.0':
-    resolution: {integrity: sha512-ZZfU3Fnni7Aj0lTX4e3QpY3UxK4FGuzfM20316UAJycBGnripm+sDHwcekPMGfLnk/FrN9wa1atspVlHvOI0WQ==}
+  '@sentry/node@10.43.0':
+    resolution: {integrity: sha512-oNwXcuZUc4uTTr0WbHZBBIKsKwAKvNMTgbXwxfB37CfzV18wbTirbQABZ/Ir3WNxSgi6ZcnC6UE013jF5XWPqw==}
     engines: {node: '>=18'}
 
-  '@sentry/opentelemetry@10.42.0':
-    resolution: {integrity: sha512-5vsYz683iihzlIj3sT1+tEixf0awwXK86a+aYsnMHrTXJDrkBDq4U0ZT+yxdPfJlkaxRtYycFR08SXr2pSm7Eg==}
+  '@sentry/opentelemetry@10.43.0':
+    resolution: {integrity: sha512-+fIcnnLdvBHdq4nKq23t9v/B9D4L97fPWEDksXbpGs11o6BsqY4Tlzmce6cP95iiQhPckCEag3FthSND+BYtYQ==}
     engines: {node: '>=18'}
     peerDependencies:
       '@opentelemetry/api': ^1.9.0
@@ -3030,8 +3030,8 @@ packages:
       '@opentelemetry/sdk-trace-base': ^1.30.1 || ^2.1.0
       '@opentelemetry/semantic-conventions': ^1.39.0
 
-  '@sentry/profiling-node@10.42.0':
-    resolution: {integrity: sha512-HmQn5rLBdAigxMpliasGV2WclDotO64XWJqOXbK5aoNg4rdqzi1BrB9O1wVN2/TDOswnz579X8d6lzTD0g1u6w==}
+  '@sentry/profiling-node@10.43.0':
+    resolution: {integrity: sha512-mzd+1svmgWjqe4ROlLOjWtLg8DFt7p4tkox5UoLuSGEqVuBsDhNgZAotahhMZrKqRImP+JAmaHO0SWCDQEMPGw==}
     engines: {node: '>=18'}
     hasBin: true
 
@@ -3225,8 +3225,8 @@ packages:
   '@types/ms@2.1.0':
     resolution: {integrity: sha512-GsCCIZDE/p3i96vtEqx+7dBUGXrc7zeSK3wwPHIaRThS+9OhWIXRqzs4d6k1SVU8g91DrNRWxWUGhp5KXQb2VA==}
 
-  '@types/multer@2.0.0':
-    resolution: {integrity: sha512-C3Z9v9Evij2yST3RSBktxP9STm6OdMc5uR1xF1SGr98uv8dUlAL2hqwrZ3GVB3uyMyiegnscEK6PGtYvNrjTjw==}
+  '@types/multer@2.1.0':
+    resolution: {integrity: sha512-zYZb0+nJhOHtPpGDb3vqPjwpdeGlGC157VpkqNQL+UU2qwoacoQ7MpsAmUptI/0Oa127X32JzWDqQVEXp2RcIA==}
 
   '@types/mysql@2.15.27':
     resolution: {integrity: sha512-YfWiV16IY0OeBfBCk8+hXKmdTKrKlwKN1MNKAPBu5JYxLwBEZl7QzeEpGnlZb3VMGJrrGmB84gXiH+ofs/TezA==}
@@ -3234,8 +3234,11 @@ packages:
   '@types/node@20.19.33':
     resolution: {integrity: sha512-Rs1bVAIdBs5gbTIKza/tgpMuG1k3U/UMJLWecIMxNdJFDMzcM5LOiLVRYh3PilWEYDIeUDv7bpiHPLPsbydGcw==}
 
-  '@types/node@22.19.11':
-    resolution: {integrity: sha512-BH7YwL6rA93ReqeQS1c4bsPpcfOmJasG+Fkr6Y59q83f9M1WcBRHR2vM+P9eOisYRcN3ujQoiZY8uk5W+1WL8w==}
+  '@types/node@20.19.37':
+    resolution: {integrity: sha512-8kzdPJ3FsNsVIurqBs7oodNnCEVbni9yUEkaHbgptDACOPW04jimGagZ51E6+lXUwJjgnBw+hyko/lkFWCldqw==}
+
+  '@types/node@25.5.0':
+    resolution: {integrity: sha512-jp2P3tQMSxWugkCUKLRPVUpGaL5MVFwF8RDuSRztfwgN1wmqJeMSbKlnEtQqU8UrhTmzEmZdu2I6v2dpp7XIxw==}
 
   '@types/nodemailer@7.0.11':
     resolution: {integrity: sha512-E+U4RzR2dKrx+u3N4DlsmLaDC6mMZOM/TPROxA0UAPiTgI0y4CEFBmZE+coGWTjakDriRsXG368lNk1u9Q0a2g==}
@@ -3746,6 +3749,9 @@ packages:
   axios@1.13.5:
     resolution: {integrity: sha512-cz4ur7Vb0xS4/KUN0tPWe44eqxrIu31me+fbang3ijiNscE129POzipJJA6zniq2C/Z6sJCjMimjS8Lc/GAs8Q==}
 
+  axios@1.13.6:
+    resolution: {integrity: sha512-ChTCHMouEe2kn713WHbQGcuYrr6fXTBiu460OTwWrWob16g1bXn4vtz07Ope7ewMozJAnEquLk5lWQWtBig9DQ==}
+
   babel-jest@29.7.0:
     resolution: {integrity: sha512-BrvGY3xZSwEcCzKvKsCi2GgHqDqsYkOP4/by5xCgIwGXQxIEh+8ew3gmrE1y7XRR6LHZIj6yLYnUi/mm2KXKBg==}
     engines: {node: ^14.15.0 || ^16.10.0 || >=18.0.0}
@@ -3901,6 +3907,10 @@ packages:
 
   brace-expansion@5.0.3:
     resolution: {integrity: sha512-fy6KJm2RawA5RcHkLa1z/ScpBeA762UF9KmZQxwIbDtRJrgLzM10depAiEQ+CXYcoiqW1/m96OAAoke2nE9EeA==}
+    engines: {node: 18 || 20 || >=22}
+
+  brace-expansion@5.0.4:
+    resolution: {integrity: sha512-h+DEnpVvxmfVefa4jFbCf5HdH5YMDXRsmKflpf1pILZWRFlTbJpxeU55nJl4Smt5HQaGzg1o6RHFPJaOqnmBDg==}
     engines: {node: 18 || 20 || >=22}
 
   braces@3.0.3:
@@ -4265,8 +4275,8 @@ packages:
     resolution: {integrity: sha512-BS8PfmtDGnrgYdOonGZQdLZslWIeCGFP9tpan0hi1Co2Zr2NKADsvGYA8XxuG/4UWgJ6Cjtv+YJnB6MM69QGlQ==}
     engines: {node: '>= 0.4'}
 
-  dayjs@1.11.19:
-    resolution: {integrity: sha512-t5EcLVS6QPBNqM2z8fakk/NKel+Xzshgt8FFKAn+qwlD1pzZWxh0nVCrvFK7ZDb6XucZeF9z8C7CBWTRIVApAw==}
+  dayjs@1.11.20:
+    resolution: {integrity: sha512-YbwwqR/uYpeoP4pu043q+LTDLFBLApUP6VxRihdfNTqu4ubqMlGDLd6ErXhEgsyvY0K6nCs7nggYumAN+9uEuQ==}
 
   debug@2.6.9:
     resolution: {integrity: sha512-bC7ElrdJaJnPbAP+1EotYvqZsb3ecl5wi6Bfi6BJTUcNowp6cvspg0jXznRTKDjm/E7AdgFBVeAPVMNcKGsHMA==}
@@ -5095,8 +5105,8 @@ packages:
     resolution: {integrity: sha512-78/PXT1wlLLDgTzDs7sjq9hzz0vXD+zn+7wypEe4fXQxCmdmqfGsEPQxmiCSQI3ajFV91bVSsvNtrJRiW6nGng==}
     engines: {node: '>=10'}
 
-  firebase-admin@13.6.1:
-    resolution: {integrity: sha512-Zgc6yPtmPxAZo+FoK6LMG6zpSEsoSK8ifIR+IqF4oWuC3uWZU40OjxgfLTSFcsRlj/k/wD66zNv2UiTRreCNSw==}
+  firebase-admin@13.7.0:
+    resolution: {integrity: sha512-o3qS8zCJbApe7aKzkO2Pa380t9cHISqeSd3blqYTtOuUUUua3qZTLwNWgGUOss3td6wbzrZhiHIj3c8+fC046Q==}
     engines: {node: '>=18'}
 
   flat-cache@3.2.0:
@@ -5290,8 +5300,8 @@ packages:
     resolution: {integrity: sha512-DpLKbNU4WylpxJykQujfCcwYWiV/Jhm50Goo0wrVILAv5jOr9d+H+UR3PhSCD2rCCEIg0uc+G+muBTwD54JhDQ==}
     engines: {node: '>= 0.4'}
 
-  google-auth-library@10.5.0:
-    resolution: {integrity: sha512-7ABviyMOlX5hIVD60YOfHw4/CxOfBhyduaYB+wbFWCWoni4N7SLcV46hrVRktuBbZjFC9ONyqamZITN7q3n32w==}
+  google-auth-library@10.6.1:
+    resolution: {integrity: sha512-5awwuLrzNol+pFDmKJd0dKtZ0fPLAtoA5p7YO4ODsDu6ONJUVqbYwvv8y2ZBO5MBNp9TJXigB19710kYpBPdtA==}
     engines: {node: '>=18'}
 
   google-auth-library@9.15.1:
@@ -5323,10 +5333,6 @@ packages:
   gtoken@7.1.0:
     resolution: {integrity: sha512-pCcEwRi+TKpMlxAQObHDQ56KawURgyAf6jtIY046fJ5tIv3zDe/LEIubckAO8fj6JnAxLdmWkUfNyulQ2iKdEw==}
     engines: {node: '>=14.0.0'}
-
-  gtoken@8.0.0:
-    resolution: {integrity: sha512-+CqsMbHPiSTdtSO14O51eMNlrp9N79gmeqmXeouJOhfucAedHw9noVe/n5uJk3tbKE6a+6ZCQg3RPhVhHByAIw==}
-    engines: {node: '>=18'}
 
   handlebars@4.7.8:
     resolution: {integrity: sha512-vafaFqs8MZkRrSX7sFVUdo3ap/eNiLnb4IakshzvP56X5Nr1iGKAIqdX6tMlm6HcNRIkr6AxO5jFEoJzzpT8aQ==}
@@ -6521,8 +6527,8 @@ packages:
   nested-error-stacks@2.0.1:
     resolution: {integrity: sha512-SrQrok4CATudVzBS7coSz26QRSmlK9TzzoFbeKfcPBUFPjcQM9Rqvr/DlJkOrwI/0KcgvMub1n1g5Jt9EgRn4A==}
 
-  node-abi@3.87.0:
-    resolution: {integrity: sha512-+CGM1L1CgmtheLcBuleyYOn7NWPVu0s0EJH2C4puxgEZb9h8QpR9G2dBfZJOAUhi7VQxuBPMd0hiISWcTyiYyQ==}
+  node-abi@3.88.0:
+    resolution: {integrity: sha512-At6b4UqIEVudaqPsXjmUO1r/N5BUr4yhDGs5PkBE8/oG5+TfLPhFechiskFsnT6Ql0VfUXbalUUCbfXxtj7K+w==}
     engines: {node: '>=10'}
 
   node-abort-controller@3.1.1:
@@ -6563,8 +6569,8 @@ packages:
   node-releases@2.0.27:
     resolution: {integrity: sha512-nmh3lCkYZ3grZvqcCH+fjmQ7X+H0OeZgP40OierEaAptX4XofMh5kwNbWh7lBduUzCcV/8kZ+NDLCwm2iorIlA==}
 
-  nodemailer@8.0.1:
-    resolution: {integrity: sha512-5kcldIXmaEjZcHR6F28IKGSgpmZHaF1IXLWFTG+Xh3S+Cce4MiakLtWY+PlBU69fLbRa8HlaGIrC/QolUpHkhg==}
+  nodemailer@8.0.2:
+    resolution: {integrity: sha512-zbj002pZAIkWQFxyAaqoxvn+zoIwRnS40hgjqTXudKOOJkiFFgBeNqjgD3/YCR12sZnrghWYBY+yP1ZucdDRpw==}
     engines: {node: '>=6.0.0'}
 
   normalize-path@3.0.0:
@@ -6782,8 +6788,8 @@ packages:
     resolution: {integrity: sha512-WCtabS6t3c8SkpDBUlb1kjOs7l66xsGdKpIPZsg4wR+B3+u9UAum2odSsF9tnvxg80h4ZxLWMy4pRjOsFIqQpw==}
     engines: {node: '>=4.0.0'}
 
-  pg-protocol@1.12.0:
-    resolution: {integrity: sha512-uOANXNRACNdElMXJ0tPz6RBM0XQ61nONGAwlt8da5zs/iUOOCLBQOHSXnrC6fMsvtjxbOJrZZl5IScGv+7mpbg==}
+  pg-protocol@1.13.0:
+    resolution: {integrity: sha512-zzdvXfS6v89r6v7OcFCHfHlyG/wvry1ALxZo4LqgUoy7W9xhBDMaqOuMiF3qEV45VqsN6rdlcehHrfDtlCPc8w==}
 
   pg-types@2.2.0:
     resolution: {integrity: sha512-qTAAlrEsl8s4OiEQY69wDvcMIdQN6wdz5ojQiOy6YRMuynxenON0O5oCpJI6lshc6scgAY8qvJ2On/p+CXY0GA==}
@@ -7891,8 +7897,8 @@ packages:
   tslib@2.8.1:
     resolution: {integrity: sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==}
 
-  twilio@5.12.2:
-    resolution: {integrity: sha512-yjTH04Ig0Z3PAxIXhwrto0IJC4Gv7lBDQQ9f4/P9zJhnxVdd+3tENqBMJOtdmmRags3X0jl2IGKEQefCEpJE9g==}
+  twilio@5.13.0:
+    resolution: {integrity: sha512-gg32vK+NGejPK7Txrnwp2lGmpihSfc+YW//WsoS+KiTtiEUe4jjRSK5v89dPhene2OHmnQNi+9SM6bVI47iA/g==}
     engines: {node: '>=14.0'}
 
   type-check@0.4.0:
@@ -7979,6 +7985,9 @@ packages:
 
   undici-types@6.21.0:
     resolution: {integrity: sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==}
+
+  undici-types@7.18.2:
+    resolution: {integrity: sha512-AsuCzffGHJybSaRrmr5eHr81mwJU3kjw6M+uprWvCXiNeN9SOGwQ3Jn8jb8m3Z6izVgknn1R0FTCEAP2QrLY/w==}
 
   undici@6.24.1:
     resolution: {integrity: sha512-sC+b0tB1whOCzbtlx20fx3WgCXwkW627p4EA9uM+/tNNPkSS+eSEld6pAs9nDv7WbY1UUljBMYPtu9BCOrCWKA==}
@@ -9568,32 +9577,32 @@ snapshots:
 
   '@firebase/auth-interop-types@0.2.4': {}
 
-  '@firebase/component@0.7.0':
+  '@firebase/component@0.7.1':
     dependencies:
-      '@firebase/util': 1.13.0
+      '@firebase/util': 1.14.0
       tslib: 2.8.1
 
-  '@firebase/database-compat@2.1.0':
+  '@firebase/database-compat@2.1.1':
     dependencies:
-      '@firebase/component': 0.7.0
-      '@firebase/database': 1.1.0
-      '@firebase/database-types': 1.0.16
+      '@firebase/component': 0.7.1
+      '@firebase/database': 1.1.1
+      '@firebase/database-types': 1.0.17
       '@firebase/logger': 0.5.0
-      '@firebase/util': 1.13.0
+      '@firebase/util': 1.14.0
       tslib: 2.8.1
 
-  '@firebase/database-types@1.0.16':
+  '@firebase/database-types@1.0.17':
     dependencies:
       '@firebase/app-types': 0.9.3
-      '@firebase/util': 1.13.0
+      '@firebase/util': 1.14.0
 
-  '@firebase/database@1.1.0':
+  '@firebase/database@1.1.1':
     dependencies:
       '@firebase/app-check-interop-types': 0.3.3
       '@firebase/auth-interop-types': 0.2.4
-      '@firebase/component': 0.7.0
+      '@firebase/component': 0.7.1
       '@firebase/logger': 0.5.0
-      '@firebase/util': 1.13.0
+      '@firebase/util': 1.14.0
       faye-websocket: 0.11.4
       tslib: 2.8.1
 
@@ -9601,7 +9610,7 @@ snapshots:
     dependencies:
       tslib: 2.8.1
 
-  '@firebase/util@1.13.0':
+  '@firebase/util@1.14.0':
     dependencies:
       tslib: 2.8.1
 
@@ -9910,7 +9919,7 @@ snapshots:
 
   '@jest/pattern@30.0.1':
     dependencies:
-      '@types/node': 20.19.33
+      '@types/node': 20.19.37
       jest-regex-util: 30.0.1
     optional: true
 
@@ -10027,7 +10036,7 @@ snapshots:
       '@jest/schemas': 30.0.5
       '@types/istanbul-lib-coverage': 2.0.6
       '@types/istanbul-reports': 3.0.4
-      '@types/node': 20.19.33
+      '@types/node': 20.19.37
       '@types/yargs': 17.0.35
       chalk: 4.1.2
     optional: true
@@ -11143,7 +11152,7 @@ snapshots:
   '@sentry-internal/node-cpu-profiler@2.2.0':
     dependencies:
       detect-libc: 2.1.2
-      node-abi: 3.87.0
+      node-abi: 3.88.0
 
   '@sentry-internal/replay-canvas@10.39.0':
     dependencies:
@@ -11207,9 +11216,9 @@ snapshots:
 
   '@sentry/core@10.39.0': {}
 
-  '@sentry/core@10.42.0': {}
+  '@sentry/core@10.43.0': {}
 
-  '@sentry/nestjs@10.42.0(@nestjs/common@10.4.22(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@10.4.22)':
+  '@sentry/nestjs@10.43.0(@nestjs/common@10.4.22(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@10.4.22)':
     dependencies:
       '@nestjs/common': 10.4.22(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2)
       '@nestjs/core': 10.4.22(@nestjs/common@10.4.22(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/platform-express@10.4.22)(@nestjs/websockets@10.4.22)(reflect-metadata@0.2.2)(rxjs@7.8.2)
@@ -11218,15 +11227,15 @@ snapshots:
       '@opentelemetry/instrumentation': 0.211.0(@opentelemetry/api@1.9.0)
       '@opentelemetry/instrumentation-nestjs-core': 0.57.0(@opentelemetry/api@1.9.0)
       '@opentelemetry/semantic-conventions': 1.40.0
-      '@sentry/core': 10.42.0
-      '@sentry/node': 10.42.0
+      '@sentry/core': 10.43.0
+      '@sentry/node': 10.43.0
     transitivePeerDependencies:
       - supports-color
 
-  '@sentry/node-core@10.42.0(@opentelemetry/api@1.9.0)(@opentelemetry/context-async-hooks@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/core@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/instrumentation@0.211.0(@opentelemetry/api@1.9.0))(@opentelemetry/resources@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.40.0)':
+  '@sentry/node-core@10.43.0(@opentelemetry/api@1.9.0)(@opentelemetry/context-async-hooks@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/core@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/instrumentation@0.211.0(@opentelemetry/api@1.9.0))(@opentelemetry/resources@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.40.0)':
     dependencies:
-      '@sentry/core': 10.42.0
-      '@sentry/opentelemetry': 10.42.0(@opentelemetry/api@1.9.0)(@opentelemetry/context-async-hooks@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/core@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.40.0)
+      '@sentry/core': 10.43.0
+      '@sentry/opentelemetry': 10.43.0(@opentelemetry/api@1.9.0)(@opentelemetry/context-async-hooks@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/core@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.40.0)
       import-in-the-middle: 2.0.6
     optionalDependencies:
       '@opentelemetry/api': 1.9.0
@@ -11237,7 +11246,7 @@ snapshots:
       '@opentelemetry/sdk-trace-base': 2.6.0(@opentelemetry/api@1.9.0)
       '@opentelemetry/semantic-conventions': 1.40.0
 
-  '@sentry/node@10.42.0':
+  '@sentry/node@10.43.0':
     dependencies:
       '@fastify/otel': 0.16.0(@opentelemetry/api@1.9.0)
       '@opentelemetry/api': 1.9.0
@@ -11270,27 +11279,27 @@ snapshots:
       '@opentelemetry/sdk-trace-base': 2.6.0(@opentelemetry/api@1.9.0)
       '@opentelemetry/semantic-conventions': 1.40.0
       '@prisma/instrumentation': 7.2.0(@opentelemetry/api@1.9.0)
-      '@sentry/core': 10.42.0
-      '@sentry/node-core': 10.42.0(@opentelemetry/api@1.9.0)(@opentelemetry/context-async-hooks@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/core@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/instrumentation@0.211.0(@opentelemetry/api@1.9.0))(@opentelemetry/resources@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.40.0)
-      '@sentry/opentelemetry': 10.42.0(@opentelemetry/api@1.9.0)(@opentelemetry/context-async-hooks@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/core@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.40.0)
+      '@sentry/core': 10.43.0
+      '@sentry/node-core': 10.43.0(@opentelemetry/api@1.9.0)(@opentelemetry/context-async-hooks@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/core@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/instrumentation@0.211.0(@opentelemetry/api@1.9.0))(@opentelemetry/resources@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.40.0)
+      '@sentry/opentelemetry': 10.43.0(@opentelemetry/api@1.9.0)(@opentelemetry/context-async-hooks@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/core@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.40.0)
       import-in-the-middle: 2.0.6
     transitivePeerDependencies:
       - supports-color
 
-  '@sentry/opentelemetry@10.42.0(@opentelemetry/api@1.9.0)(@opentelemetry/context-async-hooks@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/core@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.40.0)':
+  '@sentry/opentelemetry@10.43.0(@opentelemetry/api@1.9.0)(@opentelemetry/context-async-hooks@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/core@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.40.0)':
     dependencies:
       '@opentelemetry/api': 1.9.0
       '@opentelemetry/context-async-hooks': 2.6.0(@opentelemetry/api@1.9.0)
       '@opentelemetry/core': 2.6.0(@opentelemetry/api@1.9.0)
       '@opentelemetry/sdk-trace-base': 2.6.0(@opentelemetry/api@1.9.0)
       '@opentelemetry/semantic-conventions': 1.40.0
-      '@sentry/core': 10.42.0
+      '@sentry/core': 10.43.0
 
-  '@sentry/profiling-node@10.42.0':
+  '@sentry/profiling-node@10.43.0':
     dependencies:
       '@sentry-internal/node-cpu-profiler': 2.2.0
-      '@sentry/core': 10.42.0
-      '@sentry/node': 10.42.0
+      '@sentry/core': 10.43.0
+      '@sentry/node': 10.43.0
     transitivePeerDependencies:
       - supports-color
 
@@ -11511,7 +11520,7 @@ snapshots:
 
   '@types/ms@2.1.0': {}
 
-  '@types/multer@2.0.0':
+  '@types/multer@2.1.0':
     dependencies:
       '@types/express': 4.17.25
 
@@ -11523,9 +11532,14 @@ snapshots:
     dependencies:
       undici-types: 6.21.0
 
-  '@types/node@22.19.11':
+  '@types/node@20.19.37':
     dependencies:
       undici-types: 6.21.0
+    optional: true
+
+  '@types/node@25.5.0':
+    dependencies:
+      undici-types: 7.18.2
 
   '@types/nodemailer@7.0.11':
     dependencies:
@@ -11552,7 +11566,7 @@ snapshots:
   '@types/pg@8.15.6':
     dependencies:
       '@types/node': 20.19.33
-      pg-protocol: 1.12.0
+      pg-protocol: 1.13.0
       pg-types: 2.2.0
 
   '@types/qs@6.14.0': {}
@@ -11778,7 +11792,7 @@ snapshots:
       '@urql/core': 5.2.0
       wonka: 6.3.5
 
-  '@vitejs/plugin-react@4.7.0(vite@5.4.21(@types/node@22.19.11)(lightningcss@1.31.1)(terser@5.46.0))':
+  '@vitejs/plugin-react@4.7.0(vite@5.4.21(@types/node@25.5.0)(lightningcss@1.31.1)(terser@5.46.0))':
     dependencies:
       '@babel/core': 7.29.0
       '@babel/plugin-transform-react-jsx-self': 7.27.1(@babel/core@7.29.0)
@@ -11786,7 +11800,7 @@ snapshots:
       '@rolldown/pluginutils': 1.0.0-beta.27
       '@types/babel__core': 7.20.5
       react-refresh: 0.17.0
-      vite: 5.4.21(@types/node@22.19.11)(lightningcss@1.31.1)(terser@5.46.0)
+      vite: 5.4.21(@types/node@25.5.0)(lightningcss@1.31.1)(terser@5.46.0)
     transitivePeerDependencies:
       - supports-color
 
@@ -12091,6 +12105,14 @@ snapshots:
     transitivePeerDependencies:
       - debug
 
+  axios@1.13.6:
+    dependencies:
+      follow-redirects: 1.15.11
+      form-data: 4.0.5
+      proxy-from-env: 1.1.0
+    transitivePeerDependencies:
+      - debug
+
   babel-jest@29.7.0(@babel/core@7.29.0):
     dependencies:
       '@babel/core': 7.29.0
@@ -12327,6 +12349,10 @@ snapshots:
     dependencies:
       balanced-match: 4.0.4
 
+  brace-expansion@5.0.4:
+    dependencies:
+      balanced-match: 4.0.4
+
   braces@3.0.3:
     dependencies:
       fill-range: 7.1.1
@@ -12431,7 +12457,7 @@ snapshots:
 
   chrome-launcher@0.15.2:
     dependencies:
-      '@types/node': 20.19.33
+      '@types/node': 25.5.0
       escape-string-regexp: 4.0.0
       is-wsl: 2.2.0
       lighthouse-logger: 1.4.2
@@ -12442,7 +12468,7 @@ snapshots:
 
   chromium-edge-launcher@0.2.0:
     dependencies:
-      '@types/node': 20.19.33
+      '@types/node': 25.5.0
       escape-string-regexp: 4.0.0
       is-wsl: 2.2.0
       lighthouse-logger: 1.4.2
@@ -12722,7 +12748,7 @@ snapshots:
       es-errors: 1.3.0
       is-data-view: 1.0.2
 
-  dayjs@1.11.19: {}
+  dayjs@1.11.20: {}
 
   debug@2.6.9:
     dependencies:
@@ -13772,15 +13798,14 @@ snapshots:
       locate-path: 6.0.0
       path-exists: 4.0.0
 
-  firebase-admin@13.6.1:
+  firebase-admin@13.7.0:
     dependencies:
       '@fastify/busboy': 3.2.0
-      '@firebase/database-compat': 2.1.0
-      '@firebase/database-types': 1.0.16
-      '@types/node': 22.19.11
+      '@firebase/database-compat': 2.1.1
+      '@firebase/database-types': 1.0.17
       farmhash-modern: 1.1.0
       fast-deep-equal: 3.1.3
-      google-auth-library: 9.15.1
+      google-auth-library: 10.6.1
       jsonwebtoken: 9.0.3
       jwks-rsa: 3.2.2
       node-forge: 1.3.3
@@ -14018,14 +14043,13 @@ snapshots:
       define-properties: 1.2.1
       gopd: 1.2.0
 
-  google-auth-library@10.5.0:
+  google-auth-library@10.6.1:
     dependencies:
       base64-js: 1.5.1
       ecdsa-sig-formatter: 1.0.11
       gaxios: 7.1.3
       gcp-metadata: 8.1.2
       google-logging-utils: 1.1.3
-      gtoken: 8.0.0
       jws: 4.0.1
     transitivePeerDependencies:
       - supports-color
@@ -14077,13 +14101,6 @@ snapshots:
       jws: 4.0.1
     transitivePeerDependencies:
       - encoding
-      - supports-color
-
-  gtoken@8.0.0:
-    dependencies:
-      gaxios: 7.1.3
-      jws: 4.0.1
-    transitivePeerDependencies:
       - supports-color
 
   handlebars@4.7.8:
@@ -14709,7 +14726,7 @@ snapshots:
   jest-haste-map@30.2.0:
     dependencies:
       '@jest/types': 30.2.0
-      '@types/node': 20.19.33
+      '@types/node': 20.19.37
       anymatch: 3.1.3
       fb-watchman: 2.0.2
       graceful-fs: 4.2.11
@@ -14877,7 +14894,7 @@ snapshots:
   jest-util@30.2.0:
     dependencies:
       '@jest/types': 30.2.0
-      '@types/node': 20.19.33
+      '@types/node': 20.19.37
       chalk: 4.1.2
       ci-info: 4.4.0
       graceful-fs: 4.2.11
@@ -14936,7 +14953,7 @@ snapshots:
 
   jest-worker@30.2.0:
     dependencies:
-      '@types/node': 20.19.33
+      '@types/node': 20.19.37
       '@ungap/structured-clone': 1.3.0
       jest-util: 30.2.0
       merge-stream: 2.0.0
@@ -15697,7 +15714,7 @@ snapshots:
 
   minimatch@10.2.3:
     dependencies:
-      brace-expansion: 5.0.3
+      brace-expansion: 5.0.4
 
   minimatch@3.1.4:
     dependencies:
@@ -15756,7 +15773,7 @@ snapshots:
 
   nested-error-stacks@2.0.1: {}
 
-  node-abi@3.87.0:
+  node-abi@3.88.0:
     dependencies:
       semver: 7.7.4
 
@@ -15791,7 +15808,7 @@ snapshots:
 
   node-releases@2.0.27: {}
 
-  nodemailer@8.0.1: {}
+  nodemailer@8.0.2: {}
 
   normalize-path@3.0.0: {}
 
@@ -16029,7 +16046,7 @@ snapshots:
 
   pg-int8@1.0.1: {}
 
-  pg-protocol@1.12.0: {}
+  pg-protocol@1.13.0: {}
 
   pg-types@2.2.0:
     dependencies:
@@ -17305,10 +17322,10 @@ snapshots:
 
   tslib@2.8.1: {}
 
-  twilio@5.12.2:
+  twilio@5.13.0:
     dependencies:
-      axios: 1.13.5
-      dayjs: 1.11.19
+      axios: 1.13.6
+      dayjs: 1.11.20
       https-proxy-agent: 5.0.1
       jsonwebtoken: 9.0.3
       qs: 6.15.0
@@ -17397,6 +17414,8 @@ snapshots:
       which-boxed-primitive: 1.1.1
 
   undici-types@6.21.0: {}
+
+  undici-types@7.18.2: {}
 
   undici@6.24.1: {}
 
@@ -17526,13 +17545,13 @@ snapshots:
       - '@types/react'
       - '@types/react-dom'
 
-  vite@5.4.21(@types/node@22.19.11)(lightningcss@1.31.1)(terser@5.46.0):
+  vite@5.4.21(@types/node@25.5.0)(lightningcss@1.31.1)(terser@5.46.0):
     dependencies:
       esbuild: 0.25.0
       postcss: 8.4.49
       rollup: 4.59.0
     optionalDependencies:
-      '@types/node': 22.19.11
+      '@types/node': 25.5.0
       fsevents: 2.3.3
       lightningcss: 1.31.1
       terser: 5.46.0
