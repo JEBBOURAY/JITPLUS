@@ -1,5 +1,7 @@
+import { useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, useColorScheme } from 'react-native';
 import { AlertTriangle, RotateCcw } from 'lucide-react-native';
+import * as Sentry from '@sentry/react-native';
 import i18n from '@/i18n';
 import { wp, hp, ms } from '@/utils/responsive';
 
@@ -20,6 +22,11 @@ const lightColors = {
 export function ScreenErrorBoundary({ error, retry }: { error: Error; retry: () => void }) {
   const scheme = useColorScheme();
   const c = scheme === 'dark' ? darkColors : lightColors;
+
+  // Report per-screen crashes to Sentry (production only)
+  useEffect(() => {
+    if (!__DEV__) Sentry.captureException(error, { tags: { source: 'screen-error-boundary' } });
+  }, [error]);
 
   return (
     <View style={[styles.container, { backgroundColor: c.bg }]}>

@@ -232,7 +232,14 @@ export default function ProfileScreen() {
     haptic(HapticStyle.Medium);
     Alert.alert(t('profile.logout'), t('profile.logoutConfirm'), [
       { text: t('common.cancel'), style: 'cancel' },
-      { text: t('profile.logout'), style: 'destructive', onPress: logout },
+      {
+        text: t('profile.logout'),
+        style: 'destructive',
+        onPress: async () => {
+          await logout();
+          router.replace('/login');
+        },
+      },
     ]);
   };
 
@@ -281,6 +288,7 @@ export default function ProfileScreen() {
       await api.deleteAccount(deletePassword);
       Alert.alert(t('profile.accountDeleted'), t('profile.accountDeletedMsg'));
       await logout();
+      router.replace('/login');
     } catch (error) {
       if (__DEV__) console.error('Delete account error:', error);
       Alert.alert(t('common.error'), t('profile.accountDeleteError'));

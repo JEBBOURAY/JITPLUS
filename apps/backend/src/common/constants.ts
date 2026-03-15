@@ -21,7 +21,7 @@ export const MS_PER_DAY = 86_400_000;
 
 /** OTP maximum attempts before lockout */
 export const MAX_OTP_ATTEMPTS = 5;
-979979
+
 /** OTP expiry time in milliseconds (5 minutes) */
 export const OTP_EXPIRY_MS = 5 * 60 * 1000;
 
@@ -93,11 +93,11 @@ export const REFERRAL_BONUS_DAYS = 30;
 
 // ── Defaults ────────────────────────────────────────────────
 /** Default notification logo when merchant has no custom logo */
-export const DEFAULT_NOTIFICATION_LOGO = 'https://storage.googleapis.com/jitplus-uploads-prod/defaults/jitplus-default.png';
+export const DEFAULT_NOTIFICATION_LOGO = 'https://jitplus.com/jitpluslogo.png';
 
 /** Logo URLs used in email templates */
-export const EMAIL_LOGO_JITPLUS = 'https://storage.googleapis.com/jitplus-uploads-prod/defaults/jitplus-default.png';
-export const EMAIL_LOGO_JITPLUS_PRO = 'https://storage.googleapis.com/jitplus-uploads-prod/defaults/jitpluspro-default.png';
+export const EMAIL_LOGO_JITPLUS = 'https://jitplus.com/jitpluslogo.png';
+export const EMAIL_LOGO_JITPLUS_PRO = 'https://jitplus.com/jitpluslogo.png';
 
 /** Duration of the free trial in days */
 export const TRIAL_DURATION_DAYS = 30;

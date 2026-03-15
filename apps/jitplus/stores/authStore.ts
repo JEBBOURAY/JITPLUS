@@ -40,5 +40,6 @@ export const useAuthStore = create<AuthState>()((set) => ({
   setLoading: (loading) => set({ loading }),
   setNeedsPasswordSetup: (needsPasswordSetup) => set({ needsPasswordSetup }),
   setGuest: (isGuest) => set({ isGuest }),
-  reset: () => set(initialState),
+  // Keep loading=false on logout reset, otherwise SplashGate can block on logo screen.
+  reset: () => set({ ...initialState, loading: false }),
 }));

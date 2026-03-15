@@ -10,10 +10,17 @@ export class TwilioService implements ISmsProvider {
   private readonly whatsappFrom: string;
   private readonly otpContentSid?: string;
 
+  private toWhatsappAddress(value: string): string {
+    const v = value.trim();
+    return v.startsWith('whatsapp:') ? v : `whatsapp:${v}`;
+  }
+
   constructor(private configService: ConfigService) {
     const accountSid = this.configService.get<string>('TWILIO_ACCOUNT_SID');
     const authToken = this.configService.get<string>('TWILIO_AUTH_TOKEN');
-    this.whatsappFrom = this.configService.get<string>('TWILIO_WHATSAPP_FROM', 'whatsapp:+14155238886');
+    this.whatsappFrom = this.toWhatsappAddress(
+      this.configService.get<string>('TWILIO_WHATSAPP_FROM', 'whatsapp:+14155238886'),
+    );
     this.otpContentSid = this.configService.get<string>('TWILIO_OTP_CONTENT_SID');
 
     if (accountSid && authToken) {
@@ -37,17 +44,29 @@ export class TwilioService implements ISmsProvider {
       return false;
     }
 
-    const destination = to.startsWith('whatsapp:') ? to : `whatsapp:${to}`;
+    const destination = this.toWhatsappAddress(to);
 
     try {
       if (this.otpContentSid) {
-        // Content Template approach (required for production WhatsApp Business)
-        await this.client.messages.create({
-          from: this.whatsappFrom,
-          to: destination,
-          contentSid: this.otpContentSid,
-          contentVariables: JSON.stringify({ '1': code }),
-        });
+        try {
+          // Content Template approach (required for production WhatsApp Business)
+          await this.client.messages.create({
+            from: this.whatsappFrom,
+            to: destination,
+            contentSid: this.otpContentSid,
+            contentVariables: JSON.stringify({ '1': code }),
+          });
+        } catch (templateError: unknown) {
+          const templateErrMsg = templateError instanceof Error ? templateError.message : String(templateError);
+          // Some accounts fail because of template approval / locale / variables mismatch.
+          // Fallback to plain text avoids OTP outage while template is being fixed.
+          this.logger.warn(`OTP template send failed, retrying as plain text: ${templateErrMsg}`);
+          await this.client.messages.create({
+            from: this.whatsappFrom,
+            to: destination,
+            body: `Votre code de vérification JitPlus est : *${code}*. Il expire dans 5 minutes.`,
+          });
+        }
       } else {
         // Plain text — works in Twilio sandbox
         await this.client.messages.create({
@@ -76,7 +95,7 @@ export class TwilioService implements ISmsProvider {
       return false;
     }
 
-    const destination = to.startsWith('whatsapp:') ? to : `whatsapp:${to}`;
+    const destination = this.toWhatsappAddress(to);
 
     try {
       await this.client.messages.create({

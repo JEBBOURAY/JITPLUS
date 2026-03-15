@@ -711,7 +711,7 @@ export class ClientService {
           type: 'promo' as const,
           merchantName: n.merchant?.nom ?? null,
           merchantCategory: n.merchant?.categorie ?? null,
-          merchantLogoUrl: n.merchant?.logoUrl || 'https://storage.googleapis.com/jitplus-uploads-prod/defaults/jitplus-default.png',
+          merchantLogoUrl: n.merchant?.logoUrl || 'https://jitplus.com/jitpluslogo.png',
           isRead: status?.isRead ?? false,
           readAt: status?.readAt ?? null,
           createdAt: n.createdAt,

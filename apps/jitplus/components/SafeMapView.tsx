@@ -3,7 +3,7 @@
  * - Dev build / standalone: Affiche Google Maps (Android) / Apple Maps (iOS)
  * - Expo Go SDK 51+: react-native-maps n'est plus inclus → graceful fallback
  */
-import React, { forwardRef } from 'react';
+import React, { forwardRef, useEffect, useState } from 'react';
 import { Platform, View, Text, StyleSheet, NativeModules } from 'react-native';
 import { wp, ms } from '@/utils/responsive';
 
@@ -31,6 +31,16 @@ try {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const SafeMapView = forwardRef<any, any>((props, ref) => {
+  const [mapReady, setMapReady] = useState(false);
+  const [mapLoaded, setMapLoaded] = useState(false);
+  const [renderTimedOut, setRenderTimedOut] = useState(false);
+
+  useEffect(() => {
+    if (!MAPS_AVAILABLE || !RNMapView || mapLoaded) return;
+    const t = setTimeout(() => setRenderTimedOut(true), 9000);
+    return () => clearTimeout(t);
+  }, [mapLoaded]);
+
   if (!MAPS_AVAILABLE || !RNMapView) {
     return (
       <View style={fallbackStyles.container}>
@@ -40,22 +50,46 @@ const SafeMapView = forwardRef<any, any>((props, ref) => {
     );
   }
 
+  if (renderTimedOut) {
+    return (
+      <View style={fallbackStyles.container}>
+        <Text style={fallbackStyles.text}>Carte indisponible temporairement</Text>
+        <Text style={fallbackStyles.hint}>Verifiez la cle Google Maps (package + SHA-1)</Text>
+      </View>
+    );
+  }
+
   const providerProp = Platform.OS === 'android' ? { provider: RN_PROVIDER_GOOGLE } : {};
+  const configuredRenderer = (process.env.EXPO_PUBLIC_GOOGLE_MAPS_RENDERER ?? '').toUpperCase();
+  const androidRendererProp =
+    Platform.OS === 'android' && (configuredRenderer === 'LEGACY' || configuredRenderer === 'LATEST')
+      ? { googleRenderer: configuredRenderer }
+      : {};
   return (
     <RNMapView
       ref={ref}
+      {...androidRendererProp}
       {...providerProp}
       {...props}
       onMapReady={() => {
+        setMapReady(true);
         if (__DEV__) {
           const locale = Platform.OS === 'ios'
             ? NativeModules.SettingsManager?.settings?.AppleLocale ?? NativeModules.SettingsManager?.settings?.AppleLanguages?.[0]
             : NativeModules.I18nManager?.localeIdentifier;
           console.log(`[SafeMapView] ✓ Google Maps ready — device locale: ${locale}`);
           console.log(`[SafeMapView] ✓ Provider: ${Platform.OS === 'android' ? 'PROVIDER_GOOGLE' : 'Apple Maps'}`);
+          if (Platform.OS === 'android' && configuredRenderer) {
+            console.log(`[SafeMapView] ✓ Android renderer: ${configuredRenderer}`);
+          }
           console.log('[SafeMapView] ✓ Region bias: MA (via withMoroccoRegion plugin)');
         }
         props.onMapReady?.();
+      }}
+      onMapLoaded={() => {
+        setMapLoaded(true);
+        setRenderTimedOut(false);
+        props.onMapLoaded?.();
       }}
     />
   );

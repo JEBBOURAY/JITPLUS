@@ -597,6 +597,9 @@ importers:
       '@tanstack/query-async-storage-persister':
         specifier: ^5.90.24
         version: 5.90.24
+      axios:
+        specifier: ^1.6.5
+        version: 1.13.5
       socket.io-client:
         specifier: ^4.8.3
         version: 4.8.3

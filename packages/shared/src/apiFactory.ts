@@ -79,14 +79,14 @@ export function createApiClient(config: ApiFactoryConfig): AxiosInstance {
   });
 
   // ── Request: attach auth token ──
-  client.interceptors.request.use(async (req) => {
+  client.interceptors.request.use(async (req: import('axios').InternalAxiosRequestConfig) => {
     const token = await config.getToken();
     if (token) req.headers.Authorization = `Bearer ${token}`;
     return req;
   });
 
   // ── Response: auto-retry on transient errors ──
-  client.interceptors.response.use(undefined, async (error) => {
+  client.interceptors.response.use(undefined, async (error: import('axios').AxiosError) => {
     const cfg = error.config;
     if (!cfg) return Promise.reject(error);
 
@@ -120,13 +120,16 @@ export function createApiClient(config: ApiFactoryConfig): AxiosInstance {
   };
 
   client.interceptors.response.use(
-    (res) => res,
-    async (error) => {
+    (res: import('axios').AxiosResponse) => res,
+    async (error: import('axios').AxiosError) => {
       const original = error.config;
-      const url = original?.url ?? '';
+      // No config means the request was never sent — nothing to retry
+      if (!original) return Promise.reject(error);
+
+      const url = original.url ?? '';
       const isAuth = authRoutes.some((r) => url.includes(r));
 
-      if (error.response?.status !== 401 || isAuth || original?._retry) {
+      if (error.response?.status !== 401 || isAuth || original._retry) {
         if (error.response?.status === 429) {
           error.message = 'Trop de requêtes. Veuillez patienter quelques secondes.';
         }
