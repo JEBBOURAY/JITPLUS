@@ -9,7 +9,8 @@ if [ "${SKIP_MIGRATIONS:-0}" = "1" ]; then
   echo "[Entrypoint] SKIP_MIGRATIONS=1 — skipping migrations."
 else
   echo "[Entrypoint] Running database migrations..."
-  npx prisma migrate deploy --schema ./prisma/schema.prisma
+  # Use the locally installed Prisma CLI (avoids npx downloading it)
+  ./node_modules/.bin/prisma migrate deploy --schema ./prisma/schema.prisma
   echo "[Entrypoint] Migrations complete."
 fi
 
