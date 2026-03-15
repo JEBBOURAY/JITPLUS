@@ -37,5 +37,9 @@ pnpm-debug.log*
 .expo/
 .expo-shared/
 
+# Firebase config files (contain sensitive API keys - never commit these!)
+google-services.json
+GoogleService-Info.plist
+
 # Metro
 .metro-health-check*
