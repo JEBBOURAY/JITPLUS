@@ -10,6 +10,17 @@
     "test": "pnpm run --parallel test",
     "lint": "pnpm run --parallel lint"
   },
+  "pnpm": {
+    "overrides": {
+      "ajv": "8.18.0",
+      "fast-xml-parser": "5.3.8",
+      "flatted": "3.4.0",
+      "multer": "2.1.1",
+      "serialize-javascript": "7.0.3",
+      "tar": "7.5.11",
+      "undici": "6.24.1"
+    }
+  },
   "devDependencies": {
     "typescript": "^5.0.0"
   }
