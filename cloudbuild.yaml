@@ -42,7 +42,7 @@ substitutions:
   _SERVICE_NAME: jitplus-api
   _AR_REPO: jitplus
   _CLOUD_SQL_INSTANCE: jitplus-97259:europe-west9:jitplus-db
-  _IMAGE: ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/backend
+  _IMAGE: ${_REGION}-docker.pkg.dev/jitplus-97259/${_AR_REPO}/backend
 
 steps:
   # ── 1. Build the Docker image ───────────────────────────────────────────────
