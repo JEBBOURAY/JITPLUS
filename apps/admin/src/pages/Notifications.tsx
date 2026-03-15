@@ -1,0 +1,178 @@
+import React, { useEffect, useState } from 'react';
+import { getNotifications } from '../api';
+import { NotificationRow, Pagination } from '../types';
+import { C, S } from '../theme';
+import { fmtDateTime, tableHeaderStyle, tableCellStyle } from '../utils/format';
+import { getErrorMessage } from '@jitplus/shared';
+
+const CHANNELS = [
+  { value: '', label: 'Tous' },
+  { value: 'PUSH', label: '📱 Push' },
+  { value: 'WHATSAPP', label: '💬 WhatsApp' },
+  { value: 'EMAIL', label: '📧 Email' },
+];
+
+const CHANNEL_BADGE: Record<string, { color: string; label: string }> = {
+  PUSH: { color: C.primary, label: 'Push' },
+  WHATSAPP: { color: '#25D366', label: 'WhatsApp' },
+  EMAIL: { color: '#EA4335', label: 'Email' },
+};
+
+
+export default function Notifications() {
+  const [notifications, setNotifications] = useState<NotificationRow[]>([]);
+  const [pagination, setPagination] = useState<Pagination | null>(null);
+  const [page, setPage] = useState(1);
+  const [channel, setChannel] = useState('');
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  // Debounce search
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 400);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  useEffect(() => {
+    setLoading(true);
+    getNotifications(page, 20, channel || undefined, debouncedSearch || undefined)
+      .then((r) => {
+        setNotifications(r.notifications);
+        setPagination(r.pagination);
+      })
+      .catch((e: unknown) => setError(getErrorMessage(e)))
+      .finally(() => setLoading(false));
+  }, [page, channel, debouncedSearch]);
+
+  // Reset page on filter change
+  useEffect(() => { setPage(1); }, [channel, debouncedSearch]);
+
+  return (
+    <div style={{ paddingBottom: 48 }}>
+      <h2 style={{ margin: '0 0 4px', fontWeight: 800, fontSize: 22, color: C.text }}>Notifications</h2>
+      <p style={{ margin: '0 0 20px', fontSize: 13, color: C.textMuted }}>
+        Suivi de toutes les notifications envoyées par les commerçants
+      </p>
+
+      {/* Filters */}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+        {/* Channel filter */}
+        <div style={{ display: 'flex', gap: 4 }}>
+          {CHANNELS.map((ch) => (
+            <button
+              key={ch.value}
+              onClick={() => setChannel(ch.value)}
+              style={{
+                ...S.btn(channel === ch.value ? C.primary : C.surfaceHover),
+                padding: '6px 12px',
+                fontSize: 12,
+                opacity: channel === ch.value ? 1 : 0.7,
+                border: `1px solid ${channel === ch.value ? C.primary : C.border}`,
+              }}
+            >
+              {ch.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Search */}
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Rechercher par titre, contenu ou commerçant…"
+          style={{
+            flex: 1,
+            minWidth: 200,
+            padding: '8px 12px',
+            background: C.surface,
+            border: `1px solid ${C.border}`,
+            borderRadius: 8,
+            color: C.text,
+            fontSize: 13,
+            outline: 'none',
+          }}
+        />
+      </div>
+
+      {error && <p style={{ color: C.red }}>{error}</p>}
+
+      {/* Table */}
+      <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead>
+            <tr style={{ background: C.surfaceHover, textAlign: 'left' }}>
+              <th style={th}>Commerçant</th>
+              <th style={th}>Canal</th>
+              <th style={th}>Titre</th>
+              <th style={th}>Contenu</th>
+              <th style={{ ...th, textAlign: 'center' }}>Destinataires</th>
+              <th style={{ ...th, textAlign: 'center' }}>Succès</th>
+              <th style={{ ...th, textAlign: 'center' }}>Échecs</th>
+              <th style={th}>Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={8} style={{ ...td, textAlign: 'center', color: C.textMuted, padding: 40 }}>Chargement…</td></tr>
+            ) : notifications.length === 0 ? (
+              <tr><td colSpan={8} style={{ ...td, textAlign: 'center', color: C.textMuted, padding: 40 }}>Aucune notification trouvée</td></tr>
+            ) : (
+              notifications.map((n) => {
+                const badge = CHANNEL_BADGE[n.channel ?? ''] ?? { color: C.textMuted, label: n.channel ?? 'N/A' };
+                return (
+                  <tr key={n.id} style={{ borderBottom: `1px solid ${C.border}` }}>
+                    <td style={td}>
+                      <div style={{ fontWeight: 600, color: C.text }}>{n.merchant.nom}</div>
+                      <div style={{ fontSize: 11, color: C.textMuted }}>{n.merchant.email}</div>
+                    </td>
+                    <td style={td}>
+                      <span style={S.badge(badge.color)}>{badge.label}</span>
+                    </td>
+                    <td style={{ ...td, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {n.title}
+                    </td>
+                    <td style={{ ...td, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: C.textMuted }}>
+                      {n.body}
+                    </td>
+                    <td style={{ ...td, textAlign: 'center', fontWeight: 700, color: C.cyan }}>{n.recipientCount}</td>
+                    <td style={{ ...td, textAlign: 'center', fontWeight: 700, color: C.green }}>{n.successCount}</td>
+                    <td style={{ ...td, textAlign: 'center', fontWeight: 700, color: n.failureCount > 0 ? C.red : C.textMuted }}>{n.failureCount}</td>
+                    <td style={{ ...td, fontSize: 11, color: C.textMuted, whiteSpace: 'nowrap' }}>{fmtDateTime(n.createdAt)}</td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Pagination */}
+      {pagination && pagination.totalPages > 1 && (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, marginTop: 16 }}>
+          <button
+            disabled={page <= 1}
+            onClick={() => setPage((p) => p - 1)}
+            style={{ ...S.btn(C.surfaceHover), padding: '6px 12px', fontSize: 12, opacity: page <= 1 ? 0.4 : 1, border: `1px solid ${C.border}` }}
+          >
+            ← Précédent
+          </button>
+          <span style={{ fontSize: 12, color: C.textMuted }}>
+            Page {pagination.page} / {pagination.totalPages} — {pagination.total} résultats
+          </span>
+          <button
+            disabled={page >= pagination.totalPages}
+            onClick={() => setPage((p) => p + 1)}
+            style={{ ...S.btn(C.surfaceHover), padding: '6px 12px', fontSize: 12, opacity: page >= pagination.totalPages ? 0.4 : 1, border: `1px solid ${C.border}` }}
+          >
+            Suivant →
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const th = tableHeaderStyle;
+const td = tableCellStyle;

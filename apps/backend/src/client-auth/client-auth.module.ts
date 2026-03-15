@@ -1,0 +1,18 @@
+import { Module } from '@nestjs/common';
+import { JwtModule } from '@nestjs/jwt';
+import { PassportModule } from '@nestjs/passport';
+import { ClientAuthController, ClientController } from './client-auth.controller';
+import { ClientAuthService } from './client-auth.service';
+import { ClientService } from './client.service';
+import { jwtModuleFactory } from '../common/jwt/jwt-module.factory';
+
+@Module({
+  imports: [
+    PassportModule,
+    JwtModule.registerAsync(jwtModuleFactory('jitplus-client', 'JWT_CLIENT_EXPIRATION', '2h')),
+  ],
+  controllers: [ClientAuthController, ClientController],
+  providers: [ClientAuthService, ClientService],
+  exports: [ClientAuthService, ClientService],
+})
+export class ClientAuthModule {}

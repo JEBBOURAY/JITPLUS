@@ -1,0 +1,258 @@
+import { Injectable, NotFoundException, Inject } from '@nestjs/common';
+import {
+  CLIENT_REPOSITORY, type IClientRepository,
+  LOYALTY_CARD_REPOSITORY, type ILoyaltyCardRepository,
+  TRANSACTION_REPOSITORY, type ITransactionRepository,
+  MERCHANT_REPOSITORY, type IMerchantRepository,
+} from '../../common/repositories';
+import { MerchantPlanService } from './merchant-plan.service';
+import { PointsRules } from '../interfaces/points-rules.interface';
+import { computeRewardThreshold } from '../utils/loyalty.utils';
+import {
+  MAX_SCAN_RESULTS,
+  DEFAULT_PAGE_SIZE,
+  DEFAULT_STAMPS_FOR_REWARD,
+  DEFAULT_LOYALTY_TYPE,
+} from '../../common/constants';
+import { MERCHANT_LOYALTY_SELECT, CLIENT_SCAN_SELECT } from '../../common/prisma-selects';
+import { buildClientSearchFilter, buildTxMap, mapClientResponse, buildPagination } from '../../common/utils';
+
+@Injectable()
+export class MerchantClientService {
+  constructor(
+    @Inject(CLIENT_REPOSITORY) private clientRepo: IClientRepository,
+    @Inject(LOYALTY_CARD_REPOSITORY) private loyaltyCardRepo: ILoyaltyCardRepository,
+    @Inject(TRANSACTION_REPOSITORY) private transactionRepo: ITransactionRepository,
+    @Inject(MERCHANT_REPOSITORY) private merchantRepo: IMerchantRepository,
+    private planService: MerchantPlanService,
+  ) {}
+
+  async getClients(merchantId: string, search?: string, page = 1, limit = 20) {
+    const skip = (page - 1) * limit;
+    const where = search
+      ? {
+          AND: [
+            { loyaltyCards: { some: { merchantId } } },
+            { OR: buildClientSearchFilter(search) },
+          ],
+        }
+      : { loyaltyCards: { some: { merchantId } } };
+
+    const [clients, total] = await Promise.all([
+      this.clientRepo.findMany({
+        where,
+        select: {
+          ...CLIENT_SCAN_SELECT,
+          loyaltyCards: {
+            where: { merchantId },
+            select: { points: true, createdAt: true },
+          },
+          transactions: {
+            where: { merchantId, status: 'ACTIVE' },
+            select: { createdAt: true },
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+          },
+          _count: {
+            select: {
+              transactions: { where: { merchantId, status: 'ACTIVE' } },
+            },
+          },
+        },
+        orderBy: [{ createdAt: 'desc' }],
+        skip,
+        take: limit,
+      }),
+      this.clientRepo.count({ where }),
+    ]);
+
+    return {
+      clients: clients.map((client) => {
+        const loyaltyCard = client.loyaltyCards[0];
+        const lastTx = client.transactions[0];
+        const tx = lastTx
+          ? { lastVisit: lastTx.createdAt, txCount: client._count.transactions }
+          : undefined;
+        return mapClientResponse(client, loyaltyCard, tx);
+      }),
+      pagination: buildPagination(total, page, limit),
+    };
+  }
+
+  /**
+   * Verify that a client UUID exists and belongs to this merchant.
+   * Prevents IDOR by confirming the client has a loyalty card with the merchant.
+   */
+  async verifyClient(clientId: string, merchantId: string): Promise<{ clientId: string }> {
+    const loyaltyCard = await this.loyaltyCardRepo.findUnique({
+      where: { clientId_merchantId: { clientId, merchantId } },
+      select: { clientId: true },
+    });
+    if (!loyaltyCard) {
+      // Fallback: check if the client exists at all (for first-time scan)
+      const client = await this.clientRepo.findUnique({
+        where: { id: clientId },
+        select: { id: true },
+      });
+      if (!client) throw new NotFoundException('Client non trouvé');
+    }
+    return { clientId };
+  }
+
+  async getClientsForScan(merchantId: string, search?: string) {
+    if (!search) return [];
+
+    const clients = await this.clientRepo.findMany({
+      where: {
+        AND: [
+          { loyaltyCards: { some: { merchantId } } },
+          { OR: buildClientSearchFilter(search) },
+        ],
+      },
+      select: CLIENT_SCAN_SELECT,
+      take: MAX_SCAN_RESULTS,
+    });
+
+    const clientIds = clients.map((c) => c.id);
+
+    const [loyaltyCards, lastTransactions] = clientIds.length
+      ? await Promise.all([
+          this.loyaltyCardRepo.findMany({
+            where: { merchantId, clientId: { in: clientIds } },
+            select: { clientId: true, points: true, createdAt: true },
+          }),
+          this.transactionRepo.groupBy({
+            by: ['clientId'],
+            where: { merchantId, clientId: { in: clientIds }, status: 'ACTIVE' },
+            _max: { createdAt: true },
+            _count: true,
+          }),
+        ])
+      : [[], []];
+
+    const loyaltyMap = new Map(loyaltyCards.map((card) => [card.clientId, card]));
+
+    const txMap = buildTxMap(lastTransactions);
+
+    return clients.map((client) => {
+      const loyaltyCard = loyaltyMap.get(client.id);
+      const tx = txMap.get(client.id);
+      return mapClientResponse(client, loyaltyCard, tx);
+    });
+  }
+
+  async getClientStatus(clientId: string, merchantId: string) {
+    const [client, loyaltyCardResult, merchant] = await Promise.all([
+      this.clientRepo.findUnique({
+        where: { id: clientId },
+        select: { id: true, nom: true, email: true, telephone: true, shareInfoMerchants: true },
+      }),
+      this.loyaltyCardRepo.findUnique({
+        where: { clientId_merchantId: { clientId, merchantId } },
+        select: { id: true, points: true, createdAt: true },
+      }),
+      this.merchantRepo.findUnique({
+        where: { id: merchantId },
+        select: MERCHANT_LOYALTY_SELECT,
+      }),
+    ]);
+    if (!client) throw new NotFoundException('Client non trouvé');
+
+    let loyaltyCard = loyaltyCardResult;
+    if (!loyaltyCard) {
+      // Enforce client limit for FREE plan before creating loyalty card
+      await this.planService.assertCanAddClient(merchantId);
+      try {
+        loyaltyCard = await this.loyaltyCardRepo.create({
+          data: { clientId, merchantId, points: 0 },
+          select: { id: true, points: true, createdAt: true },
+        });
+      } catch (e: any) {
+        // P2002 = unique constraint: a concurrent request created the card first
+        if (e?.code === 'P2002') {
+          loyaltyCard = await this.loyaltyCardRepo.findUnique({
+            where: { clientId_merchantId: { clientId, merchantId } },
+            select: { id: true, points: true, createdAt: true },
+          });
+          if (!loyaltyCard) throw e;
+        } else {
+          throw e;
+        }
+      }
+    }
+
+    const pointsRules = merchant?.pointsRules as PointsRules | null;
+    const rewardThreshold = computeRewardThreshold(merchant, pointsRules);
+
+    const shared = client.shareInfoMerchants !== false;
+    return {
+      id: client.id,
+      nom: client.nom,
+      email: shared ? client.email : null,
+      telephone: shared ? client.telephone : null,
+      points: loyaltyCard.points,
+      hasReward: loyaltyCard.points >= rewardThreshold,
+      rewardThreshold,
+      loyaltyType: merchant?.loyaltyType || DEFAULT_LOYALTY_TYPE,
+      stampsForReward: merchant?.stampsForReward || DEFAULT_STAMPS_FOR_REWARD,
+    };
+  }
+
+  async getClientDetail(clientId: string, merchantId: string) {
+    const [client, loyaltyCard, transactions, merchant] = await Promise.all([
+      this.clientRepo.findUnique({
+        where: { id: clientId },
+        select: { id: true, nom: true, email: true, telephone: true, shareInfoMerchants: true, termsAccepted: true, createdAt: true },
+      }),
+      this.loyaltyCardRepo.findUnique({
+        where: { clientId_merchantId: { clientId, merchantId } },
+        select: { points: true, createdAt: true },
+      }),
+      this.transactionRepo.findMany({
+        where: { clientId, merchantId },
+        select: {
+          id: true, type: true, loyaltyType: true, amount: true, points: true,
+          status: true, createdAt: true, note: true,
+          reward: { select: { id: true, titre: true, cout: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: DEFAULT_PAGE_SIZE,
+      }),
+      this.merchantRepo.findUnique({
+        where: { id: merchantId },
+        select: MERCHANT_LOYALTY_SELECT,
+      }),
+    ]);
+    if (!client) throw new NotFoundException('Client non trouvé');
+
+    const pointsRules = merchant?.pointsRules as PointsRules | null;
+    const rewardThreshold = computeRewardThreshold(merchant, pointsRules);
+
+    const shared = client.shareInfoMerchants !== false;
+
+    return {
+      id: client.id,
+      nom: client.nom,
+      email: shared ? client.email : null,
+      telephone: shared ? client.telephone : null,
+      points: loyaltyCard?.points ?? 0,
+      rewardThreshold,
+      hasReward: (loyaltyCard?.points ?? 0) >= rewardThreshold,
+      memberSince: loyaltyCard?.createdAt ?? client.createdAt,
+      termsAccepted: client.termsAccepted,
+      transactions: transactions.map((t) => ({
+        id: t.id,
+        type: t.type,
+        loyaltyType: t.loyaltyType ?? null,
+        amount: t.amount,
+        points: t.points,
+        status: t.status,
+        createdAt: t.createdAt,
+        note: t.note ?? null,
+        reward: t.reward ? { id: t.reward.id, titre: t.reward.titre, cout: t.reward.cout } : null,
+      })),
+      loyaltyType: merchant?.loyaltyType || DEFAULT_LOYALTY_TYPE,
+      stampsForReward: merchant?.stampsForReward || DEFAULT_STAMPS_FOR_REWARD,
+    };
+  }
+}

@@ -1,0 +1,22 @@
+# Dependencies
+/node_modules
+
+# Build
+/dist
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# IDE
+.idea
+.vscode
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# Uploads (files are on GCS in production)
+/uploads

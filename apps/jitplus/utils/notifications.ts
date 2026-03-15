@@ -1,0 +1,131 @@
+import { Platform } from 'react-native';
+import * as Device from 'expo-device';
+import Constants from 'expo-constants';
+import i18n from '@/i18n';
+
+const isExpoGo = Constants.appOwnership === 'expo';
+
+// Only load expo-notifications outside of Expo Go — the module registers
+// push-token side-effects on import that crash in Expo Go SDK 53+.
+let Notifications: typeof import('expo-notifications') | null = null;
+
+if (!isExpoGo) {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    Notifications = require('expo-notifications');
+  } catch {
+    if (__DEV__) console.warn('[notifications] expo-notifications unavailable');
+  }
+}
+
+/**
+ * Configure how notifications are displayed when the app is in the foreground.
+ * Skipped in Expo Go where the module is unavailable.
+ */
+if (Notifications && !isExpoGo) {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
+    }),
+  });
+}
+
+/**
+ * Check if notification permission is already granted.
+ * Safe to call in Expo Go — returns false when the module is unavailable.
+ */
+export async function getPermissionStatus(): Promise<boolean> {
+  if (!Notifications || isExpoGo) return false;
+  try {
+    const { status } = await Notifications.getPermissionsAsync();
+    return status === 'granted';
+  } catch { return false; }
+}
+
+/**
+ * Create the Android notification channel (required for Android 8+).
+ * Must match the channelId used by the backend Firebase service ('jit-marketing').
+ */
+export async function setupAndroidChannel() {
+  if (!Notifications || isExpoGo) return;
+  if (Platform.OS === 'android') {
+    await Notifications.setNotificationChannelAsync('jit-marketing', {
+      name: i18n.t('notifications.channelOffers'),
+      description: i18n.t('notifications.channelOffersDesc'),
+      importance: Notifications.AndroidImportance.HIGH,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: '#7C3AED',
+      sound: 'default',
+    });
+
+    // Default channel for general notifications
+    await Notifications.setNotificationChannelAsync('default', {
+      name: i18n.t('notifications.channelGeneral'),
+      importance: Notifications.AndroidImportance.DEFAULT,
+      sound: 'default',
+    });
+  }
+}
+
+/**
+ * Request notification permissions and return the native FCM/APNs device token.
+ * Returns null if permissions are denied or device is not physical.
+ */
+export async function registerForPushNotifications(): Promise<string | null> {
+  // Push notifications don't work in Expo Go (SDK 53+)
+  if (!Notifications || isExpoGo) {
+    if (__DEV__) console.log('Push notifications skipped (Expo Go or module unavailable)');
+    return null;
+  }
+
+  // Push notifications only work on physical devices
+  if (!Device.isDevice) {
+    if (__DEV__) console.log('Push notifications require a physical device');
+    return null;
+  }
+
+  // Check existing permission status
+  const { status: existingStatus } = await Notifications.getPermissionsAsync();
+  let finalStatus = existingStatus;
+
+  // Request if not already granted
+  if (existingStatus !== 'granted') {
+    const { status } = await Notifications.requestPermissionsAsync();
+    finalStatus = status;
+  }
+
+  if (finalStatus !== 'granted') {
+    if (__DEV__) console.log('Notification permission not granted');
+    return null;
+  }
+
+  try {
+    // Get the native device push token (FCM on Android, APNs on iOS)
+    // This is what Firebase Admin SDK expects — NOT an Expo push token
+    const tokenData = await Notifications.getDevicePushTokenAsync();
+    const token = tokenData.data as string;
+
+    if (__DEV__) console.log('Device push token:', token);
+    return token;
+  } catch (error) {
+    if (__DEV__) console.error('Failed to get device push token:', error);
+
+    // Fallback: try Expo push token (works with Expo push service)
+    try {
+      const projectId = Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
+      if (projectId) {
+        const expoPushToken = await Notifications.getExpoPushTokenAsync({ projectId });
+        if (__DEV__) console.log('Expo push token (fallback):', expoPushToken.data);
+        return expoPushToken.data;
+      }
+    } catch (e) {
+      if (__DEV__) console.error('Failed to get Expo push token too:', e);
+    }
+
+    return null;
+  }
+}

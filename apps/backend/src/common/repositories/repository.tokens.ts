@@ -1,0 +1,22 @@
+// ── DI tokens for model repositories ────────────────────────────────────────
+// Each token corresponds to a Prisma model delegate injected via RepositoryModule.
+
+export const MERCHANT_REPOSITORY = Symbol('MERCHANT_REPOSITORY');
+export const CLIENT_REPOSITORY = Symbol('CLIENT_REPOSITORY');
+export const LOYALTY_CARD_REPOSITORY = Symbol('LOYALTY_CARD_REPOSITORY');
+export const TRANSACTION_REPOSITORY = Symbol('TRANSACTION_REPOSITORY');
+export const STORE_REPOSITORY = Symbol('STORE_REPOSITORY');
+export const TEAM_MEMBER_REPOSITORY = Symbol('TEAM_MEMBER_REPOSITORY');
+export const DEVICE_SESSION_REPOSITORY = Symbol('DEVICE_SESSION_REPOSITORY');
+export const NOTIFICATION_REPOSITORY = Symbol('NOTIFICATION_REPOSITORY');
+export const CLIENT_NOTIFICATION_STATUS_REPOSITORY = Symbol('CLIENT_NOTIFICATION_STATUS_REPOSITORY');
+export const OTP_REPOSITORY = Symbol('OTP_REPOSITORY');
+export const ADMIN_USER_REPOSITORY = Symbol('ADMIN_USER_REPOSITORY');
+export const AUDIT_LOG_REPOSITORY = Symbol('AUDIT_LOG_REPOSITORY');
+export const UPGRADE_REQUEST_REPOSITORY = Symbol('UPGRADE_REQUEST_REPOSITORY');
+export const PROFILE_VIEW_REPOSITORY = Symbol('PROFILE_VIEW_REPOSITORY');
+export const REWARD_REPOSITORY = Symbol('REWARD_REPOSITORY');
+
+// ── Infrastructure tokens ───────────────────────────────────────────────────
+export const TRANSACTION_RUNNER = Symbol('TRANSACTION_RUNNER');
+export const RAW_QUERY_RUNNER = Symbol('RAW_QUERY_RUNNER');

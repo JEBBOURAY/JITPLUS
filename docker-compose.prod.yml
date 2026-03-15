@@ -1,0 +1,90 @@
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║  LOCAL PRODUCTION SIMULATION — pas pour GCP directement                 ║
+# ║  Pour déployer sur GCP (Cloud Run), utiliser cloudbuild.yaml             ║
+# ║  La variable DATABASE_URL pointe vers le conteneur PostgreSQL local.     ║
+# ║  Sur GCP, elle pointe vers Cloud SQL.                                    ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+version: '3.8'
+
+services:
+  # ── PostgreSQL local (remplacé par Cloud SQL sur GCP) ──────────────────
+  postgres:
+    image: postgres:16
+    container_name: jit-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Définir POSTGRES_PASSWORD dans .env}
+      POSTGRES_DB: ${POSTGRES_DB:-jit_db}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - jit-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+
+  # ── Migration init-container (remplacé par Cloud Run Job sur GCP) ──────
+  migrate:
+    build:
+      context: ./apps/backend
+      dockerfile: Dockerfile
+    container_name: jit-migrate
+    env_file:
+      - .env.production
+    environment:
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-jit_db}?schema=public"
+      NODE_ENV: production
+      # Force migrations even though the Dockerfile CMD no longer runs them
+      SKIP_MIGRATIONS: "0"
+    entrypoint: ["dumb-init", "--"]
+    command: ["/app/docker-entrypoint.sh", "echo", "migrations done"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - jit-network
+    restart: "no"
+
+  # ── Backend API ─────────────────────────────────────────────────────────
+  # Sur GCP, ce service est déployé en tant que Cloud Run service.
+  # DATABASE_URL → Cloud SQL via unix socket ou TCP
+  backend:
+    build:
+      context: ./apps/backend
+      dockerfile: Dockerfile
+    container_name: jit-backend
+    restart: always
+    ports:
+      - "127.0.0.1:3000:3000"
+    env_file:
+      - .env.production
+    environment:
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-jit_db}?schema=public&connection_limit=20&pool_timeout=30"
+      NODE_ENV: production
+      PORT: 3000
+      SKIP_MIGRATIONS: "1"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - jit-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  postgres_data:
+
+networks:
+  jit-network:
+    driver: bridge
