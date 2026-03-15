@@ -50,6 +50,7 @@ steps:
     id: build
     args:
       - build
+      - --pull
       - --tag=$_IMAGE:$COMMIT_SHA
       - --tag=$_IMAGE:latest
       - --cache-from=$_IMAGE:latest
