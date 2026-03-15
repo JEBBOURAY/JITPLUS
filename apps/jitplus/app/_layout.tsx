@@ -31,12 +31,19 @@ Sentry.init({
   dsn: process.env.EXPO_PUBLIC_SENTRY_DSN ?? '',
   enabled: !__DEV__ && !!process.env.EXPO_PUBLIC_SENTRY_DSN,
   environment: __DEV__ ? 'development' : 'production',
+  release: Constants.expoConfig?.version,
+  dist: String(Constants.expoConfig?.android?.versionCode ?? '0'),
   tracesSampleRate: 0.2,
   maxBreadcrumbs: 50,
   attachScreenshot: false, // Disabled: screenshots can capture PII (names, cards, balances)
   attachViewHierarchy: false,
 });
 // ── End Sentry init ────────────────────────────────
+
+// ── Env validation (fail-fast in production) ────────────────────
+if (!__DEV__ && !process.env.EXPO_PUBLIC_API_URL) {
+  throw new Error('[CONFIG] EXPO_PUBLIC_API_URL is required in production');
+}
 
 const isExpoGo = Constants.appOwnership === 'expo';
 

@@ -34,7 +34,7 @@
     "production": {
       "android": {
         "serviceAccountKeyPath": "./play-store-key.json",
-        "track": "internal"
+        "track": "production"
       },
       "ios": {
         "appleId": "$APPLE_ID",

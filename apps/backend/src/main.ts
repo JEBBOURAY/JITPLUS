@@ -78,6 +78,9 @@ async function bootstrap() {
   if (isProd && !corsOrigins) {
     throw new Error('[SECURITY] CORS_ORIGINS must be defined in production');
   }
+  if (isProd && corsOrigins === '*') {
+    throw new Error('[SECURITY] CORS_ORIGINS must not be "*" in production — specify exact origins');
+  }
   app.enableCors({
     origin: corsOrigins
       ? corsOrigins.split(',').map((o) => o.trim())

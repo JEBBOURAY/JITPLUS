@@ -3,8 +3,6 @@ FROM node:20-alpine AS builder
 
 RUN apk add --no-cache openssl
 
-RUN apk add --no-cache openssl
-
 WORKDIR /app
 
 # Enable pnpm
@@ -31,6 +29,8 @@ RUN cd apps/backend && pnpm run build
 
 # ── Stage 2: Production Dependencies (standalone, no workspace) ──
 FROM node:20-alpine AS deps
+
+RUN apk add --no-cache openssl
 
 WORKDIR /app
 
