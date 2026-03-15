@@ -197,11 +197,11 @@ export class MerchantController {
     return this.profileService.removeDeviceSession(sessionId, user.userId, user.sessionId);
   }
 
-  // ── Delete Account (permanent, requires password) ──────────
-  @Delete('account')
+  // ── Delete Account (permanent, requires password or Google re-auth) ──────────
+  @Post('delete-account')
   @UseGuards(MerchantOwnerGuard)
   async deleteAccount(@Body() dto: DeleteAccountDto, @CurrentUser() user: JwtPayload) {
-    return this.profileService.deleteAccount(user.userId, dto.password);
+    return this.profileService.deleteAccount(user.userId, dto.password, dto.idToken);
   }
 
   @Get('me')

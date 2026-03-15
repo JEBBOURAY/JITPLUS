@@ -22,12 +22,12 @@ module.exports = ({ config }) => {
 
   return {
     ...config,
-    owner: 'ajebbour',
+    owner: 'ayoub.je',
     name: 'JitPlus',
     slug: 'jitplus',
     version: '1.1.0',
     orientation: 'portrait',
-    icon: './assets/images/jitpluslogo.png',
+    icon: './assets/images/icon-white.png',
     scheme: 'jitplus',
     userInterfaceStyle: 'automatic',
     newArchEnabled: true,
@@ -36,7 +36,7 @@ module.exports = ({ config }) => {
     splash: {
       image: './assets/images/jitpluslogo.png',
       resizeMode: 'contain',
-      backgroundColor: '#7C3AED',
+      backgroundColor: '#FFFFFF',
     },
     ios: {
       supportsTablet: true,
@@ -47,6 +47,9 @@ module.exports = ({ config }) => {
       usesNonExemptEncryption: false,
       // Required for push notifications to arrive in background
       backgroundModes: ['remote-notification'],
+      config: {
+        googleMapsApiKey: GOOGLE_MAPS_KEY,
+      },
       // URL schemes: app deep-link + Google OAuth reversed client ID redirect
       ...(IOS_GOOGLE_CLIENT_ID
         ? { infoPlist: {
@@ -65,14 +68,14 @@ module.exports = ({ config }) => {
     },
     android: {
       adaptiveIcon: {
-        foregroundImage: './assets/images/jitpluslogo.png',
-        backgroundColor: '#7C3AED',
+        foregroundImage: './assets/images/adaptive-icon-white.png',
+        backgroundColor: '#FFFFFF',
       },
       edgeToEdgeEnabled: true,
       // Prevents unexpected back gesture from killing auth/OTP flows
       predictiveBackGestureEnabled: false,
       package: 'com.jitplus.client',
-      googleServicesFile: './google-services.json',
+      googleServicesFile: process.env.GOOGLE_SERVICES_JSON || './google-services.json',
       config: {
         googleMaps: {
           apiKey: GOOGLE_MAPS_KEY,
@@ -96,7 +99,7 @@ module.exports = ({ config }) => {
     web: {
       bundler: 'metro',
       output: 'static',
-      favicon: './assets/images/jitpluslogo.png',
+      favicon: './assets/images/icon-white.png',
     },
     plugins: [
       'expo-router',
@@ -131,7 +134,7 @@ module.exports = ({ config }) => {
     extra: {
       googleWebClientId,
       eas: {
-        projectId: '6c072b5e-4a1e-4ede-b3f2-7c26ddbde238',
+        projectId: 'bc1c8006-026c-4889-91f4-166d3d1c9cf4',
       },
     },
     experiments: {

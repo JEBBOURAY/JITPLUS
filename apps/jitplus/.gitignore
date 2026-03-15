@@ -9,8 +9,9 @@ expo-env.d.ts
 android/
 ios/
 
-# Firebase credentials — iOS only, never commit
+# Firebase credentials — never commit
 GoogleService-Info.plist
+google-services.json
 
 # Play Store service account key — NEVER commit
 play-store-key.json

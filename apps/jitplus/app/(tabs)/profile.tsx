@@ -274,11 +274,11 @@ export default function ProfileScreen() {
 
   const confirmDelete = async () => {
     if (deleteConfirmText.trim().toUpperCase() !== t('profile.deleteConfirmWord').toUpperCase()) return;
-    if (client?.hasPassword && !deletePassword) return;
+    if (!deletePassword) return;
     setShowDeleteModal(false);
     setIsDeleting(true);
     try {
-      await api.deleteAccount(client?.hasPassword ? deletePassword : undefined);
+      await api.deleteAccount(deletePassword);
       Alert.alert(t('profile.accountDeleted'), t('profile.accountDeletedMsg'));
       await logout();
     } catch (error) {
@@ -871,7 +871,7 @@ export default function ProfileScreen() {
               autoCapitalize="characters"
               autoCorrect={false}
             />
-            {client?.hasPassword && (
+            {client?.hasPassword ? (
               <>
                 <Text style={[styles.modalInstruction, { color: theme.textSecondary, marginTop: ms(8) }]}>
                   {t('profile.deletePasswordPrompt')}
@@ -891,6 +891,10 @@ export default function ProfileScreen() {
                   autoCorrect={false}
                 />
               </>
+            ) : (
+              <Text style={[styles.modalInstruction, { color: theme.danger, marginTop: ms(8) }]}>
+                {t('profile.deleteNoPasswordWarning')}
+              </Text>
             )}
             <View style={styles.modalActions}>
               <TouchableOpacity
@@ -902,10 +906,10 @@ export default function ProfileScreen() {
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalBtn, {
-                  backgroundColor: (deleteConfirmText.trim().toUpperCase() === t('profile.deleteConfirmWord').toUpperCase() && (!client?.hasPassword || deletePassword.length > 0)) ? theme.danger : `${theme.danger}30`,
+                  backgroundColor: (deleteConfirmText.trim().toUpperCase() === t('profile.deleteConfirmWord').toUpperCase() && deletePassword.length > 0) ? theme.danger : `${theme.danger}30`,
                 }]}
                 onPress={confirmDelete}
-                disabled={deleteConfirmText.trim().toUpperCase() !== t('profile.deleteConfirmWord').toUpperCase() || (!!client?.hasPassword && !deletePassword)}
+                disabled={deleteConfirmText.trim().toUpperCase() !== t('profile.deleteConfirmWord').toUpperCase() || !deletePassword}
                 activeOpacity={0.7}
               >
                 <Text style={[styles.modalBtnText, { color: '#fff' }]}>{t('common.delete')}</Text>

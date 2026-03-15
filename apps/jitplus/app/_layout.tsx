@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Platform } from 'react-native';
+import { Platform, View, Image, StyleSheet, ActivityIndicator } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
@@ -102,6 +102,13 @@ function RootLayoutNav() {
   const notificationListener = useRef<{ remove(): void } | null>(null);
   const responseListener = useRef<{ remove(): void } | null>(null);
 
+  // Redirect to welcome screen whenever the user logs out (client becomes null)
+  useEffect(() => {
+    if (!client) {
+      router.replace('/welcome');
+    }
+  }, [client, router]);
+
   // ── Real-time WebSocket connection ────────────────────────
   const socket = useRealtimeSocket({
     serverUrl: getServerBaseUrl(),
@@ -192,9 +199,36 @@ function SplashGate({ children }: { children: React.ReactNode }) {
     }
   }, [authLoading]);
 
-  if (authLoading) return null;
+  if (authLoading) {
+    return (
+      <View style={splashStyles.container}>
+        <Image
+          source={require('@/assets/images/jitpluslogo.png')}
+          style={splashStyles.logo}
+          resizeMode="contain"
+        />
+        <ActivityIndicator size="small" color="#fff" style={splashStyles.spinner} />
+      </View>
+    );
+  }
   return <>{children}</>;
 }
+
+const splashStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#7C3AED',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logo: {
+    width: 180,
+    height: 180,
+  },
+  spinner: {
+    marginTop: 24,
+  },
+});
 
 export default function RootLayout() {
   const [loaded, error] = useFonts({

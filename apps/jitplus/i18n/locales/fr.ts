@@ -258,6 +258,7 @@ export default {
     deleteConfirmWord: 'SUPPRIMER',
     deletePasswordPrompt: 'Entrez votre mot de passe :',
     deletePasswordPlaceholder: 'Mot de passe',
+    deleteNoPasswordWarning: 'Vous devez d\'abord définir un mot de passe depuis la page de connexion (mot de passe oublié) avant de pouvoir supprimer votre compte.',
     updateSuccess: 'Vos informations ont été mises à jour.',
     updateError: 'Impossible de mettre à jour cette préférence.',
     nameRequired: 'Le prénom et le nom sont obligatoires.',

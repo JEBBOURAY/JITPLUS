@@ -1,10 +1,10 @@
-import { IsNotEmpty, IsString, MinLength, MaxLength, Matches, IsOptional, IsBoolean } from 'class-validator';
+import { IsString, MinLength, MaxLength, Matches, IsOptional, IsBoolean } from 'class-validator';
 
 export class ChangePasswordDto {
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   @MaxLength(100)
-  currentPassword: string;
+  currentPassword?: string;
 
   @IsString()
   @MinLength(8, { message: 'Le mot de passe doit contenir au moins 8 caractères' })

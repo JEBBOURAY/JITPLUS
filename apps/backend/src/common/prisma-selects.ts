@@ -30,6 +30,7 @@ export const MERCHANT_PROFILE_SELECT = {
   isActive: true,
   onboardingCompleted: true,
   termsAccepted: true,
+  googleId: true,
   plan: true,
   planExpiresAt: true,
   planActivatedByAdmin: true,

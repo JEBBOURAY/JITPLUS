@@ -212,6 +212,10 @@ export class ClientAuthService {
     const sent = await this.smsProvider.sendWhatsAppOtp(normalizedPhone, code);
     if (!sent) {
       this.logger.warn(`OTP WhatsApp non envoyé à ${normalizedPhone} — vérifiez la config Twilio`);
+      throw new HttpException(
+        "Impossible d'envoyer le code WhatsApp. Veuillez réessayer ou choisir la connexion par email.",
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
     }
 
     return { success: true, message: 'Code envoyé avec succès' };

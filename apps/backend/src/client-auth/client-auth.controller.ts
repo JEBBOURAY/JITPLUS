@@ -139,7 +139,7 @@ export class ClientAuthController {
     return this.clientService.updatePushToken(user.userId, dto.pushToken);
   }
 
-  @Delete('account')
+  @Post('delete-account')
   @UseGuards(AuthGuard('jwt'), ClientOnlyGuard)
   async deleteAccount(@CurrentUser() user: JwtPayload, @Body() dto: DeleteAccountDto) {
     return this.clientService.deleteAccount(user.userId, dto.password);

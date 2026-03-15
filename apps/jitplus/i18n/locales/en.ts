@@ -258,6 +258,7 @@ export default {
     deleteConfirmWord: 'DELETE',
     deletePasswordPrompt: 'Enter your password:',
     deletePasswordPlaceholder: 'Password',
+    deleteNoPasswordWarning: 'You must first set a password from the login page (forgot password) before you can delete your account.',
     updateSuccess: 'Your information has been updated.',
     updateError: 'Unable to update this preference.',
     nameRequired: 'First name and last name are required.',

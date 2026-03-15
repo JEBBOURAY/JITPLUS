@@ -164,9 +164,9 @@ export class RefreshTokenDto {
 }
 
 export class DeleteAccountDto {
-  @IsOptional()
   @IsString()
-  password?: string;
+  @IsNotEmpty({ message: 'Le mot de passe est requis' })
+  password: string;
 
   @IsString()
   @IsNotEmpty({ message: 'Veuillez confirmer la suppression en tapant "SUPPRIMER"' })

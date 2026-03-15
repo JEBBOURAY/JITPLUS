@@ -258,6 +258,7 @@ export default {
     deleteConfirmWord: 'حذف',
     deletePasswordPrompt: 'أدخل كلمة المرور:',
     deletePasswordPlaceholder: 'كلمة المرور',
+    deleteNoPasswordWarning: 'يجب أولاً تعيين كلمة مرور من صفحة تسجيل الدخول (نسيت كلمة المرور) قبل أن تتمكن من حذف حسابك.',
     updateSuccess: 'تم تحديث معلوماتك.',
     updateError: 'تعذر تحديث هذا التفضيل.',
     nameRequired: 'الاسم الأول والعائلي مطلوبان.',

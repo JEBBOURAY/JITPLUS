@@ -1,8 +1,12 @@
-import { IsString, IsNotEmpty, MaxLength } from 'class-validator';
+import { IsString, IsOptional, MaxLength } from 'class-validator';
 
 export class DeleteAccountDto {
+  @IsOptional()
   @IsString()
-  @IsNotEmpty({ message: 'Le mot de passe est requis' })
   @MaxLength(100)
-  password: string;
+  password?: string;
+
+  @IsOptional()
+  @IsString()
+  idToken?: string;
 }

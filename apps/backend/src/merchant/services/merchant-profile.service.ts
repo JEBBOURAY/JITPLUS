@@ -6,6 +6,7 @@ import {
   UnauthorizedException,
   Inject,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
 import {
@@ -21,6 +22,7 @@ import { UpdateProfileDto } from '../dto/update-profile.dto';
 import { ChangePasswordDto } from '../dto/change-password.dto';
 import { UpdateLoyaltySettingsDto } from '../dto/update-loyalty-settings.dto';
 import * as bcrypt from 'bcryptjs';
+import { OAuth2Client } from 'google-auth-library';
 import { BCRYPT_SALT_ROUNDS } from '../../common/constants';
 import { MERCHANT_PROFILE_SELECT, MerchantProfileData } from '../../common/prisma-selects';
 import { MERCHANT_PROFILE_CACHE_TTL } from '../../common/constants';
@@ -29,6 +31,7 @@ import { stripUndefined } from '../../common/utils';
 @Injectable()
 export class MerchantProfileService {
   private readonly logger = new Logger(MerchantProfileService.name);
+  private readonly googleClient: OAuth2Client;
 
   constructor(
     @Inject(MERCHANT_REPOSITORY) private merchantRepo: IMerchantRepository,
@@ -39,7 +42,10 @@ export class MerchantProfileService {
     @Inject(RAW_QUERY_RUNNER) private rawQuery: IRawQueryRunner,
     @Inject(CACHE_MANAGER) private cache: Cache,
     private notifications: NotificationsService,
-  ) {}
+    private configService: ConfigService,
+  ) {
+    this.googleClient = new OAuth2Client(this.configService.get<string>('GOOGLE_CLIENT_ID'));
+  }
 
   // â”€â”€ Profile â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -87,12 +93,18 @@ export class MerchantProfileService {
   async changePassword(merchantId: string, dto: ChangePasswordDto, currentTokenId?: string): Promise<{ message: string; devicesDisconnected: number }> {
     const merchant = await this.merchantRepo.findUnique({
       where: { id: merchantId },
-      select: { id: true, password: true },
+      select: { id: true, password: true, googleId: true },
     });
     if (!merchant) throw new NotFoundException('Commerçant non trouvé');
 
-    const isValid = await bcrypt.compare(dto.currentPassword, merchant.password);
-    if (!isValid) throw new UnauthorizedException('Mot de passe actuel incorrect');
+    // Google-only accounts can set a password without providing the current one
+    if (merchant.googleId && !dto.currentPassword) {
+      // Allow setting initial password for Google accounts
+    } else {
+      if (!dto.currentPassword) throw new BadRequestException('Le mot de passe actuel est requis');
+      const isValid = await bcrypt.compare(dto.currentPassword, merchant.password);
+      if (!isValid) throw new UnauthorizedException('Mot de passe actuel incorrect');
+    }
 
     const hashedPassword = await bcrypt.hash(dto.newPassword, BCRYPT_SALT_ROUNDS);
     await this.merchantRepo.update({
@@ -450,15 +462,35 @@ export class MerchantProfileService {
 
   // ── Delete Account (soft delete) ─────────────────────────────
 
-  async deleteAccount(merchantId: string, password: string): Promise<{ message: string }> {
+  async deleteAccount(merchantId: string, password?: string, idToken?: string): Promise<{ message: string }> {
     const merchant = await this.merchantRepo.findUnique({
       where: { id: merchantId },
-      select: { id: true, password: true, nom: true },
+      select: { id: true, password: true, nom: true, googleId: true },
     });
     if (!merchant) throw new NotFoundException('Commerçant non trouvé');
 
-    const isValid = await bcrypt.compare(password, merchant.password);
-    if (!isValid) throw new UnauthorizedException('Mot de passe incorrect');
+    if (merchant.googleId && idToken) {
+      // Google account: verify via Google token re-authentication
+      try {
+        const ticket = await this.googleClient.verifyIdToken({
+          idToken,
+          audience: this.configService.get<string>('GOOGLE_CLIENT_ID'),
+        });
+        const payload = ticket.getPayload();
+        if (!payload || payload.sub !== merchant.googleId) {
+          throw new UnauthorizedException('Le compte Google ne correspond pas');
+        }
+      } catch (error) {
+        if (error instanceof UnauthorizedException) throw error;
+        throw new UnauthorizedException('Token Google invalide');
+      }
+    } else if (password) {
+      // Email account or Google account that has set a password: verify via password
+      const isValid = await bcrypt.compare(password, merchant.password);
+      if (!isValid) throw new UnauthorizedException('Mot de passe incorrect');
+    } else {
+      throw new BadRequestException('Le mot de passe ou la réauthentification Google est requis');
+    }
 
     // Soft delete: mark as deleted + anonymise sensitive fields so the
     // email/phone can be reused for a new account.  Related data (stores,

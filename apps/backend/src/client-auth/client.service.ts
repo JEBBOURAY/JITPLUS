@@ -151,7 +151,6 @@ export class ClientService {
   }
 
   async deleteAccount(clientId: string, password?: string) {
-    // If the client has a password, verify it before deleting
     const client = await this.clientRepo.findUnique({
       where: { id: clientId },
       select: { id: true, password: true },
@@ -161,15 +160,18 @@ export class ClientService {
       throw new BadRequestException('Compte introuvable');
     }
 
-    // If account has a password set, require it for deletion
-    if (client.password) {
-      if (!password) {
-        throw new BadRequestException('Le mot de passe est requis pour supprimer votre compte');
-      }
-      const isValid = await bcrypt.compare(password, client.password);
-      if (!isValid) {
-        throw new UnauthorizedException('Mot de passe incorrect');
-      }
+    // Always require password for account deletion
+    if (!client.password) {
+      throw new BadRequestException('Veuillez d\'abord définir un mot de passe depuis votre profil avant de supprimer votre compte');
+    }
+
+    if (!password) {
+      throw new BadRequestException('Le mot de passe est requis pour supprimer votre compte');
+    }
+
+    const isValid = await bcrypt.compare(password, client.password);
+    if (!isValid) {
+      throw new UnauthorizedException('Mot de passe incorrect');
     }
 
     // Soft delete: mark as deleted + anonymise sensitive fields so the

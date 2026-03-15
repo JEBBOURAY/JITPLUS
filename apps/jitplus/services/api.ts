@@ -198,9 +198,10 @@ class ApiService {
     return data;
   }
 
-  async deleteAccount(password?: string): Promise<{ success: boolean }> {
-    const { data } = await this.api.delete('/client-auth/account', {
-      data: { confirmation: 'SUPPRIMER', ...(password ? { password } : {}) },
+  async deleteAccount(password: string): Promise<{ success: boolean }> {
+    const { data } = await this.api.post('/client-auth/delete-account', {
+      confirmation: 'SUPPRIMER',
+      password,
     });
     return data;
   }

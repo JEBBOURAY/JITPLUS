@@ -102,7 +102,8 @@ export class MerchantClientService {
   async getClientsForScan(merchantId: string, search?: string) {
     if (!search) return [];
 
-    const clients = await this.clientRepo.findMany({
+    // First, search among existing loyalty card holders
+    const existingClients = await this.clientRepo.findMany({
       where: {
         AND: [
           { loyaltyCards: { some: { merchantId } } },
@@ -112,6 +113,20 @@ export class MerchantClientService {
       select: CLIENT_SCAN_SELECT,
       take: MAX_SCAN_RESULTS,
     });
+
+    // If no existing clients found, search all clients (for adding new ones)
+    // Only search by phone to avoid leaking unrelated client data
+    let clients = existingClients;
+    if (existingClients.length === 0) {
+      clients = await this.clientRepo.findMany({
+        where: {
+          deletedAt: null,
+          OR: buildClientSearchFilter(search),
+        },
+        select: CLIENT_SCAN_SELECT,
+        take: MAX_SCAN_RESULTS,
+      });
+    }
 
     const clientIds = clients.map((c) => c.id);
 
