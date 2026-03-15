@@ -42,7 +42,7 @@ substitutions:
   _SERVICE_NAME: jitplus-api
   _AR_REPO: jitplus
   _CLOUD_SQL_INSTANCE: jitplus-97259:europe-west9:jitplus-db
-  _IMAGE: ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/backend
+  _IMAGE: ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/backend
 
 steps:
   # ── 1. Build the Docker image ───────────────────────────────────────────────
@@ -80,7 +80,7 @@ steps:
       - --image=$_IMAGE:$COMMIT_SHA
       - --region=$_REGION
       - --set-cloudsql-instances=$_CLOUD_SQL_INSTANCE
-      - --set-env-vars=NODE_ENV=production,SKIP_MIGRATIONS=0,GCP_PROJECT_ID=$PROJECT_ID,GCP_STORAGE_BUCKET_NAME=jitplus-uploads-prod
+      - --set-env-vars=NODE_ENV=production,SKIP_MIGRATIONS=0,GCP_PROJECT_ID=${PROJECT_ID},GCP_STORAGE_BUCKET_NAME=jitplus-uploads-prod
       - --set-secrets=DATABASE_URL=DATABASE_URL:latest,JWT_SECRET=JWT_SECRET:latest
       - --command=/app/docker-entrypoint.sh
       - --args=echo,migrations-complete
@@ -119,7 +119,7 @@ steps:
       - --memory=512Mi
       - --cpu=1
       - --set-cloudsql-instances=$_CLOUD_SQL_INSTANCE
-      - --set-env-vars=NODE_ENV=production,PORT=8080,SKIP_MIGRATIONS=1,GCP_PROJECT_ID=$PROJECT_ID,GCP_STORAGE_BUCKET_NAME=jitplus-uploads-prod,CORS_ORIGINS=*,BACKEND_URL=https://$_SERVICE_NAME-$PROJECT_ID.run.app,FIREBASE_PROJECT_ID=jitplus-97259,GOOGLE_CLIENT_ID=290470991104-hvhs4jm96jgg6qq7et1ggv5jb0pcjvaa.apps.googleusercontent.com
+      - --set-env-vars=NODE_ENV=production,PORT=8080,SKIP_MIGRATIONS=1,GCP_PROJECT_ID=${PROJECT_ID},GCP_STORAGE_BUCKET_NAME=jitplus-uploads-prod,CORS_ORIGINS=*,BACKEND_URL=https://$_SERVICE_NAME-${PROJECT_ID}.run.app,FIREBASE_PROJECT_ID=jitplus-97259,GOOGLE_CLIENT_ID=290470991104-hvhs4jm96jgg6qq7et1ggv5jb0pcjvaa.apps.googleusercontent.com
       - --set-secrets=DATABASE_URL=DATABASE_URL:latest,JWT_SECRET=JWT_SECRET:latest,FIREBASE_CLIENT_EMAIL=FIREBASE_CLIENT_EMAIL:latest,FIREBASE_PRIVATE_KEY=FIREBASE_PRIVATE_KEY:latest,TWILIO_ACCOUNT_SID=TWILIO_ACCOUNT_SID:latest,TWILIO_AUTH_TOKEN=TWILIO_AUTH_TOKEN:latest,TWILIO_WHATSAPP_FROM=TWILIO_WHATSAPP_FROM:latest,TWILIO_OTP_CONTENT_SID=TWILIO_OTP_CONTENT_SID:latest,SMTP_HOST=SMTP_HOST:latest,SMTP_PORT=SMTP_PORT:latest,SMTP_USER=SMTP_USER:latest,SMTP_PASS=SMTP_PASS:latest,SMTP_FROM=SMTP_FROM:latest
     waitFor: [run-migrations]
 
