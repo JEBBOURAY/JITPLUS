@@ -81,7 +81,7 @@ steps:
       - --region=$_REGION
       - --set-cloudsql-instances=$_CLOUD_SQL_INSTANCE
       - --set-env-vars=NODE_ENV=production,SKIP_MIGRATIONS=0,GCP_PROJECT_ID=${PROJECT_ID},GCP_STORAGE_BUCKET_NAME=jitplus-uploads-prod
-      - --set-secrets=DATABASE_URL=DATABASE_URL:latest,JWT_SECRET=JWT_SECRET:latest
+      - --set-secrets=DATABASE_URL=DATABASE_URL:latest,JWT_SECRET=JWT_SECRET:latest,DIRECT_DATABASE_URL=DATABASE_URL:latest
       - --command=/app/docker-entrypoint.sh
       - --args=echo,migrations-complete
       - --task-timeout=300s
