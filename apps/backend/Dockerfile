@@ -1,6 +1,10 @@
 # ── Stage 1: Builder ──
 FROM node:20-alpine AS builder
 
+RUN apk add --no-cache openssl
+
+RUN apk add --no-cache openssl
+
 WORKDIR /app
 
 # Enable pnpm
@@ -75,7 +79,7 @@ COPY apps/backend/docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod +x /app/docker-entrypoint.sh
 
 # dumb-init for proper PID 1 signal handling
-RUN apk add --no-cache dumb-init
+RUN apk add --no-cache dumb-init openssl
 
 # Transfer ownership to non-root user (needed for Prisma engine extraction)
 RUN chown -R appuser:appgroup /app
