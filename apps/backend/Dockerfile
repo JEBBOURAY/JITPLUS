@@ -20,10 +20,10 @@ RUN pnpm install --frozen-lockfile --filter backend...
 COPY apps/backend/ ./apps/backend/
 
 # Generate Prisma Client
-RUN pnpm --filter backend prisma generate --schema ./apps/backend/prisma/schema.prisma
+RUN cd apps/backend && pnpm exec prisma generate --schema ./prisma/schema.prisma
 
 # Build the application
-RUN pnpm --filter backend build
+RUN cd apps/backend && pnpm run build
 
 # ── Stage 2: Production Dependencies ──
 FROM node:20-alpine AS deps
@@ -44,7 +44,7 @@ COPY apps/backend/prisma ./apps/backend/prisma/
 RUN pnpm install --prod --frozen-lockfile --filter backend...
 
 # Generate Prisma Client (needed for runtime)
-RUN pnpm --filter backend prisma generate --schema ./apps/backend/prisma/schema.prisma
+RUN cd apps/backend && pnpm exec prisma generate --schema ./prisma/schema.prisma
 
 # ── Stage 3: Runner (Final Image) ──
 FROM node:20-alpine AS runner
