@@ -77,6 +77,9 @@ RUN chmod +x /app/docker-entrypoint.sh
 # dumb-init for proper PID 1 signal handling
 RUN apk add --no-cache dumb-init
 
+# Transfer ownership to non-root user (needed for Prisma engine extraction)
+RUN chown -R appuser:appgroup /app
+
 # Use non-root user
 USER appuser
 
