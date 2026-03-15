@@ -18,7 +18,7 @@ export function jwtModuleFactory(
 ): JwtModuleAsyncOptions {
   return {
     useFactory: (config: ConfigService) => {
-      const expiresIn = (config.get<string>(expirationEnvKey) ?? defaultExpiration) as import('ms').StringValue;
+      const expiresIn = (config.get<string>(expirationEnvKey) ?? defaultExpiration) as unknown as number;
 
       return {
         secret: config.getOrThrow<string>('JWT_SECRET'),
