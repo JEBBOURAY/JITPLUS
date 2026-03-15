@@ -1,0 +1,819 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+  ActivityIndicator,
+  Alert,
+  DimensionValue,
+  KeyboardAvoidingView,
+  Platform,
+} from 'react-native';
+// Reanimated removed — plain View shim
+const Animated = { View } as const;
+import { timeAgo } from '@/utils/date';
+import {
+  ArrowLeft,
+  Lock,
+  Eye,
+  EyeOff,
+  Smartphone,
+  Trash2,
+  ShieldCheck,
+  Wifi,
+  Clock,
+  Check,
+  User,
+} from 'lucide-react-native';
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import api from '@/services/api';
+import { getErrorMessage } from '@/utils/error';
+import { useAuth } from '@/contexts/AuthContext';
+import { useTheme, type ThemeColors } from '@/contexts/ThemeContext';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { useGoogleIdToken } from '@/hooks/useGoogleIdToken';
+
+// ── PwdField (défini HORS du composant pour éviter le re-mount du TextInput) ──
+interface PwdFieldProps {
+  label: string;
+  value: string;
+  setValue: (v: string) => void;
+  show: boolean;
+  setShow: (v: boolean) => void;
+  placeholder: string;
+  theme: ThemeColors;
+}
+
+function PwdField({ label, value, setValue, show, setShow, placeholder, theme }: PwdFieldProps) {
+  return (
+    <>
+      <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>{label}</Text>
+      <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.border }]}>
+        <Lock size={17} color={theme.textMuted} />
+        <TextInput
+          style={[styles.input, { color: theme.text }]}
+          value={value}
+          onChangeText={setValue}
+          placeholder={placeholder}
+          placeholderTextColor={theme.textMuted}
+          secureTextEntry={!show}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        <TouchableOpacity onPress={() => setShow(!show)} hitSlop={8}>
+          {show ? <EyeOff size={18} color={theme.textMuted} /> : <Eye size={18} color={theme.textMuted} />}
+        </TouchableOpacity>
+      </View>
+    </>
+  );
+}
+
+// ── Types ─────────────────────────────────────────────────
+interface DeviceSession {
+  id: string;
+  deviceName: string;
+  deviceOS?: string;
+  userType?: string;
+  userEmail?: string;
+  userName?: string;
+  lastActiveAt: string;
+  ipAddress?: string;
+  isCurrentDevice: boolean;
+  createdAt: string;
+}
+
+type TabId = 'password' | 'devices' | 'delete';
+
+export default function SecurityScreen() {
+  const theme = useTheme();
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams<{ tab?: string }>();
+  const { signOut, merchant } = useAuth();
+  const { t } = useLanguage();
+  const isGoogleAccount = !!merchant?.googleId;
+
+  const [activeTab, setActiveTab] = useState<TabId>(
+    params.tab === 'devices' ? 'devices' : params.tab === 'delete' ? 'delete' : 'password',
+  );
+
+  // ── Password state ──
+  const [currentPwd, setCurrentPwd] = useState('');
+  const [newPwd, setNewPwd] = useState('');
+  const [confirmPwd, setConfirmPwd] = useState('');
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  // ── Delete account state ──
+  const [deletePwd, setDeletePwd] = useState('');
+  const [showDeletePwd, setShowDeletePwd] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleteGoogleToken, setDeleteGoogleToken] = useState<string | null>(null);
+  const googleDelete = useGoogleIdToken((idToken) => setDeleteGoogleToken(idToken));
+
+  // ── Devices state ──
+  const [devices, setDevices] = useState<DeviceSession[]>([]);
+  const [loadingDevices, setLoadingDevices] = useState(true);
+
+  // ── Password strength ──
+  const getStrength = (pwd: string): { label: string; color: string; width: DimensionValue } => {
+    if (pwd.length === 0) return { label: '', color: theme.border, width: '0%' };
+    let score = 0;
+    if (pwd.length >= 8) score++;
+    if (pwd.length >= 10) score++;
+    if (/[A-Z]/.test(pwd)) score++;
+    if (/[0-9]/.test(pwd)) score++;
+    if (/[^A-Za-z0-9]/.test(pwd)) score++;
+
+    if (score <= 1) return { label: t('security.strengthWeak'), color: theme.danger, width: '20%' };
+    if (score <= 2) return { label: t('security.strengthMedium'), color: theme.warning, width: '45%' };
+    if (score <= 3) return { label: t('security.strengthGood'), color: '#F59E0B', width: '70%' };
+    return { label: t('security.strengthStrong'), color: theme.success, width: '100%' };
+  };
+
+  const strength = getStrength(newPwd);
+
+  // ── Load devices ──
+  const loadDevices = useCallback(async () => {
+    setLoadingDevices(true);
+    try {
+      const res = await api.get('/merchant/devices');
+      setDevices(res.data ?? []);
+    } catch (error) {
+      if (__DEV__) console.error('[Security] Échec du chargement des appareils:', error);
+    } finally {
+      setLoadingDevices(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'devices') loadDevices();
+  }, [activeTab, loadDevices]);
+
+  // ── Change password ──
+  const handleChangePassword = async () => {
+    if (!isGoogleAccount && !currentPwd.trim()) {
+      Alert.alert('Erreur', 'Entrez votre mot de passe actuel');
+      return;
+    }
+    if (newPwd.length < 8) {
+      Alert.alert('Erreur', 'Le nouveau mot de passe doit contenir au moins 8 caractères');
+      return;
+    }
+    if (newPwd !== confirmPwd) {
+      Alert.alert('Erreur', 'Les mots de passe ne correspondent pas');
+      return;
+    }
+
+    // Demander d'abord si on déconnecte les autres, puis faire un seul appel API
+    Alert.alert(
+      t('security.changePwdTitle'),
+      t('security.changePwdLogoutQuestion'),
+      [
+        {
+          text: t('security.changePwdOnly'),
+          onPress: () => executePasswordChange(false),
+        },
+        {
+          text: t('security.changePwdAndLogout'),
+          style: 'destructive',
+          onPress: () => executePasswordChange(true),
+        },
+        { text: t('common.cancel'), style: 'cancel' },
+      ],
+    );
+  };
+
+  const executePasswordChange = async (logoutOthers: boolean) => {
+    setSaving(true);
+    try {
+      const res = await api.patch('/merchant/password', {
+        ...(isGoogleAccount ? {} : { currentPassword: currentPwd }),
+        newPassword: newPwd,
+        logoutOthers,
+      });
+
+      setCurrentPwd('');
+      setNewPwd('');
+      setConfirmPwd('');
+
+      const count = res.data?.devicesDisconnected || 0;
+      if (logoutOthers && count > 0) {
+        Alert.alert(t('common.confirm'), t('security.changePwdSuccessLogout', { count }));
+      } else {
+        Alert.alert(t('common.confirm'), t('security.changePwdSuccess'));
+      }
+
+      if (activeTab === 'devices') loadDevices();
+    } catch (err: unknown) {
+      Alert.alert('Erreur', getErrorMessage(err, 'Impossible de changer le mot de passe'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ── Remove device ──
+  const handleRemoveDevice = (device: DeviceSession) => {
+    Alert.alert(
+      t('security.disconnectTitle'),
+      t('security.disconnectMsg', { name: device.deviceName }),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('security.disconnect'),
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await api.delete(`/merchant/devices/${device.id}`);
+              setDevices((prev) => prev.filter((d) => d.id !== device.id));
+            } catch {
+              Alert.alert('Erreur', 'Impossible de déconnecter cet appareil');
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  // ── Tabs ──
+  const tabs: { id: TabId; label: string; icon: React.ReactNode }[] = [
+    { id: 'password', label: t('security.tabPassword'), icon: <Lock size={15} color={activeTab === 'password' ? '#fff' : theme.textMuted} /> },
+    { id: 'devices', label: t('security.tabDevices'), icon: <Smartphone size={15} color={activeTab === 'devices' ? '#fff' : theme.textMuted} /> },
+    { id: 'delete', label: t('security.tabDelete'), icon: <Trash2 size={15} color={activeTab === 'delete' ? '#fff' : theme.danger} /> },
+  ];
+
+  return (
+    <KeyboardAvoidingView
+      style={[styles.container, { backgroundColor: theme.bg }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+    >
+      {/* ── Header ─────────────────────────────── */}
+      <View style={[styles.header, { paddingTop: insets.top + 8, backgroundColor: theme.bgCard, borderBottomColor: theme.borderLight }]}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <ArrowLeft size={24} color={theme.text} />
+        </TouchableOpacity>
+        <Text style={[styles.headerTitle, { color: theme.text }]}>{t('security.title')}</Text>
+        <ShieldCheck size={22} color={theme.primary} />
+      </View>
+
+      {/* ── Tab Switcher ───────────────────────── */}
+      <View style={[styles.tabBar, { backgroundColor: theme.bgCard }]}>
+        {tabs.map((tab) => {
+          const isActive = activeTab === tab.id;
+          return (
+            <TouchableOpacity
+              key={tab.id}
+              style={[styles.tab, isActive && { backgroundColor: tab.id === 'delete' ? theme.danger : theme.primary }]}
+              onPress={() => setActiveTab(tab.id)}
+              activeOpacity={0.7}
+            >
+              {tab.icon}
+              <Text style={[styles.tabLabel, { color: isActive ? '#fff' : tab.id === 'delete' ? theme.danger : theme.textMuted }]}>
+                {tab.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      <ScrollView
+        contentContainerStyle={{ paddingBottom: 100, paddingHorizontal: 16, paddingTop: 16 }}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        {activeTab === 'delete' ? (
+          <Animated.View key="delete">
+            <View style={[styles.dangerZone, { backgroundColor: theme.danger + '08', borderColor: theme.danger + '25' }]}>
+              <View style={styles.dangerHeader}>
+                <Trash2 size={20} color={theme.danger} />
+                <Text style={[styles.dangerTitle, { color: theme.danger }]}>{t('security.dangerZone')}</Text>
+              </View>
+              <Text style={[styles.dangerText, { color: theme.textMuted }]}>
+                {t('security.dangerText')}
+              </Text>
+
+              {isGoogleAccount ? (
+                /* ── Google account: re-authenticate with Google ── */
+                <View style={{ marginTop: 16 }}>
+                  <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>
+                    {t('security.deleteGooglePrompt')}
+                  </Text>
+                  {deleteGoogleToken ? (
+                    <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.danger }]}>
+                      <Check size={18} color={theme.danger} />
+                      <Text style={[styles.input, { color: theme.danger, fontWeight: '600' }]}>
+                        {t('security.googleVerified')}
+                      </Text>
+                    </View>
+                  ) : (
+                    <TouchableOpacity
+                      style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.border, justifyContent: 'center' }]}
+                      onPress={googleDelete.promptGoogle}
+                      disabled={googleDelete.isLoading}
+                      activeOpacity={0.7}
+                    >
+                      {googleDelete.isLoading ? (
+                        <ActivityIndicator size="small" color={theme.danger} />
+                      ) : (
+                        <Text style={[styles.input, { color: theme.danger, fontWeight: '600', textAlign: 'center' }]}>
+                          {t('security.deleteGoogleBtn')}
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  )}
+                  {googleDelete.error ? (
+                    <Text style={{ color: theme.danger, fontSize: 12, marginTop: 4 }}>{googleDelete.error}</Text>
+                  ) : null}
+                </View>
+              ) : (
+                /* ── Email account: enter password ── */
+                <View style={{ marginTop: 16 }}>
+                  <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>{t('security.currentPassword')}</Text>
+                  <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.border }]}>
+                    <Lock size={17} color={theme.textMuted} />
+                    <TextInput
+                      style={[styles.input, { color: theme.text }]}
+                      value={deletePwd}
+                      onChangeText={setDeletePwd}
+                      placeholder={t('security.deletePasswordPlaceholder')}
+                      placeholderTextColor={theme.textMuted}
+                      secureTextEntry={!showDeletePwd}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                    />
+                    <TouchableOpacity onPress={() => setShowDeletePwd(!showDeletePwd)} hitSlop={8}>
+                      {showDeletePwd ? <EyeOff size={18} color={theme.textMuted} /> : <Eye size={18} color={theme.textMuted} />}
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+
+              <View style={{ marginTop: 12 }}>
+                <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>
+                  {t('security.deleteConfirmLabel')}
+                </Text>
+                <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.border }]}>
+                  <TextInput
+                    style={[styles.input, { color: theme.danger, fontWeight: '600' }]}
+                    value={deleteConfirmText}
+                    onChangeText={setDeleteConfirmText}
+                    placeholder={t('security.deleteConfirmKeyword')}
+                    placeholderTextColor={theme.textMuted}
+                    autoCapitalize="characters"
+                    autoCorrect={false}
+                  />
+                  {deleteConfirmText === t('security.deleteConfirmKeyword') && (
+                    <Check size={18} color={theme.danger} />
+                  )}
+                </View>
+              </View>
+
+              <TouchableOpacity
+                style={[
+                  styles.deleteBtn,
+                  {
+                    backgroundColor:
+                      (isGoogleAccount ? !!deleteGoogleToken : deletePwd.length >= 6) && deleteConfirmText === t('security.deleteConfirmKeyword')
+                        ? theme.danger
+                        : theme.border,
+                  },
+                ]}
+                disabled={deleting || (isGoogleAccount ? !deleteGoogleToken : deletePwd.length < 6) || deleteConfirmText !== t('security.deleteConfirmKeyword')}
+                activeOpacity={0.8}
+                onPress={() => {
+                  Alert.alert(
+                    t('security.deleteFinalTitle'),
+                    t('security.deleteFinalMsg'),
+                    [
+                      { text: t('common.cancel'), style: 'cancel' },
+                      {
+                        text: t('security.deleteForeverBtn'),
+                        style: 'destructive',
+                        onPress: async () => {
+                          setDeleting(true);
+                          try {
+                            const body = isGoogleAccount
+                              ? { idToken: deleteGoogleToken }
+                              : { password: deletePwd };
+                            await api.post('/merchant/delete-account', body);
+                            Alert.alert(
+                              t('security.deletedTitle'),
+                              t('security.deletedSuccess'),
+                              [{ text: 'OK', onPress: () => signOut() }],
+                            );
+                          } catch (err: unknown) {
+                            Alert.alert('Erreur', getErrorMessage(err, 'Impossible de supprimer le compte.'));
+                          } finally {
+                            setDeleting(false);
+                          }
+                        },
+                      },
+                    ],
+                  );
+                }}
+              >
+                {deleting ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <>
+                    <Trash2 size={18} color="#fff" strokeWidth={1.5} />
+                    <Text style={styles.deleteBtnText}>{t('security.deleteForeverBtn')}</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
+        ) : activeTab === 'password' ? (
+          <Animated.View key="password">
+            {isGoogleAccount ? (
+              <Text style={[styles.dangerText, { color: theme.textMuted, marginBottom: 12 }]}>
+                {t('security.googleSetPasswordHint')}
+              </Text>
+            ) : (
+              <PwdField
+                label={t('security.currentPassword')}
+                value={currentPwd}
+                setValue={setCurrentPwd}
+                show={showCurrent}
+                setShow={setShowCurrent}
+                placeholder={t('security.currentPwdPlaceholder')}
+                theme={theme}
+              />
+            )}
+
+            <View style={{ marginTop: 20 }}>
+              <PwdField
+                label={t('security.newPassword')}
+                value={newPwd}
+                setValue={setNewPwd}
+                show={showNew}
+                setShow={setShowNew}
+                placeholder={t('security.newPwdPlaceholder')}
+                theme={theme}
+              />
+            </View>
+
+            {/* Strength bar */}
+            {newPwd.length > 0 && (
+              <View style={styles.strengthRow}>
+                <View style={[styles.strengthBar, { backgroundColor: theme.border }]}>
+                  <View
+                    style={[styles.strengthFill, { backgroundColor: strength.color, width: strength.width }]}
+                  />
+                </View>
+                <Text style={[styles.strengthLabel, { color: strength.color }]}>
+                  {strength.label}
+                </Text>
+              </View>
+            )}
+
+            <View style={{ marginTop: 16 }}>
+              <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>
+                {t('security.confirmPassword')}
+              </Text>
+              <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.border }]}>
+                <Lock size={17} color={theme.textMuted} />
+                <TextInput
+                  style={[styles.input, { color: theme.text }]}
+                  value={confirmPwd}
+                  onChangeText={setConfirmPwd}
+                  placeholder={t('security.confirmPwdPlaceholder')}
+                  placeholderTextColor={theme.textMuted}
+                  secureTextEntry
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                {confirmPwd.length > 0 && newPwd === confirmPwd && (
+                  <Check size={18} color={theme.success} />
+                )}
+              </View>
+            </View>
+
+            {/* Save button */}
+            <TouchableOpacity
+              style={[
+                styles.saveBtn,
+                {
+                  backgroundColor:
+                    (isGoogleAccount || currentPwd) && newPwd.length >= 8 && newPwd === confirmPwd
+                      ? theme.primary
+                      : theme.border,
+                },
+              ]}
+              onPress={handleChangePassword}
+              disabled={saving || (!isGoogleAccount && !currentPwd) || newPwd.length < 8 || newPwd !== confirmPwd}
+              activeOpacity={0.8}
+            >
+              {saving ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <ShieldCheck size={18} color="#fff" strokeWidth={1.5} />
+                  <Text style={styles.saveBtnText}>{t('security.changePwdBtn')}</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </Animated.View>
+        ) : (
+          <Animated.View key="devices">
+            {loadingDevices ? (
+              <View style={styles.loadingCenter}>
+                <ActivityIndicator size="large" color={theme.primary} />
+              </View>
+            ) : devices.length === 0 ? (
+              <View style={styles.emptyDevices}>
+                <Smartphone size={48} color={theme.textMuted} strokeWidth={1.5} />
+                <Text style={[styles.emptyTitle, { color: theme.text }]}>
+                  {t('security.noDevices')}
+                </Text>
+                <Text style={[styles.emptyText, { color: theme.textMuted }]}>
+                  {t('security.noDevicesHint')}
+                </Text>
+              </View>
+            ) : (
+              devices.map((device, idx) => (
+                <Animated.View
+                  key={device.id}
+                  style={[styles.deviceCard, { backgroundColor: theme.bgCard }]}
+                >
+                  <View style={styles.deviceRow}>
+                    <View
+                      style={[
+                        styles.deviceIcon,
+                        {
+                          backgroundColor: device.isCurrentDevice
+                            ? theme.success + '15'
+                            : theme.primary + '12',
+                        },
+                      ]}
+                    >
+                      <Smartphone
+                        size={20}
+                        color={device.isCurrentDevice ? theme.success : theme.primary}
+                      />
+                    </View>
+                    <View style={styles.deviceInfo}>
+                      <View style={styles.deviceNameRow}>
+                        <Text style={[styles.deviceName, { color: theme.text }]}>
+                          {device.deviceName}
+                        </Text>
+                        {device.isCurrentDevice && (
+                          <View style={[styles.currentBadge, { backgroundColor: theme.success + '18' }]}>
+                            <Text style={[styles.currentBadgeText, { color: theme.success }]}>
+                              {t('security.currentDevice')}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                      {device.deviceOS && (
+                        <Text style={[styles.deviceOS, { color: theme.textMuted }]}>
+                          {device.deviceOS}
+                        </Text>
+                      )}
+                      {device.userName && (
+                        <View style={[styles.deviceMeta, { marginTop: 3 }]}>
+                          <User size={11} color={device.userType === 'team_member' ? theme.warning : theme.primary} />
+                          <Text style={[styles.deviceMetaText, { color: device.userType === 'team_member' ? theme.warning : theme.primary, fontWeight: '600' }]}>
+                            {device.userName}
+                          </Text>
+                          <View style={[
+                            styles.userTypeBadge,
+                            { backgroundColor: device.userType === 'team_member' ? theme.warning + '18' : theme.primary + '12' },
+                          ]}>
+                            <Text style={[
+                              styles.userTypeBadgeText,
+                              { color: device.userType === 'team_member' ? theme.warning : theme.primary },
+                            ]}>
+                              {device.userType === 'team_member' ? t('security.teamBadge') : t('security.ownerBadge')}
+                            </Text>
+                          </View>
+                        </View>
+                      )}
+                      <View style={styles.deviceMeta}>
+                        <Clock size={11} color={theme.textMuted} />
+                        <Text style={[styles.deviceMetaText, { color: theme.textMuted }]}>
+                          {timeAgo(device.lastActiveAt)}
+                        </Text>
+                        {device.ipAddress && (
+                          <>
+                            <Wifi size={11} color={theme.textMuted} style={{ marginLeft: 8 }} />
+                            <Text style={[styles.deviceMetaText, { color: theme.textMuted }]}>
+                              {device.ipAddress}
+                            </Text>
+                          </>
+                        )}
+                      </View>
+                    </View>
+
+                    {!device.isCurrentDevice && (
+                      <TouchableOpacity
+                        onPress={() => handleRemoveDevice(device)}
+                        style={[styles.removeBtn, { backgroundColor: theme.danger + '12' }]}
+                      >
+                        <Trash2 size={16} color={theme.danger} />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </Animated.View>
+              ))
+            )}
+          </Animated.View>
+        )}
+
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}
+
+// ── Styles ─────────────────────────────────────────────────
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#f5f5f5' },
+
+  // Header
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    backgroundColor: '#fff',
+    borderBottomColor: '#e2e8f0',
+  },
+  backBtn: { padding: 4 },
+  headerTitle: { flex: 1, fontSize: 18, fontWeight: '700', marginLeft: 12, color: '#1e293b' },
+
+  // Tabs
+  tabBar: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    gap: 8,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    marginHorizontal: 16,
+    marginTop: 12,
+    shadowColor: '#1F2937',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  tab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 12,
+    gap: 6,
+  },
+  tabLabel: { fontSize: 13, fontWeight: '600' },
+
+  // Password form
+  fieldLabel: { fontSize: 14, fontWeight: '600', marginBottom: 6, color: '#475569' },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    gap: 10,
+    backgroundColor: '#fff',
+    borderColor: '#e2e8f0',
+  },
+  input: { flex: 1, fontSize: 15, paddingVertical: 13, color: '#1e293b' },
+
+  strengthRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    gap: 10,
+  },
+  strengthBar: {
+    flex: 1,
+    height: 4,
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  strengthFill: { height: '100%', borderRadius: 2 },
+  strengthLabel: { fontSize: 12, fontWeight: '600', minWidth: 45 },
+
+  saveBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 12,
+    marginTop: 28,
+    gap: 10,
+    shadowColor: '#1F2937',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  saveBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+
+  // Devices
+  loadingCenter: { alignItems: 'center', paddingTop: 60 },
+  emptyDevices: { alignItems: 'center', paddingTop: 60 },
+  emptyTitle: { fontSize: 18, fontWeight: '700', marginTop: 16 },
+  emptyText: {
+    fontSize: 13,
+    textAlign: 'center',
+    marginTop: 8,
+    paddingHorizontal: 30,
+    lineHeight: 20,
+  },
+
+  deviceCard: {
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    backgroundColor: '#fff',
+    shadowColor: '#1F2937',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  deviceRow: { flexDirection: 'row', alignItems: 'center' },
+  deviceIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deviceInfo: { flex: 1, marginLeft: 14 },
+  deviceNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  deviceName: { fontSize: 15, fontWeight: '600' },
+  currentBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  currentBadgeText: { fontSize: 10, fontWeight: '700' },
+  deviceOS: { fontSize: 12, marginTop: 2 },
+  deviceMeta: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
+  deviceMetaText: { fontSize: 11 },
+  userTypeBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 6,
+    marginLeft: 6,
+  },
+  userTypeBadgeText: { fontSize: 9, fontWeight: '700' },
+
+  removeBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // Danger zone
+  dangerZone: {
+    marginTop: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 20,
+    marginBottom: 40,
+  },
+  dangerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 12,
+  },
+  dangerTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  dangerText: {
+    fontSize: 13,
+    lineHeight: 20,
+  },
+  deleteBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 12,
+    marginTop: 20,
+    gap: 10,
+  },
+  deleteBtnText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+});

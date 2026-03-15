@@ -1,0 +1,441 @@
+import React, { useState, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  ActivityIndicator,
+  Share,
+  Alert,
+  Pressable,
+} from 'react-native';
+import * as Clipboard from 'expo-clipboard';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  ArrowLeft,
+  Copy,
+  Share2,
+  Users,
+  Check,
+  Gift,
+  Store,
+  MapPin,
+  Star,
+  Zap,
+} from 'lucide-react-native';
+import { useTheme } from '@/contexts/ThemeContext';
+import { useLanguage } from '@/contexts/LanguageContext';
+import api from '@/services/api';
+import { formatDate } from '@/utils/date';
+
+// ── Types ──────────────────────────────────────────────────────────────────
+interface ReferredMerchant {
+  id: string;
+  nom: string;
+  categorie: string;
+  ville: string | null;
+  createdAt: string;
+}
+
+interface ReferralStats {
+  referralCode: string;
+  referredCount: number;
+  referralMonthsEarned: number;
+  referrals: ReferredMerchant[];
+}
+
+// ── Screen ─────────────────────────────────────────────────────────────────
+export default function ReferralScreen() {
+  const theme = useTheme();
+  const { t, locale } = useLanguage();
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+
+  const [stats, setStats] = useState<ReferralStats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const fetchStats = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { data } = await api.get<ReferralStats>('/merchant/referral');
+      setStats(data);
+    } catch {
+      setError('Impossible de charger vos informations de parrainage.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchStats();
+    }, [fetchStats]),
+  );
+
+  const handleCopy = async () => {
+    if (!stats?.referralCode) return;
+    try {
+      await Clipboard.setStringAsync(stats.referralCode);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      Alert.alert('Erreur', 'Impossible de copier le code');
+    }
+  };
+
+  const handleShare = async () => {
+    if (!stats?.referralCode) return;
+    try {
+      await Share.share({
+        message: `Rejoignez JitPlus avec mon code de parrainage : ${stats.referralCode}\nhttps://jitplus.com`,
+        title: t('referral.shareCode'),
+      });
+    } catch {
+      Alert.alert('Erreur', 'Impossible de partager le code');
+    }
+  };
+
+  const referredCountLabel = () => {
+    if (!stats) return '';
+    const c = stats.referredCount;
+    if (c === 0) return t('referral.referredCount_zero');
+    if (c === 1) return t('referral.referredCount_one', { count: 1 });
+    return t('referral.referredCount_other', { count: c });
+  };
+
+  return (
+    <View style={[styles.container, { backgroundColor: theme.bg }]}>
+      {/* ── Header ───────────────────────────────────────── */}
+      <View
+        style={[
+          styles.header,
+          {
+            paddingTop: insets.top + 8,
+            backgroundColor: theme.bgCard,
+            borderBottomColor: theme.borderLight,
+          },
+        ]}
+      >
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.7}>
+          <ArrowLeft size={22} color={theme.text} />
+        </TouchableOpacity>
+        <Text style={[styles.headerTitle, { color: theme.text }]}>{t('referral.title')}</Text>
+        <View style={{ width: 40 }} />
+      </View>
+
+      {loading ? (
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color={theme.primary} />
+          <Text style={[styles.loadingText, { color: theme.textMuted }]}>{t('referral.loadingCode')}</Text>
+        </View>
+      ) : error ? (
+        <View style={styles.center}>
+          <Text style={[styles.errorText, { color: theme.danger }]}>{error}</Text>
+          <TouchableOpacity
+            style={[styles.retryBtn, { backgroundColor: theme.primaryBg }]}
+            onPress={fetchStats}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.retryBtnText, { color: theme.primary }]}>Réessayer</Text>
+          </TouchableOpacity>
+        </View>
+      ) : stats ? (
+        <ScrollView
+          contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 24 }]}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* ── Subtitle ── */}
+          <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
+            {t('referral.subtitle')}
+          </Text>
+
+          {/* ── Code card ── */}
+          <View style={[styles.codeCard, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
+            <View style={[styles.codeIconWrap, { backgroundColor: theme.primaryBg }]}>
+              <Gift size={24} color={theme.primary} />
+            </View>
+            <Text style={[styles.codeLabel, { color: theme.textMuted }]}>{t('referral.yourCode')}</Text>
+            <Text style={[styles.codeValue, { color: theme.primary }]} selectable>
+              {stats.referralCode}
+            </Text>
+
+            <View style={styles.codeActions}>
+              <Pressable
+                style={[
+                  styles.codeActionBtn,
+                  { backgroundColor: copied ? theme.success + '20' : theme.primaryBg },
+                ]}
+                onPress={handleCopy}
+              >
+                {copied ? (
+                  <Check size={18} color={theme.success} strokeWidth={1.5} />
+                ) : (
+                  <Copy size={18} color={theme.primary} />
+                )}
+                <Text
+                  style={[
+                    styles.codeActionText,
+                    { color: copied ? theme.success : theme.primary },
+                  ]}
+                >
+                  {copied ? t('referral.codeCopied') : t('referral.copyCode')}
+                </Text>
+              </Pressable>
+
+              <Pressable
+                style={[styles.codeActionBtn, { backgroundColor: theme.primary + '20' }]}
+                onPress={handleShare}
+              >
+                <Share2 size={18} color={theme.primary} />
+                <Text style={[styles.codeActionText, { color: theme.primary }]}>
+                  {t('referral.shareCode')}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+
+          {/* ── Stats banner ── */}
+          <View style={[styles.statsBanner, { backgroundColor: theme.primaryBg, borderColor: theme.primary + '30' }]}>
+            <Users size={20} color={theme.primary} />
+            <Text style={[styles.statsBannerText, { color: theme.primary }]}>
+              {referredCountLabel()}
+            </Text>
+          </View>
+
+          {/* ── Reward card ── */}
+          <View style={[styles.rewardCard, { backgroundColor: theme.bgCard, borderColor: theme.accent + '40' }]}>
+            <View style={styles.rewardHeader}>
+              <View style={[styles.rewardIconWrap, { backgroundColor: theme.accent + '20' }]}>
+                <Zap size={20} color={theme.accent} />
+              </View>
+              <Text style={[styles.rewardTitle, { color: theme.text }]}>{t('referral.rewardTitle')}</Text>
+            </View>
+            <Text style={[styles.rewardDesc, { color: theme.textMuted }]}>
+              {t('referral.rewardAutoDesc')}
+            </Text>
+            {(stats?.referralMonthsEarned ?? 0) > 0 && (
+              <View style={[styles.statsBanner, { backgroundColor: theme.accent + '15', borderColor: theme.accent + '40', marginTop: 4 }]}>
+                <Star size={16} color={theme.accent} />
+                <Text style={[styles.statsBannerText, { color: theme.accent, fontSize: 13 }]}>
+                  {stats?.referralMonthsEarned === 1
+                    ? t('referral.rewardMonthsEarned_one', { count: 1 })
+                    : t('referral.rewardMonthsEarned_other', { count: stats?.referralMonthsEarned ?? 0 })}
+                </Text>
+              </View>
+            )}
+          </View>
+
+          {/* ── Referrals list ── */}
+          {stats.referrals.length === 0 ? (
+            <View style={[styles.emptyCard, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
+              <Text style={[styles.emptyTitle, { color: theme.text }]}>{t('referral.noReferrals')}</Text>
+              <Text style={[styles.emptyHint, { color: theme.textMuted }]}>{t('referral.noReferralsHint')}</Text>
+            </View>
+          ) : (
+            <View style={[styles.listCard, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
+              {stats.referrals.map((m, idx) => (
+                <View key={m.id}>
+                  <View style={styles.merchantRow}>
+                    <View style={[styles.merchantIconWrap, { backgroundColor: theme.primaryBg }]}>
+                      <Store size={18} color={theme.primary} />
+                    </View>
+                    <View style={styles.merchantInfo}>
+                      <Text style={[styles.merchantName, { color: theme.text }]} numberOfLines={1}>
+                        {m.nom}
+                      </Text>
+                      <View style={styles.merchantMeta}>
+                        {m.ville && (
+                          <>
+                            <MapPin size={12} color={theme.textMuted} />
+                            <Text style={[styles.merchantMetaText, { color: theme.textMuted }]}>
+                              {m.ville}
+                            </Text>
+                          </>
+                        )}
+                        <Text style={[styles.merchantMetaText, { color: theme.textMuted }]}>
+                          {' · '}{t('referral.since', { date: formatDate(m.createdAt, locale) })}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                  {idx < stats.referrals.length - 1 && (
+                    <View style={[styles.divider, { backgroundColor: theme.borderLight }]} />
+                  )}
+                </View>
+              ))}
+            </View>
+          )}
+        </ScrollView>
+      ) : null}
+    </View>
+  );
+}
+
+// ── Styles ─────────────────────────────────────────────────────────────────
+const styles = StyleSheet.create({
+  container: { flex: 1 },
+
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+  },
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    padding: 24,
+  },
+  loadingText: { fontSize: 14, marginTop: 8 },
+  errorText: { fontSize: 15, textAlign: 'center' },
+  retryBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10, marginTop: 4 },
+  retryBtnText: { fontWeight: '600', fontSize: 14 },
+
+  scroll: { paddingHorizontal: 20, paddingTop: 20, gap: 16 },
+
+  subtitle: {
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+
+  // Code card
+  codeCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 24,
+    alignItems: 'center',
+    gap: 8,
+  },
+  codeIconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  codeLabel: { fontSize: 13, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8 },
+  codeValue: {
+    fontSize: 34,
+    fontWeight: '700',
+    letterSpacing: 4,
+    marginVertical: 4,
+  },
+  codeActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 8,
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+  },
+  codeActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  codeActionText: { fontSize: 14, fontWeight: '600' },
+
+  // Stats banner
+  statsBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  statsBannerText: { fontSize: 15, fontWeight: '700' },
+
+  // Reward card
+  rewardCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 18,
+    gap: 10,
+  },
+  rewardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 2,
+  },
+  rewardIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rewardTitle: { fontSize: 15, fontWeight: '700' },
+  rewardDesc: { fontSize: 14, lineHeight: 21 },
+  rewardHint: { fontSize: 12, lineHeight: 18, fontStyle: 'italic' },
+  applyBtn: {
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  applyBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+
+  // Empty
+  emptyCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 32,
+    alignItems: 'center',
+    gap: 8,
+  },
+  emptyTitle: { fontSize: 16, fontWeight: '700' },
+  emptyHint: { fontSize: 14, textAlign: 'center', lineHeight: 20 },
+
+  // List
+  listCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  merchantRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    gap: 12,
+  },
+  merchantIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  merchantInfo: { flex: 1 },
+  merchantName: { fontSize: 15, fontWeight: '600', marginBottom: 2 },
+  merchantMeta: { flexDirection: 'row', alignItems: 'center', gap: 3, flexWrap: 'wrap' },
+  merchantMetaText: { fontSize: 12 },
+  divider: { height: 1, marginHorizontal: 14 },
+});

@@ -1,0 +1,628 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { useGuardedCallback } from '@/hooks/useGuardedCallback';
+import { MIN_PASSWORD_LENGTH } from '@/constants/app';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  TextInput,
+  Alert,
+  ActivityIndicator,
+  RefreshControl,
+  Modal,
+  KeyboardAvoidingView,
+  Platform,
+} from 'react-native';
+import {
+  Users,
+  UserPlus,
+  Mail,
+  Lock,
+  User,
+  ArrowLeft,
+  Trash2,
+  ToggleLeft,
+  ToggleRight,
+  Edit3,
+  Shield,
+  Activity,
+  X,
+  Check,
+} from 'lucide-react-native';
+import { useTheme } from '@/contexts/ThemeContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import api from '@/services/api';
+import { getErrorMessage } from '@/utils/error';
+import { TeamMember } from '@/types';
+import { useLanguage } from '@/contexts/LanguageContext';
+
+export default function TeamManagementScreen() {
+  const theme = useTheme();
+  const { isTeamMember } = useAuth();
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { t } = useLanguage();
+
+  const [members, setMembers] = useState<TeamMember[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [editingMember, setEditingMember] = useState<TeamMember | null>(null);
+  const [formLoading, setFormLoading] = useState(false);
+
+  // Form state
+  const [formNom, setFormNom] = useState('');
+  const [formEmail, setFormEmail] = useState('');
+  const [formPassword, setFormPassword] = useState('');
+
+  const loadMembers = useCallback(async () => {
+    try {
+      const response = await api.get('/merchant/team');
+      setMembers(response.data);
+    } catch (error: unknown) {
+      if (__DEV__) console.error('Erreur chargement équipe:', getErrorMessage(error));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadMembers();
+  }, [loadMembers]);
+
+  const onRefresh = useGuardedCallback(async () => {
+    setRefreshing(true);
+    await loadMembers();
+    setRefreshing(false);
+  }, [loadMembers]);
+
+  const resetForm = () => {
+    setFormNom('');
+    setFormEmail('');
+    setFormPassword('');
+    setEditingMember(null);
+  };
+
+  const openAddModal = () => {
+    resetForm();
+    setShowAddModal(true);
+  };
+
+  const openEditModal = (member: TeamMember) => {
+    setEditingMember(member);
+    setFormNom(member.nom);
+    setFormEmail(member.email);
+    setFormPassword('');
+    setShowAddModal(true);
+  };
+
+  const handleSubmit = async () => {
+    if (!formNom.trim() || !formEmail.trim()) {
+      Alert.alert('Erreur', 'Le nom et l\'email sont requis');
+      return;
+    }
+
+    if (!editingMember && !formPassword.trim()) {
+      Alert.alert('Erreur', 'Le mot de passe est requis pour un nouveau membre');
+      return;
+    }
+
+    if (formPassword && formPassword.length < MIN_PASSWORD_LENGTH) {
+      Alert.alert('Erreur', `Le mot de passe doit contenir au moins ${MIN_PASSWORD_LENGTH} caractères`);
+      return;
+    }
+
+    setFormLoading(true);
+    try {
+      if (editingMember) {
+        const data: Record<string, string> = { nom: formNom.trim(), email: formEmail.trim() };
+        if (formPassword.trim()) data.password = formPassword.trim();
+        await api.patch(`/merchant/team/${editingMember.id}`, data);
+      } else {
+        await api.post('/merchant/team', {
+          nom: formNom.trim(),
+          email: formEmail.trim(),
+          password: formPassword.trim(),
+        });
+      }
+      setShowAddModal(false);
+      resetForm();
+      await loadMembers();
+    } catch (error: unknown) {
+      Alert.alert('Erreur', getErrorMessage(error, "Erreur lors de l'opération"));
+    } finally {
+      setFormLoading(false);
+    }
+  };
+
+  const toggleActive = async (member: TeamMember) => {
+    try {
+      await api.patch(`/merchant/team/${member.id}`, {
+        isActive: !member.isActive,
+      });
+      await loadMembers();
+    } catch (error: unknown) {
+      Alert.alert('Erreur', 'Impossible de modifier le statut');
+    }
+  };
+
+  const deleteMember = (member: TeamMember) => {
+    Alert.alert(
+      t('team.deleteTitle'),
+      t('team.deleteMsg', { name: member.nom }),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('common.delete'),
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await api.delete(`/merchant/team/${member.id}`);
+              await loadMembers();
+            } catch (error: unknown) {
+              Alert.alert('Erreur', 'Impossible de supprimer le membre');
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  // Team members should not see this screen
+  if (isTeamMember) {
+    return (
+      <View style={[styles.container, { backgroundColor: theme.bg }]}>
+        <View style={[styles.header, { paddingTop: insets.top + 8, backgroundColor: theme.bgCard, borderBottomColor: theme.borderLight }]}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+            <ArrowLeft size={24} color={theme.text} />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: theme.text }]}>{t('team.title')}</Text>
+        </View>
+        <View style={styles.centered}>
+          <Shield size={48} color={theme.textMuted} strokeWidth={1.5} />
+          <Text style={[styles.emptyTitle, { color: theme.text }]}>{t('team.accessDenied')}</Text>
+          <Text style={[styles.emptyText, { color: theme.textMuted }]}>
+            {t('team.accessDeniedMsg')}
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={[styles.container, { backgroundColor: theme.bg }]}>
+      {/* ── Header (même style que edit-profile) ─── */}
+      <View style={[styles.header, { paddingTop: insets.top + 8, backgroundColor: theme.bgCard, borderBottomColor: theme.borderLight }]}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <ArrowLeft size={24} color={theme.text} />
+        </TouchableOpacity>
+        <Text style={[styles.headerTitle, { color: theme.text }]}>{t('team.title')}</Text>
+        <TouchableOpacity
+          onPress={openAddModal}
+          style={[styles.addBtn, { backgroundColor: theme.primary }]}
+          activeOpacity={0.7}
+        >
+          <UserPlus size={20} color="#fff" strokeWidth={1.5} />
+        </TouchableOpacity>
+      </View>
+
+      {loading ? (
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color={theme.primary} />
+        </View>
+      ) : (
+        <ScrollView
+          contentContainerStyle={{ paddingBottom: 100, paddingHorizontal: 16, paddingTop: 16 }}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={[theme.primary]}
+              tintColor={theme.primary}
+            />
+          }
+        >
+          {/* ── Compteur ─── */}
+          <View style={[styles.countBanner, { backgroundColor: theme.primary + '10', borderColor: theme.primary + '25' }]}>
+            <Users size={18} color={theme.primary} />
+            <Text style={[styles.countText, { color: theme.primary }]}>
+              {t('team.memberCount', { count: members.length })}
+            </Text>
+          </View>
+
+          {members.length === 0 ? (
+            /* ── Empty state ─── */
+            <View style={styles.emptyContainer}>
+              <View style={[styles.emptyIllustration, { backgroundColor: theme.primary + '10' }]}>
+                <Users size={40} color={theme.primary} strokeWidth={1.5} />
+              </View>
+              <Text style={[styles.emptyTitle, { color: theme.text }]}>{t('team.noMembers')}</Text>
+              <Text style={[styles.emptyText, { color: theme.textMuted }]}>
+                {t('team.noMembersHint')}
+              </Text>
+              <TouchableOpacity
+                style={[styles.emptyAddBtn, { backgroundColor: theme.primary }]}
+                onPress={openAddModal}
+                activeOpacity={0.7}
+              >
+                <UserPlus size={18} color="#fff" />
+                <Text style={styles.emptyAddBtnText}>{t('team.addMember')}</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            /* ── Members list ─── */
+            members.map((member) => (
+              <View
+                key={member.id}
+                style={[
+                  styles.memberCard,
+                  {
+                    backgroundColor: theme.bgCard,
+                    borderColor: theme.borderLight,
+                    opacity: member.isActive ? 1 : 0.65,
+                  },
+                ]}
+              >
+                {/* Top: avatar + info */}
+                <View style={styles.memberTop}>
+                  <View style={[styles.memberAvatar, { backgroundColor: theme.primary + '15' }]}>
+                    <User size={20} color={theme.primary} strokeWidth={1.5} />
+                  </View>
+                  <View style={styles.memberInfo}>
+                    <View style={styles.memberNameRow}>
+                      <Text style={[styles.memberName, { color: theme.text }]} numberOfLines={1}>
+                        {member.nom}
+                      </Text>
+                      {!member.isActive && (
+                        <View style={[styles.badge, { backgroundColor: theme.danger + '15' }]}>
+                          <Text style={[styles.badgeText, { color: theme.danger }]}>{t('team.inactive')}</Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={[styles.memberEmail, { color: theme.textMuted }]} numberOfLines={1}>
+                      {member.email}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Meta line */}
+                <View style={[styles.metaRow, { borderTopColor: theme.borderLight }]}>
+                  <View style={styles.metaItem}>
+                    <Shield size={13} color={theme.textMuted} />
+                    <Text style={[styles.metaText, { color: theme.textMuted }]}>{t('team.restrictedAccess')}</Text>
+                  </View>
+                  <View style={styles.metaItem}>
+                    <Activity size={13} color={theme.textMuted} />
+                    <Text style={[styles.metaText, { color: theme.textMuted }]}>
+                      {t('team.transactionsCount', { count: member.transactionsCount || 0 })}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Actions */}
+                <View style={styles.actionsRow}>
+                  <TouchableOpacity
+                    style={[styles.actionChip, { backgroundColor: member.isActive ? (theme.success + '12') : (theme.textMuted + '12') }]}
+                    onPress={() => toggleActive(member)}
+                    activeOpacity={0.7}
+                  >
+                    {member.isActive ? (
+                      <ToggleRight size={16} color={theme.success} />
+                    ) : (
+                      <ToggleLeft size={16} color={theme.textMuted} />
+                    )}
+                    <Text style={[styles.actionChipText, { color: member.isActive ? theme.success : theme.textMuted }]}>
+                      {member.isActive ? t('stores.active') : t('stores.inactive')}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.actionChip, { backgroundColor: theme.primary + '12' }]}
+                    onPress={() => openEditModal(member)}
+                    activeOpacity={0.7}
+                  >
+                    <Edit3 size={15} color={theme.primary} />
+                    <Text style={[styles.actionChipText, { color: theme.primary }]}>{t('stores.editBtn')}</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.actionChip, { backgroundColor: theme.danger + '12' }]}
+                    onPress={() => deleteMember(member)}
+                    activeOpacity={0.7}
+                  >
+                    <Trash2 size={15} color={theme.danger} />
+                    <Text style={[styles.actionChipText, { color: theme.danger }]}>{t('common.delete')}</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))
+          )}
+
+          {/* ── Info box (même style que edit-profile) ─── */}
+          {members.length > 0 && (
+            <View style={[styles.infoBox, { backgroundColor: theme.primary + '10', borderColor: theme.primary + '25' }]}>
+              <Text style={[styles.infoText, { color: theme.primary }]}>
+                {t('team.infoHint')}
+              </Text>
+            </View>
+          )}
+        </ScrollView>
+      )}
+
+      {/* ── Add/Edit Modal ─── */}
+      <Modal
+        visible={showAddModal}
+        animationType="slide"
+        transparent={false}
+        onRequestClose={() => {
+          setShowAddModal(false);
+          resetForm();
+        }}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={[styles.modalOverlay, { backgroundColor: theme.bg, paddingTop: insets.top }]}
+        >
+            {/* Modal header (même style que edit-profile header) */}
+            <View style={[styles.modalHeader, { backgroundColor: theme.bgCard, borderBottomColor: theme.borderLight }]}>
+              <TouchableOpacity
+                onPress={() => { setShowAddModal(false); resetForm(); }}
+                style={styles.backBtn}
+              >
+                <ArrowLeft size={24} color={theme.text} />
+              </TouchableOpacity>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>
+                {editingMember ? t('team.editMember') : t('team.addMember')}
+              </Text>
+              <TouchableOpacity
+                onPress={handleSubmit}
+                disabled={formLoading}
+                style={[styles.addBtn, { backgroundColor: theme.primary }, formLoading && { opacity: 0.5 }]}
+                activeOpacity={0.7}
+              >
+                {formLoading ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Check size={20} color="#fff" strokeWidth={1.5} />
+                )}
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 16 }}>
+              {/* Nom */}
+              <Text style={[styles.label, { color: theme.text }]}>{t('team.nameLabel')} *</Text>
+              <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.border }]}>
+                <User size={18} color={theme.textMuted} />
+                <TextInput
+                  style={[styles.input, { color: theme.text }]}
+                  placeholder="Ex: Ahmed Benali"
+                  placeholderTextColor={theme.textMuted}
+                  value={formNom}
+                  onChangeText={setFormNom}
+                  autoCapitalize="words"
+                />
+              </View>
+
+              {/* Email */}
+              <Text style={[styles.label, { color: theme.text }]}>{t('team.emailLabel')} *</Text>
+              <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.border }]}>
+                <Mail size={18} color={theme.textMuted} />
+                <TextInput
+                  style={[styles.input, { color: theme.text }]}
+                  placeholder="email@exemple.com"
+                  placeholderTextColor={theme.textMuted}
+                  value={formEmail}
+                  onChangeText={setFormEmail}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                />
+              </View>
+
+              {/* Password */}
+              <Text style={[styles.label, { color: theme.text }]}>
+                {editingMember ? t('team.passwordOptional') : `${t('team.passwordLabel')} *`}
+              </Text>
+              <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.border }]}>
+                <Lock size={18} color={theme.textMuted} />
+                <TextInput
+                  style={[styles.input, { color: theme.text }]}
+                  placeholder="Min. 8 caractères"
+                  placeholderTextColor={theme.textMuted}
+                  value={formPassword}
+                  onChangeText={setFormPassword}
+                  secureTextEntry
+                />
+              </View>
+
+              {/* Permissions info (même style que infoBox) */}
+              <View style={[styles.permBox, { backgroundColor: theme.primary + '10', borderColor: theme.primary + '25' }]}>
+                <Text style={[styles.permBoxTitle, { color: theme.primary }]}>{t('team.permissionsTitle')}</Text>
+                <View style={styles.permList}>
+                  <Text style={[styles.permItem, { color: theme.text }]}>{t('team.permScanQR')}</Text>
+                  <Text style={[styles.permItem, { color: theme.text }]}>{t('team.permAwardPoints')}</Text>
+                  <Text style={[styles.permItem, { color: theme.text }]}>{t('team.permViewClients')}</Text>
+                  <View style={[styles.permDivider, { backgroundColor: theme.borderLight }]} />
+                  <Text style={[styles.permItem, { color: theme.danger }]}>✗  {t('team.permNoProfile')}</Text>
+                  <Text style={[styles.permItem, { color: theme.danger }]}>✗  {t('team.permNoSettings')}</Text>
+                  <Text style={[styles.permItem, { color: theme.danger }]}>✗  {t('team.permNoTeam')}</Text>
+                </View>
+              </View>
+            </ScrollView>
+        </KeyboardAvoidingView>
+      </Modal>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1 },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12 },
+
+  // ── Header (identique à edit-profile) ──
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+  },
+  backBtn: { padding: 4 },
+  headerTitle: { flex: 1, fontSize: 18, fontWeight: '700', marginLeft: 12 },
+  addBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // ── Count banner ──
+  countBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 16,
+  },
+  countText: { fontSize: 14, fontWeight: '600' },
+
+  // ── Member card ──
+  memberCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 12,
+    overflow: 'hidden',
+  },
+  memberTop: {
+    flexDirection: 'row',
+    padding: 14,
+    alignItems: 'center',
+  },
+  memberAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  memberInfo: { flex: 1, marginLeft: 12 },
+  memberNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  memberName: { fontSize: 15, fontWeight: '600' },
+  memberEmail: { fontSize: 13, marginTop: 2 },
+  badge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
+  badgeText: { fontSize: 11, fontWeight: '600' },
+
+  // ── Meta row ──
+  metaRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    gap: 16,
+  },
+  metaItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  metaText: { fontSize: 12 },
+
+  // ── Action chips ──
+  actionsRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 10,
+    paddingBottom: 10,
+    gap: 6,
+  },
+  actionChip: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  actionChipText: { fontSize: 12, fontWeight: '600' },
+
+  // ── Empty state ──
+  emptyContainer: { alignItems: 'center', paddingTop: 40, paddingHorizontal: 24 },
+  emptyIllustration: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  emptyTitle: { fontSize: 18, fontWeight: '700', marginBottom: 6 },
+  emptyText: { fontSize: 14, textAlign: 'center', lineHeight: 20 },
+  emptyAddBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginTop: 20,
+  },
+  emptyAddBtnText: { fontSize: 14, fontWeight: '700', color: '#fff' },
+
+  // ── Info box (identique à edit-profile) ──
+  infoBox: {
+    marginTop: 12,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  infoText: { fontSize: 13, lineHeight: 20 },
+
+  // ── Modal ──
+  modalOverlay: {
+    flex: 1,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+  },
+  modalTitle: { flex: 1, fontSize: 18, fontWeight: '700', marginLeft: 12 },
+
+  // ── Form (identique à edit-profile) ──
+  label: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginTop: 18,
+    marginBottom: 6,
+  },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    gap: 10,
+  },
+  input: {
+    flex: 1,
+    fontSize: 15,
+    paddingVertical: 13,
+  },
+
+  // ── Permissions box ──
+  permBox: {
+    marginTop: 24,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  permBoxTitle: { fontSize: 14, fontWeight: '700', marginBottom: 10 },
+  permList: { gap: 4 },
+  permItem: { fontSize: 13, lineHeight: 22 },
+  permDivider: { height: 1, marginVertical: 6 },
+});
