@@ -6,21 +6,24 @@ WORKDIR /app
 # Enable pnpm
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
-# Copy dependency definitions
-COPY package.json pnpm-lock.yaml* ./
-COPY prisma ./prisma/
+# Copy monorepo root dependency files first
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+
+# Copy backend package.json and prisma schema
+COPY apps/backend/package.json ./apps/backend/
+COPY apps/backend/prisma ./apps/backend/prisma/
 
 # Install ALL dependencies (including devDependencies for build)
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile --filter backend...
 
-# Generate Prisma Client into node_modules/.prisma/client
-RUN pnpm prisma generate --schema ./prisma/schema.prisma
+# Copy backend source code
+COPY apps/backend/ ./apps/backend/
 
-# Copy source code
-COPY . .
+# Generate Prisma Client
+RUN pnpm --filter backend prisma generate --schema ./apps/backend/prisma/schema.prisma
 
 # Build the application
-RUN pnpm build
+RUN pnpm --filter backend build
 
 # ── Stage 2: Production Dependencies ──
 FROM node:20-alpine AS deps
@@ -30,15 +33,18 @@ WORKDIR /app
 # Enable pnpm
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
-# Copy dependency definitions
-COPY package.json pnpm-lock.yaml* ./
-COPY prisma ./prisma/
+# Copy monorepo root dependency files
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+
+# Copy backend package.json and prisma schema
+COPY apps/backend/package.json ./apps/backend/
+COPY apps/backend/prisma ./apps/backend/prisma/
 
 # Install ONLY production dependencies
-RUN pnpm install --prod --frozen-lockfile
+RUN pnpm install --prod --frozen-lockfile --filter backend...
 
 # Generate Prisma Client (needed for runtime)
-RUN pnpm prisma generate --schema ./prisma/schema.prisma
+RUN pnpm --filter backend prisma generate --schema ./apps/backend/prisma/schema.prisma
 
 # ── Stage 3: Runner (Final Image) ──
 FROM node:20-alpine AS runner
@@ -55,20 +61,20 @@ ENV PORT=3000
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
 # Copy built application from builder
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/package.json ./
+COPY --from=builder /app/apps/backend/dist ./dist
+COPY --from=builder /app/apps/backend/package.json ./
 
 # Copy production dependencies from deps stage
-COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/apps/backend/node_modules ./node_modules
 # Copy generated Prisma Client
-COPY --from=deps /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=deps /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=deps /app/apps/backend/node_modules/.prisma ./node_modules/.prisma
+COPY --from=deps /app/apps/backend/node_modules/@prisma ./node_modules/@prisma
 
 # Copy prisma schema (needed when running migrations from this image)
-COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/apps/backend/prisma ./prisma
 
 # Copy startup entrypoint script (used for the migration Cloud Run Job)
-COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+COPY apps/backend/docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod +x /app/docker-entrypoint.sh
 
 # dumb-init for proper PID 1 signal handling

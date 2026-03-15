@@ -54,7 +54,7 @@ steps:
       - --tag=$_IMAGE:latest
       - --cache-from=$_IMAGE:latest
       - --file=apps/backend/Dockerfile
-      - apps/backend
+      - .
     waitFor: ['-']
 
   # ── 2. Push the image to Artifact Registry ──────────────────────────────────
