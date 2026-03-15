@@ -17,15 +17,19 @@ export function jwtModuleFactory(
   defaultExpiration = '1h',
 ): JwtModuleAsyncOptions {
   return {
-    useFactory: (config: ConfigService) => ({
-      secret: config.getOrThrow<string>('JWT_SECRET'),
-      signOptions: {
-        expiresIn: config.get(expirationEnvKey, defaultExpiration),
-        algorithm: 'HS256' as const,
-        issuer: 'jitplus-api',
-        audience,
-      },
-    }),
+    useFactory: (config: ConfigService) => {
+      const expiresIn = (config.get<string>(expirationEnvKey) ?? defaultExpiration) as import('ms').StringValue;
+
+      return {
+        secret: config.getOrThrow<string>('JWT_SECRET'),
+        signOptions: {
+          expiresIn,
+          algorithm: 'HS256' as const,
+          issuer: 'jitplus-api',
+          audience,
+        },
+      };
+    },
     inject: [ConfigService],
   };
 }
