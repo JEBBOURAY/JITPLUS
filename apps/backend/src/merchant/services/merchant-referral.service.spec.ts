@@ -25,6 +25,8 @@ const mockMerchantRepo = {
 };
 
 const mockCache = {
+  get: jest.fn(),
+  set: jest.fn(),
   del: jest.fn(),
 };
 

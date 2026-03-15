@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { RewardsService } from './rewards.service';
 import { REWARD_REPOSITORY } from './reward.repository.interface';
 
@@ -26,6 +27,12 @@ const mockRewardRepo = {
   delete: jest.fn(),
 };
 
+const mockCache = {
+  get: jest.fn(),
+  set: jest.fn(),
+  del: jest.fn(),
+};
+
 // ── Suite ─────────────────────────────────────────────────────────────────────
 
 describe('RewardsService', () => {
@@ -36,6 +43,7 @@ describe('RewardsService', () => {
       providers: [
         RewardsService,
         { provide: REWARD_REPOSITORY, useValue: mockRewardRepo },
+        { provide: CACHE_MANAGER, useValue: mockCache },
       ],
     }).compile();
 

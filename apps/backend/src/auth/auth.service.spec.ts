@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { AuthService } from './auth.service';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtService } from '@nestjs/jwt';
 import { FirebaseService } from '../firebase/firebase.service';
@@ -99,6 +100,13 @@ const mockReferralService = {
   creditReferrer: jest.fn().mockResolvedValue(undefined),
 };
 
+const mockConfigService = {
+  get: jest.fn().mockImplementation((key: string) => {
+    if (key === 'GOOGLE_CLIENT_ID') return 'test-google-client-id';
+    return undefined;
+  }),
+};
+
 const mockOtpRepo = {
   findUnique: jest.fn().mockResolvedValue(null),
   upsert: jest.fn().mockResolvedValue({}),
@@ -130,6 +138,7 @@ describe('AuthService', () => {
         { provide: JwtService, useValue: mockJwtService },
         { provide: MerchantPlanService, useValue: mockPlanService },
         { provide: MerchantReferralService, useValue: mockReferralService },
+        { provide: ConfigService, useValue: mockConfigService },
       ],
     }).compile();
 

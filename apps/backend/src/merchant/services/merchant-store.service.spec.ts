@@ -1,5 +1,6 @@
 ﻿import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { MerchantStoreService } from './merchant-store.service';
 import { STORE_REPOSITORY } from '../../common/repositories';
 import { MerchantPlanService } from './merchant-plan.service';
@@ -36,6 +37,12 @@ const mockPlanService = {
   getMaxStores: jest.fn(),
 };
 
+const mockCache = {
+  get: jest.fn(),
+  set: jest.fn(),
+  del: jest.fn(),
+};
+
 // â”€â”€ Suite â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 describe('MerchantStoreService', () => {
@@ -46,6 +53,7 @@ describe('MerchantStoreService', () => {
       providers: [
         MerchantStoreService,
         { provide: STORE_REPOSITORY, useValue: mockStoreRepo },
+        { provide: CACHE_MANAGER, useValue: mockCache },
         { provide: MerchantPlanService, useValue: mockPlanService },
       ],
     }).compile();
