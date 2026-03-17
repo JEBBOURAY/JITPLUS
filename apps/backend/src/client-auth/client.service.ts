@@ -199,44 +199,52 @@ export class ClientService {
     return { success: true };
   }
 
-  async getPointsOverview(clientId: string) {
-    const cards = await this.loyaltyCardRepo.findMany({
-      where: { clientId },
-      select: {
-        id: true,
-        merchantId: true,
-        points: true,
-        createdAt: true,
-        updatedAt: true,
-        merchant: {
-          select: {
-            id: true,
-            nom: true,
-            categorie: true,
-            loyaltyType: true,
-            stampsForReward: true,
-            conversionRate: true,
-            latitude: true,
-            longitude: true,
-            logoUrl: true,
-            // Fetch the cheapest reward so the client can show a progress bar
-            rewards: {
-              select: { cout: true },
-              orderBy: { cout: 'asc' },
-              take: 1,
+  async getPointsOverview(clientId: string, page: number = 1, limit: number = 50) {
+    const skip = (page - 1) * limit;
+    const safeTake = Math.min(limit, 100);
+
+    const [cards, totalCards] = await Promise.all([
+      this.loyaltyCardRepo.findMany({
+        where: { clientId },
+        select: {
+          id: true,
+          merchantId: true,
+          points: true,
+          createdAt: true,
+          updatedAt: true,
+          merchant: {
+            select: {
+              id: true,
+              nom: true,
+              categorie: true,
+              loyaltyType: true,
+              stampsForReward: true,
+              conversionRate: true,
+              latitude: true,
+              longitude: true,
+              logoUrl: true,
+              // Fetch the cheapest reward so the client can show a progress bar
+              rewards: {
+                select: { cout: true },
+                orderBy: { cout: 'asc' },
+                take: 1,
+              },
             },
           },
         },
-      },
-      orderBy: { updatedAt: 'desc' },
-      take: 100,
-    });
+        orderBy: { updatedAt: 'desc' },
+        skip,
+        take: safeTake,
+      }),
+      this.loyaltyCardRepo.count({ where: { clientId } }),
+    ]);
 
     const totalPoints = cards.reduce((sum, card) => sum + card.points, 0);
 
     return {
       totalPoints,
-      totalCards: cards.length,
+      totalCards,
+      pagination: buildPagination(totalCards, page, safeTake),
       cards: cards.map((card) => ({
         id: card.id,
         merchantId: card.merchantId,
@@ -550,6 +558,7 @@ export class ClientService {
           },
         },
       },
+      take: 200,
     });
 
     // Also find merchants whose stores are in the bounding box even if the merchant itself isn't
@@ -583,6 +592,7 @@ export class ClientService {
           },
         },
       },
+      take: 200,
     });
 
     const allMerchants = [...merchants, ...merchantsViaStores];
@@ -649,23 +659,23 @@ export class ClientService {
    * excluding dismissed ones, with per-client read status.
    */
   async getNotifications(clientId: string, page: number = 1, limit: number = 30) {
-    // Find the merchant IDs the client has a loyalty card with (+ join date)
-    const cards = await this.loyaltyCardRepo.findMany({
-      where: { clientId },
-      select: { merchantId: true, createdAt: true },
-    });
+    // Parallelize the two independent lookups: loyalty cards + dismissed notification IDs
+    const [cards, dismissedStatuses] = await Promise.all([
+      this.loyaltyCardRepo.findMany({
+        where: { clientId },
+        select: { merchantId: true, createdAt: true },
+      }),
+      this.clientNotifStatusRepo.findMany({
+        where: { clientId, isDismissed: true },
+        select: { notificationId: true },
+      }),
+    ]);
 
     if (cards.length === 0) {
       return { notifications: [], pagination: buildPagination(0, page, limit) };
     }
 
-    // Fetch dismissedIds
-    const dismissedIds = (
-      await this.clientNotifStatusRepo.findMany({
-        where: { clientId, isDismissed: true },
-        select: { notificationId: true },
-      })
-    ).map((s) => s.notificationId);
+    const dismissedIds = dismissedStatuses.map((s) => s.notificationId);
 
     // Only show notifications created after the client joined each merchant
     const merchantFilters = cards.map((card) => ({

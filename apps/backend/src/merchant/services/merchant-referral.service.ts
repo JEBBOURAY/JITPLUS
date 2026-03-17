@@ -57,6 +57,7 @@ export class MerchantReferralService {
             createdAt: true,
           },
           orderBy: { createdAt: 'desc' },
+          take: 50,
         },
       },
     });

@@ -25,7 +25,7 @@ import { ClientOnlyGuard } from '../common/guards/client-only.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtPayload } from '../common/interfaces/jwt-payload.interface';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
-import { SendOtpDto, VerifyOtpDto, CompleteProfileDto, UpdateProfileDto, UpdatePushTokenDto, DevLoginDto, SendOtpEmailDto, VerifyOtpEmailDto, GoogleLoginDto, LoginEmailDto, LoginPhoneDto, SetPasswordDto, RefreshTokenDto, DeleteAccountDto } from './dto';
+import { SendOtpDto, VerifyOtpDto, CompleteProfileDto, ClientUpdateProfileDto, UpdatePushTokenDto, DevLoginDto, SendOtpEmailDto, VerifyOtpEmailDto, GoogleLoginDto, LoginEmailDto, LoginPhoneDto, SetPasswordDto, RefreshTokenDto, ClientDeleteAccountDto } from './dto';
 
 @ApiTags('Client Auth')
 @Controller('client-auth')
@@ -129,7 +129,7 @@ export class ClientAuthController {
 
   @Patch('profile')
   @UseGuards(AuthGuard('jwt'), ClientOnlyGuard)
-  async updateProfile(@CurrentUser() user: JwtPayload, @Body() dto: UpdateProfileDto) {
+  async updateProfile(@CurrentUser() user: JwtPayload, @Body() dto: ClientUpdateProfileDto) {
     return this.clientService.updateProfile(user.userId, dto);
   }
 
@@ -141,7 +141,7 @@ export class ClientAuthController {
 
   @Post('delete-account')
   @UseGuards(AuthGuard('jwt'), ClientOnlyGuard)
-  async deleteAccount(@CurrentUser() user: JwtPayload, @Body() dto: DeleteAccountDto) {
+  async deleteAccount(@CurrentUser() user: JwtPayload, @Body() dto: ClientDeleteAccountDto) {
     return this.clientService.deleteAccount(user.userId, dto.password);
   }
 
@@ -179,13 +179,19 @@ export class ClientController {
   constructor(private readonly clientService: ClientService) {}
 
   @Get('points')
-  async getPointsOverview(@CurrentUser() user: JwtPayload) {
-    return this.clientService.getPointsOverview(user.userId);
+  async getPointsOverview(
+    @CurrentUser() user: JwtPayload,
+    @Query() { page, limit }: PaginationQueryDto,
+  ) {
+    return this.clientService.getPointsOverview(user.userId, page, limit);
   }
 
   @Get('cards')
-  async getLoyaltyCards(@CurrentUser() user: JwtPayload) {
-    const overview = await this.clientService.getPointsOverview(user.userId);
+  async getLoyaltyCards(
+    @CurrentUser() user: JwtPayload,
+    @Query() { page, limit }: PaginationQueryDto,
+  ) {
+    const overview = await this.clientService.getPointsOverview(user.userId, page, limit);
     return overview.cards;
   }
 

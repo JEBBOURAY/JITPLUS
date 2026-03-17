@@ -17,6 +17,7 @@ import {
   ValidationPipe,
   Logger,
   BadRequestException,
+  RequestMethod,
 } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { ValidationError } from 'class-validator';
@@ -65,7 +66,10 @@ async function bootstrap() {
 
   // ── API Versioning ────────────────────────────────────────
   app.setGlobalPrefix('api/v1', {
-    exclude: ['health', 'uploads/(.*)'],
+    exclude: [
+      { path: 'health', method: RequestMethod.ALL },
+      { path: 'uploads/*path', method: RequestMethod.ALL },
+    ],
   });
 
   // Serve uploaded files locally (dev only — in production GCS serves them)

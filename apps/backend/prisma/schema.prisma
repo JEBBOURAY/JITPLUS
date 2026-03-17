@@ -88,6 +88,9 @@ model Merchant {
   @@index([categorie, ville, isActive])
   // Geospatial proximity queries (nearby merchants)
   @@index([latitude, longitude])
+  // Admin dashboard: count by plan, filter active+plan
+  @@index([plan])
+  @@index([isActive, plan])
   @@map("merchants")
 }
 
@@ -109,6 +112,10 @@ model Store {
   merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
 
   @@index([merchantId])
+  // Active store lookups by merchant (discovery + nearby)
+  @@index([merchantId, isActive])
+  // Geospatial store queries for nearby search
+  @@index([isActive, latitude, longitude])
   @@map("stores")
 }
 
@@ -301,6 +308,9 @@ model Transaction {
   @@index([clientId, createdAt])
   @@index([merchantId, type, status, createdAt])
   @@index([rewardId])
+  // Admin dashboard: count by type, filter status+date
+  @@index([type])
+  @@index([status, createdAt(sort: Desc)])
   @@map("transactions")
 }
 

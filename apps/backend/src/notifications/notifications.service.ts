@@ -138,15 +138,23 @@ export class NotificationsService {
       }
     }
 
-    // Emit WebSocket events for clients with active connections
-    for (const clientId of uniqueClientIds) {
-      this.eventsGateway.emitNotificationNew(clientId, {
-        clientId,
-        notificationId: notification.id,
-        merchantId,
-        title: dto.title,
-        body: dto.body,
-      });
+    // Emit WebSocket events in batches to avoid blocking the event loop
+    const WS_BATCH = 500;
+    for (let i = 0; i < uniqueClientIds.length; i += WS_BATCH) {
+      const batch = uniqueClientIds.slice(i, i + WS_BATCH);
+      for (const clientId of batch) {
+        this.eventsGateway.emitNotificationNew(clientId, {
+          clientId,
+          notificationId: notification.id,
+          merchantId,
+          title: dto.title,
+          body: dto.body,
+        });
+      }
+      // Yield to the event loop between batches to avoid blocking
+      if (i + WS_BATCH < uniqueClientIds.length) {
+        await new Promise((r) => setImmediate(r));
+      }
     }
 
     // Clean up stale/invalid FCM tokens

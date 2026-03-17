@@ -88,7 +88,7 @@ export class CompleteProfileDto {
   dateNaissance?: string;
 }
 
-export class UpdateProfileDto {
+export class ClientUpdateProfileDto {
   @IsOptional()
   @IsString()
   prenom?: string;
@@ -163,7 +163,7 @@ export class RefreshTokenDto {
   refresh_token: string;
 }
 
-export class DeleteAccountDto {
+export class ClientDeleteAccountDto {
   @IsString()
   @IsNotEmpty({ message: 'Le mot de passe est requis' })
   password: string;

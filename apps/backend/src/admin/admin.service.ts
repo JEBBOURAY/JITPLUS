@@ -281,18 +281,9 @@ export class AdminAuthService {
     });
 
     const [
-      totalMerchants,
-      activeMerchants,
-      bannedMerchants,
-      freeMerchants,
-      premiumMerchants,
-      totalClients,
-      newClientsThisMonth,
-      totalTransactions,
-      transactionsThisMonth,
-      earnPointsCount,
-      redeemRewardCount,
-      adjustPointsCount,
+      merchantStats,
+      clientStats,
+      transactionStats,
       totalRewards,
       totalNotifications,
       pendingUpgradeCount,
@@ -301,18 +292,33 @@ export class AdminAuthService {
       pendingRequests,
       notifAgg,
     ] = await Promise.all([
-      this.merchantRepo.count(),
-      this.merchantRepo.count({ where: { isActive: true } }),
-      this.merchantRepo.count({ where: { isActive: false } }),
-      this.merchantRepo.count({ where: { plan: 'FREE' } }),
-      this.merchantRepo.count({ where: { plan: 'PREMIUM' } }),
-      this.clientRepo.count(),
-      this.clientRepo.count({ where: { createdAt: { gte: startOfMonth } } }),
-      this.transactionRepo.count({ where: { status: 'ACTIVE' } }),
-      this.transactionRepo.count({ where: { status: 'ACTIVE', createdAt: { gte: startOfMonth } } }),
-      this.transactionRepo.count({ where: { type: 'EARN_POINTS' } }),
-      this.transactionRepo.count({ where: { type: 'REDEEM_REWARD' } }),
-      this.transactionRepo.count({ where: { type: 'ADJUST_POINTS' } }),
+      // Single raw query replaces 5 separate merchant count() calls
+      this.rawQuery.queryRaw<{ total: bigint; active: bigint; banned: bigint; free: bigint; premium: bigint }>`
+        SELECT
+          COUNT(*)                              AS total,
+          COUNT(*) FILTER (WHERE is_active)     AS active,
+          COUNT(*) FILTER (WHERE NOT is_active) AS banned,
+          COUNT(*) FILTER (WHERE plan = 'FREE') AS free,
+          COUNT(*) FILTER (WHERE plan = 'PREMIUM') AS premium
+        FROM merchants
+      `,
+      // Single raw query replaces 2 separate client count() calls
+      this.rawQuery.queryRaw<{ total: bigint; new_this_month: bigint }>`
+        SELECT
+          COUNT(*)                                         AS total,
+          COUNT(*) FILTER (WHERE created_at >= ${startOfMonth}) AS new_this_month
+        FROM clients
+      `,
+      // Single raw query replaces 5 separate transaction count() calls
+      this.rawQuery.queryRaw<{ total: bigint; this_month: bigint; earn: bigint; redeem: bigint; adjust: bigint }>`
+        SELECT
+          COUNT(*) FILTER (WHERE status = 'ACTIVE')                                    AS total,
+          COUNT(*) FILTER (WHERE status = 'ACTIVE' AND created_at >= ${startOfMonth})  AS this_month,
+          COUNT(*) FILTER (WHERE type = 'EARN_POINTS')                                 AS earn,
+          COUNT(*) FILTER (WHERE type = 'REDEEM_REWARD')                               AS redeem,
+          COUNT(*) FILTER (WHERE type = 'ADJUST_POINTS')                               AS adjust
+        FROM transactions
+      `,
       this.rewardRepo.count(),
       this.notificationRepo.count(),
       this.upgradeRequestRepo.count({ where: { status: 'PENDING' } }),
@@ -349,6 +355,23 @@ export class AdminAuthService {
         _sum: { recipientCount: true, successCount: true },
       }),
     ]);
+
+    const ms = merchantStats[0];
+    const cs = clientStats[0];
+    const ts = transactionStats[0];
+
+    const totalMerchants = Number(ms?.total ?? 0);
+    const activeMerchants = Number(ms?.active ?? 0);
+    const bannedMerchants = Number(ms?.banned ?? 0);
+    const freeMerchants = Number(ms?.free ?? 0);
+    const premiumMerchants = Number(ms?.premium ?? 0);
+    const totalClients = Number(cs?.total ?? 0);
+    const newClientsThisMonth = Number(cs?.new_this_month ?? 0);
+    const totalTransactions = Number(ts?.total ?? 0);
+    const transactionsThisMonth = Number(ts?.this_month ?? 0);
+    const earnPointsCount = Number(ts?.earn ?? 0);
+    const redeemRewardCount = Number(ts?.redeem ?? 0);
+    const adjustPointsCount = Number(ts?.adjust ?? 0);
 
     // Per-channel notification counts + monthly trends in 2 raw queries instead of 15 individual counts
     const sixMonthsAgo = monthBuckets[0].start;

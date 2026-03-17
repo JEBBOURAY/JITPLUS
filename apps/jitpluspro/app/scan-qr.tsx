@@ -612,6 +612,9 @@ export default function ScanQRScreen() {
             keyExtractor={(item) => item.id}
             keyboardShouldPersistTaps="handled"
             getItemLayout={(_, index) => ({ length: 64, offset: 64 * index, index })}
+            maxToRenderPerBatch={10}
+            windowSize={5}
+            removeClippedSubviews
             renderItem={({ item }) => (
               <TouchableOpacity
                 style={styles.cpRow}
@@ -675,6 +678,9 @@ export default function ScanQRScreen() {
             keyExtractor={(item) => item.code}
             keyboardShouldPersistTaps="handled"
             getItemLayout={(_, index) => ({ length: 52, offset: 52 * index, index })}
+            maxToRenderPerBatch={15}
+            windowSize={7}
+            removeClippedSubviews
             renderItem={({ item }) => {
               const isSelected = item.code === COUNTRIES[countryIndex]?.code;
               return (
