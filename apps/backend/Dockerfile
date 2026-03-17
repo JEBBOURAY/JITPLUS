@@ -1,7 +1,7 @@
 # ── Stage 1: Builder ──
 FROM node:22-alpine AS builder
 
-RUN apk add --no-cache openssl
+RUN apk update && apk upgrade --no-cache && apk add --no-cache openssl
 
 WORKDIR /app
 
@@ -30,7 +30,7 @@ RUN cd apps/backend && pnpm run build
 # ── Stage 2: Production Dependencies (standalone, no workspace) ──
 FROM node:22-alpine AS deps
 
-RUN apk add --no-cache openssl
+RUN apk update && apk upgrade --no-cache && apk add --no-cache openssl
 
 WORKDIR /app
 
@@ -49,6 +49,9 @@ RUN pnpm exec prisma generate --schema ./prisma/schema.prisma
 
 # ── Stage 3: Runner (Final Image) ──
 FROM node:22-alpine AS runner
+
+# Patch OS-level CVEs (zlib, etc.)
+RUN apk update && apk upgrade --no-cache
 
 WORKDIR /app
 
