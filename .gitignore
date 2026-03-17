@@ -43,3 +43,12 @@ GoogleService-Info.plist
 
 # Metro
 .metro-health-check*
+
+# Android build artifacts
+**/.gradle/
+**/.kotlin/
+**/android/build/
+**/android/app/build/
+
+# Prisma generated client
+apps/backend/src/generated/
