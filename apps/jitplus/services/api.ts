@@ -311,13 +311,13 @@ class ApiService {
     }
   }
 
-  /** Read the stored rememberMe preference (defaults to true) */
+  /** Read the stored rememberMe preference (defaults to false on error) */
   async getRememberMe(): Promise<boolean> {
     if (Platform.OS === 'web') return true;
     try {
       const val = await SecureStore.getItemAsync('rememberMe');
-      return val !== 'false';
-    } catch { return true; }
+      return val === 'true';
+    } catch { return false; }
   }
 
   async clearRememberMe(): Promise<void> {

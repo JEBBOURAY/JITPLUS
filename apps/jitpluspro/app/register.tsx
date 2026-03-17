@@ -1021,14 +1021,14 @@ export default function RegisterScreen() {
                       {t('registerExtra.termsText')}{' '}
                       <Text
                         style={{ color: theme.primary, fontWeight: '700', textDecorationLine: 'underline' }}
-                        onPress={() => Linking.openURL('https://jitplus.com/mentions-legales')}
+                        onPress={() => Linking.openURL('https://jitplus.com/cgu')}
                       >
                         {t('register.termsLink')}
                       </Text>
                       {' '}{t('registerExtra.and')}{' '}
                       <Text
                         style={{ color: theme.primary, fontWeight: '700', textDecorationLine: 'underline' }}
-                        onPress={() => Linking.openURL('https://jitplus.com/politique-de-confidentialite')}
+                        onPress={() => Linking.openURL('https://jitplus.com/privacy')}
                       >
                         {t('register.privacyLink')}
                       </Text>

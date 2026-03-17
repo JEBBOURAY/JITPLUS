@@ -46,6 +46,15 @@ export class JwtStrategy extends PassportStrategy(Strategy) implements OnModuleD
     clearInterval(this.cleanupTimer);
   }
 
+  /**
+   * Immediately remove a session from the in-memory cache.
+   * Called on logout to close the replay window (otherwise the cache
+   * would still validate the token for up to CACHE_TTL seconds).
+   */
+  invalidateSession(tokenId: string): void {
+    this.sessionCache.delete(tokenId);
+  }
+
   async validate(payload: JwtTokenPayload): Promise<JwtPayload> {
     // DeviceSession is a merchant-only concept — clients don't have sessions in that table.
     // Only validate the session for merchant/admin tokens to avoid spurious 401s on client routes.

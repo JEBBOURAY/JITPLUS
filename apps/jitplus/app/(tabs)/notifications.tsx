@@ -21,6 +21,7 @@ import GuestGuard from '@/components/GuestGuard';
 import Skeleton from '@/components/Skeleton';
 import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
 import { useGuardedCallback } from '@/hooks/useGuardedCallback';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   useNotifications,
   useUnreadNotificationCount,
@@ -28,6 +29,7 @@ import {
   useMarkAllNotificationsAsRead,
   useDismissNotification,
   useDismissAllNotifications,
+  queryKeys,
 } from '@/hooks/useQueryHooks';
 import MerchantLogo from '@/components/MerchantLogo';
 
@@ -52,12 +54,11 @@ export default function NotificationsScreen() {
   const { client, isGuest } = useAuth();
   const insets = useSafeAreaInsets();
 
-  if (isGuest) return <GuestGuard />;
-
   // ── Push permission banner ──
   const [pushPermission, setPushPermission] = useState<'granted' | 'denied' | 'unknown'>('unknown');
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [selectedNotif, setSelectedNotif] = useState<ClientNotification | null>(null);
+  const queryClient = useQueryClient();
 
   const isExpoGo = Constants.appOwnership === 'expo';
 
@@ -73,11 +74,14 @@ export default function NotificationsScreen() {
     }
   }, [isExpoGo]);
 
-  // Check each time the screen is focused
+  // Check each time the screen is focused + ensure fresh notifications
   useFocusEffect(useCallback(() => {
     setBannerDismissed(false);
     checkPushPermission();
-  }, [checkPushPermission]));
+    // Invalidate to guarantee fresh data when user navigates to this tab
+    queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
+    queryClient.invalidateQueries({ queryKey: queryKeys.unreadCount });
+  }, [checkPushPermission, queryClient]));
 
   const handleOpenSettings = useCallback(async () => {
     haptic();
@@ -374,6 +378,8 @@ export default function NotificationsScreen() {
     </Modal>
     );
   }, [selectedNotif, theme, notifDateFmt, t]);
+
+  if (isGuest) return <GuestGuard />;
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>

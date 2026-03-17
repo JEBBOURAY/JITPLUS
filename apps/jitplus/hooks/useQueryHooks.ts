@@ -48,7 +48,7 @@ export function useNotifications(enabled = true) {
       lastPage.pagination.page < lastPage.pagination.totalPages
         ? lastPage.pagination.page + 1
         : undefined,
-    staleTime: 1 * 60 * 1000,
+    staleTime: 15 * 1000, // 15s — WS/FCM invalidates on new notifications, low staleTime ensures fast background refetch
     // Limit cache lifetime to prevent unbounded memory growth from infinite scroll
     gcTime: 5 * 60 * 1000, // 5 min — discard old pages sooner to limit memory
     // Keeps the previous page data visible while the next page is loading
@@ -67,8 +67,8 @@ export function useUnreadNotificationCount(enabled = true) {
   return useQuery<{ unreadCount: number }>({
     queryKey: queryKeys.unreadCount,
     queryFn: () => api.getUnreadCount(),
-    staleTime: 30 * 1000, // 30s — WS handles real-time when connected, polling is offline fallback
-    refetchInterval: 60 * 1000, // poll every 1min — background fallback when WS is down
+    staleTime: 10 * 1000, // 10s — WS/FCM handle real-time, low staleTime for quick foreground refresh
+    refetchInterval: 30 * 1000, // poll every 30s — tighter fallback when WS is down
     enabled,
   });
 }

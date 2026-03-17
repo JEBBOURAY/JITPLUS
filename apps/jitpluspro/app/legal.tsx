@@ -27,11 +27,11 @@ import { useLanguage } from '@/contexts/LanguageContext';
 // ── URLs ──────────────────────────────────────────────────────────────────────
 const PRIVACY_URL =
   process.env.EXPO_PUBLIC_PRIVACY_URL ||
-  'https://jitplus.com/politique-de-confidentialite';
+  'https://jitplus.com/privacy';
 const TERMS_URL =
-  process.env.EXPO_PUBLIC_TERMS_URL || 'https://jitplus.com/conditions-utilisation';
+  process.env.EXPO_PUBLIC_TERMS_URL || 'https://jitplus.com/cgu';
 const DATA_RIGHTS_URL =
-  process.env.EXPO_PUBLIC_DATA_RIGHTS_URL || 'https://jitplus.com/droits-donnees';
+  process.env.EXPO_PUBLIC_DATA_RIGHTS_URL || 'https://jitplus.com/legal';
 const CONTACT_EMAIL = 'contact@jitplus.com';
 
 // ── Legal row component ───────────────────────────────────────────────────────

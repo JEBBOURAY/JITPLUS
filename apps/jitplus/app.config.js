@@ -107,8 +107,11 @@ module.exports = ({ config }) => {
       // iOS PrivacyInfo.xcprivacy — required since Apple review policy May 2024
       './plugins/withPrivacyManifest',
       // SSL Certificate Pinning — prevents MITM attacks
-      // DISABLED: Enable after generating real pin hashes from api.jitplus.ma SSL cert
+      // DISABLED: Enable after setting up custom domain (api.jitplus.ma) with managed SSL cert.
+      // Cloud Run's *.a.run.app wildcard cert rotates too frequently for pinning.
       // './plugins/withCertificatePinning',
+      // Network security — enforces HTTPS, blocks cleartext traffic in production
+      './plugins/withNetworkSecurity',
       // Force Google Maps region to Morocco — ensures correct border rendering (Sahara)
       './plugins/withMoroccoRegion',
       [
@@ -128,8 +131,12 @@ module.exports = ({ config }) => {
             "Permettre à JitPlus d'accéder à votre position pour trouver les commerces autour de vous.",
         },
       ],
-      // Sentry — enable when SENTRY_ORG, SENTRY_PROJECT, and SENTRY_AUTH_TOKEN are configured
-      // ['@sentry/react-native/expo', { organization: process.env.SENTRY_ORG || '', project: process.env.SENTRY_PROJECT || '' }],
+      // Sentry — source map upload + native crash symbolication
+      // Requires EAS Secrets: SENTRY_ORG, SENTRY_PROJECT, SENTRY_AUTH_TOKEN
+      ['@sentry/react-native/expo', {
+        organization: process.env.SENTRY_ORG || '',
+        project: process.env.SENTRY_PROJECT || '',
+      }],
     ],
     extra: {
       googleWebClientId,

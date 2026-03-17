@@ -68,10 +68,12 @@ async function bootstrap() {
     exclude: ['health', 'uploads/(.*)'],
   });
 
-  // Serve uploaded files locally (dev — in production GCS serves them)
-  app.useStaticAssets(join(process.cwd(), 'uploads'), {
-    prefix: '/uploads/',
-  });
+  // Serve uploaded files locally (dev only — in production GCS serves them)
+  if (!isProd) {
+    app.useStaticAssets(join(process.cwd(), 'uploads'), {
+      prefix: '/uploads/',
+    });
+  }
 
   // CORS — configurable via CORS_ORIGINS (CSV)
   const corsOrigins = process.env.CORS_ORIGINS;

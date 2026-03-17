@@ -111,6 +111,9 @@ export const USER_TYPE_TEAM_MEMBER = 'team_member' as const;
 
 /** Max consecutive failed login attempts before temporary lockout */
 export const MAX_LOGIN_ATTEMPTS = 10;
+
+/** Maximum concurrent device sessions per merchant */
+export const MAX_SESSIONS_PER_MERCHANT = 5;
 /** Lockout duration in minutes */
 export const LOGIN_LOCKOUT_MINUTES = 15;
  

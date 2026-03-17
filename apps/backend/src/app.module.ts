@@ -1,7 +1,7 @@
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
-import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { CacheModule } from '@nestjs/cache-manager';
 import { ScheduleModule } from '@nestjs/schedule';
 import * as Joi from 'joi';
@@ -20,6 +20,7 @@ import { AdminModule } from './admin/admin.module';
 import { GoogleWalletModule } from './google-wallet/google-wallet.module';
 import { RequestLoggerMiddleware } from './common/middleware/request-logger.middleware';
 import { OtpCleanupService } from './common/tasks/otp-cleanup.service';
+import { UserThrottlerGuard } from './common/guards/user-throttler.guard';
 import { RepositoryModule } from './common/repositories';
 import { EventsModule } from './events';
 import { THROTTLE_TTL } from './common/constants';
@@ -54,6 +55,7 @@ import { THROTTLE_TTL } from './common/constants';
         FIREBASE_PROJECT_ID: Joi.when('NODE_ENV', { is: 'production', then: Joi.string().required(), otherwise: Joi.string().optional() }),
         FIREBASE_CLIENT_EMAIL: Joi.when('NODE_ENV', { is: 'production', then: Joi.string().required(), otherwise: Joi.string().optional() }),
         FIREBASE_PRIVATE_KEY: Joi.when('NODE_ENV', { is: 'production', then: Joi.string().required(), otherwise: Joi.string().optional() }),
+        QR_HMAC_SECRET: Joi.when('NODE_ENV', { is: 'production', then: Joi.string().min(32).required(), otherwise: Joi.string().optional() }),
       }),
       validationOptions: { allowUnknown: true },
     }),
@@ -83,7 +85,7 @@ import { THROTTLE_TTL } from './common/constants';
     GoogleWalletModule,
   ],
   providers: [
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_GUARD, useClass: UserThrottlerGuard },
     OtpCleanupService,
   ],
 })

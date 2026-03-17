@@ -40,8 +40,6 @@ export default function QRScreen() {
   const { client, isGuest } = useAuth();
   const { t } = useLanguage();
 
-  if (isGuest) return <GuestGuard />;
-
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const qrViewRef = useRef<any>(null);
   const [qrValue, setQrValue] = useState<string | null>(null);
@@ -195,6 +193,8 @@ export default function QRScreen() {
       Alert.alert(t('common.error'), t('qr.shareError'));
     }
   }, [t]);
+
+  if (isGuest) return <GuestGuard />;
 
   const fullName = client ? `${client.prenom || ''} ${client.nom || ''}`.trim() : t('qr.client');
 

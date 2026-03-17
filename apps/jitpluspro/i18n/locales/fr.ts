@@ -33,6 +33,12 @@ export default {
     allDisplayed: '— Tout est affiché —',
   },
 
+  // ── Errors ──
+  errors: {
+    somethingWentWrong: "Quelque chose s'est mal passé",
+    unexpectedError: 'Une erreur inattendue est survenue. Veuillez réessayer.',
+  },
+
   // ── Login ──
   login: {
     appTagline: 'La fidélité, simplifiée pour votre commerce',

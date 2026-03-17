@@ -99,8 +99,7 @@ export class MerchantController {
       throw new BadRequestException('QR code invalide.');
     }
 
-    const secret = this.configService.get<string>('QR_HMAC_SECRET')
-      || this.configService.getOrThrow<string>('JWT_SECRET');
+    const secret = this.configService.getOrThrow<string>('QR_HMAC_SECRET');
     const expected = createHmac('sha256', secret).update(clientId).digest('base64url');
 
     if (
@@ -158,6 +157,13 @@ export class MerchantController {
     @CurrentUser() user: JwtPayload,
   ) {
     if (!file) throw new BadRequestException('Aucun fichier envoyé');
+
+    // Validate magic bytes — MIME from Content-Type header is client-controlled
+    const { fileTypeFromBuffer } = await (Function('return import("file-type")')() as Promise<typeof import('file-type')>);
+    const detected = await fileTypeFromBuffer(file.buffer);
+    if (!detected || !ALLOWED_MIMES.includes(detected.mime)) {
+      throw new BadRequestException('Le contenu du fichier ne correspond pas à un format image autorisé (JPG, PNG, WebP).');
+    }
 
     const profile = query.type === UploadType.COVER ? 'cover' : 'logo';
     const optimized = await this.imageOptimizer.optimize(file, profile);
@@ -241,6 +247,7 @@ export class MerchantController {
   }
 
   @Post('transactions')
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 30 } })
   async createTransaction(
     @Body() dto: CreateTransactionDto,
     @CurrentUser() user: JwtPayload,
@@ -272,6 +279,7 @@ export class MerchantController {
   }
 
   @Post('transactions/adjust')
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 20 } })
   async adjustPoints(
     @Body() dto: AdjustPointsDto,
     @CurrentUser() user: JwtPayload,

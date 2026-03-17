@@ -31,6 +31,11 @@ export default {
     allDisplayed: '— All displayed —',
   },
 
+  errors: {
+    somethingWentWrong: 'Something went wrong',
+    unexpectedError: 'An unexpected error occurred. Please try again.',
+  },
+
   login: {
     appTagline: 'Loyalty made simple for your business',
     title: 'Sign In',

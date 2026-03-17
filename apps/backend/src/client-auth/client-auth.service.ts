@@ -849,8 +849,7 @@ export class ClientAuthService {
       throw new BadRequestException('Client introuvable');
     }
 
-    const secret = this.configService.get<string>('QR_HMAC_SECRET')
-      || this.configService.getOrThrow<string>('JWT_SECRET');
+    const secret = this.configService.getOrThrow<string>('QR_HMAC_SECRET');
     const idPart = Buffer.from(client.id).toString('base64url');
     const sig = createHmac('sha256', secret).update(client.id).digest('base64url');
     const qr_token = `${idPart}.${sig}`;

@@ -20,6 +20,8 @@ export class StorageService implements IStorageProvider {
     this.bucketName = this.configService.get<string>('GCP_STORAGE_BUCKET_NAME', '');
   }
 
+  private static readonly ALLOWED_FOLDERS = new Set(['logos', 'products', 'stores', 'covers']);
+
   /**
    * Upload un fichier vers Google Cloud Storage
    * @param file Le fichier uploadé via Multer (buffer, mimetype, originalname)
@@ -27,6 +29,11 @@ export class StorageService implements IStorageProvider {
    * @returns L'URL publique du fichier
    */
   async uploadFile(file: Express.Multer.File, folder: string): Promise<string> {
+    // Prevent path traversal — only allow known folder names
+    if (!StorageService.ALLOWED_FOLDERS.has(folder)) {
+      throw new Error(`Dossier non autorisé : ${folder}`);
+    }
+
     const bucket = this.storage.bucket(this.bucketName);
     
     // Générer un nom de fichier non-prévisible avec UUID v4

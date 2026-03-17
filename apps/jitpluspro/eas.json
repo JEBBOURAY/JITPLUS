@@ -23,9 +23,10 @@
         "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "290470991104-hvhs4jm96jgg6qq7et1ggv5jb0pcjvaa.apps.googleusercontent.com",
         "EXPO_PUBLIC_SUPPORT_WHATSAPP": "+33767471397",
         "EXPO_PUBLIC_SUPPORT_EMAIL": "contact@jitplus.com",
-        "EXPO_PUBLIC_PRIVACY_URL": "https://jitplus.com/politique-de-confidentialite",
-        "EXPO_PUBLIC_TERMS_URL": "https://jitplus.com/conditions-utilisation",
-        "EXPO_PUBLIC_DATA_RIGHTS_URL": "https://jitplus.com/droits-donnees"
+        "EXPO_PUBLIC_PRIVACY_URL": "https://jitplus.com/privacy",
+        "EXPO_PUBLIC_TERMS_URL": "https://jitplus.com/cgu",
+        "EXPO_PUBLIC_DATA_RIGHTS_URL": "https://jitplus.com/legal",
+        "EXPO_PUBLIC_SENTRY_DSN_PRO": "$EXPO_PUBLIC_SENTRY_DSN_PRO"
       }
     },
     "production": {
@@ -37,9 +38,10 @@
         "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "290470991104-hvhs4jm96jgg6qq7et1ggv5jb0pcjvaa.apps.googleusercontent.com",
         "EXPO_PUBLIC_SUPPORT_WHATSAPP": "+33767471397",
         "EXPO_PUBLIC_SUPPORT_EMAIL": "contact@jitplus.com",
-        "EXPO_PUBLIC_PRIVACY_URL": "https://jitplus.com/politique-de-confidentialite",
-        "EXPO_PUBLIC_TERMS_URL": "https://jitplus.com/conditions-utilisation",
-        "EXPO_PUBLIC_DATA_RIGHTS_URL": "https://jitplus.com/droits-donnees"
+        "EXPO_PUBLIC_PRIVACY_URL": "https://jitplus.com/privacy",
+        "EXPO_PUBLIC_TERMS_URL": "https://jitplus.com/cgu",
+        "EXPO_PUBLIC_DATA_RIGHTS_URL": "https://jitplus.com/legal",
+        "EXPO_PUBLIC_SENTRY_DSN_PRO": "$EXPO_PUBLIC_SENTRY_DSN_PRO"
       }
     }
   },

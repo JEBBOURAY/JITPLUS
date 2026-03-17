@@ -1,5 +1,5 @@
 # ── Stage 1: Builder ──
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 
 RUN apk add --no-cache openssl
 
@@ -28,7 +28,7 @@ RUN cd apps/backend && pnpm exec prisma generate --schema ./prisma/schema.prisma
 RUN cd apps/backend && pnpm run build
 
 # ── Stage 2: Production Dependencies (standalone, no workspace) ──
-FROM node:20-alpine AS deps
+FROM node:22-alpine AS deps
 
 RUN apk add --no-cache openssl
 
@@ -48,7 +48,7 @@ RUN pnpm install --prod --no-frozen-lockfile
 RUN pnpm exec prisma generate --schema ./prisma/schema.prisma
 
 # ── Stage 3: Runner (Final Image) ──
-FROM node:20-alpine AS runner
+FROM node:22-alpine AS runner
 
 WORKDIR /app
 

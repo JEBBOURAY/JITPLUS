@@ -31,6 +31,11 @@ export default {
     allDisplayed: '— تم عرض الكل —',
   },
 
+  errors: {
+    somethingWentWrong: 'حدث خطأ ما',
+    unexpectedError: 'حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.',
+  },
+
   login: {
     appTagline: 'الولاء، بكل بساطة لتجارتك',
     title: 'تسجيل الدخول',

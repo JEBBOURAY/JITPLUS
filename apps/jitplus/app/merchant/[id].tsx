@@ -48,11 +48,6 @@ export default function MerchantDetailScreen() {
   const [joinLoading, setJoinLoading] = useState(false);
   const [justJoined, setJustJoined] = useState(false);
 
-  // Auth guard — redirect unauthenticated deep-links to welcome
-  if (!isAuthenticated) {
-    return <Redirect href="/welcome" />;
-  }
-
   /**
    * Static Maps URL — one cheap HTTPS image instead of an interactive tile-based map.
    * Falls back to null when latitude/longitude or API key is missing.
@@ -86,6 +81,11 @@ export default function MerchantDetailScreen() {
       setJoinLoading(false);
     }
   }, [id, joinLoading, merchant?.hasCard, justJoined, queryClient]);
+
+  // Auth guard — redirect unauthenticated deep-links to welcome
+  if (!isAuthenticated) {
+    return <Redirect href="/welcome" />;
+  }
 
   const headerOpacity = scrollY.interpolate({
     inputRange: [0, BANNER_HEIGHT - 80],

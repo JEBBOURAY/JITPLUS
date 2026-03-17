@@ -17,7 +17,7 @@ import { LoginDto } from './dto/login.dto';
 import { GoogleLoginMerchantDto } from './dto/google-login-merchant.dto';
 import { GoogleRegisterMerchantDto } from './dto/google-register-merchant.dto';
 import { RegisterMerchantDto } from './dto/register-merchant.dto';
-import { BCRYPT_SALT_ROUNDS, USER_TYPE_MERCHANT, USER_TYPE_TEAM_MEMBER, DEFAULT_POINTS_RULES, OTP_MIN, OTP_MAX, OTP_EXPIRY_MS, OTP_COOLDOWN_MS } from '../common/constants';
+import { BCRYPT_SALT_ROUNDS, USER_TYPE_MERCHANT, USER_TYPE_TEAM_MEMBER, DEFAULT_POINTS_RULES, OTP_MIN, OTP_MAX, OTP_EXPIRY_MS, OTP_COOLDOWN_MS, MAX_SESSIONS_PER_MERCHANT } from '../common/constants';
 import { hashOtp, validateOtp } from '../common/utils/otp.helper';
 import { errMsg } from '../common/utils';
 import { checkLockout, handleFailedLogin, resetLoginAttempts, LockoutDbOps } from '../common/utils/login-lockout.helper';
@@ -25,6 +25,7 @@ import { MERCHANT_LOGIN_SELECT, MERCHANT_OWNER_SELECT, MERCHANT_PROFILE_SELECT }
 import { MerchantResponse } from '../common/interfaces/merchant-response.interface';
 import { MerchantPlanService } from '../merchant/services/merchant-plan.service';
 import { MerchantReferralService } from '../merchant/services/merchant-referral.service';
+import { JwtStrategy } from './strategies/jwt.strategy';
 
 /** Shape returned by login/register containing an access token + merchant data. */
 export interface AuthResult {
@@ -63,6 +64,7 @@ export class AuthService {
     @Inject(MAIL_PROVIDER) private mailProvider: IMailProvider,
     private planService: MerchantPlanService,
     private referralService: MerchantReferralService,
+    private jwtStrategy: JwtStrategy,
     private configService: ConfigService,
   ) {
     this.googleClient = new OAuth2Client(this.configService.get<string>('GOOGLE_CLIENT_ID'));
@@ -275,6 +277,17 @@ export class AuthService {
           data: { merchantId, deviceId: loginDto.deviceId, ...sessionData },
         });
       }
+
+      // Evict oldest sessions if over the limit
+      const sessions = await tx.deviceSession.findMany({
+        where: { merchantId },
+        orderBy: { lastActiveAt: 'desc' },
+        select: { id: true },
+      });
+      if (sessions.length > MAX_SESSIONS_PER_MERCHANT) {
+        const toDelete = sessions.slice(MAX_SESSIONS_PER_MERCHANT).map(s => s.id);
+        await tx.deviceSession.deleteMany({ where: { id: { in: toDelete } } });
+      }
     });
   }
 
@@ -377,7 +390,8 @@ export class AuthService {
 
   async logout(sessionId?: string): Promise<{ message: string }> {
     if (!sessionId) return { message: 'Déconnecté' };
-
+    // Immediately invalidate the in-memory cache to close the replay window
+    this.jwtStrategy.invalidateSession(sessionId);
     try {
       await this.deviceSessionRepo.deleteMany({
         where: { tokenId: sessionId },

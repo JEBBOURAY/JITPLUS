@@ -1,5 +1,6 @@
 import { Controller, Post, Get, Body, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { NotificationsService } from './notifications.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { MerchantTypeGuard } from '../auth/guards/merchant-type.guard';
@@ -21,12 +22,14 @@ export class NotificationsController {
   constructor(private notificationsService: NotificationsService) {}
 
   @Post('send-to-all')
+  @Throttle({ default: { ttl: 3_600_000, limit: 5 } })
   async sendToAll(@Body() dto: SendNotificationDto, @CurrentUser() user: JwtPayload) {
     return this.notificationsService.sendToAll(user.userId, dto);
   }
 
   @Post('send-email-to-all')
   @UseGuards(PremiumGuard)
+  @Throttle({ default: { ttl: 3_600_000, limit: 5 } })
   async sendEmailToAll(@Body() dto: SendEmailBlastDto, @CurrentUser() user: JwtPayload) {
     return this.notificationsService.sendEmailToAll(user.userId, dto);
   }
@@ -43,6 +46,7 @@ export class NotificationsController {
 
   @Post('send-whatsapp-to-all')
   @UseGuards(PremiumGuard)
+  @Throttle({ default: { ttl: 3_600_000, limit: 5 } })
   async sendWhatsAppToAll(@Body() dto: SendWhatsappBlastDto, @CurrentUser() user: JwtPayload) {
     return this.notificationsService.sendWhatsAppToAll(user.userId, dto.body);
   }

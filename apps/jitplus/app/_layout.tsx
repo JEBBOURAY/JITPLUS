@@ -19,7 +19,7 @@ import { LanguageProvider } from '@/contexts/LanguageContext';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import OfflineBanner from '@/components/OfflineBanner';
 import { useRealtimeSocket } from '@jitplus/shared/src/useRealtimeSocket';
-import { useRealtimeEvents, handleFcmDataPayload } from '@/hooks/useRealtimeEvents';
+import { useRealtimeEvents, handleFcmDataPayload, useAppForegroundRefresh } from '@/hooks/useRealtimeEvents';
 import { getServerBaseUrl } from '@/services/api';
 import Constants from 'expo-constants';
 import * as Sentry from '@sentry/react-native';
@@ -122,6 +122,9 @@ function RootLayoutNav() {
   // Listen for WS events and auto-invalidate React Query cache
   useRealtimeEvents(socket);
 
+  // Invalidate notification caches when app returns from background
+  useAppForegroundRefresh();
+
   // Restore iOS brightness if the app was force-closed from the QR screen
   useEffect(() => {
     if (Platform.OS !== 'ios') return;
@@ -148,17 +151,28 @@ function RootLayoutNav() {
     // Listen for notification taps (user interacted with the notification)
     responseListener.current = Notifications.addNotificationResponseReceivedListener((response) => {
       if (__DEV__) console.log('Notification tapped:', response.notification.request.content);
+      // Invalidate caches from FCM data payload for instant feed update
+      const tapData = response.notification.request.content.data as Record<string, string> | undefined;
+      handleFcmDataPayload(tapData, queryClient);
       // Navigate to notifications tab when user taps a notification
       try {
         router.push('/(tabs)/notifications');
       } catch (e) { if (__DEV__) console.warn('Navigation failed', e); }
     });
 
+    // Handle cold-start: app was killed, user tapped a notification to launch it
+    Notifications.getLastNotificationResponseAsync().then((response) => {
+      if (response) {
+        const coldData = response.notification.request.content.data as Record<string, string> | undefined;
+        handleFcmDataPayload(coldData, queryClient);
+      }
+    });
+
     return () => {
       notificationListener.current?.remove();
       responseListener.current?.remove();
     };
-  }, [router]);
+  }, [router, queryClient]);
 
   const { isDark } = theme;
 

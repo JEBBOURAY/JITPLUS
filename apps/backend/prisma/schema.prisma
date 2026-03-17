@@ -15,21 +15,21 @@ datasource db {
 
 model Merchant {
   id              String           @id @default(uuid())
-  nom             String
-  email           String           @unique
-  password        String
-  googleId        String?          @unique @map("google_id")
-  pushToken       String?          @map("push_token")
+  nom             String           @db.VarChar(255)
+  email           String           @unique @db.VarChar(255)
+  password        String           @db.VarChar(255)
+  googleId        String?          @unique @map("google_id") @db.VarChar(255)
+  pushToken       String?          @map("push_token") @db.VarChar(512)
   termsAccepted   Boolean          @default(false) @map("terms_accepted")
   categorie       MerchantCategory
-  description     String?
-  ville           String?
-  quartier        String?
-  adresse         String?
+  description     String?          @db.VarChar(1000)
+  ville           String?          @db.VarChar(100)
+  quartier        String?          @db.VarChar(100)
+  adresse         String?          @db.VarChar(500)
   latitude        Float?
   longitude       Float?
-  countryCode     String           @default("MA") @map("country_code")
-  phoneNumber     String?          @map("phone_number")
+  countryCode     String           @default("MA") @map("country_code") @db.VarChar(5)
+  phoneNumber     String?          @map("phone_number") @db.VarChar(20)
   logoUrl         String?          @map("logo_url")
   coverUrl        String?          @map("cover_url")
   socialLinks     Json?            @map("social_links")  // {instagram, facebook, tiktok, website, snapchat, youtube}
@@ -94,14 +94,14 @@ model Merchant {
 model Store {
   id         String           @id @default(uuid())
   merchantId String           @map("merchant_id")
-  nom        String
+  nom        String           @db.VarChar(255)
   categorie  MerchantCategory?
-  ville      String?
-  quartier   String?
-  adresse    String?
+  ville      String?          @db.VarChar(100)
+  quartier   String?          @db.VarChar(100)
+  adresse    String?          @db.VarChar(500)
   latitude   Float?
   longitude  Float?
-  telephone  String?
+  telephone  String?          @db.VarChar(20)
   isActive   Boolean          @default(true) @map("is_active")
   createdAt  DateTime         @default(now()) @map("created_at")
   updatedAt  DateTime         @updatedAt @map("updated_at")
@@ -114,9 +114,9 @@ model Store {
 
 model Admin {
   id                  String    @id @default(uuid())
-  email               String    @unique
-  password            String
-  nom                 String
+  email               String    @unique @db.VarChar(255)
+  password            String    @db.VarChar(255)
+  nom                 String    @db.VarChar(255)
   role                AdminRole @default(ADMIN)
   isActive            Boolean   @default(true) @map("is_active")
   failedLoginAttempts Int       @default(0) @map("failed_login_attempts")
@@ -206,14 +206,14 @@ enum LoyaltyType {
 
 model Client {
   id                  String        @id @default(uuid())
-  prenom              String?
-  nom                 String?
-  email               String?       @unique
-  password            String?
-  telephone           String?       @unique
-  googleId            String?       @unique @map("google_id")
-  countryCode         String        @default("MA") @map("country_code")
-  pushToken           String?       @map("push_token")
+  prenom              String?       @db.VarChar(255)
+  nom                 String?       @db.VarChar(255)
+  email               String?       @unique @db.VarChar(255)
+  password            String?       @db.VarChar(255)
+  telephone           String?       @unique @db.VarChar(20)
+  googleId            String?       @unique @map("google_id") @db.VarChar(255)
+  countryCode         String        @default("MA") @map("country_code") @db.VarChar(5)
+  pushToken           String?       @map("push_token") @db.VarChar(512)
   refreshTokenHash    String?       @unique @map("refresh_token_hash")
   termsAccepted       Boolean       @default(false) @map("terms_accepted")
   shareInfoMerchants  Boolean       @default(true)  @map("share_info_merchants")
@@ -264,8 +264,8 @@ model LoyaltyCard {
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
 
-  client   Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  client   Client   @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Restrict)
 
   @@unique([clientId, merchantId])
   @@index([merchantId])
@@ -291,8 +291,8 @@ model Transaction {
   status          TransactionStatus @default(ACTIVE)
   createdAt       DateTime          @default(now()) @map("created_at")
 
-  client     Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  merchant   Merchant    @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  client     Client      @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  merchant   Merchant    @relation(fields: [merchantId], references: [id], onDelete: Restrict)
   reward     Reward?     @relation(fields: [rewardId], references: [id], onDelete: SetNull)
   teamMember TeamMember? @relation(fields: [teamMemberId], references: [id], onDelete: SetNull)
 
@@ -323,9 +323,9 @@ enum TeamRole {
 model TeamMember {
   id                  String    @id @default(uuid())
   merchantId          String    @map("merchant_id")
-  nom                 String
-  email               String    @unique
-  password            String
+  nom                 String    @db.VarChar(255)
+  email               String    @unique @db.VarChar(255)
+  password            String    @db.VarChar(255)
   role                TeamRole  @default(TEAM_MEMBER)
   isActive            Boolean   @default(true) @map("is_active")
   failedLoginAttempts Int       @default(0) @map("failed_login_attempts")
@@ -343,9 +343,9 @@ model TeamMember {
 model Reward {
   id          String   @id @default(uuid())
   merchantId  String   @map("merchant_id")
-  titre       String
+  titre       String   @db.VarChar(255)
   cout        Int
-  description String?
+  description String?  @db.VarChar(1000)
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
@@ -359,8 +359,8 @@ model Reward {
 model Notification {
   id             String   @id @default(uuid())
   merchantId     String   @map("merchant_id")
-  title          String
-  body           String
+  title          String   @db.VarChar(255)
+  body           String   @db.VarChar(2000)
   recipientCount Int      @default(0) @map("recipient_count")
   successCount   Int      @default(0) @map("success_count")
   failureCount   Int      @default(0) @map("failure_count")

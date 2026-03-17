@@ -25,6 +25,7 @@ import FadeInView from '@/components/FadeInView';
 import GuestGuard from '@/components/GuestGuard';
 import Skeleton from '@/components/Skeleton';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import { wp, hp, ms, fontSize as FS, radius } from '@/utils/responsive';
 import { isValidEmail } from '@/utils/validation';
 import { extractErrorMessage } from '@/utils/errorMessage';
@@ -36,7 +37,6 @@ export default function ProfileScreen() {
   const { client, logout, refreshProfile, isGuest } = useAuth();
   const router = useRouter();
 
-  if (isGuest) return <GuestGuard />;
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLoading, setIsLoading] = useState(!client);
   const [isEditing, setIsEditing] = useState(false);
@@ -93,7 +93,7 @@ export default function ProfileScreen() {
         if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
         draftTimerRef.current = setTimeout(async () => {
           try {
-            await AsyncStorage.setItem('profile_draft', JSON.stringify(draftRef.current));
+            await SecureStore.setItemAsync('profile_draft', JSON.stringify(draftRef.current));
           } catch { /* best-effort */ }
         }, 300);
       }
@@ -107,7 +107,7 @@ export default function ProfileScreen() {
 
   // Restore draft on mount (if the app was killed during editing)
   useEffect(() => {
-    AsyncStorage.getItem('profile_draft').then((raw) => {
+    SecureStore.getItemAsync('profile_draft').then((raw) => {
       if (!raw) return;
       try {
         const d = JSON.parse(raw);
@@ -119,7 +119,7 @@ export default function ProfileScreen() {
         setIsEditing(true);
         setInfoExpanded(true);
       } catch { /* corrupt draft, ignore */ }
-      AsyncStorage.removeItem('profile_draft');
+      SecureStore.deleteItemAsync('profile_draft').catch(() => {});
     });
   }, []);
 
@@ -146,7 +146,7 @@ export default function ProfileScreen() {
 
   const cancelEditing = () => {
     setIsEditing(false);
-    AsyncStorage.removeItem('profile_draft').catch(() => {});
+    SecureStore.deleteItemAsync('profile_draft').catch(() => {});
     haptic(HapticStyle.Light);
   };
 
@@ -271,6 +271,8 @@ export default function ProfileScreen() {
       } else {
         Alert.alert(t('profile.exportDataSuccess'), t('profile.exportDataSuccessMsg'));
       }
+      // Auto-delete the export file after sharing
+      await FileSystem.deleteAsync(fileUri, { idempotent: true }).catch(() => {});
     } catch (err) {
       if (__DEV__) console.error('Export error:', err);
       Alert.alert(t('common.error'), t('profile.exportDataError'));
@@ -278,6 +280,8 @@ export default function ProfileScreen() {
       setIsExporting(false);
     }
   };
+
+  if (isGuest) return <GuestGuard />;
 
   const confirmDelete = async () => {
     if (deleteConfirmText.trim().toUpperCase() !== t('profile.deleteConfirmWord').toUpperCase()) return;

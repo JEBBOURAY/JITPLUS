@@ -246,11 +246,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Each removal is individually caught so one failure doesn't block others.
     await Promise.allSettled([
       AsyncStorage.removeItem('jitplus-query-cache'),
-      AsyncStorage.removeItem('profile_draft'),
       AsyncStorage.removeItem('showWelcome'),
       AsyncStorage.removeItem('showGuidBadge'),
-      // Clear QR token from SecureStore (permanent token must not persist across accounts)
+      // Clear QR token + profile draft from SecureStore
       import('expo-secure-store').then((ss) => ss.deleteItemAsync('qr_permanent_token')),
+      import('expo-secure-store').then((ss) => ss.deleteItemAsync('profile_draft')),
     ]);
     store.reset();
   }, [queryClient]);

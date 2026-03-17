@@ -5,7 +5,8 @@
  *
  * Also handles FCM data payloads for background/offline scenarios.
  */
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
+import { AppState, AppStateStatus } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { Socket } from 'socket.io-client';
 import {
@@ -64,7 +65,7 @@ export function useRealtimeEvents(socket: Socket | null) {
 
 /**
  * Handle FCM data payloads from push notifications.
- * Call this when a notification is received (foreground or background).
+ * Call this when a notification is received (foreground, background tap, or cold start).
  * This is the fallback for when the WebSocket is not connected.
  */
 export function handleFcmDataPayload(
@@ -77,16 +78,47 @@ export function handleFcmDataPayload(
     case 'points_updated':
     case 'reward_available':
     case 'reward_redeemed':
-      // Invalidate points overview cache
       queryClient.invalidateQueries({ queryKey: queryKeys.points });
-      // Also invalidate notifications since a notification was created
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
       queryClient.invalidateQueries({ queryKey: queryKeys.unreadCount });
       break;
-    case 'notification_new':
-      // Broadcast notification received via FCM — invalidate notifications + unread count
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    case 'notification_new': {
+      // Optimistic: increment unread count for instant badge update (mirrors WS handler)
+      queryClient.cancelQueries({ queryKey: queryKeys.unreadCount });
+      const current = queryClient.getQueryData<{ unreadCount: number }>(queryKeys.unreadCount);
+      if (current) {
+        queryClient.setQueryData(queryKeys.unreadCount, {
+          unreadCount: Math.max(0, current.unreadCount + 1),
+        });
+      }
+      queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
       queryClient.invalidateQueries({ queryKey: queryKeys.unreadCount });
       break;
+    }
   }
+}
+
+/**
+ * Invalidate notification-related caches when the app returns to foreground.
+ * Ensures notifications received via FCM while backgrounded are immediately visible.
+ */
+export function useAppForegroundRefresh() {
+  const queryClient = useQueryClient();
+  const appState = useRef(AppState.currentState);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState: AppStateStatus) => {
+      if (
+        appState.current.match(/inactive|background/) &&
+        nextState === 'active'
+      ) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
+        queryClient.invalidateQueries({ queryKey: queryKeys.unreadCount });
+        queryClient.invalidateQueries({ queryKey: queryKeys.points });
+      }
+      appState.current = nextState;
+    });
+
+    return () => subscription.remove();
+  }, [queryClient]);
 }

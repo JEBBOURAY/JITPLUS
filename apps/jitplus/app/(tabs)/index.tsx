@@ -285,9 +285,6 @@ export default function HomeScreen() {
   // Android: "press back again to exit" on the home tab
   useExitOnBack();
 
-  // Guest users see a login prompt on this tab
-  if (isGuest) return <GuestGuard />;
-
   const [showWelcome, setShowWelcome] = useState(false);
   const welcomeAnim = useRef(new Animated.Value(0)).current;
   const [sortMode, setSortMode] = useState<SortMode>('recent');
@@ -570,6 +567,9 @@ export default function HomeScreen() {
       </View>
     );
   }, [isLoading, theme, t]);
+
+  // Guest users see a login prompt on this tab
+  if (isGuest) return <GuestGuard />;
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
