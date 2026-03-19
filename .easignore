@@ -1,0 +1,57 @@
+# .easignore — overrides .gitignore for EAS Build uploads
+# Identical to .gitignore EXCEPT: google-services.json and GoogleService-Info.plist
+# are NOT excluded so they are uploaded to the EAS Build server.
+
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Testing
+coverage/
+
+# Production
+build/
+dist/
+
+# Misc
+.DS_Store
+*.pem
+
+# Debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Local env files
+.env
+.env.*
+!.env.example
+!.env.production.example
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Expo
+.expo/
+.expo-shared/
+
+# NOTE: google-services.json and GoogleService-Info.plist are intentionally
+# NOT excluded here (unlike .gitignore) so EAS Build can access them.
+
+# Metro
+.metro-health-check*
+
+# Android build artifacts
+**/.gradle/
+**/.kotlin/
+**/android/build/
+**/android/app/build/
+
+# Prisma generated client
+apps/backend/src/generated/
