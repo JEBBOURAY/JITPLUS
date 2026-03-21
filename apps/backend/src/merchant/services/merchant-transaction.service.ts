@@ -257,7 +257,7 @@ export class MerchantTransactionService {
       this.transactionRepoDelegate.count({ where }),
     ]);
 
-    const maskedTransactions = transactions.map((tx) => {
+    const maskedTransactions = transactions.map((tx: any) => {
       if (tx.client && tx.client.shareInfoMerchants === false) {
         return {
           ...tx,
@@ -378,7 +378,7 @@ export class MerchantTransactionService {
       take: 50,
     });
 
-    return transactions.map((tx) => {
+    return transactions.map((tx: any) => {
       if (tx.client && tx.client.shareInfoMerchants === false) {
         return {
           ...tx,

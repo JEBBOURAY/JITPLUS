@@ -287,7 +287,7 @@ export class ClientAuthService {
           },
           select: CLIENT_AUTH_SELECT,
         });
-      } catch (error) {
+      } catch (error: any) {
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
           throw new ConflictException('Un compte avec ce numéro de téléphone existe déjà');
         }
@@ -330,7 +330,7 @@ export class ClientAuthService {
           },
           select: CLIENT_AUTH_SELECT,
         });
-      } catch (error) {
+      } catch (error: any) {
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
           throw new ConflictException('Un compte avec ce numéro de téléphone existe déjà');
         }
@@ -566,7 +566,7 @@ export class ClientAuthService {
           },
           select: CLIENT_AUTH_SELECT,
         });
-      } catch (error) {
+      } catch (error: any) {
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
           throw new ConflictException('Un compte avec cet email existe déjà');
         }
@@ -649,7 +649,7 @@ export class ClientAuthService {
             },
             select: CLIENT_AUTH_SELECT,
           });
-        } catch (error) {
+        } catch (error: any) {
           if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
             throw new ConflictException('Un compte avec cet email ou ce compte Google existe déjà');
           }

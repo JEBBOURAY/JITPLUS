@@ -285,7 +285,7 @@ export class AuthService {
         select: { id: true },
       });
       if (sessions.length > MAX_SESSIONS_PER_MERCHANT) {
-        const toDelete = sessions.slice(MAX_SESSIONS_PER_MERCHANT).map(s => s.id);
+        const toDelete = sessions.slice(MAX_SESSIONS_PER_MERCHANT).map((s: any) => s.id);
         await tx.deviceSession.deleteMany({ where: { id: { in: toDelete } } });
       }
     });
@@ -523,7 +523,7 @@ export class AuthService {
           stores: true,
         },
       });
-    } catch (error) {
+    } catch (error: any) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
         throw new ConflictException('Un compte commerçant avec cet email existe déjà');
       }
@@ -772,7 +772,7 @@ export class AuthService {
           stores: true,
         },
       });
-    } catch (error) {
+    } catch (error: any) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
         throw new ConflictException('Un compte commerçant avec cet email existe déjà');
       }

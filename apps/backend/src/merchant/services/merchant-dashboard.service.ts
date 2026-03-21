@@ -89,15 +89,15 @@ export class MerchantDashboardService {
       }),
     ]);
 
-    const rewardCounts = new Map(
-      rewardRedemptions.map((entry) => [entry.rewardId as string, entry._count?._all ?? 0]),
+    const rewardCounts = new Map<string, number>(
+      rewardRedemptions.map((entry: any) => [entry.rewardId as string, entry._count?._all ?? 0]),
     );
 
     const rewardsDistribution: Array<{
       rewardId: string | null;
       title: string;
       count: number;
-    }> = rewards.map((reward) => ({
+    }> = rewards.map((reward: any) => ({
       rewardId: reward.id,
       title: reward.titre,
       count: rewardCounts.get(reward.id) || 0,
@@ -116,7 +116,7 @@ export class MerchantDashboardService {
       totalPoints: pointsSum._sum.points ?? 0,
       totalRedeemedPoints: redeemedSum._sum.points ?? 0,
       totalTransactions,
-      totalRewardsGiven: Array.from(rewardCounts.values()).reduce((a, b) => a + b, 0) + unknownRedemptions,
+      totalRewardsGiven: Array.from(rewardCounts.values()).reduce((a: number, b: number) => a + b, 0) + unknownRedemptions,
       profileViews: dateFilter ? profileViewCount : (merchant?.profileViews ?? 0),
       rewardsDistribution,
       loyaltyType: merchant?.loyaltyType || DEFAULT_LOYALTY_TYPE,

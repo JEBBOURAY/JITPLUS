@@ -154,7 +154,7 @@ export class AdminAuthService {
     ]);
 
     return {
-      merchants: merchants.map((m) => ({
+      merchants: merchants.map((m: any) => ({
         ...m,
         clientCount: m._count.loyaltyCards,
         storeCount: m._count.stores,
@@ -398,7 +398,7 @@ export class AdminAuthService {
     ]);
 
     const channelMap = Object.fromEntries(
-      channelCounts.map((c) => [c.channel, c._count.id]),
+      channelCounts.map((c: any) => [c.channel, c._count.id]),
     );
     const pushCount = channelMap['PUSH'] ?? 0;
     const whatsappCount = channelMap['WHATSAPP'] ?? 0;
@@ -406,10 +406,10 @@ export class AdminAuthService {
 
     // Map raw trend rows into month buckets
     const merchantTrendMap = Object.fromEntries(
-      merchantTrendRaw.map((r) => [r.month, Number(r.count)]),
+      merchantTrendRaw.map((r: any) => [r.month, Number(r.count)]),
     );
     const transactionTrendMap = Object.fromEntries(
-      transactionTrendRaw.map((r) => [r.month, Number(r.count)]),
+      transactionTrendRaw.map((r: any) => [r.month, Number(r.count)]),
     );
     const trends = monthBuckets.map(({ label, start }) => {
       const key = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}`;
@@ -498,7 +498,7 @@ export class AdminAuthService {
     ]);
 
     return {
-      clients: clients.map(({ _count, ...rest }) => ({
+      clients: clients.map(({ _count, ...rest }: any) => ({
         ...rest,
         merchantCount: _count.loyaltyCards,
       })),

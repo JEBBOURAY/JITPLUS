@@ -239,13 +239,13 @@ export class ClientService {
       this.loyaltyCardRepo.count({ where: { clientId } }),
     ]);
 
-    const totalPoints = cards.reduce((sum, card) => sum + card.points, 0);
+    const totalPoints = cards.reduce((sum: number, card: any) => sum + card.points, 0);
 
     return {
       totalPoints,
       totalCards,
       pagination: buildPagination(totalCards, page, safeTake),
-      cards: cards.map((card) => ({
+      cards: cards.map((card: any) => ({
         id: card.id,
         merchantId: card.merchantId,
         balance: card.points,
@@ -302,7 +302,7 @@ export class ClientService {
     ]);
 
     return {
-      transactions: transactions.map((t) => ({
+      transactions: transactions.map((t: any) => ({
         id: t.id,
         merchantId: t.merchantId,
         clientId: t.clientId,
@@ -383,7 +383,7 @@ export class ClientService {
         data: { profileViews: { increment: 1 } },
       }),
     )
-    .catch((err) => {
+    .catch((err: any) => {
       // P2002 = unique constraint violation → already viewed today, skip
       if (err?.code !== 'P2002') {
         this.logger.warn('Profile view tracking failed', err);
@@ -648,9 +648,9 @@ export class ClientService {
       select: { merchantId: true, points: true },
     });
 
-    const pointsMap = new Map(cards.map((c) => [c.merchantId, c.points]));
+    const pointsMap = new Map(cards.map((c: any) => [c.merchantId, c.points]));
 
-    return nearby.map((c) => {
+    return nearby.map((c: any) => {
       const m = c.merchant;
       const s = c.store;
       return {
@@ -696,10 +696,10 @@ export class ClientService {
       return { notifications: [], pagination: buildPagination(0, page, limit) };
     }
 
-    const dismissedIds = dismissedStatuses.map((s) => s.notificationId);
+    const dismissedIds = dismissedStatuses.map((s: any) => s.notificationId);
 
     // Only show notifications created after the client joined each merchant
-    const merchantFilters = cards.map((card) => ({
+    const merchantFilters = cards.map((card: any) => ({
       merchantId: card.merchantId,
       createdAt: { gte: card.createdAt },
     }));
@@ -733,7 +733,7 @@ export class ClientService {
     ]);
 
     return {
-      notifications: notifications.map((n) => {
+      notifications: notifications.map((n: any) => {
         const status = n.clientStatuses?.[0];
         return {
           id: n.id,
@@ -768,7 +768,7 @@ export class ClientService {
     if (cards.length === 0) return { unreadCount: 0 };
 
     // Only count notifications created after the client joined each merchant
-    const merchantFilters = cards.map((card) => ({
+    const merchantFilters = cards.map((card: any) => ({
       merchantId: card.merchantId,
       createdAt: { gte: card.createdAt },
     }));
@@ -819,7 +819,7 @@ export class ClientService {
     if (cards.length === 0) return { success: true, count: 0 };
 
     // Only target notifications created after the client joined each merchant
-    const merchantFilters = cards.map((card) => ({
+    const merchantFilters = cards.map((card: any) => ({
       merchantId: card.merchantId,
       createdAt: { gte: card.createdAt },
     }));
@@ -829,7 +829,7 @@ export class ClientService {
         where: { OR: merchantFilters },
         select: { id: true },
       })
-    ).map((n) => n.id);
+    ).map((n: any) => n.id);
 
     if (notifIds.length === 0) return { success: true, count: 0 };
 
@@ -844,7 +844,7 @@ export class ClientService {
       }),
       // 2. Create rows for notifications the client hasn't interacted with yet
       this.clientNotifStatusRepo.createMany({
-        data: notifIds.map((notificationId) => ({
+        data: notifIds.map((notificationId: string) => ({
           clientId,
           notificationId,
           isRead: true,
@@ -883,7 +883,7 @@ export class ClientService {
     if (cards.length === 0) return { success: true, count: 0 };
 
     // Only target notifications created after the client joined each merchant
-    const merchantFilters = cards.map((card) => ({
+    const merchantFilters = cards.map((card: any) => ({
       merchantId: card.merchantId,
       createdAt: { gte: card.createdAt },
     }));
@@ -893,7 +893,7 @@ export class ClientService {
         where: { OR: merchantFilters },
         select: { id: true },
       })
-    ).map((n) => n.id);
+    ).map((n: any) => n.id);
 
     if (notifIds.length === 0) return { success: true, count: 0 };
 
@@ -906,7 +906,7 @@ export class ClientService {
         data: { isDismissed: true, dismissedAt: now },
       }),
       this.clientNotifStatusRepo.createMany({
-        data: notifIds.map((notificationId) => ({
+        data: notifIds.map((notificationId: string) => ({
           clientId,
           notificationId,
           isDismissed: true,

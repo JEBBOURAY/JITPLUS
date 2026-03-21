@@ -67,7 +67,7 @@ export class MerchantClientService {
     ]);
 
     return {
-      clients: clients.map((client) => {
+      clients: clients.map((client: any) => {
         const loyaltyCard = client.loyaltyCards[0];
         const lastTx = client.transactions[0];
         const tx = lastTx
@@ -128,7 +128,7 @@ export class MerchantClientService {
       });
     }
 
-    const clientIds = clients.map((c) => c.id);
+    const clientIds = clients.map((c: any) => c.id);
 
     const [loyaltyCards, lastTransactions] = clientIds.length
       ? await Promise.all([
@@ -145,12 +145,12 @@ export class MerchantClientService {
         ])
       : [[], []];
 
-    const loyaltyMap = new Map(loyaltyCards.map((card) => [card.clientId, card]));
+    const loyaltyMap = new Map(loyaltyCards.map((card: any) => [card.clientId, card]));
 
     const txMap = buildTxMap(lastTransactions);
 
-    return clients.map((client) => {
-      const loyaltyCard = loyaltyMap.get(client.id);
+    return clients.map((client: any) => {
+      const loyaltyCard = loyaltyMap.get(client.id) as { points: number; createdAt: Date } | undefined;
       const tx = txMap.get(client.id);
       return mapClientResponse(client, loyaltyCard, tx);
     });
@@ -255,7 +255,7 @@ export class MerchantClientService {
       hasReward: (loyaltyCard?.points ?? 0) >= rewardThreshold,
       memberSince: loyaltyCard?.createdAt ?? client.createdAt,
       termsAccepted: client.termsAccepted,
-      transactions: transactions.map((t) => ({
+      transactions: transactions.map((t: any) => ({
         id: t.id,
         type: t.type,
         loyaltyType: t.loyaltyType ?? null,

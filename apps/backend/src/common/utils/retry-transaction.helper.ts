@@ -23,7 +23,7 @@ export async function withRetry<T>(
   for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
     try {
       return await fn();
-    } catch (error) {
+    } catch (error: any) {
       const isSerializationFailure =
         // Prisma wraps serialization errors as P2034
         (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') ||

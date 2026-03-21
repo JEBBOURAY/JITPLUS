@@ -37,7 +37,7 @@ export class MerchantTeamService {
       orderBy: { createdAt: 'desc' },
     });
 
-    return members.map((m) => ({
+    return members.map((m: any) => ({
       ...m,
       transactionsCount: m._count.transactions,
       _count: undefined,

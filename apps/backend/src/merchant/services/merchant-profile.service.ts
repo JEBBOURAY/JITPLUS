@@ -148,7 +148,7 @@ export class MerchantProfileService {
       },
     });
 
-    return sessions.map(({ tokenId, ...session }) => ({
+    return sessions.map(({ tokenId, ...session }: any) => ({
       ...session,
       isCurrentDevice: currentTokenId ? tokenId === currentTokenId : session.isCurrentDevice,
     }));
@@ -337,7 +337,7 @@ export class MerchantProfileService {
       if (cards.length === 0) break;
 
       // 2. Bulk cap all balances in one UPDATE (instead of N individual updates)
-      const cardIds = cards.map((c) => c.id);
+      const cardIds = cards.map((c: any) => c.id);
       await this.loyaltyCardRepo.updateMany({
         where: { id: { in: cardIds } },
         data: { points: limit },
@@ -345,7 +345,7 @@ export class MerchantProfileService {
 
       // 3. Bulk insert all ADJUST_POINTS transactions (instead of N individual creates)
       await this.transactionRepoDelegate.createMany({
-        data: cards.map((card) => ({
+        data: cards.map((card: any) => ({
           clientId: card.clientId,
           merchantId,
           type: 'ADJUST_POINTS' as const,
@@ -361,7 +361,7 @@ export class MerchantProfileService {
       for (let i = 0; i < cards.length; i += NOTIF_CONCURRENCY) {
         const chunk = cards.slice(i, i + NOTIF_CONCURRENCY);
         await Promise.allSettled(
-          chunk.map((card) =>
+          chunk.map((card: any) =>
             this.notifications.sendToClient(
               merchantId,
               card.clientId,
@@ -416,11 +416,11 @@ export class MerchantProfileService {
 
       if (cards.length === 0) break;
 
-      const clientIds = cards.map((c) => c.clientId);
+      const clientIds = cards.map((c: any) => c.clientId);
 
       // 2. Bulk insert transactions for this batch
       await this.transactionRepoDelegate.createMany({
-        data: clientIds.map((clientId) => ({
+        data: clientIds.map((clientId: string) => ({
           clientId,
           merchantId,
           type: 'LOYALTY_PROGRAM_CHANGE' as const,

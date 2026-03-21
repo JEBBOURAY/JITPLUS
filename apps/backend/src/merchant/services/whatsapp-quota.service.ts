@@ -3,7 +3,7 @@ import {
   MERCHANT_REPOSITORY, type IMerchantRepository,
   TRANSACTION_RUNNER, type ITransactionRunner,
 } from '../../common/repositories';
-import { Merchant, Prisma } from '@prisma/client';
+import { Merchant } from '@prisma/client';
 
 @Injectable()
 export class WhatsappQuotaService {
@@ -17,7 +17,7 @@ export class WhatsappQuotaService {
    * Resets the monthly quota if a new period has started.
    */
   async getQuota(merchantId: string): Promise<Merchant> {
-    return this.txRunner.run(async (tx: Prisma.TransactionClient) => {
+    return this.txRunner.run(async (tx) => {
       let merchant = await tx.merchant.findUniqueOrThrow({
         where: { id: merchantId },
       });
@@ -52,7 +52,7 @@ export class WhatsappQuotaService {
     merchantId: string,
     messagesToSend: number,
   ): Promise<Merchant> {
-    return this.txRunner.run(async (tx: Prisma.TransactionClient) => {
+    return this.txRunner.run(async (tx) => {
       let merchant = await tx.merchant.findUniqueOrThrow({
         where: { id: merchantId },
       });

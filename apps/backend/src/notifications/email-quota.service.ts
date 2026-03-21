@@ -3,7 +3,7 @@ import {
   MERCHANT_REPOSITORY, type IMerchantRepository,
   TRANSACTION_RUNNER, type ITransactionRunner,
 } from '../common/repositories';
-import { Merchant, Prisma } from '@prisma/client';
+import { Merchant } from '@prisma/client';
 
 @Injectable()
 export class EmailQuotaService {
@@ -50,7 +50,7 @@ export class EmailQuotaService {
     merchantId: string,
     emailsToSend: number,
   ): Promise<Merchant> {
-    return this.txRunner.run(async (tx: Prisma.TransactionClient) => {
+    return this.txRunner.run(async (tx) => {
       let merchant = await tx.merchant.findUniqueOrThrow({
         where: { id: merchantId },
       });

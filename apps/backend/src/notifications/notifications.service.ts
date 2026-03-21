@@ -74,7 +74,7 @@ export class NotificationsService {
         select: { logoUrl: true },
       }),
     ]);
-    const allClientIds = allCards.map((c) => c.clientId);
+    const allClientIds: string[] = allCards.map((c: any) => c.clientId);
     const imageUrl = this.buildImageUrl(merchant?.logoUrl);
 
     // â”€â”€ 2. Among those, find who has push tokens for FCM delivery â”€â”€
@@ -98,7 +98,7 @@ export class NotificationsService {
 
       pushRecipients.push(
         ...batch
-          .filter((c): c is { id: string; pushToken: string } => !!c.pushToken),
+          .filter((c: any): c is { id: string; pushToken: string } => !!c.pushToken),
       );
       cursor = batch[batch.length - 1].id;
 
@@ -303,7 +303,7 @@ export class NotificationsService {
       if (batch.length === 0) break;
 
       recipients.push(
-        ...batch.filter((c): c is { id: string; email: string; prenom: string | null } => !!c.email),
+        ...batch.filter((c: any): c is { id: string; email: string; prenom: string | null } => !!c.email),
       );
       emailCursor = batch[batch.length - 1].id;
 
@@ -386,7 +386,7 @@ export class NotificationsService {
       if (batch.length === 0) break;
 
       recipients.push(
-        ...batch.filter((c): c is { id: string; telephone: string } => !!c.telephone),
+        ...batch.filter((c: any): c is { id: string; telephone: string } => !!c.telephone),
       );
       whatsappCursor = batch[batch.length - 1].id;
 
@@ -532,7 +532,7 @@ export class NotificationsService {
     ]);
 
     // Batch-fetch read counts for the page
-    const notifIds = notifications.map((n) => n.id);
+    const notifIds = notifications.map((n: any) => n.id);
     const readGroups = notifIds.length
       ? await this.clientNotifStatusRepo.groupBy({
           by: ['notificationId'],
@@ -540,10 +540,10 @@ export class NotificationsService {
           _count: true,
         })
       : [];
-    const readMap = new Map(readGroups.map((g) => [g.notificationId, g._count]));
+    const readMap = new Map(readGroups.map((g: any) => [g.notificationId, g._count]));
 
     return {
-      notifications: notifications.map((n) => ({
+      notifications: notifications.map((n: any) => ({
         ...n,
         receivedCount: n._count?.clientStatuses ?? 0,
         readCount: readMap.get(n.id) ?? 0,
