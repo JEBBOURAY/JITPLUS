@@ -3,6 +3,9 @@ FROM node:22-alpine AS builder
 
 RUN apk update && apk upgrade --no-cache && apk add --no-cache openssl
 
+# Upgrade npm to patch bundled tar (CVE-2026-26960) and minimatch (CVE-2026-26996)
+RUN npm install -g npm@10.9.7
+
 WORKDIR /app
 
 # Enable pnpm
@@ -32,6 +35,9 @@ FROM node:22-alpine AS deps
 
 RUN apk update && apk upgrade --no-cache && apk add --no-cache openssl
 
+# Upgrade npm to patch bundled tar (CVE-2026-26960) and minimatch (CVE-2026-26996)
+RUN npm install -g npm@10.9.7
+
 WORKDIR /app
 
 # Enable pnpm
@@ -56,6 +62,9 @@ FROM node:22-alpine AS runner
 
 # Patch OS-level CVEs (zlib, etc.)
 RUN apk update && apk upgrade --no-cache
+
+# Upgrade npm to patch bundled tar (CVE-2026-26960) and minimatch (CVE-2026-26996)
+RUN npm install -g npm@10.9.7
 
 WORKDIR /app
 
