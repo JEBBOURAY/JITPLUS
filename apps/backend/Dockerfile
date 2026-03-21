@@ -62,9 +62,9 @@ FROM node:22-alpine AS runner
 # Patch OS-level CVEs (zlib, etc.)
 RUN apk update && apk upgrade --no-cache
 
-# Upgrade npm to patch CVEs in bundled deps (tar, minimatch, glob, diff)
-# npm@11.12.0: tar@^7.5.11, minimatch@^10.2.4, glob@^13.0.6, diff@^8.0.2 (via libnpmdiff@8)
-RUN npm install -g npm@11.12.0
+# Remove npm entirely — not needed at runtime (only node runs dist/main).
+# This eliminates all CVEs from npm's bundled deps (tar, minimatch, glob, diff).
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 
 WORKDIR /app
 
