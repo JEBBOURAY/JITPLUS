@@ -3,8 +3,9 @@ FROM node:22-alpine AS builder
 
 RUN apk update && apk upgrade --no-cache && apk add --no-cache openssl
 
-# Upgrade npm to patch bundled tar (CVE-2026-26960) and minimatch (CVE-2026-26996)
-RUN npm install -g npm@10.9.7
+# Upgrade npm to patch CVEs in bundled deps (tar, minimatch, glob, diff)
+# npm@11.12.0: tar@^7.5.11, minimatch@^10.2.4, glob@^13.0.6, diff@^8.0.2 (via libnpmdiff@8)
+RUN npm install -g npm@11.12.0
 
 WORKDIR /app
 
@@ -35,8 +36,9 @@ FROM node:22-alpine AS deps
 
 RUN apk update && apk upgrade --no-cache && apk add --no-cache openssl
 
-# Upgrade npm to patch bundled tar (CVE-2026-26960) and minimatch (CVE-2026-26996)
-RUN npm install -g npm@10.9.7
+# Upgrade npm to patch CVEs in bundled deps (tar, minimatch, glob, diff)
+# npm@11.12.0: tar@^7.5.11, minimatch@^10.2.4, glob@^13.0.6, diff@^8.0.2 (via libnpmdiff@8)
+RUN npm install -g npm@11.12.0
 
 WORKDIR /app
 
@@ -63,8 +65,9 @@ FROM node:22-alpine AS runner
 # Patch OS-level CVEs (zlib, etc.)
 RUN apk update && apk upgrade --no-cache
 
-# Upgrade npm to patch bundled tar (CVE-2026-26960) and minimatch (CVE-2026-26996)
-RUN npm install -g npm@10.9.7
+# Upgrade npm to patch CVEs in bundled deps (tar, minimatch, glob, diff)
+# npm@11.12.0: tar@^7.5.11, minimatch@^10.2.4, glob@^13.0.6, diff@^8.0.2 (via libnpmdiff@8)
+RUN npm install -g npm@11.12.0
 
 WORKDIR /app
 
