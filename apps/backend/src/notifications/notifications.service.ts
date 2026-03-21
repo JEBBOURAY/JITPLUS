@@ -366,8 +366,14 @@ export class NotificationsService {
     successCount: number;
     failureCount: number;
   }> {
-    // 1. Collect all clients with phone who opted in — cursor pagination
-    const recipients: { id: string; telephone: string }[] = [];
+    // 1. Fetch merchant info
+    const merchant = await this.merchantRepo.findUniqueOrThrow({
+      where: { id: merchantId },
+      select: { nom: true },
+    });
+
+    // 2. Collect all clients with phone who opted in - cursor pagination
+    const recipients: { id: string; telephone: string; prenom: string | null }[] = [];
     let whatsappCursor: string | undefined;
 
     while (true) {
@@ -377,7 +383,7 @@ export class NotificationsService {
           telephone: { not: null },
           notifWhatsapp: true,
         },
-        select: { id: true, telephone: true },
+        select: { id: true, telephone: true, prenom: true },
         take: NotificationsService.CLIENT_BATCH_SIZE,
         ...(whatsappCursor ? { skip: 1, cursor: { id: whatsappCursor } } : {}),
         orderBy: { id: 'asc' },
@@ -386,7 +392,7 @@ export class NotificationsService {
       if (batch.length === 0) break;
 
       recipients.push(
-        ...batch.filter((c: any): c is { id: string; telephone: string } => !!c.telephone),
+        ...batch.filter((c: any): c is { id: string; telephone: string; prenom: string | null } => !!c.telephone),
       );
       whatsappCursor = batch[batch.length - 1].id;
 
@@ -406,7 +412,10 @@ export class NotificationsService {
 
     for (const recipient of recipients) {
       try {
-        const sent = await this.smsProvider.sendWhatsAppMessage(recipient.telephone, body);
+        const clientName = recipient.prenom || 'cher client';
+        const formattedMessage = `*Message de ${merchant.nom}*\n\nBonjour ${clientName},\n\n${body}\n\n_Vous recevez ce message car vous êtes client de ${merchant.nom} via JitPlus._`;
+
+        const sent = await this.smsProvider.sendWhatsAppMessage(recipient.telephone, formattedMessage);
         if (sent) {
           successCount++;
         } else {
