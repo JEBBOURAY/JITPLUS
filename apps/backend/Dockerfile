@@ -27,7 +27,7 @@ RUN cd apps/backend && pnpm exec prisma generate --schema ./prisma/schema.prisma
 # Build the application
 RUN cd apps/backend && pnpm run build
 
-# ── Stage 2: Production Dependencies (standalone, no workspace) ──
+# ── Stage 2: Production Dependencies (workspace-aware, uses frozen lockfile) ──
 FROM node:22-alpine AS deps
 
 RUN apk update && apk upgrade --no-cache && apk add --no-cache openssl
@@ -37,15 +37,19 @@ WORKDIR /app
 # Enable pnpm
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
-# Copy ONLY backend package.json (no workspace = flat node_modules, no symlinks)
-COPY apps/backend/package.json ./
-COPY apps/backend/prisma ./prisma/
+# Copy workspace root (lockfile + root overrides apply here)
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 
-# Install ONLY production dependencies (standalone, flat structure)
-RUN pnpm install --prod --no-frozen-lockfile
+# Copy only backend package.json (no other workspace packages needed)
+COPY apps/backend/package.json ./apps/backend/
+COPY apps/backend/prisma ./apps/backend/prisma/
+
+# Install ONLY production dependencies via the frozen workspace lockfile
+# --filter backend limits to backend's prod deps; root overrides are applied
+RUN pnpm install --frozen-lockfile --filter backend --prod
 
 # Generate Prisma Client (needed for runtime engine binaries)
-RUN pnpm exec prisma generate --schema ./prisma/schema.prisma
+RUN cd apps/backend && pnpm exec prisma generate --schema ./prisma/schema.prisma
 
 # ── Stage 3: Runner (Final Image) ──
 FROM node:22-alpine AS runner
@@ -68,7 +72,7 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 COPY --from=builder /app/apps/backend/dist ./dist
 COPY --from=builder /app/apps/backend/package.json ./
 
-# Copy production node_modules from deps stage (flat, no symlinks)
+# Copy production node_modules from deps stage
 COPY --from=deps /app/node_modules ./node_modules
 
 # Copy prisma schema (needed when running migrations from this image)
