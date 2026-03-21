@@ -74,9 +74,6 @@ COPY --from=deps /app/node_modules ./node_modules
 # Copy prisma schema (needed when running migrations from this image)
 COPY --from=builder /app/apps/backend/prisma ./prisma
 
-# Copy generated Prisma Client with engine binaries from builder
-COPY --from=builder /app/apps/backend/src/generated ./src/generated
-
 # Copy startup entrypoint script (used for the migration Cloud Run Job)
 COPY apps/backend/docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod +x /app/docker-entrypoint.sh
