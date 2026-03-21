@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useCallback, useMemo, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useCallback, useRef, useMemo, ReactNode } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
@@ -183,226 +183,13 @@ export interface GoogleRegisterData {
 const AuthContext = createContext<AuthContextData | null>(null);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const store = useAuthStore();
   const queryClient = useQueryClient();
-  const { merchant, token, loading, isTeamMember, teamMember, onboardingCompleted } = store;
-
-  useEffect(() => {
-    setupAndroidNotificationChannel();
-    loadStoredAuth();
-
-    // Écouter les 401 émis par l'intercepteur Axios → déconnexion automatique
-    const unsubscribe = onUnauthorized(() => {
-      if (__DEV__) console.log('[AuthContext] 401 détecté, déconnexion automatique');
-      store.setToken(null);
-      store.setMerchant(null);
-      store.setTeamMember(false, null);
-    });
-
-    return unsubscribe;
-  }, []);
-
-  const loadStoredAuth = async () => {
-    try {
-      if (__DEV__) console.log('[AuthContext] Chargement de l\'authentification...');
-      const storedToken = await SecureStore.getItemAsync('accessToken');
-      const rememberMe = await SecureStore.getItemAsync('rememberMe');
-      const storedUserType = await SecureStore.getItemAsync('userType');
-      const storedTeamMember = await SecureStore.getItemAsync('teamMember');
-      
-      if (__DEV__) {
-        console.log('[AuthContext] Token:', storedToken ? 'Oui' : 'Non');
-        console.log('[AuthContext] Remember:', rememberMe);
-        console.log('[AuthContext] Type:', storedUserType);
-      }
-
-      if (storedToken && rememberMe === 'true') {
-        store.setToken(storedToken);
-        
-        // Restaurer l'état team member
-        if (storedUserType === 'team_member' && storedTeamMember) {
-          try {
-            const tmData = JSON.parse(storedTeamMember);
-            store.setTeamMember(true, tmData);
-          } catch (e) {
-            if (__DEV__) console.error('[AuthContext] Erreur parsing teamMember:', e);
-          }
-        }
-
-        // Restaurer l'état onboarding
-        const storedOnboarding = await SecureStore.getItemAsync('onboardingCompleted');
-        if (storedOnboarding === 'true') {
-          store.setOnboardingCompleted(true);
-        }
-        
-        try {
-          const profile = await loadProfile();
-          // Sync onboarding from server (source of truth)
-          if (profile?.onboardingCompleted) {
-            store.setOnboardingCompleted(true);
-            await SecureStore.setItemAsync('onboardingCompleted', 'true');
-          }
-          // Mettre à jour le push token silencieusement
-          registerPushToken().catch(() => {});
-        } catch {
-          // loadProfile already calls signOut on 401 — session expired, nothing else to do
-          if (__DEV__) console.warn('[AuthContext] Session expirée, retour à l\'écran de connexion');
-          return;
-        }
-      } else if (storedToken) {
-        // L'utilisateur n'a pas coché "Se souvenir de moi" → nettoyage local silencieux
-        // (pas d'appel API logout pour éviter des requêtes réseau inutiles à chaque démarrage)
-        await SecureStore.deleteItemAsync('accessToken');
-        await SecureStore.deleteItemAsync('refreshToken');
-        await SecureStore.deleteItemAsync('sessionId');
-        await SecureStore.deleteItemAsync('rememberMe');
-        await SecureStore.deleteItemAsync('userType');
-        await SecureStore.deleteItemAsync('teamMember');
-        store.reset();
-      }
-    } catch (error) {
-      if (__DEV__) console.warn('[AuthContext] Erreur lors du chargement de l\'authentification:', error);
-      await signOut();
-    } finally {
-      if (__DEV__) console.log('[AuthContext] Chargement terminé');
-      store.setLoading(false);
-    }
-  };
-
-  const signIn = useCallback(async (credentials: LoginCredentials, rememberMe = false) => {
-    try {
-      if (__DEV__) console.log('[AuthContext] Tentative de connexion...');
-      const { deviceName, deviceOS } = getDeviceInfo();
-      const deviceId = await getOrCreateDeviceId();
-      const response = await api.post<AuthResponse>('/auth/login', {
-        ...credentials,
-        deviceName,
-        deviceOS,
-        deviceId,
-      });
-      const { access_token, refresh_token, session_id, merchant: merchantData, userType, teamMember: teamMemberData } = response.data;
-
-      if (__DEV__) console.log('[AuthContext] Connexion réussie:', merchantData.nom, '| Type:', userType);
-      
-      // Sauvegarder les tokens uniquement si "Se souvenir de moi" est coché
-      if (rememberMe) {
-        await SecureStore.setItemAsync('accessToken', access_token);
-        if (refresh_token) await SecureStore.setItemAsync('refreshToken', refresh_token);
-        if (session_id) await SecureStore.setItemAsync('sessionId', session_id);
-      }
-      await SecureStore.setItemAsync('rememberMe', String(rememberMe));
-      
-      // Sauvegarder le type d'utilisateur
-      if (userType === 'team_member' && teamMemberData) {
-        await SecureStore.setItemAsync('userType', 'team_member');
-        await SecureStore.setItemAsync('teamMember', JSON.stringify(teamMemberData));
-        store.setTeamMember(true, teamMemberData);
-      } else {
-        await SecureStore.setItemAsync('userType', 'merchant');
-        await SecureStore.deleteItemAsync('teamMember');
-        store.setTeamMember(false, null);
-      }
-
-      store.setToken(access_token);
-      store.setMerchant(merchantData);
-
-      // Sync onboarding state from server
-      if (merchantData.onboardingCompleted) {
-        store.setOnboardingCompleted(true);
-        await SecureStore.setItemAsync('onboardingCompleted', 'true');
-      }
-
-      // Enregistrer le push token pour recevoir les notifs de connexion
-      registerPushToken().catch(() => {});
-    } catch (error: unknown) {
-      if (__DEV__) console.error('[AuthContext] Erreur de connexion:', error);
-      throw new Error(getErrorMessage(error, 'Erreur de connexion'));
-    }
-  }, []);
-
-  const googleLogin = useCallback(async (idToken: string): Promise<{ success: boolean; error?: string; rawError?: unknown }> => {
-    try {
-      if (__DEV__) console.log('[AuthContext] Google login...');
-      const { deviceName, deviceOS } = getDeviceInfo();
-      const deviceId = await getOrCreateDeviceId();
-      const response = await api.post<AuthResponse>('/auth/google-login', {
-        idToken,
-        deviceName,
-        deviceOS,
-        deviceId,
-      });
-      const { access_token, refresh_token, session_id, merchant: merchantData } = response.data;
-
-      if (__DEV__) console.log('[AuthContext] Google login réussi:', merchantData.nom);
-
-      // Always remember Google logins
-      await SecureStore.setItemAsync('accessToken', access_token);
-      if (refresh_token) await SecureStore.setItemAsync('refreshToken', refresh_token);
-      if (session_id) await SecureStore.setItemAsync('sessionId', session_id);
-      await SecureStore.setItemAsync('rememberMe', 'true');
-      await SecureStore.setItemAsync('userType', 'merchant');
-      await SecureStore.deleteItemAsync('teamMember');
-
-      store.setTeamMember(false, null);
-      store.setToken(access_token);
-      store.setMerchant(merchantData);
-
-      if (merchantData.onboardingCompleted) {
-        store.setOnboardingCompleted(true);
-        await SecureStore.setItemAsync('onboardingCompleted', 'true');
-      }
-
-      registerPushToken().catch(() => {});
-      return { success: true };
-    } catch (error: unknown) {
-      if (__DEV__) console.error('[AuthContext] Erreur Google login:', error);
-      return { success: false, error: getErrorMessage(error, 'Échec de la connexion Google'), rawError: error };
-    }
-  }, []);
-
-  const googleRegister = useCallback(async (idToken: string, businessData: GoogleRegisterData): Promise<{ success: boolean; error?: string; rawError?: unknown }> => {
-    try {
-      if (__DEV__) console.log('[AuthContext] Google register...');
-      const { deviceName, deviceOS } = getDeviceInfo();
-      const deviceId = await getOrCreateDeviceId();
-      const response = await api.post<AuthResponse>('/auth/google-register', {
-        idToken,
-        ...businessData,
-        deviceName,
-        deviceOS,
-        deviceId,
-      });
-      const { access_token, refresh_token, session_id, merchant: merchantData } = response.data;
-
-      if (__DEV__) console.log('[AuthContext] Google register réussi:', merchantData.nom);
-
-      await SecureStore.setItemAsync('accessToken', access_token);
-      if (refresh_token) await SecureStore.setItemAsync('refreshToken', refresh_token);
-      if (session_id) await SecureStore.setItemAsync('sessionId', session_id);
-      await SecureStore.setItemAsync('rememberMe', 'true');
-      await SecureStore.setItemAsync('userType', 'merchant');
-      await SecureStore.deleteItemAsync('teamMember');
-
-      store.setTeamMember(false, null);
-      store.setToken(access_token);
-      store.setMerchant(merchantData);
-
-      if (merchantData.onboardingCompleted) {
-        store.setOnboardingCompleted(true);
-        await SecureStore.setItemAsync('onboardingCompleted', 'true');
-      }
-
-      registerPushToken().catch(() => {});
-      return { success: true };
-    } catch (error: unknown) {
-      if (__DEV__) console.error('[AuthContext] Erreur Google register:', error);
-      return { success: false, error: getErrorMessage(error, "Échec de l'inscription Google"), rawError: error };
-    }
-  }, []);
+  const queryClientRef = useRef(queryClient);
+  queryClientRef.current = queryClient;
+  const { merchant, token, loading, isTeamMember, teamMember, onboardingCompleted } = useAuthStore();
 
   const signOut = useCallback(async () => {
     try {
-      // Supprimer la session côté serveur (invalidation du token) — retry once
       let logoutSucceeded = false;
       for (let attempt = 0; attempt < 2 && !logoutSucceeded; attempt++) {
         try {
@@ -418,31 +205,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       await SecureStore.deleteItemAsync('rememberMe');
       await SecureStore.deleteItemAsync('userType');
       await SecureStore.deleteItemAsync('teamMember');
-      queryClient.clear();
+      queryClientRef.current.clear();
       await AsyncStorage.removeItem('jitpluspro-query-cache').catch(() => {});
-      store.reset();
-      store.setLoading(false);
+      useAuthStore.getState().reset();
+      useAuthStore.getState().setLoading(false);
     } catch (error) {
       if (__DEV__) console.error('Erreur lors de la déconnexion:', error);
     }
-  }, [queryClient]);
-
-  const completeOnboarding = useCallback(async () => {
-    try { await api.patch('/merchant/complete-onboarding'); } catch {} 
-    await SecureStore.setItemAsync('onboardingCompleted', 'true');
-    store.setOnboardingCompleted(true);
-  }, [store]);
-
-  const updateMerchant = useCallback((data: Partial<Merchant>) => {
-    store.updateMerchant(data);
-  }, [store]);
+  }, []);
 
   const loadProfile = useCallback(async (): Promise<Merchant | null> => {
     try {
       if (__DEV__) console.log('[AuthContext] Chargement du profil...');
       const response = await api.get<Merchant>('/merchant/profile');
       if (__DEV__) console.log('[AuthContext] Profil chargé:', response.data.nom);
-      store.setMerchant(response.data);
+      useAuthStore.getState().setMerchant(response.data);
       return response.data;
     } catch (error: unknown) {
       if (__DEV__) console.error('[AuthContext] Erreur profil:', error);
@@ -450,6 +227,205 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       throw error;
     }
   }, [signOut]);
+
+  useEffect(() => {
+    setupAndroidNotificationChannel();
+
+    const loadStoredAuth = async () => {
+      const s = useAuthStore.getState();
+      try {
+        if (__DEV__) console.log('[AuthContext] Chargement de l\'authentification...');
+        const storedToken = await SecureStore.getItemAsync('accessToken');
+        const rememberMe = await SecureStore.getItemAsync('rememberMe');
+        const storedUserType = await SecureStore.getItemAsync('userType');
+        const storedTeamMember = await SecureStore.getItemAsync('teamMember');
+
+        if (__DEV__) {
+          console.log('[AuthContext] Token:', storedToken ? 'Oui' : 'Non');
+          console.log('[AuthContext] Remember:', rememberMe);
+          console.log('[AuthContext] Type:', storedUserType);
+        }
+
+        if (storedToken && rememberMe === 'true') {
+          s.setToken(storedToken);
+
+          if (storedUserType === 'team_member' && storedTeamMember) {
+            try {
+              const tmData = JSON.parse(storedTeamMember);
+              s.setTeamMember(true, tmData);
+            } catch (e) {
+              if (__DEV__) console.error('[AuthContext] Erreur parsing teamMember:', e);
+            }
+          }
+
+          const storedOnboarding = await SecureStore.getItemAsync('onboardingCompleted');
+          if (storedOnboarding === 'true') {
+            s.setOnboardingCompleted(true);
+          }
+
+          try {
+            const profile = await loadProfile();
+            if (profile?.onboardingCompleted) {
+              useAuthStore.getState().setOnboardingCompleted(true);
+              await SecureStore.setItemAsync('onboardingCompleted', 'true');
+            }
+            registerPushToken().catch(() => {});
+          } catch {
+            if (__DEV__) console.warn('[AuthContext] Session expirée, retour à l\'écran de connexion');
+            return;
+          }
+        } else if (storedToken) {
+          await SecureStore.deleteItemAsync('accessToken');
+          await SecureStore.deleteItemAsync('refreshToken');
+          await SecureStore.deleteItemAsync('sessionId');
+          await SecureStore.deleteItemAsync('rememberMe');
+          await SecureStore.deleteItemAsync('userType');
+          await SecureStore.deleteItemAsync('teamMember');
+          s.reset();
+        }
+      } catch (error) {
+        if (__DEV__) console.warn('[AuthContext] Erreur lors du chargement de l\'authentification:', error);
+        await signOut();
+      } finally {
+        if (__DEV__) console.log('[AuthContext] Chargement terminé');
+        useAuthStore.getState().setLoading(false);
+      }
+    };
+
+    loadStoredAuth();
+
+    const unsubscribe = onUnauthorized(() => {
+      if (__DEV__) console.log('[AuthContext] 401 détecté, déconnexion automatique');
+      const s = useAuthStore.getState();
+      s.setToken(null);
+      s.setMerchant(null);
+      s.setTeamMember(false, null);
+    });
+
+    return unsubscribe;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** Shared post-authentication success handler — saves tokens, sets state, registers push */
+  const handleAuthSuccess = useCallback(async (
+    response: AuthResponse,
+    options: { rememberMe?: boolean; userType?: string; teamMemberData?: TeamMember | null } = {},
+  ) => {
+    const { access_token, refresh_token, session_id, merchant: merchantData } = response;
+    const { rememberMe = true, userType, teamMemberData } = options;
+
+    if (rememberMe) {
+      await SecureStore.setItemAsync('accessToken', access_token);
+      if (refresh_token) await SecureStore.setItemAsync('refreshToken', refresh_token);
+      if (session_id) await SecureStore.setItemAsync('sessionId', session_id);
+    }
+    await SecureStore.setItemAsync('rememberMe', String(rememberMe));
+
+    const s = useAuthStore.getState();
+    if (userType === 'team_member' && teamMemberData) {
+      await SecureStore.setItemAsync('userType', 'team_member');
+      await SecureStore.setItemAsync('teamMember', JSON.stringify(teamMemberData));
+      s.setTeamMember(true, teamMemberData);
+    } else {
+      await SecureStore.setItemAsync('userType', 'merchant');
+      await SecureStore.deleteItemAsync('teamMember');
+      s.setTeamMember(false, null);
+    }
+
+    s.setToken(access_token);
+    s.setMerchant(merchantData);
+
+    if (merchantData.onboardingCompleted) {
+      s.setOnboardingCompleted(true);
+      await SecureStore.setItemAsync('onboardingCompleted', 'true');
+    }
+
+    registerPushToken().catch(() => {});
+  }, []);
+
+  const signIn = useCallback(async (credentials: LoginCredentials, rememberMe = false) => {
+    try {
+      if (__DEV__) console.log('[AuthContext] Tentative de connexion...');
+      const { deviceName, deviceOS } = getDeviceInfo();
+      const deviceId = await getOrCreateDeviceId();
+      const response = await api.post<AuthResponse>('/auth/login', {
+        ...credentials,
+        deviceName,
+        deviceOS,
+        deviceId,
+      });
+
+      if (__DEV__) console.log('[AuthContext] Connexion réussie:', response.data.merchant.nom, '| Type:', response.data.userType);
+
+      await handleAuthSuccess(response.data, {
+        rememberMe,
+        userType: response.data.userType,
+        teamMemberData: response.data.teamMember,
+      });
+    } catch (error: unknown) {
+      if (__DEV__) console.error('[AuthContext] Erreur de connexion:', error);
+      throw new Error(getErrorMessage(error, 'Erreur de connexion'));
+    }
+  }, [handleAuthSuccess]);
+
+  const googleLogin = useCallback(async (idToken: string): Promise<{ success: boolean; error?: string; rawError?: unknown }> => {
+    try {
+      if (__DEV__) console.log('[AuthContext] Google login...');
+      const { deviceName, deviceOS } = getDeviceInfo();
+      const deviceId = await getOrCreateDeviceId();
+      const response = await api.post<AuthResponse>('/auth/google-login', {
+        idToken,
+        deviceName,
+        deviceOS,
+        deviceId,
+      });
+
+      if (__DEV__) console.log('[AuthContext] Google login réussi:', response.data.merchant.nom);
+
+      await handleAuthSuccess(response.data);
+      return { success: true };
+    } catch (error: unknown) {
+      if (__DEV__) console.error('[AuthContext] Erreur Google login:', error);
+      return { success: false, error: getErrorMessage(error, 'Échec de la connexion Google'), rawError: error };
+    }
+  }, [handleAuthSuccess]);
+
+  const googleRegister = useCallback(async (idToken: string, businessData: GoogleRegisterData): Promise<{ success: boolean; error?: string; rawError?: unknown }> => {
+    try {
+      if (__DEV__) console.log('[AuthContext] Google register...');
+      const { deviceName, deviceOS } = getDeviceInfo();
+      const deviceId = await getOrCreateDeviceId();
+      const response = await api.post<AuthResponse>('/auth/google-register', {
+        idToken,
+        ...businessData,
+        deviceName,
+        deviceOS,
+        deviceId,
+      });
+
+      if (__DEV__) console.log('[AuthContext] Google register réussi:', response.data.merchant.nom);
+
+      await handleAuthSuccess(response.data);
+      return { success: true };
+    } catch (error: unknown) {
+      if (__DEV__) console.error('[AuthContext] Erreur Google register:', error);
+      return { success: false, error: getErrorMessage(error, "Échec de l'inscription Google"), rawError: error };
+    }
+  }, [handleAuthSuccess]);
+
+  const completeOnboarding = useCallback(async () => {
+    try {
+      await api.patch('/merchant/complete-onboarding');
+    } catch (error) {
+      if (__DEV__) console.warn('[AuthContext] completeOnboarding API error:', error);
+    }
+    await SecureStore.setItemAsync('onboardingCompleted', 'true');
+    useAuthStore.getState().setOnboardingCompleted(true);
+  }, []);
+
+  const updateMerchant = useCallback((data: Partial<Merchant>) => {
+    useAuthStore.getState().updateMerchant(data);
+  }, []);
 
   const contextValue = useMemo<AuthContextData>(() => ({
     merchant,

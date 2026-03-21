@@ -1,7 +1,7 @@
 import { Injectable, BadRequestException, Inject } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
-import { Prisma } from '../../generated/client';
+import { Prisma } from '@prisma/client';
 import {
   LOYALTY_CARD_REPOSITORY, type ILoyaltyCardRepository,
   TRANSACTION_REPOSITORY, type ITransactionRepository,
@@ -116,6 +116,7 @@ export class MerchantDashboardService {
       totalPoints: pointsSum._sum.points ?? 0,
       totalRedeemedPoints: redeemedSum._sum.points ?? 0,
       totalTransactions,
+      totalRewardsGiven: Array.from(rewardCounts.values()).reduce((a, b) => a + b, 0) + unknownRedemptions,
       profileViews: dateFilter ? profileViewCount : (merchant?.profileViews ?? 0),
       rewardsDistribution,
       loyaltyType: merchant?.loyaltyType || DEFAULT_LOYALTY_TYPE,
@@ -217,15 +218,11 @@ export class MerchantDashboardService {
         tx_count: number;
         new_clients: number;
         rewards_given: number;
-        points_earned: number;
-        points_spent: number;
       }>(Prisma.sql`SELECT
          b.bucket,
          COALESCE(t.tx_count, 0)::int        AS tx_count,
          COALESCE(c.new_clients, 0)::int      AS new_clients,
-         COALESCE(t.rewards_given, 0)::int    AS rewards_given,
-         COALESCE(t.points_earned, 0)::int    AS points_earned,
-         COALESCE(t.points_spent, 0)::int     AS points_spent
+         COALESCE(t.rewards_given, 0)::int    AS rewards_given
        FROM generate_series(
          date_trunc(${trunc}, ${startDate}::timestamp),
          date_trunc(${trunc}, now()),
@@ -234,9 +231,7 @@ export class MerchantDashboardService {
        LEFT JOIN (
          SELECT date_trunc(${trunc}, created_at) AS bucket,
                 COUNT(*)::int AS tx_count,
-                COUNT(*) FILTER (WHERE type = 'REDEEM_REWARD')::int AS rewards_given,
-                COALESCE(SUM(points) FILTER (WHERE type = 'EARN_POINTS'), 0)::int AS points_earned,
-                COALESCE(SUM(points) FILTER (WHERE type = 'REDEEM_REWARD'), 0)::int AS points_spent
+                COUNT(*) FILTER (WHERE type = 'REDEEM_REWARD')::int AS rewards_given
          FROM transactions
          WHERE merchant_id = ${merchantId} AND status = 'ACTIVE' AND created_at >= ${startDate}
          GROUP BY 1
@@ -252,20 +247,9 @@ export class MerchantDashboardService {
     const transactionsRows = rows.map((r) => ({ bucket: r.bucket, count: r.tx_count }));
     const newClientsRows = rows.map((r) => ({ bucket: r.bucket, count: r.new_clients }));
     const rewardsGivenRows = rows.map((r) => ({ bucket: r.bucket, count: r.rewards_given }));
-    const pointsEarnedRows = rows.map((r) => ({ bucket: r.bucket, total: r.points_earned }));
-    const pointsSpentRows = rows.map((r) => ({ bucket: r.bucket, total: r.points_spent }));
 
     const buildCountSeries = (rows: Array<{ bucket: Date; count: number }>) => {
       const map = new Map(rows.map((r) => [toBucketKey(r.bucket), r.count || 0]));
-      return Array.from({ length: steps }).map((_, i) => {
-        const bucketDate = start(add(startDate, i));
-        const bucket = toBucketKey(bucketDate);
-        return { bucket, count: map.get(bucket) || 0 };
-      });
-    };
-
-    const buildTotalSeries = (rows: Array<{ bucket: Date; total: number }>) => {
-      const map = new Map(rows.map((r) => [toBucketKey(r.bucket), Number(r.total) || 0]));
       return Array.from({ length: steps }).map((_, i) => {
         const bucketDate = start(add(startDate, i));
         const bucket = toBucketKey(bucketDate);
@@ -278,8 +262,6 @@ export class MerchantDashboardService {
       transactions: buildCountSeries(transactionsRows),
       newClients: buildCountSeries(newClientsRows),
       rewardsGiven: buildCountSeries(rewardsGivenRows),
-      pointsEarned: buildTotalSeries(pointsEarnedRows),
-      pointsSpent: buildTotalSeries(pointsSpentRows),
     };
 
     await this.cache.set(cacheKey, result, MerchantDashboardService.TRENDS_TTL);

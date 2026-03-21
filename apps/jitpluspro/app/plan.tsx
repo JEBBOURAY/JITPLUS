@@ -26,11 +26,9 @@ import {
   BarChart3,
   Gift,
   Phone,
-  MapPin,
   Repeat,
   UserCheck,
   QrCode,
-  TrendingUp,
 } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme, palette } from '@/contexts/ThemeContext';
@@ -155,8 +153,6 @@ export default function PlanScreen() {
       ? Math.max(0, Math.min(1, planInfo.daysRemaining / 30))
       : 0;
 
-  const freeLimits = planInfo?.limits;
-
   const features: FeatureRow[] = [
     {
       icon: <Repeat size={16} color={theme.primary} />,
@@ -191,7 +187,7 @@ export default function PlanScreen() {
     {
       icon: <Bell size={16} color={theme.primary} />,
       label: t('account.planFeaturePush'),
-      free: false,
+      free: true,
       premium: t('account.planFeaturePushPremium'),
     },
     {
@@ -203,7 +199,7 @@ export default function PlanScreen() {
     {
       icon: <UserCheck size={16} color={theme.primary} />,
       label: t('account.planFeatureTeam'),
-      free: false,
+      free: true,
       premium: true,
     },
   ];
@@ -342,7 +338,7 @@ export default function PlanScreen() {
                   </View>
                   <View style={styles.rowCell}>
                     {typeof f.free === 'boolean'
-                      ? f.free ? <Check size={16} color={palette.emerald} /> : <X size={15} color={theme.textMuted + '66'} />
+                      ? f.free ? <Check size={16} color={palette.violet} /> : <X size={15} color={theme.textMuted + '66'} />
                       : <Text style={[styles.cellVal, { color: theme.textMuted }]}>{f.free}</Text>}
                   </View>
                   <View style={[styles.rowCell, { backgroundColor: '#37415110' }]}>
@@ -360,23 +356,6 @@ export default function PlanScreen() {
             <Text style={[styles.sectionTitle, { color: theme.text }]}>
               {isPremium ? t('account.planSectionManage') : t('account.planSectionUpgrade')}
             </Text>
-
-            {/* Bouton principal site web */}
-            {!isAdminActivated && (
-              <TouchableOpacity style={styles.btnPrimary} onPress={handleOpenWebsite} activeOpacity={0.85}>
-                <LinearGradient
-                  colors={['#7C3AED', '#1F2937']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.btnGrad}
-                >
-                  <Crown size={18} color="#fff" />
-                  <Text style={styles.btnPrimaryText}>
-                    {isTrial ? t('account.planBtnTrialUpgrade') : isPremium ? t('account.planBtnRenew') : t('account.planBtnSubscribe')}
-                  </Text>
-                </LinearGradient>
-              </TouchableOpacity>
-            )}
 
             {/* WhatsApp */}
             <TouchableOpacity
@@ -408,22 +387,6 @@ export default function PlanScreen() {
               </View>
             </TouchableOpacity>
 
-            {/* Résilier */}
-            {isPremium && (
-              <TouchableOpacity
-                style={[styles.btnOutline, { backgroundColor: '#FEE2E2', borderColor: '#FCA5A5' }]}
-                onPress={handleCancelSubscription}
-                activeOpacity={0.75}
-              >
-                <View style={[styles.btnIcon, { backgroundColor: '#FECACA' }]}>
-                  <X size={17} color="#DC2626" />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.btnOutlineTitle, { color: '#DC2626' }]}>{t('account.planCancelTitle')}</Text>
-                  <Text style={[styles.btnOutlineSub, { color: '#B91C1C' }]}>{t('account.planCancelSub')}</Text>
-                </View>
-              </TouchableOpacity>
-            )}
           </View>
         </ScrollView>
       )}

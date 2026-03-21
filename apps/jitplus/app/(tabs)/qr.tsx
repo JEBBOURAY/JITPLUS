@@ -1,11 +1,12 @@
 import { useRef, useCallback, useState } from 'react';
 import {
   View, Text, StyleSheet, Platform, TouchableOpacity, Alert, ScrollView, Image,
-  ActivityIndicator, Linking,
+  ActivityIndicator,
 } from 'react-native';
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import QRCode from 'react-native-qrcode-svg';
-import { Share2, X, Wallet } from 'lucide-react-native';
+import { Share2, X } from 'lucide-react-native';
 import * as Sharing from 'expo-sharing';
 import * as Brightness from 'expo-brightness';
 import { useFocusEffect } from 'expo-router';
@@ -23,11 +24,10 @@ import { usePointsOverview } from '@/hooks/useQueryHooks';
 import { wp, hp, ms, fontSize, radius, SCREEN } from '@/utils/responsive';
 
 // react-native-view-shot is NOT available in Expo Go SDK 51+
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let ViewShot: any = null;
+import type ViewShotType from 'react-native-view-shot';
+let ViewShot: typeof ViewShotType | null = null;
 try {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  ViewShot = require('react-native-view-shot').default;
+  ViewShot = require('react-native-view-shot').default as typeof ViewShotType;
 } catch {
   // Not available in Expo Go — share QR will be disabled
 }
@@ -39,6 +39,7 @@ export default function QRScreen() {
   const theme = useTheme();
   const { client, isGuest } = useAuth();
   const { t } = useLanguage();
+  const insets = useSafeAreaInsets();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const qrViewRef = useRef<any>(null);
@@ -49,38 +50,7 @@ export default function QRScreen() {
 
   const [qrError, setQrError] = useState(false);
   const [showGuidBadge, setShowGuidBadge] = useState(false);
-  const [walletLoading, setWalletLoading] = useState(false);
   const { data: pointsOverview } = usePointsOverview();
-
-  /** Add the most recent loyalty card to Google Wallet */
-  const handleAddToGoogleWallet = useCallback(async () => {
-    if (walletLoading) return;
-    const firstCard = pointsOverview?.cards?.[0];
-    if (!firstCard?.merchantId) {
-      Alert.alert(t('qr.walletTitle'), t('qr.walletNoCards'));
-      return;
-    }
-    setWalletLoading(true);
-    try {
-      const { saveUrl } = await api.getGoogleWalletPass(firstCard.merchantId);
-      // Strict URL validation: must be a valid https://pay.google.com URL with no host spoofing
-      let walletUrl: URL;
-      try {
-        walletUrl = new URL(saveUrl);
-      } catch {
-        throw new Error('Invalid wallet URL');
-      }
-      if (walletUrl.protocol !== 'https:' || walletUrl.hostname !== 'pay.google.com') {
-        throw new Error('Invalid wallet URL');
-      }
-      await Linking.openURL(saveUrl);
-    } catch (e) {
-      if (__DEV__) console.warn('Google Wallet error:', e);
-      Alert.alert(t('common.error'), t('qr.walletError'));
-    } finally {
-      setWalletLoading(false);
-    }
-  }, [walletLoading, pointsOverview, t]);
 
   /** Fetch (or load cached) permanent QR token */
   const fetchQrToken = useCallback(async () => {
@@ -199,7 +169,7 @@ export default function QRScreen() {
   const fullName = client ? `${client.prenom || ''} ${client.nom || ''}`.trim() : t('qr.client');
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.bg }]}>
+    <View style={[styles.container, { backgroundColor: theme.bg, paddingTop: insets.top }]}>
 
       <ScrollView
         style={styles.scroll}
@@ -227,9 +197,9 @@ export default function QRScreen() {
                 <View style={styles.qrWrapper}>
                   <View style={styles.qrInner}>
                     {qrLoading ? (
-                      <View style={{ width: QR_SIZE, height: QR_SIZE, justifyContent: 'center', alignItems: 'center' }}>
+                      <View style={styles.qrLoadingState}>
                         <ActivityIndicator size="large" color={palette.violet} />
-                        <Text style={{ color: theme.textMuted, fontSize: fontSize.xs, marginTop: hp(8) }}>
+                        <Text style={[styles.qrGeneratingText, { color: theme.textMuted }]}>
                           {t('qr.generating')}
                         </Text>
                       </View>
@@ -242,16 +212,16 @@ export default function QRScreen() {
                         quietZone={wp(14)}
                       />
                     ) : qrError ? (
-                      <View style={{ width: QR_SIZE, height: QR_SIZE, justifyContent: 'center', alignItems: 'center', paddingHorizontal: wp(20) }}>
-                        <Text style={{ color: theme.danger, fontSize: fontSize.sm, fontWeight: '600', textAlign: 'center', marginBottom: hp(12) }}>
+                      <View style={styles.qrErrorState}>
+                        <Text style={[styles.qrErrorText, { color: theme.danger }]}>
                           {t('qr.generateError')}
                         </Text>
                         <TouchableOpacity
                           onPress={() => { setQrLoading(true); fetchQrToken(); }}
                           activeOpacity={0.7}
-                          style={{ backgroundColor: palette.violet, paddingHorizontal: wp(20), paddingVertical: hp(10), borderRadius: radius.md }}
+                          style={styles.retryBtn}
                         >
-                          <Text style={{ color: '#fff', fontWeight: '700', fontSize: fontSize.sm }}>{t('common.retry')}</Text>
+                          <Text style={styles.retryBtnText}>{t('common.retry')}</Text>
                         </TouchableOpacity>
                       </View>
                     ) : null}
@@ -311,29 +281,7 @@ export default function QRScreen() {
               </View>
             </TouchableOpacity>
 
-            {/* Google Wallet — Android only */}
-            {Platform.OS === 'android' && (
-              <TouchableOpacity
-                style={[styles.actionBtn, { backgroundColor: '#1a1a1a' }]}
-                onPress={handleAddToGoogleWallet}
-                activeOpacity={0.7}
-                disabled={walletLoading}
-                accessibilityRole="button"
-                accessibilityLabel={t('qr.walletAccessibility')}
-              >
-                <View style={[styles.actionIconBg, { backgroundColor: '#333' }]}>
-                  {walletLoading ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <Wallet size={ms(18)} color="#fff" strokeWidth={1.5} />
-                  )}
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.actionTitle, { color: '#fff' }]}>{t('qr.walletTitle')}</Text>
-                  <Text style={[styles.actionSub, { color: 'rgba(255,255,255,0.6)' }]}>{t('qr.walletSubtitle')}</Text>
-                </View>
-              </TouchableOpacity>
-            )}
+
           </View>
         </FadeInView>
 
@@ -351,6 +299,12 @@ const styles = StyleSheet.create({
   headerContent: { paddingHorizontal: wp(24), paddingTop: hp(8) },
   headerTitle: { fontSize: fontSize['2xl'], fontWeight: '700', color: '#fff', letterSpacing: -0.3 },
   headerSubtitle: { fontSize: fontSize.sm, color: 'rgba(255,255,255,0.65)', marginTop: hp(4) },
+  qrLoadingState: { width: QR_SIZE, height: QR_SIZE, justifyContent: 'center', alignItems: 'center' },
+  qrErrorState: { width: QR_SIZE, height: QR_SIZE, justifyContent: 'center', alignItems: 'center', paddingHorizontal: wp(20) },
+  qrGeneratingText: { fontSize: fontSize.xs, marginTop: hp(8) },
+  qrErrorText: { fontSize: fontSize.sm, fontWeight: '600', textAlign: 'center', marginBottom: hp(12) },
+  retryBtn: { backgroundColor: palette.violet, paddingHorizontal: wp(20), paddingVertical: hp(10), borderRadius: radius.md },
+  retryBtnText: { color: '#fff', fontWeight: '700', fontSize: fontSize.sm },
 
   // Scroll
   scroll: { flex: 1 },

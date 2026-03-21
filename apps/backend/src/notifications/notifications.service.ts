@@ -13,7 +13,7 @@ import { IEmailBlastProvider, EMAIL_BLAST_PROVIDER, IPushProvider, PUSH_PROVIDER
 import { EventsGateway } from '../events';
 import { EmailQuotaService } from './email-quota.service';
 import { WhatsappQuotaService } from '../merchant/services/whatsapp-quota.service';
-import { Notification } from '../generated/client';
+import { Notification } from '@prisma/client';
 import { SendNotificationDto } from './dto/send-notification.dto';
 import { SendEmailBlastDto } from './dto/send-email-blast.dto';
 import { buildPagination, PaginationResult } from '../common/utils';
@@ -111,7 +111,19 @@ export class NotificationsService {
     const fcmData: Record<string, string> = { event: 'notification_new', merchantId };
 
     this.logger.log(`Sending "${dto.title}" to ${tokens.length} device(s), ${allClientIds.length} total client(s) for merchant ${merchantId}`);
-    const { successCount, failureCount, invalidTokens } = await this.pushProvider.sendMulticast(tokens, dto.title, dto.body, imageUrl, fcmData);
+
+    let successCount = 0;
+    let failureCount = 0;
+    let invalidTokens: string[] = [];
+    try {
+      const result = await this.pushProvider.sendMulticast(tokens, dto.title, dto.body, imageUrl, fcmData);
+      successCount = result.successCount;
+      failureCount = result.failureCount;
+      invalidTokens = result.invalidTokens;
+    } catch (error) {
+      this.logger.error(`Push multicast failed for merchant ${merchantId}: ${error}`);
+      failureCount = tokens.length;
+    }
 
     // Create notification record — recipientCount = all clients with loyalty card
     const notification = await this.notificationRepo.create({
@@ -140,21 +152,25 @@ export class NotificationsService {
 
     // Emit WebSocket events in batches to avoid blocking the event loop
     const WS_BATCH = 500;
-    for (let i = 0; i < uniqueClientIds.length; i += WS_BATCH) {
-      const batch = uniqueClientIds.slice(i, i + WS_BATCH);
-      for (const clientId of batch) {
-        this.eventsGateway.emitNotificationNew(clientId, {
-          clientId,
-          notificationId: notification.id,
-          merchantId,
-          title: dto.title,
-          body: dto.body,
-        });
+    try {
+      for (let i = 0; i < uniqueClientIds.length; i += WS_BATCH) {
+        const batch = uniqueClientIds.slice(i, i + WS_BATCH);
+        for (const clientId of batch) {
+          this.eventsGateway.emitNotificationNew(clientId, {
+            clientId,
+            notificationId: notification.id,
+            merchantId,
+            title: dto.title,
+            body: dto.body,
+          });
+        }
+        // Yield to the event loop between batches to avoid blocking
+        if (i + WS_BATCH < uniqueClientIds.length) {
+          await new Promise((r) => setImmediate(r));
+        }
       }
-      // Yield to the event loop between batches to avoid blocking
-      if (i + WS_BATCH < uniqueClientIds.length) {
-        await new Promise((r) => setImmediate(r));
-      }
+    } catch (error) {
+      this.logger.warn(`WebSocket emit failed: ${error}`);
     }
 
     // Clean up stale/invalid FCM tokens
@@ -302,12 +318,18 @@ export class NotificationsService {
     await this.emailQuotaService.checkAndIncrementQuota(merchantId, recipients.length);
 
     // 4. Send via Resend
-    const result = await this.resendService.sendBlast(
-      recipients.map((r) => ({ email: r.email, prenom: r.prenom })),
-      dto.subject,
-      dto.body,
-      merchant.nom,
-    );
+    let result: { successCount: number; failureCount: number; total: number };
+    try {
+      result = await this.resendService.sendBlast(
+        recipients.map((r) => ({ email: r.email, prenom: r.prenom })),
+        dto.subject,
+        dto.body,
+        merchant.nom,
+      );
+    } catch (error) {
+      this.logger.error(`Email blast failed for merchant ${merchantId}: ${error}`);
+      result = { successCount: 0, failureCount: recipients.length, total: recipients.length };
+    }
 
     this.logger.log(
       `Email blast "${dto.subject}" for merchant ${merchantId}: ${result.successCount}/${result.total} sent`,
@@ -383,10 +405,15 @@ export class NotificationsService {
     let failureCount = 0;
 
     for (const recipient of recipients) {
-      const sent = await this.smsProvider.sendWhatsAppMessage(recipient.telephone, body);
-      if (sent) {
-        successCount++;
-      } else {
+      try {
+        const sent = await this.smsProvider.sendWhatsAppMessage(recipient.telephone, body);
+        if (sent) {
+          successCount++;
+        } else {
+          failureCount++;
+        }
+      } catch (error) {
+        this.logger.warn(`WhatsApp send failed for ${recipient.id}: ${error}`);
         failureCount++;
       }
     }

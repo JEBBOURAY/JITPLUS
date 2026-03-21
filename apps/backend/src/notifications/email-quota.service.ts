@@ -3,7 +3,7 @@ import {
   MERCHANT_REPOSITORY, type IMerchantRepository,
   TRANSACTION_RUNNER, type ITransactionRunner,
 } from '../common/repositories';
-import { Merchant, Prisma } from '../generated/client';
+import { Merchant, Prisma } from '@prisma/client';
 
 @Injectable()
 export class EmailQuotaService {

@@ -6,18 +6,9 @@
  * via a unique suffix to avoid SVG defs conflicts when multiple copies
  * appear on the same screen.
  */
-import React, { useRef, useMemo } from 'react';
+import React, { useId, useMemo } from 'react';
 import { View, ViewStyle } from 'react-native';
 
-// React < 18 compatible stable id (useId introduced in React 18)
-let _idCounter = 0;
-function useStableId(): string {
-  const ref = useRef<string | null>(null);
-  if (ref.current === null) {
-    ref.current = `brand_${++_idCounter}`;
-  }
-  return ref.current;
-}
 import Svg, { Defs, LinearGradient, Stop, Text as SvgText } from 'react-native-svg';
 
 const GRAD_FROM = '#7C3AED'; // Violet
@@ -44,7 +35,7 @@ export default React.memo(function BrandName({
   color,
 }: BrandNameProps) {
   // Unique id avoids defs collision when rendered multiple times
-  const uid    = useStableId();
+  const uid    = useId();
   const gradId = `brandGrad_${uid}`;
 
   // Memoize dimensions to avoid recalculation on every render

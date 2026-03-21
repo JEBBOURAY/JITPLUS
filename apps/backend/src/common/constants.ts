@@ -97,7 +97,7 @@ export const DEFAULT_NOTIFICATION_LOGO = 'https://jitplus.com/jitpluslogo.png';
 
 /** Logo URLs used in email templates */
 export const EMAIL_LOGO_JITPLUS = 'https://jitplus.com/jitpluslogo.png';
-export const EMAIL_LOGO_JITPLUS_PRO = 'https://jitplus.com/jitpluslogo.png';
+export const EMAIL_LOGO_JITPLUS_PRO = 'https://jitplus.com/jitplusprologo.png';
 
 /** Duration of the free trial in days */
 export const TRIAL_DURATION_DAYS = 30;

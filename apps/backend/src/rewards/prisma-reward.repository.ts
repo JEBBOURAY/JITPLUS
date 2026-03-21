@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma, Reward } from '../generated/client';
+import { Prisma, Reward } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { IRewardRepository } from './reward.repository.interface';
 import { MAX_REWARD_RESULTS } from '../common/constants';

@@ -72,22 +72,10 @@ export interface Store {
   latitude?: number;
   longitude?: number;
   telephone?: string;
+  email?: string;
   isActive?: boolean;
   createdAt?: string;
   updatedAt?: string;
-}
-
-export interface DeviceSession {
-  id: string;
-  deviceName: string;
-  deviceOS?: string;
-  userType?: string;
-  userEmail?: string;
-  userName?: string;
-  lastActiveAt: string;
-  ipAddress?: string;
-  isCurrentDevice: boolean;
-  createdAt: string;
 }
 
 export interface LoginCredentials {
@@ -114,4 +102,168 @@ export interface AuthResponse {
   merchant: Merchant;
   userType: 'merchant' | 'team_member';
   teamMember?: TeamMember;
+}
+
+// ── API response types (centralized from useQueryHooks) ─────────
+
+export interface Reward {
+  id: string;
+  titre: string;
+  cout: number;
+  description?: string;
+}
+
+export type TransactionType = 'EARN_POINTS' | 'REDEEM_REWARD' | 'ADJUST_POINTS' | 'LOYALTY_PROGRAM_CHANGE';
+export type GiftStatus = 'PENDING' | 'FULFILLED';
+
+export interface DashboardStats {
+  totalClients: number;
+  totalPoints: number;
+  totalRedeemedPoints: number;
+  totalTransactions: number;
+  totalRewardsGiven: number;
+  profileViews: number;
+  rewardsDistribution: { rewardId: string | null; title: string; count: number }[];
+  loyaltyType: 'POINTS' | 'STAMPS';
+}
+
+export interface TrendPoint {
+  bucket: string;
+  count: number;
+}
+
+export interface TrendResponse {
+  period: string;
+  transactions: TrendPoint[];
+  newClients: TrendPoint[];
+  rewardsGiven: TrendPoint[];
+}
+
+export interface ClientDetailTransaction {
+  id: string;
+  type: TransactionType;
+  loyaltyType?: 'POINTS' | 'STAMPS' | null;
+  amount: number;
+  points: number;
+  status: 'ACTIVE' | 'CANCELLED';
+  createdAt: string;
+  reward?: { id: string; titre: string; cout: number } | null;
+  note?: string | null;
+  giftStatus?: GiftStatus | null;
+  fulfilledAt?: string | null;
+}
+
+export interface ClientDetail {
+  id: string;
+  prenom?: string | null;
+  nom: string;
+  email: string;
+  telephone?: string | null;
+  points: number;
+  rewardThreshold: number;
+  hasReward: boolean;
+  memberSince: string;
+  transactions: ClientDetailTransaction[];
+  loyaltyType?: 'POINTS' | 'STAMPS';
+  stampsForReward?: number;
+  termsAccepted?: boolean;
+}
+
+export interface CustomerStatus {
+  id: string;
+  prenom?: string | null;
+  nom: string;
+  email: string;
+  points: number;
+  hasReward: boolean;
+  rewardThreshold: number;
+  loyaltyType?: 'POINTS' | 'STAMPS';
+  stampsForReward?: number;
+}
+
+export interface Transaction {
+  id: string;
+  clientId: string;
+  type: TransactionType;
+  loyaltyType?: 'POINTS' | 'STAMPS' | null;
+  amount: number;
+  points: number;
+  status: 'ACTIVE' | 'CANCELLED';
+  createdAt: string;
+  note?: string | null;
+  performedByName?: string | null;
+  teamMember?: { id: string; nom: string } | null;
+  reward?: { id: string; titre: string; cout: number } | null;
+  client: { id: string; prenom?: string | null; nom: string; email: string };
+  giftStatus?: GiftStatus | null;
+  fulfilledAt?: string | null;
+}
+
+export interface TransactionsPage {
+  transactions: Transaction[];
+}
+
+export interface PendingGift {
+  id: string;
+  clientId: string;
+  rewardId: string | null;
+  points: number;
+  giftStatus: GiftStatus;
+  createdAt: string;
+  client: { id: string; prenom?: string | null; nom: string; email: string | null };
+  reward: { id: string; titre: string; cout: number } | null;
+}
+
+export interface ReferralStats {
+  referralMonthsEarned: number;
+  referralCode: string;
+  referredCount: number;
+}
+
+export interface ClientListItem {
+  id: string;
+  prenom?: string | null;
+  nom: string;
+  email: string;
+  telephone?: string | null;
+  points: number;
+  totalTransactions: number;
+  lastVisit: string;
+  memberSince: string;
+}
+
+export interface NotificationRecord {
+  id: string;
+  title: string;
+  body: string;
+  channel?: 'PUSH' | 'WHATSAPP' | 'EMAIL' | null;
+  recipientCount: number;
+  receivedCount: number;
+  successCount: number;
+  failureCount: number;
+  readCount: number;
+  createdAt: string;
+}
+
+// ── Mutation payloads (typed replacements for Record<string, any>) ──
+
+export interface CreateStorePayload {
+  nom: string;
+  categorie?: string;
+  ville?: string;
+  quartier?: string;
+  adresse?: string;
+  latitude?: number;
+  longitude?: number;
+  telephone?: string;
+  isActive?: boolean;
+}
+
+export interface RecordTransactionPayload {
+  clientId: string;
+  type: TransactionType;
+  amount?: number;
+  points?: number;
+  rewardId?: string;
+  note?: string;
 }

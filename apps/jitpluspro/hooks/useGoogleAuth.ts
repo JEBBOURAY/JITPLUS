@@ -6,24 +6,19 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { router } from 'expo-router';
 import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
-import Constants from 'expo-constants';
+import { isAxiosError } from 'axios';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { getErrorStatus } from '@/utils/error';
+import { WEB_CLIENT_ID, ANDROID_CLIENT_ID, IOS_CLIENT_ID } from '@/config/google';
 
 WebBrowser.maybeCompleteAuthSession();
-
-// Prefer env var, fall back to value extracted from google-services.json via app.config.js
-const WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID
-  || (Constants.expoConfig?.extra as Record<string, string> | undefined)?.googleWebClientId
-  || '';
-const ANDROID_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || '';
 
 /** Detect if a Google login error indicates no matching account */
 function isNoAccountError(error: unknown): boolean {
   const status = getErrorStatus(error);
   if (status === 401) {
-    const msg = (error as any)?.response?.data?.message ?? '';
+    const msg = isAxiosError(error) ? (error.response?.data as { message?: string })?.message ?? '' : '';
     return /aucun compte|no account|compte.*trouvé/i.test(msg);
   }
   return false;
@@ -41,10 +36,13 @@ export function useGoogleAuth({ onCancel }: UseGoogleAuthOptions = {}) {
   const [error, setError] = useState('');
   const [noAccount, setNoAccount] = useState(false);
   const processingRef = useRef(false);
+  const onCancelRef = useRef(onCancel);
+  onCancelRef.current = onCancel;
 
   const [_gReq, googleResponse, promptGoogleAsync] = Google.useIdTokenAuthRequest({
     clientId: WEB_CLIENT_ID,
     androidClientId: ANDROID_CLIENT_ID || WEB_CLIENT_ID,
+    iosClientId: IOS_CLIENT_ID || WEB_CLIENT_ID,
   });
 
   // Handle Google auth response
@@ -69,24 +67,24 @@ export function useGoogleAuth({ onCancel }: UseGoogleAuthOptions = {}) {
             } else {
               setError(result.error || t('googleAuth.error'));
             }
-            onCancel?.();
+            onCancelRef.current?.();
           }
         })();
       } else {
         setIsLoading(false);
         setError(t('googleAuth.noIdToken'));
-        onCancel?.();
+        onCancelRef.current?.();
       }
     } else if (googleResponse.type === 'error') {
       setIsLoading(false);
       setError(t('googleAuth.error'));
-      onCancel?.();
+      onCancelRef.current?.();
     } else {
       // dismissed / cancelled
       setIsLoading(false);
-      onCancel?.();
+      onCancelRef.current?.();
     }
-  }, [googleResponse, googleLogin, onCancel, t]);
+  }, [googleResponse, googleLogin, t]);
 
   /** Launch the Google prompt */
   const promptGoogle = useCallback(async () => {

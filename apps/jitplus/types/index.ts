@@ -55,6 +55,17 @@ export interface Merchant {
   storeId?: string;
   /** Store name when this entry represents a specific store location */
   storeName?: string;
+  /** Stores associated with this merchant */
+  stores?: {
+    id: string;
+    nom: string;
+    ville?: string;
+    quartier?: string;
+    adresse?: string;
+    latitude?: number;
+    longitude?: number;
+    telephone?: string;
+  }[];
 }
 
 export interface LoyaltyCard {

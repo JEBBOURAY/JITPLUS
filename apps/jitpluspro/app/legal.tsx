@@ -177,7 +177,7 @@ export default function LegalScreen() {
         />
 
         <LegalRow
-          icon={<Mail size={22} color="#10b981" strokeWidth={1.5} />}
+          icon={<Mail size={22} color={theme.primary} strokeWidth={1.5} />}
           label={t('legal.contact')}
           subtitle={t('legal.contactSubtitle')}
           onPress={openMail}

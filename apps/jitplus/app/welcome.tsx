@@ -14,7 +14,7 @@ import {
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { CreditCard, MapPin, QrCode, Bell, Gift, ArrowRight, Eye } from 'lucide-react-native';
+import { Ticket, MapPin, QrCode, Bell, Gift, ArrowRight, Eye } from 'lucide-react-native';
 import { useTheme, palette, brandGradient } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -47,7 +47,7 @@ export default function WelcomeScreen() {
   const slides: Slide[] = [
     {
       key: 'cards',
-      icon: <CreditCard size={ms(56)} color={theme.text} strokeWidth={1.5} />,
+      icon: <Ticket size={ms(56)} color={theme.text} strokeWidth={1.5} />,
       titleKey: 'welcome.featureCardsTitle',
       descKey: 'welcome.featureCardsDesc',
     },

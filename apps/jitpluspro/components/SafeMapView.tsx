@@ -3,7 +3,7 @@
  * Si le module natif n'est pas disponible, affiche une carte statique OpenStreetMap
  * avec le marqueur, un bouton « Ouvrir dans Maps » et un indicateur de coordonnées.
  */
-import React, { forwardRef, useImperativeHandle, useCallback, useState, useRef, useEffect } from 'react';
+import React, { forwardRef, useImperativeHandle, useCallback, useState, useRef, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,7 @@ import {
   NativeModules,
 } from 'react-native';
 import { MapPin, ExternalLink, Navigation } from 'lucide-react-native';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 /* ---------- Chargement conditionnel de react-native-maps ---------- */
 let RNMapView: React.ComponentType<any> | null = null;
@@ -102,6 +103,7 @@ interface FallbackProps {
 function MapFallback({ style, markers, centerLat, centerLng, hasCoords }: FallbackProps) {
   const [imgLoading, setImgLoading] = useState(true);
   const [imgError, setImgError] = useState(false);
+  const { t } = useLanguage();
 
   const openInMaps = useCallback(() => {
     const url =
@@ -117,15 +119,15 @@ function MapFallback({ style, markers, centerLat, centerLng, hasCoords }: Fallba
     return (
       <View style={[styles.fallback, style]}>
         <Navigation size={28} color="#94a3b8" />
-        <Text style={styles.fallbackTitle}>Position non définie</Text>
+        <Text style={styles.fallbackTitle}>{t('safeMap.positionUndefined')}</Text>
         <Text style={styles.fallbackText}>
-          Utilisez la recherche d'adresse ou le bouton GPS{'\n'}pour placer votre position.
+          {t('safeMap.positionHint')}
         </Text>
       </View>
     );
   }
 
-  const staticUrl = buildStaticMapUrl(markers);
+  const staticUrl = useMemo(() => buildStaticMapUrl(markers), [markers]);
 
   return (
     <View style={[styles.imgContainer, style]}>
@@ -142,14 +144,14 @@ function MapFallback({ style, markers, centerLat, centerLng, hasCoords }: Fallba
       {imgLoading && (
         <View style={styles.loadingOverlay}>
           <ActivityIndicator size="small" color="#7C3AED" />
-          <Text style={styles.loadingText}>Chargement de la carte…</Text>
+          <Text style={styles.loadingText}>{t('safeMap.loadingMap')}</Text>
         </View>
       )}
 
       {imgError && (
         <View style={styles.loadingOverlay}>
           <MapPin size={24} color="#94a3b8" />
-          <Text style={styles.fallbackTitle}>Image indisponible</Text>
+          <Text style={styles.fallbackTitle}>{t('safeMap.imageUnavailable')}</Text>
         </View>
       )}
 
@@ -157,14 +159,14 @@ function MapFallback({ style, markers, centerLat, centerLng, hasCoords }: Fallba
       <View style={styles.coordsBadge}>
         <MapPin size={12} color="#fff" />
         <Text style={styles.coordsText}>
-          {markers.length} point{markers.length > 1 ? 's' : ''}
+          {t('safeMap.markerCount', { count: markers.length })}
         </Text>
       </View>
 
       {/* Bouton « Ouvrir dans Maps » */}
       <TouchableOpacity style={styles.openBtn} onPress={openInMaps} activeOpacity={0.8}>
         <ExternalLink size={14} color="#fff" />
-        <Text style={styles.openBtnText}>Ouvrir dans Maps</Text>
+        <Text style={styles.openBtnText}>{t('safeMap.openInMaps')}</Text>
       </TouchableOpacity>
     </View>
   );
@@ -184,6 +186,8 @@ interface SafeMapViewProps {
   style?: import('react-native').StyleProp<import('react-native').ViewStyle>;
   onPress?: (event: { nativeEvent: { coordinate: { latitude: number; longitude: number } } }) => void;
   onLongPress?: (event: { nativeEvent: { coordinate: { latitude: number; longitude: number } } }) => void;
+  onMapReady?: () => void;
+  onMapLoaded?: () => void;
   provider?: string | null;
   showsUserLocation?: boolean;
   zoomEnabled?: boolean;
@@ -194,9 +198,9 @@ interface SafeMapViewProps {
 }
 
 const SafeMapView = forwardRef<SafeMapViewRef, SafeMapViewProps>((props, ref) => {
-  const { children, initialRegion, region, style, onPress, onLongPress, ...rest } = props;
+  const { children, initialRegion, region, style, onPress, onLongPress, onMapReady: onMapReadyProp, onMapLoaded: onMapLoadedProp, ...rest } = props;
   const nativeMapRef = useRef<{ animateToRegion?: (...args: unknown[]) => void; animateCamera?: (...args: unknown[]) => void; fitToCoordinates?: (...args: unknown[]) => void } | null>(null);
-  const [mapReady, setMapReady] = useState(false);
+  const [, setMapReady] = useState(false);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [renderTimedOut, setRenderTimedOut] = useState(false);
   const configuredRenderer = (process.env.EXPO_PUBLIC_GOOGLE_MAPS_RENDERER ?? '').toUpperCase();
@@ -242,12 +246,12 @@ const SafeMapView = forwardRef<SafeMapViewRef, SafeMapViewProps>((props, ref) =>
             }
             console.log('[SafeMapView] ✓ Region bias: MA (via withMoroccoRegion plugin)');
           }
-          (rest as any).onMapReady?.();
+          onMapReadyProp?.();
         }}
         onMapLoaded={() => {
           setMapLoaded(true);
           setRenderTimedOut(false);
-          (rest as any).onMapLoaded?.();
+          onMapLoadedProp?.();
         }}
       >
         {children}
@@ -256,23 +260,28 @@ const SafeMapView = forwardRef<SafeMapViewRef, SafeMapViewProps>((props, ref) =>
   }
 
   /* ----- Mode fallback (Expo Go) ----- */
-  const allMarkerCoords = extractAllMarkerCoords(children);
+  const allMarkerCoords = useMemo(() => extractAllMarkerCoords(children), [children]);
   const regionCoords = region || initialRegion;
   const hasCoords = allMarkerCoords.length > 0 || !!regionCoords;
 
   // Use markers if available, otherwise center on region
-  const markers = allMarkerCoords.length > 0
-    ? allMarkerCoords
-    : regionCoords
-      ? [{ latitude: regionCoords.latitude, longitude: regionCoords.longitude }]
-      : [];
+  const markers = useMemo(() => {
+    return allMarkerCoords.length > 0
+      ? allMarkerCoords
+      : regionCoords
+        ? [{ latitude: regionCoords.latitude, longitude: regionCoords.longitude }]
+        : [];
+  }, [allMarkerCoords, regionCoords]);
 
-  const centerLat = markers.length > 0
-    ? markers.reduce((sum, m) => sum + m.latitude, 0) / markers.length
-    : 33.5731;
-  const centerLng = markers.length > 0
-    ? markers.reduce((sum, m) => sum + m.longitude, 0) / markers.length
-    : -7.5898;
+  const { centerLat, centerLng } = useMemo(() => {
+    if (markers.length === 0) return { centerLat: 33.5731, centerLng: -7.5898 };
+    const latSum = markers.reduce((sum: number, m: { latitude: number; longitude: number }) => sum + m.latitude, 0);
+    const lngSum = markers.reduce((sum: number, m: { latitude: number; longitude: number }) => sum + m.longitude, 0);
+    return {
+      centerLat: latSum / markers.length,
+      centerLng: lngSum / markers.length,
+    };
+  }, [markers]);
 
   return <MapFallback style={style} markers={markers} centerLat={centerLat} centerLng={centerLng} hasCoords={hasCoords} />;
 });

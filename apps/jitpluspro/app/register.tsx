@@ -27,7 +27,6 @@ import {
   Check,
   ArrowLeft,
   MapPinned,
-  FileCheck,
   Search,
   Gift,
 } from 'lucide-react-native';

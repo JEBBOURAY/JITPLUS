@@ -17,15 +17,13 @@
       "esbuild": "0.25.0",
       "fast-xml-parser": "5.5.6",
       "ajv": "8.18.0",
+      "@eslint/eslintrc>ajv": "^6.12.6",
       "file-type": "21.3.3",
       "flatted": "3.4.0",
-      "glob@<11": "10.5.0",
-      "glob@>=13": "13.0.6",
+      "glob": "13.0.6",
       "js-yaml": "4.1.1",
       "lodash": "4.17.23",
-      "minimatch@<4": "3.1.5",
-      "minimatch@>=9 <10": "9.0.9",
-      "minimatch@>=10": "10.2.4",
+      "minimatch": "10.2.4",
       "multer": "2.1.1",
       "serialize-javascript": "7.0.3",
       "tar": "7.5.11",
@@ -37,6 +35,6 @@
     }
   },
   "devDependencies": {
-    "typescript": "^5.0.0"
+    "typescript": "^5.9.3"
   }
 }

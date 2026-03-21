@@ -6,7 +6,26 @@ import {
   keepPreviousData,
 } from '@tanstack/react-query';
 import api from '@/services/api';
-import type { Store, PlanInfo, Merchant } from '@/types';
+import type {
+  Store,
+  PlanInfo,
+  Merchant,
+  Reward,
+  DashboardStats,
+  TrendResponse,
+  ClientDetail,
+  CustomerStatus,
+  TransactionsPage,
+  ReferralStats,
+  ClientListItem,
+  NotificationRecord,
+  CreateStorePayload,
+  RecordTransactionPayload,
+  PendingGift,
+} from '@/types';
+
+// Re-export types for backward compatibility
+export type { NotificationRecord, Reward, ClientListItem, Transaction, TransactionsPage } from '@/types';
 
 // ── Centralized query keys ──────────────────────────────────────
 export const queryKeys = {
@@ -20,6 +39,20 @@ export const queryKeys = {
   profile: ['profile'] as const,
   clientDetail: (id: string) => ['client-detail', id] as const,
   clientStatus: (id: string) => ['client-status', id] as const,
+  clients: (search: string) => ['clients', search] as const,
+  notificationHistory: ['notification-history'] as const,
+  whatsappQuota: ['whatsapp-quota'] as const,
+  emailQuota: ['email-quota'] as const,
+  pendingGifts: ['pending-gifts'] as const,
+} as const;
+
+// ── Stale time constants (ms) ───────────────────────────────────
+const STALE = {
+  FAST: 30 * 1000,        // 30s — frequently changing data (client status)
+  SHORT: 60 * 1000,       // 1m  — per-client views, transactions
+  MEDIUM: 2 * 60 * 1000,  // 2m  — stores, rewards, lists
+  LONG: 3 * 60 * 1000,    // 3m  — dashboard stats/trends
+  SLOW: 5 * 60 * 1000,    // 5m  — plan, referral, profile
 } as const;
 
 // ── Stores ──────────────────────────────────────────────────────
@@ -30,7 +63,7 @@ export function useStores(enabled = true) {
       const res = await api.get('/merchant/stores');
       return res.data;
     },
-    staleTime: 2 * 60 * 1000,
+    staleTime: STALE.MEDIUM,
     enabled,
   });
 }
@@ -38,7 +71,7 @@ export function useStores(enabled = true) {
 export function useCreateStore() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (payload: Record<string, unknown>) => {
+    mutationFn: async (payload: CreateStorePayload) => {
       const res = await api.post('/merchant/stores', payload);
       return res.data;
     },
@@ -49,7 +82,7 @@ export function useCreateStore() {
 export function useUpdateStore() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, payload }: { id: string; payload: Record<string, unknown> }) => {
+    mutationFn: async ({ id, payload }: { id: string; payload: Partial<CreateStorePayload> }) => {
       const res = await api.patch(`/merchant/stores/${id}`, payload);
       return res.data;
     },
@@ -68,13 +101,6 @@ export function useDeleteStore() {
 }
 
 // ── Rewards ─────────────────────────────────────────────────────
-interface Reward {
-  id: string;
-  titre: string;
-  cout: number;
-  description?: string;
-}
-
 export function useRewards(enabled = true) {
   return useQuery<Reward[]>({
     queryKey: queryKeys.rewards,
@@ -82,7 +108,7 @@ export function useRewards(enabled = true) {
       const res = await api.get('/rewards');
       return res.data;
     },
-    staleTime: 2 * 60 * 1000,
+    staleTime: STALE.MEDIUM,
     enabled,
   });
 }
@@ -116,15 +142,9 @@ export function usePlan(enabled = true) {
       const res = await api.get('/merchant/plan');
       return res.data;
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: STALE.SLOW,
     enabled,
   });
-}
-
-interface ReferralStats {
-  referralMonthsEarned: number;
-  referralCode: string;
-  referredCount: number;
 }
 
 export function useReferral(enabled = true) {
@@ -134,7 +154,7 @@ export function useReferral(enabled = true) {
       const res = await api.get('/merchant/referral');
       return res.data;
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: STALE.SLOW,
     enabled,
   });
 }
@@ -154,27 +174,6 @@ export function useApplyReferralMonths() {
 }
 
 // ── Dashboard ───────────────────────────────────────────────────
-interface DashboardStats {
-  totalClients: number;
-  totalPoints: number;
-  totalRedeemedPoints: number;
-  totalTransactions: number;
-  profileViews: number;
-  rewardsDistribution: { rewardId: string | null; title: string; count: number }[];
-  loyaltyType: 'POINTS' | 'STAMPS';
-}
-
-interface TrendPoint { bucket: string; count: number }
-
-interface TrendResponse {
-  period: string;
-  transactions: TrendPoint[];
-  newClients: TrendPoint[];
-  rewardsGiven: TrendPoint[];
-  pointsEarned: TrendPoint[];
-  pointsSpent: TrendPoint[];
-}
-
 export function useDashboardStats(period: string, enabled = true) {
   return useQuery<DashboardStats>({
     queryKey: queryKeys.dashboardStats(period),
@@ -182,7 +181,7 @@ export function useDashboardStats(period: string, enabled = true) {
       const res = await api.get(`/merchant/dashboard-stats?period=${period}`);
       return res.data;
     },
-    staleTime: 3 * 60 * 1000,
+    staleTime: STALE.LONG,
     placeholderData: keepPreviousData,
     enabled,
   });
@@ -195,46 +194,21 @@ export function useDashboardTrends(period: string, enabled = true) {
       const res = await api.get(`/merchant/dashboard-trends?period=${period}`);
       return res.data;
     },
-    staleTime: 3 * 60 * 1000,
+    staleTime: STALE.LONG,
     placeholderData: keepPreviousData,
     enabled,
   });
 }
 
 // ── Client Detail ───────────────────────────────────────────────
-interface ClientDetail {
-  id: string;
-  nom: string;
-  email: string;
-  telephone?: string | null;
-  points: number;
-  rewardThreshold: number;
-  hasReward: boolean;
-  memberSince: string;
-  transactions: {
-    id: string;
-    type: 'EARN_POINTS' | 'REDEEM_REWARD' | 'ADJUST_POINTS' | 'LOYALTY_PROGRAM_CHANGE';
-    loyaltyType?: 'POINTS' | 'STAMPS' | null;
-    amount: number;
-    points: number;
-    status: 'ACTIVE' | 'CANCELLED';
-    createdAt: string;
-    reward?: { id: string; titre: string; cout: number } | null;
-    note?: string | null;
-  }[];
-  loyaltyType?: 'POINTS' | 'STAMPS';
-  stampsForReward?: number;
-  termsAccepted?: boolean;
-}
-
 export function useClientDetail(id: string | undefined, enabled = true) {
   return useQuery<ClientDetail>({
-    queryKey: queryKeys.clientDetail(id!),
+    queryKey: queryKeys.clientDetail(id ?? ''),
     queryFn: async () => {
       const res = await api.get(`/merchant/client/${id}/detail`);
       return res.data;
     },
-    staleTime: 60 * 1000,
+    staleTime: STALE.SHORT,
     enabled: !!id && enabled,
   });
 }
@@ -254,25 +228,14 @@ export function useAdjustPoints() {
 }
 
 // ── Client Status (transaction screen) ──────────────────────────
-interface CustomerStatus {
-  id: string;
-  nom: string;
-  email: string;
-  points: number;
-  hasReward: boolean;
-  rewardThreshold: number;
-  loyaltyType?: 'POINTS' | 'STAMPS';
-  stampsForReward?: number;
-}
-
 export function useClientStatus(clientId: string | undefined, enabled = true) {
   return useQuery<CustomerStatus>({
-    queryKey: queryKeys.clientStatus(clientId!),
+    queryKey: queryKeys.clientStatus(clientId ?? ''),
     queryFn: async () => {
       const res = await api.get(`/merchant/client/${clientId}/status`);
       return res.data;
     },
-    staleTime: 30 * 1000,
+    staleTime: STALE.FAST,
     enabled: !!clientId && enabled,
   });
 }
@@ -280,12 +243,12 @@ export function useClientStatus(clientId: string | undefined, enabled = true) {
 export function useRecordTransaction() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (payload: Record<string, unknown>) => {
+    mutationFn: async (payload: RecordTransactionPayload) => {
       const res = await api.post('/merchant/transactions', payload);
       return res.data;
     },
     onSuccess: (_data, variables) => {
-      const clientId = variables.clientId as string | undefined;
+      const clientId = variables.clientId;
       if (clientId) {
         qc.invalidateQueries({ queryKey: queryKeys.clientStatus(clientId) });
         qc.invalidateQueries({ queryKey: queryKeys.clientDetail(clientId) });
@@ -296,26 +259,6 @@ export function useRecordTransaction() {
 }
 
 // ── Transactions (infinite scroll) ──────────────────────────────
-interface Transaction {
-  id: string;
-  clientId: string;
-  type: 'EARN_POINTS' | 'REDEEM_REWARD' | 'ADJUST_POINTS' | 'LOYALTY_PROGRAM_CHANGE';
-  loyaltyType?: 'POINTS' | 'STAMPS' | null;
-  amount: number;
-  points: number;
-  status: 'ACTIVE' | 'CANCELLED';
-  createdAt: string;
-  note?: string | null;
-  performedByName?: string | null;
-  teamMember?: { id: string; nom: string } | null;
-  reward?: { id: string; titre: string; cout: number } | null;
-  client: { id: string; nom: string; email: string };
-}
-
-interface TransactionsPage {
-  transactions: Transaction[];
-}
-
 export function useTransactions(enabled = true) {
   return useInfiniteQuery<TransactionsPage>({
     queryKey: queryKeys.transactions,
@@ -326,7 +269,7 @@ export function useTransactions(enabled = true) {
     initialPageParam: 1,
     getNextPageParam: (lastPage, allPages) =>
       lastPage.transactions.length === 20 ? allPages.length + 1 : undefined,
-    staleTime: 1 * 60 * 1000,
+    staleTime: STALE.SHORT,
     placeholderData: keepPreviousData,
     enabled,
   });
@@ -340,7 +283,7 @@ export function useMerchantProfile(enabled = true) {
       const res = await api.get('/merchant/profile');
       return res.data;
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: STALE.SLOW,
     enabled,
   });
 }
@@ -360,6 +303,89 @@ export function useUpdateLoyaltySettings() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.profile });
       qc.invalidateQueries({ queryKey: queryKeys.rewards });
+    },
+  });
+}
+
+// ── Clients ─────────────────────────────────────────────────────
+export function useClients(search: string, enabled = true) {
+  return useQuery<ClientListItem[]>({
+    queryKey: queryKeys.clients(search),
+    queryFn: async () => {
+      const res = await api.get('/merchant/clients', {
+        params: search ? { search: search.trim() } : undefined,
+      });
+      const data = res.data;
+      return Array.isArray(data) ? data : data?.clients ?? [];
+    },
+    staleTime: STALE.MEDIUM,
+    placeholderData: keepPreviousData,
+    enabled,
+  });
+}
+
+// ── Notification History ────────────────────────────────────────
+export function useNotificationHistory(enabled = true) {
+  return useQuery<NotificationRecord[]>({
+    queryKey: queryKeys.notificationHistory,
+    queryFn: async () => {
+      const res = await api.get('/notifications/history?limit=50');
+      return res.data.notifications ?? [];
+    },
+    staleTime: STALE.SHORT,
+    enabled,
+  });
+}
+
+// ── WhatsApp Quota ──────────────────────────────────────────────
+export function useWhatsappQuota(enabled = true) {
+  return useQuery<{ used: number; max: number }>({
+    queryKey: queryKeys.whatsappQuota,
+    queryFn: async () => {
+      const res = await api.get('/merchant/whatsapp/quota');
+      return { used: res.data.whatsappQuotaUsed, max: res.data.whatsappQuotaMax };
+    },
+    staleTime: STALE.MEDIUM,
+    enabled,
+  });
+}
+
+// ── Email Quota ─────────────────────────────────────────────────
+export function useEmailQuota(enabled = true) {
+  return useQuery<{ used: number; max: number }>({
+    queryKey: queryKeys.emailQuota,
+    queryFn: async () => {
+      const res = await api.get('/notifications/email-quota');
+      return { used: res.data.emailQuotaUsed, max: res.data.emailQuotaMax };
+    },
+    staleTime: STALE.MEDIUM,
+    enabled,
+  });
+}
+
+// ── Pending Gifts ───────────────────────────────────────────────
+export function usePendingGifts(enabled = true) {
+  return useQuery<PendingGift[]>({
+    queryKey: queryKeys.pendingGifts,
+    queryFn: async () => {
+      const res = await api.get('/merchant/pending-gifts');
+      return res.data;
+    },
+    staleTime: STALE.SHORT,
+    enabled,
+  });
+}
+
+export function useFulfillGift() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (transactionId: string) => {
+      const res = await api.patch(`/merchant/transactions/${transactionId}/fulfill`);
+      return res.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.pendingGifts });
+      qc.invalidateQueries({ queryKey: queryKeys.transactions });
     },
   });
 }

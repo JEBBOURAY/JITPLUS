@@ -17,7 +17,7 @@ import { NotificationsService } from '../../notifications/notifications.service'
 import { EventsGateway } from '../../events';
 import { MerchantPlanService } from './merchant-plan.service';
 import { DEFAULT_POINTS_RATE } from '../../common/constants';
-import { errMsg } from '../../common/utils';
+import { errMsg, maskName } from '../../common/utils';
 import { MERCHANT_LOYALTY_SELECT } from '../../common/prisma-selects';
 import { buildPagination } from '../../common/utils';
 import { withRetry } from '../../common/utils/retry-transaction.helper';
@@ -66,9 +66,17 @@ export class MerchantTransactionService {
     // Validate points
     if (type === 'EARN_POINTS') {
       if (merchant.loyaltyType === 'STAMPS') {
-        if (points < 1 || !Number.isInteger(points)) {
+        // STAMPS mode — a purchase amount is required to derive expected stamps
+        if (amount <= 0) {
           throw new BadRequestException(
-            `En mode tampons, le nombre de tampons est invalide : ${points}`,
+            'Un montant d\'achat est requis pour les transactions en mode tampons',
+          );
+        }
+        const pointsRate = merchant.pointsRate || DEFAULT_POINTS_RATE;
+        const expectedStamps = Math.floor(amount / pointsRate);
+        if (points !== expectedStamps) {
+          throw new BadRequestException(
+            `Nombre de tampons invalide. Attendu: ${expectedStamps}, reçu: ${points}`,
           );
         }
       } else {
@@ -144,6 +152,7 @@ export class MerchantTransactionService {
             loyaltyType: merchant.loyaltyType || 'POINTS',
             amount,
             points,
+            ...(type === 'REDEEM_REWARD' ? { giftStatus: 'FULFILLED', fulfilledAt: new Date() } : {}),
           },
         });
 
@@ -233,9 +242,11 @@ export class MerchantTransactionService {
           amount: true,
           points: true,
           status: true,
+          giftStatus: true,
+          fulfilledAt: true,
           note: true,
           createdAt: true,
-          client: { select: { id: true, prenom: true, nom: true, email: true } },
+          client: { select: { id: true, prenom: true, nom: true, email: true, shareInfoMerchants: true } },
           teamMember: { select: { id: true, nom: true } },
           reward: { select: { id: true, titre: true, cout: true } },
         },
@@ -246,8 +257,23 @@ export class MerchantTransactionService {
       this.transactionRepoDelegate.count({ where }),
     ]);
 
+    const maskedTransactions = transactions.map((tx) => {
+      if (tx.client && tx.client.shareInfoMerchants === false) {
+        return {
+          ...tx,
+          client: {
+            ...tx.client,
+            prenom: maskName(tx.client.prenom),
+            nom: maskName(tx.client.nom),
+            email: null,
+          },
+        };
+      }
+      return tx;
+    });
+
     return {
-      transactions,
+      transactions: maskedTransactions,
       pagination: buildPagination(total, page, limit),
     };
   }
@@ -301,6 +327,71 @@ export class MerchantTransactionService {
     );
 
     return result;
+  }
+
+
+  async fulfillGift(transactionId: string, merchantId: string) {
+    const transaction = await this.transactionRepoDelegate.findUnique({
+      where: { id: transactionId },
+      select: { id: true, merchantId: true, type: true, status: true, giftStatus: true },
+    });
+
+    if (!transaction) throw new NotFoundException('Transaction non trouvee');
+    if (transaction.merchantId !== merchantId) {
+      throw new BadRequestException('Cette transaction ne vous appartient pas');
+    }
+    if (transaction.type !== 'REDEEM_REWARD') {
+      throw new BadRequestException('Seules les transactions cadeau peuvent etre marquees comme remises');
+    }
+    if (transaction.status === 'CANCELLED') {
+      throw new BadRequestException('Cette transaction est annulee');
+    }
+    if (transaction.giftStatus === 'FULFILLED') {
+      throw new BadRequestException('Ce cadeau a deja ete remis');
+    }
+
+    return this.transactionRepoDelegate.update({
+      where: { id: transactionId },
+      data: { giftStatus: 'FULFILLED', fulfilledAt: new Date() },
+    });
+  }
+
+  async getPendingGifts(merchantId: string) {
+    const transactions = await this.transactionRepoDelegate.findMany({
+      where: {
+        merchantId,
+        type: 'REDEEM_REWARD',
+        status: 'ACTIVE',
+        giftStatus: 'PENDING',
+      },
+      select: {
+        id: true,
+        clientId: true,
+        rewardId: true,
+        points: true,
+        giftStatus: true,
+        createdAt: true,
+        client: { select: { id: true, prenom: true, nom: true, email: true, shareInfoMerchants: true } },
+        reward: { select: { id: true, titre: true, cout: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+
+    return transactions.map((tx) => {
+      if (tx.client && tx.client.shareInfoMerchants === false) {
+        return {
+          ...tx,
+          client: {
+            ...tx.client,
+            prenom: maskName(tx.client.prenom),
+            nom: maskName(tx.client.nom),
+            email: null,
+          },
+        };
+      }
+      return tx;
+    });
   }
 
   // â”€â”€â”€ Private: Transaction Notifications â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -411,7 +502,7 @@ export class MerchantTransactionService {
         const newPoints = loyaltyCard.points + points;
         if (newPoints < 0) {
           throw new BadRequestException(
-            `Solde insuffisant. Le client a ${loyaltyCard.points} ${merchant.loyaltyType === 'STAMPS' ? 'tampons' : 'points'}, impossible de retirer ${Math.abs(points)}.`,
+            `Points insuffisants. Le client a ${loyaltyCard.points} ${merchant.loyaltyType === 'STAMPS' ? 'tampons' : 'points'}, impossible de retirer ${Math.abs(points)}.`,
           );
         }
 
@@ -456,7 +547,7 @@ export class MerchantTransactionService {
       body += ` Motif : ${note}`;
     }
 
-    body += ` Nouveau solde : ${result.newPoints} ${unit}.`;
+    body += ` Nouveau total : ${result.newPoints} ${unit}.`;
 
     // ── Real-time: emit WebSocket event for instant UI update ──
     this.eventsGateway.emitPointsUpdated(clientId, {

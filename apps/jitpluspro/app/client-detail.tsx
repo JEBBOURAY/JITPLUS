@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState } from 'react';
 import { useGuardedCallback } from '@/hooks/useGuardedCallback';
 import {
   View,
@@ -22,38 +22,23 @@ import {
   Calendar,
   Gift,
   Clock,
-  Plus,
-  Minus,
   X,
   CheckCircle2,
   Circle,
-  Pencil,
   PlusCircle,
   MinusCircle,
-  RefreshCw,
 } from 'lucide-react-native';
+import { getTransactionConfig } from '@/constants/transactions';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
-import { useTheme } from '@/contexts/ThemeContext';
+import { useTheme, brandGradient } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import StampGrid from '@/components/StampGrid';
-import { avatarColor } from '@/utils/avatarColor';
+import { LinearGradient } from 'expo-linear-gradient';
 import { formatDate, formatDateTime } from '@/utils/date';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { formatCurrency, DEFAULT_CURRENCY } from '@/config/currency';
+import { formatCurrency } from '@/config/currency';
 import { useClientDetail, useAdjustPoints } from '@/hooks/useQueryHooks';
-
-interface Transaction {
-  id: string;
-  type: 'EARN_POINTS' | 'REDEEM_REWARD' | 'ADJUST_POINTS' | 'LOYALTY_PROGRAM_CHANGE';
-  loyaltyType?: 'POINTS' | 'STAMPS' | null;
-  amount: number;
-  points: number;
-  status: 'ACTIVE' | 'CANCELLED';
-  createdAt: string;
-  reward?: { id: string; titre: string; cout: number } | null;
-  note?: string | null;
-}
 
 export default function ClientDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -88,20 +73,23 @@ export default function ClientDetailScreen() {
   const handleAdjustPoints = async () => {
     const pts = parseInt(adjustPoints, 10);
     if (!pts || pts <= 0) {
-      Alert.alert('Erreur', 'Veuillez entrer un nombre de points valide.');
+      Alert.alert(t('common.error'), t('clientDetail.adjustInvalidPts'));
       return;
     }
 
     const finalPoints = adjustMode === 'remove' ? -pts : pts;
-    const action = adjustMode === 'add' ? 'ajouter' : 'retirer';
+    const unit = isStampsMode ? t('common.stamps') : t('common.points');
+    const action = adjustMode === 'add' ? t('clientDetail.adjustActionAdd') : t('clientDetail.adjustActionRemove');
+    const direction = adjustMode === 'add' ? t('clientDetail.adjustDirAdd') : t('clientDetail.adjustDirRemove');
+    const displayName = [client?.prenom, client?.nom].filter(Boolean).join(' ');
 
     Alert.alert(
-      'Confirmer',
-      `Voulez-vous ${action} ${pts} ${isStampsMode ? 'tampons' : 'points'} ${adjustMode === 'add' ? 'au' : 'du'} compte de ${client?.nom} ?`,
+      t('common.confirm'),
+      t('clientDetail.adjustConfirmMsg', { action, pts, unit, direction, name: displayName }),
       [
-        { text: 'Annuler', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: 'Confirmer',
+          text: t('common.confirm'),
           onPress: async () => {
             try {
               await adjustMutation.mutateAsync({
@@ -110,10 +98,11 @@ export default function ClientDetailScreen() {
                 note: adjustNote.trim() || undefined,
               });
               setAdjustModalVisible(false);
-              Alert.alert('Succès', `${pts} ${isStampsMode ? 'tampons' : 'points'} ${adjustMode === 'add' ? 'ajoutés' : 'retirés'} avec succès.`);
+              const result = adjustMode === 'add' ? t('clientDetail.adjustResultAdd') : t('clientDetail.adjustResultRemove');
+              Alert.alert(t('common.confirm'), t('clientDetail.adjustSuccessMsg', { pts, unit, result }));
             } catch (err: unknown) {
-              const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Erreur lors de l\'ajustement';
-              Alert.alert('Erreur', msg);
+              const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || t('clientDetail.adjustDefaultError');
+              Alert.alert(t('common.error'), msg);
             }
           },
         },
@@ -141,8 +130,8 @@ export default function ClientDetailScreen() {
     );
   }
 
-  const bg = avatarColor(client.nom);
-  const initial = client.nom.charAt(0).toUpperCase();
+  const displayName = [client.prenom, client.nom].filter(Boolean).join(' ') || '?';
+  const initial = (client.prenom || client.nom || '?').charAt(0).toUpperCase();
   const stampsForReward = merchant?.stampsForReward || client.stampsForReward || 10;
   const progressPct = isStampsMode
     ? Math.min((client.points / stampsForReward) * 100, 100)
@@ -153,7 +142,12 @@ export default function ClientDetailScreen() {
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
       {/* ── Header ── */}
-      <View style={[styles.header, { backgroundColor: bg, paddingTop: insets.top + 12 }]}>
+      <LinearGradient
+        colors={[...brandGradient]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={[styles.header, { paddingTop: insets.top + 12 }]}
+      >
         <TouchableOpacity style={[styles.backBtn, { top: insets.top + 8 }]} onPress={() => router.back()}>
           <ArrowLeft size={22} color="#fff" />
         </TouchableOpacity>
@@ -162,7 +156,7 @@ export default function ClientDetailScreen() {
           <Text style={styles.avatarLargeText}>{initial}</Text>
         </View>
 
-        <Text style={styles.clientName}>{client.nom}</Text>
+        <Text style={styles.clientName}>{displayName}</Text>
         <Text style={styles.memberSince}>
           {t('clientDetail.memberSince', { date: formatDate(client.memberSince, locale) })}
         </Text>
@@ -191,7 +185,7 @@ export default function ClientDetailScreen() {
             <Text style={styles.adjustBtnText}>{t('clientDetail.removeBtn')}</Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </LinearGradient>
 
       <ScrollView
         style={styles.body}
@@ -220,12 +214,12 @@ export default function ClientDetailScreen() {
           ) : (
             <>
               <View style={[styles.progressBarBg, { backgroundColor: theme.bgElevated }]}>
-                <View style={[styles.progressBarFill, { width: `${progressPct}%`, backgroundColor: bg }]} />
+                <View style={[styles.progressBarFill, { width: `${progressPct}%`, backgroundColor: theme.primary }]} />
               </View>
               <View style={styles.progressLabels}>
                 <Text style={[styles.progressText, { color: theme.textMuted }]}>{client.points} / {client.rewardThreshold} pts</Text>
                 {client.hasReward ? (
-                  <Text style={[styles.progressBadge, { backgroundColor: theme.isDark ? 'rgba(16,185,129,0.15)' : '#dcfce7', color: theme.success }]}>
+                  <Text style={[styles.progressBadge, { backgroundColor: theme.primaryBg, color: theme.primary }]}>
                     {t('clientDetail.rewardAvailable')}
                   </Text>
                 ) : (
@@ -280,9 +274,9 @@ export default function ClientDetailScreen() {
           <View style={styles.statusBadgeContainer}>
             {client.termsAccepted ? (
               <>
-                <View style={[styles.statusBadge, { backgroundColor: theme.isDark ? 'rgba(16,185,129,0.12)' : '#dcfce7', borderColor: theme.success }]}>
-                  <CheckCircle2 size={16} color={theme.success} strokeWidth={1.5} />
-                  <Text style={[styles.statusBadgeText, { color: theme.success }]}>
+                <View style={[styles.statusBadge, { backgroundColor: theme.primaryBg, borderColor: theme.primary }]}>
+                  <CheckCircle2 size={16} color={theme.primary} strokeWidth={1.5} />
+                  <Text style={[styles.statusBadgeText, { color: theme.primary }]}>
                     {t('clientDetail.termsAccepted')}
                   </Text>
                 </View>
@@ -316,16 +310,7 @@ export default function ClientDetailScreen() {
               const isAdjust = tx.type === 'ADJUST_POINTS';
               const isProgramChange = tx.type === 'LOYALTY_PROGRAM_CHANGE';
               const isCancelled = tx.status === 'CANCELLED';
-              const color = isCancelled
-                ? theme.danger
-                : isProgramChange
-                  ? theme.primary
-                  : isAdjust
-                    ? theme.primary
-                    : isEarned
-                      ? theme.success
-                      : theme.warning;
-              const IconComp = isCancelled ? X : isProgramChange ? RefreshCw : isAdjust ? Pencil : isEarned ? Plus : Minus;
+              const { icon: IconComp, color } = getTransactionConfig(tx.type, isCancelled, theme);
 
               return (
                 <View key={tx.id} style={[styles.txRow, { borderBottomColor: theme.borderLight }]}>
@@ -353,8 +338,16 @@ export default function ClientDetailScreen() {
                       </Text>
                     ) : null}
                     {!isEarned && !isAdjust && !isProgramChange && tx.reward && (
-                      <Text style={[styles.txRewardName, { color: theme.warning }]}>🎁 {tx.reward.titre}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Text style={[styles.txRewardName, { color: theme.primary }]}>🎁 {tx.reward.titre}</Text>
+                        {tx.type === 'REDEEM_REWARD' && !isCancelled && tx.giftStatus === 'FULFILLED' && (
+                          <View style={{ backgroundColor: theme.accentBg, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4 }}>
+                            <Text style={{ fontSize: 9, fontWeight: '700', color: theme.accent }}>{t('gift.fulfilled')}</Text>
+                          </View>
+                        )}
+                      </View>
                     )}
+
                     <Text style={[styles.txDate, { color: theme.textMuted }]}>{formatDateTime(tx.createdAt, locale)}</Text>
                     {isCancelled && <Text style={[styles.txCancelLabel, { color: theme.danger }]}>{t('clientDetail.txCancelled')}</Text>}
                   </View>
@@ -427,7 +420,7 @@ export default function ClientDetailScreen() {
             <TouchableOpacity
               style={[
                 styles.modalConfirmBtn,
-                { backgroundColor: adjustMode === 'add' ? theme.success : theme.danger },
+                { backgroundColor: adjustMode === 'add' ? theme.primary : theme.danger },
                 adjustMutation.isPending && { opacity: 0.6 },
               ]}
               onPress={handleAdjustPoints}

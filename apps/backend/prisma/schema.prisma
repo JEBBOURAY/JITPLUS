@@ -3,7 +3,6 @@
 
 generator client {
   provider      = "prisma-client-js"
-  output        = "../src/generated/client"
   binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
@@ -105,6 +104,7 @@ model Store {
   latitude   Float?
   longitude  Float?
   telephone  String?          @db.VarChar(20)
+  email      String?          @db.VarChar(255)
   isActive   Boolean          @default(true) @map("is_active")
   createdAt  DateTime         @default(now()) @map("created_at")
   updatedAt  DateTime         @updatedAt @map("updated_at")
@@ -130,6 +130,8 @@ model Admin {
   lockedUntil         DateTime? @map("locked_until")
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  auditLogs           AuditLog[]
 
   @@map("admins")
 }
@@ -173,15 +175,22 @@ enum AuditAction {
   REJECT_UPGRADE_REQUEST
 }
 
+enum AuditTargetType {
+  MERCHANT
+  CLIENT
+  ADMIN
+}
+
 // ── Audit log table ───────────────────────────────────────────
 model AuditLog {
   id          String      @id @default(uuid())
   /// Admin who performed the action
   adminId     String      @map("admin_id")
+  admin       Admin       @relation(fields: [adminId], references: [id], onDelete: Cascade)
   adminEmail  String      @map("admin_email")
   action      AuditAction
   /// Type of resource affected: "MERCHANT", "CLIENT", "ADMIN"
-  targetType  String      @map("target_type")
+  targetType  AuditTargetType @map("target_type")
   /// PK of the affected resource (nullable for login events)
   targetId    String?     @map("target_id")
   /// Human-readable label (e.g. merchant name + email) for quick read
@@ -242,7 +251,8 @@ model Client {
   @@index([nom])
   @@index([email])
   @@index([telephone])
-  @@index([deletedAt])
+  @@index([deletedAt, createdAt])
+  @@index([countryCode])
   // refreshTokenHash is @unique — implicit index
   // Notification broadcast: filters on pushToken IS NOT NULL + notifPush = true
   @@index([notifPush])
@@ -259,7 +269,7 @@ model Otp {
   attempts   Int      @default(0)
   createdAt  DateTime @default(now()) @map("created_at")
 
-  @@index([expiresAt])
+  @@index([expiresAt, createdAt(sort: Desc)])
   @@map("otps")
 }
 
@@ -291,11 +301,13 @@ model Transaction {
   teamMemberId    String?           @map("team_member_id")
   performedByName String?           @map("performed_by_name")
   type            TransactionType
-  loyaltyType     String?           @map("loyalty_type")
+  loyaltyType     LoyaltyType?      @map("loyalty_type")
   note            String?
   amount          Float             @default(0)
   points          Int
   status          TransactionStatus @default(ACTIVE)
+  giftStatus      GiftStatus?       @map("gift_status")
+  fulfilledAt     DateTime?         @map("fulfilled_at")
   createdAt       DateTime          @default(now()) @map("created_at")
 
   client     Client      @relation(fields: [clientId], references: [id], onDelete: Restrict)
@@ -304,13 +316,15 @@ model Transaction {
   teamMember TeamMember? @relation(fields: [teamMemberId], references: [id], onDelete: SetNull)
 
   @@index([merchantId, status, createdAt])
+  @@index([clientId, status, createdAt])
   @@index([clientId, merchantId])
-  @@index([clientId, createdAt])
   @@index([merchantId, type, status, createdAt])
   @@index([rewardId])
   // Admin dashboard: count by type, filter status+date
   @@index([type])
   @@index([status, createdAt(sort: Desc)])
+  // Pending gifts lookup: quickly find PENDING gifts for a merchant
+  @@index([merchantId, giftStatus, createdAt])
   @@map("transactions")
 }
 
@@ -324,6 +338,11 @@ enum TransactionType {
 enum TransactionStatus {
   ACTIVE
   CANCELLED
+}
+
+enum GiftStatus {
+  PENDING
+  FULFILLED
 }
 
 enum TeamRole {
@@ -366,6 +385,9 @@ model Reward {
   @@map("rewards")
 }
 
+/// Channel used for a notification blast (stored as TEXT in DB).
+/// Values: 'PUSH', 'EMAIL', 'WHATSAPP'
+
 model Notification {
   id             String   @id @default(uuid())
   merchantId     String   @map("merchant_id")
@@ -381,7 +403,7 @@ model Notification {
   merchant         Merchant                   @relation(fields: [merchantId], references: [id], onDelete: Cascade)
   clientStatuses   ClientNotificationStatus[]
 
-  @@index([channel])
+  @@index([channel, createdAt(sort: Desc)])
   // Merchant history + client notification list: merchantId + createdAt DESC
   @@index([merchantId, createdAt(sort: Desc)])
   @@map("notifications")

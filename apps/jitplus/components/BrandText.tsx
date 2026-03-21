@@ -27,7 +27,7 @@ export default function BrandText({ size = 24 }: BrandTextProps) {
         <SvgText
           fill="url(#brand)"
           fontSize={scaledSize}
-          fontWeight="800"
+          fontWeight="700"
           fontFamily="Lexend_700Bold"
           x={width / 2}
           y={scaledSize}

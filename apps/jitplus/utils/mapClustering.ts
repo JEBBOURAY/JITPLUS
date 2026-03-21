@@ -89,7 +89,8 @@ export function useMapClustering(
       }));
 
       try {
-        clusterRef.current!.load(points as any);
+        // Supercluster type expects GeoJSON features, which we provide.
+        clusterRef.current!.load(points as unknown as GeoJSON.Feature<GeoJSON.Point, any>[]);
       } catch (e) {
         if (__DEV__) console.warn('[mapClustering] Supercluster.load failed', e);
         return;

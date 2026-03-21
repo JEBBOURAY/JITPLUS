@@ -1,4 +1,4 @@
-import { Prisma } from '../generated/client';
+import { Prisma } from '@prisma/client';
 
 /**
  * Standard merchant profile select — used in getProfile, updateProfile, auth login.

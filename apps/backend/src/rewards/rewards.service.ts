@@ -1,7 +1,7 @@
 import { Injectable, Inject, NotFoundException, BadRequestException } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
-import { Reward } from '../generated/client';
+import { Reward } from '@prisma/client';
 import { IRewardRepository, REWARD_REPOSITORY } from './reward.repository.interface';
 import { REWARDS_CACHE_TTL } from '../common/constants';
 

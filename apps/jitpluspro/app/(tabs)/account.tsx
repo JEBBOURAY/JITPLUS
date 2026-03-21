@@ -14,14 +14,15 @@ import {
   Animated,
   Linking,
 } from 'react-native';
-import { getServerBaseUrl } from '@/services/api';
+import api from '@/services/api';
+import * as ImagePicker from 'expo-image-picker';
+import { getErrorMessage } from '@/utils/error';
 import MerchantLogo from '@/components/MerchantLogo';
+import { useReferral } from '@/hooks/useQueryHooks';
 import {
-  Star,
   MapPin,
   LogOut,
   ChevronDown,
-  User,
   Lock,
   Smartphone,
   Settings,
@@ -32,6 +33,8 @@ import {
   Trash2,
   Globe,
   Check,
+  Edit3,
+  Store as StoreIcon,
   Crown,
   Zap,
   Calendar,
@@ -39,14 +42,15 @@ import {
   Gift,
   AlertTriangle,
   MessageCircle,
-  Instagram,
+  Camera,
+  ChevronRight,
+  Copy,
 } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useRouter } from 'expo-router';
 import MerchantCategoryIcon, { useCategoryMetadata } from '@/components/MerchantCategoryIcon';
 import { LinearGradient } from 'expo-linear-gradient';
-import { DEFAULT_CURRENCY } from '@/config/currency';
 import { useFocusFade } from '@/hooks/useFocusFade';
 import { useLanguage, LANGUAGES } from '@/contexts/LanguageContext';
 import Constants from 'expo-constants';
@@ -54,7 +58,7 @@ import FadeInView from '@/components/FadeInView';
 import { wp, hp, ms, fontSize as FS, radius } from '@/utils/responsive';
 
 export default function AccountScreen() {
-  const { merchant, loading, signOut, isTeamMember, teamMember, loadProfile } = useAuth();
+  const { merchant, loading, signOut, isTeamMember, teamMember, loadProfile, updateMerchant } = useAuth();
   const theme = useTheme();
   const router = useRouter();
   const { isFocused, focusStyle } = useFocusFade();
@@ -63,9 +67,60 @@ export default function AccountScreen() {
   const [storeExpanded, setStoreExpanded] = useState(false);
   const [prefExpanded, setPrefExpanded] = useState(false);
   const [compteExpanded, setCompteExpanded] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [showLogoModal, setShowLogoModal] = useState(false);
+
+  const pickAndUploadLogo = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.7,
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+      setUploadingLogo(true);
+      const asset = result.assets[0];
+      const formData = new FormData();
+      const ext = (asset.uri.split('.').pop() ?? 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+      const safeName = (merchant?.nom ?? 'commerce')
+        .toLowerCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 40);
+      const dateStr = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+      const fileName = `logo_${safeName}_${dateStr}.${ext}`;
+      formData.append('file', { uri: asset.uri, name: fileName, type: asset.mimeType ?? `image/${ext}` } as any);
+      const res = await api.post('/merchant/upload-image?type=logo', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      updateMerchant({ ...merchant!, logoUrl: res.data.url });
+    } catch (err) {
+      Alert.alert('Erreur', getErrorMessage(err, "Impossible d'envoyer le logo"));
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
+  const handleLogoPress = () => setShowLogoModal(true);
+
+  const handleDeleteLogo = async () => {
+    setShowLogoModal(false);
+    try {
+      await api.patch('/merchant/profile', { logoUrl: null });
+      updateMerchant({ ...merchant!, logoUrl: undefined });
+    } catch (err) {
+      Alert.alert('Erreur', getErrorMessage(err, 'Impossible de supprimer le logo'));
+    }
+  };
+  const { data: referralData } = useReferral();
+  const referralCode = referralData?.referralCode ?? null;
 
   useEffect(() => {
-    if (isFocused) loadProfile().catch(() => {});
+    if (isFocused) {
+      loadProfile().catch(() => {});
+    }
   }, [isFocused]);
   const { label: categoryLabel } = useCategoryMetadata(merchant?.categorie);
   const { locale, setLocale, t } = useLanguage();
@@ -136,192 +191,170 @@ export default function AccountScreen() {
         {/* ── Profile Card ───────────────────────────── */}
         <FadeInView delay={100}>
           <View style={[styles.profileCard, { backgroundColor: theme.bgCard }]}>
-            <View style={styles.profileRow}>
-              {merchant?.logoUrl ? (
-                <MerchantLogo logoUrl={merchant.logoUrl} style={styles.avatarImage} />
-              ) : (
+            {/* ── Logo ────────────────────────────────── */}
+            <View style={styles.profileCardAvatarRow}>
+              <TouchableOpacity onPress={handleLogoPress} activeOpacity={0.85} style={styles.avatarRingWrapper}>
                 <LinearGradient
-                  colors={[palette.charbon, palette.violet]}
+                  colors={['#A78BFA', '#7C3AED', '#1F2937']}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 1 }}
-                  style={styles.avatarGradient}
+                  style={styles.avatarRing}
                 >
-                  <Text style={styles.avatarText}>{initials}</Text>
-                </LinearGradient>
-              )}
-              <View style={styles.profileInfo}>
-                <Text style={[styles.profileName, { color: theme.text }]}>{merchant.nom}</Text>
-                <View style={styles.profileMeta}>
-                  <View style={[styles.categoryChip, { backgroundColor: `${palette.charbon}12` }]}>
-                    <MerchantCategoryIcon category={merchant?.categorie} size={12} color={palette.charbon} strokeWidth={1.5} />
-                    <Text style={[styles.categoryChipText, { color: palette.charbon }]}>{categoryLabel}</Text>
-                  </View>
-                  {merchant?.ville && (
-                    <View style={[styles.categoryChip, { backgroundColor: `${palette.charbon}08` }]}>
-                      <MapPin size={11} color={theme.textMuted} strokeWidth={1.5} />
-                      <Text style={[styles.categoryChipText, { color: theme.textMuted }]}>{merchant.ville}</Text>
+                  {uploadingLogo ? (
+                    <View style={styles.avatarInner}>
+                      <ActivityIndicator size="small" color={palette.violet} />
                     </View>
+                  ) : merchant?.logoUrl ? (
+                    <MerchantLogo logoUrl={merchant.logoUrl} style={styles.avatarInner} />
+                  ) : (
+                    <LinearGradient
+                      colors={[palette.charbon, palette.violet]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.avatarInner}
+                    >
+                      <Text style={styles.avatarText}>{initials}</Text>
+                    </LinearGradient>
                   )}
-                </View>
-              </View>
+                </LinearGradient>
+                <LinearGradient
+                  colors={['#A78BFA', '#7C3AED']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.avatarCameraBadge}
+                >
+                  <Camera size={ms(11)} color="#fff" strokeWidth={2.5} />
+                </LinearGradient>
+              </TouchableOpacity>
+              <Text style={[styles.profileName, { color: theme.text }]}>{merchant.nom}</Text>
             </View>
 
-            {/* Description */}
-            {!!merchant.description && (
-              <Text style={[styles.profileDescription, { color: theme.textMuted }]} numberOfLines={3}>
-                {merchant.description}
-              </Text>
-            )}
+            {/* ── Plan Row ────────────────────────────── */}
+            <TouchableOpacity
+              activeOpacity={0.78}
+              onPress={() => router.push('/plan')}
+              style={[
+                styles.planRow,
+                isPremium
+                  ? { backgroundColor: '#0f031e', borderColor: '#7C3AED35' }
+                  : { backgroundColor: `${theme.textMuted}06`, borderColor: `${theme.textMuted}15` },
+              ]}
+            >
+              {/* Left icon */}
+              <LinearGradient
+                colors={isPremium ? ['#7C3AED', '#5B21B6'] : [`${theme.textMuted}20`, `${theme.textMuted}10`]}
+                style={styles.planRowIcon}
+              >
+                {isPremium
+                  ? (isTrial ? <Zap size={ms(16)} color="#fff" strokeWidth={2} /> : <Crown size={ms(16)} color="#FCD34D" strokeWidth={2} />)
+                  : <Zap size={ms(16)} color={theme.textMuted} strokeWidth={2} />}
+              </LinearGradient>
 
-            {/* Social links */}
-            {!!(merchant.socialLinks?.instagram || merchant.socialLinks?.tiktok) && (
-              <View style={styles.socialRow}>
-                {!!merchant.socialLinks?.instagram && (
-                  <Pressable
-                    style={({ pressed }) => [
-                      styles.socialChip,
-                      { backgroundColor: '#fce4ec' },
-                      pressed && { opacity: 0.7 },
-                    ]}
-                    onPress={() => {
-                      const username = merchant.socialLinks!.instagram!.replace(/^@/, '');
-                      if (!/^[a-zA-Z0-9_.]{1,30}$/.test(username)) return;
-                      Linking.openURL(`https://www.instagram.com/${encodeURIComponent(username)}`);
-                    }}
-                  >
-                    <Instagram size={14} color="#E1306C" strokeWidth={1.5} />
-                    <Text style={[styles.socialChipText, { color: '#E1306C' }]}>
-                      @{merchant.socialLinks.instagram.replace(/^@/, '')}
+              {/* Center content */}
+              <View style={styles.planRowContent}>
+                <View style={styles.planRowHeader}>
+                  <Text style={[styles.planRowTitle, isPremium ? { color: '#fff' } : { color: theme.text }]}>
+                    {isPremium ? (isTrial ? t('account.planTrial') : 'Premium') : t('account.planFree')}
+                  </Text>
+                  <View style={[styles.planRowBadge, isPremium ? { backgroundColor: isTrial ? '#7C3AED' : '#065F46' } : { backgroundColor: `${theme.textMuted}20` }]}>
+                    <Text style={[styles.planRowBadgeText, isPremium ? { color: '#fff' } : { color: theme.textMuted }]}>
+                      {isPremium ? (isTrial ? t('account.planTrial').toUpperCase() : 'ACTIVE') : 'FREE'}
                     </Text>
-                  </Pressable>
+                  </View>
+                </View>
+
+                {/* Expiry / admin info */}
+                {isPremium && (isAdminPremium && !planExpiresAt) ? (
+                  <Text style={styles.planRowSub}>{t('account.planByAdmin')}</Text>
+                ) : isPremium && planExpiresAt ? (
+                  <View style={styles.planRowExpiryLine}>
+                    <Calendar size={11} color={planUrgency === 'expired' || planUrgency === 'urgent' ? '#f87171' : planUrgency === 'soon' ? '#A78BFA' : '#9CA3AF'} />
+                    <Text style={[
+                      styles.planRowExpiry,
+                      planUrgency === 'expired' || planUrgency === 'urgent' ? { color: '#f87171' } : planUrgency === 'soon' ? { color: '#A78BFA' } : { color: '#9CA3AF' },
+                    ]}>
+                      {planUrgency === 'expired'
+                        ? (isTrial ? t('account.planTrialExpired', { date: formatDate(planExpiresAt) }) : t('account.planExpired', { date: formatDate(planExpiresAt) }))
+                        : (isTrial ? t('account.planTrialExpiry', { date: formatDate(planExpiresAt) }) : t('account.planExpiry', { date: formatDate(planExpiresAt) }))}
+                    </Text>
+                  </View>
+                ) : !isPremium ? (
+                  <Text style={[styles.planRowSub, { color: theme.textMuted }]}>{t('account.planFreeDesc')}</Text>
+                ) : null}
+
+                {/* Days remaining chip */}
+                {isPremium && daysRemaining !== null && daysRemaining > 0 && (
+                  <View style={[
+                    styles.planRowDaysChip,
+                    planUrgency === 'urgent' ? { backgroundColor: '#f8717118' } : planUrgency === 'soon' ? { backgroundColor: '#7C3AED18' } : { backgroundColor: '#37415118' },
+                  ]}>
+                    <Text style={[
+                      styles.planRowDaysText,
+                      planUrgency === 'urgent' ? { color: '#f87171' } : planUrgency === 'soon' ? { color: '#A78BFA' } : { color: '#9CA3AF' },
+                    ]}>
+                      {isTrial ? t('account.planTrialDaysLeft', { count: daysRemaining }) : t('account.planDaysLeft', { count: daysRemaining })}
+                    </Text>
+                  </View>
                 )}
-                {!!merchant.socialLinks?.tiktok && (
-                  <Pressable
-                    style={({ pressed }) => [
-                      styles.socialChip,
-                      { backgroundColor: '#f0f0f0' },
-                      pressed && { opacity: 0.7 },
-                    ]}
-                    onPress={() => {
-                      const username = merchant.socialLinks!.tiktok!.replace(/^@/, '');
-                      if (!/^[a-zA-Z0-9_.]{1,30}$/.test(username)) return;
-                      Linking.openURL(`https://www.tiktok.com/@${encodeURIComponent(username)}`);
-                    }}
-                  >
-                    <Globe size={14} color="#000" strokeWidth={1.5} />
-                    <Text style={[styles.socialChipText, { color: '#000' }]}>
-                      @{merchant.socialLinks.tiktok.replace(/^@/, '')}
+
+                {/* Renew alert */}
+                {isPremium && (planUrgency === 'expired' || planUrgency === 'urgent' || planUrgency === 'soon') && (
+                  <View style={styles.planRowRenew}>
+                    <AlertCircle size={12} color="#A78BFA" />
+                    <Text style={styles.planRowRenewText}>
+                      {planUrgency === 'expired'
+                        ? (isTrial ? t('account.planTrialRenewExpired') : t('account.planRenewExpired'))
+                        : (isTrial ? t('account.planTrialRenewUrgent') : t('account.planRenewUrgent'))}
                     </Text>
-                  </Pressable>
+                  </View>
                 )}
               </View>
+
+              {/* Right chevron */}
+              <ChevronRight size={ms(18)} color={isPremium ? '#A78BFA' : theme.textMuted} />
+            </TouchableOpacity>
+
+            {/* ── Referral Code ───────────────────────── */}
+            {referralCode && (
+              <Pressable
+                onPress={() => router.push('/referral' as any)}
+                style={({ pressed }) => [
+                  styles.referralRow,
+                  { backgroundColor: `${palette.violet}06`, borderColor: `${palette.violet}18` },
+                  pressed && { opacity: 0.75 },
+                ]}
+              >
+                <LinearGradient
+                  colors={[`${palette.violet}25`, `${palette.violet}10`]}
+                  style={styles.referralRowIcon}
+                >
+                  <Gift size={ms(16)} color={palette.violet} strokeWidth={1.8} />
+                </LinearGradient>
+                <View style={styles.referralRowContent}>
+                  <Text style={[styles.referralRowLabel, { color: theme.text }]}>
+                    {t('account.referralActive')}
+                  </Text>
+                  <Text style={[styles.referralRowHint, { color: theme.textMuted }]}>
+                    {t('account.referralInviteHint')}
+                  </Text>
+                </View>
+                <View style={[styles.referralRowCode, { backgroundColor: `${palette.violet}14` }]}>
+                  <Text style={[styles.referralRowCodeText, { color: palette.violet }]}>
+                    {referralCode}
+                  </Text>
+                  <Copy size={ms(12)} color={palette.violet} strokeWidth={2} />
+                </View>
+              </Pressable>
             )}
           </View>
-        </FadeInView>
-
-        {/* ── Plan Card ──────────────────────────────── */}
-        <FadeInView delay={200}>
-          <TouchableOpacity
-            activeOpacity={0.85}
-            onPress={() => router.push('/plan')}
-            style={[
-              styles.planCard,
-              isPremium
-                ? { backgroundColor: '#1a0530', borderColor: '#7C3AED50' }
-                : { backgroundColor: theme.bgCard, borderColor: theme.borderLight },
-            ]}
-          >
-            {isPremium ? (
-              <>
-                <View style={[styles.planBadge, { backgroundColor: isTrial ? '#7C3AED' : '#374151' }]}>
-                  {isTrial ? <Zap size={14} color="#fff" strokeWidth={1.5} /> : <Crown size={14} color="#fff" strokeWidth={1.5} />}
-                  <Text style={styles.planBadgeText}>{isTrial ? t('account.planTrial').toUpperCase() : 'PREMIUM'}</Text>
-                </View>
-                {(isAdminPremium && !planExpiresAt) ? (
-                  <View style={styles.planBody}>
-                    <Text style={styles.planTitle}>{t('account.planPremium')}</Text>
-                    <Text style={styles.planSubFree}>{t('account.planByAdmin')}</Text>
-                  </View>
-                ) : isTrial ? (
-                  <View style={styles.planBody}>
-                    <Text style={styles.planTitle}>{t('account.planTrial')}</Text>
-                    <Text style={[styles.planMeta, { color: '#9CA3AF', marginBottom: 8 }]}>{t('account.planTrialDesc')}</Text>
-                    {planExpiresAt && (
-                      <View style={styles.planExpiryRow}>
-                        <Calendar size={13} color={planUrgency === 'expired' || planUrgency === 'urgent' ? '#f87171' : planUrgency === 'soon' ? '#fbbf24' : '#9CA3AF'} />
-                        <Text style={[styles.planExpiry, planUrgency === 'expired' || planUrgency === 'urgent' ? { color: '#f87171' } : planUrgency === 'soon' ? { color: '#fbbf24' } : { color: '#9CA3AF' }]}>
-                          {planUrgency === 'expired' ? t('account.planTrialExpired', { date: formatDate(planExpiresAt) }) : t('account.planTrialExpiry', { date: formatDate(planExpiresAt) })}
-                        </Text>
-                      </View>
-                    )}
-                    {daysRemaining !== null && daysRemaining > 0 && (
-                      <View style={[styles.planDaysChip, planUrgency === 'urgent' ? { backgroundColor: '#f8717120' } : planUrgency === 'soon' ? { backgroundColor: '#fbbf2420' } : { backgroundColor: '#37415130' }]}>
-                        <Text style={[styles.planDaysText, planUrgency === 'urgent' ? { color: '#f87171' } : planUrgency === 'soon' ? { color: '#fbbf24' } : { color: '#9CA3AF' }]}>
-                          {t('account.planTrialDaysLeft', { count: daysRemaining })}
-                        </Text>
-                      </View>
-                    )}
-                    {(planUrgency === 'expired' || planUrgency === 'urgent' || planUrgency === 'soon') && (
-                      <View style={styles.planRenewBanner}>
-                        <AlertCircle size={14} color="#fbbf24" />
-                        <Text style={styles.planRenewText}>{planUrgency === 'expired' ? t('account.planTrialRenewExpired') : t('account.planTrialRenewUrgent')}</Text>
-                      </View>
-                    )}
-                  </View>
-                ) : (
-                  <View style={styles.planBody}>
-                    <Text style={styles.planTitle}>{t('account.planPremium')}</Text>
-                    {trialStartedAt && <Text style={styles.planMeta}>{t('account.planActiveSince', { date: formatDate(trialStartedAt) })}</Text>}
-                    {planExpiresAt && (
-                      <View style={styles.planExpiryRow}>
-                        <Calendar size={13} color={planUrgency === 'expired' || planUrgency === 'urgent' ? '#f87171' : planUrgency === 'soon' ? '#fbbf24' : '#9CA3AF'} />
-                        <Text style={[styles.planExpiry, planUrgency === 'expired' || planUrgency === 'urgent' ? { color: '#f87171' } : planUrgency === 'soon' ? { color: '#fbbf24' } : { color: '#9CA3AF' }]}>
-                          {planUrgency === 'expired' ? t('account.planExpired', { date: formatDate(planExpiresAt) }) : t('account.planExpiry', { date: formatDate(planExpiresAt) })}
-                        </Text>
-                      </View>
-                    )}
-                    {daysRemaining !== null && daysRemaining > 0 && (
-                      <View style={[styles.planDaysChip, planUrgency === 'urgent' ? { backgroundColor: '#f8717120' } : planUrgency === 'soon' ? { backgroundColor: '#fbbf2420' } : { backgroundColor: '#37415125' }]}>
-                        <Text style={[styles.planDaysText, planUrgency === 'urgent' ? { color: '#f87171' } : planUrgency === 'soon' ? { color: '#fbbf24' } : { color: '#9CA3AF' }]}>
-                          {t('account.planDaysLeft', { count: daysRemaining })}
-                        </Text>
-                      </View>
-                    )}
-                    {(planUrgency === 'expired' || planUrgency === 'urgent' || planUrgency === 'soon') && (
-                      <View style={styles.planRenewBanner}>
-                        <AlertCircle size={14} color="#fbbf24" />
-                        <Text style={styles.planRenewText}>{planUrgency === 'expired' ? t('account.planRenewExpired') : t('account.planRenewUrgent')}</Text>
-                      </View>
-                    )}
-                  </View>
-                )}
-              </>
-            ) : (
-              <>
-                <View style={[styles.planBadge, { backgroundColor: theme.textMuted + '22' }]}>
-                  <Zap size={14} color={theme.textMuted} strokeWidth={1.5} />
-                  <Text style={[styles.planBadgeText, { color: theme.textMuted }]}>{t('account.planFree').toUpperCase()}</Text>
-                </View>
-                <View style={styles.planBody}>
-                  <Text style={[styles.planTitle, { color: theme.text }]}>{t('account.planFree')}</Text>
-                  <Text style={[styles.planSubFree, { color: theme.textMuted }]}>{t('account.planFreeDesc')}</Text>
-                  <View style={styles.freeLimitRow}>
-                    <Text style={[styles.freeLimitText, { color: theme.textMuted }]}>{t('account.freeLimitClients')}</Text>
-                    <Text style={[styles.freeLimitText, { color: theme.textMuted }]}>{t('account.freeLimitMass')}</Text>
-                    <Text style={[styles.freeLimitText, { color: theme.textMuted }]}>{t('account.freeLimitAnalytics')}</Text>
-                  </View>
-                </View>
-              </>
-            )}
-          </TouchableOpacity>
         </FadeInView>
 
         {/* ── Team Member Banner ─────────────────────── */}
         {isTeamMember && teamMember && (
           <FadeInView delay={250}>
             <View style={[styles.teamBanner, { backgroundColor: `${palette.charbon}12`, borderColor: `${palette.charbon}30` }]}>
-              <View style={[styles.infoIconBox, { backgroundColor: `${palette.charbon}15` }]}>
-                <Shield size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
+              <View style={[styles.infoIconBox, { backgroundColor: `${palette.violet}15` }]}>
+                <Shield size={ms(16)} color={palette.violet} strokeWidth={1.5} />
               </View>
               <View style={styles.infoContent}>
                 <Text style={[styles.infoValue, { color: theme.text }]}>
@@ -353,7 +386,7 @@ export default function AccountScreen() {
             </TouchableOpacity>
             {storeExpanded && (
               <View style={[styles.infoCard, { backgroundColor: theme.bgCard }]}>
-                {/* Edit store */}
+                {/* Edit Commerce */}
                 <Pressable
                   onPress={() => router.push('/edit-profile')}
                   android_ripple={{ color: `${palette.charbon}10` }}
@@ -362,12 +395,29 @@ export default function AccountScreen() {
                     pressed && Platform.OS === 'ios' && { opacity: 0.7 },
                   ]}
                 >
-                  <View style={[styles.infoIconBox, { backgroundColor: `${palette.charbon}12` }]}>
-                    <User size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
+                  <View style={[styles.infoIconBox, { backgroundColor: `${palette.violet}12` }]}>
+                    <Edit3 size={ms(16)} color={palette.violet} strokeWidth={1.5} />
                   </View>
                   <View style={styles.infoContent}>
                     <Text style={[styles.infoValue, { color: theme.text }]}>{t('account.editStore')}</Text>
                     <Text style={[styles.infoLabel, { color: theme.textMuted }]}>{t('account.editStoreSubtitle')}</Text>
+                  </View>
+                </Pressable>
+                {/* Manage Stores */}
+                <Pressable
+                  onPress={() => router.push('/stores')}
+                  android_ripple={{ color: `${palette.charbon}10` }}
+                  style={({ pressed }) => [
+                    styles.infoRow, { borderBottomColor: theme.borderLight },
+                    pressed && Platform.OS === 'ios' && { opacity: 0.7 },
+                  ]}
+                >
+                  <View style={[styles.infoIconBox, { backgroundColor: `${palette.violet}12` }]}>
+                    <StoreIcon size={ms(16)} color={palette.violet} strokeWidth={1.5} />
+                  </View>
+                  <View style={styles.infoContent}>
+                    <Text style={[styles.infoValue, { color: theme.text }]}>{t('account.manageStores')}</Text>
+                    <Text style={[styles.infoLabel, { color: theme.textMuted }]}>{t('account.manageStoresSubtitle')}</Text>
                   </View>
                 </Pressable>
                 {/* Settings */}
@@ -379,8 +429,8 @@ export default function AccountScreen() {
                     pressed && Platform.OS === 'ios' && { opacity: 0.7 },
                   ]}
                 >
-                  <View style={[styles.infoIconBox, { backgroundColor: `${theme.textSecondary}12` }]}>
-                    <Settings size={ms(16)} color={theme.textSecondary} strokeWidth={1.5} />
+                  <View style={[styles.infoIconBox, { backgroundColor: `${palette.violet}12` }]}>
+                    <Settings size={ms(16)} color={palette.violet} strokeWidth={1.5} />
                   </View>
                   <View style={styles.infoContent}>
                     <Text style={[styles.infoValue, { color: theme.text }]}>{t('account.settingsTitle')}</Text>
@@ -413,8 +463,8 @@ export default function AccountScreen() {
                     pressed && Platform.OS === 'ios' && { opacity: 0.7 },
                   ]}
                 >
-                  <View style={[styles.infoIconBox, { backgroundColor: '#6B728012' }]}>
-                    <Users size={ms(16)} color="#6B7280" strokeWidth={1.5} />
+                  <View style={[styles.infoIconBox, { backgroundColor: `${palette.violet}12` }]}>
+                    <Users size={ms(16)} color={palette.violet} strokeWidth={1.5} />
                   </View>
                   <View style={styles.infoContent}>
                     <Text style={[styles.infoValue, { color: theme.text }]}>{t('account.team')}</Text>
@@ -430,8 +480,8 @@ export default function AccountScreen() {
                     pressed && Platform.OS === 'ios' && { opacity: 0.7 },
                   ]}
                 >
-                  <View style={[styles.infoIconBox, { backgroundColor: `${palette.charbon}12` }]}>
-                    <Gift size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
+                  <View style={[styles.infoIconBox, { backgroundColor: `${palette.violet}12` }]}>
+                    <Gift size={ms(16)} color={palette.violet} strokeWidth={1.5} />
                   </View>
                   <View style={styles.infoContent}>
                     <Text style={[styles.infoValue, { color: theme.text }]}>{t('referral.menuTitle')}</Text>
@@ -469,8 +519,8 @@ export default function AccountScreen() {
                   pressed && Platform.OS === 'ios' && { opacity: 0.7 },
                 ]}
               >
-                <View style={[styles.infoIconBox, { backgroundColor: `${palette.charbon}15` }]}>
-                  <Moon size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
+                <View style={[styles.infoIconBox, { backgroundColor: `${palette.violet}15` }]}>
+                  <Moon size={ms(16)} color={palette.violet} strokeWidth={1.5} />
                 </View>
                 <View style={styles.infoContent}>
                   <Text style={[styles.infoValue, { color: theme.text }]}>{t('account.darkMode')}</Text>
@@ -552,8 +602,8 @@ export default function AccountScreen() {
                     pressed && Platform.OS === 'ios' && { opacity: 0.7 },
                   ]}
                 >
-                  <View style={[styles.infoIconBox, { backgroundColor: '#F59E0B15' }]}>
-                    <Lock size={ms(16)} color="#F59E0B" strokeWidth={1.5} />
+                  <View style={[styles.infoIconBox, { backgroundColor: `${palette.violet}15` }]}>
+                    <Lock size={ms(16)} color={palette.violet} strokeWidth={1.5} />
                   </View>
                   <View style={styles.infoContent}>
                     <Text style={[styles.infoValue, { color: theme.text }]}>{t('account.security')}</Text>
@@ -571,8 +621,8 @@ export default function AccountScreen() {
                     pressed && Platform.OS === 'ios' && { opacity: 0.7 },
                   ]}
                 >
-                  <View style={[styles.infoIconBox, { backgroundColor: '#6B728012' }]}>
-                    <Smartphone size={ms(16)} color="#6B7280" strokeWidth={1.5} />
+                  <View style={[styles.infoIconBox, { backgroundColor: `${palette.violet}12` }]}>
+                    <Smartphone size={ms(16)} color={palette.violet} strokeWidth={1.5} />
                   </View>
                   <View style={styles.infoContent}>
                     <Text style={[styles.infoValue, { color: theme.text }]}>{t('account.stores')}</Text>
@@ -589,8 +639,8 @@ export default function AccountScreen() {
                   pressed && Platform.OS === 'ios' && { opacity: 0.7 },
                 ]}
               >
-                <View style={[styles.infoIconBox, { backgroundColor: '#25D36615' }]}>
-                  <MessageCircle size={ms(16)} color="#25D366" strokeWidth={1.5} />
+                <View style={[styles.infoIconBox, { backgroundColor: `${palette.violet}15` }]}>
+                  <MessageCircle size={ms(16)} color={palette.violet} strokeWidth={1.5} />
                 </View>
                 <View style={styles.infoContent}>
                   <Text style={[styles.infoValue, { color: theme.text }]}>{'Contacter le support'}</Text>
@@ -651,6 +701,98 @@ export default function AccountScreen() {
           </Text>
         </View>
       </ScrollView>
+
+      {/* ── Logo Edit Bottom Sheet ──────────────────── */}
+      <Modal
+        visible={showLogoModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowLogoModal(false)}
+      >
+        <Pressable style={styles.bottomSheetOverlay} onPress={() => setShowLogoModal(false)}>
+          <Pressable style={[styles.logoModalSheet, { backgroundColor: theme.bgCard }]} onPress={() => {}}>
+            {/* Drag handle */}
+            <View style={[styles.sheetHandle, { backgroundColor: `${palette.charbon}20` }]} />
+
+            {/* Avatar preview */}
+            <View style={styles.logoModalPreviewRow}>
+              <LinearGradient
+                colors={['#A78BFA', '#7C3AED', '#1F2937']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.logoModalRing}
+              >
+                {uploadingLogo ? (
+                  <View style={[styles.logoModalInner, { backgroundColor: theme.bgCard }]}>
+                    <ActivityIndicator size="large" color={palette.violet} />
+                  </View>
+                ) : merchant?.logoUrl ? (
+                  <MerchantLogo logoUrl={merchant.logoUrl} style={styles.logoModalInner} />
+                ) : (
+                  <LinearGradient
+                    colors={[palette.charbon, palette.violet]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.logoModalInner}
+                  >
+                    <Text style={styles.logoModalInitials}>{initials}</Text>
+                  </LinearGradient>
+                )}
+              </LinearGradient>
+            </View>
+
+            <Text style={[styles.logoModalTitle, { color: theme.text }]}>Photo de profil</Text>
+            <Text style={[styles.logoModalSubtitle, { color: theme.textMuted }]}>
+              {merchant?.logoUrl
+                ? 'Modifiez ou supprimez votre photo de profil'
+                : 'Ajoutez un logo pour personnaliser votre commerce'}
+            </Text>
+
+            {/* Choose photo */}
+            <TouchableOpacity
+              style={styles.logoModalBtn}
+              activeOpacity={0.85}
+              onPress={() => {
+                setShowLogoModal(false);
+                setTimeout(pickAndUploadLogo, 350);
+              }}
+            >
+              <LinearGradient
+                colors={['#7C3AED', '#5B21B6']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.logoModalBtnGradient}
+              >
+                <Camera size={ms(18)} color="#fff" strokeWidth={2} />
+                <Text style={styles.logoModalBtnText}>
+                  {merchant?.logoUrl ? 'Changer la photo' : 'Ajouter une photo'}
+                </Text>
+              </LinearGradient>
+            </TouchableOpacity>
+
+            {/* Delete (only if logo exists) */}
+            {!!merchant?.logoUrl && (
+              <TouchableOpacity
+                style={[styles.logoModalOutlineBtn, { borderColor: '#EF444435' }]}
+                activeOpacity={0.8}
+                onPress={handleDeleteLogo}
+              >
+                <Trash2 size={ms(16)} color="#EF4444" strokeWidth={1.5} />
+                <Text style={[styles.logoModalOutlineBtnText, { color: '#EF4444' }]}>Supprimer la photo</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Cancel */}
+            <TouchableOpacity
+              style={[styles.logoModalOutlineBtn, { borderColor: theme.borderLight }]}
+              activeOpacity={0.7}
+              onPress={() => setShowLogoModal(false)}
+            >
+              <Text style={[styles.logoModalOutlineBtnText, { color: theme.textMuted }]}>Annuler</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* ── Language Selector Modal ─────────────────── */}
       <Modal
@@ -728,32 +870,156 @@ const styles = StyleSheet.create({
   // Profile card
   profileCard: {
     borderRadius: radius.xl,
-    padding: wp(16),
     marginBottom: hp(16),
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 12,
-    elevation: 2,
+    overflow: 'hidden',
+    paddingBottom: hp(16),
+    shadowColor: '#7C3AED',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 4,
   },
-  profileRow: { flexDirection: 'row', alignItems: 'center', gap: wp(14) },
-  avatarGradient: {
-    width: ms(56),
-    height: ms(56),
-    borderRadius: ms(28),
+  profileCardBanner: {
+    height: hp(72),
+    width: '100%',
+  },
+  profileCardAvatarRow: {
+    alignItems: 'center',
+    marginTop: hp(16),
+    marginBottom: hp(2),
+    gap: hp(8),
+  },
+  avatarRingWrapper: {
+    position: 'relative',
+  },
+  avatarRing: {
+    width: ms(88),
+    height: ms(88),
+    borderRadius: ms(44),
+    padding: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#7C3AED',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  avatarInner: {
+    width: ms(82),
+    height: ms(82),
+    borderRadius: ms(41),
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    resizeMode: 'cover',
+    overflow: 'hidden',
+  },
+  avatarCameraBadge: {
+    position: 'absolute',
+    bottom: 2,
+    right: 2,
+    width: ms(24),
+    height: ms(24),
+    borderRadius: ms(12),
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#fff',
+    shadowColor: '#7C3AED',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  avatarText: { fontSize: FS.xl, fontWeight: '700', color: '#fff', letterSpacing: 1 },
+  profileInfo: { flex: 1 },
+  profileName: { fontSize: FS.lg, fontWeight: '700', letterSpacing: -0.3, textAlign: 'center' },
+
+  // Plan row
+  planRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: wp(14),
+    marginTop: hp(4),
+    paddingHorizontal: wp(12),
+    paddingVertical: hp(12),
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    gap: wp(10),
+  },
+  planRowIcon: {
+    width: ms(36),
+    height: ms(36),
+    borderRadius: ms(12),
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarImage: {
-    width: ms(56),
-    height: ms(56),
-    borderRadius: ms(28),
-    resizeMode: 'cover',
+  planRowContent: { flex: 1, gap: hp(3) },
+  planRowHeader: { flexDirection: 'row', alignItems: 'center', gap: wp(8) },
+  planRowTitle: { fontSize: FS.md, fontWeight: '700' },
+  planRowBadge: {
+    paddingHorizontal: wp(7),
+    paddingVertical: hp(2),
+    borderRadius: radius.sm,
   },
-  avatarText: { fontSize: FS.lg, fontWeight: '700', color: '#fff', letterSpacing: 1 },
-  profileInfo: { flex: 1 },
-  profileName: { fontSize: FS.lg, fontWeight: '700', letterSpacing: -0.3 },
-  profileMeta: { flexDirection: 'row', flexWrap: 'wrap', gap: wp(6), marginTop: hp(6) },
+  planRowBadgeText: { fontSize: 9, fontWeight: '700', letterSpacing: 0.8 },
+  planRowSub: { fontSize: FS.xs, color: '#9CA3AF', lineHeight: FS.xs * 1.4 },
+  planRowExpiryLine: { flexDirection: 'row', alignItems: 'center', gap: wp(5) },
+  planRowExpiry: { fontSize: FS.xs, fontWeight: '600' },
+  planRowDaysChip: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: wp(8),
+    paddingVertical: hp(2),
+    borderRadius: radius.sm,
+    marginTop: hp(2),
+  },
+  planRowDaysText: { fontSize: 11, fontWeight: '700' },
+  planRowRenew: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: wp(6),
+    backgroundColor: '#7C3AED10',
+    borderRadius: radius.md,
+    paddingHorizontal: wp(8),
+    paddingVertical: hp(5),
+    marginTop: hp(4),
+  },
+  planRowRenewText: { flex: 1, fontSize: 11, color: '#A78BFA', lineHeight: 16 },
+
+  // Referral row
+  referralRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: wp(14),
+    marginTop: hp(8),
+    marginBottom: hp(4),
+    paddingHorizontal: wp(12),
+    paddingVertical: hp(12),
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    gap: wp(10),
+  },
+  referralRowIcon: {
+    width: ms(36),
+    height: ms(36),
+    borderRadius: ms(12),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  referralRowContent: { flex: 1, gap: hp(1) },
+  referralRowLabel: { fontSize: FS.sm, fontWeight: '700' },
+  referralRowHint: { fontSize: FS.xs, lineHeight: FS.xs * 1.3 },
+  referralRowCode: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp(5),
+    paddingHorizontal: wp(10),
+    paddingVertical: hp(6),
+    borderRadius: radius.md,
+  },
+  referralRowCodeText: { fontSize: FS.sm, fontWeight: '700', letterSpacing: 1.2 },
+  profileMeta: { flexDirection: 'row', flexWrap: 'wrap', gap: wp(6), marginTop: hp(4), justifyContent: 'center' },
   categoryChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -766,10 +1032,10 @@ const styles = StyleSheet.create({
   profileDescription: {
     fontSize: FS.sm,
     lineHeight: FS.sm * 1.5,
-    marginTop: hp(10),
-    paddingTop: hp(10),
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#00000010',
+    textAlign: 'center',
+    paddingHorizontal: wp(20),
+    marginTop: hp(6),
+    marginBottom: hp(10),
   },
   socialRow: {
     flexDirection: 'row',
@@ -788,6 +1054,49 @@ const styles = StyleSheet.create({
   socialChipText: {
     fontSize: FS.xs,
     fontWeight: '600',
+  },
+
+  // Referral banner
+  referralBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: hp(12),
+    paddingVertical: hp(10),
+    paddingHorizontal: wp(10),
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    gap: wp(10),
+  },
+  referralIconBox: {
+    width: ms(32),
+    height: ms(32),
+    borderRadius: ms(10),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  referralContent: { flex: 1, gap: hp(3) },
+  referralCodeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp(8),
+  },
+  referralActiveLabel: {
+    fontSize: FS.xs,
+    fontWeight: '700',
+  },
+  referralCodeChip: {
+    paddingHorizontal: wp(8),
+    paddingVertical: hp(2),
+    borderRadius: radius.sm,
+  },
+  referralCodeText: {
+    fontSize: FS.xs,
+    fontWeight: '700',
+    letterSpacing: 1,
+  },
+  referralHint: {
+    fontSize: FS.xs - 1,
+    lineHeight: (FS.xs - 1) * 1.4,
   },
 
   // Section
@@ -849,7 +1158,23 @@ const styles = StyleSheet.create({
     gap: wp(12),
   },
 
-  // Plan card
+  // Plan inline (merged in profile card)
+  planInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: wp(8),
+    marginTop: hp(8),
+    marginBottom: hp(4),
+    paddingHorizontal: wp(12),
+    paddingVertical: hp(8),
+    borderRadius: radius.lg,
+    borderWidth: 1,
+  },
+  planInlineSub: { fontSize: FS.xs, color: '#9CA3AF', marginTop: 2 },
+  planInlineExpiry: { fontSize: FS.xs, fontWeight: '600' },
+
+  // Plan card (legacy)
   planCard: {
     borderRadius: radius.xl,
     borderWidth: 1,
@@ -885,12 +1210,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 8,
-    backgroundColor: '#fbbf2412',
+    backgroundColor: '#7C3AED12',
     borderRadius: 12,
     padding: 10,
     marginTop: 8,
   },
-  planRenewText: { flex: 1, fontSize: 12, color: '#fbbf24', lineHeight: 18 },
+  planRenewText: { flex: 1, fontSize: 12, color: '#A78BFA', lineHeight: 18 },
   planSubFree: { fontSize: 13, color: 'rgba(255,255,255,0.65)', lineHeight: 18 },
   freeLimitRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 },
   freeLimitText: {
@@ -939,6 +1264,101 @@ const styles = StyleSheet.create({
   logoImage: { width: ms(64), height: ms(64), borderRadius: ms(14) },
   logoSubtext: { fontSize: FS.xs, marginTop: hp(8), fontWeight: '500', letterSpacing: 0.3 },
   versionText: { fontSize: FS.xs, marginTop: hp(4), opacity: 0.5, fontWeight: '400' },
+
+  // Logo bottom sheet
+  bottomSheetOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'flex-end',
+  },
+  logoModalSheet: {
+    borderTopLeftRadius: ms(24),
+    borderTopRightRadius: ms(24),
+    paddingTop: hp(14),
+    paddingHorizontal: ms(24),
+    paddingBottom: hp(36),
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  sheetHandle: {
+    width: ms(40),
+    height: ms(4),
+    borderRadius: ms(2),
+    marginBottom: hp(20),
+  },
+  logoModalPreviewRow: {
+    marginBottom: hp(16),
+  },
+  logoModalRing: {
+    width: ms(100),
+    height: ms(100),
+    borderRadius: ms(50),
+    padding: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logoModalInner: {
+    width: ms(94),
+    height: ms(94),
+    borderRadius: ms(47),
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logoModalInitials: {
+    fontSize: ms(32),
+    fontWeight: '700',
+    color: '#fff',
+    letterSpacing: 1,
+  },
+  logoModalTitle: {
+    fontSize: FS.lg,
+    fontWeight: '700',
+    marginBottom: hp(6),
+  },
+  logoModalSubtitle: {
+    fontSize: FS.sm,
+    textAlign: 'center',
+    marginBottom: hp(24),
+    lineHeight: FS.sm * 1.5,
+  },
+  logoModalBtn: {
+    width: '100%',
+    borderRadius: ms(14),
+    overflow: 'hidden',
+    marginBottom: hp(10),
+  },
+  logoModalBtnGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: ms(8),
+    paddingVertical: hp(15),
+  },
+  logoModalBtnText: {
+    color: '#fff',
+    fontSize: FS.md,
+    fontWeight: '700',
+  },
+  logoModalOutlineBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: ms(8),
+    width: '100%',
+    paddingVertical: hp(14),
+    borderRadius: ms(14),
+    borderWidth: 1,
+    marginBottom: hp(10),
+  },
+  logoModalOutlineBtnText: {
+    fontSize: FS.md,
+    fontWeight: '600',
+  },
 
   // Language modal
   modalOverlay: {

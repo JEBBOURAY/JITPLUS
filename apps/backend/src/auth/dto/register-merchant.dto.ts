@@ -1,6 +1,6 @@
 import { IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, MinLength, Matches, IsNumber, IsBoolean, IsUrl, Equals, MaxLength } from 'class-validator';
 import { Transform } from 'class-transformer';
-import { MerchantCategory } from '../../generated/client';
+import { MerchantCategory } from '@prisma/client';
 
 export class RegisterMerchantDto {
   @IsString()

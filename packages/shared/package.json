@@ -9,12 +9,12 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "typescript": "^5.3.0"
+    "typescript": "^5.9.3"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
     "@tanstack/query-async-storage-persister": "^5.90.24",
-    "axios": "^1.6.5",
+    "axios": "^1.13.6",
     "socket.io-client": "^4.8.3"
   }
 }

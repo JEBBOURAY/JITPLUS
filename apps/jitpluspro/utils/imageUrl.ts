@@ -17,6 +17,7 @@ function isPrivateHostname(hostname: string): boolean {
     hostname.endsWith('.internal')
   ) return true;
 
+  // IPv4 private ranges
   const parts = hostname.split('.');
   if (parts.length === 4 && parts.every((p) => /^\d{1,3}$/.test(p))) {
     const [a, b] = parts.map(Number);
@@ -26,6 +27,17 @@ function isPrivateHostname(hostname: string): boolean {
     if (a === 172 && b >= 16 && b <= 31) return true;
     if (a === 169 && b === 254) return true;
     if (a === 0) return true;
+  }
+
+  // IPv6 private ranges (bracketed notation used in URLs)
+  const ipv6Match = hostname.match(/^\[(.+)\]$/);
+  if (ipv6Match) {
+    const addr = ipv6Match[1].toLowerCase();
+    if (addr === '::' || addr === '::1') return true;
+    // fc00::/7 — Unique local addresses
+    if (addr.startsWith('fc') || addr.startsWith('fd')) return true;
+    // fe80::/10 — Link-local addresses
+    if (addr.startsWith('fe80')) return true;
   }
 
   return false;

@@ -1,6 +1,6 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { BackHandler, ToastAndroid, Platform } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { useNavigationContainerRef } from 'expo-router';
 
 /**
  * On Android, shows a "Press back again to exit" toast when the user
@@ -8,26 +8,33 @@ import { useFocusEffect } from 'expo-router';
  * within 2 seconds exits the app.
  *
  * No-op on iOS (no hardware back button).
+ *
+ * Uses useEffect + useNavigationContainerRef instead of useFocusEffect
+ * to avoid crashing when the navigation context isn't ready yet during
+ * the initial tab screen render (expo-router renders tab children before
+ * the NavigationContainer context is fully propagated).
  */
 export function useExitOnBack(enabled = true) {
   const lastBackRef = useRef(0);
+  const navRef = useNavigationContainerRef();
 
-  useFocusEffect(
-    useCallback(() => {
-      if (Platform.OS !== 'android' || !enabled) return;
+  useEffect(() => {
+    if (Platform.OS !== 'android' || !enabled) return;
 
-      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-        const now = Date.now();
-        if (now - lastBackRef.current < 2000) {
-          BackHandler.exitApp();
-          return true;
-        }
-        lastBackRef.current = now;
-        ToastAndroid.show('Appuyez encore pour quitter', ToastAndroid.SHORT);
-        return true; // prevent default (closing the app)
-      });
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      // If the navigator can go back, let the default behaviour handle it
+      if (navRef?.canGoBack()) return false;
 
-      return () => sub.remove();
-    }, [enabled]),
-  );
+      const now = Date.now();
+      if (now - lastBackRef.current < 2000) {
+        BackHandler.exitApp();
+        return true;
+      }
+      lastBackRef.current = now;
+      ToastAndroid.show('Appuyez encore pour quitter', ToastAndroid.SHORT);
+      return true; // prevent default (closing the app)
+    });
+
+    return () => sub.remove();
+  }, [enabled, navRef]);
 }

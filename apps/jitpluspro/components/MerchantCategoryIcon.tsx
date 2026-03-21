@@ -2,7 +2,6 @@ import React from 'react';
 import { 
   Coffee, 
   Utensils, 
-  ShoppingBag, 
   ShoppingBasket,
   Cake,
   Pill,
@@ -18,6 +17,7 @@ import {
 } from 'lucide-react-native';
 import { MerchantCategory } from '@/types';
 import { getCategoryLabel, CATEGORY_OPTIONS as _CATEGORY_OPTIONS } from '@/constants/categories';
+import i18n from '@/i18n';
 
 interface MerchantCategoryIconProps {
   category: MerchantCategory;
@@ -80,29 +80,13 @@ export default function MerchantCategoryIcon({
  * Hook helper pour obtenir les métadonnées d'une catégorie
  */
 export function useCategoryMetadata(category?: MerchantCategory) {
-  const descriptions: Record<MerchantCategory, string> = {
-    [MerchantCategory.CAFE]: 'Café et boissons chaudes',
-    [MerchantCategory.RESTAURANT]: 'Restauration',
-    [MerchantCategory.EPICERIE]: 'Alimentation générale',
-    [MerchantCategory.BOULANGERIE]: 'Boulangerie et pâtisserie',
-    [MerchantCategory.PHARMACIE]: 'Santé et bien-être',
-    [MerchantCategory.LIBRAIRIE]: 'Livres et papeterie',
-    [MerchantCategory.VETEMENTS]: 'Mode et accessoires',
-    [MerchantCategory.ELECTRONIQUE]: 'High-tech et électronique',
-    [MerchantCategory.COIFFURE]: 'Salon de coiffure',
-    [MerchantCategory.BEAUTE]: 'Beauté et cosmétiques',
-    [MerchantCategory.SPORT]: 'Sport et fitness',
-    [MerchantCategory.SUPERMARCHE]: 'Grande distribution',
-    [MerchantCategory.AUTRE]: 'Autres commerces',
-  };
-
   if (!category) {
     return { label: '', description: '', IconComponent: Store };
   }
 
   return {
     label: getCategoryLabel(category),
-    description: descriptions[category] || '',
+    description: i18n.t(`categoryDesc.${category}`, { defaultValue: '' }),
     IconComponent: categoryIconMap[category] || Store,
   };
 }

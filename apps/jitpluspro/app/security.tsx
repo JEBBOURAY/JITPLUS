@@ -133,7 +133,7 @@ export default function SecurityScreen() {
 
     if (score <= 1) return { label: t('security.strengthWeak'), color: theme.danger, width: '20%' };
     if (score <= 2) return { label: t('security.strengthMedium'), color: theme.warning, width: '45%' };
-    if (score <= 3) return { label: t('security.strengthGood'), color: '#F59E0B', width: '70%' };
+    if (score <= 3) return { label: t('security.strengthGood'), color: theme.primary, width: '70%' };
     return { label: t('security.strengthStrong'), color: theme.success, width: '100%' };
   };
 
@@ -538,7 +538,7 @@ export default function SecurityScreen() {
                 </Text>
               </View>
             ) : (
-              devices.map((device, idx) => (
+              devices.map((device) => (
                 <Animated.View
                   key={device.id}
                   style={[styles.deviceCard, { backgroundColor: theme.bgCard }]}

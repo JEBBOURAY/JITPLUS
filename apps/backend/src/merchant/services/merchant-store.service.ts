@@ -10,7 +10,7 @@ import { STORE_REPOSITORY, type IStoreRepository } from '../../common/repositori
 import { MerchantPlanService } from './merchant-plan.service';
 import { CreateStoreDto } from '../dto/create-store.dto';
 import { UpdateStoreDto } from '../dto/update-store.dto';
-import { Store } from '../../generated/client';
+import { Store } from '@prisma/client';
 import { stripUndefined } from '../../common/utils';
 import { STORES_CACHE_TTL } from '../../common/constants';
 

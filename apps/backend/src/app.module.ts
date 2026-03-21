@@ -17,7 +17,8 @@ import { MailModule } from './mail/mail.module';
 import { TwilioModule } from './twilio/twilio.module';
 import { StorageModule } from './storage/storage.module';
 import { AdminModule } from './admin/admin.module';
-import { GoogleWalletModule } from './google-wallet/google-wallet.module';
+// GoogleWalletModule temporarily disabled for Play Store compliance
+// import { GoogleWalletModule } from './google-wallet/google-wallet.module';
 import { RequestLoggerMiddleware } from './common/middleware/request-logger.middleware';
 import { OtpCleanupService } from './common/tasks/otp-cleanup.service';
 import { UserThrottlerGuard } from './common/guards/user-throttler.guard';
@@ -48,8 +49,14 @@ import { THROTTLE_TTL } from './common/constants';
         CLOUD_SQL_INSTANCE: Joi.string().optional(),
         // ── External services ─────────────────────────────────────────────
         RESEND_API_KEY: Joi.string().optional(),
-        TWILIO_ACCOUNT_SID: Joi.string().optional(),
-        TWILIO_AUTH_TOKEN: Joi.string().optional(),
+        // SMTP — required in production for transactional emails (OTP, welcome, etc.)
+        SMTP_HOST: Joi.when('NODE_ENV', { is: 'production', then: Joi.string().required(), otherwise: Joi.string().optional() }),
+        SMTP_USER: Joi.when('NODE_ENV', { is: 'production', then: Joi.string().required(), otherwise: Joi.string().optional() }),
+        SMTP_PASS: Joi.when('NODE_ENV', { is: 'production', then: Joi.string().required(), otherwise: Joi.string().optional() }),
+        SMTP_FROM: Joi.when('NODE_ENV', { is: 'production', then: Joi.string().required(), otherwise: Joi.string().optional() }),
+        TWILIO_ACCOUNT_SID: Joi.when('NODE_ENV', { is: 'production', then: Joi.string().required(), otherwise: Joi.string().optional() }),
+        TWILIO_AUTH_TOKEN: Joi.when('NODE_ENV', { is: 'production', then: Joi.string().required(), otherwise: Joi.string().optional() }),
+        TWILIO_WHATSAPP_FROM: Joi.when('NODE_ENV', { is: 'production', then: Joi.string().required(), otherwise: Joi.string().optional() }),
 
         // Firebase — required in production for push notifications
         FIREBASE_PROJECT_ID: Joi.when('NODE_ENV', { is: 'production', then: Joi.string().required(), otherwise: Joi.string().optional() }),
@@ -82,7 +89,7 @@ import { THROTTLE_TTL } from './common/constants';
     NotificationsModule,
     HealthModule,
     AdminModule,
-    GoogleWalletModule,
+    // GoogleWalletModule, // temporarily disabled for Play Store compliance
   ],
   providers: [
     { provide: APP_GUARD, useClass: UserThrottlerGuard },
@@ -91,6 +98,6 @@ import { THROTTLE_TTL } from './common/constants';
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(RequestLoggerMiddleware).forRoutes('*');
+    consumer.apply(RequestLoggerMiddleware).forRoutes('*path');
   }
 }

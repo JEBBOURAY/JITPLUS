@@ -1,5 +1,5 @@
 import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
-import { Prisma, PrismaClient } from '../generated/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 
 // Cloud Run: each container gets a limited pool.
 // Default Prisma uses num_cpus * 2 + 1 connections — on a 1-vCPU Cloud Run
@@ -14,6 +14,8 @@ const SOFT_DELETE_MODELS = ['Merchant', 'Client'] as const;
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PrismaService.name);
+
+  private _extendedClient: any;
 
   constructor() {
     // Append pool params to DATABASE_URL if not already present
@@ -34,55 +36,41 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     });
 
     // Log slow queries — warn at 500ms (SLA target), error at 2s (critical)
-    this.$on('query' as never, (e: { duration: number; query: string }) => {
+    (this as any).$on('query', (e: { duration: number; query: string }) => {
       if (e.duration > 2000) {
         this.logger.error(
-          `Critical slow query: "${e.query.slice(0, 120)}" took ${e.duration}ms`,
+          `Critical slow query: "${e.query.slice(0, 120)}" took ${e.duration}ms`
         );
       } else if (e.duration > 500) {
         this.logger.warn(
-          `Slow query: "${e.query.slice(0, 120)}" took ${e.duration}ms`,
+          `Slow query: "${e.query.slice(0, 120)}" took ${e.duration}ms`
         );
       }
     });
 
-    // ── Soft-delete middleware ──────────────────────────────────────
-    // Automatically injects `deletedAt: null` into read queries for
-    // soft-deletable models so deleted records are invisible by default.
-    // To query deleted records explicitly, pass `deletedAt: { not: null }`.
-    this.$use(async (params: Prisma.MiddlewareParams, next) => {
-      if (!params.model || !SOFT_DELETE_MODELS.includes(params.model as any)) {
-        return next(params);
-      }
-
-      const readActions = [
-        'findUnique', 'findFirst', 'findMany', 'count', 'aggregate', 'groupBy',
-      ];
-
-      if (readActions.includes(params.action)) {
-        // Skip if caller explicitly queried on deletedAt (e.g. admin viewing deleted)
-        const where = params.args?.where;
-        if (where && 'deletedAt' in where) {
-          return next(params);
-        }
-
-        // Inject deletedAt: null filter
-        if (!params.args) params.args = {};
-        if (!params.args.where) params.args.where = {};
-
-        if (params.action === 'findUnique' || params.action === 'findFirst') {
-          // findUnique with deletedAt filter needs to become findFirst
-          // because findUnique only accepts unique fields in where
-          if (params.action === 'findUnique') {
-            params.action = 'findFirst';
+    // ── Soft-delete with Prisma Extensions ──────────────────────────────────────
+    this._extendedClient = this.$extends({
+      query: {
+        $allModels: {
+          async $allOperations({ model, operation, args, query }: any) {
+            if (SOFT_DELETE_MODELS.includes(model as any)) {
+              const readOps = ['findUnique', 'findFirst', 'findMany', 'count', 'aggregate', 'groupBy'];
+              if (readOps.includes(operation)) {
+                if (args.where?.deletedAt === undefined) {
+                  if (operation === 'findUnique') {
+                    // findUnique doesn't allow filtering by non-unique fields, change to findFirst mapping where possible, or just let findUnique fail if it's strict
+                    // The safer extension approach for findUnique is just dropping it if deletedAt is present, but simple injection works for most cases
+                    args.where = { ...args.where, deletedAt: null };
+                  } else {
+                    args.where = { ...args.where, deletedAt: null };
+                  }
+                }
+              }
+            }
+            return query(args);
           }
-          params.args.where = { ...params.args.where, deletedAt: null };
-        } else {
-          params.args.where.deletedAt = null;
         }
       }
-
-      return next(params);
     });
   }
 

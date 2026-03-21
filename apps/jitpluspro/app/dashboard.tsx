@@ -8,7 +8,7 @@ import {
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
-import { Users, TrendingUp, RefreshCw, Repeat, ArrowLeft, Crown, Lock, Eye } from 'lucide-react-native';
+import { Users, TrendingUp, RefreshCw, Repeat, ArrowLeft, Crown, Lock, Eye, Gift } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useRouter } from 'expo-router';
@@ -50,15 +50,20 @@ export default function DashboardScreen() {
     isRefetching: refreshingTrends,
   } = useDashboardTrends(trendPeriod);
 
-  const trendData = trendResponse
-    ? { transactions: trendResponse.transactions, newClients: trendResponse.newClients, rewardsGiven: trendResponse.rewardsGiven, pointsEarned: trendResponse.pointsEarned, pointsSpent: trendResponse.pointsSpent }
-    : null;
+  const trendData = useMemo(
+    () => trendResponse
+      ? { transactions: trendResponse.transactions, newClients: trendResponse.newClients, rewardsGiven: trendResponse.rewardsGiven }
+      : null,
+    [trendResponse],
+  );
 
   const refreshing = refreshingStats || refreshingTrends;
 
   const onRefresh = useGuardedCallback(async () => {
-    await queryClient.invalidateQueries({ queryKey: ['dashboard-stats', trendPeriod] });
-    await queryClient.invalidateQueries({ queryKey: ['dashboard-trends', trendPeriod] });
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats', trendPeriod] }),
+      queryClient.invalidateQueries({ queryKey: ['dashboard-trends', trendPeriod] }),
+    ]);
   }, [trendPeriod, queryClient]);
 
   const renderStatCard = (
@@ -153,15 +158,16 @@ export default function DashboardScreen() {
     );
   };
 
-  const trendCharts: { key: string; title: string; color: string; data: TrendPoint[] }[] = trendData
-    ? [
-        { key: 'transactions', title: t('dashboard.transactions'), color: theme.primary, data: trendData.transactions },
-        { key: 'newClients', title: t('dashboard.trendNewClients'), color: '#7C3AED', data: trendData.newClients },
-        { key: 'rewardsGiven', title: t('dashboard.trendGifts'), color: theme.warning, data: trendData.rewardsGiven },
-        { key: 'pointsEarned', title: t('dashboard.trendEarned', { unit: unitLabel }), color: theme.success, data: trendData.pointsEarned },
-        { key: 'pointsSpent', title: t('dashboard.trendSpent', { unit: unitLabel }), color: '#ef4444', data: trendData.pointsSpent },
-      ]
-    : [];
+  const trendCharts = useMemo<{ key: string; title: string; color: string; data: TrendPoint[] }[]>(
+    () => trendData
+      ? [
+          { key: 'transactions', title: t('dashboard.transactions'), color: theme.primary, data: trendData.transactions },
+          { key: 'newClients', title: t('dashboard.trendNewClients'), color: '#7C3AED', data: trendData.newClients },
+          { key: 'rewardsGiven', title: t('dashboard.trendGifts'), color: theme.primary, data: trendData.rewardsGiven },
+        ]
+      : [],
+    [trendData, t, theme.primary],
+  );
 
   const renderTrends = () => {
     if (loadingTrends) {
@@ -211,39 +217,24 @@ export default function DashboardScreen() {
       );
     }
 
-    const maxCount = Math.max(...stats.rewardsDistribution.map((r) => r.count), 1);
-
     return (
       <View style={styles.distributionList}>
-        {stats.rewardsDistribution.map((reward) => {
-          const barWidth = Math.round((reward.count / maxCount) * 100);
-          return (
-            <View
-              key={reward.rewardId || reward.title}
-              style={[
-                styles.distributionRow,
-                { borderColor: theme.borderLight, backgroundColor: theme.bgCard },
-              ]}
-            >
-              <View style={styles.distributionInfo}>
-                <Text style={[styles.distributionTitle, { color: theme.text }]}>
-                  {reward.title}
-                </Text>
-                <Text style={[styles.distributionCount, { color: theme.textSecondary }]}>
-                  {t('dashboard.giftCount', { count: reward.count })}
-                </Text>
-              </View>
-              <View style={[styles.distributionBarTrack, { backgroundColor: theme.border }]}>
-                <View
-                  style={[
-                    styles.distributionBarFill,
-                    { width: `${barWidth}%`, backgroundColor: theme.primary },
-                  ]}
-                />
-              </View>
-            </View>
-          );
-        })}
+        {stats.rewardsDistribution.map((reward) => (
+          <View
+            key={reward.rewardId || reward.title}
+            style={[
+              styles.distributionRow,
+              { borderColor: theme.borderLight, backgroundColor: theme.bgCard },
+            ]}
+          >
+            <Text style={[styles.distributionTitle, { color: theme.text }]}>
+              {reward.title}
+            </Text>
+            <Text style={[styles.distributionCount, { color: theme.textSecondary }]}>
+              {t('dashboard.giftCount', { count: reward.count })}
+            </Text>
+          </View>
+        ))}
       </View>
     );
   };
@@ -328,18 +319,18 @@ export default function DashboardScreen() {
             theme.primary,
           )}
           {renderStatCard(
-            <TrendingUp size={22} color={theme.success} strokeWidth={1.5} />,
+            <TrendingUp size={22} color={theme.primary} strokeWidth={1.5} />,
             t('dashboard.loyaltyLabel', { unit: unitLabel }),
             stats?.totalPoints || 0,
-            theme.success,
+            theme.primary,
           )}
         </View>
         <View style={[styles.statsRow, { marginTop: 15 }]}>
           {renderStatCard(
-            <TrendingUp size={22} color={theme.warning} strokeWidth={1.5} />,
+            <TrendingUp size={22} color={theme.primary} strokeWidth={1.5} />,
             t('dashboard.consumedLabel', { unit: unitLabel }),
             stats?.totalRedeemedPoints || 0,
-            theme.warning,
+            theme.primary,
           )}
           {renderStatCard(
             <Repeat size={22} color={theme.primary} strokeWidth={1.5} />,
@@ -350,10 +341,16 @@ export default function DashboardScreen() {
         </View>
         <View style={[styles.statsRow, { marginTop: 15 }]}>
           {renderStatCard(
-            <Eye size={22} color="#6B7280" strokeWidth={1.5} />,
+            <Eye size={22} color={theme.primary} strokeWidth={1.5} />,
             t('dashboard.profileViews'),
             stats?.profileViews || 0,
-            '#6B7280',
+            theme.primary,
+          )}
+          {renderStatCard(
+            <Gift size={22} color={theme.primary} strokeWidth={1.5} />,
+            t('dashboard.trendGifts'),
+            stats?.totalRewardsGiven || 0,
+            theme.primary,
           )}
         </View>
 

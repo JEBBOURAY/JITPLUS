@@ -6,15 +6,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
-import Constants from 'expo-constants';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { WEB_CLIENT_ID, ANDROID_CLIENT_ID, IOS_CLIENT_ID } from '@/config/google';
 
 WebBrowser.maybeCompleteAuthSession();
-
-const WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID
-  || (Constants.expoConfig?.extra as Record<string, string> | undefined)?.googleWebClientId
-  || '';
-const ANDROID_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || '';
 
 interface UseGoogleIdTokenResult {
   isLoading: boolean;
@@ -33,6 +28,7 @@ export function useGoogleIdToken(onToken: (idToken: string) => void): UseGoogleI
   const [_gReq, googleResponse, promptGoogleAsync] = Google.useIdTokenAuthRequest({
     clientId: WEB_CLIENT_ID,
     androidClientId: ANDROID_CLIENT_ID || WEB_CLIENT_ID,
+    iosClientId: IOS_CLIENT_ID || WEB_CLIENT_ID,
   });
 
   useEffect(() => {
@@ -42,9 +38,13 @@ export function useGoogleIdToken(onToken: (idToken: string) => void): UseGoogleI
       const idToken = googleResponse.params?.id_token;
       if (idToken) {
         processingRef.current = true;
-        setIsLoading(false);
-        processingRef.current = false;
-        onTokenRef.current(idToken);
+        try {
+          setIsLoading(false);
+          onTokenRef.current(idToken);
+        } finally {
+          // Reset after callback completes to allow future prompts
+          processingRef.current = false;
+        }
       } else {
         setIsLoading(false);
         setError(t('googleAuth.noIdToken'));

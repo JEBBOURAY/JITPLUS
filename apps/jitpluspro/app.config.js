@@ -25,12 +25,12 @@ module.exports = ({ config }) => {
     owner: 'ayoub.je',
     name: 'JitPlus Pro',
     slug: 'jitpluspro',
+    description: 'Loyalty program management for local shops — scan QR codes, track customer visits, and set up stamp-based rewards.',
     version: '1.0.0',
     orientation: 'portrait',
     icon: './assets/images/icon-white.png',
     scheme: 'jitpluspro',
     userInterfaceStyle: 'automatic',
-    newArchEnabled: true,
     // Required by both stores — must be a publicly accessible URL
     privacyPolicyUrl: PRIVACY_POLICY_URL,
     splash: {
@@ -120,7 +120,7 @@ module.exports = ({ config }) => {
         },
       ],
       // iOS PrivacyInfo.xcprivacy — required since Apple review policy May 2024
-      './plugins/withPrivacyManifest',
+        // './plugins/withPrivacyManifest',
       // SSL Certificate Pinning — prevents MITM attacks
       // DISABLED: Enable after setting up custom domain (api.jitplus.ma) with managed SSL cert.
       // Cloud Run's *.a.run.app wildcard cert rotates too frequently for pinning.
@@ -128,7 +128,7 @@ module.exports = ({ config }) => {
       // Network security — enforces HTTPS, blocks cleartext traffic in production
       './plugins/withNetworkSecurity',
       // Force Google Maps region to Morocco — ensures correct border rendering (Sahara)
-      './plugins/withMoroccoRegion',
+      // './plugins/withMoroccoRegion',
       [
         'expo-notifications',
         {

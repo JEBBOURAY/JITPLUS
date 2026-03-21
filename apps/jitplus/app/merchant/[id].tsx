@@ -12,7 +12,7 @@ import {
 import { Image } from 'expo-image';
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 import { useLocalSearchParams, useRouter, Redirect } from 'expo-router';
-import { MapPin, ArrowLeft, Info, Gift, Coins, Navigation, Star, Share2, Instagram, Globe, Eye, Users, CreditCard, Check } from 'lucide-react-native';
+import { MapPin, ArrowLeft, Info, Gift, Coins, Navigation, Star, Share2, Instagram, Globe, Eye, Users, CreditCard, Check, Store, Phone } from 'lucide-react-native';
 import GlassCard from '@/components/GlassCard';
 import { haptic } from '@/utils/haptics';
 import { useTheme, palette } from '@/contexts/ThemeContext';
@@ -361,6 +361,52 @@ export default function MerchantDetailScreen() {
             </FadeInView>
           )}
 
+          {/* ── Boutiques (Stores) ── */}
+          {merchant.stores && merchant.stores.length > 0 && (
+            <FadeInView delay={320}>
+              <Text style={[styles.sectionTitle, { color: theme.textSecondary, marginTop: hp(28) }]}>
+                {t('merchant.stores')}
+              </Text>
+              <View style={styles.storesList}>
+                {merchant.stores.map((store, index) => (
+                  <GlassCard key={store.id}>
+                    <View style={[styles.storeCard, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }, index === merchant.stores!.length - 1 && { marginBottom: 0 }]}>
+                      <LinearGradient
+                        colors={[palette.violet, palette.violetLight]}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 0, y: 1 }}
+                        style={styles.cardAccentBar}
+                      />
+                      <Text style={[styles.storeName, { color: theme.text }]}>{store.nom}</Text>
+                      
+                      {store.adresse && (
+                        <View style={styles.infoRow}>
+                          <View style={[styles.infoIconBox, { backgroundColor: theme.primaryBg }]}>
+                            <MapPin size={16} color={theme.primaryLight} strokeWidth={1.5} />
+                          </View>
+                          <Text style={[styles.infoText, { color: theme.text }]}>
+                            {store.adresse}{store.ville ? `, ${store.ville}` : ''}
+                          </Text>
+                        </View>
+                      )}
+                      
+                      {store.telephone && (
+                        <View style={[styles.infoRow, { marginBottom: 0 }]}>
+                          <View style={[styles.infoIconBox, { backgroundColor: theme.primaryBg }]}>
+                            <Phone size={16} color={theme.primaryLight} strokeWidth={1.5} />
+                          </View>
+                          <Pressable onPress={() => Linking.openURL(`tel:${store.telephone}`)}>
+                            <Text style={[styles.infoText, { color: theme.primary, fontWeight: '500' }]}>{store.telephone}</Text>
+                          </Pressable>
+                        </View>
+                      )}
+                    </View>
+                  </GlassCard>
+                ))}
+              </View>
+            </FadeInView>
+          )}
+
           {/* ── Réseaux sociaux ── */}
           {!!(merchant.socialLinks?.instagram || merchant.socialLinks?.tiktok) && (
             <FadeInView delay={350}>
@@ -626,7 +672,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: ms(28),
   },
   titleRow: { marginBottom: hp(24) },
-  merchantName: { fontSize: ms(28), fontWeight: '800', marginBottom: hp(10), letterSpacing: -0.4 },
+  merchantName: { fontSize: ms(28), fontWeight: '700', marginBottom: hp(10), letterSpacing: -0.4 },
   categoryBadge: {
     alignSelf: 'flex-start',
     paddingHorizontal: wp(12),
@@ -652,7 +698,7 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 1,
   },
-  statText: { fontSize: ms(15), fontWeight: '800' },
+  statText: { fontSize: ms(15), fontWeight: '700' },
   statLabel: { fontSize: ms(12), fontWeight: '500' },
   loyaltyCard: {
     borderRadius: ms(20),
@@ -727,6 +773,22 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   infoText: { fontSize: ms(14), flex: 1 },
+
+  // ── Stores ──
+  storesList: { gap: hp(12) },
+  storeCard: {
+    borderRadius: ms(18),
+    borderWidth: 1,
+    padding: wp(16),
+    overflow: 'hidden',
+    marginBottom: hp(12),
+  },
+  storeName: {
+    fontSize: ms(16),
+    fontWeight: '700',
+    marginBottom: hp(12),
+    marginLeft: wp(8),
+  },
 
   // ── Social links ──
   socialGrid: {

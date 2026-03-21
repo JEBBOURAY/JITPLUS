@@ -28,7 +28,6 @@ import {
   Edit3,
   Shield,
   Activity,
-  X,
   Check,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';

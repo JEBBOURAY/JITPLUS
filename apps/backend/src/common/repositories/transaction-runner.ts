@@ -2,7 +2,7 @@
 // Wraps Prisma's $transaction so services don't depend on PrismaService.
 
 import { Injectable } from '@nestjs/common';
-import { Prisma, PrismaClient } from '../../generated/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
 /** Prisma transaction client type — available inside interactive callbacks. */

@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common';
-import { Prisma } from '../../generated/client';
+import { Prisma } from '@prisma/client';
 
 const logger = new Logger('RetryTransaction');
 

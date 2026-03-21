@@ -1,5 +1,5 @@
 import { Injectable, BadRequestException, NotFoundException, Logger, Inject } from '@nestjs/common';
-import { Prisma } from '../../generated/client';
+import { Prisma } from '@prisma/client';
 import {
   UPGRADE_REQUEST_REPOSITORY, type IUpgradeRequestRepository,
   MERCHANT_REPOSITORY, type IMerchantRepository,

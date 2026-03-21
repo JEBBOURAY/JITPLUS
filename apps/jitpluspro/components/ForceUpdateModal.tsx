@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   Linking,
   Platform,
-  Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Download, AlertTriangle, Wrench } from 'lucide-react-native';

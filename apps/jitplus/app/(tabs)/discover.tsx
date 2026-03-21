@@ -190,7 +190,7 @@ export default function DiscoverScreen() {
   const [currentRegion, setCurrentRegion] = useState(DEFAULT_REGION);
 
   const searchInputRef = useRef<TextInput>(null);
-  const mapRef = useRef<{ animateToRegion: (r: object, d: number) => void; fitToCoordinates: (c: object[], opts: object) => void } | null>(null);
+  const mapRef = useRef<any>(null);
 
   // ── React Query: load ALL merchants (enabled for guests too) ──
   const { data: merchants = [], isLoading, isError, refetch } = useMerchants(!!client || isGuest);
@@ -403,7 +403,7 @@ export default function DiscoverScreen() {
           showsBuildings={false}
           showsIndoors={false}
           showsTraffic={false}
-          customMapStyle={MAP_STYLE}
+          customMapStyle={MAP_STYLE as any}
           onMapReady={handleMapReady}
           onRegionChangeComplete={handleRegionChange}
           onPress={handleMapPress}

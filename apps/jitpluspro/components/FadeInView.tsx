@@ -39,6 +39,8 @@ export default function FadeInView({
     ]);
     animation.start();
     return () => animation.stop();
+  // Fire-once animation: deps intentionally limited to [] so the animation
+  // plays only on initial mount and doesn't restart if props change.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -50,6 +52,7 @@ export default function FadeInView({
       : from === 'right'
       ? [{ translateX: translate }]
       : [],
+  // Memoized on `from` only — translate ref is stable and never changes.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   [from]);
 

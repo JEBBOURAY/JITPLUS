@@ -1,6 +1,6 @@
-import { IsEnum, IsNumber, IsOptional, IsString, MaxLength, Min, Max } from 'class-validator';
+import { IsEmail, IsEnum, IsNumber, IsOptional, IsString, MaxLength, Min, Max } from 'class-validator';
 import { Type } from 'class-transformer';
-import { MerchantCategory } from '../../generated/client';
+import { MerchantCategory } from '@prisma/client';
 
 export class CreateStoreDto {
   @IsString()
@@ -44,4 +44,10 @@ export class CreateStoreDto {
   @MaxLength(20)
   @IsOptional()
   telephone?: string;
+
+  @IsEmail({}, { message: 'Email invalide' })
+  @IsString()
+  @MaxLength(255)
+  @IsOptional()
+  email?: string;
 }

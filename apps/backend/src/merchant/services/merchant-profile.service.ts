@@ -16,6 +16,7 @@ import {
   TRANSACTION_REPOSITORY, type ITransactionRepository,
   TRANSACTION_RUNNER, type ITransactionRunner,
   RAW_QUERY_RUNNER, type IRawQueryRunner,
+  REWARD_REPOSITORY, type IRewardRepository,
 } from '../../common/repositories';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { UpdateProfileDto } from '../dto/update-profile.dto';
@@ -40,6 +41,7 @@ export class MerchantProfileService {
     @Inject(TRANSACTION_REPOSITORY) private transactionRepoDelegate: ITransactionRepository,
     @Inject(TRANSACTION_RUNNER) private txRunner: ITransactionRunner,
     @Inject(RAW_QUERY_RUNNER) private rawQuery: IRawQueryRunner,
+    @Inject(REWARD_REPOSITORY) private rewardRepo: IRewardRepository,
     @Inject(CACHE_MANAGER) private cache: Cache,
     private notifications: NotificationsService,
     private configService: ConfigService,
@@ -257,9 +259,9 @@ export class MerchantProfileService {
     const loyaltyTypeChanged = !!dto.loyaltyType && dto.loyaltyType !== oldType;
 
     if (loyaltyTypeChanged) {
-      // Fire-and-forget: large UPDATE should not block the HTTP response
-      this.recalculateBalances(merchantId, oldType, newType, conversionRate)
-        .catch((err) => this.logger.error(`recalculateBalances failed: ${err}`));
+      // Await so that reward costs & client balances are converted
+      // before the response triggers a frontend reload of rewards.
+      await this.recalculateBalances(merchantId, oldType, newType, conversionRate);
     }
 
     // Strip forceCapClients from the data sent to Prisma (not a DB field)
@@ -289,6 +291,14 @@ export class MerchantProfileService {
     if (forceCapClients && dto.accumulationLimit != null) {
       this.capAndNotifyClients(merchantId, merchant.nom, dto.accumulationLimit, newType)
         .catch((err) => this.logger.error(`capAndNotifyClients failed: ${err}`));
+    }
+
+    // When stampsForReward changes (without a simultaneous type switch), sync all
+    // reward costs so the redemption threshold stays consistent.
+    // Type-switch cases are already handled by recalculateBalances().
+    if (dto.stampsForReward !== undefined && !loyaltyTypeChanged && newType === 'STAMPS') {
+      this.syncRewardCosts(merchantId, dto.stampsForReward)
+        .catch((err) => this.logger.error(`syncRewardCosts failed: ${err}`));
     }
 
     await Promise.all([
@@ -339,7 +349,7 @@ export class MerchantProfileService {
           clientId: card.clientId,
           merchantId,
           type: 'ADJUST_POINTS' as const,
-          loyaltyType,
+          loyaltyType: loyaltyType as any,
           points: limit - card.points,
           amount: 0,
           note: `Limite d'accumulation appliquée: ${card.points} → ${limit} ${unitLabel}`,
@@ -355,8 +365,8 @@ export class MerchantProfileService {
             this.notifications.sendToClient(
               merchantId,
               card.clientId,
-              `${merchantName} — Solde ajusté`,
-              `Votre solde a été ajusté de ${card.points} à ${limit} ${unitLabel} suite à la mise en place d'un plafond d'accumulation.`,
+              `${merchantName} — Total de points ajusté`,
+              `Votre nombre de points a été mis à jour de ${card.points} à ${limit} ${unitLabel} suite à la mise en place d'un plafond d'accumulation.`,
               { event: 'points_updated', merchantId, newBalance: String(limit), loyaltyType },
             ),
           ),
@@ -389,7 +399,7 @@ export class MerchantProfileService {
     const notifTitle = `${merchantName} a mis à jour son programme de fidélité`;
     const notifBody =
       `Le commerce ${merchantName} est passé au système ${typeLabel(newType)}. ` +
-      `Votre solde a été automatiquement converti.`;
+      `Vos points ont été automatiquement convertis.`;
 
     // 1. Fetch and process clients in batches to avoid OOM on large merchants
     const BATCH_SIZE = 500;
@@ -414,7 +424,7 @@ export class MerchantProfileService {
           clientId,
           merchantId,
           type: 'LOYALTY_PROGRAM_CHANGE' as const,
-          loyaltyType: newType,
+          loyaltyType: newType as any,
           points: 0,
           amount: 0,
           note,
@@ -439,6 +449,19 @@ export class MerchantProfileService {
     });
   }
 
+  /**
+   * Update all rewards' cout to the new stampsForReward value.
+   * Called when the merchant changes stampsForReward without switching loyalty type.
+   */
+  private async syncRewardCosts(merchantId: string, newCout: number): Promise<void> {
+    await this.rawQuery.executeRaw`
+      UPDATE rewards
+      SET cout = ${newCout},
+          updated_at = NOW()
+      WHERE merchant_id = ${merchantId}`;
+    this.logger.log(`Synced reward costs to ${newCout} for merchant ${merchantId}`);
+  }
+
   private async recalculateBalances(
     merchantId: string,
     oldType: string,
@@ -446,15 +469,32 @@ export class MerchantProfileService {
     conversionRate: number,
   ) {
     if (oldType === 'POINTS' && newType === 'STAMPS') {
+      // Convert client balances: points → stamps
       await this.rawQuery.executeRaw`
         UPDATE loyalty_cards
-        SET points = FLOOR(points / ${conversionRate}),
+        SET points = GREATEST(FLOOR(points / ${conversionRate}), 0),
             updated_at = NOW()
         WHERE merchant_id = ${merchantId}`;
+
+      // Convert reward costs: points → stamps (minimum 1)
+      await this.rawQuery.executeRaw`
+        UPDATE rewards
+        SET cout = GREATEST(FLOOR(cout / ${conversionRate}), 1),
+            updated_at = NOW()
+        WHERE merchant_id = ${merchantId}`;
+
     } else if (oldType === 'STAMPS' && newType === 'POINTS') {
+      // Convert client balances: stamps → points
       await this.rawQuery.executeRaw`
         UPDATE loyalty_cards
         SET points = ROUND(points * ${conversionRate}),
+            updated_at = NOW()
+        WHERE merchant_id = ${merchantId}`;
+
+      // Convert reward costs: stamps → points (minimum 1)
+      await this.rawQuery.executeRaw`
+        UPDATE rewards
+        SET cout = GREATEST(ROUND(cout * ${conversionRate}), 1),
             updated_at = NOW()
         WHERE merchant_id = ${merchantId}`;
     }

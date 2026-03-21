@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,7 +11,6 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
-  Animated,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -21,14 +20,11 @@ import {
   CheckCircle,
   X,
   TrendingUp,
-  Award,
   Stamp,
-  Plus,
-  Minus,
 } from 'lucide-react-native';
 
 // lottie-react-native is NOT available in Expo Go SDK 51+
-let LottieView: any = null;
+let LottieView: typeof import('lottie-react-native').default | null = null;
 try {
   LottieView = require('lottie-react-native').default;
 } catch {
@@ -36,14 +32,13 @@ try {
 }
 
 // Reanimated removed — plain View shim for entering animations
-import * as Haptics from 'expo-haptics';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { getErrorMessage } from '@/utils/error';
 import StampGrid from '@/components/StampGrid';
 import { formatCurrency, DEFAULT_CURRENCY } from '@/config/currency';
-import { MAX_AMOUNT_DIGITS, MAX_STAMPS_PER_TX, SUCCESS_DISPLAY_MS } from '@/constants/app';
+import { MAX_AMOUNT_DIGITS, SUCCESS_DISPLAY_MS } from '@/constants/app';
 import { useClientStatus, useRewards, useRecordTransaction } from '@/hooks/useQueryHooks';
 
 type TransactionType = 'EARN_POINTS' | 'REDEEM_REWARD';
@@ -61,6 +56,7 @@ export default function TransactionAmountScreen() {
   const [showSuccess, setShowSuccess] = useState(false);
   const [transactionType, setTransactionType] = useState<TransactionType>('EARN_POINTS');
   const [selectedRewardId, setSelectedRewardId] = useState<string | null>(null);
+  const [screenMode, setScreenMode] = useState<'earn' | 'redeem'>('earn');
 
   // ── React Query hooks ──
   const {
@@ -76,33 +72,18 @@ export default function TransactionAmountScreen() {
   const rewards = rewardsList ?? [];
   const recordTransactionMutation = useRecordTransaction();
 
-  // Auto-select first reward when rewards load
-  useEffect(() => {
-    if (rewards.length > 0) {
-      const sorted = [...rewards].sort((a, b) => a.cout - b.cout);
-      setSelectedRewardId((current) => {
-        const exists = rewards.some((r) => r.id === current);
-        return current && exists ? current : sorted[0].id;
-      });
-    }
-  }, [rewards]);
-
   // Guard: if no clientId go back
   useEffect(() => {
     if (!clientId) {
-      Alert.alert('Erreur', 'Aucun client sélectionné.', [
+      Alert.alert(t('common.error'), t('transactionAmount.noClientSelected'), [
         { text: 'OK', onPress: () => router.back() },
       ]);
     }
   }, [clientId, router]);
 
   // ── Stamps mode ──
-  const [stampCount, setStampCount] = useState(1);
   const [stampAmount, setStampAmount] = useState('');
-  const stampScale = useRef(new Animated.Value(1)).current;
-  const stampAnimStyle = {
-    transform: [{ scale: stampScale }],
-  };
+  const [stamps, setStamps] = useState(0);
 
   const isStampsMode = merchant?.loyaltyType === 'STAMPS';
   const stampsForReward = merchant?.stampsForReward || customerStatus?.stampsForReward || 10;
@@ -111,6 +92,18 @@ export default function TransactionAmountScreen() {
   useEffect(() => {
     if (!isStampsMode) calculatePoints();
   }, [amount, merchant]);
+
+  useEffect(() => {
+    if (isStampsMode) {
+      const amountNum = parseFloat(stampAmount) || 0;
+      if (amountNum === 0 || !merchant) {
+        setStamps(0);
+        return;
+      }
+      const rate = merchant.pointsRate || 10;
+      setStamps(Math.floor(amountNum / rate));
+    }
+  }, [stampAmount, merchant, isStampsMode]);
 
   const calculatePoints = () => {
     const amountNum = parseFloat(amount) || 0;
@@ -133,20 +126,6 @@ export default function TransactionAmountScreen() {
     if (formatted.length <= MAX_AMOUNT_DIGITS) setAmount(formatted);
   };
 
-  // ── Stamp counter handlers ──
-  const incrementStamps = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    Animated.spring(stampScale, { toValue: 1.15, useNativeDriver: true, speed: 50, bounciness: 8 }).start(() => {
-      Animated.spring(stampScale, { toValue: 1, useNativeDriver: true, speed: 40 }).start();
-    });
-    setStampCount((c) => Math.min(c + 1, MAX_STAMPS_PER_TX));
-  };
-  const decrementStamps = () => {
-    if (stampCount <= 1) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setStampCount((c) => Math.max(c - 1, 1));
-  };
-
   // ── Stamp amount input handler ──
   const handleStampAmountChange = (text: string) => {
     const cleaned = text.replace(/[^0-9.]/g, '');
@@ -160,108 +139,89 @@ export default function TransactionAmountScreen() {
   const handleEarnPoints = () => {
     const amountNum = parseFloat(amount);
     if (!amountNum || isNaN(amountNum)) {
-      Alert.alert(t('common.error'), 'Veuillez entrer un montant valide.');
+      Alert.alert(t('common.error'), t('transactionAmount.invalidAmount'));
       return;
     }
     if (points === 0) {
-      Alert.alert(t('common.error'), 'Aucun point ne sera gagné avec ce montant.');
+      Alert.alert(t('common.error'), t('transactionAmount.noPointsEarned'));
       return;
     }
+    const willRedeem = !!selectedRewardId && !!selectedReward && (customerStatus?.points || 0) + points >= selectedReward.cout;
+    const giftLine = willRedeem
+      ? `\n\n🎁 Cadeau "${selectedReward!.titre}" offert (${selectedReward!.cout} points déduits).`
+      : '';
     Alert.alert(
       t('transaction.confirmTitle'),
-      `Montant : ${formatCurrency(amountNum)}\nPoints à gagner : ${points} points`,
+      `Montant : ${formatCurrency(amountNum)}\nPoints à gagner : ${points} points${giftLine}`,
       [
         { text: t('common.cancel'), style: 'cancel' },
-        { text: t('transaction.validate'), onPress: () => processTransaction('EARN_POINTS', amountNum, points) },
+        { text: t('transaction.validate'), onPress: () => processEarnWithAutoRedeem(amountNum, points, willRedeem) },
       ],
     );
   };
 
   // ── EARN: Stamps Mode ──
   const handleEarnStamps = () => {
-    if (stampCount < 1) return;
     const stampAmountNum = parseFloat(stampAmount) || 0;
     if (stampAmountNum === 0) {
-      Alert.alert(t('common.error'), 'Veuillez entrer le montant dépensé.');
+      Alert.alert(t('common.error'), t('transaction.enterAmountError'));
       return;
     }
-    const afterStamps = (customerStatus?.points || 0) + stampCount;
-    const willGetReward = afterStamps >= stampsForReward;
+    if (stamps === 0) {
+      Alert.alert(t('common.error'), t('transaction.noStampsEarned'));
+      return;
+    }
+    const afterStamps = (customerStatus?.points || 0) + stamps;
+    const willGetReward = afterStamps >= stampsForReward && !!selectedReward;
 
     Alert.alert(
       t('transaction.confirmTitle'),
-      `Montant dépensé : ${formatCurrency(stampAmountNum)}\n` +
-      `Tampons à ajouter : ${stampCount} tampon${stampCount > 1 ? 's' : ''}\n` +
+      `${t('transaction.purchaseAmount')} : ${formatCurrency(stampAmountNum)}\n` +
+      `${t('transaction.stampsToEarn')} : ${stamps} ${t('common.stamps')}\n` +
         (willGetReward
-          ? `\n🎉 Le client atteindra ${afterStamps} / ${stampsForReward} tampons et obtiendra un cadeau !`
-          : `\nTotal après : ${afterStamps} / ${stampsForReward} tampons.`),
+          ? `\n🎉 Récompense atteinte ! Le cadeau "${selectedReward!.titre}" sera offert automatiquement (${selectedReward!.cout} tampons déduits).`
+          : `\n${t('transaction.totalAfter')} : ${afterStamps} / ${stampsForReward} ${t('common.stamps')}`),
       [
         { text: t('common.cancel'), style: 'cancel' },
         {
           text: t('transaction.validate'),
-          onPress: () => processTransaction('EARN_POINTS', stampAmountNum, stampCount),
+          onPress: () => processEarnWithAutoRedeem(stampAmountNum, stamps, willGetReward),
         },
       ],
     );
   };
 
-  // ── REDEEM ──
-  const handleRedeemReward = () => {
-    if (!customerStatus) {
-      Alert.alert(t('common.error'), "Le client n'est pas chargé.");
-      return;
-    }
-
-    if (rewards.length === 0) {
-      Alert.alert(t('common.error'), t('transaction.noGifts'));
-      return;
-    }
-
-    const selectedReward = rewards.find((r) => r.id === selectedRewardId) || rewards[0];
-    if (!selectedReward) {
-      Alert.alert(t('common.error'), 'Veuillez sélectionner un cadeau.');
-      return;
-    }
-
-    if (customerStatus.points < selectedReward.cout) {
-      Alert.alert(t('common.error'), "Le client n'a pas assez pour ce cadeau.");
-      return;
-    }
-
-    const cost = selectedReward.cout;
-    Alert.alert(
-      t('transaction.redeemTitle'),
-      isStampsMode
-        ? `${cost} tampons seront déduits du compte client.`
-        : `${cost} points seront déduits du compte client.`,
-      [
-        { text: t('common.cancel'), style: 'cancel' },
-        {
-          text: t('common.confirm'),
-          onPress: () => processTransaction('REDEEM_REWARD', 0, cost, selectedReward.id),
-        },
-      ],
-    );
-  };
-
-  const processTransaction = async (
-    type: TransactionType,
-    transactionAmount: number,
-    transactionPoints: number,
-    rewardId?: string,
+  // ── Earn stamps + auto-redeem if threshold is reached ──
+  const processEarnWithAutoRedeem = async (
+    amount: number,
+    earnedStamps: number,
+    autoRedeem: boolean,
   ) => {
     try {
       setLoading(true);
 
+      // 1. Enregistrer l'acquisition des tampons
       await recordTransactionMutation.mutateAsync({
         clientId,
-        type,
-        amount: transactionAmount,
-        points: transactionPoints,
-        rewardId: rewardId || undefined,
+        type: 'EARN_POINTS',
+        amount,
+        points: earnedStamps,
       });
 
-      setTransactionType(type);
+      // 2. Si le seuil est atteint, créer automatiquement la transaction de remise du cadeau
+      if (autoRedeem && selectedRewardId && selectedReward) {
+        await recordTransactionMutation.mutateAsync({
+          clientId,
+          type: 'REDEEM_REWARD',
+          amount: 0,
+          points: selectedReward.cout,
+          rewardId: selectedRewardId,
+        });
+        setTransactionType('REDEEM_REWARD');
+      } else {
+        setTransactionType('EARN_POINTS');
+      }
+
       setShowSuccess(true);
       setTimeout(() => {
         setShowSuccess(false);
@@ -284,23 +244,65 @@ export default function TransactionAmountScreen() {
     ]);
   };
 
+  // ── REDEEM ONLY (cadeau sans achat) ──
+  const handleRedeemOnly = () => {
+    if (!selectedRewardId || !selectedReward) {
+      Alert.alert(t('common.error'), 'Veuillez sélectionner un cadeau à offrir.');
+      return;
+    }
+    const currentPoints = customerStatus?.points || 0;
+    if (currentPoints < selectedReward.cout) {
+      Alert.alert(t('common.error'), 'Le client n\'a pas assez de points pour ce cadeau.');
+      return;
+    }
+    Alert.alert(
+      '🎁 Offrir un cadeau',
+      `Cadeau : "${selectedReward.titre}"\n${selectedReward.cout} ${isStampsMode ? 'tampons' : 'points'} déduits du solde du client.`,
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: 'Confirmer',
+          onPress: async () => {
+            try {
+              setLoading(true);
+              await recordTransactionMutation.mutateAsync({
+                clientId,
+                type: 'REDEEM_REWARD',
+                amount: 0,
+                points: selectedReward.cout,
+                rewardId: selectedRewardId,
+              });
+              setTransactionType('REDEEM_REWARD');
+              setShowSuccess(true);
+              setTimeout(() => {
+                setShowSuccess(false);
+                router.back();
+              }, SUCCESS_DISPLAY_MS);
+            } catch (err: unknown) {
+              Alert.alert(t('common.error'), getErrorMessage(err, 'Impossible d\'offrir le cadeau.'));
+            } finally {
+              setLoading(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+
   // ── Derived ──
   const amountNum = parseFloat(amount || '0') || 0;
   const isValidAmount = amountNum > 0;
   const selectedReward = rewards.find((r) => r.id === selectedRewardId) || null;
-  const rewardCost = selectedReward?.cout || null;
-  const hasEnoughForReward =
-    customerStatus && rewardCost !== null
-      ? customerStatus.points >= rewardCost
-      : false;
 
-  const renderRewardSelector = () => (
+  const renderRewardSelector = (redeemOnly = false) => (
     <View style={[styles.rewardSelectorCard, { backgroundColor: theme.bgCard }]}>
       <Text style={[styles.rewardSelectorTitle, { color: theme.text }]}>
-        {t('transaction.chooseGift')}
+        {redeemOnly ? '🎁 Choisir le cadeau à offrir' : t('transaction.chooseGift')}
       </Text>
       <Text style={[styles.rewardSelectorHint, { color: theme.textMuted }]}>
-        {isStampsMode ? t('transaction.costInStamps') : t('transaction.costInPoints')}
+        {redeemOnly
+          ? 'Seuls les cadeaux accessibles avec le solde actuel sont disponibles.'
+          : 'Sélectionner un cadeau à offrir maintenant (optionnel)'}
       </Text>
 
       {loadingRewards ? (
@@ -324,10 +326,11 @@ export default function TransactionAmountScreen() {
                   {
                     borderColor: isSelected ? theme.primary : theme.border,
                     backgroundColor: isSelected ? theme.primaryBg : theme.bg,
-                    opacity: isAffordable ? 1 : 0.6,
+                    opacity: isAffordable ? 1 : 0.5,
                   },
                 ]}
-                onPress={() => setSelectedRewardId(reward.id)}
+                onPress={() => setSelectedRewardId((prev) => (prev === reward.id ? null : reward.id))}
+                disabled={!isAffordable}
                 activeOpacity={0.7}
               >
                 <View style={styles.rewardSelectorInfo}>
@@ -338,7 +341,9 @@ export default function TransactionAmountScreen() {
                     {reward.cout} {isStampsMode ? t('common.stamps') : t('common.points')}
                   </Text>
                 </View>
-                {!isAffordable && (
+                {isAffordable ? (
+                  <View style={[styles.rewardSelectIndicator, { borderColor: isSelected ? theme.primary : theme.border, backgroundColor: isSelected ? theme.primary : 'transparent' }]} />
+                ) : (
                   <Text style={[styles.rewardSelectorBadge, { color: theme.danger }]}>
                     {t('transaction.insufficient')}
                   </Text>
@@ -387,7 +392,7 @@ export default function TransactionAmountScreen() {
             <View style={styles.clientInfo}>
               <Text style={[styles.clientLabel, { color: theme.textMuted }]}>{t('transaction.clientLabel')}</Text>
               <Text style={[styles.clientName, { color: theme.text }]}>
-                {customerStatus?.nom || t('transaction.defaultClient')}
+                {[customerStatus?.prenom, customerStatus?.nom].filter(Boolean).join(' ') || t('transaction.defaultClient')}
               </Text>
             </View>
             <View style={[styles.pointsBadge, { backgroundColor: theme.success + '14' }]}>
@@ -402,10 +407,58 @@ export default function TransactionAmountScreen() {
             </View>
           </View>
 
-          {/* ═══════════════════════════════════════════ */}
-          {/* ── STAMPS MODE ── */}
-          {/* ═══════════════════════════════════════════ */}
-          {isStampsMode ? (
+          {/* ── Mode Tabs ── */}
+          <View style={[styles.modeTabs, { backgroundColor: theme.bgCard }]}>
+            <TouchableOpacity
+              style={[
+                styles.modeTab,
+                screenMode === 'earn' && { backgroundColor: theme.primary },
+              ]}
+              onPress={() => { setScreenMode('earn'); setSelectedRewardId(null); }}
+            >
+              <Text style={[styles.modeTabText, { color: screenMode === 'earn' ? '#fff' : theme.textSecondary }]}>
+                {isStampsMode ? '🏷 Achat / Tampons' : '🏷 Achat / Points'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.modeTab,
+                screenMode === 'redeem' && { backgroundColor: theme.primary },
+              ]}
+              onPress={() => { setScreenMode('redeem'); setSelectedRewardId(null); }}
+            >
+              <Text style={[styles.modeTabText, { color: screenMode === 'redeem' ? '#fff' : theme.textSecondary }]}>
+                🎁 Cadeau
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* ── REDEEM ONLY MODE ── */}
+          {screenMode === 'redeem' ? (
+            <View>
+              {loadingRewards ? (
+                <View style={[styles.rewardSelectorCard, { backgroundColor: theme.bgCard, alignItems: 'center' }]}>
+                  <ActivityIndicator color={theme.primary} />
+                </View>
+              ) : rewards.filter((r) => (customerStatus?.points || 0) >= r.cout).length === 0 ? (
+                <View style={[styles.rewardSelectorCard, { backgroundColor: theme.bgCard, alignItems: 'center', gap: 8 }]}>
+                  <Gift size={40} color={theme.textMuted} strokeWidth={1.5} />
+                  <Text style={[styles.rewardSelectorEmpty, { color: theme.textMuted, textAlign: 'center' }]}>
+                    Ce client n'a pas encore assez de points pour un cadeau.
+                  </Text>
+                  <Text style={[{ color: theme.textMuted, fontSize: 13, textAlign: 'center' }]}>
+                    Solde actuel : {customerStatus?.points || 0} {isStampsMode ? 'tampons' : 'points'}
+                  </Text>
+                </View>
+              ) : (
+                renderRewardSelector(true)
+              )}
+            </View>
+          ) : (
+          /* ═══════════════════════════════════════════ */
+          /* ── STAMPS / POINTS EARN MODE ── */
+          /* ═══════════════════════════════════════════ */
+          isStampsMode ? (
             <View>
               {/* ── Stamp Grid ── */}
               <View style={[styles.stampGridCard, { backgroundColor: theme.bgCard }]}>
@@ -416,83 +469,10 @@ export default function TransactionAmountScreen() {
                 />
               </View>
 
-              {/* ── Stamp Counter ── */}
-              <View style={[styles.stampCounterCard, { backgroundColor: theme.bgCard }]}>
-                <Text style={[styles.stampCounterLabel, { color: theme.textSecondary }]}>
-                  {t('transaction.stampCountLabel')}
-                </Text>
-                <View style={styles.stampCounterRow}>
-                  <TouchableOpacity
-                    style={[
-                      styles.stampCounterBtn,
-                      {
-                        backgroundColor: stampCount > 1 ? theme.danger + '14' : theme.border,
-                      },
-                    ]}
-                    onPress={decrementStamps}
-                    disabled={stampCount <= 1}
-                    activeOpacity={0.7}
-                  >
-                    <Minus
-                      size={24}
-                      color={stampCount > 1 ? theme.danger : theme.textMuted}
-                      strokeWidth={1.5}
-                    />
-                  </TouchableOpacity>
-
-                  <Animated.View style={stampAnimStyle}>
-                    <View style={[styles.stampCountDisplay, { borderColor: theme.primary }]}>
-                      <Stamp size={28} color={theme.primary} strokeWidth={1.5} />
-                      <Text style={[styles.stampCountValue, { color: theme.text }]}>
-                        {stampCount}
-                      </Text>
-                    </View>
-                  </Animated.View>
-
-                  <TouchableOpacity
-                    style={[styles.stampCounterBtn, { backgroundColor: theme.primary + '14' }]}
-                    onPress={incrementStamps}
-                    activeOpacity={0.7}
-                  >
-                    <Plus size={24} color={theme.primary} strokeWidth={1.5} />
-                  </TouchableOpacity>
-                </View>
-
-                {/* Quick stamps buttons */}
-                <View style={styles.quickStampsRow}>
-                  {[1, 2, 3, 5].map((n) => (
-                    <TouchableOpacity
-                      key={n}
-                      style={[
-                        styles.quickStampBtn,
-                        {
-                          backgroundColor: stampCount === n ? theme.primary : theme.bg,
-                          borderColor: stampCount === n ? theme.primary : theme.border,
-                        },
-                      ]}
-                      onPress={() => {
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                        setStampCount(n);
-                      }}
-                      activeOpacity={0.7}
-                    >
-                      <Text
-                        style={[
-                          styles.quickStampText,
-                          { color: stampCount === n ? '#fff' : theme.textSecondary },
-                        ]}
-                      >
-                        +{n}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-
-              {/* ── Montant dépensé (Stamps mode) ── */}
+              {/* ── Amount input (Stamps mode) ── */}
               <View style={[styles.amountInputCard, { backgroundColor: theme.bgCard }]}>
                 <Text style={[styles.amountLabel, { color: theme.textSecondary }]}>
-                  Montant dépensé
+                  {t('transaction.purchaseAmount')}
                 </Text>
                 <TextInput
                   style={[styles.amountInput, { color: theme.text, borderColor: theme.border }]}
@@ -503,31 +483,37 @@ export default function TransactionAmountScreen() {
                   placeholderTextColor={theme.textMuted}
                   maxLength={MAX_AMOUNT_DIGITS}
                   returnKeyType="done"
+                  autoFocus
                 />
                 <Text style={[styles.amountInputCurrency, { color: theme.textMuted }]}>
                   {DEFAULT_CURRENCY.symbol}
                 </Text>
               </View>
 
-              {renderRewardSelector()}
-
-              {/* ── Reward button (stamps) ── */}
-              {customerStatus && hasEnoughForReward && (
-                <TouchableOpacity
-                  style={[styles.rewardButton, { backgroundColor: theme.warning }]}
-                  onPress={handleRedeemReward}
-                  disabled={loading}
-                  activeOpacity={0.8}
+              {/* ── Stamps preview ── */}
+              <TouchableOpacity
+                style={[
+                  styles.calculateButton,
+                  {
+                    backgroundColor: stamps > 0 ? theme.success + '14' : theme.bgCard,
+                    borderColor: stamps > 0 ? theme.success : 'transparent',
+                    borderWidth: stamps > 0 ? 2 : 0,
+                  },
+                ]}
+                disabled
+              >
+                <Stamp size={24} color={stamps > 0 ? theme.success : theme.textMuted} strokeWidth={1.5} />
+                <Text
+                  style={[
+                    styles.calculateButtonText,
+                    { color: stamps > 0 ? theme.success : theme.textMuted },
+                  ]}
                 >
-                  <Award size={24} color="#fff" strokeWidth={1.5} />
-                  <View style={styles.rewardButtonContent}>
-                  <Text style={styles.rewardButtonTitle}>{t('transaction.giftAvailable')}</Text>
-                  <Text style={styles.rewardButtonSubtitle}>
-                    {t('transaction.offerGift')} ({rewardCost || stampsForReward} {t('common.stamps')})
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              )}
+                  {stamps > 0 ? `${t('transaction.earn')} ${stamps} ${t('common.stamps')}` : t('transaction.enterAmount')}
+                </Text>
+              </TouchableOpacity>
+
+              {renderRewardSelector()}
             </View>
           ) : (
             /* ═══════════════════════════════════════════ */
@@ -579,24 +565,8 @@ export default function TransactionAmountScreen() {
               </TouchableOpacity>
 
               {renderRewardSelector()}
-
-              {/* Redeem (points mode) */}
-              {customerStatus && hasEnoughForReward && (
-                <TouchableOpacity
-                  style={[styles.rewardButton, { backgroundColor: theme.warning }]}
-                  onPress={handleRedeemReward}
-                  disabled={loading}
-                >
-                  <Award size={24} color="#fff" strokeWidth={1.5} />
-                  <View style={styles.rewardButtonContent}>
-                  <Text style={styles.rewardButtonTitle}>{t('transaction.giftAvailable')}</Text>
-                  <Text style={styles.rewardButtonSubtitle}>
-                    {t('transaction.offerGift')} ({rewardCost || customerStatus.rewardThreshold} {t('common.points')})
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              )}
             </>
+          )
           )}
         </ScrollView>
 
@@ -615,13 +585,15 @@ export default function TransactionAmountScreen() {
               styles.validateButton,
               {
                 backgroundColor:
-                  (isStampsMode ? stampCount > 0 && parseFloat(stampAmount) > 0 : isValidAmount) && !loading
-                    ? theme.primary
-                    : theme.border,
+                  screenMode === 'redeem'
+                    ? (!!selectedRewardId && !loading ? theme.primary : theme.border)
+                    : ((isStampsMode ? stamps > 0 && parseFloat(stampAmount) > 0 : isValidAmount) && !loading
+                        ? theme.primary
+                        : theme.border),
               },
             ]}
-            onPress={isStampsMode ? handleEarnStamps : handleEarnPoints}
-            disabled={isStampsMode ? !parseFloat(stampAmount) || stampCount < 1 || loading : !isValidAmount || loading}
+            onPress={screenMode === 'redeem' ? handleRedeemOnly : (isStampsMode ? handleEarnStamps : handleEarnPoints)}
+            disabled={screenMode === 'redeem' ? (!selectedRewardId || loading) : (isStampsMode ? !parseFloat(stampAmount) || stamps < 1 || loading : !isValidAmount || loading)}
           >
             {loading ? (
               <ActivityIndicator color="#fff" />
@@ -661,7 +633,7 @@ export default function TransactionAmountScreen() {
             <Text style={[styles.successMessage, { color: theme.textSecondary }]}>
               {transactionType === 'EARN_POINTS'
                 ? isStampsMode
-                  ? `${stampCount} tampon${stampCount > 1 ? 's' : ''} ajouté${stampCount > 1 ? 's' : ''}.`
+                  ? `${stamps} tampon${stamps > 1 ? 's' : ''} ajouté${stamps > 1 ? 's' : ''}.`
                   : `${points} points ont été attribués au client.`
                 : 'La récompense a été offerte au client.'}
             </Text>
@@ -850,25 +822,29 @@ const styles = StyleSheet.create({
   rewardSelectorName: { fontSize: 14, fontWeight: '700' },
   rewardSelectorMeta: { fontSize: 12, marginTop: 4 },
   rewardSelectorBadge: { fontSize: 12, fontWeight: '700' },
-
-  // ── Reward ──
-  rewardButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: 20,
-    marginTop: 15,
-    borderRadius: 14,
-    padding: 16,
-    gap: 12,
-    elevation: 3,
-    shadowColor: '#1F2937',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
+  rewardSelectIndicator: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
   },
-  rewardButtonContent: { flex: 1 },
-  rewardButtonTitle: { fontSize: 16, fontWeight: '700', color: '#fff', marginBottom: 4 },
-  rewardButtonSubtitle: { fontSize: 13, color: 'rgba(255,255,255,0.9)' },
+
+  // ── Mode Tabs ──
+  modeTabs: {
+    flexDirection: 'row',
+    marginHorizontal: 20,
+    marginTop: 16,
+    borderRadius: 12,
+    padding: 4,
+    gap: 4,
+  },
+  modeTab: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  modeTabText: { fontSize: 13, fontWeight: '700' },
 
   // ── Actions ──
   actionsContainer: {

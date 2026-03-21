@@ -68,10 +68,12 @@ export class GoogleLoginDto {
 export class CompleteProfileDto {
   @IsString()
   @IsNotEmpty({ message: 'Le prénom est requis' })
+  @MaxLength(50, { message: 'Le prénom est trop long' })
   prenom: string;
 
   @IsString()
   @IsNotEmpty({ message: 'Le nom est requis' })
+  @MaxLength(50, { message: 'Le nom est trop long' })
   nom: string;
 
   @IsOptional()
@@ -91,10 +93,12 @@ export class CompleteProfileDto {
 export class ClientUpdateProfileDto {
   @IsOptional()
   @IsString()
+  @MaxLength(50, { message: 'Le prénom est trop long' })
   prenom?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(50, { message: 'Le nom est trop long' })
   nom?: string;
 
   @IsOptional()

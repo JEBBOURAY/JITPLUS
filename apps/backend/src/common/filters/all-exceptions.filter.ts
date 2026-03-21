@@ -7,7 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
-import { Prisma } from '../../generated/client';
+import { Prisma } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
 
 @Catch()

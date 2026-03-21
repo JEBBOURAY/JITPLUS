@@ -1,4 +1,4 @@
-import { Reward } from '../generated/client';
+import { Reward } from '@prisma/client';
 import { IRepository } from '../common/interfaces/repository.interface';
 
 export interface IRewardRepository extends IRepository<Reward> {

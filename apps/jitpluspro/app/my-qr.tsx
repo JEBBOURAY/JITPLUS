@@ -14,7 +14,7 @@ import QRCode from 'react-native-qrcode-svg';
 import * as Sharing from 'expo-sharing';
 
 // react-native-view-shot is NOT available in Expo Go SDK 51+
-let ViewShot: any = null;
+let ViewShot: typeof import('react-native-view-shot').default | null = null;
 try {
   ViewShot = require('react-native-view-shot').default;
 } catch {
@@ -28,8 +28,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { PlanInfo } from '@/types';
-import api, { getServerBaseUrl } from '@/services/api';
-import MerchantLogo from '@/components/MerchantLogo';
+import api from '@/services/api';
 import { resolveImageUrl } from '@/utils/imageUrl';
 
 // ── Utility: resolve logo URL ──
@@ -77,18 +76,18 @@ export default function MyQRCodeScreen() {
   // ── Share / Download ──
   const handleShare = useCallback(async () => {
     if (!ViewShot) {
-      Alert.alert('Indisponible', 'Le partage du QR code nécessite un dev build (pas Expo Go).');
+      Alert.alert(t('myQr.unavailable'), t('myQr.shareRequiresDevBuild'));
       return;
     }
     try {
       const uri = await viewShotRef.current?.capture?.();
       if (!uri) {
-        Alert.alert('Erreur', 'Impossible de capturer le QR code.');
+        Alert.alert(t('common.error'), t('myQr.captureError'));
         return;
       }
       const available = await Sharing.isAvailableAsync();
       if (!available) {
-        Alert.alert('Partage indisponible', "Le partage n'est pas disponible sur cet appareil.");
+        Alert.alert(t('myQr.shareUnavailable'), t('myQr.shareUnavailableMsg'));
         return;
       }
       await Sharing.shareAsync(uri, {
@@ -97,19 +96,19 @@ export default function MyQRCodeScreen() {
         UTI: 'public.png',
       });
     } catch {
-      Alert.alert('Erreur', 'Une erreur est survenue lors du partage.');
+      Alert.alert(t('common.error'), t('myQr.shareError'));
     }
   }, []);
 
   const handleDownload = useCallback(async () => {
     if (!ViewShot) {
-      Alert.alert('Indisponible', 'Le téléchargement nécessite un dev build (pas Expo Go).');
+      Alert.alert(t('myQr.unavailable'), t('myQr.downloadRequiresDevBuild'));
       return;
     }
     if (!isPremium) {
       Alert.alert(
-        '🔒 Fonctionnalité Premium',
-        'Le téléchargement du QR Code personnalisé est réservé au plan Pro.\n\nContactez le support pour passer au plan Pro.\n📧 contact@jitplus.com',
+        `🔒 ${t('myQr.premiumFeature')}`,
+        t('myQr.premiumMsg'),
       );
       return;
     }
@@ -117,7 +116,7 @@ export default function MyQRCodeScreen() {
     try {
       const uri = await viewShotRef.current?.capture?.();
       if (!uri) {
-        Alert.alert('Erreur', 'Impossible de capturer le QR code.');
+        Alert.alert(t('common.error'), t('myQr.captureError'));
         return;
       }
 
@@ -125,7 +124,7 @@ export default function MyQRCodeScreen() {
         // On Android, use sharing which gives save option
         await Sharing.shareAsync(uri, {
           mimeType: 'image/png',
-          dialogTitle: 'Enregistrer le QR Code',
+          dialogTitle: t('myQr.saveQrCode'),
         });
       } else {
         // On iOS, share to save
@@ -135,7 +134,7 @@ export default function MyQRCodeScreen() {
         });
       }
     } catch {
-      Alert.alert('Erreur', 'Impossible de télécharger le QR code.');
+      Alert.alert(t('common.error'), t('myQr.downloadError'));
     }
   }, [isPremium]);
 

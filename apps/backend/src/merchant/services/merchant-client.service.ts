@@ -15,7 +15,7 @@ import {
   DEFAULT_LOYALTY_TYPE,
 } from '../../common/constants';
 import { MERCHANT_LOYALTY_SELECT, CLIENT_SCAN_SELECT } from '../../common/prisma-selects';
-import { buildClientSearchFilter, buildTxMap, mapClientResponse, buildPagination } from '../../common/utils';
+import { buildClientSearchFilter, buildTxMap, mapClientResponse, buildPagination, maskName } from '../../common/utils';
 
 @Injectable()
 export class MerchantClientService {
@@ -202,7 +202,7 @@ export class MerchantClientService {
     const shared = client.shareInfoMerchants !== false;
     return {
       id: client.id,
-      nom: client.nom,
+      nom: shared ? client.nom : maskName(client.nom),
       email: shared ? client.email : null,
       telephone: shared ? client.telephone : null,
       points: loyaltyCard.points,
@@ -247,7 +247,7 @@ export class MerchantClientService {
 
     return {
       id: client.id,
-      nom: client.nom,
+      nom: shared ? client.nom : maskName(client.nom),
       email: shared ? client.email : null,
       telephone: shared ? client.telephone : null,
       points: loyaltyCard?.points ?? 0,

@@ -218,7 +218,7 @@ export default function ProfileScreen() {
               ].map((f, i) => (
                 <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   {f.included
-                    ? <Check size={15} color="#059669" strokeWidth={1.5} />
+                    ? <Check size={15} color={theme.primary} strokeWidth={1.5} />
                     : <X size={15} color="#9CA3AF" strokeWidth={1.5} />}
                   <Text style={{ color: f.included ? theme.text : theme.textMuted, fontSize: 13, fontFamily: 'Lexend_400Regular' }}>
                     {f.label}

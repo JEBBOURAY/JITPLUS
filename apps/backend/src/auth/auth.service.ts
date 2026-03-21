@@ -1,6 +1,6 @@
 import { Injectable, UnauthorizedException, ConflictException, BadRequestException, HttpException, HttpStatus, Logger, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Prisma } from '../generated/client';
+import { Prisma } from '@prisma/client';
 import { JwtService } from '@nestjs/jwt';
 import {
   MERCHANT_REPOSITORY, type IMerchantRepository,
@@ -391,7 +391,7 @@ export class AuthService {
   async logout(sessionId?: string): Promise<{ message: string }> {
     if (!sessionId) return { message: 'Déconnecté' };
     // Immediately invalidate the in-memory cache to close the replay window
-    this.jwtStrategy.invalidateSession(sessionId);
+    await this.jwtStrategy.invalidateSession(sessionId);
     try {
       await this.deviceSessionRepo.deleteMany({
         where: { tokenId: sessionId },

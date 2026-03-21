@@ -10,17 +10,16 @@ import {
   Animated as RNAnimated,
   Platform,
 } from 'react-native';
-import { Users, Search, ChevronRight, X, UserPlus } from 'lucide-react-native';
+import { Users, Search, X, UserPlus, ChevronRight } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useFocusFade } from '@/hooks/useFocusFade';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '@/contexts/AuthContext';
-import { useTheme } from '@/contexts/ThemeContext';
+import { useTheme, brandGradient, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { ClientListSkeleton } from '@/components/Skeleton';
-import api from '@/services/api';
+import { useClients } from '@/hooks/useQueryHooks';
 import { useGuardedCallback } from '@/hooks/useGuardedCallback';
-import { getErrorStatus } from '@/utils/error';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SEARCH_DEBOUNCE_MS } from '@/constants/app';
 
@@ -79,7 +78,7 @@ const ClientCard = React.memo(function ClientCard({
         activeOpacity={0.7}
       >
         {/* Avatar violet avec initiales blanches */}
-        <View style={styles.avatar}>
+        <View style={[styles.avatar, { backgroundColor: theme.primary }]}>
           <Text style={styles.avatarText}>{initials}</Text>
         </View>
 
@@ -94,7 +93,7 @@ const ClientCard = React.memo(function ClientCard({
         <Text style={[styles.pointsValue, { color: theme.primary }]}>
           {formattedPoints} <Text style={styles.pointsLabel}>{isStamps ? 'tmp' : 'pts'}</Text>
         </Text>
-        <ChevronRight size={16} color={theme.textMuted} style={{ marginLeft: 4 }} />
+        <ChevronRight size={16} color={palette.violet} style={{ marginLeft: 4 }} />
       </TouchableOpacity>
     </RNAnimated.View>
   );
@@ -143,49 +142,26 @@ export default function ClientsScreen() {
   const { t } = useLanguage();
   const { focusStyle } = useFocusFade();
   const insets = useSafeAreaInsets();
-  const [clients, setClients] = useState<Client[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const searchInputRef = useRef<TextInput>(null);
 
-  const loadClients = async (query?: string, signal?: { cancelled: boolean }) => {
-    try {
-      if (!refreshing) setLoading(true);
-      const params = query ? `?search=${encodeURIComponent(query.trim())}` : '';
-      const response = await api.get(`/merchant/clients${params}`);
-      if (signal?.cancelled) return;
-      const data = response.data;
-      setClients(Array.isArray(data) ? data : data?.clients ?? []);
-    } catch (error: unknown) {
-      if (__DEV__) console.log('Clients endpoint:', getErrorStatus(error));
-      if (!signal?.cancelled) setClients([]);
-    } finally {
-      if (!signal?.cancelled) setLoading(false);
-    }
-  };
-
+  // Debounce search input
   useEffect(() => {
-    const signal = { cancelled: false };
-    loadClients(undefined, signal);
-    return () => { signal.cancelled = true; };
-  }, []);
-
-  // focusStyle is provided by useFocusFade()
-
-  // Debounced server search
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      loadClients(search || undefined);
-    }, SEARCH_DEBOUNCE_MS);
+    const timer = setTimeout(() => setDebouncedSearch(search), SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(timer);
   }, [search]);
 
+  const {
+    data: clients = [],
+    isLoading: loading,
+    isRefetching: refreshing,
+    refetch,
+  } = useClients(debouncedSearch);
+
   const onRefresh = useGuardedCallback(async () => {
-    setRefreshing(true);
-    await loadClients(search || undefined);
-    setRefreshing(false);
-  }, [search]);
+    await refetch();
+  }, [refetch]);
 
   const clearSearch = () => {
     setSearch('');
@@ -209,7 +185,7 @@ export default function ClientsScreen() {
     return (
       <RNAnimated.View style={[styles.container, { backgroundColor: theme.bg }, focusStyle]}>
         <LinearGradient
-          colors={['#7C3AED', '#1F2937']}
+          colors={[...brandGradient]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
           style={[styles.header, { paddingTop: insets.top + 12 }]}
@@ -228,7 +204,7 @@ export default function ClientsScreen() {
     <RNAnimated.View style={[styles.container, { backgroundColor: theme.bg }, focusStyle]}>
       {/* ── Header ── */}
       <LinearGradient
-        colors={['#7C3AED', '#1F2937']}
+        colors={[...brandGradient]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 0 }}
         style={[styles.header, { paddingTop: insets.top + 12 }]}
@@ -262,7 +238,7 @@ export default function ClientsScreen() {
           <>
             {/* ── Search bar ── */}
             <View style={[styles.searchBar, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
-              <Search size={18} color={theme.textMuted} />
+              <Search size={18} color={palette.violet} />
               <TextInput
                 ref={searchInputRef}
                 style={[styles.searchInput, { color: theme.text }]}
@@ -300,6 +276,19 @@ export default function ClientsScreen() {
 // ── Styles ──────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  pendingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 4,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  pendingBannerText: { fontSize: 13, fontWeight: '600', color: '#7C3AED', fontFamily: 'Inter_600SemiBold' },
 
   // ── Header ──
   header: {
@@ -358,7 +347,6 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#7C3AED',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -423,7 +411,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
     shadowRadius: 6,
-    backgroundColor: '#7C3AED',
     borderWidth: 1,
     borderColor: 'rgba(139,92,246,0.6)',
   },

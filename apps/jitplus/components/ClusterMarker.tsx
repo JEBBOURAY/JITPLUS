@@ -45,51 +45,35 @@ const ClusterMarker = memo(function ClusterMarker({ count }: Props) {
       {/* Outer soft glow */}
       <View
         collapsable={false}
-        style={{
-          position: 'absolute',
+        style={[styles.outerGlow, {
           width: outerRing,
           height: outerRing,
           borderRadius: outerRing / 2,
-          backgroundColor: VIOLET_LIGHT,
-          opacity: 0.10,
-        }}
+        }]}
       />
       {/* Mid glow ring */}
       <View
         collapsable={false}
-        style={{
-          position: 'absolute',
+        style={[styles.midGlow, {
           width: midRing,
           height: midRing,
           borderRadius: midRing / 2,
-          backgroundColor: VIOLET,
-          opacity: 0.18,
-        }}
+        }]}
       />
       {/* Solid violet circle with count */}
       <View
         collapsable={false}
-        style={{
+        style={[styles.solidCircle, {
           width: circle,
           height: circle,
           borderRadius: circle / 2,
-          backgroundColor: VIOLET,
-          borderWidth: 3,
-          borderColor: '#FFFFFF',
-          alignItems: 'center',
-          justifyContent: 'center',
-          ...Platform.select({ android: { elevation: 0 }, default: {} }),
-        }}
+        }]}
       >
         <Text
-          style={{
+          style={[styles.countText, {
             fontSize: fs,
-            fontWeight: '900',
-            color: '#FFFFFF',
             lineHeight: fs + 2,
-            includeFontPadding: false,
-            letterSpacing: -0.5,
-          }}
+          }]}
         >
           {count > 99 ? '99+' : String(count)}
         </Text>
@@ -106,6 +90,30 @@ const styles = StyleSheet.create({
     height: MAX_ROOT,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  outerGlow: {
+    position: 'absolute',
+    backgroundColor: VIOLET_LIGHT,
+    opacity: 0.10,
+  },
+  midGlow: {
+    position: 'absolute',
+    backgroundColor: VIOLET,
+    opacity: 0.18,
+  },
+  solidCircle: {
+    backgroundColor: VIOLET,
+    borderWidth: 3,
+    borderColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...Platform.select({ android: { elevation: 0 }, default: {} }),
+  },
+  countText: {
+    fontWeight: '700',
+    color: '#FFFFFF',
+    includeFontPadding: false,
+    letterSpacing: -0.5,
   },
 });
 

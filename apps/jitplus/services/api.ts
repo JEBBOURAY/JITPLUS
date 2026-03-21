@@ -21,9 +21,11 @@ let _shouldPersist = true;
 async function getToken(): Promise<string | null> {
   if (Platform.OS === 'web') return memoryToken;
   try {
-    return (await SecureStore.getItemAsync('auth_token')) ?? memoryToken;
-  } catch {
-    return memoryToken;
+    const stored = await SecureStore.getItemAsync('auth_token');
+    return stored ?? null;
+  } catch (e) {
+    if (IS_DEV) console.warn('SecureStore read failed:', e);
+    return null;
   }
 }
 
@@ -31,7 +33,7 @@ async function setToken(token: string): Promise<void> {
   memoryToken = token;
   if (Platform.OS !== 'web' && _shouldPersist) {
     try { await SecureStore.setItemAsync('auth_token', token); } catch (e) {
-      if (IS_DEV) console.warn('SecureStore write failed, token in memory only:', e);
+      if (IS_DEV) console.warn('SecureStore write failed:', e);
     }
   }
 }
@@ -48,9 +50,11 @@ async function removeToken(): Promise<void> {
 async function getRefreshToken(): Promise<string | null> {
   if (Platform.OS === 'web') return memoryRefreshToken;
   try {
-    return (await SecureStore.getItemAsync('refresh_token')) ?? memoryRefreshToken;
-  } catch {
-    return memoryRefreshToken;
+    const stored = await SecureStore.getItemAsync('refresh_token');
+    return stored ?? null;
+  } catch (e) {
+    if (IS_DEV) console.warn('SecureStore read failed:', e);
+    return null;
   }
 }
 
@@ -58,7 +62,7 @@ async function setRefreshToken(token: string): Promise<void> {
   memoryRefreshToken = token;
   if (Platform.OS !== 'web' && _shouldPersist) {
     try { await SecureStore.setItemAsync('refresh_token', token); } catch (e) {
-      if (IS_DEV) console.warn('SecureStore write failed, refresh token in memory only:', e);
+      if (IS_DEV) console.warn('SecureStore write failed:', e);
     }
   }
 }
@@ -276,13 +280,6 @@ class ApiService {
   /** Get a permanent signed QR token (HMAC-based, never expires) */
   async getQrToken(): Promise<QrTokenResponse> {
     const { data } = await this.api.post('/client-auth/qr-token');
-    return data;
-  }
-
-  // ── Google Wallet ───────────────────────────────────────
-  /** Get a Google Wallet "Save" URL for a specific merchant loyalty card */
-  async getGoogleWalletPass(merchantId: string): Promise<{ saveUrl: string }> {
-    const { data } = await this.api.get(`/client/google-wallet-pass/${merchantId}`);
     return data;
   }
 

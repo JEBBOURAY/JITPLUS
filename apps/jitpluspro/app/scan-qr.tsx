@@ -5,7 +5,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   TextInput,
-  Dimensions,
   Keyboard,
   Platform,
   ActivityIndicator,
@@ -44,6 +43,14 @@ import { SCAN_AREA_RATIO, NAVIGATION_DELAY_MS } from '@/constants/app';
 import { useLanguage } from '@/contexts/LanguageContext';
 
 import { COUNTRIES } from '@/constants/Countries';
+
+// Safe haptic wrappers — no-op on devices without haptic engine
+const safeNotification = (type: Haptics.NotificationFeedbackType) => {
+  Haptics.notificationAsync(type).catch(() => {});
+};
+const safeImpact = (style: Haptics.ImpactFeedbackStyle) => {
+  Haptics.impactAsync(style).catch(() => {});
+};
 
 // ── Animated Search Bar ───────────────────────────────────
 function FloatingSearchBar({
@@ -269,6 +276,52 @@ export default function ScanQRScreen() {
     }
   }, [permission]);
 
+  const renderMatchedClient = useCallback(({ item }: { item: any }) => (
+    <TouchableOpacity
+      style={styles.cpRow}
+      onPress={() => {
+        setMatchedClients([]);
+        router.push({
+          pathname: '/transaction-amount',
+          params: { clientId: item.id },
+        });
+      }}
+      activeOpacity={0.6}
+    >
+      <View style={styles.flexMain}>
+        <Text style={styles.cpCountryName}>{item.nom}</Text>
+        <Text style={styles.clientSubtitle}>
+          {item.telephone || item.email || ''}
+        </Text>
+      </View>
+      <ArrowRight size={18} color="#A78BFA" />
+    </TouchableOpacity>
+  ), [router]);
+
+  const renderCountry = useCallback(({ item }: { item: any }) => {
+    const isSelected = item.code === COUNTRIES[countryIndex]?.code;
+    return (
+      <TouchableOpacity
+        style={[
+          styles.cpRow,
+          isSelected && { backgroundColor: 'rgba(139,92,246,0.15)' },
+        ]}
+        onPress={() => {
+          setCountryIndex(COUNTRIES.findIndex((c) => c.code === item.code));
+          setShowCountryPicker(false);
+        }}
+        activeOpacity={0.6}
+      >
+        <Text style={styles.cpFlag}>{item.flag}</Text>
+        <View style={styles.flexMain}>
+          <Text style={styles.cpCountryName}>{item.name}</Text>
+        </View>
+        <Text style={styles.cpDial}>{item.dial}</Text>
+        {isSelected && <Check size={18} color="#A78BFA" style={styles.checkIcon} />}
+      </TouchableOpacity>
+    );
+  }, [countryIndex]);
+
   useFocusEffect(
     useCallback(() => {
       setIsScanning(true);
@@ -303,13 +356,13 @@ export default function ScanQRScreen() {
       setIsScanning(false);
 
       // Haptic feedback
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      safeNotification(Haptics.NotificationFeedbackType.Success);
 
       // ── Format 1: jitplus://scan/{JWT_TOKEN} (signed QR from client app)
       if (data.startsWith('jitplus://scan/')) {
         const token = data.replace('jitplus://scan/', '').trim();
         if (!token) {
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          safeNotification(Haptics.NotificationFeedbackType.Error);
           Alert.alert('QR Code invalide', 'Token manquant.', [{ text: 'OK', onPress: () => setIsScanning(true) }]);
           return;
         }
@@ -320,7 +373,7 @@ export default function ScanQRScreen() {
           if (!clientId) throw new Error('no clientId');
           navigateToTransaction(clientId);
         } catch (err: unknown) {
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          safeNotification(Haptics.NotificationFeedbackType.Error);
           const msg = getErrorMessage(err, 'QR code expiré ou invalide. Demandez au client de rafraîchir son QR.');
           Alert.alert('QR invalide', msg, [{ text: 'OK', onPress: () => setIsScanning(true) }]);
         }
@@ -347,7 +400,7 @@ export default function ScanQRScreen() {
 
       // Validate that extracted value is a proper UUID
       if (!clientId || !isValidUUID(clientId)) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        safeNotification(Haptics.NotificationFeedbackType.Error);
         Alert.alert(
           'QR Code invalide',
           'Ce code QR ne correspond pas à un client JitPlus. Veuillez scanner un QR code valide.',
@@ -364,7 +417,7 @@ export default function ScanQRScreen() {
         if (!verifiedClientId) throw new Error('Client non vérifié');
         navigateToTransaction(verifiedClientId);
       } catch (err: unknown) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        safeNotification(Haptics.NotificationFeedbackType.Error);
         const msg = getErrorMessage(err, 'Client introuvable ou QR code invalide.');
         Alert.alert('Client invalide', msg, [{ text: 'OK', onPress: () => setIsScanning(true) }]);
       }
@@ -387,11 +440,11 @@ export default function ScanQRScreen() {
       });
       const clients = res.data;
 
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      safeImpact(Haptics.ImpactFeedbackStyle.Medium);
 
       if (clients.length === 1) {
         // Exactly one match → go to transaction
-        setDetected(t('scan.clientFound', { name: clients[0].nom }));
+        setDetected(t('scan.clientFound', { name: [clients[0].prenom, clients[0].nom].filter(Boolean).join(' ') }));
         setTimeout(() => {
           router.push({
             pathname: '/transaction-amount',
@@ -403,7 +456,7 @@ export default function ScanQRScreen() {
         setMatchedClients(clients);
       } else {
         // No match
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        safeNotification(Haptics.NotificationFeedbackType.Error);
         Alert.alert(
           'Client introuvable',
           `Aucun client trouvé avec le numéro ${normalizedPhone}.`,
@@ -420,7 +473,7 @@ export default function ScanQRScreen() {
 
   // ── Close handler ──
   const handleClose = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    safeImpact(Haptics.ImpactFeedbackStyle.Light);
     if (router.canGoBack()) {
       router.back();
     } else {
@@ -544,20 +597,20 @@ export default function ScanQRScreen() {
           <TouchableOpacity
             style={[styles.actionBtn, isFlashOn && styles.actionBtnActive]}
             onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              safeImpact(Haptics.ImpactFeedbackStyle.Light);
               setIsFlashOn((p) => !p);
             }}
             activeOpacity={0.7}
           >
             {isFlashOn ? (
-              <Zap size={22} color="#fbbf24" strokeWidth={1.5} fill="#fbbf24" />
+              <Zap size={22} color="#A78BFA" strokeWidth={1.5} fill="#A78BFA" />
             ) : (
               <ZapOff size={22} color="rgba(255,255,255,0.8)" strokeWidth={1.5} />
             )}
             <Text
               style={[
                 styles.actionBtnLabel,
-                isFlashOn && { color: '#fbbf24' },
+                isFlashOn && { color: '#A78BFA' },
               ]}
             >
               {t('scan.flash')}
@@ -568,7 +621,7 @@ export default function ScanQRScreen() {
           <TouchableOpacity
             style={styles.actionBtn}
             onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              safeImpact(Haptics.ImpactFeedbackStyle.Light);
               inputRef.current?.focus();
             }}
             activeOpacity={0.7}
@@ -598,13 +651,13 @@ export default function ScanQRScreen() {
       >
         <View style={[styles.cpContainer, { paddingTop: insets.top }]}>
           <View style={styles.cpHeader}>
-            <TouchableOpacity onPress={() => setMatchedClients([])} style={{ padding: 4 }}>
+            <TouchableOpacity onPress={() => setMatchedClients([])} style={styles.iconPadding}>
               <ArrowLeft size={24} color="#fff" />
             </TouchableOpacity>
             <Text style={styles.cpTitle}>{t('scan.clientsFound', { count: matchedClients.length })}</Text>
-            <View style={{ width: 32 }} />
+            <View style={styles.spacerWidth32} />
           </View>
-          <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13, paddingHorizontal: 20, paddingBottom: 12 }}>
+          <Text style={styles.selectClientText}>
             {t('scan.selectClient')}
           </Text>
           <FlatList
@@ -615,27 +668,7 @@ export default function ScanQRScreen() {
             maxToRenderPerBatch={10}
             windowSize={5}
             removeClippedSubviews
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                style={styles.cpRow}
-                onPress={() => {
-                  setMatchedClients([]);
-                  router.push({
-                    pathname: '/transaction-amount',
-                    params: { clientId: item.id },
-                  });
-                }}
-                activeOpacity={0.6}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.cpCountryName}>{item.nom}</Text>
-                  <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, marginTop: 2 }}>
-                    {item.telephone || item.email || ''}
-                  </Text>
-                </View>
-                <ArrowRight size={18} color="#A78BFA" />
-              </TouchableOpacity>
-            )}
+            renderItem={renderMatchedClient}
           />
         </View>
       </Modal>
@@ -649,11 +682,11 @@ export default function ScanQRScreen() {
       >
         <View style={[styles.cpContainer, { paddingTop: insets.top }]}>
           <View style={styles.cpHeader}>
-            <TouchableOpacity onPress={() => setShowCountryPicker(false)} style={{ padding: 4 }}>
+            <TouchableOpacity onPress={() => setShowCountryPicker(false)} style={styles.iconPadding}>
               <ArrowLeft size={24} color="#fff" />
             </TouchableOpacity>
             <Text style={styles.cpTitle}>{t('common.selectCountry')}</Text>
-            <View style={{ width: 32 }} />
+            <View style={styles.spacerWidth32} />
           </View>
           <View style={styles.cpSearchRow}>
             <View style={styles.cpSearchBox}>
@@ -681,32 +714,10 @@ export default function ScanQRScreen() {
             maxToRenderPerBatch={15}
             windowSize={7}
             removeClippedSubviews
-            renderItem={({ item }) => {
-              const isSelected = item.code === COUNTRIES[countryIndex]?.code;
-              return (
-                <TouchableOpacity
-                  style={[
-                    styles.cpRow,
-                    isSelected && { backgroundColor: 'rgba(139,92,246,0.15)' },
-                  ]}
-                  onPress={() => {
-                    setCountryIndex(COUNTRIES.findIndex((c) => c.code === item.code));
-                    setShowCountryPicker(false);
-                  }}
-                  activeOpacity={0.6}
-                >
-                  <Text style={styles.cpFlag}>{item.flag}</Text>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.cpCountryName}>{item.name}</Text>
-                  </View>
-                  <Text style={styles.cpDial}>{item.dial}</Text>
-                  {isSelected && <Check size={18} color="#A78BFA" style={{ marginLeft: 8 }} />}
-                </TouchableOpacity>
-              );
-            }}
+            renderItem={renderCountry}
             ListEmptyComponent={
-              <View style={{ padding: 32, alignItems: 'center' }}>
-                <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 14 }}>Aucun pays trouvé</Text>
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyText}>Aucun pays trouvé</Text>
               </View>
             }
           />
@@ -1029,4 +1040,12 @@ const styles = StyleSheet.create({
   cpFlag: { fontSize: 24, marginRight: 12 },
   cpCountryName: { fontSize: 15, fontWeight: '500', color: '#fff' },
   cpDial: { fontSize: 14, fontWeight: '600', color: 'rgba(255,255,255,0.5)' },
+  flexMain: { flex: 1 },
+  clientSubtitle: { color: 'rgba(255,255,255,0.5)', fontSize: 12, marginTop: 2 },
+  checkIcon: { marginLeft: 8 },
+  iconPadding: { padding: 4 },
+  spacerWidth32: { width: 32 },
+  selectClientText: { color: 'rgba(255,255,255,0.6)', fontSize: 13, paddingHorizontal: 20, paddingBottom: 12 },
+  emptyContainer: { padding: 32, alignItems: 'center' },
+  emptyText: { color: 'rgba(255,255,255,0.5)', fontSize: 14 },
 });

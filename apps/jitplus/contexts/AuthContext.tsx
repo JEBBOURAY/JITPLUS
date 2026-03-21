@@ -99,7 +99,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             // Use the guarded import from utils/notifications instead of
             // requiring expo-notifications directly — the raw require
             // triggers push-token side-effects that crash in Expo Go SDK 53+.
-            const { getPermissionStatus } = require('@/utils/notifications');
+            const { getPermissionStatus } = require('@/utils/notifications') as typeof import('@/utils/notifications');
             return await getPermissionStatus();
           } catch { return false; }
         })();

@@ -26,7 +26,7 @@ const TAB_KEYS: Record<string, string> = {
   account:  'tabs.account',
 };
 
-export default React.memo(function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+export default React.memo(function CustomTabBar({ state, navigation }: BottomTabBarProps) {
   const theme = useTheme();
   const { t } = useLanguage();
   const insets = useSafeAreaInsets();
@@ -129,9 +129,9 @@ export default React.memo(function CustomTabBar({ state, descriptors, navigation
                 >
                   <IconComponent
                     size={21}
-                    color={isFocused ? palette.violet : theme.textMuted}
-                    strokeWidth={1.5}
-                  />
+                  color={isFocused ? palette.violet : theme.textMuted}
+                  strokeWidth={1.5}
+                />
                 </View>
                 <Text
                   style={[

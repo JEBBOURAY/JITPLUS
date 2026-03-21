@@ -11,6 +11,6 @@ export type HapticStyleType = Haptics.ImpactFeedbackStyle;
  */
 export function haptic(style: Haptics.ImpactFeedbackStyle = Haptics.ImpactFeedbackStyle.Light): void {
   if (Platform.OS !== 'web') {
-    Haptics.impactAsync(style);
+    Haptics.impactAsync(style).catch(() => {});
   }
 }

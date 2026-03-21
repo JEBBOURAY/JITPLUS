@@ -20,7 +20,6 @@ import {
   RefreshCw,
   ShieldCheck,
   Pencil,
-  X,
 } from 'lucide-react-native';
 import { useGuardedCallback } from '@/hooks/useGuardedCallback';
 import { useAuth } from '@/contexts/AuthContext';
@@ -58,6 +57,9 @@ export default function SettingsScreen() {
   const [hasAccumulationLimit, setHasAccumulationLimit] = useState(false);
   const [accumulationLimit, setAccumulationLimit] = useState('');
   const [saving, setSaving] = useState(false);
+  // ── Conversion rule: X points = Y tampons ──
+  const [conversionX, setConversionX] = useState('10'); // points side
+  const [conversionY, setConversionY] = useState('1');  // stamps side
 
   // ── Rewards ──
   const [rewards, setRewards] = useState<Reward[]>([]);
@@ -108,27 +110,8 @@ export default function SettingsScreen() {
   // ── Switch loyalty type with confirmation ──
   const handleSwitchLoyaltyType = (newType: LoyaltyType) => {
     if (newType === loyaltyType) return;
-
-    const oldLabel = loyaltyType === 'POINTS' ? 'Points' : 'Tampons';
-    const newLabel = newType === 'POINTS' ? 'Points' : 'Tampons';
-    const rate = parseFloat(conversionRate) || 10;
-
-    Alert.alert(
-      '⚠️ Changer le mode de fidélité',
-      `Passer de "${oldLabel}" à "${newLabel}" ?\n\n` +
-        (newType === 'STAMPS'
-          ? `Les points de vos clients seront convertis en tampons (÷ ${rate}).`
-          : `Les tampons de vos clients seront convertis en points (× ${rate}).`) +
-        '\n\nCette opération est irréversible pour les soldes actuels.',
-      [
-        { text: 'Annuler', style: 'cancel' },
-        {
-          text: 'Confirmer',
-          style: 'destructive',
-          onPress: () => setLoyaltyType(newType),
-        },
-      ],
-    );
+    // Just switch the local state — the conversion card below will appear
+    setLoyaltyType(newType);
   };
 
   // ── Save all loyalty settings ──
@@ -142,10 +125,6 @@ export default function SettingsScreen() {
       return;
     }
     if (loyaltyType === 'STAMPS') {
-      if (isNaN(conv) || conv <= 0) {
-        Alert.alert('Erreur', "La valeur d'un tampon doit être > 0");
-        return;
-      }
       if (isNaN(stamps) || stamps < 1) {
         Alert.alert('Erreur', 'Le nombre de tampons pour un cadeau doit être ≥ 1');
         return;
@@ -203,13 +182,18 @@ export default function SettingsScreen() {
     const rate = parseFloat(pointsRate);
     const conv = parseFloat(conversionRate);
     const stamps = parseInt(stampsForReward, 10);
+    // Compute actual conversionRate from X/Y ratio when switching
+    const loyaltyTypeChanged = loyaltyType !== (merchant?.loyaltyType || 'POINTS');
+    const x = parseFloat(conversionX) || 10;
+    const y = parseFloat(conversionY) || 1;
+    const effectiveConvRate = loyaltyTypeChanged ? (x / y) : (conv || 10);
 
     setSaving(true);
     try {
       const payload: Record<string, unknown> = {
         loyaltyType,
         pointsRate: rate || 10,
-        conversionRate: conv || 10,
+        conversionRate: effectiveConvRate,
         stampsForReward: stamps || 10,
         accumulationLimit: hasAccumulationLimit ? (parseInt(accumulationLimit, 10) || null) : null,
       };
@@ -219,6 +203,7 @@ export default function SettingsScreen() {
 
       const res = await api.patch('/merchant/loyalty-settings', payload);
       updateMerchant(res.data);
+      await loadRewards();
       Alert.alert('✅ Succès', t('settingsPage.saveSuccess'));
     } catch (err: unknown) {
       Alert.alert('Erreur', getErrorMessage(err, 'Impossible de sauvegarder'));
@@ -423,16 +408,107 @@ export default function SettingsScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* ── Mode Change Warning ── */}
+          {/* ── Mode Change Warning + Conversion Rule ── */}
           {loyaltyType !== (merchant?.loyaltyType || 'POINTS') && (
-            <Animated.View
-              style={[styles.warningBanner, { backgroundColor: theme.warning + '18' }]}
-            >
-              <AlertTriangle size={16} color={theme.warning} />
-              <Text style={[styles.warningText, { color: theme.warning }]}>
-                {t('settingsPage.switchWarning')}
-              </Text>
-            </Animated.View>
+            <View>
+              <Animated.View
+                style={[styles.warningBanner, { backgroundColor: theme.warning + '18' }]}
+              >
+                <AlertTriangle size={16} color={theme.warning} />
+                <Text style={[styles.warningText, { color: theme.warning }]}>
+                  {t('settingsPage.switchWarning')}
+                </Text>
+              </Animated.View>
+
+              {/* Conversion rule card */}
+              <View style={[styles.conversionRuleCard, { backgroundColor: theme.bg, borderColor: theme.primary + '40' }]}>
+                <Text style={[styles.conversionRuleTitle, { color: theme.primary }]}>
+                  {t('settingsPage.conversionRuleTitle')}
+                </Text>
+                <Text style={[styles.conversionRuleHint, { color: theme.textMuted }]}>
+                  {loyaltyType === 'STAMPS'
+                    ? t('settingsPage.conversionRuleHintToStamps')
+                    : t('settingsPage.conversionRuleHintToPoints')}
+                </Text>
+                <View style={styles.conversionRuleRow}>
+                  <TextInput
+                    style={[styles.conversionRuleInput, { backgroundColor: theme.bgInput, color: theme.text, borderColor: theme.border }]}
+                    value={conversionX}
+                    onChangeText={setConversionX}
+                    keyboardType="decimal-pad"
+                    placeholder="10"
+                    placeholderTextColor={theme.textMuted}
+                  />
+                  <Text style={[styles.conversionRuleUnit, { color: theme.textSecondary }]}>
+                    {loyaltyType === 'STAMPS' ? t('settingsPage.conversionRulePts') : t('settingsPage.conversionRuleTmps')}
+                  </Text>
+                  <Text style={[styles.conversionRuleEquals, { color: theme.textMuted }]}>=</Text>
+                  <TextInput
+                    style={[styles.conversionRuleInput, { backgroundColor: theme.bgInput, color: theme.text, borderColor: theme.border }]}
+                    value={conversionY}
+                    onChangeText={setConversionY}
+                    keyboardType="decimal-pad"
+                    placeholder="1"
+                    placeholderTextColor={theme.textMuted}
+                  />
+                  <Text style={[styles.conversionRuleUnit, { color: theme.textSecondary }]}>
+                    {loyaltyType === 'STAMPS' ? t('settingsPage.conversionRuleTmps') : t('settingsPage.conversionRulePts')}
+                  </Text>
+                </View>
+                {/* Live preview */}
+                {(() => {
+                  const x = parseFloat(conversionX) || 0;
+                  const y = parseFloat(conversionY) || 0;
+                  if (x <= 0 || y <= 0) return null;
+                  const rate = x / y;
+                  const exampleIn = 100;
+                  const exampleOut = loyaltyType === 'STAMPS'
+                    ? Math.max(Math.floor(exampleIn / rate), 0)
+                    : Math.round(exampleIn * rate);
+                  const fromUnit = loyaltyType === 'STAMPS' ? t('settingsPage.conversionRulePts') : t('settingsPage.conversionRuleTmps');
+                  const toUnit = loyaltyType === 'STAMPS' ? t('settingsPage.conversionRuleTmps') : t('settingsPage.conversionRulePts');
+                  return (
+                    <Text style={[styles.conversionRulePreview, { color: theme.primary }]}>
+                      {t('settingsPage.conversionRulePreview', { inVal: exampleIn, fromUnit, outVal: exampleOut, toUnit })}
+                    </Text>
+                  );
+                })()}
+
+                {/* Reward cost conversion preview */}
+                {rewards.length > 0 && (() => {
+                  const x = parseFloat(conversionX) || 0;
+                  const y = parseFloat(conversionY) || 0;
+                  if (x <= 0 || y <= 0) return null;
+                  const rate = x / y;
+                  const oldUnit = loyaltyType === 'STAMPS' ? t('settingsPage.conversionRulePts') : t('settingsPage.conversionRuleTmps');
+                  const newUnit = loyaltyType === 'STAMPS' ? t('settingsPage.conversionRuleTmps') : t('settingsPage.conversionRulePts');
+                  return (
+                    <View style={[styles.rewardConversionPreview, { borderTopColor: theme.border }]}>
+                      <Text style={[styles.rewardConversionTitle, { color: theme.text }]}>
+                        {t('settingsPage.rewardConversionTitle')}
+                      </Text>
+                      {rewards.map((r) => {
+                        const newCost = loyaltyType === 'STAMPS'
+                          ? Math.max(Math.floor(r.cout / rate), 1)
+                          : Math.max(Math.round(r.cout * rate), 1);
+                        return (
+                          <View key={r.id} style={styles.rewardConversionRow}>
+                            <Text style={[styles.rewardConversionName, { color: theme.textSecondary }]} numberOfLines={1}>
+                              {r.titre}
+                            </Text>
+                            <Text style={[styles.rewardConversionValues, { color: theme.textMuted }]}>
+                              <Text style={{ textDecorationLine: 'line-through' }}>{r.cout} {oldUnit}</Text>
+                              {'  →  '}
+                              <Text style={{ color: theme.primary, fontWeight: '600' }}>{newCost} {newUnit}</Text>
+                            </Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  );
+                })()}
+              </View>
+            </View>
           )}
 
           {/* ── Points Mode Settings ── */}
@@ -474,10 +550,10 @@ export default function SettingsScreen() {
             <Animated.View>
               <View style={styles.fieldGroup}>
                 <Text style={[styles.fieldLabel, { color: theme.text }]}>
-                  {t('settingsPage.stampValue')}
+                  {t('settingsPage.stampsConversionRate')}
                 </Text>
                 <Text style={[styles.fieldHint, { color: theme.textMuted }]}>
-                  {t('settingsPage.stampValueHint')}
+                  {t('settingsPage.stampsConversionHint', { rate: pointsRate || '__', currency: DEFAULT_CURRENCY.symbol })}
                 </Text>
                 <View style={styles.inputRow}>
                   <TextInput
@@ -489,14 +565,14 @@ export default function SettingsScreen() {
                         borderColor: theme.border,
                       },
                     ]}
-                    value={conversionRate}
-                    onChangeText={setConversionRate}
+                    value={pointsRate}
+                    onChangeText={setPointsRate}
                     keyboardType="numeric"
                     placeholder="10"
                     placeholderTextColor={theme.textMuted}
                   />
                   <Text style={[styles.inputSuffix, { color: theme.textSecondary }]}>
-                    {t('settingsPage.stampSuffix')}
+                    {t('settingsPage.stampRateSuffix', { symbol: DEFAULT_CURRENCY.symbol })}
                   </Text>
                 </View>
               </View>
@@ -733,9 +809,32 @@ export default function SettingsScreen() {
                       <Text style={[styles.rewardRowTitle, { color: theme.text }]}>
                         {reward.titre}
                       </Text>
-                      <Text style={[styles.rewardRowMeta, { color: theme.textSecondary }]}>
-                        {reward.cout} {isStamps ? t('common.stamps') : t('common.points')}
-                      </Text>
+                      {(() => {
+                        const loyaltyTypeChanged = loyaltyType !== (merchant?.loyaltyType || 'POINTS');
+                        const x = parseFloat(conversionX) || 10;
+                        const y = parseFloat(conversionY) || 1;
+                        const rate = x / y;
+                        const oldUnit = merchant?.loyaltyType === 'STAMPS' ? t('common.stamps') : t('common.points');
+                        const newUnit = isStamps ? t('common.stamps') : t('common.points');
+
+                        if (loyaltyTypeChanged && rate > 0) {
+                          const newCost = loyaltyType === 'STAMPS'
+                            ? Math.max(Math.floor(reward.cout / rate), 1)
+                            : Math.max(Math.round(reward.cout * rate), 1);
+                          return (
+                            <Text style={[styles.rewardRowMeta, { color: theme.textSecondary }]}>
+                              <Text style={{ textDecorationLine: 'line-through', color: theme.textMuted }}>{reward.cout} {oldUnit}</Text>
+                              {'  →  '}
+                              <Text style={{ color: theme.primary, fontWeight: '600' }}>{newCost} {newUnit}</Text>
+                            </Text>
+                          );
+                        }
+                        return (
+                          <Text style={[styles.rewardRowMeta, { color: theme.textSecondary }]}>
+                            {reward.cout} {newUnit}
+                          </Text>
+                        );
+                      })()}
                       {reward.description ? (
                         <Text style={[styles.rewardRowDesc, { color: theme.textMuted }]}>
                           {reward.description}
@@ -873,6 +972,43 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   warningText: { fontSize: 13, fontWeight: '500', flex: 1, lineHeight: 18 },
+
+  // ── Conversion Rule Card ──
+  conversionRuleCard: {
+    marginTop: 12,
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 10,
+  },
+  conversionRuleTitle: { fontSize: 14, fontWeight: '700' },
+  conversionRuleHint: { fontSize: 12, lineHeight: 17 },
+  conversionRuleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'nowrap',
+  },
+  conversionRuleInput: {
+    width: 64,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 15,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  conversionRuleUnit: { fontSize: 12, fontWeight: '600' },
+  conversionRuleEquals: { fontSize: 18, fontWeight: '300', marginHorizontal: 2 },
+  conversionRulePreview: { fontSize: 12, fontWeight: '600', fontStyle: 'italic' },
+
+  // ── Reward conversion preview (inside conversion rule card) ──
+  rewardConversionPreview: { marginTop: 12, paddingTop: 10, borderTopWidth: 1 },
+  rewardConversionTitle: { fontSize: 13, fontWeight: '600', marginBottom: 6 },
+  rewardConversionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 4 },
+  rewardConversionName: { fontSize: 12, flex: 1, marginRight: 8 },
+  rewardConversionValues: { fontSize: 12 },
 
   // ── Fields ──
   fieldGroup: { marginTop: 18 },

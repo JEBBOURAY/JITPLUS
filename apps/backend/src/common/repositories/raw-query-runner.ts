@@ -2,7 +2,7 @@
 // Wraps Prisma's $queryRaw and $executeRaw behind an injectable interface.
 
 import { Injectable } from '@nestjs/common';
-import { Prisma } from '../../generated/client';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
 /** Runtime check — Prisma.Sql is only a TS type, not a class at runtime. */

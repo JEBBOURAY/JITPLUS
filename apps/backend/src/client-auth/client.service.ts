@@ -346,6 +346,19 @@ export class ClientService {
           logoUrl: true,
           socialLinks: true,
           profileViews: true,
+          stores: {
+            where: { isActive: true },
+            select: {
+              id: true,
+              nom: true,
+              ville: true,
+              quartier: true,
+              adresse: true,
+              latitude: true,
+              longitude: true,
+              telephone: true,
+            },
+          },
           rewards: {
             select: { id: true, titre: true, cout: true, description: true },
             orderBy: { cout: 'asc' },
@@ -602,13 +615,19 @@ export class ClientService {
       merchantId: string; lat: number; lng: number;
       merchant: (typeof allMerchants)[0]; store?: (typeof allMerchants)[0]['stores'][0];
     };
+    
+    // Set a strict candidate ceiling to protect the event loop.
+    // At most 400 points to evaluate.
     const candidates: NearbyEntry[] = [];
+    const MAX_CANDIDATES = 400; 
 
     for (const m of allMerchants) {
+      if (candidates.length >= MAX_CANDIDATES) break;
       if (m.latitude != null && m.longitude != null) {
         candidates.push({ merchantId: m.id, lat: m.latitude, lng: m.longitude, merchant: m });
       }
       for (const s of m.stores) {
+        if (candidates.length >= MAX_CANDIDATES) break;
         if (s.latitude != null && s.longitude != null) {
           // Skip if store coords are identical to merchant's main coords
           if (s.latitude === m.latitude && s.longitude === m.longitude) continue;
@@ -617,7 +636,9 @@ export class ClientService {
       }
     }
 
-    const nearby = candidates.filter((c) => haversineKm(lat, lng, c.lat, c.lng) <= safeRadius);
+    const nearby = candidates.filter((c) => haversineKm(lat, lng, c.lat, c.lng) <= safeRadius)
+      // Cap final returned array size to save network payload weight
+      .slice(0, 100);
 
     if (nearby.length === 0) return [];
 

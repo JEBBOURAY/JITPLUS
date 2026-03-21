@@ -6,7 +6,7 @@ import {
   LOYALTY_CARD_REPOSITORY, type ILoyaltyCardRepository,
 } from '../../common/repositories';
 import { IPushProvider, PUSH_PROVIDER } from '../../common/interfaces';
-import { MerchantPlan } from '../../generated/client';
+import { MerchantPlan } from '@prisma/client';
 import {
   FREE_MAX_CLIENTS,
   FREE_MAX_STORES,

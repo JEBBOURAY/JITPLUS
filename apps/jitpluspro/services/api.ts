@@ -2,6 +2,7 @@ import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import { createApiClient, resolveApiUrl, resolveServerBaseUrl } from '@jitplus/shared/src/apiFactory';
 import { API_TIMEOUT_MS } from '@/constants/app';
+import { logApiError, logInfo } from '@/utils/devLogger';
 
 const ENV_URL = process.env.EXPO_PUBLIC_API_URL;
 const IS_DEV = __DEV__;
@@ -60,11 +61,23 @@ const api = createApiClient({
   authRoutes: AUTH_ROUTES,
 });
 
+// ── Dev-mode request/response logging ──
 if (IS_DEV) {
-  console.log('[API] URL configurée:', resolveApiUrl(ENV_URL, IS_DEV));
+  logInfo('API', 'URL configurée: ' + resolveApiUrl(ENV_URL, IS_DEV));
   if (!ENV_URL) {
-    console.warn('[API] EXPO_PUBLIC_API_URL non définie, utilisation du fallback local');
+    logInfo('API', 'EXPO_PUBLIC_API_URL non définie, utilisation du fallback local');
   }
+
+  api.interceptors.response.use(
+    (res) => {
+      logInfo('API', `${res.config.method?.toUpperCase()} ${res.config.url} → ${res.status}`);
+      return res;
+    },
+    (error) => {
+      logApiError('API', error);
+      return Promise.reject(error);
+    },
+  );
 }
 
 export default api;

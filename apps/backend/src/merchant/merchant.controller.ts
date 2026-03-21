@@ -15,7 +15,7 @@ import { MerchantOwnerGuard } from '../auth/guards/merchant-owner.guard';
 import { PremiumGuard } from '../auth/guards/premium.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtPayload } from '../common/interfaces/jwt-payload.interface';
-import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
+import { PaginationQueryDto, SearchPaginationQueryDto } from '../common/dto/pagination-query.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { CreateTeamMemberDto } from './dto/create-team-member.dto';
@@ -224,8 +224,7 @@ export class MerchantController {
 
   @Get('clients')
   async getClients(
-    @Query('search') search: string,
-    @Query() { page, limit }: PaginationQueryDto,
+    @Query() { search, page, limit }: SearchPaginationQueryDto,
     @CurrentUser() user: JwtPayload,
   ) {
     return this.clientService.getClients(user.userId, search, page, limit);
@@ -276,6 +275,16 @@ export class MerchantController {
   @Patch('transactions/:id/cancel')
   async cancelTransaction(@Param('id') transactionId: string, @CurrentUser() user: JwtPayload) {
     return this.transactionService.cancelTransaction(transactionId, user.userId);
+  }
+
+  @Patch('transactions/:id/fulfill')
+  async fulfillGift(@Param('id') transactionId: string, @CurrentUser() user: JwtPayload) {
+    return this.transactionService.fulfillGift(transactionId, user.userId);
+  }
+
+  @Get('pending-gifts')
+  async getPendingGifts(@CurrentUser() user: JwtPayload) {
+    return this.transactionService.getPendingGifts(user.userId);
   }
 
   @Post('transactions/adjust')

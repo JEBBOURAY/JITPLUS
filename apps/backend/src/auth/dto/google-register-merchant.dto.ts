@@ -1,6 +1,6 @@
 import { IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, IsNumber, IsBoolean, IsUrl, Equals, MaxLength, Matches } from 'class-validator';
 import { Transform } from 'class-transformer';
-import { MerchantCategory } from '../../generated/client';
+import { MerchantCategory } from '@prisma/client';
 
 /**
  * DTO for merchant registration via Google Sign-In.

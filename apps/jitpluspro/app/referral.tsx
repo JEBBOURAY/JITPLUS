@@ -65,7 +65,7 @@ export default function ReferralScreen() {
       const { data } = await api.get<ReferralStats>('/merchant/referral');
       setStats(data);
     } catch {
-      setError('Impossible de charger vos informations de parrainage.');
+      setError(t('referralScreen.loadError'));
     } finally {
       setLoading(false);
     }
@@ -84,7 +84,7 @@ export default function ReferralScreen() {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      Alert.alert('Erreur', 'Impossible de copier le code');
+      Alert.alert(t('common.error'), t('referralScreen.copyError'));
     }
   };
 
@@ -92,11 +92,11 @@ export default function ReferralScreen() {
     if (!stats?.referralCode) return;
     try {
       await Share.share({
-        message: `Rejoignez JitPlus avec mon code de parrainage : ${stats.referralCode}\nhttps://jitplus.com`,
+        message: t('referralScreen.shareMessage', { code: stats.referralCode }),
         title: t('referral.shareCode'),
       });
     } catch {
-      Alert.alert('Erreur', 'Impossible de partager le code');
+      Alert.alert(t('common.error'), t('referralScreen.shareError'));
     }
   };
 
@@ -141,7 +141,7 @@ export default function ReferralScreen() {
             onPress={fetchStats}
             activeOpacity={0.7}
           >
-            <Text style={[styles.retryBtnText, { color: theme.primary }]}>Réessayer</Text>
+            <Text style={[styles.retryBtnText, { color: theme.primary }]}>{t('common.retry')}</Text>
           </TouchableOpacity>
         </View>
       ) : stats ? (

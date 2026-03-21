@@ -1,5 +1,5 @@
 import { IsEnum, IsOptional, IsString, IsDateString, IsNumberString } from 'class-validator';
-import { AuditAction } from '../../generated/client';
+import { AuditAction } from '@prisma/client';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class AuditLogQueryDto {

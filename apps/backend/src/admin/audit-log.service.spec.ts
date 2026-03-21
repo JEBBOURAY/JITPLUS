@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { AuditLogService, AuditLogContext } from './audit-log.service';
-import { AuditAction } from '../generated/client';
+import { AuditAction } from '@prisma/client';
 import { AUDIT_LOG_REPOSITORY } from '../common/repositories';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────

@@ -17,6 +17,7 @@ const WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID
   || (Constants.expoConfig?.extra as Record<string, string> | undefined)?.googleWebClientId
   || '';
 const ANDROID_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || '';
+const IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || '';
 
 interface UseGoogleAuthOptions {
   /** Label shown in error messages: "connexion" | "inscription" */
@@ -34,6 +35,7 @@ export function useGoogleAuth({ actionLabel, onCancel }: UseGoogleAuthOptions) {
   const [_gReq, googleResponse, promptGoogleAsync] = Google.useIdTokenAuthRequest({
     clientId: WEB_CLIENT_ID,
     androidClientId: ANDROID_CLIENT_ID || WEB_CLIENT_ID,
+    iosClientId: IOS_CLIENT_ID || WEB_CLIENT_ID,
   });
 
   // Handle Google auth response

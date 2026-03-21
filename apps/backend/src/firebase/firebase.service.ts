@@ -11,9 +11,9 @@ export class FirebaseService implements OnModuleInit, IPushProvider {
   constructor(private config: ConfigService) {}
 
   onModuleInit() {
-    const projectId = this.config.get<string>('FIREBASE_PROJECT_ID');
-    const clientEmail = this.config.get<string>('FIREBASE_CLIENT_EMAIL');
-    const privateKey = this.config.get<string>('FIREBASE_PRIVATE_KEY');
+    const projectId = this.config.get<string>('FIREBASE_PROJECT_ID')?.trim();
+    const clientEmail = this.config.get<string>('FIREBASE_CLIENT_EMAIL')?.trim();
+    const privateKey = this.config.get<string>('FIREBASE_PRIVATE_KEY')?.trim();
 
     if (!projectId || !clientEmail || !privateKey) {
       this.logger.warn(
@@ -81,23 +81,28 @@ export class FirebaseService implements OnModuleInit, IPushProvider {
         ...(data ? { data } : {}),
       };
 
-      const response = await admin.messaging().sendEachForMulticast(message);
-      totalSuccess += response.successCount;
-      totalFailure += response.failureCount;
+      try {
+        const response = await admin.messaging().sendEachForMulticast(message);
+        totalSuccess += response.successCount;
+        totalFailure += response.failureCount;
 
-      // Collect invalid/unregistered tokens for cleanup
-      response.responses.forEach((resp, idx) => {
-        if (
-          resp.error &&
-          (
-            resp.error.code === 'messaging/registration-token-not-registered' ||
-            resp.error.code === 'messaging/invalid-registration-token' ||
-            resp.error.code === 'messaging/invalid-argument'
-          )
-        ) {
-          invalidTokens.push(batch[idx]);
-        }
-      });
+        // Collect invalid/unregistered tokens for cleanup
+        response.responses.forEach((resp, idx) => {
+          if (
+            resp.error &&
+            (
+              resp.error.code === 'messaging/registration-token-not-registered' ||
+              resp.error.code === 'messaging/invalid-registration-token' ||
+              resp.error.code === 'messaging/invalid-argument'
+            )
+          ) {
+            invalidTokens.push(batch[idx]);
+          }
+        });
+      } catch (error) {
+        this.logger.error(`FCM batch send failed (${batch.length} tokens): ${error}`);
+        totalFailure += batch.length;
+      }
     }
 
     this.logger.log(

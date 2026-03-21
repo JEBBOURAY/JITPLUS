@@ -2,8 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Gift, Check } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
-// Reanimated removed — plain View shim
-const Animated = { View } as const;
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface StampGridProps {
   /** Current number of collected stamps */
@@ -23,6 +22,7 @@ export default React.memo(function StampGrid({
   showLabel = true,
 }: StampGridProps) {
   const theme = useTheme();
+  const { t } = useLanguage();
   const clamped = Math.min(current, total);
   const displayTotal = Math.min(total, 30); // cap for very large grids
 
@@ -40,7 +40,7 @@ export default React.memo(function StampGrid({
           const isLast = i === displayTotal - 1;
 
           return (
-            <Animated.View
+            <View
               key={i}
               style={[
                 styles.circle,
@@ -56,17 +56,17 @@ export default React.memo(function StampGrid({
               {filled ? (
                 <Check size={size * 0.45} color="#fff" strokeWidth={1.5} />
               ) : isLast ? (
-                <Gift size={size * 0.4} color={theme.warning} strokeWidth={1.5} />
+                <Gift size={size * 0.4} color={theme.primary} strokeWidth={1.5} />
               ) : null}
-            </Animated.View>
+            </View>
           );
         })}
       </View>
 
       {showLabel && (
         <Text style={[styles.label, { color: theme.textSecondary }]}>
-          {clamped} / {total} tampon{total > 1 ? 's' : ''}
-          {clamped >= total && '  🎉 Cadeau disponible !'}
+          {t('stampGrid.count', { current: clamped, total })}
+          {clamped >= total && `  ${t('stampGrid.rewardReady')}`}
         </Text>
       )}
     </View>

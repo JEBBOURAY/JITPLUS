@@ -4,7 +4,7 @@ import { SkipThrottle } from '@nestjs/throttler';
 import { ConfigService } from '@nestjs/config';
 import { RAW_QUERY_RUNNER } from '../common/repositories';
 import type { IRawQueryRunner } from '../common/repositories';
-import { Prisma } from '../generated/client';
+import { Prisma } from '@prisma/client';
 
 /** Current API version string */
 const API_VERSION = 'v1';

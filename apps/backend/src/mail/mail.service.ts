@@ -63,12 +63,14 @@ function brandHeader(brand: BrandConfig, subtitle: string): string {
 export class MailService implements IMailProvider {
   private readonly logger = new Logger(MailService.name);
   private transporter: nodemailer.Transporter;
+  private readonly fromAddress: string;
 
   constructor(private configService: ConfigService) {
-    const host = this.configService.get<string>('SMTP_HOST');
-    const port = this.configService.get<number>('SMTP_PORT', 587);
-    const user = this.configService.get<string>('SMTP_USER');
-    const pass = this.configService.get<string>('SMTP_PASS');
+    const host = this.configService.get<string>('SMTP_HOST')?.trim();
+    const port = parseInt(String(this.configService.get('SMTP_PORT', 587)), 10);
+    const user = this.configService.get<string>('SMTP_USER')?.trim();
+    const pass = this.configService.get<string>('SMTP_PASS')?.trim();
+    this.fromAddress = this.configService.get<string>('SMTP_FROM', 'JitPlus <contact@jitplus.com>')?.trim();
 
     if (host && user && pass) {
       this.transporter = nodemailer.createTransport({
@@ -88,7 +90,7 @@ export class MailService implements IMailProvider {
    * 'client' → JitPlus branding | 'merchant' → JitPlus Pro branding
    */
   async sendOtpEmail(to: string, code: string, source: EmailSource = 'client'): Promise<void> {
-    const from = this.configService.get<string>('SMTP_FROM', 'JitPlus <contact@jitplus.com>');
+    const from = this.fromAddress;
     const brand = BRANDS[source];
 
     const html = `
@@ -132,7 +134,7 @@ export class MailService implements IMailProvider {
    * Send a welcome email to a new client (JitPlus app)
    */
   async sendWelcomeClient(to: string, prenom?: string): Promise<void> {
-    const from = this.configService.get<string>('SMTP_FROM', 'JitPlus <contact@jitplus.com>');
+    const from = this.fromAddress;
     const brand = BRANDS.client;
     const name = escapeHtml(prenom || 'cher client');
 
@@ -166,7 +168,7 @@ export class MailService implements IMailProvider {
    * Send a welcome email to a new merchant (JitPlus Pro app)
    */
   async sendWelcomeMerchant(to: string, nomBoutique: string): Promise<void> {
-    const from = this.configService.get<string>('SMTP_FROM', 'JitPlus <contact@jitplus.com>');
+    const from = this.fromAddress;
     const brand = BRANDS.merchant;
 
     const html = `
@@ -206,7 +208,7 @@ export class MailService implements IMailProvider {
     newMerchantNom: string,
     newExpiry: Date | null,
   ): Promise<void> {
-    const from = this.configService.get<string>('SMTP_FROM', 'JitPlus <contact@jitplus.com>');
+    const from = this.fromAddress;
     const brand = BRANDS.merchant;
     const safeReferrerNom = escapeHtml(referrerNom);
     const safeNewMerchantNom = escapeHtml(newMerchantNom);
@@ -249,7 +251,7 @@ export class MailService implements IMailProvider {
    * Throws on failure so the caller can track success/failure counts.
    */
   async sendRaw(to: string, subject: string, html: string): Promise<void> {
-    const from = this.configService.get<string>('SMTP_FROM', 'JitPlus <contact@jitplus.com>');
+    const from = this.fromAddress;
     if (!this.transporter) {
       throw new Error('SMTP not configured');
     }

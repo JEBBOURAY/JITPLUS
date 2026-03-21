@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
+  ListRenderItemInfo,
 } from 'react-native';
 import { X, Search } from 'lucide-react-native';
 import { useTheme, palette } from '@/contexts/ThemeContext';
@@ -46,11 +47,34 @@ export default function CountryCodePicker({ selected, onSelect, accentColor = pa
     );
   }, [debouncedSearch]);
 
-  const handleSelect = (c: CountryCode) => {
+  const handleSelect = useCallback((c: CountryCode) => {
     onSelect(c);
     setVisible(false);
     setSearch('');
-  };
+  }, [onSelect]);
+
+  const renderCountry = useCallback(({ item }: ListRenderItemInfo<CountryCode>) => {
+    const isActive = item.code === selected.code;
+    return (
+      <TouchableOpacity
+        style={[
+          styles.row,
+          isActive && { backgroundColor: `${accentColor}12` },
+        ]}
+        onPress={() => handleSelect(item)}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.rowFlag}>{item.flag}</Text>
+        <View style={styles.rowInfo}>
+          <Text style={[styles.rowName, { color: theme.text }]}>{item.name}</Text>
+          <Text style={[styles.rowDial, { color: theme.inputPlaceholder }]}>{item.dial}</Text>
+        </View>
+        {isActive && (
+          <View style={[styles.checkDot, { backgroundColor: accentColor }]} />
+        )}
+      </TouchableOpacity>
+    );
+  }, [selected.code, accentColor, theme, handleSelect]);
 
   return (
     <>
@@ -100,28 +124,11 @@ export default function CountryCodePicker({ selected, onSelect, accentColor = pa
               keyExtractor={(item) => item.code}
               keyboardShouldPersistTaps="handled"
               getItemLayout={(_, index) => ({ length: 56, offset: 56 * index, index })}
-              renderItem={({ item }) => {
-                const isActive = item.code === selected.code;
-                return (
-                  <TouchableOpacity
-                    style={[
-                      styles.row,
-                      isActive && { backgroundColor: `${accentColor}12` },
-                    ]}
-                    onPress={() => handleSelect(item)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.rowFlag}>{item.flag}</Text>
-                    <View style={styles.rowInfo}>
-                      <Text style={[styles.rowName, { color: theme.text }]}>{item.name}</Text>
-                      <Text style={[styles.rowDial, { color: theme.inputPlaceholder }]}>{item.dial}</Text>
-                    </View>
-                    {isActive && (
-                      <View style={[styles.checkDot, { backgroundColor: accentColor }]} />
-                    )}
-                  </TouchableOpacity>
-                );
-              }}
+              renderItem={renderCountry}
+              initialNumToRender={10}
+              maxToRenderPerBatch={10}
+              windowSize={10}
+              removeClippedSubviews={true}
               ListEmptyComponent={
                 <Text style={[styles.emptyText, { color: theme.inputPlaceholder }]}>{t('countryPicker.noResults')}</Text>
               }

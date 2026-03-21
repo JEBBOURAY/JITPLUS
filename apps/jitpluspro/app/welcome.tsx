@@ -3,14 +3,13 @@ import {
   View,
   Text,
   StyleSheet,
-  Dimensions,
   TouchableOpacity,
   Image,
   FlatList,
   NativeSyntheticEvent,
   NativeScrollEvent,
-  Platform,
   Alert,
+  useWindowDimensions,
 } from 'react-native';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -19,8 +18,6 @@ import { ScanLine, Users, BarChart3, Bell, Gift, ArrowRight } from 'lucide-react
 import { useTheme, palette, brandGradient } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const LANGS = [
   { code: 'fr' as const, flag: '\uD83C\uDDEB\uD83C\uDDF7' },
@@ -40,6 +37,7 @@ export default function WelcomeScreen() {
   const { t, locale, setLocale } = useLanguage();
   const [activeIndex, setActiveIndex] = useState(0);
   const flatListRef = useRef<FlatList>(null);
+  const { width: SCREEN_WIDTH } = useWindowDimensions();
 
   const slides: Slide[] = [
     {
@@ -68,7 +66,7 @@ export default function WelcomeScreen() {
     },
     {
       key: 'rewards',
-      icon: <Gift size={ms(56)} color={palette.emerald} />,
+      icon: <Gift size={ms(56)} color={palette.violet} />,
       titleKey: 'welcome.featureRewardsTitle',
       descKey: 'welcome.featureRewardsDesc',
     },
@@ -79,7 +77,7 @@ export default function WelcomeScreen() {
   const handleScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const index = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
     setActiveIndex(index);
-  }, []);
+  }, [SCREEN_WIDTH]);
 
   const handleNext = useCallback(() => {
     if (isLast) {
@@ -90,7 +88,7 @@ export default function WelcomeScreen() {
   }, [activeIndex, isLast]);
 
   const renderSlide = useCallback(({ item }: { item: Slide }) => (
-    <View style={styles.slide}>
+    <View style={[styles.slide, { width: SCREEN_WIDTH }]}>
       {/* Logo */}
       <Image
         source={require('@/assets/images/jitplusprologo.png')}
@@ -198,7 +196,6 @@ export default function WelcomeScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   slide: {
-    width: SCREEN_WIDTH,
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',

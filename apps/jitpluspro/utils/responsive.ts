@@ -63,6 +63,10 @@ export function ms(size: number, factor: number = 0.5): number {
   return Math.round(size + (wp(size) - size) * factor);
 }
 
+type RadiusKey = 'sm' | 'md' | 'lg' | 'xl' | '2xl' | 'full';
+type FontSizeKey = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl';
+type IconSizeKey = 'sm' | 'md' | 'lg' | 'xl' | '2xl';
+
 export const SCREEN = {
   width: SCREEN_WIDTH,
   height: SCREEN_HEIGHT,
@@ -71,7 +75,7 @@ export const SCREEN = {
   isLarge: SCREEN_WIDTH >= 400,
 };
 
-export const radius: Record<string, number> = {
+export const radius: Record<RadiusKey, number> = {
   sm: _wp(8),
   md: _wp(12),
   lg: _wp(16),
@@ -80,7 +84,7 @@ export const radius: Record<string, number> = {
   full: 9999,
 };
 
-export const fontSize: Record<string, number> = {
+export const fontSize: Record<FontSizeKey, number> = {
   xs: _ms(11),
   sm: _ms(13),
   md: _ms(15),
@@ -91,7 +95,7 @@ export const fontSize: Record<string, number> = {
   '4xl': _ms(32),
 };
 
-export const iconSize: Record<string, number> = {
+export const iconSize: Record<IconSizeKey, number> = {
   sm: _ms(16),
   md: _ms(20),
   lg: _ms(24),

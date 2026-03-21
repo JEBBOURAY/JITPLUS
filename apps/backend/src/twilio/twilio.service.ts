@@ -9,6 +9,7 @@ export class TwilioService implements ISmsProvider {
   private client: Twilio | null = null;
   private readonly whatsappFrom: string;
   private readonly otpContentSid?: string;
+  private readonly marketingContentSid?: string;
 
   private toWhatsappAddress(value: string): string {
     const v = value.trim();
@@ -16,16 +17,21 @@ export class TwilioService implements ISmsProvider {
   }
 
   constructor(private configService: ConfigService) {
-    const accountSid = this.configService.get<string>('TWILIO_ACCOUNT_SID');
-    const authToken = this.configService.get<string>('TWILIO_AUTH_TOKEN');
+    // GCP Secret Manager values may contain trailing whitespace/newlines — always trim
+    const accountSid = this.configService.get<string>('TWILIO_ACCOUNT_SID')?.trim();
+    const authToken = this.configService.get<string>('TWILIO_AUTH_TOKEN')?.trim();
     this.whatsappFrom = this.toWhatsappAddress(
       this.configService.get<string>('TWILIO_WHATSAPP_FROM', 'whatsapp:+14155238886'),
     );
-    this.otpContentSid = this.configService.get<string>('TWILIO_OTP_CONTENT_SID');
+    const rawContentSid = this.configService.get<string>('TWILIO_OTP_CONTENT_SID')?.trim();
+    this.otpContentSid = rawContentSid && rawContentSid.startsWith('HX') ? rawContentSid : undefined;
+
+    const rawMarketingSid = this.configService.get<string>('TWILIO_MARKETING_CONTENT_SID')?.trim();
+    this.marketingContentSid = rawMarketingSid && rawMarketingSid.startsWith('HX') ? rawMarketingSid : undefined;
 
     if (accountSid && authToken) {
       this.client = twilio(accountSid, authToken);
-      this.logger.log('Twilio WhatsApp client initialized');
+      this.logger.log(`Twilio WhatsApp client initialized (from=${this.whatsappFrom}, otp=${this.otpContentSid ? 'template' : 'plain'}, marketing=${this.marketingContentSid ? 'template' : 'plain'})`);
     } else {
       this.logger.warn('Twilio credentials missing — WhatsApp OTP will be logged only');
     }
@@ -80,14 +86,22 @@ export class TwilioService implements ISmsProvider {
       return true;
     } catch (error: unknown) {
       const errMsg = error instanceof Error ? error.message : String(error);
-      this.logger.error(`WhatsApp OTP to ${to} failed: ${errMsg}`);
+      const twilioCode = (error as any)?.code;
+      const twilioStatus = (error as any)?.status;
+      this.logger.error(
+        `WhatsApp OTP to ${to} failed: ${errMsg}` +
+        (twilioCode ? ` [code=${twilioCode}]` : '') +
+        (twilioStatus ? ` [status=${twilioStatus}]` : '') +
+        ` (from=${this.whatsappFrom}, template=${this.otpContentSid ?? 'none'})`,
+      );
       return false;
     }
   }
 
   /**
-   * Send a plain-text marketing / promo message via WhatsApp.
-   * Uses the same Twilio WhatsApp sender as OTP.
+   * Send a marketing / promo message via WhatsApp.
+   * Uses Content Template (`TWILIO_MARKETING_CONTENT_SID`) when configured,
+   * otherwise falls back to plain text (only works inside 24h session window).
    */
   async sendWhatsAppMessage(to: string, body: string): Promise<boolean> {
     if (!this.client) {
@@ -98,12 +112,23 @@ export class TwilioService implements ISmsProvider {
     const destination = this.toWhatsappAddress(to);
 
     try {
-      await this.client.messages.create({
-        from: this.whatsappFrom,
-        to: destination,
-        body,
-      });
-      this.logger.log(`WhatsApp message sent to ${to}`);
+      if (this.marketingContentSid) {
+        // Template approach: body is injected as variable {{1}}
+        await this.client.messages.create({
+          from: this.whatsappFrom,
+          to: destination,
+          contentSid: this.marketingContentSid,
+          contentVariables: JSON.stringify({ '1': body }),
+        });
+      } else {
+        // Plain text fallback (sandbox 24h window only)
+        await this.client.messages.create({
+          from: this.whatsappFrom,
+          to: destination,
+          body,
+        });
+      }
+      this.logger.log(`WhatsApp message sent to ${to} (template=${!!this.marketingContentSid})`);
       return true;
     } catch (error: unknown) {
       const errMsg = error instanceof Error ? error.message : String(error);

@@ -379,6 +379,12 @@ export default function NotificationsScreen() {
     );
   }, [selectedNotif, theme, notifDateFmt, t]);
 
+  const handleEndReached = useCallback(() => {
+    if (hasNextPage && !isFetchingNextPage) {
+      fetchNextPage();
+    }
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+
   if (isGuest) return <GuestGuard />;
 
   return (
@@ -465,12 +471,12 @@ export default function NotificationsScreen() {
           }
           ListFooterComponent={
             isFetchingNextPage ? (
-              <View style={{ paddingVertical: hp(16), alignItems: 'center' }}>
+              <View style={styles.footerLoader}>
                 <Skeleton width={wp(200)} height={ms(14)} borderRadius={6} />
               </View>
-            ) : <View style={{ height: hp(120) }} />
+            ) : <View style={styles.footerSpacer} />
           }
-          onEndReached={() => { if (hasNextPage && !isFetchingNextPage) fetchNextPage(); }}
+          onEndReached={handleEndReached}
           onEndReachedThreshold={0.4}
         />
       )}
@@ -556,6 +562,10 @@ const styles = StyleSheet.create({
     padding: wp(14),
     marginBottom: hp(14),
   },
+
+  footerLoader: { paddingVertical: hp(16), alignItems: 'center' },
+  footerSpacer: { height: hp(120) },
+
   pushBannerTop: {
     flexDirection: 'row',
     alignItems: 'flex-start',

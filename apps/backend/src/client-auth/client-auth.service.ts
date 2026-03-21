@@ -1,5 +1,5 @@
 import { Injectable, UnauthorizedException, BadRequestException, ConflictException, Logger, Inject, HttpException, HttpStatus } from '@nestjs/common';
-import { Prisma } from '../generated/client';
+import { Prisma } from '@prisma/client';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import {
@@ -841,7 +841,7 @@ export class ClientAuthService {
   /**
    * Permanent HMAC-signed QR token for merchant scanning.
    * Format: base64url(clientId) + "." + HMAC-SHA256(secret, clientId)
-   * Deterministic & never expires — safe to share as image or via Google Wallet.
+   * Deterministic & never expires — safe to share as image.
    */
   async generateQrToken(clientId: string): Promise<{ qr_token: string }> {
     const client = await this.clientRepo.findUnique({ where: { id: clientId }, select: { id: true } });

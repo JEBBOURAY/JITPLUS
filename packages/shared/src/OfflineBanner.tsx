@@ -3,21 +3,20 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { WifiOff } from 'lucide-react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNetworkStatus } from './useNetworkStatus';
 
 interface OfflineBannerProps {
   text?: string;
+  topInset?: number;
 }
 
-export default function OfflineBanner({ text = 'Pas de connexion internet' }: OfflineBannerProps) {
+export default function OfflineBanner({ text = 'Pas de connexion internet', topInset = 0 }: OfflineBannerProps) {
   const { isConnected } = useNetworkStatus();
-  const insets = useSafeAreaInsets();
 
   if (isConnected !== false) return null;
 
   return (
-    <View style={[styles.banner, { paddingTop: insets.top + 4 }]}>
+    <View style={[styles.banner, { paddingTop: topInset + 4 }]}>
       <WifiOff size={16} color="#fff" strokeWidth={2.5} />
       <Text style={styles.text}>{text}</Text>
     </View>

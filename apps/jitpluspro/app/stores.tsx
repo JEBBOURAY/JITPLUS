@@ -21,6 +21,7 @@ import {
   Edit3,
   MapPin,
   Phone,
+  Mail,
   X,
   Check,
   Search,
@@ -37,8 +38,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
-import api from '@/services/api';
-import { Store as StoreType, MerchantCategory } from '@/types';
+import { Store as StoreType, MerchantCategory, CreateStorePayload } from '@/types';
 import MerchantCategoryIcon, { useCategoryMetadata, CATEGORY_OPTIONS } from '@/components/MerchantCategoryIcon';
 import { useStoresCRUD, MAX_STORES } from '@/hooks/useStoresCRUD';
 
@@ -66,8 +66,8 @@ function StoreCard({ store, merchantCategorie, theme, onEdit, onToggle, onDelete
             <Text style={[styles.cardName, { color: theme.text }]}>{store.nom}</Text>
             <Text style={[styles.cardSub, { color: theme.textMuted }]}>{catLabel}</Text>
           </View>
-          <View style={[styles.statusBadge, { backgroundColor: store.isActive ? '#dcfce7' : '#fef2f2' }]}>
-            <Text style={{ fontSize: 11, fontWeight: '600', color: store.isActive ? '#16a34a' : '#dc2626' }}>
+          <View style={[styles.statusBadge, { backgroundColor: store.isActive ? theme.primaryBg : `${theme.danger}14` }]}>
+            <Text style={{ fontSize: 11, fontWeight: '600', color: store.isActive ? theme.primary : theme.danger }}>
               {store.isActive ? t('stores.active') : t('stores.inactive')}
             </Text>
           </View>
@@ -90,6 +90,13 @@ function StoreCard({ store, merchantCategorie, theme, onEdit, onToggle, onDelete
         </View>
       ) : null}
 
+      {store.email ? (
+        <View style={styles.cardDetail}>
+          <Mail size={14} color={theme.textMuted} />
+          <Text style={[styles.cardDetailText, { color: theme.textMuted }]}>{store.email}</Text>
+        </View>
+      ) : null}
+
       <View style={styles.cardActions}>
         <TouchableOpacity style={[styles.actionBtn, { backgroundColor: theme.bgInput }]} onPress={() => onEdit(store)}>
           <Edit3 size={16} color={theme.primary} />
@@ -98,9 +105,9 @@ function StoreCard({ store, merchantCategorie, theme, onEdit, onToggle, onDelete
 
         <TouchableOpacity style={[styles.actionBtn, { backgroundColor: theme.bgInput }]} onPress={() => onToggle(store)}>
           {store.isActive
-            ? <ToggleRight size={16} color="#16a34a" />
+            ? <ToggleRight size={16} color={theme.primary} />
             : <ToggleLeft size={16} color={theme.textMuted} />}
-          <Text style={[styles.actionBtnText, { color: store.isActive ? '#16a34a' : theme.textMuted }]}>
+          <Text style={[styles.actionBtnText, { color: store.isActive ? theme.primary : theme.textMuted }]}>
             {store.isActive ? t('stores.active') : t('stores.inactive')}
           </Text>
         </TouchableOpacity>
@@ -137,6 +144,7 @@ export default function StoresScreen() {
   const [quartier, setQuartier] = useState('');
   const [adresse, setAdresse] = useState('');
   const [telephone, setTelephone] = useState('');
+  const [email, setEmail] = useState('');
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
   const [addressSearch, setAddressSearch] = useState('');
@@ -206,6 +214,7 @@ export default function StoresScreen() {
     setQuartier('');
     setAdresse('');
     setTelephone('');
+    setEmail('');
     setLatitude(null);
     setLongitude(null);
     setAddressSearch('');
@@ -227,6 +236,7 @@ export default function StoresScreen() {
     setQuartier(store.quartier ?? '');
     setAdresse(store.adresse ?? '');
     setTelephone(store.telephone ?? '');
+    setEmail(store.email ?? '');
     setLatitude(store.latitude ?? null);
     setLongitude(store.longitude ?? null);
     setAddressSearch(store.adresse ?? '');
@@ -235,7 +245,7 @@ export default function StoresScreen() {
 
   // ── Save ──
   const handleSave = async () => {
-    const payload: Record<string, any> = {
+    const payload: Partial<CreateStorePayload> & { nom: string } = {
       nom: nom.trim(),
       ville: ville.trim() || undefined,
       quartier: quartier.trim() || undefined,
@@ -245,7 +255,7 @@ export default function StoresScreen() {
       longitude: longitude ?? undefined,
       categorie: categorie || undefined,
     };
-    const ok = await saveStore(payload, editingStore?.id);
+    const ok = await saveStore(payload as CreateStorePayload, editingStore?.id);
     if (ok) setShowModal(false);
   };
 
@@ -398,7 +408,7 @@ export default function StoresScreen() {
           contentContainerStyle={styles.listContent}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />}
         >
-          {stores.map((store, index) => (
+          {stores.map((store) => (
             <StoreCard
               key={store.id}
               store={store}
@@ -467,6 +477,22 @@ export default function StoresScreen() {
                     placeholder="06 XX XX XX XX"
                     placeholderTextColor={theme.textMuted}
                     keyboardType="phone-pad"
+                  />
+                </View>
+
+                {/* Email */}
+                <Text style={[styles.label, { color: theme.text }]}>{t('stores.emailLabel')}</Text>
+                <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.border }]}>
+                  <Mail size={18} color={theme.textMuted} />
+                  <TextInput
+                    style={[styles.input, { color: theme.text }]}
+                    value={email}
+                    onChangeText={setEmail}
+                    placeholder="boutique@example.com"
+                    placeholderTextColor={theme.textMuted}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    autoCorrect={false}
                   />
                 </View>
 

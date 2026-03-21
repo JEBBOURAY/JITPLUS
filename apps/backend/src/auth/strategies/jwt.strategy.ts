@@ -1,7 +1,9 @@
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { PassportStrategy } from '@nestjs/passport';
-import { Injectable, Inject, UnauthorizedException, Logger, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Inject, UnauthorizedException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import type { Cache } from 'cache-manager';
 import { DEVICE_SESSION_REPOSITORY } from '../../common/repositories';
 import type { IDeviceSessionRepository } from '../../common/repositories';
 import { JwtPayload, JwtTokenPayload } from '../../common/interfaces/jwt-payload.interface';
@@ -9,19 +11,14 @@ import { SESSION_CACHE_TTL, LAST_ACTIVE_THROTTLE_MS } from '../../common/constan
 import { errMsg } from '../../common/utils';
 
 @Injectable()
-export class JwtStrategy extends PassportStrategy(Strategy) implements OnModuleDestroy {
+export class JwtStrategy extends PassportStrategy(Strategy) {
   private readonly logger = new Logger(JwtStrategy.name);
-
-  /** In-memory session cache: tokenId → expiry timestamp */
-  private sessionCache = new Map<string, number>();
   private static readonly CACHE_TTL = SESSION_CACHE_TTL;
-  private static readonly MAX_CACHE_SIZE = 10_000;
-  private static readonly CLEANUP_INTERVAL = 60_000;
   private static readonly LAST_ACTIVE_THROTTLE_MS = LAST_ACTIVE_THROTTLE_MS;
-  private cleanupTimer: ReturnType<typeof setInterval>;
 
   constructor(
     @Inject(DEVICE_SESSION_REPOSITORY) private deviceSessionRepo: IDeviceSessionRepository,
+    @Inject(CACHE_MANAGER) private cacheManager: Cache,
     config: ConfigService,
   ) {
     super({
@@ -32,27 +29,14 @@ export class JwtStrategy extends PassportStrategy(Strategy) implements OnModuleD
       issuer: 'jitplus-api',
       audience: ['jitplus-merchant', 'jitplus-client', 'jitplus-admin'],
     });
-
-    // Periodic cleanup of expired entries
-    this.cleanupTimer = setInterval(() => {
-      const now = Date.now();
-      for (const [key, expiry] of this.sessionCache) {
-        if (expiry < now) this.sessionCache.delete(key);
-      }
-    }, JwtStrategy.CLEANUP_INTERVAL);
-  }
-
-  onModuleDestroy() {
-    clearInterval(this.cleanupTimer);
   }
 
   /**
-   * Immediately remove a session from the in-memory cache.
-   * Called on logout to close the replay window (otherwise the cache
-   * would still validate the token for up to CACHE_TTL seconds).
+   * Immediately remove a session from the standard cache.
+   * Called on logout to close the replay window across scaled cloud runs
    */
-  invalidateSession(tokenId: string): void {
-    this.sessionCache.delete(tokenId);
+  async invalidateSession(tokenId: string): Promise<void> {
+    await this.cacheManager.del(`session:${tokenId}`);
   }
 
   async validate(payload: JwtTokenPayload): Promise<JwtPayload> {
@@ -60,27 +44,22 @@ export class JwtStrategy extends PassportStrategy(Strategy) implements OnModuleD
     // Only validate the session for merchant/admin tokens to avoid spurious 401s on client routes.
     if (payload.jti && payload.type !== 'client') {
       const now = Date.now();
-      const cached = this.sessionCache.get(payload.jti);
+      const cached = await this.cacheManager.get<number>(`session:${payload.jti}`);
 
-      // Only hit DB if cache is missing or expired
-      if (!cached || cached < now) {
+      // Only hit DB if cache is missing
+      if (!cached) {
         const session = await this.deviceSessionRepo.findUnique({
           where: { tokenId: payload.jti },
           select: { id: true, lastActiveAt: true },
         });
 
         if (!session) {
-          this.sessionCache.delete(payload.jti);
+          await this.cacheManager.del(`session:${payload.jti}`);
           throw new UnauthorizedException('Session expirée. Veuillez vous reconnecter.');
         }
 
         // Cache this session validation for 30 seconds
-        // Evict oldest entries if cache exceeds max size
-        if (this.sessionCache.size >= JwtStrategy.MAX_CACHE_SIZE) {
-          const firstKey = this.sessionCache.keys().next().value;
-          if (firstKey) this.sessionCache.delete(firstKey);
-        }
-        this.sessionCache.set(payload.jti, now + JwtStrategy.CACHE_TTL);
+        await this.cacheManager.set(`session:${payload.jti}`, now + JwtStrategy.CACHE_TTL, JwtStrategy.CACHE_TTL);
 
         // Mise à jour non-bloquante de lastActiveAt (throttle: toutes les 5 min)
         if (session.lastActiveAt.getTime() < now - JwtStrategy.LAST_ACTIVE_THROTTLE_MS) {

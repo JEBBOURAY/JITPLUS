@@ -274,7 +274,7 @@ export default function RootLayout() {
             // Geo queries change with every map pan — not worth persisting
             !query.queryKey.includes('merchants-nearby') &&
             // Never persist sensitive data (profile, auth, tokens, etc.)
-            !['profile', 'auth', 'token', 'otp', 'password', 'wallet', 'payment'].includes(
+            !['profile', 'auth', 'token', 'otp', 'password'].includes(
               String(query.queryKey[0] ?? '').toLowerCase(),
             ),
         },

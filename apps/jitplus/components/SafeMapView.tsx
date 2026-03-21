@@ -5,19 +5,17 @@
  */
 import React, { forwardRef, useEffect, useState } from 'react';
 import { Platform, View, Text, StyleSheet, NativeModules } from 'react-native';
+import type MapViewType from 'react-native-maps';
+import type { Marker as MarkerType, MapViewProps, MapMarkerProps } from 'react-native-maps';
 import { wp, ms } from '@/utils/responsive';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let RNMapView: any = null;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let RNMarker: any = null;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let RNMapView: typeof MapViewType | null = null;
+let RNMarker: typeof MarkerType | null = null;
 let RN_PROVIDER_GOOGLE: any = null;
 export let MAPS_AVAILABLE = false;
 
 try {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const Maps = require('react-native-maps');
+  const Maps = require('react-native-maps') as typeof import('react-native-maps');
   RNMapView = Maps.default;
   RNMarker = Maps.Marker;
   RN_PROVIDER_GOOGLE = Maps.PROVIDER_GOOGLE;
@@ -29,8 +27,7 @@ try {
   MAPS_AVAILABLE = false;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const SafeMapView = forwardRef<any, any>((props, ref) => {
+const SafeMapView = forwardRef<MapViewType, MapViewProps>((props, ref) => {
   const [mapReady, setMapReady] = useState(false);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [renderTimedOut, setRenderTimedOut] = useState(false);
@@ -63,7 +60,7 @@ const SafeMapView = forwardRef<any, any>((props, ref) => {
   const configuredRenderer = (process.env.EXPO_PUBLIC_GOOGLE_MAPS_RENDERER ?? '').toUpperCase();
   const androidRendererProp =
     Platform.OS === 'android' && (configuredRenderer === 'LEGACY' || configuredRenderer === 'LATEST')
-      ? { googleRenderer: configuredRenderer }
+      ? { googleRenderer: configuredRenderer as "LEGACY" | "LATEST" }
       : {};
   return (
     <RNMapView
@@ -86,10 +83,10 @@ const SafeMapView = forwardRef<any, any>((props, ref) => {
         }
         props.onMapReady?.();
       }}
-      onMapLoaded={() => {
+      onMapLoaded={(event) => {
         setMapLoaded(true);
         setRenderTimedOut(false);
-        props.onMapLoaded?.();
+        props.onMapLoaded?.(event);
       }}
     />
   );
@@ -97,7 +94,7 @@ const SafeMapView = forwardRef<any, any>((props, ref) => {
 
 SafeMapView.displayName = 'SafeMapView';
 
-export const Marker = RNMarker ?? (() => null);
+export const Marker: React.ComponentType<MapMarkerProps> = RNMarker as unknown as React.ComponentType<MapMarkerProps> ?? (() => null);
 export default SafeMapView;
 
 const fallbackStyles = StyleSheet.create({

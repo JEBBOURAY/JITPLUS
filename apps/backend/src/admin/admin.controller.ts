@@ -15,7 +15,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { THROTTLE_TTL } from '../common/constants';
 import { Request } from 'express';
-import { AuditAction, UpgradeRequestStatus } from '../generated/client';
+import { AuditAction, UpgradeRequestStatus } from '@prisma/client';
 import { AuditLogService, AuditLogContext } from './audit-log.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AdminGuard } from '../auth/guards/admin.guard';
@@ -272,9 +272,9 @@ export class AdminController {
     return this.auditLog.findAll({
       page: query.page ? Number(query.page) : undefined,
       limit: query.limit ? Number(query.limit) : undefined,
-      action: query.action,
+      action: query.action as any,
       adminId: query.adminId,
-      targetType: query.targetType,
+      targetType: query.targetType as any,
       targetId: query.targetId,
       from: query.from ? new Date(query.from) : undefined,
       to: query.to ? new Date(query.to) : undefined,

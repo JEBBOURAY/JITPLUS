@@ -24,8 +24,8 @@ export class ResendService implements IEmailBlastProvider {
     private config: ConfigService,
     @Inject(MAIL_PROVIDER) private readonly mailProvider: IMailProvider,
   ) {
-    const apiKey = this.config.get<string>('RESEND_API_KEY');
-    this.fromAddress = this.config.get<string>('RESEND_FROM', 'JitPlus <contact@jitplus.com>');
+    const apiKey = this.config.get<string>('RESEND_API_KEY')?.trim();
+    this.fromAddress = this.config.get<string>('RESEND_FROM', 'JitPlus <contact@jitplus.com>')?.trim();
 
     if (apiKey) {
       this.resend = new Resend(apiKey);

@@ -1,6 +1,6 @@
-import { IsEnum, IsNumber, IsOptional, IsString, IsUrl, MaxLength, Matches, Min, Max, ValidateNested } from 'class-validator';
+import { IsEmail, IsEnum, IsNumber, IsOptional, IsString, IsUrl, MaxLength, Matches, Min, Max, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
-import { MerchantCategory } from '../../generated/client';
+import { MerchantCategory } from '@prisma/client';
 
 class SocialLinksDto {
   @IsOptional()
@@ -88,6 +88,12 @@ export class UpdateProfileDto {
   @MaxLength(20, { message: 'Numéro de téléphone trop long' })
   @IsOptional()
   phoneNumber?: string;
+
+  @IsEmail({}, { message: 'Adresse email invalide' })
+  @IsString()
+  @MaxLength(255, { message: 'Email trop long' })
+  @IsOptional()
+  email?: string;
 
   @IsUrl({}, { message: 'URL du logo invalide' })
   @IsOptional()

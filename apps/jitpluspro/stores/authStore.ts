@@ -20,12 +20,12 @@ interface AuthState {
   reset: () => void;
 }
 
-const initialState = {
-  merchant: null as Merchant | null,
-  token: null as string | null,
+const initialState: Pick<AuthState, 'merchant' | 'token' | 'loading' | 'isTeamMember' | 'teamMember' | 'onboardingCompleted'> = {
+  merchant: null,
+  token: null,
   loading: true,
   isTeamMember: false,
-  teamMember: null as TeamMember | null,
+  teamMember: null,
   onboardingCompleted: false,
 };
 

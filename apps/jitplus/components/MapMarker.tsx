@@ -161,7 +161,7 @@ const styles = StyleSheet.create({
   },
   badgeText: {
     fontSize: 9,
-    fontWeight: '800',
+    fontWeight: '700',
     color: '#FFFFFF',
     lineHeight: 13,
     includeFontPadding: false,

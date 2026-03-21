@@ -21,6 +21,3 @@ export const MAX_AMOUNT_DIGITS = 8;
 
 /** Maximum stamps per single transaction */
 export const MAX_STAMPS_PER_TX = 20;
-
-/** Delay between WhatsApp sends (ms) */
-export const WHATSAPP_SEND_DELAY_MS = 800;

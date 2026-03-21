@@ -17,7 +17,7 @@ export function useFocusFade() {
       duration: 220,
       useNativeDriver: true,
     }).start();
-  }, [isFocused]);
+  }, [isFocused, progress]);
 
   const focusStyle = {
     opacity: progress,

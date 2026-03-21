@@ -1,8 +1,8 @@
 import { Injectable, Logger, Inject } from '@nestjs/common';
-import { AuditAction, Prisma } from '../generated/client';
+import { AuditAction, AuditTargetType, Prisma } from '@prisma/client';
 import { AUDIT_LOG_REPOSITORY, type IAuditLogRepository } from '../common/repositories';
 
-export { AuditAction };
+export { AuditAction, AuditTargetType };
 
 export interface AuditLogContext {
   adminId: string;
@@ -14,7 +14,7 @@ export interface AuditLogContext {
 export interface LogEntryInput {
   ctx: AuditLogContext;
   action: AuditAction;
-  targetType: string;
+  targetType: AuditTargetType;
   targetId?: string;
   targetLabel?: string;
   metadata?: Record<string, unknown>;
@@ -64,7 +64,7 @@ export class AuditLogService {
     limit?: number;
     action?: AuditAction;
     adminId?: string;
-    targetType?: string;
+    targetType?: AuditTargetType;
     targetId?: string;
     from?: Date;
     to?: Date;

@@ -2,8 +2,21 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Storage } from '@google-cloud/storage';
 import { extname } from 'path';
-import { randomUUID } from 'crypto';
+import { randomBytes } from 'crypto';
 import { IStorageProvider } from '../common/interfaces';
+
+/** Sanitize a filename: keep only safe chars, strip path separators */
+function safeFilename(original: string): string {
+  const ext = extname(original).toLowerCase();
+  const base = original
+    .slice(0, original.length - ext.length)
+    .replace(/[^a-z0-9_\-]/gi, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 80) || 'file';
+  const suffix = randomBytes(4).toString('hex');
+  return `${base}_${suffix}${ext}`;
+}
 
 @Injectable()
 export class StorageService implements IStorageProvider {
@@ -36,13 +49,13 @@ export class StorageService implements IStorageProvider {
 
     const bucket = this.storage.bucket(this.bucketName);
     
-    // Générer un nom de fichier non-prévisible avec UUID v4
+    // Build a safe, human-readable filename from originalname + short random suffix
     const ALLOWED_EXT = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.pdf']);
     const extension = extname(file.originalname).toLowerCase();
     if (!ALLOWED_EXT.has(extension)) {
       throw new Error(`Extension de fichier non autorisée : ${extension}`);
     }
-    const fileName = `${folder}/${randomUUID()}${extension}`;
+    const fileName = `${folder}/${safeFilename(file.originalname)}`;
     const fileUpload = bucket.file(fileName);
 
     const stream = fileUpload.createWriteStream({

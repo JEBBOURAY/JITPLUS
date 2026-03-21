@@ -23,6 +23,7 @@ export function stripUndefined<T extends object>(obj: T): Partial<T> {
  */
 export function buildClientSearchFilter(search: string) {
   return [
+    { prenom: { contains: search, mode: 'insensitive' as const } },
     { nom: { contains: search, mode: 'insensitive' as const } },
     { email: { contains: search, mode: 'insensitive' as const } },
     { telephone: { contains: search, mode: 'insensitive' as const } },
@@ -49,8 +50,19 @@ export function buildTxMap(
 }
 
 /**
+ * Mask a name to its first letter + "." (e.g. "Ayoub" → "A.").
+ * Returns null/undefined as-is.
+ */
+export function maskName(name: string | null | undefined): string | null {
+  if (!name) return name as null;
+  return name.charAt(0).toUpperCase() + '.';
+}
+
+/**
  * Map a client + loyaltyCard + transaction stats into a standard client response.
  * Replaces 2 identical mapping blocks in merchant-client.service.
+ * When shareInfoMerchants is false, prenom/nom are masked (first letter only)
+ * and email/telephone are hidden.
  */
 export function mapClientResponse(
   client: { id: string; prenom?: string | null; nom: string | null; email: string | null; telephone: string | null; shareInfoMerchants?: boolean; createdAt: Date },
@@ -60,8 +72,8 @@ export function mapClientResponse(
   const shared = client.shareInfoMerchants !== false;
   return {
     id: client.id,
-    prenom: client.prenom ?? null,
-    nom: client.nom,
+    prenom: shared ? (client.prenom ?? null) : maskName(client.prenom),
+    nom: shared ? client.nom : maskName(client.nom),
     email: shared ? client.email : null,
     telephone: shared ? client.telephone : null,
     points: loyaltyCard?.points ?? 0,

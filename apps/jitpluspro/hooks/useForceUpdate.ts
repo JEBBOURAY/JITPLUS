@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import api from '@/services/api';
@@ -69,7 +69,7 @@ function getStoreUrl(): string {
  */
 export function useForceUpdate(): ForceUpdateState {
   const [status, setStatus] = useState<ForceUpdateStatus>('checking');
-  const storeUrl = getStoreUrl();
+  const storeUrl = useMemo(() => getStoreUrl(), []);
 
   useEffect(() => {
     let cancelled = false;

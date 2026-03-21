@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
-  Dimensions,
+  useWindowDimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
@@ -22,9 +22,7 @@ import {
   Check,
   Upload,
   Gift,
-  Scan,
   Sparkles,
-  Star,
   BarChart3,
   Smartphone,
   Camera,
@@ -33,7 +31,6 @@ import {
   Trophy,
   Zap,
   Users,
-  Image as ImageIcon,
   Stamp,
   Coins,
   ShieldCheck,
@@ -46,11 +43,8 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import api, { getServerBaseUrl } from '@/services/api';
 import { getErrorMessage } from '@/utils/error';
 
-const { width: SCREEN_W } = Dimensions.get('window');
-
 // â”€â”€ Step IDs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const STEPS = ['welcome', 'logo', 'reward', 'scan', 'done'] as const;
-type StepId = typeof STEPS[number];
 
 // â”€â”€ Animated step wrapper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function StepSlide({
@@ -62,6 +56,7 @@ function StepSlide({
   visible: boolean;
   direction: 'enter' | 'exit';
 }) {
+  const { width: SCREEN_W } = useWindowDimensions();
   const anim = useRef(new Animated.Value(visible ? 0 : SCREEN_W)).current;
 
   React.useEffect(() => {
@@ -104,7 +99,7 @@ function ProgressDots({
             {
               backgroundColor:
                 i < current
-                  ? palette.emerald
+                  ? palette.violet
                   : i === current
                   ? palette.violet
                   : theme.borderLight,
@@ -174,7 +169,7 @@ function StatBadge({
 }) {
   return (
     <View style={[styles.statBadge, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
-      <View style={[styles.statIcon, { backgroundColor: palette.emerald + '15' }]}>{icon}</View>
+      <View style={[styles.statIcon, { backgroundColor: palette.violet + '15' }]}>{icon}</View>
       <Text style={[styles.statLabel, { color: theme.text }]}>{label}</Text>
     </View>
   );
@@ -745,7 +740,7 @@ export default function OnboardingScreen() {
                 activeOpacity={0.85}
               >
                 <LinearGradient
-                  colors={rewardCreated ? [palette.emerald, '#059669'] : brandGradient}
+                  colors={rewardCreated ? [palette.violet, palette.violetDark] : brandGradient}
                   style={styles.createRewardGradient}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 0 }}
@@ -884,17 +879,17 @@ export default function OnboardingScreen() {
             {/* Completed stats */}
             <View style={styles.statsRow}>
               <StatBadge
-                icon={<Check color={palette.emerald} size={20} strokeWidth={1.5} />}
+                icon={<Check color={palette.violet} size={20} strokeWidth={1.5} />}
                 label={t('onboarding.doneStat1')}
                 theme={theme}
               />
               <StatBadge
-                icon={<Gift color={palette.emerald} size={20} strokeWidth={1.5} />}
+                icon={<Gift color={palette.violet} size={20} strokeWidth={1.5} />}
                 label={t('onboarding.doneStat2')}
                 theme={theme}
               />
               <StatBadge
-                icon={<QrCode color={palette.emerald} size={20} strokeWidth={1.5} />}
+                icon={<QrCode color={palette.violet} size={20} strokeWidth={1.5} />}
                 label={t('onboarding.doneStat3')}
                 theme={theme}
               />
@@ -977,7 +972,7 @@ export default function OnboardingScreen() {
           {currentStep === 'reward' && (
             <TouchableOpacity style={styles.nextBtn} onPress={goNext} activeOpacity={0.85}>
               <LinearGradient
-                colors={rewardCreated ? [palette.emerald, '#059669'] : [palette.gray400, palette.gray500]}
+                colors={rewardCreated ? [palette.violet, palette.violetDark] : [palette.gray400, palette.gray500]}
                 style={styles.nextBtnGradient}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}

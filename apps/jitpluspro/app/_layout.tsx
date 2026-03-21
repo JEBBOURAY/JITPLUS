@@ -8,7 +8,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { View, Image, StyleSheet, ActivityIndicator } from 'react-native';
-import 'react-native-reanimated';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClient, QueryCache, MutationCache } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { asyncStoragePersister } from '@/utils/queryPersister';
@@ -17,17 +17,21 @@ import Constants from 'expo-constants';
 import { useRealtimeSocket } from '@jitplus/shared/src/useRealtimeSocket';
 import { useRealtimeEvents } from '@/hooks/useRealtimeEvents';
 import { getServerBaseUrl } from '@/services/api';
+import { logError } from '@/utils/devLogger';
+import * as Sentry from '@sentry/react-native';
 
 const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
 
 const queryClient = new QueryClient({
   queryCache: new QueryCache({
-    onError: (error) => {
+    onError: (error, query) => {
+      logError('ReactQuery', `Query failed [${String(query.queryKey)}]`, error);
       if (!__DEV__) Sentry.captureException(error, { tags: { source: 'react-query' } });
     },
   }),
   mutationCache: new MutationCache({
-    onError: (error) => {
+    onError: (error, _vars, _ctx, mutation) => {
+      logError('Mutation', `Mutation failed [${String(mutation.options.mutationKey ?? 'anonymous')}]`, error);
       if (!__DEV__) Sentry.captureException(error, { tags: { source: 'react-query-mutation' } });
     },
   }),
@@ -41,7 +45,6 @@ const queryClient = new QueryClient({
     },
   },
 });
-import * as Sentry from '@sentry/react-native';
 
 // ── Sentry init (crash reporting) ──────────────────────────────
 // SECURITY: DSN is bundled in the client. Configure inbound data filters in
@@ -162,9 +165,10 @@ const splashStyles = StyleSheet.create({
 
 function RootLayoutNav() {
   return (
-    <AppErrorBoundary>
-      <PersistQueryClientProvider
-        client={queryClient}
+    <SafeAreaProvider>
+      <AppErrorBoundary>
+        <PersistQueryClientProvider
+          client={queryClient}
         persistOptions={{
           persister: asyncStoragePersister,
           maxAge: TWENTY_FOUR_HOURS,
@@ -172,7 +176,7 @@ function RootLayoutNav() {
             shouldDehydrateQuery: (query) =>
               query.state.status === 'success' &&
               // Never persist sensitive data (profile, auth, tokens, etc.)
-              !['profile', 'auth', 'token', 'otp', 'password', 'wallet', 'payment'].includes(
+              !['profile', 'auth', 'token', 'otp', 'password', 'session', 'credentials'].includes(
                 String(query.queryKey[0] ?? '').toLowerCase(),
               ),
           },
@@ -188,7 +192,8 @@ function RootLayoutNav() {
         </ThemeProvider>
       </AuthProvider>
       </PersistQueryClientProvider>
-    </AppErrorBoundary>
+      </AppErrorBoundary>
+    </SafeAreaProvider>
   );
 }
 
@@ -255,6 +260,7 @@ function ThemedNavigator() {
             <Stack.Screen name="stores" options={{ headerShown: false }} />
             <Stack.Screen name="my-qr" options={{ headerShown: false, animation: 'slide_from_bottom' }} />
             <Stack.Screen name="referral" options={{ headerShown: false }} />
+            <Stack.Screen name="pending-gifts" options={{ headerShown: false }} />
             <Stack.Screen
               name="onboarding"
               options={{ headerShown: false, animation: 'fade', gestureEnabled: false }}

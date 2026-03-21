@@ -4,7 +4,9 @@ import { Alert } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { getErrorMessage } from '@/utils/error';
 import { Store as StoreType } from '@/types';
+import type { CreateStorePayload } from '@/types';
 import { useStores, useCreateStore, useUpdateStore, useDeleteStore, queryKeys } from './useQueryHooks';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 export const MAX_STORES = 10;
 
@@ -13,9 +15,10 @@ export const MAX_STORES = 10;
  * Backed by React Query for caching, deduplication, and stale-while-revalidate.
  * Form state is intentionally kept in each consumer.
  */
-export function useStoresCRUD({ silentLoadError = false }: { silentLoadError?: boolean } = {}) {
+export function useStoresCRUD() {
   const qc = useQueryClient();
-  const { data: stores = [], isLoading: loading, isRefetching } = useStores();
+  const { t } = useLanguage();
+  const { data: stores = [], isLoading: loading } = useStores();
   const createMutation = useCreateStore();
   const updateMutation = useUpdateStore();
   const deleteMutation = useDeleteStore();
@@ -39,16 +42,16 @@ export function useStoresCRUD({ silentLoadError = false }: { silentLoadError?: b
   const canCreateStore = stores.length < MAX_STORES;
 
   const alertMaxStores = () => {
-    Alert.alert('Limite atteinte', `Vous ne pouvez pas dépasser ${MAX_STORES} magasins.`);
+    Alert.alert(t('storesCrud.limitTitle'), t('storesCrud.limitMsg', { max: MAX_STORES }));
   };
 
   // ── Save (create or update) ──
   const saveStore = async (
-    payload: Record<string, any>,
+    payload: CreateStorePayload,
     editingStoreId?: string,
   ): Promise<boolean> => {
     if (!payload.nom?.trim()) {
-      Alert.alert('Erreur', 'Le nom du magasin est obligatoire.');
+      Alert.alert(t('common.error'), t('storesCrud.nameRequired'));
       return false;
     }
     try {
@@ -59,7 +62,7 @@ export function useStoresCRUD({ silentLoadError = false }: { silentLoadError?: b
       }
       return true;
     } catch (err: unknown) {
-      Alert.alert('Erreur', getErrorMessage(err, 'Erreur lors de la sauvegarde.'));
+      Alert.alert(t('common.error'), getErrorMessage(err, t('storesCrud.saveError')));
       return false;
     }
   };
@@ -67,18 +70,18 @@ export function useStoresCRUD({ silentLoadError = false }: { silentLoadError?: b
   // ── Delete ──
   const deleteStore = (store: StoreType) => {
     Alert.alert(
-      'Supprimer ce magasin ?',
-      `"${store.nom}" sera définitivement supprimé.`,
+      t('storesCrud.deleteTitle'),
+      t('storesCrud.deleteMsg', { name: store.nom }),
       [
-        { text: 'Annuler', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: 'Supprimer',
+          text: t('common.delete'),
           style: 'destructive',
           onPress: async () => {
             try {
               await deleteMutation.mutateAsync(store.id);
             } catch {
-              Alert.alert('Erreur', 'Impossible de supprimer le magasin.');
+              Alert.alert(t('common.error'), t('storesCrud.deleteError'));
             }
           },
         },
@@ -91,7 +94,7 @@ export function useStoresCRUD({ silentLoadError = false }: { silentLoadError?: b
     try {
       await updateMutation.mutateAsync({ id: store.id, payload: { isActive: !store.isActive } });
     } catch {
-      Alert.alert('Erreur', 'Impossible de modifier le statut.');
+      Alert.alert(t('common.error'), t('storesCrud.toggleError'));
     }
   };
 

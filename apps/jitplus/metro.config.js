@@ -7,12 +7,12 @@ const config = getDefaultConfig(__dirname);
 const projectRoot = __dirname;
 const workspaceRoot = path.resolve(projectRoot, '../..');
 
-// Watch packages/shared AND the pnpm virtual store so Metro can follow symlinks
-// from app-level node_modules junctions into the .pnpm content-addressable store.
+// Watch packages/shared so Metro can follow monorepo imports.
+// Avoid watching the global pnpm store on Windows — it can cause
+// "Failed to start watch mode" in OneDrive-backed workspaces.
 config.watchFolders = [
   ...(config.watchFolders || []),
   path.resolve(workspaceRoot, 'packages', 'shared'),
-  path.resolve(workspaceRoot, 'node_modules', '.pnpm'),
 ];
 
 // Enable symlink resolution for pnpm on Windows (not needed on Linux/macOS
@@ -38,11 +38,49 @@ config.resolver.nodeModulesPaths = [...new Set(config.resolver.nodeModulesPaths)
 // pnpm creates multiple copies with different peer-dep resolutions; Metro may
 // resolve different copies for different import chains.
 config.resolver.extraNodeModules = {
-  'expo-router': path.resolve(projectRoot, 'node_modules', 'expo-router'),
-  '@react-navigation/core': path.resolve(projectRoot, 'node_modules', '@react-navigation', 'core'),
-  '@react-navigation/native': path.resolve(projectRoot, 'node_modules', '@react-navigation', 'native'),
   react: path.resolve(projectRoot, 'node_modules', 'react'),
   'react-native': path.resolve(projectRoot, 'node_modules', 'react-native'),
+  'react-native-safe-area-context': path.resolve(projectRoot, 'node_modules', 'react-native-safe-area-context'),
+  'react-native-screens': path.resolve(projectRoot, 'node_modules', 'react-native-screens'),
+  'expo-router': path.resolve(projectRoot, 'node_modules', 'expo-router'),
+  'expo-modules-core': path.resolve(workspaceRoot, 'node_modules', 'expo-modules-core'),
+  '@react-navigation/core': path.resolve(projectRoot, 'node_modules', '@react-navigation', 'core'),
+  '@react-navigation/native': path.resolve(projectRoot, 'node_modules', '@react-navigation', 'native'),
+  '@react-navigation/elements': path.resolve(projectRoot, 'node_modules', '@react-navigation', 'elements'),
+  '@react-navigation/bottom-tabs': path.resolve(projectRoot, 'node_modules', '@react-navigation', 'bottom-tabs'),
+  '@react-navigation/native-stack': path.resolve(projectRoot, 'node_modules', '@react-navigation', 'native-stack'),
+};
+
+// Force-resolve singleton packages from projectRoot.  In a pnpm monorepo many
+// packages also exist at <workspaceRoot>/node_modules (hoisted copies).  Metro
+// walks up directory trees, so an import from packages/shared or from a transitive
+// dep can pick up the monorepo-root copy.  Two copies of packages with native
+// registrations cause "Tried to register two views with the same name" crashes.
+//
+// FORCE_PREFIX matches both the bare package name AND deep imports.
+const FORCE_PREFIX = [
+  'react',
+  'react-native',
+  'react-native-safe-area-context',
+  'react-native-screens',
+  'expo-router',
+  'expo-modules-core',
+  'expo-linear-gradient',
+  '@react-navigation',
+  'lucide-react-native',
+];
+
+config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (
+    FORCE_PREFIX.some((p) => moduleName === p || moduleName.startsWith(p + '/'))
+  ) {
+    return context.resolveRequest(
+      { ...context, originModulePath: path.resolve(projectRoot, '__force_resolve__.js') },
+      moduleName,
+      platform,
+    );
+  }
+  return context.resolveRequest(context, moduleName, platform);
 };
 
 module.exports = config;

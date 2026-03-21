@@ -25,12 +25,12 @@ module.exports = ({ config }) => {
     owner: 'ayoub.je',
     name: 'JitPlus',
     slug: 'jitplus',
+    description: 'Digital loyalty cards app — collect stamps and earn rewards at your favorite local shops.',
     version: '1.1.0',
     orientation: 'portrait',
     icon: './assets/images/icon-white.png',
     scheme: 'jitplus',
     userInterfaceStyle: 'automatic',
-    newArchEnabled: true,
     // Publicly accessible privacy policy URL — required by both stores
     privacyPolicyUrl: PRIVACY_POLICY_URL,
     splash: {
@@ -105,7 +105,8 @@ module.exports = ({ config }) => {
       'expo-router',
       'expo-secure-store',
       // iOS PrivacyInfo.xcprivacy — required since Apple review policy May 2024
-      './plugins/withPrivacyManifest',
+      // DISABLED: plugin file not yet created — re-enable after adding plugins/withPrivacyManifest.js
+      // './plugins/withPrivacyManifest',
       // SSL Certificate Pinning — prevents MITM attacks
       // DISABLED: Enable after setting up custom domain (api.jitplus.ma) with managed SSL cert.
       // Cloud Run's *.a.run.app wildcard cert rotates too frequently for pinning.
@@ -113,7 +114,8 @@ module.exports = ({ config }) => {
       // Network security — enforces HTTPS, blocks cleartext traffic in production
       './plugins/withNetworkSecurity',
       // Force Google Maps region to Morocco — ensures correct border rendering (Sahara)
-      './plugins/withMoroccoRegion',
+      // DISABLED: plugin file not yet created — re-enable after adding plugins/withMoroccoRegion.js
+      // './plugins/withMoroccoRegion',
       [
         'expo-notifications',
         {
@@ -133,10 +135,10 @@ module.exports = ({ config }) => {
       ],
       // Sentry — source map upload + native crash symbolication
       // Requires EAS Secrets: SENTRY_ORG, SENTRY_PROJECT, SENTRY_AUTH_TOKEN
-      ['@sentry/react-native/expo', {
+      ...(process.env.SENTRY_AUTH_TOKEN ? [['@sentry/react-native/expo', {
         organization: process.env.SENTRY_ORG || '',
         project: process.env.SENTRY_PROJECT || '',
-      }],
+      }]] : []),
     ],
     extra: {
       googleWebClientId,
