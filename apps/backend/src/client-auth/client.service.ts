@@ -60,6 +60,7 @@ export class ClientService {
         createdAt: true,
         updatedAt: true,
         loyaltyCards: {
+          where: { merchant: { deletedAt: null } },
           select: {
             id: true, merchantId: true, points: true, createdAt: true, updatedAt: true,
             merchant: {
@@ -205,7 +206,7 @@ export class ClientService {
 
     const [cards, totalCards] = await Promise.all([
       this.loyaltyCardRepo.findMany({
-        where: { clientId },
+          where: { clientId, merchant: { deletedAt: null } },
         select: {
           id: true,
           merchantId: true,
@@ -236,9 +237,7 @@ export class ClientService {
         skip,
         take: safeTake,
       }),
-      this.loyaltyCardRepo.count({ where: { clientId } }),
-    ]);
-
+        this.loyaltyCardRepo.count({ where: { clientId, merchant: { deletedAt: null } } }),
     const totalPoints = cards.reduce((sum: number, card: any) => sum + card.points, 0);
 
     return {
@@ -451,7 +450,7 @@ export class ClientService {
     const skip = (page - 1) * limit;
     const [merchants, total] = await Promise.all([
       this.merchantRepo.findMany({
-        where: { isActive: true },
+          where: { isActive: true, deletedAt: null },
         select: {
           id: true,
           nom: true,
