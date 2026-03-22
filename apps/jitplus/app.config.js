@@ -22,11 +22,11 @@ module.exports = ({ config }) => {
 
   return {
     ...config,
-    owner: 'ayoub.je',
+    owner: 'jitplus',
     name: 'JitPlus',
     slug: 'jitplus',
     description: 'Digital loyalty cards app — collect stamps and earn rewards at your favorite local shops.',
-    version: '1.1.0',
+    version: '1.1.2',
     orientation: 'portrait',
     icon: './assets/images/icon-white.png',
     scheme: 'jitplus',
@@ -143,7 +143,7 @@ module.exports = ({ config }) => {
     extra: {
       googleWebClientId,
       eas: {
-        projectId: 'bc1c8006-026c-4889-91f4-166d3d1c9cf4',
+        projectId: 'cdecb51f-65ff-4e38-a180-bd20563d997c',
       },
     },
     experiments: {

@@ -320,15 +320,15 @@ export default function AccountScreen() {
                 onPress={() => router.push('/referral' as any)}
                 style={({ pressed }) => [
                   styles.referralRow,
-                  { backgroundColor: `${palette.violet}06`, borderColor: `${palette.violet}18` },
+                  { backgroundColor: `${palette.charbon}06`, borderColor: `${palette.charbon}18` },
                   pressed && { opacity: 0.75 },
                 ]}
               >
                 <LinearGradient
-                  colors={[`${palette.violet}25`, `${palette.violet}10`]}
+                  colors={[`${palette.charbon}25`, `${palette.charbon}10`]}
                   style={styles.referralRowIcon}
                 >
-                  <Gift size={ms(16)} color={palette.violet} strokeWidth={1.8} />
+                  <Gift size={ms(16)} color={palette.charbon} strokeWidth={1.8} />
                 </LinearGradient>
                 <View style={styles.referralRowContent}>
                   <Text style={[styles.referralRowLabel, { color: theme.text }]}>
@@ -338,11 +338,11 @@ export default function AccountScreen() {
                     {t('account.referralInviteHint')}
                   </Text>
                 </View>
-                <View style={[styles.referralRowCode, { backgroundColor: `${palette.violet}14` }]}>
-                  <Text style={[styles.referralRowCodeText, { color: palette.violet }]}>
+                <View style={[styles.referralRowCode, { backgroundColor: `${palette.charbon}14` }]}>
+                  <Text style={[styles.referralRowCodeText, { color: palette.charbon }]}>
                     {referralCode}
                   </Text>
-                  <Copy size={ms(12)} color={palette.violet} strokeWidth={2} />
+                  <Copy size={ms(12)} color={palette.charbon} strokeWidth={2} />
                 </View>
               </Pressable>
             )}
@@ -353,8 +353,8 @@ export default function AccountScreen() {
         {isTeamMember && teamMember && (
           <FadeInView delay={250}>
             <View style={[styles.teamBanner, { backgroundColor: `${palette.charbon}12`, borderColor: `${palette.charbon}30` }]}>
-              <View style={[styles.infoIconBox, { backgroundColor: `${palette.violet}15` }]}>
-                <Shield size={ms(16)} color={palette.violet} strokeWidth={1.5} />
+              <View style={[styles.infoIconBox, { backgroundColor: `${palette.charbon}15` }]}>
+                <Shield size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
               </View>
               <View style={styles.infoContent}>
                 <Text style={[styles.infoValue, { color: theme.text }]}>
@@ -395,8 +395,8 @@ export default function AccountScreen() {
                     pressed && Platform.OS === 'ios' && { opacity: 0.7 },
                   ]}
                 >
-                  <View style={[styles.infoIconBox, { backgroundColor: `${palette.violet}12` }]}>
-                    <Edit3 size={ms(16)} color={palette.violet} strokeWidth={1.5} />
+                  <View style={[styles.infoIconBox, { backgroundColor: `${palette.charbon}12` }]}>
+                    <Edit3 size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
                   </View>
                   <View style={styles.infoContent}>
                     <Text style={[styles.infoValue, { color: theme.text }]}>{t('account.editStore')}</Text>
@@ -412,8 +412,8 @@ export default function AccountScreen() {
                     pressed && Platform.OS === 'ios' && { opacity: 0.7 },
                   ]}
                 >
-                  <View style={[styles.infoIconBox, { backgroundColor: `${palette.violet}12` }]}>
-                    <StoreIcon size={ms(16)} color={palette.violet} strokeWidth={1.5} />
+                  <View style={[styles.infoIconBox, { backgroundColor: `${palette.charbon}12` }]}>
+                    <StoreIcon size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
                   </View>
                   <View style={styles.infoContent}>
                     <Text style={[styles.infoValue, { color: theme.text }]}>{t('account.manageStores')}</Text>
@@ -429,8 +429,8 @@ export default function AccountScreen() {
                     pressed && Platform.OS === 'ios' && { opacity: 0.7 },
                   ]}
                 >
-                  <View style={[styles.infoIconBox, { backgroundColor: `${palette.violet}12` }]}>
-                    <Settings size={ms(16)} color={palette.violet} strokeWidth={1.5} />
+                  <View style={[styles.infoIconBox, { backgroundColor: `${palette.charbon}12` }]}>
+                    <Settings size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
                   </View>
                   <View style={styles.infoContent}>
                     <Text style={[styles.infoValue, { color: theme.text }]}>{t('account.settingsTitle')}</Text>
@@ -440,14 +440,14 @@ export default function AccountScreen() {
                 {/* Dashboard */}
                 <Pressable
                   onPress={() => router.push('/dashboard')}
-                  android_ripple={{ color: `${palette.violet}10` }}
+                  android_ripple={{ color: `${palette.charbon}10` }}
                   style={({ pressed }) => [
                     styles.infoRow, { borderBottomColor: theme.borderLight },
                     pressed && Platform.OS === 'ios' && { opacity: 0.7 },
                   ]}
                 >
-                  <View style={[styles.infoIconBox, { backgroundColor: `${palette.violet}12` }]}>
-                    <BarChart3 size={ms(16)} color={palette.violet} strokeWidth={1.5} />
+                  <View style={[styles.infoIconBox, { backgroundColor: `${palette.charbon}12` }]}>
+                    <BarChart3 size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
                   </View>
                   <View style={styles.infoContent}>
                     <Text style={[styles.infoValue, { color: theme.text }]}>{t('account.dashboard')}</Text>
@@ -463,8 +463,8 @@ export default function AccountScreen() {
                     pressed && Platform.OS === 'ios' && { opacity: 0.7 },
                   ]}
                 >
-                  <View style={[styles.infoIconBox, { backgroundColor: `${palette.violet}12` }]}>
-                    <Users size={ms(16)} color={palette.violet} strokeWidth={1.5} />
+                  <View style={[styles.infoIconBox, { backgroundColor: `${palette.charbon}12` }]}>
+                    <Users size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
                   </View>
                   <View style={styles.infoContent}>
                     <Text style={[styles.infoValue, { color: theme.text }]}>{t('account.team')}</Text>
@@ -480,8 +480,8 @@ export default function AccountScreen() {
                     pressed && Platform.OS === 'ios' && { opacity: 0.7 },
                   ]}
                 >
-                  <View style={[styles.infoIconBox, { backgroundColor: `${palette.violet}12` }]}>
-                    <Gift size={ms(16)} color={palette.violet} strokeWidth={1.5} />
+                  <View style={[styles.infoIconBox, { backgroundColor: `${palette.charbon}12` }]}>
+                    <Gift size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
                   </View>
                   <View style={styles.infoContent}>
                     <Text style={[styles.infoValue, { color: theme.text }]}>{t('referral.menuTitle')}</Text>
@@ -513,14 +513,14 @@ export default function AccountScreen() {
               {/* Dark mode */}
               <Pressable
                 onPress={theme.toggleDarkMode}
-                android_ripple={{ color: `${palette.violet}10` }}
+                android_ripple={{ color: `${palette.charbon}10` }}
                 style={({ pressed }) => [
                   styles.infoRow, { borderBottomColor: theme.borderLight },
                   pressed && Platform.OS === 'ios' && { opacity: 0.7 },
                 ]}
               >
-                <View style={[styles.infoIconBox, { backgroundColor: `${palette.violet}15` }]}>
-                  <Moon size={ms(16)} color={palette.violet} strokeWidth={1.5} />
+                <View style={[styles.infoIconBox, { backgroundColor: `${palette.charbon}15` }]}>
+                  <Moon size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
                 </View>
                 <View style={styles.infoContent}>
                   <Text style={[styles.infoValue, { color: theme.text }]}>{t('account.darkMode')}</Text>
@@ -535,14 +535,14 @@ export default function AccountScreen() {
               {/* Language */}
               <Pressable
                 onPress={() => setShowLanguageModal(true)}
-                android_ripple={{ color: `${palette.violet}10` }}
+                android_ripple={{ color: `${palette.charbon}10` }}
                 style={({ pressed }) => [
                   styles.infoRow, { borderBottomWidth: 0 },
                   pressed && Platform.OS === 'ios' && { opacity: 0.7 },
                 ]}
               >
-                <View style={[styles.infoIconBox, { backgroundColor: `${palette.violet}12` }]}>
-                  <Globe size={ms(16)} color={palette.violet} strokeWidth={1.5} />
+                <View style={[styles.infoIconBox, { backgroundColor: `${palette.charbon}12` }]}>
+                  <Globe size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
                 </View>
                 <View style={styles.infoContent}>
                   <Text style={[styles.infoValue, { color: theme.text }]}>{t('account.language')}</Text>
@@ -578,14 +578,14 @@ export default function AccountScreen() {
               {/* Legal */}
               <Pressable
                 onPress={() => router.push('/legal' as any)}
-                android_ripple={{ color: `${palette.violet}10` }}
+                android_ripple={{ color: `${palette.charbon}10` }}
                 style={({ pressed }) => [
                   styles.infoRow, { borderBottomColor: theme.borderLight },
                   pressed && Platform.OS === 'ios' && { opacity: 0.7 },
                 ]}
               >
-                <View style={[styles.infoIconBox, { backgroundColor: `${palette.violet}12` }]}>
-                  <Shield size={ms(16)} color={palette.violet} strokeWidth={1.5} />
+                <View style={[styles.infoIconBox, { backgroundColor: `${palette.charbon}12` }]}>
+                  <Shield size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
                 </View>
                 <View style={styles.infoContent}>
                   <Text style={[styles.infoValue, { color: theme.text }]}>{t('account.legalSection')}</Text>
@@ -602,8 +602,8 @@ export default function AccountScreen() {
                     pressed && Platform.OS === 'ios' && { opacity: 0.7 },
                   ]}
                 >
-                  <View style={[styles.infoIconBox, { backgroundColor: `${palette.violet}15` }]}>
-                    <Lock size={ms(16)} color={palette.violet} strokeWidth={1.5} />
+                  <View style={[styles.infoIconBox, { backgroundColor: `${palette.charbon}15` }]}>
+                    <Lock size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
                   </View>
                   <View style={styles.infoContent}>
                     <Text style={[styles.infoValue, { color: theme.text }]}>{t('account.security')}</Text>
@@ -621,8 +621,8 @@ export default function AccountScreen() {
                     pressed && Platform.OS === 'ios' && { opacity: 0.7 },
                   ]}
                 >
-                  <View style={[styles.infoIconBox, { backgroundColor: `${palette.violet}12` }]}>
-                    <Smartphone size={ms(16)} color={palette.violet} strokeWidth={1.5} />
+                  <View style={[styles.infoIconBox, { backgroundColor: `${palette.charbon}12` }]}>
+                    <Smartphone size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
                   </View>
                   <View style={styles.infoContent}>
                     <Text style={[styles.infoValue, { color: theme.text }]}>{t('account.stores')}</Text>
@@ -633,14 +633,14 @@ export default function AccountScreen() {
               {/* Contact support */}
               <Pressable
                 onPress={() => Linking.openURL('https://wa.me/33767471397?text=Bonjour%2C%20j%27ai%20besoin%20d%27aide%20avec%20JitPlus%20Pro')}
-                android_ripple={{ color: '#25D36610' }}
+                android_ripple={{ color: `${palette.charbon}10` }}
                 style={({ pressed }) => [
                   styles.infoRow, { borderBottomColor: theme.borderLight },
                   pressed && Platform.OS === 'ios' && { opacity: 0.7 },
                 ]}
               >
-                <View style={[styles.infoIconBox, { backgroundColor: `${palette.violet}15` }]}>
-                  <MessageCircle size={ms(16)} color={palette.violet} strokeWidth={1.5} />
+                <View style={[styles.infoIconBox, { backgroundColor: `${palette.charbon}15` }]}>
+                  <MessageCircle size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
                 </View>
                 <View style={styles.infoContent}>
                   <Text style={[styles.infoValue, { color: theme.text }]}>{'Contacter le support'}</Text>
@@ -649,14 +649,14 @@ export default function AccountScreen() {
               {/* Logout */}
               <Pressable
                 onPress={handleSignOut}
-                android_ripple={{ color: `${theme.danger}10` }}
+                android_ripple={{ color: `${palette.charbon}10` }}
                 style={({ pressed }) => [
                   styles.infoRow, { borderBottomColor: theme.borderLight },
                   pressed && Platform.OS === 'ios' && { opacity: 0.7 },
                 ]}
               >
-                <View style={[styles.infoIconBox, { backgroundColor: `${theme.danger}12` }]}>
-                  <LogOut size={ms(16)} color={theme.danger} strokeWidth={1.5} />
+                <View style={[styles.infoIconBox, { backgroundColor: `${palette.charbon}12` }]}>
+                  <LogOut size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
                 </View>
                 <View style={styles.infoContent}>
                   <Text style={[styles.infoValue, { color: theme.danger }]}>{t('account.signOut')}</Text>
@@ -666,14 +666,14 @@ export default function AccountScreen() {
               {!isTeamMember && (
                 <Pressable
                   onPress={() => router.push('/security?tab=delete')}
-                  android_ripple={{ color: `${theme.danger}10` }}
+                  android_ripple={{ color: `${palette.charbon}10` }}
                   style={({ pressed }) => [
                     styles.infoRow, { borderBottomWidth: 0 },
                     pressed && Platform.OS === 'ios' && { opacity: 0.7 },
                   ]}
                 >
-                  <View style={[styles.infoIconBox, { backgroundColor: `${theme.danger}12` }]}>
-                    <Trash2 size={ms(16)} color={theme.danger} strokeWidth={1.5} />
+                  <View style={[styles.infoIconBox, { backgroundColor: `${palette.charbon}12` }]}>
+                    <Trash2 size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
                   </View>
                   <View style={styles.infoContent}>
                     <Text style={[styles.infoValue, { color: theme.danger }]}>{t('account.deleteAccount')}</Text>
@@ -803,8 +803,8 @@ export default function AccountScreen() {
       >
         <Pressable style={styles.modalOverlay} onPress={() => setShowLanguageModal(false)}>
           <View style={[styles.langModalCard, { backgroundColor: theme.bgCard }]}>
-            <View style={[styles.modalIconCircle, { backgroundColor: `${palette.violet}12` }]}>
-              <Globe size={ms(28)} color={palette.violet} strokeWidth={1.5} />
+            <View style={[styles.modalIconCircle, { backgroundColor: `${palette.charbon}12` }]}>
+              <Globe size={ms(28)} color={palette.charbon} strokeWidth={1.5} />
             </View>
             <Text style={[styles.langModalTitle, { color: theme.text }]}>{t('account.chooseLanguage')}</Text>
             <Text style={[styles.langModalDesc, { color: theme.textMuted }]}>

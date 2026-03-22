@@ -52,3 +52,11 @@ GoogleService-Info.plist
 
 # Prisma generated client
 apps/backend/src/generated/
+
+# Keystore files — never commit private keys
+**/*.jks
+**/*.keystore
+
+# EAS credentials — never commit
+apps/jitplus/credentials.json
+apps/jitpluspro/credentials.json

@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useCallback, useMemo } from 'react';
+import { Platform } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '@/services/api';
@@ -83,9 +84,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   // Register push notifications when client is authenticated.
-  // Only requests permission if already granted (e.g. from a previous session).
-  // If not yet granted, the notification tab's banner will explain the value
-  // and let the user opt-in — no surprise prompt on first login.
+  // On Android: proactively request permission right after login — the system
+  // dialog is non-intrusive and users expect it on Android.
+  // On iOS: defer to the notification tab banner so we provide context first
+  // (Apple guidelines require explaining the value before showing the prompt).
   useEffect(() => {
     if (!store.client?.id) return;
 
@@ -93,25 +95,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         await setupAndroidChannel();
 
-        // Check existing permission — don't show the system prompt immediately
-        const alreadyGranted = await (async () => {
-          try {
-            // Use the guarded import from utils/notifications instead of
-            // requiring expo-notifications directly — the raw require
-            // triggers push-token side-effects that crash in Expo Go SDK 53+.
-            const { getPermissionStatus } = require('@/utils/notifications') as typeof import('@/utils/notifications');
-            return await getPermissionStatus();
-          } catch { return false; }
-        })();
-
-        if (alreadyGranted) {
+        if (Platform.OS === 'android') {
+          // On Android, always call registerForPushNotifications — it internally
+          // calls requestPermissionsAsync() which shows the system dialog on
+          // Android 13+ if not yet granted, and is a no-op if already granted.
           const pushToken = await registerForPushNotifications();
           if (pushToken) {
             await api.updatePushToken(pushToken);
-            if (__DEV__) console.log('Push token sent to backend');
+            if (__DEV__) console.log('Push token sent to backend (Android)');
           }
         } else {
-          if (__DEV__) console.log('Push permission not yet granted — deferring to notification tab');
+          // iOS: only register if already granted to avoid the cold prompt.
+          // The notification tab banner will explain the value and let the
+          // user opt-in at a meaningful moment.
+          const alreadyGranted = await (async () => {
+            try {
+              const { getPermissionStatus } = require('@/utils/notifications') as typeof import('@/utils/notifications');
+              return await getPermissionStatus();
+            } catch { return false; }
+          })();
+
+          if (alreadyGranted) {
+            const pushToken = await registerForPushNotifications();
+            if (pushToken) {
+              await api.updatePushToken(pushToken);
+              if (__DEV__) console.log('Push token sent to backend (iOS)');
+            }
+          } else {
+            if (__DEV__) console.log('iOS push permission not yet granted — deferring to notification tab');
+          }
         }
       } catch (error) {
         if (__DEV__) console.error('Failed to register push token:', error);

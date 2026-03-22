@@ -23,6 +23,7 @@ import { useRealtimeEvents, handleFcmDataPayload, useAppForegroundRefresh } from
 import { getServerBaseUrl } from '@/services/api';
 import Constants from 'expo-constants';
 import * as Sentry from '@sentry/react-native';
+import { setupAndroidChannel } from '@/utils/notifications';
 
 // ── Sentry init (crash reporting) ──────────────────────────────
 // SECURITY: DSN is bundled in the client. Configure inbound data filters in
@@ -231,7 +232,7 @@ function SplashGate({ children }: { children: React.ReactNode }) {
 const splashStyles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#7C3AED',
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -256,6 +257,13 @@ export default function RootLayout() {
   useEffect(() => {
     if (error) throw error;
   }, [error]);
+
+  // Set up Android notification channels as early as possible — before auth
+  // resolves, so FCM notifications arriving before login are not silently
+  // dropped because the channel doesn't exist yet.
+  useEffect(() => {
+    setupAndroidChannel().catch(() => {});
+  }, []);
 
   // Don't render anything until fonts are loaded — SplashGate handles hideAsync
   if (!loaded) {

@@ -402,7 +402,7 @@ export default function ProfileScreen() {
                   )}
                   {!isLoading && !isEditing && infoExpanded && (
                     <TouchableOpacity onPress={(e) => { e.stopPropagation(); startEditing(); }} style={[styles.editHeaderBtn, { backgroundColor: `${palette.violet}12` }]} activeOpacity={0.7}>
-                      <Pencil size={ms(16)} color={palette.violet} strokeWidth={1.5} />
+                      <Pencil size={ms(16)} color={palette.gold} strokeWidth={1.5} />
                     </TouchableOpacity>
                   )}
                   {isEditing && (
@@ -426,8 +426,8 @@ export default function ProfileScreen() {
               <View style={[styles.infoCard, { backgroundColor: theme.bgCard }]}>
                 {/* Prénom */}
                 <View style={[styles.infoRow, { borderBottomColor: theme.borderLight }]}>
-                  <View style={[styles.infoIconBox, { backgroundColor: theme.primaryBg }]}>
-                    <User size={ms(16)} color={theme.primaryLight} strokeWidth={1.5} />
+                  <View style={[styles.infoIconBox, { backgroundColor: `${palette.gold}15` }]}>
+                    <User size={ms(16)} color={palette.gold} strokeWidth={1.5} />
                   </View>
                   <View style={styles.infoContent}>
                     <Text style={[styles.infoLabel, { color: theme.textMuted }]}>{t('profile.firstName')}</Text>
@@ -448,8 +448,8 @@ export default function ProfileScreen() {
 
                 {/* Nom */}
                 <View style={[styles.infoRow, { borderBottomColor: theme.borderLight }]}>
-                  <View style={[styles.infoIconBox, { backgroundColor: theme.primaryBg }]}>
-                    <User size={ms(16)} color={theme.primaryLight} strokeWidth={1.5} />
+                  <View style={[styles.infoIconBox, { backgroundColor: `${palette.gold}15` }]}>
+                    <User size={ms(16)} color={palette.gold} strokeWidth={1.5} />
                   </View>
                   <View style={styles.infoContent}>
                     <Text style={[styles.infoLabel, { color: theme.textMuted }]}>{t('profile.lastName')}</Text>
@@ -493,8 +493,8 @@ export default function ProfileScreen() {
 
                 {/* Phone (editable) */}
                 <View style={[styles.infoRow, { borderBottomColor: theme.borderLight }]}>
-                  <View style={[styles.infoIconBox, { backgroundColor: `#10B98115` }]}>
-                    <Phone size={ms(16)} color="#10B981" strokeWidth={1.5} />
+                  <View style={[styles.infoIconBox, { backgroundColor: `${palette.gold}15` }]}>
+                    <Phone size={ms(16)} color={palette.gold} strokeWidth={1.5} />
                   </View>
                   <View style={styles.infoContent}>
                     <Text style={[styles.infoLabel, { color: theme.textMuted }]}>{t('profile.phone')}</Text>
@@ -515,8 +515,8 @@ export default function ProfileScreen() {
 
                 {/* Date de naissance (optionnelle) */}
                 <View style={[styles.infoRow, { borderBottomWidth: 0 }]}>
-                  <View style={[styles.infoIconBox, { backgroundColor: `${palette.violet}12` }]}>
-                    <Calendar size={ms(16)} color={palette.violet} strokeWidth={1.5} />
+                  <View style={[styles.infoIconBox, { backgroundColor: `${palette.gold}15` }]}>
+                    <Calendar size={ms(16)} color={palette.gold} strokeWidth={1.5} />
                   </View>
                   <View style={styles.infoContent}>
                     <Text style={[styles.infoLabel, { color: theme.textMuted }]}>
@@ -576,14 +576,14 @@ export default function ProfileScreen() {
                   onPress={() => { theme.toggleDarkMode(); if (Platform.OS !== 'web') haptic(HapticStyle.Light); }}
                   accessibilityRole="button"
                   accessibilityLabel={t('profile.darkMode')}
-                  android_ripple={{ color: `${palette.violet}10` }}
+                  android_ripple={{ color: `${palette.gold}10` }}
                   style={({ pressed }) => [
                     styles.infoRow, { borderBottomColor: theme.borderLight },
                     pressed && Platform.OS === 'ios' && { opacity: 0.7 },
                   ]}
                 >
-                  <View style={[styles.infoIconBox, { backgroundColor: `${palette.violetDark}15` }]}>
-                    <Moon size={ms(16)} color={palette.violetDark} strokeWidth={1.5} />
+                  <View style={[styles.infoIconBox, { backgroundColor: `${palette.gold}15` }]}>
+                    <Moon size={ms(16)} color={palette.gold} strokeWidth={1.5} />
                   </View>
                   <View style={styles.infoContent}>
                     <Text style={[styles.infoValue, { color: theme.text }]}>{t('profile.darkMode')}</Text>
@@ -603,14 +603,14 @@ export default function ProfileScreen() {
                   accessibilityRole="switch"
                   accessibilityState={{ checked: shareInfoMerchants }}
                   accessibilityLabel={t('profile.shareInfoDesc')}
-                  android_ripple={{ color: `${palette.violet}10` }}
+                  android_ripple={{ color: `${palette.gold}10` }}
                   style={({ pressed }) => [
                     styles.infoRow, { borderBottomColor: theme.borderLight },
                     pressed && Platform.OS === 'ios' && { opacity: 0.7 },
                   ]}
                 >
-                  <View style={[styles.infoIconBox, { backgroundColor: `${palette.violet}12` }]}>
-                    <Share2 size={ms(16)} color={palette.violet} strokeWidth={1.5} />
+                  <View style={[styles.infoIconBox, { backgroundColor: `${palette.gold}15` }]}>
+                    <Share2 size={ms(16)} color={palette.gold} strokeWidth={1.5} />
                   </View>
                   <View style={styles.infoContent}>
                     <Text style={[styles.infoValue, { color: theme.text }]}>{t('profile.shareInfo')}</Text>
@@ -636,14 +636,14 @@ export default function ProfileScreen() {
                   accessibilityRole="switch"
                   accessibilityState={{ checked: notifWhatsapp }}
                   accessibilityLabel={t('profile.whatsappNotifsDesc')}
-                  android_ripple={{ color: `#25D36610` }}
+                  android_ripple={{ color: `${palette.gold}10` }}
                   style={({ pressed }) => [
                     styles.infoRow, { borderBottomColor: theme.borderLight },
                     pressed && Platform.OS === 'ios' && { opacity: 0.7 },
                   ]}
                 >
-                  <View style={[styles.infoIconBox, { backgroundColor: `#25D36615` }]}>
-                    <MessageCircle size={ms(16)} color="#25D366" strokeWidth={1.5} />
+                  <View style={[styles.infoIconBox, { backgroundColor: `${palette.gold}15` }]}>
+                    <MessageCircle size={ms(16)} color={palette.gold} strokeWidth={1.5} />
                   </View>
                   <View style={styles.infoContent}>
                     <Text style={[styles.infoValue, { color: theme.text }]}>{t('profile.whatsappNotifs')}</Text>
@@ -663,14 +663,14 @@ export default function ProfileScreen() {
                 {/* Language selector */}
                 <Pressable
                   onPress={() => setShowLanguageModal(true)}
-                  android_ripple={{ color: `${palette.violet}10` }}
+                  android_ripple={{ color: `${palette.gold}10` }}
                   style={({ pressed }) => [
                     styles.infoRow, { borderBottomWidth: 0 },
                     pressed && Platform.OS === 'ios' && { opacity: 0.7 },
                   ]}
                 >
-                  <View style={[styles.infoIconBox, { backgroundColor: `${palette.violet}12` }]}>
-                    <Globe size={ms(16)} color={palette.violet} strokeWidth={1.5} />
+                  <View style={[styles.infoIconBox, { backgroundColor: `${palette.gold}15` }]}>
+                    <Globe size={ms(16)} color={palette.gold} strokeWidth={1.5} />
                   </View>
                   <View style={styles.infoContent}>
                     <Text style={[styles.infoValue, { color: theme.text }]}>{t('profile.language')}</Text>
@@ -706,14 +706,14 @@ export default function ProfileScreen() {
                   {/* ── Contacter le support ── */}
                   <Pressable
                     onPress={() => Linking.openURL('https://wa.me/33767471397?text=Bonjour%2C%20j%27ai%20besoin%20d%27aide%20avec%20l%27app%20JitPlus')}
-                    android_ripple={{ color: `${theme.primary}10` }}
+                    android_ripple={{ color: `${palette.gold}10` }}
                     style={({ pressed }) => [
                       styles.infoRow,
                       pressed && Platform.OS === 'ios' && { opacity: 0.7 },
                     ]}
                   >
-                    <View style={[styles.infoIconBox, { backgroundColor: '#25D36615' }]}>
-                      <MessageSquare size={ms(16)} color="#25D366" strokeWidth={1.5} />
+                    <View style={[styles.infoIconBox, { backgroundColor: `${palette.gold}15` }]}>
+                      <MessageSquare size={ms(16)} color={palette.gold} strokeWidth={1.5} />
                     </View>
                     <View style={styles.infoContent}>
                       <Text style={[styles.infoValue, { color: theme.text }]}>{t('profile.contactSupport')}</Text>
@@ -730,14 +730,14 @@ export default function ProfileScreen() {
                         : 'https://play.google.com/store/apps/details?id=com.jitplus.client';
                       Linking.openURL(url);
                     }}
-                    android_ripple={{ color: `${theme.primary}10` }}
+                    android_ripple={{ color: `${palette.gold}10` }}
                     style={({ pressed }) => [
                       styles.infoRow,
                       pressed && Platform.OS === 'ios' && { opacity: 0.7 },
                     ]}
                   >
-                    <View style={[styles.infoIconBox, { backgroundColor: '#F59E0B15' }]}>
-                      <Star size={ms(16)} color="#F59E0B" strokeWidth={1.5} />
+                    <View style={[styles.infoIconBox, { backgroundColor: `${palette.gold}15` }]}>
+                      <Star size={ms(16)} color={palette.gold} strokeWidth={1.5} />
                     </View>
                     <View style={styles.infoContent}>
                       <Text style={[styles.infoValue, { color: theme.text }]}>{t('profile.rateApp')}</Text>
@@ -750,17 +750,17 @@ export default function ProfileScreen() {
                   <Pressable
                     onPress={handleExportData}
                     disabled={isExporting}
-                    android_ripple={{ color: `${theme.primary}10` }}
+                    android_ripple={{ color: `${palette.gold}10` }}
                     style={({ pressed }) => [
                       styles.infoRow,
                       pressed && Platform.OS === 'ios' && { opacity: 0.7 },
                     ]}
                   >
-                    <View style={[styles.infoIconBox, { backgroundColor: `${theme.primary}12` }]}>
+                    <View style={[styles.infoIconBox, { backgroundColor: `${palette.gold}15` }]}>
                       {isExporting ? (
-                        <ActivityIndicator size="small" color={theme.primary} />
+                        <ActivityIndicator size="small" color={palette.gold} />
                       ) : (
-                        <FileDown size={ms(16)} color={theme.primary} strokeWidth={1.5} />
+                        <FileDown size={ms(16)} color={palette.gold} strokeWidth={1.5} />
                       )}
                     </View>
                     <View style={styles.infoContent}>
@@ -773,14 +773,14 @@ export default function ProfileScreen() {
                   {/* ── Mentions légales / CNDP ── */}
                   <Pressable
                     onPress={() => router.push('/legal')}
-                    android_ripple={{ color: `${theme.primary}10` }}
+                    android_ripple={{ color: `${palette.gold}10` }}
                     style={({ pressed }) => [
                       styles.infoRow,
                       pressed && Platform.OS === 'ios' && { opacity: 0.7 },
                     ]}
                   >
-                    <View style={[styles.infoIconBox, { backgroundColor: `${theme.primary}12` }]}>
-                      <Shield size={ms(16)} color={theme.primary} strokeWidth={1.5} />
+                    <View style={[styles.infoIconBox, { backgroundColor: `${palette.gold}15` }]}>
+                      <Shield size={ms(16)} color={palette.gold} strokeWidth={1.5} />
                     </View>
                     <View style={styles.infoContent}>
                       <Text style={[styles.infoValue, { color: theme.text }]}>{t('profile.legalNotice')}</Text>
@@ -791,14 +791,14 @@ export default function ProfileScreen() {
                   </Pressable>
                   <Pressable
                     onPress={handleLogout}
-                    android_ripple={{ color: `${theme.danger}10` }}
+                    android_ripple={{ color: `${palette.gold}10` }}
                     style={({ pressed }) => [
                       styles.infoRow,
                       pressed && Platform.OS === 'ios' && { opacity: 0.7 },
                     ]}
                   >
-                    <View style={[styles.infoIconBox, { backgroundColor: `${theme.danger}12` }]}>
-                      <LogOut size={ms(16)} color={theme.danger} strokeWidth={1.5} />
+                    <View style={[styles.infoIconBox, { backgroundColor: `${palette.gold}15` }]}>
+                      <LogOut size={ms(16)} color={palette.gold} strokeWidth={1.5} />
                     </View>
                     <View style={styles.infoContent}>
                       <Text style={[styles.infoValue, { color: theme.danger }]}>{t('profile.logout')}</Text>
@@ -807,17 +807,17 @@ export default function ProfileScreen() {
                   <Pressable
                     onPress={handleDeleteAccount}
                     disabled={isDeleting}
-                    android_ripple={{ color: `${theme.danger}10` }}
+                    android_ripple={{ color: `${palette.gold}10` }}
                     style={({ pressed }) => [
                       styles.infoRow, { borderBottomWidth: 0 },
                       pressed && Platform.OS === 'ios' && { opacity: 0.7 },
                     ]}
                   >
-                    <View style={[styles.infoIconBox, { backgroundColor: `${theme.danger}12` }]}>
+                    <View style={[styles.infoIconBox, { backgroundColor: `${palette.gold}15` }]}>
                       {isDeleting ? (
-                        <ActivityIndicator size="small" color={theme.danger} />
+                        <ActivityIndicator size="small" color={palette.gold} />
                       ) : (
-                        <Trash2 size={ms(16)} color={theme.danger} strokeWidth={1.5} />
+                        <Trash2 size={ms(16)} color={palette.gold} strokeWidth={1.5} />
                       )}
                     </View>
                     <View style={styles.infoContent}>
@@ -940,8 +940,8 @@ export default function ProfileScreen() {
       >
         <Pressable style={styles.modalOverlay} onPress={() => setShowLanguageModal(false)}>
           <View style={[styles.langModalCard, { backgroundColor: theme.bgCard }]}>
-            <View style={[styles.modalIconCircle, { backgroundColor: `${palette.violet}12` }]}>
-              <Globe size={ms(28)} color={palette.violet} strokeWidth={1.5} />
+            <View style={[styles.modalIconCircle, { backgroundColor: `${palette.gold}12` }]}>
+              <Globe size={ms(28)} color={palette.gold} strokeWidth={1.5} />
             </View>
             <Text style={[styles.modalTitle, { color: theme.text }]}>{t('profile.language')}</Text>
             <Text style={[styles.langModalDesc, { color: theme.textMuted }]}>

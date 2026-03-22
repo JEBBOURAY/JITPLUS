@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { Mail, Star, Coins, RefreshCw, LogOut, QrCode, BarChart3, Settings, CheckCircle2, Circle, Store, Crown, Clock, Check, X, Sparkles } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
-import { useTheme } from '@/contexts/ThemeContext';
+import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import MerchantCategoryIcon, { useCategoryMetadata } from '@/components/MerchantCategoryIcon';
 import MerchantLogo from '@/components/MerchantLogo';
@@ -124,7 +124,7 @@ export default function ProfileScreen() {
 
         <View style={[styles.card, { backgroundColor: theme.bgCard, shadowColor: theme.shadowColor }]}>
           <View style={styles.infoRow}>
-            <Mail size={20} color={theme.textMuted} />
+            <Mail size={20} color={palette.charbon} />
             <View style={styles.infoContent}>
               <Text style={[styles.infoLabel, { color: theme.textMuted }]}>{t('profileView.email')}</Text>
               <Text style={[styles.infoValue, { color: theme.text }]}>{merchant.email}</Text>
@@ -134,7 +134,7 @@ export default function ProfileScreen() {
           <View style={[styles.divider, { backgroundColor: theme.border }]} />
 
           <View style={styles.infoRow}>
-            <Star size={20} color={theme.textMuted} />
+            <Star size={20} color={palette.charbon} />
             <View style={styles.infoContent}>
               <Text style={[styles.infoLabel, { color: theme.textMuted }]}>{t('profileView.loyaltyProgram')}</Text>
               <Text style={[styles.infoValue, { color: theme.text }]}>
@@ -148,7 +148,7 @@ export default function ProfileScreen() {
           <View style={[styles.divider, { backgroundColor: theme.border }]} />
 
           <View style={styles.infoRow}>
-            <Coins size={20} color={theme.textMuted} />
+            <Coins size={20} color={palette.charbon} />
             <View style={styles.infoContent}>
               <Text style={[styles.infoLabel, { color: theme.textMuted }]}>{t('profileView.minimumPurchase')}</Text>
               <Text style={[styles.infoValue, { color: theme.text }]}>
@@ -165,7 +165,7 @@ export default function ProfileScreen() {
           <Text style={[styles.sectionTitle, { color: theme.text }]}>{t('profileView.subscription')}</Text>
           <View style={[styles.card, { backgroundColor: theme.bgCard, shadowColor: theme.shadowColor }]}>
             <View style={styles.infoRow}>
-              <Crown size={20} color={planInfo.plan === 'PREMIUM' ? '#9CA3AF' : theme.textMuted} />
+              <Crown size={20} color={planInfo.plan === 'PREMIUM' ? '#9CA3AF' : palette.charbon} />
               <View style={styles.infoContent}>
                 <Text style={[styles.infoLabel, { color: theme.textMuted }]}>{t('profileView.currentPlan')}</Text>
                 <Text style={[styles.infoValue, { color: planInfo.plan === 'PREMIUM' ? '#9CA3AF' : theme.text, fontWeight: '700' }]}>
@@ -178,7 +178,7 @@ export default function ProfileScreen() {
               <>
                 <View style={[styles.divider, { backgroundColor: theme.border }]} />
                 <View style={styles.infoRow}>
-                  <Clock size={20} color={planInfo.daysRemaining <= 7 ? '#DC2626' : '#9CA3AF'} />
+                  <Clock size={20} color={planInfo.daysRemaining <= 7 ? '#DC2626' : palette.charbon} />
                   <View style={styles.infoContent}>
                     <Text style={[styles.infoLabel, { color: theme.textMuted }]}>{t('profileView.trialEnd')}</Text>
                     <Text style={[styles.infoValue, { color: planInfo.daysRemaining <= 7 ? '#DC2626' : theme.text }]}>
@@ -237,7 +237,7 @@ export default function ProfileScreen() {
           <View style={styles.complianceRow}>
             {merchant.termsAccepted ? (
               <>
-                <CheckCircle2 size={20} color={theme.success} strokeWidth={1.5} />
+                <CheckCircle2 size={20} color={palette.charbon} strokeWidth={1.5} />
                 <View style={styles.complianceContent}>
                   <Text style={[styles.complianceLabel, { color: theme.textSecondary }]}>{t('profileView.legalNotices')}</Text>
                   <Text style={[styles.complianceStatus, { color: theme.success }]}>{t('profileView.accepted')}</Text>
@@ -245,7 +245,7 @@ export default function ProfileScreen() {
               </>
             ) : (
               <>
-                <Circle size={20} color={theme.danger} strokeWidth={1.5} />
+                <Circle size={20} color={palette.charbon} strokeWidth={1.5} />
                 <View style={styles.complianceContent}>
                   <Text style={[styles.complianceLabel, { color: theme.textSecondary }]}>{t('profileView.legalNotices')}</Text>
                   <Text style={[styles.complianceStatus, { color: theme.danger }]}>{t('profileView.notAccepted')}</Text>
@@ -320,7 +320,7 @@ export default function ProfileScreen() {
         </TouchableOpacity>
 
         <TouchableOpacity style={[styles.actionButton, { backgroundColor: theme.bgCard, shadowColor: theme.shadowColor }]} onPress={guardedLoadProfile}>
-          <RefreshCw size={20} color={theme.primary} />
+          <RefreshCw size={20} color={palette.charbon} />
           <Text style={[styles.actionButtonText, { color: theme.text }]}>{t('profileView.refreshProfile')}</Text>
         </TouchableOpacity>
 
@@ -328,7 +328,7 @@ export default function ProfileScreen() {
           style={[styles.actionButton, { backgroundColor: theme.isDark ? 'rgba(239,68,68,0.12)' : '#fef2f2' }]}
           onPress={handleSignOut}
         >
-          <LogOut size={20} color={theme.danger} />
+          <LogOut size={20} color={palette.charbon} />
           <Text style={[styles.actionButtonText, { color: theme.danger }]}>
             {t('profileView.signOut')}
           </Text>

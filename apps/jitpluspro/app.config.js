@@ -22,7 +22,7 @@ module.exports = ({ config }) => {
 
   return {
     ...config,
-    owner: 'ayoub.je',
+    owner: 'jitplus',
     name: 'JitPlus Pro',
     slug: 'jitpluspro',
     description: 'Loyalty program management for local shops — scan QR codes, track customer visits, and set up stamp-based rewards.',
@@ -150,13 +150,15 @@ module.exports = ({ config }) => {
       ['@sentry/react-native/expo', {
         organization: process.env.SENTRY_ORG || '',
         project: process.env.SENTRY_PROJECT || '',
+        uploadNativeSymbols: false,
+        autoUploadReactNativeBundles: false,
       }],
     ],
     extra: {
       googleMapsApiKey: GOOGLE_MAPS_KEY,
       googleWebClientId,
       eas: {
-        projectId: '7c70faf4-4ef0-494b-aef1-a2b86be3ce57',
+        projectId: '35d9da23-1ebd-4c2e-9deb-dc659893a4da',
       },
     },
     experiments: {

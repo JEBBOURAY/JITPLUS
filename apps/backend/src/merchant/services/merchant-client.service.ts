@@ -34,9 +34,10 @@ export class MerchantClientService {
           AND: [
             { loyaltyCards: { some: { merchantId } } },
             { OR: buildClientSearchFilter(search) },
+            { deletedAt: null },
           ],
         }
-      : { loyaltyCards: { some: { merchantId } } };
+      : { loyaltyCards: { some: { merchantId } }, deletedAt: null };
 
     const [clients, total] = await Promise.all([
       this.clientRepo.findMany({
@@ -102,12 +103,13 @@ export class MerchantClientService {
   async getClientsForScan(merchantId: string, search?: string) {
     if (!search) return [];
 
-    // First, search among existing loyalty card holders
+    // First, search among existing loyalty card holders (exclude deleted accounts)
     const existingClients = await this.clientRepo.findMany({
       where: {
         AND: [
           { loyaltyCards: { some: { merchantId } } },
           { OR: buildClientSearchFilter(search) },
+          { deletedAt: null },
         ],
       },
       select: CLIENT_SCAN_SELECT,

@@ -59,14 +59,18 @@ export async function setupAndroidChannel() {
       importance: Notifications.AndroidImportance.HIGH,
       vibrationPattern: [0, 250, 250, 250],
       lightColor: '#7C3AED',
-      sound: 'default',
+      showBadge: true,
+      // Do not pass sound: 'default' — expo-notifications treats the
+      // string as a filename in res/raw/. Use null to inherit device default.
+      sound: null,
     });
 
     // Default channel for general notifications
     await Notifications.setNotificationChannelAsync('default', {
       name: i18n.t('notifications.channelGeneral'),
-      importance: Notifications.AndroidImportance.DEFAULT,
-      sound: 'default',
+      importance: Notifications.AndroidImportance.HIGH,
+      showBadge: true,
+      sound: null,
     });
   }
 }

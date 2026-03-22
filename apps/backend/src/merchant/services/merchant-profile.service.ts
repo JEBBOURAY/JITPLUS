@@ -548,6 +548,11 @@ export class MerchantProfileService {
       },
     });
 
+    // Immediately revoke all active sessions so existing JWTs are rejected
+    await this.deviceSessionRepo.deleteMany({
+      where: { merchantId },
+    });
+
     return { message: `Le compte "${merchant.nom}" a été supprimé.` };
   }
 }
