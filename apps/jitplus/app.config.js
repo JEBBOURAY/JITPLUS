@@ -135,7 +135,10 @@ module.exports = ({ config }) => {
         'expo-notifications',
         {
           icon: './assets/images/jitpluslogo.png',
-          color: '#7C3AED',
+          // color removed: setting it here duplicates notification_icon_color
+          // with the one already in expo-notifications AAR resources, causing
+          // a Gradle mergeReleaseResources conflict. Color is set at runtime
+          // via setNotificationChannelAsync in notifications.ts instead.
           defaultChannel: 'jit-marketing',
           sounds: [],
         },
