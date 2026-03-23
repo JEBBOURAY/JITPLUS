@@ -25,6 +25,9 @@ export class PrismaRawQueryRunner implements IRawQueryRunner {
   constructor(private readonly prisma: PrismaService) {}
 
   queryRaw<T = unknown>(query: TemplateStringsArray | Prisma.Sql, ...values: unknown[]): Promise<T[]> {
+    if (typeof query === 'string') {
+      throw new Error('Raw string queries are forbidden — use tagged template literals or Prisma.sql``.');
+    }
     if (isSqlObject(query)) {
       return this.prisma.$queryRaw<T[]>(query);
     }
@@ -32,6 +35,9 @@ export class PrismaRawQueryRunner implements IRawQueryRunner {
   }
 
   executeRaw(query: TemplateStringsArray | Prisma.Sql, ...values: unknown[]): Promise<number> {
+    if (typeof query === 'string') {
+      throw new Error('Raw string queries are forbidden — use tagged template literals or Prisma.sql``.');
+    }
     if (isSqlObject(query)) {
       return this.prisma.$executeRaw(query);
     }

@@ -8,7 +8,6 @@ import {
   UseGuards,
   Query,
   Param,
-  NotFoundException,
   BadRequestException,
   HttpCode,
   HttpStatus,
@@ -25,7 +24,7 @@ import { ClientOnlyGuard } from '../common/guards/client-only.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtPayload } from '../common/interfaces/jwt-payload.interface';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
-import { SendOtpDto, VerifyOtpDto, CompleteProfileDto, ClientUpdateProfileDto, UpdatePushTokenDto, DevLoginDto, SendOtpEmailDto, VerifyOtpEmailDto, GoogleLoginDto, LoginEmailDto, LoginPhoneDto, SetPasswordDto, RefreshTokenDto, ClientDeleteAccountDto } from './dto';
+import { SendOtpDto, VerifyOtpDto, CompleteProfileDto, ClientUpdateProfileDto, UpdatePushTokenDto, SendOtpEmailDto, VerifyOtpEmailDto, GoogleLoginDto, LoginEmailDto, LoginPhoneDto, SetPasswordDto, RefreshTokenDto, ClientDeleteAccountDto } from './dto';
 
 @ApiTags('Client Auth')
 @Controller('client-auth')
@@ -87,16 +86,6 @@ export class ClientAuthController {
     return this.clientAuthService.googleLogin(dto.idToken);
   }
 
-  @Post('dev-login')
-  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 5 } })
-  async devLogin(@Body() dto: DevLoginDto) {
-    // SECURITY: reject unless NODE_ENV is explicitly set to 'development'
-    if (!process.env.NODE_ENV || process.env.NODE_ENV !== 'development') {
-      throw new NotFoundException();
-    }
-    return this.clientAuthService.devLogin(dto.telephone);
-  }
-
   @Post('login-email')
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 5 } })
   async loginWithEmail(@Body() dto: LoginEmailDto) {
@@ -118,7 +107,7 @@ export class ClientAuthController {
   @Post('complete-profile')
   @UseGuards(AuthGuard('jwt'), ClientOnlyGuard)
   async completeProfile(@CurrentUser() user: JwtPayload, @Body() dto: CompleteProfileDto) {
-    return this.clientAuthService.completeProfile(user.userId, dto.prenom, dto.nom, dto.termsAccepted, dto.telephone, dto.dateNaissance);
+    return this.clientAuthService.completeProfile(user.userId, dto.prenom, dto.nom, dto.termsAccepted, dto.telephone, dto.dateNaissance, dto.password);
   }
 
   @Get('profile')

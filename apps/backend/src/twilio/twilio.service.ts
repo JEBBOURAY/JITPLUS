@@ -113,15 +113,24 @@ export class TwilioService implements ISmsProvider {
 
     try {
       if (this.marketingContentSid) {
-        // Template approach: body is injected as variable {{1}}
-        await this.client.messages.create({
-          from: this.whatsappFrom,
-          to: destination,
-          contentSid: this.marketingContentSid,
-          contentVariables: JSON.stringify({ '1': body }),
-        });
+        try {
+          await this.client.messages.create({
+            from: this.whatsappFrom,
+            to: destination,
+            contentSid: this.marketingContentSid,
+            contentVariables: JSON.stringify({ '1': body }),
+          });
+        } catch (templateError: unknown) {
+          const templateErrMsg = templateError instanceof Error ? templateError.message : String(templateError);
+          this.logger.warn(`Marketing template send failed, retrying as plain text: ${templateErrMsg}`);
+          await this.client.messages.create({
+            from: this.whatsappFrom,
+            to: destination,
+            body,
+          });
+        }
       } else {
-        // Plain text fallback (sandbox 24h window only)
+        // Plain text — works inside 24h session window (user just did OTP)
         await this.client.messages.create({
           from: this.whatsappFrom,
           to: destination,
@@ -132,7 +141,14 @@ export class TwilioService implements ISmsProvider {
       return true;
     } catch (error: unknown) {
       const errMsg = error instanceof Error ? error.message : String(error);
-      this.logger.error(`WhatsApp message to ${to} failed: ${errMsg}`);
+      const twilioCode = (error as any)?.code;
+      const twilioStatus = (error as any)?.status;
+      this.logger.error(
+        `WhatsApp message to ${to} failed: ${errMsg}` +
+        (twilioCode ? ` [code=${twilioCode}]` : '') +
+        (twilioStatus ? ` [status=${twilioStatus}]` : '') +
+        ` (from=${this.whatsappFrom}, template=${this.marketingContentSid ?? 'none'})`,
+      );
       return false;
     }
   }

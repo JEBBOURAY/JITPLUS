@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import {
   View, Text, ScrollView, RefreshControl, StyleSheet, Pressable, Alert, Platform,
   TextInput, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Image,
@@ -12,8 +12,8 @@ import * as Sharing from 'expo-sharing';
 import Constants from 'expo-constants';
 import {
   User, LogOut, Phone, Mail, Pencil, Check, X, Trash2, AlertTriangle,
-  Share2, MessageCircle, ChevronDown, Moon, Info, Globe, FileDown, Shield,
-  Star, MessageSquare, Calendar,
+  Share2, MessageCircle, ChevronDown, ChevronRight, Moon, Info, Globe, FileDown, Shield,
+  Star, MessageSquare, Calendar, Sparkles,
 } from 'lucide-react-native';
 import { haptic, HapticStyle } from '@/utils/haptics';
 import { useGuardedCallback } from '@/hooks/useGuardedCallback';
@@ -57,24 +57,37 @@ export default function ProfileScreen() {
   const [editTelephone, setEditTelephone] = useState('');
   const [editDateNaissance, setEditDateNaissance] = useState('');
 
-  // Missing info banner
-  const [showMissingBanner, setShowMissingBanner] = useState(true);
-
   // Preferences
-  const [shareInfoMerchants, setShareInfoMerchants] = useState(client?.shareInfoMerchants ?? true);
+  const [shareInfoMerchants, setShareInfoMerchants] = useState(client?.shareInfoMerchants ?? false);
   const [notifWhatsapp, setNotifWhatsapp] = useState(client?.notifWhatsapp ?? true);
   const [isSavingPref, setIsSavingPref] = useState<string | null>(null);
   const [showLanguageModal, setShowLanguageModal] = useState(false);
 
-  // Compute missing fields
-  const missingFields: string[] = [];
-  if (client) {
-    if (!client.prenom) missingFields.push(t('profile.missingFirstName'));
-    if (!client.nom) missingFields.push(t('profile.missingLastName'));
-    if (!client.email) missingFields.push(t('profile.missingEmail'));
-    if (!client.telephone) missingFields.push(t('profile.missingPhone'));
-  }
-  const hasMissingInfo = missingFields.length > 0;
+
+  // ── Profile completion progress ──
+  const profileChecklist = useMemo(() => ([
+    { key: 'email', done: !!client?.email, label: t('home.profileFieldEmail') },
+    { key: 'phone', done: !!client?.telephone, label: t('home.profileFieldPhone') },
+    { key: 'birthDate', done: !!client?.dateNaissance, label: t('home.profileFieldBirthDate') },
+  ]), [client?.email, client?.telephone, client?.dateNaissance, t]);
+
+  const profileCompletionPercent = useMemo(() => {
+    const doneCount = profileChecklist.filter((f) => f.done).length;
+    return Math.round((doneCount / profileChecklist.length) * 100);
+  }, [profileChecklist]);
+
+  const missingProfileLabels = useMemo(
+    () => profileChecklist.filter((f) => !f.done).map((f) => f.label),
+    [profileChecklist],
+  );
+
+  const profileSummaryTitle = missingProfileLabels.length
+    ? t('home.completeProfileTitle')
+    : t('home.profileCompleteTitle');
+
+  const profileSummaryHint = missingProfileLabels.length
+    ? t('home.completeProfileHint', { fields: missingProfileLabels.join(', ') })
+    : t('home.profileCompleteHint');
 
   // ── Persist editing draft when user leaves app (call, task switch) ──
   const isEditingRef = useRef(isEditing);
@@ -125,10 +138,9 @@ export default function ProfileScreen() {
 
   useFocusEffect(useCallback(() => {
     // Reset banner visibility each time the screen is focused
-    setShowMissingBanner(true);
     if (!client) refreshProfile?.().finally(() => setIsLoading(false));
     if (client) {
-      setShareInfoMerchants(client.shareInfoMerchants ?? true);
+      setShareInfoMerchants(client.shareInfoMerchants ?? false);
       setNotifWhatsapp(client.notifWhatsapp ?? true);
     }
   }, [client, refreshProfile]));
@@ -347,39 +359,52 @@ export default function ProfileScreen() {
               </View>
             </FadeInView>
 
-            {/* Missing info banner */}
-            {hasMissingInfo && showMissingBanner && !isLoading && (
+            {/* Profile completion progress card */}
+            {!isLoading && (
               <FadeInView delay={200} duration={300}>
-                <View style={[styles.missingBanner, { backgroundColor: `${palette.amber}15`, borderColor: `${palette.amber}40` }]}>
-                  <View style={styles.missingBannerContent}>
-                    <View style={[styles.missingBannerIcon, { backgroundColor: `${palette.amber}20` }]}>
-                      <Info size={ms(18)} color={palette.amber} strokeWidth={1.5} />
+                <TouchableOpacity
+                  style={[styles.profileCompletionCard, { backgroundColor: theme.bgCard, borderColor: theme.border }]}
+                  onPress={() => { if (profileCompletionPercent < 100) startEditing(); }}
+                  activeOpacity={0.9}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('home.completeProfileCta')}
+                >
+                  <View style={styles.profileCompletionHeader}>
+                    <View style={[styles.profileCompletionBadge, { backgroundColor: `${palette.violet}12` }]}>
+                      <Sparkles size={ms(14)} color={palette.violet} strokeWidth={1.5} />
                     </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.missingBannerTitle, { color: theme.text }]}>
-                        {t('profile.incompleteProfile')}
-                      </Text>
-                      <Text style={[styles.missingBannerText, { color: theme.textMuted }]}>
-                        {t('profile.incompleteHint', { fields: missingFields.join(', ') })}
+                    <View style={styles.profileCompletionTextWrap}>
+                      <Text style={[styles.profileCompletionTitle, { color: theme.text }]}>{profileSummaryTitle}</Text>
+                      <Text style={[styles.profileCompletionHint, { color: theme.textMuted }]} numberOfLines={2}>
+                        {profileSummaryHint}
                       </Text>
                     </View>
-                    <TouchableOpacity
-                      onPress={() => { setShowMissingBanner(false); haptic(HapticStyle.Light); }}
-                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                      style={styles.missingBannerClose}
-                    >
-                      <X size={ms(16)} color={theme.textMuted} strokeWidth={1.5} />
-                    </TouchableOpacity>
+                    <Text style={[styles.profileCompletionPercent, { color: palette.violet }]}>
+                      {profileCompletionPercent}%
+                    </Text>
                   </View>
-                  <TouchableOpacity
-                    onPress={() => { startEditing(); setShowMissingBanner(false); }}
-                    activeOpacity={0.7}
-                    style={[styles.missingBannerBtn, { backgroundColor: `${palette.amber}25` }]}
-                  >
-                    <Pencil size={ms(14)} color={palette.amber} strokeWidth={1.5} />
-                    <Text style={[styles.missingBannerBtnText, { color: palette.amber }]}>{t('profile.completeProfile')}</Text>
-                  </TouchableOpacity>
-                </View>
+
+                  <View style={[styles.profileCompletionTrack, { backgroundColor: theme.borderLight }]}>
+                    <View
+                      style={[
+                        styles.profileCompletionFill,
+                        {
+                          width: `${profileCompletionPercent}%`,
+                          backgroundColor: profileCompletionPercent === 100 ? palette.emerald : palette.violet,
+                        },
+                      ]}
+                    />
+                  </View>
+
+                  {profileCompletionPercent < 100 && (
+                    <View style={styles.profileCompletionFooter}>
+                      <Text style={[styles.profileCompletionCta, { color: theme.textSecondary }]}>
+                        {t('home.completeProfileCta')}
+                      </Text>
+                      <ChevronRight size={ms(16)} color={theme.textMuted} strokeWidth={1.5} />
+                    </View>
+                  )}
+                </TouchableOpacity>
               </FadeInView>
             )}
 
@@ -1101,50 +1126,43 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-end' as const,
   },
 
-  /* ── Missing info banner ── */
-  missingBanner: {
-    borderRadius: radius.xl,
-    borderWidth: 1,
-    padding: wp(14),
-    marginBottom: hp(16),
-  },
-  missingBannerContent: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: wp(10),
-  },
-  missingBannerIcon: {
-    width: ms(34),
-    height: ms(34),
-    borderRadius: ms(10),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  missingBannerTitle: {
-    fontSize: FS.md,
-    fontWeight: '700',
-    marginBottom: hp(2),
-  },
-  missingBannerText: {
-    fontSize: FS.xs,
-    lineHeight: ms(18),
-  },
-  missingBannerClose: {
-    padding: ms(4),
-  },
-  missingBannerBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: wp(6),
-    marginTop: hp(10),
-    paddingVertical: hp(8),
+  /* ── Profile completion card ── */
+  profileCompletionCard: {
     borderRadius: radius.lg,
+    padding: wp(14),
+    marginBottom: hp(14),
+    borderWidth: 1,
   },
-  missingBannerBtnText: {
-    fontSize: FS.sm,
-    fontWeight: '700',
+  profileCompletionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp(10),
+    marginBottom: hp(10),
   },
+  profileCompletionBadge: {
+    width: ms(30),
+    height: ms(30),
+    borderRadius: ms(15),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileCompletionTextWrap: { flex: 1 },
+  profileCompletionTitle: { fontSize: FS.md, fontWeight: '700' },
+  profileCompletionHint: { fontSize: FS.xs, fontWeight: '500', marginTop: hp(3), lineHeight: ms(17) },
+  profileCompletionPercent: { fontSize: FS.md, fontWeight: '800' },
+  profileCompletionTrack: {
+    height: ms(8),
+    borderRadius: ms(4),
+    overflow: 'hidden',
+  },
+  profileCompletionFill: { height: '100%', borderRadius: ms(4) },
+  profileCompletionFooter: {
+    marginTop: hp(10),
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  profileCompletionCta: { fontSize: FS.xs, fontWeight: '700' },
 
   /* ── Delete Modal ── */
   modalOverlay: {

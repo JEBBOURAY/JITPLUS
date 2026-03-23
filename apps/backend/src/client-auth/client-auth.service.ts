@@ -8,7 +8,7 @@ import {
 } from '../common/repositories';
 import { randomInt, randomBytes, createHash, createHmac, randomUUID } from 'crypto';
 import * as bcrypt from 'bcryptjs';
-import { OTP_MIN, OTP_MAX, OTP_EXPIRY_MS, OTP_COOLDOWN_MS, MAX_OTP_ATTEMPTS, BCRYPT_SALT_ROUNDS } from '../common/constants';
+import { OTP_MIN, OTP_MAX, OTP_EXPIRY_MS, OTP_COOLDOWN_MS, MAX_OTP_ATTEMPTS, BCRYPT_SALT_ROUNDS, MAX_OTP_SENDS_PER_DAY } from '../common/constants';
 import { errMsg } from '../common/utils';
 import { checkLockout, handleFailedLogin, resetLoginAttempts, LockoutDbOps } from '../common/utils/login-lockout.helper';
 import { CLIENT_AUTH_SELECT, CLIENT_LOGIN_SELECT } from '../common/prisma-selects';
@@ -39,7 +39,7 @@ export interface ClientAuthResponse {
 /** Subset of client fields returned after profile / password update. */
 export interface ClientProfileResult {
   success: boolean;
-  client: Omit<ClientAuthResponse['client'], 'isNewUser'>;
+  client: Omit<ClientAuthResponse['client'], 'isNewUser'> & { hasPassword?: boolean };
 }
 
 @Injectable()
@@ -48,6 +48,9 @@ export class ClientAuthService {
   private readonly googleClient: OAuth2Client;
   // Dummy hash for timing-safe comparison when user not found
   private static readonly DUMMY_HASH = '$2a$12$LJ3m4ys3Lz0KDlu0BRahYOiFMfGHgdOUmrGfEdKnXqJRikMOFbECi';
+
+  /** In-memory daily OTP send counter: identifier → { count, resetAt } */
+  private readonly otpDailyCounter = new Map<string, { count: number; resetAt: number }>();
 
   constructor(
     @Inject(CLIENT_REPOSITORY) private clientRepo: IClientRepository,
@@ -58,6 +61,27 @@ export class ClientAuthService {
     @Inject(SMS_PROVIDER) private smsProvider: ISmsProvider,
   ) {
     this.googleClient = new OAuth2Client();
+  }
+
+  /**
+   * Enforce daily OTP limit per identifier (phone or email).
+   * Throws 429 if the identifier has exceeded MAX_OTP_SENDS_PER_DAY.
+   */
+  private checkDailyOtpLimit(identifier: string): void {
+    const now = Date.now();
+    const entry = this.otpDailyCounter.get(identifier);
+    if (entry && now < entry.resetAt) {
+      if (entry.count >= MAX_OTP_SENDS_PER_DAY) {
+        throw new HttpException(
+          `Limite quotidienne atteinte (${MAX_OTP_SENDS_PER_DAY} codes/jour). Réessayez demain.`,
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      }
+      entry.count++;
+    } else {
+      // Reset or create counter for next 24 hours
+      this.otpDailyCounter.set(identifier, { count: 1, resetAt: now + 86_400_000 });
+    }
   }
 
   /** Lockout DB ops for Client model */
@@ -176,6 +200,9 @@ export class ClientAuthService {
     if (!isRegister && !existingClient) {
       throw new BadRequestException('Aucun compte n\'est associé à ce numéro. Veuillez d\'abord ajouter votre numéro à votre profil ou vous inscrire.');
     }
+
+    // Daily OTP send limit per phone number
+    this.checkDailyOtpLimit(normalizedPhone);
 
     // Per-identifier cooldown — prevent OTP spam even if IP changes
     const existingOtp = await this.otpRepo.findUnique({ where: { telephone: normalizedPhone } });
@@ -298,49 +325,6 @@ export class ClientAuthService {
     return this.buildAuthResponse(resolvedClient, isNewUser);
   }
 
-  /**
-   * Dev-only login without OTP
-   */
-  async devLogin(telephone: string): Promise<ClientAuthResponse> {
-    if (process.env.NODE_ENV !== 'development') {
-      throw new BadRequestException('Mode dev désactivé en dehors de l\'environnement development');
-    }
-
-    const normalizedPhone = this.normalizePhone(telephone);
-
-    if (!this.isValidPhone(normalizedPhone)) {
-      throw new BadRequestException('Format de numéro de téléphone invalide');
-    }
-
-    let client = await this.clientRepo.findUnique({
-      where: { telephone: normalizedPhone },
-      select: CLIENT_AUTH_SELECT,
-    });
-
-    const isNewUser = !client || !client.nom;
-
-    if (!client) {
-      try {
-        client = await this.clientRepo.create({
-          data: {
-            telephone: normalizedPhone,
-            countryCode: this.extractCountryCode(normalizedPhone),
-            nom: null,
-            email: null,
-          },
-          select: CLIENT_AUTH_SELECT,
-        });
-      } catch (error: any) {
-        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-          throw new ConflictException('Un compte avec ce numéro de téléphone existe déjà');
-        }
-        throw error;
-      }
-    }
-
-    return this.buildAuthResponse(client, isNewUser);
-  }
-
   /** Generate a cryptographically random refresh token */
   private generateRefreshToken(): string {
     return randomBytes(48).toString('base64url');
@@ -396,7 +380,7 @@ export class ClientAuthService {
         email: client.email,
         telephone: client.telephone ?? null,
         termsAccepted: client.termsAccepted ?? false,
-        shareInfoMerchants: client.shareInfoMerchants ?? true,
+        shareInfoMerchants: client.shareInfoMerchants ?? false,
         notifPush: client.notifPush ?? true,
         notifWhatsapp: client.notifWhatsapp ?? true,
         dateNaissance: client.dateNaissance ?? null,
@@ -494,6 +478,9 @@ export class ClientAuthService {
     if (!isRegister && !existingClient) {
       throw new BadRequestException('Aucun compte n\'est associé à cet email. Veuillez d\'abord ajouter votre email à votre profil ou vous inscrire.');
     }
+
+    // Daily OTP send limit per email
+    this.checkDailyOtpLimit(normalizedEmail);
 
     // Per-identifier cooldown — prevent OTP spam even if IP changes
     const existingOtp = await this.otpRepo.findUnique({ where: { email: normalizedEmail } });
@@ -604,9 +591,13 @@ export class ClientAuthService {
       }
 
       // Verify Google ID token using google-auth-library (cryptographic verification)
+      // Accept both Web and Android client IDs as valid audiences
+      const webClientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
+      const androidClientId = this.configService.get<string>('GOOGLE_ANDROID_CLIENT_ID');
+      const allowedAudiences = [webClientId, androidClientId].filter(Boolean) as string[];
       const ticket = await this.googleClient.verifyIdToken({
         idToken,
-        audience: this.configService.get<string>('GOOGLE_CLIENT_ID'),
+        audience: allowedAudiences,
       });
       const payload = ticket.getPayload();
 
@@ -668,21 +659,26 @@ export class ClientAuthService {
   }
 
   /**
-   * Complete profile for new users (prénom + nom + terms acceptance)
+   * Complete profile for new users (prénom + nom + terms acceptance + optional password)
    */
-  async completeProfile(clientId: string, prenom: string, nom: string, termsAccepted: boolean, telephone?: string, dateNaissance?: string): Promise<ClientProfileResult> {
+  async completeProfile(clientId: string, prenom: string, nom: string, termsAccepted: boolean, telephone?: string, dateNaissance?: string, password?: string): Promise<ClientProfileResult> {
     if (!termsAccepted) {
       throw new BadRequestException('Vous devez accepter les mentions légales');
     }
 
     // Build update data
-    const data: { prenom: string; nom: string; termsAccepted: true; shareInfoMerchants: true; telephone?: string; countryCode?: string; dateNaissance?: Date } = {
+    const data: { prenom: string; nom: string; termsAccepted: true; shareInfoMerchants: false; telephone?: string; countryCode?: string; dateNaissance?: Date; password?: string } = {
       prenom: prenom.trim(),
       nom: nom.trim(),
       termsAccepted: true,
-      shareInfoMerchants: true, // opt-in par défaut à l'inscription
+      shareInfoMerchants: false, // opt-out par défaut à l'inscription
       ...(dateNaissance ? { dateNaissance: new Date(dateNaissance) } : {}),
     };
+
+    // If password provided, hash it and include in the atomic update
+    if (password) {
+      data.password = await bcrypt.hash(password, BCRYPT_SALT_ROUNDS);
+    }
 
     // If telephone provided (email-registered users), normalize and save it
     if (telephone) {
@@ -707,8 +703,17 @@ export class ClientAuthService {
       select: CLIENT_AUTH_SELECT,
     });
 
-    // Send welcome email to client
-    if (client.email) {
+    // Send welcome message based on registration method:
+    // - WhatsApp users (telephone + no googleId): welcome via WhatsApp
+    // - Google users (googleId set): welcome via email
+    // - Email users (email + no googleId): welcome via email
+    if (client.telephone && !client.googleId && !client.email) {
+      const name = client.prenom ?? 'cher client';
+      this.smsProvider.sendWhatsAppMessage(
+        client.telephone,
+        `Bienvenue ${name} sur JitPlus ! 🎉 Vos cartes de fidélité, partout avec vous.`,
+      ).catch((err) => this.logger.warn('Welcome WhatsApp failed', errMsg(err)));
+    } else if (client.email) {
       this.mailProvider.sendWelcomeClient(client.email, client.prenom ?? undefined)
         .catch((err) => this.logger.warn('Welcome email failed', errMsg(err)));
     }
@@ -726,8 +731,7 @@ export class ClientAuthService {
         notifPush: client.notifPush,
         notifWhatsapp: client.notifWhatsapp,
         dateNaissance: client.dateNaissance,
-        createdAt: client.createdAt,
-      },
+        createdAt: client.createdAt,        ...(password ? { hasPassword: true } : {}),      },
     };
   }
 
@@ -832,6 +836,7 @@ export class ClientAuthService {
         notifPush: client.notifPush,
         notifWhatsapp: client.notifWhatsapp,
         dateNaissance: client.dateNaissance ?? null,
+        hasPassword: true,
         createdAt: client.createdAt,
       },
     };

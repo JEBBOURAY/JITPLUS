@@ -17,7 +17,8 @@ export class FirebaseService implements OnModuleInit, IPushProvider {
 
     if (!projectId || !clientEmail || !privateKey) {
       this.logger.warn(
-        'Firebase credentials not configured – push notifications will be simulated',
+        `Firebase credentials incomplete – push notifications will be SIMULATED. ` +
+        `projectId=${!!projectId}, clientEmail=${!!clientEmail}, privateKey=${!!privateKey}`,
       );
       return;
     }

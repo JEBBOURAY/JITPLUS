@@ -37,6 +37,8 @@ export function useRealtimeSocket(config: RealtimeSocketConfig): Socket | null {
 
   const authFailures = useRef(0);
   const MAX_AUTH_FAILURES = 5;
+  const connectErrorCountRef = useRef(0);
+  const lastConnectErrorLogAtRef = useRef(0);
 
   const connect = useCallback(async () => {
     // Disconnect previous socket if any
@@ -71,6 +73,7 @@ export function useRealtimeSocket(config: RealtimeSocketConfig): Socket | null {
 
     newSocket.on('connect', () => {
       authFailures.current = 0;
+      connectErrorCountRef.current = 0;
       if (__DEV__) console.log('[WS] Connected:', newSocket.id);
     });
 
@@ -100,7 +103,20 @@ export function useRealtimeSocket(config: RealtimeSocketConfig): Socket | null {
     });
 
     if (__DEV__) {
-      newSocket.on('connect_error', (err: Error) => console.log('[WS] Error:', err.message));
+      newSocket.on('connect_error', (err: Error) => {
+        connectErrorCountRef.current += 1;
+        const attempts = connectErrorCountRef.current;
+        const now = Date.now();
+        const message = err.message || 'unknown error';
+
+        // Avoid flooding Metro logs when backend/ws endpoint is unreachable.
+        if (attempts <= 3 || now - lastConnectErrorLogAtRef.current > 30000) {
+          console.log(`[WS] Error (${attempts}):`, message);
+          lastConnectErrorLogAtRef.current = now;
+        } else if (attempts === 4) {
+          console.log('[WS] Repeated connection errors suppressed for 30s');
+        }
+      });
     }
 
     socketRef.current = newSocket;

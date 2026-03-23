@@ -7,6 +7,8 @@
     "start": "pnpm run --parallel start",
     "dev": "pnpm run --parallel dev",
     "build": "pnpm run --parallel build",
+    "eas:build:jitplus:android": "eas build --platform android --profile production --project-dir apps/jitplus",
+    "eas:submit:jitplus:android": "eas submit --platform android --profile production --project-dir apps/jitplus",
     "test": "pnpm run --parallel test",
     "lint": "pnpm run --parallel lint"
   },

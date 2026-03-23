@@ -39,6 +39,7 @@ import { THROTTLE_TTL } from './common/constants';
         PORT: Joi.number().default(3000),
         CORS_ORIGINS: Joi.when('NODE_ENV', { is: 'production', then: Joi.string().required(), otherwise: Joi.string().optional() }),
         GOOGLE_CLIENT_ID: Joi.string().optional(),
+        GOOGLE_ANDROID_CLIENT_ID: Joi.string().optional(),
         BACKEND_URL: Joi.string().uri().optional(),
         // ── Google Cloud Platform ──────────────────────────────────────────
         GCP_PROJECT_ID: Joi.when('NODE_ENV', { is: 'production', then: Joi.string().required(), otherwise: Joi.string().optional() }),

@@ -203,6 +203,8 @@ export default function WelcomeScreen() {
             {t('welcome.exploreGuest')}
           </Text>
         </TouchableOpacity>
+
+        <Text style={[styles.madeIn, { color: theme.textMuted }]}>Made in Morocco 🇲🇦</Text>
       </SafeAreaView>
     </View>
   );
@@ -283,6 +285,12 @@ const styles = StyleSheet.create({
   exploreBtnText: {
     fontFamily: 'Lexend_500Medium',
     fontSize: fontSize.sm,
+  },
+  madeIn: {
+    fontFamily: 'Lexend_400Regular',
+    fontSize: fontSize.xs,
+    textAlign: 'center',
+    marginTop: hp(10),
   },
   langBar: { position: 'absolute', top: 0, right: 0, zIndex: 10, paddingRight: wp(16) },
   langRow: { flexDirection: 'row', gap: wp(6), paddingTop: hp(4) },

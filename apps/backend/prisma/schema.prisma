@@ -232,7 +232,7 @@ model Client {
   pushToken           String?       @map("push_token") @db.VarChar(512)
   refreshTokenHash    String?       @unique @map("refresh_token_hash")
   termsAccepted       Boolean       @default(false) @map("terms_accepted")
-  shareInfoMerchants  Boolean       @default(true)  @map("share_info_merchants")
+  shareInfoMerchants  Boolean       @default(false) @map("share_info_merchants")
   notifPush           Boolean       @default(true)  @map("notif_push")
   notifEmail          Boolean       @default(true)  @map("notif_email")
   notifWhatsapp       Boolean       @default(true) @map("notif_whatsapp")

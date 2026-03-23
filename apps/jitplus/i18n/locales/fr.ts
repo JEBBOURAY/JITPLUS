@@ -101,6 +101,8 @@ export default {
   completeProfile: {
     stepOf: 'Étape %{current} sur %{total}',
     createProfileTitle: 'Créez votre profil',
+    passwordStepTitle: 'Sécurisez votre compte',
+    passwordStepSubtitle: 'Créez un mot de passe pour vous reconnecter facilement',
     lastStepTitle: 'Dernière étape',
     nameSubtitle: 'Dites-nous comment vous vous appelez',
     termsSubtitle: 'Acceptez les conditions pour continuer',
@@ -160,6 +162,16 @@ export default {
     lastScan: 'Dernier scan :',
     rewardBannerWithMerchant: 'Cadeau disponible chez %{name} !',
     rewardBannerGeneric: 'Nouveau cadeau disponible !',
+    unavailableMerchantName: 'Commerce indisponible',
+    unavailableMerchantMessage: 'Ce commerce n\'est plus disponible.',
+    completeProfileTitle: 'Complétez votre profil',
+    completeProfileHint: 'Informations manquantes : %{fields}.',
+    profileCompleteTitle: 'Profil complété',
+    profileCompleteHint: 'Excellent, vos informations principales sont complètes.',
+    completeProfileCta: 'Compléter dans le profil',
+    profileFieldEmail: 'email',
+    profileFieldPhone: 'téléphone',
+    profileFieldBirthDate: 'date de naissance',
   },
 
   // ── Discover ──

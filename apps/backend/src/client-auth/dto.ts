@@ -11,13 +11,6 @@ export class SendOtpDto {
   isRegister?: boolean;
 }
 
-export class DevLoginDto {
-  @IsString()
-  @IsNotEmpty()
-  @Matches(/^[0-9+\s\-()]{10,15}$/, { message: 'Numéro de téléphone invalide' })
-  telephone: string;
-}
-
 export class VerifyOtpDto {
   @IsString()
   @IsNotEmpty()
@@ -88,6 +81,14 @@ export class CompleteProfileDto {
   @IsOptional()
   @IsDateString()
   dateNaissance?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(8, 100, { message: 'Le mot de passe doit contenir au moins 8 caractères' })
+  @Matches(/^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).+$/, {
+    message: 'Le mot de passe doit contenir au moins une majuscule, un chiffre et un caractère spécial',
+  })
+  password?: string;
 }
 
 export class ClientUpdateProfileDto {

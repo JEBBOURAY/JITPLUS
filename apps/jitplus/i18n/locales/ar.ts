@@ -101,6 +101,8 @@ export default {
   completeProfile: {
     stepOf: 'الخطوة %{current} من %{total}',
     createProfileTitle: 'أنشئ ملفك الشخصي',
+    passwordStepTitle: 'قم بتأمين حسابك',
+    passwordStepSubtitle: 'أنشئ كلمة مرور لتسجيل الدخول بسهولة',
     lastStepTitle: 'الخطوة الأخيرة',
     nameSubtitle: 'أخبرنا باسمك',
     termsSubtitle: 'وافق على الشروط للمتابعة',
@@ -160,6 +162,16 @@ export default {
     lastScan: 'آخر مسح:',
     rewardBannerWithMerchant: 'هدية متاحة لدى %{name}!',
     rewardBannerGeneric: 'مكافأة جديدة متاحة!',
+    unavailableMerchantName: 'متجر غير متاح',
+    unavailableMerchantMessage: 'هذا المتجر لم يعد متاحاً.',
+    completeProfileTitle: 'أكمل ملفك الشخصي',
+    completeProfileHint: 'المعلومات الناقصة: %{fields}.',
+    profileCompleteTitle: 'الملف مكتمل',
+    profileCompleteHint: 'ممتاز، معلومات ملفك الأساسية مكتملة.',
+    completeProfileCta: 'أكملها من الملف الشخصي',
+    profileFieldEmail: 'البريد الإلكتروني',
+    profileFieldPhone: 'الهاتف',
+    profileFieldBirthDate: 'تاريخ الميلاد',
   },
 
   // ── Discover ──

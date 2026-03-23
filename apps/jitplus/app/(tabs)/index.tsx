@@ -62,6 +62,7 @@ const CardItem = React.memo(function CardItem({
 }) {
   const theme = useTheme();
   const isStamps = card.merchant?.loyaltyType === 'STAMPS';
+  const isMerchantUnavailable = !card.merchant?.id || !card.merchant?.nomBoutique;
   const [logoError, setLogoError] = useState(false);
 
   // Defensive: backend should always return a number, but guard against null/undefined
@@ -142,7 +143,7 @@ const CardItem = React.memo(function CardItem({
           {/* Name row */}
           <View style={styles.cardNameRow}>
             <Text style={[styles.cardName, { color: theme.text }]} numberOfLines={1}>
-              {card.merchant?.nomBoutique || t('common.shop')}
+              {isMerchantUnavailable ? t('home.unavailableMerchantName') : (card.merchant?.nomBoutique || t('common.shop'))}
             </Text>
             <RNImage
               source={require('@/assets/images/jitpluslogo.png')}
@@ -160,7 +161,14 @@ const CardItem = React.memo(function CardItem({
             </View>
           )}
 
-          {isStamps ? (
+          {isMerchantUnavailable ? (
+            <View style={[styles.unavailableBanner, { backgroundColor: `${theme.danger}10` }]}>
+              <AlertCircle size={ms(12)} color={theme.danger} strokeWidth={1.8} />
+              <Text style={[styles.unavailableText, { color: theme.danger }]}>
+                {t('home.unavailableMerchantMessage')}
+              </Text>
+            </View>
+          ) : isStamps ? (
             /* ── STAMPS: visual circle grid ── */
             <>
               <View style={styles.stampsGrid}>
@@ -269,7 +277,7 @@ const CardItem = React.memo(function CardItem({
           </Text>
         </View>
 
-        <ChevronRight size={ms(18)} color={theme.textMuted} strokeWidth={1.5} />
+        {!isMerchantUnavailable && <ChevronRight size={ms(18)} color={theme.textMuted} strokeWidth={1.5} />}
       </View>
     </GlassCard>
   );
@@ -494,7 +502,10 @@ export default function HomeScreen() {
       t={t}
       locale={locale}
       isClosest={sortMode === 'closest' && index === 0 && !!userLocation}
-      onPress={() => handleCardPress(card.merchantId)}
+      onPress={() => {
+        if (!card.merchant?.id || !card.merchant?.nomBoutique) return;
+        handleCardPress(card.merchantId);
+      }}
     />
   ), [handleCardPress, t, locale, sortMode, userLocation]);
 
@@ -810,6 +821,17 @@ const styles = StyleSheet.create({
     borderRadius: ms(8),
   },
   rewardBadgeText: { fontSize: fontSize.xs, fontWeight: '700' },
+  unavailableBanner: {
+    marginTop: hp(4),
+    paddingVertical: hp(5),
+    paddingHorizontal: wp(10),
+    borderRadius: ms(8),
+    alignSelf: 'flex-start' as const,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: wp(6),
+  },
+  unavailableText: { fontSize: fontSize.xs, fontWeight: '600' },
 
   // Empty
   emptyCards: {

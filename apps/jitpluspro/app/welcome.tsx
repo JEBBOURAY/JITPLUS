@@ -188,6 +188,8 @@ export default function WelcomeScreen() {
             <ArrowRight size={ms(20)} color="#FFFFFF" style={{ marginLeft: wp(8) }} />
           </LinearGradient>
         </TouchableOpacity>
+
+        <Text style={[styles.madeIn, { color: theme.textMuted }]}>Made in Morocco 🇲🇦</Text>
       </SafeAreaView>
     </View>
   );
@@ -253,6 +255,12 @@ const styles = StyleSheet.create({
     fontFamily: 'Lexend_600SemiBold',
     fontSize: fontSize.md,
     color: '#FFFFFF',
+  },
+  madeIn: {
+    fontFamily: 'Lexend_400Regular',
+    fontSize: fontSize.xs,
+    textAlign: 'center',
+    marginTop: hp(12),
   },
   langBar: { position: 'absolute', top: 0, right: 0, zIndex: 10, paddingRight: wp(16) },
   langRow: { flexDirection: 'row', gap: wp(6), paddingTop: hp(4) },

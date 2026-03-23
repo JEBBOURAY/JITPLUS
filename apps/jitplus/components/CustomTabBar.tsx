@@ -1,5 +1,5 @@
 import { View, TouchableOpacity, StyleSheet, Platform, Text } from 'react-native';
-import React from 'react';
+import React, { useCallback } from 'react';
 import { BlurView } from 'expo-blur';
 import { haptic } from '@/utils/haptics';
 import { CreditCard, Compass, User, Bell, QrCode } from 'lucide-react-native';
@@ -42,6 +42,18 @@ export default React.memo(function CustomTabBar({ state, navigation }: BottomTab
   const unreadCount = unreadData?.unreadCount ?? 0;
   const insets = useSafeAreaInsets();
 
+  const handleTabPress = useCallback((route: typeof state.routes[number], index: number) => {
+    haptic();
+    const event = navigation.emit({
+      type: 'tabPress',
+      target: route.key,
+      canPreventDefault: true,
+    });
+    if (state.index !== index && !event.defaultPrevented) {
+      navigation.navigate(route.name);
+    }
+  }, [state.index, navigation]);
+
   return (
     <View style={styles.wrapper}>
       <BlurView
@@ -65,19 +77,7 @@ export default React.memo(function CustomTabBar({ state, navigation }: BottomTab
             const label = LABEL_KEYS[route.name] ? t(LABEL_KEYS[route.name]) : route.name;
             const isQR = route.name === 'qr';
 
-            const onPress = () => {
-              haptic();
-
-              const event = navigation.emit({
-                type: 'tabPress',
-                target: route.key,
-                canPreventDefault: true,
-              });
-
-              if (!isFocused && !event.defaultPrevented) {
-                navigation.navigate(route.name);
-              }
-            };
+            const onPress = () => handleTabPress(route, index);
 
             // Center QR button with gradient
             if (isQR) {

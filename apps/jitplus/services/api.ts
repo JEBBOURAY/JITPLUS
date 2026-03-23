@@ -180,13 +180,14 @@ class ApiService {
     return data;
   }
 
-  async completeProfile(prenom: string, nom: string, termsAccepted: boolean, telephone?: string, dateNaissance?: string): Promise<CompleteProfileResponse> {
+  async completeProfile(prenom: string, nom: string, termsAccepted: boolean, telephone?: string, dateNaissance?: string, password?: string): Promise<CompleteProfileResponse> {
     const { data } = await this.api.post('/client-auth/complete-profile', {
       prenom,
       nom,
       termsAccepted,
       ...(telephone ? { telephone } : {}),
       ...(dateNaissance ? { dateNaissance } : {}),
+      ...(password ? { password } : {}),
     });
     return data;
   }

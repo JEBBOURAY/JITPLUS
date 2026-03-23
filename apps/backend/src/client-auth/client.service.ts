@@ -193,10 +193,18 @@ export class ClientService {
   }
 
   async updatePushToken(clientId: string, pushToken: string) {
+    // Reject Expo push tokens — the backend uses Firebase Admin SDK which
+    // only accepts native FCM (Android) or APNs (iOS) device tokens.
+    if (pushToken.startsWith('ExponentPushToken[') || pushToken.startsWith('ExpoPushToken[')) {
+      this.logger.warn(`Rejected Expo push token for client ${clientId} — only native FCM/APNs tokens are accepted`);
+      return { success: false, reason: 'expo_token_not_supported' };
+    }
+
     await this.clientRepo.update({
       where: { id: clientId },
       data: { pushToken },
     });
+    this.logger.log(`Push token updated for client ${clientId} (${pushToken.substring(0, 12)}…)`);
     return { success: true };
   }
 
@@ -237,7 +245,8 @@ export class ClientService {
         skip,
         take: safeTake,
       }),
-        this.loyaltyCardRepo.count({ where: { clientId, merchant: { deletedAt: null } } }),
+      this.loyaltyCardRepo.count({ where: { clientId, merchant: { deletedAt: null } } }),
+    ]);
     const totalPoints = cards.reduce((sum: number, card: any) => sum + card.points, 0);
 
     return {

@@ -5,7 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '@/services/api';
 import { Client } from '@/types';
 import { extractErrorMessage } from '@/utils/errorMessage';
-import { registerForPushNotifications, setupAndroidChannel } from '@/utils/notifications';
+import { isNativePushRuntimeAvailable, registerForPushNotifications, setupAndroidChannel } from '@/utils/notifications';
 import { useAuthStore } from '@/stores/authStore';
 
 interface AuthContextType {
@@ -96,18 +96,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await setupAndroidChannel();
 
         if (Platform.OS === 'android') {
-          // On Android, always call registerForPushNotifications — it internally
-          // calls requestPermissionsAsync() which shows the system dialog on
-          // Android 13+ if not yet granted, and is a no-op if already granted.
           const pushToken = await registerForPushNotifications();
           if (pushToken) {
-            await api.updatePushToken(pushToken);
-            if (__DEV__) console.log('Push token sent to backend (Android)');
+            const result = await api.updatePushToken(pushToken);
+            if (__DEV__) console.log('Push token sent to backend (Android):', pushToken.substring(0, 12), result);
+          } else {
+            if (__DEV__ && isNativePushRuntimeAvailable()) {
+              console.warn('[Push] No token obtained on Android — notifications will not work');
+            }
           }
         } else {
-          // iOS: only register if already granted to avoid the cold prompt.
-          // The notification tab banner will explain the value and let the
-          // user opt-in at a meaningful moment.
           const alreadyGranted = await (async () => {
             try {
               const { getPermissionStatus } = require('@/utils/notifications') as typeof import('@/utils/notifications');
@@ -126,7 +124,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         }
       } catch (error) {
-        if (__DEV__) console.error('Failed to register push token:', error);
+        if (__DEV__) console.warn('[Push] Failed to register push token:', error);
       }
     };
 
@@ -229,10 +227,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  const completeProfile = useCallback(async (prenom: string, nom: string, termsAccepted: boolean, telephone?: string, dateNaissance?: string) => {
+  const completeProfile = useCallback(async (prenom: string, nom: string, termsAccepted: boolean, telephone?: string, dateNaissance?: string, password?: string) => {
     try {
-      const response = await api.completeProfile(prenom, nom, termsAccepted, telephone, dateNaissance);
+      const response = await api.completeProfile(prenom, nom, termsAccepted, telephone, dateNaissance, password);
       store.setClient(response.client);
+      // If password was set during profile completion, clear the setup flag
+      if (password) {
+        await api.clearEmailOtpNewUser();
+        store.setNeedsPasswordSetup(false);
+      }
       return { success: true };
     } catch (error: unknown) {
       return { success: false, error: extractErrorMessage(error) };
@@ -293,7 +296,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     client: store.client,
     isLoading: store.loading,
     isAuthenticated: !!store.client,
-    isProfileComplete: !!store.client?.nom && !!store.client?.prenom && !!store.client?.telephone && (store.client?.termsAccepted !== false),
+    isProfileComplete: !!store.client?.nom && !!store.client?.prenom && (store.client?.termsAccepted !== false),
     isGuest: store.isGuest,
     needsPasswordSetup: store.needsPasswordSetup,
     enterGuestMode,

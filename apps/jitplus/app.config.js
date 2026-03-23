@@ -68,6 +68,7 @@ module.exports = ({ config }) => {
     },
     android: {
       versionCode: 14,
+      icon: './assets/images/icon-white.png',
       adaptiveIcon: {
         foregroundImage: './assets/images/adaptive-icon-white.png',
         backgroundColor: '#FFFFFF',
@@ -105,6 +106,19 @@ module.exports = ({ config }) => {
     plugins: [
       'expo-router',
       'expo-secure-store',
+      [
+        'expo-splash-screen',
+        {
+          image: './assets/images/jitpluslogo.png',
+          resizeMode: 'contain',
+          backgroundColor: '#FFFFFF',
+          imageWidth: 220,
+          dark: {
+            image: './assets/images/jitpluslogo.png',
+            backgroundColor: '#FFFFFF',
+          },
+        },
+      ],
       // iOS PrivacyInfo.xcprivacy — required since Apple review policy May 2024
       // DISABLED: plugin file not yet created — re-enable after adding plugins/withPrivacyManifest.js
       // './plugins/withPrivacyManifest',

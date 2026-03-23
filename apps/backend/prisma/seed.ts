@@ -558,7 +558,7 @@ async function main() {
         googleId: (c as any).googleId ?? undefined,
         dateNaissance: (c as any).dateNaissance ?? undefined,
         termsAccepted: true,
-        shareInfoMerchants: true,
+        shareInfoMerchants: false,
         notifPush: (c as any).notifPush ?? true,
         notifEmail: (c as any).notifEmail ?? true,
         notifWhatsapp: (c as any).notifWhatsapp ?? true,

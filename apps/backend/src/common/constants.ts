@@ -51,6 +51,9 @@ export const DEFAULT_LOYALTY_TYPE = 'POINTS' as const;
 /** Per-identifier OTP send cooldown (60 seconds) — reject re-sends within this window */
 export const OTP_COOLDOWN_MS = 60_000;
 
+/** Maximum OTP sends per identifier (phone or email) per day */
+export const MAX_OTP_SENDS_PER_DAY = 10;
+
 // ── Throttle / rate-limit defaults ──────────────────────────
 /** Rate-limit window in milliseconds (1 minute) */
 export const THROTTLE_TTL = 60_000;

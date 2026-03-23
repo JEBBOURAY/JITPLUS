@@ -1,8 +1,8 @@
 import { useState, useCallback, useRef, useEffect, useMemo, memo, type ComponentProps } from 'react';
 import {
-  View, Text, TextInput, StyleSheet, ScrollView, Pressable,
+  View, Text, TextInput, StyleSheet, ScrollView, FlatList, Pressable,
   Platform, TouchableOpacity, Linking, Keyboard, Image as RNImage, I18nManager,
-  ActivityIndicator,
+  ActivityIndicator, useWindowDimensions,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -99,6 +99,59 @@ const TrackedMarker = memo(function TrackedMarker(
 
 // ── Extracted memoized sub-components ────────────────────
 
+const FallbackMerchantCard = memo(function FallbackMerchantCard({
+  merchant,
+  distance,
+  onPress,
+  onNavigate,
+}: {
+  merchant: Merchant;
+  distance: number | null;
+  onPress: () => void;
+  onNavigate: () => void;
+}) {
+  const theme = useTheme();
+  const { t } = useLanguage();
+  return (
+    <Pressable
+      style={[styles.fallbackCard, { backgroundColor: theme.bgCard }]}
+      onPress={onPress}
+    >
+      <View style={[styles.fallbackAvatar, { backgroundColor: palette.violet + '15' }]}>
+        <MerchantLogo logoUrl={merchant.logoUrl} style={styles.fallbackLogo} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.fallbackName, { color: theme.text }]} numberOfLines={1}>{merchant.nomBoutique}</Text>
+        {merchant.categorie && (
+          <View style={[styles.catBadge, { backgroundColor: palette.violet + '15' }]}>
+            <Text style={[styles.catBadgeText, { color: palette.violet }]}>{merchant.categorie}</Text>
+          </View>
+        )}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: wp(4), marginTop: hp(2) }}>
+          <MapPin size={ms(11)} color={theme.textMuted} strokeWidth={1.5} />
+          <Text style={[styles.fallbackAddr, { color: theme.textMuted }]} numberOfLines={1}>
+            {merchant.adresse || merchant.ville || t('discover.positionAvailable')}
+          </Text>
+        </View>
+        {distance !== null && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: wp(3), marginTop: hp(3) }}>
+            <Navigation size={ms(10)} color={palette.violet} strokeWidth={1.5} />
+            <Text style={{ fontSize: FS.xs, fontWeight: '700', color: palette.violet }}>
+              {formatDistance(distance)}
+            </Text>
+          </View>
+        )}
+      </View>
+      <TouchableOpacity
+        style={[styles.fallbackNavBtn, { backgroundColor: palette.violet }]}
+        activeOpacity={0.7} onPress={onNavigate}
+      >
+        <ExternalLink size={ms(14)} color="#fff" strokeWidth={1.5} />
+      </TouchableOpacity>
+    </Pressable>
+  );
+});
+
 const MerchantCallout = memo(function MerchantCallout({
   merchant,
   distance,
@@ -175,8 +228,10 @@ export default function DiscoverScreen() {
   const theme = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { height: screenHeight } = useWindowDimensions();
   const { client, isGuest } = useAuth();
   const { t } = useLanguage();
+  const isVeryCompact = screenHeight < 710;
 
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -198,7 +253,7 @@ export default function DiscoverScreen() {
   // Prefetch merchant logos once loaded
   useEffect(() => {
     if (merchants.length > 0) {
-      prefetchImages(merchants.map((m) => m.logoUrl));
+      prefetchImages(merchants.map((m) => m.logoUrl).filter(Boolean));
     }
   }, [merchants]);
 
@@ -381,6 +436,12 @@ export default function DiscoverScreen() {
   }, []);
 
   const activeFilterCount = selectedCategory !== 'all' ? 1 : 0;
+  const topBarTop = insets.top + (isVeryCompact ? ms(6) : ms(10));
+  const filterTop = insets.top + (isVeryCompact ? ms(54) : ms(64));
+  const calloutTop = insets.top + (isVeryCompact ? ms(54) : ms(60)) + (showFilters ? (isVeryCompact ? ms(48) : ms(54)) : 0);
+  const locateBottom = isVeryCompact ? ms(84) : ms(100);
+  const fallbackTopPadding = insets.top + (isVeryCompact ? ms(94) : ms(110));
+  const fallbackBottomPadding = isVeryCompact ? ms(116) : ms(140);
 
   const handleMapPress = useCallback(() => {
     setSelectedMerchant(null);
@@ -389,6 +450,25 @@ export default function DiscoverScreen() {
   }, []);
 
   const handleMapReady = useCallback(() => setMapReady(true), []);
+
+  const fallbackKeyExtractor = useCallback(
+    (m: Merchant) => m.storeId ? `${m.id}-${m.storeId}` : m.id,
+    [],
+  );
+
+  const renderFallbackItem = useCallback(({ item: m }: { item: Merchant }) => {
+    const dist = userLocation
+      ? getDistanceKm(userLocation.latitude, userLocation.longitude, m.latitude!, m.longitude!)
+      : null;
+    return (
+      <FallbackMerchantCard
+        merchant={m}
+        distance={dist}
+        onPress={() => handleMerchantPress(m)}
+        onNavigate={() => openInMaps(m)}
+      />
+    );
+  }, [userLocation, handleMerchantPress, openInMaps]);
 
   return (
     <View style={styles.container}>
@@ -427,7 +507,7 @@ export default function DiscoverScreen() {
                 key={m.storeId ? `${m.id}-${m.storeId}` : m.id}
                 coordinate={{ latitude: item.latitude, longitude: item.longitude }}
                 onPress={() => handleMarkerPress(m)}
-                anchor={{ x: 0.5, y: 0.85 }}
+                anchor={{ x: 0.5, y: 0.5 }}
               >
                 <MapMarker
                   userPoints={m.userPoints}
@@ -439,110 +519,70 @@ export default function DiscoverScreen() {
         </SafeMapView>
       ) : (
         <View style={[StyleSheet.absoluteFillObject, { backgroundColor: theme.bg }]}>
-          <ScrollView
-            contentContainerStyle={[styles.fallbackList, { paddingTop: insets.top + ms(110), paddingBottom: ms(140) }]}
+          <FlatList
+            data={sortedMappableMerchants}
+            keyExtractor={fallbackKeyExtractor}
+            renderItem={renderFallbackItem}
+            contentContainerStyle={[styles.fallbackList, { paddingTop: fallbackTopPadding, paddingBottom: fallbackBottomPadding }]}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             onScrollBeginDrag={Keyboard.dismiss}
-          >
-            {sortedMappableMerchants.length === 0 && !isLoading ? (
-              <View style={styles.emptyState}>
-                <MapPin size={ms(40)} color={theme.textMuted} strokeWidth={1.5} />
-                <Text style={[styles.emptyTitle, { color: theme.text }]}>{t('discover.noMerchantFound')}</Text>
-                <Text style={[styles.emptyText, { color: theme.textMuted }]}>
-                  {searchQuery ? t('discover.noResultsFor', { query: searchQuery }) : t('discover.noGeoMerchant')}
-                </Text>
-              </View>
-            ) : (
-              sortedMappableMerchants.map((m, index) => {
-                const dist = userLocation
-                  ? getDistanceKm(userLocation.latitude, userLocation.longitude, m.latitude!, m.longitude!)
-                  : null;
-                // Cap animation delay to avoid 2500ms+ stagger for long lists
-                const animDelay = Math.min(index * 50, 300);
-                return (
-                  <FadeInView key={m.storeId ? `${m.id}-${m.storeId}` : m.id} delay={animDelay} duration={300}>
-                    <Pressable
-                      style={[styles.fallbackCard, { backgroundColor: theme.bgCard }]}
-                      onPress={() => handleMerchantPress(m)}
-                    >
-                      <View style={[styles.fallbackAvatar, { backgroundColor: palette.violet + '15' }]}>
-                        <MerchantLogo logoUrl={m.logoUrl} style={styles.fallbackLogo} />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={[styles.fallbackName, { color: theme.text }]} numberOfLines={1}>{m.nomBoutique}</Text>
-                        {m.categorie && (
-                          <View style={[styles.catBadge, { backgroundColor: palette.violet + '15' }]}>
-                            <Text style={[styles.catBadgeText, { color: palette.violet }]}>{m.categorie}</Text>
-                          </View>
-                        )}
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: wp(4), marginTop: hp(2) }}>
-                          <MapPin size={ms(11)} color={theme.textMuted} strokeWidth={1.5} />
-                          <Text style={[styles.fallbackAddr, { color: theme.textMuted }]} numberOfLines={1}>
-                            {m.adresse || m.ville || t('discover.positionAvailable')}
-                          </Text>
-                        </View>
-                        {dist !== null && (
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: wp(3), marginTop: hp(3) }}>
-                            <Navigation size={ms(10)} color={palette.violet} strokeWidth={1.5} />
-                            <Text style={{ fontSize: FS.xs, fontWeight: '700', color: palette.violet }}>
-                              {formatDistance(dist)}
-                            </Text>
-                          </View>
-                        )}
-                      </View>
-                      <TouchableOpacity
-                        style={[styles.fallbackNavBtn, { backgroundColor: palette.violet }]}
-                        activeOpacity={0.7} onPress={() => openInMaps(m)}
-                      >
-                        <ExternalLink size={ms(14)} color="#fff" strokeWidth={1.5} />
-                      </TouchableOpacity>
-                    </Pressable>
-                  </FadeInView>
-                );
-              })
-            )}
-          </ScrollView>
+            removeClippedSubviews={Platform.OS !== 'web'}
+            maxToRenderPerBatch={10}
+            windowSize={5}
+            initialNumToRender={8}
+            ListEmptyComponent={
+              !isLoading ? (
+                <View style={styles.emptyState}>
+                  <MapPin size={ms(40)} color={theme.textMuted} strokeWidth={1.5} />
+                  <Text style={[styles.emptyTitle, { color: theme.text }]}>{t('discover.noMerchantFound')}</Text>
+                  <Text style={[styles.emptyText, { color: theme.textMuted }]}>
+                    {searchQuery ? t('discover.noResultsFor', { query: searchQuery }) : t('discover.noGeoMerchant')}
+                  </Text>
+                </View>
+              ) : null
+            }
+          />
         </View>
       )}
 
       {/* Floating UI */}
-      <View style={[styles.topBar, { top: insets.top + ms(10) }]} pointerEvents="box-none">
+      <View style={[styles.topBar, { top: topBarTop, paddingHorizontal: isVeryCompact ? wp(12) : wp(16) }]} pointerEvents="box-none">
         {showSearch ? (
-          <View style={[styles.searchBarExpanded, { backgroundColor: theme.bgCard }]}>
-            <Search size={ms(18)} color={theme.textMuted} strokeWidth={1.5} />
+          <View style={[styles.searchBarExpanded, { backgroundColor: theme.bgCard, height: isVeryCompact ? ms(46) : ms(52), paddingHorizontal: isVeryCompact ? wp(14) : wp(18) }]}>
+            <Search size={isVeryCompact ? ms(16) : ms(18)} color={theme.textMuted} strokeWidth={1.5} />
             <TextInput
               ref={searchInputRef}
-              style={[styles.searchInput, { color: theme.text }]}
+              style={[styles.searchInput, { color: theme.text, fontSize: isVeryCompact ? FS.sm : FS.md }]}
               placeholder={t('discover.searchPlaceholder')}
               placeholderTextColor={theme.inputPlaceholder}
               value={searchQuery} onChangeText={setSearchQuery}
               returnKeyType="search" autoFocus
             />
             <Pressable onPress={toggleSearch} hitSlop={8} accessibilityRole="button" accessibilityLabel={t('discover.searchPlaceholder')}>
-              <View style={[styles.closePill, { backgroundColor: theme.bgInput }]}>
-                <X size={ms(14)} color={theme.textMuted} strokeWidth={1.5} />
+              <View style={[styles.closePill, { backgroundColor: theme.bgInput, width: isVeryCompact ? ms(26) : ms(30), height: isVeryCompact ? ms(26) : ms(30), borderRadius: isVeryCompact ? ms(13) : ms(15) }]}>
+                <X size={isVeryCompact ? ms(12) : ms(14)} color={theme.textMuted} strokeWidth={1.5} />
               </View>
             </Pressable>
           </View>
         ) : (
           <View style={styles.topButtons}>
-            <TouchableOpacity style={[styles.floatingBtn, { backgroundColor: theme.bgCard }]} activeOpacity={0.8} onPress={toggleSearch} accessibilityRole="button" accessibilityLabel={t('discover.searchPlaceholder')}>
-              <Search size={ms(20)} color={theme.text} strokeWidth={1.5} />
+            <TouchableOpacity style={[styles.floatingBtn, { backgroundColor: theme.bgCard, width: isVeryCompact ? ms(42) : ms(48), height: isVeryCompact ? ms(42) : ms(48), borderRadius: isVeryCompact ? ms(21) : ms(24) }]} activeOpacity={0.8} onPress={toggleSearch} accessibilityRole="button" accessibilityLabel={t('discover.searchPlaceholder')}>
+              <Search size={isVeryCompact ? ms(18) : ms(20)} color={theme.text} strokeWidth={1.5} />
             </TouchableOpacity>
-            <View style={[styles.counterBadge, { backgroundColor: theme.bgCard }]}>
-              <MapPin size={ms(13)} color={palette.violet} strokeWidth={1.5} />
-              <Text style={[styles.counterText, { color: theme.text }]}>
+            <View style={[styles.counterBadge, { backgroundColor: theme.bgCard, paddingHorizontal: isVeryCompact ? wp(12) : wp(16), paddingVertical: isVeryCompact ? hp(7) : hp(10) }]}>
+              <MapPin size={isVeryCompact ? ms(12) : ms(13)} color={palette.violet} strokeWidth={1.5} />
+              <Text style={[styles.counterText, { color: theme.text, fontSize: isVeryCompact ? FS.xs : FS.sm }]}>
                 {t('discover.merchantCount', { count: mappableMerchants.length })}
               </Text>
             </View>
             <TouchableOpacity
-              style={[styles.floatingBtn, { backgroundColor: theme.bgCard }, showFilters && { backgroundColor: palette.violet }]}
+              style={[styles.floatingBtn, { backgroundColor: theme.bgCard, width: isVeryCompact ? ms(42) : ms(48), height: isVeryCompact ? ms(42) : ms(48), borderRadius: isVeryCompact ? ms(21) : ms(24) }, showFilters && { backgroundColor: palette.violet }]}
               activeOpacity={0.8} onPress={toggleFilters}
               accessibilityRole="button"
               accessibilityState={{ expanded: showFilters }}
             >
-              <SlidersHorizontal size={ms(20)} color={showFilters ? '#fff' : theme.text} strokeWidth={1.5} />
+              <SlidersHorizontal size={isVeryCompact ? ms(18) : ms(20)} color={showFilters ? '#fff' : theme.text} strokeWidth={1.5} />
               {activeFilterCount > 0 && <View style={styles.filterDot} />}
             </TouchableOpacity>
           </View>
@@ -551,8 +591,8 @@ export default function DiscoverScreen() {
 
       {/* Filter chips */}
       {showFilters && (
-        <View style={[styles.filterBar, { top: insets.top + ms(64) }]}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.filterScroll, I18nManager.isRTL && { flexDirection: 'row-reverse' }]}>
+        <View style={[styles.filterBar, { top: filterTop }]}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.filterScroll, { paddingHorizontal: isVeryCompact ? wp(12) : wp(16), paddingVertical: isVeryCompact ? hp(2) : hp(4), gap: isVeryCompact ? wp(4) : wp(6) }, I18nManager.isRTL && { flexDirection: 'row-reverse' }]}>
             {CATEGORIES.map((cat) => {
               const isActive = selectedCategory === cat.id;
               const Icon = cat.icon;
@@ -560,12 +600,17 @@ export default function DiscoverScreen() {
                 <Pressable key={cat.id} onPress={() => handleCategoryPress(cat.id)} accessibilityRole="button" accessibilityState={{ selected: isActive }}>
                   <View style={[
                     styles.chip,
+                    {
+                      paddingHorizontal: isVeryCompact ? wp(10) : wp(14),
+                      paddingVertical: isVeryCompact ? hp(6) : hp(8),
+                      borderRadius: isVeryCompact ? ms(16) : ms(20),
+                    },
                     isActive
                       ? { backgroundColor: palette.violet, borderColor: palette.violet }
                       : { backgroundColor: theme.bgCard, borderColor: theme.border },
                   ]}>
-                    <Icon size={ms(13)} color={isActive ? '#fff' : theme.textMuted} strokeWidth={1.5} />
-                    <Text style={[styles.chipLabel, { color: isActive ? '#fff' : theme.text }]}>
+                    <Icon size={isVeryCompact ? ms(11) : ms(13)} color={isActive ? '#fff' : theme.textMuted} strokeWidth={1.5} />
+                    <Text style={[styles.chipLabel, { color: isActive ? '#fff' : theme.text, fontSize: isVeryCompact ? ms(10.5) : FS.xs }]}>
                       {t(cat.labelKey)}
                     </Text>
                   </View>
@@ -579,12 +624,12 @@ export default function DiscoverScreen() {
       {/* Locate button */}
       {MAPS_AVAILABLE && userLocation && (
         <TouchableOpacity
-          style={[styles.locateBtn, { bottom: ms(100) }, { backgroundColor: theme.bgCard }]}
+          style={[styles.locateBtn, { backgroundColor: theme.bgCard, bottom: locateBottom, right: isVeryCompact ? wp(12) : wp(16), width: isVeryCompact ? ms(42) : ms(48), height: isVeryCompact ? ms(42) : ms(48), borderRadius: isVeryCompact ? ms(21) : ms(24) }]}
           activeOpacity={0.8} onPress={centerOnUser}
           accessibilityRole="button"
           accessibilityLabel={t('discover.positionAvailable')}
         >
-          <LocateFixed size={ms(20)} color={palette.violet} strokeWidth={1.5} />
+          <LocateFixed size={isVeryCompact ? ms(17) : ms(20)} color={palette.violet} strokeWidth={1.5} />
         </TouchableOpacity>
       )}
 
@@ -597,8 +642,10 @@ export default function DiscoverScreen() {
           onPress={() => handleMerchantPress(selectedMerchant)}
           onNavigate={() => openInMaps(selectedMerchant)}
           style={{
-            top: insets.top + ms(60) + (showFilters ? ms(54) : 0),
+            top: calloutTop,
             bottom: undefined,
+            left: isVeryCompact ? wp(12) : wp(16),
+            right: isVeryCompact ? wp(12) : wp(16),
           }}
         />
       )}

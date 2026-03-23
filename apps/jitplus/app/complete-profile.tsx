@@ -8,7 +8,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
-  User, ArrowRight, CheckCircle2, Sparkles, Shield, ChevronLeft, Calendar,
+  User, ArrowRight, CheckCircle2, Sparkles, ChevronLeft, Calendar,
+  Lock, Eye, EyeOff,
 } from 'lucide-react-native';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -21,8 +22,21 @@ import BrandText from '@/components/BrandText';
 import FormError from '@/components/FormError';
 import { formatDateInput, toIsoDate } from '@/utils/dateInput';
 
-const STEPS = ['info', 'terms'] as const;
-type Step = typeof STEPS[number];
+type Step = 'info' | 'password';
+type PasswordStrength = 'weak' | 'medium' | 'strong';
+
+function getPasswordStrength(pw: string, t: (key: string) => string): { level: PasswordStrength; label: string; color: string; pct: number } {
+  if (pw.length === 0) return { level: 'weak', label: '', color: '#D1D5DB', pct: 0 };
+  let score = 0;
+  if (pw.length >= 8) score++;
+  if (pw.length >= 10) score++;
+  if (/[A-Z]/.test(pw)) score++;
+  if (/[0-9]/.test(pw)) score++;
+  if (/[^A-Za-z0-9]/.test(pw)) score++;
+  if (score <= 2) return { level: 'weak', label: t('setPassword.strengthWeak'), color: '#EF4444', pct: 0.33 };
+  if (score <= 3) return { level: 'medium', label: t('setPassword.strengthMedium'), color: '#F59E0B', pct: 0.66 };
+  return { level: 'strong', label: t('setPassword.strengthStrong'), color: '#10B981', pct: 1 };
+}
 
 /** Strip anything that isn't a letter, accent, space, hyphen or apostrophe */
 const sanitizeName = (text: string) => text.replace(/[^a-zA-Z\u00C0-\u024F\s'-]/g, '');
@@ -32,14 +46,18 @@ export default function CompleteProfileScreen() {
   const { t } = useLanguage();
   const { completeProfile, client } = useAuth();
   const { needsPassword } = useLocalSearchParams<{ needsPassword?: string }>();
-  const needsPhone = !client?.telephone;
+  const showPhoneField = !client?.telephone;
+  const STEPS: readonly Step[] = needsPassword === '1' ? ['info', 'password'] : ['info'];
   const [step, setStep] = useState<Step>('info');
   const [prenom, setPrenom] = useState('');
   const [nom, setNom] = useState('');
   const [telephone, setTelephone] = useState('');
   const [country, setCountry] = useState<CountryCode>(DEFAULT_COUNTRY);
   const [dateNaissance, setDateNaissance] = useState('');
-  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [password, setPasswordValue] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPasswordField, setShowPasswordField] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -53,6 +71,9 @@ export default function CompleteProfileScreen() {
 
   const nomInputRef = useRef<TextInput>(null);
   const phoneInputRef = useRef<TextInput>(null);
+  const confirmRef = useRef<TextInput>(null);
+
+  const strength = getPasswordStrength(password, t);
 
   useEffect(() => {
     const staggerAnim = Animated.stagger(200, [
@@ -83,21 +104,24 @@ export default function CompleteProfileScreen() {
     setStep(newStep);
   };
 
-  const isPhoneValid = !needsPhone || isValidPhoneForCountry(telephone, country);
-  const canGoNext = prenom.trim().length >= 2 && nom.trim().length >= 2 && isPhoneValid;
-  const canSubmit = canGoNext && termsAccepted;
+  const isPhoneValid = telephone.trim().length === 0 || isValidPhoneForCountry(telephone, country);
+  const canGoNext = prenom.trim().length >= 2 && nom.trim().length >= 2;
+  const isValidPassword = password.length >= 8 && /[A-Z]/.test(password) && /[0-9]/.test(password) && /[^A-Za-z0-9]/.test(password);
+  const passwordsMatch = password === confirmPassword && confirmPassword.length > 0;
+  const canSubmitPassword = isValidPassword && passwordsMatch;
+  const canSubmit = needsPassword === '1' ? canGoNext && canSubmitPassword : canGoNext;
 
   const handleNext = () => {
     if (prenom.trim().length < 2 || nom.trim().length < 2) {
       setError(t('completeProfile.nameError'));
       return;
     }
-    if (needsPhone && !isPhoneValid) {
+    if (telephone.trim().length > 0 && !isPhoneValid) {
       setError(t('completeProfile.phoneError'));
       return;
     }
     setError('');
-    animateToStep('terms');
+    animateToStep('password');
   };
 
   const handleBack = () => {
@@ -109,25 +133,27 @@ export default function CompleteProfileScreen() {
 
   const handleSubmit = async () => {
     if (!canSubmit) {
-      setError(t('completeProfile.termsError'));
+      if (needsPassword === '1' && !canSubmitPassword) {
+        setError(t('setPassword.validationError'));
+      } else {
+        setError(t('completeProfile.nameError'));
+      }
       return;
     }
     if (submittingRef.current) return;
     submittingRef.current = true;
     setIsLoading(true);
     setError('');
-    const fullPhone = needsPhone ? `${country.dial}${telephone.trim()}` : undefined;
+    const fullPhone = telephone.trim().length > 0 ? `${country.dial}${telephone.trim()}` : undefined;
     const isoDate = dateNaissance.length === 10 ? toIsoDate(dateNaissance) : undefined;
-    const result = await completeProfile(prenom.trim(), nom.trim(), termsAccepted, fullPhone, isoDate);
+    const pw = needsPassword === '1' ? password : undefined;
+    const result = await completeProfile(prenom.trim(), nom.trim(), true, fullPhone, isoDate, pw);
     submittingRef.current = false;
     setIsLoading(false);
     if (result.success) {
       await AsyncStorage.setItem('showGuidBadge', '1');
-      if (needsPassword === '1') {
-        router.replace('/set-password');
-      } else {
-        router.replace('/(tabs)/qr');
-      }
+      await AsyncStorage.setItem('showWelcome', '1');
+      router.replace('/(tabs)/qr');
     } else {
       if (result.error && result.error === t('common.networkError')) {
         Alert.alert(t('common.networkError'), result.error);
@@ -152,7 +178,8 @@ export default function CompleteProfileScreen() {
             contentContainerStyle={styles.scrollContent}
             keyboardShouldPersistTaps="handled"
           >
-            {/* Progress bar */}
+            {/* Progress bar (only shown for multi-step flows) */}
+            {STEPS.length > 1 && (
             <Animated.View style={[styles.progressBar, {
               opacity: headerAnim,
             }]}>
@@ -166,6 +193,7 @@ export default function CompleteProfileScreen() {
                 {t('completeProfile.stepOf', { current: stepIndex + 1, total: STEPS.length })}
               </Text>
             </Animated.View>
+            )}
 
             {/* Header */}
             <Animated.View style={[styles.header, {
@@ -183,12 +211,12 @@ export default function CompleteProfileScreen() {
                 <BrandText size={16} />
               </Animated.View>
               <Text style={[styles.title, { color: palette.gray900 }]}>
-                {step === 'info' ? t('completeProfile.createProfileTitle') : t('completeProfile.lastStepTitle')}
+                {step === 'info' ? t('completeProfile.createProfileTitle') : t('completeProfile.passwordStepTitle')}
               </Text>
               <Text style={[styles.subtitle, { color: palette.gray500 }]}>
                 {step === 'info'
                   ? t('completeProfile.nameSubtitle')
-                  : t('completeProfile.termsSubtitle')}
+                  : t('completeProfile.passwordStepSubtitle')}
               </Text>
             </Animated.View>
 
@@ -267,8 +295,8 @@ export default function CompleteProfileScreen() {
                         onChangeText={(val) => { setNom(sanitizeName(val)); clearError(); }}
                         autoCapitalize="words"
                         maxLength={50}
-                        returnKeyType={needsPhone ? 'next' : 'done'}
-                        onSubmitEditing={() => needsPhone ? phoneInputRef.current?.focus() : handleNext()}
+                        returnKeyType={showPhoneField ? 'next' : 'done'}
+                        onSubmitEditing={() => showPhoneField ? phoneInputRef.current?.focus() : handleNext()}
                       />
                       {nom.trim().length >= 2 && (
                         <CheckCircle2 size={ms(16)} color={palette.violet} strokeWidth={1.5} />
@@ -277,9 +305,12 @@ export default function CompleteProfileScreen() {
                   </View>
 
                   {/* Téléphone (only for email-registered users) */}
-                  {needsPhone && (
+                  {showPhoneField && (
                     <View style={styles.fieldContainer}>
-                      <Text style={[styles.label, { color: theme.textSecondary }]}>{t('completeProfile.phone')}</Text>
+                      <Text style={[styles.label, { color: theme.textSecondary }]}>
+                        {t('completeProfile.phone')}{' '}
+                        <Text style={{ fontWeight: '400', color: theme.textMuted }}>({t('profile.optional')})</Text>
+                      </Text>
                       <View style={[styles.inputWrapper, {
                         backgroundColor: theme.bgInput,
                         borderColor: isPhoneValid && telephone.trim().length > 0 ? palette.violet : theme.border,
@@ -328,7 +359,7 @@ export default function CompleteProfileScreen() {
                         onChangeText={(val) => setDateNaissance(formatDateInput(val))}
                         keyboardType="number-pad"
                         maxLength={10}
-                        returnKeyType={needsPhone ? 'done' : 'done'}
+                        returnKeyType="done"
                       />
                       {dateNaissance.length === 10 && toIsoDate(dateNaissance) && (
                         <CheckCircle2 size={ms(16)} color={palette.violet} strokeWidth={1.5} />
@@ -346,62 +377,83 @@ export default function CompleteProfileScreen() {
                 </>
               ) : (
                 <>
-                  {/* Summary */}
-                  <View style={[styles.summaryCard, { backgroundColor: theme.bgInput }]}>
-                    <LinearGradient
-                      colors={[palette.gold, palette.violetVivid]}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={styles.summaryAvatar}
-                    >
-                      <Text style={styles.summaryInitials}>
-                        {(prenom.charAt(0) + nom.charAt(0)).toUpperCase()}
-                      </Text>
-                    </LinearGradient>
-                    <Text style={[styles.summaryName, { color: theme.text }]}>
-                      {prenom.trim()} {nom.trim()}
-                    </Text>
-                    <Text style={[styles.summaryBadge, { color: palette.violet }]}>
-                      {t('completeProfile.newMember')}
-                    </Text>
+                  {/* Password */}
+                  <View style={styles.fieldContainer}>
+                    <Text style={[styles.label, { color: theme.textSecondary }]}>{t('setPassword.placeholder')}</Text>
+                    <View style={[styles.inputWrapper, {
+                      backgroundColor: theme.bgInput,
+                      borderColor: error && !isValidPassword ? theme.danger : isValidPassword ? palette.violet : theme.border,
+                      borderWidth: isValidPassword ? 2 : 1.5,
+                    }]}>
+                      <Lock size={ms(18)} color={isValidPassword ? palette.violet : theme.textMuted} strokeWidth={1.5} />
+                      <TextInput
+                        style={[styles.input, { color: theme.text }]}
+                        placeholder={t('setPassword.placeholder')}
+                        placeholderTextColor={theme.textMuted}
+                        value={password}
+                        onChangeText={(val) => { setPasswordValue(val); clearError(); }}
+                        secureTextEntry={!showPasswordField}
+                        autoCapitalize="none"
+                        autoFocus
+                        returnKeyType="next"
+                        onSubmitEditing={() => confirmRef.current?.focus()}
+                      />
+                      <TouchableOpacity onPress={() => setShowPasswordField(!showPasswordField)} activeOpacity={0.7}>
+                        {showPasswordField ? (
+                          <EyeOff size={ms(20)} color={theme.textMuted} strokeWidth={1.5} />
+                        ) : (
+                          <Eye size={ms(20)} color={theme.textMuted} strokeWidth={1.5} />
+                        )}
+                      </TouchableOpacity>
+                    </View>
                   </View>
 
-                  {/* Terms checkbox */}
-                  <TouchableOpacity
-                    onPress={() => { setTermsAccepted(!termsAccepted); setError(''); }}
-                    activeOpacity={0.7}
-                    style={[styles.termsCard, {
-                      backgroundColor: termsAccepted ? `${palette.violet}08` : theme.bgInput,
-                      borderColor: termsAccepted ? palette.violet : theme.border,
-                    }]}
-                  >
-                    <View style={[styles.checkbox, {
-                      borderColor: termsAccepted ? palette.violet : theme.border,
-                      backgroundColor: termsAccepted ? palette.violet : 'transparent',
-                    }]}>
-                      {termsAccepted && <CheckCircle2 size={ms(18)} color="#fff" strokeWidth={1.5} />}
+                  {/* Password Strength */}
+                  {password.length > 0 && (
+                    <View style={styles.strengthContainer}>
+                      <View style={styles.strengthBarTrack}>
+                        <View style={[styles.strengthBarFill, { width: `${strength.pct * 100}%`, backgroundColor: strength.color }]} />
+                      </View>
+                      <Text style={[styles.strengthLabel, { color: strength.color }]}>{strength.label}</Text>
                     </View>
-                    <View style={styles.termsText}>
-                      <Text style={[styles.termsLabel, { color: theme.text }]}>
-                        {t('completeProfile.acceptTerms')}{' '}
-                        <Text
-                          style={{ fontWeight: '700', color: palette.violet, textDecorationLine: 'underline' }}
-                          onPress={() => router.push('/legal')}
-                        >
-                          {t('completeProfile.legalNotice')}
-                        </Text>
-                      </Text>
-                      <Text style={[styles.termsDesc, { color: theme.textMuted }]}>
-                        {t('completeProfile.dataPrivacy')}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
+                  )}
 
-                  {/* Security note */}
-                  <View style={[styles.hintBox, { backgroundColor: `#10B98108` }]}>
-                    <Shield size={ms(14)} color="#10B981" strokeWidth={1.5} />
+                  {/* Confirm Password */}
+                  <View style={styles.fieldContainer}>
+                    <Text style={[styles.label, { color: theme.textSecondary }]}>{t('setPassword.confirmPlaceholder')}</Text>
+                    <View style={[styles.inputWrapper, {
+                      backgroundColor: theme.bgInput,
+                      borderColor: error && !passwordsMatch ? theme.danger : passwordsMatch ? palette.violet : theme.border,
+                      borderWidth: passwordsMatch ? 2 : 1.5,
+                    }]}>
+                      <CheckCircle2 size={ms(18)} color={passwordsMatch ? palette.violet : theme.textMuted} strokeWidth={1.5} />
+                      <TextInput
+                        ref={confirmRef}
+                        style={[styles.input, { color: theme.text }]}
+                        placeholder={t('setPassword.confirmPlaceholder')}
+                        placeholderTextColor={theme.textMuted}
+                        value={confirmPassword}
+                        onChangeText={(val) => { setConfirmPassword(val); clearError(); }}
+                        secureTextEntry={!showConfirm}
+                        autoCapitalize="none"
+                        returnKeyType="done"
+                        onSubmitEditing={canSubmitPassword ? handleSubmit : undefined}
+                      />
+                      <TouchableOpacity onPress={() => setShowConfirm(!showConfirm)} activeOpacity={0.7}>
+                        {showConfirm ? (
+                          <EyeOff size={ms(20)} color={theme.textMuted} strokeWidth={1.5} />
+                        ) : (
+                          <Eye size={ms(20)} color={theme.textMuted} strokeWidth={1.5} />
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  {/* Hint */}
+                  <View style={[styles.hintBox, { backgroundColor: `${palette.violet}08` }]}>
+                    <Sparkles size={ms(14)} color={palette.violet} strokeWidth={1.5} />
                     <Text style={[styles.hintText, { color: theme.textMuted }]}>
-                      {t('completeProfile.dataSecurity')}
+                      {t('setPassword.subtitle')}
                     </Text>
                   </View>
                 </>
@@ -412,14 +464,14 @@ export default function CompleteProfileScreen() {
 
               {/* Buttons */}
               <View style={styles.buttonRow}>
-                {step === 'terms' && (
+                {step === 'password' && (
                   <TouchableOpacity onPress={handleBack} activeOpacity={0.7} style={[styles.backBtn, { backgroundColor: theme.bgInput }]} accessibilityRole="button" accessibilityLabel={t('common.back')}>
                     <ChevronLeft size={ms(20)} color={theme.text} strokeWidth={1.5} />
                   </TouchableOpacity>
                 )}
 
                 <TouchableOpacity
-                  onPress={step === 'info' ? handleNext : handleSubmit}
+                  onPress={step === 'info' && STEPS.length > 1 ? handleNext : handleSubmit}
                   disabled={isLoading}
                   activeOpacity={0.85}
                   style={{ flex: 1 }}
@@ -428,7 +480,7 @@ export default function CompleteProfileScreen() {
                     colors={
                       step === 'info'
                         ? (canGoNext ? [palette.violet, palette.violetDark] : ['#D4D0E8', '#C4BFD9'])
-                        : (canSubmit ? [palette.violet, palette.violetDark] : ['#D4D0E8', '#C4BFD9'])
+                        : (canSubmitPassword ? [palette.violet, palette.violetDark] : ['#D4D0E8', '#C4BFD9'])
                     }
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 0 }}
@@ -439,12 +491,12 @@ export default function CompleteProfileScreen() {
                     ) : (
                       <>
                         <Text style={[styles.buttonText, {
-                          opacity: (step === 'info' ? canGoNext : canSubmit) ? 1 : 0.5,
+                          opacity: (step === 'info' ? canGoNext : canSubmitPassword) ? 1 : 0.5,
                         }]}>
-                          {step === 'info' ? t('completeProfile.continue') : t('completeProfile.createAccount')}
+                          {step === 'info' && STEPS.length > 1 ? t('completeProfile.continue') : t('completeProfile.createAccount')}
                         </Text>
                         <ArrowRight size={ms(18)} color={
-                          (step === 'info' ? canGoNext : canSubmit) ? '#fff' : 'rgba(255,255,255,0.5)'
+                          (step === 'info' ? canGoNext : canSubmitPassword) ? '#fff' : 'rgba(255,255,255,0.5)'
                         } />
                       </>
                     )}
@@ -536,33 +588,21 @@ const styles = StyleSheet.create({
   },
   hintText: { flex: 1, fontSize: fontSize.xs, lineHeight: ms(18) },
 
-  // Summary
-  summaryCard: {
-    borderRadius: radius.xl, padding: wp(20), alignItems: 'center',
-    marginBottom: hp(20),
+  // Password strength
+  strengthContainer: {
+    flexDirection: 'row', alignItems: 'center', gap: wp(10),
+    marginBottom: hp(16), paddingHorizontal: wp(4),
   },
-  summaryAvatar: {
-    width: ms(64), height: ms(64), borderRadius: ms(32),
-    alignItems: 'center', justifyContent: 'center', marginBottom: hp(12),
+  strengthBarTrack: {
+    flex: 1, height: ms(4), borderRadius: ms(2),
+    backgroundColor: '#E5E7EB', overflow: 'hidden',
   },
-  summaryInitials: { fontSize: fontSize['2xl'], fontWeight: '700', color: '#fff' },
-  summaryName: { fontSize: fontSize.xl, fontWeight: '700', letterSpacing: -0.2, marginBottom: hp(4) },
-  summaryBadge: { fontSize: fontSize.sm, fontWeight: '600' },
-
-  // Terms
-  termsCard: {
-    flexDirection: 'row', alignItems: 'flex-start', gap: wp(12),
-    padding: wp(16), borderRadius: radius.xl, borderWidth: 1.5,
-    marginBottom: hp(16),
+  strengthBarFill: {
+    height: '100%', borderRadius: ms(2),
   },
-  checkbox: {
-    width: ms(24), height: ms(24), borderRadius: ms(8),
-    borderWidth: 2, justifyContent: 'center', alignItems: 'center',
-    marginTop: hp(2), flexShrink: 0,
+  strengthLabel: {
+    fontSize: fontSize.xs, fontWeight: '600',
   },
-  termsText: { flex: 1 },
-  termsLabel: { fontSize: fontSize.sm, fontWeight: '600', marginBottom: hp(4) },
-  termsDesc: { fontSize: fontSize.xs, lineHeight: ms(18) },
 
 
 

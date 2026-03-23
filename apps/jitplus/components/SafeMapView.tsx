@@ -34,7 +34,7 @@ const SafeMapView = forwardRef<MapViewType, MapViewProps>((props, ref) => {
 
   useEffect(() => {
     if (!MAPS_AVAILABLE || !RNMapView || mapLoaded) return;
-    const t = setTimeout(() => setRenderTimedOut(true), 9000);
+    const t = setTimeout(() => setRenderTimedOut(true), 4000);
     return () => clearTimeout(t);
   }, [mapLoaded]);
 

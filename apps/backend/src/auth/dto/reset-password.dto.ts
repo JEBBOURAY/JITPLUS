@@ -1,4 +1,4 @@
-import { IsEmail, IsNotEmpty, IsString, MinLength, MaxLength } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsString, MinLength, MaxLength, Matches } from 'class-validator';
 import { Transform } from 'class-transformer';
 
 export class ResetPasswordDto {
@@ -16,5 +16,8 @@ export class ResetPasswordDto {
   @IsNotEmpty()
   @MinLength(8)
   @MaxLength(100)
+  @Matches(/^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).+$/, {
+    message: 'Le mot de passe doit contenir au moins une majuscule, un chiffre et un caractère spécial',
+  })
   newPassword: string;
 }
