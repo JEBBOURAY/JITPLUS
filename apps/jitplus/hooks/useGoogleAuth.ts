@@ -13,14 +13,15 @@ import i18n from '@/i18n';
 WebBrowser.maybeCompleteAuthSession();
 
 // Prefer env var, fall back to value extracted from google-services.json via app.config.js.
-// IMPORTANT: expo-auth-session uses a browser-based OAuth flow (Chrome Custom Tab).
-// On Android, we use the Web client ID because:
-//  - Android client IDs require SHA-1 validation of the app's signing key
-//  - Google Play App Signing re-signs the app with a different key than the upload key
-//  - The Web client ID works without SHA-1 validation in browser flows
+// IMPORTANT: On Android, we MUST use the Android client ID (not Web) because
+// expo-auth-session uses a custom scheme redirect (jitplus://) which Google
+// rejects for Web client types ("custom schema URIs are not allowed for web client type").
+// The Android client ID in Google Cloud Console must have the Play Store
+// app signing SHA-1: 70:71:C3:7E:8B:33:0E:BE:9F:04:CC:5B:7E:64:A0:27:56:19:3C:D2
 const WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID
   || (Constants.expoConfig?.extra as Record<string, string> | undefined)?.googleWebClientId
   || '';
+const ANDROID_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || '';
 const IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || '';
 
 interface UseGoogleAuthOptions {
@@ -38,6 +39,7 @@ export function useGoogleAuth({ actionLabel, onCancel }: UseGoogleAuthOptions) {
 
   const [_gReq, googleResponse, promptGoogleAsync] = Google.useIdTokenAuthRequest({
     clientId: WEB_CLIENT_ID,
+    androidClientId: ANDROID_CLIENT_ID || WEB_CLIENT_ID,
     iosClientId: IOS_CLIENT_ID || WEB_CLIENT_ID,
   });
 
