@@ -97,6 +97,21 @@ export default {
     mismatchError: 'Passwords do not match',
   },
 
+  changePassword: {
+    title: 'Change password',
+    subtitle: 'Enter your current password then choose a new one',
+    currentPassword: 'Current password',
+    currentPasswordPlaceholder: 'Your current password',
+    newPassword: 'New password',
+    newPasswordPlaceholder: 'New password (min. 8 characters)',
+    confirmPassword: 'Confirm new password',
+    confirmPasswordPlaceholder: 'Confirm new password',
+    submit: 'Change password',
+    success: 'Password changed successfully',
+    errorCurrent: 'Current password is incorrect',
+    errorGeneric: 'Unable to change password',
+  },
+
   // ── Complete Profile ──
   completeProfile: {
     stepOf: 'Step %{current} of %{total}',
@@ -286,6 +301,10 @@ export default {
     exportDataSuccess: 'Data exported',
     exportDataSuccessMsg: 'Your personal data file is ready.',
     exportDataError: 'Unable to export your data. Please try again later.',
+    changePassword: 'Change password',
+    changePasswordDesc: 'Update your current password',
+    setPasswordLink: 'Set a password',
+    setPasswordLinkDesc: 'Add a password to secure your account',
     legalNotice: 'Privacy Policy',
     legalNoticeDesc: 'Legal notices & Law 09-08 (CNDP)',
     contactSupport: 'Contact support',

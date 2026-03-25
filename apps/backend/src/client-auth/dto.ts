@@ -162,6 +162,21 @@ export class SetPasswordDto {
   password: string;
 }
 
+export class ClientChangePasswordDto {
+  @IsOptional()
+  @IsString()
+  @Length(0, 100)
+  currentPassword?: string;
+
+  @IsString()
+  @IsNotEmpty({ message: 'Le nouveau mot de passe est requis' })
+  @Length(8, 100, { message: 'Le mot de passe doit contenir au moins 8 caractères' })
+  @Matches(/^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).+$/, {
+    message: 'Le mot de passe doit contenir au moins une majuscule, un chiffre et un caractère spécial',
+  })
+  newPassword: string;
+}
+
 export class RefreshTokenDto {
   @IsString()
   @IsNotEmpty({ message: 'Le refresh token est requis' })

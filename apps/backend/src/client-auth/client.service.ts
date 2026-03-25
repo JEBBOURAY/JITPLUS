@@ -421,6 +421,7 @@ export class ClientService {
       profileViews: m.profileViews,
       clientCount: m._count.loyaltyCards,
       hasCard: !!existingCard,
+      stores: m.stores ?? [],
       rewards: m.rewards.map((r: any) => ({
         id: r.id,
         titre: r.titre,

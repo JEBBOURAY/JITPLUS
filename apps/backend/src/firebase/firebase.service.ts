@@ -23,15 +23,23 @@ export class FirebaseService implements OnModuleInit, IPushProvider {
       return;
     }
 
-    this.app = admin.initializeApp({
-      credential: admin.credential.cert({
-        projectId,
-        clientEmail,
-        privateKey: privateKey.replace(/\\n/g, '\n'),
-      }),
-    });
+    try {
+      this.app = admin.initializeApp({
+        credential: admin.credential.cert({
+          projectId,
+          clientEmail,
+          privateKey: privateKey.replace(/\\n/g, '\n'),
+        }),
+      });
+      this.logger.log(`Firebase Admin SDK initialized (project: ${projectId})`);
+    } catch (error) {
+      this.logger.error(`Firebase Admin SDK initialization FAILED – push notifications will be SIMULATED: ${error}`);
+    }
+  }
 
-    this.logger.log('Firebase Admin SDK initialized');
+  /** Whether Firebase Admin SDK is properly initialized (not in simulation mode). */
+  get isInitialized(): boolean {
+    return !!this.app;
   }
 
   private static readonly MAX_TOKENS_PER_BATCH = 500;

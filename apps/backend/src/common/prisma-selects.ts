@@ -85,6 +85,7 @@ export const CLIENT_AUTH_SELECT = {
   email: true,
   telephone: true,
   googleId: true,
+  password: true,
   termsAccepted: true,
   shareInfoMerchants: true,
   notifPush: true,

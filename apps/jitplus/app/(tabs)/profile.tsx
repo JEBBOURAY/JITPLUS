@@ -13,7 +13,7 @@ import Constants from 'expo-constants';
 import {
   User, LogOut, Phone, Mail, Pencil, Check, X, Trash2, AlertTriangle,
   Share2, MessageCircle, ChevronDown, ChevronRight, Moon, Info, Globe, FileDown, Shield,
-  Star, MessageSquare, Calendar, Sparkles,
+  Star, MessageSquare, Calendar, Sparkles, Lock,
 } from 'lucide-react-native';
 import { haptic, HapticStyle } from '@/utils/haptics';
 import { useGuardedCallback } from '@/hooks/useGuardedCallback';
@@ -728,6 +728,28 @@ export default function ProfileScreen() {
               </TouchableOpacity>
               {compteExpanded && (
                 <View style={[styles.infoCard, { backgroundColor: theme.bgCard }]}>
+                  {/* ── Changer / Définir mot de passe ── */}
+                  <Pressable
+                    onPress={() => router.push('/change-password')}
+                    android_ripple={{ color: `${palette.gold}10` }}
+                    style={({ pressed }) => [
+                      styles.infoRow,
+                      pressed && Platform.OS === 'ios' && { opacity: 0.7 },
+                    ]}
+                  >
+                    <View style={[styles.infoIconBox, { backgroundColor: `${palette.gold}15` }]}>
+                      <Lock size={ms(16)} color={palette.gold} strokeWidth={1.5} />
+                    </View>
+                    <View style={styles.infoContent}>
+                      <Text style={[styles.infoValue, { color: theme.text }]}>
+                        {client?.hasPassword ? t('profile.changePassword') : t('profile.setPasswordLink')}
+                      </Text>
+                      <Text style={[styles.infoLabel, { color: theme.textMuted }]}>
+                        {client?.hasPassword ? t('profile.changePasswordDesc') : t('profile.setPasswordLinkDesc')}
+                      </Text>
+                    </View>
+                    <ChevronRight size={ms(14)} color={theme.textMuted} strokeWidth={1.5} />
+                  </Pressable>
                   {/* ── Contacter le support ── */}
                   <Pressable
                     onPress={() => Linking.openURL('https://wa.me/33767471397?text=Bonjour%2C%20j%27ai%20besoin%20d%27aide%20avec%20l%27app%20JitPlus')}

@@ -97,7 +97,7 @@ async function main() {
       planExpiresAt: daysFromNow(180),
       onboardingCompleted: true,
       referralCode: 'CAFE-BARR',
-      socialLinks: { instagram: 'https://instagram.com/cafebarrista', facebook: 'https://facebook.com/cafebarrista', website: 'https://cafebarrista.ma' },
+      socialLinks: { instagram: 'cafebarrista', facebook: 'cafebarrista', tiktok: 'cafebarrista_ma', website: 'https://cafebarrista.ma' },
       profileViews: 342,
     },
     // ─── idx 1 : Épicerie POINTS, PREMIUM admin-activé, Casablanca ───
@@ -121,7 +121,7 @@ async function main() {
       planActivatedByAdmin: true,
       onboardingCompleted: true,
       referralCode: 'EPIC-VERT',
-      socialLinks: { instagram: 'https://instagram.com/epicerieverte', tiktok: 'https://tiktok.com/@epicerieverte' },
+      socialLinks: { instagram: 'epicerieverte', tiktok: 'epicerieverte' },
       profileViews: 128,
     },
     // ─── idx 2 : Restaurant POINTS, PREMIUM trial, Casablanca ───
@@ -146,7 +146,7 @@ async function main() {
       onboardingCompleted: true,
       referralCode: 'REST-DARZE',
       referredByIdx: 0 as number | undefined,
-      socialLinks: { instagram: 'https://instagram.com/darzellij', facebook: 'https://facebook.com/darzellij', youtube: 'https://youtube.com/@darzellij' },
+      socialLinks: { instagram: 'darzellij', facebook: 'darzellij', tiktok: 'darzellij_officiel', youtube: 'darzellij' },
       profileViews: 567,
     },
     // ─── idx 3 : Boulangerie STAMPS, FREE (trial expiré), Casablanca ───
@@ -170,7 +170,7 @@ async function main() {
       trialStartedAt: daysAgo(45),
       onboardingCompleted: true,
       referralCode: 'BOUL-FOUR',
-      socialLinks: { facebook: 'https://facebook.com/alfourno' },
+      socialLinks: { facebook: 'alfourno', instagram: 'alfourno_boulangerie' },
       profileViews: 89,
     },
     // ─── idx 4 : Pharmacie POINTS, FREE, Casablanca ───
@@ -213,7 +213,7 @@ async function main() {
       planExpiresAt: daysFromNow(365),
       onboardingCompleted: true,
       referralCode: 'LIBR-KALI',
-      socialLinks: { instagram: 'https://instagram.com/librairekalila', snapchat: 'librairekalila' },
+      socialLinks: { instagram: 'librairekalila', tiktok: 'librairekalila', snapchat: 'librairekalila' },
       profileViews: 175,
     },
     // ─── idx 6 : Fashion POINTS, PREMIUM, Casablanca ───
@@ -237,7 +237,7 @@ async function main() {
       onboardingCompleted: true,
       referralCode: 'FASH-HOUS',
       referredByIdx: 0 as number | undefined,
-      socialLinks: { instagram: 'https://instagram.com/fashionhouse', tiktok: 'https://tiktok.com/@fashionhouse', website: 'https://fashionhouse.ma' },
+      socialLinks: { instagram: 'fashionhouse', tiktok: 'fashionhouse_ma', website: 'https://fashionhouse.ma' },
       profileViews: 890,
     },
     // ─── idx 7 : Coiffure STAMPS, FREE, Marrakech ───
@@ -282,7 +282,7 @@ async function main() {
       planExpiresAt: daysFromNow(60),
       onboardingCompleted: true,
       referralCode: 'TECH-ZONE',
-      socialLinks: { instagram: 'https://instagram.com/techzonema', website: 'https://techzone.ma' },
+      socialLinks: { instagram: 'techzonema', tiktok: 'techzone_maroc', website: 'https://techzone.ma' },
       profileViews: 445,
       accumulationLimit: 1000,
     },
@@ -308,7 +308,7 @@ async function main() {
       trialStartedAt: daysAgo(25),
       onboardingCompleted: true,
       referralCode: 'FIT-CLUB',
-      socialLinks: { instagram: 'https://instagram.com/fitclubgym' },
+      socialLinks: { instagram: 'fitclubgym', tiktok: 'fitclubgym_casa' },
       profileViews: 310,
     },
     // ─── idx 10 : Beauté POINTS, FREE, onboarding NON complété (nouveau marchand) ───

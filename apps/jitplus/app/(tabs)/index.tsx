@@ -432,6 +432,13 @@ export default function HomeScreen() {
     await refetch();
   }, [refetch]);
 
+  // Refetch cards when the tab regains focus (freezeOnBlur prevents auto-refetch)
+  useFocusEffect(
+    useCallback(() => {
+      refetch();
+    }, [refetch]),
+  );
+
   const firstName = client?.prenom || 'Client';
 
   // ── Filter cards by category and search ──

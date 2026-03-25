@@ -24,7 +24,7 @@ import { ClientOnlyGuard } from '../common/guards/client-only.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtPayload } from '../common/interfaces/jwt-payload.interface';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
-import { SendOtpDto, VerifyOtpDto, CompleteProfileDto, ClientUpdateProfileDto, UpdatePushTokenDto, SendOtpEmailDto, VerifyOtpEmailDto, GoogleLoginDto, LoginEmailDto, LoginPhoneDto, SetPasswordDto, RefreshTokenDto, ClientDeleteAccountDto } from './dto';
+import { SendOtpDto, VerifyOtpDto, CompleteProfileDto, ClientUpdateProfileDto, UpdatePushTokenDto, SendOtpEmailDto, VerifyOtpEmailDto, GoogleLoginDto, LoginEmailDto, LoginPhoneDto, SetPasswordDto, RefreshTokenDto, ClientDeleteAccountDto, ClientChangePasswordDto } from './dto';
 
 @ApiTags('Client Auth')
 @Controller('client-auth')
@@ -102,6 +102,13 @@ export class ClientAuthController {
   @UseGuards(AuthGuard('jwt'), ClientOnlyGuard)
   async setPassword(@CurrentUser() user: JwtPayload, @Body() dto: SetPasswordDto) {
     return this.clientAuthService.setPassword(user.userId, dto.password);
+  }
+
+  @Patch('change-password')
+  @Throttle({ default: { ttl: 60000, limit: 5 } })
+  @UseGuards(AuthGuard('jwt'), ClientOnlyGuard)
+  async changePassword(@CurrentUser() user: JwtPayload, @Body() dto: ClientChangePasswordDto) {
+    return this.clientAuthService.changePassword(user.userId, dto.currentPassword, dto.newPassword);
   }
 
   @Post('complete-profile')

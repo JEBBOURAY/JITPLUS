@@ -29,6 +29,8 @@ export function useRealtimeEvents(socket: Socket | null) {
       queryClient.invalidateQueries({ queryKey: queryKeys.clientStatus(payload.clientId) });
       // Invalidate transactions list
       queryClient.invalidateQueries({ queryKey: queryKeys.transactions });
+      // Invalidate clients list (points, lastVisit may have changed)
+      queryClient.invalidateQueries({ queryKey: ['clients'] as const });
       // Invalidate dashboard stats (transaction count, points, etc.)
       // Use prefix-based invalidation via partial queryKeys
       queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] as const });

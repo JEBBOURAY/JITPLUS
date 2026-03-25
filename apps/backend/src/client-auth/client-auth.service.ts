@@ -32,6 +32,7 @@ export interface ClientAuthResponse {
     notifPush: boolean;
     notifWhatsapp: boolean;
     dateNaissance: Date | null;
+    hasPassword: boolean;
     createdAt: Date;
   };
 }
@@ -39,7 +40,7 @@ export interface ClientAuthResponse {
 /** Subset of client fields returned after profile / password update. */
 export interface ClientProfileResult {
   success: boolean;
-  client: Omit<ClientAuthResponse['client'], 'isNewUser'> & { hasPassword?: boolean };
+  client: Omit<ClientAuthResponse['client'], 'isNewUser'>;
 }
 
 @Injectable()
@@ -343,6 +344,7 @@ export class ClientAuthService {
       email: string | null;
       telephone: string | null;
       googleId?: string | null;
+      password?: string | null;
       shareInfoMerchants?: boolean;
       notifPush?: boolean;
       notifWhatsapp?: boolean;
@@ -384,6 +386,7 @@ export class ClientAuthService {
         notifPush: client.notifPush ?? true,
         notifWhatsapp: client.notifWhatsapp ?? true,
         dateNaissance: client.dateNaissance ?? null,
+        hasPassword: !!client.password,
         createdAt: client.createdAt,
       },
     };
@@ -448,6 +451,7 @@ export class ClientAuthService {
         notifPush: client.notifPush,
         notifWhatsapp: client.notifWhatsapp,
         dateNaissance: client.dateNaissance ?? null,
+        hasPassword: !!client.password,
         createdAt: client.createdAt,
       },
     };
@@ -591,10 +595,16 @@ export class ClientAuthService {
       }
 
       // Verify Google ID token using google-auth-library (cryptographic verification)
-      // Accept both Web and Android client IDs as valid audiences
+      // expo-auth-session uses browser flow → token audience is always the Web client ID
       const webClientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
       const androidClientId = this.configService.get<string>('GOOGLE_ANDROID_CLIENT_ID');
       const allowedAudiences = [webClientId, androidClientId].filter(Boolean) as string[];
+
+      if (allowedAudiences.length === 0) {
+        this.logger.error('Google login misconfigured: GOOGLE_CLIENT_ID and GOOGLE_ANDROID_CLIENT_ID are both empty');
+        throw new UnauthorizedException('Connexion Google non configurée');
+      }
+
       const ticket = await this.googleClient.verifyIdToken({
         idToken,
         audience: allowedAudiences,
@@ -731,7 +741,9 @@ export class ClientAuthService {
         notifPush: client.notifPush,
         notifWhatsapp: client.notifWhatsapp,
         dateNaissance: client.dateNaissance,
-        createdAt: client.createdAt,        ...(password ? { hasPassword: true } : {}),      },
+        hasPassword: !!client.password,
+        createdAt: client.createdAt,
+      },
     };
   }
 
@@ -841,7 +853,58 @@ export class ClientAuthService {
       },
     };
   }
+  /**
+   * Change password for an authenticated client.
+   * Google-only accounts can set an initial password without providing currentPassword.
+   */
+  async changePassword(clientId: string, currentPassword: string | undefined, newPassword: string): Promise<ClientProfileResult> {
+    const client = await this.clientRepo.findUnique({
+      where: { id: clientId },
+      select: { id: true, password: true, googleId: true },
+    });
+    if (!client) throw new BadRequestException('Client introuvable');
 
+    // Google-only accounts can set initial password without current one
+    if (client.googleId && !client.password && !currentPassword) {
+      // Allow setting initial password for Google accounts
+    } else {
+      if (!currentPassword) throw new BadRequestException('Le mot de passe actuel est requis');
+      if (!client.password) throw new BadRequestException('Aucun mot de passe défini. Utilisez "Définir le mot de passe".');
+      const isValid = await bcrypt.compare(currentPassword, client.password);
+      if (!isValid) throw new UnauthorizedException('Mot de passe actuel incorrect');
+    }
+
+    // Prevent changing to the same password
+    if (client.password) {
+      const isSame = await bcrypt.compare(newPassword, client.password);
+      if (isSame) throw new BadRequestException('Le nouveau mot de passe doit être différent de l\'ancien');
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, BCRYPT_SALT_ROUNDS);
+    const updated = await this.clientRepo.update({
+      where: { id: clientId },
+      data: { password: hashedPassword, refreshTokenHash: null },
+      select: CLIENT_AUTH_SELECT,
+    });
+
+    return {
+      success: true,
+      client: {
+        id: updated.id,
+        prenom: updated.prenom,
+        nom: updated.nom,
+        email: updated.email,
+        telephone: updated.telephone,
+        termsAccepted: updated.termsAccepted,
+        shareInfoMerchants: updated.shareInfoMerchants,
+        notifPush: updated.notifPush,
+        notifWhatsapp: updated.notifWhatsapp,
+        dateNaissance: updated.dateNaissance ?? null,
+        hasPassword: true,
+        createdAt: updated.createdAt,
+      },
+    };
+  }
   // â”€â”€ QR Token â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   /**
    * Permanent HMAC-signed QR token for merchant scanning.

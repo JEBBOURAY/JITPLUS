@@ -97,6 +97,21 @@ export default {
     mismatchError: 'كلمتا المرور غير متطابقتين',
   },
 
+  changePassword: {
+    title: 'تغيير كلمة المرور',
+    subtitle: 'أدخل كلمة المرور الحالية ثم اختر كلمة مرور جديدة',
+    currentPassword: 'كلمة المرور الحالية',
+    currentPasswordPlaceholder: 'كلمة المرور الحالية',
+    newPassword: 'كلمة المرور الجديدة',
+    newPasswordPlaceholder: 'كلمة مرور جديدة (8 أحرف على الأقل)',
+    confirmPassword: 'تأكيد كلمة المرور الجديدة',
+    confirmPasswordPlaceholder: 'تأكيد كلمة المرور الجديدة',
+    submit: 'تغيير كلمة المرور',
+    success: 'تم تغيير كلمة المرور بنجاح',
+    errorCurrent: 'كلمة المرور الحالية غير صحيحة',
+    errorGeneric: 'تعذّر تغيير كلمة المرور',
+  },
+
   // ── Complete Profile ──
   completeProfile: {
     stepOf: 'الخطوة %{current} من %{total}',
@@ -286,6 +301,10 @@ export default {
     exportDataSuccess: 'تم تصدير البيانات',
     exportDataSuccessMsg: 'ملف بياناتك الشخصية جاهز.',
     exportDataError: 'تعذّر تصدير بياناتك. حاول مجدداً لاحقاً.',
+    changePassword: 'تغيير كلمة المرور',
+    changePasswordDesc: 'تعديل كلمة المرور الحالية',
+    setPasswordLink: 'تعيين كلمة مرور',
+    setPasswordLinkDesc: 'أضف كلمة مرور لتأمين حسابك',
     legalNotice: 'سياسة الخصوصية',
     legalNoticeDesc: 'الإشعارات القانونية والقانون 09-08 (CNDP)',
     contactSupport: 'تواصل مع الدعم',

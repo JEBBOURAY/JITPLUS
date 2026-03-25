@@ -11,7 +11,7 @@ import {
   Platform,
 } from 'react-native';
 import { Users, Search, X, UserPlus, ChevronRight } from 'lucide-react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useFocusFade } from '@/hooks/useFocusFade';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '@/contexts/AuthContext';
@@ -162,6 +162,13 @@ export default function ClientsScreen() {
   const onRefresh = useGuardedCallback(async () => {
     await refetch();
   }, [refetch]);
+
+  // Refetch when the tab regains focus
+  useFocusEffect(
+    useCallback(() => {
+      refetch();
+    }, [refetch]),
+  );
 
   const clearSearch = () => {
     setSearch('');

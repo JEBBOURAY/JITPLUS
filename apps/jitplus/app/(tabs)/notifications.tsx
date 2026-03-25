@@ -1,8 +1,8 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, RefreshControl,
   TouchableOpacity, Alert, Platform, Linking, Image,
-  Modal, ScrollView,
+  Modal, ScrollView, Animated, PanResponder, Dimensions,
 } from 'react-native';
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -46,6 +46,84 @@ const COLOR_MAP: Record<string, string> = {
   promo: palette.violet,
   info: '#F59E0B',
 };
+
+const SCREEN_WIDTH = Dimensions.get('window').width;
+const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.3;
+
+// ── Swipeable wrapper for notification cards ──
+function SwipeableNotifCard({ onDismiss, children }: { onDismiss: () => void; children: React.ReactNode }) {
+  const translateX = useRef(new Animated.Value(0)).current;
+  const rowHeight = useRef(new Animated.Value(1)).current;
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gesture) =>
+        Math.abs(gesture.dx) > 10 && Math.abs(gesture.dx) > Math.abs(gesture.dy * 2),
+      onPanResponderMove: (_, gesture) => {
+        translateX.setValue(gesture.dx);
+      },
+      onPanResponderRelease: (_, gesture) => {
+        if (Math.abs(gesture.dx) > SWIPE_THRESHOLD) {
+          const toValue = gesture.dx > 0 ? SCREEN_WIDTH : -SCREEN_WIDTH;
+          Animated.timing(translateX, {
+            toValue,
+            duration: 200,
+            useNativeDriver: true,
+          }).start(() => {
+            Animated.timing(rowHeight, {
+              toValue: 0,
+              duration: 180,
+              useNativeDriver: false,
+            }).start(onDismiss);
+          });
+        } else {
+          Animated.spring(translateX, {
+            toValue: 0,
+            useNativeDriver: true,
+            bounciness: 8,
+          }).start();
+        }
+      },
+    }),
+  ).current;
+
+  const opacity = translateX.interpolate({
+    inputRange: [-SCREEN_WIDTH, -SWIPE_THRESHOLD, 0, SWIPE_THRESHOLD, SCREEN_WIDTH],
+    outputRange: [0.2, 0.7, 1, 0.7, 0.2],
+    extrapolate: 'clamp',
+  });
+
+  const swipeBgOpacity = translateX.interpolate({
+    inputRange: [-SWIPE_THRESHOLD, -20, 0, 20, SWIPE_THRESHOLD],
+    outputRange: [1, 0.6, 0, 0.6, 1],
+    extrapolate: 'clamp',
+  });
+
+  return (
+    <Animated.View
+      style={{
+        maxHeight: rowHeight.interpolate({ inputRange: [0, 1], outputRange: [0, 500] }),
+        opacity: rowHeight,
+        overflow: 'hidden',
+      }}
+    >
+      <Animated.View style={[styles.swipeBackground, { opacity: swipeBgOpacity }]}>
+        <View style={styles.swipeAction}>
+          <Trash2 size={ms(20)} color="#fff" strokeWidth={1.5} />
+        </View>
+        <View style={styles.swipeAction}>
+          <Trash2 size={ms(20)} color="#fff" strokeWidth={1.5} />
+        </View>
+      </Animated.View>
+      <Animated.View
+        style={{ transform: [{ translateX }], opacity }}
+        {...panResponder.panHandlers}
+      >
+        {children}
+      </Animated.View>
+    </Animated.View>
+  );
+}
 
 export default function NotificationsScreen() {
   const theme = useTheme();
@@ -242,68 +320,58 @@ export default function NotificationsScreen() {
 
     return (
       <FadeInView key={notif.id} delay={animDelay}>
-        <TouchableOpacity
-          activeOpacity={0.75}
-          onPress={() => handleTapNotification(notif)}
-          style={[
-            styles.notifCard,
-            {
-              backgroundColor: isUnread ? `${palette.violet}08` : theme.bgCard,
-              borderLeftColor: isUnread ? palette.violet : 'transparent',
-              borderLeftWidth: isUnread ? ms(3) : 0,
-            },
-          ]}
-        >
-          {/* Unread indicator dot */}
-          {isUnread && (
-            <View style={styles.unreadDot}>
-              <CircleDot size={ms(8)} color={palette.violet} fill={palette.violet} />
-            </View>
-          )}
-
-          <View style={[styles.notifIcon, { backgroundColor: `${color}15` }]}>
-            <MerchantLogo logoUrl={notif.merchantLogoUrl} style={styles.notifLogoImg} />
-          </View>
-          <View style={styles.notifContent}>
-            <Text
-              style={[
-                styles.notifTitle,
-                {
-                  color: theme.text,
-                  fontWeight: isUnread ? '700' : '500',
-                  opacity: isUnread ? 1 : 0.8,
-                },
-              ]}
-            >
-              {notif.title}
-            </Text>
-            <Text style={[styles.notifBody, { color: theme.textMuted }]} numberOfLines={2}>
-              {notif.body}
-            </Text>
-            <View style={styles.notifMeta}>
-              {notif.merchantName && (
-                <Text style={[styles.notifMerchant, { color: theme.primaryLight }]}>
-                  {notif.merchantName}
-                </Text>
-              )}
-              <Text style={[styles.notifDate, { color: theme.textMuted }]}>
-                {notifDateFmt.format(new Date(notif.createdAt))}
-              </Text>
-            </View>
-          </View>
-
-          {/* Delete button */}
+        <SwipeableNotifCard onDismiss={() => handleDismiss(notif.id)}>
           <TouchableOpacity
-            style={styles.deleteBtn}
-            onPress={() => handleDismiss(notif.id)}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            activeOpacity={0.6}
-            accessibilityRole="button"
-            accessibilityLabel={t('common.delete')}
+            activeOpacity={0.75}
+            onPress={() => handleTapNotification(notif)}
+            style={[
+              styles.notifCard,
+              {
+                backgroundColor: theme.bgCard,
+                borderLeftColor: isUnread ? palette.violet : 'transparent',
+                borderLeftWidth: isUnread ? ms(3) : 0,
+              },
+            ]}
           >
-            <Trash2 size={ms(16)} color={theme.textMuted} strokeWidth={1.5} />
+            {/* Unread indicator dot */}
+            {isUnread && (
+              <View style={styles.unreadDot}>
+                <CircleDot size={ms(8)} color={palette.violet} fill={palette.violet} />
+              </View>
+            )}
+
+            <View style={[styles.notifIcon, { backgroundColor: `${color}15` }]}>
+              <MerchantLogo logoUrl={notif.merchantLogoUrl} style={styles.notifLogoImg} />
+            </View>
+            <View style={styles.notifContent}>
+              <Text
+                style={[
+                  styles.notifTitle,
+                  {
+                    color: theme.text,
+                    fontWeight: isUnread ? '700' : '500',
+                    opacity: isUnread ? 1 : 0.8,
+                  },
+                ]}
+              >
+                {notif.title}
+              </Text>
+              <Text style={[styles.notifBody, { color: theme.textMuted }]} numberOfLines={2}>
+                {notif.body}
+              </Text>
+              <View style={styles.notifMeta}>
+                {notif.merchantName && (
+                  <Text style={[styles.notifMerchant, { color: theme.primaryLight }]}>
+                    {notif.merchantName}
+                  </Text>
+                )}
+                <Text style={[styles.notifDate, { color: theme.textMuted }]}>
+                  {notifDateFmt.format(new Date(notif.createdAt))}
+                </Text>
+              </View>
+            </View>
           </TouchableOpacity>
-        </TouchableOpacity>
+        </SwipeableNotifCard>
       </FadeInView>
     );
   }, [theme, handleTapNotification, handleDismiss, notifDateFmt]);
@@ -539,11 +607,20 @@ const styles = StyleSheet.create({
   notifMerchant: { fontSize: fontSize.xs, fontWeight: '600' },
   notifDate: { fontSize: fontSize.xs },
 
-  // Delete button
-  deleteBtn: {
-    padding: ms(6),
-    marginTop: hp(2),
-    opacity: 0.6,
+  // Swipe-to-delete background
+  swipeBackground: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#EF4444',
+    borderRadius: radius.xl,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: wp(24),
+    marginBottom: hp(10),
+  },
+  swipeAction: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   // Empty

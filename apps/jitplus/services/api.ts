@@ -180,6 +180,14 @@ class ApiService {
     return data;
   }
 
+  async changePassword(currentPassword: string | undefined, newPassword: string): Promise<{ success: boolean; client: Client }> {
+    const { data } = await this.api.patch('/client-auth/change-password', {
+      ...(currentPassword ? { currentPassword } : {}),
+      newPassword,
+    });
+    return data;
+  }
+
   async completeProfile(prenom: string, nom: string, termsAccepted: boolean, telephone?: string, dateNaissance?: string, password?: string): Promise<CompleteProfileResponse> {
     const { data } = await this.api.post('/client-auth/complete-profile', {
       prenom,

@@ -97,6 +97,21 @@ export default {
     mismatchError: 'Les mots de passe ne correspondent pas',
   },
 
+  changePassword: {
+    title: 'Changer le mot de passe',
+    subtitle: 'Saisissez votre mot de passe actuel puis choisissez-en un nouveau',
+    currentPassword: 'Mot de passe actuel',
+    currentPasswordPlaceholder: 'Votre mot de passe actuel',
+    newPassword: 'Nouveau mot de passe',
+    newPasswordPlaceholder: 'Nouveau mot de passe (min. 8 caractères)',
+    confirmPassword: 'Confirmer le nouveau mot de passe',
+    confirmPasswordPlaceholder: 'Confirmez le nouveau mot de passe',
+    submit: 'Modifier le mot de passe',
+    success: 'Mot de passe modifié avec succès',
+    errorCurrent: 'Le mot de passe actuel est incorrect',
+    errorGeneric: 'Impossible de changer le mot de passe',
+  },
+
   // ── Complete Profile ──
   completeProfile: {
     stepOf: 'Étape %{current} sur %{total}',
@@ -286,6 +301,10 @@ export default {
     exportDataSuccess: 'Données exportées',
     exportDataSuccessMsg: 'Votre fichier de données personnelles est prêt.',
     exportDataError: 'Impossible d\'exporter vos données. Réessayez plus tard.',
+    changePassword: 'Changer le mot de passe',
+    changePasswordDesc: 'Modifier votre mot de passe actuel',
+    setPasswordLink: 'Définir un mot de passe',
+    setPasswordLinkDesc: 'Ajoutez un mot de passe pour sécuriser votre compte',
     legalNotice: 'Politique de confidentialité',
     legalNoticeDesc: 'Mentions légales & Loi 09-08 (CNDP)',
     contactSupport: 'Contacter le support',

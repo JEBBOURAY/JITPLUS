@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { RAW_QUERY_RUNNER } from '../common/repositories';
 import type { IRawQueryRunner } from '../common/repositories';
 import { Prisma } from '@prisma/client';
+import { FirebaseService } from '../firebase/firebase.service';
 
 /** Current API version string */
 const API_VERSION = 'v1';
@@ -15,6 +16,7 @@ export class HealthController {
   constructor(
     @Inject(RAW_QUERY_RUNNER) private readonly rawQuery: IRawQueryRunner,
     private readonly config: ConfigService,
+    private readonly firebase: FirebaseService,
   ) {}
 
   @Get()
@@ -27,8 +29,9 @@ export class HealthController {
       dbStatus = 'down';
     }
 
-    const status = dbStatus === 'ok' ? 'ok' : 'degraded';
-    return { status, db: dbStatus, timestamp: new Date().toISOString() };
+    const fcm = this.firebase.isInitialized ? 'ok' : 'simulated';
+    const status = dbStatus === 'ok' && fcm === 'ok' ? 'ok' : 'degraded';
+    return { status, db: dbStatus, fcm, timestamp: new Date().toISOString() };
   }
 
   /**
