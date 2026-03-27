@@ -270,7 +270,7 @@ export class ClientAuthService {
     }
     const errorMessage = error instanceof Error ? error.message : '';
     if (otpRecord && (errorMessage.includes('expiré') || errorMessage.includes('Trop de tentatives'))) {
-      await this.otpRepo.delete({ where: { id: otpRecord.id } }).catch((err) =>
+      await this.otpRepo.delete({ where: { id: otpRecord.id } }).catch((err: unknown) =>
         this.logger.warn('OTP cleanup failed', errMsg(err)),
       );
     }

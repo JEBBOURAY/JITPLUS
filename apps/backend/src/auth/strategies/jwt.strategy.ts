@@ -66,7 +66,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
           this.deviceSessionRepo.update({
             where: { id: session.id },
             data: { lastActiveAt: new Date() },
-          }).catch((err) => this.logger.warn('lastActiveAt update failed', errMsg(err)));
+          }).catch((err: unknown) => this.logger.warn('lastActiveAt update failed', errMsg(err)));
         }
       }
     }
