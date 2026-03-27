@@ -147,12 +147,12 @@ module.exports = ({ config }) => {
       ],
       // Sentry — source map upload + native crash symbolication
       // Requires EAS Secrets: SENTRY_ORG, SENTRY_PROJECT, SENTRY_AUTH_TOKEN
-      ['@sentry/react-native/expo', {
+      ...(process.env.SENTRY_AUTH_TOKEN ? [['@sentry/react-native/expo', {
         organization: process.env.SENTRY_ORG || '',
         project: process.env.SENTRY_PROJECT || '',
         uploadNativeSymbols: false,
         autoUploadReactNativeBundles: false,
-      }],
+      }]] : []),
     ],
     extra: {
       googleMapsApiKey: GOOGLE_MAPS_KEY,

@@ -7,7 +7,9 @@ export interface Client {
   prenom: string | null;
   nom: string | null;
   email: string | null;
+  emailVerified?: boolean;
   telephone: string | null;
+  telephoneVerified?: boolean;
   countryCode?: string;
   pushToken?: string;
   termsAccepted?: boolean;
@@ -133,4 +135,21 @@ export interface NotificationsResponse {
 
 export interface QrTokenResponse {
   qr_token: string;
+}
+
+export interface ClientReferral {
+  id: string;
+  merchantName: string;
+  merchantCategory: string;
+  status: 'PENDING' | 'VALIDATED';
+  amount: number;
+  createdAt: string;
+  validatedAt: string | null;
+}
+
+export interface ClientReferralStats {
+  referralCode: string;
+  referralBalance: number;
+  referredCount: number;
+  referrals: ClientReferral[];
 }

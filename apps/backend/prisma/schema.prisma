@@ -3,6 +3,7 @@
 
 generator client {
   provider      = "prisma-client-js"
+  output        = "../src/generated/client"
   binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
@@ -62,6 +63,7 @@ model Merchant {
   referredBy            Merchant?        @relation("MerchantReferrals", fields: [referredById], references: [id], onDelete: SetNull)
   referrals             Merchant[]       @relation("MerchantReferrals")
   referralMonthsEarned  Int              @default(0) @map("referral_months_earned")
+  referralBonusCredited Boolean          @default(false) @map("referral_bonus_credited")
 
   loyaltyCards    LoyaltyCard[]
   transactions    Transaction[]
@@ -72,6 +74,11 @@ model Merchant {
   stores          Store[]
   upgradeRequests UpgradeRequest[]
   profileViewsLog ProfileView[]
+  clientReferral  ClientReferral[]
+
+  // ── Parrainage par client ──
+  referredByClientId    String?          @map("referred_by_client_id")
+  referredByClient      Client?          @relation("ClientMerchantReferrals", fields: [referredByClientId], references: [id], onDelete: SetNull)
 
   // Champs pour le quota WhatsApp
   whatsappQuotaUsed      Int      @default(0)
@@ -232,8 +239,10 @@ model Client {
   prenom              String?       @db.VarChar(255)
   nom                 String?       @db.VarChar(255)
   email               String?       @unique @db.VarChar(255)
+  emailVerified       Boolean       @default(false) @map("email_verified")
   password            String?       @db.VarChar(255)
   telephone           String?       @unique @db.VarChar(20)
+  telephoneVerified   Boolean       @default(false) @map("telephone_verified")
   googleId            String?       @unique @map("google_id") @db.VarChar(255)
   countryCode         String        @default("MA") @map("country_code") @db.VarChar(5)
   pushToken           String?       @map("push_token") @db.VarChar(512)
@@ -250,10 +259,16 @@ model Client {
   updatedAt           DateTime      @updatedAt @map("updated_at")
   deletedAt           DateTime?     @map("deleted_at")
 
+  // ── Programme de parrainage client ──
+  referralCode          String?          @unique @map("referral_code")
+  referralBalance       Float            @default(0) @map("referral_balance")
+
   loyaltyCards          LoyaltyCard[]
   transactions          Transaction[]
   notificationStatuses  ClientNotificationStatus[]
   profileViewsLog       ProfileView[]
+  clientReferrals       ClientReferral[]
+  referredMerchants     Merchant[]       @relation("ClientMerchantReferrals")
 
   @@index([nom])
   @@index([email])
@@ -504,4 +519,27 @@ model ProfileView {
   @@index([merchantId, viewDate])
   @@index([clientId])
   @@map("profile_views_log")
+}
+
+// ── Parrainage client → commerce ─────────────────────────────────────────────
+enum ClientReferralStatus {
+  PENDING
+  VALIDATED
+}
+
+model ClientReferral {
+  id          String                @id @default(uuid())
+  clientId    String                @map("client_id")
+  merchantId  String                @unique @map("merchant_id")
+  status      ClientReferralStatus  @default(PENDING)
+  amount      Float                 @default(0)
+  validatedAt DateTime?             @map("validated_at")
+  createdAt   DateTime              @default(now()) @map("created_at")
+
+  client   Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@index([status])
+  @@map("client_referrals")
 }

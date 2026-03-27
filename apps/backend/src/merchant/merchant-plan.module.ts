@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { MerchantPlanService } from './services/merchant-plan.service';
 import { MerchantReferralService } from './services/merchant-referral.service';
 import { WhatsappQuotaService } from './services/whatsapp-quota.service';
+import { ClientReferralService } from '../client-auth/client-referral.service';
 
 /**
  * Standalone module for plan & referral services.
@@ -14,7 +15,7 @@ import { WhatsappQuotaService } from './services/whatsapp-quota.service';
  * MerchantModule (which itself imports NotificationsModule).
  */
 @Module({
-  providers: [MerchantPlanService, MerchantReferralService, WhatsappQuotaService],
-  exports: [MerchantPlanService, MerchantReferralService, WhatsappQuotaService],
+  providers: [MerchantPlanService, MerchantReferralService, WhatsappQuotaService, ClientReferralService],
+  exports: [MerchantPlanService, MerchantReferralService, WhatsappQuotaService, ClientReferralService],
 })
 export class MerchantPlanModule {}

@@ -4,6 +4,7 @@ import { Throttle } from '@nestjs/throttler';
 import { THROTTLE_TTL } from '../common/constants';
 import { AuthService } from './auth.service';
 import { MerchantReferralService } from '../merchant/services/merchant-referral.service';
+import { ClientReferralService } from '../client-auth/client-referral.service';
 import { LoginDto } from './dto/login.dto';
 import { GoogleLoginMerchantDto } from './dto/google-login-merchant.dto';
 import { GoogleRegisterMerchantDto } from './dto/google-register-merchant.dto';
@@ -25,6 +26,7 @@ export class AuthController {
   constructor(
     private authService: AuthService,
     private referralService: MerchantReferralService,
+    private clientReferralService: ClientReferralService,
     private jwtService: JwtService,
   ) {}
 
@@ -118,6 +120,10 @@ export class AuthController {
   @Get('referral/check/:code')
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 10 } })
   async checkReferralCode(@Param('code') code: string) {
-    return this.referralService.validateCode(code);
+    try {
+      return await this.referralService.validateCode(code);
+    } catch {
+      return this.clientReferralService.validateCode(code);
+    }
   }
 }

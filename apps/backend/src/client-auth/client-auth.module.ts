@@ -4,12 +4,14 @@ import { PassportModule } from '@nestjs/passport';
 import { ClientAuthController, ClientController } from './client-auth.controller';
 import { ClientAuthService } from './client-auth.service';
 import { ClientService } from './client.service';
+import { MerchantPlanModule } from '../merchant/merchant-plan.module';
 import { jwtModuleFactory } from '../common/jwt/jwt-module.factory';
 
 @Module({
   imports: [
     PassportModule,
     JwtModule.registerAsync(jwtModuleFactory('jitplus-client', 'JWT_CLIENT_EXPIRATION', '2h')),
+    MerchantPlanModule,
   ],
   controllers: [ClientAuthController, ClientController],
   providers: [ClientAuthService, ClientService],

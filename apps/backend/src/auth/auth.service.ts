@@ -25,6 +25,7 @@ import { MERCHANT_LOGIN_SELECT, MERCHANT_OWNER_SELECT, MERCHANT_PROFILE_SELECT }
 import { MerchantResponse } from '../common/interfaces/merchant-response.interface';
 import { MerchantPlanService } from '../merchant/services/merchant-plan.service';
 import { MerchantReferralService } from '../merchant/services/merchant-referral.service';
+import { ClientReferralService } from '../client-auth/client-referral.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 
 /** Shape returned by login/register containing an access token + merchant data. */
@@ -67,6 +68,7 @@ export class AuthService {
     @Inject(MAIL_PROVIDER) private mailProvider: IMailProvider,
     private planService: MerchantPlanService,
     private referralService: MerchantReferralService,
+    private clientReferralService: ClientReferralService,
     private jwtStrategy: JwtStrategy,
     private configService: ConfigService,
   ) {
@@ -495,12 +497,19 @@ export class AuthService {
 
     // â”€â”€ Valider le code de parrainage si fourni â”€â”€
     let referredById: string | undefined;
+    let referredByClientId: string | undefined;
     if (registerDto.referralCode) {
+      // Try merchant referral code first, then client referral code
       try {
         const referrer = await this.referralService.validateCode(registerDto.referralCode);
         referredById = referrer.id;
       } catch {
-        throw new ConflictException('Code de parrainage invalide ou inexistant');
+        try {
+          const clientReferrer = await this.clientReferralService.validateCode(registerDto.referralCode);
+          referredByClientId = clientReferrer.id;
+        } catch {
+          throw new ConflictException('Code de parrainage invalide ou inexistant');
+        }
       }
     }
 
@@ -525,6 +534,7 @@ export class AuthService {
           ...trialData,
           // Parrainage
           ...(referredById && { referredById }),
+          ...(referredByClientId && { referredByClientId }),
           // Auto-create the first store with the same info as the merchant
           stores: {
             create: {
@@ -560,10 +570,13 @@ export class AuthService {
     this.sendVerificationEmail(merchant.email)
       .catch((err) => this.logger.warn('Verification email failed', errMsg(err)));
 
-    // Credit the referrer with 1 free month bonus (fire-and-forget)
-    if (referredById) {
-      this.referralService.creditReferrer(referredById, merchant.nom)
-        .catch((err) => this.logger.warn('Referral credit failed', errMsg(err)));
+    // Merchant-to-merchant referral bonus is deferred until the referred merchant
+    // completes trial and pays their first subscription (handled in adminActivatePremium / upgrade-request approval).
+
+    // Create client referral record (fire-and-forget)
+    if (referredByClientId) {
+      this.clientReferralService.createReferral(referredByClientId, merchant.id)
+        .catch((err) => this.logger.warn('Client referral creation failed', errMsg(err)));
     }
 
     const sessionId = randomUUID();
@@ -763,12 +776,18 @@ export class AuthService {
     const trialData = this.planService.getTrialData();
 
     let referredById: string | undefined;
+    let referredByClientId: string | undefined;
     if (dto.referralCode) {
       try {
         const referrer = await this.referralService.validateCode(dto.referralCode);
         referredById = referrer.id;
       } catch {
-        throw new ConflictException('Code de parrainage invalide ou inexistant');
+        try {
+          const clientReferrer = await this.clientReferralService.validateCode(dto.referralCode);
+          referredByClientId = clientReferrer.id;
+        } catch {
+          throw new ConflictException('Code de parrainage invalide ou inexistant');
+        }
       }
     }
 
@@ -795,7 +814,8 @@ export class AuthService {
           termsAccepted: dto.termsAccepted ?? false,
           pointsRules: DEFAULT_POINTS_RULES,
           ...trialData,
-          referredById: referredById ?? undefined,
+          ...(referredById && { referredById }),
+          ...(referredByClientId && { referredByClientId }),
           stores: {
             create: {
               nom: dto.nom,
@@ -824,10 +844,13 @@ export class AuthService {
     this.mailProvider.sendWelcomeMerchant(merchant.email, merchant.nom)
       .catch((err) => this.logger.warn('Welcome email failed', errMsg(err)));
 
-    // Credit referrer
-    if (referredById) {
-      this.referralService.creditReferrer(referredById, merchant.nom)
-        .catch((err) => this.logger.warn('Referral credit failed', errMsg(err)));
+    // Merchant-to-merchant referral bonus is deferred until the referred merchant
+    // completes trial and pays their first subscription (handled in adminActivatePremium / upgrade-request approval).
+
+    // Create client referral record (fire-and-forget)
+    if (referredByClientId) {
+      this.clientReferralService.createReferral(referredByClientId, merchant.id)
+        .catch((err) => this.logger.warn('Client referral creation failed', errMsg(err)));
     }
 
     const sessionId = randomUUID();

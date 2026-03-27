@@ -165,6 +165,31 @@ export class MerchantReferralService {
   }
 
   /**
+   * Credit the referrer when a referred merchant converts to paid PREMIUM.
+   * Called from upgrade-request approval or admin activate-premium.
+   * Uses atomic updateMany to prevent double-crediting.
+   */
+  async creditReferrerOnPayment(newMerchantId: string): Promise<void> {
+    // Atomic guard: only update merchants that have a referrer and haven't been credited yet
+    const { count } = await this.merchantRepo.updateMany({
+      where: { id: newMerchantId, referredById: { not: null }, referralBonusCredited: false },
+      data: { referralBonusCredited: true },
+    });
+
+    if (count === 0) return; // no referrer or already credited
+
+    const merchant = await this.merchantRepo.findUnique({
+      where: { id: newMerchantId },
+      select: { referredById: true, nom: true },
+    });
+
+    if (!merchant?.referredById) return;
+
+    await this.creditReferrer(merchant.referredById, merchant.nom);
+    this.logger.log(`Deferred referral bonus credited for referrer of merchant ${newMerchantId}`);
+  }
+
+  /**
    * Validate a referral code before registration.
    * Returns referrer's id + nom, or throws NotFoundException.
    */

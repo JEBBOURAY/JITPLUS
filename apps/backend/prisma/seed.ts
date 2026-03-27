@@ -7,6 +7,7 @@ import {
   TransactionType,
   TransactionStatus,
   AuditAction,
+  AuditTargetType,
   UpgradeRequestStatus,
 } from '../src/generated/client';
 import * as bcrypt from 'bcryptjs';
@@ -949,13 +950,13 @@ async function main() {
   // 14. AUDIT LOGS (actions admin)
   // ═══════════════════════════════════════════
   const auditData = [
-    { action: AuditAction.ADMIN_LOGIN, targetType: 'ADMIN', targetId: admin.id, targetLabel: 'Admin Principal (admin@jitplus.com)', daysAgo: 0 },
-    { action: AuditAction.ADMIN_LOGIN, targetType: 'ADMIN', targetId: admin.id, targetLabel: 'Admin Principal (admin@jitplus.com)', daysAgo: 1 },
-    { action: AuditAction.ADMIN_LOGIN, targetType: 'ADMIN', targetId: admin2.id, targetLabel: 'Support JitPlus (support@jitplus.com)', daysAgo: 0 },
-    { action: AuditAction.ACTIVATE_PREMIUM, targetType: 'MERCHANT', targetId: merchants[1].id, targetLabel: 'Épicerie Verte (epicerie@test.com)', metadata: { plan: 'PREMIUM', duration: '3 mois', reason: 'Activation manuelle admin' }, daysAgo: 30 },
-    { action: AuditAction.BAN_MERCHANT, targetType: 'MERCHANT', targetId: merchants[11].id, targetLabel: 'SuperMarché Atlas (supermarche@test.com)', metadata: { reason: 'Violation des CGU — spam de notifications' }, daysAgo: 5 },
-    { action: AuditAction.APPROVE_UPGRADE_REQUEST, targetType: 'MERCHANT', targetId: merchants[7].id, targetLabel: 'Coiffure Studio M (coiffure@test.com)', metadata: { plan: 'PREMIUM', duration: '3 mois' }, daysAgo: 5 },
-    { action: AuditAction.REJECT_UPGRADE_REQUEST, targetType: 'MERCHANT', targetId: merchants[4].id, targetLabel: 'Pharmacie Centrale (pharmacie@test.com)', metadata: { reason: 'Compte trop récent' }, daysAgo: 3 },
+    { action: AuditAction.ADMIN_LOGIN, targetType: AuditTargetType.ADMIN, targetId: admin.id, targetLabel: 'Admin Principal (admin@jitplus.com)', daysAgo: 0 },
+    { action: AuditAction.ADMIN_LOGIN, targetType: AuditTargetType.ADMIN, targetId: admin.id, targetLabel: 'Admin Principal (admin@jitplus.com)', daysAgo: 1 },
+    { action: AuditAction.ADMIN_LOGIN, targetType: AuditTargetType.ADMIN, targetId: admin2.id, targetLabel: 'Support JitPlus (support@jitplus.com)', daysAgo: 0 },
+    { action: AuditAction.ACTIVATE_PREMIUM, targetType: AuditTargetType.MERCHANT, targetId: merchants[1].id, targetLabel: 'Épicerie Verte (epicerie@test.com)', metadata: { plan: 'PREMIUM', duration: '3 mois', reason: 'Activation manuelle admin' }, daysAgo: 30 },
+    { action: AuditAction.BAN_MERCHANT, targetType: AuditTargetType.MERCHANT, targetId: merchants[11].id, targetLabel: 'SuperMarché Atlas (supermarche@test.com)', metadata: { reason: 'Violation des CGU — spam de notifications' }, daysAgo: 5 },
+    { action: AuditAction.APPROVE_UPGRADE_REQUEST, targetType: AuditTargetType.MERCHANT, targetId: merchants[7].id, targetLabel: 'Coiffure Studio M (coiffure@test.com)', metadata: { plan: 'PREMIUM', duration: '3 mois' }, daysAgo: 5 },
+    { action: AuditAction.REJECT_UPGRADE_REQUEST, targetType: AuditTargetType.MERCHANT, targetId: merchants[4].id, targetLabel: 'Pharmacie Centrale (pharmacie@test.com)', metadata: { reason: 'Compte trop récent' }, daysAgo: 3 },
   ];
 
   for (const a of auditData) {

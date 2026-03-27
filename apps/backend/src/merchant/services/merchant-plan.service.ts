@@ -6,6 +6,8 @@ import {
   LOYALTY_CARD_REPOSITORY, type ILoyaltyCardRepository,
 } from '../../common/repositories';
 import { IPushProvider, PUSH_PROVIDER } from '../../common/interfaces';
+import { ClientReferralService } from '../../client-auth/client-referral.service';
+import { MerchantReferralService } from './merchant-referral.service';
 import { MerchantPlan } from '@prisma/client';
 import {
   FREE_MAX_CLIENTS,
@@ -49,6 +51,8 @@ export class MerchantPlanService {
     @Inject(LOYALTY_CARD_REPOSITORY) private readonly loyaltyCardRepo: ILoyaltyCardRepository,
     @Inject(CACHE_MANAGER) private readonly cache: Cache,
     @Inject(PUSH_PROVIDER) private readonly pushProvider: IPushProvider,
+    private readonly clientReferralService: ClientReferralService,
+    private readonly merchantReferralService: MerchantReferralService,
   ) {}
 
   /** Cache key for a merchant's effective plan */
@@ -239,6 +243,12 @@ export class MerchantPlanService {
     await this.invalidatePlanCache(merchantId);
     this.logger.log(`Admin activated PREMIUM for merchant ${merchantId}`);
 
+    // Credit client referrer if this merchant was referred by a client (fire-and-forget)
+    this.clientReferralService.creditClientForMerchant(merchantId)
+      .catch((err) => this.logger.error(`Client referral credit failed for merchant ${merchantId}`, err?.stack));
+    // Credit merchant referrer now that this merchant has paid (fire-and-forget)
+    this.merchantReferralService.creditReferrerOnPayment(merchantId)
+      .catch((err) => this.logger.error(`Merchant referral credit failed for merchant ${merchantId}`, err?.stack));
     // ── Push notification ────────────────────────────────────────
     if (merchant?.pushToken) {
       await this.pushProvider.sendToMerchant(
@@ -384,5 +394,13 @@ export class MerchantPlanService {
     await this.merchantRepo.update({ where: { id: merchantId }, data });
     await this.invalidatePlanCache(merchantId);
     this.logger.log(`Admin manually set plan dates for merchant ${merchantId}: ${JSON.stringify(dto)}`);
+
+    // Credit referrers when admin sets plan to PREMIUM (fire-and-forget)
+    if (data.plan === 'PREMIUM') {
+      this.clientReferralService.creditClientForMerchant(merchantId)
+        .catch((err) => this.logger.error(`Client referral credit failed for merchant ${merchantId}`, err?.stack));
+      this.merchantReferralService.creditReferrerOnPayment(merchantId)
+        .catch((err) => this.logger.error(`Merchant referral credit failed for merchant ${merchantId}`, err?.stack));
+    }
   }
 }

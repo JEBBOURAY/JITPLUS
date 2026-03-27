@@ -17,6 +17,7 @@ export {
   UPGRADE_REQUEST_REPOSITORY,
   PROFILE_VIEW_REPOSITORY,
   REWARD_REPOSITORY,
+  CLIENT_REFERRAL_REPOSITORY,
   TRANSACTION_RUNNER,
   RAW_QUERY_RUNNER,
 } from './repository.tokens';
@@ -38,6 +39,7 @@ export type {
   IUpgradeRequestRepository,
   IProfileViewRepository,
   IRewardRepository,
+  IClientReferralRepository,
 } from './repository.types';
 
 // Infrastructure

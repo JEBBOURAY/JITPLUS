@@ -10,7 +10,7 @@ import { isAxiosError } from 'axios';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { getErrorStatus } from '@/utils/error';
-import { WEB_CLIENT_ID, ANDROID_CLIENT_ID, IOS_CLIENT_ID } from '@/config/google';
+import { WEB_CLIENT_ID, IOS_CLIENT_ID } from '@/config/google';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -41,7 +41,7 @@ export function useGoogleAuth({ onCancel }: UseGoogleAuthOptions = {}) {
 
   const [_gReq, googleResponse, promptGoogleAsync] = Google.useIdTokenAuthRequest({
     clientId: WEB_CLIENT_ID,
-    androidClientId: ANDROID_CLIENT_ID || WEB_CLIENT_ID,
+    androidClientId: WEB_CLIENT_ID,
     iosClientId: IOS_CLIENT_ID || WEB_CLIENT_ID,
   });
 

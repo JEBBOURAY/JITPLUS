@@ -93,6 +93,8 @@ export const REFERRAL_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 export const REFERRAL_CODE_LENGTH = 8;
 /** Days added to premium plan per confirmed referral */
 export const REFERRAL_BONUS_DAYS = 30;
+/** Amount (DH) credited to client when a referred merchant converts to paid premium */
+export const CLIENT_REFERRAL_BONUS_AMOUNT = 25;
 
 // ── Defaults ────────────────────────────────────────────────
 /** Default notification logo when merchant has no custom logo */

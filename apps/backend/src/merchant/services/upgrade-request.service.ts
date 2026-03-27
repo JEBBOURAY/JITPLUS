@@ -7,6 +7,8 @@ import {
 } from '../../common/repositories';
 import { IPushProvider, PUSH_PROVIDER } from '../../common/interfaces';
 import { MerchantPlanService } from './merchant-plan.service';
+import { ClientReferralService } from '../../client-auth/client-referral.service';
+import { MerchantReferralService } from './merchant-referral.service';
 
 export type UpgradeRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 
@@ -43,6 +45,8 @@ export class UpgradeRequestService {
     @Inject(TRANSACTION_RUNNER) private txRunner: ITransactionRunner,
     @Inject(PUSH_PROVIDER) private readonly pushProvider: IPushProvider,
     private readonly planService: MerchantPlanService,
+    private readonly clientReferralService: ClientReferralService,
+    private readonly merchantReferralService: MerchantReferralService,
   ) {}
 
   /**
@@ -226,6 +230,15 @@ export class UpgradeRequestService {
     }
 
     this.logger.log(`Upgrade request ${requestId} approved for merchant ${req.merchantId}`);
+
+    // Credit client referrer if this merchant was referred by a client (fire-and-forget)
+    this.clientReferralService.creditClientForMerchant(req.merchantId)
+      .catch((err) => this.logger.error(`Client referral credit failed for merchant ${req.merchantId}`, err?.stack));
+
+    // Credit merchant referrer now that this merchant has paid (fire-and-forget)
+    this.merchantReferralService.creditReferrerOnPayment(req.merchantId)
+      .catch((err) => this.logger.error(`Merchant referral credit failed for merchant ${req.merchantId}`, err?.stack));
+
     return { merchantId: req.merchantId, merchantNom: req.merchant.nom, merchantEmail: req.merchant.email };
   }
 

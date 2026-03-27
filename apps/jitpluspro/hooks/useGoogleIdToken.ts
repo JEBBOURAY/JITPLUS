@@ -7,7 +7,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { WEB_CLIENT_ID, ANDROID_CLIENT_ID, IOS_CLIENT_ID } from '@/config/google';
+import { WEB_CLIENT_ID, IOS_CLIENT_ID } from '@/config/google';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -27,7 +27,7 @@ export function useGoogleIdToken(onToken: (idToken: string) => void): UseGoogleI
 
   const [_gReq, googleResponse, promptGoogleAsync] = Google.useIdTokenAuthRequest({
     clientId: WEB_CLIENT_ID,
-    androidClientId: ANDROID_CLIENT_ID || WEB_CLIENT_ID,
+    androidClientId: WEB_CLIENT_ID,
     iosClientId: IOS_CLIENT_ID || WEB_CLIENT_ID,
   });
 

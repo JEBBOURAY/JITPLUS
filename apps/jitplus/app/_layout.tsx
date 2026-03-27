@@ -198,6 +198,7 @@ function RootLayoutNav() {
           <Stack.Screen name="complete-profile" options={{ animation: 'slide_from_bottom' }} />
           <Stack.Screen name="set-password" options={{ animation: 'slide_from_right', contentStyle: { backgroundColor: '#fff' } }} />
           <Stack.Screen name="change-password" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="referral" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="legal" options={{ animation: 'slide_from_right' }} />
         </Stack>
       </ErrorBoundary>

@@ -2,7 +2,7 @@ import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 import { createApiClient, resolveApiUrl, resolveServerBaseUrl } from '@jitplus/shared/src/apiFactory';
-import { AuthResponse, Client, CompleteProfileResponse, Merchant, OtpResponse, PointsOverview, NotificationsResponse, QrTokenResponse } from '@/types';
+import { AuthResponse, Client, ClientReferralStats, CompleteProfileResponse, Merchant, OtpResponse, PointsOverview, NotificationsResponse, QrTokenResponse } from '@/types';
 
 const ENV_URL = process.env.EXPO_PUBLIC_API_URL;
 const IS_DEV = __DEV__;
@@ -211,6 +211,16 @@ class ApiService {
     return data;
   }
 
+  async sendChangeContactOtp(type: 'email' | 'telephone', value: string): Promise<OtpResponse> {
+    const { data } = await this.api.post('/client-auth/send-change-contact-otp', { type, value });
+    return data;
+  }
+
+  async verifyChangeContactOtp(type: 'email' | 'telephone', value: string, code: string): Promise<{ success: boolean; message: string }> {
+    const { data } = await this.api.post('/client-auth/verify-change-contact-otp', { type, value, code });
+    return data;
+  }
+
   async deleteAccount(password: string): Promise<{ success: boolean }> {
     const { data } = await this.api.post('/client-auth/delete-account', {
       confirmation: 'SUPPRIMER',
@@ -276,6 +286,12 @@ class ApiService {
 
   async dismissAllNotifications(): Promise<{ success: boolean; count: number }> {
     const { data } = await this.api.delete('/client/notifications/all');
+    return data;
+  }
+
+  // ── Referral ────────────────────────────────────────────
+  async getReferralStats(): Promise<ClientReferralStats> {
+    const { data } = await this.api.get('/client/referral');
     return data;
   }
 

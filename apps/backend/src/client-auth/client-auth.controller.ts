@@ -20,11 +20,12 @@ import { Throttle } from '@nestjs/throttler';
 import { THROTTLE_TTL } from '../common/constants';
 import { ClientAuthService } from './client-auth.service';
 import { ClientService } from './client.service';
+import { ClientReferralService } from './client-referral.service';
 import { ClientOnlyGuard } from '../common/guards/client-only.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtPayload } from '../common/interfaces/jwt-payload.interface';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
-import { SendOtpDto, VerifyOtpDto, CompleteProfileDto, ClientUpdateProfileDto, UpdatePushTokenDto, SendOtpEmailDto, VerifyOtpEmailDto, GoogleLoginDto, LoginEmailDto, LoginPhoneDto, SetPasswordDto, RefreshTokenDto, ClientDeleteAccountDto, ClientChangePasswordDto } from './dto';
+import { SendOtpDto, VerifyOtpDto, CompleteProfileDto, ClientUpdateProfileDto, UpdatePushTokenDto, SendOtpEmailDto, VerifyOtpEmailDto, GoogleLoginDto, LoginEmailDto, LoginPhoneDto, SetPasswordDto, RefreshTokenDto, ClientDeleteAccountDto, ClientChangePasswordDto, SendChangeContactOtpDto, VerifyChangeContactOtpDto } from './dto';
 
 @ApiTags('Client Auth')
 @Controller('client-auth')
@@ -141,6 +142,20 @@ export class ClientAuthController {
     return this.clientService.deleteAccount(user.userId, dto.password);
   }
 
+  @Post('send-change-contact-otp')
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 3 } })
+  @UseGuards(AuthGuard('jwt'), ClientOnlyGuard)
+  async sendChangeContactOtp(@CurrentUser() user: JwtPayload, @Body() dto: SendChangeContactOtpDto) {
+    return this.clientAuthService.sendChangeContactOtp(user.userId, dto.type, dto.value);
+  }
+
+  @Post('verify-change-contact-otp')
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 5 } })
+  @UseGuards(AuthGuard('jwt'), ClientOnlyGuard)
+  async verifyChangeContactOtp(@CurrentUser() user: JwtPayload, @Body() dto: VerifyChangeContactOtpDto) {
+    return this.clientAuthService.verifyChangeContactOtp(user.userId, dto.type, dto.value, dto.code);
+  }
+
   @Post('qr-token')
   @UseGuards(AuthGuard('jwt'), ClientOnlyGuard)
   async generateQrToken(@CurrentUser() user: JwtPayload) {
@@ -172,7 +187,10 @@ export class ClientAuthController {
 @Controller('client')
 @UseGuards(AuthGuard('jwt'), ClientOnlyGuard)
 export class ClientController {
-  constructor(private readonly clientService: ClientService) {}
+  constructor(
+    private readonly clientService: ClientService,
+    private readonly clientReferralService: ClientReferralService,
+  ) {}
 
   @Get('points')
   async getPointsOverview(
@@ -273,6 +291,11 @@ export class ClientController {
     @Param('id') notificationId: string,
   ) {
     return this.clientService.dismissNotification(user.userId, notificationId);
+  }
+
+  @Get('referral')
+  async getReferralStats(@CurrentUser() user: JwtPayload) {
+    return this.clientReferralService.getReferralStats(user.userId);
   }
 }
 

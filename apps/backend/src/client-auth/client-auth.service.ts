@@ -26,7 +26,9 @@ export interface ClientAuthResponse {
     prenom: string | null;
     nom: string | null;
     email: string | null;
+    emailVerified: boolean;
     telephone: string | null;
+    telephoneVerified: boolean;
     termsAccepted: boolean;
     shareInfoMerchants: boolean;
     notifPush: boolean;
@@ -309,6 +311,7 @@ export class ClientAuthService {
         resolvedClient = await this.clientRepo.create({
           data: {
             telephone: normalizedPhone,
+            telephoneVerified: true,
             countryCode: this.extractCountryCode(normalizedPhone),
             nom: null,
             email: null,
@@ -321,6 +324,12 @@ export class ClientAuthService {
         }
         throw error;
       }
+    }
+
+    // Mark phone as verified since OTP was validated
+    if (resolvedClient && !(resolvedClient as any).telephoneVerified) {
+      await this.clientRepo.update({ where: { id: resolvedClient.id }, data: { telephoneVerified: true } });
+      (resolvedClient as any).telephoneVerified = true;
     }
 
     return this.buildAuthResponse(resolvedClient, isNewUser);
@@ -342,7 +351,9 @@ export class ClientAuthService {
       nom: string | null;
       prenom?: string | null;
       email: string | null;
+      emailVerified?: boolean;
       telephone: string | null;
+      telephoneVerified?: boolean;
       googleId?: string | null;
       password?: string | null;
       shareInfoMerchants?: boolean;
@@ -371,7 +382,7 @@ export class ClientAuthService {
       data: { refreshTokenHash: this.hashRefreshToken(refresh_token) },
     });
 
-    return {
+      return {
       access_token,
       refresh_token,
       isNewUser,
@@ -380,7 +391,9 @@ export class ClientAuthService {
         prenom: client.prenom ?? null,
         nom: client.nom,
         email: client.email,
+        emailVerified: client.emailVerified ?? false,
         telephone: client.telephone ?? null,
+        telephoneVerified: client.telephoneVerified ?? false,
         termsAccepted: client.termsAccepted ?? false,
         shareInfoMerchants: client.shareInfoMerchants ?? false,
         notifPush: client.notifPush ?? true,
@@ -445,7 +458,9 @@ export class ClientAuthService {
         prenom: client.prenom ?? null,
         nom: client.nom,
         email: client.email,
+        emailVerified: (client as any).emailVerified ?? false,
         telephone: client.telephone ?? null,
+        telephoneVerified: (client as any).telephoneVerified ?? false,
         termsAccepted: client.termsAccepted,
         shareInfoMerchants: client.shareInfoMerchants,
         notifPush: client.notifPush,
@@ -553,6 +568,7 @@ export class ClientAuthService {
         resolvedClient = await this.clientRepo.create({
           data: {
             email: normalizedEmail,
+            emailVerified: true,
             nom: null,
           },
           select: CLIENT_AUTH_SELECT,
@@ -566,6 +582,12 @@ export class ClientAuthService {
     } else if (isRegister) {
       // User tried to register but account already exists
       throw new ConflictException('Un compte avec cet email existe déjà. Veuillez vous connecter.');
+    }
+
+    // Mark email as verified since OTP was validated
+    if (resolvedClient && !(resolvedClient as any).emailVerified) {
+      await this.clientRepo.update({ where: { id: resolvedClient.id }, data: { emailVerified: true } });
+      (resolvedClient as any).emailVerified = true;
     }
 
     return this.buildAuthResponse(resolvedClient, isNewUser);
@@ -643,6 +665,7 @@ export class ClientAuthService {
           client = await this.clientRepo.create({
             data: {
               email: email.toLowerCase(),
+              emailVerified: true,
               googleId,
               prenom: given_name || null,
               nom: family_name || null,
@@ -735,7 +758,9 @@ export class ClientAuthService {
         prenom: client.prenom,
         nom: client.nom,
         email: client.email,
+        emailVerified: (client as any).emailVerified ?? false,
         telephone: client.telephone,
+        telephoneVerified: (client as any).telephoneVerified ?? false,
         termsAccepted: client.termsAccepted,
         shareInfoMerchants: client.shareInfoMerchants,
         notifPush: client.notifPush,
@@ -842,7 +867,9 @@ export class ClientAuthService {
         prenom: client.prenom,
         nom: client.nom,
         email: client.email,
+        emailVerified: (client as any).emailVerified ?? false,
         telephone: client.telephone,
+        telephoneVerified: (client as any).telephoneVerified ?? false,
         termsAccepted: client.termsAccepted,
         shareInfoMerchants: client.shareInfoMerchants,
         notifPush: client.notifPush,
@@ -894,7 +921,9 @@ export class ClientAuthService {
         prenom: updated.prenom,
         nom: updated.nom,
         email: updated.email,
+        emailVerified: (updated as any).emailVerified ?? false,
         telephone: updated.telephone,
+        telephoneVerified: (updated as any).telephoneVerified ?? false,
         termsAccepted: updated.termsAccepted,
         shareInfoMerchants: updated.shareInfoMerchants,
         notifPush: updated.notifPush,
@@ -924,7 +953,126 @@ export class ClientAuthService {
 
     return { qr_token };
   }
+  // ── Change Contact OTP (profile update) ────────────────────────────
 
+  /**
+   * Send OTP to verify ownership of a new email or phone before applying the change.
+   */
+  async sendChangeContactOtp(
+    clientId: string,
+    type: 'email' | 'telephone',
+    value: string,
+  ): Promise<{ success: boolean; message: string }> {
+    if (type === 'email') {
+      const normalizedEmail = value.trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+        throw new BadRequestException('Adresse email invalide');
+      }
+      const existing = await this.clientRepo.findUnique({ where: { email: normalizedEmail }, select: { id: true } });
+      if (existing && existing.id !== clientId) {
+        throw new ConflictException('Cette adresse email est déjà utilisée par un autre compte.');
+      }
+      this.checkDailyOtpLimit(normalizedEmail);
+      const existingOtp = await this.otpRepo.findUnique({ where: { email: normalizedEmail } });
+      if (existingOtp && existingOtp.expiresAt.getTime() - OTP_EXPIRY_MS + OTP_COOLDOWN_MS > Date.now()) {
+        throw new HttpException('Veuillez patienter avant de renvoyer un code.', HttpStatus.TOO_MANY_REQUESTS);
+      }
+      const code = randomInt(OTP_MIN, OTP_MAX).toString();
+      const codeHash = hashOtp(code);
+      const expiresAt = new Date(Date.now() + OTP_EXPIRY_MS);
+      await this.otpRepo.upsert({
+        where: { email: normalizedEmail },
+        create: { email: normalizedEmail, code: codeHash, expiresAt },
+        update: { code: codeHash, expiresAt, attempts: 0 },
+      });
+      if (process.env.NODE_ENV === 'development') {
+        this.logger.debug(`[DEV] OTP changement email ${normalizedEmail}: ${code}`);
+      }
+      await this.mailProvider.sendOtpEmail(normalizedEmail, code, 'client');
+      return { success: true, message: 'Code envoyé par email' };
+    } else {
+      const normalizedPhone = this.normalizePhone(value);
+      if (!this.isValidPhone(normalizedPhone)) {
+        throw new BadRequestException('Format de numéro de téléphone invalide');
+      }
+      const existing = await this.clientRepo.findUnique({ where: { telephone: normalizedPhone }, select: { id: true } });
+      if (existing && existing.id !== clientId) {
+        throw new ConflictException('Ce numéro de téléphone est déjà utilisé par un autre compte.');
+      }
+      this.checkDailyOtpLimit(normalizedPhone);
+      const existingOtp = await this.otpRepo.findUnique({ where: { telephone: normalizedPhone } });
+      if (existingOtp && existingOtp.expiresAt.getTime() - OTP_EXPIRY_MS + OTP_COOLDOWN_MS > Date.now()) {
+        throw new HttpException('Veuillez patienter avant de renvoyer un code.', HttpStatus.TOO_MANY_REQUESTS);
+      }
+      const code = randomInt(OTP_MIN, OTP_MAX).toString();
+      const codeHash = hashOtp(code);
+      const expiresAt = new Date(Date.now() + OTP_EXPIRY_MS);
+      await this.otpRepo.upsert({
+        where: { telephone: normalizedPhone },
+        create: { telephone: normalizedPhone, code: codeHash, expiresAt },
+        update: { code: codeHash, expiresAt, attempts: 0 },
+      });
+      if (process.env.NODE_ENV === 'development') {
+        this.logger.debug(`[DEV] OTP changement tél ${normalizedPhone}: ${code}`);
+      }
+      const sent = await this.smsProvider.sendWhatsAppOtp(normalizedPhone, code);
+      if (!sent) {
+        throw new HttpException("Impossible d'envoyer le code WhatsApp.", HttpStatus.SERVICE_UNAVAILABLE);
+      }
+      return { success: true, message: 'Code envoyé avec succès' };
+    }
+  }
+
+  /**
+   * Verify OTP and mark the email/phone as verified on the client profile.
+   */
+  async verifyChangeContactOtp(
+    clientId: string,
+    type: 'email' | 'telephone',
+    value: string,
+    code: string,
+  ): Promise<{ success: boolean; message: string }> {
+    if (type === 'email') {
+      const normalizedEmail = value.trim().toLowerCase();
+      const otpRecord = await this.otpRepo.findUnique({ where: { email: normalizedEmail } });
+      try {
+        validateOtp(otpRecord, code, "Aucun code n'a été envoyé à cet email");
+      } catch (error) {
+        await this.handleOtpError(error, otpRecord);
+      }
+      // Verify the client still has this email
+      const client = await this.clientRepo.findUnique({ where: { id: clientId }, select: { email: true } });
+      if (!client || client.email !== normalizedEmail) {
+        await this.otpRepo.delete({ where: { id: otpRecord!.id } });
+        throw new BadRequestException('L\'email du profil ne correspond plus. Veuillez réessayer.');
+      }
+      await this.otpRepo.delete({ where: { id: otpRecord!.id } });
+      await this.clientRepo.update({
+        where: { id: clientId },
+        data: { emailVerified: true },
+      });
+      return { success: true, message: 'Email vérifié avec succès' };
+    } else {
+      const normalizedPhone = this.normalizePhone(value);
+      const otpRecord = await this.otpRepo.findUnique({ where: { telephone: normalizedPhone } });
+      try {
+        validateOtp(otpRecord, code, "Aucun code n'a été envoyé à ce numéro");
+      } catch (error) {
+        await this.handleOtpError(error, otpRecord);
+      }
+      const client = await this.clientRepo.findUnique({ where: { id: clientId }, select: { telephone: true } });
+      if (!client || client.telephone !== normalizedPhone) {
+        await this.otpRepo.delete({ where: { id: otpRecord!.id } });
+        throw new BadRequestException('Le numéro du profil ne correspond plus. Veuillez réessayer.');
+      }
+      await this.otpRepo.delete({ where: { id: otpRecord!.id } });
+      await this.clientRepo.update({
+        where: { id: clientId },
+        data: { telephoneVerified: true },
+      });
+      return { success: true, message: 'Numéro de téléphone vérifié avec succès' };
+    }
+  }
   // â”€â”€ Loi 09-08 — Droit d’accès aux données personnelles â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   /**
    * Export all personal data for a client as required by Loi nÂ°09-08

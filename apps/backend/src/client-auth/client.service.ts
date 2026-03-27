@@ -50,7 +50,9 @@ export class ClientService {
         prenom: true,
         nom: true,
         email: true,
+        emailVerified: true,
         telephone: true,
+        telephoneVerified: true,
         countryCode: true,
         shareInfoMerchants: true,
         notifWhatsapp: true,
@@ -127,9 +129,24 @@ export class ClientService {
       prenom?: string; nom?: string; email?: string; telephone?: string;
       countryCode?: string; shareInfoMerchants?: boolean; notifWhatsapp?: boolean;
       dateNaissance?: Date | null;
+      emailVerified?: boolean; telephoneVerified?: boolean;
     } = { ...restUpdates };
     if ('dateNaissance' in updates) {
       data.dateNaissance = dateNaissanceStr ? new Date(dateNaissanceStr) : null;
+    }
+
+    // Reset verification when contact info changes
+    if (updates.email) {
+      const current = await this.clientRepo.findUnique({ where: { id: clientId }, select: { email: true } });
+      if (current && current.email !== updates.email) {
+        data.emailVerified = false;
+      }
+    }
+    if (updates.telephone) {
+      const current = await this.clientRepo.findUnique({ where: { id: clientId }, select: { telephone: true } });
+      if (current && current.telephone !== updates.telephone) {
+        data.telephoneVerified = false;
+      }
     }
 
     return this.clientRepo.update({
@@ -140,7 +157,9 @@ export class ClientService {
         prenom: true,
         nom: true,
         email: true,
+        emailVerified: true,
         telephone: true,
+        telephoneVerified: true,
         countryCode: true,
         shareInfoMerchants: true,
         notifWhatsapp: true,

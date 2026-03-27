@@ -188,11 +188,11 @@ export default function MerchantDetailScreen() {
             {/* Loyalty card */}
             <View style={[styles.infoCard, { borderColor: theme.borderLight }]}>
               <View style={styles.cardHeaderRow}>
-                <View style={[styles.cardIconBadge, { backgroundColor: theme.borderLight }]}>
+                <View style={[styles.cardIconBadge, { backgroundColor: `${palette.violet}12` }]}>
                   {merchant.loyaltyType === 'STAMPS' ? (
-                    <Gift size={16} color={theme.textSecondary} strokeWidth={1.8} />
+                    <Gift size={16} color={palette.violet} strokeWidth={1.8} />
                   ) : (
-                    <Coins size={16} color={theme.textSecondary} strokeWidth={1.8} />
+                    <Coins size={16} color={palette.violet} strokeWidth={1.8} />
                   )}
                 </View>
                 <Text style={[styles.cardLabel, { color: theme.textMuted }]} numberOfLines={1}>
@@ -212,8 +212,8 @@ export default function MerchantDetailScreen() {
             {/* Location card */}
             <View style={[styles.infoCard, { borderColor: theme.borderLight }]}>
               <View style={styles.cardHeaderRow}>
-                <View style={[styles.cardIconBadge, { backgroundColor: theme.borderLight }]}>
-                  <MapPin size={16} color={theme.textSecondary} strokeWidth={1.8} />
+                <View style={[styles.cardIconBadge, { backgroundColor: `${palette.gold}15` }]}>
+                  <MapPin size={16} color={palette.gold} strokeWidth={1.8} />
                 </View>
                 <Text style={[styles.cardLabel, { color: theme.textMuted }]} numberOfLines={1}>
                   {t('merchant.info')}
@@ -233,8 +233,8 @@ export default function MerchantDetailScreen() {
 
           {/* Reward highlight */}
           <View style={[styles.rewardCard, { borderColor: theme.borderLight }]}>
-            <View style={[styles.cardIconBadge, { backgroundColor: theme.borderLight }]}>
-              <Star size={16} color={theme.textSecondary} strokeWidth={1.8} />
+            <View style={[styles.cardIconBadge, { backgroundColor: `${palette.gold}15` }]}>
+              <Star size={16} color={palette.gold} strokeWidth={1.8} />
             </View>
             <View style={styles.rewardTextWrap}>
               <Text style={[styles.cardLabel, { color: theme.textMuted }]}>{t('merchant.rewardsSection')}</Text>
@@ -258,12 +258,12 @@ export default function MerchantDetailScreen() {
                 haptic();
                 router.push({ pathname: '/(tabs)/discover', params: { focusMerchantId: merchant.id } });
               }}
-              style={({ pressed }) => [styles.actionBtn, { borderColor: theme.borderLight, opacity: pressed ? 0.7 : 1 }]}
+              style={({ pressed }) => [styles.actionBtn, { borderColor: palette.violet, backgroundColor: `${palette.violet}08`, opacity: pressed ? 0.7 : 1 }]}
               accessibilityRole="button"
               accessibilityLabel={t('merchant.seeOnMap')}
             >
-              <Navigation size={16} color={theme.textSecondary} strokeWidth={1.8} />
-              <Text style={[styles.actionText, { color: theme.textSecondary }]}>{t('merchant.seeOnMap')}</Text>
+              <Navigation size={16} color={palette.violet} strokeWidth={1.8} />
+              <Text style={[styles.actionText, { color: palette.violet }]}>{t('merchant.seeOnMap')}</Text>
             </Pressable>
 
             {!!merchant.socialLinks?.instagram && (
@@ -278,12 +278,12 @@ export default function MerchantDetailScreen() {
                   const canOpen = await Linking.canOpenURL(appUrl);
                   Linking.openURL(canOpen ? appUrl : webUrl);
                 }}
-                style={({ pressed }) => [styles.actionBtn, { borderColor: theme.borderLight, opacity: pressed ? 0.7 : 1 }]}
+                style={({ pressed }) => [styles.actionBtn, { borderColor: '#E1306C', backgroundColor: '#E1306C10', opacity: pressed ? 0.7 : 1 }]}
                 accessibilityRole="button"
                 accessibilityLabel="Instagram"
               >
                 <Instagram size={16} color="#E1306C" strokeWidth={1.8} />
-                <Text style={[styles.actionText, { color: theme.textSecondary }]}>Instagram</Text>
+                <Text style={[styles.actionText, { color: '#E1306C' }]}>Instagram</Text>
               </Pressable>
             )}
 
@@ -296,12 +296,12 @@ export default function MerchantDetailScreen() {
                   if (!username) return;
                   Linking.openURL(`https://www.tiktok.com/@${encodeURIComponent(username)}`);
                 }}
-                style={({ pressed }) => [styles.actionBtn, { borderColor: theme.borderLight, opacity: pressed ? 0.7 : 1 }]}
+                style={({ pressed }) => [styles.actionBtn, { borderColor: '#010101', backgroundColor: '#01010108', opacity: pressed ? 0.7 : 1 }]}
                 accessibilityRole="button"
                 accessibilityLabel="TikTok"
               >
-                <Music size={16} color={theme.textSecondary} strokeWidth={1.8} />
-                <Text style={[styles.actionText, { color: theme.textSecondary }]}>TikTok</Text>
+                <Music size={16} color="#010101" strokeWidth={1.8} />
+                <Text style={[styles.actionText, { color: '#010101' }]}>TikTok</Text>
               </Pressable>
             )}
           </View>

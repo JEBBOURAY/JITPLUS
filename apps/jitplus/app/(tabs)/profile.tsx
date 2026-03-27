@@ -13,7 +13,7 @@ import Constants from 'expo-constants';
 import {
   User, LogOut, Phone, Mail, Pencil, Check, X, Trash2, AlertTriangle,
   Share2, MessageCircle, ChevronDown, ChevronRight, Moon, Info, Globe, FileDown, Shield,
-  Star, MessageSquare, Calendar, Sparkles, Lock,
+  Star, MessageSquare, Calendar, Sparkles, Lock, ShieldCheck, Gift,
 } from 'lucide-react-native';
 import { haptic, HapticStyle } from '@/utils/haptics';
 import { useGuardedCallback } from '@/hooks/useGuardedCallback';
@@ -63,13 +63,24 @@ export default function ProfileScreen() {
   const [isSavingPref, setIsSavingPref] = useState<string | null>(null);
   const [showLanguageModal, setShowLanguageModal] = useState(false);
 
+  // OTP verification for contact changes
+  const [showOtpModal, setShowOtpModal] = useState(false);
+  const [otpTarget, setOtpTarget] = useState<{ type: 'email' | 'telephone'; value: string } | null>(null);
+  const [otpCode, setOtpCode] = useState('');
+  const [otpError, setOtpError] = useState('');
+  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const [otpResendTimer, setOtpResendTimer] = useState(0);
+
 
   // ── Profile completion progress ──
   const profileChecklist = useMemo(() => ([
     { key: 'email', done: !!client?.email, label: t('home.profileFieldEmail') },
+    { key: 'emailVerified', done: !!client?.emailVerified, label: t('home.profileFieldEmailVerified') },
     { key: 'phone', done: !!client?.telephone, label: t('home.profileFieldPhone') },
+    { key: 'phoneVerified', done: !!client?.telephoneVerified, label: t('home.profileFieldPhoneVerified') },
     { key: 'birthDate', done: !!client?.dateNaissance, label: t('home.profileFieldBirthDate') },
-  ]), [client?.email, client?.telephone, client?.dateNaissance, t]);
+  ]), [client?.email, client?.emailVerified, client?.telephone, client?.telephoneVerified, client?.dateNaissance, t]);
 
   const profileCompletionPercent = useMemo(() => {
     const doneCount = profileChecklist.filter((f) => f.done).length;
@@ -162,6 +173,67 @@ export default function ProfileScreen() {
     haptic(HapticStyle.Light);
   };
 
+  // ── OTP resend timer ──
+  useEffect(() => {
+    if (otpResendTimer <= 0) return;
+    const id = setTimeout(() => setOtpResendTimer((s) => s - 1), 1000);
+    return () => clearTimeout(id);
+  }, [otpResendTimer]);
+
+  const startOtpFlow = async (target: { type: 'email' | 'telephone'; value: string }) => {
+    setOtpTarget(target);
+    setOtpCode('');
+    setOtpError('');
+    setIsSendingOtp(true);
+    try {
+      await api.sendChangeContactOtp(target.type, target.value);
+      setOtpResendTimer(60);
+      setShowOtpModal(true);
+    } catch (error) {
+      const msg = extractErrorMessage(error);
+      Alert.alert(t('common.error'), msg);
+    } finally {
+      setIsSendingOtp(false);
+    }
+  };
+
+  const verifyOtpAndApply = async () => {
+    if (!otpTarget || otpCode.length !== 6) return;
+    setIsVerifyingOtp(true);
+    setOtpError('');
+    try {
+      await api.verifyChangeContactOtp(otpTarget.type, otpTarget.value, otpCode);
+      setShowOtpModal(false);
+      await refreshProfile?.();
+      const fieldLabel = otpTarget.type === 'email' ? t('profile.email') : t('profile.phone');
+      Alert.alert(t('common.success'), t('profile.otpContactUpdated', { field: fieldLabel }));
+    } catch (error) {
+      const msg = extractErrorMessage(error);
+      setOtpError(msg || t('profile.otpVerifyError'));
+    } finally {
+      setIsVerifyingOtp(false);
+    }
+  };
+
+  const resendOtp = async () => {
+    if (!otpTarget || otpResendTimer > 0) return;
+    setIsSendingOtp(true);
+    setOtpError('');
+    try {
+      await api.sendChangeContactOtp(otpTarget.type, otpTarget.value);
+      setOtpResendTimer(60);
+    } catch (error) {
+      const msg = extractErrorMessage(error);
+      setOtpError(msg || t('profile.otpSendError'));
+    } finally {
+      setIsSendingOtp(false);
+    }
+  };
+
+  const dismissOtpModal = () => {
+    setShowOtpModal(false);
+  };
+
   const saveProfile = async () => {
     if (!editPrenom.trim() || !editNom.trim()) {
       Alert.alert(t('common.error'), t('profile.nameRequired'));
@@ -195,11 +267,12 @@ export default function ProfileScreen() {
     setIsSaving(true);
     haptic(HapticStyle.Medium);
     try {
+      // Save all fields including email/phone directly
       await api.updateProfile({
         prenom: editPrenom.trim(),
         nom: editNom.trim(),
-        email: emailTrimmed || undefined,
-        telephone: phoneTrimmed || undefined,
+        ...(emailTrimmed ? { email: emailTrimmed } : {}),
+        ...(phoneTrimmed ? { telephone: phoneTrimmed } : {}),
         ...(dateNaissancePayload !== undefined ? { dateNaissance: dateNaissancePayload } : {}),
       });
       await refreshProfile?.();
@@ -513,6 +586,21 @@ export default function ProfileScreen() {
                     ) : (
                       <Text style={[styles.infoValue, { color: theme.text }]}>{client?.email || t('profile.notProvided')}</Text>
                     )}
+                    {client?.email && !client.emailVerified && (
+                      <TouchableOpacity
+                        onPress={() => startOtpFlow({ type: 'email', value: client.email! })}
+                        style={styles.pendingBadge}
+                        activeOpacity={0.7}
+                        disabled={isSendingOtp}
+                      >
+                        {isSendingOtp && otpTarget?.type === 'email' ? (
+                          <ActivityIndicator size={ms(12)} color={palette.gold} />
+                        ) : (
+                          <ShieldCheck size={ms(12)} color={palette.gold} strokeWidth={1.5} />
+                        )}
+                        <Text style={styles.pendingBadgeText}>{t('profile.pendingVerification')}</Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                 </View>
 
@@ -534,6 +622,21 @@ export default function ProfileScreen() {
                       />
                     ) : (
                       <Text style={[styles.infoValue, { color: theme.text }]}>{client?.telephone || '—'}</Text>
+                    )}
+                    {client?.telephone && !client.telephoneVerified && (
+                      <TouchableOpacity
+                        onPress={() => startOtpFlow({ type: 'telephone', value: client.telephone! })}
+                        style={styles.pendingBadge}
+                        activeOpacity={0.7}
+                        disabled={isSendingOtp}
+                      >
+                        {isSendingOtp && otpTarget?.type === 'telephone' ? (
+                          <ActivityIndicator size={ms(12)} color={palette.gold} />
+                        ) : (
+                          <ShieldCheck size={ms(12)} color={palette.gold} strokeWidth={1.5} />
+                        )}
+                        <Text style={styles.pendingBadgeText}>{t('profile.pendingVerification')}</Text>
+                      </TouchableOpacity>
                     )}
                   </View>
                 </View>
@@ -728,6 +831,24 @@ export default function ProfileScreen() {
               </TouchableOpacity>
               {compteExpanded && (
                 <View style={[styles.infoCard, { backgroundColor: theme.bgCard }]}>
+                  {/* ── Parrainage ── */}
+                  <Pressable
+                    onPress={() => router.push('/referral')}
+                    android_ripple={{ color: `${palette.gold}10` }}
+                    style={({ pressed }) => [
+                      styles.infoRow,
+                      pressed && Platform.OS === 'ios' && { opacity: 0.7 },
+                    ]}
+                  >
+                    <View style={[styles.infoIconBox, { backgroundColor: `${palette.gold}15` }]}>
+                      <Gift size={ms(16)} color={palette.gold} strokeWidth={1.5} />
+                    </View>
+                    <View style={styles.infoContent}>
+                      <Text style={[styles.infoValue, { color: theme.text }]}>{t('profile.referral')}</Text>
+                      <Text style={[styles.infoLabel, { color: theme.textMuted }]}>{t('profile.referralDesc')}</Text>
+                    </View>
+                    <ChevronRight size={ms(14)} color={theme.textMuted} strokeWidth={1.5} />
+                  </Pressable>
                   {/* ── Changer / Définir mot de passe ── */}
                   <Pressable
                     onPress={() => router.push('/change-password')}
@@ -976,6 +1097,87 @@ export default function ProfileScreen() {
             </View>
           </View>
         </View>
+      </Modal>
+
+      {/* ── OTP Verification Modal ── */}
+      <Modal
+        visible={showOtpModal}
+        transparent
+        animationType="fade"
+        onRequestClose={dismissOtpModal}
+      >
+        <Pressable style={styles.modalOverlay} onPress={dismissOtpModal}>
+          <Pressable style={[styles.otpModalCard, { backgroundColor: theme.bgCard }]} onPress={(e) => e.stopPropagation()}>
+            <View style={[styles.modalIconCircle, { backgroundColor: `${palette.violet}12` }]}>
+              <ShieldCheck size={ms(28)} color={palette.violet} strokeWidth={1.5} />
+            </View>
+            <Text style={[styles.modalTitle, { color: theme.text }]}>{t('profile.otpVerifyTitle')}</Text>
+            <Text style={[styles.otpModalDesc, { color: theme.textMuted }]}>
+              {t('profile.otpVerifyDesc', { value: otpTarget?.value || '' })}
+            </Text>
+
+            <TextInput
+              style={[styles.otpInput, {
+                color: theme.text,
+                borderColor: otpError ? theme.danger : otpCode.length === 6 ? palette.violet : theme.border,
+                backgroundColor: theme.bgInput,
+              }]}
+              value={otpCode}
+              onChangeText={(v) => { setOtpCode(v.replace(/\D/g, '').slice(0, 6)); setOtpError(''); }}
+              placeholder={t('profile.otpVerifyPlaceholder')}
+              placeholderTextColor={theme.textMuted}
+              keyboardType="number-pad"
+              maxLength={6}
+              autoFocus
+              textAlign="center"
+            />
+            {!!otpError && (
+              <Text style={[styles.otpErrorText, { color: theme.danger }]}>{otpError}</Text>
+            )}
+
+            <View style={styles.otpResendRow}>
+              {otpResendTimer > 0 ? (
+                <Text style={[styles.otpResendText, { color: theme.textMuted }]}>
+                  {t('profile.otpResendTimer', { seconds: otpResendTimer })}
+                </Text>
+              ) : (
+                <TouchableOpacity onPress={resendOtp} disabled={isSendingOtp} activeOpacity={0.7}>
+                  {isSendingOtp ? (
+                    <ActivityIndicator size="small" color={palette.violet} />
+                  ) : (
+                    <Text style={[styles.otpResendText, { color: palette.violet }]}>
+                      {t('profile.otpResend')}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: theme.bgInput }]}
+                onPress={dismissOtpModal}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.modalBtnText, { color: theme.text }]}>{t('common.cancel')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, {
+                  backgroundColor: otpCode.length === 6 ? palette.violet : `${palette.violet}30`,
+                }]}
+                onPress={verifyOtpAndApply}
+                disabled={otpCode.length !== 6 || isVerifyingOtp}
+                activeOpacity={0.7}
+              >
+                {isVerifyingOtp ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={[styles.modalBtnText, { color: '#fff' }]}>{t('common.confirm')}</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
       </Modal>
 
       {/* ── Language Selector Modal ── */}
@@ -1306,5 +1508,65 @@ const styles = StyleSheet.create({
     borderRadius: ms(11),
     alignItems: 'center',
     justifyContent: 'center',
+  },
+
+  /* ── OTP verification modal ── */
+  otpModalCard: {
+    width: '100%',
+    borderRadius: ms(20),
+    padding: ms(24),
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.10,
+    shadowRadius: 16,
+    elevation: 6,
+  },
+  otpModalDesc: {
+    fontSize: ms(13),
+    textAlign: 'center',
+    marginBottom: hp(16),
+  },
+  otpInput: {
+    width: '100%',
+    fontSize: FS.xl,
+    fontWeight: '700',
+    letterSpacing: ms(8),
+    borderWidth: 1.5,
+    borderRadius: radius.lg,
+    paddingVertical: hp(14),
+    paddingHorizontal: wp(16),
+  },
+  otpErrorText: {
+    fontSize: FS.xs,
+    marginTop: hp(6),
+    textAlign: 'center',
+  },
+  otpResendRow: {
+    marginTop: hp(12),
+    marginBottom: hp(16),
+    alignItems: 'center',
+  },
+  otpResendText: {
+    fontSize: FS.sm,
+    fontWeight: '600',
+  },
+
+  /* ── Pending verification badge ── */
+  pendingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: wp(4),
+    backgroundColor: `${palette.gold}15`,
+    paddingHorizontal: wp(8),
+    paddingVertical: hp(4),
+    borderRadius: radius.md,
+    marginTop: hp(4),
+  },
+  pendingBadgeText: {
+    fontSize: ms(10),
+    fontWeight: '700',
+    color: palette.gold,
   },
 });

@@ -194,5 +194,32 @@ export class ClientDeleteAccountDto {
   confirmation: string;
 }
 
+export class SendChangeContactOtpDto {
+  @IsString()
+  @IsNotEmpty()
+  @Matches(/^(email|telephone)$/, { message: 'Type invalide (email ou telephone)' })
+  type: 'email' | 'telephone';
+
+  @IsString()
+  @IsNotEmpty({ message: 'La valeur est requise' })
+  value: string;
+}
+
+export class VerifyChangeContactOtpDto {
+  @IsString()
+  @IsNotEmpty()
+  @Matches(/^(email|telephone)$/, { message: 'Type invalide (email ou telephone)' })
+  type: 'email' | 'telephone';
+
+  @IsString()
+  @IsNotEmpty({ message: 'La valeur est requise' })
+  value: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @Length(6, 6, { message: 'Le code doit contenir 6 chiffres' })
+  code: string;
+}
+
 // Re-export from shared DTO to avoid duplication
 export { UpdatePushTokenDto } from '../common/dto/update-push-token.dto';

@@ -20,6 +20,7 @@ import {
   UPGRADE_REQUEST_REPOSITORY,
   PROFILE_VIEW_REPOSITORY,
   REWARD_REPOSITORY,
+  CLIENT_REFERRAL_REPOSITORY,
   TRANSACTION_RUNNER,
   RAW_QUERY_RUNNER,
 } from './repository.tokens';
@@ -42,6 +43,7 @@ const modelProviders = [
   { provide: UPGRADE_REQUEST_REPOSITORY, useFactory: (p: PrismaService) => p.upgradeRequest, inject: [PrismaService] },
   { provide: PROFILE_VIEW_REPOSITORY, useFactory: (p: PrismaService) => p.profileView, inject: [PrismaService] },
   { provide: REWARD_REPOSITORY, useFactory: (p: PrismaService) => p.reward, inject: [PrismaService] },
+  { provide: CLIENT_REFERRAL_REPOSITORY, useFactory: (p: PrismaService) => p.clientReferral, inject: [PrismaService] },
 ];
 
 const infraProviders = [
@@ -57,6 +59,7 @@ const allTokens = [
   DEVICE_SESSION_REPOSITORY, NOTIFICATION_REPOSITORY, CLIENT_NOTIFICATION_STATUS_REPOSITORY,
   OTP_REPOSITORY, ADMIN_USER_REPOSITORY, AUDIT_LOG_REPOSITORY,
   UPGRADE_REQUEST_REPOSITORY, PROFILE_VIEW_REPOSITORY, REWARD_REPOSITORY,
+  CLIENT_REFERRAL_REPOSITORY,
   TRANSACTION_RUNNER, RAW_QUERY_RUNNER,
 ];
 
