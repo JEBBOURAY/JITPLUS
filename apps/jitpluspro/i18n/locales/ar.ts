@@ -22,7 +22,9 @@ export default {
     networkError: 'خطأ في الشبكة',
     genericError: 'حدث خطأ ما',
     points: 'نقاط',
+    point: 'نقطة',
     stamps: 'طوابع',
+    stamp: 'طابع',
     days: 'أيام',
     day: 'يوم',
     selectCountry: 'اختر دولة',
@@ -222,6 +224,8 @@ export default {
     imageUnavailable: 'الصورة غير متاحة',
     markerCount: '%{count} نقطة',
     openInMaps: 'فتح في الخرائط',
+    expoGoNotice: 'الخريطة غير متاحة في Expo Go',
+    expoGoHint: 'استخدم بناء التطوير لرؤية الخريطة التفاعلية.\nيمكنك فتح كل موقع في الخرائط:',
   },
 
   scan: {
@@ -524,6 +528,8 @@ export default {
     stampPreviewHint: '3 / %{count} طابع تم جمعها (مثال)',
     gifts: 'الهدايا',
     giftsHint: 'أضف الهدايا المتاحة لعملائك المخلصين',
+    giftsSection: '🎁 الهدايا',
+    giftsSectionHint: 'قم بتكوين الهدايا التي يمكن لعملائك استبدالها بنقاطهم أو طوابعهم',
     giftName: 'اسم الهدية',
     giftCost: 'التكلفة',
     giftDesc: 'وصف (اختياري)',
@@ -546,6 +552,10 @@ export default {
     limitError: 'حد التراكم يجب أن يكون ≥ 1',
     limitConfirmTitle: '⚠️ عملاء متأثرون',
     limitConfirmMessage: '%{count} عميل(عملاء) لديهم حالياً أكثر من %{limit} %{unit}. بالتأكيد، سيتم تخفيض رصيدهم إلى %{limit} %{unit} وسيتم إشعارهم عبر إشعار فوري.',
+    rewardExceedsLimitTitle: '⚠️ التكلفة تتجاوز الحد',
+    rewardExceedsLimitMessage: 'تكلفة هذه الهدية (%{cost} %{unit}) تتجاوز حد التراكم (%{limit} %{unit}). لن يتمكن عملاؤك من تجميع ما يكفي للحصول عليها. هل تريد المتابعة؟',
+    limitBelowRewardsTitle: '⚠️ هدايا متأثرة',
+    limitBelowRewardsMessage: 'الحد %{limit} %{unit} أقل من تكلفة الهدايا التالية: %{rewards}. لن يتمكن عملاؤك من الوصول إليها. هل تريد المتابعة؟',
     conversionRuleTitle: '🔄 قاعدة التحويل',
     conversionRuleHintToStamps: 'حدد كم نقطة تعادل كم طابع. سيتم تحويل أرصدة العملاء وتكاليف الهدايا تلقائياً.',
     conversionRuleHintToPoints: 'حدد كم طابع يعادل كم نقطة. سيتم تحويل أرصدة العملاء وتكاليف الهدايا تلقائياً.',
@@ -553,6 +563,10 @@ export default {
     conversionRuleTmps: 'طابع',
     conversionRulePreview: 'مثال: %{inVal} %{fromUnit} ← %{outVal} %{toUnit}',
     rewardConversionTitle: '🎁 تحويل الهدايا',
+    stampEarningMode: 'طريقة منح الطوابع',
+    stampEarningModeHint: 'اختر كيف يتم منح الطوابع للعملاء',
+    perVisit: 'طابع واحد / زيارة',
+    perAmount: 'حسب المبلغ المدفوع',
   },
 
   // ── Security page ──
@@ -666,6 +680,9 @@ export default {
     totalAfter: 'المجموع بعد',
     earn: 'ربح',
     enterAmount: 'أدخل المبلغ',
+    perVisitLabel: 'لكل زيارة',
+    rewardReached: 'تم بلوغ المكافأة! هدية',
+    accumulationLimitReached: 'وصل هذا العميل إلى حد التراكم (%{limit} %{unit}). يجب عليه استبدال هدية قبل أن يتمكن من التجميع مجدداً.',
   },
 
   // ── Client detail ──
@@ -767,6 +784,22 @@ export default {
     googleChange: 'تغيير',
   },
 
+  // ── Email Verification ──
+  verifyEmail: {
+    title: 'تحقق من بريدك الإلكتروني',
+    subtitle: 'تم إرسال رمز التحقق إلى %{email}',
+    verifyBtn: 'تأكيد',
+    noCode: 'لم تتلقَ الرمز؟',
+    resendBtn: 'إعادة الإرسال',
+    resendIn: 'إعادة الإرسال خلال %{seconds}ث',
+    resentTitle: 'تم إعادة الإرسال',
+    resentMsg: 'تم إرسال رمز جديد إلى بريدك الإلكتروني.',
+    resendError: 'تعذر إعادة إرسال الرمز. حاول لاحقاً.',
+    successTitle: 'تم التحقق ✓',
+    successMsg: 'تم التحقق من بريدك الإلكتروني بنجاح. سجّل الدخول للبدء.',
+    errorGeneric: 'رمز غير صالح أو منتهي الصلاحية. يرجى المحاولة مرة أخرى.',
+  },
+
   // ── Google Auth ──
   googleAuth: {
     error: 'فشل تسجيل الدخول بـ Google. يرجى المحاولة مرة أخرى.',
@@ -856,9 +889,23 @@ export default {
     saving: 'جارٍ الحفظ…',
     deleteTitle: 'حذف المتجر؟',
     deleteMsg: 'هذا الإجراء غير قابل للعكس.',
-    searchAddress: 'ابحث عن عنوان…',
+    searchAddress: 'ابحث عن عنوان',
     locateMe: 'موقعي',
     mapTitle: 'الموقع على الخريطة',
+    namePlaceholder: 'مثال: متجر وسط المدينة',
+    phonePlaceholder: '06 XX XX XX XX',
+    emailPlaceholder: 'store@example.com',
+    cityPlaceholder: 'الدار البيضاء',
+    districtPlaceholder: 'المعاريف، غوتييه...',
+    addressSearchPlaceholder: 'اكتب عنوان أو شارع أو مكان...',
+    addressAutoPlaceholder: 'يتم ملؤه تلقائياً أو أدخل يدوياً...',
+    sectionInfo: 'المعلومات',
+    sectionContact: 'الاتصال',
+    sectionLocation: 'الموقع',
+    counterLabel: '%{count} / %{max} متاجر',
+    sameCategoryLabel: 'نفس الفئة',
+    invalidEmail: 'بريد إلكتروني غير صالح',
+    nameRequired: 'الاسم مطلوب',
   },
 
   // ── الإحالة ──
@@ -933,6 +980,11 @@ export default {
     loyaltyPointsDesc: 'يكسب العملاء نقاطاً مع كل عملية شراء',
     loyaltyStamps: 'طوابع',
     loyaltyStampsDesc: 'طابع لكل زيارة، مكافأة بعد X طابع',
+    stampEarningModeLabel: 'طريقة كسب الطوابع',
+    stampPerVisit: 'لكل زيارة',
+    stampPerVisitDesc: 'طابع واحد في كل زيارة',
+    stampPerAmount: 'حسب المبلغ',
+    stampPerAmountDesc: 'طابع واحد لكل درهم',
     rewardTitle: 'أنشئ أول مكافأة',
     rewardSubtitle: 'حدد ما يحصل عليه العملاء مقابل النقاط أو الطوابع المتراكمة.',
     rewardNameLabel: 'اسم المكافأة',
@@ -951,6 +1003,13 @@ export default {
     rewardStampsRequired: 'يجب أن يكون عدد الطوابع أكبر من 0.',
     rewardStampsLabel: 'الطوابع المطلوبة',
     rewardStampsPlaceholder: 'مثال: 10',
+
+    // Conversion rate
+    conversionRateLabel: 'معدل التحويل',
+    conversionRateHintPoints: 'كم درهم يُنفق للحصول على نقطة واحدة؟',
+    conversionRateHintStamps: 'كم درهم يُنفق للحصول على طابع واحد؟',
+    conversionRatePreviewPoints: 'مقابل كل %{rate} %{currency} يُنفق، يكسب العميل نقطة واحدة',
+    conversionRatePreviewStamps: 'مقابل كل %{rate} %{currency} يُنفق، يكسب العميل طابعاً واحداً',
 
     // Accumulation limit
     accumulationLimitLabel: 'حد التراكم (اختياري)',

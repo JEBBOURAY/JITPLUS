@@ -11,16 +11,21 @@ export default function TabLayout() {
   const router = useRouter();
   const hasOpenedScanner = useRef(false);
 
-  // Redirect to welcome if not authenticated
+  // Single redirect chain — priority: auth → email verification → onboarding
   useEffect(() => {
-    if (!loading && !merchant) {
+    if (loading) return;
+    if (!merchant) {
       router.replace('/welcome');
+      return;
     }
-  }, [merchant, loading]);
-
-  // Redirect to onboarding if not yet completed (only for merchant owners)
-  useEffect(() => {
-    if (!loading && merchant && !onboardingCompleted && !isTeamMember) {
+    if (!merchant.emailVerified && !merchant.googleId) {
+      router.replace({
+        pathname: '/verify-email',
+        params: { email: merchant.email },
+      });
+      return;
+    }
+    if (!onboardingCompleted && !isTeamMember) {
       router.replace('/onboarding');
     }
   }, [loading, merchant, onboardingCompleted, isTeamMember]);

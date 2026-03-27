@@ -597,8 +597,8 @@ export class ClientAuthService {
       // Verify Google ID token using google-auth-library (cryptographic verification)
       // expo-auth-session uses browser flow → token audience is always the Web client ID
       const webClientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
-      const androidClientId = this.configService.get<string>('GOOGLE_ANDROID_CLIENT_ID');
-      const allowedAudiences = [webClientId, androidClientId].filter(Boolean) as string[];
+      const androidClientIds = (this.configService.get<string>('GOOGLE_ANDROID_CLIENT_ID') || '').split(',').map(s => s.trim()).filter(Boolean);
+      const allowedAudiences = [webClientId, ...androidClientIds].filter(Boolean) as string[];
 
       if (allowedAudiences.length === 0) {
         this.logger.error('Google login misconfigured: GOOGLE_CLIENT_ID and GOOGLE_ANDROID_CLIENT_ID are both empty');

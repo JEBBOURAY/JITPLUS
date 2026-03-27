@@ -51,6 +51,7 @@ export default function SettingsScreen() {
 
   // ── Loyalty settings ──
   const [loyaltyType, setLoyaltyType] = useState<LoyaltyType>('POINTS');
+  const [stampEarningMode, setStampEarningMode] = useState<'PER_VISIT' | 'PER_AMOUNT'>('PER_VISIT');
   const [pointsRate, setPointsRate] = useState('10');
   const [conversionRate, setConversionRate] = useState('10');
   const [stampsForReward, setStampsForReward] = useState('10');
@@ -75,6 +76,7 @@ export default function SettingsScreen() {
       router.replace('/login');
     } else if (merchant) {
       setLoyaltyType(merchant.loyaltyType || 'POINTS');
+      setStampEarningMode(merchant.stampEarningMode || 'PER_VISIT');
       setPointsRate(merchant.pointsRate?.toString() || '10');
       setConversionRate(merchant.conversionRate?.toString() || '10');
       setStampsForReward(merchant.stampsForReward?.toString() || '10');
@@ -87,6 +89,7 @@ export default function SettingsScreen() {
   const handleRefresh = useGuardedCallback(async () => {
     if (!merchant) return;
     setLoyaltyType(merchant.loyaltyType || 'POINTS');
+    setStampEarningMode(merchant.stampEarningMode || 'PER_VISIT');
     setPointsRate(merchant.pointsRate?.toString() || '10');
     setConversionRate(merchant.conversionRate?.toString() || '10');
     setStampsForReward(merchant.stampsForReward?.toString() || '10');
@@ -135,6 +138,27 @@ export default function SettingsScreen() {
     if (hasAccumulationLimit && (isNaN(limitVal) || limitVal < 1)) {
       Alert.alert('Erreur', t('settingsPage.limitError'));
       return;
+    }
+
+    // Check if the new limit is lower than any existing reward cost
+    if (hasAccumulationLimit && !isNaN(limitVal) && rewards.length > 0) {
+      const exceeding = rewards.filter((r) => r.cout > limitVal);
+      if (exceeding.length > 0) {
+        const unit = isStamps ? t('common.stamps') : t('common.points');
+        const names = exceeding.map((r) => `${r.titre} (${r.cout} ${unit})`).join(', ');
+        const proceed = await new Promise<boolean>((resolve) => {
+          Alert.alert(
+            t('settingsPage.limitBelowRewardsTitle'),
+            t('settingsPage.limitBelowRewardsMessage', { rewards: names, limit: limitVal, unit }),
+            [
+              { text: t('common.cancel'), style: 'cancel', onPress: () => resolve(false) },
+              { text: t('common.confirm'), style: 'destructive', onPress: () => resolve(true) },
+            ],
+            { cancelable: false },
+          );
+        });
+        if (!proceed) return;
+      }
     }
 
     // Check if setting/lowering the limit would affect existing clients
@@ -192,6 +216,7 @@ export default function SettingsScreen() {
     try {
       const payload: Record<string, unknown> = {
         loyaltyType,
+        stampEarningMode,
         pointsRate: rate || 10,
         conversionRate: effectiveConvRate,
         stampsForReward: stamps || 10,
@@ -212,17 +237,8 @@ export default function SettingsScreen() {
     }
   };
 
-  const handleAddReward = async () => {
+  const doAddReward = async () => {
     const cost = parseInt(rewardCost, 10);
-    if (!rewardTitle.trim()) {
-      Alert.alert('Erreur', 'Le nom du cadeau est requis');
-      return;
-    }
-    if (isNaN(cost) || cost <= 0) {
-      Alert.alert('Erreur', 'Le cout doit etre > 0');
-      return;
-    }
-
     setSavingReward(true);
     try {
       await api.post('/rewards', {
@@ -241,6 +257,34 @@ export default function SettingsScreen() {
     }
   };
 
+  const handleAddReward = async () => {
+    const cost = parseInt(rewardCost, 10);
+    if (!rewardTitle.trim()) {
+      Alert.alert('Erreur', 'Le nom du cadeau est requis');
+      return;
+    }
+    if (isNaN(cost) || cost <= 0) {
+      Alert.alert('Erreur', 'Le cout doit etre > 0');
+      return;
+    }
+
+    const limitVal = parseInt(accumulationLimit, 10);
+    if (hasAccumulationLimit && !isNaN(limitVal) && cost > limitVal) {
+      const unit = isStamps ? t('common.stamps') : t('common.points');
+      Alert.alert(
+        t('settingsPage.rewardExceedsLimitTitle'),
+        t('settingsPage.rewardExceedsLimitMessage', { cost, limit: limitVal, unit }),
+        [
+          { text: t('common.cancel'), style: 'cancel' },
+          { text: t('common.confirm'), onPress: doAddReward },
+        ],
+      );
+      return;
+    }
+
+    doAddReward();
+  };
+
   const handleEditReward = (reward: Reward) => {
     setEditingRewardId(reward.id);
     setRewardTitle(reward.titre);
@@ -255,18 +299,8 @@ export default function SettingsScreen() {
     setRewardDescription('');
   };
 
-  const handleUpdateReward = async () => {
-    if (!editingRewardId) return;
+  const doUpdateReward = async () => {
     const cost = parseInt(rewardCost, 10);
-    if (!rewardTitle.trim()) {
-      Alert.alert('Erreur', 'Le nom du cadeau est requis');
-      return;
-    }
-    if (isNaN(cost) || cost <= 0) {
-      Alert.alert('Erreur', 'Le cout doit etre > 0');
-      return;
-    }
-
     setSavingReward(true);
     try {
       await api.put(`/rewards/${editingRewardId}`, {
@@ -284,6 +318,35 @@ export default function SettingsScreen() {
     } finally {
       setSavingReward(false);
     }
+  };
+
+  const handleUpdateReward = async () => {
+    if (!editingRewardId) return;
+    const cost = parseInt(rewardCost, 10);
+    if (!rewardTitle.trim()) {
+      Alert.alert('Erreur', 'Le nom du cadeau est requis');
+      return;
+    }
+    if (isNaN(cost) || cost <= 0) {
+      Alert.alert('Erreur', 'Le cout doit etre > 0');
+      return;
+    }
+
+    const limitVal = parseInt(accumulationLimit, 10);
+    if (hasAccumulationLimit && !isNaN(limitVal) && cost > limitVal) {
+      const unit = isStamps ? t('common.stamps') : t('common.points');
+      Alert.alert(
+        t('settingsPage.rewardExceedsLimitTitle'),
+        t('settingsPage.rewardExceedsLimitMessage', { cost, limit: limitVal, unit }),
+        [
+          { text: t('common.cancel'), style: 'cancel' },
+          { text: t('common.confirm'), onPress: doUpdateReward },
+        ],
+      );
+      return;
+    }
+
+    doUpdateReward();
   };
 
   const handleDeleteReward = (rewardId: string) => {
@@ -315,6 +378,7 @@ export default function SettingsScreen() {
   const isStamps = loyaltyType === 'STAMPS';
   const hasChanges =
     loyaltyType !== (merchant?.loyaltyType || 'POINTS') ||
+    stampEarningMode !== (merchant?.stampEarningMode || 'PER_VISIT') ||
     pointsRate !== (merchant?.pointsRate?.toString() || '10') ||
     conversionRate !== (merchant?.conversionRate?.toString() || '10') ||
     stampsForReward !== (merchant?.stampsForReward?.toString() || '10') ||
@@ -548,6 +612,56 @@ export default function SettingsScreen() {
           {/* ── Stamps Mode Settings ── */}
           {isStamps && (
             <Animated.View>
+              {/* ── Stamp Earning Mode ── */}
+              <View style={styles.fieldGroup}>
+                <Text style={[styles.fieldLabel, { color: theme.text }]}>
+                  {t('settingsPage.stampEarningMode')}
+                </Text>
+                <Text style={[styles.fieldHint, { color: theme.textMuted }]}>
+                  {t('settingsPage.stampEarningModeHint')}
+                </Text>
+                <View style={[styles.segment, { backgroundColor: theme.bg, marginTop: 8 }]}>
+                  <TouchableOpacity
+                    style={[
+                      styles.segmentBtn,
+                      stampEarningMode === 'PER_VISIT' && { backgroundColor: theme.primary },
+                    ]}
+                    onPress={() => setStampEarningMode('PER_VISIT')}
+                    activeOpacity={0.8}
+                  >
+                    <Text
+                      style={[
+                        styles.segmentText,
+                        { color: stampEarningMode === 'PER_VISIT' ? '#fff' : theme.textMuted },
+                        stampEarningMode === 'PER_VISIT' && styles.segmentTextActive,
+                      ]}
+                    >
+                      {t('settingsPage.perVisit')}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.segmentBtn,
+                      stampEarningMode === 'PER_AMOUNT' && { backgroundColor: theme.primary },
+                    ]}
+                    onPress={() => setStampEarningMode('PER_AMOUNT')}
+                    activeOpacity={0.8}
+                  >
+                    <Text
+                      style={[
+                        styles.segmentText,
+                        { color: stampEarningMode === 'PER_AMOUNT' ? '#fff' : theme.textMuted },
+                        stampEarningMode === 'PER_AMOUNT' && styles.segmentTextActive,
+                      ]}
+                    >
+                      {t('settingsPage.perAmount')}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* ── Stamps conversion rate (only for PER_AMOUNT) ── */}
+              {stampEarningMode === 'PER_AMOUNT' && (
               <View style={styles.fieldGroup}>
                 <Text style={[styles.fieldLabel, { color: theme.text }]}>
                   {t('settingsPage.stampsConversionRate')}
@@ -576,6 +690,7 @@ export default function SettingsScreen() {
                   </Text>
                 </View>
               </View>
+              )}
 
               <View style={styles.fieldGroup}>
                 <Text style={[styles.fieldLabel, { color: theme.text }]}>
@@ -702,12 +817,40 @@ export default function SettingsScreen() {
             )}
           </View>
 
-          {/* ── Rewards Management ── */}
-          <View style={styles.fieldGroup}>
-            <Text style={[styles.fieldLabel, { color: theme.text }]}>{t('settingsPage.gifts')}</Text>
-            <Text style={[styles.fieldHint, { color: theme.textMuted }]}>
-              {t('settingsPage.giftsHint')}
-            </Text>
+          {/* ── Save Button (loyalty settings) ──  */}
+          <TouchableOpacity
+            style={[
+              styles.saveBtn,
+              { backgroundColor: hasChanges ? theme.primary : theme.border },
+            ]}
+            onPress={handleSave}
+            disabled={saving || !hasChanges}
+            activeOpacity={0.8}
+          >
+            {saving ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <>
+                <Save size={20} color={hasChanges ? '#fff' : theme.textMuted} />
+                <Text
+                  style={[
+                    styles.saveBtnText,
+                    { color: hasChanges ? '#fff' : theme.textMuted },
+                  ]}
+                >
+                  {t('settingsPage.saveBtn')}
+                </Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </Animated.View>
+
+        {/* ── Section: Cadeaux ── */}
+        <Text style={[styles.sectionTitle, { color: theme.text }]}>{t('settingsPage.giftsSection')}</Text>
+        <View style={[styles.card, { backgroundColor: theme.bgCard }]}>
+          <Text style={[styles.cardLabel, { color: theme.textSecondary }]}>
+            {t('settingsPage.giftsSectionHint')}
+          </Text>
 
             <View style={styles.rewardForm}>
               <TextInput
@@ -861,35 +1004,8 @@ export default function SettingsScreen() {
                 ))}
               </View>
             )}
-          </View>
 
-          {/* ── Save Button ──  */}
-          <TouchableOpacity
-            style={[
-              styles.saveBtn,
-              { backgroundColor: hasChanges ? theme.primary : theme.border },
-            ]}
-            onPress={handleSave}
-            disabled={saving || !hasChanges}
-            activeOpacity={0.8}
-          >
-            {saving ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <>
-                <Save size={20} color={hasChanges ? '#fff' : theme.textMuted} />
-                <Text
-                  style={[
-                    styles.saveBtnText,
-                    { color: hasChanges ? '#fff' : theme.textMuted },
-                  ]}
-                >
-                  {t('settingsPage.saveBtn')}
-                </Text>
-              </>
-            )}
-          </TouchableOpacity>
-        </Animated.View>
+        </View>
 
       </ScrollView>
     </View>

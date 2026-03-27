@@ -1,17 +1,16 @@
 /**
  * SafeMapView — Wrapper autour de react-native-maps qui ne crash pas dans Expo Go.
- * Si le module natif n'est pas disponible, affiche une carte statique OpenStreetMap
- * avec le marqueur, un bouton « Ouvrir dans Maps » et un indicateur de coordonnées.
+ * - Dev build / standalone: Affiche Google Maps (Android) / Apple Maps (iOS)
+ * - Expo Go: react-native-maps n'est pas disponible → graceful text fallback
+ *   avec bouton « Ouvrir dans Maps » pour chaque boutique.
  */
 import React, { forwardRef, useImperativeHandle, useCallback, useState, useRef, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
-  Image,
   StyleSheet,
   Linking,
   TouchableOpacity,
-  ActivityIndicator,
   Platform,
   NativeModules,
 } from 'react-native';
@@ -33,87 +32,42 @@ try {
 }
 
 export const PROVIDER_GOOGLE = RN_PROVIDER_GOOGLE;
+export const MAPS_AVAILABLE = !!RNMapView && !!RNMarker;
 
 /* ---------- Helpers ---------- */
 /** Extrait les coordonnées de TOUS les <Marker> enfants */
-function extractAllMarkerCoords(children: React.ReactNode): { latitude: number; longitude: number }[] {
-  const coords: { latitude: number; longitude: number }[] = [];
+function extractAllMarkerCoords(children: React.ReactNode): { latitude: number; longitude: number; title?: string }[] {
+  const coords: { latitude: number; longitude: number; title?: string }[] = [];
   React.Children.forEach(children, (child) => {
     if (!React.isValidElement(child)) return;
     const props = child.props as Record<string, unknown> | undefined;
     const coordinate = props?.coordinate as { latitude?: number; longitude?: number } | undefined;
     if (coordinate && typeof coordinate.latitude === 'number' && typeof coordinate.longitude === 'number') {
-      coords.push({ latitude: coordinate.latitude, longitude: coordinate.longitude });
+      coords.push({ latitude: coordinate.latitude, longitude: coordinate.longitude, title: props?.title as string | undefined });
     }
   });
   return coords;
 }
 
-/** Construit l'URL de la carte statique OpenStreetMap avec plusieurs marqueurs */
-function buildStaticMapUrl(
-  markers: { latitude: number; longitude: number }[],
-  width = 600,
-  height = 400,
-): string {
-  if (markers.length === 0) {
-    return `https://staticmap.openstreetmap.de/staticmap.php?center=33.5731,-7.5898&zoom=6&size=${width}x${height}&maptype=mapnik`;
-  }
-
-  // Calculate bounding box
-  const lats = markers.map((m) => m.latitude);
-  const lngs = markers.map((m) => m.longitude);
-  const minLat = Math.min(...lats);
-  const maxLat = Math.max(...lats);
-  const minLng = Math.min(...lngs);
-  const maxLng = Math.max(...lngs);
-  const centerLat = (minLat + maxLat) / 2;
-  const centerLng = (minLng + maxLng) / 2;
-
-  // Auto-zoom based on span
-  const latSpan = maxLat - minLat;
-  const lngSpan = maxLng - minLng;
-  const span = Math.max(latSpan, lngSpan);
-  let zoom = 16;
-  if (markers.length > 1) {
-    if (span > 5) zoom = 6;
-    else if (span > 2) zoom = 7;
-    else if (span > 1) zoom = 8;
-    else if (span > 0.5) zoom = 9;
-    else if (span > 0.2) zoom = 10;
-    else if (span > 0.1) zoom = 11;
-    else if (span > 0.05) zoom = 12;
-    else if (span > 0.02) zoom = 13;
-    else if (span > 0.01) zoom = 14;
-    else zoom = 15;
-  }
-
-  const markersStr = markers.map((m) => `${m.latitude},${m.longitude},red-pushpin`).join('|');
-  return `https://staticmap.openstreetmap.de/staticmap.php?center=${centerLat},${centerLng}&zoom=${zoom}&size=${width}x${height}&maptype=mapnik&markers=${markersStr}`;
-}
-
-/* ---------- Fallback : carte statique + actions ---------- */
+/* ---------- Fallback : texte + bouton « Ouvrir dans Maps » ---------- */
 interface FallbackProps {
   style?: import('react-native').StyleProp<import('react-native').ViewStyle>;
-  markers: { latitude: number; longitude: number }[];
-  centerLat: number;
-  centerLng: number;
+  markers: { latitude: number; longitude: number; title?: string }[];
   hasCoords: boolean;
 }
 
-function MapFallback({ style, markers, centerLat, centerLng, hasCoords }: FallbackProps) {
-  const [imgLoading, setImgLoading] = useState(true);
-  const [imgError, setImgError] = useState(false);
+function MapFallback({ style, markers, hasCoords }: FallbackProps) {
   const { t } = useLanguage();
 
-  const openInMaps = useCallback(() => {
+  const openInMaps = useCallback((lat: number, lng: number) => {
     const url =
       Platform.OS === 'ios'
-        ? `maps:0,0?q=${centerLat},${centerLng}`
-        : `geo:${centerLat},${centerLng}?q=${centerLat},${centerLng}`;
+        ? `maps:0,0?q=${lat},${lng}`
+        : `geo:${lat},${lng}?q=${lat},${lng}`;
     Linking.openURL(url).catch(() =>
-      Linking.openURL(`https://www.google.com/maps?q=${centerLat},${centerLng}`),
+      Linking.openURL(`https://www.google.com/maps?q=${lat},${lng}`),
     );
-  }, [centerLat, centerLng]);
+  }, []);
 
   if (!hasCoords) {
     return (
@@ -127,47 +81,30 @@ function MapFallback({ style, markers, centerLat, centerLng, hasCoords }: Fallba
     );
   }
 
-  const staticUrl = useMemo(() => buildStaticMapUrl(markers), [markers]);
-
   return (
-    <View style={[styles.imgContainer, style]}>
-      {/* Image de la carte statique */}
-      <Image
-        source={{ uri: staticUrl }}
-        style={StyleSheet.absoluteFill}
-        resizeMode="cover"
-        onLoadStart={() => { setImgLoading(true); setImgError(false); }}
-        onLoadEnd={() => setImgLoading(false)}
-        onError={() => { setImgLoading(false); setImgError(true); }}
-      />
-
-      {imgLoading && (
-        <View style={styles.loadingOverlay}>
-          <ActivityIndicator size="small" color="#7C3AED" />
-          <Text style={styles.loadingText}>{t('safeMap.loadingMap')}</Text>
+    <View style={[styles.fallback, style]}>
+      <MapPin size={32} color="#7C3AED" />
+      <Text style={styles.fallbackTitle}>🗺️ {t('safeMap.expoGoNotice')}</Text>
+      <Text style={styles.fallbackText}>
+        {t('safeMap.expoGoHint')}
+      </Text>
+      {markers.length > 0 && (
+        <View style={styles.markerList}>
+          {markers.map((m, i) => (
+            <TouchableOpacity
+              key={`${m.latitude}-${m.longitude}-${i}`}
+              style={styles.markerBtn}
+              onPress={() => openInMaps(m.latitude, m.longitude)}
+              activeOpacity={0.7}
+            >
+              <ExternalLink size={14} color="#fff" />
+              <Text style={styles.markerBtnText}>
+                {m.title || `${m.latitude.toFixed(4)}, ${m.longitude.toFixed(4)}`}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
       )}
-
-      {imgError && (
-        <View style={styles.loadingOverlay}>
-          <MapPin size={24} color="#94a3b8" />
-          <Text style={styles.fallbackTitle}>{t('safeMap.imageUnavailable')}</Text>
-        </View>
-      )}
-
-      {/* Badge nombre de marqueurs */}
-      <View style={styles.coordsBadge}>
-        <MapPin size={12} color="#fff" />
-        <Text style={styles.coordsText}>
-          {t('safeMap.markerCount', { count: markers.length })}
-        </Text>
-      </View>
-
-      {/* Bouton « Ouvrir dans Maps » */}
-      <TouchableOpacity style={styles.openBtn} onPress={openInMaps} activeOpacity={0.8}>
-        <ExternalLink size={14} color="#fff" />
-        <Text style={styles.openBtnText}>{t('safeMap.openInMaps')}</Text>
-      </TouchableOpacity>
     </View>
   );
 }
@@ -273,17 +210,7 @@ const SafeMapView = forwardRef<SafeMapViewRef, SafeMapViewProps>((props, ref) =>
         : [];
   }, [allMarkerCoords, regionCoords]);
 
-  const { centerLat, centerLng } = useMemo(() => {
-    if (markers.length === 0) return { centerLat: 33.5731, centerLng: -7.5898 };
-    const latSum = markers.reduce((sum: number, m: { latitude: number; longitude: number }) => sum + m.latitude, 0);
-    const lngSum = markers.reduce((sum: number, m: { latitude: number; longitude: number }) => sum + m.longitude, 0);
-    return {
-      centerLat: latSum / markers.length,
-      centerLng: lngSum / markers.length,
-    };
-  }, [markers]);
-
-  return <MapFallback style={style} markers={markers} centerLat={centerLat} centerLng={centerLng} hasCoords={hasCoords} />;
+  return <MapFallback style={style} markers={markers} hasCoords={hasCoords} />;
 });
 
 SafeMapView.displayName = 'SafeMapView';
@@ -316,6 +243,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#64748b',
     marginTop: 8,
+    textAlign: 'center',
   },
   fallbackText: {
     fontSize: 12,
@@ -324,53 +252,22 @@ const styles = StyleSheet.create({
     marginTop: 4,
     lineHeight: 18,
   },
-  imgContainer: {
-    overflow: 'hidden',
-    borderRadius: 12,
-    backgroundColor: '#e2e8f0',
-    minHeight: 180,
-  },
-  loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
+  markerList: {
+    marginTop: 12,
+    gap: 8,
+    width: '100%',
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(241,245,249,0.85)',
   },
-  loadingText: {
-    fontSize: 12,
-    color: '#64748b',
-    marginTop: 6,
-  },
-  coordsBadge: {
-    position: 'absolute',
-    top: 8,
-    left: 8,
+  markerBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  coordsText: {
-    fontSize: 11,
-    color: '#fff',
-    fontWeight: '500',
-  },
-  openBtn: {
-    position: 'absolute',
-    bottom: 8,
-    right: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
+    gap: 6,
     backgroundColor: 'rgba(124,58,237,0.9)',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     borderRadius: 8,
   },
-  openBtnText: {
+  markerBtnText: {
     fontSize: 12,
     color: '#fff',
     fontWeight: '600',

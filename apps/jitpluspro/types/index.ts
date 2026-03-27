@@ -45,6 +45,7 @@ export interface Merchant {
   loyaltyType?: LoyaltyType;
   conversionRate?: number;
   stampsForReward?: number;
+  stampEarningMode?: 'PER_VISIT' | 'PER_AMOUNT';
   accumulationLimit?: number | null;
   pointsRules?: {
     pointsPerDirham: number;
@@ -55,6 +56,7 @@ export interface Merchant {
   planActivatedByAdmin?: boolean;
   trialStartedAt?: string | null;
   isActive?: boolean;
+  emailVerified?: boolean;
   onboardingCompleted?: boolean;
   termsAccepted?: boolean;
   createdAt?: string;

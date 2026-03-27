@@ -324,11 +324,11 @@ export default function RegisterScreen() {
         email: email.trim().toLowerCase(),
         password,
       });
-      Alert.alert(
-        t('registerExtra.welcomeTitle'),
-        t('registerExtra.welcomeMsg', { nom }),
-        [{ text: t('register.loginLink'), onPress: () => router.replace('/login') }],
-      );
+      // Redirect to email verification screen
+      router.replace({
+        pathname: '/verify-email',
+        params: { email: email.trim().toLowerCase() },
+      });
     } catch (error: unknown) {
       Alert.alert(
         t('registerExtra.registrationError'),

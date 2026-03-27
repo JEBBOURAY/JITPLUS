@@ -37,7 +37,8 @@ model Merchant {
   pointsRate      Float            @default(10) @map("points_rate")
   loyaltyType     LoyaltyType      @default(POINTS) @map("loyalty_type")
   conversionRate  Float            @default(10) @map("conversion_rate")
-  stampsForReward Int              @default(10) @map("stamps_for_reward")
+  stampsForReward  Int              @default(10) @map("stamps_for_reward")
+  stampEarningMode StampEarningMode @default(PER_VISIT) @map("stamp_earning_mode")
   accumulationLimit Int?            @map("accumulation_limit")
   activeRewardId  String?          @map("active_reward_id")
   // Plan Freemium — les nouveaux marchands démarrent en FREE (le flow d'inscription attribue un essai PREMIUM via getTrialData())
@@ -47,6 +48,7 @@ model Merchant {
   trialStartedAt      DateTime?        @map("trial_started_at")
 
   isActive            Boolean          @default(true) @map("is_active")
+  emailVerified       Boolean          @default(false) @map("email_verified")
   onboardingCompleted Boolean          @default(false) @map("onboarding_completed")
   failedLoginAttempts Int              @default(0) @map("failed_login_attempts")
   lockedUntil         DateTime?        @map("locked_until")
@@ -218,6 +220,11 @@ enum MerchantPlan {
 enum LoyaltyType {
   POINTS
   STAMPS
+}
+
+enum StampEarningMode {
+  PER_VISIT
+  PER_AMOUNT
 }
 
 model Client {

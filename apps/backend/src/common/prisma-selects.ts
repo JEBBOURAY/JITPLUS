@@ -23,11 +23,13 @@ export const MERCHANT_PROFILE_SELECT = {
   loyaltyType: true,
   conversionRate: true,
   stampsForReward: true,
+  stampEarningMode: true,
   accumulationLimit: true,
   activeRewardId: true,
   countryCode: true,
   phoneNumber: true,
   isActive: true,
+  emailVerified: true,
   onboardingCompleted: true,
   termsAccepted: true,
   googleId: true,
@@ -47,9 +49,11 @@ export type MerchantProfileData = Prisma.MerchantGetPayload<{ select: typeof MER
  */
 export const MERCHANT_LOYALTY_SELECT = {
   pointsRules: true,
+  pointsRate: true,
   loyaltyType: true,
   conversionRate: true,
   stampsForReward: true,
+  stampEarningMode: true,
   accumulationLimit: true,
 } satisfies Prisma.MerchantSelect;
 

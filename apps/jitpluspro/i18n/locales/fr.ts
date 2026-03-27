@@ -24,7 +24,9 @@ export default {
     networkError: 'Erreur réseau',
     genericError: 'Une erreur est survenue',
     points: 'points',
+    point: 'point',
     stamps: 'tampons',
+    stamp: 'tampon',
     days: 'jours',
     day: 'jour',
     selectCountry: 'Sélectionner un pays',
@@ -233,6 +235,8 @@ export default {
     imageUnavailable: 'Image indisponible',
     markerCount: '%{count} point(s)',
     openInMaps: 'Ouvrir dans Maps',
+    expoGoNotice: 'Carte indisponible dans Expo Go',
+    expoGoHint: 'Utilisez un dev build pour voir la carte interactive.\nVous pouvez ouvrir chaque position dans Maps :',
   },
 
   // ── Scan QR ──
@@ -551,6 +555,8 @@ export default {
     stampPreviewHint: '3 / %{count} tampons collectés (exemple)',
     gifts: 'Cadeaux',
     giftsHint: 'Ajoutez les cadeaux disponibles pour vos clients fidèles',
+    giftsSection: '🎁 Cadeaux',
+    giftsSectionHint: 'Configurez les cadeaux que vos clients peuvent échanger avec leurs points ou tampons',
     giftName: 'Nom du cadeau',
     giftCost: 'Coût',
     giftDesc: 'Description (optionnel)',
@@ -573,6 +579,10 @@ export default {
     limitError: "La limite d'accumulation doit être ≥ 1",
     limitConfirmTitle: '⚠️ Clients concernés',
     limitConfirmMessage: '%{count} client(s) ont actuellement plus de %{limit} %{unit}. En confirmant, leur cumul sera réduit à %{limit} %{unit} et ils seront notifiés par notification push.',
+    rewardExceedsLimitTitle: '⚠️ Coût supérieur à la limite',
+    rewardExceedsLimitMessage: 'Le coût de ce cadeau (%{cost} %{unit}) dépasse la limite d\'accumulation (%{limit} %{unit}). Vos clients ne pourront pas accumuler assez pour l\'obtenir. Voulez-vous continuer ?',
+    limitBelowRewardsTitle: '⚠️ Cadeaux concernés',
+    limitBelowRewardsMessage: 'La limite de %{limit} %{unit} est inférieure au coût des cadeaux suivants : %{rewards}. Vos clients ne pourront pas les atteindre. Voulez-vous continuer ?',
     conversionRuleTitle: '🔄 Règle de conversion',
     conversionRuleHintToStamps: 'Définissez combien de points équivalent à combien de tampons. Les cumuls clients et les coûts des cadeaux seront convertis automatiquement.',
     conversionRuleHintToPoints: 'Définissez combien de tampons équivalent à combien de points. Les cumuls clients et les coûts des cadeaux seront convertis automatiquement.',
@@ -580,6 +590,10 @@ export default {
     conversionRuleTmps: 'tmp',
     conversionRulePreview: 'Ex : %{inVal} %{fromUnit} → %{outVal} %{toUnit}',
     rewardConversionTitle: '🎁 Conversion des cadeaux',
+    stampEarningMode: 'Mode d\'attribution des tampons',
+    stampEarningModeHint: 'Choisissez comment les tampons sont attribués aux clients',
+    perVisit: '1 tampon / visite',
+    perAmount: 'Par montant dépensé',
   },
 
   // ── Security page ──
@@ -693,6 +707,9 @@ export default {
     totalAfter: 'Total après',
     earn: 'Gagner',
     enterAmount: 'Entrez un montant',
+    perVisitLabel: 'par visite',
+    rewardReached: 'Récompense atteinte ! Cadeau',
+    accumulationLimitReached: 'Ce client a atteint la limite d\'accumulation (%{limit} %{unit}). Il doit d\'abord utiliser un cadeau avant de pouvoir accumuler à nouveau.',
   },
 
   // ── Client detail ──
@@ -794,6 +811,22 @@ export default {
     googleChange: 'Changer',
   },
 
+  // ── Email Verification ──
+  verifyEmail: {
+    title: 'Vérifiez votre e-mail',
+    subtitle: 'Un code de vérification a été envoyé à %{email}',
+    verifyBtn: 'Vérifier',
+    noCode: 'Vous n\'avez pas reçu le code ?',
+    resendBtn: 'Renvoyer le code',
+    resendIn: 'Renvoyer dans %{seconds}s',
+    resentTitle: 'Code renvoyé',
+    resentMsg: 'Un nouveau code a été envoyé à votre adresse e-mail.',
+    resendError: 'Impossible de renvoyer le code. Réessayez plus tard.',
+    successTitle: 'E-mail vérifié ✓',
+    successMsg: 'Votre adresse e-mail a été vérifiée avec succès. Connectez-vous pour commencer.',
+    errorGeneric: 'Code invalide ou expiré. Veuillez réessayer.',
+  },
+
   // ── Google Auth ──
   googleAuth: {
     error: 'La connexion avec Google a échoué. Veuillez réessayer.',
@@ -883,9 +916,27 @@ export default {
     saving: 'Enregistrement…',
     deleteTitle: 'Supprimer la boutique ?',
     deleteMsg: 'Cette action est irréversible.',
-    searchAddress: 'Rechercher une adresse…',
+    searchAddress: 'Rechercher une adresse',
     locateMe: 'Ma position',
     mapTitle: 'Position sur la carte',
+    // Placeholders
+    namePlaceholder: 'ex: Boutique Centre-Ville',
+    phonePlaceholder: '06 XX XX XX XX',
+    emailPlaceholder: 'boutique@example.com',
+    cityPlaceholder: 'Casablanca',
+    districtPlaceholder: 'Maârif, Gauthier...',
+    addressSearchPlaceholder: 'Tapez une adresse, rue ou lieu...',
+    addressAutoPlaceholder: 'Remplie automatiquement ou saisissez...',
+    // Section headers
+    sectionInfo: 'Informations',
+    sectionContact: 'Contact',
+    sectionLocation: 'Localisation',
+    // Counter
+    counterLabel: '%{count} / %{max} magasins',
+    sameCategoryLabel: 'Même catégorie',
+    // Validation
+    invalidEmail: 'Adresse email invalide',
+    nameRequired: 'Le nom est obligatoire',
   },
 
   // ── Referral / Parrainage ──
@@ -964,6 +1015,11 @@ export default {
     loyaltyPointsDesc: 'Les clients cumulent des points à chaque achat',
     loyaltyStamps: 'Tampons',
     loyaltyStampsDesc: 'Un tampon par visite, récompense au bout de X tampons',
+    stampEarningModeLabel: 'Mode d\'attribution des tampons',
+    stampPerVisit: 'Par visite',
+    stampPerVisitDesc: '1 tampon à chaque passage',
+    stampPerAmount: 'Par montant',
+    stampPerAmountDesc: '1 tampon par dirham dépensé',
     rewardTitle: 'Créez votre première récompense',
     rewardSubtitle: 'Définissez ce que vos clients obtiennent en échange de leurs points ou tampons accumulés.',
     rewardNameLabel: 'Nom de la récompense',
@@ -982,6 +1038,13 @@ export default {
     rewardStampsRequired: 'Le nombre de tampons doit être supérieur à 0.',
     rewardStampsLabel: 'Tampons requis',
     rewardStampsPlaceholder: 'Ex : 10',
+
+    // Conversion rate
+    conversionRateLabel: 'Taux de conversion',
+    conversionRateHintPoints: 'Combien de DH dépensés pour gagner 1 point ?',
+    conversionRateHintStamps: 'Combien de DH dépensés pour gagner 1 tampon ?',
+    conversionRatePreviewPoints: 'Pour chaque %{rate} %{currency} dépensé, le client gagne 1 point',
+    conversionRatePreviewStamps: 'Pour chaque %{rate} %{currency} dépensé, le client gagne 1 tampon',
 
     // Accumulation limit
     accumulationLimitLabel: 'Limite d\'accumulation (optionnel)',

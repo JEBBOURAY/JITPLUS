@@ -22,7 +22,9 @@ export default {
     networkError: 'Network error',
     genericError: 'An error occurred',
     points: 'points',
+    point: 'point',
     stamps: 'stamps',
+    stamp: 'stamp',
     days: 'days',
     day: 'day',
     selectCountry: 'Select a country',
@@ -222,6 +224,8 @@ export default {
     imageUnavailable: 'Image unavailable',
     markerCount: '%{count} point(s)',
     openInMaps: 'Open in Maps',
+    expoGoNotice: 'Map unavailable in Expo Go',
+    expoGoHint: 'Use a dev build to see the interactive map.\nYou can open each position in Maps:',
   },
 
   scan: {
@@ -526,6 +530,8 @@ export default {
     stampPreviewHint: '3 / %{count} stamps collected (example)',
     gifts: 'Gifts',
     giftsHint: 'Add the gifts available for your loyal customers',
+    giftsSection: '🎁 Gifts',
+    giftsSectionHint: 'Configure the rewards your customers can redeem with their points or stamps',
     giftName: 'Gift name',
     giftCost: 'Cost',
     giftDesc: 'Description (optional)',
@@ -548,6 +554,10 @@ export default {
     limitError: 'The accumulation limit must be ≥ 1',
     limitConfirmTitle: '⚠️ Affected customers',
     limitConfirmMessage: '%{count} customer(s) currently have more than %{limit} %{unit}. By confirming, their total will be reduced to %{limit} %{unit} and they will be notified via push notification.',
+    rewardExceedsLimitTitle: '⚠️ Cost exceeds limit',
+    rewardExceedsLimitMessage: 'This reward costs %{cost} %{unit}, which exceeds the accumulation limit (%{limit} %{unit}). Your customers won\'t be able to accumulate enough to redeem it. Continue anyway?',
+    limitBelowRewardsTitle: '⚠️ Affected rewards',
+    limitBelowRewardsMessage: 'The limit of %{limit} %{unit} is below the cost of the following rewards: %{rewards}. Your customers won\'t be able to reach them. Continue anyway?',
     conversionRuleTitle: '🔄 Conversion Rule',
     conversionRuleHintToStamps: 'Define how many points equal how many stamps. Client totals and reward costs will be converted automatically.',
     conversionRuleHintToPoints: 'Define how many stamps equal how many points. Client totals and reward costs will be converted automatically.',
@@ -555,6 +565,10 @@ export default {
     conversionRuleTmps: 'stmp',
     conversionRulePreview: 'Ex: %{inVal} %{fromUnit} → %{outVal} %{toUnit}',
     rewardConversionTitle: '🎁 Reward conversion',
+    stampEarningMode: 'Stamp earning mode',
+    stampEarningModeHint: 'Choose how stamps are awarded to customers',
+    perVisit: '1 stamp / visit',
+    perAmount: 'Per amount spent',
   },
 
   // ── Security page ──
@@ -668,6 +682,9 @@ export default {
     totalAfter: 'Total after',
     earn: 'Earn',
     enterAmount: 'Enter an amount',
+    perVisitLabel: 'per visit',
+    rewardReached: 'Reward reached! Gift',
+    accumulationLimitReached: 'This customer has reached the accumulation limit (%{limit} %{unit}). They must redeem a reward before earning more.',
   },
 
   // ── Client detail ──
@@ -769,6 +786,22 @@ export default {
     googleChange: 'Change',
   },
 
+  // ── Email Verification ──
+  verifyEmail: {
+    title: 'Verify your email',
+    subtitle: 'A verification code was sent to %{email}',
+    verifyBtn: 'Verify',
+    noCode: 'Didn\'t receive the code?',
+    resendBtn: 'Resend code',
+    resendIn: 'Resend in %{seconds}s',
+    resentTitle: 'Code resent',
+    resentMsg: 'A new code was sent to your email address.',
+    resendError: 'Could not resend the code. Try again later.',
+    successTitle: 'Email verified ✓',
+    successMsg: 'Your email address has been verified successfully. Log in to get started.',
+    errorGeneric: 'Invalid or expired code. Please try again.',
+  },
+
   // ── Google Auth ──
   googleAuth: {
     error: 'Google sign-in failed. Please try again.',
@@ -858,9 +891,23 @@ export default {
     saving: 'Saving…',
     deleteTitle: 'Delete store?',
     deleteMsg: 'This action is irreversible.',
-    searchAddress: 'Search address…',
+    searchAddress: 'Search address',
     locateMe: 'My location',
     mapTitle: 'Position on map',
+    namePlaceholder: 'e.g. Downtown Store',
+    phonePlaceholder: '06 XX XX XX XX',
+    emailPlaceholder: 'store@example.com',
+    cityPlaceholder: 'Casablanca',
+    districtPlaceholder: 'Maârif, Gauthier...',
+    addressSearchPlaceholder: 'Type an address, street or place...',
+    addressAutoPlaceholder: 'Auto-filled or type manually...',
+    sectionInfo: 'Information',
+    sectionContact: 'Contact',
+    sectionLocation: 'Location',
+    counterLabel: '%{count} / %{max} stores',
+    sameCategoryLabel: 'Same category',
+    invalidEmail: 'Invalid email address',
+    nameRequired: 'Name is required',
   },
 
   // ── Referral ──
@@ -935,6 +982,11 @@ export default {
     loyaltyPointsDesc: 'Customers earn points with each purchase',
     loyaltyStamps: 'Stamps',
     loyaltyStampsDesc: 'One stamp per visit, reward after X stamps',
+    stampEarningModeLabel: 'Stamp earning mode',
+    stampPerVisit: 'Per visit',
+    stampPerVisitDesc: '1 stamp per visit',
+    stampPerAmount: 'Per amount',
+    stampPerAmountDesc: '1 stamp per dirham spent',
     rewardTitle: 'Create your first reward',
     rewardSubtitle: 'Define what customers get in exchange for their accumulated points or stamps.',
     rewardNameLabel: 'Reward name',
@@ -953,6 +1005,13 @@ export default {
     rewardStampsRequired: 'Stamps required must be greater than 0.',
     rewardStampsLabel: 'Stamps required',
     rewardStampsPlaceholder: 'E.g.: 10',
+
+    // Conversion rate
+    conversionRateLabel: 'Conversion rate',
+    conversionRateHintPoints: 'How many DH spent to earn 1 point?',
+    conversionRateHintStamps: 'How many DH spent to earn 1 stamp?',
+    conversionRatePreviewPoints: 'For every %{rate} %{currency} spent, the customer earns 1 point',
+    conversionRatePreviewStamps: 'For every %{rate} %{currency} spent, the customer earns 1 stamp',
 
     // Accumulation limit
     accumulationLimitLabel: 'Accumulation limit (optional)',

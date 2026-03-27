@@ -34,6 +34,8 @@ import {
   Stamp,
   Coins,
   ShieldCheck,
+  Hash,
+  Footprints,
 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -42,6 +44,7 @@ import { useTheme, brandGradient, brandGradientFull, palette } from '@/contexts/
 import { useLanguage } from '@/contexts/LanguageContext';
 import api, { getServerBaseUrl } from '@/services/api';
 import { getErrorMessage } from '@/utils/error';
+import { DEFAULT_CURRENCY } from '@/config/currency';
 
 // â”€â”€ Step IDs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const STEPS = ['welcome', 'logo', 'reward', 'scan', 'done'] as const;
@@ -195,6 +198,7 @@ export default function OnboardingScreen() {
   // â”€â”€ Step 3: Reward â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [loyaltyType, setLoyaltyType] = useState<'POINTS' | 'STAMPS'>(merchant?.loyaltyType === 'STAMPS' ? 'STAMPS' : 'POINTS');
   const isStamps = loyaltyType === 'STAMPS';
+  const [stampEarningMode, setStampEarningMode] = useState<'PER_VISIT' | 'PER_AMOUNT'>(merchant?.stampEarningMode ?? 'PER_VISIT');
   const [rewardName, setRewardName] = useState('');
   const [rewardCost, setRewardCost] = useState('');
   const [rewardDesc, setRewardDesc] = useState('');
@@ -203,6 +207,7 @@ export default function OnboardingScreen() {
   const rewardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [hasAccumulationLimit, setHasAccumulationLimit] = useState(false);
   const [accumulationLimit, setAccumulationLimit] = useState('');
+  const [pointsRate, setPointsRate] = useState(merchant?.pointsRate?.toString() || '10');
 
   const currentStep = STEPS[stepIndex];
   const TOTAL_STEPS = STEPS.length - 1; // exclude 'done' from count indicator
@@ -260,18 +265,10 @@ export default function OnboardingScreen() {
   };
 
   // â”€â”€ Save loyalty type to backend â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  const saveLoyaltyType = async (type: 'POINTS' | 'STAMPS') => {
-    try {
-      await api.patch('/merchant/loyalty-settings', { loyaltyType: type });
-      updateMerchant({ loyaltyType: type });
-    } catch (_) { /* will be saved with reward creation or on next profile load */ }
-  };
-
   const handleLoyaltyTypeChange = (type: 'POINTS' | 'STAMPS') => {
     setLoyaltyType(type);
     setRewardName('');
     setRewardCost('');
-    saveLoyaltyType(type);
   };
 
   // â”€â”€ Reward creation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -288,8 +285,11 @@ export default function OnboardingScreen() {
     setCreatingReward(true);
     try {
       const limitVal = parseInt(accumulationLimit, 10);
+      const rateVal = parseFloat(pointsRate);
       await api.patch('/merchant/loyalty-settings', {
         loyaltyType,
+        stampEarningMode: isStamps ? stampEarningMode : undefined,
+        pointsRate: !isNaN(rateVal) && rateVal > 0 ? rateVal : 10,
         accumulationLimit: hasAccumulationLimit && !isNaN(limitVal) && limitVal >= 1 ? limitVal : null,
       });
       await api.post('/rewards', {
@@ -297,7 +297,11 @@ export default function OnboardingScreen() {
         cout: costNum,
         description: rewardDesc.trim() || undefined,
       });
-      updateMerchant({ loyaltyType });
+      updateMerchant({
+        loyaltyType,
+        pointsRate: !isNaN(rateVal) && rateVal > 0 ? rateVal : 10,
+        stampEarningMode: isStamps ? stampEarningMode : undefined,
+      });
       setRewardCreated(true);
       rewardTimerRef.current = setTimeout(() => goNext(), 900);
     } catch (err) {
@@ -590,6 +594,111 @@ export default function OnboardingScreen() {
                   )}
                 </TouchableOpacity>
               </View>
+
+              {/* Stamp earning mode toggle (only for STAMPS) */}
+              {isStamps && (
+                <View style={[styles.formCard, { backgroundColor: theme.bgCard, borderColor: theme.borderLight, marginTop: 12, marginBottom: 4 }]}>
+                  <Text style={[styles.fieldLabel, { color: theme.textSecondary, textAlign: 'center', marginBottom: 8 }]}>
+                    {t('onboarding.stampEarningModeLabel')}
+                  </Text>
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <TouchableOpacity
+                      style={[
+                        styles.loyaltyToggleBtn,
+                        {
+                          flex: 1,
+                          backgroundColor: stampEarningMode === 'PER_VISIT' ? palette.violet + '18' : theme.bgCard,
+                          borderColor: stampEarningMode === 'PER_VISIT' ? palette.violet : theme.borderLight,
+                        },
+                      ]}
+                      onPress={() => setStampEarningMode('PER_VISIT')}
+                      activeOpacity={0.8}
+                    >
+                      <View style={[styles.loyaltyToggleIcon, { backgroundColor: stampEarningMode === 'PER_VISIT' ? palette.violet + '20' : theme.borderLight + '60' }]}>
+                        <Footprints color={stampEarningMode === 'PER_VISIT' ? palette.violet : theme.textMuted} size={20} strokeWidth={1.5} />
+                      </View>
+                      <Text style={[styles.loyaltyToggleLabel, { color: stampEarningMode === 'PER_VISIT' ? palette.violet : theme.textSecondary, fontSize: 13 }]}>
+                        {t('onboarding.stampPerVisit')}
+                      </Text>
+                      <Text style={[styles.loyaltyToggleDesc, { color: theme.textMuted, fontSize: 11 }]}>
+                        {t('onboarding.stampPerVisitDesc')}
+                      </Text>
+                      {stampEarningMode === 'PER_VISIT' && (
+                        <View style={[styles.loyaltyToggleCheck, { backgroundColor: palette.violet }]}>
+                          <Check color={palette.white} size={10} strokeWidth={1.5} />
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.loyaltyToggleBtn,
+                        {
+                          flex: 1,
+                          backgroundColor: stampEarningMode === 'PER_AMOUNT' ? palette.violet + '18' : theme.bgCard,
+                          borderColor: stampEarningMode === 'PER_AMOUNT' ? palette.violet : theme.borderLight,
+                        },
+                      ]}
+                      onPress={() => setStampEarningMode('PER_AMOUNT')}
+                      activeOpacity={0.8}
+                    >
+                      <View style={[styles.loyaltyToggleIcon, { backgroundColor: stampEarningMode === 'PER_AMOUNT' ? palette.violet + '20' : theme.borderLight + '60' }]}>
+                        <Hash color={stampEarningMode === 'PER_AMOUNT' ? palette.violet : theme.textMuted} size={20} strokeWidth={1.5} />
+                      </View>
+                      <Text style={[styles.loyaltyToggleLabel, { color: stampEarningMode === 'PER_AMOUNT' ? palette.violet : theme.textSecondary, fontSize: 13 }]}>
+                        {t('onboarding.stampPerAmount')}
+                      </Text>
+                      <Text style={[styles.loyaltyToggleDesc, { color: theme.textMuted, fontSize: 11 }]}>
+                        {t('onboarding.stampPerAmountDesc')}
+                      </Text>
+                      {stampEarningMode === 'PER_AMOUNT' && (
+                        <View style={[styles.loyaltyToggleCheck, { backgroundColor: palette.violet }]}>
+                          <Check color={palette.white} size={10} strokeWidth={1.5} />
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+
+              {/* Conversion rate card — visible for POINTS, or STAMPS + PER_AMOUNT */}
+              {(!isStamps || stampEarningMode === 'PER_AMOUNT') && (
+                <View style={[styles.formCard, { backgroundColor: theme.bgCard, borderColor: theme.borderLight, marginBottom: 16 }]}>
+                  <Text style={[styles.fieldLabel, { color: theme.textSecondary, textAlign: 'center', marginBottom: 4 }]}>
+                    {t('onboarding.conversionRateLabel')}
+                  </Text>
+                  <Text style={[styles.limitHint, { color: theme.textMuted, textAlign: 'center' }]}>
+                    {isStamps
+                      ? t('onboarding.conversionRateHintStamps')
+                      : t('onboarding.conversionRateHintPoints')}
+                  </Text>
+
+                  {/* Visual: [  X  ] DH = 1 point/tampon */}
+                  <View style={styles.conversionRow}>
+                    <TextInput
+                      style={[
+                        styles.input,
+                        styles.conversionInput,
+                        { color: theme.text, backgroundColor: theme.bgInput, borderColor: theme.inputBorder },
+                      ]}
+                      value={pointsRate}
+                      onChangeText={setPointsRate}
+                      keyboardType="decimal-pad"
+                      maxLength={6}
+                      placeholder="10"
+                      placeholderTextColor={theme.textMuted}
+                    />
+                    <Text style={[styles.conversionEqual, { color: theme.textSecondary }]}>
+                      {DEFAULT_CURRENCY.symbol} = 1 {isStamps ? t('common.stamp') : t('common.point')}
+                    </Text>
+                  </View>
+
+                  <Text style={[styles.limitHint, { color: palette.violet, textAlign: 'center', marginTop: 6 }]}>
+                    {isStamps
+                      ? t('onboarding.conversionRatePreviewStamps', { rate: pointsRate || '10', currency: DEFAULT_CURRENCY.symbol })
+                      : t('onboarding.conversionRatePreviewPoints', { rate: pointsRate || '10', currency: DEFAULT_CURRENCY.symbol })}
+                  </Text>
+                </View>
+              )}
 
               {/* Suggestion chips */}
               <View style={styles.suggestionsRow}>
@@ -1276,6 +1385,26 @@ const styles = StyleSheet.create({
     marginLeft: 10,
     fontSize: 13,
     fontFamily: 'Lexend_400Regular',
+  },
+
+  // Conversion rate
+  conversionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    marginTop: 8,
+  },
+  conversionInput: {
+    width: 80,
+    textAlign: 'center',
+    fontSize: 20,
+    fontFamily: 'Lexend_600SemiBold',
+    paddingVertical: 10,
+  },
+  conversionEqual: {
+    fontSize: 16,
+    fontFamily: 'Lexend_500Medium',
   },
 
   // Loyalty type toggle

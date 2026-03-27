@@ -57,7 +57,7 @@ export class MerchantTransactionService {
       }),
       this.merchantRepo.findUnique({
         where: { id: merchantId },
-        select: { nom: true, pointsRate: true, ...MERCHANT_LOYALTY_SELECT },
+        select: { nom: true, ...MERCHANT_LOYALTY_SELECT },
       }),
     ]);
     if (!client) throw new NotFoundException('Client non trouvé');
@@ -66,18 +66,27 @@ export class MerchantTransactionService {
     // Validate points
     if (type === 'EARN_POINTS') {
       if (merchant.loyaltyType === 'STAMPS') {
-        // STAMPS mode — a purchase amount is required to derive expected stamps
-        if (amount <= 0) {
-          throw new BadRequestException(
-            'Un montant d\'achat est requis pour les transactions en mode tampons',
-          );
-        }
-        const pointsRate = merchant.pointsRate || DEFAULT_POINTS_RATE;
-        const expectedStamps = Math.floor(amount / pointsRate);
-        if (points !== expectedStamps) {
-          throw new BadRequestException(
-            `Nombre de tampons invalide. Attendu: ${expectedStamps}, reçu: ${points}`,
-          );
+        if (merchant.stampEarningMode === 'PER_AMOUNT') {
+          // PER_AMOUNT — a purchase amount is required to derive expected stamps
+          if (amount <= 0) {
+            throw new BadRequestException(
+              'Un montant d\'achat est requis pour les transactions en mode tampons',
+            );
+          }
+          const pointsRate = merchant.pointsRate || DEFAULT_POINTS_RATE;
+          const expectedStamps = Math.floor(amount / pointsRate);
+          if (points !== expectedStamps) {
+            throw new BadRequestException(
+              `Nombre de tampons invalide. Attendu: ${expectedStamps}, reçu: ${points}`,
+            );
+          }
+        } else {
+          // PER_VISIT (default) — exactly 1 stamp per visit, no amount required
+          if (points !== 1) {
+            throw new BadRequestException(
+              'En mode tampon par visite, 1 seul tampon est attribué par visite',
+            );
+          }
         }
       } else {
         // POINTS mode — a purchase amount is required to derive expected points

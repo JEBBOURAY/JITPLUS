@@ -11,6 +11,8 @@ import { RegisterMerchantDto } from './dto/register-merchant.dto';
 import { RefreshMerchantTokenDto } from './dto/refresh-merchant-token.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { SendVerificationEmailDto } from './dto/send-verification-email.dto';
+import { VerifyEmailDto } from './dto/verify-email.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtService } from '@nestjs/jwt';
@@ -95,6 +97,21 @@ export class AuthController {
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 5 } })
   async resetPassword(@Body() dto: ResetPasswordDto) {
     return this.authService.resetPassword(dto.email, dto.code, dto.newPassword);
+  }
+
+  // ── Email Verification ──
+  @Post('send-verification-email')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 3 } })
+  async sendVerificationEmail(@Body() dto: SendVerificationEmailDto) {
+    return this.authService.sendVerificationEmail(dto.email);
+  }
+
+  @Post('verify-email')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 5 } })
+  async verifyEmail(@Body() dto: VerifyEmailDto) {
+    return this.authService.verifyEmail(dto.email, dto.code);
   }
 
   // ── Parrainage (public — consulté avant inscription) ──

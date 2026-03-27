@@ -264,6 +264,12 @@ export class MerchantProfileService {
       await this.recalculateBalances(merchantId, oldType, newType, conversionRate);
     }
 
+    // Auto-sync conversionRate with pointsRate when conversionRate is not explicitly provided.
+    // This ensures the client app displays the correct earning rate (e.g. after onboarding).
+    if (dto.pointsRate !== undefined && dto.conversionRate === undefined) {
+      dto.conversionRate = dto.pointsRate;
+    }
+
     // Strip forceCapClients from the data sent to Prisma (not a DB field)
     const forceCapClients = dto.forceCapClients;
     const { forceCapClients: _strip, ...dtoWithoutForce } = dto;

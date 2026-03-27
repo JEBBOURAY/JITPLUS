@@ -1,6 +1,13 @@
 import * as Location from 'expo-location';
+import Constants from 'expo-constants';
 
 const CACHE_MAX = 50;
+
+const GOOGLE_MAPS_KEY =
+  process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ||
+  Constants.expoConfig?.extra?.googleMapsApiKey ||
+  Constants.expoConfig?.android?.config?.googleMaps?.apiKey ||
+  '';
 
 /** LRU helper: delete and re-insert the key so it becomes the "most recent" entry */
 function lruGet<K, V>(cache: Map<K, V>, key: K): V | undefined {
@@ -21,6 +28,54 @@ function lruSet<K, V>(cache: Map<K, V>, key: K, value: V): void {
   cache.set(key, value);
 }
 
+// ── Forward geocode via Google Geocoding API ──
+async function googleGeocode(address: string): Promise<Location.LocationGeocodedLocation[]> {
+  if (!GOOGLE_MAPS_KEY) return [];
+  const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&region=ma&language=fr&key=${GOOGLE_MAPS_KEY}`;
+  const res = await fetch(url);
+  const json = await res.json();
+  if (json.status === 'OK' && json.results?.length > 0) {
+    return json.results.map((r: any) => ({
+      latitude: r.geometry.location.lat,
+      longitude: r.geometry.location.lng,
+      altitude: null,
+      accuracy: null,
+    }));
+  }
+  return [];
+}
+
+// ── Reverse geocode via Google Geocoding API ──
+async function googleReverseGeocode(
+  lat: number,
+  lng: number,
+): Promise<Location.LocationGeocodedAddress[]> {
+  if (!GOOGLE_MAPS_KEY) return [];
+  const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&language=fr&key=${GOOGLE_MAPS_KEY}`;
+  const res = await fetch(url);
+  const json = await res.json();
+  if (json.status === 'OK' && json.results?.length > 0) {
+    const r = json.results[0];
+    const get = (type: string) =>
+      r.address_components?.find((c: any) => c.types?.includes(type))?.long_name ?? null;
+    return [{
+      street: get('route'),
+      streetNumber: get('street_number'),
+      city: get('locality') || get('administrative_area_level_2'),
+      district: get('sublocality') || get('neighborhood'),
+      region: get('administrative_area_level_1'),
+      country: get('country'),
+      postalCode: get('postal_code'),
+      name: r.formatted_address ?? null,
+      isoCountryCode: get('country') ? 'MA' : null,
+      timezone: null,
+      subregion: null,
+      formattedAddress: r.formatted_address ?? null,
+    }];
+  }
+  return [];
+}
+
 // ── Forward geocode cache (address → coords) ──
 const forwardCache = new Map<string, Location.LocationGeocodedLocation[]>();
 
@@ -29,18 +84,31 @@ export async function geocodeAsync(address: string): Promise<Location.LocationGe
   const cached = lruGet(forwardCache, key);
   if (cached) return cached;
 
-  const results = await Location.geocodeAsync(address);
-  if (results.length > 0) {
-    lruSet(forwardCache, key, results);
-  }
-  return results;
+  // 1. Try Google Geocoding API (most reliable for Morocco)
+  try {
+    const googleResults = await googleGeocode(address);
+    if (googleResults.length > 0) {
+      lruSet(forwardCache, key, googleResults);
+      return googleResults;
+    }
+  } catch { /* fall through to native geocoder */ }
+
+  // 2. Fallback: device native geocoder (expo-location)
+  try {
+    const results = await Location.geocodeAsync(address);
+    if (results.length > 0) {
+      lruSet(forwardCache, key, results);
+      return results;
+    }
+  } catch { /* ignore */ }
+
+  return [];
 }
 
 // ── Reverse geocode cache (coords → address) ──
 const reverseCache = new Map<string, Location.LocationGeocodedAddress[]>();
 
 function coordKey(lat: number, lng: number): string {
-  // Round to 5 decimal places (~1m precision) to merge nearby lookups
   return `${lat.toFixed(5)},${lng.toFixed(5)}`;
 }
 
@@ -51,9 +119,23 @@ export async function reverseGeocodeAsync(
   const cached = lruGet(reverseCache, key);
   if (cached) return cached;
 
-  const results = await Location.reverseGeocodeAsync(location);
-  if (results.length > 0) {
-    lruSet(reverseCache, key, results);
-  }
-  return results;
+  // 1. Try Google Reverse Geocoding API
+  try {
+    const googleResults = await googleReverseGeocode(location.latitude, location.longitude);
+    if (googleResults.length > 0) {
+      lruSet(reverseCache, key, googleResults);
+      return googleResults;
+    }
+  } catch { /* fall through to native geocoder */ }
+
+  // 2. Fallback: device native geocoder
+  try {
+    const results = await Location.reverseGeocodeAsync(location);
+    if (results.length > 0) {
+      lruSet(reverseCache, key, results);
+      return results;
+    }
+  } catch { /* ignore */ }
+
+  return [];
 }

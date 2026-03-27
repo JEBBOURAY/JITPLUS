@@ -28,6 +28,9 @@ import {
   ToggleLeft,
   ToggleRight,
   Navigation,
+  Tag,
+  Contact,
+  ChevronDown,
 } from 'lucide-react-native';
 import MapView, { Marker, PROVIDER_GOOGLE, SafeMapViewRef } from '@/components/SafeMapView';
 import * as Location from 'expo-location';
@@ -40,7 +43,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
 import { Store as StoreType, MerchantCategory, CreateStorePayload } from '@/types';
 import MerchantCategoryIcon, { useCategoryMetadata, CATEGORY_OPTIONS } from '@/components/MerchantCategoryIcon';
+import { CATEGORY_LABELS } from '@/constants/categories';
 import { useStoresCRUD, MAX_STORES } from '@/hooks/useStoresCRUD';
+import { isValidEmail } from '@/utils/validation';
 
 const googleMapsApiKey = Constants.expoConfig?.android?.config?.googleMaps?.apiKey ?? '';
 
@@ -329,7 +334,7 @@ export default function StoresScreen() {
 
   // ── Category helper ──
   const getCategoryLabel = (cat?: MerchantCategory | '') => {
-    if (!cat) return 'Même catégorie';
+    if (!cat) return t('stores.sameCategoryLabel');
     const found = CATEGORY_OPTIONS.find((c) => c.value === cat);
     return found?.label ?? cat;
   };
@@ -350,7 +355,7 @@ export default function StoresScreen() {
       <View style={[styles.counterRow, { backgroundColor: theme.bgCard, borderColor: theme.border }]}>
         <Store size={18} color={theme.primary} />
         <Text style={[styles.counterText, { color: theme.text }]}>
-          {stores.length} / {MAX_STORES} magasins
+          {t('stores.counterLabel', { count: stores.length, max: MAX_STORES })}
         </Text>
         {stores.length < MAX_STORES && (
           <TouchableOpacity style={[styles.addBtnSmall, { backgroundColor: theme.primary }]} onPress={openCreate}>
@@ -441,96 +446,122 @@ export default function StoresScreen() {
               </View>
 
               <ScrollView contentContainerStyle={styles.formContent} keyboardShouldPersistTaps="handled">
+                {/* ── Section: Informations ── */}
+                <View style={[styles.sectionHeader, { borderBottomColor: theme.border }]}>
+                  <Tag size={16} color={theme.primary} />
+                  <Text style={[styles.sectionTitle, { color: theme.text }]}>{t('stores.sectionInfo')}</Text>
+                </View>
+
                 {/* Nom */}
                 <Text style={[styles.label, { color: theme.text }]}>{t('stores.nameLabel')} *</Text>
-                <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.border }]}>
-                  <Store size={18} color={theme.textMuted} />
+                <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: nom.trim() ? theme.success : theme.border }]}>
+                  <Store size={18} color={nom.trim() ? theme.success : theme.textMuted} />
                   <TextInput
                     style={[styles.input, { color: theme.text }]}
                     value={nom}
                     onChangeText={setNom}
-                    placeholder="ex: Boutique Centre-Ville"
+                    placeholder={t('stores.namePlaceholder')}
                     placeholderTextColor={theme.textMuted}
                   />
+                  {nom.trim().length > 0 && <Check size={16} color={theme.success} strokeWidth={2.5} />}
                 </View>
 
                 {/* Catégorie */}
                 <Text style={[styles.label, { color: theme.text }]}>{t('stores.categoryLabel')}</Text>
                 <TouchableOpacity
-                  style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.border }]}
+                  style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: categorie ? theme.primary : theme.border }]}
                   onPress={() => setShowCategoryPicker(true)}
                 >
                   <MerchantCategoryIcon category={categorie || merchant?.categorie || MerchantCategory.AUTRE} size={22} />
-                  <Text style={[styles.input, { color: categorie ? theme.text : theme.textMuted }]}>
+                  <Text style={[styles.input, { color: categorie ? theme.text : theme.textMuted, flex: 1 }]}>
                     {getCategoryLabel(categorie)}
                   </Text>
+                  <ChevronDown size={16} color={theme.textMuted} />
                 </TouchableOpacity>
+
+                {/* ── Section: Contact ── */}
+                <View style={[styles.sectionHeader, { borderBottomColor: theme.border, marginTop: 20 }]}>
+                  <Contact size={16} color={theme.primary} />
+                  <Text style={[styles.sectionTitle, { color: theme.text }]}>{t('stores.sectionContact')}</Text>
+                </View>
 
                 {/* Téléphone */}
                 <Text style={[styles.label, { color: theme.text }]}>{t('stores.phoneLabel')}</Text>
-                <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.border }]}>
-                  <Phone size={18} color={theme.textMuted} />
+                <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: telephone.trim().length >= 7 ? theme.success : theme.border }]}>
+                  <Phone size={18} color={telephone.trim().length >= 7 ? theme.success : theme.textMuted} />
                   <TextInput
                     style={[styles.input, { color: theme.text }]}
                     value={telephone}
                     onChangeText={setTelephone}
-                    placeholder="06 XX XX XX XX"
+                    placeholder={t('stores.phonePlaceholder')}
                     placeholderTextColor={theme.textMuted}
                     keyboardType="phone-pad"
                   />
+                  {telephone.trim().length >= 7 && <Check size={16} color={theme.success} strokeWidth={2.5} />}
                 </View>
 
                 {/* Email */}
                 <Text style={[styles.label, { color: theme.text }]}>{t('stores.emailLabel')}</Text>
-                <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.border }]}>
-                  <Mail size={18} color={theme.textMuted} />
+                <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: email && isValidEmail(email) ? theme.success : email.length > 3 && !isValidEmail(email) ? theme.danger : theme.border }]}>
+                  <Mail size={18} color={email && isValidEmail(email) ? theme.success : theme.textMuted} />
                   <TextInput
                     style={[styles.input, { color: theme.text }]}
                     value={email}
                     onChangeText={setEmail}
-                    placeholder="boutique@example.com"
+                    placeholder={t('stores.emailPlaceholder')}
                     placeholderTextColor={theme.textMuted}
                     keyboardType="email-address"
                     autoCapitalize="none"
                     autoCorrect={false}
                   />
+                  {email && isValidEmail(email) && <Check size={16} color={theme.success} strokeWidth={2.5} />}
+                </View>
+                {email.length > 3 && !isValidEmail(email) && (
+                  <Text style={[styles.validationHint, { color: theme.danger }]}>{t('stores.invalidEmail')}</Text>
+                )}
+
+                {/* ── Section: Localisation ── */}
+                <View style={[styles.sectionHeader, { borderBottomColor: theme.border, marginTop: 20 }]}>
+                  <MapPin size={16} color={theme.primary} />
+                  <Text style={[styles.sectionTitle, { color: theme.text }]}>{t('stores.sectionLocation')}</Text>
                 </View>
 
                 {/* Ville */}
                 <Text style={[styles.label, { color: theme.text }]}>{t('stores.cityLabel')}</Text>
-                <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.border }]}>
-                  <MapPin size={18} color={theme.textMuted} />
+                <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: ville.trim() ? theme.success : theme.border }]}>
+                  <MapPin size={18} color={ville.trim() ? theme.success : theme.textMuted} />
                   <TextInput
                     style={[styles.input, { color: theme.text }]}
                     value={ville}
                     onChangeText={setVille}
-                    placeholder="Casablanca"
+                    placeholder={t('stores.cityPlaceholder')}
                     placeholderTextColor={theme.textMuted}
                   />
+                  {ville.trim().length > 0 && <Check size={16} color={theme.success} strokeWidth={2.5} />}
                 </View>
 
                 {/* Quartier */}
                 <Text style={[styles.label, { color: theme.text }]}>{t('stores.districtLabel')}</Text>
-                <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.border }]}>
-                  <MapPin size={18} color={theme.textMuted} />
+                <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: quartier.trim() ? theme.success : theme.border }]}>
+                  <MapPin size={18} color={quartier.trim() ? theme.success : theme.textMuted} />
                   <TextInput
                     style={[styles.input, { color: theme.text }]}
                     value={quartier}
                     onChangeText={setQuartier}
-                    placeholder="Maârif, Gauthier..."
+                    placeholder={t('stores.districtPlaceholder')}
                     placeholderTextColor={theme.textMuted}
                   />
                 </View>
 
                 {/* Address search */}
                 <Text style={[styles.label, { color: theme.text }]}>{t('stores.searchAddress')}</Text>
-                <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.border }]}>
+                <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: addressSearch ? theme.primary : theme.border }]}>
                   <Search size={18} color={theme.textMuted} />
                   <TextInput
                     style={[styles.input, { color: theme.text }]}
                     value={addressSearch}
                     onChangeText={(t) => { setAddressSearch(t); setAdresse(t); }}
-                    placeholder="Tapez une adresse, rue ou lieu..."
+                    placeholder={t('stores.addressSearchPlaceholder')}
                     placeholderTextColor={theme.textMuted}
                     returnKeyType="search"
                     onSubmitEditing={handleAddressSearch}
@@ -593,15 +624,25 @@ export default function StoresScreen() {
                   )}
                 </TouchableOpacity>
 
+                {/* GPS indicator */}
+                {latitude !== null && longitude !== null && (
+                  <View style={[styles.gpsIndicator, { backgroundColor: `${theme.success}12` }]}>
+                    <Check size={14} color={theme.success} strokeWidth={2.5} />
+                    <Text style={[styles.gpsIndicatorText, { color: theme.success }]}>
+                      📍 {adresse || `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`}
+                    </Text>
+                  </View>
+                )}
+
                 {/* Adresse (readonly, filled by geocode) */}
                 <Text style={[styles.label, { color: theme.text }]}>{t('stores.addressLabel')}</Text>
-                <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.border }]}>
-                  <MapPin size={18} color={theme.textMuted} />
+                <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: adresse.trim() ? theme.success : theme.border }]}>
+                  <MapPin size={18} color={adresse.trim() ? theme.success : theme.textMuted} />
                   <TextInput
                     style={[styles.input, { color: theme.text }]}
                     value={adresse}
                     onChangeText={setAdresse}
-                    placeholder="Remplie automatiquement ou saisissez..."
+                    placeholder={t('stores.addressAutoPlaceholder')}
                     placeholderTextColor={theme.textMuted}
                   />
                 </View>
@@ -619,21 +660,28 @@ export default function StoresScreen() {
           <View style={[styles.pickerCard, { backgroundColor: theme.bgCard }]}>
             <Text style={[styles.pickerTitle, { color: theme.text }]}>{t('stores.categoryLabel')}</Text>
             <ScrollView style={{ maxHeight: 350 }}>
-              {CATEGORY_OPTIONS.map((opt) => (
-                <TouchableOpacity
-                  key={opt.value}
-                  style={[
-                    styles.pickerOption,
-                    { borderColor: theme.border },
-                    categorie === opt.value && { backgroundColor: theme.primary + '15', borderColor: theme.primary },
-                  ]}
-                  onPress={() => { setCategorie(opt.value as MerchantCategory); setShowCategoryPicker(false); }}
-                >
-                  <MerchantCategoryIcon category={opt.value} size={26} />
-                  <Text style={[styles.pickerOptionText, { color: theme.text }]}>{opt.label}</Text>
-                  {categorie === opt.value && <Check size={18} color={theme.primary} />}
-                </TouchableOpacity>
-              ))}
+              {CATEGORY_OPTIONS.map((opt) => {
+                const meta = CATEGORY_LABELS[opt.value as keyof typeof CATEGORY_LABELS];
+                return (
+                  <TouchableOpacity
+                    key={opt.value}
+                    style={[
+                      styles.pickerOption,
+                      { borderColor: theme.border },
+                      categorie === opt.value && { backgroundColor: theme.primary + '15', borderColor: theme.primary },
+                    ]}
+                    onPress={() => { setCategorie(opt.value as MerchantCategory); setShowCategoryPicker(false); }}
+                  >
+                    {meta?.emoji ? (
+                      <Text style={{ fontSize: 22 }}>{meta.emoji}</Text>
+                    ) : (
+                      <MerchantCategoryIcon category={opt.value} size={26} />
+                    )}
+                    <Text style={[styles.pickerOptionText, { color: theme.text }]}>{opt.label}</Text>
+                    {categorie === opt.value && <Check size={18} color={theme.primary} />}
+                  </TouchableOpacity>
+                );
+              })}
             </ScrollView>
           </View>
         </TouchableOpacity>
@@ -710,8 +758,16 @@ const styles = StyleSheet.create({
   actionBtnText: { fontSize: 12, fontWeight: '600' },
 
   // Modal
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' },
-  modalContent: { flex: 1, borderTopLeftRadius: 20, borderTopRightRadius: 20 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
+  modalContent: {
+    flex: 1,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.1, shadowRadius: 12 },
+      android: { elevation: 8 },
+    }),
+  },
   modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -728,13 +784,26 @@ const styles = StyleSheet.create({
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    height: 48,
-    gap: 8,
+    borderWidth: 1.5,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    height: 50,
+    gap: 10,
   },
-  input: { flex: 1, fontSize: 15 },
+  input: { flex: 1, fontSize: 15, paddingVertical: 0 },
+  validationHint: { fontSize: 11, marginTop: 4, marginLeft: 4 },
+
+  // Section headers
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingBottom: 8,
+    marginBottom: 4,
+    marginTop: 8,
+    borderBottomWidth: 1,
+  },
+  sectionTitle: { fontSize: 14, fontWeight: '700', letterSpacing: 0.3 },
 
   // Overview Map
   overviewMapWrapper: {
@@ -748,18 +817,32 @@ const styles = StyleSheet.create({
   overviewMap: { width: '100%', height: '100%' },
 
   // Map
-  mapWrapper: { borderRadius: 12, overflow: 'hidden', marginTop: 8, borderWidth: 1, height: 200 },
+  mapWrapper: { borderRadius: 14, overflow: 'hidden', marginTop: 8, borderWidth: 1, height: 260 },
   map: { width: '100%', height: '100%' },
   locationBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 10,
-    borderRadius: 10,
+    borderRadius: 20,
     gap: 6,
     marginTop: 8,
+    ...Platform.select({
+      ios: { shadowColor: '#1F2937', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 4 },
+      android: { elevation: 2 },
+    }),
   },
   locationBtnText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  gpsIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  gpsIndicatorText: { fontSize: 12, fontWeight: '500', flex: 1 },
 
   // Category picker
   pickerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 24 },

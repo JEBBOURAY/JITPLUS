@@ -22,6 +22,7 @@ export interface MerchantResponse {
   stampsForReward: number;
   activeRewardId: string | null;
   isActive: boolean;
+  emailVerified: boolean;
   termsAccepted: boolean;
   plan: string;
   planExpiresAt: Date | null;

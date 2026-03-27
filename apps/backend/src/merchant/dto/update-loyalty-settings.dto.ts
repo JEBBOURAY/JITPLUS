@@ -11,6 +11,10 @@ export class UpdateLoyaltySettingsDto {
   @IsOptional()
   loyaltyType?: 'POINTS' | 'STAMPS';
 
+  @IsEnum(['PER_VISIT', 'PER_AMOUNT'])
+  @IsOptional()
+  stampEarningMode?: 'PER_VISIT' | 'PER_AMOUNT';
+
   @IsNumber()
   @IsPositive()
   @IsOptional()

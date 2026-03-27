@@ -17,7 +17,7 @@ import { LoginDto } from './dto/login.dto';
 import { GoogleLoginMerchantDto } from './dto/google-login-merchant.dto';
 import { GoogleRegisterMerchantDto } from './dto/google-register-merchant.dto';
 import { RegisterMerchantDto } from './dto/register-merchant.dto';
-import { BCRYPT_SALT_ROUNDS, USER_TYPE_MERCHANT, USER_TYPE_TEAM_MEMBER, DEFAULT_POINTS_RULES, OTP_MIN, OTP_MAX, OTP_EXPIRY_MS, OTP_COOLDOWN_MS, MAX_SESSIONS_PER_MERCHANT } from '../common/constants';
+import { BCRYPT_SALT_ROUNDS, USER_TYPE_MERCHANT, USER_TYPE_TEAM_MEMBER, DEFAULT_POINTS_RULES, OTP_MIN, OTP_MAX, OTP_EXPIRY_MS, OTP_COOLDOWN_MS, MAX_SESSIONS_PER_MERCHANT, MAX_OTP_SENDS_PER_DAY } from '../common/constants';
 import { hashOtp, validateOtp } from '../common/utils/otp.helper';
 import { errMsg } from '../common/utils';
 import { checkLockout, handleFailedLogin, resetLoginAttempts, LockoutDbOps } from '../common/utils/login-lockout.helper';
@@ -51,6 +51,9 @@ export class AuthService {
    */
   private static readonly DUMMY_HASH = bcrypt.hashSync('dummy-password-never-used', 12);
 
+  /** In-memory daily OTP send counter: identifier → { count, resetAt } */
+  private readonly otpDailyCounter = new Map<string, { count: number; resetAt: number }>();
+
   private readonly googleClient: OAuth2Client;
 
   constructor(
@@ -68,6 +71,23 @@ export class AuthService {
     private configService: ConfigService,
   ) {
     this.googleClient = new OAuth2Client(this.configService.get<string>('GOOGLE_CLIENT_ID'));
+  }
+
+  /** Enforce daily OTP limit per identifier. Throws 429 when exceeded. */
+  private checkDailyOtpLimit(identifier: string): void {
+    const now = Date.now();
+    const entry = this.otpDailyCounter.get(identifier);
+    if (entry && now < entry.resetAt) {
+      if (entry.count >= MAX_OTP_SENDS_PER_DAY) {
+        throw new HttpException(
+          `Limite quotidienne atteinte (${MAX_OTP_SENDS_PER_DAY} codes/jour). Réessayez demain.`,
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      }
+      entry.count++;
+    } else {
+      this.otpDailyCounter.set(identifier, { count: 1, resetAt: now + 86_400_000 });
+    }
   }
 
   /** Lockout DB ops for Merchant model */
@@ -536,6 +556,10 @@ export class AuthService {
     this.mailProvider.sendWelcomeMerchant(merchant.email, merchant.nom)
       .catch((err) => this.logger.warn('Welcome email failed', errMsg(err)));
 
+    // Send verification email (fire-and-forget)
+    this.sendVerificationEmail(merchant.email)
+      .catch((err) => this.logger.warn('Verification email failed', errMsg(err)));
+
     // Credit the referrer with 1 free month bonus (fire-and-forget)
     if (referredById) {
       this.referralService.creditReferrer(referredById, merchant.nom)
@@ -579,9 +603,21 @@ export class AuthService {
    */
   async googleLoginMerchant(dto: GoogleLoginMerchantDto, ipAddress?: string): Promise<AuthResult> {
     try {
+      // Accept both Web and Android client IDs as valid audiences.
+      // expo-auth-session on Android issues tokens with the Android client ID.
+      // GOOGLE_ANDROID_CLIENT_ID may contain comma-separated IDs (jitplus + jitpluspro).
+      const webClientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
+      const androidClientIds = (this.configService.get<string>('GOOGLE_ANDROID_CLIENT_ID') || '').split(',').map(s => s.trim()).filter(Boolean);
+      const allowedAudiences = [webClientId, ...androidClientIds].filter(Boolean) as string[];
+
+      if (allowedAudiences.length === 0) {
+        this.logger.error('Google login misconfigured: GOOGLE_CLIENT_ID and GOOGLE_ANDROID_CLIENT_ID are both empty');
+        throw new UnauthorizedException('Connexion Google non configurée');
+      }
+
       const ticket = await this.googleClient.verifyIdToken({
         idToken: dto.idToken,
-        audience: this.configService.get<string>('GOOGLE_CLIENT_ID'),
+        audience: allowedAudiences,
       });
       const payload = ticket.getPayload();
 
@@ -678,9 +714,13 @@ export class AuthService {
     let googleId: string;
     let googleEmail: string;
     try {
+      const webClientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
+      const androidClientIds = (this.configService.get<string>('GOOGLE_ANDROID_CLIENT_ID') || '').split(',').map(s => s.trim()).filter(Boolean);
+      const allowedAudiences = [webClientId, ...androidClientIds].filter(Boolean) as string[];
+
       const ticket = await this.googleClient.verifyIdToken({
         idToken: dto.idToken,
-        audience: this.configService.get<string>('GOOGLE_CLIENT_ID'),
+        audience: allowedAudiences,
       });
       const payload = ticket.getPayload();
 
@@ -743,6 +783,7 @@ export class AuthService {
           email: googleEmail,
           password: dummyPasswordHash,
           googleId,
+          emailVerified: true, // Google-verified email
           phoneNumber: dto.phoneNumber,
           categorie: dto.categorie,
           ville: dto.ville,
@@ -830,22 +871,13 @@ export class AuthService {
 
   // ── Forgot Password ──────────────────────────────────────────
 
-  async requestPasswordReset(email: string): Promise<{ success: boolean; message: string }> {
-    const normalizedEmail = email.trim().toLowerCase();
+  // ── Shared OTP helpers ───────────────────────────────────────
 
-    // Always return success to prevent email enumeration
-    const merchant = await this.merchantRepo.findUnique({
-      where: { email: normalizedEmail },
-      select: { id: true },
-    });
+  /** Generate, upsert, and send an OTP email. Enforces daily limit + cooldown. */
+  private async sendOtpForEmail(email: string, logLabel: string): Promise<void> {
+    this.checkDailyOtpLimit(email);
 
-    if (!merchant) {
-      // Don't reveal that the email doesn't exist
-      return { success: true, message: 'Si un compte existe avec cet email, un code a été envoyé.' };
-    }
-
-    // Per-identifier cooldown — prevent OTP spam
-    const existingOtp = await this.otpRepo.findUnique({ where: { email: normalizedEmail } });
+    const existingOtp = await this.otpRepo.findUnique({ where: { email } });
     if (existingOtp && existingOtp.expiresAt.getTime() - OTP_EXPIRY_MS + OTP_COOLDOWN_MS > Date.now()) {
       throw new HttpException('Veuillez patienter avant de renvoyer un code.', HttpStatus.TOO_MANY_REQUESTS);
     }
@@ -855,14 +887,94 @@ export class AuthService {
     const expiresAt = new Date(Date.now() + OTP_EXPIRY_MS);
 
     await this.otpRepo.upsert({
-      where: { email: normalizedEmail },
-      create: { email: normalizedEmail, code: codeHash, expiresAt },
+      where: { email },
+      create: { email, code: codeHash, expiresAt },
       update: { code: codeHash, expiresAt, attempts: 0 },
     });
 
-    await this.mailProvider.sendOtpEmail(normalizedEmail, code, 'merchant');
+    await this.mailProvider.sendOtpEmail(email, code, 'merchant');
+    this.logger.log(`${logLabel} OTP sent to ${email}`);
+  }
 
-    this.logger.log(`Password reset OTP sent to ${normalizedEmail}`);
+  /** Find OTP record and validate the code. Increments attempts on mismatch. */
+  private async validateAndConsumeOtp(email: string, code: string, notFoundMsg: string): Promise<string> {
+    const otpRecord = await this.otpRepo.findUnique({ where: { email } });
+
+    if (!otpRecord) {
+      throw new BadRequestException(notFoundMsg);
+    }
+
+    try {
+      validateOtp(otpRecord, code, 'Code invalide ou expiré.');
+    } catch (error) {
+      await this.otpRepo.update({
+        where: { id: otpRecord.id },
+        data: { attempts: { increment: 1 } },
+      });
+      throw error;
+    }
+
+    return otpRecord.id;
+  }
+
+  // ── Email Verification (merchant) ────────────────────────────
+
+  async sendVerificationEmail(email: string): Promise<{ success: boolean; message: string }> {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const merchant = await this.merchantRepo.findUnique({
+      where: { email: normalizedEmail },
+      select: { id: true, emailVerified: true },
+    });
+
+    if (!merchant) {
+      return { success: true, message: 'Si un compte existe avec cet email, un code a été envoyé.' };
+    }
+
+    if (merchant.emailVerified) {
+      return { success: true, message: 'Email déjà vérifié.' };
+    }
+
+    await this.sendOtpForEmail(normalizedEmail, 'Verification');
+
+    return { success: true, message: 'Code de vérification envoyé.' };
+  }
+
+  async verifyEmail(email: string, code: string): Promise<{ success: boolean; message: string }> {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const otpId = await this.validateAndConsumeOtp(
+      normalizedEmail, code,
+      'Aucun code de vérification trouvé. Veuillez en demander un nouveau.',
+    );
+
+    // Atomically delete OTP and mark email as verified
+    await this.txRunner.run(async (tx) => {
+      await tx.otp.delete({ where: { id: otpId } });
+      await tx.merchant.update({
+        where: { email: normalizedEmail },
+        data: { emailVerified: true },
+      });
+    });
+
+    this.logger.log(`Email verified for ${normalizedEmail}`);
+
+    return { success: true, message: 'Email vérifié avec succès.' };
+  }
+
+  async requestPasswordReset(email: string): Promise<{ success: boolean; message: string }> {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const merchant = await this.merchantRepo.findUnique({
+      where: { email: normalizedEmail },
+      select: { id: true },
+    });
+
+    if (!merchant) {
+      return { success: true, message: 'Si un compte existe avec cet email, un code a été envoyé.' };
+    }
+
+    await this.sendOtpForEmail(normalizedEmail, 'Password reset');
 
     return { success: true, message: 'Si un compte existe avec cet email, un code a été envoyé.' };
   }
@@ -870,37 +982,20 @@ export class AuthService {
   async resetPassword(email: string, code: string, newPassword: string): Promise<{ success: boolean; message: string }> {
     const normalizedEmail = email.trim().toLowerCase();
 
-    const otpRecord = await this.otpRepo.findUnique({
-      where: { email: normalizedEmail },
-    });
+    const otpId = await this.validateAndConsumeOtp(
+      normalizedEmail, code,
+      'Aucun code de réinitialisation trouvé. Veuillez en demander un nouveau.',
+    );
 
-    if (!otpRecord) {
-      throw new BadRequestException('Aucun code de réinitialisation trouvé. Veuillez en demander un nouveau.');
-    }
-
-    try {
-      validateOtp(otpRecord, code, 'Code invalide ou expiré.');
-    } catch (error) {
-      // Increment attempts on mismatch
-      if (otpRecord) {
-        await this.otpRepo.update({
-          where: { id: otpRecord.id },
-          data: { attempts: { increment: 1 } },
-        });
-      }
-      throw error;
-    }
-
-    // OTP is valid — delete it and update the password
     const hashedPassword = await bcrypt.hash(newPassword, BCRYPT_SALT_ROUNDS);
 
-    await Promise.all([
-      this.otpRepo.delete({ where: { id: otpRecord.id } }),
-      this.merchantRepo.update({
+    await this.txRunner.run(async (tx) => {
+      await tx.otp.delete({ where: { id: otpId } });
+      await tx.merchant.update({
         where: { email: normalizedEmail },
         data: { password: hashedPassword },
-      }),
-    ]);
+      });
+    });
 
     this.logger.log(`Password reset successful for ${normalizedEmail}`);
 

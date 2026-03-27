@@ -86,6 +86,7 @@ export default function TransactionAmountScreen() {
   const [stamps, setStamps] = useState(0);
 
   const isStampsMode = merchant?.loyaltyType === 'STAMPS';
+  const isPerVisit = isStampsMode && (merchant?.stampEarningMode || 'PER_VISIT') === 'PER_VISIT';
   const stampsForReward = merchant?.stampsForReward || customerStatus?.stampsForReward || 10;
   const { t } = useLanguage();
 
@@ -95,6 +96,10 @@ export default function TransactionAmountScreen() {
 
   useEffect(() => {
     if (isStampsMode) {
+      if (isPerVisit) {
+        setStamps(1);
+        return;
+      }
       const amountNum = parseFloat(stampAmount) || 0;
       if (amountNum === 0 || !merchant) {
         setStamps(0);
@@ -103,7 +108,7 @@ export default function TransactionAmountScreen() {
       const rate = merchant.pointsRate || 10;
       setStamps(Math.floor(amountNum / rate));
     }
-  }, [stampAmount, merchant, isStampsMode]);
+  }, [stampAmount, merchant, isStampsMode, isPerVisit]);
 
   const calculatePoints = () => {
     const amountNum = parseFloat(amount) || 0;
@@ -137,6 +142,16 @@ export default function TransactionAmountScreen() {
 
   // ── EARN: Points Mode ──
   const handleEarnPoints = () => {
+    const currentPoints = customerStatus?.points || 0;
+    if (merchant?.accumulationLimit != null && currentPoints >= merchant.accumulationLimit) {
+      if (selectedRewardId && selectedReward && currentPoints >= selectedReward.cout) {
+        handleRedeemOnly();
+        return;
+      }
+      const unit = isStampsMode ? t('common.stamps') : t('common.points');
+      Alert.alert(t('common.error'), t('transaction.accumulationLimitReached', { limit: merchant.accumulationLimit, unit }));
+      return;
+    }
     const amountNum = parseFloat(amount);
     if (!amountNum || isNaN(amountNum)) {
       Alert.alert(t('common.error'), t('transactionAmount.invalidAmount'));
@@ -162,6 +177,39 @@ export default function TransactionAmountScreen() {
 
   // ── EARN: Stamps Mode ──
   const handleEarnStamps = () => {
+    const currentStamps = customerStatus?.points || 0;
+    if (merchant?.accumulationLimit != null && currentStamps >= merchant.accumulationLimit) {
+      if (selectedRewardId && selectedReward && currentStamps >= selectedReward.cout) {
+        handleRedeemOnly();
+        return;
+      }
+      const unit = isStampsMode ? t('common.stamps') : t('common.points');
+      Alert.alert(t('common.error'), t('transaction.accumulationLimitReached', { limit: merchant.accumulationLimit, unit }));
+      return;
+    }
+
+    if (isPerVisit) {
+      // PER_VISIT: 1 stamp per visit, no amount needed
+      const afterStamps = currentStamps + 1;
+      const willGetReward = afterStamps >= stampsForReward && !!selectedReward;
+
+      Alert.alert(
+        t('transaction.confirmTitle'),
+        `${t('transaction.stampsToEarn')} : 1 ${t('common.stamps')}\n` +
+          (willGetReward
+            ? `\n🎉 ${t('transaction.rewardReached')} "${selectedReward!.titre}" (${selectedReward!.cout} ${t('common.stamps')}).`
+            : `\n${t('transaction.totalAfter')} : ${afterStamps} / ${stampsForReward} ${t('common.stamps')}`),
+        [
+          { text: t('common.cancel'), style: 'cancel' },
+          {
+            text: t('transaction.validate'),
+            onPress: () => processEarnWithAutoRedeem(0, 1, willGetReward),
+          },
+        ],
+      );
+      return;
+    }
+
     const stampAmountNum = parseFloat(stampAmount) || 0;
     if (stampAmountNum === 0) {
       Alert.alert(t('common.error'), t('transaction.enterAmountError'));
@@ -469,7 +517,8 @@ export default function TransactionAmountScreen() {
                 />
               </View>
 
-              {/* ── Amount input (Stamps mode) ── */}
+              {/* ── Amount input (Stamps PER_AMOUNT mode only) ── */}
+              {!isPerVisit && (
               <View style={[styles.amountInputCard, { backgroundColor: theme.bgCard }]}>
                 <Text style={[styles.amountLabel, { color: theme.textSecondary }]}>
                   {t('transaction.purchaseAmount')}
@@ -489,6 +538,7 @@ export default function TransactionAmountScreen() {
                   {DEFAULT_CURRENCY.symbol}
                 </Text>
               </View>
+              )}
 
               {/* ── Stamps preview ── */}
               <TouchableOpacity
@@ -509,7 +559,9 @@ export default function TransactionAmountScreen() {
                     { color: stamps > 0 ? theme.success : theme.textMuted },
                   ]}
                 >
-                  {stamps > 0 ? `${t('transaction.earn')} ${stamps} ${t('common.stamps')}` : t('transaction.enterAmount')}
+                  {isPerVisit
+                    ? `${t('transaction.earn')} 1 ${t('common.stamps')} (${t('transaction.perVisitLabel')})`
+                    : stamps > 0 ? `${t('transaction.earn')} ${stamps} ${t('common.stamps')}` : t('transaction.enterAmount')}
                 </Text>
               </TouchableOpacity>
 
@@ -587,13 +639,13 @@ export default function TransactionAmountScreen() {
                 backgroundColor:
                   screenMode === 'redeem'
                     ? (!!selectedRewardId && !loading ? theme.primary : theme.border)
-                    : ((isStampsMode ? stamps > 0 && parseFloat(stampAmount) > 0 : isValidAmount) && !loading
+                    : ((isStampsMode ? (isPerVisit ? stamps > 0 : stamps > 0 && parseFloat(stampAmount) > 0) : isValidAmount) && !loading
                         ? theme.primary
                         : theme.border),
               },
             ]}
             onPress={screenMode === 'redeem' ? handleRedeemOnly : (isStampsMode ? handleEarnStamps : handleEarnPoints)}
-            disabled={screenMode === 'redeem' ? (!selectedRewardId || loading) : (isStampsMode ? !parseFloat(stampAmount) || stamps < 1 || loading : !isValidAmount || loading)}
+            disabled={screenMode === 'redeem' ? (!selectedRewardId || loading) : (isStampsMode ? (isPerVisit ? stamps < 1 || loading : !parseFloat(stampAmount) || stamps < 1 || loading) : !isValidAmount || loading)}
           >
             {loading ? (
               <ActivityIndicator color="#fff" />
