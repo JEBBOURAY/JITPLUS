@@ -3,10 +3,6 @@ FROM node:22-alpine AS builder
 
 RUN apk update && apk upgrade --no-cache && apk add --no-cache openssl
 
-# Upgrade npm to patch CVEs in bundled deps (tar, minimatch, glob, diff)
-# npm@11.12.0: tar@^7.5.11, minimatch@^10.2.4, glob@^13.0.6, diff@^8.0.2 (via libnpmdiff@8)
-RUN npm install -g npm@11.12.0
-
 WORKDIR /app
 
 # Enable pnpm
@@ -35,10 +31,6 @@ RUN cd apps/backend && pnpm run build
 FROM node:22-alpine AS deps
 
 RUN apk update && apk upgrade --no-cache && apk add --no-cache openssl
-
-# Upgrade npm to patch CVEs in bundled deps (tar, minimatch, glob, diff)
-# npm@11.12.0: tar@^7.5.11, minimatch@^10.2.4, glob@^13.0.6, diff@^8.0.2 (via libnpmdiff@8)
-RUN npm install -g npm@11.12.0
 
 WORKDIR /app
 
