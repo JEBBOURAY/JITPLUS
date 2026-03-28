@@ -106,9 +106,20 @@ export function useGoogleAuth({ actionLabel, onCancel }: UseGoogleAuthOptions) {
           onCancel?.();
           return;
         }
+
+        // DEVELOPER_ERROR (code 10) = SHA-1 fingerprint mismatch between
+        // signing key and Google Cloud Console, or wrong webClientId.
+        if (err.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+          setError(i18n.t('googleAuth.playServicesUnavailable'));
+          return;
+        }
       }
 
-      setError(i18n.t('googleAuth.launchError', { action: actionLabel }));
+      // Include native error details so the user (developer) can diagnose
+      const nativeMsg = err instanceof Error ? err.message : String(err);
+      const code = isErrorWithCode && isErrorWithCode(err) ? (err as any).code : '';
+      const detail = code ? `[${code}] ${nativeMsg}` : nativeMsg;
+      setError(`${i18n.t('googleAuth.launchError', { action: actionLabel })}\n${detail}`);
       // Don't call onCancel — let user see the error and retry
     }
   }, [actionLabel, googleLogin, onCancel]);

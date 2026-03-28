@@ -425,6 +425,7 @@ export default {
     noIdToken: 'Unable to retrieve your Google identifier',
     launchError: 'Unable to launch Google %{action}',
     notConfigured: 'Google Client ID not configured',
+    playServicesUnavailable: 'Google Play Services unavailable or outdated',
   },
 
   // ── Offline ──

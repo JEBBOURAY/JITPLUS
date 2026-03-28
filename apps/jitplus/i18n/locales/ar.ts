@@ -426,6 +426,7 @@ export default {
     noIdToken: 'تعذر استرجاع معرّف جوجل الخاص بك',
     launchError: 'تعذر بدء %{action} جوجل',
     notConfigured: 'Google Client ID غير مكوّن',
+    playServicesUnavailable: 'خدمات Google Play غير متوفرة أو قديمة',
   },
 
   // ── Offline ──
