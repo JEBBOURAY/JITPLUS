@@ -72,7 +72,7 @@ export class ClientAuthController {
   @Post('send-otp-email')
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 3 } })
   async sendOtpEmail(@Body() dto: SendOtpEmailDto) {
-    return this.clientAuthService.sendOtpEmail(dto.email, dto.isRegister ?? false);
+    return this.clientAuthService.sendOtpEmail(dto.email, dto.isRegister ?? false, dto.telephone);
   }
 
   @Post('verify-otp-email')
@@ -252,6 +252,12 @@ export class ClientController {
   @HttpCode(HttpStatus.OK)
   async joinMerchant(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
     return this.clientService.joinMerchant(user.userId, id);
+  }
+
+  @Delete('merchants/:id/leave')
+  @HttpCode(HttpStatus.OK)
+  async leaveMerchant(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    return this.clientService.deactivateCard(user.userId, id);
   }
 
   @Get('notifications')

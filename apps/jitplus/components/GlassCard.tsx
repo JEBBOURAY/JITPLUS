@@ -1,4 +1,4 @@
-import { useRef, useCallback } from 'react';
+import { useRef, useCallback, memo } from 'react';
 import { Animated, TouchableWithoutFeedback, ViewStyle, StyleSheet } from 'react-native';
 import { haptic as fireHaptic } from '@/utils/haptics';
 
@@ -9,7 +9,7 @@ interface GlassCardProps {
   haptic?: boolean;
 }
 
-export default function GlassCard({ onPress, style, children, haptic = true }: GlassCardProps) {
+export default memo(function GlassCard({ onPress, style, children, haptic = true }: GlassCardProps) {
   const scale = useRef(new Animated.Value(1)).current;
   const glow = useRef(new Animated.Value(0)).current;
   const currentAnim = useRef<Animated.CompositeAnimation | null>(null);
@@ -63,6 +63,7 @@ export default function GlassCard({ onPress, style, children, haptic = true }: G
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
       disabled={!onPress}
+      accessibilityRole={onPress ? 'button' : undefined}
     >
       <Animated.View style={[{ transform: [{ scale }] }, style]}>
         {children}
@@ -78,7 +79,7 @@ export default function GlassCard({ onPress, style, children, haptic = true }: G
       </Animated.View>
     </TouchableWithoutFeedback>
   );
-}
+});
 
 const glassStyles = StyleSheet.create({
   glowOverlay: {

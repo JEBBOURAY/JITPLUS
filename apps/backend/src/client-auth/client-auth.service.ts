@@ -477,7 +477,7 @@ export class ClientAuthService {
   /**
    * Send OTP to email address
    */
-  async sendOtpEmail(email: string, isRegister = false): Promise<{ success: boolean; message: string }> {
+  async sendOtpEmail(email: string, isRegister = false, telephone?: string): Promise<{ success: boolean; message: string }> {
     const normalizedEmail = email.trim().toLowerCase();
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
@@ -498,6 +498,17 @@ export class ClientAuthService {
       throw new BadRequestException('Aucun compte n\'est associé à cet email. Veuillez d\'abord ajouter votre email à votre profil ou vous inscrire.');
     }
 
+    // If registering with a phone, ensure the phone is not already taken by an active account
+    if (isRegister && telephone) {
+      const phoneInUse = await this.clientRepo.findFirst({
+        where: { telephone, deletedAt: null },
+        select: { id: true },
+      });
+      if (phoneInUse) {
+        throw new ConflictException('Ce numéro de téléphone est déjà associé à un autre compte.');
+      }
+    }
+
     // Daily OTP send limit per email
     this.checkDailyOtpLimit(normalizedEmail);
 
@@ -512,14 +523,17 @@ export class ClientAuthService {
     const expiresAt = new Date(Date.now() + OTP_EXPIRY_MS);
 
     // Upsert OTP by email (hash only — never store plaintext)
+    // Store telephone alongside email so verifyOtpEmail can attach it to the new client
     await this.otpRepo.upsert({
       where: { email: normalizedEmail },
       create: {
         email: normalizedEmail,
+        telephone: telephone || null,
         code: codeHash,
         expiresAt,
       },
       update: {
+        telephone: telephone || null,
         code: codeHash,
         expiresAt,
         attempts: 0,
@@ -556,6 +570,9 @@ export class ClientAuthService {
       this.clientRepo.findUnique({ where: { email: normalizedEmail }, select: CLIENT_AUTH_SELECT }),
     ]);
 
+    // telephone was stored alongside the OTP during registration
+    const registrationPhone = otpRecord!.telephone;
+
     let resolvedClient = client;
     const isNewUser = !resolvedClient || !resolvedClient.nom;
 
@@ -570,6 +587,7 @@ export class ClientAuthService {
             email: normalizedEmail,
             emailVerified: true,
             nom: null,
+            ...(registrationPhone && { telephone: registrationPhone }),
           },
           select: CLIENT_AUTH_SELECT,
         });
@@ -720,8 +738,8 @@ export class ClientAuthService {
         throw new BadRequestException('Format de numéro de téléphone invalide');
       }
 
-      // Check uniqueness
-      const existing = await this.clientRepo.findUnique({ where: { telephone: normalizedPhone } });
+      // Check uniqueness among active accounts only
+      const existing = await this.clientRepo.findFirst({ where: { telephone: normalizedPhone, deletedAt: null } });
       if (existing && existing.id !== clientId) {
         throw new ConflictException('Ce numéro de téléphone est déjà associé à un autre compte');
       }

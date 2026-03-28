@@ -16,6 +16,19 @@ import {
 } from '@jitplus/shared/src/realtime';
 import { queryKeys } from './useQueryHooks';
 
+/** Optimistically increment unread count by 1 for instant badge update. */
+function optimisticIncrementUnread(
+  queryClient: ReturnType<typeof useQueryClient>,
+) {
+  queryClient.cancelQueries({ queryKey: queryKeys.unreadCount });
+  const current = queryClient.getQueryData<{ unreadCount: number }>(queryKeys.unreadCount);
+  if (current) {
+    queryClient.setQueryData(queryKeys.unreadCount, {
+      unreadCount: Math.max(0, current.unreadCount + 1),
+    });
+  }
+}
+
 /**
  * Listen for real-time events on the socket and invalidate/update cache.
  * Call this once in your root layout (e.g. RootLayoutNav).
@@ -38,16 +51,7 @@ export function useRealtimeEvents(socket: Socket | null) {
 
     // ── New notification received ────────────────────────────
     const onNotificationNew = (_payload: NotificationNewPayload) => {
-      // Cancel in-flight unread-count fetches so they don't overwrite the optimistic value
-      queryClient.cancelQueries({ queryKey: queryKeys.unreadCount });
-
-      // Optimistic: increment unread count immediately for instant badge update
-      const current = queryClient.getQueryData<{ unreadCount: number }>(queryKeys.unreadCount);
-      if (current) {
-        queryClient.setQueryData(queryKeys.unreadCount, {
-          unreadCount: Math.max(0, current.unreadCount + 1),
-        });
-      }
+      optimisticIncrementUnread(queryClient);
 
       // Invalidate notifications feed (will refetch in background)
       queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
@@ -83,18 +87,13 @@ export function handleFcmDataPayload(
       queryClient.invalidateQueries({ queryKey: queryKeys.unreadCount });
       break;
     case 'notification_new': {
-      // Optimistic: increment unread count for instant badge update (mirrors WS handler)
-      queryClient.cancelQueries({ queryKey: queryKeys.unreadCount });
-      const current = queryClient.getQueryData<{ unreadCount: number }>(queryKeys.unreadCount);
-      if (current) {
-        queryClient.setQueryData(queryKeys.unreadCount, {
-          unreadCount: Math.max(0, current.unreadCount + 1),
-        });
-      }
+      optimisticIncrementUnread(queryClient);
       queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
       queryClient.invalidateQueries({ queryKey: queryKeys.unreadCount });
       break;
     }
+    default:
+      if (__DEV__) console.log('[FCM] Unhandled event type:', data.event);
   }
 }
 

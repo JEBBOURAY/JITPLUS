@@ -8,12 +8,7 @@ const SIZE = 30;
 const LOGO_SIZE = 20;
 const LOGO = require('@/assets/images/jitpluslogo.png');
 
-interface Props {
-  userPoints?: number;
-  categorie?: string | null;
-}
-
-const MapMarker = memo(function MapMarker(_props: Props) {
+const MapMarker = memo(function MapMarker() {
   return (
     <View collapsable={false} style={styles.root}>
       <Image source={LOGO} style={styles.logo} resizeMode="contain" />

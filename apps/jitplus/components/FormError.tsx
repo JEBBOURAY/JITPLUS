@@ -12,7 +12,7 @@ export default memo(function FormError({ message }: FormErrorProps) {
   if (!message) return null;
 
   return (
-    <View style={[styles.container, { backgroundColor: `${theme.danger}10` }]}>
+    <View style={[styles.container, { backgroundColor: `${theme.danger}10` }]} accessibilityRole="alert">
       <Text style={[styles.text, { color: theme.danger }]}>{message}</Text>
     </View>
   );

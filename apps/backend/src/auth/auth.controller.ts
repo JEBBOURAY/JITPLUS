@@ -118,7 +118,7 @@ export class AuthController {
 
   // ── Parrainage (public — consulté avant inscription) ──
   @Get('referral/check/:code')
-  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 10 } })
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 5 } })
   async checkReferralCode(@Param('code') code: string) {
     try {
       return await this.referralService.validateCode(code);

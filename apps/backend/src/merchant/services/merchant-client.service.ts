@@ -32,12 +32,12 @@ export class MerchantClientService {
     const where = search
       ? {
           AND: [
-            { loyaltyCards: { some: { merchantId } } },
+            { loyaltyCards: { some: { merchantId, deactivatedAt: null } } },
             { OR: buildClientSearchFilter(search) },
             { deletedAt: null },
           ],
         }
-      : { loyaltyCards: { some: { merchantId } }, deletedAt: null };
+      : { loyaltyCards: { some: { merchantId, deactivatedAt: null } }, deletedAt: null };
 
     const [clients, total] = await Promise.all([
       this.clientRepo.findMany({

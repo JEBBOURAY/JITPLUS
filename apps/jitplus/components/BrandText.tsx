@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { View } from 'react-native';
 import Svg, { Defs, LinearGradient as SvgGradient, Stop, Text as SvgText } from 'react-native-svg';
 import { ms } from '@/utils/responsive';
@@ -10,7 +11,7 @@ interface BrandTextProps {
  * "JitPlus" with an Améthyste Solaire gradient (Violet → Gold).
  * Uses SVG so the gradient applies to the text fill on both platforms.
  */
-export default function BrandText({ size = 24 }: BrandTextProps) {
+export default memo(function BrandText({ size = 24 }: BrandTextProps) {
   const scaledSize = ms(size);
   const width = scaledSize * 5.2;
   const height = scaledSize * 1.4;
@@ -38,4 +39,4 @@ export default function BrandText({ size = 24 }: BrandTextProps) {
       </Svg>
     </View>
   );
-}
+});

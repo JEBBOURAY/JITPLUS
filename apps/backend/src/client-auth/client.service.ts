@@ -102,8 +102,8 @@ export class ClientService {
     // Vérifier l'unicité de l'email s'il est modifié
     if (updates.email) {
       const normalizedEmail = updates.email.trim().toLowerCase();
-      const existing = await this.clientRepo.findUnique({
-        where: { email: normalizedEmail },
+      const existing = await this.clientRepo.findFirst({
+        where: { email: normalizedEmail, deletedAt: null },
       });
       if (existing && existing.id !== clientId) {
         throw new ConflictException('Cette adresse email est déjà utilisée par un autre compte.');
@@ -111,11 +111,11 @@ export class ClientService {
       updates.email = normalizedEmail;
     }
 
-    // Vérifier l'unicité du téléphone s'il est modifié
+    // Vérifier l'unicité du téléphone s'il est modifié (comptes actifs uniquement)
     if (updates.telephone) {
       const normalizedPhone = updates.telephone.trim();
-      const existing = await this.clientRepo.findUnique({
-        where: { telephone: normalizedPhone },
+      const existing = await this.clientRepo.findFirst({
+        where: { telephone: normalizedPhone, deletedAt: null },
       });
       if (existing && existing.id !== clientId) {
         throw new ConflictException('Ce numéro de téléphone est déjà utilisé par un autre compte.');
@@ -233,7 +233,7 @@ export class ClientService {
 
     const [cards, totalCards] = await Promise.all([
       this.loyaltyCardRepo.findMany({
-          where: { clientId, merchant: { deletedAt: null } },
+          where: { clientId, deactivatedAt: null, merchant: { deletedAt: null } },
         select: {
           id: true,
           merchantId: true,
@@ -264,7 +264,7 @@ export class ClientService {
         skip,
         take: safeTake,
       }),
-      this.loyaltyCardRepo.count({ where: { clientId, merchant: { deletedAt: null } } }),
+      this.loyaltyCardRepo.count({ where: { clientId, deactivatedAt: null, merchant: { deletedAt: null } } }),
     ]);
     const totalPoints = cards.reduce((sum: number, card: any) => sum + card.points, 0);
 
@@ -371,6 +371,7 @@ export class ClientService {
           conversionRate: true,
           stampsForReward: true,
           logoUrl: true,
+          coverUrl: true,
           socialLinks: true,
           profileViews: true,
           stores: {
@@ -420,7 +421,7 @@ export class ClientService {
     // Check if the client already has a loyalty card with this merchant
     const existingCard = await this.loyaltyCardRepo.findUnique({
       where: { clientId_merchantId: { clientId, merchantId: id } },
-      select: { id: true },
+      select: { id: true, points: true, deactivatedAt: true },
     });
 
     return {
@@ -436,10 +437,13 @@ export class ClientService {
       conversionRate: m.conversionRate,
       stampsForReward: m.stampsForReward,
       logoUrl: m.logoUrl ?? null,
+      coverUrl: m.coverUrl ?? null,
       socialLinks: (m.socialLinks as Record<string, string> | null) ?? null,
       profileViews: m.profileViews,
       clientCount: m._count.loyaltyCards,
-      hasCard: !!existingCard,
+      hasCard: !!existingCard && !existingCard.deactivatedAt,
+      cardDeactivated: !!existingCard?.deactivatedAt,
+      cardBalance: existingCard?.points ?? 0,
       stores: m.stores ?? [],
       rewards: m.rewards.map((r: any) => ({
         id: r.id,
@@ -464,11 +468,32 @@ export class ClientService {
     const card = await this.loyaltyCardRepo.upsert({
       where: { clientId_merchantId: { clientId, merchantId } },
       create: { clientId, merchantId, points: 0 },
-      update: {},
+      update: { deactivatedAt: null },
       select: { id: true, points: true, createdAt: true },
     });
 
     return { success: true, card };
+  }
+
+  /**
+   * Soft-deactivate the client's loyalty card with a merchant.
+   * The card is not deleted — points are preserved but the client is
+   * excluded from all merchant notifications (push, email, WhatsApp).
+   */
+  async deactivateCard(clientId: string, merchantId: string) {
+    const card = await this.loyaltyCardRepo.findUnique({
+      where: { clientId_merchantId: { clientId, merchantId } },
+      select: { id: true, deactivatedAt: true },
+    });
+    if (!card) throw new NotFoundException('Card not found');
+    if (card.deactivatedAt) return { success: true };
+
+    await this.loyaltyCardRepo.update({
+      where: { id: card.id },
+      data: { deactivatedAt: new Date(), points: 0 },
+    });
+
+    return { success: true };
   }
 
   async getMerchants(page: number = 1, limit: number = 50) {

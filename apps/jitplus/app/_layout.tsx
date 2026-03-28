@@ -216,18 +216,7 @@ function SplashGate({ children }: { children: React.ReactNode }) {
     }
   }, [authLoading]);
 
-  if (authLoading) {
-    return (
-      <View style={splashStyles.container}>
-        <Image
-          source={require('@/assets/images/jitpluslogo.png')}
-          style={splashStyles.logo}
-          resizeMode="contain"
-        />
-        <ActivityIndicator size="small" color="#fff" style={splashStyles.spinner} />
-      </View>
-    );
-  }
+  if (authLoading) return null;
   return <>{children}</>;
 }
 

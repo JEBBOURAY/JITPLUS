@@ -33,6 +33,7 @@ const QR_GRADIENT_ACTIVE = [palette.violet, palette.violetDark] as const;
 const QR_GRADIENT_INACTIVE = [`${palette.violet}20`, `${palette.violetDark}20`] as const;
 const GRADIENT_START = { x: 0, y: 0 } as const;
 const GRADIENT_END = { x: 1, y: 1 } as const;
+const FOCUSED_ICON_BG = { backgroundColor: `${palette.violet}15` } as const;
 
 export default React.memo(function CustomTabBar({ state, navigation }: BottomTabBarProps) {
   const theme = useTheme();
@@ -131,9 +132,7 @@ export default React.memo(function CustomTabBar({ state, navigation }: BottomTab
                 <View
                   style={[
                     styles.iconContainer,
-                    isFocused && {
-                      backgroundColor: `${palette.violet}15`,
-                    },
+                    isFocused && FOCUSED_ICON_BG,
                   ]}
                 >
                   <IconComponent

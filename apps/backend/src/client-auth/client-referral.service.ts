@@ -56,6 +56,7 @@ export class ClientReferralService {
       select: {
         referralCode: true,
         referralBalance: true,
+        _count: { select: { clientReferrals: true } },
         clientReferrals: {
           select: {
             id: true,
@@ -89,7 +90,7 @@ export class ClientReferralService {
     const result: ClientReferralStats = {
       referralCode,
       referralBalance: client.referralBalance,
-      referredCount: client.clientReferrals.length,
+      referredCount: (client as any)._count.clientReferrals,
       referrals: client.clientReferrals.map((r: any) => ({
         id: r.id,
         merchantName: r.merchant.nom,
@@ -114,8 +115,13 @@ export class ClientReferralService {
       throw new NotFoundException('Code de parrainage requis');
     }
 
+    const sanitized = code.trim().toUpperCase();
+    if (sanitized.length !== REFERRAL_CODE_LENGTH || !/^[A-Z2-9]+$/.test(sanitized)) {
+      throw new NotFoundException('Code de parrainage client invalide');
+    }
+
     const client = await this.clientRepo.findUnique({
-      where: { referralCode: code.trim().toUpperCase() },
+      where: { referralCode: sanitized },
       select: { id: true, prenom: true, nom: true },
     });
 

@@ -8,11 +8,12 @@ import {
   Linking,
   ActivityIndicator,
   ScrollView,
+  Alert,
 } from 'react-native';
 import { Image } from 'expo-image';
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 import { useLocalSearchParams, useRouter, Redirect } from 'expo-router';
-import { MapPin, ArrowLeft, Info, Gift, Coins, Navigation, Star, Share2, Instagram, Globe, Eye, Users, CreditCard, Check, Store, Music } from 'lucide-react-native';
+import { MapPin, ArrowLeft, Info, Gift, Coins, Navigation, Star, Share2, Instagram, Globe, Eye, Users, CreditCard, Check, Store, Music, XCircle } from 'lucide-react-native';
 import { haptic } from '@/utils/haptics';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -37,7 +38,10 @@ export default function MerchantDetailScreen() {
   const queryClient = useQueryClient();
   const [joinLoading, setJoinLoading] = useState(false);
   const [justJoined, setJustJoined] = useState(false);
+  const [leaveLoading, setLeaveLoading] = useState(false);
+  const [justLeft, setJustLeft] = useState(false);
   const [logoError, setLogoError] = useState(false);
+  const [coverError, setCoverError] = useState(false);
 
   const handleJoinMerchant = useCallback(async () => {
     if (!id || joinLoading || merchant?.hasCard || justJoined) return;
@@ -45,6 +49,7 @@ export default function MerchantDetailScreen() {
     try {
       await api.joinMerchant(id);
       setJustJoined(true);
+      setJustLeft(false);
       haptic();
       queryClient.invalidateQueries({ queryKey: ['merchant', id] });
       queryClient.invalidateQueries({ queryKey: ['points'] });
@@ -54,6 +59,41 @@ export default function MerchantDetailScreen() {
       setJoinLoading(false);
     }
   }, [id, joinLoading, merchant?.hasCard, justJoined, queryClient]);
+
+  const handleLeaveMerchant = useCallback(() => {
+    if (!id || !merchant || leaveLoading) return;
+
+    const balanceLabel = merchant.loyaltyType === 'STAMPS'
+      ? t('merchant.leaveStampsWarning', { count: merchant.cardBalance ?? 0 })
+      : t('merchant.leavePointsWarning', { count: merchant.cardBalance ?? 0 });
+
+    Alert.alert(
+      t('merchant.leaveTitle'),
+      `${balanceLabel}\n\n${t('merchant.leaveMessage')}`,
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('merchant.leaveConfirm'),
+          style: 'destructive',
+          onPress: async () => {
+            setLeaveLoading(true);
+            try {
+              await api.leaveMerchant(id);
+              setJustLeft(true);
+              setJustJoined(false);
+              haptic();
+              queryClient.invalidateQueries({ queryKey: ['merchant', id] });
+              queryClient.invalidateQueries({ queryKey: ['points'] });
+            } catch (e) {
+              if (__DEV__) console.warn('Leave merchant error:', e);
+            } finally {
+              setLeaveLoading(false);
+            }
+          },
+        },
+      ],
+    );
+  }, [id, merchant, leaveLoading, queryClient, t]);
 
   if (!isAuthenticated) {
     return <Redirect href="/welcome" />;
@@ -136,6 +176,20 @@ export default function MerchantDetailScreen() {
         showsVerticalScrollIndicator={false}
         bounces={true}
       >
+        {/* Cover photo */}
+        {merchant.coverUrl && !coverError ? (
+          <View style={styles.coverWrap}>
+            <Image
+              source={resolveImageUrl(merchant.coverUrl)}
+              style={styles.coverImage}
+              contentFit="cover"
+              cachePolicy="disk"
+              recyclingKey={merchant.coverUrl}
+              onError={() => setCoverError(true)}
+            />
+          </View>
+        ) : null}
+
         {/* Merchant identity */}
         <View style={styles.identitySection}>
           {merchant.logoUrl && !logoError ? (
@@ -178,6 +232,18 @@ export default function MerchantDetailScreen() {
             </View>
           </View>
         </View>
+
+        {/* Description */}
+        {!!merchant.description && (
+          <View style={[styles.descriptionCard, { borderColor: theme.borderLight }]}>
+            <Text style={[styles.descriptionLabel, { color: theme.textMuted }]}>
+              {t('merchant.aboutUs')}
+            </Text>
+            <Text style={[styles.descriptionText, { color: theme.text }]}>
+              {merchant.description}
+            </Text>
+          </View>
+        )}
 
         {/* Separator */}
         <View style={[styles.separator, { backgroundColor: theme.borderLight }]} />
@@ -308,14 +374,47 @@ export default function MerchantDetailScreen() {
         </View>
       </ScrollView>
 
-      {/* Sticky join button at bottom */}
+      {/* Sticky bottom bar */}
       <View style={styles.bottomBar}>
-        {(merchant.hasCard || justJoined) ? (
-          <View style={[styles.joinedBanner, { borderColor: theme.borderLight }]}>
-            <Check size={18} color={palette.emerald} strokeWidth={1.8} />
-            <Text style={[styles.joinedText, { color: palette.emerald }]}>{t('merchant.alreadyMember')}</Text>
+        {(justLeft || merchant.cardDeactivated) && !justJoined ? (
+          /* Card was deactivated — show re-join */
+          <Pressable
+            onPress={handleJoinMerchant}
+            disabled={joinLoading}
+            style={({ pressed }) => [styles.joinBtn, { backgroundColor: theme.primary, opacity: pressed || joinLoading ? 0.8 : 1 }]}
+            accessibilityRole="button"
+            accessibilityLabel={t('merchant.rejoinCard')}
+          >
+            {joinLoading ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <CreditCard size={18} color="#fff" strokeWidth={1.8} />
+            )}
+            <Text style={styles.joinBtnText} numberOfLines={1}>{t('merchant.rejoinCard')}</Text>
+          </Pressable>
+        ) : (merchant.hasCard || justJoined) ? (
+          /* Active member — show member badge + leave option */
+          <View style={styles.memberBar}>
+            <View style={[styles.joinedBanner, { borderColor: theme.borderLight, flex: 1 }]}>
+              <Check size={18} color={palette.emerald} strokeWidth={1.8} />
+              <Text style={[styles.joinedText, { color: palette.emerald }]}>{t('merchant.alreadyMember')}</Text>
+            </View>
+            <Pressable
+              onPress={handleLeaveMerchant}
+              disabled={leaveLoading}
+              style={({ pressed }) => [styles.leaveBtn, { borderColor: '#EF4444', opacity: pressed || leaveLoading ? 0.7 : 1 }]}
+              accessibilityRole="button"
+              accessibilityLabel={t('merchant.leaveCard')}
+            >
+              {leaveLoading ? (
+                <ActivityIndicator size="small" color="#EF4444" />
+              ) : (
+                <XCircle size={18} color="#EF4444" strokeWidth={1.8} />
+              )}
+            </Pressable>
           </View>
         ) : (
+          /* Not a member — show join */
           <Pressable
             onPress={handleJoinMerchant}
             disabled={joinLoading}
@@ -373,6 +472,18 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: wp(16),
     paddingBottom: hp(16),
+  },
+
+  // Cover photo
+  coverWrap: {
+    borderRadius: ms(16),
+    overflow: 'hidden',
+    marginBottom: hp(12),
+  },
+  coverImage: {
+    width: '100%',
+    height: hp(180),
+    borderRadius: ms(16),
   },
 
   // Identity section
@@ -433,6 +544,23 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: ms(12),
     fontWeight: '700',
+  },
+
+  // Description
+  descriptionCard: {
+    borderWidth: 1,
+    borderRadius: ms(16),
+    padding: wp(14),
+    marginBottom: hp(14),
+  },
+  descriptionLabel: {
+    fontSize: ms(12),
+    fontWeight: '600',
+    marginBottom: hp(6),
+  },
+  descriptionText: {
+    fontSize: ms(14),
+    lineHeight: ms(20),
   },
 
   // Separator
@@ -573,5 +701,18 @@ const styles = StyleSheet.create({
   joinedText: {
     fontSize: ms(14),
     fontWeight: '700' as const,
+  },
+  memberBar: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: wp(10),
+  },
+  leaveBtn: {
+    width: ms(44),
+    height: ms(44),
+    borderRadius: ms(14),
+    borderWidth: 1.5,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
   },
 });

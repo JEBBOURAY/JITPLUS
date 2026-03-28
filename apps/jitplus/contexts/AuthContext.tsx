@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Platform } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -7,6 +7,9 @@ import { Client } from '@/types';
 import { extractErrorMessage } from '@/utils/errorMessage';
 import { isNativePushRuntimeAvailable, registerForPushNotifications, setupAndroidChannel } from '@/utils/notifications';
 import { useAuthStore } from '@/stores/authStore';
+
+const LOGOUT_MAX_RETRIES = 2;
+const LOGOUT_RETRY_DELAY_MS = 1000;
 
 interface AuthContextType {
   client: Client | null;
@@ -20,14 +23,14 @@ interface AuthContextType {
   enterGuestMode: () => void;
   sendOtp: (telephone: string, isRegister?: boolean) => Promise<{ success: boolean; error?: string }>;
   verifyOtp: (telephone: string, code: string, isRegister?: boolean) => Promise<{ success: boolean; isNewUser?: boolean; error?: string }>;
-  sendOtpEmail: (email: string, isRegister?: boolean) => Promise<{ success: boolean; error?: string }>;
+  sendOtpEmail: (email: string, isRegister?: boolean, telephone?: string) => Promise<{ success: boolean; error?: string }>;
   verifyOtpEmail: (email: string, code: string, isRegister?: boolean) => Promise<{ success: boolean; isNewUser?: boolean; error?: string }>;
   loginWithEmail: (email: string, password: string, rememberMe?: boolean) => Promise<{ success: boolean; error?: string }>;
   loginWithPhone: (telephone: string, password: string, rememberMe?: boolean) => Promise<{ success: boolean; error?: string }>;
   setPassword: (password: string) => Promise<{ success: boolean; error?: string }>;
   googleLogin: (idToken: string) => Promise<{ success: boolean; isNewUser?: boolean; error?: string }>;
 
-  completeProfile: (prenom: string, nom: string, termsAccepted: boolean, telephone?: string, dateNaissance?: string) => Promise<{ success: boolean; error?: string }>;
+  completeProfile: (prenom: string, nom: string, termsAccepted: boolean, telephone?: string, dateNaissance?: string, password?: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -38,6 +41,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const store = useAuthStore();
   const queryClient = useQueryClient();
 
+  // Bumped on every login/logout so stale loadStoredAuth responses are discarded.
+  const sessionVersionRef = useRef(0);
+
   // Check stored auth on mount + wire 401 handler
   useEffect(() => {
     // When the API receives a 401, auto-logout the user
@@ -45,25 +51,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       store.setClient(null);
     });
 
+    let cancelled = false;
+    const version = sessionVersionRef.current;
+
     const loadStoredAuth = async () => {
       try {
         // Restore needsPasswordSetup flag (survives app restarts)
         const storedNeedsPw = await api.getEmailOtpNewUser();
+        if (cancelled || sessionVersionRef.current !== version) return;
         if (storedNeedsPw) store.setNeedsPasswordSetup(true);
 
         const rememberMe = await api.getRememberMe();
         const token = await api.getStoredToken();
+        if (cancelled || sessionVersionRef.current !== version) return;
 
         if (token && rememberMe) {
           // Token exists and user wanted to be remembered
           const profile = await api.getProfile();
+          if (cancelled || sessionVersionRef.current !== version) return;
           store.setClient(profile);
         } else if (token) {
           // Token exists but user didn't want to be remembered → clear silently
           await api.clearAuth();
         }
       } catch (error: unknown) {
-        // Token invalid or expired â€” clear stored credentials and show login
+        if (cancelled || sessionVersionRef.current !== version) return;
+        // Token invalid or expired — clear stored credentials and show login
         await api.clearAuth();
         if (__DEV__) {
           const isExpired401 =
@@ -76,11 +89,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         }
       } finally {
-        store.setLoading(false);
+        if (!cancelled && sessionVersionRef.current === version) {
+          store.setLoading(false);
+        }
       }
     };
 
     loadStoredAuth();
+    return () => { cancelled = true; };
   }, []);
 
   // Register push notifications when client is authenticated.
@@ -158,9 +174,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
 
 
-  const sendOtpEmail = useCallback(async (email: string, isRegister = false) => {
+  const sendOtpEmail = useCallback(async (email: string, isRegister = false, telephone?: string) => {
     try {
-      await api.sendOtpEmail(email, isRegister);
+      await api.sendOtpEmail(email, isRegister, telephone);
       return { success: true };
     } catch (error: unknown) {
       return { success: false, error: extractErrorMessage(error) };
@@ -193,6 +209,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const loginWithEmail = useCallback(async (email: string, password: string, rememberMe = true) => {
+    sessionVersionRef.current++;
     try {
       await api.setRememberMe(rememberMe);
       const response = await api.loginWithEmail(email, password);
@@ -204,6 +221,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const loginWithPhone = useCallback(async (telephone: string, password: string, rememberMe = true) => {
+    sessionVersionRef.current++;
     try {
       await api.setRememberMe(rememberMe);
       const response = await api.loginWithPhone(telephone, password);
@@ -218,7 +236,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const response = await api.setPassword(password);
       store.setClient(response.client);
-      // Password is now set â€” clear the flag
+      // Password is now set — clear the flag
       await api.clearEmailOtpNewUser();
       store.setNeedsPasswordSetup(false);
       return { success: true };
@@ -245,12 +263,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = useCallback(async () => {
     // Revoke refresh token server-side — retry once on network failure
     let logoutSucceeded = false;
-    for (let attempt = 0; attempt < 2 && !logoutSucceeded; attempt++) {
+    for (let attempt = 0; attempt < LOGOUT_MAX_RETRIES && !logoutSucceeded; attempt++) {
       try {
         await api.logout();
         logoutSucceeded = true;
       } catch {
-        if (attempt === 0) await new Promise((r) => setTimeout(r, 1000));
+        if (attempt === 0) await new Promise((r) => setTimeout(r, LOGOUT_RETRY_DELAY_MS));
       }
     }
     // Clear auth tokens (SecureStore)

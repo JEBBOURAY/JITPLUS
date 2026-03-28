@@ -13,68 +13,48 @@ export function getServerBaseUrl(): string {
 }
 
 // ── SecureStore wrapper (falls back to memory on web) ──
-let memoryToken: string | null = null;
-let memoryRefreshToken: string | null = null;
+const memoryTokens: Record<string, string | null> = {
+  auth_token: null,
+  refresh_token: null,
+};
 /** When false, tokens are kept in memory only (not persisted to SecureStore) */
 let _shouldPersist = true;
 
-async function getToken(): Promise<string | null> {
-  if (Platform.OS === 'web') return memoryToken;
+async function getStored(key: string): Promise<string | null> {
+  if (Platform.OS === 'web') return memoryTokens[key] ?? null;
   try {
-    const stored = await SecureStore.getItemAsync('auth_token');
-    return stored ?? null;
+    return (await SecureStore.getItemAsync(key)) ?? null;
   } catch (e) {
-    if (IS_DEV) console.warn('SecureStore read failed:', e);
+    if (IS_DEV) console.warn(`SecureStore read failed (${key}):`, e);
     return null;
   }
 }
 
-async function setToken(token: string): Promise<void> {
-  memoryToken = token;
+async function setStored(key: string, value: string): Promise<void> {
+  memoryTokens[key] = value;
   if (Platform.OS !== 'web' && _shouldPersist) {
-    try { await SecureStore.setItemAsync('auth_token', token); } catch (e) {
-      if (IS_DEV) console.warn('SecureStore write failed:', e);
+    try { await SecureStore.setItemAsync(key, value); } catch (e) {
+      if (IS_DEV) console.warn(`SecureStore write failed (${key}):`, e);
     }
   }
 }
 
-async function removeToken(): Promise<void> {
-  memoryToken = null;
+async function removeStored(key: string): Promise<void> {
+  memoryTokens[key] = null;
   if (Platform.OS !== 'web') {
-    try { await SecureStore.deleteItemAsync('auth_token'); } catch (e) {
-      if (IS_DEV) console.warn('SecureStore delete failed:', e);
+    try { await SecureStore.deleteItemAsync(key); } catch (e) {
+      if (IS_DEV) console.warn(`SecureStore delete failed (${key}):`, e);
     }
   }
 }
 
-async function getRefreshToken(): Promise<string | null> {
-  if (Platform.OS === 'web') return memoryRefreshToken;
-  try {
-    const stored = await SecureStore.getItemAsync('refresh_token');
-    return stored ?? null;
-  } catch (e) {
-    if (IS_DEV) console.warn('SecureStore read failed:', e);
-    return null;
-  }
-}
+const getToken = () => getStored('auth_token');
+const setToken = (token: string) => setStored('auth_token', token);
+const removeToken = () => removeStored('auth_token');
 
-async function setRefreshToken(token: string): Promise<void> {
-  memoryRefreshToken = token;
-  if (Platform.OS !== 'web' && _shouldPersist) {
-    try { await SecureStore.setItemAsync('refresh_token', token); } catch (e) {
-      if (IS_DEV) console.warn('SecureStore write failed:', e);
-    }
-  }
-}
-
-async function removeRefreshToken(): Promise<void> {
-  memoryRefreshToken = null;
-  if (Platform.OS !== 'web') {
-    try { await SecureStore.deleteItemAsync('refresh_token'); } catch (e) {
-      if (IS_DEV) console.warn('SecureStore delete failed:', e);
-    }
-  }
-}
+const getRefreshToken = () => getStored('refresh_token');
+const setRefreshToken = (token: string) => setStored('refresh_token', token);
+const removeRefreshToken = () => removeStored('refresh_token');
 
 const AUTH_ROUTES = [
   '/client-auth/send-otp',
@@ -143,8 +123,8 @@ class ApiService {
   // devLogin removed — endpoint only available via direct HTTP in dev builds
 
   // ── Email OTP ───────────────────────────────────────────
-  async sendOtpEmail(email: string, isRegister = false): Promise<OtpResponse> {
-    const { data } = await this.api.post('/client-auth/send-otp-email', { email, isRegister });
+  async sendOtpEmail(email: string, isRegister = false, telephone?: string): Promise<OtpResponse> {
+    const { data } = await this.api.post('/client-auth/send-otp-email', { email, isRegister, ...(telephone && { telephone }) });
     return data;
   }
 
@@ -258,6 +238,11 @@ class ApiService {
     return data;
   }
 
+  async leaveMerchant(merchantId: string): Promise<{ success: boolean }> {
+    const { data } = await this.api.delete(`/client/merchants/${merchantId}/leave`);
+    return data;
+  }
+
   // ── Notifications ───────────────────────────────────────
   async getNotifications(page: number = 1, limit: number = 30): Promise<NotificationsResponse> {
     const { data } = await this.api.get('/client/notifications', { params: { page, limit } });
@@ -320,7 +305,9 @@ class ApiService {
     await this.clearRememberMe();
     // Clear cached permanent QR token from SecureStore
     if (Platform.OS !== 'web') {
-      try { await SecureStore.deleteItemAsync('qr_permanent_token'); } catch {}
+      try { await SecureStore.deleteItemAsync('qr_permanent_token'); } catch (e) {
+        if (IS_DEV) console.warn('SecureStore delete failed (qr_permanent_token):', e);
+      }
     }
   }
 

@@ -42,6 +42,20 @@ export const CATEGORY_EMOJI: Record<string, string> = {
   AUTRE: '🏷️',
 };
 
+/** Fuzzy keyword → emoji lookup used when exact key match fails. */
+const FUZZY_EMOJI: [string[], string][] = [
+  [['café', 'coffee', 'cafe'], '☕'],
+  [['restaurant', 'food', 'cuisine'], '🍽️'],
+  [['beauty', 'beauté', 'coiffure'], '💇'],
+  [['sport', 'fitness', 'gym'], '🏋️'],
+  [['pharma', 'santé', 'health'], '💊'],
+  [['shop', 'mode', 'vêtement'], '👗'],
+  [['supermarché', 'épicerie'], '🛒'],
+  [['boulangerie'], '🥖'],
+  [['librairie'], '📚'],
+  [['electronique', 'tech'], '📱'],
+];
+
 /**
  * Get a category emoji by matching category string (case-insensitive fuzzy match).
  * Falls back to '🏪' if no match found.
@@ -55,15 +69,8 @@ export function getCategoryEmoji(category: string | undefined): string {
 
   // Fuzzy match on lowercase
   const c = category.toLowerCase();
-  if (c.includes('café') || c.includes('coffee') || c.includes('cafe')) return '☕';
-  if (c.includes('restaurant') || c.includes('food') || c.includes('cuisine')) return '🍽️';
-  if (c.includes('beauty') || c.includes('beauté') || c.includes('coiffure')) return '💇';
-  if (c.includes('sport') || c.includes('fitness') || c.includes('gym')) return '🏋️';
-  if (c.includes('pharma') || c.includes('santé') || c.includes('health')) return '💊';
-  if (c.includes('shop') || c.includes('mode') || c.includes('vêtement')) return '👗';
-  if (c.includes('supermarché') || c.includes('épicerie')) return '🛒';
-  if (c.includes('boulangerie')) return '🥖';
-  if (c.includes('librairie')) return '📚';
-  if (c.includes('electronique') || c.includes('tech')) return '📱';
+  for (const [keywords, emoji] of FUZZY_EMOJI) {
+    if (keywords.some((kw) => c.includes(kw))) return emoji;
+  }
   return '🏪';
 }

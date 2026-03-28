@@ -35,6 +35,11 @@ export class SendOtpEmailDto {
   @IsOptional()
   @IsBoolean()
   isRegister?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\+[1-9]\d{6,14}$/, { message: 'Numéro de téléphone invalide (format international requis)' })
+  telephone?: string;
 }
 
 export class VerifyOtpEmailDto {

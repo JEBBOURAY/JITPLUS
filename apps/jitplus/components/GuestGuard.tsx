@@ -38,6 +38,8 @@ export default function GuestGuard() {
         activeOpacity={0.85}
         onPress={() => router.push('/login')}
         style={styles.btn}
+        accessibilityRole="button"
+        accessibilityLabel={t('welcome.login')}
       >
         <LinearGradient
           colors={[brandGradient[0], brandGradient[1]]}
@@ -53,6 +55,8 @@ export default function GuestGuard() {
         activeOpacity={0.7}
         onPress={() => router.push('/register')}
         style={styles.secondaryBtn}
+        accessibilityRole="button"
+        accessibilityLabel={t('welcome.createAccount')}
       >
         <Text style={[styles.secondaryText, { color: palette.violet }]}>
           {t('welcome.createAccount')}

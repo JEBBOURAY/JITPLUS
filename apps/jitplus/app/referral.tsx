@@ -1,13 +1,14 @@
 import { useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, RefreshControl, StyleSheet, Pressable,
-  TouchableOpacity, Platform, Share, ActivityIndicator,
+  TouchableOpacity, Platform, Share, ActivityIndicator, Linking,
 } from 'react-native';
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
   ArrowLeft, Copy, Share2, Gift, Clock, CheckCircle, Users,
+  Smartphone, UserPlus, CreditCard, BadgeCheck, Mail, MessageCircle,
 } from 'lucide-react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useTheme, palette } from '@/contexts/ThemeContext';
@@ -27,13 +28,15 @@ export default function ReferralScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [error, setError] = useState(false);
 
   const fetchStats = useCallback(async () => {
     try {
+      setError(false);
       const data = await api.getReferralStats();
       setStats(data);
     } catch {
-      // silently fail
+      setError(true);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -54,16 +57,24 @@ export default function ReferralScreen() {
 
   const handleCopy = useCallback(async () => {
     if (!stats?.referralCode) return;
-    await Clipboard.setStringAsync(stats.referralCode);
-    haptic(HapticStyle.Light);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      await Clipboard.setStringAsync(stats.referralCode);
+      haptic(HapticStyle.Light);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard access failed – ignore
+    }
   }, [stats?.referralCode]);
 
   const handleShare = useCallback(async () => {
     if (!stats?.referralCode) return;
-    const message = t('referral.shareMessage', { code: stats.referralCode });
-    await Share.share({ message });
+    try {
+      const message = t('referral.shareMessage', { code: stats.referralCode });
+      await Share.share({ message });
+    } catch {
+      // User dismissed the share dialog or share failed – ignore
+    }
   }, [stats?.referralCode, t]);
 
   const formatDate = (dateStr: string) => {
@@ -188,8 +199,8 @@ export default function ReferralScreen() {
                             {ref.merchantName}
                           </Text>
                           <Text style={[styles.referralMeta, { color: theme.textMuted }, isRTL && styles.textRTL]}>
-                            {ref.status === 'VALIDATED'
-                              ? t('referral.validatedOn', { date: formatDate(ref.validatedAt!) })
+                            {ref.status === 'VALIDATED' && ref.validatedAt
+                              ? t('referral.validatedOn', { date: formatDate(ref.validatedAt) })
                               : t('referral.referredOn', { date: formatDate(ref.createdAt) })}
                           </Text>
                         </View>
@@ -223,7 +234,107 @@ export default function ReferralScreen() {
                   </View>
                 )}
               </View>
+
+              {/* ── How it works ── */}
+              <View style={[styles.howCard, { backgroundColor: theme.bgCard }]}> 
+                <Text style={[styles.howTitle, { color: theme.text }]}>{t('referral.howTitle')}</Text>
+
+                <View style={[styles.howStep, isRTL && styles.howStepRTL]}>
+                  <View style={[styles.howStepIcon, { backgroundColor: `${palette.violet}12` }]}>
+                    <View style={styles.howStepNumber}>
+                      <Text style={styles.howStepNumberText}>1</Text>
+                    </View>
+                    <Share2 size={ms(16)} color={palette.violet} strokeWidth={1.5} />
+                  </View>
+                  <View style={styles.howStepContent}>
+                    <Text style={[styles.howStepTitle, { color: theme.text }]}>{t('referral.howStep1Title')}</Text>
+                    <Text style={[styles.howStepDesc, { color: theme.textMuted }]}>{t('referral.howStep1Desc')}</Text>
+                  </View>
+                </View>
+
+                <View style={[styles.howStep, isRTL && styles.howStepRTL]}>
+                  <View style={[styles.howStepIcon, { backgroundColor: `${palette.gold}12` }]}>
+                    <View style={styles.howStepNumber}>
+                      <Text style={styles.howStepNumberText}>2</Text>
+                    </View>
+                    <Smartphone size={ms(16)} color={palette.gold} strokeWidth={1.5} />
+                  </View>
+                  <View style={styles.howStepContent}>
+                    <Text style={[styles.howStepTitle, { color: theme.text }]}>{t('referral.howStep2Title')}</Text>
+                    <Text style={[styles.howStepDesc, { color: theme.textMuted }]}>{t('referral.howStep2Desc')}</Text>
+                  </View>
+                </View>
+
+                <View style={[styles.howStep, isRTL && styles.howStepRTL]}>
+                  <View style={[styles.howStepIcon, { backgroundColor: `${palette.emerald}12` }]}>
+                    <View style={styles.howStepNumber}>
+                      <Text style={styles.howStepNumberText}>3</Text>
+                    </View>
+                    <BadgeCheck size={ms(16)} color={palette.emerald} strokeWidth={1.5} />
+                  </View>
+                  <View style={styles.howStepContent}>
+                    <Text style={[styles.howStepTitle, { color: theme.text }]}>{t('referral.howStep3Title')}</Text>
+                    <Text style={[styles.howStepDesc, { color: theme.textMuted }]}>{t('referral.howStep3Desc')}</Text>
+                  </View>
+                </View>
+
+                <View style={[styles.howStep, isRTL && styles.howStepRTL, { borderBottomWidth: 0, paddingBottom: 0 }]}>
+                  <View style={[styles.howStepIcon, { backgroundColor: `${palette.violet}12` }]}>
+                    <View style={styles.howStepNumber}>
+                      <Text style={styles.howStepNumberText}>4</Text>
+                    </View>
+                    <CreditCard size={ms(16)} color={palette.violet} strokeWidth={1.5} />
+                  </View>
+                  <View style={styles.howStepContent}>
+                    <Text style={[styles.howStepTitle, { color: theme.text }]}>{t('referral.howStep4Title')}</Text>
+                    <Text style={[styles.howStepDesc, { color: theme.textMuted }]}>{t('referral.howStep4Desc')}</Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* ── Contact support ── */}
+              <View style={[styles.contactCard, { backgroundColor: theme.bgCard }]}>
+                <Text style={[styles.contactText, { color: theme.textMuted }, isRTL && styles.textRTL]}>
+                  {t('referral.contactSupportDesc')}
+                </Text>
+                <View style={[styles.contactActions, isRTL && styles.codeActionsRTL]}>
+                  <Pressable
+                    onPress={() => Linking.openURL('https://wa.me/33767471397?text=Bonjour%2C%20je%20souhaite%20d%C3%A9clencher%20le%20paiement%20de%20mon%20parrainage')}
+                    style={({ pressed }) => [
+                      styles.contactBtn,
+                      { backgroundColor: '#25D36615' },
+                      pressed && { opacity: 0.7 },
+                    ]}
+                  >
+                    <MessageCircle size={ms(16)} color="#25D366" strokeWidth={1.5} />
+                    <Text style={[styles.contactBtnText, { color: '#25D366' }]}>WhatsApp</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => Linking.openURL('mailto:contact@jitplus.com?subject=Paiement%20parrainage')}
+                    style={({ pressed }) => [
+                      styles.contactBtn,
+                      { backgroundColor: `${palette.violet}15` },
+                      pressed && { opacity: 0.7 },
+                    ]}
+                  >
+                    <Mail size={ms(16)} color={palette.violet} strokeWidth={1.5} />
+                    <Text style={[styles.contactBtnText, { color: palette.violet }]}>Email</Text>
+                  </Pressable>
+                </View>
+              </View>
             </>
+          ) : error ? (
+            <View style={{ alignItems: 'center', marginTop: hp(60), paddingHorizontal: wp(24) }}>
+              <Text style={{ color: theme.text, fontSize: FS.md, fontWeight: '600', marginBottom: hp(8) }}>
+                {t('common.genericError')}
+              </Text>
+              <Pressable
+                onPress={() => { setLoading(true); fetchStats(); }}
+                style={{ backgroundColor: palette.violet, paddingHorizontal: wp(24), paddingVertical: hp(10), borderRadius: radius.md }}
+              >
+                <Text style={{ color: '#fff', fontWeight: '600', fontSize: FS.sm }}>{t('common.retry')}</Text>
+              </Pressable>
+            </View>
           ) : null}
         </ScrollView>
       </SafeAreaView>
@@ -396,5 +507,99 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: FS.xs,
     fontWeight: '600',
+  },
+
+  // ── Contact support ──
+  contactCard: {
+    borderRadius: radius.xl,
+    padding: wp(20),
+    marginBottom: hp(20),
+    alignItems: 'center',
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8 },
+      android: { elevation: 2 },
+    }),
+  },
+  contactText: {
+    fontSize: FS.sm,
+    lineHeight: ms(20),
+    textAlign: 'center',
+    marginBottom: hp(14),
+  },
+  contactActions: {
+    flexDirection: 'row',
+    gap: wp(12),
+  },
+  contactBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp(6),
+    paddingHorizontal: wp(16),
+    paddingVertical: hp(10),
+    borderRadius: radius.lg,
+  },
+  contactBtnText: {
+    fontSize: FS.sm,
+    fontWeight: '600',
+  },
+
+  // ── How it works ──
+  howCard: {
+    borderRadius: radius.xl,
+    padding: wp(20),
+    marginBottom: hp(20),
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8 },
+      android: { elevation: 2 },
+    }),
+  },
+  howTitle: {
+    fontSize: FS.md,
+    fontWeight: '700',
+    marginBottom: hp(16),
+  },
+  howStep: {
+    flexDirection: 'row',
+    gap: wp(12),
+    paddingBottom: hp(14),
+    marginBottom: hp(14),
+    borderBottomWidth: 0.5,
+    borderBottomColor: 'rgba(128,128,128,0.15)',
+  },
+  howStepRTL: { flexDirection: 'row-reverse' },
+  howStepIcon: {
+    width: ms(40),
+    height: ms(40),
+    borderRadius: ms(12),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  howStepNumber: {
+    position: 'absolute',
+    top: -ms(4),
+    right: -ms(4),
+    width: ms(16),
+    height: ms(16),
+    borderRadius: ms(8),
+    backgroundColor: palette.violet,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  howStepNumberText: {
+    fontSize: ms(9),
+    fontWeight: '800',
+    color: '#fff',
+  },
+  howStepContent: {
+    flex: 1,
+  },
+  howStepTitle: {
+    fontSize: FS.sm,
+    fontWeight: '600',
+    marginBottom: hp(3),
+  },
+  howStepDesc: {
+    fontSize: FS.xs,
+    lineHeight: ms(17),
   },
 });

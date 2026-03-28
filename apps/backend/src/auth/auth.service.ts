@@ -909,6 +909,10 @@ export class AuthService {
     const codeHash = hashOtp(code);
     const expiresAt = new Date(Date.now() + OTP_EXPIRY_MS);
 
+    if (process.env.NODE_ENV === 'development') {
+      this.logger.debug(`[DEV] ${logLabel} OTP pour ${email}: ${code}`);
+    }
+
     await this.otpRepo.upsert({
       where: { email },
       create: { email, code: codeHash, expiresAt },

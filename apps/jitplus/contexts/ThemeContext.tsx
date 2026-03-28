@@ -20,12 +20,9 @@ export const palette = {
   goldDark: '#D97706',
   goldSoft: '#FDE68A',
   goldUltraLight: '#FEF3C7',
-  // Aliases kept for compat
-  cyan: '#F59E0B',
-  neonCyan: '#F59E0B',
+  // Semantic aliases
   neonBlue: '#38BDF8',
   neonPink: '#F472B6',
-  amber: '#F59E0B',
   emerald: '#10B981',
   red: '#EF4444',
   // Neutral spectrum

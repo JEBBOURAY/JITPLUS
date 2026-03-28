@@ -45,6 +45,7 @@ export interface Merchant {
   stampsForReward?: number;
   minRewardCost?: number | null;
   logoUrl?: string | null;
+  coverUrl?: string | null;
   socialLinks?: SocialLinks | null;
   profileViews?: number;
   clientCount?: number;
@@ -53,6 +54,10 @@ export interface Merchant {
   userPoints?: number;
   /** Whether the client already has a loyalty card with this merchant */
   hasCard?: boolean;
+  /** Whether the client's card is deactivated */
+  cardDeactivated?: boolean;
+  /** Current points/stamps balance on the card */
+  cardBalance?: number;
   /** Store ID when this entry represents a specific store location */
   storeId?: string;
   /** Store name when this entry represents a specific store location */

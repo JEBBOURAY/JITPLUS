@@ -29,6 +29,11 @@ import MerchantLogo from '@/components/MerchantLogo';
 import MapMarker from '@/components/MapMarker';
 import ClusterMarker from '@/components/ClusterMarker';
 import { useMapClustering } from '@/utils/mapClustering';
+import {
+  DEBOUNCE_MS, FOCUS_DELAY_MS, MAP_ANIMATE_DURATION_MS,
+  MERCHANT_FOCUS_ZOOM_DELTA, USER_LOCATION_ZOOM_DELTA, USER_CENTER_ZOOM_DELTA,
+  CLUSTER_ZOOM_DIVISOR, COMPACT_SCREEN_HEIGHT,
+} from '@/constants';
 
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 
@@ -231,7 +236,7 @@ export default function DiscoverScreen() {
   const { height: screenHeight } = useWindowDimensions();
   const { client, isGuest } = useAuth();
   const { t } = useLanguage();
-  const isVeryCompact = screenHeight < 710;
+  const isVeryCompact = screenHeight < COMPACT_SCREEN_HEIGHT;
 
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -243,6 +248,7 @@ export default function DiscoverScreen() {
   const [showSearch, setShowSearch] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [currentRegion, setCurrentRegion] = useState(DEFAULT_REGION);
+  const currentRegionRef = useRef(DEFAULT_REGION);
 
   const searchInputRef = useRef<TextInput>(null);
   const mapRef = useRef<any>(null);
@@ -275,9 +281,9 @@ export default function DiscoverScreen() {
             mapRef.current.animateToRegion({
               latitude: target.latitude,
               longitude: target.longitude,
-              latitudeDelta: 0.008,
-              longitudeDelta: 0.008,
-            }, 600);
+              latitudeDelta: MERCHANT_FOCUS_ZOOM_DELTA,
+              longitudeDelta: MERCHANT_FOCUS_ZOOM_DELTA,
+            }, MAP_ANIMATE_DURATION_MS);
           } catch (e) { if (__DEV__) console.warn('animateToRegion failed', e); }
         }
       }
@@ -305,7 +311,7 @@ export default function DiscoverScreen() {
 
   // Debounce search to avoid re-filtering on every keystroke
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 300);
+    const timer = setTimeout(() => setDebouncedSearch(searchQuery), DEBOUNCE_MS);
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
@@ -375,31 +381,40 @@ export default function DiscoverScreen() {
     setSelectedMerchant(null);
     if (mapRef.current) {
       try {
+        const region = currentRegionRef.current;
         const nextRegion = {
           latitude,
           longitude,
           latitudeDelta: expansionZoom 
             ? 360 / Math.pow(2, expansionZoom) // Calculate delta from zoom
-            : currentRegion.latitudeDelta / 2.5,
+            : region.latitudeDelta / CLUSTER_ZOOM_DIVISOR,
           longitudeDelta: expansionZoom
             ? 360 / Math.pow(2, expansionZoom)
-            : currentRegion.longitudeDelta / 2.5,
+            : region.longitudeDelta / CLUSTER_ZOOM_DIVISOR,
         };
 
-        mapRef.current.animateToRegion(nextRegion, 650);
+        mapRef.current.animateToRegion(nextRegion, MAP_ANIMATE_DURATION_MS + 50);
       } catch (e) { if (__DEV__) console.warn('animateToRegion failed', e); }
     }
-  }, [currentRegion]);
+  }, []);
 
   const handleRegionChange = useCallback((_region: typeof DEFAULT_REGION) => {
-    setCurrentRegion(_region);
-  }, []);
+    currentRegionRef.current = _region;
+    // Only trigger re-render + reclustering for significant viewport changes
+    const prev = currentRegion;
+    const zoomDelta = Math.abs(prev.latitudeDelta - _region.latitudeDelta);
+    const latDelta = Math.abs(prev.latitude - _region.latitude);
+    const lngDelta = Math.abs(prev.longitude - _region.longitude);
+    if (zoomDelta > 0.003 || latDelta > 0.003 || lngDelta > 0.003) {
+      setCurrentRegion(_region);
+    }
+  }, [currentRegion]);
 
   // Animate to user position as soon as both map and location are ready
   useEffect(() => {
     if (!mapReady || !userLocation || !mapRef.current) return;
     try {
-      mapRef.current.animateToRegion({ ...userLocation, latitudeDelta: 0.04, longitudeDelta: 0.04 }, 700);
+      mapRef.current.animateToRegion({ ...userLocation, latitudeDelta: USER_LOCATION_ZOOM_DELTA, longitudeDelta: USER_LOCATION_ZOOM_DELTA }, MAP_ANIMATE_DURATION_MS + 100);
     } catch (e) { if (__DEV__) console.warn('animateToRegion failed', e); }
   }, [mapReady, userLocation]);
 
@@ -418,13 +433,13 @@ export default function DiscoverScreen() {
   const centerOnUser = useCallback(() => {
     if (!userLocation || !mapRef.current) return;
     haptic();
-    mapRef.current.animateToRegion({ ...userLocation, latitudeDelta: 0.015, longitudeDelta: 0.015 }, 600);
+    mapRef.current.animateToRegion({ ...userLocation, latitudeDelta: USER_CENTER_ZOOM_DELTA, longitudeDelta: USER_CENTER_ZOOM_DELTA }, MAP_ANIMATE_DURATION_MS);
   }, [userLocation]);
 
   const toggleSearch = useCallback(() => {
     haptic();
     setShowSearch((v) => {
-      if (!v) setTimeout(() => searchInputRef.current?.focus(), 100);
+      if (!v) setTimeout(() => searchInputRef.current?.focus(), FOCUS_DELAY_MS);
       else { setSearchQuery(''); Keyboard.dismiss(); }
       return !v;
     });
@@ -509,10 +524,7 @@ export default function DiscoverScreen() {
                 onPress={() => handleMarkerPress(m)}
                 anchor={{ x: 0.5, y: 0.5 }}
               >
-                <MapMarker
-                  userPoints={m.userPoints}
-                  categorie={m.categorie}
-                />
+                <MapMarker />
               </TrackedMarker>
             );
           })}

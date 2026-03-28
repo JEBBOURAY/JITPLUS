@@ -65,7 +65,7 @@ export class NotificationsService {
     // when combined with the composite unique index on (client_id, merchant_id).
     const [allCards, merchant] = await Promise.all([
       this.loyaltyCardRepo.findMany({
-        where: { merchantId },
+        where: { merchantId, deactivatedAt: null },
         select: { clientId: true },
         distinct: ['clientId'],
       }),
@@ -84,7 +84,7 @@ export class NotificationsService {
     while (true) {
       const batch = await this.clientRepo.findMany({
         where: {
-          loyaltyCards: { some: { merchantId } },
+          loyaltyCards: { some: { merchantId, deactivatedAt: null } },
           pushToken: { not: null },
           notifPush: true, // Respect client opt-out preference
         },
@@ -290,7 +290,7 @@ export class NotificationsService {
     while (true) {
       const batch = await this.clientRepo.findMany({
         where: {
-          loyaltyCards: { some: { merchantId } },
+          loyaltyCards: { some: { merchantId, deactivatedAt: null } },
           email: { not: null },
           notifEmail: true, // Respect client opt-out preference
         },
@@ -379,7 +379,7 @@ export class NotificationsService {
     while (true) {
       const batch = await this.clientRepo.findMany({
         where: {
-          loyaltyCards: { some: { merchantId } },
+          loyaltyCards: { some: { merchantId, deactivatedAt: null } },
           telephone: { not: null },
           notifWhatsapp: true,
         },

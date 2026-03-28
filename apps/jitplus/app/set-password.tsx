@@ -15,21 +15,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
-
-type PasswordStrength = 'weak' | 'medium' | 'strong';
-
-function getPasswordStrength(pw: string, t: (key: string) => string): { level: PasswordStrength; label: string; color: string; pct: number } {
-  if (pw.length === 0) return { level: 'weak', label: '', color: '#D1D5DB', pct: 0 };
-  let score = 0;
-  if (pw.length >= 8) score++;
-  if (pw.length >= 10) score++;
-  if (/[A-Z]/.test(pw)) score++;
-  if (/[0-9]/.test(pw)) score++;
-  if (/[^A-Za-z0-9]/.test(pw)) score++;
-  if (score <= 2) return { level: 'weak', label: t('setPassword.strengthWeak'), color: '#EF4444', pct: 0.33 };
-  if (score <= 3) return { level: 'medium', label: t('setPassword.strengthMedium'), color: '#F59E0B', pct: 0.66 };
-  return { level: 'strong', label: t('setPassword.strengthStrong'), color: '#10B981', pct: 1 };
-}
+import { getPasswordStrength, isValidPassword as checkPassword } from '@/utils/passwordStrength';
 
 export default function SetPasswordScreen() {
   const theme = useTheme();
@@ -60,7 +46,7 @@ export default function SetPasswordScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const isValidPassword = password.length >= 8 && /[A-Z]/.test(password) && /[0-9]/.test(password) && /[^A-Za-z0-9]/.test(password);
+  const isValidPassword = checkPassword(password);
   const passwordsMatch = password === confirmPassword && confirmPassword.length > 0;
   const canSubmit = isValidPassword && passwordsMatch;
 

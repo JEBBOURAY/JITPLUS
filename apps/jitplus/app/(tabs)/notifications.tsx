@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, useRef } from 'react';
+import React, { useCallback, useMemo, useState, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, RefreshControl,
   TouchableOpacity, Alert, Platform, Linking, Image,
@@ -32,6 +32,10 @@ import {
   queryKeys,
 } from '@/hooks/useQueryHooks';
 import MerchantLogo from '@/components/MerchantLogo';
+import {
+  SWIPE_THRESHOLD_RATIO, PAN_MIN_DX, SWIPE_DISMISS_DURATION_MS,
+  ROW_COLLAPSE_DURATION_MS, SPRING_BOUNCINESS, STAGGER_DELAY_MS, MAX_STAGGER_DELAY_MS,
+} from '@/constants';
 
 // Locale-aware date formatter — creates a new one only when locale changes
 function getNotifDateFmt(locale: string) {
@@ -48,17 +52,20 @@ const COLOR_MAP: Record<string, string> = {
 };
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
-const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.3;
+const SWIPE_THRESHOLD = SCREEN_WIDTH * SWIPE_THRESHOLD_RATIO;
 
 // ── Swipeable wrapper for notification cards ──
-function SwipeableNotifCard({ onDismiss, children }: { onDismiss: () => void; children: React.ReactNode }) {
+const SwipeableNotifCard = React.memo(function SwipeableNotifCard({ onDismiss, children }: { onDismiss: () => void; children: React.ReactNode }) {
   const translateX = useRef(new Animated.Value(0)).current;
   const rowHeight = useRef(new Animated.Value(1)).current;
+  // Keep a stable ref to onDismiss so the PanResponder always calls the latest callback
+  const onDismissRef = useRef(onDismiss);
+  onDismissRef.current = onDismiss;
 
   const panResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_, gesture) =>
-        Math.abs(gesture.dx) > 10 && Math.abs(gesture.dx) > Math.abs(gesture.dy * 2),
+        Math.abs(gesture.dx) > PAN_MIN_DX && Math.abs(gesture.dx) > Math.abs(gesture.dy * 2),
       onPanResponderMove: (_, gesture) => {
         translateX.setValue(gesture.dx);
       },
@@ -67,20 +74,20 @@ function SwipeableNotifCard({ onDismiss, children }: { onDismiss: () => void; ch
           const toValue = gesture.dx > 0 ? SCREEN_WIDTH : -SCREEN_WIDTH;
           Animated.timing(translateX, {
             toValue,
-            duration: 200,
+            duration: SWIPE_DISMISS_DURATION_MS,
             useNativeDriver: true,
           }).start(() => {
             Animated.timing(rowHeight, {
               toValue: 0,
-              duration: 180,
+              duration: ROW_COLLAPSE_DURATION_MS,
               useNativeDriver: false,
-            }).start(onDismiss);
+            }).start(() => onDismissRef.current());
           });
         } else {
           Animated.spring(translateX, {
             toValue: 0,
             useNativeDriver: true,
-            bounciness: 8,
+            bounciness: SPRING_BOUNCINESS,
           }).start();
         }
       },
@@ -123,7 +130,7 @@ function SwipeableNotifCard({ onDismiss, children }: { onDismiss: () => void; ch
       </Animated.View>
     </Animated.View>
   );
-}
+});
 
 export default function NotificationsScreen() {
   const theme = useTheme();
@@ -152,14 +159,12 @@ export default function NotificationsScreen() {
     }
   }, [isExpoGo]);
 
-  // Check each time the screen is focused + ensure fresh notifications
+  // Check each time the screen is focused
   useFocusEffect(useCallback(() => {
     setBannerDismissed(false);
     checkPushPermission();
-    // Invalidate to guarantee fresh data when user navigates to this tab
-    queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
-    queryClient.invalidateQueries({ queryKey: queryKeys.unreadCount });
-  }, [checkPushPermission, queryClient]));
+    // React Query staleTime handles freshness — no forced invalidation needed
+  }, [checkPushPermission]));
 
   const handleOpenSettings = useCallback(async () => {
     haptic();
@@ -312,11 +317,18 @@ export default function NotificationsScreen() {
   }, [notifications.length, unreadCount, handleMarkAllAsRead, handleDismissAll, t]);
 
   // ── Render notification card ──
+  const staggerCacheRef = useRef<Map<string, number>>(new Map());
   const renderNotif = useCallback(({ item: notif, index }: { item: ClientNotification; index: number }) => {
     const color = COLOR_MAP[notif.type] || theme.primary;
     const isUnread = !notif.isRead;
-    // Cap animation delay to avoid stacking 1200ms+ of stagger for long lists
-    const animDelay = Math.min(index * 60, 300);
+    // Cache delay per ID so items don't re-animate on list updates
+    if (!staggerCacheRef.current.has(notif.id)) {
+      staggerCacheRef.current.set(
+        notif.id,
+        index < 5 ? Math.min(index * STAGGER_DELAY_MS, MAX_STAGGER_DELAY_MS) : 0,
+      );
+    }
+    const animDelay = staggerCacheRef.current.get(notif.id)!;
 
     return (
       <FadeInView key={notif.id} delay={animDelay}>
@@ -479,10 +491,10 @@ export default function NotificationsScreen() {
               {/* Push permission banner */}
               {showPushBanner && (
                 <FadeInView delay={100}>
-                  <View style={[styles.pushBanner, { backgroundColor: `${palette.amber}12`, borderColor: `${palette.amber}35` }]}>
+                  <View style={[styles.pushBanner, { backgroundColor: `${palette.gold}12`, borderColor: `${palette.gold}35` }]}>
                     <View style={styles.pushBannerTop}>
-                      <View style={[styles.pushBannerIcon, { backgroundColor: `${palette.amber}20` }]}>
-                        <BellRing size={ms(20)} color={palette.amber} strokeWidth={1.5} />
+                      <View style={[styles.pushBannerIcon, { backgroundColor: `${palette.gold}20` }]}>
+                        <BellRing size={ms(20)} color={palette.gold} strokeWidth={1.5} />
                       </View>
                       <View style={{ flex: 1 }}>
                         <Text style={[styles.pushBannerTitle, { color: theme.text }]}>
@@ -503,10 +515,10 @@ export default function NotificationsScreen() {
                     <TouchableOpacity
                       onPress={handleRequestPermission}
                       activeOpacity={0.7}
-                      style={[styles.pushBannerBtn, { backgroundColor: `${palette.amber}22` }]}
+                      style={[styles.pushBannerBtn, { backgroundColor: `${palette.gold}22` }]}
                     >
-                      <Settings size={ms(14)} color={palette.amber} strokeWidth={1.5} />
-                      <Text style={[styles.pushBannerBtnText, { color: palette.amber }]}>{t('notifications.enableButton')}</Text>
+                      <Settings size={ms(14)} color={palette.gold} strokeWidth={1.5} />
+                      <Text style={[styles.pushBannerBtnText, { color: palette.gold }]}>{t('notifications.enableButton')}</Text>
                     </TouchableOpacity>
                   </View>
                 </FadeInView>

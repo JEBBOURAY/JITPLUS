@@ -30,6 +30,11 @@ import { useGuardedCallback } from '@/hooks/useGuardedCallback';
 import { resolveImageUrl } from '@/utils/imageUrl';
 import { prefetchImages } from '@/utils/imageCache';
 import { timeAgo } from '@/utils/date';
+import {
+  DEBOUNCE_MS, FOCUS_DELAY_MS, BANNER_ANIM_DURATION_MS, WELCOME_BANNER_VISIBLE_MS,
+  REWARD_BANNER_VISIBLE_MS, FRESH_REWARD_WINDOW_MS, PROGRESS_ANIM_DURATION_MS,
+  PROGRESS_ANIM_DELAY_MS, MAX_VISIBLE_STAMPS, DEFAULT_STAMPS_GOAL,
+} from '@/constants';
 
 type SortMode = 'recent' | 'closest' | 'points' | 'random';
 
@@ -39,6 +44,15 @@ const SORT_OPTIONS: { key: SortMode; labelKey: string; icon: typeof Clock }[] = 
   { key: 'points', labelKey: 'home.sortPoints', icon: Trophy },
   { key: 'random', labelKey: 'home.sortTombola', icon: Shuffle },
 ];
+
+const PROGRESS_BAR_ORIGIN = { transformOrigin: 'left center' } as const;
+
+// ── Pre-allocated style constants (avoid allocating in render) ──
+const GRADIENT_VIOLET = [palette.violetDark, palette.violet] as const;
+const GRADIENT_EMERALD = ['#10B981', '#059669'] as const;
+const GRADIENT_H_START = { x: 0, y: 0 } as const;
+const GRADIENT_H_END = { x: 1, y: 0 } as const;
+const JITPLUS_LOGO = require('@/assets/images/jitpluslogo.png');
 
 // ── Next-milestone helper for POINTS cards with no configured reward ──
 function getNextMilestone(pts: number): number {
@@ -69,7 +83,7 @@ const CardItem = React.memo(function CardItem({
   const balance = card.balance ?? 0;
 
   // ── STAMPS ──
-  const goal = card.merchant?.stampsForReward || 10;
+  const goal = card.merchant?.stampsForReward || DEFAULT_STAMPS_GOAL;
   const stampsEarned = Math.min(balance, goal);
   const stampsRemaining = Math.max(0, goal - stampsEarned);
   const stampsComplete = stampsEarned >= goal;
@@ -87,20 +101,30 @@ const CardItem = React.memo(function CardItem({
   useEffect(() => {
     Animated.timing(progressAnim, {
       toValue: animTarget,
-      duration: 700,
-      delay: 150,
-      useNativeDriver: false,
+      duration: PROGRESS_ANIM_DURATION_MS,
+      delay: PROGRESS_ANIM_DELAY_MS,
+      useNativeDriver: true,
       easing: Easing.out(Easing.cubic),
     }).start();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [animTarget]);
 
-  // Max 20 stamp dots shown; extras are mentioned as "+N"
-  const visibleStamps = Math.min(goal, 20);
+  // Max stamp dots shown; extras are mentioned as "+N"
+  const visibleStamps = Math.min(goal, MAX_VISIBLE_STAMPS);
   const stampDots = useMemo(
     () => Array.from({ length: visibleStamps }, (_, i) => i < stampsEarned),
     [visibleStamps, stampsEarned],
   );
+
+  // Pre-compute stamp dot styles to avoid inline object allocation in map()
+  const stampStyles = useMemo(() => ({
+    filledLogo: { borderColor: palette.violet, backgroundColor: theme.bgElevated },
+    emptyLogo: { borderColor: theme.borderLight, backgroundColor: theme.bgCard },
+    filledNoLogo: { backgroundColor: palette.violet, borderColor: palette.violet },
+    emptyNoLogo: { backgroundColor: 'transparent' as const, borderColor: theme.borderLight },
+    logoFilled: { opacity: 1 },
+    logoEmpty: { opacity: 0.18 },
+  }), [theme.bgElevated, theme.bgCard, theme.borderLight]);
 
   const lastScanLabel = useMemo(
     () => timeAgo(card.updatedAt || card.createdAt, locale),
@@ -146,7 +170,7 @@ const CardItem = React.memo(function CardItem({
               {isMerchantUnavailable ? t('home.unavailableMerchantName') : (card.merchant?.nomBoutique || t('common.shop'))}
             </Text>
             <RNImage
-              source={require('@/assets/images/jitpluslogo.png')}
+              source={JITPLUS_LOGO}
               style={styles.cardLogo}
               resizeMode="contain"
             />
@@ -180,15 +204,12 @@ const CardItem = React.memo(function CardItem({
                         key={i}
                         style={[
                           styles.stampDot,
-                          {
-                            borderColor: filled ? palette.violet : theme.borderLight,
-                            backgroundColor: filled ? theme.bgElevated : theme.bgCard,
-                          },
+                          filled ? stampStyles.filledLogo : stampStyles.emptyLogo,
                         ]}
                       >
                         <Image
                           source={resolveImageUrl(card.merchant!.logoUrl!)}
-                          style={[styles.stampLogo, { opacity: filled ? 1 : 0.18 }]}
+                          style={[styles.stampLogo, filled ? stampStyles.logoFilled : stampStyles.logoEmpty]}
                           contentFit="cover"
                           cachePolicy="disk"
                         />
@@ -200,9 +221,7 @@ const CardItem = React.memo(function CardItem({
                       key={i}
                       style={[
                         styles.stampDot,
-                        filled
-                          ? { backgroundColor: palette.violet, borderColor: palette.violet }
-                          : { backgroundColor: 'transparent', borderColor: theme.borderLight },
+                        filled ? stampStyles.filledNoLogo : stampStyles.emptyNoLogo,
                       ]}
                     >
                       {filled && <Text style={styles.stampCheck}>✓</Text>}
@@ -252,9 +271,10 @@ const CardItem = React.memo(function CardItem({
                   style={[
                     styles.pointsBarFill,
                     {
-                      width: progressAnim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
+                      transform: [{ scaleX: progressAnim }],
                       backgroundColor: pointsComplete ? palette.emerald : palette.violet,
                     },
+                    PROGRESS_BAR_ORIGIN,
                   ]}
                 />
               </View>
@@ -307,7 +327,7 @@ export default function HomeScreen() {
 
   // Debounce search to avoid re-filtering on every keystroke
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 300);
+    const timer = setTimeout(() => setDebouncedSearch(searchQuery), DEBOUNCE_MS);
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
@@ -374,7 +394,7 @@ export default function HomeScreen() {
   const toggleSearch = useCallback(() => {
     haptic();
     setShowSearch((v) => {
-      if (!v) setTimeout(() => searchInputRef.current?.focus(), 100);
+      if (!v) setTimeout(() => searchInputRef.current?.focus(), FOCUS_DELAY_MS);
       else { setSearchQuery(''); Keyboard.dismiss(); }
       return !v;
     });
@@ -394,9 +414,9 @@ export default function HomeScreen() {
           AsyncStorage.removeItem('showWelcome');
           setShowWelcome(true);
           Animated.sequence([
-            Animated.timing(welcomeAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
-            Animated.delay(3000),
-            Animated.timing(welcomeAnim, { toValue: 0, duration: 400, useNativeDriver: true }),
+            Animated.timing(welcomeAnim, { toValue: 1, duration: BANNER_ANIM_DURATION_MS, useNativeDriver: true }),
+            Animated.delay(WELCOME_BANNER_VISIBLE_MS),
+            Animated.timing(welcomeAnim, { toValue: 0, duration: BANNER_ANIM_DURATION_MS, useNativeDriver: true }),
           ]).start(() => setShowWelcome(false));
         }
       });
@@ -407,7 +427,7 @@ export default function HomeScreen() {
   useFocusEffect(
     useCallback(() => {
       const notifications = notifData?.pages[0]?.notifications ?? [];
-      const TWENTYFOUR_H = 24 * 60 * 60 * 1000;
+      const TWENTYFOUR_H = FRESH_REWARD_WINDOW_MS;
       const freshReward = notifications.find(
         (n) => {
           if (n.type !== 'reward' || n.isRead || shownRewardIdsRef.current.has(n.id)) return false;
@@ -420,9 +440,9 @@ export default function HomeScreen() {
       setRewardBannerNotif(freshReward);
       rewardBannerAnim.setValue(0);
       Animated.sequence([
-        Animated.timing(rewardBannerAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
-        Animated.delay(5000),
-        Animated.timing(rewardBannerAnim, { toValue: 0, duration: 400, useNativeDriver: true }),
+        Animated.timing(rewardBannerAnim, { toValue: 1, duration: BANNER_ANIM_DURATION_MS, useNativeDriver: true }),
+        Animated.delay(REWARD_BANNER_VISIBLE_MS),
+        Animated.timing(rewardBannerAnim, { toValue: 0, duration: BANNER_ANIM_DURATION_MS, useNativeDriver: true }),
       ]).start(() => setRewardBannerNotif(null));
     }, [notifData, rewardBannerAnim])
   );
@@ -433,11 +453,7 @@ export default function HomeScreen() {
   }, [refetch]);
 
   // Refetch cards when the tab regains focus (freezeOnBlur prevents auto-refetch)
-  useFocusEffect(
-    useCallback(() => {
-      refetch();
-    }, [refetch]),
-  );
+  // Removed forced refetch — React Query staleTime handles freshness automatically
 
   const firstName = client?.prenom || 'Client';
 
@@ -526,7 +542,7 @@ export default function HomeScreen() {
           opacity: welcomeAnim,
           transform: [{ translateY: welcomeAnim.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }],
         }]}>
-          <LinearGradient colors={[palette.violetDark, palette.violet]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.welcomeGradient}>
+          <LinearGradient colors={GRADIENT_VIOLET} start={GRADIENT_H_START} end={GRADIENT_H_END} style={styles.welcomeGradient}>
             <Sparkles size={ms(16)} color="#fff" />
             <Text style={styles.welcomeText}>{t('home.welcomeBack', { name: firstName })}</Text>
           </LinearGradient>
@@ -701,7 +717,7 @@ export default function HomeScreen() {
             activeOpacity={0.9}
             onPress={() => { haptic(); router.push('/(tabs)/notifications'); setRewardBannerNotif(null); }}
           >
-            <LinearGradient colors={['#10B981', '#059669']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.rewardNotifGradient}>
+            <LinearGradient colors={GRADIENT_EMERALD} start={GRADIENT_H_START} end={GRADIENT_H_END} style={styles.rewardNotifGradient}>
               <Bell size={ms(15)} color="#fff" strokeWidth={1.5} />
               <Text style={styles.rewardNotifText} numberOfLines={1}>
                 {rewardBannerNotif.merchantName
@@ -813,7 +829,7 @@ const styles = StyleSheet.create({
   pointsValue: { fontSize: fontSize.sm, fontWeight: '700' },
   pointsPct: { fontSize: fontSize.xs, fontWeight: '600' },
   pointsBar: { height: ms(7), borderRadius: ms(4), overflow: 'hidden' as const, marginBottom: hp(4) },
-  pointsBarFill: { height: '100%' as const, borderRadius: ms(4) },
+  pointsBarFill: { width: '100%' as const, height: '100%' as const, borderRadius: ms(4) },
   pointsTargetLabel: { fontSize: fontSize.xs, fontWeight: '500' },
 
   // ── Shared reward indicators ──

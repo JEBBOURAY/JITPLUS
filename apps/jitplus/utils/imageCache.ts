@@ -28,7 +28,9 @@ export function prefetchImages(urls: (string | null | undefined)[]): void {
     const batch = pending.slice(i, i + BATCH_SIZE);
     if (!batch.length) return;
     i += BATCH_SIZE;
-    Promise.allSettled(batch.map((u) => Image.prefetch(u))).then(nextBatch);
+    Promise.allSettled(batch.map((u) => Image.prefetch(u)))
+      .then(nextBatch)
+      .catch((e) => { if (__DEV__) console.warn('[imageCache] batch error:', e); });
   }
   nextBatch();
 }

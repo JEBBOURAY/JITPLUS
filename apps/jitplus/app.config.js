@@ -26,7 +26,7 @@ module.exports = ({ config }) => {
     name: 'JitPlus',
     slug: 'jitplus',
     description: 'Digital loyalty cards app — collect stamps and earn rewards at your favorite local shops.',
-    version: '1.1.8',
+    version: '1.1.9',
     orientation: 'portrait',
     icon: './assets/images/icon-white.png',
     scheme: 'jitplus',
@@ -67,7 +67,7 @@ module.exports = ({ config }) => {
       ),
     },
     android: {
-      versionCode: 19,
+      versionCode: 20,
       icon: './assets/images/icon-white.png',
       adaptiveIcon: {
         foregroundImage: './assets/images/adaptive-icon-white.png',
@@ -106,6 +106,7 @@ module.exports = ({ config }) => {
     plugins: [
       'expo-router',
       'expo-secure-store',
+      '@react-native-google-signin/google-signin',
       [
         'expo-splash-screen',
         {

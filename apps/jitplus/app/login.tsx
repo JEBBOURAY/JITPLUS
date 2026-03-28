@@ -15,32 +15,27 @@ import {
 } from 'react-native';
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 import { router } from 'expo-router';
-import { ArrowRight, Mail, Phone, ChevronLeft, Lock, Eye, EyeOff, Check } from 'lucide-react-native';
+import { ArrowRight, Mail, ChevronLeft, Lock, Eye, EyeOff, Check } from 'lucide-react-native';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
 import { isValidEmail } from '@/utils/validation';
-import { DEFAULT_COUNTRY, isValidPhoneForCountry, CountryCode } from '@/utils/countryCodes';
-import CountryCodePicker from '@/components/CountryCodePicker';
 import { useGoogleAuth } from '@/hooks/useGoogleAuth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import BrandText from '@/components/BrandText';
 import FormError from '@/components/FormError';
 
-type LoginMethod = 'select' | 'email' | 'whatsapp' | 'google';
+type LoginMethod = 'select' | 'email' | 'google';
 
 export default function LoginScreen() {
   const theme = useTheme();
   const { t } = useLanguage();
-  const { loginWithEmail, loginWithPhone, sendOtpEmail, sendOtp } = useAuth();
+  const { loginWithEmail, sendOtpEmail } = useAuth();
   const [method, setMethod] = useState<LoginMethod>('select');
   const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
-  const [country, setCountry] = useState<CountryCode>(DEFAULT_COUNTRY);
   const [password, setPassword] = useState('');
-  const [phonePassword, setPhonePassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
@@ -62,7 +57,6 @@ export default function LoginScreen() {
   }, []);
 
   const emailValid = isValidEmail(email);
-  const phoneValid = isValidPhoneForCountry(phone, country);
 
   const handleBack = useCallback(() => {
     setError('');
@@ -131,52 +125,6 @@ export default function LoginScreen() {
     }
   };
 
-  // ── WhatsApp / Phone flow (now with password, no OTP) ──
-  const handlePhoneForgotPassword = async () => {
-    if (!phoneValid) {
-      setError(t('login.phoneForgotPasswordPrompt'));
-      return;
-    }
-    setIsLoading(true);
-    setError('');
-    const fullPhone = `${country.dial}${phone}`;
-    const result = await sendOtp(fullPhone, false);
-    setIsLoading(false);
-    if (result.success) {
-      router.push({
-        pathname: '/verify-otp',
-        params: { telephone: fullPhone, isForgotPassword: '1' },
-      });
-    } else {
-      setError(result.error || t('login.resetCodeError'));
-    }
-  };
-
-  const handlePhoneLogin = async () => {
-    if (!phoneValid) {
-      setError(t('login.invalidNumber', { maxDigits: country.maxDigits }));
-      return;
-    }
-    if (!phonePassword || phonePassword.length < 8) {
-      setError(t('login.passwordTooShort'));
-      return;
-    }
-    setIsLoading(true);
-    setError('');
-    const fullPhone = `${country.dial}${phone}`;
-
-    const result = await loginWithPhone(fullPhone, phonePassword, rememberMe);
-    setIsLoading(false);
-    if (result.success) {
-      await AsyncStorage.setItem('showWelcome', '1');
-      router.replace('/(tabs)/qr');
-    } else {
-      // Show Alert for network errors, inline error for others
-      if (result.error && result.error === t('common.networkError')) Alert.alert(t('common.networkError'), result.error);
-      else setError(result.error || t('common.genericError'));
-    }
-  };
-
   // ── Render ──
   const renderMethodSelect = () => (
     <Animated.View style={[styles.methodSection, {
@@ -203,18 +151,6 @@ export default function LoginScreen() {
         <Text style={[styles.separatorText, { color: theme.inputPlaceholder }]}>{t('common.or')}</Text>
         <View style={[styles.separatorLine, { backgroundColor: theme.inputBorder }]} />
       </View>
-
-      {/* WhatsApp */}
-      <TouchableOpacity
-        style={[styles.socialBtn, { backgroundColor: '#25D366' }]}
-        onPress={() => selectMethod('whatsapp')}
-        activeOpacity={0.7}
-        accessibilityRole="button"
-        accessibilityLabel={t('login.loginViaWhatsApp')}
-      >
-        <Phone size={ms(20)} color="#fff" strokeWidth={1.5} />
-        <Text style={[styles.socialBtnText, { color: '#fff' }]}>{t('login.loginViaWhatsApp')}</Text>
-      </TouchableOpacity>
 
       {/* Email */}
       <TouchableOpacity
@@ -323,102 +259,6 @@ export default function LoginScreen() {
     </Animated.View>
   );
 
-  const renderPhoneForm = () => (
-    <Animated.View style={[styles.methodSection, {
-      opacity: cardAnim,
-      transform: [{ translateY: cardAnim.interpolate({ inputRange: [0, 1], outputRange: [30, 0] }) }],
-    }]}>
-      <TouchableOpacity onPress={handleBack} style={styles.backBtn} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={t('common.back')}>
-        <ChevronLeft size={ms(22)} color={theme.text} strokeWidth={1.5} />
-      </TouchableOpacity>
-
-      <View style={{ marginBottom: hp(24) }}>
-        <Text style={[styles.registerTitle, { color: theme.text }]}>{t('login.whatsappLoginTitle')}</Text>
-        <Text style={[styles.registerSubtitle, { color: theme.inputPlaceholder }]}>
-          {t('login.whatsappLoginSubtitle')}
-        </Text>
-      </View>
-
-      <View style={styles.inputContainer}>
-        <View style={[styles.inputWrapper, {
-          backgroundColor: theme.inputBg,
-          borderColor: error ? theme.danger : phoneValid ? '#25D366' : theme.inputBorder,
-          borderWidth: phoneValid ? 2 : 1.5,
-        }]}>
-          <CountryCodePicker selected={country} onSelect={setCountry} accentColor="#25D366" />
-          <View style={styles.phoneSeparator} />
-          <TextInput
-            style={[styles.emailInput, { color: theme.text, marginLeft: 0 }]}
-            placeholder={'X'.repeat(country.maxDigits)}
-            placeholderTextColor={theme.inputPlaceholder}
-            value={phone}
-            onChangeText={(t) => { setPhone(t.replace(/[^0-9]/g, '')); setError(''); }}
-            keyboardType="phone-pad"
-            maxLength={country.maxDigits}
-            autoFocus
-          />
-        </View>
-      </View>
-
-      <View style={styles.inputContainer}>
-        <View style={[styles.inputWrapper, {
-          backgroundColor: theme.inputBg,
-          borderColor: error ? theme.danger : phonePassword.length >= 8 ? '#25D366' : theme.inputBorder,
-          borderWidth: phonePassword.length >= 8 ? 2 : 1.5,
-        }]}>
-          <Lock size={ms(18)} color={phonePassword.length >= 8 ? '#25D366' : theme.inputPlaceholder} strokeWidth={1.5} />
-          <TextInput
-            style={[styles.emailInput, { color: theme.text }]}
-            placeholder={t('login.password')}
-            placeholderTextColor={theme.inputPlaceholder}
-            value={phonePassword}
-            onChangeText={(text) => { setPhonePassword(text); setError(''); }}
-            secureTextEntry={!showPassword}
-            autoCapitalize="none"
-          />
-          <TouchableOpacity onPress={() => setShowPassword(!showPassword)} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={showPassword ? t('login.hidePassword') : t('login.showPassword')}>
-            {showPassword ? (
-              <EyeOff size={ms(20)} color={theme.inputPlaceholder} strokeWidth={1.5} />
-            ) : (
-              <Eye size={ms(20)} color={theme.inputPlaceholder} strokeWidth={1.5} />
-            )}
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <FormError message={error} />
-
-      <TouchableOpacity onPress={handlePhoneForgotPassword} activeOpacity={0.7}>
-        <Text style={[styles.forgotPasswordText, { color: '#25D366' }]}>{t('login.forgotPassword')}</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={styles.rememberRow}
-        onPress={() => setRememberMe(!rememberMe)}
-        activeOpacity={0.7}
-      >
-        <View style={[styles.checkbox, { borderColor: rememberMe ? '#25D366' : theme.inputBorder, backgroundColor: rememberMe ? '#25D366' : 'transparent' }]}>
-          {rememberMe && <Check size={ms(14)} color="#fff" strokeWidth={3} />}
-        </View>
-        <Text style={[styles.rememberText, { color: theme.text }]}>{t('login.rememberMe')}</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        onPress={handlePhoneLogin}
-        disabled={isLoading}
-        activeOpacity={0.85}
-        style={[styles.button, { backgroundColor: phoneValid && phonePassword.length >= 8 ? '#25D366' : '#D4D0E8' }]}
-      >
-        {isLoading ? <ActivityIndicator color="#fff" /> : (
-          <>
-            <Text style={[styles.buttonText, { opacity: phoneValid && phonePassword.length >= 8 ? 1 : 0.5 }]}>{t('login.loginButton')}</Text>
-            <ArrowRight size={ms(18)} color={phoneValid && phonePassword.length >= 8 ? '#fff' : 'rgba(255,255,255,0.5)'} />
-          </>
-        )}
-      </TouchableOpacity>
-    </Animated.View>
-  );
-
   const renderGoogleLoading = () => (
     <Animated.View style={[styles.methodSection, {
       opacity: cardAnim,
@@ -500,14 +340,13 @@ export default function LoginScreen() {
 
             {/* ── Content ── */}
             {method === 'select' && renderMethodSelect()}
-            {method === 'whatsapp' && renderPhoneForm()}
             {method === 'email' && renderEmailForm()}
             {method === 'google' && renderGoogleLoading()}
           </ScrollView>
         </KeyboardAvoidingView>
 
         {/* Footer – anchored at the bottom */}
-        {(method === 'select' || method === 'email' || method === 'whatsapp') && (
+        {(method === 'select' || method === 'email') && (
           <Animated.View style={[styles.footerContainer, { opacity: footerAnim }]}>
             <Text style={styles.footerText}>{t('login.noAccount')}{' '}</Text>
             <TouchableOpacity activeOpacity={0.7} onPress={() => router.push('/register')}>

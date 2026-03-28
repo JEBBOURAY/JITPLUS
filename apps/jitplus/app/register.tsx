@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 import { router } from 'expo-router';
-import { ArrowRight, Mail, ChevronLeft, Check } from 'lucide-react-native';
+import { ArrowRight, Mail, ChevronLeft, Check, Phone } from 'lucide-react-native';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -31,11 +31,10 @@ import { useGoogleAuth } from '@/hooks/useGoogleAuth';
 export default function RegisterScreen() {
   const theme = useTheme();
   const { t } = useLanguage();
-  const { sendOtpEmail, sendOtp } = useAuth();
+  const { sendOtpEmail } = useAuth();
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [country, setCountry] = useState<CountryCode>(DEFAULT_COUNTRY);
-  const [inputMode, setInputMode] = useState<'email' | 'whatsapp'>('whatsapp');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [termsAccepted, setTermsAccepted] = useState(false);
@@ -64,59 +63,38 @@ export default function RegisterScreen() {
 
   const emailValid = isValidEmail(email);
   const phoneValid = isValidPhoneForCountry(phone, country);
-  const inputValid = inputMode === 'email' ? emailValid : phoneValid;
+  const inputValid = emailValid && phoneValid;
 
   const handleRegister = async () => {
     if (!termsAccepted) {
       setError(t('register.termsRequired'));
       return;
     }
-    if (inputMode === 'email') {
-      if (!emailValid) {
-        setError(t('login.invalidEmail'));
-        return;
-      }
-      setIsLoading(true);
-      setError('');
-      const normalizedEmail = email.trim().toLowerCase();
+    if (!emailValid) {
+      setError(t('login.invalidEmail'));
+      return;
+    }
+    if (!phoneValid) {
+      setError(t('register.phoneRequired'));
+      return;
+    }
+    setIsLoading(true);
+    setError('');
+    const normalizedEmail = email.trim().toLowerCase();
+    const fullPhone = `${country.dial}${phone}`;
 
-      const result = await sendOtpEmail(normalizedEmail, true);
-      setIsLoading(false);
-      if (result.success) {
-        router.push({
-          pathname: '/verify-otp',
-          params: { telephone: normalizedEmail, isEmail: '1', isRegister: '1' },
-        });
-      } else {
-        if (result.error && result.error === t('common.networkError')) {
-          Alert.alert(t('common.networkError'), result.error);
-        } else {
-          setError(result.error || t('common.genericError'));
-        }
-      }
+    const result = await sendOtpEmail(normalizedEmail, true, fullPhone);
+    setIsLoading(false);
+    if (result.success) {
+      router.push({
+        pathname: '/verify-otp',
+        params: { telephone: normalizedEmail, isEmail: '1', isRegister: '1' },
+      });
     } else {
-      // WhatsApp / phone mode
-      if (!phoneValid) {
-        setError(t('login.invalidNumber', { maxDigits: country.maxDigits }));
-        return;
-      }
-      setIsLoading(true);
-      setError('');
-      const fullPhone = `${country.dial}${phone}`;
-
-      const result = await sendOtp(fullPhone, true);
-      setIsLoading(false);
-      if (result.success) {
-        router.push({
-          pathname: '/verify-otp',
-          params: { telephone: fullPhone, isRegister: '1' },
-        });
+      if (result.error && result.error === t('common.networkError')) {
+        Alert.alert(t('common.networkError'), result.error);
       } else {
-        if (result.error && result.error === t('common.networkError')) {
-          Alert.alert(t('common.networkError'), result.error);
-        } else {
-          setError(result.error || t('common.genericError'));
-        }
+        setError(result.error || t('common.genericError'));
       }
     }
   };
@@ -195,84 +173,45 @@ export default function RegisterScreen() {
                 <View style={[styles.separatorLine, { backgroundColor: theme.inputBorder }]} />
               </View>
 
-              {/* Tab switcher: WhatsApp / Email */}
-              <View style={[styles.tabContainer, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder }]}>
-                <TouchableOpacity
-                  style={[
-                    styles.tab,
-                    inputMode === 'whatsapp' && { backgroundColor: '#25D366' },
-                  ]}
-                  onPress={() => { setInputMode('whatsapp'); setError(''); }}
-                  activeOpacity={0.7}
-                  accessibilityRole="tab"
-                  accessibilityState={{ selected: inputMode === 'whatsapp' }}
-                >
-                  <Text style={[
-                    styles.tabText,
-                    { color: inputMode === 'whatsapp' ? '#fff' : theme.inputPlaceholder },
-                    inputMode === 'whatsapp' && { fontWeight: '700' },
-                  ]}>
-                    {t('register.tabWhatsApp')}
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.tab,
-                    inputMode === 'email' && { backgroundColor: palette.violet },
-                  ]}
-                  onPress={() => { setInputMode('email'); setError(''); }}
-                  activeOpacity={0.7}
-                  accessibilityRole="tab"
-                  accessibilityState={{ selected: inputMode === 'email' }}
-                >
-                  <Text style={[
-                    styles.tabText,
-                    { color: inputMode === 'email' ? '#fff' : theme.inputPlaceholder },
-                    inputMode === 'email' && { fontWeight: '700' },
-                  ]}>
-                    {t('register.tabEmail')}
-                  </Text>
-                </TouchableOpacity>
+              {/* Email input */}
+              <View style={styles.inputContainer}>
+                <View style={[styles.inputWrapper, {
+                  backgroundColor: theme.inputBg,
+                  borderColor: error ? theme.danger : emailValid ? palette.violet : theme.inputBorder,
+                  borderWidth: emailValid ? 2 : 1.5,
+                }]}>
+                  <Mail size={ms(18)} color={emailValid ? palette.violet : theme.inputPlaceholder} strokeWidth={1.5} />
+                  <TextInput
+                    style={[styles.emailInput, { color: theme.text }]}
+                    placeholder={t('login.emailPlaceholder')}
+                    placeholderTextColor={theme.inputPlaceholder}
+                    value={email}
+                    onChangeText={(text) => { setEmail(text); setError(''); }}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                  />
+                </View>
               </View>
 
-              {/* Input — phone or email */}
+              {/* Phone input (required) */}
               <View style={styles.inputContainer}>
-                {inputMode === 'whatsapp' ? (
-                  <View style={[styles.inputWrapper, {
-                    backgroundColor: theme.inputBg,
-                    borderColor: error ? theme.danger : phoneValid ? '#25D366' : theme.inputBorder,
-                    borderWidth: phoneValid ? 2 : 1.5,
-                  }]}>
-                    <CountryCodePicker selected={country} onSelect={setCountry} accentColor="#25D366" />
-                    <View style={styles.phoneSeparator} />
-                    <TextInput
-                      style={[styles.emailInput, { color: theme.text, marginLeft: 0 }]}
-                      placeholder={'X'.repeat(country.maxDigits)}
-                      placeholderTextColor={theme.inputPlaceholder}
-                      value={phone}
-                      onChangeText={(text) => { setPhone(text.replace(/[^0-9]/g, '')); setError(''); }}
-                      keyboardType="phone-pad"
-                      maxLength={country.maxDigits}
-                    />
-                  </View>
-                ) : (
-                  <View style={[styles.inputWrapper, {
-                    backgroundColor: theme.inputBg,
-                    borderColor: error ? theme.danger : emailValid ? palette.violet : theme.inputBorder,
-                    borderWidth: emailValid ? 2 : 1.5,
-                  }]}>
-                    <Mail size={ms(18)} color={emailValid ? palette.violet : theme.inputPlaceholder} strokeWidth={1.5} />
-                    <TextInput
-                      style={[styles.emailInput, { color: theme.text }]}
-                      placeholder={t('login.emailPlaceholder')}
-                      placeholderTextColor={theme.inputPlaceholder}
-                      value={email}
-                      onChangeText={(text) => { setEmail(text); setError(''); }}
-                      keyboardType="email-address"
-                      autoCapitalize="none"
-                    />
-                  </View>
-                )}
+                <View style={[styles.inputWrapper, {
+                  backgroundColor: theme.inputBg,
+                  borderColor: error ? theme.danger : phoneValid ? palette.violet : theme.inputBorder,
+                  borderWidth: phoneValid ? 2 : 1.5,
+                }]}>
+                  <CountryCodePicker selected={country} onSelect={setCountry} accentColor={palette.violet} />
+                  <View style={styles.phoneSeparator} />
+                  <TextInput
+                    style={[styles.emailInput, { color: theme.text, marginLeft: 0 }]}
+                    placeholder={'X'.repeat(country.maxDigits)}
+                    placeholderTextColor={theme.inputPlaceholder}
+                    value={phone}
+                    onChangeText={(text) => { setPhone(text.replace(/[^0-9]/g, '')); setError(''); }}
+                    keyboardType="phone-pad"
+                    maxLength={country.maxDigits}
+                  />
+                </View>
               </View>
 
               {/* Terms acceptance */}
@@ -309,15 +248,13 @@ export default function RegisterScreen() {
                 disabled={isLoading}
                 activeOpacity={0.85}
                 style={[styles.button, {
-                  backgroundColor: inputValid
-                    ? (inputMode === 'whatsapp' ? '#25D366' : palette.violet)
-                    : '#D4D0E8',
+                  backgroundColor: inputValid ? palette.violet : '#D4D0E8',
                 }]}
               >
                 {isLoading ? <ActivityIndicator color="#fff" /> : (
                   <>
                     <Text style={[styles.buttonText, { opacity: inputValid ? 1 : 0.5 }]}>
-                      {inputMode === 'whatsapp' ? t('register.receiveCodeWhatsApp') : t('register.signUpButton')}
+                      {t('register.signUpButton')}
                     </Text>
                     <ArrowRight size={ms(18)} color={inputValid ? '#fff' : 'rgba(255,255,255,0.5)'} />
                   </>

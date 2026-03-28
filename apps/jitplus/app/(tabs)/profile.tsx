@@ -30,6 +30,7 @@ import { wp, hp, ms, fontSize as FS, radius } from '@/utils/responsive';
 import { isValidEmail } from '@/utils/validation';
 import { extractErrorMessage } from '@/utils/errorMessage';
 import { formatDateInput, toIsoDate, isoDtoDmy } from '@/utils/dateInput';
+import { DRAFT_PERSIST_DEBOUNCE_MS, OTP_RESEND_COOLDOWN_S } from '@/constants';
 
 export default function ProfileScreen() {
   const theme = useTheme();
@@ -119,7 +120,7 @@ export default function ProfileScreen() {
           try {
             await SecureStore.setItemAsync('profile_draft', JSON.stringify(draftRef.current));
           } catch { /* best-effort */ }
-        }, 300);
+        }, DRAFT_PERSIST_DEBOUNCE_MS);
       }
     };
     const sub = AppState.addEventListener('change', handleAppState);
@@ -187,7 +188,7 @@ export default function ProfileScreen() {
     setIsSendingOtp(true);
     try {
       await api.sendChangeContactOtp(target.type, target.value);
-      setOtpResendTimer(60);
+      setOtpResendTimer(OTP_RESEND_COOLDOWN_S);
       setShowOtpModal(true);
     } catch (error) {
       const msg = extractErrorMessage(error);
@@ -221,7 +222,7 @@ export default function ProfileScreen() {
     setOtpError('');
     try {
       await api.sendChangeContactOtp(otpTarget.type, otpTarget.value);
-      setOtpResendTimer(60);
+      setOtpResendTimer(OTP_RESEND_COOLDOWN_S);
     } catch (error) {
       const msg = extractErrorMessage(error);
       setOtpError(msg || t('profile.otpSendError'));
@@ -480,6 +481,37 @@ export default function ProfileScreen() {
                 </TouchableOpacity>
               </FadeInView>
             )}
+
+            {/* Referral promo banner */}
+            <FadeInView delay={250} duration={300}>
+              <Pressable
+                onPress={() => { haptic(HapticStyle.Light); router.push('/referral'); }}
+                style={({ pressed }) => [
+                  styles.referralBanner,
+                  pressed && { opacity: 0.85 },
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel={t('profile.referralBannerTitle')}
+              >
+                <LinearGradient
+                  colors={[palette.violet, palette.violetVivid]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.referralBannerGradient}
+                >
+                  <View style={styles.referralBannerContent}>
+                    <View style={styles.referralBannerIconWrap}>
+                      <Gift size={ms(22)} color="#fff" strokeWidth={1.8} />
+                    </View>
+                    <View style={styles.referralBannerTextWrap}>
+                      <Text style={styles.referralBannerTitle}>{t('profile.referralBannerTitle')}</Text>
+                      <Text style={styles.referralBannerDesc}>{t('profile.referralBannerDesc')}</Text>
+                    </View>
+                    <ChevronRight size={ms(18)} color="rgba(255,255,255,0.7)" strokeWidth={1.8} />
+                  </View>
+                </LinearGradient>
+              </Pressable>
+            </FadeInView>
 
             {/* Personal Info Section */}
             <FadeInView delay={300}>
@@ -1269,6 +1301,44 @@ const styles = StyleSheet.create({
     width: ms(38), height: ms(38), borderRadius: ms(19),
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 1, borderColor: `${palette.violet}20`,
+  },
+
+  // Referral banner
+  referralBanner: {
+    borderRadius: radius.xl,
+    overflow: 'hidden',
+    marginBottom: hp(16),
+  },
+  referralBannerGradient: {
+    borderRadius: radius.xl,
+    padding: wp(16),
+  },
+  referralBannerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp(12),
+  },
+  referralBannerIconWrap: {
+    width: ms(42),
+    height: ms(42),
+    borderRadius: ms(21),
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  referralBannerTextWrap: {
+    flex: 1,
+  },
+  referralBannerTitle: {
+    fontSize: FS.md,
+    fontWeight: '700',
+    color: '#fff',
+    marginBottom: hp(3),
+  },
+  referralBannerDesc: {
+    fontSize: FS.xs,
+    color: 'rgba(255,255,255,0.85)',
+    lineHeight: ms(17),
   },
 
 

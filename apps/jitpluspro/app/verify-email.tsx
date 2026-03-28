@@ -35,10 +35,11 @@ export default function VerifyEmailScreen() {
   const [code, setCode] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
   const [isResending, setIsResending] = useState(false);
-  const [resendTimer, setResendTimer] = useState(RESEND_COOLDOWN);
+  const [resendTimer, setResendTimer] = useState(0);
   const [error, setError] = useState('');
   const inputRef = useRef<TextInput>(null);
   const verifyingRef = useRef(false);
+  const hasSentInitial = useRef(false);
 
   // Animations
   const iconAnim = useRef(new Animated.Value(0)).current;
@@ -52,6 +53,22 @@ export default function VerifyEmailScreen() {
     anim.start();
     return () => anim.stop();
   }, []);
+
+  // Auto-send OTP on mount
+  useEffect(() => {
+    if (!email || hasSentInitial.current) return;
+    hasSentInitial.current = true;
+    (async () => {
+      try {
+        await api.post('/auth/send-verification-email', {
+          email: email.trim().toLowerCase(),
+        });
+        setResendTimer(RESEND_COOLDOWN);
+      } catch {
+        // Silently fail — user can tap resend
+      }
+    })();
+  }, [email]);
 
   // Countdown timer — stops when it reaches 0
   useEffect(() => {
@@ -134,7 +151,7 @@ export default function VerifyEmailScreen() {
         {/* Back button */}
         <TouchableOpacity
           style={styles.backBtn}
-          onPress={() => router.back()}
+          onPress={() => router.canGoBack() ? router.back() : router.replace('/login')}
           activeOpacity={0.7}
         >
           <ArrowLeft size={22} color={theme.text} />

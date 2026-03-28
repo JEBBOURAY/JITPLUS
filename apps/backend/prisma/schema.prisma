@@ -295,12 +295,13 @@ model Otp {
 }
 
 model LoyaltyCard {
-  id         String   @id @default(uuid())
-  clientId   String   @map("client_id")
-  merchantId String   @map("merchant_id")
-  points     Int      @default(0)
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
+  id            String    @id @default(uuid())
+  clientId      String    @map("client_id")
+  merchantId    String    @map("merchant_id")
+  points        Int       @default(0)
+  deactivatedAt DateTime? @map("deactivated_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
 
   client   Client   @relation(fields: [clientId], references: [id], onDelete: Restrict)
   merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Restrict)

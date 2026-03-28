@@ -1,7 +1,7 @@
 {
   "name": "jitplus",
   "main": "expo-router/entry",
-  "version": "1.1.8",
+  "version": "1.1.9",
   "expo": {
     "install": {
       "exclude": [
@@ -31,6 +31,7 @@
     "@jitplus/shared": "workspace:*",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-community/netinfo": "11.4.1",
+    "@react-native-google-signin/google-signin": "^16.1.2",
     "@react-navigation/native": "^7.1.33",
     "@sentry/react-native": "^8.4.0",
     "@tanstack/react-query": "^5.90.21",
