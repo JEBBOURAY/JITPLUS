@@ -676,10 +676,10 @@ export class ClientAuthService {
         }
       }
 
-      const isNewUser = !client || !client.nom;
-
       if (!client) {
         try {
+          // Google provides name + email — accept terms implicitly (user consented by choosing Google)
+          const hasFullName = !!given_name && !!family_name;
           client = await this.clientRepo.create({
             data: {
               email: email.toLowerCase(),
@@ -687,7 +687,7 @@ export class ClientAuthService {
               googleId,
               prenom: given_name || null,
               nom: family_name || null,
-              termsAccepted: false,
+              termsAccepted: hasFullName,
             },
             select: CLIENT_AUTH_SELECT,
           });
@@ -699,6 +699,7 @@ export class ClientAuthService {
         }
       }
 
+      const isNewUser = !client || !client.nom;
       return this.buildAuthResponse(client, isNewUser);
     } catch (error) {
       if (error instanceof UnauthorizedException || error instanceof BadRequestException || error instanceof ConflictException) {

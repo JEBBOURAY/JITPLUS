@@ -74,8 +74,8 @@ export default function CompleteProfileScreen() {
   const showPasswordStep = needsPassword === '1';
 
   const [step, setStep] = useState(0);
-  const [prenom, setPrenom] = useState('');
-  const [nom, setNom] = useState('');
+  const [prenom, setPrenom] = useState(client?.prenom ?? '');
+  const [nom, setNom] = useState(client?.nom ?? '');
   const [dateNaissance, setDateNaissance] = useState('');
   const [password, setPasswordValue] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
