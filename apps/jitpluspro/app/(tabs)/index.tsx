@@ -11,7 +11,7 @@ import {
   Platform,
 } from 'react-native';
 import { Users, Search, X, UserPlus, ChevronRight } from 'lucide-react-native';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useFocusFade } from '@/hooks/useFocusFade';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '@/contexts/AuthContext';
@@ -22,19 +22,7 @@ import { useClients } from '@/hooks/useQueryHooks';
 import { useGuardedCallback } from '@/hooks/useGuardedCallback';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SEARCH_DEBOUNCE_MS } from '@/constants/app';
-
-// ── Types ──────────────────────────────────────────────────
-interface Client {
-  id: string;
-  prenom?: string | null;
-  nom: string;
-  email: string;
-  telephone?: string | null;
-  points: number;
-  totalTransactions: number;
-  lastVisit: string;
-  memberSince: string;
-}
+import type { ClientListItem } from '@/types';
 
 // ── Carte client animée ────────────────────────────────────
 const ClientCard = React.memo(function ClientCard({
@@ -43,7 +31,7 @@ const ClientCard = React.memo(function ClientCard({
   theme,
   isStamps,
 }: {
-  item: Client;
+  item: ClientListItem;
   onPress: () => void;
   theme: ReturnType<typeof useTheme>;
   isStamps?: boolean;
@@ -163,13 +151,6 @@ export default function ClientsScreen() {
     await refetch();
   }, [refetch]);
 
-  // Refetch when the tab regains focus
-  useFocusEffect(
-    useCallback(() => {
-      refetch();
-    }, [refetch]),
-  );
-
   const clearSearch = () => {
     setSearch('');
     searchInputRef.current?.blur();
@@ -181,11 +162,11 @@ export default function ClientsScreen() {
 
   const isStamps = merchant?.loyaltyType === 'STAMPS';
 
-  const renderClient = useCallback(({ item }: { item: Client }) => (
+  const renderClient = useCallback(({ item }: { item: ClientListItem }) => (
     <ClientCard item={item} onPress={() => openDetail(item.id)} theme={theme} isStamps={isStamps} />
   ), [openDetail, theme, isStamps]);
 
-  const keyExtractor = useCallback((item: Client) => item.id, []);
+  const keyExtractor = useCallback((item: ClientListItem) => item.id, []);
 
   // ── Skeleton loading ──
   if (loading && clients.length === 0 && !search) {

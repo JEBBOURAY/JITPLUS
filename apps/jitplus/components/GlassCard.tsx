@@ -1,4 +1,4 @@
-import { useRef, useCallback, memo } from 'react';
+import { useRef, useCallback, useEffect, memo } from 'react';
 import { Animated, TouchableWithoutFeedback, ViewStyle, StyleSheet } from 'react-native';
 import { haptic as fireHaptic } from '@/utils/haptics';
 
@@ -13,6 +13,10 @@ export default memo(function GlassCard({ onPress, style, children, haptic = true
   const scale = useRef(new Animated.Value(1)).current;
   const glow = useRef(new Animated.Value(0)).current;
   const currentAnim = useRef<Animated.CompositeAnimation | null>(null);
+
+  useEffect(() => {
+    return () => { currentAnim.current?.stop(); };
+  }, []);
 
   const handlePressIn = useCallback(() => {
     currentAnim.current?.stop();

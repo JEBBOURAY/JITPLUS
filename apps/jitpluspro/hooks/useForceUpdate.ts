@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import api from '@/services/api';
@@ -59,64 +59,66 @@ function getStoreUrl(): string {
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
+/** Re-check interval: 5 minutes */
+const RECHECK_INTERVAL_MS = 5 * 60 * 1000;
+
 /**
- * Checks the backend `/health/version` endpoint on mount and resolves
- * whether a force-update or maintenance screen should be shown.
+ * Checks the backend `/health/version` endpoint on mount and periodically,
+ * resolving whether a force-update or maintenance screen should be shown.
  *
  * - In __DEV__ mode, `version` checks are skipped (status → 'ok').
  * - Maintenance mode is always respected regardless of __DEV__.
  * - Network errors are silently swallowed — the app always opens.
+ * - Re-checks every 5 minutes so maintenance mode is detected while app is open.
  */
 export function useForceUpdate(): ForceUpdateState {
   const [status, setStatus] = useState<ForceUpdateStatus>('checking');
   const storeUrl = useMemo(() => getStoreUrl(), []);
+  const cancelledRef = useRef(false);
+
+  const check = useCallback(async () => {
+    try {
+      const response = await api.get<{
+        api_version: string;
+        min_ios_version: string;
+        min_android_version: string;
+        maintenance: boolean;
+      }>('/health/version');
+
+      if (cancelledRef.current) return;
+
+      const { min_ios_version, min_android_version, maintenance } = response.data;
+
+      if (maintenance) {
+        setStatus('maintenance');
+        return;
+      }
+
+      if (__DEV__) {
+        setStatus('ok');
+        return;
+      }
+
+      const currentVersion = Constants.expoConfig?.version ?? '0.0.0';
+      const minVersion =
+        Platform.OS === 'ios' ? min_ios_version : min_android_version;
+
+      setStatus(isBelow(currentVersion, minVersion) ? 'update' : 'ok');
+    } catch {
+      if (!cancelledRef.current) setStatus('ok');
+    }
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
-
-    const check = async () => {
-      try {
-        const response = await api.get<{
-          api_version: string;
-          min_ios_version: string;
-          min_android_version: string;
-          maintenance: boolean;
-        }>('/health/version');
-
-        if (cancelled) return;
-
-        const { min_ios_version, min_android_version, maintenance } = response.data;
-
-        // Maintenance mode blocks the app for everyone
-        if (maintenance) {
-          setStatus('maintenance');
-          return;
-        }
-
-        // In dev, skip version enforcement
-        if (__DEV__) {
-          setStatus('ok');
-          return;
-        }
-
-        const currentVersion = Constants.expoConfig?.version ?? '0.0.0';
-        const minVersion =
-          Platform.OS === 'ios' ? min_ios_version : min_android_version;
-
-        if (isBelow(currentVersion, minVersion)) {
-          setStatus('update');
-        } else {
-          setStatus('ok');
-        }
-      } catch {
-        // Network failure or non-2xx → silently let the user through
-        if (!cancelled) setStatus('ok');
-      }
-    };
-
+    cancelledRef.current = false;
     check();
-    return () => { cancelled = true; };
-  }, []);
+
+    const interval = setInterval(check, RECHECK_INTERVAL_MS);
+    return () => {
+      cancelledRef.current = true;
+      clearInterval(interval);
+    };
+  }, [check]);
 
   return { status, storeUrl };
 }

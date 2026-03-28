@@ -190,15 +190,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const signOut = useCallback(async () => {
     try {
-      let logoutSucceeded = false;
-      for (let attempt = 0; attempt < 2 && !logoutSucceeded; attempt++) {
-        try {
-          await api.post('/auth/logout');
-          logoutSucceeded = true;
-        } catch {
-          if (attempt === 0) await new Promise((r) => setTimeout(r, 1000));
-        }
-      }
+      // Fire-and-forget — don't block local cleanup on server response
+      api.post('/auth/logout').catch(() => {});
       await SecureStore.deleteItemAsync('accessToken');
       await SecureStore.deleteItemAsync('refreshToken');
       await SecureStore.deleteItemAsync('sessionId');

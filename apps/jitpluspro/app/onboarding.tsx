@@ -703,8 +703,8 @@ export default function OnboardingScreen() {
               {/* Suggestion chips */}
               <View style={styles.suggestionsRow}>
                 {(isStamps
-                  ? ['☕ Café offert', '🍕 Pizza gratuite', '🎁 Dessert offert']
-                  : ['☕ Café gratuit', '🎁 -10% remise', '🍕 Livraison offerte']
+                  ? [t('onboarding.suggStamp1'), t('onboarding.suggStamp2'), t('onboarding.suggStamp3')]
+                  : [t('onboarding.suggPoint1'), t('onboarding.suggPoint2'), t('onboarding.suggPoint3')]
                 ).map((sugg) => (
                   <TouchableOpacity
                     key={sugg}

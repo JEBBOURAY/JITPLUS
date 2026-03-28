@@ -243,7 +243,16 @@ export default {
     clientFound: 'تم إيجاد العميل: %{name}',
     clientsFound: 'تم العثور على %{count} عملاء',
     selectClient: 'اختر العميل المطلوب:',
-    verifying: 'جاري التحقق…',    qrDetected: 'تم اكتشاف رمز QR',  },
+    verifying: 'جاري التحقق…',    qrDetected: 'تم اكتشاف رمز QR',
+    qrInvalidTitle: 'رمز QR غير صالح',
+    tokenMissing: 'الرمز مفقود.',
+    qrExpiredFallback: 'رمز QR منتهي أو غير صالح. اطلب من العميل تحديث رمز QR.',
+    clientNotFoundFallback: 'العميل غير موجود أو رمز QR غير صالح.',
+    clientInvalidTitle: 'عميل غير صالح',
+    clientNotFoundTitle: 'العميل غير موجود',
+    noClientForPhone: 'لم يتم العثور على عميل بالرقم %{phone}.',
+    phoneSearchError: 'تعذر البحث عن هذا الرقم. حاول مرة أخرى.',
+  },
 
   account: {
     planPremium: 'حساب Premium',
@@ -371,6 +380,14 @@ export default {
     teamMemberSub: 'صلاحيات محدودة · عضو فريق',
 
     signOut: 'تسجيل الخروج',
+    signOutConfirm: 'هل أنت متأكد أنك تريد تسجيل الخروج؟',
+    contactSupport: 'اتصل بالدعم',
+    profilePhoto: 'صورة الملف الشخصي',
+    profilePhotoEditHint: 'عدّل أو احذف صورة ملفك الشخصي',
+    profilePhotoAddHint: 'أضف شعاراً لتخصيص تجارتك',
+    changeProfilePhoto: 'تغيير الصورة',
+    addProfilePhoto: 'إضافة صورة',
+    deleteProfilePhoto: 'حذف الصورة',
 
     deleteAccount: 'حذف الحساب',
     deleteAccountConfirm: 'حذف الحساب؟',
@@ -385,6 +402,11 @@ export default {
     // Legal section
     legalSection: 'قانوني',
     legalSubtitle: 'الخصوصية والشروط',
+
+    // Logo
+    logoUploadError: 'تعذر رفع الشعار',
+    logoDeleteError: 'تعذر حذف الشعار',
+    restartDirectionHint: 'أعد تشغيل التطبيق لتطبيق تغيير الاتجاه.',
   },
 
   profile: {
@@ -1014,6 +1036,14 @@ export default {
     // Accumulation limit
     accumulationLimitLabel: 'حد التراكم (اختياري)',
     accumulationLimitHint: 'حدد الحد الأقصى من %{unit} التي يمكن للعميل تراكمها. إذا معطل، التراكم غير محدود.',
+
+    // Reward suggestions
+    suggStamp1: '☕ قهوة مجانية',
+    suggStamp2: '🍕 بيتزا مجانية',
+    suggStamp3: '🎁 حلوى مجانية',
+    suggPoint1: '☕ قهوة مجانية',
+    suggPoint2: '🎁 خصم -10%',
+    suggPoint3: '🍕 توصيل مجاني',
 
     scanTitle: 'قم بأول مسح!',
     scanSubtitle: 'افتح الماسح وامسح رمز QR لأحد العملاء لمنحه نقاطه الأولى.',

@@ -130,7 +130,7 @@ export async function registerForPushNotifications(): Promise<string | null> {
   for (let attempt = 1; attempt <= TOKEN_MAX_RETRIES; attempt++) {
     try {
       const tokenData = await Notifications.getDevicePushTokenAsync();
-      const token = tokenData.data as string;
+      const token = typeof tokenData.data === 'string' ? tokenData.data : String(tokenData.data);
 
       if (__DEV__) console.log(`Device push token (attempt ${attempt}):`, token);
       return token;

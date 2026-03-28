@@ -27,35 +27,22 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusFade } from '@/hooks/useFocusFade';
 import { useExitOnBack } from '@/hooks/useExitOnBack';
 import { formatDateTime } from '@/utils/date';
-
-interface Transaction {
-  id: string;
-  clientId: string;
-  type: 'EARN_POINTS' | 'REDEEM_REWARD' | 'ADJUST_POINTS' | 'LOYALTY_PROGRAM_CHANGE';
-  loyaltyType?: 'POINTS' | 'STAMPS' | null;
-  amount: number;
-  points: number;
-  status: 'ACTIVE' | 'CANCELLED';
-  createdAt: string;
-  note?: string | null;
-  performedByName?: string | null;
-  teamMember?: { id: string; nom: string } | null;
-  reward?: { id: string; titre: string; cout: number } | null;
-  client: { id: string; prenom?: string | null; nom: string; email: string };
-  giftStatus?: 'PENDING' | 'FULFILLED' | null;
-  fulfilledAt?: string | null;
-}
+import type { Transaction } from '@/types';
 
 /* ── Memoized row — avoids re-render of every row on list updates ── */
 const TransactionRow = React.memo(function TransactionRow({
   item,
   merchantLoyaltyType,
+  theme,
+  t,
+  locale,
 }: {
   item: Transaction;
   merchantLoyaltyType?: string | null;
+  theme: ReturnType<typeof useTheme>;
+  t: (key: string, params?: Record<string, unknown>) => string;
+  locale: string;
 }) {
-  const theme = useTheme();
-  const { t, locale } = useLanguage();
   const isEarned = item.type === 'EARN_POINTS';
   const isCancelled = item.status === 'CANCELLED';
   const isProgramChange = item.type === 'LOYALTY_PROGRAM_CHANGE';
@@ -116,7 +103,7 @@ const TransactionRow = React.memo(function TransactionRow({
 export default function ActivityScreen() {
   const { merchant } = useAuth();
   const theme = useTheme();
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
   const { focusStyle } = useFocusFade();
   const insets = useSafeAreaInsets();
 
@@ -143,8 +130,8 @@ export default function ActivityScreen() {
   }, [refetch]);
 
   const renderTx = useCallback(({ item }: { item: Transaction }) => (
-    <TransactionRow item={item} merchantLoyaltyType={merchant?.loyaltyType} />
-  ), [merchant?.loyaltyType]);
+    <TransactionRow item={item} merchantLoyaltyType={merchant?.loyaltyType} theme={theme} t={t} locale={locale} />
+  ), [merchant?.loyaltyType, theme, t, locale]);
 
   const keyExtractor = useCallback((item: Transaction) => item.id, []);
 

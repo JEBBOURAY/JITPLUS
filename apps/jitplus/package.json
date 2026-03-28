@@ -1,7 +1,7 @@
 {
   "name": "jitplus",
   "main": "expo-router/entry",
-  "version": "1.1.9",
+  "version": "1.2.0",
   "expo": {
     "install": {
       "exclude": [
@@ -41,6 +41,7 @@
     "expo-auth-session": "^7.0.10",
     "expo-blur": "~15.0.8",
     "expo-brightness": "^14.0.8",
+    "expo-clipboard": "^55.0.9",
     "expo-constants": "~18.0.13",
     "expo-dev-client": "~6.0.20",
     "expo-device": "~8.0.10",

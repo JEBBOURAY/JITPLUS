@@ -84,6 +84,10 @@ export function useGoogleAuth({ onCancel }: UseGoogleAuthOptions = {}) {
       setIsLoading(false);
       onCancelRef.current?.();
     }
+
+    return () => {
+      processingRef.current = false;
+    };
   }, [googleResponse, googleLogin, t]);
 
   /** Launch the Google prompt */

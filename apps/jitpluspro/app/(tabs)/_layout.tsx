@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { Tabs, useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, InteractionManager, View } from 'react-native';
 import CustomTabBar from '@/components/CustomTabBar';
 
 export default function TabLayout() {
@@ -34,9 +34,8 @@ export default function TabLayout() {
   useEffect(() => {
     if (!loading && merchant && onboardingCompleted && !hasOpenedScanner.current) {
       hasOpenedScanner.current = true;
-      // Small delay to let tabs mount before navigating
-      const timer = setTimeout(() => router.push('/scan-qr'), 100);
-      return () => clearTimeout(timer);
+      const task = InteractionManager.runAfterInteractions(() => router.push('/scan-qr'));
+      return () => task.cancel();
     }
   }, [loading, merchant, onboardingCompleted]);
 

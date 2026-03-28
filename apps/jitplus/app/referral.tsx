@@ -10,8 +10,11 @@ import {
   ArrowLeft, Copy, Share2, Gift, Clock, CheckCircle, Users,
   Smartphone, UserPlus, CreditCard, BadgeCheck, Mail, MessageCircle,
 } from 'lucide-react-native';
-import * as Clipboard from 'expo-clipboard';
 import { useTheme, palette } from '@/contexts/ThemeContext';
+
+// Lazy-loaded to avoid native crash if the module isn't linked
+let Clipboard: typeof import('expo-clipboard') | null = null;
+try { Clipboard = require('expo-clipboard'); } catch { /* module not available */ }
 import { useLanguage } from '@/contexts/LanguageContext';
 import { api } from '@/services/api';
 import { wp, hp, ms, fontSize as FS, radius } from '@/utils/responsive';
@@ -58,7 +61,9 @@ export default function ReferralScreen() {
   const handleCopy = useCallback(async () => {
     if (!stats?.referralCode) return;
     try {
-      await Clipboard.setStringAsync(stats.referralCode);
+      if (Clipboard?.setStringAsync) {
+        await Clipboard.setStringAsync(stats.referralCode);
+      }
       haptic(HapticStyle.Light);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
@@ -77,13 +82,19 @@ export default function ReferralScreen() {
     }
   }, [stats?.referralCode, t]);
 
-  const formatDate = (dateStr: string) => {
-    const d = new Date(dateStr);
-    return d.toLocaleDateString(locale === 'ar' ? 'ar-MA' : locale === 'en' ? 'en-GB' : 'fr-FR', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-    });
+  const formatDate = (dateStr: string | null | undefined) => {
+    try {
+      if (!dateStr) return '—';
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return '—';
+      return d.toLocaleDateString(locale === 'ar' ? 'ar-MA' : locale === 'en' ? 'en-GB' : 'fr-FR', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      });
+    } catch {
+      return '—';
+    }
   };
 
   const isRTL = locale === 'ar';
@@ -118,7 +129,7 @@ export default function ReferralScreen() {
               <View style={[styles.balanceCard, { backgroundColor: palette.violet }]}>
                 <Text style={styles.balanceLabel}>{t('referral.balance')}</Text>
                 <Text style={styles.balanceAmount}>
-                  {stats.referralBalance.toFixed(0)} {t('referral.balanceUnit')}
+                  {(stats.referralBalance ?? 0).toFixed(0)} {t('referral.balanceUnit')}
                 </Text>
                 <Text style={styles.balanceHint}>{t('referral.earnPerReferral')}</Text>
               </View>
@@ -166,11 +177,11 @@ export default function ReferralScreen() {
                 <View style={[styles.listHeader, isRTL && styles.listHeaderRTL]}>
                   <Users size={ms(18)} color={theme.text} strokeWidth={1.5} />
                   <Text style={[styles.listTitle, { color: theme.text }]}>
-                    {t('referral.referralList')} ({stats.referredCount})
+                    {t('referral.referralList')} ({stats.referredCount ?? 0})
                   </Text>
                 </View>
 
-                {stats.referrals.length === 0 ? (
+                {!stats.referrals?.length ? (
                   <View style={[styles.emptyCard, { backgroundColor: theme.bgCard }]}>
                     <Gift size={ms(40)} color={theme.textMuted} strokeWidth={1} />
                     <Text style={[styles.emptyTitle, { color: theme.text }]}>{t('referral.noReferrals')}</Text>
@@ -178,13 +189,13 @@ export default function ReferralScreen() {
                   </View>
                 ) : (
                   <View style={[styles.listCard, { backgroundColor: theme.bgCard }]}>
-                    {stats.referrals.map((ref, idx) => (
+                    {(stats.referrals ?? []).map((ref, idx, arr) => (
                       <View
                         key={ref.id}
                         style={[
                           styles.referralRow,
                           isRTL && styles.referralRowRTL,
-                          idx === stats.referrals.length - 1 && { borderBottomWidth: 0 },
+                          idx === arr.length - 1 && { borderBottomWidth: 0 },
                           { borderBottomColor: theme.border },
                         ]}
                       >

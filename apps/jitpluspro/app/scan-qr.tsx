@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import React, { useReducer, useCallback, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -219,6 +219,57 @@ function DetectedOverlay({ message }: { message: string }) {
   );
 }
 
+// ── Scan state reducer ────────────────────────────────────
+type MatchedClient = { id: string; nom: string; telephone?: string; email?: string };
+
+interface ScanState {
+  phoneInput: string;
+  isSearchFocused: boolean;
+  isSearching: boolean;
+  isFlashOn: boolean;
+  isScanning: boolean;
+  detected: string | null;
+  countryIndex: number;
+  showCountryPicker: boolean;
+  countrySearch: string;
+  matchedClients: MatchedClient[];
+}
+
+const initialScanState: ScanState = {
+  phoneInput: '',
+  isSearchFocused: false,
+  isSearching: false,
+  isFlashOn: false,
+  isScanning: true,
+  detected: null,
+  countryIndex: 0,
+  showCountryPicker: false,
+  countrySearch: '',
+  matchedClients: [],
+};
+
+type ScanAction =
+  | { type: 'SET'; payload: Partial<ScanState> }
+  | { type: 'TOGGLE_FLASH' }
+  | { type: 'RESET_SCAN' }
+  | { type: 'OPEN_COUNTRY_PICKER' }
+  | { type: 'SELECT_COUNTRY'; index: number };
+
+function scanReducer(state: ScanState, action: ScanAction): ScanState {
+  switch (action.type) {
+    case 'SET':
+      return { ...state, ...action.payload };
+    case 'TOGGLE_FLASH':
+      return { ...state, isFlashOn: !state.isFlashOn };
+    case 'RESET_SCAN':
+      return { ...state, isScanning: true, detected: null };
+    case 'OPEN_COUNTRY_PICKER':
+      return { ...state, countrySearch: '', showCountryPicker: true };
+    case 'SELECT_COUNTRY':
+      return { ...state, countryIndex: action.index, showCountryPicker: false };
+  }
+}
+
 // ── Main Screen ───────────────────────────────────────────
 export default function ScanQRScreen() {
   const router = useRouter();
@@ -230,16 +281,9 @@ export default function ScanQRScreen() {
   const SCAN_SIZE = SCREEN_W * SCAN_AREA_RATIO;
 
   // State
-  const [phoneInput, setPhoneInput] = useState('');
-  const [isSearchFocused, setIsSearchFocused] = useState(false);
-  const [isSearching, setIsSearching] = useState(false);
-  const [isFlashOn, setIsFlashOn] = useState(false);
-  const [isScanning, setIsScanning] = useState(true);
-  const [detected, setDetected] = useState<string | null>(null);
-  const [countryIndex, setCountryIndex] = useState(0); // 0 = Maroc
-  const [showCountryPicker, setShowCountryPicker] = useState(false);
-  const [countrySearch, setCountrySearch] = useState('');
-  const [matchedClients, setMatchedClients] = useState<Array<{ id: string; nom: string; telephone?: string; email?: string }>>([]);
+  const [scan, dispatch] = useReducer(scanReducer, initialScanState);
+  const { phoneInput, isSearchFocused, isSearching, isFlashOn, isScanning, detected, countryIndex, showCountryPicker, countrySearch, matchedClients } = scan;
+  const set = useCallback((payload: Partial<ScanState>) => dispatch({ type: 'SET', payload }), []);
 
   // Debounce: prevent re-scanning the same barcode data within a cooldown
   const lastScannedRef = useRef<{ data: string; ts: number } | null>(null);
@@ -280,7 +324,7 @@ export default function ScanQRScreen() {
     <TouchableOpacity
       style={styles.cpRow}
       onPress={() => {
-        setMatchedClients([]);
+        set({ matchedClients: [] });
         router.push({
           pathname: '/transaction-amount',
           params: { clientId: item.id },
@@ -307,8 +351,7 @@ export default function ScanQRScreen() {
           isSelected && { backgroundColor: 'rgba(139,92,246,0.15)' },
         ]}
         onPress={() => {
-          setCountryIndex(COUNTRIES.findIndex((c) => c.code === item.code));
-          setShowCountryPicker(false);
+          dispatch({ type: 'SELECT_COUNTRY', index: COUNTRIES.findIndex((c) => c.code === item.code) });
         }}
         activeOpacity={0.6}
       >
@@ -324,22 +367,21 @@ export default function ScanQRScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      setIsScanning(true);
-      setDetected(null);
+      dispatch({ type: 'RESET_SCAN' });
       return () => {};
     }, [])
   );
 
   // ── Navigate to transaction after resolving clientId ──
   const navigateToTransaction = useCallback((clientId: string) => {
-    setDetected(t('scan.qrDetected'));
+    set({ detected: t('scan.qrDetected') });
     setTimeout(() => {
       router.push({
         pathname: '/transaction-amount',
         params: { clientId },
       });
     }, NAVIGATION_DELAY_MS);
-  }, [router]);
+  }, [router, set]);
 
   // ── QR Code handler ──
   const handleBarCodeScanned = useCallback(
@@ -353,7 +395,7 @@ export default function ScanQRScreen() {
       }
       lastScannedRef.current = { data, ts: now };
 
-      setIsScanning(false);
+      set({ isScanning: false });
 
       // Haptic feedback
       safeNotification(Haptics.NotificationFeedbackType.Success);
@@ -363,19 +405,19 @@ export default function ScanQRScreen() {
         const token = data.replace('jitplus://scan/', '').trim();
         if (!token) {
           safeNotification(Haptics.NotificationFeedbackType.Error);
-          Alert.alert('QR Code invalide', 'Token manquant.', [{ text: 'OK', onPress: () => setIsScanning(true) }]);
+          Alert.alert(t('scan.qrInvalidTitle'), t('scan.tokenMissing'), [{ text: 'OK', onPress: () => set({ isScanning: true }) }]);
           return;
         }
         try {
-          setDetected(t('scan.verifying'));
+          set({ detected: t('scan.verifying') });
           const res = await api.post('/merchant/verify-qr', { token });
           const clientId = res.data?.clientId;
           if (!clientId) throw new Error('no clientId');
           navigateToTransaction(clientId);
         } catch (err: unknown) {
           safeNotification(Haptics.NotificationFeedbackType.Error);
-          const msg = getErrorMessage(err, 'QR code expiré ou invalide. Demandez au client de rafraîchir son QR.');
-          Alert.alert('QR invalide', msg, [{ text: 'OK', onPress: () => setIsScanning(true) }]);
+          const msg = getErrorMessage(err, t('scan.qrExpiredFallback'));
+          Alert.alert(t('scan.qrInvalidTitle'), msg, [{ text: 'OK', onPress: () => set({ isScanning: true }) }]);
         }
         return;
       }
@@ -402,24 +444,24 @@ export default function ScanQRScreen() {
       if (!clientId || !isValidUUID(clientId)) {
         safeNotification(Haptics.NotificationFeedbackType.Error);
         Alert.alert(
-          'QR Code invalide',
-          'Ce code QR ne correspond pas à un client JitPlus. Veuillez scanner un QR code valide.',
-          [{ text: 'OK', onPress: () => setIsScanning(true) }],
+          t('scan.qrInvalidTitle'),
+          t('scan.invalidQR'),
+          [{ text: 'OK', onPress: () => set({ isScanning: true }) }],
         );
         return;
       }
 
       // Verify legacy clientId server-side to prevent IDOR
       try {
-        setDetected(t('scan.verifying'));
+        set({ detected: t('scan.verifying') });
         const res = await api.post('/merchant/verify-client', { clientId });
         const verifiedClientId = res.data?.clientId;
-        if (!verifiedClientId) throw new Error('Client non vérifié');
+        if (!verifiedClientId) throw new Error('Client not verified');
         navigateToTransaction(verifiedClientId);
       } catch (err: unknown) {
         safeNotification(Haptics.NotificationFeedbackType.Error);
-        const msg = getErrorMessage(err, 'Client introuvable ou QR code invalide.');
-        Alert.alert('Client invalide', msg, [{ text: 'OK', onPress: () => setIsScanning(true) }]);
+        const msg = getErrorMessage(err, t('scan.clientNotFoundFallback'));
+        Alert.alert(t('scan.clientInvalidTitle'), msg, [{ text: 'OK', onPress: () => set({ isScanning: true }) }]);
       }
     },
     [isScanning, router, navigateToTransaction],
@@ -430,7 +472,7 @@ export default function ScanQRScreen() {
     if (phoneInput.length < 6 || isSearching) return;
 
     Keyboard.dismiss();
-    setIsSearching(true);
+    set({ isSearching: true });
 
     const normalizedPhone = normalizePhone(phoneInput, COUNTRIES[countryIndex].dial);
 
@@ -444,7 +486,7 @@ export default function ScanQRScreen() {
 
       if (clients.length === 1) {
         // Exactly one match → go to transaction
-        setDetected(t('scan.clientFound', { name: [clients[0].prenom, clients[0].nom].filter(Boolean).join(' ') }));
+        set({ detected: t('scan.clientFound', { name: [clients[0].prenom, clients[0].nom].filter(Boolean).join(' ') }) });
         setTimeout(() => {
           router.push({
             pathname: '/transaction-amount',
@@ -453,21 +495,21 @@ export default function ScanQRScreen() {
         }, NAVIGATION_DELAY_MS);
       } else if (clients.length > 1) {
         // Multiple matches → show picker for disambiguation
-        setMatchedClients(clients);
+        set({ matchedClients: clients });
       } else {
         // No match
         safeNotification(Haptics.NotificationFeedbackType.Error);
         Alert.alert(
-          'Client introuvable',
-          `Aucun client trouvé avec le numéro ${normalizedPhone}.`,
+          t('scan.clientNotFoundTitle'),
+          t('scan.noClientForPhone', { phone: normalizedPhone }),
           [{ text: 'OK' }],
         );
       }
     } catch (err) {
       if (__DEV__) console.error('Phone search error:', err);
-      Alert.alert('Erreur', 'Impossible de rechercher ce numéro. Réessayez.');
+      Alert.alert(t('common.error'), t('scan.phoneSearchError'));
     } finally {
-      setIsSearching(false);
+      set({ isSearching: false });
     }
   }, [phoneInput, isSearching, router, countryIndex]);
 
@@ -572,16 +614,16 @@ export default function ScanQRScreen() {
       {/* ── Floating search bar ── */}
       <FloatingSearchBar
         value={phoneInput}
-        onChangeText={setPhoneInput}
+        onChangeText={(v) => set({ phoneInput: v })}
         onSubmit={handlePhoneSearch}
-        onFocus={() => setIsSearchFocused(true)}
-        onBlur={() => setIsSearchFocused(false)}
+        onFocus={() => set({ isSearchFocused: true })}
+        onBlur={() => set({ isSearchFocused: false })}
         isFocused={isSearchFocused}
         isSearching={isSearching}
         inputRef={inputRef}
         insetTop={insets.top}
         countryIndex={countryIndex}
-        onToggleCountry={() => { setCountrySearch(''); setShowCountryPicker(true); }}
+        onToggleCountry={() => dispatch({ type: 'OPEN_COUNTRY_PICKER' })}
       />
 
       {/* ── Bottom controls ── */}
@@ -598,7 +640,7 @@ export default function ScanQRScreen() {
             style={[styles.actionBtn, isFlashOn && styles.actionBtnActive]}
             onPress={() => {
               safeImpact(Haptics.ImpactFeedbackStyle.Light);
-              setIsFlashOn((p) => !p);
+              dispatch({ type: 'TOGGLE_FLASH' });
             }}
             activeOpacity={0.7}
           >
@@ -647,11 +689,11 @@ export default function ScanQRScreen() {
         visible={matchedClients.length > 0}
         animationType="slide"
         transparent={false}
-        onRequestClose={() => setMatchedClients([])}
+        onRequestClose={() => set({ matchedClients: [] })}
       >
         <View style={[styles.cpContainer, { paddingTop: insets.top }]}>
           <View style={styles.cpHeader}>
-            <TouchableOpacity onPress={() => setMatchedClients([])} style={styles.iconPadding}>
+            <TouchableOpacity onPress={() => set({ matchedClients: [] })} style={styles.iconPadding}>
               <ArrowLeft size={24} color="#fff" />
             </TouchableOpacity>
             <Text style={styles.cpTitle}>{t('scan.clientsFound', { count: matchedClients.length })}</Text>
@@ -678,11 +720,11 @@ export default function ScanQRScreen() {
         visible={showCountryPicker}
         animationType="slide"
         transparent={false}
-        onRequestClose={() => setShowCountryPicker(false)}
+        onRequestClose={() => set({ showCountryPicker: false })}
       >
         <View style={[styles.cpContainer, { paddingTop: insets.top }]}>
           <View style={styles.cpHeader}>
-            <TouchableOpacity onPress={() => setShowCountryPicker(false)} style={styles.iconPadding}>
+            <TouchableOpacity onPress={() => set({ showCountryPicker: false })} style={styles.iconPadding}>
               <ArrowLeft size={24} color="#fff" />
             </TouchableOpacity>
             <Text style={styles.cpTitle}>{t('common.selectCountry')}</Text>
@@ -696,11 +738,11 @@ export default function ScanQRScreen() {
                 placeholder={t('common.searchCountry')}
                 placeholderTextColor="rgba(255,255,255,0.4)"
                 value={countrySearch}
-                onChangeText={setCountrySearch}
+                onChangeText={(v) => set({ countrySearch: v })}
                 autoCorrect={false}
               />
               {countrySearch.length > 0 && (
-                <TouchableOpacity onPress={() => setCountrySearch('')}>
+                <TouchableOpacity onPress={() => set({ countrySearch: '' })}>
                   <X size={16} color="rgba(255,255,255,0.5)" />
                 </TouchableOpacity>
               )}
@@ -717,7 +759,7 @@ export default function ScanQRScreen() {
             renderItem={renderCountry}
             ListEmptyComponent={
               <View style={styles.emptyContainer}>
-                <Text style={styles.emptyText}>Aucun pays trouvé</Text>
+                <Text style={styles.emptyText}>{t('common.noCountryFound')}</Text>
               </View>
             }
           />

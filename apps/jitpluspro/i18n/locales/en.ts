@@ -245,6 +245,14 @@ export default {
     selectClient: 'Select the desired client:',
     verifying: 'Verifying…',
     qrDetected: 'QR Code detected',
+    qrInvalidTitle: 'Invalid QR Code',
+    tokenMissing: 'Missing token.',
+    qrExpiredFallback: 'QR code expired or invalid. Ask the client to refresh their QR.',
+    clientNotFoundFallback: 'Client not found or invalid QR code.',
+    clientInvalidTitle: 'Invalid client',
+    clientNotFoundTitle: 'Client not found',
+    noClientForPhone: 'No client found with number %{phone}.',
+    phoneSearchError: 'Unable to search this number. Please try again.',
   },
 
   account: {
@@ -373,6 +381,14 @@ export default {
     teamMemberSub: 'Restricted access · Team member',
 
     signOut: 'Sign out',
+    signOutConfirm: 'Are you sure you want to sign out?',
+    contactSupport: 'Contact support',
+    profilePhoto: 'Profile photo',
+    profilePhotoEditHint: 'Edit or delete your profile photo',
+    profilePhotoAddHint: 'Add a logo to personalise your business',
+    changeProfilePhoto: 'Change photo',
+    addProfilePhoto: 'Add a photo',
+    deleteProfilePhoto: 'Delete photo',
 
     deleteAccount: 'Delete account',
     deleteAccountConfirm: 'Delete account?',
@@ -387,6 +403,11 @@ export default {
     // Legal section
     legalSection: 'Legal',
     legalSubtitle: 'Privacy & terms',
+
+    // Logo
+    logoUploadError: 'Failed to upload logo',
+    logoDeleteError: 'Failed to delete logo',
+    restartDirectionHint: 'Restart the app to apply the direction change.',
   },
 
   profile: {
@@ -1016,6 +1037,14 @@ export default {
     // Accumulation limit
     accumulationLimitLabel: 'Accumulation limit (optional)',
     accumulationLimitHint: 'Set a maximum cap of %{unit} a customer can accumulate. If disabled, accumulation is unlimited.',
+
+    // Reward suggestions
+    suggStamp1: '☕ Free coffee',
+    suggStamp2: '🍕 Free pizza',
+    suggStamp3: '🎁 Free dessert',
+    suggPoint1: '☕ Free coffee',
+    suggPoint2: '🎁 -10% discount',
+    suggPoint3: '🍕 Free delivery',
 
     scanTitle: 'Do your first scan!',
     scanSubtitle: 'Open the scanner and scan a customer\'s QR code to assign their first points.',

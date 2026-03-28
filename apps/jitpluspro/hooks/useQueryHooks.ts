@@ -390,6 +390,87 @@ export function useFulfillGift() {
   });
 }
 
+// ── Logo mutations ──────────────────────────────────────────────
+const ALLOWED_LOGO_MIMES = new Set([
+  'image/jpeg', 'image/png', 'image/webp', 'image/gif',
+]);
+
+export function useUploadMerchantLogo() {
+  return useMutation({
+    mutationFn: async (asset: { uri: string; mimeType?: string | null; merchantName?: string }) => {
+      const ext = (asset.uri.split('.').pop() ?? 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+      const mime = asset.mimeType ?? `image/${ext}`;
+      if (!ALLOWED_LOGO_MIMES.has(mime)) {
+        throw new Error(`Type de fichier non supporté: ${mime}`);
+      }
+      const safeName = (asset.merchantName ?? 'commerce')
+        .toLowerCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 40);
+      const dateStr = new Date().toISOString().slice(0, 10);
+      const fileName = `logo_${safeName}_${dateStr}.${ext}`;
+      const formData = new FormData();
+      formData.append('file', { uri: asset.uri, name: fileName, type: mime } as any);
+      const res = await api.post('/merchant/upload-image?type=logo', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      return res.data as { url: string };
+    },
+  });
+}
+
+export function useDeleteMerchantLogo() {
+  return useMutation({
+    mutationFn: async () => {
+      await api.patch('/merchant/profile', { logoUrl: null });
+    },
+  });
+}
+
+// ── Notification send mutations ─────────────────────────────────
+export function useSendPushNotification() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: { title: string; body: string }) => {
+      const res = await api.post('/notifications/send-to-all', payload);
+      return res.data as { recipientCount: number; successCount: number; failureCount: number };
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.notificationHistory });
+    },
+  });
+}
+
+export function useSendWhatsApp() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: { body: string }) => {
+      const res = await api.post('/notifications/send-whatsapp-to-all', payload);
+      return res.data as { recipientCount: number; successCount: number; failureCount: number };
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.whatsappQuota });
+      qc.invalidateQueries({ queryKey: queryKeys.notificationHistory });
+    },
+  });
+}
+
+export function useSendEmail() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: { subject: string; body: string }) => {
+      const res = await api.post('/notifications/send-email-to-all', payload);
+      return res.data as { recipientCount: number; successCount: number; failureCount: number };
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.emailQuota });
+      qc.invalidateQueries({ queryKey: queryKeys.notificationHistory });
+    },
+  });
+}
+
 // ── Invalidation helpers ────────────────────────────────────────
 export function useInvalidateQueries() {
   const qc = useQueryClient();

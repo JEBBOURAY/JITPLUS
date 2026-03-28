@@ -12,10 +12,9 @@
   },
   "scripts": {
     "eas-build-pre-install": "corepack enable",
-    "start": "cross-env EXPO_NO_DOCTOR=1 EXPO_OFFLINE=1 REACT_NATIVE_PACKAGER_HOSTNAME=192.168.1.116 expo start --host lan --port 8082 --go --clear",
-    "start:dev-client": "cross-env EXPO_NO_DOCTOR=1 REACT_NATIVE_PACKAGER_HOSTNAME=192.168.1.116 expo start --host lan --port 8082 --dev-client --clear",
-    "start:go": "cross-env EXPO_NO_DOCTOR=1 REACT_NATIVE_PACKAGER_HOSTNAME=192.168.1.116 expo start --host lan --port 8082 --go --clear",
-    "start:dev-client": "expo start --dev-client",
+    "start": "cross-env EXPO_NO_DOCTOR=1 EXPO_OFFLINE=1 expo start --host lan --port 8082 --go --clear",
+    "start:dev-client": "cross-env EXPO_NO_DOCTOR=1 expo start --host lan --port 8082 --dev-client --clear",
+    "start:go": "cross-env EXPO_NO_DOCTOR=1 expo start --host lan --port 8082 --go --clear",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",

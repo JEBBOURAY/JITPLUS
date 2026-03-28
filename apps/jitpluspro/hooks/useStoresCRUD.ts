@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback } from 'react';
 import { useGuardedCallback } from './useGuardedCallback';
 import { Alert } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
@@ -18,12 +18,10 @@ export const MAX_STORES = 10;
 export function useStoresCRUD() {
   const qc = useQueryClient();
   const { t } = useLanguage();
-  const { data: stores = [], isLoading: loading } = useStores();
+  const { data: stores = [], isLoading: loading, isRefetching: refreshing } = useStores();
   const createMutation = useCreateStore();
   const updateMutation = useUpdateStore();
   const deleteMutation = useDeleteStore();
-
-  const [refreshing, setRefreshing] = useState(false);
 
   const saving = createMutation.isPending || updateMutation.isPending;
 
@@ -32,10 +30,8 @@ export function useStoresCRUD() {
     qc.invalidateQueries({ queryKey: queryKeys.stores });
   }, [qc]);
 
-  const onRefresh = useGuardedCallback(async () => {
-    setRefreshing(true);
-    await qc.invalidateQueries({ queryKey: queryKeys.stores });
-    setRefreshing(false);
+  const onRefresh = useGuardedCallback(() => {
+    qc.invalidateQueries({ queryKey: queryKeys.stores });
   }, [qc]);
 
   // ── Can create? ──

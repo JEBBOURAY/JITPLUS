@@ -91,6 +91,7 @@ class ApiService {
         });
 
         if (data.refresh_token) await setRefreshToken(data.refresh_token);
+        if (!data.access_token) throw new Error('No access token in refresh response');
         return data.access_token;
       },
       onAuthFailure: () => {

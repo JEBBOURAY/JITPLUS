@@ -79,14 +79,16 @@ export function useMapClustering(
 
     // ── Reload index when merchants data changes ──
     if (dataChanged) {
-      const points = merchants.map((m) => ({
-        type: 'Feature' as const,
-        properties: { ...m, cluster: false, merchantId: m.id, pointId: m.storeId ? `${m.id}-${m.storeId}` : m.id },
-        geometry: {
-          type: 'Point' as const,
-          coordinates: [m.longitude!, m.latitude!],
-        },
-      }));
+      const points = merchants
+        .filter((m) => m.latitude != null && m.longitude != null && isFinite(m.latitude) && isFinite(m.longitude))
+        .map((m) => ({
+          type: 'Feature' as const,
+          properties: { ...m, cluster: false, merchantId: m.id, pointId: m.storeId ? `${m.id}-${m.storeId}` : m.id },
+          geometry: {
+            type: 'Point' as const,
+            coordinates: [m.longitude!, m.latitude!],
+          },
+        }));
 
       try {
         // Supercluster type expects GeoJSON features, which we provide.
@@ -113,7 +115,8 @@ export function useMapClustering(
 
     // ── Compute clusters ──
     try {
-      const zoom = Math.round(Math.log2(360 / longitudeDelta));
+      const safeDelta = Math.max(longitudeDelta, 0.001);
+      const zoom = Math.min(Math.round(Math.log2(360 / safeDelta)), 20);
 
       const padding = 0.5;
       const minLng = longitude - (longitudeDelta * (1 + padding)) / 2;

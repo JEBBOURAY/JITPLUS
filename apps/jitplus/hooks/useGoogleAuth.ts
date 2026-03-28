@@ -67,12 +67,20 @@ export function useGoogleAuth({ actionLabel, onCancel }: UseGoogleAuthOptions) {
     try {
       await GoogleSignin.hasPlayServices();
       const response = await GoogleSignin.signIn();
+
+      // V16 API: cancellation returns { type: 'cancelled' } instead of throwing
+      if ('type' in response && response.type === 'cancelled') {
+        setIsLoading(false);
+        onCancel?.();
+        return;
+      }
+
       const idToken = response.data?.idToken;
 
       if (!idToken) {
         setIsLoading(false);
         setError(i18n.t('googleAuth.noIdToken'));
-        onCancel?.();
+        // Don't call onCancel — keep user on Google screen so they can see the error
         return;
       }
 
@@ -84,7 +92,7 @@ export function useGoogleAuth({ actionLabel, onCancel }: UseGoogleAuthOptions) {
         else router.replace('/(tabs)/qr');
       } else {
         setError(result.error || i18n.t('googleAuth.error', { action: actionLabel }));
-        onCancel?.();
+        // Don't call onCancel — let user see the error and retry
       }
     } catch (err) {
       setIsLoading(false);
@@ -94,13 +102,14 @@ export function useGoogleAuth({ actionLabel, onCancel }: UseGoogleAuthOptions) {
           err.code === statusCodes.SIGN_IN_CANCELLED ||
           err.code === statusCodes.IN_PROGRESS
         ) {
+          // User explicitly cancelled or another sign-in is in progress — go back
           onCancel?.();
           return;
         }
       }
 
       setError(i18n.t('googleAuth.launchError', { action: actionLabel }));
-      onCancel?.();
+      // Don't call onCancel — let user see the error and retry
     }
   }, [actionLabel, googleLogin, onCancel]);
 

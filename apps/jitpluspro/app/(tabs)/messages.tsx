@@ -47,14 +47,36 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
-import api from '@/services/api';
 import { getErrorMessage } from '@/utils/error';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusFade } from '@/hooks/useFocusFade';
 import PremiumLockCard from '@/components/PremiumLockCard';
-import { useQueryClient } from '@tanstack/react-query';
-import { useNotificationHistory, useWhatsappQuota, useEmailQuota, queryKeys } from '@/hooks/useQueryHooks';
+import { useNotificationHistory, useWhatsappQuota, useEmailQuota, useSendPushNotification, useSendWhatsApp, useSendEmail } from '@/hooks/useQueryHooks';
 import type { NotificationRecord } from '@/hooks/useQueryHooks';
+
+// ── Cooldown duration after a successful send (ms) ──
+const SEND_COOLDOWN_MS = 30_000;
+
+/**
+ * Handle 403 errors from notification endpoints.
+ * Distinguishes premium plan issues from quota exhaustion.
+ */
+function handlePremiumError(
+  err: unknown,
+  t: (key: string, vars?: Record<string, unknown>) => string,
+) {
+  const axiosErr = err as { response?: { status?: number; data?: { message?: string } } };
+  if (axiosErr?.response?.status === 403) {
+    const msg = axiosErr?.response?.data?.message || '';
+    const isPlanIssue = msg.includes('Premium') || msg.includes('essai');
+    Alert.alert(
+      isPlanIssue ? t('messages.premiumOnly') : t('messages.quotaReached'),
+      msg || t('messages.premiumMsg'),
+    );
+    return;
+  }
+  Alert.alert(t('common.error'), getErrorMessage(err, t('common.genericError')));
+}
 
 // ── Smooth accordion transition ──
 const animateAccordion = () =>
@@ -167,24 +189,30 @@ export default function MessagesScreen() {
   const insets = useSafeAreaInsets();
   const { focusStyle } = useFocusFade();
   const { t, locale } = useLanguage();
-  const queryClient = useQueryClient();
 
   // ── Form state ──
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
-  const [sending, setSending] = useState(false);
   const [showCompose, setShowCompose] = useState(true);
 
   // ── WhatsApp state ──
   const [whatsappMessage, setWhatsappMessage] = useState('');
   const [showWhatsApp, setShowWhatsApp] = useState(false);
-  const [whatsappLoading, setWhatsappLoading] = useState(false);
 
   // ── Email state ──
   const [emailSubject, setEmailSubject] = useState('');
   const [emailBody, setEmailBody] = useState('');
   const [showEmail, setShowEmail] = useState(false);
-  const [emailSending, setEmailSending] = useState(false);
+
+  // ── Send cooldown (anti-spam) ──
+  const [pushCooldown, setPushCooldown] = useState(false);
+  const [whatsappCooldown, setWhatsappCooldown] = useState(false);
+  const [emailCooldown, setEmailCooldown] = useState(false);
+
+  // ── React Query mutations ──
+  const pushMutation = useSendPushNotification();
+  const whatsappMutation = useSendWhatsApp();
+  const emailMutation = useSendEmail();
 
   // ── React Query hooks ──
   const { data: history = [], isLoading: loading, isRefetching: refreshing, refetch: refetchHistory } = useNotificationHistory();
@@ -211,13 +239,10 @@ export default function MessagesScreen() {
           text: t('messages.send'),
           style: 'default',
           onPress: async () => {
-            setWhatsappLoading(true);
             try {
-              const res = await api.post('/notifications/send-whatsapp-to-all', {
+              const { recipientCount, successCount, failureCount } = await whatsappMutation.mutateAsync({
                 body: whatsappMessage.trim(),
               });
-
-              const { recipientCount, successCount, failureCount } = res.data;
 
               Alert.alert(
                 t('messages.whatsappSuccessTitle'),
@@ -229,22 +254,10 @@ export default function MessagesScreen() {
               );
 
               setWhatsappMessage('');
-              queryClient.invalidateQueries({ queryKey: queryKeys.whatsappQuota });
-              queryClient.invalidateQueries({ queryKey: queryKeys.notificationHistory });
+              setWhatsappCooldown(true);
+              setTimeout(() => setWhatsappCooldown(false), SEND_COOLDOWN_MS);
             } catch (err: unknown) {
-              const axiosErr = err as { response?: { status?: number; data?: { message?: string } } };
-              if (axiosErr?.response?.status === 403) {
-                const msg = axiosErr?.response?.data?.message || '';
-                const isPlanIssue = msg.includes('Premium') || msg.includes('essai');
-                Alert.alert(
-                  isPlanIssue ? t('messages.premiumOnly') : t('messages.quotaReached'),
-                  msg || t('messages.premiumMsg'),
-                );
-              } else {
-                Alert.alert(t('common.error'), getErrorMessage(err, t('common.genericError')));
-              }
-            } finally {
-              setWhatsappLoading(false);
+              handlePremiumError(err, t);
             }
           },
         },
@@ -268,14 +281,11 @@ export default function MessagesScreen() {
           text: t('messages.send'),
           style: 'default',
           onPress: async () => {
-            setEmailSending(true);
             try {
-              const res = await api.post('/notifications/send-email-to-all', {
+              const { recipientCount, successCount, failureCount } = await emailMutation.mutateAsync({
                 subject: emailSubject.trim(),
                 body: emailBody.trim(),
               });
-
-              const { recipientCount, successCount, failureCount } = res.data;
 
               Alert.alert(
                 t('messages.emailSuccessTitle'),
@@ -288,25 +298,10 @@ export default function MessagesScreen() {
 
               setEmailSubject('');
               setEmailBody('');
-              queryClient.invalidateQueries({ queryKey: queryKeys.emailQuota });
-              queryClient.invalidateQueries({ queryKey: queryKeys.notificationHistory });
+              setEmailCooldown(true);
+              setTimeout(() => setEmailCooldown(false), SEND_COOLDOWN_MS);
             } catch (err: unknown) {
-              const axiosErr = err as { response?: { status?: number; data?: { message?: string } } };
-              if (axiosErr?.response?.status === 403) {
-                const msg = axiosErr?.response?.data?.message || '';
-                const isPlanIssue = msg.includes('Premium') || msg.includes('essai');
-                Alert.alert(
-                  isPlanIssue ? t('messages.premiumOnly') : t('messages.quotaReached'),
-                  msg || t('messages.premiumMsg'),
-                );
-              } else {
-                Alert.alert(
-                  t('common.error'),
-                  getErrorMessage(err, t('common.genericError')),
-                );
-              }
-            } finally {
-              setEmailSending(false);
+              handlePremiumError(err, t);
             }
           },
         },
@@ -332,14 +327,11 @@ export default function MessagesScreen() {
           text: t('messages.send'),
           style: 'default',
           onPress: async () => {
-            setSending(true);
             try {
-              const res = await api.post('/notifications/send-to-all', {
+              const { recipientCount, successCount, failureCount } = await pushMutation.mutateAsync({
                 title: title.trim(),
                 body: body.trim(),
               });
-
-              const { recipientCount, successCount, failureCount } = res.data;
 
               Alert.alert(
                 t('messages.sentSuccess'),
@@ -352,14 +344,10 @@ export default function MessagesScreen() {
 
               setTitle('');
               setBody('');
-              queryClient.invalidateQueries({ queryKey: queryKeys.notificationHistory });
+              setPushCooldown(true);
+              setTimeout(() => setPushCooldown(false), SEND_COOLDOWN_MS);
             } catch (err: unknown) {
-              Alert.alert(
-                t('common.error'),
-                getErrorMessage(err, t('common.genericError')),
-              );
-            } finally {
-              setSending(false);
+              handlePremiumError(err, t);
             }
           },
         },
@@ -552,11 +540,11 @@ export default function MessagesScreen() {
                       triggerSendRipple();
                       handleSend();
                     }}
-                    disabled={sending || !title.trim() || !body.trim()}
+                    disabled={pushMutation.isPending || pushCooldown || !title.trim() || !body.trim()}
                     activeOpacity={0.85}
                   >
                     <Animated.View pointerEvents="none" style={[styles.sendRipple, sendRippleStyle]} />
-                    {sending ? (
+                    {pushMutation.isPending ? (
                       <ActivityIndicator size="small" color="#fff" />
                     ) : (
                       <>
@@ -621,7 +609,7 @@ export default function MessagesScreen() {
                   {!whatsappQuota && <View style={{ marginBottom: 16 }} />}
 
                   {/* Send WhatsApp button */}
-                  {whatsappLoading ? (
+                  {whatsappMutation.isPending ? (
                     <View style={[styles.sendBtn, { backgroundColor: CHANNEL_COLORS.WHATSAPP, borderColor: '#128c1f' }]}>
                       <ActivityIndicator size="small" color="#fff" />
                       <Text style={styles.sendBtnText}>{t('messages.sending')}</Text>
@@ -636,7 +624,7 @@ export default function MessagesScreen() {
                         },
                       ]}
                       onPress={handleSendWhatsApp}
-                      disabled={!whatsappMessage.trim()}
+                      disabled={whatsappCooldown || !whatsappMessage.trim()}
                       activeOpacity={0.85}
                     >
                       <MessageCircle size={18} color="#fff" strokeWidth={1.5} />
@@ -732,10 +720,10 @@ export default function MessagesScreen() {
                       },
                     ]}
                     onPress={handleSendEmail}
-                    disabled={emailSending || !emailSubject.trim() || !emailBody.trim()}
+                    disabled={emailMutation.isPending || emailCooldown || !emailSubject.trim() || !emailBody.trim()}
                     activeOpacity={0.85}
                   >
-                    {emailSending ? (
+                    {emailMutation.isPending ? (
                       <ActivityIndicator size="small" color="#fff" />
                     ) : (
                       <>

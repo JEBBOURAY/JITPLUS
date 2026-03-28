@@ -223,7 +223,7 @@ export default function NotificationsScreen() {
   const dismissAll = useDismissAllNotifications();
 
   const notifications = useMemo(
-    () => data?.pages.flatMap((p) => p.notifications) ?? [],
+    () => data?.pages?.flatMap((p) => p?.notifications ?? []) ?? [],
     [data],
   );
 

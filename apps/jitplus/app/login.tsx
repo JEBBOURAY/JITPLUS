@@ -145,6 +145,9 @@ export default function LoginScreen() {
         <Text style={[styles.socialBtnText, { color: theme.text }]}>{t('login.loginWithGoogle')}</Text>
       </TouchableOpacity>
 
+      {/* Show Google errors on this screen too (safety net) */}
+      {error ? <FormError message={error} /> : null}
+
       {/* Separator */}
       <View style={styles.separator}>
         <View style={[styles.separatorLine, { backgroundColor: theme.inputBorder }]} />

@@ -257,6 +257,14 @@ export default {
     selectClient: 'Sélectionnez le client souhaité :',
     verifying: 'Vérification…',
     qrDetected: 'QR Code détecté',
+    qrInvalidTitle: 'QR Code invalide',
+    tokenMissing: 'Token manquant.',
+    qrExpiredFallback: 'QR code expiré ou invalide. Demandez au client de rafraîchir son QR.',
+    clientNotFoundFallback: 'Client introuvable ou QR code invalide.',
+    clientInvalidTitle: 'Client invalide',
+    clientNotFoundTitle: 'Client introuvable',
+    noClientForPhone: 'Aucun client trouvé avec le numéro %{phone}.',
+    phoneSearchError: 'Impossible de rechercher ce numéro. Réessayez.',
   },
 
   // ── Account ──
@@ -393,6 +401,14 @@ export default {
 
     // Sign out
     signOut: 'Se déconnecter',
+    signOutConfirm: 'Êtes-vous sûr de vouloir vous déconnecter ?',
+    contactSupport: 'Contacter le support',
+    profilePhoto: 'Photo de profil',
+    profilePhotoEditHint: 'Modifiez ou supprimez votre photo de profil',
+    profilePhotoAddHint: 'Ajoutez un logo pour personnaliser votre commerce',
+    changeProfilePhoto: 'Changer la photo',
+    addProfilePhoto: 'Ajouter une photo',
+    deleteProfilePhoto: 'Supprimer la photo',
 
     // Delete account
     deleteAccount: 'Supprimer le compte',
@@ -409,6 +425,11 @@ export default {
     // Legal section
     legalSection: 'Légal',
     legalSubtitle: 'Confidentialité et conditions',
+
+    // Logo
+    logoUploadError: "Impossible d'envoyer le logo",
+    logoDeleteError: 'Impossible de supprimer le logo',
+    restartDirectionHint: "Redémarrez l'application pour appliquer le changement de direction.",
   },
 
   // ── Profile ──
@@ -1049,6 +1070,14 @@ export default {
     // Accumulation limit
     accumulationLimitLabel: 'Limite d\'accumulation (optionnel)',
     accumulationLimitHint: 'D\u00e9finissez un plafond maximum de %{unit} qu\'un client peut accumuler. Si d\u00e9sactiv\u00e9, l\'accumulation est illimit\u00e9e.',
+
+    // Reward suggestions
+    suggStamp1: '☕ Café offert',
+    suggStamp2: '🍕 Pizza gratuite',
+    suggStamp3: '🎁 Dessert offert',
+    suggPoint1: '☕ Café gratuit',
+    suggPoint2: '🎁 -10% remise',
+    suggPoint3: '🍕 Livraison offerte',
 
     // Step 4 — First scan
     scanTitle: 'Faites votre premier scan !',

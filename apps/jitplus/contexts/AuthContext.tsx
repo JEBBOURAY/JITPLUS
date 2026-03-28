@@ -69,7 +69,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // Token exists and user wanted to be remembered
           const profile = await api.getProfile();
           if (cancelled || sessionVersionRef.current !== version) return;
-          store.setClient(profile);
+          if (profile?.id) {
+            store.setClient(profile);
+          } else {
+            // Profile response is invalid — clear tokens
+            await api.clearAuth();
+          }
         } else if (token) {
           // Token exists but user didn't want to be remembered → clear silently
           await api.clearAuth();

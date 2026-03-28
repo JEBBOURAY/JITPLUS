@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React from 'react';
 import {
   View,
   Text,
@@ -14,11 +14,11 @@ import {
   Animated,
   Linking,
 } from 'react-native';
-import api from '@/services/api';
 import * as ImagePicker from 'expo-image-picker';
 import { getErrorMessage } from '@/utils/error';
 import MerchantLogo from '@/components/MerchantLogo';
-import { useReferral } from '@/hooks/useQueryHooks';
+import InfoRow from '@/components/InfoRow';
+import { useReferral, useUploadMerchantLogo, useDeleteMerchantLogo } from '@/hooks/useQueryHooks';
 import {
   MapPin,
   LogOut,
@@ -56,18 +56,20 @@ import { useLanguage, LANGUAGES } from '@/contexts/LanguageContext';
 import Constants from 'expo-constants';
 import FadeInView from '@/components/FadeInView';
 import { wp, hp, ms, fontSize as FS, radius } from '@/utils/responsive';
+import { useState } from 'react';
 
 export default function AccountScreen() {
-  const { merchant, loading, signOut, isTeamMember, teamMember, loadProfile, updateMerchant } = useAuth();
+  const { merchant, loading, signOut, isTeamMember, teamMember, updateMerchant } = useAuth();
   const theme = useTheme();
   const router = useRouter();
-  const { isFocused, focusStyle } = useFocusFade();
+  const { focusStyle } = useFocusFade();
+  const uploadLogoMutation = useUploadMerchantLogo();
+  const deleteLogoMutation = useDeleteMerchantLogo();
 
   // Collapsible section states
   const [storeExpanded, setStoreExpanded] = useState(false);
   const [prefExpanded, setPrefExpanded] = useState(false);
   const [compteExpanded, setCompteExpanded] = useState(false);
-  const [uploadingLogo, setUploadingLogo] = useState(false);
   const [showLogoModal, setShowLogoModal] = useState(false);
 
   const pickAndUploadLogo = async () => {
@@ -79,27 +81,15 @@ export default function AccountScreen() {
         quality: 0.7,
       });
       if (result.canceled || !result.assets?.[0]) return;
-      setUploadingLogo(true);
       const asset = result.assets[0];
-      const formData = new FormData();
-      const ext = (asset.uri.split('.').pop() ?? 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
-      const safeName = (merchant?.nom ?? 'commerce')
-        .toLowerCase()
-        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '')
-        .slice(0, 40);
-      const dateStr = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-      const fileName = `logo_${safeName}_${dateStr}.${ext}`;
-      formData.append('file', { uri: asset.uri, name: fileName, type: asset.mimeType ?? `image/${ext}` } as any);
-      const res = await api.post('/merchant/upload-image?type=logo', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+      const { url } = await uploadLogoMutation.mutateAsync({
+        uri: asset.uri,
+        mimeType: asset.mimeType,
+        merchantName: merchant?.nom,
       });
-      updateMerchant({ ...merchant!, logoUrl: res.data.url });
+      updateMerchant({ ...merchant!, logoUrl: url });
     } catch (err) {
-      Alert.alert('Erreur', getErrorMessage(err, "Impossible d'envoyer le logo"));
-    } finally {
-      setUploadingLogo(false);
+      Alert.alert(t('common.error'), getErrorMessage(err, t('account.logoUploadError')));
     }
   };
 
@@ -108,25 +98,22 @@ export default function AccountScreen() {
   const handleDeleteLogo = async () => {
     setShowLogoModal(false);
     try {
-      await api.patch('/merchant/profile', { logoUrl: null });
+      await deleteLogoMutation.mutateAsync();
       updateMerchant({ ...merchant!, logoUrl: undefined });
     } catch (err) {
-      Alert.alert('Erreur', getErrorMessage(err, 'Impossible de supprimer le logo'));
+      Alert.alert(t('common.error'), getErrorMessage(err, t('account.logoDeleteError')));
     }
   };
   const { data: referralData } = useReferral();
   const referralCode = referralData?.referralCode ?? null;
 
-  useEffect(() => {
-    if (isFocused) {
-      loadProfile().catch(() => {});
-    }
-  }, [isFocused]);
+  // Profile data is managed by React Query (useMerchantProfile, staleTime: 5min).
+  // No need to force-reload on every tab focus � pull-to-refresh or mutations handle invalidation.
   const { label: categoryLabel } = useCategoryMetadata(merchant?.categorie);
   const { locale, setLocale, t } = useLanguage();
   const [showLanguageModal, setShowLanguageModal] = useState(false);
 
-  // ── Plan helpers ─────────────────────────────────────
+  // -- Plan helpers -------------------------------------
   const isPremium = merchant?.plan === 'PREMIUM';
   const isAdminPremium = merchant?.planActivatedByAdmin === true;
   const planExpiresAt = merchant?.planExpiresAt ? new Date(merchant.planExpiresAt) : null;
@@ -155,7 +142,7 @@ export default function AccountScreen() {
     : 'ok';
 
   const handleSignOut = async () => {
-    Alert.alert(t('account.signOut'), t('account.signOut'), [
+    Alert.alert(t('account.signOut'), t('account.signOutConfirm'), [
       { text: t('common.cancel'), style: 'cancel' },
       {
         text: t('account.signOut'),
@@ -188,10 +175,10 @@ export default function AccountScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.contentContainer}
       >
-        {/* ── Profile Card ───────────────────────────── */}
+        {/* -- Profile Card ----------------------------- */}
         <FadeInView delay={100}>
           <View style={[styles.profileCard, { backgroundColor: theme.bgCard }]}>
-            {/* ── Logo ────────────────────────────────── */}
+            {/* -- Logo ---------------------------------- */}
             <View style={styles.profileCardAvatarRow}>
               <TouchableOpacity onPress={handleLogoPress} activeOpacity={0.85} style={styles.avatarRingWrapper}>
                 <LinearGradient
@@ -200,7 +187,7 @@ export default function AccountScreen() {
                   end={{ x: 1, y: 1 }}
                   style={styles.avatarRing}
                 >
-                  {uploadingLogo ? (
+                  {uploadLogoMutation.isPending ? (
                     <View style={styles.avatarInner}>
                       <ActivityIndicator size="small" color={palette.violet} />
                     </View>
@@ -229,7 +216,7 @@ export default function AccountScreen() {
               <Text style={[styles.profileName, { color: theme.text }]}>{merchant.nom}</Text>
             </View>
 
-            {/* ── Plan Row ────────────────────────────── */}
+            {/* -- Plan Row ------------------------------ */}
             <TouchableOpacity
               activeOpacity={0.78}
               onPress={() => router.push('/plan')}
@@ -314,7 +301,7 @@ export default function AccountScreen() {
               <ChevronRight size={ms(18)} color={isPremium ? '#A78BFA' : theme.textMuted} />
             </TouchableOpacity>
 
-            {/* ── Referral Code ───────────────────────── */}
+            {/* -- Referral Code ------------------------- */}
             {referralCode && (
               <Pressable
                 onPress={() => router.push('/referral' as any)}
@@ -349,7 +336,7 @@ export default function AccountScreen() {
           </View>
         </FadeInView>
 
-        {/* ── Team Member Banner ─────────────────────── */}
+        {/* -- Team Member Banner ----------------------- */}
         {isTeamMember && teamMember && (
           <FadeInView delay={250}>
             <View style={[styles.teamBanner, { backgroundColor: `${palette.charbon}12`, borderColor: `${palette.charbon}30` }]}>
@@ -368,7 +355,7 @@ export default function AccountScreen() {
           </FadeInView>
         )}
 
-        {/* ── Ma Boutique Section ────────────────────── */}
+        {/* -- Ma Boutique Section ---------------------- */}
         {!isTeamMember && (
           <FadeInView delay={300}>
             <TouchableOpacity
@@ -387,113 +374,54 @@ export default function AccountScreen() {
             {storeExpanded && (
               <View style={[styles.infoCard, { backgroundColor: theme.bgCard }]}>
                 {/* Edit Commerce */}
-                <Pressable
+                <InfoRow
+                  icon={<Edit3 size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
+                  label={t('account.editStore')}
+                  subtitle={t('account.editStoreSubtitle')}
                   onPress={() => router.push('/edit-profile')}
-                  android_ripple={{ color: `${palette.charbon}10` }}
-                  style={({ pressed }) => [
-                    styles.infoRow, { borderBottomColor: theme.borderLight },
-                    pressed && Platform.OS === 'ios' && { opacity: 0.7 },
-                  ]}
-                >
-                  <View style={[styles.infoIconBox, { backgroundColor: `${palette.charbon}12` }]}>
-                    <Edit3 size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
-                  </View>
-                  <View style={styles.infoContent}>
-                    <Text style={[styles.infoValue, { color: theme.text }]}>{t('account.editStore')}</Text>
-                    <Text style={[styles.infoLabel, { color: theme.textMuted }]}>{t('account.editStoreSubtitle')}</Text>
-                  </View>
-                </Pressable>
+                />
                 {/* Manage Stores */}
-                <Pressable
+                <InfoRow
+                  icon={<StoreIcon size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
+                  label={t('account.manageStores')}
+                  subtitle={t('account.manageStoresSubtitle')}
                   onPress={() => router.push('/stores')}
-                  android_ripple={{ color: `${palette.charbon}10` }}
-                  style={({ pressed }) => [
-                    styles.infoRow, { borderBottomColor: theme.borderLight },
-                    pressed && Platform.OS === 'ios' && { opacity: 0.7 },
-                  ]}
-                >
-                  <View style={[styles.infoIconBox, { backgroundColor: `${palette.charbon}12` }]}>
-                    <StoreIcon size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
-                  </View>
-                  <View style={styles.infoContent}>
-                    <Text style={[styles.infoValue, { color: theme.text }]}>{t('account.manageStores')}</Text>
-                    <Text style={[styles.infoLabel, { color: theme.textMuted }]}>{t('account.manageStoresSubtitle')}</Text>
-                  </View>
-                </Pressable>
+                />
                 {/* Settings */}
-                <Pressable
+                <InfoRow
+                  icon={<Settings size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
+                  label={t('account.settingsTitle')}
+                  subtitle={t('account.settingsSubtitle')}
                   onPress={() => router.push('/settings')}
-                  android_ripple={{ color: `${palette.charbon}10` }}
-                  style={({ pressed }) => [
-                    styles.infoRow, { borderBottomColor: theme.borderLight },
-                    pressed && Platform.OS === 'ios' && { opacity: 0.7 },
-                  ]}
-                >
-                  <View style={[styles.infoIconBox, { backgroundColor: `${palette.charbon}12` }]}>
-                    <Settings size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
-                  </View>
-                  <View style={styles.infoContent}>
-                    <Text style={[styles.infoValue, { color: theme.text }]}>{t('account.settingsTitle')}</Text>
-                    <Text style={[styles.infoLabel, { color: theme.textMuted }]}>{t('account.settingsSubtitle')}</Text>
-                  </View>
-                </Pressable>
+                />
                 {/* Dashboard */}
-                <Pressable
+                <InfoRow
+                  icon={<BarChart3 size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
+                  label={t('account.dashboard')}
+                  subtitle={t('account.dashboardSubtitle')}
                   onPress={() => router.push('/dashboard')}
-                  android_ripple={{ color: `${palette.charbon}10` }}
-                  style={({ pressed }) => [
-                    styles.infoRow, { borderBottomColor: theme.borderLight },
-                    pressed && Platform.OS === 'ios' && { opacity: 0.7 },
-                  ]}
-                >
-                  <View style={[styles.infoIconBox, { backgroundColor: `${palette.charbon}12` }]}>
-                    <BarChart3 size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
-                  </View>
-                  <View style={styles.infoContent}>
-                    <Text style={[styles.infoValue, { color: theme.text }]}>{t('account.dashboard')}</Text>
-                    <Text style={[styles.infoLabel, { color: theme.textMuted }]}>{t('account.dashboardSubtitle')}</Text>
-                  </View>
-                </Pressable>
+                />
                 {/* Team */}
-                <Pressable
+                <InfoRow
+                  icon={<Users size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
+                  label={t('account.team')}
+                  subtitle={t('account.teamSubtitle')}
                   onPress={() => router.push('/team-management' as any)}
-                  android_ripple={{ color: `${palette.charbon}10` }}
-                  style={({ pressed }) => [
-                    styles.infoRow, { borderBottomColor: theme.borderLight },
-                    pressed && Platform.OS === 'ios' && { opacity: 0.7 },
-                  ]}
-                >
-                  <View style={[styles.infoIconBox, { backgroundColor: `${palette.charbon}12` }]}>
-                    <Users size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
-                  </View>
-                  <View style={styles.infoContent}>
-                    <Text style={[styles.infoValue, { color: theme.text }]}>{t('account.team')}</Text>
-                    <Text style={[styles.infoLabel, { color: theme.textMuted }]}>{t('account.teamSubtitle')}</Text>
-                  </View>
-                </Pressable>
+                />
                 {/* Referral */}
-                <Pressable
+                <InfoRow
+                  icon={<Gift size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
+                  label={t('referral.menuTitle')}
+                  subtitle={t('referral.menuSubtitle')}
                   onPress={() => router.push('/referral' as any)}
-                  android_ripple={{ color: `${palette.charbon}10` }}
-                  style={({ pressed }) => [
-                    styles.infoRow, { borderBottomWidth: 0 },
-                    pressed && Platform.OS === 'ios' && { opacity: 0.7 },
-                  ]}
-                >
-                  <View style={[styles.infoIconBox, { backgroundColor: `${palette.charbon}12` }]}>
-                    <Gift size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
-                  </View>
-                  <View style={styles.infoContent}>
-                    <Text style={[styles.infoValue, { color: theme.text }]}>{t('referral.menuTitle')}</Text>
-                    <Text style={[styles.infoLabel, { color: theme.textMuted }]}>{t('referral.menuSubtitle')}</Text>
-                  </View>
-                </Pressable>
+                  noBorder
+                />
               </View>
             )}
           </FadeInView>
         )}
 
-        {/* ── Preferences Section ────────────────────── */}
+        {/* -- Preferences Section ---------------------- */}
         <FadeInView delay={400}>
           <TouchableOpacity
             onPress={() => setPrefExpanded(!prefExpanded)}
@@ -511,54 +439,36 @@ export default function AccountScreen() {
           {prefExpanded && (
             <View style={[styles.infoCard, { backgroundColor: theme.bgCard }]}>
               {/* Dark mode */}
-              <Pressable
+              <InfoRow
+                icon={<Moon size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
+                label={t('account.darkMode')}
+                subtitle={theme.isDark ? t('account.darkModeOn') : t('account.darkModeOff')}
                 onPress={theme.toggleDarkMode}
-                android_ripple={{ color: `${palette.charbon}10` }}
-                style={({ pressed }) => [
-                  styles.infoRow, { borderBottomColor: theme.borderLight },
-                  pressed && Platform.OS === 'ios' && { opacity: 0.7 },
-                ]}
-              >
-                <View style={[styles.infoIconBox, { backgroundColor: `${palette.charbon}15` }]}>
-                  <Moon size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
-                </View>
-                <View style={styles.infoContent}>
-                  <Text style={[styles.infoValue, { color: theme.text }]}>{t('account.darkMode')}</Text>
-                  <Text style={[styles.infoLabel, { color: theme.textMuted }]}>
-                    {theme.isDark ? t('account.darkModeOn') : t('account.darkModeOff')}
-                  </Text>
-                </View>
-                <View style={[styles.toggle, theme.isDark ? styles.toggleOn : { backgroundColor: theme.borderLight }]}>
-                  <View style={[styles.toggleKnob, theme.isDark && styles.toggleKnobOn]} />
-                </View>
-              </Pressable>
+                iconBg={`${palette.charbon}15`}
+                right={
+                  <View style={[styles.toggle, theme.isDark ? styles.toggleOn : { backgroundColor: theme.borderLight }]}>
+                    <View style={[styles.toggleKnob, theme.isDark && styles.toggleKnobOn]} />
+                  </View>
+                }
+              />
               {/* Language */}
-              <Pressable
+              <InfoRow
+                icon={<Globe size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
+                label={t('account.language')}
+                subtitle={t('account.chooseLanguageDesc')}
                 onPress={() => setShowLanguageModal(true)}
-                android_ripple={{ color: `${palette.charbon}10` }}
-                style={({ pressed }) => [
-                  styles.infoRow, { borderBottomWidth: 0 },
-                  pressed && Platform.OS === 'ios' && { opacity: 0.7 },
-                ]}
-              >
-                <View style={[styles.infoIconBox, { backgroundColor: `${palette.charbon}12` }]}>
-                  <Globe size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
-                </View>
-                <View style={styles.infoContent}>
-                  <Text style={[styles.infoValue, { color: theme.text }]}>{t('account.language')}</Text>
-                  <Text style={[styles.infoLabel, { color: theme.textMuted }]}>
-                    {t('account.chooseLanguageDesc')}
+                noBorder
+                right={
+                  <Text style={[styles.langBadge, { color: theme.primary, backgroundColor: `${theme.primary}15` }]}>
+                    {LANGUAGES.find(l => l.code === locale)?.label ?? locale}
                   </Text>
-                </View>
-                <Text style={[styles.langBadge, { color: theme.primary, backgroundColor: `${theme.primary}15` }]}>
-                  {LANGUAGES.find(l => l.code === locale)?.label ?? locale}
-                </Text>
-              </Pressable>
+                }
+              />
             </View>
           )}
         </FadeInView>
 
-        {/* ── Compte Section ──────────────────────────── */}
+        {/* -- Compte Section ---------------------------- */}
         <FadeInView delay={500}>
           <TouchableOpacity
             onPress={() => setCompteExpanded(!compteExpanded)}
@@ -576,117 +486,60 @@ export default function AccountScreen() {
           {compteExpanded && (
             <View style={[styles.infoCard, { backgroundColor: theme.bgCard }]}>
               {/* Legal */}
-              <Pressable
+              <InfoRow
+                icon={<Shield size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
+                label={t('account.legalSection')}
+                subtitle={t('account.legalSubtitle')}
                 onPress={() => router.push('/legal' as any)}
-                android_ripple={{ color: `${palette.charbon}10` }}
-                style={({ pressed }) => [
-                  styles.infoRow, { borderBottomColor: theme.borderLight },
-                  pressed && Platform.OS === 'ios' && { opacity: 0.7 },
-                ]}
-              >
-                <View style={[styles.infoIconBox, { backgroundColor: `${palette.charbon}12` }]}>
-                  <Shield size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
-                </View>
-                <View style={styles.infoContent}>
-                  <Text style={[styles.infoValue, { color: theme.text }]}>{t('account.legalSection')}</Text>
-                  <Text style={[styles.infoLabel, { color: theme.textMuted }]}>{t('account.legalSubtitle')}</Text>
-                </View>
-              </Pressable>
+              />
               {/* Security / Password */}
               {!isTeamMember && (
-                <Pressable
+                <InfoRow
+                  icon={<Lock size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
+                  label={t('account.security')}
+                  subtitle={t('account.securitySubtitle')}
                   onPress={() => router.push('/security')}
-                  android_ripple={{ color: `${palette.charbon}10` }}
-                  style={({ pressed }) => [
-                    styles.infoRow, { borderBottomColor: theme.borderLight },
-                    pressed && Platform.OS === 'ios' && { opacity: 0.7 },
-                  ]}
-                >
-                  <View style={[styles.infoIconBox, { backgroundColor: `${palette.charbon}15` }]}>
-                    <Lock size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
-                  </View>
-                  <View style={styles.infoContent}>
-                    <Text style={[styles.infoValue, { color: theme.text }]}>{t('account.security')}</Text>
-                    <Text style={[styles.infoLabel, { color: theme.textMuted }]}>{t('account.securitySubtitle')}</Text>
-                  </View>
-                </Pressable>
+                  iconBg={`${palette.charbon}15`}
+                />
               )}
               {/* Devices */}
               {!isTeamMember && (
-                <Pressable
+                <InfoRow
+                  icon={<Smartphone size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
+                  label={t('account.stores')}
+                  subtitle={t('account.storesSubtitle')}
                   onPress={() => router.push('/security?tab=devices')}
-                  android_ripple={{ color: `${palette.charbon}10` }}
-                  style={({ pressed }) => [
-                    styles.infoRow, { borderBottomColor: theme.borderLight },
-                    pressed && Platform.OS === 'ios' && { opacity: 0.7 },
-                  ]}
-                >
-                  <View style={[styles.infoIconBox, { backgroundColor: `${palette.charbon}12` }]}>
-                    <Smartphone size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
-                  </View>
-                  <View style={styles.infoContent}>
-                    <Text style={[styles.infoValue, { color: theme.text }]}>{t('account.stores')}</Text>
-                    <Text style={[styles.infoLabel, { color: theme.textMuted }]}>{t('account.storesSubtitle')}</Text>
-                  </View>
-                </Pressable>
+                />
               )}
               {/* Contact support */}
-              <Pressable
+              <InfoRow
+                icon={<MessageCircle size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
+                label={t('account.contactSupport')}
                 onPress={() => Linking.openURL('https://wa.me/33767471397?text=Bonjour%2C%20j%27ai%20besoin%20d%27aide%20avec%20JitPlus%20Pro')}
-                android_ripple={{ color: `${palette.charbon}10` }}
-                style={({ pressed }) => [
-                  styles.infoRow, { borderBottomColor: theme.borderLight },
-                  pressed && Platform.OS === 'ios' && { opacity: 0.7 },
-                ]}
-              >
-                <View style={[styles.infoIconBox, { backgroundColor: `${palette.charbon}15` }]}>
-                  <MessageCircle size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
-                </View>
-                <View style={styles.infoContent}>
-                  <Text style={[styles.infoValue, { color: theme.text }]}>{'Contacter le support'}</Text>
-                </View>
-              </Pressable>
+                iconBg={`${palette.charbon}15`}
+              />
               {/* Logout */}
-              <Pressable
+              <InfoRow
+                icon={<LogOut size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
+                label={t('account.signOut')}
                 onPress={handleSignOut}
-                android_ripple={{ color: `${palette.charbon}10` }}
-                style={({ pressed }) => [
-                  styles.infoRow, { borderBottomColor: theme.borderLight },
-                  pressed && Platform.OS === 'ios' && { opacity: 0.7 },
-                ]}
-              >
-                <View style={[styles.infoIconBox, { backgroundColor: `${palette.charbon}12` }]}>
-                  <LogOut size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
-                </View>
-                <View style={styles.infoContent}>
-                  <Text style={[styles.infoValue, { color: theme.danger }]}>{t('account.signOut')}</Text>
-                </View>
-              </Pressable>
+              />
               {/* Delete account */}
               {!isTeamMember && (
-                <Pressable
+                <InfoRow
+                  icon={<Trash2 size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
+                  label={t('account.deleteAccount')}
+                  subtitle={t('account.deleteAccountMsg')}
                   onPress={() => router.push('/security?tab=delete')}
-                  android_ripple={{ color: `${palette.charbon}10` }}
-                  style={({ pressed }) => [
-                    styles.infoRow, { borderBottomWidth: 0 },
-                    pressed && Platform.OS === 'ios' && { opacity: 0.7 },
-                  ]}
-                >
-                  <View style={[styles.infoIconBox, { backgroundColor: `${palette.charbon}12` }]}>
-                    <Trash2 size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
-                  </View>
-                  <View style={styles.infoContent}>
-                    <Text style={[styles.infoValue, { color: theme.danger }]}>{t('account.deleteAccount')}</Text>
-                    <Text style={[styles.infoLabel, { color: theme.textMuted }]}>{t('account.deleteAccountMsg')}</Text>
-                  </View>
-                  <AlertTriangle size={ms(14)} color={theme.danger} strokeWidth={1.5} />
-                </Pressable>
+                  noBorder
+                  right={<AlertTriangle size={ms(14)} color={theme.danger} strokeWidth={1.5} />}
+                />
               )}
             </View>
           )}
         </FadeInView>
 
-        {/* ── Logo Footer ────────────────────────────── */}
+        {/* -- Logo Footer ------------------------------ */}
         <View style={styles.logoFooter}>
           <Image
             source={require('@/assets/images/jitplusprologo.png')}
@@ -702,7 +555,7 @@ export default function AccountScreen() {
         </View>
       </ScrollView>
 
-      {/* ── Logo Edit Bottom Sheet ──────────────────── */}
+      {/* -- Logo Edit Bottom Sheet -------------------- */}
       <Modal
         visible={showLogoModal}
         transparent
@@ -722,7 +575,7 @@ export default function AccountScreen() {
                 end={{ x: 1, y: 1 }}
                 style={styles.logoModalRing}
               >
-                {uploadingLogo ? (
+                {uploadLogoMutation.isPending ? (
                   <View style={[styles.logoModalInner, { backgroundColor: theme.bgCard }]}>
                     <ActivityIndicator size="large" color={palette.violet} />
                   </View>
@@ -741,11 +594,11 @@ export default function AccountScreen() {
               </LinearGradient>
             </View>
 
-            <Text style={[styles.logoModalTitle, { color: theme.text }]}>Photo de profil</Text>
+            <Text style={[styles.logoModalTitle, { color: theme.text }]}>{t('account.profilePhoto')}</Text>
             <Text style={[styles.logoModalSubtitle, { color: theme.textMuted }]}>
               {merchant?.logoUrl
-                ? 'Modifiez ou supprimez votre photo de profil'
-                : 'Ajoutez un logo pour personnaliser votre commerce'}
+                ? t('account.profilePhotoEditHint')
+                : t('account.profilePhotoAddHint')}
             </Text>
 
             {/* Choose photo */}
@@ -765,7 +618,7 @@ export default function AccountScreen() {
               >
                 <Camera size={ms(18)} color="#fff" strokeWidth={2} />
                 <Text style={styles.logoModalBtnText}>
-                  {merchant?.logoUrl ? 'Changer la photo' : 'Ajouter une photo'}
+                  {merchant?.logoUrl ? t('account.changeProfilePhoto') : t('account.addProfilePhoto')}
                 </Text>
               </LinearGradient>
             </TouchableOpacity>
@@ -778,7 +631,7 @@ export default function AccountScreen() {
                 onPress={handleDeleteLogo}
               >
                 <Trash2 size={ms(16)} color="#EF4444" strokeWidth={1.5} />
-                <Text style={[styles.logoModalOutlineBtnText, { color: '#EF4444' }]}>Supprimer la photo</Text>
+                <Text style={[styles.logoModalOutlineBtnText, { color: '#EF4444' }]}>{t('account.deleteProfilePhoto')}</Text>
               </TouchableOpacity>
             )}
 
@@ -788,13 +641,13 @@ export default function AccountScreen() {
               activeOpacity={0.7}
               onPress={() => setShowLogoModal(false)}
             >
-              <Text style={[styles.logoModalOutlineBtnText, { color: theme.textMuted }]}>Annuler</Text>
+              <Text style={[styles.logoModalOutlineBtnText, { color: theme.textMuted }]}>{t('common.cancel')}</Text>
             </TouchableOpacity>
           </Pressable>
         </Pressable>
       </Modal>
 
-      {/* ── Language Selector Modal ─────────────────── */}
+      {/* -- Language Selector Modal ------------------- */}
       <Modal
         visible={showLanguageModal}
         transparent
@@ -822,7 +675,7 @@ export default function AccountScreen() {
                       if (lang.code === 'ar' || locale === 'ar') {
                         Alert.alert(
                           t('account.language'),
-                          'Red\u00e9marrez l\'application pour appliquer le changement de direction.',
+                          t('account.restartDirectionHint'),
                           [{ text: 'OK' }],
                         );
                       }
