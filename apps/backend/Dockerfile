@@ -76,6 +76,9 @@ COPY --from=builder /app/apps/backend/package.json ./
 # Copy production node_modules from deps stage
 COPY --from=deps /app/node_modules ./node_modules
 
+# Copy Prisma generated client (output = "../src/generated/client" in schema)
+COPY --from=deps /app/src/generated/client ./src/generated/client
+
 # Copy prisma schema (needed when running migrations from this image)
 COPY --from=builder /app/apps/backend/prisma ./prisma
 
