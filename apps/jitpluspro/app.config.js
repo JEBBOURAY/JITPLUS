@@ -2,7 +2,7 @@
 module.exports = ({ config }) => {
   // SECURITY: This key is bundled in the client. Restrict it in Google Cloud Console:
   //   - Application restriction: Android apps (SHA-1 + package) and iOS apps (bundle ID)
-  //   - API restriction: Maps SDK for Android, Maps SDK for iOS only
+  //   - API restriction: Maps SDK for Android, Maps SDK for iOS, Geocoding API, Places API
   const GOOGLE_MAPS_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || '';
   // Reversed client ID from Google Cloud Console → OAuth 2.0 → iOS client
   const IOS_GOOGLE_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || '';

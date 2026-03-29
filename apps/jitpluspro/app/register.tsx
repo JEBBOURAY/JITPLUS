@@ -649,6 +649,10 @@ export default function RegisterScreen() {
                 handleReferralCodeChange={handleReferralCodeChange}
                 handleAddressSearch={handleAddressSearch}
                 reverseGeocodeAndLabel={reverseGeocodeAndLabel}
+                onAddressSelect={(result) => {
+                  if (result.city) set({ ville: result.city });
+                }}
+                ville={ville}
                 setReferralCode={(v) => set({ referralCode: v })}
                 setReferralStatus={(v) => set({ referralStatus: v })}
                 setReferralNom={(v) => set({ referralNom: v })}

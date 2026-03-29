@@ -26,6 +26,16 @@ export class MerchantStoreService {
     return `stores:list:${merchantId}`;
   }
 
+  /** Invalidate both the per-merchant stores cache and the client-facing merchants list */
+  private async invalidateStoresCaches(merchantId: string): Promise<void> {
+    await Promise.all([
+      this.cache.del(this.storesCacheKey(merchantId)),
+      this.cache.del(`merchant:detail:${merchantId}`),
+      // Invalidate the most common merchant list page seen by jitplus clients
+      this.cache.del('merchants:list:p1:l50'),
+    ]);
+  }
+
   async getStores(merchantId: string) {
     const cacheKey = this.storesCacheKey(merchantId);
     const cached = await this.cache.get<Store[]>(cacheKey);
@@ -60,7 +70,7 @@ export class MerchantStoreService {
     const store = await this.storeRepo.create({
       data: { merchantId, ...dto },
     });
-    await this.cache.del(this.storesCacheKey(merchantId));
+    await this.invalidateStoresCaches(merchantId);
     return store;
   }
 
@@ -73,7 +83,7 @@ export class MerchantStoreService {
 
     const data = stripUndefined(dto);
     const updated = await this.storeRepo.update({ where: { id: storeId }, data });
-    await this.cache.del(this.storesCacheKey(merchantId));
+    await this.invalidateStoresCaches(merchantId);
     return updated;
   }
 
@@ -85,7 +95,7 @@ export class MerchantStoreService {
     if (!store) throw new NotFoundException('Magasin non trouvé');
 
     await this.storeRepo.delete({ where: { id: storeId } });
-    await this.cache.del(this.storesCacheKey(merchantId));
+    await this.invalidateStoresCaches(merchantId);
     return { success: true, message: 'Magasin supprimé' };
   }
 }

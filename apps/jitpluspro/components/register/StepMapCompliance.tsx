@@ -6,6 +6,7 @@ import {
 import { Search, MapPin, MapPinned, Phone, Check, Gift } from 'lucide-react-native';
 import SafeMapView, { Marker, PROVIDER_GOOGLE } from '@/components/SafeMapView';
 import type { SafeMapViewRef } from '@/components/SafeMapView';
+import AddressAutocomplete, { AddressResult } from '@/components/AddressAutocomplete';
 import * as Location from 'expo-location';
 import type { ThemeColors } from '@/contexts/ThemeContext';
 
@@ -32,6 +33,8 @@ interface Props {
   handleReferralCodeChange: (text: string) => void;
   handleAddressSearch: () => void;
   reverseGeocodeAndLabel: (lat: number, lng: number) => void;
+  onAddressSelect?: (result: AddressResult) => void;
+  ville?: string;
   setReferralCode: (v: string) => void;
   setReferralStatus: (v: 'idle' | 'verifying' | 'valid' | 'invalid') => void;
   setReferralNom: (v: string) => void;
@@ -46,6 +49,7 @@ export function StepMapCompliance({
   termsAccepted, setTermsAccepted, triedSubmit,
   referralCode, referralStatus, referralNom, handleReferralCodeChange,
   handleAddressSearch, reverseGeocodeAndLabel,
+  onAddressSelect, ville,
   setReferralCode, setReferralStatus, setReferralNom,
   mapRef, googleMapsApiKey,
 }: Props) {
@@ -58,31 +62,24 @@ export function StepMapCompliance({
           {t('registerExtra.mapHint')}
         </Text>
 
-        {/* Address search bar */}
-        <View
-          style={[
-            styles.inputRow,
-            { backgroundColor: theme.bgInput, borderColor: addressSearch ? theme.primary : theme.border, marginBottom: 10 },
-          ]}
-        >
-          <Search size={18} color={theme.textMuted} />
-          <TextInput
-            style={[styles.input, { color: theme.text }]}
+        {/* Address search bar with autocomplete */}
+        <View style={{ marginBottom: 10, zIndex: 1000 }}>
+          <AddressAutocomplete
             value={addressSearch}
             onChangeText={setAddressSearch}
             placeholder={t('registerExtra.addressPlaceholder')}
-            placeholderTextColor={theme.textMuted}
-            returnKeyType="search"
-            onSubmitEditing={handleAddressSearch}
-            autoFocus
+            ville={ville}
+            onSelect={(result: AddressResult) => {
+              setLatitude(result.latitude);
+              setLongitude(result.longitude);
+              setAddressSearch(result.address);
+              mapRef.current?.animateToRegion({
+                latitude: result.latitude, longitude: result.longitude,
+                latitudeDelta: 0.005, longitudeDelta: 0.005,
+              });
+              onAddressSelect?.(result);
+            }}
           />
-          {isGeoSearching ? (
-            <ActivityIndicator size="small" color={theme.primary} />
-          ) : (
-            <TouchableOpacity onPress={handleAddressSearch} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <MapPin size={20} color={theme.primary} />
-            </TouchableOpacity>
-          )}
         </View>
 
         <View style={styles.mapContainer}>

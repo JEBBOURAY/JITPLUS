@@ -34,6 +34,7 @@ import {
   ChevronDown,
 } from 'lucide-react-native';
 import MapView, { Marker, PROVIDER_GOOGLE, SafeMapViewRef } from '@/components/SafeMapView';
+import AddressAutocomplete, { AddressResult } from '@/components/AddressAutocomplete';
 import * as Location from 'expo-location';
 import { geocodeAsync, reverseGeocodeAsync } from '@/utils/geocodeCache';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -580,27 +581,26 @@ export default function StoresScreen() {
                   />
                 </View>
 
-                {/* Address search */}
+                {/* Address search with autocomplete */}
                 <Text style={[styles.label, { color: theme.text }]}>{t('stores.searchAddress')}</Text>
-                <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: addressSearch ? theme.primary : theme.border }]}>
-                  <Search size={18} color={theme.textMuted} />
-                  <TextInput
-                    style={[styles.input, { color: theme.text }]}
-                    value={addressSearch}
-                    onChangeText={(t) => { setAddressSearch(t); setAdresse(t); }}
-                    placeholder={t('stores.addressSearchPlaceholder')}
-                    placeholderTextColor={theme.textMuted}
-                    returnKeyType="search"
-                    onSubmitEditing={handleAddressSearch}
-                  />
-                  {isGeoSearching ? (
-                    <ActivityIndicator size="small" color={theme.primary} />
-                  ) : (
-                    <TouchableOpacity onPress={handleAddressSearch} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                      <MapPin size={20} color={theme.primary} />
-                    </TouchableOpacity>
-                  )}
-                </View>
+                <AddressAutocomplete
+                  value={addressSearch}
+                  onChangeText={(text) => { setAddressSearch(text); setAdresse(text); }}
+                  placeholder={t('stores.addressSearchPlaceholder')}
+                  ville={ville}
+                  onSelect={(result: AddressResult) => {
+                    setLatitude(result.latitude);
+                    setLongitude(result.longitude);
+                    setAdresse(result.address);
+                    if (result.city) setVille(result.city);
+                    if (result.district) setQuartier(result.district);
+                    setAddressSearch(result.address);
+                    mapRef.current?.animateToRegion({
+                      latitude: result.latitude, longitude: result.longitude,
+                      latitudeDelta: 0.005, longitudeDelta: 0.005,
+                    });
+                  }}
+                />
 
                 {/* Map */}
                 <View style={[styles.mapWrapper, { borderColor: theme.border }]}>

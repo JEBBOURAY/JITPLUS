@@ -21,6 +21,29 @@ else
   echo "[Entrypoint] Migrations complete."
 fi
 
+# ── Admin bootstrap ─────────────────────────────────────────────────────────
+# If ADMIN_PASSWORD is set, upsert the admin account (idempotent).
+# Used by the migration Cloud Run Job to bootstrap the first admin.
+if [ -n "$ADMIN_PASSWORD" ]; then
+  echo "[Entrypoint] Creating/updating admin account..."
+  node -e "
+    const{PrismaClient}=require('@prisma/client');
+    const b=require('bcryptjs');
+    (async()=>{
+      const p=new PrismaClient();
+      try{
+        const h=await b.hash(process.env.ADMIN_PASSWORD,12);
+        const a=await p.admin.upsert({
+          where:{email:'contact@jitplus.com'},
+          update:{password:h,nom:'Admin JitPlus',isActive:true,failedLoginAttempts:0,lockedUntil:null},
+          create:{email:'contact@jitplus.com',password:h,nom:'Admin JitPlus',role:'ADMIN'}
+        });
+        console.log('[Entrypoint] Admin ready:',a.email,'(id:'+a.id+')');
+      }finally{await p.\$disconnect();}
+    })();
+  "
+fi
+
 # Si c'est un Job Cloud Run ou la commande "echo" envoyée par cloudbuild, on quitte.
 # Cela empêche de lancer le serveur Web qui causerait un timeout.
 if [ -n "$CLOUD_RUN_JOB" ] || [ "$1" = "echo" ]; then
