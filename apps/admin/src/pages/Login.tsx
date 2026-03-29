@@ -1,6 +1,7 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { login } from '../api';
+import { login, getEnv, setEnv, onEnvChange } from '../api';
+import type { AdminEnv } from '../api';
 import { C, S } from '../theme';
 import { getErrorMessage } from '@jitplus/shared';
 
@@ -9,13 +10,16 @@ const LOCKOUT_SECONDS = 60;
 
 export default function Login() {
   const navigate = useNavigate();
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState('contact@jitplus.com');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [lockedUntil, setLockedUntil] = useState(0);
   const failedAttempts = useRef(0);
   const [countdown, setCountdown] = useState(0);
+  const [env, setEnvState] = useState<AdminEnv>(getEnv);
+
+  useEffect(() => onEnvChange(setEnvState), []);
 
   const startCountdown = useCallback((seconds: number) => {
     setCountdown(seconds);
@@ -88,6 +92,52 @@ export default function Login() {
           </p>
         </div>
 
+        {/* Environment selector */}
+        <div style={{ display: 'flex', gap: 6, marginBottom: 18 }}>
+          {(['dev', 'prod'] as const).map((e) => {
+            const active = env === e;
+            const col = e === 'prod' ? C.red : C.green;
+            const alphaCol = e === 'prod' ? C.redAlpha : C.greenAlpha;
+            const borderCol = e === 'prod' ? 'var(--theme-red-alpha)' : 'var(--theme-green-alpha)';
+            return (
+              <button
+                key={e}
+                type="button"
+                onClick={() => { setEnv(e); setError(''); }}
+                style={{
+                  flex: 1,
+                  padding: '8px 0',
+                  borderRadius: 8,
+                  border: 'none',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  background: active ? alphaCol : C.bg,
+                  color: active ? col : C.textMuted,
+                  outline: active ? `1px solid ${borderCol}` : `1px solid ${C.border}`,
+                }}
+              >
+                {e === 'dev' ? '🛠 Développement' : '🚀 Production'}
+              </button>
+            );
+          })}
+        </div>
+        {env === 'prod' && (
+          <div style={{
+            background: C.redAlpha,
+            border: `1px solid var(--theme-red-alpha)`,
+            borderRadius: 8,
+            padding: '8px 12px',
+            marginBottom: 14,
+            fontSize: 12,
+            color: C.red,
+            fontWeight: 600,
+            textAlign: 'center',
+          }}>
+            ⚠️ Connexion à la base de données PRODUCTION
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div>
             <label style={{ display: 'block', fontSize: 12, color: C.textMuted, marginBottom: 6 }}>
@@ -140,12 +190,13 @@ export default function Login() {
           {error && (
             <div
               style={{
-                background: C.red + '22',
-                border: `1px solid ${C.red}44`,
+                background: C.redAlpha,
+                border: `1px solid var(--theme-red-alpha)`,
                 borderRadius: 8,
                 padding: '10px 12px',
                 color: C.red,
                 fontSize: 13,
+                whiteSpace: 'pre-line',
               }}
             >
               {error}

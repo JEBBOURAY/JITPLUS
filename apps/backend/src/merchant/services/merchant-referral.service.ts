@@ -22,6 +22,7 @@ export interface ReferralStats {
     categorie: string;
     ville: string | null;
     createdAt: Date;
+    validated: boolean;
   }[];
 }
 
@@ -55,6 +56,7 @@ export class MerchantReferralService {
             categorie: true,
             ville: true,
             createdAt: true,
+            referralBonusCredited: true,
           },
           orderBy: { createdAt: 'desc' },
           take: 50,
@@ -78,7 +80,14 @@ export class MerchantReferralService {
       referralCode,
       referredCount: merchant.referrals.length,
       referralMonthsEarned: merchant.referralMonthsEarned,
-      referrals: merchant.referrals,
+      referrals: merchant.referrals.map((r) => ({
+        id: r.id,
+        nom: r.nom,
+        categorie: r.categorie,
+        ville: r.ville,
+        createdAt: r.createdAt,
+        validated: r.referralBonusCredited,
+      })),
     };
 
     await this.cache.set(cacheKey, result, REFERRAL_STATS_CACHE_TTL);

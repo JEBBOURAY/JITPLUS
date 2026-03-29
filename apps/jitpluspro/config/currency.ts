@@ -47,6 +47,16 @@ const CURRENCIES: Record<CurrencyCode, Currency> = {
 // Devise par défaut: Dirham Marocain
 export const DEFAULT_CURRENCY: Currency = CURRENCIES.MAD;
 
+// Map app locale to Intl locale for number formatting
+const LOCALE_MAP: Record<string, string> = {
+  fr: 'fr-MA',
+  en: 'en-US',
+  ar: 'ar-MA',
+};
+
+export const getIntlLocale = (appLocale?: string): string =>
+  LOCALE_MAP[appLocale ?? 'fr'] ?? 'fr-MA';
+
 /**
  * Format un montant avec la devise
  * @param amount - Montant à formater

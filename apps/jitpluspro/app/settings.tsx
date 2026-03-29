@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useReducer } from 'react';
 import {
   View,
   Text,
@@ -19,7 +19,6 @@ import {
   AlertTriangle,
   RefreshCw,
   ShieldCheck,
-  Pencil,
 } from 'lucide-react-native';
 import { useGuardedCallback } from '@/hooks/useGuardedCallback';
 import { useAuth } from '@/contexts/AuthContext';
@@ -28,6 +27,9 @@ import { useRouter } from 'expo-router';
 import api from '@/services/api';
 import { getErrorMessage } from '@/utils/error';
 import { useLanguage } from '@/contexts/LanguageContext';
+import PremiumLockCard from '@/components/PremiumLockCard';
+import PremiumLockModal from '@/components/PremiumLockModal';
+import { RewardManager } from '@/components/settings/RewardManager';
 // Reanimated removed — plain View shim
 const Animated = { View } as const;
 import { DEFAULT_CURRENCY } from '@/config/currency';
@@ -42,6 +44,64 @@ interface Reward {
   description?: string;
 }
 
+// ── Settings reducer ──
+interface SettingsState {
+  loyaltyType: LoyaltyType;
+  stampEarningMode: 'PER_VISIT' | 'PER_AMOUNT';
+  pointsRate: string;
+  conversionRate: string;
+  stampsForReward: string;
+  hasAccumulationLimit: boolean;
+  accumulationLimit: string;
+  saving: boolean;
+  conversionX: string;
+  conversionY: string;
+  rewards: Reward[];
+  rewardReloadToken: number;
+}
+
+const initialSettingsState: SettingsState = {
+  loyaltyType: 'POINTS',
+  stampEarningMode: 'PER_VISIT',
+  pointsRate: '10',
+  conversionRate: '10',
+  stampsForReward: '10',
+  hasAccumulationLimit: false,
+  accumulationLimit: '',
+  saving: false,
+  conversionX: '10',
+  conversionY: '1',
+  rewards: [],
+  rewardReloadToken: 0,
+};
+
+type SettingsAction =
+  | { type: 'SET'; payload: Partial<SettingsState> }
+  | { type: 'LOAD_FROM_MERCHANT'; merchant: Record<string, any> }
+  | { type: 'INCREMENT_RELOAD' };
+
+function settingsReducer(state: SettingsState, action: SettingsAction): SettingsState {
+  switch (action.type) {
+    case 'SET':
+      return { ...state, ...action.payload };
+    case 'LOAD_FROM_MERCHANT': {
+      const m = action.merchant;
+      return {
+        ...state,
+        loyaltyType: m.loyaltyType || 'POINTS',
+        stampEarningMode: m.stampEarningMode || 'PER_VISIT',
+        pointsRate: m.pointsRate?.toString() || '10',
+        conversionRate: m.conversionRate?.toString() || '10',
+        stampsForReward: m.stampsForReward?.toString() || '10',
+        hasAccumulationLimit: m.accumulationLimit != null,
+        accumulationLimit: m.accumulationLimit?.toString() || '',
+      };
+    }
+    case 'INCREMENT_RELOAD':
+      return { ...state, rewardReloadToken: state.rewardReloadToken + 1 };
+  }
+}
+
 export default function SettingsScreen() {
   const { merchant, loading: authLoading, updateMerchant } = useAuth();
   const theme = useTheme();
@@ -49,94 +109,52 @@ export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const { t } = useLanguage();
 
-  // ── Loyalty settings ──
-  const [loyaltyType, setLoyaltyType] = useState<LoyaltyType>('POINTS');
-  const [stampEarningMode, setStampEarningMode] = useState<'PER_VISIT' | 'PER_AMOUNT'>('PER_VISIT');
-  const [pointsRate, setPointsRate] = useState('10');
-  const [conversionRate, setConversionRate] = useState('10');
-  const [stampsForReward, setStampsForReward] = useState('10');
-  const [hasAccumulationLimit, setHasAccumulationLimit] = useState(false);
-  const [accumulationLimit, setAccumulationLimit] = useState('');
-  const [saving, setSaving] = useState(false);
-  // ── Conversion rule: X points = Y tampons ──
-  const [conversionX, setConversionX] = useState('10'); // points side
-  const [conversionY, setConversionY] = useState('1');  // stamps side
+  const [state, dispatch] = useReducer(settingsReducer, initialSettingsState);
+  const { loyaltyType, stampEarningMode, pointsRate, conversionRate, stampsForReward, hasAccumulationLimit, accumulationLimit, saving, conversionX, conversionY, rewards, rewardReloadToken } = state;
+  const set = useCallback((payload: Partial<SettingsState>) => dispatch({ type: 'SET', payload }), []);
 
-  // ── Rewards ──
-  const [rewards, setRewards] = useState<Reward[]>([]);
-  const [loadingRewards, setLoadingRewards] = useState(false);
-  const [savingReward, setSavingReward] = useState(false);
-  const [rewardTitle, setRewardTitle] = useState('');
-  const [rewardCost, setRewardCost] = useState('');
-  const [rewardDescription, setRewardDescription] = useState('');
-  const [editingRewardId, setEditingRewardId] = useState<string | null>(null);
+  const [premiumModal, setPremiumModal] = useState<{ visible: boolean; titleKey: string; descKey: string }>({ visible: false, titleKey: '', descKey: '' });
 
   useEffect(() => {
     if (!merchant && !authLoading) {
       router.replace('/login');
     } else if (merchant) {
-      setLoyaltyType(merchant.loyaltyType || 'POINTS');
-      setStampEarningMode(merchant.stampEarningMode || 'PER_VISIT');
-      setPointsRate(merchant.pointsRate?.toString() || '10');
-      setConversionRate(merchant.conversionRate?.toString() || '10');
-      setStampsForReward(merchant.stampsForReward?.toString() || '10');
-      setHasAccumulationLimit(merchant.accumulationLimit != null);
-      setAccumulationLimit(merchant.accumulationLimit?.toString() || '');
-      loadRewards();
+      dispatch({ type: 'LOAD_FROM_MERCHANT', merchant });
     }
   }, [merchant, authLoading]);
 
   const handleRefresh = useGuardedCallback(async () => {
     if (!merchant) return;
-    setLoyaltyType(merchant.loyaltyType || 'POINTS');
-    setStampEarningMode(merchant.stampEarningMode || 'PER_VISIT');
-    setPointsRate(merchant.pointsRate?.toString() || '10');
-    setConversionRate(merchant.conversionRate?.toString() || '10');
-    setStampsForReward(merchant.stampsForReward?.toString() || '10');
-    setHasAccumulationLimit(merchant.accumulationLimit != null);
-    setAccumulationLimit(merchant.accumulationLimit?.toString() || '');
-    await loadRewards();
+    dispatch({ type: 'LOAD_FROM_MERCHANT', merchant });
   }, [merchant]);
-
-  const loadRewards = async () => {
-    setLoadingRewards(true);
-    try {
-      const res = await api.get('/rewards');
-      setRewards(res.data);
-    } catch {
-      Alert.alert('Erreur', 'Impossible de charger les cadeaux');
-    } finally {
-      setLoadingRewards(false);
-    }
-  };
 
   // ── Switch loyalty type with confirmation ──
   const handleSwitchLoyaltyType = (newType: LoyaltyType) => {
     if (newType === loyaltyType) return;
     // Just switch the local state — the conversion card below will appear
-    setLoyaltyType(newType);
+    set({ loyaltyType: newType });
   };
 
   // ── Save all loyalty settings ──
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     const rate = parseFloat(pointsRate);
     const conv = parseFloat(conversionRate);
     const stamps = parseInt(stampsForReward, 10);
 
     if (loyaltyType === 'POINTS' && (isNaN(rate) || rate <= 0)) {
-      Alert.alert('Erreur', 'Le taux de conversion doit être > 0');
+      Alert.alert(t('common.error'), t('settingsPage.conversionRateError'));
       return;
     }
     if (loyaltyType === 'STAMPS') {
       if (isNaN(stamps) || stamps < 1) {
-        Alert.alert('Erreur', 'Le nombre de tampons pour un cadeau doit être ≥ 1');
+        Alert.alert(t('common.error'), t('settingsPage.stampsForRewardError'));
         return;
       }
     }
 
     const limitVal = parseInt(accumulationLimit, 10);
     if (hasAccumulationLimit && (isNaN(limitVal) || limitVal < 1)) {
-      Alert.alert('Erreur', t('settingsPage.limitError'));
+      Alert.alert(t('common.error'), t('settingsPage.limitError'));
       return;
     }
 
@@ -167,12 +185,12 @@ export default function SettingsScreen() {
       const isNewOrLower = currentLimit == null || limitVal < currentLimit;
 
       if (isNewOrLower) {
-        setSaving(true);
+        set({ saving: true });
         try {
           const preview = await api.post('/merchant/loyalty-settings/preview-limit', { limit: limitVal });
           const affected = preview.data.affectedClients;
           if (affected > 0) {
-            setSaving(false);
+            set({ saving: false });
             Alert.alert(
               t('settingsPage.limitConfirmTitle'),
               t('settingsPage.limitConfirmMessage', {
@@ -194,15 +212,15 @@ export default function SettingsScreen() {
         } catch {
           // If preview fails, proceed without confirmation
         } finally {
-          setSaving(false);
+          set({ saving: false });
         }
       }
     }
 
     doSave(false);
-  };
+  }, [pointsRate, conversionRate, stampsForReward, loyaltyType, hasAccumulationLimit, accumulationLimit, rewards, merchant, t]);
 
-  const doSave = async (forceCapClients: boolean) => {
+  const doSave = useCallback(async (forceCapClients: boolean) => {
     const rate = parseFloat(pointsRate);
     const conv = parseFloat(conversionRate);
     const stamps = parseInt(stampsForReward, 10);
@@ -210,9 +228,9 @@ export default function SettingsScreen() {
     const loyaltyTypeChanged = loyaltyType !== (merchant?.loyaltyType || 'POINTS');
     const x = parseFloat(conversionX) || 10;
     const y = parseFloat(conversionY) || 1;
-    const effectiveConvRate = loyaltyTypeChanged ? (x / y) : (conv || 10);
+    const effectiveConvRate = loyaltyTypeChanged ? (y > 0 ? x / y : 1) : (conv || 10);
 
-    setSaving(true);
+    set({ saving: true });
     try {
       const payload: Record<string, unknown> = {
         loyaltyType,
@@ -228,144 +246,18 @@ export default function SettingsScreen() {
 
       const res = await api.patch('/merchant/loyalty-settings', payload);
       updateMerchant(res.data);
-      await loadRewards();
-      Alert.alert('✅ Succès', t('settingsPage.saveSuccess'));
+      // Sync local state with server response to prevent stale values on next edit
+      if (res.data.conversionRate != null) {
+        set({ conversionRate: String(res.data.conversionRate) });
+      }
+      dispatch({ type: 'INCREMENT_RELOAD' });
+      Alert.alert(t('common.confirm'), t('settingsPage.saveSuccess'));
     } catch (err: unknown) {
-      Alert.alert('Erreur', getErrorMessage(err, 'Impossible de sauvegarder'));
+      Alert.alert(t('common.error'), getErrorMessage(err, t('settingsPage.saveError')));
     } finally {
-      setSaving(false);
+      set({ saving: false });
     }
-  };
-
-  const doAddReward = async () => {
-    const cost = parseInt(rewardCost, 10);
-    setSavingReward(true);
-    try {
-      await api.post('/rewards', {
-        titre: rewardTitle.trim(),
-        cout: cost,
-        description: rewardDescription.trim() || undefined,
-      });
-      setRewardTitle('');
-      setRewardCost('');
-      setRewardDescription('');
-      loadRewards();
-    } catch (err: unknown) {
-      Alert.alert('Erreur', getErrorMessage(err, 'Impossible de sauvegarder'));
-    } finally {
-      setSavingReward(false);
-    }
-  };
-
-  const handleAddReward = async () => {
-    const cost = parseInt(rewardCost, 10);
-    if (!rewardTitle.trim()) {
-      Alert.alert('Erreur', 'Le nom du cadeau est requis');
-      return;
-    }
-    if (isNaN(cost) || cost <= 0) {
-      Alert.alert('Erreur', 'Le cout doit etre > 0');
-      return;
-    }
-
-    const limitVal = parseInt(accumulationLimit, 10);
-    if (hasAccumulationLimit && !isNaN(limitVal) && cost > limitVal) {
-      const unit = isStamps ? t('common.stamps') : t('common.points');
-      Alert.alert(
-        t('settingsPage.rewardExceedsLimitTitle'),
-        t('settingsPage.rewardExceedsLimitMessage', { cost, limit: limitVal, unit }),
-        [
-          { text: t('common.cancel'), style: 'cancel' },
-          { text: t('common.confirm'), onPress: doAddReward },
-        ],
-      );
-      return;
-    }
-
-    doAddReward();
-  };
-
-  const handleEditReward = (reward: Reward) => {
-    setEditingRewardId(reward.id);
-    setRewardTitle(reward.titre);
-    setRewardCost(reward.cout.toString());
-    setRewardDescription(reward.description || '');
-  };
-
-  const handleCancelEdit = () => {
-    setEditingRewardId(null);
-    setRewardTitle('');
-    setRewardCost('');
-    setRewardDescription('');
-  };
-
-  const doUpdateReward = async () => {
-    const cost = parseInt(rewardCost, 10);
-    setSavingReward(true);
-    try {
-      await api.put(`/rewards/${editingRewardId}`, {
-        titre: rewardTitle.trim(),
-        cout: cost,
-        description: rewardDescription.trim() || undefined,
-      });
-      setEditingRewardId(null);
-      setRewardTitle('');
-      setRewardCost('');
-      setRewardDescription('');
-      loadRewards();
-    } catch (err: unknown) {
-      Alert.alert('Erreur', getErrorMessage(err, 'Impossible de modifier'));
-    } finally {
-      setSavingReward(false);
-    }
-  };
-
-  const handleUpdateReward = async () => {
-    if (!editingRewardId) return;
-    const cost = parseInt(rewardCost, 10);
-    if (!rewardTitle.trim()) {
-      Alert.alert('Erreur', 'Le nom du cadeau est requis');
-      return;
-    }
-    if (isNaN(cost) || cost <= 0) {
-      Alert.alert('Erreur', 'Le cout doit etre > 0');
-      return;
-    }
-
-    const limitVal = parseInt(accumulationLimit, 10);
-    if (hasAccumulationLimit && !isNaN(limitVal) && cost > limitVal) {
-      const unit = isStamps ? t('common.stamps') : t('common.points');
-      Alert.alert(
-        t('settingsPage.rewardExceedsLimitTitle'),
-        t('settingsPage.rewardExceedsLimitMessage', { cost, limit: limitVal, unit }),
-        [
-          { text: t('common.cancel'), style: 'cancel' },
-          { text: t('common.confirm'), onPress: doUpdateReward },
-        ],
-      );
-      return;
-    }
-
-    doUpdateReward();
-  };
-
-  const handleDeleteReward = (rewardId: string) => {
-    Alert.alert('Supprimer ce cadeau ?', 'Cette action est irr\u00e9versible.', [
-      { text: 'Annuler', style: 'cancel' },
-      {
-        text: 'Supprimer',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await api.delete(`/rewards/${rewardId}`);
-            loadRewards();
-          } catch {
-            Alert.alert('Erreur', 'Impossible de supprimer');
-          }
-        },
-      },
-    ]);
-  };
+  }, [loyaltyType, stampEarningMode, pointsRate, conversionRate, stampsForReward, conversionX, conversionY, hasAccumulationLimit, accumulationLimit, merchant, updateMerchant, t]);
 
   if (authLoading || !merchant) {
     return (
@@ -376,6 +268,7 @@ export default function SettingsScreen() {
   }
 
   const isStamps = loyaltyType === 'STAMPS';
+  const isPremium = merchant?.plan === 'PREMIUM';
   const hasChanges =
     loyaltyType !== (merchant?.loyaltyType || 'POINTS') ||
     stampEarningMode !== (merchant?.stampEarningMode || 'PER_VISIT') ||
@@ -417,6 +310,9 @@ export default function SettingsScreen() {
         <Animated.View
           style={[styles.card, { backgroundColor: theme.bgCard }]}
         >
+          {!isPremium ? (
+            <PremiumLockCard titleKey="settingsPage.premiumLoyaltyTitle" descriptionKey="settingsPage.premiumLoyaltyDesc" />
+          ) : (<>
           <Text style={[styles.cardLabel, { color: theme.textSecondary }]}>
             {t('settingsPage.loyaltyModeHint')}
           </Text>
@@ -498,7 +394,7 @@ export default function SettingsScreen() {
                   <TextInput
                     style={[styles.conversionRuleInput, { backgroundColor: theme.bgInput, color: theme.text, borderColor: theme.border }]}
                     value={conversionX}
-                    onChangeText={setConversionX}
+                    onChangeText={(v) => set({ conversionX: v })}
                     keyboardType="decimal-pad"
                     placeholder="10"
                     placeholderTextColor={theme.textMuted}
@@ -510,7 +406,7 @@ export default function SettingsScreen() {
                   <TextInput
                     style={[styles.conversionRuleInput, { backgroundColor: theme.bgInput, color: theme.text, borderColor: theme.border }]}
                     value={conversionY}
-                    onChangeText={setConversionY}
+                    onChangeText={(v) => set({ conversionY: v })}
                     keyboardType="decimal-pad"
                     placeholder="1"
                     placeholderTextColor={theme.textMuted}
@@ -596,7 +492,7 @@ export default function SettingsScreen() {
                       },
                     ]}
                     value={pointsRate}
-                    onChangeText={setPointsRate}
+                    onChangeText={(v) => set({ pointsRate: v })}
                     keyboardType="numeric"
                     placeholder="10"
                     placeholderTextColor={theme.textMuted}
@@ -626,7 +522,7 @@ export default function SettingsScreen() {
                       styles.segmentBtn,
                       stampEarningMode === 'PER_VISIT' && { backgroundColor: theme.primary },
                     ]}
-                    onPress={() => setStampEarningMode('PER_VISIT')}
+                    onPress={() => set({ stampEarningMode: 'PER_VISIT' })}
                     activeOpacity={0.8}
                   >
                     <Text
@@ -644,7 +540,7 @@ export default function SettingsScreen() {
                       styles.segmentBtn,
                       stampEarningMode === 'PER_AMOUNT' && { backgroundColor: theme.primary },
                     ]}
-                    onPress={() => setStampEarningMode('PER_AMOUNT')}
+                    onPress={() => set({ stampEarningMode: 'PER_AMOUNT' })}
                     activeOpacity={0.8}
                   >
                     <Text
@@ -680,7 +576,7 @@ export default function SettingsScreen() {
                       },
                     ]}
                     value={pointsRate}
-                    onChangeText={setPointsRate}
+                    onChangeText={(v) => set({ pointsRate: v })}
                     keyboardType="numeric"
                     placeholder="10"
                     placeholderTextColor={theme.textMuted}
@@ -710,7 +606,7 @@ export default function SettingsScreen() {
                       },
                     ]}
                     value={stampsForReward}
-                    onChangeText={setStampsForReward}
+                    onChangeText={(v) => set({ stampsForReward: v })}
                     keyboardType="numeric"
                     placeholder="10"
                     placeholderTextColor={theme.textMuted}
@@ -771,8 +667,8 @@ export default function SettingsScreen() {
                 },
               ]}
               onPress={() => {
-                setHasAccumulationLimit(!hasAccumulationLimit);
-                if (hasAccumulationLimit) setAccumulationLimit('');
+                set({ hasAccumulationLimit: !hasAccumulationLimit });
+                if (hasAccumulationLimit) set({ accumulationLimit: '' });
               }}
               activeOpacity={0.8}
             >
@@ -805,7 +701,7 @@ export default function SettingsScreen() {
                     },
                   ]}
                   value={accumulationLimit}
-                  onChangeText={setAccumulationLimit}
+                  onChangeText={(v) => set({ accumulationLimit: v })}
                   keyboardType="numeric"
                   placeholder={t('settingsPage.limitPlaceholder')}
                   placeholderTextColor={theme.textMuted}
@@ -843,171 +739,32 @@ export default function SettingsScreen() {
               </>
             )}
           </TouchableOpacity>
+          </>)}
         </Animated.View>
 
         {/* ── Section: Cadeaux ── */}
-        <Text style={[styles.sectionTitle, { color: theme.text }]}>{t('settingsPage.giftsSection')}</Text>
-        <View style={[styles.card, { backgroundColor: theme.bgCard }]}>
-          <Text style={[styles.cardLabel, { color: theme.textSecondary }]}>
-            {t('settingsPage.giftsSectionHint')}
-          </Text>
-
-            <View style={styles.rewardForm}>
-              <TextInput
-                style={[
-                  styles.input,
-                  {
-                    backgroundColor: theme.bgInput,
-                    color: theme.text,
-                    borderColor: theme.border,
-                  },
-                ]}
-                value={rewardTitle}
-                onChangeText={setRewardTitle}
-                placeholder={t('settingsPage.giftName')}
-                placeholderTextColor={theme.textMuted}
-              />
-              <View style={styles.inputRow}>
-                <TextInput
-                  style={[
-                    styles.input,
-                    {
-                      backgroundColor: theme.bgInput,
-                      color: theme.text,
-                      borderColor: theme.border,
-                    },
-                  ]}
-                  value={rewardCost}
-                  onChangeText={setRewardCost}
-                  keyboardType="numeric"
-                  placeholder={t('settingsPage.giftCost')}
-                  placeholderTextColor={theme.textMuted}
-                />
-                <Text style={[styles.inputSuffix, { color: theme.textSecondary }]}>
-                  {isStamps ? t('common.stamps') : t('common.points')}
-                </Text>
-              </View>
-              <TextInput
-                style={[
-                  styles.input,
-                  {
-                    backgroundColor: theme.bgInput,
-                    color: theme.text,
-                    borderColor: theme.border,
-                  },
-                ]}
-                value={rewardDescription}
-                onChangeText={setRewardDescription}
-                placeholder={t('settingsPage.giftDesc')}
-                placeholderTextColor={theme.textMuted}
-              />
-              <View style={{ flexDirection: 'row', gap: 8 }}>
-                {editingRewardId && (
-                  <TouchableOpacity
-                    style={[styles.addRewardBtn, { backgroundColor: theme.border, flex: 1 }]}
-                    onPress={handleCancelEdit}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={[styles.addRewardBtnText, { color: theme.text }]}>{t('common.cancel')}</Text>
-                  </TouchableOpacity>
-                )}
-                <TouchableOpacity
-                  style={[styles.addRewardBtn, { backgroundColor: theme.primary, flex: 1 }]}
-                  onPress={editingRewardId ? handleUpdateReward : handleAddReward}
-                  disabled={savingReward}
-                  activeOpacity={0.8}
-                >
-                  {savingReward ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <Text style={styles.addRewardBtnText}>
-                      {editingRewardId ? t('settingsPage.saveGift') : t('settingsPage.addGift')}
-                    </Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {loadingRewards ? (
-              <View style={[styles.rewardEmpty, { borderColor: theme.border }]}>
-                <ActivityIndicator size="small" color={theme.primary} />
-              </View>
-            ) : rewards.length === 0 ? (
-              <View style={[styles.rewardEmpty, { borderColor: theme.border }]}>
-                <Text style={[styles.noRewardText, { color: theme.textMuted }]}>
-                  {t('settingsPage.noGiftsConfigured')}
-                </Text>
-              </View>
-            ) : (
-              <View style={styles.rewardList}>
-                {rewards.map((reward) => (
-                  <View
-                    key={reward.id}
-                    style={[
-                      styles.rewardRow,
-                      { backgroundColor: theme.bg, borderColor: theme.border },
-                    ]}
-                  >
-                    <View style={styles.rewardRowInfo}>
-                      <Text style={[styles.rewardRowTitle, { color: theme.text }]}>
-                        {reward.titre}
-                      </Text>
-                      {(() => {
-                        const loyaltyTypeChanged = loyaltyType !== (merchant?.loyaltyType || 'POINTS');
-                        const x = parseFloat(conversionX) || 10;
-                        const y = parseFloat(conversionY) || 1;
-                        const rate = x / y;
-                        const oldUnit = merchant?.loyaltyType === 'STAMPS' ? t('common.stamps') : t('common.points');
-                        const newUnit = isStamps ? t('common.stamps') : t('common.points');
-
-                        if (loyaltyTypeChanged && rate > 0) {
-                          const newCost = loyaltyType === 'STAMPS'
-                            ? Math.max(Math.floor(reward.cout / rate), 1)
-                            : Math.max(Math.round(reward.cout * rate), 1);
-                          return (
-                            <Text style={[styles.rewardRowMeta, { color: theme.textSecondary }]}>
-                              <Text style={{ textDecorationLine: 'line-through', color: theme.textMuted }}>{reward.cout} {oldUnit}</Text>
-                              {'  →  '}
-                              <Text style={{ color: theme.primary, fontWeight: '600' }}>{newCost} {newUnit}</Text>
-                            </Text>
-                          );
-                        }
-                        return (
-                          <Text style={[styles.rewardRowMeta, { color: theme.textSecondary }]}>
-                            {reward.cout} {newUnit}
-                          </Text>
-                        );
-                      })()}
-                      {reward.description ? (
-                        <Text style={[styles.rewardRowDesc, { color: theme.textMuted }]}>
-                          {reward.description}
-                        </Text>
-                      ) : null}
-                    </View>
-                    <View style={styles.rewardActions}>
-                      <TouchableOpacity
-                        style={styles.rewardEditBtn}
-                        onPress={() => handleEditReward(reward)}
-                        activeOpacity={0.7}
-                      >
-                        <Pencil size={14} color={theme.primary} />
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={styles.rewardDeleteBtn}
-                        onPress={() => handleDeleteReward(reward.id)}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={[styles.rewardDeleteText, { color: theme.danger }]}>{t('settingsPage.deleteGift')}</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                ))}
-              </View>
-            )}
-
-        </View>
+        <RewardManager
+          theme={theme}
+          t={t}
+          isStamps={isStamps}
+          isPremium={isPremium}
+          loyaltyType={loyaltyType}
+          merchant={merchant}
+          conversionX={conversionX}
+          conversionY={conversionY}
+          hasAccumulationLimit={hasAccumulationLimit}
+          accumulationLimit={accumulationLimit}
+          onRewardsChange={(r) => set({ rewards: r })}
+          reloadToken={rewardReloadToken}
+        />
 
       </ScrollView>
+      <PremiumLockModal
+        visible={premiumModal.visible}
+        onClose={() => setPremiumModal(prev => ({ ...prev, visible: false }))}
+        titleKey={premiumModal.titleKey}
+        descKey={premiumModal.descKey}
+      />
     </View>
   );
 }
@@ -1141,41 +898,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   inputSuffix: { marginLeft: 12, fontSize: 13, fontWeight: '500', color: '#64748b' },
-
-  // ── Rewards ──
-  rewardForm: { gap: 10, marginBottom: 12 },
-  addRewardBtn: {
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  addRewardBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
-  rewardEmpty: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 14,
-    alignItems: 'center',
-  },
-  noRewardText: {
-    fontSize: 14,
-    textAlign: 'center',
-  },
-  rewardList: { gap: 8 },
-  rewardRow: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-    flexDirection: 'row',
-    gap: 12,
-  },
-  rewardRowInfo: { flex: 1 },
-  rewardRowTitle: { fontSize: 15, fontWeight: '700' },
-  rewardRowMeta: { fontSize: 13, fontWeight: '600', marginTop: 2 },
-  rewardRowDesc: { fontSize: 12, marginTop: 6 },
-  rewardActions: { justifyContent: 'center', alignItems: 'flex-end', gap: 8 },
-  rewardEditBtn: { padding: 6 },
-  rewardDeleteBtn: { paddingHorizontal: 8, justifyContent: 'center' },
-  rewardDeleteText: { fontSize: 12, fontWeight: '700' },
 
   // ── Stamp Preview ──
   stampPreview: {

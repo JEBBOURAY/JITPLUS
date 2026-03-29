@@ -18,7 +18,6 @@ export type IClientNotificationStatusRepository = PrismaService['clientNotificat
 export type IOtpRepository = PrismaService['otp'];
 export type IAdminUserRepository = PrismaService['admin'];
 export type IAuditLogRepository = PrismaService['auditLog'];
-export type IUpgradeRequestRepository = PrismaService['upgradeRequest'];
 export type IProfileViewRepository = PrismaService['profileView'];
 export type IRewardRepository = PrismaService['reward'];
 export type IClientReferralRepository = PrismaService['clientReferral'];

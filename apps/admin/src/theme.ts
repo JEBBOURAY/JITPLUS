@@ -1,18 +1,21 @@
 // ── Design tokens ────────────────────────────────────────────────────────────
 export const C = {
-  bg: '#0f0f1a',
-  surface: '#16162a',
-  surfaceHover: '#1e1e35',
-  border: '#2a2a45',
-  text: '#e2e0f0',
-  textMuted: '#8b88b0',
-  primary: '#7C3AED',
-  primaryLight: '#9d6cf5',
-  cyan: '#06B6D4',
-  green: '#22c55e',
-  red: '#ef4444',
-  amber: '#f59e0b',
-  blue: '#3b82f6',
+  bg: 'var(--theme-bg)',
+  surface: 'var(--theme-surface)',
+  surfaceHover: 'var(--theme-surface-hover)',
+  border: 'var(--theme-border)',
+  text: 'var(--theme-text)',
+  textMuted: 'var(--theme-text-muted)',
+  primary: 'var(--theme-primary)',
+  primaryLight: 'var(--theme-primary-light)',
+  primaryAlpha: 'var(--theme-primary-alpha)',
+  cyan: 'var(--theme-cyan)',
+  green: 'var(--theme-green)',
+  greenAlpha: 'var(--theme-green-alpha)',
+  red: 'var(--theme-red)',
+  redAlpha: 'var(--theme-red-alpha)',
+  amber: 'var(--theme-amber)',
+  blue: 'var(--theme-blue)',
 } as const;
 
 export const S = {
@@ -42,8 +45,8 @@ export const S = {
     fontSize: 13,
     fontWeight: 600,
   }),
-  badge: (color: string): React.CSSProperties => ({
-    background: color + '22',
+  badge: (color: string, alphaColor?: string): React.CSSProperties => ({
+    background: alphaColor || `color-mix(in srgb, ${color} 15%, transparent)`,
     color: color,
     borderRadius: 20,
     padding: '2px 10px',

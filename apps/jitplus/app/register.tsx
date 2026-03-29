@@ -27,6 +27,8 @@ import { DEFAULT_COUNTRY, isValidPhoneForCountry, CountryCode } from '@/utils/co
 import CountryCodePicker from '@/components/CountryCodePicker';
 import FormError from '@/components/FormError';
 import { useGoogleAuth } from '@/hooks/useGoogleAuth';
+import { GoogleLogo } from '@/components/GoogleLogo';
+import { haptic } from '@/utils/haptics';
 
 export default function RegisterScreen() {
   const theme = useTheme();
@@ -153,6 +155,7 @@ export default function RegisterScreen() {
                 style={[styles.googleBtn, { backgroundColor: theme.bgCard, borderColor: theme.inputBorder }]}
                 onPress={() => {
                   if (!termsAccepted) { setError(t('register.termsRequired')); return; }
+                  haptic();
                   google.promptGoogle();
                 }}
                 disabled={isLoading}
@@ -160,10 +163,19 @@ export default function RegisterScreen() {
                 accessibilityRole="button"
                 accessibilityLabel={t('register.signUpWithGoogle')}
               >
-                <View style={styles.googleIconWrap}>
-                  <Text style={styles.googleG}>G</Text>
-                </View>
-                <Text style={[styles.googleBtnText, { color: theme.text }]}>{t('register.signUpWithGoogle')}</Text>
+                {google.isLoading ? (
+                  <>
+                    <ActivityIndicator size="small" color={theme.text} />
+                    <Text style={[styles.googleBtnText, { color: theme.text, opacity: 0.7 }]}>
+                      {t('login.googleLoginInProgress')}
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <GoogleLogo size={ms(20)} />
+                    <Text style={[styles.googleBtnText, { color: theme.text }]}>{t('register.signUpWithGoogle')}</Text>
+                  </>
+                )}
               </TouchableOpacity>
 
               {/* Separator */}

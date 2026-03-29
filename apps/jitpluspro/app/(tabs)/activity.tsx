@@ -22,7 +22,7 @@ import { useTransactions } from '@/hooks/useQueryHooks';
 import { useGuardedCallback } from '@/hooks/useGuardedCallback';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Animated } from 'react-native';
-import { formatCurrency } from '@/config/currency';
+import { formatCurrency, DEFAULT_CURRENCY, getIntlLocale } from '@/config/currency';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusFade } from '@/hooks/useFocusFade';
 import { useExitOnBack } from '@/hooks/useExitOnBack';
@@ -33,16 +33,12 @@ import type { Transaction } from '@/types';
 const TransactionRow = React.memo(function TransactionRow({
   item,
   merchantLoyaltyType,
-  theme,
-  t,
-  locale,
 }: {
   item: Transaction;
   merchantLoyaltyType?: string | null;
-  theme: ReturnType<typeof useTheme>;
-  t: (key: string, params?: Record<string, unknown>) => string;
-  locale: string;
 }) {
+  const theme = useTheme();
+  const { t, locale } = useLanguage();
   const isEarned = item.type === 'EARN_POINTS';
   const isCancelled = item.status === 'CANCELLED';
   const isProgramChange = item.type === 'LOYALTY_PROGRAM_CHANGE';
@@ -57,7 +53,7 @@ const TransactionRow = React.memo(function TransactionRow({
       </View>
       <View style={styles.txInfo}>
         <Text style={[styles.txName, { color: theme.text }, isCancelled && styles.cancelled]}>
-          {[item.client.prenom, item.client.nom].filter(Boolean).join(' ') || '?'}
+          {[item.client?.prenom, item.client?.nom].filter(Boolean).join(' ') || '?'}
         </Text>
         <Text style={[styles.txDate, { color: theme.textMuted }]}>{formatDateTime(item.createdAt, locale)}</Text>
         {isProgramChange && item.note && (
@@ -88,7 +84,7 @@ const TransactionRow = React.memo(function TransactionRow({
         <View style={styles.txRight}>
           {item.amount > 0 && (
             <Text style={[styles.txAmount, { color: theme.textSecondary }, isCancelled && styles.cancelled]}>
-              {formatCurrency(item.amount)}
+              {formatCurrency(item.amount, DEFAULT_CURRENCY, getIntlLocale(locale))}
             </Text>
           )}
           <Text style={[styles.txPoints, { color }, isCancelled && styles.cancelled]}>
@@ -130,8 +126,8 @@ export default function ActivityScreen() {
   }, [refetch]);
 
   const renderTx = useCallback(({ item }: { item: Transaction }) => (
-    <TransactionRow item={item} merchantLoyaltyType={merchant?.loyaltyType} theme={theme} t={t} locale={locale} />
-  ), [merchant?.loyaltyType, theme, t, locale]);
+    <TransactionRow item={item} merchantLoyaltyType={merchant?.loyaltyType} />
+  ), [merchant?.loyaltyType]);
 
   const keyExtractor = useCallback((item: Transaction) => item.id, []);
 
@@ -178,6 +174,7 @@ export default function ActivityScreen() {
         data={transactions}
         renderItem={renderTx}
         keyExtractor={keyExtractor}
+        getItemLayout={(_data, index) => ({ length: 53, offset: 53 * index, index })}
         contentContainerStyle={styles.list}
         removeClippedSubviews={Platform.OS !== 'web'}
         maxToRenderPerBatch={10}

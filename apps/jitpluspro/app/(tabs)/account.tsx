@@ -7,20 +7,15 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Image,
-  Modal,
-  Platform,
   Alert,
-  Pressable,
   Animated,
   Linking,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { getErrorMessage } from '@/utils/error';
-import MerchantLogo from '@/components/MerchantLogo';
 import InfoRow from '@/components/InfoRow';
 import { useReferral, useUploadMerchantLogo, useDeleteMerchantLogo } from '@/hooks/useQueryHooks';
 import {
-  MapPin,
   LogOut,
   ChevronDown,
   Lock,
@@ -31,38 +26,32 @@ import {
   Shield,
   Moon,
   Trash2,
-  Globe,
-  Check,
   Edit3,
   Store as StoreIcon,
-  Crown,
-  Zap,
-  Calendar,
-  AlertCircle,
   Gift,
   AlertTriangle,
   MessageCircle,
-  Camera,
-  ChevronRight,
-  Copy,
+  Globe,
 } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useRouter } from 'expo-router';
-import MerchantCategoryIcon, { useCategoryMetadata } from '@/components/MerchantCategoryIcon';
-import { LinearGradient } from 'expo-linear-gradient';
+import { useCategoryMetadata } from '@/components/MerchantCategoryIcon';
 import { useFocusFade } from '@/hooks/useFocusFade';
 import { useLanguage, LANGUAGES } from '@/contexts/LanguageContext';
 import Constants from 'expo-constants';
 import FadeInView from '@/components/FadeInView';
+import PremiumLockModal from '@/components/PremiumLockModal';
 import { wp, hp, ms, fontSize as FS, radius } from '@/utils/responsive';
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
+import { ProfileCard, LogoEditModal, LanguageModal } from '@/components/account';
 
 export default function AccountScreen() {
   const { merchant, loading, signOut, isTeamMember, teamMember, updateMerchant } = useAuth();
   const theme = useTheme();
   const router = useRouter();
   const { focusStyle } = useFocusFade();
+  const { locale, setLocale, t } = useLanguage();
   const uploadLogoMutation = useUploadMerchantLogo();
   const deleteLogoMutation = useDeleteMerchantLogo();
 
@@ -71,8 +60,15 @@ export default function AccountScreen() {
   const [prefExpanded, setPrefExpanded] = useState(false);
   const [compteExpanded, setCompteExpanded] = useState(false);
   const [showLogoModal, setShowLogoModal] = useState(false);
+  const [premiumModal, setPremiumModal] = useState<{ visible: boolean; titleKey: string; descKey: string }>({
+    visible: false,
+    titleKey: '',
+    descKey: '',
+  });
 
-  const pickAndUploadLogo = async () => {
+  const isPremium = merchant?.plan === 'PREMIUM';
+
+  const pickAndUploadLogo = useCallback(async () => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
@@ -91,11 +87,21 @@ export default function AccountScreen() {
     } catch (err) {
       Alert.alert(t('common.error'), getErrorMessage(err, t('account.logoUploadError')));
     }
-  };
+  }, [uploadLogoMutation, merchant, updateMerchant, t]);
 
-  const handleLogoPress = () => setShowLogoModal(true);
+  const handleLogoPress = useCallback(() => {
+    if (isTeamMember) {
+      Alert.alert(t('account.logoOwnerOnly'), t('account.logoOwnerOnlyMsg'));
+      return;
+    }
+    if (!isPremium) {
+      setPremiumModal({ visible: true, titleKey: 'account.logoProTitle', descKey: 'account.logoProMsg' });
+      return;
+    }
+    setShowLogoModal(true);
+  }, [isPremium, isTeamMember, t]);
 
-  const handleDeleteLogo = async () => {
+  const handleDeleteLogo = useCallback(async () => {
     setShowLogoModal(false);
     try {
       await deleteLogoMutation.mutateAsync();
@@ -103,43 +109,14 @@ export default function AccountScreen() {
     } catch (err) {
       Alert.alert(t('common.error'), getErrorMessage(err, t('account.logoDeleteError')));
     }
-  };
-  const { data: referralData } = useReferral();
+  }, [deleteLogoMutation, merchant, updateMerchant, t]);
+  const { data: referralData } = useReferral(!isTeamMember);
   const referralCode = referralData?.referralCode ?? null;
 
   // Profile data is managed by React Query (useMerchantProfile, staleTime: 5min).
   // No need to force-reload on every tab focus � pull-to-refresh or mutations handle invalidation.
   const { label: categoryLabel } = useCategoryMetadata(merchant?.categorie);
-  const { locale, setLocale, t } = useLanguage();
   const [showLanguageModal, setShowLanguageModal] = useState(false);
-
-  // -- Plan helpers -------------------------------------
-  const isPremium = merchant?.plan === 'PREMIUM';
-  const isAdminPremium = merchant?.planActivatedByAdmin === true;
-  const planExpiresAt = merchant?.planExpiresAt ? new Date(merchant.planExpiresAt) : null;
-  const trialStartedAt = merchant?.trialStartedAt ? new Date(merchant.trialStartedAt) : null;
-  const isTrial = isPremium && !isAdminPremium && trialStartedAt !== null && planExpiresAt !== null;
-
-  const getDaysRemaining = (): number | null => {
-    if (!planExpiresAt) return null;
-    const diff = planExpiresAt.getTime() - Date.now();
-    return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
-  };
-  const daysRemaining = getDaysRemaining();
-
-  const formatDate = (d: Date) =>
-    d.toLocaleDateString(
-      locale === 'ar' ? 'ar-MA' : locale === 'en' ? 'en-US' : 'fr-FR',
-      { day: '2-digit', month: 'long', year: 'numeric' },
-    );
-
-  const planUrgency: 'expired' | 'urgent' | 'soon' | 'ok' | null =
-    !isPremium ? null
-    : (isAdminPremium && !planExpiresAt) ? null
-    : daysRemaining === 0 ? 'expired'
-    : daysRemaining !== null && daysRemaining <= 7 ? 'urgent'
-    : daysRemaining !== null && daysRemaining <= 30 ? 'soon'
-    : 'ok';
 
   const handleSignOut = async () => {
     Alert.alert(t('account.signOut'), t('account.signOutConfirm'), [
@@ -165,10 +142,6 @@ export default function AccountScreen() {
 
   if (!merchant) return null;
 
-  const initials = merchant.nom
-    ? merchant.nom.split(' ').map((w: string) => w.charAt(0)).join('').slice(0, 2).toUpperCase()
-    : '?';
-
   return (
     <Animated.View style={[styles.container, { backgroundColor: theme.bg }, focusStyle]}>
       <ScrollView
@@ -177,163 +150,17 @@ export default function AccountScreen() {
       >
         {/* -- Profile Card ----------------------------- */}
         <FadeInView delay={100}>
-          <View style={[styles.profileCard, { backgroundColor: theme.bgCard }]}>
-            {/* -- Logo ---------------------------------- */}
-            <View style={styles.profileCardAvatarRow}>
-              <TouchableOpacity onPress={handleLogoPress} activeOpacity={0.85} style={styles.avatarRingWrapper}>
-                <LinearGradient
-                  colors={['#A78BFA', '#7C3AED', '#1F2937']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.avatarRing}
-                >
-                  {uploadLogoMutation.isPending ? (
-                    <View style={styles.avatarInner}>
-                      <ActivityIndicator size="small" color={palette.violet} />
-                    </View>
-                  ) : merchant?.logoUrl ? (
-                    <MerchantLogo logoUrl={merchant.logoUrl} style={styles.avatarInner} />
-                  ) : (
-                    <LinearGradient
-                      colors={[palette.charbon, palette.violet]}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={styles.avatarInner}
-                    >
-                      <Text style={styles.avatarText}>{initials}</Text>
-                    </LinearGradient>
-                  )}
-                </LinearGradient>
-                <LinearGradient
-                  colors={['#A78BFA', '#7C3AED']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.avatarCameraBadge}
-                >
-                  <Camera size={ms(11)} color="#fff" strokeWidth={2.5} />
-                </LinearGradient>
-              </TouchableOpacity>
-              <Text style={[styles.profileName, { color: theme.text }]}>{merchant.nom}</Text>
-            </View>
-
-            {/* -- Plan Row ------------------------------ */}
-            <TouchableOpacity
-              activeOpacity={0.78}
-              onPress={() => router.push('/plan')}
-              style={[
-                styles.planRow,
-                isPremium
-                  ? { backgroundColor: '#0f031e', borderColor: '#7C3AED35' }
-                  : { backgroundColor: `${theme.textMuted}06`, borderColor: `${theme.textMuted}15` },
-              ]}
-            >
-              {/* Left icon */}
-              <LinearGradient
-                colors={isPremium ? ['#7C3AED', '#5B21B6'] : [`${theme.textMuted}20`, `${theme.textMuted}10`]}
-                style={styles.planRowIcon}
-              >
-                {isPremium
-                  ? (isTrial ? <Zap size={ms(16)} color="#fff" strokeWidth={2} /> : <Crown size={ms(16)} color="#FCD34D" strokeWidth={2} />)
-                  : <Zap size={ms(16)} color={theme.textMuted} strokeWidth={2} />}
-              </LinearGradient>
-
-              {/* Center content */}
-              <View style={styles.planRowContent}>
-                <View style={styles.planRowHeader}>
-                  <Text style={[styles.planRowTitle, isPremium ? { color: '#fff' } : { color: theme.text }]}>
-                    {isPremium ? (isTrial ? t('account.planTrial') : 'Premium') : t('account.planFree')}
-                  </Text>
-                  <View style={[styles.planRowBadge, isPremium ? { backgroundColor: isTrial ? '#7C3AED' : '#065F46' } : { backgroundColor: `${theme.textMuted}20` }]}>
-                    <Text style={[styles.planRowBadgeText, isPremium ? { color: '#fff' } : { color: theme.textMuted }]}>
-                      {isPremium ? (isTrial ? t('account.planTrial').toUpperCase() : 'ACTIVE') : 'FREE'}
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Expiry / admin info */}
-                {isPremium && (isAdminPremium && !planExpiresAt) ? (
-                  <Text style={styles.planRowSub}>{t('account.planByAdmin')}</Text>
-                ) : isPremium && planExpiresAt ? (
-                  <View style={styles.planRowExpiryLine}>
-                    <Calendar size={11} color={planUrgency === 'expired' || planUrgency === 'urgent' ? '#f87171' : planUrgency === 'soon' ? '#A78BFA' : '#9CA3AF'} />
-                    <Text style={[
-                      styles.planRowExpiry,
-                      planUrgency === 'expired' || planUrgency === 'urgent' ? { color: '#f87171' } : planUrgency === 'soon' ? { color: '#A78BFA' } : { color: '#9CA3AF' },
-                    ]}>
-                      {planUrgency === 'expired'
-                        ? (isTrial ? t('account.planTrialExpired', { date: formatDate(planExpiresAt) }) : t('account.planExpired', { date: formatDate(planExpiresAt) }))
-                        : (isTrial ? t('account.planTrialExpiry', { date: formatDate(planExpiresAt) }) : t('account.planExpiry', { date: formatDate(planExpiresAt) }))}
-                    </Text>
-                  </View>
-                ) : !isPremium ? (
-                  <Text style={[styles.planRowSub, { color: theme.textMuted }]}>{t('account.planFreeDesc')}</Text>
-                ) : null}
-
-                {/* Days remaining chip */}
-                {isPremium && daysRemaining !== null && daysRemaining > 0 && (
-                  <View style={[
-                    styles.planRowDaysChip,
-                    planUrgency === 'urgent' ? { backgroundColor: '#f8717118' } : planUrgency === 'soon' ? { backgroundColor: '#7C3AED18' } : { backgroundColor: '#37415118' },
-                  ]}>
-                    <Text style={[
-                      styles.planRowDaysText,
-                      planUrgency === 'urgent' ? { color: '#f87171' } : planUrgency === 'soon' ? { color: '#A78BFA' } : { color: '#9CA3AF' },
-                    ]}>
-                      {isTrial ? t('account.planTrialDaysLeft', { count: daysRemaining }) : t('account.planDaysLeft', { count: daysRemaining })}
-                    </Text>
-                  </View>
-                )}
-
-                {/* Renew alert */}
-                {isPremium && (planUrgency === 'expired' || planUrgency === 'urgent' || planUrgency === 'soon') && (
-                  <View style={styles.planRowRenew}>
-                    <AlertCircle size={12} color="#A78BFA" />
-                    <Text style={styles.planRowRenewText}>
-                      {planUrgency === 'expired'
-                        ? (isTrial ? t('account.planTrialRenewExpired') : t('account.planRenewExpired'))
-                        : (isTrial ? t('account.planTrialRenewUrgent') : t('account.planRenewUrgent'))}
-                    </Text>
-                  </View>
-                )}
-              </View>
-
-              {/* Right chevron */}
-              <ChevronRight size={ms(18)} color={isPremium ? '#A78BFA' : theme.textMuted} />
-            </TouchableOpacity>
-
-            {/* -- Referral Code ------------------------- */}
-            {referralCode && (
-              <Pressable
-                onPress={() => router.push('/referral' as any)}
-                style={({ pressed }) => [
-                  styles.referralRow,
-                  { backgroundColor: `${palette.charbon}06`, borderColor: `${palette.charbon}18` },
-                  pressed && { opacity: 0.75 },
-                ]}
-              >
-                <LinearGradient
-                  colors={[`${palette.charbon}25`, `${palette.charbon}10`]}
-                  style={styles.referralRowIcon}
-                >
-                  <Gift size={ms(16)} color={palette.charbon} strokeWidth={1.8} />
-                </LinearGradient>
-                <View style={styles.referralRowContent}>
-                  <Text style={[styles.referralRowLabel, { color: theme.text }]}>
-                    {t('account.referralActive')}
-                  </Text>
-                  <Text style={[styles.referralRowHint, { color: theme.textMuted }]}>
-                    {t('account.referralInviteHint')}
-                  </Text>
-                </View>
-                <View style={[styles.referralRowCode, { backgroundColor: `${palette.charbon}14` }]}>
-                  <Text style={[styles.referralRowCodeText, { color: palette.charbon }]}>
-                    {referralCode}
-                  </Text>
-                  <Copy size={ms(12)} color={palette.charbon} strokeWidth={2} />
-                </View>
-              </Pressable>
-            )}
-          </View>
+          <ProfileCard
+            theme={theme}
+            t={t}
+            locale={locale}
+            merchant={merchant}
+            uploadIsPending={uploadLogoMutation.isPending}
+            onLogoPress={handleLogoPress}
+            referralCode={referralCode}
+            categoryLabel={categoryLabel}
+            router={router}
+          />
         </FadeInView>
 
         {/* -- Team Member Banner ----------------------- */}
@@ -394,19 +221,53 @@ export default function AccountScreen() {
                   subtitle={t('account.settingsSubtitle')}
                   onPress={() => router.push('/settings')}
                 />
-                {/* Dashboard */}
+                {/* Dashboard — locked for FREE */}
                 <InfoRow
-                  icon={<BarChart3 size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
+                  icon={<BarChart3 size={ms(16)} color={isPremium ? palette.charbon : theme.textMuted} strokeWidth={1.5} />}
                   label={t('account.dashboard')}
-                  subtitle={t('account.dashboardSubtitle')}
-                  onPress={() => router.push('/dashboard')}
+                  subtitle={isPremium ? t('account.dashboardSubtitle') : t('account.dashboardLockedSubtitle')}
+                  iconBg={isPremium ? undefined : `${theme.textMuted}18`}
+                  right={
+                    !isPremium
+                      ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: ms(4) }}>
+                          <View style={{ backgroundColor: '#7C3AED18', borderRadius: ms(6), paddingHorizontal: ms(6), paddingVertical: ms(2) }}>
+                            <Text style={{ fontSize: FS.xs, color: '#7C3AED', fontWeight: '600' }}>PRO</Text>
+                          </View>
+                          <Lock size={ms(13)} color={theme.textMuted} strokeWidth={2} />
+                        </View>
+                      : undefined
+                  }
+                  onPress={() => {
+                    if (!isPremium) {
+                      setPremiumModal({ visible: true, titleKey: 'account.dashboardLockedTitle', descKey: 'account.dashboardLockedMsg' });
+                      return;
+                    }
+                    router.push('/dashboard');
+                  }}
                 />
-                {/* Team */}
+                {/* Team — visible for all, locked for FREE */}
                 <InfoRow
-                  icon={<Users size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
+                  icon={<Users size={ms(16)} color={isPremium ? palette.charbon : theme.textMuted} strokeWidth={1.5} />}
                   label={t('account.team')}
-                  subtitle={t('account.teamSubtitle')}
-                  onPress={() => router.push('/team-management' as any)}
+                  subtitle={isPremium ? t('account.teamSubtitle') : t('account.teamLockedSubtitle')}
+                  iconBg={isPremium ? undefined : `${theme.textMuted}18`}
+                  right={
+                    !isPremium
+                      ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: ms(4) }}>
+                          <View style={{ backgroundColor: '#7C3AED18', borderRadius: ms(6), paddingHorizontal: ms(6), paddingVertical: ms(2) }}>
+                            <Text style={{ fontSize: FS.xs, color: '#7C3AED', fontWeight: '600' }}>PRO</Text>
+                          </View>
+                          <Lock size={ms(13)} color={theme.textMuted} strokeWidth={2} />
+                        </View>
+                      : undefined
+                  }
+                  onPress={() => {
+                    if (!isPremium) {
+                      setPremiumModal({ visible: true, titleKey: 'account.teamLockedTitle', descKey: 'account.teamLockedMsg' });
+                      return;
+                    }
+                    router.push('/team-management' as any);
+                  }}
                 />
                 {/* Referral */}
                 <InfoRow
@@ -515,7 +376,11 @@ export default function AccountScreen() {
               <InfoRow
                 icon={<MessageCircle size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
                 label={t('account.contactSupport')}
-                onPress={() => Linking.openURL('https://wa.me/33767471397?text=Bonjour%2C%20j%27ai%20besoin%20d%27aide%20avec%20JitPlus%20Pro')}
+                onPress={() => {
+                  const phone = process.env.EXPO_PUBLIC_SUPPORT_WHATSAPP || '';
+                  const msg = encodeURIComponent(t('account.contactSupportMsg'));
+                  Linking.openURL(`https://wa.me/${phone}?text=${msg}`);
+                }}
                 iconBg={`${palette.charbon}15`}
               />
               {/* Logout */}
@@ -555,156 +420,32 @@ export default function AccountScreen() {
         </View>
       </ScrollView>
 
-      {/* -- Logo Edit Bottom Sheet -------------------- */}
-      <Modal
+      <LogoEditModal
         visible={showLogoModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowLogoModal(false)}
-      >
-        <Pressable style={styles.bottomSheetOverlay} onPress={() => setShowLogoModal(false)}>
-          <Pressable style={[styles.logoModalSheet, { backgroundColor: theme.bgCard }]} onPress={() => {}}>
-            {/* Drag handle */}
-            <View style={[styles.sheetHandle, { backgroundColor: `${palette.charbon}20` }]} />
+        onClose={() => setShowLogoModal(false)}
+        theme={theme}
+        t={t}
+        merchant={merchant}
+        uploadIsPending={uploadLogoMutation.isPending}
+        onPickPhoto={pickAndUploadLogo}
+        onDelete={handleDeleteLogo}
+      />
 
-            {/* Avatar preview */}
-            <View style={styles.logoModalPreviewRow}>
-              <LinearGradient
-                colors={['#A78BFA', '#7C3AED', '#1F2937']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.logoModalRing}
-              >
-                {uploadLogoMutation.isPending ? (
-                  <View style={[styles.logoModalInner, { backgroundColor: theme.bgCard }]}>
-                    <ActivityIndicator size="large" color={palette.violet} />
-                  </View>
-                ) : merchant?.logoUrl ? (
-                  <MerchantLogo logoUrl={merchant.logoUrl} style={styles.logoModalInner} />
-                ) : (
-                  <LinearGradient
-                    colors={[palette.charbon, palette.violet]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.logoModalInner}
-                  >
-                    <Text style={styles.logoModalInitials}>{initials}</Text>
-                  </LinearGradient>
-                )}
-              </LinearGradient>
-            </View>
-
-            <Text style={[styles.logoModalTitle, { color: theme.text }]}>{t('account.profilePhoto')}</Text>
-            <Text style={[styles.logoModalSubtitle, { color: theme.textMuted }]}>
-              {merchant?.logoUrl
-                ? t('account.profilePhotoEditHint')
-                : t('account.profilePhotoAddHint')}
-            </Text>
-
-            {/* Choose photo */}
-            <TouchableOpacity
-              style={styles.logoModalBtn}
-              activeOpacity={0.85}
-              onPress={() => {
-                setShowLogoModal(false);
-                setTimeout(pickAndUploadLogo, 350);
-              }}
-            >
-              <LinearGradient
-                colors={['#7C3AED', '#5B21B6']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.logoModalBtnGradient}
-              >
-                <Camera size={ms(18)} color="#fff" strokeWidth={2} />
-                <Text style={styles.logoModalBtnText}>
-                  {merchant?.logoUrl ? t('account.changeProfilePhoto') : t('account.addProfilePhoto')}
-                </Text>
-              </LinearGradient>
-            </TouchableOpacity>
-
-            {/* Delete (only if logo exists) */}
-            {!!merchant?.logoUrl && (
-              <TouchableOpacity
-                style={[styles.logoModalOutlineBtn, { borderColor: '#EF444435' }]}
-                activeOpacity={0.8}
-                onPress={handleDeleteLogo}
-              >
-                <Trash2 size={ms(16)} color="#EF4444" strokeWidth={1.5} />
-                <Text style={[styles.logoModalOutlineBtnText, { color: '#EF4444' }]}>{t('account.deleteProfilePhoto')}</Text>
-              </TouchableOpacity>
-            )}
-
-            {/* Cancel */}
-            <TouchableOpacity
-              style={[styles.logoModalOutlineBtn, { borderColor: theme.borderLight }]}
-              activeOpacity={0.7}
-              onPress={() => setShowLogoModal(false)}
-            >
-              <Text style={[styles.logoModalOutlineBtnText, { color: theme.textMuted }]}>{t('common.cancel')}</Text>
-            </TouchableOpacity>
-          </Pressable>
-        </Pressable>
-      </Modal>
-
-      {/* -- Language Selector Modal ------------------- */}
-      <Modal
+      <LanguageModal
         visible={showLanguageModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowLanguageModal(false)}
-      >
-        <Pressable style={styles.modalOverlay} onPress={() => setShowLanguageModal(false)}>
-          <View style={[styles.langModalCard, { backgroundColor: theme.bgCard }]}>
-            <View style={[styles.modalIconCircle, { backgroundColor: `${palette.charbon}12` }]}>
-              <Globe size={ms(28)} color={palette.charbon} strokeWidth={1.5} />
-            </View>
-            <Text style={[styles.langModalTitle, { color: theme.text }]}>{t('account.chooseLanguage')}</Text>
-            <Text style={[styles.langModalDesc, { color: theme.textMuted }]}>
-              {t('account.chooseLanguageDesc')}
-            </Text>
+        onClose={() => setShowLanguageModal(false)}
+        theme={theme}
+        t={t}
+        locale={locale}
+        setLocale={setLocale}
+      />
 
-            {LANGUAGES.map((lang) => {
-              const selected = locale === lang.code;
-              return (
-                <Pressable
-                  key={lang.code}
-                  onPress={async () => {
-                    if (lang.code !== locale) {
-                      await setLocale(lang.code);
-                      if (lang.code === 'ar' || locale === 'ar') {
-                        Alert.alert(
-                          t('account.language'),
-                          t('account.restartDirectionHint'),
-                          [{ text: 'OK' }],
-                        );
-                      }
-                    }
-                    setShowLanguageModal(false);
-                  }}
-                  android_ripple={{ color: `${palette.violet}10` }}
-                  style={({ pressed }) => [
-                    styles.langOption,
-                    { borderColor: selected ? theme.primary : theme.borderLight },
-                    selected && { backgroundColor: `${theme.primary}08` },
-                    pressed && Platform.OS === 'ios' && { opacity: 0.7 },
-                  ]}
-                >
-                  <Text style={styles.langFlag}>{lang.flag}</Text>
-                  <Text style={[styles.langOptionText, { color: selected ? theme.primary : theme.text }]}>
-                    {lang.label}
-                  </Text>
-                  {selected && (
-                    <View style={[styles.langCheck, { backgroundColor: theme.primary }]}>
-                      <Check size={ms(12)} color="#fff" strokeWidth={3} />
-                    </View>
-                  )}
-                </Pressable>
-              );
-            })}
-          </View>
-        </Pressable>
-      </Modal>
+      <PremiumLockModal
+        visible={premiumModal.visible}
+        onClose={() => setPremiumModal(prev => ({ ...prev, visible: false }))}
+        titleKey={premiumModal.titleKey}
+        descKey={premiumModal.descKey}
+      />
     </Animated.View>
   );
 }
@@ -718,238 +459,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: wp(20),
     paddingTop: hp(60),
     paddingBottom: hp(120),
-  },
-
-  // Profile card
-  profileCard: {
-    borderRadius: radius.xl,
-    marginBottom: hp(16),
-    overflow: 'hidden',
-    paddingBottom: hp(16),
-    shadowColor: '#7C3AED',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
-    elevation: 4,
-  },
-  profileCardBanner: {
-    height: hp(72),
-    width: '100%',
-  },
-  profileCardAvatarRow: {
-    alignItems: 'center',
-    marginTop: hp(16),
-    marginBottom: hp(2),
-    gap: hp(8),
-  },
-  avatarRingWrapper: {
-    position: 'relative',
-  },
-  avatarRing: {
-    width: ms(88),
-    height: ms(88),
-    borderRadius: ms(44),
-    padding: 3,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#7C3AED',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    elevation: 6,
-  },
-  avatarInner: {
-    width: ms(82),
-    height: ms(82),
-    borderRadius: ms(41),
-    backgroundColor: '#F3F4F6',
-    alignItems: 'center',
-    justifyContent: 'center',
-    resizeMode: 'cover',
-    overflow: 'hidden',
-  },
-  avatarCameraBadge: {
-    position: 'absolute',
-    bottom: 2,
-    right: 2,
-    width: ms(24),
-    height: ms(24),
-    borderRadius: ms(12),
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#fff',
-    shadowColor: '#7C3AED',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.4,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  avatarText: { fontSize: FS.xl, fontWeight: '700', color: '#fff', letterSpacing: 1 },
-  profileInfo: { flex: 1 },
-  profileName: { fontSize: FS.lg, fontWeight: '700', letterSpacing: -0.3, textAlign: 'center' },
-
-  // Plan row
-  planRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: wp(14),
-    marginTop: hp(4),
-    paddingHorizontal: wp(12),
-    paddingVertical: hp(12),
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    gap: wp(10),
-  },
-  planRowIcon: {
-    width: ms(36),
-    height: ms(36),
-    borderRadius: ms(12),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  planRowContent: { flex: 1, gap: hp(3) },
-  planRowHeader: { flexDirection: 'row', alignItems: 'center', gap: wp(8) },
-  planRowTitle: { fontSize: FS.md, fontWeight: '700' },
-  planRowBadge: {
-    paddingHorizontal: wp(7),
-    paddingVertical: hp(2),
-    borderRadius: radius.sm,
-  },
-  planRowBadgeText: { fontSize: 9, fontWeight: '700', letterSpacing: 0.8 },
-  planRowSub: { fontSize: FS.xs, color: '#9CA3AF', lineHeight: FS.xs * 1.4 },
-  planRowExpiryLine: { flexDirection: 'row', alignItems: 'center', gap: wp(5) },
-  planRowExpiry: { fontSize: FS.xs, fontWeight: '600' },
-  planRowDaysChip: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: wp(8),
-    paddingVertical: hp(2),
-    borderRadius: radius.sm,
-    marginTop: hp(2),
-  },
-  planRowDaysText: { fontSize: 11, fontWeight: '700' },
-  planRowRenew: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: wp(6),
-    backgroundColor: '#7C3AED10',
-    borderRadius: radius.md,
-    paddingHorizontal: wp(8),
-    paddingVertical: hp(5),
-    marginTop: hp(4),
-  },
-  planRowRenewText: { flex: 1, fontSize: 11, color: '#A78BFA', lineHeight: 16 },
-
-  // Referral row
-  referralRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: wp(14),
-    marginTop: hp(8),
-    marginBottom: hp(4),
-    paddingHorizontal: wp(12),
-    paddingVertical: hp(12),
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    gap: wp(10),
-  },
-  referralRowIcon: {
-    width: ms(36),
-    height: ms(36),
-    borderRadius: ms(12),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  referralRowContent: { flex: 1, gap: hp(1) },
-  referralRowLabel: { fontSize: FS.sm, fontWeight: '700' },
-  referralRowHint: { fontSize: FS.xs, lineHeight: FS.xs * 1.3 },
-  referralRowCode: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: wp(5),
-    paddingHorizontal: wp(10),
-    paddingVertical: hp(6),
-    borderRadius: radius.md,
-  },
-  referralRowCodeText: { fontSize: FS.sm, fontWeight: '700', letterSpacing: 1.2 },
-  profileMeta: { flexDirection: 'row', flexWrap: 'wrap', gap: wp(6), marginTop: hp(4), justifyContent: 'center' },
-  categoryChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: wp(8),
-    paddingVertical: hp(3),
-    borderRadius: radius.md,
-    gap: wp(4),
-  },
-  categoryChipText: { fontSize: FS.xs, fontWeight: '600' },
-  profileDescription: {
-    fontSize: FS.sm,
-    lineHeight: FS.sm * 1.5,
-    textAlign: 'center',
-    paddingHorizontal: wp(20),
-    marginTop: hp(6),
-    marginBottom: hp(10),
-  },
-  socialRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: wp(8),
-    marginTop: hp(10),
-  },
-  socialChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: wp(10),
-    paddingVertical: hp(5),
-    borderRadius: radius.md,
-    gap: wp(5),
-  },
-  socialChipText: {
-    fontSize: FS.xs,
-    fontWeight: '600',
-  },
-
-  // Referral banner
-  referralBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: hp(12),
-    paddingVertical: hp(10),
-    paddingHorizontal: wp(10),
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    gap: wp(10),
-  },
-  referralIconBox: {
-    width: ms(32),
-    height: ms(32),
-    borderRadius: ms(10),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  referralContent: { flex: 1, gap: hp(3) },
-  referralCodeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: wp(8),
-  },
-  referralActiveLabel: {
-    fontSize: FS.xs,
-    fontWeight: '700',
-  },
-  referralCodeChip: {
-    paddingHorizontal: wp(8),
-    paddingVertical: hp(2),
-    borderRadius: radius.sm,
-  },
-  referralCodeText: {
-    fontSize: FS.xs,
-    fontWeight: '700',
-    letterSpacing: 1,
-  },
-  referralHint: {
-    fontSize: FS.xs - 1,
-    lineHeight: (FS.xs - 1) * 1.4,
   },
 
   // Section
@@ -1011,75 +520,6 @@ const styles = StyleSheet.create({
     gap: wp(12),
   },
 
-  // Plan inline (merged in profile card)
-  planInline: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: wp(8),
-    marginTop: hp(8),
-    marginBottom: hp(4),
-    paddingHorizontal: wp(12),
-    paddingVertical: hp(8),
-    borderRadius: radius.lg,
-    borderWidth: 1,
-  },
-  planInlineSub: { fontSize: FS.xs, color: '#9CA3AF', marginTop: 2 },
-  planInlineExpiry: { fontSize: FS.xs, fontWeight: '600' },
-
-  // Plan card (legacy)
-  planCard: {
-    borderRadius: radius.xl,
-    borderWidth: 1,
-    overflow: 'hidden',
-    paddingHorizontal: wp(18),
-    paddingVertical: hp(16),
-    marginBottom: hp(16),
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 12,
-    elevation: 2,
-  },
-  planBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 20,
-    gap: 5,
-    marginBottom: 10,
-  },
-  planBadgeText: { color: '#fff', fontSize: 11, fontWeight: '700', letterSpacing: 1 },
-  planBody: { gap: 6 },
-  planTitle: { fontSize: 17, fontWeight: '700', color: '#fff' },
-  planMeta: { fontSize: 12, color: 'rgba(255,255,255,0.55)' },
-  planExpiryRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
-  planExpiry: { fontSize: 13, fontWeight: '600' },
-  planDaysChip: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, marginTop: 4 },
-  planDaysText: { fontSize: 12, fontWeight: '700' },
-  planRenewBanner: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-    backgroundColor: '#7C3AED12',
-    borderRadius: 12,
-    padding: 10,
-    marginTop: 8,
-  },
-  planRenewText: { flex: 1, fontSize: 12, color: '#A78BFA', lineHeight: 18 },
-  planSubFree: { fontSize: 13, color: 'rgba(255,255,255,0.65)', lineHeight: 18 },
-  freeLimitRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 },
-  freeLimitText: {
-    fontSize: 11,
-    backgroundColor: 'rgba(0,0,0,0.08)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-    overflow: 'hidden',
-  },
-
   // Toggle
   toggle: {
     width: ms(48),
@@ -1117,148 +557,4 @@ const styles = StyleSheet.create({
   logoImage: { width: ms(64), height: ms(64), borderRadius: ms(14) },
   logoSubtext: { fontSize: FS.xs, marginTop: hp(8), fontWeight: '500', letterSpacing: 0.3 },
   versionText: { fontSize: FS.xs, marginTop: hp(4), opacity: 0.5, fontWeight: '400' },
-
-  // Logo bottom sheet
-  bottomSheetOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    justifyContent: 'flex-end',
-  },
-  logoModalSheet: {
-    borderTopLeftRadius: ms(24),
-    borderTopRightRadius: ms(24),
-    paddingTop: hp(14),
-    paddingHorizontal: ms(24),
-    paddingBottom: hp(36),
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 20,
-    elevation: 10,
-  },
-  sheetHandle: {
-    width: ms(40),
-    height: ms(4),
-    borderRadius: ms(2),
-    marginBottom: hp(20),
-  },
-  logoModalPreviewRow: {
-    marginBottom: hp(16),
-  },
-  logoModalRing: {
-    width: ms(100),
-    height: ms(100),
-    borderRadius: ms(50),
-    padding: 3,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  logoModalInner: {
-    width: ms(94),
-    height: ms(94),
-    borderRadius: ms(47),
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  logoModalInitials: {
-    fontSize: ms(32),
-    fontWeight: '700',
-    color: '#fff',
-    letterSpacing: 1,
-  },
-  logoModalTitle: {
-    fontSize: FS.lg,
-    fontWeight: '700',
-    marginBottom: hp(6),
-  },
-  logoModalSubtitle: {
-    fontSize: FS.sm,
-    textAlign: 'center',
-    marginBottom: hp(24),
-    lineHeight: FS.sm * 1.5,
-  },
-  logoModalBtn: {
-    width: '100%',
-    borderRadius: ms(14),
-    overflow: 'hidden',
-    marginBottom: hp(10),
-  },
-  logoModalBtnGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: ms(8),
-    paddingVertical: hp(15),
-  },
-  logoModalBtnText: {
-    color: '#fff',
-    fontSize: FS.md,
-    fontWeight: '700',
-  },
-  logoModalOutlineBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: ms(8),
-    width: '100%',
-    paddingVertical: hp(14),
-    borderRadius: ms(14),
-    borderWidth: 1,
-    marginBottom: hp(10),
-  },
-  logoModalOutlineBtnText: {
-    fontSize: FS.md,
-    fontWeight: '600',
-  },
-
-  // Language modal
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: ms(24),
-  },
-  modalIconCircle: {
-    width: ms(56),
-    height: ms(56),
-    borderRadius: ms(28),
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: hp(12),
-  },
-  langModalCard: {
-    width: '100%',
-    borderRadius: ms(20),
-    padding: ms(24),
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.10,
-    shadowRadius: 16,
-    elevation: 6,
-  },
-  langModalTitle: { fontSize: ms(18), fontWeight: '700', marginBottom: hp(8) },
-  langModalDesc: { fontSize: ms(13), textAlign: 'center', marginBottom: hp(16) },
-  langOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    width: '100%',
-    padding: ms(14),
-    borderRadius: ms(14),
-    borderWidth: 1.5,
-    marginBottom: hp(10),
-    gap: ms(12),
-  },
-  langFlag: { fontSize: ms(22) },
-  langOptionText: { flex: 1, fontSize: FS.md, fontWeight: '600' },
-  langCheck: {
-    width: ms(22),
-    height: ms(22),
-    borderRadius: ms(11),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
 });

@@ -1,7 +1,7 @@
 {
   "name": "jitplus",
   "main": "expo-router/entry",
-  "version": "1.2.2",
+  "version": "1.2.4",
   "expo": {
     "install": {
       "exclude": [

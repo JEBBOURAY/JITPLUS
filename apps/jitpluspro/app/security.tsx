@@ -113,7 +113,7 @@ export default function SecurityScreen() {
   const [deletePwd, setDeletePwd] = useState('');
   const [showDeletePwd, setShowDeletePwd] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleteConfirmed, setDeleteConfirmed] = useState(false);
   const [deleteGoogleToken, setDeleteGoogleToken] = useState<string | null>(null);
   const googleDelete = useGoogleIdToken((idToken) => setDeleteGoogleToken(idToken));
 
@@ -157,40 +157,7 @@ export default function SecurityScreen() {
   }, [activeTab, loadDevices]);
 
   // ── Change password ──
-  const handleChangePassword = async () => {
-    if (!isGoogleAccount && !currentPwd.trim()) {
-      Alert.alert('Erreur', 'Entrez votre mot de passe actuel');
-      return;
-    }
-    if (newPwd.length < 8) {
-      Alert.alert('Erreur', 'Le nouveau mot de passe doit contenir au moins 8 caractères');
-      return;
-    }
-    if (newPwd !== confirmPwd) {
-      Alert.alert('Erreur', 'Les mots de passe ne correspondent pas');
-      return;
-    }
-
-    // Demander d'abord si on déconnecte les autres, puis faire un seul appel API
-    Alert.alert(
-      t('security.changePwdTitle'),
-      t('security.changePwdLogoutQuestion'),
-      [
-        {
-          text: t('security.changePwdOnly'),
-          onPress: () => executePasswordChange(false),
-        },
-        {
-          text: t('security.changePwdAndLogout'),
-          style: 'destructive',
-          onPress: () => executePasswordChange(true),
-        },
-        { text: t('common.cancel'), style: 'cancel' },
-      ],
-    );
-  };
-
-  const executePasswordChange = async (logoutOthers: boolean) => {
+  const executePasswordChange = useCallback(async (logoutOthers: boolean) => {
     setSaving(true);
     try {
       const res = await api.patch('/merchant/password', {
@@ -212,11 +179,44 @@ export default function SecurityScreen() {
 
       if (activeTab === 'devices') loadDevices();
     } catch (err: unknown) {
-      Alert.alert('Erreur', getErrorMessage(err, 'Impossible de changer le mot de passe'));
+      Alert.alert(t('common.error'), getErrorMessage(err, t('security.changePwdError')));
     } finally {
       setSaving(false);
     }
-  };
+  }, [isGoogleAccount, currentPwd, newPwd, activeTab, loadDevices, t]);
+
+  const handleChangePassword = useCallback(async () => {
+    if (!isGoogleAccount && !currentPwd.trim()) {
+      Alert.alert(t('common.error'), t('security.enterCurrentPassword'));
+      return;
+    }
+    if (newPwd.length < 8) {
+      Alert.alert(t('common.error'), t('security.passwordTooShort'));
+      return;
+    }
+    if (newPwd !== confirmPwd) {
+      Alert.alert(t('common.error'), t('security.passwordMismatch'));
+      return;
+    }
+
+    // Demander d'abord si on déconnecte les autres, puis faire un seul appel API
+    Alert.alert(
+      t('security.changePwdTitle'),
+      t('security.changePwdLogoutQuestion'),
+      [
+        {
+          text: t('security.changePwdOnly'),
+          onPress: () => executePasswordChange(false),
+        },
+        {
+          text: t('security.changePwdAndLogout'),
+          style: 'destructive',
+          onPress: () => executePasswordChange(true),
+        },
+        { text: t('common.cancel'), style: 'cancel' },
+      ],
+    );
+  }, [isGoogleAccount, currentPwd, newPwd, confirmPwd, executePasswordChange, t]);
 
   // ── Remove device ──
   const handleRemoveDevice = (device: DeviceSession) => {
@@ -233,7 +233,7 @@ export default function SecurityScreen() {
               await api.delete(`/merchant/devices/${device.id}`);
               setDevices((prev) => prev.filter((d) => d.id !== device.id));
             } catch {
-              Alert.alert('Erreur', 'Impossible de déconnecter cet appareil');
+              Alert.alert(t('common.error'), t('security.disconnectError'));
             }
           },
         },
@@ -356,23 +356,21 @@ export default function SecurityScreen() {
               )}
 
               <View style={{ marginTop: 12 }}>
-                <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>
-                  {t('security.deleteConfirmLabel')}
-                </Text>
-                <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.border }]}>
-                  <TextInput
-                    style={[styles.input, { color: theme.danger, fontWeight: '600' }]}
-                    value={deleteConfirmText}
-                    onChangeText={setDeleteConfirmText}
-                    placeholder={t('security.deleteConfirmKeyword')}
-                    placeholderTextColor={theme.textMuted}
-                    autoCapitalize="characters"
-                    autoCorrect={false}
-                  />
-                  {deleteConfirmText === t('security.deleteConfirmKeyword') && (
-                    <Check size={18} color={theme.danger} />
-                  )}
-                </View>
+                <TouchableOpacity
+                  style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8 }}
+                  onPress={() => setDeleteConfirmed((v) => !v)}
+                  activeOpacity={0.7}
+                >
+                  <View style={[
+                    { width: 22, height: 22, borderRadius: 4, borderWidth: 2, marginRight: 10, alignItems: 'center', justifyContent: 'center' },
+                    { borderColor: deleteConfirmed ? theme.danger : theme.border, backgroundColor: deleteConfirmed ? theme.danger : 'transparent' },
+                  ]}>
+                    {deleteConfirmed && <Check size={14} color="#fff" strokeWidth={3} />}
+                  </View>
+                  <Text style={[styles.fieldLabel, { color: theme.textSecondary, marginBottom: 0, flex: 1 }]}>
+                    {t('security.deleteConfirmLabel')}
+                  </Text>
+                </TouchableOpacity>
               </View>
 
               <TouchableOpacity
@@ -380,12 +378,12 @@ export default function SecurityScreen() {
                   styles.deleteBtn,
                   {
                     backgroundColor:
-                      (isGoogleAccount ? !!deleteGoogleToken : deletePwd.length >= 6) && deleteConfirmText === t('security.deleteConfirmKeyword')
+                      (isGoogleAccount ? !!deleteGoogleToken : deletePwd.length >= 6) && deleteConfirmed
                         ? theme.danger
                         : theme.border,
                   },
                 ]}
-                disabled={deleting || (isGoogleAccount ? !deleteGoogleToken : deletePwd.length < 6) || deleteConfirmText !== t('security.deleteConfirmKeyword')}
+                disabled={deleting || (isGoogleAccount ? !deleteGoogleToken : deletePwd.length < 6) || !deleteConfirmed}
                 activeOpacity={0.8}
                 onPress={() => {
                   Alert.alert(
@@ -397,6 +395,10 @@ export default function SecurityScreen() {
                         text: t('security.deleteForeverBtn'),
                         style: 'destructive',
                         onPress: async () => {
+                          if (isGoogleAccount && !deleteGoogleToken) {
+                            Alert.alert(t('common.error'), t('security.deleteGooglePrompt'));
+                            return;
+                          }
                           setDeleting(true);
                           try {
                             const body = isGoogleAccount
@@ -409,7 +411,7 @@ export default function SecurityScreen() {
                               [{ text: 'OK', onPress: () => signOut() }],
                             );
                           } catch (err: unknown) {
-                            Alert.alert('Erreur', getErrorMessage(err, 'Impossible de supprimer le compte.'));
+                            Alert.alert(t('common.error'), getErrorMessage(err, t('security.deleteAccountError')));
                           } finally {
                             setDeleting(false);
                           }

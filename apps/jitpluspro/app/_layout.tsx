@@ -3,13 +3,13 @@ import { DarkTheme, DefaultTheme, ThemeProvider as NavThemeProvider } from '@rea
 import { Lexend_400Regular, Lexend_500Medium, Lexend_600SemiBold, Lexend_700Bold } from '@expo-google-fonts/lexend';
 import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
 import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { View, Image, StyleSheet, ActivityIndicator } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { QueryClient, QueryCache, MutationCache } from '@tanstack/react-query';
+import { QueryClient, QueryCache, MutationCache, useQueryClient } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { asyncStoragePersister } from '@/utils/queryPersister';
 import * as SecureStore from 'expo-secure-store';
@@ -75,6 +75,7 @@ if (!__DEV__ && !process.env.EXPO_PUBLIC_API_URL) {
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { ThemeProvider, useTheme } from '@/contexts/ThemeContext';
 import { LanguageProvider } from '@/contexts/LanguageContext';
+import { Notifications, isExpoGo, setupAndroidChannels } from '@/utils/notifications';
 import AppErrorBoundary from '@/components/ErrorBoundary';
 import OfflineBanner from '@/components/OfflineBanner';
 import ForceUpdateModal from '@/components/ForceUpdateModal';
@@ -202,6 +203,10 @@ function ThemedNavigator() {
   const { isDark } = theme;
   const { merchant } = useAuth();
   const { status, storeUrl } = useForceUpdate();
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const notificationListener = useRef<{ remove(): void } | null>(null);
+  const responseListener = useRef<{ remove(): void } | null>(null);
 
   // ── Real-time WebSocket connection ────────────────────────
   const socket = useRealtimeSocket({
@@ -210,6 +215,40 @@ function ThemedNavigator() {
     enabled: !!merchant,
   });
   useRealtimeEvents(socket);
+
+  // ── Android notification channels + FCM listeners ─────────
+  useEffect(() => {
+    setupAndroidChannels();
+  }, []);
+
+  useEffect(() => {
+    if (!Notifications || isExpoGo) return;
+
+    // Show notifications in foreground is handled by setNotificationHandler
+    // in utils/notifications.ts. Here we listen for received + tapped events.
+
+    notificationListener.current = Notifications.addNotificationReceivedListener((notification) => {
+      if (__DEV__) console.log('[Pro] Notification received:', notification.request.content);
+      // Invalidate caches so new data shows immediately
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['notification-history'] });
+    });
+
+    responseListener.current = Notifications.addNotificationResponseReceivedListener((response) => {
+      if (__DEV__) console.log('[Pro] Notification tapped:', response.notification.request.content);
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['notification-history'] });
+      // Navigate to messages tab when user taps a notification
+      try {
+        router.push('/(tabs)/messages');
+      } catch (e) { if (__DEV__) console.warn('Navigation failed', e); }
+    });
+
+    return () => {
+      notificationListener.current?.remove();
+      responseListener.current?.remove();
+    };
+  }, [router, queryClient]);
 
   return (
     <NavThemeProvider value={isDark ? DarkTheme : DefaultTheme}>

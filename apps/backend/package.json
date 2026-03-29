@@ -14,7 +14,8 @@
     "migrate": "prisma migrate dev",
     "generate": "prisma generate",
     "studio": "prisma studio",
-    "seed": "ts-node prisma/seed.ts"
+    "seed": "ts-node prisma/seed.ts",
+    "create-admin": "ts-node prisma/create-admin.ts"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.19.0",

@@ -110,11 +110,11 @@ const registerPushToken = async (promptIfNeeded = false) => {
       const nativeToken = await Notif.getDevicePushTokenAsync();
       pushToken = nativeToken.data as string;
       if (__DEV__) console.log('[Push] Native device token:', pushToken);
-    } catch {
-      // Fallback : token Expo Push (fonctionne via le service Expo)
-      const tokenData = await Notif.getExpoPushTokenAsync({ projectId });
-      pushToken = tokenData.data;
-      if (__DEV__) console.log('[Push] Expo push token (fallback):', pushToken);
+    } catch (e) {
+      // Native token unavailable — cannot register for push (Firebase Admin SDK
+      // only supports native FCM/APNs tokens, not Expo push tokens).
+      if (__DEV__) console.warn('[Push] Native token unavailable, skipping push registration:', e);
+      return;
     }
     if (__DEV__) console.log('[Push] Token:', pushToken);
 
@@ -126,29 +126,8 @@ const registerPushToken = async (promptIfNeeded = false) => {
   }
 };
 
-// Configuration du canal de notification Android (différée dans AuthProvider)
-const setupAndroidNotificationChannel = () => {
-  try {
-    if (Platform.OS === 'android') {
-      const Notif = getNotifications();
-      if (Notif) {
-        Notif.setNotificationChannelAsync('login-alerts', {
-          name: 'Alertes de connexion',
-          importance: Notif.AndroidImportance.HIGH,
-          vibrationPattern: [0, 250, 250, 250],
-        });
-        // Default channel for push marketing & general notifications
-        Notif.setNotificationChannelAsync('jitpro-default', {
-          name: 'Notifications générales',
-          importance: Notif.AndroidImportance.DEFAULT,
-          sound: 'default',
-        });
-      }
-    }
-  } catch (e) {
-    if (__DEV__) console.warn('Push notification setup failed', e);
-  }
-};
+// Android notification channels are now set up in utils/notifications.ts
+// (imported and called from _layout.tsx's ThemedNavigator).
 
 interface AuthContextData {
   merchant: Merchant | null;
@@ -192,12 +171,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
       // Fire-and-forget — don't block local cleanup on server response
       api.post('/auth/logout').catch(() => {});
-      await SecureStore.deleteItemAsync('accessToken');
-      await SecureStore.deleteItemAsync('refreshToken');
-      await SecureStore.deleteItemAsync('sessionId');
-      await SecureStore.deleteItemAsync('rememberMe');
-      await SecureStore.deleteItemAsync('userType');
-      await SecureStore.deleteItemAsync('teamMember');
+      // Delete all tokens in parallel — if one fails the rest still clear
+      await Promise.allSettled([
+        SecureStore.deleteItemAsync('accessToken'),
+        SecureStore.deleteItemAsync('refreshToken'),
+        SecureStore.deleteItemAsync('sessionId'),
+        SecureStore.deleteItemAsync('rememberMe'),
+        SecureStore.deleteItemAsync('userType'),
+        SecureStore.deleteItemAsync('teamMember'),
+      ]);
       queryClientRef.current.clear();
       await AsyncStorage.removeItem('jitpluspro-query-cache').catch(() => {});
       useAuthStore.getState().reset();
@@ -222,16 +204,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, [signOut]);
 
   useEffect(() => {
-    setupAndroidNotificationChannel();
+    // Android notification channels are now set up in _layout.tsx via utils/notifications.ts
 
     const loadStoredAuth = async () => {
       const s = useAuthStore.getState();
       try {
         if (__DEV__) console.log('[AuthContext] Chargement de l\'authentification...');
-        const storedToken = await SecureStore.getItemAsync('accessToken');
-        const rememberMe = await SecureStore.getItemAsync('rememberMe');
-        const storedUserType = await SecureStore.getItemAsync('userType');
-        const storedTeamMember = await SecureStore.getItemAsync('teamMember');
+        // Parallelize SecureStore reads to reduce boot time (~400ms → ~100ms)
+        const [storedToken, rememberMe, storedUserType, storedTeamMember] = await Promise.all([
+          SecureStore.getItemAsync('accessToken'),
+          SecureStore.getItemAsync('rememberMe'),
+          SecureStore.getItemAsync('userType'),
+          SecureStore.getItemAsync('teamMember'),
+        ]);
 
         if (__DEV__) {
           console.log('[AuthContext] Token:', storedToken ? 'Oui' : 'Non');
@@ -247,7 +232,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               const tmData = JSON.parse(storedTeamMember);
               s.setTeamMember(true, tmData);
             } catch (e) {
-              if (__DEV__) console.error('[AuthContext] Erreur parsing teamMember:', e);
+              console.error('[AuthContext] Erreur parsing teamMember:', e);
+              // Remove corrupted data to prevent persistent parse failures
+              await SecureStore.deleteItemAsync('teamMember').catch(() => {});
             }
           }
 
@@ -262,18 +249,22 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               useAuthStore.getState().setOnboardingCompleted(true);
               await SecureStore.setItemAsync('onboardingCompleted', 'true');
             }
-            registerPushToken().catch(() => {});
+            registerPushToken().catch((err) => {
+              if (__DEV__) console.warn('[AuthContext] Push token registration failed:', err);
+            });
           } catch {
             if (__DEV__) console.warn('[AuthContext] Session expirée, retour à l\'écran de connexion');
             return;
           }
         } else if (storedToken) {
-          await SecureStore.deleteItemAsync('accessToken');
-          await SecureStore.deleteItemAsync('refreshToken');
-          await SecureStore.deleteItemAsync('sessionId');
-          await SecureStore.deleteItemAsync('rememberMe');
-          await SecureStore.deleteItemAsync('userType');
-          await SecureStore.deleteItemAsync('teamMember');
+          await Promise.allSettled([
+            SecureStore.deleteItemAsync('accessToken'),
+            SecureStore.deleteItemAsync('refreshToken'),
+            SecureStore.deleteItemAsync('sessionId'),
+            SecureStore.deleteItemAsync('rememberMe'),
+            SecureStore.deleteItemAsync('userType'),
+            SecureStore.deleteItemAsync('teamMember'),
+          ]);
           s.reset();
         }
       } catch (error) {
@@ -333,7 +324,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       await SecureStore.setItemAsync('onboardingCompleted', 'true');
     }
 
-    registerPushToken().catch(() => {});
+    registerPushToken().catch((err) => {
+      if (__DEV__) console.warn('[AuthContext] Push token registration failed:', err);
+    });
   }, []);
 
   const signIn = useCallback(async (credentials: LoginCredentials, rememberMe = false) => {

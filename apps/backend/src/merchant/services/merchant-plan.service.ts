@@ -290,6 +290,13 @@ export class MerchantPlanService {
     });
     await this.invalidatePlanCache(merchantId);
     this.logger.log(`Applied ${months} referral months for merchant ${merchantId}, expires ${expiresAt.toISOString()}`);
+
+    // Credit referrers now that this merchant activated PREMIUM (fire-and-forget)
+    this.clientReferralService.creditClientForMerchant(merchantId)
+      .catch((err) => this.logger.error(`Client referral credit failed for merchant ${merchantId}`, err?.stack));
+    this.merchantReferralService.creditReferrerOnPayment(merchantId)
+      .catch((err) => this.logger.error(`Merchant referral credit failed for merchant ${merchantId}`, err?.stack));
+
     return { planExpiresAt: expiresAt, monthsApplied: months };
   }
 
@@ -351,7 +358,7 @@ export class MerchantPlanService {
 
     if (count >= FREE_MAX_CLIENTS) {
       throw new ForbiddenException(
-        `Limite de ${FREE_MAX_CLIENTS} clients atteinte. Passez au plan Premium pour ajouter plus de clients.`,
+        `Limite de ${FREE_MAX_CLIENTS} clients atteinte sur le plan Gratuit. Passez au plan Pro pour des clients illimités — contactez notre équipe sur WhatsApp.`,
       );
     }
   }

@@ -37,6 +37,11 @@ yarn-error.*
 .DS_Store
 *.pem
 
+# secrets
+credentials.json
+credentials/
+upload_certificate.pem
+
 # local env files
 .env*.local
 .env

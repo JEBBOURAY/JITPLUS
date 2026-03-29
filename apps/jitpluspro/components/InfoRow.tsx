@@ -1,7 +1,7 @@
 import React from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import { useTheme } from '@/contexts/ThemeContext';
-import { ms, wp, hp, FS, palette } from '@/utils/responsive';
+import { useTheme, palette } from '@/contexts/ThemeContext';
+import { ms, wp, hp, fontSize as FS } from '@/utils/responsive';
 
 interface InfoRowProps {
   /** Lucide icon element */

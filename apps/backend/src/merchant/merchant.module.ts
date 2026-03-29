@@ -7,7 +7,6 @@ import {
   MerchantDashboardService,
   MerchantTeamService,
   MerchantStoreService,
-  UpgradeRequestService,
 } from './services';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { MerchantPlanModule } from './merchant-plan.module';
@@ -25,8 +24,7 @@ import { MerchantPlanModule } from './merchant-plan.module';
     MerchantDashboardService,
     MerchantTeamService,
     MerchantStoreService,
-    UpgradeRequestService,
   ],
-  exports: [MerchantProfileService, MerchantPlanModule, UpgradeRequestService],
+  exports: [MerchantProfileService, MerchantPlanModule],
 })
 export class MerchantModule {}

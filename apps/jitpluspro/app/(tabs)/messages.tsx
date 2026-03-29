@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, memo } from 'react';
+import React, { useState, useRef, useCallback, useEffect, memo, useReducer } from 'react';
 import {
   View,
   Text,
@@ -30,10 +30,16 @@ import {
   MessageCircle,
   Eye,
   Mail,
+  Shield,
 } from 'lucide-react-native';
 
-// Enable LayoutAnimation on Android (old arch only — New Architecture supports it natively)
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental && !(global as Record<string, unknown>).__turboModuleProxy) {
+// Enable LayoutAnimation on Android (old arch only — New Architecture supports it natively).
+// On New Architecture (Fabric), LayoutAnimation works out of the box.
+if (
+  Platform.OS === 'android' &&
+  UIManager.setLayoutAnimationEnabledExperimental &&
+  typeof (global as Record<string, unknown>).nativeFabricUIManager === 'undefined'
+) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
@@ -91,17 +97,13 @@ const NotificationCard = memo(function NotificationCard({
   item,
   isExpanded,
   onToggle,
-  theme,
-  locale,
-  t,
 }: {
   item: NotificationRecord;
   isExpanded: boolean;
   onToggle: (id: string) => void;
-  theme: ReturnType<typeof useTheme>;
-  locale: string;
-  t: (key: string, vars?: Record<string, unknown>) => string;
 }) {
+  const theme = useTheme();
+  const { t, locale } = useLanguage();
   const channel = item.channel ?? 'PUSH';
   const channelLabel = channel === 'EMAIL'
     ? t('messages.channelEmail')
@@ -160,7 +162,7 @@ const NotificationCard = memo(function NotificationCard({
         <View style={styles.stat}>
           <CheckCircle2 size={13} color={theme.success} />
           <Text style={[styles.statText, { color: theme.success }]}>
-            {t('messages.statSent', { count: item.successCount })}
+            {t('messages.statSent', { count: channel === 'PUSH' ? (item.successCount || item.receivedCount || item.recipientCount) : item.successCount })}
           </Text>
         </View>
         {channel === 'PUSH' && (
@@ -182,46 +184,111 @@ const NotificationCard = memo(function NotificationCard({
   );
 });
 
+// ── Messages reducer ──
+interface MsgState {
+  title: string;
+  body: string;
+  showCompose: boolean;
+  whatsappMessage: string;
+  showWhatsApp: boolean;
+  emailSubject: string;
+  emailBody: string;
+  showEmail: boolean;
+  pushCooldown: boolean;
+  whatsappCooldown: boolean;
+  emailCooldown: boolean;
+  expandedId: string | null;
+  showHistory: boolean;
+}
+
+const initialMsgState: MsgState = {
+  title: '',
+  body: '',
+  showCompose: true,
+  whatsappMessage: '',
+  showWhatsApp: false,
+  emailSubject: '',
+  emailBody: '',
+  showEmail: false,
+  pushCooldown: false,
+  whatsappCooldown: false,
+  emailCooldown: false,
+  expandedId: null,
+  showHistory: false,
+};
+
+type SectionKey = 'showCompose' | 'showWhatsApp' | 'showEmail' | 'showHistory';
+type CooldownKey = 'pushCooldown' | 'whatsappCooldown' | 'emailCooldown';
+
+type MsgAction =
+  | { type: 'SET'; payload: Partial<MsgState> }
+  | { type: 'TOGGLE_SECTION'; section: SectionKey }
+  | { type: 'START_COOLDOWN'; key: CooldownKey }
+  | { type: 'END_COOLDOWN'; key: CooldownKey }
+  | { type: 'RESET_FORM'; form: 'push' | 'whatsapp' | 'email' }
+  | { type: 'TOGGLE_EXPANDED'; id: string };
+
+const allSections: SectionKey[] = ['showCompose', 'showWhatsApp', 'showEmail', 'showHistory'];
+
+function msgReducer(state: MsgState, action: MsgAction): MsgState {
+  switch (action.type) {
+    case 'SET':
+      return { ...state, ...action.payload };
+    case 'TOGGLE_SECTION': {
+      const next = !state[action.section];
+      const closed = Object.fromEntries(allSections.map(k => [k, false]));
+      return { ...state, ...closed, [action.section]: next };
+    }
+    case 'START_COOLDOWN':
+      return { ...state, [action.key]: true };
+    case 'END_COOLDOWN':
+      return { ...state, [action.key]: false };
+    case 'RESET_FORM':
+      if (action.form === 'push') return { ...state, title: '', body: '' };
+      if (action.form === 'whatsapp') return { ...state, whatsappMessage: '' };
+      return { ...state, emailSubject: '', emailBody: '' };
+    case 'TOGGLE_EXPANDED':
+      return { ...state, expandedId: state.expandedId === action.id ? null : action.id };
+  }
+}
+
 export default function MessagesScreen() {
-  const { merchant } = useAuth();
+  const { merchant, isTeamMember } = useAuth();
   const isPremium = merchant?.plan === 'PREMIUM';
+  const isOwner = !isTeamMember;
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { focusStyle } = useFocusFade();
   const { t, locale } = useLanguage();
 
-  // ── Form state ──
-  const [title, setTitle] = useState('');
-  const [body, setBody] = useState('');
-  const [showCompose, setShowCompose] = useState(true);
-
-  // ── WhatsApp state ──
-  const [whatsappMessage, setWhatsappMessage] = useState('');
-  const [showWhatsApp, setShowWhatsApp] = useState(false);
-
-  // ── Email state ──
-  const [emailSubject, setEmailSubject] = useState('');
-  const [emailBody, setEmailBody] = useState('');
-  const [showEmail, setShowEmail] = useState(false);
-
-  // ── Send cooldown (anti-spam) ──
-  const [pushCooldown, setPushCooldown] = useState(false);
-  const [whatsappCooldown, setWhatsappCooldown] = useState(false);
-  const [emailCooldown, setEmailCooldown] = useState(false);
+  const [state, dispatch] = useReducer(msgReducer, initialMsgState);
+  const { title, body, showCompose, whatsappMessage, showWhatsApp, emailSubject, emailBody, showEmail, pushCooldown, whatsappCooldown, emailCooldown, expandedId, showHistory } = state;
+  const set = useCallback((payload: Partial<MsgState>) => dispatch({ type: 'SET', payload }), []);
 
   // ── React Query mutations ──
   const pushMutation = useSendPushNotification();
   const whatsappMutation = useSendWhatsApp();
   const emailMutation = useSendEmail();
 
-  // ── React Query hooks ──
-  const { data: history = [], isLoading: loading, isRefetching: refreshing, refetch: refetchHistory } = useNotificationHistory();
-  const { data: whatsappQuota = null } = useWhatsappQuota(isPremium && showWhatsApp);
-  const { data: emailQuota = null } = useEmailQuota(isPremium && showEmail);
+  // ── React Query hooks (disabled for team members — backend requires owner) ──
+  const { data: history = [], isLoading: loading, isRefetching: refreshing, refetch: refetchHistory } = useNotificationHistory(isOwner);
+  const { data: whatsappQuota } = useWhatsappQuota(isOwner && isPremium && showWhatsApp);
+  const { data: emailQuota } = useEmailQuota(isOwner && isPremium && showEmail);
 
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [showHistory, setShowHistory] = useState(false);
   const sendRipple = useRef(new Animated.Value(0)).current;
+
+  // Cooldown timer refs — cleaned up on unmount to prevent memory leaks
+  const cooldownTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  useEffect(() => {
+    return () => {
+      cooldownTimers.current.forEach(clearTimeout);
+    };
+  }, []);
+  const startCooldown = useCallback((key: CooldownKey) => {
+    dispatch({ type: 'START_COOLDOWN', key });
+    const timer = setTimeout(() => dispatch({ type: 'END_COOLDOWN', key }), SEND_COOLDOWN_MS);
+    cooldownTimers.current.push(timer);
+  }, []);
 
   // ── Handle WhatsApp send ──
   const handleSendWhatsApp = () => {
@@ -253,9 +320,8 @@ export default function MessagesScreen() {
                 }),
               );
 
-              setWhatsappMessage('');
-              setWhatsappCooldown(true);
-              setTimeout(() => setWhatsappCooldown(false), SEND_COOLDOWN_MS);
+              dispatch({ type: 'RESET_FORM', form: 'whatsapp' });
+              startCooldown('whatsappCooldown');
             } catch (err: unknown) {
               handlePremiumError(err, t);
             }
@@ -296,10 +362,8 @@ export default function MessagesScreen() {
                 }),
               );
 
-              setEmailSubject('');
-              setEmailBody('');
-              setEmailCooldown(true);
-              setTimeout(() => setEmailCooldown(false), SEND_COOLDOWN_MS);
+              dispatch({ type: 'RESET_FORM', form: 'email' });
+              startCooldown('emailCooldown');
             } catch (err: unknown) {
               handlePremiumError(err, t);
             }
@@ -334,18 +398,12 @@ export default function MessagesScreen() {
               });
 
               Alert.alert(
-                t('messages.sentSuccess'),
-                t('messages.whatsappSuccessBody', {
-                  success: successCount,
-                  total: recipientCount,
-                  failures: failureCount > 0 ? t('messages.whatsappFailureSuffix', { count: failureCount }) : '',
-                }),
+                t('messages.pushSuccessTitle'),
+                t('messages.pushSuccessBody', { count: recipientCount }),
               );
 
-              setTitle('');
-              setBody('');
-              setPushCooldown(true);
-              setTimeout(() => setPushCooldown(false), SEND_COOLDOWN_MS);
+              dispatch({ type: 'RESET_FORM', form: 'push' });
+              startCooldown('pushCooldown');
             } catch (err: unknown) {
               handlePremiumError(err, t);
             }
@@ -369,7 +427,7 @@ export default function MessagesScreen() {
 
   // ── Toggle expanded card ──
   const toggleExpanded = useCallback((id: string) => {
-    setExpandedId(prev => prev === id ? null : id);
+    dispatch({ type: 'TOGGLE_EXPANDED', id });
   }, []);
 
   // ── Render notification card (delegates to memoized component) ──
@@ -378,13 +436,39 @@ export default function MessagesScreen() {
       item={item}
       isExpanded={expandedId === item.id}
       onToggle={toggleExpanded}
-      theme={theme}
-      locale={locale}
-      t={t}
     />
-  ), [expandedId, toggleExpanded, theme, locale, t]);
+  ), [expandedId, toggleExpanded]);
 
   const keyExtractor = useCallback((item: NotificationRecord) => item.id, []);
+
+  // ── Team members cannot access notifications ──
+  if (isTeamMember) {
+    return (
+      <Animated.View style={[styles.container, { backgroundColor: theme.bg }, focusStyle]}>
+        <LinearGradient
+          colors={[...CHANNEL_COLORS.GRADIENT]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={[styles.header, { paddingTop: insets.top + 12 }]}
+        >
+          <Megaphone size={26} color="#EDE9FE" strokeWidth={1.5} />
+          <View style={styles.headerText}>
+            <Text style={styles.headerTitle}>{t('messages.title')}</Text>
+            <Text style={styles.headerSub}>{t('messages.subtitle')}</Text>
+          </View>
+        </LinearGradient>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32 }}>
+          <Shield size={48} color={theme.textMuted} strokeWidth={1.5} />
+          <Text style={{ color: theme.text, fontSize: 18, fontWeight: '700', marginTop: 16, textAlign: 'center' }}>
+            {t('messages.ownerOnly')}
+          </Text>
+          <Text style={{ color: theme.textMuted, fontSize: 14, marginTop: 8, textAlign: 'center', lineHeight: 20 }}>
+            {t('messages.ownerOnlyMsg')}
+          </Text>
+        </View>
+      </Animated.View>
+    );
+  }
 
   return (
     <Animated.View style={[styles.container, { backgroundColor: theme.bg }, focusStyle]}>
@@ -424,7 +508,7 @@ export default function MessagesScreen() {
               {/* ── Channel Toggle Row (Notification / WhatsApp / E-mail) ── */}
               <View style={styles.toggleRow}>
                 <TouchableOpacity
-                  onPress={() => { animateAccordion(); const next = !showCompose; setShowCompose(next); if (next) { setShowWhatsApp(false); setShowEmail(false); setShowHistory(false); } }}
+                  onPress={() => { animateAccordion(); dispatch({ type: 'TOGGLE_SECTION', section: 'showCompose' }); }}
                   activeOpacity={0.8}
                   style={[
                     styles.composeToggle,
@@ -438,23 +522,26 @@ export default function MessagesScreen() {
                   {showCompose ? <ChevronUp size={14} color={theme.primary} /> : <ChevronDown size={14} color={theme.textMuted} />}
                 </TouchableOpacity>
 
-                <TouchableOpacity
-                  onPress={() => { animateAccordion(); const next = !showWhatsApp; setShowWhatsApp(next); if (next) { setShowCompose(false); setShowEmail(false); setShowHistory(false); } }}
-                  activeOpacity={0.8}
+                <View
                   style={[
                     styles.composeToggle,
-                    { flex: 1, backgroundColor: showWhatsApp ? CHANNEL_COLORS.WHATSAPP + '18' : theme.bgCard, borderColor: showWhatsApp ? CHANNEL_COLORS.WHATSAPP : theme.borderLight },
+                    { flex: 1, backgroundColor: theme.bgCard, borderColor: theme.borderLight, opacity: 0.6 },
                   ]}
                 >
-                  <MessageCircle size={16} color={CHANNEL_COLORS.WHATSAPP} />
-                  <Text style={[styles.composeToggleText, { color: showWhatsApp ? CHANNEL_COLORS.WHATSAPP : theme.text }]} numberOfLines={1}>
-                    WhatsApp
-                  </Text>
-                  {showWhatsApp ? <ChevronUp size={14} color={CHANNEL_COLORS.WHATSAPP} /> : <ChevronDown size={14} color={theme.textMuted} />}
-                </TouchableOpacity>
+                  <MessageCircle size={16} color={theme.textMuted} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.composeToggleText, { color: theme.textMuted }]} numberOfLines={1}>
+                      WhatsApp
+                    </Text>
+                    <Text style={{ fontSize: 9, color: theme.textMuted, fontStyle: 'italic' }} numberOfLines={1}>
+                      {t('messagesPage.comingSoon')}
+                    </Text>
+                  </View>
+                  <Clock size={12} color={theme.textMuted} />
+                </View>
 
                 <TouchableOpacity
-                  onPress={() => { animateAccordion(); const next = !showEmail; setShowEmail(next); if (next) { setShowCompose(false); setShowWhatsApp(false); setShowHistory(false); } }}
+                  onPress={() => { animateAccordion(); dispatch({ type: 'TOGGLE_SECTION', section: 'showEmail' }); }}
                   activeOpacity={0.8}
                   style={[
                     styles.composeToggle,
@@ -486,7 +573,7 @@ export default function MessagesScreen() {
                     <TextInput
                       style={[styles.input, { color: theme.text }]}
                       value={title}
-                      onChangeText={setTitle}
+                      onChangeText={(v) => set({ title: v })}
                       placeholder={t('messages.messageTitlePlaceholder')}
                       placeholderTextColor={theme.textMuted}
                       maxLength={100}
@@ -518,7 +605,7 @@ export default function MessagesScreen() {
                         { color: theme.text, textAlignVertical: 'top', minHeight: 80 },
                       ]}
                       value={body}
-                      onChangeText={setBody}
+                      onChangeText={(v) => set({ body: v })}
                       placeholder={t('messages.messageBodyPlaceholder')}
                       placeholderTextColor={theme.textMuted}
                       multiline
@@ -556,7 +643,7 @@ export default function MessagesScreen() {
                 </View>
               )}
 
-              {showWhatsApp && (
+              {false && showWhatsApp && (
                 <View
                   style={[styles.composeCard, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}
                 >
@@ -583,7 +670,7 @@ export default function MessagesScreen() {
                         { color: theme.text, textAlignVertical: 'top', minHeight: 80 },
                       ]}
                       value={whatsappMessage}
-                      onChangeText={setWhatsappMessage}
+                      onChangeText={(v) => set({ whatsappMessage: v })}
                       placeholder={t('messages.whatsappPlaceholder')}
                       placeholderTextColor={theme.textMuted}
                       multiline
@@ -594,18 +681,22 @@ export default function MessagesScreen() {
                     {whatsappMessage.length}/500
                   </Text>
 
-                  {whatsappQuota && (
-                    <Text style={[styles.charCount, {
-                      color: whatsappQuota.used >= whatsappQuota.max ? theme.danger : theme.textMuted,
-                      marginTop: 12,
-                      marginBottom: 16,
-                    }]}>
-                      {t('messages.whatsappQuota', { used: whatsappQuota.used, max: whatsappQuota.max })}
-                      {whatsappQuota.used >= whatsappQuota.max
-                        ? t('messages.quotaReached')
-                        : t('messages.quotaLeft', { remaining: whatsappQuota.max - whatsappQuota.used })}
-                    </Text>
-                  )}
+                  {(() => {
+                    if (!whatsappQuota) return null;
+                    const wq = whatsappQuota!;
+                    return (
+                      <Text style={[styles.charCount, {
+                        color: wq.used >= wq.max ? theme.danger : theme.textMuted,
+                        marginTop: 12,
+                        marginBottom: 16,
+                      }]}>
+                        {t('messages.whatsappQuota', { used: wq.used, max: wq.max })}
+                        {wq.used >= wq.max
+                          ? t('messages.quotaReached')
+                          : t('messages.quotaLeft', { remaining: wq.max - wq.used })}
+                      </Text>
+                    );
+                  })()}
                   {!whatsappQuota && <View style={{ marginBottom: 16 }} />}
 
                   {/* Send WhatsApp button */}
@@ -655,7 +746,7 @@ export default function MessagesScreen() {
                     <TextInput
                       style={[styles.input, { color: theme.text }]}
                       value={emailSubject}
-                      onChangeText={setEmailSubject}
+                      onChangeText={(v) => set({ emailSubject: v })}
                       placeholder={t('messages.emailSubjectPlaceholder')}
                       placeholderTextColor={theme.textMuted}
                       maxLength={150}
@@ -686,7 +777,7 @@ export default function MessagesScreen() {
                         { color: theme.text, textAlignVertical: 'top', minHeight: 100 },
                       ]}
                       value={emailBody}
-                      onChangeText={setEmailBody}
+                      onChangeText={(v) => set({ emailBody: v })}
                       placeholder={t('messages.emailBodyPlaceholder')}
                       placeholderTextColor={theme.textMuted}
                       multiline
@@ -738,7 +829,7 @@ export default function MessagesScreen() {
 
               {/* ── History title (toggle) ────────── */}
               <TouchableOpacity
-                onPress={() => { animateAccordion(); const next = !showHistory; setShowHistory(next); if (next) { setShowCompose(false); setShowWhatsApp(false); setShowEmail(false); } }}
+                onPress={() => { animateAccordion(); dispatch({ type: 'TOGGLE_SECTION', section: 'showHistory' }); }}
                 activeOpacity={0.7}
                 style={styles.historyToggle}
               >

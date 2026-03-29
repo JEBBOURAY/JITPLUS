@@ -22,7 +22,7 @@ export class PremiumGuard implements CanActivate {
     const isPremium = await this.planService.isPremium(user.userId);
     if (!isPremium) {
       throw new ForbiddenException(
-        'Cette fonctionnalité est réservée aux abonnés Premium. Votre période d\'essai a expiré.',
+        'Cette fonctionnalité est réservée au plan Pro. Contactez notre équipe sur WhatsApp pour activer votre abonnement et débloquer toutes les fonctionnalités.',
       );
     }
 

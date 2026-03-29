@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { useGuardedCallback } from '@/hooks/useGuardedCallback';
 import {
   View,
@@ -37,8 +37,84 @@ import StampGrid from '@/components/StampGrid';
 import { LinearGradient } from 'expo-linear-gradient';
 import { formatDate, formatDateTime } from '@/utils/date';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { formatCurrency } from '@/config/currency';
+import { formatCurrency, DEFAULT_CURRENCY, getIntlLocale } from '@/config/currency';
 import { useClientDetail, useAdjustPoints } from '@/hooks/useQueryHooks';
+import { isValidUUID } from '@/utils/validation';
+
+/* ── Memoized transaction row — avoids re-render of every row on parent updates ── */
+const TransactionItem = React.memo(function TransactionItem({
+  tx,
+  isStampsMode,
+}: {
+  tx: ClientDetailTransaction;
+  isStampsMode: boolean;
+}) {
+  const theme = useTheme();
+  const { t, locale } = useLanguage();
+
+  const isEarned = tx.type === 'EARN_POINTS';
+  const isAdjust = tx.type === 'ADJUST_POINTS';
+  const isProgramChange = tx.type === 'LOYALTY_PROGRAM_CHANGE';
+  const isCancelled = tx.status === 'CANCELLED';
+  const { icon: IconComp, color } = getTransactionConfig(tx.type, isCancelled, theme);
+
+  return (
+    <View style={[styles.txRow, { borderBottomColor: theme.borderLight }]}>
+      <View style={[styles.txIcon, { backgroundColor: color + '15' }]}>
+        <IconComp size={14} color={color} strokeWidth={1.5} />
+      </View>
+      <View style={styles.txInfo}>
+        <Text style={[styles.txType, { color: theme.text }, isCancelled && styles.cancelled]}>
+          {isProgramChange
+            ? t('clientDetail.txProgramChange')
+            : isAdjust
+              ? t('clientDetail.txAdjustment')
+              : isEarned
+                ? t('clientDetail.txEarned')
+                : t('clientDetail.txRedeemed')}
+        </Text>
+        {isProgramChange && tx.note && (
+          <Text style={[styles.txNote, { color: theme.primary }]} numberOfLines={2}>
+            🔄 {tx.note}
+          </Text>
+        )}
+        {isAdjust && tx.note ? (
+          <Text style={[styles.txNote, { color: theme.textMuted }]} numberOfLines={2}>
+            📝 {tx.note}
+          </Text>
+        ) : null}
+        {!isEarned && !isAdjust && !isProgramChange && tx.reward && (
+          <View style={styles.txRewardRow}>
+            <Text style={[styles.txRewardName, { color: theme.primary }]}>🎁 {tx.reward.titre}</Text>
+            {tx.type === 'REDEEM_REWARD' && !isCancelled && tx.giftStatus === 'FULFILLED' && (
+              <View style={[styles.txGiftBadge, { backgroundColor: theme.accentBg }]}>
+                <Text style={[styles.txGiftBadgeText, { color: theme.accent }]}>{t('gift.fulfilled')}</Text>
+              </View>
+            )}
+          </View>
+        )}
+
+        <Text style={[styles.txDate, { color: theme.textMuted }]}>{formatDateTime(tx.createdAt, locale)}</Text>
+        {isCancelled && <Text style={[styles.txCancelLabel, { color: theme.danger }]}>{t('clientDetail.txCancelled')}</Text>}
+      </View>
+      {!isProgramChange && (
+        <View style={styles.txRight}>
+          {tx.amount > 0 && (
+            <Text style={[styles.txAmount, { color: theme.textSecondary }, isCancelled && styles.cancelled]}>
+              {formatCurrency(tx.amount, DEFAULT_CURRENCY, getIntlLocale(locale))}
+            </Text>
+          )}
+          <Text style={[styles.txPoints, { color }, isCancelled && styles.cancelled]}>
+            {isAdjust ? (tx.points >= 0 ? '+' : '') : isEarned ? '+' : '-'}{tx.points} {(tx.loyaltyType ?? (isStampsMode ? 'STAMPS' : 'POINTS')) === 'STAMPS' ? 'tmp' : 'pts'}
+          </Text>
+        </View>
+      )}
+    </View>
+  );
+});
+
+// Type import for transactions
+import type { ClientDetailTransaction } from '@/types';
 
 export default function ClientDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -52,6 +128,12 @@ export default function ClientDetailScreen() {
   const [adjustNote, setAdjustNote] = useState('');
   const { t, locale } = useLanguage();
 
+  // Guard: invalid or missing UUID
+  if (!id || !isValidUUID(id)) {
+    router.back();
+    return null;
+  }
+
   const {
     data: client,
     isLoading: loading,
@@ -63,14 +145,14 @@ export default function ClientDetailScreen() {
 
   const onRefresh = useGuardedCallback(async () => { await refetch(); }, [refetch]);
 
-  const openAdjustModal = (mode: 'add' | 'remove') => {
+  const openAdjustModal = useCallback((mode: 'add' | 'remove') => {
     setAdjustMode(mode);
     setAdjustPoints('');
     setAdjustNote('');
     setAdjustModalVisible(true);
-  };
+  }, []);
 
-  const handleAdjustPoints = async () => {
+  const handleAdjustPoints = useCallback(async () => {
     const pts = parseInt(adjustPoints, 10);
     if (!pts || pts <= 0) {
       Alert.alert(t('common.error'), t('clientDetail.adjustInvalidPts'));
@@ -108,7 +190,7 @@ export default function ClientDetailScreen() {
         },
       ],
     );
-  };
+  }, [adjustPoints, adjustMode, adjustNote, adjustMutation, id, client, t]);
 
   const isStampsMode = client
     ? (merchant?.loyaltyType === 'STAMPS' || client.loyaltyType === 'STAMPS')
@@ -305,67 +387,9 @@ export default function ClientDetailScreen() {
           {client.transactions.length === 0 ? (
             <Text style={[styles.noTx, { color: theme.textMuted }]}>{t('clientDetail.noTransactions')}</Text>
           ) : (
-            client.transactions.map((tx) => {
-              const isEarned = tx.type === 'EARN_POINTS';
-              const isAdjust = tx.type === 'ADJUST_POINTS';
-              const isProgramChange = tx.type === 'LOYALTY_PROGRAM_CHANGE';
-              const isCancelled = tx.status === 'CANCELLED';
-              const { icon: IconComp, color } = getTransactionConfig(tx.type, isCancelled, theme);
-
-              return (
-                <View key={tx.id} style={[styles.txRow, { borderBottomColor: theme.borderLight }]}>
-                  <View style={[styles.txIcon, { backgroundColor: color + '15' }]}>
-                    <IconComp size={14} color={color} strokeWidth={1.5} />
-                  </View>
-                  <View style={styles.txInfo}>
-                    <Text style={[styles.txType, { color: theme.text }, isCancelled && styles.cancelled]}>
-                      {isProgramChange
-                        ? t('clientDetail.txProgramChange')
-                        : isAdjust
-                          ? t('clientDetail.txAdjustment')
-                          : isEarned
-                            ? t('clientDetail.txEarned')
-                            : t('clientDetail.txRedeemed')}
-                    </Text>
-                    {isProgramChange && tx.note && (
-                      <Text style={[styles.txNote, { color: theme.primary }]} numberOfLines={2}>
-                        🔄 {tx.note}
-                      </Text>
-                    )}
-                    {isAdjust && tx.note ? (
-                      <Text style={[styles.txNote, { color: theme.textMuted }]} numberOfLines={2}>
-                        📝 {tx.note}
-                      </Text>
-                    ) : null}
-                    {!isEarned && !isAdjust && !isProgramChange && tx.reward && (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        <Text style={[styles.txRewardName, { color: theme.primary }]}>🎁 {tx.reward.titre}</Text>
-                        {tx.type === 'REDEEM_REWARD' && !isCancelled && tx.giftStatus === 'FULFILLED' && (
-                          <View style={{ backgroundColor: theme.accentBg, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4 }}>
-                            <Text style={{ fontSize: 9, fontWeight: '700', color: theme.accent }}>{t('gift.fulfilled')}</Text>
-                          </View>
-                        )}
-                      </View>
-                    )}
-
-                    <Text style={[styles.txDate, { color: theme.textMuted }]}>{formatDateTime(tx.createdAt, locale)}</Text>
-                    {isCancelled && <Text style={[styles.txCancelLabel, { color: theme.danger }]}>{t('clientDetail.txCancelled')}</Text>}
-                  </View>
-                  {!isProgramChange && (
-                    <View style={styles.txRight}>
-                      {tx.amount > 0 && (
-                        <Text style={[styles.txAmount, { color: theme.textSecondary }, isCancelled && styles.cancelled]}>
-                          {formatCurrency(tx.amount)}
-                        </Text>
-                      )}
-                      <Text style={[styles.txPoints, { color }, isCancelled && styles.cancelled]}>
-                        {isAdjust ? (tx.points >= 0 ? '+' : '') : isEarned ? '+' : '-'}{tx.points} {(tx.loyaltyType ?? (isStampsMode ? 'STAMPS' : 'POINTS')) === 'STAMPS' ? 'tmp' : 'pts'}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-              );
-            })
+            client.transactions.map((tx) => (
+              <TransactionItem key={tx.id} tx={tx} isStampsMode={isStampsMode} />
+            ))
           )}
         </View>
       </ScrollView>
@@ -594,6 +618,9 @@ const styles = StyleSheet.create({
   txInfo: { flex: 1 },
   txType: { fontSize: 14, fontWeight: '600' },
   txRewardName: { fontSize: 12, fontWeight: '600', marginTop: 1 },
+  txRewardRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  txGiftBadge: { paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4 },
+  txGiftBadgeText: { fontSize: 9, fontWeight: '700' },
   txDate: { fontSize: 12, marginTop: 2 },
   txCancelLabel: { fontSize: 11, fontWeight: '600', marginTop: 1 },
   cancelled: { textDecorationLine: 'line-through', opacity: 0.5 },

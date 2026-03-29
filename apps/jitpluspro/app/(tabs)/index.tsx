@@ -208,6 +208,7 @@ export default function ClientsScreen() {
         data={clients}
         renderItem={renderClient}
         keyExtractor={keyExtractor}
+        getItemLayout={(_data, index) => ({ length: 61, offset: 61 * index, index })}
         contentContainerStyle={styles.list}
         removeClippedSubviews={Platform.OS !== 'web'}
         maxToRenderPerBatch={10}

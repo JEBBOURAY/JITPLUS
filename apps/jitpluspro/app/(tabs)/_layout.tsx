@@ -1,15 +1,14 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect } from 'react';
 import { Tabs, useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { ActivityIndicator, InteractionManager, View } from 'react-native';
+import { ActivityIndicator, View } from 'react-native';
 import CustomTabBar from '@/components/CustomTabBar';
 
 export default function TabLayout() {
   const { merchant, loading, onboardingCompleted, isTeamMember } = useAuth();
   const theme = useTheme();
   const router = useRouter();
-  const hasOpenedScanner = useRef(false);
 
   // Single redirect chain — priority: auth → email verification → onboarding
   useEffect(() => {
@@ -29,15 +28,6 @@ export default function TabLayout() {
       router.replace('/onboarding');
     }
   }, [loading, merchant, onboardingCompleted, isTeamMember]);
-
-  // Open scanner automatically on first load after login (only when onboarding done)
-  useEffect(() => {
-    if (!loading && merchant && onboardingCompleted && !hasOpenedScanner.current) {
-      hasOpenedScanner.current = true;
-      const task = InteractionManager.runAfterInteractions(() => router.push('/scan-qr'));
-      return () => task.cancel();
-    }
-  }, [loading, merchant, onboardingCompleted]);
 
   if (loading) {
     return (

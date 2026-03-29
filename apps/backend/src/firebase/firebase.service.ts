@@ -55,6 +55,7 @@ export class FirebaseService implements OnModuleInit, IPushProvider {
     body: string,
     imageUrl?: string,
     data?: Record<string, string>,
+    androidChannelId: string = 'jit-marketing',
   ): Promise<{ successCount: number; failureCount: number; invalidTokens: string[] }> {
     if (!tokens.length) {
       return { successCount: 0, failureCount: 0, invalidTokens: [] };
@@ -81,7 +82,7 @@ export class FirebaseService implements OnModuleInit, IPushProvider {
         notification: { title, body, ...(imageUrl ? { imageUrl } : {}) },
         android: {
           priority: 'high',
-          notification: { channelId: 'jit-marketing', ...(imageUrl ? { imageUrl } : {}) },
+          notification: { channelId: androidChannelId, ...(imageUrl ? { imageUrl } : {}) },
         },
         apns: {
           payload: { aps: { sound: 'default' } },
@@ -149,7 +150,7 @@ export class FirebaseService implements OnModuleInit, IPushProvider {
         notification: { title, body },
         android: {
           priority: 'high',
-          notification: { channelId: 'jit-pro', sound: 'default' },
+          notification: { channelId: 'jitpro-default', sound: 'default' },
         },
         apns: {
           payload: { aps: { sound: 'default', badge: 1 } },

@@ -83,6 +83,10 @@ export default function PendingGiftsScreen() {
         renderItem={renderItem}
         keyExtractor={keyExtractor}
         contentContainerStyle={styles.list}
+        getItemLayout={(_data, index) => ({ length: 80, offset: 80 * index, index })}
+        maxToRenderPerBatch={15}
+        windowSize={7}
+        removeClippedSubviews
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={refetch} colors={[theme.primary]} tintColor={theme.primary} />
         }

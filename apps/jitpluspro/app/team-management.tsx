@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useGuardedCallback } from '@/hooks/useGuardedCallback';
 import { MIN_PASSWORD_LENGTH } from '@/constants/app';
 import {
@@ -34,10 +34,107 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import api from '@/services/api';
 import { getErrorMessage } from '@/utils/error';
 import { TeamMember } from '@/types';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useTeamMembers, useCreateTeamMember, useUpdateTeamMember, useDeleteTeamMember } from '@/hooks/useQueryHooks';
+
+const MemberCard = React.memo(function MemberCard({
+  member,
+  onToggle,
+  onEdit,
+  onDelete,
+}: {
+  member: TeamMember;
+  onToggle: (m: TeamMember) => void;
+  onEdit: (m: TeamMember) => void;
+  onDelete: (m: TeamMember) => void;
+}) {
+  const theme = useTheme();
+  const { t } = useLanguage();
+
+  return (
+    <View
+      style={[
+        styles.memberCard,
+        {
+          backgroundColor: theme.bgCard,
+          borderColor: theme.borderLight,
+          opacity: member.isActive ? 1 : 0.65,
+        },
+      ]}
+    >
+      <View style={styles.memberTop}>
+        <View style={[styles.memberAvatar, { backgroundColor: theme.primary + '15' }]}>
+          <User size={20} color={theme.primary} strokeWidth={1.5} />
+        </View>
+        <View style={styles.memberInfo}>
+          <View style={styles.memberNameRow}>
+            <Text style={[styles.memberName, { color: theme.text }]} numberOfLines={1}>
+              {member.nom}
+            </Text>
+            {!member.isActive && (
+              <View style={[styles.badge, { backgroundColor: theme.danger + '15' }]}>
+                <Text style={[styles.badgeText, { color: theme.danger }]}>{t('team.inactive')}</Text>
+              </View>
+            )}
+          </View>
+          <Text style={[styles.memberEmail, { color: theme.textMuted }]} numberOfLines={1}>
+            {member.email}
+          </Text>
+        </View>
+      </View>
+
+      <View style={[styles.metaRow, { borderTopColor: theme.borderLight }]}>
+        <View style={styles.metaItem}>
+          <Shield size={13} color={theme.textMuted} />
+          <Text style={[styles.metaText, { color: theme.textMuted }]}>{t('team.restrictedAccess')}</Text>
+        </View>
+        <View style={styles.metaItem}>
+          <Activity size={13} color={theme.textMuted} />
+          <Text style={[styles.metaText, { color: theme.textMuted }]}>
+            {t('team.transactionsCount', { count: member.transactionsCount || 0 })}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.actionsRow}>
+        <TouchableOpacity
+          style={[styles.actionChip, { backgroundColor: member.isActive ? (theme.success + '12') : (theme.textMuted + '12') }]}
+          onPress={() => onToggle(member)}
+          activeOpacity={0.7}
+        >
+          {member.isActive ? (
+            <ToggleRight size={16} color={theme.success} />
+          ) : (
+            <ToggleLeft size={16} color={theme.textMuted} />
+          )}
+          <Text style={[styles.actionChipText, { color: member.isActive ? theme.success : theme.textMuted }]}>
+            {member.isActive ? t('stores.active') : t('stores.inactive')}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.actionChip, { backgroundColor: theme.primary + '12' }]}
+          onPress={() => onEdit(member)}
+          activeOpacity={0.7}
+        >
+          <Edit3 size={15} color={theme.primary} />
+          <Text style={[styles.actionChipText, { color: theme.primary }]}>{t('stores.editBtn')}</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.actionChip, { backgroundColor: theme.danger + '12' }]}
+          onPress={() => onDelete(member)}
+          activeOpacity={0.7}
+        >
+          <Trash2 size={15} color={theme.danger} />
+          <Text style={[styles.actionChipText, { color: theme.danger }]}>{t('common.delete')}</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+});
 
 export default function TeamManagementScreen() {
   const theme = useTheme();
@@ -46,38 +143,23 @@ export default function TeamManagementScreen() {
   const insets = useSafeAreaInsets();
   const { t } = useLanguage();
 
-  const [members, setMembers] = useState<TeamMember[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const { data: members = [], isLoading: loading, isRefetching: refreshing, refetch } = useTeamMembers(!isTeamMember);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingMember, setEditingMember] = useState<TeamMember | null>(null);
-  const [formLoading, setFormLoading] = useState(false);
+
+  const createMember = useCreateTeamMember();
+  const updateMember = useUpdateTeamMember();
+  const deleteMemberMutation = useDeleteTeamMember();
+  const formLoading = createMember.isPending || updateMember.isPending;
 
   // Form state
   const [formNom, setFormNom] = useState('');
   const [formEmail, setFormEmail] = useState('');
   const [formPassword, setFormPassword] = useState('');
 
-  const loadMembers = useCallback(async () => {
-    try {
-      const response = await api.get('/merchant/team');
-      setMembers(response.data);
-    } catch (error: unknown) {
-      if (__DEV__) console.error('Erreur chargement équipe:', getErrorMessage(error));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadMembers();
-  }, [loadMembers]);
-
   const onRefresh = useGuardedCallback(async () => {
-    setRefreshing(true);
-    await loadMembers();
-    setRefreshing(false);
-  }, [loadMembers]);
+    await refetch();
+  }, [refetch]);
 
   const resetForm = () => {
     setFormNom('');
@@ -101,28 +183,27 @@ export default function TeamManagementScreen() {
 
   const handleSubmit = async () => {
     if (!formNom.trim() || !formEmail.trim()) {
-      Alert.alert('Erreur', 'Le nom et l\'email sont requis');
+      Alert.alert(t('common.error'), t('team.nameEmailRequired'));
       return;
     }
 
     if (!editingMember && !formPassword.trim()) {
-      Alert.alert('Erreur', 'Le mot de passe est requis pour un nouveau membre');
+      Alert.alert(t('common.error'), t('team.passwordRequired'));
       return;
     }
 
     if (formPassword && formPassword.length < MIN_PASSWORD_LENGTH) {
-      Alert.alert('Erreur', `Le mot de passe doit contenir au moins ${MIN_PASSWORD_LENGTH} caractères`);
+      Alert.alert(t('common.error'), t('team.passwordMinLength', { min: MIN_PASSWORD_LENGTH }));
       return;
     }
 
-    setFormLoading(true);
     try {
       if (editingMember) {
         const data: Record<string, string> = { nom: formNom.trim(), email: formEmail.trim() };
         if (formPassword.trim()) data.password = formPassword.trim();
-        await api.patch(`/merchant/team/${editingMember.id}`, data);
+        await updateMember.mutateAsync({ id: editingMember.id, payload: data });
       } else {
-        await api.post('/merchant/team', {
+        await createMember.mutateAsync({
           nom: formNom.trim(),
           email: formEmail.trim(),
           password: formPassword.trim(),
@@ -130,22 +211,16 @@ export default function TeamManagementScreen() {
       }
       setShowAddModal(false);
       resetForm();
-      await loadMembers();
     } catch (error: unknown) {
-      Alert.alert('Erreur', getErrorMessage(error, "Erreur lors de l'opération"));
-    } finally {
-      setFormLoading(false);
+      Alert.alert(t('common.error'), getErrorMessage(error, t('team.operationError')));
     }
   };
 
   const toggleActive = async (member: TeamMember) => {
     try {
-      await api.patch(`/merchant/team/${member.id}`, {
-        isActive: !member.isActive,
-      });
-      await loadMembers();
+      await updateMember.mutateAsync({ id: member.id, payload: { isActive: !member.isActive } });
     } catch (error: unknown) {
-      Alert.alert('Erreur', 'Impossible de modifier le statut');
+      Alert.alert(t('common.error'), t('team.statusToggleError'));
     }
   };
 
@@ -160,10 +235,9 @@ export default function TeamManagementScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              await api.delete(`/merchant/team/${member.id}`);
-              await loadMembers();
+              await deleteMemberMutation.mutateAsync(member.id);
             } catch (error: unknown) {
-              Alert.alert('Erreur', 'Impossible de supprimer le membre');
+              Alert.alert(t('common.error'), t('team.deleteMemberError'));
             }
           },
         },
@@ -256,89 +330,13 @@ export default function TeamManagementScreen() {
           ) : (
             /* ── Members list ─── */
             members.map((member) => (
-              <View
+              <MemberCard
                 key={member.id}
-                style={[
-                  styles.memberCard,
-                  {
-                    backgroundColor: theme.bgCard,
-                    borderColor: theme.borderLight,
-                    opacity: member.isActive ? 1 : 0.65,
-                  },
-                ]}
-              >
-                {/* Top: avatar + info */}
-                <View style={styles.memberTop}>
-                  <View style={[styles.memberAvatar, { backgroundColor: theme.primary + '15' }]}>
-                    <User size={20} color={theme.primary} strokeWidth={1.5} />
-                  </View>
-                  <View style={styles.memberInfo}>
-                    <View style={styles.memberNameRow}>
-                      <Text style={[styles.memberName, { color: theme.text }]} numberOfLines={1}>
-                        {member.nom}
-                      </Text>
-                      {!member.isActive && (
-                        <View style={[styles.badge, { backgroundColor: theme.danger + '15' }]}>
-                          <Text style={[styles.badgeText, { color: theme.danger }]}>{t('team.inactive')}</Text>
-                        </View>
-                      )}
-                    </View>
-                    <Text style={[styles.memberEmail, { color: theme.textMuted }]} numberOfLines={1}>
-                      {member.email}
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Meta line */}
-                <View style={[styles.metaRow, { borderTopColor: theme.borderLight }]}>
-                  <View style={styles.metaItem}>
-                    <Shield size={13} color={theme.textMuted} />
-                    <Text style={[styles.metaText, { color: theme.textMuted }]}>{t('team.restrictedAccess')}</Text>
-                  </View>
-                  <View style={styles.metaItem}>
-                    <Activity size={13} color={theme.textMuted} />
-                    <Text style={[styles.metaText, { color: theme.textMuted }]}>
-                      {t('team.transactionsCount', { count: member.transactionsCount || 0 })}
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Actions */}
-                <View style={styles.actionsRow}>
-                  <TouchableOpacity
-                    style={[styles.actionChip, { backgroundColor: member.isActive ? (theme.success + '12') : (theme.textMuted + '12') }]}
-                    onPress={() => toggleActive(member)}
-                    activeOpacity={0.7}
-                  >
-                    {member.isActive ? (
-                      <ToggleRight size={16} color={theme.success} />
-                    ) : (
-                      <ToggleLeft size={16} color={theme.textMuted} />
-                    )}
-                    <Text style={[styles.actionChipText, { color: member.isActive ? theme.success : theme.textMuted }]}>
-                      {member.isActive ? t('stores.active') : t('stores.inactive')}
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[styles.actionChip, { backgroundColor: theme.primary + '12' }]}
-                    onPress={() => openEditModal(member)}
-                    activeOpacity={0.7}
-                  >
-                    <Edit3 size={15} color={theme.primary} />
-                    <Text style={[styles.actionChipText, { color: theme.primary }]}>{t('stores.editBtn')}</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[styles.actionChip, { backgroundColor: theme.danger + '12' }]}
-                    onPress={() => deleteMember(member)}
-                    activeOpacity={0.7}
-                  >
-                    <Trash2 size={15} color={theme.danger} />
-                    <Text style={[styles.actionChipText, { color: theme.danger }]}>{t('common.delete')}</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
+                member={member}
+                onToggle={toggleActive}
+                onEdit={openEditModal}
+                onDelete={deleteMember}
+              />
             ))
           )}
 
@@ -399,7 +397,7 @@ export default function TeamManagementScreen() {
                 <User size={18} color={theme.textMuted} />
                 <TextInput
                   style={[styles.input, { color: theme.text }]}
-                  placeholder="Ex: Ahmed Benali"
+                  placeholder={t('teamPlaceholders.namePlaceholder')}
                   placeholderTextColor={theme.textMuted}
                   value={formNom}
                   onChangeText={setFormNom}
@@ -413,7 +411,7 @@ export default function TeamManagementScreen() {
                 <Mail size={18} color={theme.textMuted} />
                 <TextInput
                   style={[styles.input, { color: theme.text }]}
-                  placeholder="email@exemple.com"
+                  placeholder={t('teamPlaceholders.emailPlaceholder')}
                   placeholderTextColor={theme.textMuted}
                   value={formEmail}
                   onChangeText={setFormEmail}
@@ -430,7 +428,7 @@ export default function TeamManagementScreen() {
                 <Lock size={18} color={theme.textMuted} />
                 <TextInput
                   style={[styles.input, { color: theme.text }]}
-                  placeholder="Min. 8 caractères"
+                  placeholder={t('teamPlaceholders.passwordPlaceholder')}
                   placeholderTextColor={theme.textMuted}
                   value={formPassword}
                   onChangeText={setFormPassword}

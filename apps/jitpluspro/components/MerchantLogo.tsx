@@ -2,6 +2,7 @@ import { useState, memo } from 'react';
 import { Image as RNImage, type ImageStyle, type StyleProp } from 'react-native';
 import { Image } from 'expo-image';
 import { resolveImageUrl } from '@/utils/imageUrl';
+import { logWarn } from '@/utils/devLogger';
 
 /** Merchant logo with automatic fallback to the JitPlus Pro logo on load error. */
 const MerchantLogo = memo(function MerchantLogo({
@@ -20,7 +21,10 @@ const MerchantLogo = memo(function MerchantLogo({
         contentFit="cover"
         cachePolicy="disk"
         recyclingKey={logoUrl}
-        onError={() => setError(true)}
+        onError={() => {
+          logWarn('MerchantLogo', 'failed to load: ' + logoUrl);
+          setError(true);
+        }}
       />
     );
   }

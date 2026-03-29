@@ -16,6 +16,7 @@ import {
 import {
   Store,
   Plus,
+  Lock,
   ArrowLeft,
   Trash2,
   Edit3,
@@ -46,18 +47,19 @@ import MerchantCategoryIcon, { useCategoryMetadata, CATEGORY_OPTIONS } from '@/c
 import { CATEGORY_LABELS } from '@/constants/categories';
 import { useStoresCRUD, MAX_STORES } from '@/hooks/useStoresCRUD';
 import { isValidEmail } from '@/utils/validation';
+import PremiumLockModal from '@/components/PremiumLockModal';
 
 const googleMapsApiKey = Constants.expoConfig?.android?.config?.googleMaps?.apiKey ?? '';
 
-/** Extracted as a proper component so hooks (useCategoryMetadata) are valid */
-function StoreCard({ store, merchantCategorie, theme, onEdit, onToggle, onDelete }: {
+/** Extracted as a proper React.memo component — theme consumed internally */
+const StoreCard = React.memo(function StoreCard({ store, merchantCategorie, onEdit, onToggle, onDelete }: {
   store: StoreType;
   merchantCategorie?: MerchantCategory;
-  theme: ReturnType<typeof useTheme>;
   onEdit: (s: StoreType) => void;
   onToggle: (s: StoreType) => void;
   onDelete: (s: StoreType) => void;
 }) {
+  const theme = useTheme();
   const cat = store.categorie ?? merchantCategorie ?? MerchantCategory.AUTRE;
   const { label: catLabel } = useCategoryMetadata(cat);
   const { t } = useLanguage();
@@ -124,11 +126,18 @@ function StoreCard({ store, merchantCategorie, theme, onEdit, onToggle, onDelete
       </View>
     </View>
   );
-}
+});
 
 export default function StoresScreen() {
   const theme = useTheme();
   const { merchant } = useAuth();
+  const isPremium = merchant?.plan === 'PREMIUM';
+  const FREE_MAX_STORES = 1;
+  const effectiveMax = isPremium ? MAX_STORES : FREE_MAX_STORES;
+
+  const [premiumModal, setPremiumModal] = useState<{ visible: boolean; titleKey: string; descKey: string }>(
+    { visible: false, titleKey: '', descKey: '' },
+  );
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
@@ -193,9 +202,10 @@ export default function StoresScreen() {
   }, [storesWithCoords]);
 
   // ── Fit map to all stores when they change ──
+  const fitTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => {
     if (storesWithCoords.length > 1 && overviewMapRef.current) {
-      setTimeout(() => {
+      fitTimerRef.current = setTimeout(() => {
         overviewMapRef.current?.fitToCoordinates?.(
           storesWithCoords.map((s) => ({ latitude: s.latitude!, longitude: s.longitude! })),
           { edgePadding: { top: 40, right: 40, bottom: 40, left: 40 }, animated: true },
@@ -209,6 +219,7 @@ export default function StoresScreen() {
         longitudeDelta: 0.02,
       });
     }
+    return () => clearTimeout(fitTimerRef.current);
   }, [storesWithCoords]);
 
   // ── Reset form ──
@@ -228,7 +239,14 @@ export default function StoresScreen() {
 
   // ── Open modal ──
   const openCreate = () => {
-    if (!canCreateStore) { alertMaxStores(); return; }
+    if (stores.length >= effectiveMax) {
+      if (!isPremium) {
+        setPremiumModal({ visible: true, titleKey: 'storesCrud.storesLockedTitle', descKey: 'storesCrud.storesLockedMsg' });
+      } else {
+        alertMaxStores();
+      }
+      return;
+    }
     resetForm();
     setShowModal(true);
   };
@@ -287,7 +305,7 @@ export default function StoresScreen() {
     if (!q || q.length < 3) return;
     setIsGeoSearching(true);
     try {
-      const fullQuery = ville ? `${q}, ${ville}, Maroc` : `${q}, Maroc`;
+      const fullQuery = ville ? `${q}, ${ville}, ${t('common.morocco')}` : `${q}, ${t('common.morocco')}`;
       const results = await geocodeAsync(fullQuery);
       if (results.length > 0) {
         const { latitude: lat, longitude: lng } = results[0];
@@ -300,10 +318,10 @@ export default function StoresScreen() {
         });
         await reverseGeocodeAndLabel(lat, lng);
       } else {
-        Alert.alert('Adresse non trouvée', 'Essayez avec plus de détails.');
+        Alert.alert(t('stores.addressNotFound'), t('stores.addressNotFoundHint'));
       }
     } catch {
-      Alert.alert('Erreur', 'Impossible de rechercher cette adresse.');
+      Alert.alert(t('common.error'), t('stores.addressSearchError'));
     } finally {
       setIsGeoSearching(false);
     }
@@ -314,7 +332,7 @@ export default function StoresScreen() {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission refusée', 'Activez la localisation.');
+        Alert.alert(t('stores.permissionDenied'), t('stores.enableLocation'));
         return;
       }
       const loc = await Location.getCurrentPositionAsync({});
@@ -326,7 +344,7 @@ export default function StoresScreen() {
       });
       await reverseGeocodeAndLabel(loc.coords.latitude, loc.coords.longitude);
     } catch {
-      Alert.alert('Erreur', 'Impossible d\'obtenir la position.');
+      Alert.alert(t('common.error'), t('stores.locationError'));
     } finally {
       setLocating(false);
     }
@@ -355,12 +373,22 @@ export default function StoresScreen() {
       <View style={[styles.counterRow, { backgroundColor: theme.bgCard, borderColor: theme.border }]}>
         <Store size={18} color={theme.primary} />
         <Text style={[styles.counterText, { color: theme.text }]}>
-          {t('stores.counterLabel', { count: stores.length, max: MAX_STORES })}
+          {t('stores.counterLabel', { count: stores.length, max: effectiveMax })}
         </Text>
         {stores.length < MAX_STORES && (
-          <TouchableOpacity style={[styles.addBtnSmall, { backgroundColor: theme.primary }]} onPress={openCreate}>
-            <Plus size={16} color="#fff" />
-            <Text style={styles.addBtnSmallText}>{t('stores.addStore')}</Text>
+          <TouchableOpacity
+            style={[
+              styles.addBtnSmall,
+              { backgroundColor: stores.length >= effectiveMax ? theme.textMuted : theme.primary },
+            ]}
+            onPress={openCreate}
+          >
+            {stores.length >= effectiveMax && !isPremium
+              ? <Lock size={14} color="#fff" />
+              : <Plus size={16} color="#fff" />}
+            <Text style={styles.addBtnSmallText}>
+              {stores.length >= effectiveMax && !isPremium ? 'Pro' : t('stores.addStore')}
+            </Text>
           </TouchableOpacity>
         )}
       </View>
@@ -418,7 +446,6 @@ export default function StoresScreen() {
               key={store.id}
               store={store}
               merchantCategorie={merchant?.categorie}
-              theme={theme}
               onEdit={openEdit}
               onToggle={toggleActive}
               onDelete={handleDelete}
@@ -686,6 +713,13 @@ export default function StoresScreen() {
           </View>
         </TouchableOpacity>
       </Modal>
+
+      <PremiumLockModal
+        visible={premiumModal.visible}
+        onClose={() => setPremiumModal(p => ({ ...p, visible: false }))}
+        titleKey={premiumModal.titleKey}
+        descKey={premiumModal.descKey}
+      />
     </View>
   );
 }

@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { MapPin, ExternalLink, Navigation } from 'lucide-react-native';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { palette } from '@/contexts/ThemeContext';
 
 /* ---------- Chargement conditionnel de react-native-maps ---------- */
 let RNMapView: React.ComponentType<any> | null = null;
@@ -27,8 +28,8 @@ try {
   RNMapView = maps.default;
   RNMarker = maps.Marker;
   RN_PROVIDER_GOOGLE = maps.PROVIDER_GOOGLE;
-} catch {
-  // Module natif non disponible (Expo Go)
+} catch (e) {
+  if (__DEV__) console.warn('[SafeMapView] react-native-maps not available (Expo Go?):', e);
 }
 
 export const PROVIDER_GOOGLE = RN_PROVIDER_GOOGLE;
@@ -72,7 +73,7 @@ function MapFallback({ style, markers, hasCoords }: FallbackProps) {
   if (!hasCoords) {
     return (
       <View style={[styles.fallback, style]}>
-        <Navigation size={28} color="#94a3b8" />
+        <Navigation size={28} color={palette.gray400} />
         <Text style={styles.fallbackTitle}>{t('safeMap.positionUndefined')}</Text>
         <Text style={styles.fallbackText}>
           {t('safeMap.positionHint')}
@@ -83,7 +84,7 @@ function MapFallback({ style, markers, hasCoords }: FallbackProps) {
 
   return (
     <View style={[styles.fallback, style]}>
-      <MapPin size={32} color="#7C3AED" />
+      <MapPin size={32} color={palette.violet} />
       <Text style={styles.fallbackTitle}>🗺️ {t('safeMap.expoGoNotice')}</Text>
       <Text style={styles.fallbackText}>
         {t('safeMap.expoGoHint')}
@@ -146,9 +147,21 @@ const SafeMapView = forwardRef<SafeMapViewRef, SafeMapViewProps>((props, ref) =>
       ? { googleRenderer: configuredRenderer as 'LEGACY' | 'LATEST' }
       : {};
 
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
   useEffect(() => {
     if (!RNMapView || mapLoaded) return;
-    const t = setTimeout(() => setRenderTimedOut(true), 9000);
+    const t = setTimeout(() => {
+      if (mountedRef.current) {
+        if (__DEV__) console.warn('[SafeMapView] map render timed out after 9s — switching to fallback');
+        setRenderTimedOut(true);
+      }
+    }, 9000);
     return () => clearTimeout(t);
   }, [mapLoaded]);
 
@@ -230,10 +243,10 @@ const styles = StyleSheet.create({
   fallback: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#f1f5f9',
+    backgroundColor: palette.gray100,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
+    borderColor: palette.gray200,
     borderStyle: 'dashed',
     padding: 24,
     minHeight: 180,
@@ -241,13 +254,13 @@ const styles = StyleSheet.create({
   fallbackTitle: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#64748b',
+    color: palette.gray500,
     marginTop: 8,
     textAlign: 'center',
   },
   fallbackText: {
     fontSize: 12,
-    color: '#94a3b8',
+    color: palette.gray400,
     textAlign: 'center',
     marginTop: 4,
     lineHeight: 18,

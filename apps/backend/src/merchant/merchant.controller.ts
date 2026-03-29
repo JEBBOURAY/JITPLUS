@@ -51,7 +51,6 @@ import {
   WhatsappQuotaService,
   MerchantPlanService,
   MerchantReferralService,
-  UpgradeRequestService,
 } from './services';
 
 @ApiTags('Merchant')
@@ -71,7 +70,6 @@ export class MerchantController {
     private quotaService: WhatsappQuotaService,
     private planService: MerchantPlanService,
     private referralService: MerchantReferralService,
-    private upgradeRequestService: UpgradeRequestService,
     private configService: ConfigService,
     @Inject(STORAGE_PROVIDER) private storageProvider: IStorageProvider,
     private imageOptimizer: ImageOptimizerService,
@@ -165,6 +163,16 @@ export class MerchantController {
       throw new BadRequestException('Le contenu du fichier ne correspond pas à un format image autorisé (JPG, PNG, WebP).');
     }
 
+    // Logo upload is a Premium feature; covers are allowed on all plans.
+    if (query.type !== UploadType.COVER) {
+      const isPremium = await this.planService.isPremium(user.userId);
+      if (!isPremium) {
+        throw new BadRequestException(
+          'La personnalisation du logo est réservée au plan Pro. Contactez notre équipe sur WhatsApp pour activer votre abonnement.',
+        );
+      }
+    }
+
     const profile = query.type === UploadType.COVER ? 'cover' : 'logo';
     const optimized = await this.imageOptimizer.optimize(file, profile);
     const imageUrl = await this.storageProvider.uploadFile(optimized, 'logos');
@@ -223,6 +231,7 @@ export class MerchantController {
   }
 
   @Get('clients')
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 20 } })
   async getClients(
     @Query() { search, page, limit }: SearchPaginationQueryDto,
     @CurrentUser() user: JwtPayload,
@@ -257,12 +266,14 @@ export class MerchantController {
 
   @Get('dashboard-stats')
   @UseGuards(PremiumGuard)
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 15 } })
   async getDashboardStats(@Query() { period }: DashboardQueryDto, @CurrentUser() user: JwtPayload) {
     return this.dashboardService.getDashboardStats(user.userId, period!);
   }
 
   @Get('dashboard-trends')
   @UseGuards(PremiumGuard)
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 15 } })
   async getDashboardTrends(@Query() { period }: DashboardQueryDto, @CurrentUser() user: JwtPayload) {
     return this.dashboardService.getDashboardTrends(user.userId, period!);
   }
@@ -319,7 +330,7 @@ export class MerchantController {
   }
 
   @Patch('loyalty-settings')
-  @UseGuards(MerchantOwnerGuard)
+  @UseGuards(MerchantOwnerGuard, PremiumGuard)
   async updateLoyaltySettings(
     @Body() dto: UpdateLoyaltySettingsDto,
     @CurrentUser() user: JwtPayload,
@@ -328,25 +339,25 @@ export class MerchantController {
   }
 
   @Get('team')
-  @UseGuards(MerchantOwnerGuard)
+  @UseGuards(MerchantOwnerGuard, PremiumGuard)
   async getTeamMembers(@CurrentUser() user: JwtPayload) {
     return this.teamService.getTeamMembers(user.userId);
   }
 
   @Post('team')
-  @UseGuards(MerchantOwnerGuard)
+  @UseGuards(MerchantOwnerGuard, PremiumGuard)
   async createTeamMember(@Body() dto: CreateTeamMemberDto, @CurrentUser() user: JwtPayload) {
     return this.teamService.createTeamMember(user.userId, dto);
   }
 
   @Patch('team/:id')
-  @UseGuards(MerchantOwnerGuard)
+  @UseGuards(MerchantOwnerGuard, PremiumGuard)
   async updateTeamMember(@Param('id') memberId: string, @Body() dto: UpdateTeamMemberDto, @CurrentUser() user: JwtPayload) {
     return this.teamService.updateTeamMember(user.userId, memberId, dto);
   }
 
   @Delete('team/:id')
-  @UseGuards(MerchantOwnerGuard)
+  @UseGuards(MerchantOwnerGuard, PremiumGuard)
   async deleteTeamMember(@Param('id') memberId: string, @CurrentUser() user: JwtPayload) {
     return this.teamService.deleteTeamMember(user.userId, memberId);
   }
@@ -384,6 +395,7 @@ export class MerchantController {
   }
 
   @Get('whatsapp/quota')
+  @UseGuards(PremiumGuard)
   async getWhatsappQuota(@CurrentUser() user: JwtPayload) {
     const merchant = await this.quotaService.getQuota(user.userId);
     return {
@@ -416,22 +428,6 @@ export class MerchantController {
     return this.planService.getPlanLimits(user.userId);
   }
 
-  // ── Submit Premium upgrade request ───────────────────
-  @Post('plan/request-upgrade')
-  @UseGuards(MerchantOwnerGuard)
-  async submitUpgradeRequest(
-    @CurrentUser() user: JwtPayload,
-    @Body() body: { message?: string },
-  ) {
-    return this.upgradeRequestService.submit(user.userId, body?.message);
-  }
-
-  // ── Get current upgrade request status ───────────────
-  @Get('plan/upgrade-request')
-  @UseGuards(MerchantOwnerGuard)
-  async getUpgradeRequest(@CurrentUser() user: JwtPayload) {
-    return this.upgradeRequestService.getForMerchant(user.userId);
-  }
 
   // ── Parrainage ────────────────────────────────────────
   @Get('referral')

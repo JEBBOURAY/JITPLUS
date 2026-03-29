@@ -37,7 +37,20 @@ function isPrivateHostname(hostname: string): boolean {
     // fc00::/7 — Unique local addresses
     if (addr.startsWith('fc') || addr.startsWith('fd')) return true;
     // fe80::/10 — Link-local addresses
-    if (addr.startsWith('fe80')) return true;
+    if (addr.startsWith('fe80') || addr.startsWith('fe90') ||
+        addr.startsWith('fea0') || addr.startsWith('feb0')) return true;
+    // ff00::/8 — Multicast
+    if (addr.startsWith('ff')) return true;
+    // ::ffff:0:0/96 — IPv4-mapped IPv6 (e.g. ::ffff:127.0.0.1, ::ffff:10.0.0.1)
+    const v4mapped = addr.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
+    if (v4mapped) {
+      // Recurse into the IPv4 portion
+      return isPrivateHostname(v4mapped[1]);
+    }
+    // 100::/64 — Discard prefix
+    if (addr.startsWith('100::')) return true;
+    // 2001:db8::/32 — Documentation prefix
+    if (addr.startsWith('2001:db8')) return true;
   }
 
   return false;
@@ -47,12 +60,17 @@ export function resolveImageUrl(path: string): string {
   if (path.startsWith('http')) {
     try {
       const url = new URL(path);
-      if (isPrivateHostname(url.hostname)) {
-        if (!__DEV__) return '';
+      if (isPrivateHostname(url.hostname) && !__DEV__) {
+        console.warn('[imageUrl] blocked private hostname in production:', url.hostname);
+        return '';
       }
-      if (!__DEV__ && url.protocol !== 'https:') return '';
+      if (url.protocol !== 'https:' && !__DEV__) {
+        console.warn('[imageUrl] blocked non-HTTPS URL in production:', path);
+        return '';
+      }
       return path;
     } catch {
+      if (__DEV__) console.warn('[imageUrl] invalid URL:', path);
       return '';
     }
   }

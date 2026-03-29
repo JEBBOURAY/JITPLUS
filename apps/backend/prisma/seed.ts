@@ -8,7 +8,6 @@ import {
   TransactionStatus,
   AuditAction,
   AuditTargetType,
-  UpgradeRequestStatus,
 } from '../src/generated/client';
 import * as bcrypt from 'bcryptjs';
 
@@ -26,7 +25,6 @@ async function main() {
   // ── Nettoyer les données existantes (dans l'ordre des dépendances) ──
   await prisma.auditLog.deleteMany();
   await prisma.profileView.deleteMany();
-  await prisma.upgradeRequest.deleteMany();
   await prisma.clientNotificationStatus.deleteMany();
   await prisma.deviceSession.deleteMany();
   await prisma.notification.deleteMany();
@@ -55,23 +53,14 @@ async function main() {
   // ═══════════════════════════════════════════
   const admin = await prisma.admin.create({
     data: {
-      email: 'admin@jitplus.com',
+      email: 'contact@jitplus.com',
       password: adminPw,
-      nom: 'Admin Principal',
+      nom: 'Admin JitPlus',
       role: AdminRole.ADMIN,
     },
   });
 
-  const admin2 = await prisma.admin.create({
-    data: {
-      email: 'support@jitplus.com',
-      password: adminPw,
-      nom: 'Support JitPlus',
-      role: AdminRole.ADMIN,
-    },
-  });
-
-  console.log('✅ 2 Admins créés');
+  console.log('✅ 1 Admin créé');
 
   // ═══════════════════════════════════════════
   // 2. MERCHANTS (12 marchands variés, multi-villes, multi-plans)
@@ -835,36 +824,7 @@ async function main() {
   console.log(`✅ ${clientNotifData.length} statuts de notification créés`);
 
   // ═══════════════════════════════════════════
-  // 11. UPGRADE REQUESTS (demandes de passage Premium)
-  // ═══════════════════════════════════════════
-  const upgradeData = [
-    // Boulangerie (FREE) → demande PENDING
-    { merchantIdx: 3, status: UpgradeRequestStatus.PENDING, message: 'Nous avons besoin des fonctionnalités Premium pour gérer nos 3 succursales.', daysAgo: 2 },
-    // Coiffure (FREE) → demande APPROVED (déjà traitée)
-    { merchantIdx: 7, status: UpgradeRequestStatus.APPROVED, message: 'Besoin du multi-canal pour nos clients à Marrakech.', adminNote: 'Approuvé pour 3 mois d\'essai', reviewedById: admin.id, reviewedAt: daysAgo(5), daysAgo: 8 },
-    // Pharmacie (FREE) → demande REJECTED
-    { merchantIdx: 4, status: UpgradeRequestStatus.REJECTED, message: 'Nous voulons le Premium.', adminNote: 'Compte trop récent, réessayez dans 1 mois.', reviewedById: admin.id, reviewedAt: daysAgo(3), daysAgo: 7 },
-    // Beauté (FREE, onboarding non complété) → demande PENDING
-    { merchantIdx: 10, status: UpgradeRequestStatus.PENDING, message: 'Je viens de m\'inscrire et j\'ai besoin du Premium pour mon institut.', daysAgo: 1 },
-  ];
-
-  for (const u of upgradeData) {
-    await prisma.upgradeRequest.create({
-      data: {
-        merchantId: merchants[u.merchantIdx].id,
-        status: u.status,
-        message: u.message,
-        adminNote: (u as any).adminNote ?? undefined,
-        reviewedById: (u as any).reviewedById ?? undefined,
-        reviewedAt: (u as any).reviewedAt ?? undefined,
-        createdAt: daysAgo(u.daysAgo),
-      },
-    });
-  }
-  console.log(`✅ ${upgradeData.length} demandes d'upgrade créées`);
-
-  // ═══════════════════════════════════════════
-  // 12. DEVICE SESSIONS (sessions des marchands)
+  // 11. DEVICE SESSIONS (sessions des marchands)
   // ═══════════════════════════════════════════
   const deviceData = [
     // Café Barrista — 2 devices (owner + team)
@@ -950,20 +910,17 @@ async function main() {
   // 14. AUDIT LOGS (actions admin)
   // ═══════════════════════════════════════════
   const auditData = [
-    { action: AuditAction.ADMIN_LOGIN, targetType: AuditTargetType.ADMIN, targetId: admin.id, targetLabel: 'Admin Principal (admin@jitplus.com)', daysAgo: 0 },
-    { action: AuditAction.ADMIN_LOGIN, targetType: AuditTargetType.ADMIN, targetId: admin.id, targetLabel: 'Admin Principal (admin@jitplus.com)', daysAgo: 1 },
-    { action: AuditAction.ADMIN_LOGIN, targetType: AuditTargetType.ADMIN, targetId: admin2.id, targetLabel: 'Support JitPlus (support@jitplus.com)', daysAgo: 0 },
+    { action: AuditAction.ADMIN_LOGIN, targetType: AuditTargetType.ADMIN, targetId: admin.id, targetLabel: 'Admin JitPlus (contact@jitplus.com)', daysAgo: 0 },
+    { action: AuditAction.ADMIN_LOGIN, targetType: AuditTargetType.ADMIN, targetId: admin.id, targetLabel: 'Admin JitPlus (contact@jitplus.com)', daysAgo: 1 },
     { action: AuditAction.ACTIVATE_PREMIUM, targetType: AuditTargetType.MERCHANT, targetId: merchants[1].id, targetLabel: 'Épicerie Verte (epicerie@test.com)', metadata: { plan: 'PREMIUM', duration: '3 mois', reason: 'Activation manuelle admin' }, daysAgo: 30 },
     { action: AuditAction.BAN_MERCHANT, targetType: AuditTargetType.MERCHANT, targetId: merchants[11].id, targetLabel: 'SuperMarché Atlas (supermarche@test.com)', metadata: { reason: 'Violation des CGU — spam de notifications' }, daysAgo: 5 },
-    { action: AuditAction.APPROVE_UPGRADE_REQUEST, targetType: AuditTargetType.MERCHANT, targetId: merchants[7].id, targetLabel: 'Coiffure Studio M (coiffure@test.com)', metadata: { plan: 'PREMIUM', duration: '3 mois' }, daysAgo: 5 },
-    { action: AuditAction.REJECT_UPGRADE_REQUEST, targetType: AuditTargetType.MERCHANT, targetId: merchants[4].id, targetLabel: 'Pharmacie Centrale (pharmacie@test.com)', metadata: { reason: 'Compte trop récent' }, daysAgo: 3 },
   ];
 
   for (const a of auditData) {
     await prisma.auditLog.create({
       data: {
-        adminId: a.action === AuditAction.ADMIN_LOGIN && a.targetId === admin2.id ? admin2.id : admin.id,
-        adminEmail: a.action === AuditAction.ADMIN_LOGIN && a.targetId === admin2.id ? admin2.email : admin.email,
+        adminId: admin.id,
+        adminEmail: admin.email,
         action: a.action,
         targetType: a.targetType,
         targetId: a.targetId,
@@ -1026,7 +983,6 @@ async function main() {
   console.log(`   ${txData.length} transactions (${txData.filter(t => t.type === TransactionType.REDEEM_REWARD).length} redemptions, ${txData.filter(t => t.type === TransactionType.ADJUST_POINTS).length} ajustements, ${txData.filter(t => t.status === TransactionStatus.CANCELLED).length} annulée)`);
   console.log(`   ${notifications.length} notifications`);
   console.log(`   ${clientNotifData.length} statuts de notification`);
-  console.log(`   ${upgradeData.length} demandes d'upgrade (${upgradeData.filter(u => u.status === UpgradeRequestStatus.PENDING).length} PENDING)`);
   console.log(`   ${deviceData.length} sessions d'appareils`);
   console.log(`   ${profileViewData.length} vues de profils`);
   console.log(`   ${auditData.length} logs d'audit`);

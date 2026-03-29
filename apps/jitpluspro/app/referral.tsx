@@ -24,6 +24,11 @@ import {
   MapPin,
   Star,
   Zap,
+  Send,
+  UserPlus,
+  Crown,
+  Infinity,
+  Clock,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -37,6 +42,7 @@ interface ReferredMerchant {
   categorie: string;
   ville: string | null;
   createdAt: string;
+  validated: boolean;
 }
 
 interface ReferralStats {
@@ -245,9 +251,19 @@ export default function ReferralScreen() {
                       <Store size={18} color={theme.primary} />
                     </View>
                     <View style={styles.merchantInfo}>
-                      <Text style={[styles.merchantName, { color: theme.text }]} numberOfLines={1}>
-                        {m.nom}
-                      </Text>
+                      <View style={styles.merchantNameRow}>
+                        <Text style={[styles.merchantName, { color: theme.text }]} numberOfLines={1}>
+                          {m.nom}
+                        </Text>
+                        <View style={[styles.statusBadge, { backgroundColor: m.validated ? theme.success + '18' : theme.warning + '18' }]}>
+                          {m.validated
+                            ? <Check size={10} color={theme.success} strokeWidth={3} />
+                            : <Clock size={10} color={theme.warning} strokeWidth={2.5} />}
+                          <Text style={[styles.statusText, { color: m.validated ? theme.success : theme.warning }]}>
+                            {m.validated ? t('referral.statusValidated') : t('referral.statusPending')}
+                          </Text>
+                        </View>
+                      </View>
                       <View style={styles.merchantMeta}>
                         {m.ville && (
                           <>
@@ -270,6 +286,43 @@ export default function ReferralScreen() {
               ))}
             </View>
           )}
+
+          {/* ── How it works ── */}
+          <View style={[styles.howItWorksCard, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
+            <Text style={[styles.howItWorksTitle, { color: theme.text }]}>
+              {t('referral.howItWorksTitle')}
+            </Text>
+
+            {([
+              { icon: Send, color: theme.accent, titleKey: 'referral.step1Title', descKey: 'referral.step1Desc' },
+              { icon: UserPlus, color: theme.accent, titleKey: 'referral.step2Title', descKey: 'referral.step2Desc' },
+              { icon: Crown, color: theme.accent, titleKey: 'referral.step3Title', descKey: 'referral.step3Desc' },
+              { icon: Infinity, color: theme.accent, titleKey: 'referral.step4Title', descKey: 'referral.step4Desc' },
+            ] as const).map((step, idx) => {
+              const Icon = step.icon;
+              return (
+                <View key={idx} style={styles.stepRow}>
+                  <View style={styles.stepLeft}>
+                    <View style={[styles.stepIconWrap, { backgroundColor: step.color + '15' }]}>
+                      <Icon size={18} color={step.color} strokeWidth={2} />
+                    </View>
+                    {idx < 3 && <View style={[styles.stepLine, { backgroundColor: theme.border }]} />}
+                  </View>
+                  <View style={styles.stepContent}>
+                    <Text style={[styles.stepNumber, { color: theme.textMuted }]}>
+                      {t('onboarding.stepOf', { current: idx + 1, total: 4 }).toUpperCase()}
+                    </Text>
+                    <Text style={[styles.stepTitle, { color: theme.text }]}>
+                      {t(step.titleKey)}
+                    </Text>
+                    <Text style={[styles.stepDesc, { color: theme.textMuted }]}>
+                      {t(step.descKey)}
+                    </Text>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
         </ScrollView>
       ) : null}
     </View>
@@ -372,6 +425,58 @@ const styles = StyleSheet.create({
   },
   statsBannerText: { fontSize: 15, fontWeight: '700' },
 
+  // How it works
+  howItWorksCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 20,
+  },
+  howItWorksTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    marginBottom: 18,
+  },
+  stepRow: {
+    flexDirection: 'row',
+    gap: 14,
+  },
+  stepLeft: {
+    alignItems: 'center',
+    width: 40,
+  },
+  stepIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepLine: {
+    width: 2,
+    flex: 1,
+    marginVertical: 4,
+    borderRadius: 1,
+  },
+  stepContent: {
+    flex: 1,
+    paddingBottom: 18,
+  },
+  stepNumber: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    marginBottom: 2,
+  },
+  stepTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  stepDesc: {
+    fontSize: 13,
+    lineHeight: 19,
+  },
+
   // Reward card
   rewardCard: {
     borderRadius: 16,
@@ -434,7 +539,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   merchantInfo: { flex: 1 },
-  merchantName: { fontSize: 15, fontWeight: '600', marginBottom: 2 },
+  merchantNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 },
+  merchantName: { fontSize: 15, fontWeight: '600', flexShrink: 1 },
+  statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 },
+  statusText: { fontSize: 10, fontWeight: '700' },
   merchantMeta: { flexDirection: 'row', alignItems: 'center', gap: 3, flexWrap: 'wrap' },
   merchantMetaText: { fontSize: 12 },
   divider: { height: 1, marginHorizontal: 14 },

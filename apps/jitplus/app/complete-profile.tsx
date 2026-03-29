@@ -94,6 +94,11 @@ export default function CompleteProfileScreen() {
   const submittingRef = useRef(false);
   const scrollRef = useRef<ScrollView>(null);
 
+  // Steps visible to the user (skip step 1 when no password needed)
+  const visibleSteps = showPasswordStep ? [0, 1, 2] : [0, 2];
+  const visibleStepIndex = visibleSteps.indexOf(step);
+  const displayTotal = visibleSteps.length;
+
   const strength = useMemo(() => getPasswordStrength(password, t), [password, t]);
 
   // Header entrance
@@ -142,7 +147,8 @@ export default function CompleteProfileScreen() {
   const goNext = useCallback(() => {
     if (step === 0) {
       if (!canNextStep0) { setError(t('completeProfile.nameError')); return; }
-      animateStep(1);
+      // Skip the password step entirely for Google users (no password needed)
+      animateStep(showPasswordStep ? 1 : 2);
     } else if (step === 1) {
       if (showPasswordStep && !canNextStep1) { setError(t('setPassword.validationError')); return; }
       animateStep(2);
@@ -150,8 +156,12 @@ export default function CompleteProfileScreen() {
   }, [step, canNextStep0, canNextStep1, showPasswordStep, animateStep, t]);
 
   const goBack = useCallback(() => {
-    if (step > 0) animateStep(step - 1);
-  }, [step, animateStep]);
+    if (step > 0) {
+      // Mirror goNext: skip the password step back for Google users
+      const prevStep = (step === 2 && !showPasswordStep) ? 0 : step - 1;
+      animateStep(prevStep);
+    }
+  }, [step, showPasswordStep, animateStep]);
 
   const handleSubmit = useCallback(async () => {
     if (submittingRef.current) return;
@@ -229,15 +239,15 @@ export default function CompleteProfileScreen() {
 
               {/* Step indicator */}
               <View style={s.stepIndicator}>
-                {Array.from({ length: TOTAL_STEPS }).map((_, i) => (
-                  <View key={i} style={s.stepGroup}>
-                    {i > 0 && <StepLine filled={i <= step} theme={theme} />}
-                    <StepDot index={i} current={step} theme={theme} />
+                {visibleSteps.map((vstep, i) => (
+                  <View key={vstep} style={s.stepGroup}>
+                    {i > 0 && <StepLine filled={step >= vstep} theme={theme} />}
+                    <StepDot index={i} current={visibleStepIndex} theme={theme} />
                   </View>
                 ))}
               </View>
               <Text style={s.stepCounter}>
-                {t('completeProfile.stepOf', { current: step + 1, total: TOTAL_STEPS })}
+                {t('completeProfile.stepOf', { current: visibleStepIndex + 1, total: displayTotal })}
               </Text>
             </Animated.View>
 

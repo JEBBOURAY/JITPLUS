@@ -3,6 +3,7 @@
 
 generator client {
   provider      = "prisma-client-js"
+  output        = "../src/generated/client"
   binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
@@ -71,7 +72,6 @@ model Merchant {
   teamMembers     TeamMember[]
   deviceSessions  DeviceSession[]
   stores          Store[]
-  upgradeRequests UpgradeRequest[]
   profileViewsLog ProfileView[]
   clientReferral  ClientReferral[]
 
@@ -175,12 +175,15 @@ enum AuditAction {
   BAN_MERCHANT
   UNBAN_MERCHANT
   DELETE_MERCHANT
+  // Client lifecycle
+  DEACTIVATE_CLIENT
+  ACTIVATE_CLIENT
+  DELETE_CLIENT
+  // Admin notifications
+  ADMIN_SEND_NOTIFICATION
   // Future-proof slots
   RESET_PASSWORD
   UPDATE_PLAN_DURATION
-  // Upgrade requests
-  APPROVE_UPGRADE_REQUEST
-  REJECT_UPGRADE_REQUEST
 }
 
 enum AuditTargetType {
@@ -449,34 +452,6 @@ model ClientNotificationStatus {
   @@index([clientId, isDismissed])
   @@index([clientId, isRead])
   @@map("client_notification_statuses")
-}
-
-// ── Demandes d'activation Premium ────────────────────────────────────────────
-enum UpgradeRequestStatus {
-  PENDING
-  APPROVED
-  REJECTED
-}
-
-model UpgradeRequest {
-  id           String                @id @default(uuid())
-  merchantId   String                @map("merchant_id")
-  status       UpgradeRequestStatus  @default(PENDING)
-  /// Message optionnel du commerçant (motif, besoin spécifique)
-  message      String?
-  /// Raison du rejet par l'admin
-  adminNote    String?               @map("admin_note")
-  /// Admin qui a traité la demande
-  reviewedById String?               @map("reviewed_by_id")
-  reviewedAt   DateTime?             @map("reviewed_at")
-  createdAt    DateTime              @default(now()) @map("created_at")
-  updatedAt    DateTime              @updatedAt @map("updated_at")
-
-  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
-
-  @@index([merchantId, status])
-  @@index([status, createdAt])
-  @@map("upgrade_requests")
 }
 
 model DeviceSession {

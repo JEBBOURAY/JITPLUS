@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useReducer } from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,6 @@ import {
   Alert,
   ActivityIndicator,
   ScrollView,
-  Modal,
   TextInput,
   KeyboardAvoidingView,
   Platform,
@@ -24,12 +23,6 @@ import {
 } from 'lucide-react-native';
 
 // lottie-react-native is NOT available in Expo Go SDK 51+
-let LottieView: typeof import('lottie-react-native').default | null = null;
-try {
-  LottieView = require('lottie-react-native').default;
-} catch {
-  // Not available in Expo Go
-}
 
 // Reanimated removed — plain View shim for entering animations
 import { useAuth } from '@/contexts/AuthContext';
@@ -37,11 +30,52 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { getErrorMessage } from '@/utils/error';
 import StampGrid from '@/components/StampGrid';
-import { formatCurrency, DEFAULT_CURRENCY } from '@/config/currency';
+import { formatCurrency, DEFAULT_CURRENCY, getIntlLocale } from '@/config/currency';
 import { MAX_AMOUNT_DIGITS, SUCCESS_DISPLAY_MS } from '@/constants/app';
 import { useClientStatus, useRewards, useRecordTransaction } from '@/hooks/useQueryHooks';
+import { RewardSelector } from '@/components/transaction/RewardSelector';
+import { TransactionSuccessModal } from '@/components/transaction/TransactionSuccessModal';
+import { isValidUUID } from '@/utils/validation';
 
 type TransactionType = 'EARN_POINTS' | 'REDEEM_REWARD';
+
+// ── Reducer ──
+interface TxState {
+  amount: string;
+  loading: boolean;
+  points: number;
+  showSuccess: boolean;
+  transactionType: TransactionType;
+  selectedRewardId: string | null;
+  screenMode: 'earn' | 'redeem';
+  stampAmount: string;
+  stamps: number;
+}
+
+const initialTxState: TxState = {
+  amount: '',
+  loading: false,
+  points: 0,
+  showSuccess: false,
+  transactionType: 'EARN_POINTS',
+  selectedRewardId: null,
+  screenMode: 'earn',
+  stampAmount: '',
+  stamps: 0,
+};
+
+type TxAction =
+  | { type: 'SET'; payload: Partial<TxState> }
+  | { type: 'RESET_REWARD' };
+
+function txReducer(state: TxState, action: TxAction): TxState {
+  switch (action.type) {
+    case 'SET':
+      return { ...state, ...action.payload };
+    case 'RESET_REWARD':
+      return { ...state, selectedRewardId: null };
+  }
+}
 
 export default function TransactionAmountScreen() {
   const router = useRouter();
@@ -50,13 +84,10 @@ export default function TransactionAmountScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
 
-  const [amount, setAmount] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [points, setPoints] = useState(0);
-  const [showSuccess, setShowSuccess] = useState(false);
-  const [transactionType, setTransactionType] = useState<TransactionType>('EARN_POINTS');
-  const [selectedRewardId, setSelectedRewardId] = useState<string | null>(null);
-  const [screenMode, setScreenMode] = useState<'earn' | 'redeem'>('earn');
+  const [state, dispatch] = useReducer(txReducer, initialTxState);
+  const { amount, loading, points, showSuccess, transactionType, selectedRewardId, screenMode, stampAmount, stamps } = state;
+  const set = useCallback((payload: Partial<TxState>) => dispatch({ type: 'SET', payload }), []);
+  const setSelectedRewardId = useCallback((id: string | null) => set({ selectedRewardId: id }), [set]);
 
   // ── React Query hooks ──
   const {
@@ -70,11 +101,12 @@ export default function TransactionAmountScreen() {
   } = useRewards();
 
   const rewards = rewardsList ?? [];
+  const selectedReward = rewards.find((r) => r.id === selectedRewardId) || null;
   const recordTransactionMutation = useRecordTransaction();
 
-  // Guard: if no clientId go back
+  // Guard: if no clientId or invalid UUID go back
   useEffect(() => {
-    if (!clientId) {
+    if (!clientId || !isValidUUID(clientId)) {
       Alert.alert(t('common.error'), t('transactionAmount.noClientSelected'), [
         { text: 'OK', onPress: () => router.back() },
       ]);
@@ -82,76 +114,79 @@ export default function TransactionAmountScreen() {
   }, [clientId, router]);
 
   // ── Stamps mode ──
-  const [stampAmount, setStampAmount] = useState('');
-  const [stamps, setStamps] = useState(0);
-
   const isStampsMode = merchant?.loyaltyType === 'STAMPS';
   const isPerVisit = isStampsMode && (merchant?.stampEarningMode || 'PER_VISIT') === 'PER_VISIT';
   const stampsForReward = merchant?.stampsForReward || customerStatus?.stampsForReward || 10;
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
+
+  const calculatePoints = useCallback(() => {
+    const amountNum = parseFloat(amount) || 0;
+    if (amountNum === 0 || !merchant) {
+      set({ points: 0 });
+      return;
+    }
+    const pointsRate = merchant.pointsRate || 10;
+    set({ points: Math.floor(amountNum / pointsRate) });
+  }, [amount, merchant]);
 
   useEffect(() => {
     if (!isStampsMode) calculatePoints();
-  }, [amount, merchant]);
+  }, [calculatePoints, isStampsMode]);
 
   useEffect(() => {
     if (isStampsMode) {
       if (isPerVisit) {
-        setStamps(1);
+        set({ stamps: 1 });
         return;
       }
       const amountNum = parseFloat(stampAmount) || 0;
       if (amountNum === 0 || !merchant) {
-        setStamps(0);
+        set({ stamps: 0 });
         return;
       }
       const rate = merchant.pointsRate || 10;
-      setStamps(Math.floor(amountNum / rate));
+      set({ stamps: Math.floor(amountNum / rate) });
     }
   }, [stampAmount, merchant, isStampsMode, isPerVisit]);
 
-  const calculatePoints = () => {
-    const amountNum = parseFloat(amount) || 0;
-    if (amountNum === 0 || !merchant) {
-      setPoints(0);
-      return;
-    }
-    const pointsRate = merchant.pointsRate || 10;
-    setPoints(Math.floor(amountNum / pointsRate));
-  };
-
   // ── Amount input handler (Points mode) ──
-  const handleAmountChange = (text: string) => {
+  const handleAmountChange = useCallback((text: string) => {
     // Allow only valid decimal numbers
     const cleaned = text.replace(/[^0-9.]/g, '');
     // Prevent multiple dots
     const parts = cleaned.split('.');
     let formatted = parts[0] || '';
     if (parts.length > 1) formatted += '.' + (parts[1]?.slice(0, 2) || '');
-    if (formatted.length <= MAX_AMOUNT_DIGITS) setAmount(formatted);
-  };
+    if (formatted.length <= MAX_AMOUNT_DIGITS) set({ amount: formatted });
+  }, [set]);
 
   // ── Stamp amount input handler ──
-  const handleStampAmountChange = (text: string) => {
+  const handleStampAmountChange = useCallback((text: string) => {
     const cleaned = text.replace(/[^0-9.]/g, '');
     const parts = cleaned.split('.');
     let formatted = parts[0] || '';
     if (parts.length > 1) formatted += '.' + (parts[1]?.slice(0, 2) || '');
-    if (formatted.length <= MAX_AMOUNT_DIGITS) setStampAmount(formatted);
-  };
+    if (formatted.length <= MAX_AMOUNT_DIGITS) set({ stampAmount: formatted });
+  }, [set]);
 
-  // ── EARN: Points Mode ──
-  const handleEarnPoints = () => {
+  // ── Shared accumulation limit check ──
+  const checkAccumulationLimit = useCallback((): boolean => {
     const currentPoints = customerStatus?.points || 0;
     if (merchant?.accumulationLimit != null && currentPoints >= merchant.accumulationLimit) {
       if (selectedRewardId && selectedReward && currentPoints >= selectedReward.cout) {
         handleRedeemOnly();
-        return;
+        return false;
       }
       const unit = isStampsMode ? t('common.stamps') : t('common.points');
       Alert.alert(t('common.error'), t('transaction.accumulationLimitReached', { limit: merchant.accumulationLimit, unit }));
-      return;
+      return false;
     }
+    return true;
+  }, [customerStatus?.points, merchant?.accumulationLimit, selectedRewardId, selectedReward, isStampsMode, t]);
+
+  // ── EARN: Points Mode ──
+  const handleEarnPoints = useCallback(() => {
+    if (!checkAccumulationLimit()) return;
     const amountNum = parseFloat(amount);
     if (!amountNum || isNaN(amountNum)) {
       Alert.alert(t('common.error'), t('transactionAmount.invalidAmount'));
@@ -163,34 +198,25 @@ export default function TransactionAmountScreen() {
     }
     const willRedeem = !!selectedRewardId && !!selectedReward && (customerStatus?.points || 0) + points >= selectedReward.cout;
     const giftLine = willRedeem
-      ? `\n\n🎁 Cadeau "${selectedReward!.titre}" offert (${selectedReward!.cout} points déduits).`
+      ? t('transactionAmount.giftOffered', { title: selectedReward!.titre, cost: selectedReward!.cout })
       : '';
     Alert.alert(
       t('transaction.confirmTitle'),
-      `Montant : ${formatCurrency(amountNum)}\nPoints à gagner : ${points} points${giftLine}`,
+      t('transactionAmount.confirmEarnPoints', { amount: formatCurrency(amountNum, DEFAULT_CURRENCY, getIntlLocale(locale)), points, giftLine }),
       [
         { text: t('common.cancel'), style: 'cancel' },
         { text: t('transaction.validate'), onPress: () => processEarnWithAutoRedeem(amountNum, points, willRedeem) },
       ],
     );
-  };
+  }, [checkAccumulationLimit, amount, points, selectedRewardId, selectedReward, customerStatus?.points, t]);
 
   // ── EARN: Stamps Mode ──
-  const handleEarnStamps = () => {
-    const currentStamps = customerStatus?.points || 0;
-    if (merchant?.accumulationLimit != null && currentStamps >= merchant.accumulationLimit) {
-      if (selectedRewardId && selectedReward && currentStamps >= selectedReward.cout) {
-        handleRedeemOnly();
-        return;
-      }
-      const unit = isStampsMode ? t('common.stamps') : t('common.points');
-      Alert.alert(t('common.error'), t('transaction.accumulationLimitReached', { limit: merchant.accumulationLimit, unit }));
-      return;
-    }
+  const handleEarnStamps = useCallback(() => {
+    if (!checkAccumulationLimit()) return;
 
     if (isPerVisit) {
       // PER_VISIT: 1 stamp per visit, no amount needed
-      const afterStamps = currentStamps + 1;
+      const afterStamps = (customerStatus?.points || 0) + 1;
       const willGetReward = afterStamps >= stampsForReward && !!selectedReward;
 
       Alert.alert(
@@ -224,10 +250,10 @@ export default function TransactionAmountScreen() {
 
     Alert.alert(
       t('transaction.confirmTitle'),
-      `${t('transaction.purchaseAmount')} : ${formatCurrency(stampAmountNum)}\n` +
+      `${t('transaction.purchaseAmount')} : ${formatCurrency(stampAmountNum, DEFAULT_CURRENCY, getIntlLocale(locale))}\n` +
       `${t('transaction.stampsToEarn')} : ${stamps} ${t('common.stamps')}\n` +
         (willGetReward
-          ? `\n🎉 Récompense atteinte ! Le cadeau "${selectedReward!.titre}" sera offert automatiquement (${selectedReward!.cout} tampons déduits).`
+          ? t('transactionAmount.confirmEarnStampsReward', { title: selectedReward!.titre, cost: selectedReward!.cout })
           : `\n${t('transaction.totalAfter')} : ${afterStamps} / ${stampsForReward} ${t('common.stamps')}`),
       [
         { text: t('common.cancel'), style: 'cancel' },
@@ -237,7 +263,7 @@ export default function TransactionAmountScreen() {
         },
       ],
     );
-  };
+  }, [checkAccumulationLimit, isPerVisit, customerStatus?.points, stampsForReward, selectedReward, stampAmount, stamps, t]);
 
   // ── Earn stamps + auto-redeem if threshold is reached ──
   const processEarnWithAutoRedeem = async (
@@ -246,7 +272,7 @@ export default function TransactionAmountScreen() {
     autoRedeem: boolean,
   ) => {
     try {
-      setLoading(true);
+      set({ loading: true });
 
       // 1. Enregistrer l'acquisition des tampons
       await recordTransactionMutation.mutateAsync({
@@ -265,23 +291,23 @@ export default function TransactionAmountScreen() {
           points: selectedReward.cout,
           rewardId: selectedRewardId,
         });
-        setTransactionType('REDEEM_REWARD');
+        set({ transactionType: 'REDEEM_REWARD' });
       } else {
-        setTransactionType('EARN_POINTS');
+        set({ transactionType: 'EARN_POINTS' });
       }
 
-      setShowSuccess(true);
+      set({ showSuccess: true });
       setTimeout(() => {
-        setShowSuccess(false);
+        set({ showSuccess: false });
         router.back();
       }, SUCCESS_DISPLAY_MS);
     } catch (err: unknown) {
       Alert.alert(
         t('common.error'),
-        getErrorMessage(err, 'Impossible de valider la transaction.'),
+        getErrorMessage(err, t('transactionAmount.transactionError')),
       );
     } finally {
-      setLoading(false);
+      set({ loading: false });
     }
   };
 
@@ -295,24 +321,28 @@ export default function TransactionAmountScreen() {
   // ── REDEEM ONLY (cadeau sans achat) ──
   const handleRedeemOnly = () => {
     if (!selectedRewardId || !selectedReward) {
-      Alert.alert(t('common.error'), 'Veuillez sélectionner un cadeau à offrir.');
+      Alert.alert(t('common.error'), t('transactionAmount.selectReward'));
       return;
     }
     const currentPoints = customerStatus?.points || 0;
     if (currentPoints < selectedReward.cout) {
-      Alert.alert(t('common.error'), 'Le client n\'a pas assez de points pour ce cadeau.');
+      Alert.alert(t('common.error'), t('transactionAmount.notEnoughPoints'));
       return;
     }
     Alert.alert(
-      '🎁 Offrir un cadeau',
-      `Cadeau : "${selectedReward.titre}"\n${selectedReward.cout} ${isStampsMode ? 'tampons' : 'points'} déduits du solde du client.`,
+      t('transactionAmount.redeemTitle'),
+      t('transactionAmount.redeemConfirm', {
+        title: selectedReward.titre,
+        cost: selectedReward.cout,
+        unit: isStampsMode ? t('common.stamps') : t('common.points'),
+      }),
       [
         { text: t('common.cancel'), style: 'cancel' },
         {
-          text: 'Confirmer',
+          text: t('common.confirm'),
           onPress: async () => {
             try {
-              setLoading(true);
+              set({ loading: true });
               await recordTransactionMutation.mutateAsync({
                 clientId,
                 type: 'REDEEM_REWARD',
@@ -320,16 +350,15 @@ export default function TransactionAmountScreen() {
                 points: selectedReward.cout,
                 rewardId: selectedRewardId,
               });
-              setTransactionType('REDEEM_REWARD');
-              setShowSuccess(true);
+              set({ transactionType: 'REDEEM_REWARD', showSuccess: true });
               setTimeout(() => {
-                setShowSuccess(false);
+                set({ showSuccess: false });
                 router.back();
               }, SUCCESS_DISPLAY_MS);
             } catch (err: unknown) {
-              Alert.alert(t('common.error'), getErrorMessage(err, 'Impossible d\'offrir le cadeau.'));
+              Alert.alert(t('common.error'), getErrorMessage(err, t('transactionAmount.redeemError')));
             } finally {
-              setLoading(false);
+              set({ loading: false });
             }
           },
         },
@@ -340,69 +369,6 @@ export default function TransactionAmountScreen() {
   // ── Derived ──
   const amountNum = parseFloat(amount || '0') || 0;
   const isValidAmount = amountNum > 0;
-  const selectedReward = rewards.find((r) => r.id === selectedRewardId) || null;
-
-  const renderRewardSelector = (redeemOnly = false) => (
-    <View style={[styles.rewardSelectorCard, { backgroundColor: theme.bgCard }]}>
-      <Text style={[styles.rewardSelectorTitle, { color: theme.text }]}>
-        {redeemOnly ? '🎁 Choisir le cadeau à offrir' : t('transaction.chooseGift')}
-      </Text>
-      <Text style={[styles.rewardSelectorHint, { color: theme.textMuted }]}>
-        {redeemOnly
-          ? 'Seuls les cadeaux accessibles avec le solde actuel sont disponibles.'
-          : 'Sélectionner un cadeau à offrir maintenant (optionnel)'}
-      </Text>
-
-      {loadingRewards ? (
-        <View style={styles.rewardSelectorLoading}>
-          <ActivityIndicator size="small" color={theme.primary} />
-        </View>
-      ) : rewards.length === 0 ? (
-        <Text style={[styles.rewardSelectorEmpty, { color: theme.textMuted }]}>
-          {t('transaction.noGifts')}
-        </Text>
-      ) : (
-        <View style={styles.rewardSelectorList}>
-          {rewards.map((reward) => {
-            const isSelected = reward.id === selectedRewardId;
-            const isAffordable = (customerStatus?.points || 0) >= reward.cout;
-            return (
-              <TouchableOpacity
-                key={reward.id}
-                style={[
-                  styles.rewardSelectorRow,
-                  {
-                    borderColor: isSelected ? theme.primary : theme.border,
-                    backgroundColor: isSelected ? theme.primaryBg : theme.bg,
-                    opacity: isAffordable ? 1 : 0.5,
-                  },
-                ]}
-                onPress={() => setSelectedRewardId((prev) => (prev === reward.id ? null : reward.id))}
-                disabled={!isAffordable}
-                activeOpacity={0.7}
-              >
-                <View style={styles.rewardSelectorInfo}>
-                  <Text style={[styles.rewardSelectorName, { color: theme.text }]}>
-                    {reward.titre}
-                  </Text>
-                  <Text style={[styles.rewardSelectorMeta, { color: theme.textSecondary }]}>
-                    {reward.cout} {isStampsMode ? t('common.stamps') : t('common.points')}
-                  </Text>
-                </View>
-                {isAffordable ? (
-                  <View style={[styles.rewardSelectIndicator, { borderColor: isSelected ? theme.primary : theme.border, backgroundColor: isSelected ? theme.primary : 'transparent' }]} />
-                ) : (
-                  <Text style={[styles.rewardSelectorBadge, { color: theme.danger }]}>
-                    {t('transaction.insufficient')}
-                  </Text>
-                )}
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      )}
-    </View>
-  );
 
   if (loadingCustomer) {
     return (
@@ -462,10 +428,10 @@ export default function TransactionAmountScreen() {
                 styles.modeTab,
                 screenMode === 'earn' && { backgroundColor: theme.primary },
               ]}
-              onPress={() => { setScreenMode('earn'); setSelectedRewardId(null); }}
+              onPress={() => set({ screenMode: 'earn', selectedRewardId: null })}
             >
               <Text style={[styles.modeTabText, { color: screenMode === 'earn' ? '#fff' : theme.textSecondary }]}>
-                {isStampsMode ? '🏷 Achat / Tampons' : '🏷 Achat / Points'}
+                {isStampsMode ? t('transactionAmount.tabEarnStamps') : t('transactionAmount.tabEarnPoints')}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -473,10 +439,10 @@ export default function TransactionAmountScreen() {
                 styles.modeTab,
                 screenMode === 'redeem' && { backgroundColor: theme.primary },
               ]}
-              onPress={() => { setScreenMode('redeem'); setSelectedRewardId(null); }}
+              onPress={() => set({ screenMode: 'redeem', selectedRewardId: null })}
             >
               <Text style={[styles.modeTabText, { color: screenMode === 'redeem' ? '#fff' : theme.textSecondary }]}>
-                🎁 Cadeau
+                {t('transactionAmount.tabRedeem')}
               </Text>
             </TouchableOpacity>
           </View>
@@ -492,14 +458,24 @@ export default function TransactionAmountScreen() {
                 <View style={[styles.rewardSelectorCard, { backgroundColor: theme.bgCard, alignItems: 'center', gap: 8 }]}>
                   <Gift size={40} color={theme.textMuted} strokeWidth={1.5} />
                   <Text style={[styles.rewardSelectorEmpty, { color: theme.textMuted, textAlign: 'center' }]}>
-                    Ce client n'a pas encore assez de points pour un cadeau.
+                    {t('transactionAmount.notEnoughForReward')}
                   </Text>
                   <Text style={[{ color: theme.textMuted, fontSize: 13, textAlign: 'center' }]}>
-                    Solde actuel : {customerStatus?.points || 0} {isStampsMode ? 'tampons' : 'points'}
+                    {t('transactionAmount.currentBalance', { balance: customerStatus?.points || 0, unit: isStampsMode ? t('common.stamps') : t('common.points') })}
                   </Text>
                 </View>
               ) : (
-                renderRewardSelector(true)
+                <RewardSelector
+                  theme={theme}
+                  t={t}
+                  rewards={rewards}
+                  loadingRewards={loadingRewards}
+                  selectedRewardId={selectedRewardId}
+                  setSelectedRewardId={setSelectedRewardId}
+                  customerPoints={customerStatus?.points || 0}
+                  isStampsMode={isStampsMode}
+                  redeemOnly
+                />
               )}
             </View>
           ) : (
@@ -565,7 +541,16 @@ export default function TransactionAmountScreen() {
                 </Text>
               </TouchableOpacity>
 
-              {renderRewardSelector()}
+              <RewardSelector
+                theme={theme}
+                t={t}
+                rewards={rewards}
+                loadingRewards={loadingRewards}
+                selectedRewardId={selectedRewardId}
+                setSelectedRewardId={setSelectedRewardId}
+                customerPoints={customerStatus?.points || 0}
+                isStampsMode={isStampsMode}
+              />
             </View>
           ) : (
             /* ═══════════════════════════════════════════ */
@@ -612,11 +597,20 @@ export default function TransactionAmountScreen() {
                     { color: points > 0 ? theme.success : theme.textMuted },
                   ]}
                 >
-                  {points > 0 ? `Gagner ${points} points` : 'Entrez un montant'}
+                  {points > 0 ? t('transactionAmount.earnPointsPreview', { count: points }) : t('transactionAmount.enterAmountHint')}
                 </Text>
               </TouchableOpacity>
 
-              {renderRewardSelector()}
+              <RewardSelector
+                theme={theme}
+                t={t}
+                rewards={rewards}
+                loadingRewards={loadingRewards}
+                selectedRewardId={selectedRewardId}
+                setSelectedRewardId={setSelectedRewardId}
+                customerPoints={customerStatus?.points || 0}
+                isStampsMode={isStampsMode}
+              />
             </>
           )
           )}
@@ -659,39 +653,15 @@ export default function TransactionAmountScreen() {
         </View>
       </KeyboardAvoidingView>
 
-      {/* ── Success Modal ── */}
-      <Modal visible={showSuccess} transparent animationType="fade">
-        <View style={styles.successModal}>
-          <View style={[styles.successContent, { backgroundColor: theme.bgCard }]}>
-            {LottieView ? (
-              <LottieView
-                source={require('@/assets/animations/success.json')}
-                autoPlay
-                loop={false}
-                style={styles.successAnimation}
-              />
-            ) : (
-              <View style={[styles.successAnimation, { alignItems: 'center', justifyContent: 'center' }]}>
-                <CheckCircle size={64} color={theme.success} />
-              </View>
-            )}
-            <Text style={[styles.successTitle, { color: theme.success }]}>
-              {transactionType === 'EARN_POINTS'
-                ? isStampsMode
-                  ? '✓ Tampons ajoutés !'
-                  : '✓ Transaction validée !'
-                : '🎉 Cadeau offert !'}
-            </Text>
-            <Text style={[styles.successMessage, { color: theme.textSecondary }]}>
-              {transactionType === 'EARN_POINTS'
-                ? isStampsMode
-                  ? `${stamps} tampon${stamps > 1 ? 's' : ''} ajouté${stamps > 1 ? 's' : ''}.`
-                  : `${points} points ont été attribués au client.`
-                : 'La récompense a été offerte au client.'}
-            </Text>
-          </View>
-        </View>
-      </Modal>
+      <TransactionSuccessModal
+        visible={showSuccess}
+        theme={theme}
+        t={t}
+        transactionType={transactionType}
+        isStampsMode={isStampsMode}
+        stamps={stamps}
+        points={points}
+      />
     </>
   );
 }
@@ -850,37 +820,6 @@ const styles = StyleSheet.create({
   },
   calculateButtonText: { fontSize: 16, fontWeight: '700' },
 
-  // ── Reward Selector ──
-  rewardSelectorCard: {
-    marginHorizontal: 20,
-    marginTop: 15,
-    borderRadius: 14,
-    padding: 16,
-  },
-  rewardSelectorTitle: { fontSize: 15, fontWeight: '700', marginBottom: 4 },
-  rewardSelectorHint: { fontSize: 12, marginBottom: 12 },
-  rewardSelectorLoading: { paddingVertical: 8, alignItems: 'center' },
-  rewardSelectorEmpty: { fontSize: 13 },
-  rewardSelectorList: { gap: 8 },
-  rewardSelectorRow: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  rewardSelectorInfo: { flex: 1, paddingRight: 12 },
-  rewardSelectorName: { fontSize: 14, fontWeight: '700' },
-  rewardSelectorMeta: { fontSize: 12, marginTop: 4 },
-  rewardSelectorBadge: { fontSize: 12, fontWeight: '700' },
-  rewardSelectIndicator: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 2,
-  },
-
   // ── Mode Tabs ──
   modeTabs: {
     flexDirection: 'row',
@@ -897,6 +836,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modeTabText: { fontSize: 13, fontWeight: '700' },
+
+  // ── Reward Selector ──
+  rewardSelectorCard: {
+    marginHorizontal: 20,
+    marginTop: 16,
+    borderRadius: 14,
+    padding: 22,
+    elevation: 2,
+    shadowColor: '#1F2937',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+  },
+  rewardSelectorEmpty: {
+    fontSize: 14,
+    fontWeight: '500',
+    lineHeight: 20,
+  },
 
   // ── Actions ──
   actionsContainer: {
@@ -926,22 +883,4 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   validateButtonText: { fontSize: 16, fontWeight: '700', color: '#fff' },
-
-  // ── Success ──
-  successModal: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  successContent: {
-    borderRadius: 20,
-    padding: 40,
-    alignItems: 'center',
-    maxWidth: 320,
-    width: '85%',
-  },
-  successAnimation: { width: 150, height: 150 },
-  successTitle: { fontSize: 22, fontWeight: '700', marginTop: 16, marginBottom: 10 },
-  successMessage: { fontSize: 16, textAlign: 'center', lineHeight: 24 },
 });

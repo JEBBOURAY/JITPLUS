@@ -426,6 +426,7 @@ export default {
     launchError: 'Unable to launch Google %{action}',
     notConfigured: 'Google Client ID not configured',
     playServicesUnavailable: 'Google Play Services unavailable or outdated',
+    success: 'Signed in successfully!',
   },
 
   // ── Offline ──

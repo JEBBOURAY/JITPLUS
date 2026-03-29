@@ -53,8 +53,8 @@ export class MerchantStoreService {
     if (count >= maxStores) {
       throw new BadRequestException(
         maxStores === 1
-          ? 'Le plan Gratuit est limité à 1 boutique. Passez au plan Premium pour ajouter plus de magasins.'
-          : `Vous avez atteint la limite de ${maxStores} magasins.`,
+          ? "Le plan Gratuit ne permet qu'1 boutique. Passez au plan Pro pour gérer jusqu'à 10 boutiques — contactez notre équipe sur WhatsApp."
+          : `Vous avez atteint la limite de ${maxStores} boutiques incluses dans votre plan Pro. Contactez notre équipe si vous avez besoin de plus.`,
       );
     }
     const store = await this.storeRepo.create({

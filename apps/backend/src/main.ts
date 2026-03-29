@@ -87,11 +87,14 @@ async function bootstrap() {
   if (isProd && corsOrigins === '*') {
     throw new Error('[SECURITY] CORS_ORIGINS must not be "*" in production — specify exact origins');
   }
+  const allowedOrigins = corsOrigins
+    ? corsOrigins.split(',').map((o) => o.trim())
+    : '*';
   app.enableCors({
-    origin: corsOrigins
-      ? corsOrigins.split(',').map((o) => o.trim())
-      : '*', // only reached in development
-    credentials: !!corsOrigins,
+    origin: allowedOrigins,
+    credentials: Array.isArray(allowedOrigins),
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   });
 
   // Global exception filter — sanitize internal errors

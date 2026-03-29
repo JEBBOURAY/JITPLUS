@@ -92,7 +92,7 @@ export default function MyQRCodeScreen() {
       }
       await Sharing.shareAsync(uri, {
         mimeType: 'image/png',
-        dialogTitle: 'Partager mon QR Code',
+        dialogTitle: t('myQr.shareDialogTitle'),
         UTI: 'public.png',
       });
     } catch {

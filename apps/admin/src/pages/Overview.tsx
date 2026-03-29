@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getStats } from '../api';
-import { GlobalStats, MerchantRow, TrendPoint, PendingRequestBrief, AuditLogBrief } from '../types';
+import { GlobalStats, MerchantRow, TrendPoint, AuditLogBrief } from '../types';
 import StatCard from '../components/StatCard';
 import PlanBadge from '../components/PlanBadge';
 import { C, S } from '../theme';
@@ -100,16 +100,20 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 // ── Mini badge ────────────────────────────────────────────────────────────────
 function ActionBadge({ action }: { action: string }) {
   const color = ACTION_COLOR[action] ?? C.textMuted;
+  
+  // Map color root back to its alpha variable for the background
+  let alphaBg = '';
+  if (color === C.primary) alphaBg = C.primaryAlpha;
+  else if (color === C.green) alphaBg = C.greenAlpha;
+  else if (color === C.red) alphaBg = C.redAlpha;
+  else if (color === C.cyan) alphaBg = 'rgba(6, 182, 212, 0.15)'; // fallback for cyan
+  else if (color === C.amber) alphaBg = 'rgba(245, 158, 11, 0.15)'; // fallback for amber
+  else alphaBg = 'rgba(100, 116, 139, 0.15)'; // fallback for textMuted
+  
   return (
     <span style={{
-      display: 'inline-block',
-      padding: '2px 8px',
-      borderRadius: 999,
-      fontSize: 11,
-      fontWeight: 600,
-      background: color + '22',
-      color,
-      border: `1px solid ${color}44`,
+      ...S.badge(color, alphaBg),
+      border: `1px solid ${color}`,
     }}>
       {ACTION_LABELS[action] ?? action}
     </span>
@@ -134,7 +138,7 @@ export default function Overview() {
   if (error) return <p style={{ color: C.red }}>{error}</p>;
   if (!stats) return null;
 
-  const { merchants, clients, transactions, rewards, notifications, upgradeRequests, trends, recentMerchants, recentAuditLogs, pendingRequests } = stats;
+  const { merchants, clients, transactions, rewards, notifications, trends, recentMerchants, recentAuditLogs } = stats;
   const premiumPct = merchants.total ? Math.round((merchants.premium / merchants.total) * 100) : 0;
   const txTotal = transactions.earnPoints + transactions.redeemReward + transactions.adjustPoints;
   const today = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
@@ -148,20 +152,6 @@ export default function Overview() {
           <h2 style={{ margin: 0, fontWeight: 800, fontSize: 22, color: C.text }}>Vue d'ensemble</h2>
           <p style={{ margin: '4px 0 0', fontSize: 13, color: C.textMuted, textTransform: 'capitalize' }}>{today}</p>
         </div>
-        {upgradeRequests.pending > 0 && (
-          <button
-            onClick={() => navigate('/upgrade-requests')}
-            style={{ ...S.btn(C.amber), fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}
-          >
-            <span style={{
-              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-              width: 20, height: 20, borderRadius: '50%', background: '#fff3', fontSize: 11, fontWeight: 800,
-            }}>
-              {upgradeRequests.pending}
-            </span>
-            Demandes en attente
-          </button>
-        )}
       </div>
 
       {/* ── KPI Grid — Merchants ─────────────────────────────────────────── */}
@@ -281,60 +271,8 @@ export default function Overview() {
         </div>
       </div>
 
-      {/* ── Pending requests + Audit logs ───────────────────────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
-
-        {/* Pending upgrade requests */}
-        <div style={S.card}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-            <SectionTitle>Demandes Premium en attente</SectionTitle>
-            {upgradeRequests.pending > 0 && (
-              <button
-                onClick={() => navigate('/upgrade-requests')}
-                style={{ ...S.btn(C.primary), fontSize: 11, padding: '4px 10px' }}
-              >
-                Voir tout
-              </button>
-            )}
-          </div>
-          {pendingRequests.length === 0 ? (
-            <p style={{ color: C.textMuted, fontSize: 13, textAlign: 'center', padding: '20px 0' }}>
-              Aucune demande en attente
-            </p>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {pendingRequests.map((r: PendingRequestBrief) => (
-                <div
-                  key={r.id}
-                  onClick={() => navigate('/upgrade-requests')}
-                  style={{
-                    padding: '10px 12px',
-                    borderRadius: 8,
-                    background: C.bg,
-                    border: `1px solid ${C.border}`,
-                    cursor: 'pointer',
-                    transition: 'border-color .15s',
-                  }}
-                  onMouseEnter={(e) => ((e.currentTarget as HTMLDivElement).style.borderColor = C.primary)}
-                  onMouseLeave={(e) => ((e.currentTarget as HTMLDivElement).style.borderColor = C.border)}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <div>
-                      <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: C.text }}>{r.merchant.nom}</p>
-                      <p style={{ margin: '2px 0 0', fontSize: 11, color: C.textMuted }}>{r.merchant.email}</p>
-                    </div>
-                    <span style={{ fontSize: 11, color: C.textMuted }}>{fmtDateShort(r.createdAt)}</span>
-                  </div>
-                  {r.message && (
-                    <p style={{ margin: '6px 0 0', fontSize: 12, color: C.textMuted, fontStyle: 'italic', lineHeight: 1.4 }}>
-                      "{r.message.length > 80 ? r.message.slice(0, 80) + '…' : r.message}"
-                    </p>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+      {/* ── Audit logs ──────────────────────────────────────────────── */}
+      <div style={{ marginBottom: 20 }}>
 
         {/* Recent audit logs */}
         <div style={S.card}>
@@ -411,7 +349,7 @@ export default function Overview() {
               <tr
                 key={m.id}
                 onClick={() => navigate(`/merchants/${m.id}`)}
-                style={{ borderBottom: `1px solid ${C.border}22`, cursor: 'pointer', transition: 'background .15s' }}
+                style={{ borderBottom: `1px solid `, cursor: 'pointer', transition: 'background .15s' }}
                 onMouseEnter={(e) => ((e.currentTarget as HTMLTableRowElement).style.background = C.surfaceHover)}
                 onMouseLeave={(e) => ((e.currentTarget as HTMLTableRowElement).style.background = 'transparent')}
               >
@@ -421,7 +359,7 @@ export default function Overview() {
                 <td style={{ padding: '10px 10px' }}>
                   <span style={{
                     display: 'inline-block', padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 600,
-                    background: m.isActive ? C.green + '22' : C.red + '22',
+                    background: m.isActive ? C.greenAlpha : C.redAlpha,
                     color: m.isActive ? C.green : C.red,
                   }}>
                     {m.isActive ? 'Actif' : 'Banni'}

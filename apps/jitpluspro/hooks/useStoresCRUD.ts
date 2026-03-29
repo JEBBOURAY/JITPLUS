@@ -30,8 +30,8 @@ export function useStoresCRUD() {
     qc.invalidateQueries({ queryKey: queryKeys.stores });
   }, [qc]);
 
-  const onRefresh = useGuardedCallback(() => {
-    qc.invalidateQueries({ queryKey: queryKeys.stores });
+  const onRefresh = useGuardedCallback(async () => {
+    await qc.invalidateQueries({ queryKey: queryKeys.stores });
   }, [qc]);
 
   // ── Can create? ──

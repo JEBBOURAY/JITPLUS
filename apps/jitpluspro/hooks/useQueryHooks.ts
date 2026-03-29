@@ -22,6 +22,7 @@ import type {
   CreateStorePayload,
   RecordTransactionPayload,
   PendingGift,
+  TeamMember,
 } from '@/types';
 
 // Re-export types for backward compatibility
@@ -44,6 +45,7 @@ export const queryKeys = {
   whatsappQuota: ['whatsapp-quota'] as const,
   emailQuota: ['email-quota'] as const,
   pendingGifts: ['pending-gifts'] as const,
+  teamMembers: ['team-members'] as const,
 } as const;
 
 // ── Stale time constants (ms) ───────────────────────────────────
@@ -267,8 +269,8 @@ export function useTransactions(enabled = true) {
       return res.data;
     },
     initialPageParam: 1,
-    getNextPageParam: (lastPage, allPages) =>
-      lastPage.transactions.length === 20 ? allPages.length + 1 : undefined,
+    getNextPageParam: (lastPage, _allPages, lastPageParam) =>
+      lastPage.transactions.length === 20 ? (lastPageParam as number) + 1 : undefined,
     staleTime: STALE.SHORT,
     placeholderData: keepPreviousData,
     enabled,
@@ -395,9 +397,15 @@ const ALLOWED_LOGO_MIMES = new Set([
   'image/jpeg', 'image/png', 'image/webp', 'image/gif',
 ]);
 
+const MAX_LOGO_SIZE = 5 * 1024 * 1024; // 5 MB
+
 export function useUploadMerchantLogo() {
   return useMutation({
-    mutationFn: async (asset: { uri: string; mimeType?: string | null; merchantName?: string }) => {
+    mutationFn: async (asset: { uri: string; mimeType?: string | null; merchantName?: string; fileSize?: number | null }) => {
+      // Validate file size before uploading
+      if (asset.fileSize && asset.fileSize > MAX_LOGO_SIZE) {
+        throw new Error('Fichier trop volumineux (max 5 Mo)');
+      }
       const ext = (asset.uri.split('.').pop() ?? 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
       const mime = asset.mimeType ?? `image/${ext}`;
       if (!ALLOWED_LOGO_MIMES.has(mime)) {
@@ -468,6 +476,51 @@ export function useSendEmail() {
       qc.invalidateQueries({ queryKey: queryKeys.emailQuota });
       qc.invalidateQueries({ queryKey: queryKeys.notificationHistory });
     },
+  });
+}
+
+// ── Team Members ────────────────────────────────────────────────
+export function useTeamMembers(enabled = true) {
+  return useQuery<TeamMember[]>({
+    queryKey: queryKeys.teamMembers,
+    queryFn: async () => {
+      const res = await api.get('/merchant/team');
+      return res.data;
+    },
+    staleTime: STALE.MEDIUM,
+    enabled,
+  });
+}
+
+export function useCreateTeamMember() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: { nom: string; email: string; password: string }) => {
+      const res = await api.post('/merchant/team', payload);
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.teamMembers }),
+  });
+}
+
+export function useUpdateTeamMember() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, payload }: { id: string; payload: Record<string, string | boolean> }) => {
+      const res = await api.patch(`/merchant/team/${id}`, payload);
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.teamMembers }),
+  });
+}
+
+export function useDeleteTeamMember() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      await api.delete(`/merchant/team/${id}`);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.teamMembers }),
   });
 }
 

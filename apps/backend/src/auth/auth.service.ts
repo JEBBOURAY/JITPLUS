@@ -339,7 +339,7 @@ export class AuthService {
       ? `${who} s'est connecté(e) sur ${deviceName}`
       : `${who} s'est connecté(e) à votre commerce`;
 
-    await this.pushProvider.sendMulticast([token], title, body);
+    await this.pushProvider.sendMulticast([token], title, body, undefined, undefined, 'login-alerts');
   }
 
   /**
@@ -571,7 +571,8 @@ export class AuthService {
       .catch((err) => this.logger.warn('Verification email failed', errMsg(err)));
 
     // Merchant-to-merchant referral bonus is deferred until the referred merchant
-    // completes trial and pays their first subscription (handled in adminActivatePremium / upgrade-request approval).
+    // subscribes to paid PREMIUM (handled automatically in adminActivatePremium,
+    // upgrade-request approval, adminSetPlanDates, and applyEarnedReferralMonths).
 
     // Create client referral record (fire-and-forget)
     if (referredByClientId) {
@@ -845,7 +846,8 @@ export class AuthService {
       .catch((err) => this.logger.warn('Welcome email failed', errMsg(err)));
 
     // Merchant-to-merchant referral bonus is deferred until the referred merchant
-    // completes trial and pays their first subscription (handled in adminActivatePremium / upgrade-request approval).
+    // subscribes to paid PREMIUM (handled automatically in adminActivatePremium,
+    // upgrade-request approval, adminSetPlanDates, and applyEarnedReferralMonths).
 
     // Create client referral record (fire-and-forget)
     if (referredByClientId) {

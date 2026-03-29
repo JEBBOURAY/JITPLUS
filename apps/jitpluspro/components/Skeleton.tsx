@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { View, DimensionValue, StyleSheet, ViewStyle, useWindowDimensions, Animated } from 'react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 
@@ -44,10 +44,19 @@ function ShimmerBlock({
 }) {
   const theme = useTheme();
   const { width: SCREEN_W } = useWindowDimensions();
+  const registeredRef = useRef(false);
 
   useEffect(() => {
-    startShimmerLoop();
-    return () => stopShimmerLoop();
+    if (!registeredRef.current) {
+      registeredRef.current = true;
+      startShimmerLoop();
+    }
+    return () => {
+      if (registeredRef.current) {
+        registeredRef.current = false;
+        stopShimmerLoop();
+      }
+    };
   }, []);
 
   const translateX = _shimmerProgress.interpolate({

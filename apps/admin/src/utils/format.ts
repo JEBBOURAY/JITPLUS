@@ -48,10 +48,13 @@ export const ACTION_LABELS: Record<string, string> = {
   BAN_MERCHANT: 'Compte banni',
   UNBAN_MERCHANT: 'Compte débanni',
   DELETE_MERCHANT: 'Compte supprimé',
+  DEACTIVATE_CLIENT: 'Client désactivé',
+  ACTIVATE_CLIENT: 'Client réactivé',
+  DELETE_CLIENT: 'Client supprimé',
+  ADMIN_SEND_NOTIFICATION: 'Notification envoyée',
   RESET_PASSWORD: 'Mot de passe réinitialisé',
   UPDATE_PLAN_DURATION: 'Durée du plan modifiée',
-  APPROVE_UPGRADE_REQUEST: 'Demande approuvée',
-  REJECT_UPGRADE_REQUEST: 'Demande rejetée',
+
 };
 
 /** Color mapping for audit actions */
@@ -62,10 +65,13 @@ export const ACTION_COLOR: Record<string, string> = {
   BAN_MERCHANT: C.red,
   UNBAN_MERCHANT: C.green,
   DELETE_MERCHANT: C.red,
+  DEACTIVATE_CLIENT: C.red,
+  ACTIVATE_CLIENT: C.green,
+  DELETE_CLIENT: C.red,
+  ADMIN_SEND_NOTIFICATION: C.cyan,
   RESET_PASSWORD: C.amber,
   UPDATE_PLAN_DURATION: C.cyan,
-  APPROVE_UPGRADE_REQUEST: C.green,
-  REJECT_UPGRADE_REQUEST: C.red,
+
 };
 
 // ── Shared table styles ─────────────────────────────────────────────────────

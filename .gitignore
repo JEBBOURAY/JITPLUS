@@ -57,6 +57,17 @@ apps/backend/src/generated/
 **/*.jks
 **/*.keystore
 
+# Build artifacts — never commit binaries
+**/*.aab
+**/*.apk
+
+# TypeScript build output logs
+**/tsc_output*.txt
+**/tsc_out*.txt
+**/ts-output*.txt
+
 # EAS credentials — never commit
 apps/jitplus/credentials.json
 apps/jitpluspro/credentials.json
+apps/jitplus/credentials/
+apps/jitpluspro/credentials/

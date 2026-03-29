@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 import { router } from 'expo-router';
-import { ArrowRight, Mail, ChevronLeft, Lock, Eye, EyeOff, Check } from 'lucide-react-native';
+import { ArrowRight, Mail, ChevronLeft, Lock, Eye, EyeOff, Check, CheckCircle } from 'lucide-react-native';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -23,9 +23,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
 import { isValidEmail } from '@/utils/validation';
 import { useGoogleAuth } from '@/hooks/useGoogleAuth';
+import { haptic } from '@/utils/haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import BrandText from '@/components/BrandText';
 import FormError from '@/components/FormError';
+import { GoogleLogo } from '@/components/GoogleLogo';
 
 type LoginMethod = 'select' | 'email' | 'google';
 
@@ -134,14 +136,13 @@ export default function LoginScreen() {
       {/* Google */}
       <TouchableOpacity
         style={[styles.socialBtn, { backgroundColor: theme.bgCard, borderColor: theme.inputBorder }]}
-        onPress={() => { selectMethod('google'); google.promptGoogle(); }}
+        onPress={() => { haptic(); selectMethod('google'); google.promptGoogle(); }}
+        disabled={isLoading || google.isLoading}
         activeOpacity={0.7}
         accessibilityRole="button"
         accessibilityLabel={t('login.loginWithGoogle')}
       >
-        <View style={styles.googleIconWrap}>
-          <Text style={styles.googleG}>G</Text>
-        </View>
+        <GoogleLogo size={ms(20)} />
         <Text style={[styles.socialBtnText, { color: theme.text }]}>{t('login.loginWithGoogle')}</Text>
       </TouchableOpacity>
 
@@ -267,13 +268,20 @@ export default function LoginScreen() {
       opacity: cardAnim,
       transform: [{ translateY: cardAnim.interpolate({ inputRange: [0, 1], outputRange: [30, 0] }) }],
     }]}>
-      <TouchableOpacity onPress={handleBack} style={styles.backBtn} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={t('common.back')}>
+      <TouchableOpacity
+        onPress={handleBack}
+        disabled={isLoading || google.isSuccess}
+        style={[styles.backBtn, (isLoading || google.isSuccess) && { opacity: 0.3 }]}
+        activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityLabel={t('common.back')}
+      >
         <ChevronLeft size={ms(22)} color={theme.text} strokeWidth={1.5} />
       </TouchableOpacity>
 
       <View style={[styles.formHeader, { alignItems: 'center' }]}>
-        <View style={[styles.formIconBg, { backgroundColor: '#EA433512' }]}>
-          <Text style={{ fontSize: ms(28), fontWeight: '700', color: '#EA4335' }}>G</Text>
+        <View style={[styles.formIconBg, { backgroundColor: '#f5f5f5' }]}>
+          <GoogleLogo size={ms(32)} />
         </View>
         <Text style={[styles.cardTitle, { color: theme.text, textAlign: 'center' }]}>{t('login.googleLoginTitle')}</Text>
         {isLoading ? (
@@ -281,11 +289,16 @@ export default function LoginScreen() {
             <ActivityIndicator size="large" color={palette.violet} />
             <Text style={[styles.cardSubtitle, { color: theme.textMuted, textAlign: 'center' }]}>{t('login.googleLoginInProgress')}</Text>
           </View>
+        ) : google.isSuccess ? (
+          <View style={{ alignItems: 'center', gap: hp(10), marginTop: hp(16) }}>
+            <CheckCircle size={ms(52)} color="#34A853" strokeWidth={1.5} />
+            <Text style={{ color: '#34A853', fontWeight: '700', fontSize: fontSize.md }}>{t('googleAuth.success')}</Text>
+          </View>
         ) : error ? (
           <>
             <Text style={[styles.errorText, { color: theme.danger, marginTop: hp(12) }]}>{error}</Text>
             <TouchableOpacity
-              onPress={google.promptGoogle}
+              onPress={() => { haptic(); google.promptGoogle(); }}
               activeOpacity={0.85}
               style={[styles.button, { marginTop: hp(16), width: '100%', backgroundColor: palette.violet }]}
             >

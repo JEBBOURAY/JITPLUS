@@ -1,15 +1,17 @@
-import { Injectable, Inject, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Inject, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
 import { Reward } from '@prisma/client';
 import { IRewardRepository, REWARD_REPOSITORY } from './reward.repository.interface';
 import { REWARDS_CACHE_TTL } from '../common/constants';
+import { MerchantPlanService } from '../merchant/services/merchant-plan.service';
 
 @Injectable()
 export class RewardsService {
   constructor(
     @Inject(REWARD_REPOSITORY) private rewardRepo: IRewardRepository,
     @Inject(CACHE_MANAGER) private cache: Cache,
+    private planService: MerchantPlanService,
   ) {}
 
   private rewardsCacheKey(merchantId: string): string {
@@ -34,6 +36,18 @@ export class RewardsService {
 
   async create(merchantId: string, data: { titre: string; cout: number; description?: string }): Promise<Reward> {
     if (data.cout <= 0) throw new BadRequestException('Le coût en points doit être supérieur à 0');
+
+    // FREE plan: maximum 1 reward allowed
+    const isPremium = await this.planService.isPremium(merchantId);
+    if (!isPremium) {
+      const existing = await this.rewardRepo.findAllByMerchant(merchantId, 1);
+      if (existing.length >= 1) {
+        throw new ForbiddenException(
+          'Le plan Gratuit est limité à 1 cadeau. Passez au plan Pro pour des cadeaux illimités — contactez notre équipe sur WhatsApp.',
+        );
+      }
+    }
+
     const reward = await this.rewardRepo.create({ ...data, merchantId });
     await this.invalidateCache(merchantId);
     return reward;

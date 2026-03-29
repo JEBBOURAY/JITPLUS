@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { getNotifications } from '../api';
 import { NotificationRow, Pagination } from '../types';
 import { C, S } from '../theme';
@@ -28,26 +28,35 @@ export default function Notifications() {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const fetchingRef = useRef(false);
 
-  // Debounce search
+  // Debounce search — also reset page to 1 (batched with React 18)
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(search), 400);
+    const t = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 400);
     return () => clearTimeout(t);
   }, [search]);
 
-  useEffect(() => {
+  const fetchData = useCallback(async () => {
+    if (fetchingRef.current) return;
+    fetchingRef.current = true;
+    setError('');
     setLoading(true);
-    getNotifications(page, 20, channel || undefined, debouncedSearch || undefined)
-      .then((r) => {
-        setNotifications(r.notifications);
-        setPagination(r.pagination);
-      })
-      .catch((e: unknown) => setError(getErrorMessage(e)))
-      .finally(() => setLoading(false));
+    try {
+      const r = await getNotifications(page, 20, channel || undefined, debouncedSearch || undefined);
+      setNotifications(r.notifications);
+      setPagination(r.pagination);
+    } catch (e: unknown) {
+      setError(getErrorMessage(e));
+    } finally {
+      setLoading(false);
+      fetchingRef.current = false;
+    }
   }, [page, channel, debouncedSearch]);
 
-  // Reset page on filter change
-  useEffect(() => { setPage(1); }, [channel, debouncedSearch]);
+  useEffect(() => { fetchData(); }, [fetchData]);
 
   return (
     <div style={{ paddingBottom: 48 }}>
@@ -63,7 +72,7 @@ export default function Notifications() {
           {CHANNELS.map((ch) => (
             <button
               key={ch.value}
-              onClick={() => setChannel(ch.value)}
+              onClick={() => { setChannel(ch.value); setPage(1); }}
               style={{
                 ...S.btn(channel === ch.value ? C.primary : C.surfaceHover),
                 padding: '6px 12px',

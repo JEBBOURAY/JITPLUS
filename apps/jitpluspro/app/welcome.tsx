@@ -154,6 +154,7 @@ export default function WelcomeScreen() {
         onScroll={handleScroll}
         scrollEventThrottle={16}
         bounces={false}
+        getItemLayout={(_data, index) => ({ length: SCREEN_WIDTH, offset: SCREEN_WIDTH * index, index })}
       />
 
       {/* Bottom: dots + button */}
@@ -189,7 +190,7 @@ export default function WelcomeScreen() {
           </LinearGradient>
         </TouchableOpacity>
 
-        <Text style={[styles.madeIn, { color: theme.textMuted }]}>Made in Morocco 🇲🇦</Text>
+        <Text style={[styles.madeIn, { color: theme.textMuted }]}>{t('welcome.madeIn')}</Text>
       </SafeAreaView>
     </View>
   );

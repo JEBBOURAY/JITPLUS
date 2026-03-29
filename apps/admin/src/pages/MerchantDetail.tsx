@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   getMerchantDetail,
+  getMerchantSubscriptionHistory,
   activatePremium,
   revokePremium,
   banMerchant,
@@ -9,7 +10,7 @@ import {
   deleteMerchant,
   setPlanDates,
 } from '../api';
-import { MerchantDetail } from '../types';
+import { MerchantDetail, SubscriptionHistoryEvent } from '../types';
 import PlanBadge from '../components/PlanBadge';
 import { C, S } from '../theme';
 import { fmtDateTime } from '../utils/format';
@@ -48,6 +49,9 @@ export default function MerchantDetailPage() {
   const [toast, setToast] = useState('');
   const [dateForm, setDateForm] = useState({ startDate: '', endDate: '' });
   const [savingDates, setSavingDates] = useState(false);
+  const [history, setHistory] = useState<SubscriptionHistoryEvent[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState('');
   // Confirmation modal state for destructive actions
   const [confirmModal, setConfirmModal] = useState<{
     title: string;
@@ -62,6 +66,8 @@ export default function MerchantDetailPage() {
   const load = useCallback(async () => {
     if (!id) return;
     setLoading(true);
+    setHistoryLoading(true);
+    setHistoryError('');
     try {
       const m = await getMerchantDetail(id);
       setMerchant(m);
@@ -69,8 +75,18 @@ export default function MerchantDetailPage() {
         startDate: m.trialStartedAt ? m.trialStartedAt.slice(0, 10) : '',
         endDate: m.planExpiresAt ? m.planExpiresAt.slice(0, 10) : '',
       });
+
+      try {
+        const h = await getMerchantSubscriptionHistory(id);
+        setHistory(h.events);
+      } catch (e) {
+        setHistoryError(getErrorMessage(e));
+      } finally {
+        setHistoryLoading(false);
+      }
     } catch (e) {
       setError(getErrorMessage(e));
+      setHistoryLoading(false);
     } finally {
       setLoading(false);
     }
@@ -198,7 +214,7 @@ export default function MerchantDetailPage() {
         </div>
 
         {/* Manual date editor */}
-        <div style={{ borderTop: `1px solid ${C.border}33`, paddingTop: 14 }}>
+        <div style={{ borderTop: `1px solid `, paddingTop: 14 }}>
           <p style={{ margin: '0 0 12px', fontSize: 12, color: C.textMuted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.8 }}>
             Modifier les dates manuellement
           </p>
@@ -263,6 +279,43 @@ export default function MerchantDetailPage() {
             {savingDates ? '…' : '💾 Enregistrer les dates'}
           </button>
         </div>
+      </div>
+
+      {/* Subscription history */}
+      <div style={{ ...S.card, marginBottom: 24 }}>
+        <h3 style={{ margin: '0 0 14px', fontSize: 14, fontWeight: 700 }}>Historique d'abonnement</h3>
+
+        {historyLoading ? (
+          <p style={{ margin: 0, color: C.textMuted, fontSize: 13 }}>Chargement de l'historique…</p>
+        ) : historyError ? (
+          <p style={{ margin: 0, color: C.red, fontSize: 13 }}>{historyError}</p>
+        ) : history.length === 0 ? (
+          <p style={{ margin: 0, color: C.textMuted, fontSize: 13 }}>Aucun événement d'abonnement trouvé.</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {history.map((event) => (
+              <div
+                key={event.id}
+                style={{
+                  background: C.bg,
+                  border: `1px solid ${C.border}`,
+                  borderLeft: `4px solid ${historyEventColor(event.action)}`,
+                  borderRadius: 8,
+                  padding: '10px 12px',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, marginBottom: 4 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{historyEventLabel(event.action)}</span>
+                  <span style={{ fontSize: 11, color: C.textMuted, whiteSpace: 'nowrap' }}>{fmtDateTime(event.createdAt)}</span>
+                </div>
+                <p style={{ margin: 0, fontSize: 12, color: C.textMuted }}>{event.summary}</p>
+                {event.adminEmail && (
+                  <p style={{ margin: '6px 0 0', fontSize: 11, color: C.textMuted }}>Par: {event.adminEmail}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Actions */}
@@ -417,9 +470,43 @@ export default function MerchantDetailPage() {
 
 function Row({ label, value }: { label: string; value: string | number }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: `1px solid ${C.border}22`, paddingBottom: 5 }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: `1px solid `, paddingBottom: 5 }}>
       <span style={{ color: C.textMuted }}>{label}</span>
       <span style={{ fontWeight: 600 }}>{value}</span>
     </div>
   );
+}
+
+function historyEventLabel(action: string) {
+  switch (action) {
+    case 'ACCOUNT_CREATED':
+      return 'Création du compte';
+    case 'ACTIVATE_PREMIUM':
+      return 'Premium activé';
+    case 'REVOKE_PREMIUM':
+      return 'Premium révoqué';
+    case 'UPDATE_PLAN_DURATION':
+      return 'Dates modifiées';
+    case 'CURRENT_STATE':
+      return 'État actuel';
+    default:
+      return action;
+  }
+}
+
+function historyEventColor(action: string) {
+  switch (action) {
+    case 'ACCOUNT_CREATED':
+      return C.blue;
+    case 'ACTIVATE_PREMIUM':
+      return C.green;
+    case 'REVOKE_PREMIUM':
+      return C.red;
+    case 'UPDATE_PLAN_DURATION':
+      return C.amber;
+    case 'CURRENT_STATE':
+      return C.cyan;
+    default:
+      return C.textMuted;
+  }
 }

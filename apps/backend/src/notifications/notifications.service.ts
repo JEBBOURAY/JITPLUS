@@ -112,27 +112,30 @@ export class NotificationsService {
 
     this.logger.log(`Sending "${dto.title}" to ${tokens.length} device(s), ${allClientIds.length} total client(s) for merchant ${merchantId}`);
 
-    let successCount = 0;
-    let failureCount = 0;
+    let fcmSuccessCount = 0;
+    let fcmFailureCount = 0;
     let invalidTokens: string[] = [];
     try {
       const result = await this.pushProvider.sendMulticast(tokens, dto.title, dto.body, imageUrl, fcmData);
-      successCount = result.successCount;
-      failureCount = result.failureCount;
+      fcmSuccessCount = result.successCount;
+      fcmFailureCount = result.failureCount;
       invalidTokens = result.invalidTokens;
     } catch (error) {
       this.logger.error(`Push multicast failed for merchant ${merchantId}: ${error}`);
-      failureCount = tokens.length;
+      fcmFailureCount = tokens.length;
     }
 
-    // Create notification record — recipientCount = all clients with loyalty card
+    // All clients are notified via DB record + WebSocket; FCM push is an additional wake-up signal.
+    // successCount = all clients notified (not just FCM), failureCount = FCM-only failures (for monitoring).
+    const uniqueClientIds = [...new Set(allClientIds)];
     const notification = await this.notificationRepo.create({
-      data: { merchantId, title: dto.title, body: dto.body, recipientCount: allClientIds.length, successCount, failureCount, isBroadcast: true, channel: 'PUSH' },
+      data: { merchantId, title: dto.title, body: dto.body, recipientCount: uniqueClientIds.length, successCount: uniqueClientIds.length, failureCount: fcmFailureCount, isBroadcast: true, channel: 'PUSH' },
     });
+
+    this.logger.log(`Push notification stored: ${uniqueClientIds.length} clients notified, FCM: ${fcmSuccessCount} OK / ${fcmFailureCount} failed`);
 
     // Create per-client notification status records for ALL clients (not just push).
     // Chunked by 500 to avoid DB timeouts and lock contention on large merchants.
-    const uniqueClientIds = [...new Set(allClientIds)];
     if (uniqueClientIds.length > 0) {
       const CHUNK_SIZE = 500;
       try {
@@ -186,7 +189,7 @@ export class NotificationsService {
       }
     }
 
-    return { id: notification.id, title: notification.title, body: notification.body, recipientCount: uniqueClientIds.length, successCount, failureCount, createdAt: notification.createdAt };
+    return { id: notification.id, title: notification.title, body: notification.body, recipientCount: uniqueClientIds.length, successCount: uniqueClientIds.length, failureCount: fcmFailureCount, createdAt: notification.createdAt };
   }
 
   /**
@@ -247,7 +250,7 @@ export class NotificationsService {
 
       // 3. Create in-app notification record
       const notification = await this.notificationRepo.create({
-        data: { merchantId, title, body, recipientCount: 1, successCount, failureCount },
+        data: { merchantId, title, body, recipientCount: 1, successCount, failureCount, channel: 'PUSH' },
       });
 
       // 4. Create per-client status so it appears in the client's feed
@@ -517,6 +520,177 @@ export class NotificationsService {
       emailQuotaMax: merchant.emailQuotaMax,
       remaining: merchant.emailQuotaMax - merchant.emailQuotaUsed,
     };
+  }
+
+  // ── Admin broadcast: push to all merchants ─────────────────────────────────
+  async sendPushToAllMerchants(title: string, body: string): Promise<{
+    recipientCount: number;
+    successCount: number;
+    failureCount: number;
+  }> {
+    const merchants: { id: string; pushToken: string }[] = [];
+    let cursor: string | undefined;
+
+    while (true) {
+      const batch = await this.merchantRepo.findMany({
+        where: { isActive: true, pushToken: { not: null }, deletedAt: null },
+        select: { id: true, pushToken: true },
+        take: NotificationsService.CLIENT_BATCH_SIZE,
+        ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+        orderBy: { id: 'asc' },
+      });
+      if (batch.length === 0) break;
+      merchants.push(
+        ...batch.filter((m: any): m is { id: string; pushToken: string } => !!m.pushToken),
+      );
+      cursor = batch[batch.length - 1].id;
+      if (batch.length < NotificationsService.CLIENT_BATCH_SIZE) break;
+    }
+
+    if (merchants.length === 0) {
+      return { recipientCount: 0, successCount: 0, failureCount: 0 };
+    }
+
+    const tokens = merchants.map((m) => m.pushToken);
+    this.logger.log(`Admin broadcast push to ${tokens.length} merchant(s)`);
+
+    try {
+      const result = await this.pushProvider.sendMulticast(tokens, title, body, undefined, { event: 'admin_broadcast' }, 'jitpro-default');
+      return { recipientCount: tokens.length, successCount: result.successCount, failureCount: result.failureCount };
+    } catch (error) {
+      this.logger.error(`Admin push to merchants failed: ${error}`);
+      return { recipientCount: tokens.length, successCount: 0, failureCount: tokens.length };
+    }
+  }
+
+  // ── Admin broadcast: push to all clients ──────────────────────────────────
+  async sendPushToAllClients(title: string, body: string): Promise<{
+    recipientCount: number;
+    successCount: number;
+    failureCount: number;
+  }> {
+    const clients: { id: string; pushToken: string }[] = [];
+    let cursor: string | undefined;
+
+    while (true) {
+      const batch = await this.clientRepo.findMany({
+        where: { pushToken: { not: null }, notifPush: true, deletedAt: null },
+        select: { id: true, pushToken: true },
+        take: NotificationsService.CLIENT_BATCH_SIZE,
+        ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+        orderBy: { id: 'asc' },
+      });
+      if (batch.length === 0) break;
+      clients.push(
+        ...batch.filter((c: any): c is { id: string; pushToken: string } => !!c.pushToken),
+      );
+      cursor = batch[batch.length - 1].id;
+      if (batch.length < NotificationsService.CLIENT_BATCH_SIZE) break;
+    }
+
+    if (clients.length === 0) {
+      return { recipientCount: 0, successCount: 0, failureCount: 0 };
+    }
+
+    const tokens = clients.map((c) => c.pushToken);
+    this.logger.log(`Admin broadcast push to ${tokens.length} client(s)`);
+
+    try {
+      const result = await this.pushProvider.sendMulticast(tokens, title, body, undefined, { event: 'admin_broadcast' });
+      return { recipientCount: tokens.length, successCount: result.successCount, failureCount: result.failureCount };
+    } catch (error) {
+      this.logger.error(`Admin push to clients failed: ${error}`);
+      return { recipientCount: tokens.length, successCount: 0, failureCount: tokens.length };
+    }
+  }
+
+  // ── Admin broadcast: email to all merchants ───────────────────────────────
+  async sendEmailToAllMerchants(subject: string, body: string): Promise<{
+    recipientCount: number;
+    successCount: number;
+    failureCount: number;
+  }> {
+    const merchants: { email: string; nom: string }[] = [];
+    let cursor: string | undefined;
+
+    while (true) {
+      const batch = await this.merchantRepo.findMany({
+        where: { isActive: true, deletedAt: null },
+        select: { id: true, email: true, nom: true },
+        take: NotificationsService.CLIENT_BATCH_SIZE,
+        ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+        orderBy: { id: 'asc' },
+      });
+      if (batch.length === 0) break;
+      merchants.push(...batch.map((m: any) => ({ email: m.email, nom: m.nom })));
+      cursor = batch[batch.length - 1].id;
+      if (batch.length < NotificationsService.CLIENT_BATCH_SIZE) break;
+    }
+
+    if (merchants.length === 0) {
+      return { recipientCount: 0, successCount: 0, failureCount: 0 };
+    }
+
+    this.logger.log(`Admin email broadcast to ${merchants.length} merchant(s)`);
+
+    try {
+      const result = await this.resendService.sendBlast(
+        merchants.map((m) => ({ email: m.email, prenom: m.nom })),
+        subject,
+        body,
+        'JitPlus Admin',
+      );
+      return { recipientCount: result.total, successCount: result.successCount, failureCount: result.failureCount };
+    } catch (error) {
+      this.logger.error(`Admin email to merchants failed: ${error}`);
+      return { recipientCount: merchants.length, successCount: 0, failureCount: merchants.length };
+    }
+  }
+
+  // ── Admin broadcast: email to all clients ─────────────────────────────────
+  async sendEmailToAllClients(subject: string, body: string): Promise<{
+    recipientCount: number;
+    successCount: number;
+    failureCount: number;
+  }> {
+    const clients: { email: string; prenom: string | null }[] = [];
+    let cursor: string | undefined;
+
+    while (true) {
+      const batch = await this.clientRepo.findMany({
+        where: { email: { not: null }, notifEmail: true, deletedAt: null },
+        select: { id: true, email: true, prenom: true },
+        take: NotificationsService.CLIENT_BATCH_SIZE,
+        ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+        orderBy: { id: 'asc' },
+      });
+      if (batch.length === 0) break;
+      clients.push(
+        ...batch.filter((c: any): c is { id: string; email: string; prenom: string | null } => !!c.email)
+          .map((c) => ({ email: c.email, prenom: c.prenom })),
+      );
+      cursor = batch[batch.length - 1].id;
+      if (batch.length < NotificationsService.CLIENT_BATCH_SIZE) break;
+    }
+
+    if (clients.length === 0) {
+      return { recipientCount: 0, successCount: 0, failureCount: 0 };
+    }
+
+    this.logger.log(`Admin email broadcast to ${clients.length} client(s)`);
+
+    try {
+      const result = await this.resendService.sendBlast(
+        clients,
+        subject,
+        body,
+        'JitPlus Admin',
+      );
+      return { recipientCount: result.total, successCount: result.successCount, failureCount: result.failureCount };
+    } catch (error) {
+      this.logger.error(`Admin email to clients failed: ${error}`);
+      return { recipientCount: clients.length, successCount: 0, failureCount: clients.length };
+    }
   }
 
   async getHistory(merchantId: string, page = 1, limit = 20): Promise<{

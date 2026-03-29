@@ -52,24 +52,30 @@ export function useGoogleAuth({ onCancel }: UseGoogleAuthOptions = {}) {
     if (googleResponse.type === 'success') {
       const idToken = googleResponse.params?.id_token;
       if (idToken) {
+        // Set guard BEFORE async fork to prevent duplicate processing
         processingRef.current = true;
         (async () => {
-          const result = await googleLogin(idToken);
-          setIsLoading(false);
-          processingRef.current = false;
-          if (result.success) {
-            router.replace('/(tabs)');
-          } else {
-            // Detect "no account" scenario from raw error
-            if (result.rawError && isNoAccountError(result.rawError)) {
-              setNoAccount(true);
-              setError(t('googleAuth.noAccountFound'));
+          try {
+            const result = await googleLogin(idToken);
+            setIsLoading(false);
+            if (result.success) {
+              router.replace('/(tabs)');
             } else {
-              setError(result.error || t('googleAuth.error'));
+              // Detect "no account" scenario from raw error
+              if (result.rawError && isNoAccountError(result.rawError)) {
+                setNoAccount(true);
+                setError(t('googleAuth.noAccountFound'));
+              } else {
+                setError(result.error || t('googleAuth.error'));
+              }
+              onCancelRef.current?.();
             }
-            onCancelRef.current?.();
+          } finally {
+            processingRef.current = false;
           }
         })();
+        // Return early — the rest of the effect handles non-success cases
+        return;
       } else {
         setIsLoading(false);
         setError(t('googleAuth.noIdToken'));
@@ -84,10 +90,6 @@ export function useGoogleAuth({ onCancel }: UseGoogleAuthOptions = {}) {
       setIsLoading(false);
       onCancelRef.current?.();
     }
-
-    return () => {
-      processingRef.current = false;
-    };
   }, [googleResponse, googleLogin, t]);
 
   /** Launch the Google prompt */

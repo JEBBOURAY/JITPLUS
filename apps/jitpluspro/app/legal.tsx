@@ -193,7 +193,7 @@ export default function LegalScreen() {
         </Text>
 
         <Text style={[styles.copyrightText, { color: theme.textMuted }]}>
-          © {new Date().getFullYear()} JitPlus. {'\n'}Tous droits réservés.
+          © {new Date().getFullYear()} JitPlus. {'\n'}{t('legal.allRightsReserved')}
         </Text>
       </ScrollView>
     </View>

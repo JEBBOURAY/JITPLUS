@@ -204,7 +204,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const googleLogin = useCallback(async (idToken: string) => {
+    // Cancel any in-flight loadStoredAuth (same pattern as loginWithEmail / loginWithPhone)
+    sessionVersionRef.current++;
     try {
+      // Google users always stay signed in across restarts — mirror the rememberMe flag
+      await api.setRememberMe(true);
       const response = await api.googleLogin(idToken);
       store.setClient(response.client);
       return { success: true, isNewUser: response.isNewUser };

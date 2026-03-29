@@ -36,10 +36,9 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { usePlan, useReferral, useApplyReferralMonths } from '@/hooks/useQueryHooks';
 import { getErrorMessage } from '@/utils/error';
 
-// ── Contact info for upgrade ────────────────────────────────────────────────
+// ── Contact info for support ────────────────────────────────────────────────
 const UPGRADE_WHATSAPP = process.env.EXPO_PUBLIC_SUPPORT_WHATSAPP || (__DEV__ ? '212600000000' : '');
 const UPGRADE_EMAIL = process.env.EXPO_PUBLIC_SUPPORT_EMAIL || 'contact@jitplus.com';
-const UPGRADE_WEBSITE = process.env.EXPO_PUBLIC_UPGRADE_URL || 'https://jitplus.com/premium';
 
 interface FeatureRow {
   icon: React.ReactNode;
@@ -54,10 +53,10 @@ export default function PlanScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { t, locale } = useLanguage();
-  const { merchant } = useAuth();
+  const { merchant, isTeamMember } = useAuth();
 
   const { data: planInfo, isLoading: loading } = usePlan();
-  const { data: referral } = useReferral();
+  const { data: referral } = useReferral(!isTeamMember);
   const applyReferralMutation = useApplyReferralMonths();
   const [applyingMonths, setApplyingMonths] = useState(false);
 
@@ -138,12 +137,6 @@ export default function PlanScreen() {
     );
   };
 
-  const handleOpenWebsite = () => {
-    Linking.openURL(UPGRADE_WEBSITE).catch(() =>
-      Alert.alert(t('common.error'), t('account.planErrorBrowser')),
-    );
-  };
-
   // ── Derived ────────────────────────────────────────────────
   const isPremium = planInfo?.plan === 'PREMIUM';
   const isTrial = isPremium && planInfo?.isTrial;
@@ -199,7 +192,19 @@ export default function PlanScreen() {
     {
       icon: <UserCheck size={16} color={theme.primary} />,
       label: t('account.planFeatureTeam'),
-      free: true,
+      free: false,
+      premium: true,
+    },
+    {
+      icon: <Gift size={16} color={theme.primary} />,
+      label: t('account.planFeatureGifts'),
+      free: t('account.planFeatureGiftsFree'),
+      premium: t('account.planFeatureGiftsPremium'),
+    },
+    {
+      icon: <BarChart3 size={16} color={theme.primary} />,
+      label: t('account.planFeatureLoyaltySettings'),
+      free: false,
       premium: true,
     },
   ];
@@ -367,7 +372,7 @@ export default function PlanScreen() {
                 <Phone size={17} color="#25D366" />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.btnOutlineTitle, { color: theme.text }]}>WhatsApp</Text>
+                <Text style={[styles.btnOutlineTitle, { color: theme.text }]}>{isPremium ? t('account.planWhatsapp') : 'WhatsApp'}</Text>
                 <Text style={[styles.btnOutlineSub, { color: theme.textMuted }]} numberOfLines={1} adjustsFontSizeToFit>{t('account.planWhatsappSub')}</Text>
               </View>
             </TouchableOpacity>
@@ -386,6 +391,23 @@ export default function PlanScreen() {
                 <Text style={[styles.btnOutlineSub, { color: theme.textMuted }]}>{UPGRADE_EMAIL}</Text>
               </View>
             </TouchableOpacity>
+
+            {/* Cancel — only for paying premium users */}
+            {isPremium && !planInfo?.planActivatedByAdmin && (
+              <TouchableOpacity
+                style={[styles.btnOutline, { backgroundColor: theme.bg, borderColor: theme.danger + '40' }]}
+                onPress={handleCancelSubscription}
+                activeOpacity={0.75}
+              >
+                <View style={[styles.btnIcon, { backgroundColor: theme.danger + '12' }]}>
+                  <X size={17} color={theme.danger} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.btnOutlineTitle, { color: theme.danger }]}>{t('account.planCancelTitle')}</Text>
+                  <Text style={[styles.btnOutlineSub, { color: theme.textMuted }]}>{t('account.planCancelSub')}</Text>
+                </View>
+              </TouchableOpacity>
+            )}
 
           </View>
         </ScrollView>

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getMerchants } from '../api';
 import { MerchantRow, Pagination } from '../types';
@@ -14,13 +14,21 @@ export default function Merchants() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const navigate = useNavigate();
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  const load = useCallback(async (p: number) => {
+  // Debounce search input
+  useEffect(() => {
+    debounceRef.current = setTimeout(() => setDebouncedSearch(search), 350);
+    return () => clearTimeout(debounceRef.current);
+  }, [search]);
+
+  const load = useCallback(async (p: number, q?: string) => {
     setLoading(true);
     setError('');
     try {
-      const res = await getMerchants(p, 20);
+      const res = await getMerchants(p, 20, q || undefined);
       setMerchants(res.merchants);
       setPagination(res.pagination);
     } catch (e) {
@@ -30,16 +38,9 @@ export default function Merchants() {
     }
   }, []);
 
-  useEffect(() => { load(page); }, [load, page]);
+  useEffect(() => { load(page, debouncedSearch); }, [load, page, debouncedSearch]);
 
-  const filtered = search
-    ? merchants.filter(
-        (m) =>
-          m.nom.toLowerCase().includes(search.toLowerCase()) ||
-          m.email.toLowerCase().includes(search.toLowerCase()) ||
-          (m.phoneNumber ?? '').includes(search),
-      )
-    : merchants;
+  const filtered = merchants;
 
   return (
     <div>
@@ -91,7 +92,7 @@ export default function Merchants() {
                 <tr
                   key={m.id}
                   onClick={() => navigate(`/merchants/${m.id}`)}
-                  style={{ borderBottom: `1px solid ${C.border}22`, cursor: 'pointer' }}
+                  style={{ borderBottom: `1px solid `, cursor: 'pointer' }}
                   onMouseEnter={(e) => ((e.currentTarget as HTMLTableRowElement).style.background = C.surfaceHover)}
                   onMouseLeave={(e) => ((e.currentTarget as HTMLTableRowElement).style.background = 'transparent')}
                 >

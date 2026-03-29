@@ -40,9 +40,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: JwtTokenPayload): Promise<JwtPayload> {
-    // DeviceSession is a merchant-only concept — clients don't have sessions in that table.
-    // Only validate the session for merchant/admin tokens to avoid spurious 401s on client routes.
-    if (payload.jti && payload.type !== 'client') {
+    // DeviceSession is a merchant-only concept — the table has a required merchantId FK.
+    // Admins and clients don't create DeviceSessions, so only validate for merchant tokens.
+    if (payload.jti && payload.type === 'merchant') {
       const now = Date.now();
       const cached = await this.cacheManager.get<number>(`session:${payload.jti}`);
 

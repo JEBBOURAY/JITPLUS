@@ -15,13 +15,13 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { THROTTLE_TTL } from '../common/constants';
 import { Request } from 'express';
-import { AuditAction, UpgradeRequestStatus } from '@prisma/client';
+import { AuditAction } from '@prisma/client';
 import { AuditLogService, AuditLogContext } from './audit-log.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AdminGuard } from '../auth/guards/admin.guard';
 import { AdminAuthService } from './admin.service';
 import { MerchantPlanService } from '../merchant/services/merchant-plan.service';
-import { UpgradeRequestService } from '../merchant/services/upgrade-request.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtPayload } from '../common/interfaces/jwt-payload.interface';
 import { AdminLoginDto } from './dto/admin-login.dto';
@@ -58,7 +58,7 @@ export class AdminController {
     private readonly adminService: AdminAuthService,
     private readonly planService: MerchantPlanService,
     private readonly auditLog: AuditLogService,
-    private readonly upgradeRequestService: UpgradeRequestService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   // ── Public: Admin login ───────────────────────────────────────────────────
@@ -99,8 +99,11 @@ export class AdminController {
   @Get('merchants')
   @UseGuards(JwtAuthGuard, AdminGuard)
   @ApiOperation({ summary: 'Paginated list of all merchants' })
-  async listMerchants(@Query() { page, limit }: PaginationQueryDto) {
-    return this.adminService.listMerchants(page, limit);
+  async listMerchants(
+    @Query() { page, limit }: PaginationQueryDto,
+    @Query('search') search?: string,
+  ) {
+    return this.adminService.listMerchants(page, limit, search);
   }
 
   @Get('merchants/:id')
@@ -108,6 +111,13 @@ export class AdminController {
   @ApiOperation({ summary: 'Detailed profile of a single merchant' })
   async getMerchantDetail(@Param('id') merchantId: string) {
     return this.adminService.getMerchantDetail(merchantId);
+  }
+
+  @Get('merchants/:id/subscription-history')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @ApiOperation({ summary: 'Subscription history timeline for a merchant' })
+  async getMerchantSubscriptionHistory(@Param('id') merchantId: string) {
+    return this.adminService.getMerchantSubscriptionHistory(merchantId);
   }
 
   @Get('merchants/:id/plan')
@@ -304,64 +314,182 @@ export class AdminController {
     return this.adminService.listNotifications(page, limit, channel, search);
   }
 
-  // ── Upgrade Requests ────────────────────────────────────────
+  // ── Client management ───────────────────────────────────────────────────
 
-  @Get('upgrade-requests')
+  @Get('clients/:id')
   @UseGuards(JwtAuthGuard, AdminGuard)
-  @ApiOperation({ summary: 'List upgrade requests (filter by status, paginated)' })
-  async listUpgradeRequests(
-    @Query('status') status?: string,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-  ) {
-    return this.upgradeRequestService.listAll({
-      status: status as UpgradeRequestStatus | undefined,
-      page: page ? Number(page) : 1,
-      limit: limit ? Number(limit) : 20,
-    });
+  @ApiOperation({ summary: 'Detailed profile of a single client' })
+  async getClientDetail(@Param('id') clientId: string) {
+    return this.adminService.getClientDetail(clientId);
   }
 
-  @Post('upgrade-requests/:id/approve')
+  @Post('clients/:id/deactivate')
   @UseGuards(JwtAuthGuard, AdminGuard)
   @HttpCode(200)
-  @ApiOperation({ summary: 'Approve an upgrade request → activates Premium' })
-  async approveUpgradeRequest(
-    @Param('id') id: string,
-    @Body() body: { adminNote?: string },
+  @ApiOperation({ summary: 'Deactivate a client account (soft-delete)' })
+  async deactivateClient(
+    @Param('id') clientId: string,
     @CurrentUser() user: JwtPayload,
     @Req() req: Request,
   ) {
-    const result = await this.upgradeRequestService.approve(id, user.sub, body?.adminNote);
+    const { nom, email } = await this.adminService.deactivateClient(clientId);
+
     await this.auditLog.log({
       ctx: buildCtx(user, req),
-      action: AuditAction.APPROVE_UPGRADE_REQUEST,
-      targetType: 'MERCHANT',
-      targetId: result.merchantId,
-      targetLabel: `${result.merchantNom} <${result.merchantEmail}>`,
-      metadata: { requestId: id, adminNote: body?.adminNote },
+      action: AuditAction.DEACTIVATE_CLIENT,
+      targetType: 'CLIENT',
+      targetId: clientId,
+      targetLabel: `${nom ?? 'N/A'} <${email ?? 'N/A'}>`,
     });
-    return { success: true, merchantId: result.merchantId };
+
+    return { success: true, message: `Client ${nom ?? clientId} désactivé.` };
   }
 
-  @Post('upgrade-requests/:id/reject')
+  @Post('clients/:id/activate')
   @UseGuards(JwtAuthGuard, AdminGuard)
   @HttpCode(200)
-  @ApiOperation({ summary: 'Reject an upgrade request' })
-  async rejectUpgradeRequest(
-    @Param('id') id: string,
-    @Body() body: { adminNote?: string },
+  @ApiOperation({ summary: 'Reactivate a client account' })
+  async activateClient(
+    @Param('id') clientId: string,
     @CurrentUser() user: JwtPayload,
     @Req() req: Request,
   ) {
-    const result = await this.upgradeRequestService.reject(id, user.sub, body?.adminNote);
+    const { nom, email } = await this.adminService.activateClient(clientId);
+
     await this.auditLog.log({
       ctx: buildCtx(user, req),
-      action: AuditAction.REJECT_UPGRADE_REQUEST,
-      targetType: 'MERCHANT',
-      targetId: result.merchantId,
-      targetLabel: result.merchantId,
-      metadata: { requestId: id, adminNote: body?.adminNote },
+      action: AuditAction.ACTIVATE_CLIENT,
+      targetType: 'CLIENT',
+      targetId: clientId,
+      targetLabel: `${nom ?? 'N/A'} <${email ?? 'N/A'}>`,
     });
-    return { success: true };
+
+    return { success: true, message: `Client ${nom ?? clientId} réactivé.` };
+  }
+
+  @Delete('clients/:id')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @ApiOperation({ summary: 'Permanently delete a client and anonymise data' })
+  async deleteClient(
+    @Param('id') clientId: string,
+    @CurrentUser() user: JwtPayload,
+    @Req() req: Request,
+  ) {
+    const { nom, email } = await this.adminService.deleteClient(clientId);
+
+    await this.auditLog.log({
+      ctx: buildCtx(user, req),
+      action: AuditAction.DELETE_CLIENT,
+      targetType: 'CLIENT',
+      targetId: clientId,
+      targetLabel: `${nom ?? 'N/A'} <${email ?? 'N/A'}>`,
+    });
+
+    return { success: true, message: `Client supprimé définitivement.` };
+  }
+
+  // ── Admin broadcast notifications ─────────────────────────────────────
+
+  @Post('send-notification')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Send a notification — supports audience targeting (merchant clients, all clients, all merchants)' })
+  async sendNotification(
+    @Body() body: {
+      merchantId?: string;
+      channel: 'PUSH' | 'EMAIL' | 'WHATSAPP';
+      title: string;
+      body: string;
+      audience: 'MERCHANT_CLIENTS' | 'ALL_CLIENTS' | 'ALL_MERCHANTS';
+    },
+    @CurrentUser() user: JwtPayload,
+    @Req() req: Request,
+  ) {
+    let result: { recipientCount?: number; successCount?: number; failureCount?: number } = {};
+    const audience = body.audience ?? 'MERCHANT_CLIENTS';
+
+    if (audience === 'MERCHANT_CLIENTS') {
+      // Existing behavior — requires merchantId
+      if (!body.merchantId) {
+        return { success: false, error: 'merchantId requis pour cette audience' };
+      }
+      if (body.channel === 'PUSH') {
+        result = await this.notificationsService.sendToAll(body.merchantId, {
+          title: body.title,
+          body: body.body,
+        });
+      } else if (body.channel === 'EMAIL') {
+        result = await this.notificationsService.sendEmailToAll(body.merchantId, {
+          subject: body.title,
+          body: body.body,
+        });
+      } else if (body.channel === 'WHATSAPP') {
+        result = await this.notificationsService.sendWhatsAppToAll(body.merchantId, body.body);
+      }
+    } else if (audience === 'ALL_CLIENTS') {
+      if (body.channel === 'PUSH') {
+        result = await this.notificationsService.sendPushToAllClients(body.title, body.body);
+      } else if (body.channel === 'EMAIL') {
+        result = await this.notificationsService.sendEmailToAllClients(body.title, body.body);
+      } else {
+        return { success: false, error: 'WhatsApp non disponible pour cette audience' };
+      }
+    } else if (audience === 'ALL_MERCHANTS') {
+      if (body.channel === 'PUSH') {
+        result = await this.notificationsService.sendPushToAllMerchants(body.title, body.body);
+      } else if (body.channel === 'EMAIL') {
+        result = await this.notificationsService.sendEmailToAllMerchants(body.title, body.body);
+      } else {
+        return { success: false, error: 'WhatsApp non disponible pour cette audience' };
+      }
+    }
+
+    await this.auditLog.log({
+      ctx: buildCtx(user, req),
+      action: AuditAction.ADMIN_SEND_NOTIFICATION,
+      targetType: 'MERCHANT',
+      targetId: body.merchantId ?? undefined,
+      targetLabel: `Audience: ${audience} | Channel: ${body.channel}`,
+      metadata: { audience, channel: body.channel, title: body.title, recipientCount: result?.recipientCount },
+    });
+
+    return { success: true, ...result };
+  }
+
+  // ── Referral management ──────────────────────────────────────────────────
+
+  @Get('referrals/stats')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @ApiOperation({ summary: 'Referral program statistics' })
+  async getReferralStats() {
+    return this.adminService.getReferralStats();
+  }
+
+  @Get('referrals/merchant-to-merchant')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @ApiOperation({ summary: 'List merchant-to-merchant referrals' })
+  async listMerchantReferrals(
+    @Query() query: PaginationQueryDto,
+    @Query('search') search?: string,
+  ) {
+    return this.adminService.listMerchantReferrals(query.page, query.limit, search);
+  }
+
+  @Get('referrals/client-to-merchant')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @ApiOperation({ summary: 'List client-to-merchant referrals' })
+  async listClientReferrals(
+    @Query() query: PaginationQueryDto,
+    @Query('status') status?: 'PENDING' | 'VALIDATED',
+    @Query('search') search?: string,
+  ) {
+    return this.adminService.listClientReferrals(query.page, query.limit, status, search);
+  }
+
+  @Get('referrals/top-referrers')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @ApiOperation({ summary: 'List top merchant referrers' })
+  async listTopReferrers(@Query('limit') limit?: string) {
+    return this.adminService.listTopReferrers(limit ? parseInt(limit, 10) : 20);
   }
 }

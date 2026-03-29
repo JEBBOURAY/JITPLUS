@@ -30,7 +30,6 @@ import {
   ChevronDown,
   AlertCircle,
   ArrowLeft,
-  Check,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -43,6 +42,7 @@ import { SCAN_AREA_RATIO, NAVIGATION_DELAY_MS } from '@/constants/app';
 import { useLanguage } from '@/contexts/LanguageContext';
 
 import { COUNTRIES } from '@/constants/Countries';
+import CountryPickerModal from '@/components/CountryPickerModal';
 
 // Safe haptic wrappers — no-op on devices without haptic engine
 const safeNotification = (type: Haptics.NotificationFeedbackType) => {
@@ -156,7 +156,7 @@ function ScanLine({ scanSize }: { scanSize: number }) {
   const translateY = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.loop(
+    const anim = Animated.loop(
       Animated.sequence([
         Animated.timing(translateY, {
           toValue: scanSize - 4,
@@ -169,7 +169,9 @@ function ScanLine({ scanSize }: { scanSize: number }) {
           useNativeDriver: true,
         }),
       ]),
-    ).start();
+    );
+    anim.start();
+    return () => anim.stop();
   }, []);
 
   const lineStyle = {
@@ -231,7 +233,6 @@ interface ScanState {
   detected: string | null;
   countryIndex: number;
   showCountryPicker: boolean;
-  countrySearch: string;
   matchedClients: MatchedClient[];
 }
 
@@ -244,7 +245,6 @@ const initialScanState: ScanState = {
   detected: null,
   countryIndex: 0,
   showCountryPicker: false,
-  countrySearch: '',
   matchedClients: [],
 };
 
@@ -264,7 +264,7 @@ function scanReducer(state: ScanState, action: ScanAction): ScanState {
     case 'RESET_SCAN':
       return { ...state, isScanning: true, detected: null };
     case 'OPEN_COUNTRY_PICKER':
-      return { ...state, countrySearch: '', showCountryPicker: true };
+      return { ...state, showCountryPicker: true };
     case 'SELECT_COUNTRY':
       return { ...state, countryIndex: action.index, showCountryPicker: false };
   }
@@ -282,31 +282,25 @@ export default function ScanQRScreen() {
 
   // State
   const [scan, dispatch] = useReducer(scanReducer, initialScanState);
-  const { phoneInput, isSearchFocused, isSearching, isFlashOn, isScanning, detected, countryIndex, showCountryPicker, countrySearch, matchedClients } = scan;
+  const { phoneInput, isSearchFocused, isSearching, isFlashOn, isScanning, detected, countryIndex, showCountryPicker, matchedClients } = scan;
   const set = useCallback((payload: Partial<ScanState>) => dispatch({ type: 'SET', payload }), []);
 
   // Debounce: prevent re-scanning the same barcode data within a cooldown
   const lastScannedRef = useRef<{ data: string; ts: number } | null>(null);
   const SCAN_COOLDOWN_MS = 5000;
 
-  const filteredCountries = useMemo(() => {
-    if (!countrySearch.trim()) return COUNTRIES;
-    const q = countrySearch.toLowerCase();
-    return COUNTRIES.filter(
-      (c) => c.name.toLowerCase().includes(q) || c.dial.includes(q) || c.code.toLowerCase().includes(q),
-    );
-  }, [countrySearch]);
-
   // Animations
   const pulseScale = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    Animated.loop(
+    const anim = Animated.loop(
       Animated.sequence([
         Animated.timing(pulseScale, { toValue: 1.08, duration: 1200, useNativeDriver: true }),
         Animated.timing(pulseScale, { toValue: 1, duration: 1200, useNativeDriver: true }),
       ]),
-    ).start();
+    );
+    anim.start();
+    return () => anim.stop();
   }, []);
 
   const pulseStyle = {
@@ -320,7 +314,7 @@ export default function ScanQRScreen() {
     }
   }, [permission]);
 
-  const renderMatchedClient = useCallback(({ item }: { item: any }) => (
+  const renderMatchedClient = useCallback(({ item }: { item: MatchedClient }) => (
     <TouchableOpacity
       style={styles.cpRow}
       onPress={() => {
@@ -341,29 +335,6 @@ export default function ScanQRScreen() {
       <ArrowRight size={18} color="#A78BFA" />
     </TouchableOpacity>
   ), [router]);
-
-  const renderCountry = useCallback(({ item }: { item: any }) => {
-    const isSelected = item.code === COUNTRIES[countryIndex]?.code;
-    return (
-      <TouchableOpacity
-        style={[
-          styles.cpRow,
-          isSelected && { backgroundColor: 'rgba(139,92,246,0.15)' },
-        ]}
-        onPress={() => {
-          dispatch({ type: 'SELECT_COUNTRY', index: COUNTRIES.findIndex((c) => c.code === item.code) });
-        }}
-        activeOpacity={0.6}
-      >
-        <Text style={styles.cpFlag}>{item.flag}</Text>
-        <View style={styles.flexMain}>
-          <Text style={styles.cpCountryName}>{item.name}</Text>
-        </View>
-        <Text style={styles.cpDial}>{item.dial}</Text>
-        {isSelected && <Check size={18} color="#A78BFA" style={styles.checkIcon} />}
-      </TouchableOpacity>
-    );
-  }, [countryIndex]);
 
   useFocusEffect(
     useCallback(() => {
@@ -716,55 +687,13 @@ export default function ScanQRScreen() {
       </Modal>
 
       {/* ── Country Picker Modal ─── */}
-      <Modal
+      <CountryPickerModal
         visible={showCountryPicker}
-        animationType="slide"
-        transparent={false}
-        onRequestClose={() => set({ showCountryPicker: false })}
-      >
-        <View style={[styles.cpContainer, { paddingTop: insets.top }]}>
-          <View style={styles.cpHeader}>
-            <TouchableOpacity onPress={() => set({ showCountryPicker: false })} style={styles.iconPadding}>
-              <ArrowLeft size={24} color="#fff" />
-            </TouchableOpacity>
-            <Text style={styles.cpTitle}>{t('common.selectCountry')}</Text>
-            <View style={styles.spacerWidth32} />
-          </View>
-          <View style={styles.cpSearchRow}>
-            <View style={styles.cpSearchBox}>
-              <Search size={16} color="rgba(255,255,255,0.5)" />
-              <TextInput
-                style={styles.cpSearchInput}
-                placeholder={t('common.searchCountry')}
-                placeholderTextColor="rgba(255,255,255,0.4)"
-                value={countrySearch}
-                onChangeText={(v) => set({ countrySearch: v })}
-                autoCorrect={false}
-              />
-              {countrySearch.length > 0 && (
-                <TouchableOpacity onPress={() => set({ countrySearch: '' })}>
-                  <X size={16} color="rgba(255,255,255,0.5)" />
-                </TouchableOpacity>
-              )}
-            </View>
-          </View>
-          <FlatList
-            data={filteredCountries}
-            keyExtractor={(item) => item.code}
-            keyboardShouldPersistTaps="handled"
-            getItemLayout={(_, index) => ({ length: 52, offset: 52 * index, index })}
-            maxToRenderPerBatch={15}
-            windowSize={7}
-            removeClippedSubviews
-            renderItem={renderCountry}
-            ListEmptyComponent={
-              <View style={styles.emptyContainer}>
-                <Text style={styles.emptyText}>{t('common.noCountryFound')}</Text>
-              </View>
-            }
-          />
-        </View>
-      </Modal>
+        selectedCode={COUNTRIES[countryIndex]?.code ?? ''}
+        onSelect={(index) => dispatch({ type: 'SELECT_COUNTRY', index })}
+        onClose={() => set({ showCountryPicker: false })}
+        topInset={insets.top}
+      />
     </View>
   );
 }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -67,7 +67,7 @@ export default function EditProfileScreen() {
   }, [merchant]);
 
   // ── Save ──
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     if (!nom.trim()) {
       Alert.alert(t('common.error'), t('editProfile.nameRequired'));
       return;
@@ -96,7 +96,8 @@ export default function EditProfileScreen() {
     } finally {
       setSaving(false);
     }
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nom, description, categorie, phoneNumber, email, instagram, tiktok, t, updateMerchant, router]);
 
   return (
     <KeyboardAvoidingView

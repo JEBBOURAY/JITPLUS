@@ -427,6 +427,7 @@ export default {
     launchError: 'تعذر بدء %{action} جوجل',
     notConfigured: 'Google Client ID غير مكوّن',
     playServicesUnavailable: 'خدمات Google Play غير متوفرة أو قديمة',
+    success: 'تم تسجيل الدخول بنجاح !',
   },
 
   // ── Offline ──

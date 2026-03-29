@@ -1,63 +1,145 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { Lock, Crown } from 'lucide-react-native';
+import { Crown, Sparkles } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { useTheme } from '@/contexts/ThemeContext';
+import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 
 interface PremiumLockCardProps {
   descriptionKey: string;
+  titleKey?: string;
 }
 
-export default React.memo(function PremiumLockCard({ descriptionKey }: PremiumLockCardProps) {
+export default React.memo(function PremiumLockCard({ descriptionKey, titleKey }: PremiumLockCardProps) {
   const theme = useTheme();
   const { t } = useLanguage();
   const router = useRouter();
 
   return (
-    <View style={styles.container}>
-      <Lock size={28} color={theme.primary} strokeWidth={1.5} />
-      <Text style={[styles.title, { color: theme.text }]}>{t('messages.premiumFeatureTitle')}</Text>
-      <Text style={[styles.desc, { color: theme.textSecondary }]}>
-        {t(descriptionKey)}
-      </Text>
-      <TouchableOpacity
-        style={[styles.btn, { backgroundColor: theme.primary }]}
-        onPress={() => router.push('/plan')}
-        activeOpacity={0.85}
+    <View style={[styles.wrapper, { borderColor: palette.premiumBorder }]}>
+      {/* Dark premium card */}
+      <LinearGradient
+        colors={[palette.premiumBg, palette.premiumBgMid, palette.premiumBg]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.container}
       >
-        <Crown size={16} color="#fff" strokeWidth={1.5} />
-        <Text style={styles.btnText}>{t('messages.discoverPremium')}</Text>
-      </TouchableOpacity>
+        {/* Crown icon with glow */}
+        <View style={styles.iconWrap}>
+          <LinearGradient
+            colors={[palette.violetDark, palette.violet]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.iconBg}
+          >
+            <Crown size={26} color={palette.gold} strokeWidth={1.8} />
+          </LinearGradient>
+        </View>
+
+        {/* PRO badge */}
+        <View style={styles.proBadge}>
+          <Sparkles size={10} color={palette.gold} strokeWidth={2} />
+          <Text style={styles.proBadgeText}>PRO</Text>
+        </View>
+
+        {/* Title */}
+        <Text style={styles.title}>
+          {t(titleKey ?? 'messages.premiumFeatureTitle')}
+        </Text>
+
+        {/* Description */}
+        <Text style={[styles.desc, { color: theme.textSecondary }]}>
+          {t(descriptionKey)}
+        </Text>
+
+        {/* CTA button */}
+        <TouchableOpacity
+          onPress={() => router.push('/plan')}
+          activeOpacity={0.85}
+          style={styles.btnWrap}
+        >
+          <LinearGradient
+            colors={[palette.violetDark, palette.violet]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.btn}
+          >
+            <Crown size={15} color={palette.gold} strokeWidth={2} />
+            <Text style={styles.btnText}>{t('messages.discoverPremium')}</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+      </LinearGradient>
     </View>
   );
 });
 
 const styles = StyleSheet.create({
+  wrapper: {
+    marginHorizontal: 16,
+    marginVertical: 12,
+    borderRadius: 20,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
   container: {
     alignItems: 'center',
-    paddingVertical: 24,
-    gap: 8,
+    paddingVertical: 28,
+    paddingHorizontal: 20,
+    gap: 10,
+  },
+  iconWrap: {
+    marginBottom: 2,
+  },
+  iconBg: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  proBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: palette.premiumBorder,
+    borderWidth: 1,
+    borderColor: palette.premiumBadgeBorder,
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+  },
+  proBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: palette.violetLight,
+    letterSpacing: 1,
   },
   title: {
-    fontSize: 16,
-    fontWeight: '700',
-    marginTop: 4,
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#fff',
+    textAlign: 'center',
+    marginTop: 2,
   },
   desc: {
     fontSize: 13,
     textAlign: 'center',
-    lineHeight: 18,
-    paddingHorizontal: 20,
+    lineHeight: 19,
+    paddingHorizontal: 12,
+  },
+  btnWrap: {
+    marginTop: 6,
+    borderRadius: 14,
+    overflow: 'hidden',
   },
   btn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 12,
-    marginTop: 8,
+    gap: 7,
+    paddingHorizontal: 22,
+    paddingVertical: 13,
+    borderRadius: 14,
   },
   btnText: {
     color: '#fff',

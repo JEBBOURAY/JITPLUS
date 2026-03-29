@@ -160,12 +160,12 @@ export default function ReferralScreen() {
                     onPress={handleShare}
                     style={({ pressed }) => [
                       styles.codeBtn,
-                      { backgroundColor: `${palette.gold}15` },
+                      { backgroundColor: `${palette.violet}15` },
                       pressed && { opacity: 0.7 },
                     ]}
                   >
-                    <Share2 size={ms(16)} color={palette.gold} strokeWidth={1.5} />
-                    <Text style={[styles.codeBtnText, { color: palette.gold }]}>
+                    <Share2 size={ms(16)} color={palette.violet} strokeWidth={1.5} />
+                    <Text style={[styles.codeBtnText, { color: palette.violet }]}>
                       {t('referral.shareCode')}
                     </Text>
                   </Pressable>
@@ -251,11 +251,11 @@ export default function ReferralScreen() {
                 <Text style={[styles.howTitle, { color: theme.text }]}>{t('referral.howTitle')}</Text>
 
                 <View style={[styles.howStep, isRTL && styles.howStepRTL]}>
-                  <View style={[styles.howStepIcon, { backgroundColor: `${palette.violet}12` }]}>
+                  <View style={[styles.howStepIcon, { backgroundColor: `${palette.gold}12` }]}>
                     <View style={styles.howStepNumber}>
                       <Text style={styles.howStepNumberText}>1</Text>
                     </View>
-                    <Share2 size={ms(16)} color={palette.violet} strokeWidth={1.5} />
+                    <Share2 size={ms(16)} color={palette.gold} strokeWidth={1.5} />
                   </View>
                   <View style={styles.howStepContent}>
                     <Text style={[styles.howStepTitle, { color: theme.text }]}>{t('referral.howStep1Title')}</Text>
@@ -277,11 +277,11 @@ export default function ReferralScreen() {
                 </View>
 
                 <View style={[styles.howStep, isRTL && styles.howStepRTL]}>
-                  <View style={[styles.howStepIcon, { backgroundColor: `${palette.emerald}12` }]}>
+                  <View style={[styles.howStepIcon, { backgroundColor: `${palette.gold}12` }]}>
                     <View style={styles.howStepNumber}>
                       <Text style={styles.howStepNumberText}>3</Text>
                     </View>
-                    <BadgeCheck size={ms(16)} color={palette.emerald} strokeWidth={1.5} />
+                    <BadgeCheck size={ms(16)} color={palette.gold} strokeWidth={1.5} />
                   </View>
                   <View style={styles.howStepContent}>
                     <Text style={[styles.howStepTitle, { color: theme.text }]}>{t('referral.howStep3Title')}</Text>
@@ -290,11 +290,11 @@ export default function ReferralScreen() {
                 </View>
 
                 <View style={[styles.howStep, isRTL && styles.howStepRTL, { borderBottomWidth: 0, paddingBottom: 0 }]}>
-                  <View style={[styles.howStepIcon, { backgroundColor: `${palette.violet}12` }]}>
+                  <View style={[styles.howStepIcon, { backgroundColor: `${palette.gold}12` }]}>
                     <View style={styles.howStepNumber}>
                       <Text style={styles.howStepNumberText}>4</Text>
                     </View>
-                    <CreditCard size={ms(16)} color={palette.violet} strokeWidth={1.5} />
+                    <CreditCard size={ms(16)} color={palette.gold} strokeWidth={1.5} />
                   </View>
                   <View style={styles.howStepContent}>
                     <Text style={[styles.howStepTitle, { color: theme.text }]}>{t('referral.howStep4Title')}</Text>
@@ -324,12 +324,12 @@ export default function ReferralScreen() {
                     onPress={() => Linking.openURL('mailto:contact@jitplus.com?subject=Paiement%20parrainage')}
                     style={({ pressed }) => [
                       styles.contactBtn,
-                      { backgroundColor: `${palette.violet}15` },
+                      { backgroundColor: `${palette.red}15` },
                       pressed && { opacity: 0.7 },
                     ]}
                   >
-                    <Mail size={ms(16)} color={palette.violet} strokeWidth={1.5} />
-                    <Text style={[styles.contactBtnText, { color: palette.violet }]}>Email</Text>
+                    <Mail size={ms(16)} color={palette.red} strokeWidth={1.5} />
+                    <Text style={[styles.contactBtnText, { color: palette.red }]}>Email</Text>
                   </Pressable>
                 </View>
               </View>

@@ -1,14 +1,24 @@
 import { Dimensions } from 'react-native';
 
-// Base dimensions (iPhone 14 Pro as reference)
-const BASE_WIDTH = 393;
-const BASE_HEIGHT = 852;
+/**
+ * Design-reference dimensions (iPhone 14 Pro).
+ * All `wp`/`hp`/`ms` values scale relative to this baseline.
+ * Do NOT replace these with the actual device size — that would
+ * make every scaling call return the input unchanged.
+ */
+const DESIGN_WIDTH = 393;
+const DESIGN_HEIGHT = 852;
 
 let SCREEN_WIDTH = Dimensions.get('window').width;
 let SCREEN_HEIGHT = Dimensions.get('window').height;
 
+/** Clamp extreme scaling on very large (tablets) or very small screens */
+function clampScale(raw: number): number {
+  return Math.min(Math.max(raw, 0.75), 1.35);
+}
+
 function _wp(size: number): number {
-  return Math.round((SCREEN_WIDTH / BASE_WIDTH) * size);
+  return Math.round(clampScale(SCREEN_WIDTH / DESIGN_WIDTH) * size);
 }
 function _ms(size: number, factor: number = 0.5): number {
   return Math.round(size + (_wp(size) - size) * factor);
@@ -50,12 +60,12 @@ Dimensions.addEventListener('change', ({ window }) => {
 
 /** Horizontal scale — scales a value based on screen width */
 export function wp(size: number): number {
-  return Math.round((SCREEN_WIDTH / BASE_WIDTH) * size);
+  return Math.round(clampScale(SCREEN_WIDTH / DESIGN_WIDTH) * size);
 }
 
 /** Vertical scale — scales a value based on screen height */
 export function hp(size: number): number {
-  return Math.round((SCREEN_HEIGHT / BASE_HEIGHT) * size);
+  return Math.round(clampScale(SCREEN_HEIGHT / DESIGN_HEIGHT) * size);
 }
 
 /** Moderate scale — for font sizes and spacing (less aggressive scaling) */

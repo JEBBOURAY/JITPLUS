@@ -30,11 +30,12 @@ export function useRealtimeEvents(socket: Socket | null) {
       // Invalidate transactions list
       queryClient.invalidateQueries({ queryKey: queryKeys.transactions });
       // Invalidate clients list (points, lastVisit may have changed)
-      queryClient.invalidateQueries({ queryKey: ['clients'] as const });
+      // Use prefix-only key so it matches all queryKeys.clients(search) variants
+      queryClient.invalidateQueries({ queryKey: ['clients'] });
       // Invalidate dashboard stats (transaction count, points, etc.)
-      // Use prefix-based invalidation via partial queryKeys
-      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] as const });
-      queryClient.invalidateQueries({ queryKey: ['dashboard-trends'] as const });
+      // Use prefix-based invalidation to match all period variants
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-trends'] });
 
       if (__DEV__) {
         console.log('[RT] Transaction recorded:', payload.type, payload.points, 'pts for client', payload.clientId);

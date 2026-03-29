@@ -3,10 +3,13 @@
  * Uses @react-native-google-signin/google-signin (native SDK) for production builds.
  * In Expo Go the native module is unavailable — the hook degrades gracefully.
  */
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { router } from 'expo-router';
 import Constants from 'expo-constants';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '@/contexts/AuthContext';
+import { haptic } from '@/utils/haptics';
+import * as Haptics from 'expo-haptics';
 import i18n from '@/i18n';
 
 // Lazy-load the native SDK so Expo Go doesn't crash at module evaluation time.
@@ -45,11 +48,18 @@ interface UseGoogleAuthOptions {
 export function useGoogleAuth({ actionLabel, onCancel }: UseGoogleAuthOptions) {
   const { googleLogin } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
   const [error, setError] = useState('');
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => { mountedRef.current = false; };
+  }, []);
 
   /** Launch the Google prompt */
   const promptGoogle = useCallback(async () => {
     setError('');
+    setIsSuccess(false);
     setIsLoading(true);
 
     if (!GoogleSignin || !isErrorWithCode || !statusCodes) {
@@ -66,6 +76,13 @@ export function useGoogleAuth({ actionLabel, onCancel }: UseGoogleAuthOptions) {
 
     try {
       await GoogleSignin.hasPlayServices();
+
+      // Sign out from the SDK first so Android always shows the account picker,
+      // even if the user previously signed in with a Google account in this session.
+      // This does NOT revoke tokens or sign the user out of the app — it only
+      // clears the SDK's cached account selection so the system chooser appears.
+      try { await GoogleSignin.signOut(); } catch { /* no-op when no account was cached */ }
+
       const response = await GoogleSignin.signIn();
 
       // V16 API: cancellation returns { type: 'cancelled' } instead of throwing
@@ -85,12 +102,23 @@ export function useGoogleAuth({ actionLabel, onCancel }: UseGoogleAuthOptions) {
       }
 
       const result = await googleLogin(idToken);
-      setIsLoading(false);
 
       if (result.success) {
-        if (result.isNewUser) router.push('/complete-profile');
-        else router.replace('/(tabs)/qr');
+        setIsLoading(false);
+        if (result.isNewUser) {
+          // New users: go to complete-profile immediately (no delay needed)
+          router.push('/complete-profile');
+        } else {
+          // Returning users: flash success state briefly before navigating
+          setIsSuccess(true);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+          // Trigger the "Welcome back" banner on the Cards tab
+          await AsyncStorage.setItem('showWelcome', '1');
+          await new Promise((r) => setTimeout(r, 550));
+          if (mountedRef.current) router.replace('/(tabs)/qr');
+        }
       } else {
+        setIsLoading(false);
         setError(result.error || i18n.t('googleAuth.error', { action: actionLabel }));
         // Don't call onCancel — let user see the error and retry
       }
@@ -115,14 +143,19 @@ export function useGoogleAuth({ actionLabel, onCancel }: UseGoogleAuthOptions) {
         }
       }
 
-      // Include native error details so the user (developer) can diagnose
+      // Show user-friendly message; include native details only in development
       const nativeMsg = err instanceof Error ? err.message : String(err);
       const code = isErrorWithCode && isErrorWithCode(err) ? (err as any).code : '';
-      const detail = code ? `[${code}] ${nativeMsg}` : nativeMsg;
-      setError(`${i18n.t('googleAuth.launchError', { action: actionLabel })}\n${detail}`);
+      const userMessage = i18n.t('googleAuth.launchError', { action: actionLabel });
+      if (__DEV__) {
+        const detail = code ? `[${code}] ${nativeMsg}` : nativeMsg;
+        setError(`${userMessage}\n${detail}`);
+      } else {
+        setError(userMessage);
+      }
       // Don't call onCancel — let user see the error and retry
     }
   }, [actionLabel, googleLogin, onCancel]);
 
-  return { isLoading, error, setError, setIsLoading, promptGoogle };
+  return { isLoading, isSuccess, error, setError, setIsLoading, promptGoogle };
 }

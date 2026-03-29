@@ -20,6 +20,13 @@ export const palette = {
   charbonDark: '#111827',
   charbonSoft: '#4B5563',
   charbonUltraLight: '#9CA3AF',
+  // Premium dark surface
+  premiumBg: '#0f031e',
+  premiumBgMid: '#1a0533',
+  premiumBorder: '#7C3AED30',
+  premiumBadgeBg: '#7C3AED28',
+  premiumBadgeBorder: '#7C3AED55',
+  gold: '#FCD34D',
   // Aliases kept for compat
   cyan: '#6B7280',
   neonCyan: '#6B7280',

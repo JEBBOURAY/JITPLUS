@@ -4,16 +4,48 @@ import type {
   MerchantDetail,
   GlobalStats,
   AuditLogsResponse,
-  UpgradeRequestsResponse,
   NotificationsResponse,
+  ClientsResponse,
+  ClientDetail,
+  ReferralStats,
+  MerchantReferralsResponse,
+  ClientReferralsResponse,
+  TopReferrer,
+  MerchantSubscriptionHistoryResponse,
 } from './types';
 
-// ── Config ─────────────────────────────────────────────────────────────────────
-const BASE = (import.meta.env.VITE_API_URL ?? 'http://localhost:3000') + '/api/v1';
+// ── Environment config ─────────────────────────────────────────────────────────
+export type AdminEnv = 'dev' | 'prod';
 
-// Security: enforce HTTPS in production
-if (import.meta.env.PROD && !BASE.startsWith('https://')) {
-  throw new Error('[SECURITY] Admin API URL must use HTTPS in production!');
+const ENV_URLS: Record<AdminEnv, string> = {
+  dev: 'http://localhost:3000/api/v1',
+  prod: 'https://jitplus-api-290470991104.europe-west9.run.app/api/v1',
+};
+
+const STORAGE_KEY = 'admin_env';
+
+function loadEnv(): AdminEnv {
+  const stored = localStorage.getItem(STORAGE_KEY);
+  return stored === 'prod' ? 'prod' : 'dev';
+}
+
+let _env: AdminEnv = loadEnv();
+let _envListeners: Array<(env: AdminEnv) => void> = [];
+
+export function getEnv(): AdminEnv { return _env; }
+export function getBaseUrl(): string { return ENV_URLS[_env]; }
+
+export function setEnv(env: AdminEnv) {
+  _env = env;
+  localStorage.setItem(STORAGE_KEY, env);
+  // Clear auth when switching environments
+  setToken(null);
+  _envListeners.forEach((fn) => fn(env));
+}
+
+export function onEnvChange(fn: (env: AdminEnv) => void): () => void {
+  _envListeners.push(fn);
+  return () => { _envListeners = _envListeners.filter((l) => l !== fn); };
 }
 
 // Security: use sessionStorage (clears on tab close) instead of localStorage
@@ -50,12 +82,23 @@ if (typeof window !== 'undefined') {
 async function req<T>(path: string, opts: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    'X-Requested-With': 'XMLHttpRequest', // CSRF protection
     ...(opts.headers as Record<string, string> | undefined),
   };
   if (_token) headers['Authorization'] = `Bearer ${_token}`;
 
-  const res = await fetch(`${BASE}${path}`, { ...opts, headers });
+  const base = getBaseUrl();
+  let res: Response;
+  try {
+    res = await fetch(`${base}${path}`, { ...opts, headers });
+  } catch {
+    throw new Error(
+      `Impossible de joindre le serveur (${_env.toUpperCase()}).\n` +
+      `URL: ${base}${path}\n` +
+      (_env === 'dev'
+        ? 'Vérifiez que le backend tourne: cd apps/backend && npm run start:dev'
+        : 'Vérifiez la connexion réseau et que CORS autorise localhost.'),
+    );
+  }
 
   if (res.status === 401) {
     setToken(null);
@@ -85,11 +128,20 @@ export async function login(email: string, password: string): Promise<AdminInfo>
 export const getStats = () => req<GlobalStats>('/admin/stats');
 
 // ── Merchants ──────────────────────────────────────────────────────────────────
-export const getMerchants = (page = 1, limit = 20) =>
-  req<MerchantsResponse>(`/admin/merchants?page=${page}&limit=${limit}`);
+export const getMerchants = (page = 1, limit = 20, search?: string) => {
+  const qs = new URLSearchParams({
+    page: String(page),
+    limit: String(limit),
+    ...(search ? { search } : {}),
+  }).toString();
+  return req<MerchantsResponse>(`/admin/merchants?${qs}`);
+};
 
 export const getMerchantDetail = (id: string) =>
   req<MerchantDetail>(`/admin/merchants/${id}`);
+
+export const getMerchantSubscriptionHistory = (id: string) =>
+  req<MerchantSubscriptionHistoryResponse>(`/admin/merchants/${id}/subscription-history`);
 
 export const activatePremium = (id: string) =>
   req<{ success: boolean }>(`/admin/merchants/${id}/activate-premium`, { method: 'POST' });
@@ -119,24 +171,6 @@ export const setPlanDates = (id: string, startDate?: string, endDate?: string) =
 export const getAuditLogs = (page = 1, limit = 30) =>
   req<AuditLogsResponse>(`/admin/audit-logs?page=${page}&limit=${limit}`);
 
-// ── Upgrade Requests ────────────────────────────────────────────────────────────
-export const getUpgradeRequests = (status?: string, page = 1, limit = 20) =>
-  req<UpgradeRequestsResponse>(
-    `/admin/upgrade-requests?page=${page}&limit=${limit}${status ? `&status=${status}` : ''}`,
-  );
-
-export const approveUpgradeRequest = (id: string, adminNote?: string) =>
-  req<{ success: boolean }>(`/admin/upgrade-requests/${id}/approve`, {
-    method: 'POST',
-    body: JSON.stringify({ adminNote }),
-  });
-
-export const rejectUpgradeRequest = (id: string, adminNote?: string) =>
-  req<{ success: boolean }>(`/admin/upgrade-requests/${id}/reject`, {
-    method: 'POST',
-    body: JSON.stringify({ adminNote }),
-  });
-
 // ── Notifications ──────────────────────────────────────────────────────────────
 export const getNotifications = (page = 1, limit = 20, channel?: string, search?: string) => {
   const qs = new URLSearchParams({
@@ -147,3 +181,66 @@ export const getNotifications = (page = 1, limit = 20, channel?: string, search?
   }).toString();
   return req<NotificationsResponse>(`/admin/notifications?${qs}`);
 };
+
+// ── Clients ────────────────────────────────────────────────────────────────────
+export const getClients = (page = 1, limit = 20, search?: string) => {
+  const qs = new URLSearchParams({
+    page: String(page),
+    limit: String(limit),
+    ...(search ? { search } : {}),
+  }).toString();
+  return req<ClientsResponse>(`/admin/clients?${qs}`);
+};
+
+export const getClientDetail = (id: string) =>
+  req<ClientDetail>(`/admin/clients/${id}`);
+
+export const deactivateClient = (id: string) =>
+  req<{ success: boolean }>(`/admin/clients/${id}/deactivate`, { method: 'POST' });
+
+export const activateClient = (id: string) =>
+  req<{ success: boolean }>(`/admin/clients/${id}/activate`, { method: 'POST' });
+
+export const deleteClient = (id: string) =>
+  req<{ success: boolean }>(`/admin/clients/${id}`, { method: 'DELETE' });
+
+// ── Admin broadcast notifications ──────────────────────────────────────────────
+export const sendAdminNotification = (
+  channel: 'PUSH' | 'EMAIL' | 'WHATSAPP',
+  title: string,
+  body: string,
+  audience: 'MERCHANT_CLIENTS' | 'ALL_CLIENTS' | 'ALL_MERCHANTS',
+  merchantId?: string,
+) =>
+  req<{ success: boolean; recipientCount?: number; successCount?: number; failureCount?: number }>(
+    '/admin/send-notification',
+    {
+      method: 'POST',
+      body: JSON.stringify({ channel, title, body, audience, ...(merchantId && { merchantId }) }),
+    },
+  );
+
+// ── Referral management ────────────────────────────────────────────────────
+export const getReferralStats = () => req<ReferralStats>('/admin/referrals/stats');
+
+export const getMerchantReferrals = (page = 1, limit = 20, search?: string) => {
+  const qs = new URLSearchParams({
+    page: String(page),
+    limit: String(limit),
+    ...(search ? { search } : {}),
+  }).toString();
+  return req<MerchantReferralsResponse>(`/admin/referrals/merchant-to-merchant?${qs}`);
+};
+
+export const getClientReferrals = (page = 1, limit = 20, status?: string, search?: string) => {
+  const qs = new URLSearchParams({
+    page: String(page),
+    limit: String(limit),
+    ...(status ? { status } : {}),
+    ...(search ? { search } : {}),
+  }).toString();
+  return req<ClientReferralsResponse>(`/admin/referrals/client-to-merchant?${qs}`);
+};
+
+export const getTopReferrers = (limit = 20) =>
+  req<TopReferrer[]>(`/admin/referrals/top-referrers?limit=${limit}`);

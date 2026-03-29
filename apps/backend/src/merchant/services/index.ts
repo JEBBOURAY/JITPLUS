@@ -7,4 +7,3 @@ export { MerchantStoreService } from './merchant-store.service';
 export { WhatsappQuotaService } from './whatsapp-quota.service';
 export { MerchantPlanService } from './merchant-plan.service';
 export { MerchantReferralService } from './merchant-referral.service';
-export { UpgradeRequestService } from './upgrade-request.service';

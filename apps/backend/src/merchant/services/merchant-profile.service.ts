@@ -6,6 +6,7 @@ import {
   UnauthorizedException,
   Inject,
 } from '@nestjs/common';
+import { MerchantPlan } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
@@ -53,16 +54,23 @@ export class MerchantProfileService {
 
   async getProfile(merchantId: string): Promise<MerchantProfileData> {
     const cacheKey = `merchant:profile:${merchantId}`;
-    const cached = await this.cache.get<MerchantProfileData>(cacheKey);
-    if (cached) return cached;
+    let merchant = await this.cache.get<MerchantProfileData>(cacheKey);
 
-    const merchant = await this.merchantRepo.findUnique({
-      where: { id: merchantId },
-      select: MERCHANT_PROFILE_SELECT,
-    });
-    if (!merchant) throw new NotFoundException('Commerçant non trouvé');
+    if (!merchant) {
+      merchant = await this.merchantRepo.findUnique({
+        where: { id: merchantId },
+        select: MERCHANT_PROFILE_SELECT,
+      });
+      if (!merchant) throw new NotFoundException('Commerçant non trouvé');
+      await this.cache.set(cacheKey, merchant, MERCHANT_PROFILE_CACHE_TTL);
+    }
 
-    await this.cache.set(cacheKey, merchant, MERCHANT_PROFILE_CACHE_TTL);
+    // If the plan (trial or admin-set with expiry) has expired, return FREE immediately.
+    // The DB is lazily updated to FREE the next time PremiumGuard runs resolveEffectivePlan.
+    if (merchant.plan !== 'FREE' && merchant.planExpiresAt && merchant.planExpiresAt < new Date()) {
+      return { ...merchant, plan: 'FREE' as MerchantPlan };
+    }
+
     return merchant;
   }
 
@@ -518,9 +526,13 @@ export class MerchantProfileService {
     if (merchant.googleId && idToken) {
       // Google account: verify via Google token re-authentication
       try {
+        const webClientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
+        const androidClientIds = (this.configService.get<string>('GOOGLE_ANDROID_CLIENT_ID') || '').split(',').map(s => s.trim()).filter(Boolean);
+        const allowedAudiences = [webClientId, ...androidClientIds].filter(Boolean) as string[];
+
         const ticket = await this.googleClient.verifyIdToken({
           idToken,
-          audience: this.configService.get<string>('GOOGLE_CLIENT_ID'),
+          audience: allowedAudiences,
         });
         const payload = ticket.getPayload();
         if (!payload || payload.sub !== merchant.googleId) {

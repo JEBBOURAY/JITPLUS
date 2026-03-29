@@ -10,9 +10,10 @@ import React, { useId, useMemo } from 'react';
 import { View, ViewStyle } from 'react-native';
 
 import Svg, { Defs, LinearGradient, Stop, Text as SvgText } from 'react-native-svg';
+import { palette } from '@/contexts/ThemeContext';
 
-const GRAD_FROM = '#7C3AED'; // Violet
-const GRAD_TO   = '#1F2937'; // Charbon
+const GRAD_FROM = palette.violet;
+const GRAD_TO   = palette.charbon;
 
 interface BrandNameProps {
   /** Text to display, defaults to "JitPlus Pro" */

@@ -18,6 +18,7 @@ export interface IPushProvider {
     body: string,
     imageUrl?: string,
     data?: Record<string, string>,
+    androidChannelId?: string,
   ): Promise<PushMulticastResult>;
 
   /**

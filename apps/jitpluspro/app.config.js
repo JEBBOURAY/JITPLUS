@@ -77,7 +77,7 @@ module.exports = ({ config }) => {
         },
       },
       edgeToEdgeEnabled: true,
-      predictiveBackGestureEnabled: false,
+      predictiveBackGestureEnabled: true,
       permissions: [
         'CAMERA',
         'ACCESS_FINE_LOCATION',
@@ -120,13 +120,13 @@ module.exports = ({ config }) => {
         },
       ],
       // iOS PrivacyInfo.xcprivacy — required since Apple review policy May 2024
-        // './plugins/withPrivacyManifest',
-      // SSL Certificate Pinning — prevents MITM attacks
-      // DISABLED: Enable after setting up custom domain (api.jitplus.ma) with managed SSL cert.
-      // Cloud Run's *.a.run.app wildcard cert rotates too frequently for pinning.
-      // './plugins/withCertificatePinning',
+      './plugins/withPrivacyManifest',
       // Network security — enforces HTTPS, blocks cleartext traffic in production
       './plugins/withNetworkSecurity',
+      // SSL Certificate Pinning — prevents MITM attacks (must be AFTER withNetworkSecurity)
+      // DISABLED: Pins are still placeholders. Enable once api.jitplus.com has a stable
+      // managed SSL certificate. Cloud Run *.a.run.app certs rotate too frequently.
+      // './plugins/withCertificatePinning',
       // Force Google Maps region to Morocco — ensures correct border rendering (Sahara)
       // './plugins/withMoroccoRegion',
       [

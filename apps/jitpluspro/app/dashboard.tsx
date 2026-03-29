@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,12 +8,13 @@ import {
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
-import { Users, TrendingUp, RefreshCw, Repeat, ArrowLeft, Crown, Lock, Eye, Gift } from 'lucide-react-native';
+import { Users, TrendingUp, RefreshCw, Repeat, ArrowLeft, Eye, Gift } from 'lucide-react-native';
+import PremiumLockCard from '@/components/PremiumLockCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useRouter } from 'expo-router';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { LinearGradient } from 'expo-linear-gradient';
+
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useDashboardStats, useDashboardTrends } from '@/hooks/useQueryHooks';
 import { useGuardedCallback } from '@/hooks/useGuardedCallback';
@@ -26,52 +27,16 @@ interface TrendPoint {
   count: number;
 }
 
-export default function DashboardScreen() {
-  const { merchant } = useAuth();
+const StatCard = React.memo(function StatCard({
+  icon, label, value, color,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string | number;
+  color: string;
+}) {
   const theme = useTheme();
-  const router = useRouter();
-  const insets = useSafeAreaInsets();
-  const { t } = useLanguage();
-  const queryClient = useQueryClient();
-
-  const isPremium = merchant?.plan === 'PREMIUM';
-
-  const [trendPeriod, setTrendPeriod] = useState<TrendPeriod>('day');
-
-  const {
-    data: stats,
-    isLoading: loadingStats,
-    isRefetching: refreshingStats,
-  } = useDashboardStats(trendPeriod);
-
-  const {
-    data: trendResponse,
-    isLoading: loadingTrends,
-    isRefetching: refreshingTrends,
-  } = useDashboardTrends(trendPeriod);
-
-  const trendData = useMemo(
-    () => trendResponse
-      ? { transactions: trendResponse.transactions, newClients: trendResponse.newClients, rewardsGiven: trendResponse.rewardsGiven }
-      : null,
-    [trendResponse],
-  );
-
-  const refreshing = refreshingStats || refreshingTrends;
-
-  const onRefresh = useGuardedCallback(async () => {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['dashboard-stats', trendPeriod] }),
-      queryClient.invalidateQueries({ queryKey: ['dashboard-trends', trendPeriod] }),
-    ]);
-  }, [trendPeriod, queryClient]);
-
-  const renderStatCard = (
-    icon: React.ReactNode,
-    label: string,
-    value: string | number,
-    color: string,
-  ) => (
+  return (
     <View
       style={[
         styles.statCard,
@@ -101,6 +66,182 @@ export default function DashboardScreen() {
       </View>
     </View>
   );
+});
+
+const TrendChart = React.memo(function TrendChart({
+  data, color, formatLabel,
+}: {
+  data: TrendPoint[];
+  color: string;
+  formatLabel: (bucket: string) => string;
+}) {
+  const theme = useTheme();
+  const maxCount = Math.max(...data.map((item) => item.count), 1);
+  return (
+    <View style={styles.trendChart}>
+      {data.map((item) => {
+        const height = Math.max(8, Math.round((item.count / maxCount) * 90));
+        return (
+          <View key={item.bucket} style={styles.trendBarGroup}>
+            <View style={styles.trendBarValueWrap}>
+              <Text style={[styles.trendBarValue, { color: theme.text }]}>
+                {item.count}
+              </Text>
+            </View>
+            <View
+              style={[
+                styles.trendBar,
+                { height, backgroundColor: color },
+              ]}
+            />
+            <Text
+              style={[styles.trendLabel, { color: theme.textMuted }]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.7}
+            >
+              {formatLabel(item.bucket)}
+            </Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+});
+
+const TrendsSection = React.memo(function TrendsSection({
+  loading,
+  charts,
+  formatLabel,
+}: {
+  loading: boolean;
+  charts: { key: string; title: string; color: string; data: TrendPoint[] }[];
+  formatLabel: (bucket: string) => string;
+}) {
+  const theme = useTheme();
+  const { t } = useLanguage();
+
+  if (loading) {
+    return (
+      <View style={styles.trendEmpty}>
+        <ActivityIndicator size="small" color={theme.primary} />
+      </View>
+    );
+  }
+
+  if (!charts.length) {
+    return (
+      <View style={styles.trendEmpty}>
+        <Text style={[styles.trendEmptyText, { color: theme.textMuted }]}>
+          {t('dashboard.noData')}
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.trendsContainer}>
+      {charts.map((chart) => (
+        <View
+          key={chart.key}
+          style={[styles.trendCard, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}
+        >
+          <View style={styles.trendCardHeader}>
+            <View style={[styles.trendColorDot, { backgroundColor: chart.color }]} />
+            <Text style={[styles.trendCardTitle, { color: theme.text }]}>{chart.title}</Text>
+          </View>
+          <TrendChart data={chart.data} color={chart.color} formatLabel={formatLabel} />
+        </View>
+      ))}
+    </View>
+  );
+});
+
+const RewardDistributionSection = React.memo(function RewardDistributionSection({
+  distribution,
+}: {
+  distribution: { rewardId: string | null; title: string; count: number }[];
+}) {
+  const theme = useTheme();
+  const { t } = useLanguage();
+
+  if (!distribution.length) {
+    return (
+      <View style={styles.distributionEmpty}>
+        <Text style={[styles.distributionEmptyText, { color: theme.textMuted }]}>
+          {t('dashboard.noGifts')}
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.distributionList}>
+      {distribution.map((reward) => (
+        <View
+          key={reward.rewardId || reward.title}
+          style={[
+            styles.distributionRow,
+            { borderColor: theme.borderLight, backgroundColor: theme.bgCard },
+          ]}
+        >
+          <Text style={[styles.distributionTitle, { color: theme.text }]}>
+            {reward.title}
+          </Text>
+          <Text style={[styles.distributionCount, { color: theme.textSecondary }]}>
+            {t('dashboard.giftCount', { count: reward.count })}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+});
+
+export default function DashboardScreen() {
+  const { merchant } = useAuth();
+  const theme = useTheme();
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { t, locale } = useLanguage();
+  const queryClient = useQueryClient();
+
+  const isPremium = merchant?.plan === 'PREMIUM';
+
+  const [trendPeriod, setTrendPeriod] = useState<TrendPeriod>('day');
+
+  const periodTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const debouncedSetPeriod = useCallback((p: TrendPeriod) => {
+    clearTimeout(periodTimerRef.current);
+    periodTimerRef.current = setTimeout(() => setTrendPeriod(p), 300);
+  }, []);
+
+  const {
+    data: stats,
+    isLoading: loadingStats,
+    isRefetching: refreshingStats,
+  } = useDashboardStats(trendPeriod);
+
+  const {
+    data: trendResponse,
+    isLoading: loadingTrends,
+    isRefetching: refreshingTrends,
+  } = useDashboardTrends(trendPeriod);
+
+  const trendData = useMemo(
+    () => trendResponse
+      ? { transactions: trendResponse.transactions, newClients: trendResponse.newClients, rewardsGiven: trendResponse.rewardsGiven }
+      : null,
+    [trendResponse],
+  );
+
+  const refreshing = refreshingStats || refreshingTrends;
+
+  const onRefresh = useGuardedCallback(async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats', trendPeriod] }),
+      queryClient.invalidateQueries({ queryKey: ['dashboard-trends', trendPeriod] }),
+    ]);
+  }, [trendPeriod, queryClient]);
 
   const unitLabel = stats?.loyaltyType === 'STAMPS' ? 'tampons' : 'points';
 
@@ -119,44 +260,9 @@ export default function DashboardScreen() {
     if (trendPeriod === 'month') {
       return `${month}/${year}`;
     }
-    // year: show month name abbreviated
-    const monthNames = ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Août','Sep','Oct','Nov','Déc'];
-    return monthNames[date.getMonth()] || `${month}/${year}`;
-  }, [trendPeriod]);
-
-  const renderChart = (data: TrendPoint[], color: string) => {
-    const maxCount = Math.max(...data.map((item) => item.count), 1);
-    return (
-      <View style={styles.trendChart}>
-        {data.map((item) => {
-          const height = Math.max(8, Math.round((item.count / maxCount) * 90));
-          return (
-            <View key={item.bucket} style={styles.trendBarGroup}>
-              <View style={styles.trendBarValueWrap}>
-                <Text style={[styles.trendBarValue, { color: theme.text }]}>
-                  {item.count}
-                </Text>
-              </View>
-              <View
-                style={[
-                  styles.trendBar,
-                  { height, backgroundColor: color },
-                ]}
-              />
-              <Text
-                style={[styles.trendLabel, { color: theme.textMuted }]}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.7}
-              >
-                {formatTrendLabel(item.bucket)}
-              </Text>
-            </View>
-          );
-        })}
-      </View>
-    );
-  };
+    // year: show month name abbreviated using locale-aware formatter
+    return date.toLocaleDateString(locale === 'ar' ? 'ar-MA' : locale === 'en' ? 'en-US' : 'fr-FR', { month: 'short' });
+  }, [trendPeriod, locale]);
 
   const trendCharts = useMemo<{ key: string; title: string; color: string; data: TrendPoint[] }[]>(
     () => trendData
@@ -168,76 +274,6 @@ export default function DashboardScreen() {
       : [],
     [trendData, t, theme.primary],
   );
-
-  const renderTrends = () => {
-    if (loadingTrends) {
-      return (
-        <View style={styles.trendEmpty}>
-          <ActivityIndicator size="small" color={theme.primary} />
-        </View>
-      );
-    }
-
-    if (!trendCharts.length) {
-      return (
-        <View style={styles.trendEmpty}>
-          <Text style={[styles.trendEmptyText, { color: theme.textMuted }]}>
-            {t('dashboard.noData')}
-          </Text>
-        </View>
-      );
-    }
-
-    return (
-      <View style={styles.trendsContainer}>
-        {trendCharts.map((chart) => (
-          <View
-            key={chart.key}
-            style={[styles.trendCard, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}
-          >
-            <View style={styles.trendCardHeader}>
-              <View style={[styles.trendColorDot, { backgroundColor: chart.color }]} />
-              <Text style={[styles.trendCardTitle, { color: theme.text }]}>{chart.title}</Text>
-            </View>
-            {renderChart(chart.data, chart.color)}
-          </View>
-        ))}
-      </View>
-    );
-  };
-
-  const renderRewardDistribution = () => {
-    if (!stats || stats.rewardsDistribution.length === 0) {
-      return (
-        <View style={styles.distributionEmpty}>
-          <Text style={[styles.distributionEmptyText, { color: theme.textMuted }]}>
-            {t('dashboard.noGifts')}
-          </Text>
-        </View>
-      );
-    }
-
-    return (
-      <View style={styles.distributionList}>
-        {stats.rewardsDistribution.map((reward) => (
-          <View
-            key={reward.rewardId || reward.title}
-            style={[
-              styles.distributionRow,
-              { borderColor: theme.borderLight, backgroundColor: theme.bgCard },
-            ]}
-          >
-            <Text style={[styles.distributionTitle, { color: theme.text }]}>
-              {reward.title}
-            </Text>
-            <Text style={[styles.distributionCount, { color: theme.textSecondary }]}>
-              {t('dashboard.giftCount', { count: reward.count })}
-            </Text>
-          </View>
-        ))}
-      </View>
-    );
-  };
 
   if (loadingStats) {
     return (
@@ -251,23 +287,19 @@ export default function DashboardScreen() {
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
       {/* En-tete */}
-      <LinearGradient
-        colors={['#7C3AED', '#1F2937']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
+      <View
         style={[styles.header, { paddingTop: insets.top + 12 }]}
       >
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <ArrowLeft size={22} color="#fff" />
+          <ArrowLeft size={22} color={theme.text} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text style={styles.headerTitle}>{t('dashboard.title')}</Text>
-          <Text style={styles.headerSubtitle}>{merchant?.nom}</Text>
+          <Text style={[styles.headerTitle, { color: theme.text }]}>{t('dashboard.title')}</Text>
         </View>
-        <TouchableOpacity style={styles.refreshButton} onPress={onRefresh}>
-          <RefreshCw size={20} color="rgba(255,255,255,0.9)" strokeWidth={1.5} />
+        <TouchableOpacity style={[styles.refreshButton, { backgroundColor: theme.primaryBg }]} onPress={onRefresh}>
+          <RefreshCw size={20} color={theme.primary} strokeWidth={1.5} />
         </TouchableOpacity>
-      </LinearGradient>
+      </View>
 
       <ScrollView
         contentContainerStyle={styles.statsContainer}
@@ -293,7 +325,7 @@ export default function DashboardScreen() {
                       borderColor: isActive ? theme.primary : theme.borderLight,
                     },
                   ]}
-                  onPress={() => setTrendPeriod(item.id)}
+                  onPress={() => debouncedSetPeriod(item.id)}
                   activeOpacity={0.8}
                 >
                   <Text
@@ -312,93 +344,63 @@ export default function DashboardScreen() {
 
         <Text style={[styles.sectionTitle, { color: theme.text }]}>{t('dashboard.kpis')}</Text>
         <View style={styles.statsRow}>
-          {renderStatCard(
-            <Users size={22} color={theme.primary} strokeWidth={1.5} />,
-            t('dashboard.volumeClients'),
-            stats?.totalClients || 0,
-            theme.primary,
-          )}
-          {renderStatCard(
-            <TrendingUp size={22} color={theme.primary} strokeWidth={1.5} />,
-            t('dashboard.loyaltyLabel', { unit: unitLabel }),
-            stats?.totalPoints || 0,
-            theme.primary,
-          )}
+          <StatCard
+            icon={<Users size={22} color={theme.primary} strokeWidth={1.5} />}
+            label={t('dashboard.volumeClients')}
+            value={stats?.totalClients || 0}
+            color={theme.primary}
+          />
+          <StatCard
+            icon={<TrendingUp size={22} color={theme.primary} strokeWidth={1.5} />}
+            label={t('dashboard.loyaltyLabel', { unit: unitLabel })}
+            value={stats?.totalPoints || 0}
+            color={theme.primary}
+          />
         </View>
         <View style={[styles.statsRow, { marginTop: 15 }]}>
-          {renderStatCard(
-            <TrendingUp size={22} color={theme.primary} strokeWidth={1.5} />,
-            t('dashboard.consumedLabel', { unit: unitLabel }),
-            stats?.totalRedeemedPoints || 0,
-            theme.primary,
-          )}
-          {renderStatCard(
-            <Repeat size={22} color={theme.primary} strokeWidth={1.5} />,
-            t('dashboard.transactions'),
-            stats?.totalTransactions || 0,
-            theme.primary,
-          )}
+          <StatCard
+            icon={<TrendingUp size={22} color={theme.primary} strokeWidth={1.5} />}
+            label={t('dashboard.consumedLabel', { unit: unitLabel })}
+            value={stats?.totalRedeemedPoints || 0}
+            color={theme.primary}
+          />
+          <StatCard
+            icon={<Repeat size={22} color={theme.primary} strokeWidth={1.5} />}
+            label={t('dashboard.transactions')}
+            value={stats?.totalTransactions || 0}
+            color={theme.primary}
+          />
         </View>
         <View style={[styles.statsRow, { marginTop: 15 }]}>
-          {renderStatCard(
-            <Eye size={22} color={theme.primary} strokeWidth={1.5} />,
-            t('dashboard.profileViews'),
-            stats?.profileViews || 0,
-            theme.primary,
-          )}
-          {renderStatCard(
-            <Gift size={22} color={theme.primary} strokeWidth={1.5} />,
-            t('dashboard.trendGifts'),
-            stats?.totalRewardsGiven || 0,
-            theme.primary,
-          )}
+          <StatCard
+            icon={<Eye size={22} color={theme.primary} strokeWidth={1.5} />}
+            label={t('dashboard.profileViews')}
+            value={stats?.profileViews || 0}
+            color={theme.primary}
+          />
+          <StatCard
+            icon={<Gift size={22} color={theme.primary} strokeWidth={1.5} />}
+            label={t('dashboard.trendGifts')}
+            value={stats?.totalRewardsGiven || 0}
+            color={theme.primary}
+          />
         </View>
 
         <Text style={[styles.sectionTitle, { color: theme.text, marginTop: 10 }]}>{t('dashboard.evolution')}</Text>
-        {renderTrends()}
-
+        <TrendsSection loading={loadingTrends} charts={trendCharts} formatLabel={formatTrendLabel} />
 
         <Text style={[styles.sectionTitle, { marginTop: 20, color: theme.text }]}>{t('dashboard.giftDistribution')}</Text>
-        {renderRewardDistribution()}
+        <RewardDistributionSection distribution={stats?.rewardsDistribution ?? []} />
       </ScrollView>
 
       {/* ── Premium lock overlay ── */}
       {!isPremium && (
         <View style={styles.premiumOverlay}>
           <View style={styles.premiumCard}>
-            <LinearGradient
-              colors={['#5B21B6', '#7C3AED', '#1F2937']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.premiumIconCircle}
-            >
-              <Crown size={28} color="#FFD700" strokeWidth={1.5} />
-            </LinearGradient>
-            <Text style={[styles.premiumLockTitle, { color: theme.text }]}>
-              Dashboard Avancé
-            </Text>
-            <View style={styles.premiumLockBadge}>
-              <Lock size={12} color="#6B7280" strokeWidth={1.5} />
-              <Text style={styles.premiumLockBadgeText}>Fonctionnalité Pro</Text>
-            </View>
-            <Text style={[styles.premiumLockDesc, { color: theme.textMuted }]}>
-              Statistiques détaillées, tendances et distribution des cadeaux — disponibles avec le plan Pro.
-            </Text>
-            <TouchableOpacity
-              style={styles.premiumLockBtn}
-              onPress={() => router.push('/plan')}
-              activeOpacity={0.85}
-            >
-              <LinearGradient
-                colors={['#7C3AED', '#1F2937']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.premiumLockBtnGradient}
-              >
-                <Crown size={16} color="#fff" strokeWidth={1.5} />
-                <Text style={styles.premiumLockBtnText}>Découvrir le plan Pro</Text>
-              </LinearGradient>
-            </TouchableOpacity>
+            <PremiumLockCard
+              titleKey="dashboard.premiumTitle"
+              descriptionKey="dashboard.premiumDesc"
+            />
           </View>
         </View>
       )}
@@ -616,69 +618,6 @@ const styles = StyleSheet.create({
   premiumCard: {
     width: '100%',
     borderRadius: 24,
-    padding: 28,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    gap: 12,
-    shadowColor: '#1F2937',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  premiumIconCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  premiumLockTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    fontFamily: 'Lexend_700Bold',
-    textAlign: 'center',
-  },
-  premiumLockBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: '#37415118',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 20,
-  },
-  premiumLockBadgeText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#6B7280',
-    fontFamily: 'Lexend_600SemiBold',
-  },
-  premiumLockDesc: {
-    fontSize: 14,
-    textAlign: 'center',
-    lineHeight: 20,
-    fontFamily: 'Lexend_400Regular',
-  },
-  premiumLockBtn: {
-    width: '100%',
-    borderRadius: 16,
     overflow: 'hidden',
-    marginTop: 6,
-  },
-  premiumLockBtnGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-  },
-  premiumLockBtnText: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '700',
-    fontFamily: 'Lexend_700Bold',
   },
 });

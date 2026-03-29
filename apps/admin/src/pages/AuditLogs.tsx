@@ -63,7 +63,7 @@ export default function AuditLogs() {
               {logs.map((log) => (
                 <React.Fragment key={log.id}>
                   <tr
-                    style={{ borderBottom: `1px solid ${C.border}22`, cursor: 'pointer' }}
+                    style={{ borderBottom: `1px solid `, cursor: 'pointer' }}
                     onMouseEnter={(e) => ((e.currentTarget as HTMLTableRowElement).style.background = C.surfaceHover)}
                     onMouseLeave={(e) => ((e.currentTarget as HTMLTableRowElement).style.background = 'transparent')}
                     onClick={() => setExpanded((prev) => (prev === log.id ? null : log.id))}

@@ -34,6 +34,29 @@ export interface MerchantDetail extends MerchantRow {
   transactionCount: number;
 }
 
+export interface SubscriptionHistoryEvent {
+  id: string;
+  action: string;
+  createdAt: string;
+  adminEmail: string | null;
+  summary: string;
+  metadata: Record<string, unknown> | null;
+}
+
+export interface MerchantSubscriptionHistoryResponse {
+  merchant: {
+    id: string;
+    nom: string;
+    email: string;
+    plan: MerchantPlan;
+    planActivatedByAdmin: boolean;
+    planExpiresAt: string | null;
+    trialStartedAt: string | null;
+    createdAt: string;
+  };
+  events: SubscriptionHistoryEvent[];
+}
+
 // Pagination re-exported from @jitplus/shared above
 
 export interface MerchantsResponse {
@@ -45,13 +68,6 @@ export interface TrendPoint {
   label: string;
   merchants: number;
   transactions: number;
-}
-
-export interface PendingRequestBrief {
-  id: string;
-  createdAt: string;
-  message: string | null;
-  merchant: { id: string; nom: string; email: string; plan: MerchantPlan };
 }
 
 export interface AuditLogBrief {
@@ -90,11 +106,9 @@ export interface GlobalStats {
     whatsappCount: number;
     emailCount: number;
   };
-  upgradeRequests: { pending: number };
   trends: TrendPoint[];
   recentMerchants: MerchantRow[];
   recentAuditLogs: AuditLogBrief[];
-  pendingRequests: PendingRequestBrief[];
 }
 
 export interface AuditLogRow {
@@ -111,34 +125,6 @@ export interface AuditLogRow {
 export interface AuditLogsResponse {
   logs: AuditLogRow[];
   pagination: Pagination;
-}
-
-export interface UpgradeRequestRow {
-  id: string;
-  merchantId: string;
-  status: 'PENDING' | 'APPROVED' | 'REJECTED';
-  message: string | null;
-  adminNote: string | null;
-  reviewedById: string | null;
-  reviewedAt: string | null;
-  createdAt: string;
-  merchant: {
-    id: string;
-    nom: string;
-    email: string;
-    categorie: string;
-    ville: string | null;
-    plan: MerchantPlan;
-    planExpiresAt: string | null;
-    trialStartedAt: string | null;
-    isActive: boolean;
-  };
-}
-
-export interface UpgradeRequestsResponse {
-  requests: UpgradeRequestRow[];
-  total: number;
-  pending: number;
 }
 
 export interface NotificationRow {
@@ -161,4 +147,137 @@ export interface NotificationRow {
 export interface NotificationsResponse {
   notifications: NotificationRow[];
   pagination: Pagination;
+}
+
+// ── Client types ─────────────────────────────────────────────────────────────
+
+export interface ClientRow {
+  id: string;
+  prenom: string | null;
+  nom: string | null;
+  email: string | null;
+  telephone: string | null;
+  countryCode: string;
+  createdAt: string;
+  merchantCount: number;
+}
+
+export interface ClientsResponse {
+  clients: ClientRow[];
+  pagination: Pagination;
+}
+
+export interface ClientLoyaltyCard {
+  id: string;
+  points: number;
+  deactivatedAt: string | null;
+  createdAt: string;
+  merchant: {
+    id: string;
+    nom: string;
+    categorie: string;
+    logoUrl: string | null;
+  };
+}
+
+export interface ClientDetail {
+  id: string;
+  prenom: string | null;
+  nom: string | null;
+  email: string | null;
+  telephone: string | null;
+  countryCode: string;
+  emailVerified: boolean;
+  telephoneVerified: boolean;
+  dateNaissance: string | null;
+  notifPush: boolean;
+  notifEmail: boolean;
+  notifWhatsapp: boolean;
+  shareInfoMerchants: boolean;
+  termsAccepted: boolean;
+  referralCode: string | null;
+  referralBalance: number;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+  merchantCount: number;
+  transactionCount: number;
+  notificationCount: number;
+  loyaltyCards: ClientLoyaltyCard[];
+}
+
+// ── Referral types ─────────────────────────────────────────────────────────
+
+export interface ReferralStats {
+  merchantToMerchant: {
+    total: number;
+    totalMonthsEarned: number;
+  };
+  clientToMerchant: {
+    total: number;
+    pending: number;
+    validated: number;
+    totalBalance: number;
+  };
+}
+
+export interface MerchantReferralRow {
+  id: string;
+  nom: string;
+  email: string;
+  categorie: string;
+  ville: string | null;
+  plan: MerchantPlan;
+  bonusCredited: boolean;
+  createdAt: string;
+  referrer: {
+    id: string;
+    nom: string;
+    email: string;
+    referralCode: string | null;
+    monthsEarned: number;
+  } | null;
+}
+
+export interface MerchantReferralsResponse {
+  referrals: MerchantReferralRow[];
+  pagination: Pagination;
+}
+
+export interface ClientReferralRow {
+  id: string;
+  status: 'PENDING' | 'VALIDATED';
+  amount: number;
+  createdAt: string;
+  validatedAt: string | null;
+  client: {
+    id: string;
+    prenom: string | null;
+    nom: string | null;
+    email: string | null;
+    referralCode: string | null;
+    referralBalance: number;
+  };
+  merchant: {
+    id: string;
+    nom: string;
+    email: string;
+    categorie: string;
+    plan: MerchantPlan;
+  };
+}
+
+export interface ClientReferralsResponse {
+  referrals: ClientReferralRow[];
+  pagination: Pagination;
+}
+
+export interface TopReferrer {
+  id: string;
+  nom: string;
+  email: string;
+  referralCode: string | null;
+  monthsEarned: number;
+  referredCount: number;
+  plan: MerchantPlan;
 }

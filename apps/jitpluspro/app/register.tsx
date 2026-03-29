@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useReducer, useRef, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,28 +10,17 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Linking,
 } from 'react-native';
 // Reanimated removed — plain View shim
 const Animated = { View } as const;
 import { useRouter } from 'expo-router';
 import {
-  Eye,
-  EyeOff,
-  Store,
-  Mail,
-  Lock,
-  Phone,
-  MapPin,
   ChevronRight,
   Check,
   ArrowLeft,
-  MapPinned,
-  Search,
-  Gift,
+  MapPin,
 } from 'lucide-react-native';
-import MapView, { Marker, PROVIDER_GOOGLE, SafeMapViewRef } from '@/components/SafeMapView';
-import * as Location from 'expo-location';
+import type { SafeMapViewRef } from '@/components/SafeMapView';
 import { geocodeAsync, reverseGeocodeAsync } from '@/utils/geocodeCache';
 import Constants from 'expo-constants';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -41,11 +30,101 @@ import { useAuth } from '@/contexts/AuthContext';
 import api from '@/services/api';
 import { MerchantCategory } from '@/types';
 import { MIN_PASSWORD_LENGTH } from '@/constants/app';
-import { CATEGORY_LABELS } from '@/constants/categories';
 import { isValidEmail } from '@/utils/validation';
 import { getErrorMessage } from '@/utils/error';
 import { VILLES } from '@/constants/villes';
 import { useGoogleIdToken } from '@/hooks/useGoogleIdToken';
+import { StepIdentity } from '@/components/register/StepIdentity';
+import { StepCredentials } from '@/components/register/StepCredentials';
+import { StepMapCompliance } from '@/components/register/StepMapCompliance';
+
+// ── Register form state ─────────────────────────────────────────────
+interface RegState {
+  step: number;
+  googleIdToken: string | null;
+  nom: string;
+  categorie: MerchantCategory | null;
+  email: string;
+  password: string;
+  phoneNumber: string;
+  showPassword: boolean;
+  ville: string;
+  quartier: string;
+  villeSearch: string;
+  latitude: number | null;
+  longitude: number | null;
+  termsAccepted: boolean;
+  isLoading: boolean;
+  triedSubmit: boolean;
+  referralCode: string;
+  referralStatus: 'idle' | 'verifying' | 'valid' | 'invalid';
+  referralNom: string;
+  addressSearch: string;
+  addressLabel: string;
+  isGeoSearching: boolean;
+}
+
+type RegAction =
+  | { type: 'SET'; payload: Partial<RegState> }
+  | { type: 'NEXT_STEP'; googleIdToken: string | null }
+  | { type: 'PREV_STEP'; googleIdToken: string | null }
+  | { type: 'REFERRAL_CHANGE'; code: string }
+  | { type: 'REFERRAL_VERIFIED'; status: 'valid' | 'invalid'; nom?: string }
+  | { type: 'SET_LOADING'; loading: boolean };
+
+const initialRegState: RegState = {
+  step: 0,
+  googleIdToken: null,
+  nom: '',
+  categorie: null,
+  email: '',
+  password: '',
+  phoneNumber: '',
+  showPassword: false,
+  ville: '',
+  quartier: '',
+  villeSearch: '',
+  latitude: null,
+  longitude: null,
+  termsAccepted: false,
+  isLoading: false,
+  triedSubmit: false,
+  referralCode: '',
+  referralStatus: 'idle',
+  referralNom: '',
+  addressSearch: '',
+  addressLabel: '',
+  isGeoSearching: false,
+};
+
+function regReducer(state: RegState, action: RegAction): RegState {
+  switch (action.type) {
+    case 'SET':
+      return { ...state, ...action.payload };
+    case 'NEXT_STEP': {
+      const nextStep = (state.step === 0 && action.googleIdToken) ? 2 : state.step + 1;
+      return { ...state, step: nextStep };
+    }
+    case 'PREV_STEP': {
+      const prevStep = (state.step === 2 && action.googleIdToken) ? 0 : state.step - 1;
+      return { ...state, step: prevStep };
+    }
+    case 'REFERRAL_CHANGE': {
+      const code = action.code.toUpperCase().replace(/[^A-Z0-9]/g, '');
+      return { ...state, referralCode: code, referralStatus: 'idle', referralNom: '' };
+    }
+    case 'REFERRAL_VERIFIED':
+      return {
+        ...state,
+        referralStatus: action.status,
+        referralNom: action.status === 'valid' ? (action.nom ?? '') : '',
+      };
+    case 'SET_LOADING':
+      return { ...state, isLoading: action.loading };
+    default:
+      return state;
+  }
+}
 
 // ── Referral code verification ─────────────────────────────────────────────
 async function verifyReferralCode(code: string): Promise<{ id: string; nom: string } | null> {
@@ -115,46 +194,35 @@ export default function RegisterScreen() {
   const { googleRegister } = useAuth();
 
   // Steps: 0 = Identité, 1 = Identifiants, 2 = Localisation, 3 = Position GPS + Conformité
-  const [step, setStep] = useState(0);
+  const [s, dispatch] = useReducer(regReducer, initialRegState);
+  const set = useCallback((patch: Partial<RegState>) => dispatch({ type: 'SET', payload: patch }), []);
 
-  // Google registration state
-  const [googleIdToken, setGoogleIdToken] = useState<string | null>(null);
-
-  // Form state
-  const [nom, setNom] = useState('');
-  const [categorie, setCategorie] = useState<MerchantCategory | null>(null);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [phoneNumber, setPhoneNumber] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [ville, setVille] = useState('');
-  const [quartier, setQuartier] = useState('');
-  const [villeSearch, setVilleSearch] = useState('');
-  const [latitude, setLatitude] = useState<number | null>(null);
-  const [longitude, setLongitude] = useState<number | null>(null);
-  const [termsAccepted, setTermsAccepted] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [triedSubmit, setTriedSubmit] = useState(false);
-
-  // Referral code
-  const [referralCode, setReferralCode] = useState('');
-  const [referralStatus, setReferralStatus] = useState<'idle' | 'verifying' | 'valid' | 'invalid'>('idle');
-  const [referralNom, setReferralNom] = useState('');
+  const {
+    step, googleIdToken, nom, categorie, email, password, phoneNumber,
+    showPassword, ville, quartier, villeSearch, latitude, longitude,
+    termsAccepted, isLoading, triedSubmit, referralCode, referralStatus,
+    referralNom, addressSearch, addressLabel, isGeoSearching,
+  } = s;
   const referralTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { t } = useLanguage();
 
+  // Clean up referral debounce timer on unmount
+  useEffect(() => {
+    return () => {
+      if (referralTimer.current) clearTimeout(referralTimer.current);
+    };
+  }, []);
+
   // Google ID token capture for registration
   const handleGoogleToken = useCallback((idToken: string) => {
-    setGoogleIdToken(idToken);
+    set({ googleIdToken: idToken });
     // Skip step 1 (credentials) — jump to step 2 (location)
-    if (step <= 0) setStep(2);
-  }, [step]);
+    // Only skip if step 0 is complete (nom + categorie filled)
+    if (step <= 0 && nom.trim().length > 0 && categorie !== null) {
+      set({ step: 2 });
+    }
+  }, [step, set, nom, categorie]);
   const google = useGoogleIdToken(handleGoogleToken);
-
-  // Map address search state
-  const [addressSearch, setAddressSearch] = useState('');
-  const [addressLabel, setAddressLabel] = useState('');
-  const [isGeoSearching, setIsGeoSearching] = useState(false);
 
   // Google Maps API key
   const googleMapsApiKey = Constants.expoConfig?.android?.config?.googleMaps?.apiKey ?? '';
@@ -168,24 +236,21 @@ export default function RegisterScreen() {
 
   // ── Referral code debounced check ──
   const handleReferralCodeChange = useCallback((text: string) => {
+    dispatch({ type: 'REFERRAL_CHANGE', code: text });
     const code = text.toUpperCase().replace(/[^A-Z0-9]/g, '');
-    setReferralCode(code);
-    setReferralStatus('idle');
-    setReferralNom('');
     if (referralTimer.current) clearTimeout(referralTimer.current);
     if (code.length >= 6) {
-      setReferralStatus('verifying');
+      set({ referralStatus: 'verifying' });
       referralTimer.current = setTimeout(async () => {
         const result = await verifyReferralCode(code);
         if (result) {
-          setReferralStatus('valid');
-          setReferralNom(result.nom);
+          dispatch({ type: 'REFERRAL_VERIFIED', status: 'valid', nom: result.nom });
         } else {
-          setReferralStatus('invalid');
+          dispatch({ type: 'REFERRAL_VERIFIED', status: 'invalid' });
         }
       }, 600);
     }
-  }, []);
+  }, [set]);
 
   // ── Validation per step ──
   const canProceed = () => {
@@ -202,20 +267,16 @@ export default function RegisterScreen() {
 
   const handleNext = () => {
     if (step < TOTAL_STEPS - 1) {
-      // Google flow: skip step 1 (credentials) — go from 0 → 2
-      const nextStep = (step === 0 && googleIdToken) ? 2 : step + 1;
-      setStep(nextStep);
+      dispatch({ type: 'NEXT_STEP', googleIdToken });
     } else {
-      setTriedSubmit(true);
+      set({ triedSubmit: true });
       if (canProceed()) handleRegister();
     }
   };
 
   const handleBack = () => {
     if (step > 0) {
-      // Google flow: skip step 1 when going back from step 2
-      const prevStep = (step === 2 && googleIdToken) ? 0 : step - 1;
-      setStep(prevStep);
+      dispatch({ type: 'PREV_STEP', googleIdToken });
     }
     else router.back();
   };
@@ -224,15 +285,14 @@ export default function RegisterScreen() {
   const handleAddressSearch = async () => {
     const query = addressSearch.trim();
     if (!query) return;
-    setIsGeoSearching(true);
+    set({ isGeoSearching: true });
     try {
       // Append city name to improve geocoding accuracy
-      const fullQuery = ville ? `${query}, ${ville}, Maroc` : `${query}, Maroc`;
+      const fullQuery = ville ? `${query}, ${ville}, ${t('common.morocco')}` : `${query}, ${t('common.morocco')}`;
       const results = await geocodeAsync(fullQuery);
       if (results.length > 0) {
         const { latitude: lat, longitude: lng } = results[0];
-        setLatitude(lat);
-        setLongitude(lng);
+        set({ latitude: lat, longitude: lng });
         mapRef.current?.animateToRegion({
           latitude: lat,
           longitude: lng,
@@ -247,7 +307,7 @@ export default function RegisterScreen() {
     } catch {
       Alert.alert(t('common.error'), t('registerExtra.addressSearchError'));
     } finally {
-      setIsGeoSearching(false);
+      set({ isGeoSearching: false });
     }
   };
 
@@ -258,12 +318,12 @@ export default function RegisterScreen() {
       if (results.length > 0) {
         const r = results[0];
         const parts = [r.street, r.district, r.city, r.region].filter(Boolean);
-        setAddressLabel(parts.join(', '));
+        set({ addressLabel: parts.join(', ') });
       } else {
-        setAddressLabel(`${lat.toFixed(6)}, ${lng.toFixed(6)}`);
+        set({ addressLabel: `${lat.toFixed(6)}, ${lng.toFixed(6)}` });
       }
     } catch {
-      setAddressLabel(`${lat.toFixed(6)}, ${lng.toFixed(6)}`);
+      set({ addressLabel: `${lat.toFixed(6)}, ${lng.toFixed(6)}` });
     }
   };
 
@@ -289,7 +349,7 @@ export default function RegisterScreen() {
         return;
       }
 
-      setIsLoading(true);
+      dispatch({ type: 'SET_LOADING', loading: true });
       try {
         const result = await googleRegister(googleIdToken, businessData);
         if (result.success) {
@@ -306,7 +366,7 @@ export default function RegisterScreen() {
           getErrorMessage(error, t('common.genericError')),
         );
       } finally {
-        setIsLoading(false);
+        dispatch({ type: 'SET_LOADING', loading: false });
       }
       return;
     }
@@ -317,7 +377,7 @@ export default function RegisterScreen() {
       return;
     }
 
-    setIsLoading(true);
+    dispatch({ type: 'SET_LOADING', loading: true });
     try {
       await api.post('/auth/register', {
         ...businessData,
@@ -335,14 +395,17 @@ export default function RegisterScreen() {
         getErrorMessage(error, t('common.genericError')),
       );
     } finally {
-      setIsLoading(false);
+      dispatch({ type: 'SET_LOADING', loading: false });
     }
   };
 
   // ── Filtered cities ──
-  const filteredVilles = villeSearch
-    ? VILLES.filter((v) => v.toLowerCase().includes(villeSearch.toLowerCase()))
-    : VILLES;
+  const filteredVilles = useMemo(
+    () => villeSearch
+      ? VILLES.filter((v) => v.toLowerCase().includes(villeSearch.toLowerCase()))
+      : VILLES,
+    [villeSearch],
+  );
 
   // ── Step titles ──
   const stepTitles = [
@@ -403,315 +466,41 @@ export default function RegisterScreen() {
           {/* ── Step 0: Identité du commerce ── */}
           {step === 0 && (
             <Animated.View>
-              {/* Nom de la boutique */}
-              <View style={styles.field}>
-                <Text style={[styles.label, { color: theme.text }]}>
-                  {t('register.nameLabel')} *
-                </Text>
-                <View
-                  style={[
-                    styles.inputRow,
-                    {
-                      backgroundColor: theme.bgInput,
-                      borderColor: nom.trim().length > 0 ? theme.success : theme.border,
-                    },
-                  ]}
-                >
-                  <Store size={20} color={nom.trim().length > 0 ? theme.success : theme.textMuted} />
-                  <TextInput
-                    style={[styles.input, { color: theme.text }]}
-                    value={nom}
-                    onChangeText={setNom}
-                    placeholder={t('registerExtra.namePlaceholder')}
-                    placeholderTextColor={theme.textMuted}
-                    autoFocus
-                    returnKeyType="next"
-                  />
-                </View>
-              </View>
-
-              {/* Catégorie */}
-              <View style={styles.field}>
-                <Text style={[styles.label, { color: theme.text }]}>
-                  {t('register.categoryLabel')} *
-                </Text>
-                <View style={styles.categoryGrid}>
-                  {Object.entries(CATEGORY_LABELS).map(([key, { label, emoji }]) => {
-                    const isSelected = categorie === key;
-                    return (
-                      <TouchableOpacity
-                        key={key}
-                        style={[
-                          styles.categoryChip,
-                          {
-                            backgroundColor: isSelected
-                              ? theme.primaryBg
-                              : theme.bgCard,
-                            borderColor: isSelected ? theme.primary : theme.border,
-                          },
-                        ]}
-                        onPress={() => setCategorie(key as MerchantCategory)}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={styles.categoryEmoji}>{emoji}</Text>
-                        <Text
-                          style={[
-                            styles.categoryLabel,
-                            {
-                              color: isSelected ? theme.primary : theme.textSecondary,
-                              fontWeight: isSelected ? '700' : '500',
-                            },
-                          ]}
-                        >
-                          {label}
-                        </Text>
-                        {isSelected && (
-                          <Check size={14} color={theme.primary} strokeWidth={1.5} />
-                        )}
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </View>
-
-              {/* ── Google Sign-Up option ── */}
-              {!googleIdToken && (
-                <>
-                  <View style={styles.separator}>
-                    <View style={[styles.separatorLine, { backgroundColor: theme.border }]} />
-                    <Text style={[styles.separatorText, { color: theme.textMuted }]}>{t('login.orDivider')}</Text>
-                    <View style={[styles.separatorLine, { backgroundColor: theme.border }]} />
-                  </View>
-
-                  <TouchableOpacity
-                    style={[styles.googleBtn, { backgroundColor: theme.bgCard, borderColor: theme.border }]}
-                    onPress={google.promptGoogle}
-                    disabled={google.isLoading || isLoading || !canProceed()}
-                    activeOpacity={0.7}
-                    accessibilityRole="button"
-                    accessibilityLabel={t('registerExtra.signUpWithGoogle')}
-                  >
-                    {google.isLoading ? (
-                      <ActivityIndicator color={palette.charbon} size="small" />
-                    ) : (
-                      <>
-                        <View style={styles.googleIconWrap}>
-                          <Text style={styles.googleG}>G</Text>
-                        </View>
-                        <Text style={[styles.googleBtnText, { color: theme.text }]}>
-                          {t('registerExtra.signUpWithGoogle')}
-                        </Text>
-                      </>
-                    )}
-                  </TouchableOpacity>
-
-                  {!!google.error && (
-                    <Text style={[styles.hint, { color: theme.danger, textAlign: 'center', marginTop: 8 }]}>
-                      {google.error}
-                    </Text>
-                  )}
-                </>
-              )}
-
-              {/* Google token captured badge */}
-              {googleIdToken && (
-                <View style={[styles.googleBadge, { backgroundColor: `${theme.success}12`, borderColor: `${theme.success}30` }]}>
-                  <Check size={16} color={theme.success} strokeWidth={2} />
-                  <Text style={[styles.googleBadgeText, { color: theme.success }]}>
-                    {t('registerExtra.googleLinked')}
-                  </Text>
-                  <TouchableOpacity onPress={() => setGoogleIdToken(null)} activeOpacity={0.7}>
-                    <Text style={[styles.googleBadgeReset, { color: theme.textMuted }]}>
-                      {t('registerExtra.googleChange')}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              )}
+              <StepIdentity
+                theme={theme}
+                t={t}
+                nom={nom}
+                setNom={(v) => set({ nom: v })}
+                categorie={categorie}
+                setCategorie={(v) => set({ categorie: v })}
+                googleIdToken={googleIdToken}
+                setGoogleIdToken={(v) => set({ googleIdToken: v })}
+                google={google}
+                canProceed={canProceed()}
+                isLoading={isLoading}
+                palette={palette}
+              />
             </Animated.View>
           )}
 
           {/* ── Step 1: Identifiants ── */}
           {step === 1 && (
             <Animated.View>
-              {/* Email */}
-              <View style={styles.field}>
-                <Text style={[styles.label, { color: theme.text }]}>
-                  {t('register.emailLabel')} *
-                </Text>
-                <View
-                  style={[
-                    styles.inputRow,
-                    {
-                      backgroundColor: theme.bgInput,
-                      borderColor: email && isValidEmail(email) ? theme.success : email.length > 3 && !isValidEmail(email) ? theme.danger : email ? theme.primary : theme.border,
-                    },
-                  ]}
-                >
-                  <Mail size={20} color={email && isValidEmail(email) ? theme.success : theme.textMuted} />
-                  <TextInput
-                    ref={emailRef}
-                    style={[styles.input, { color: theme.text }]}
-                    value={email}
-                    onChangeText={setEmail}
-                    placeholder={t('register.emailPlaceholder')}
-                    placeholderTextColor={theme.textMuted}
-                    autoCapitalize="none"
-                    keyboardType="email-address"
-                    autoComplete="email"
-                    autoFocus
-                    returnKeyType="next"
-                    onSubmitEditing={() => phoneRef.current?.focus()}
-                  />
-                  {email && isValidEmail(email) && (
-                    <Check size={18} color={theme.success} strokeWidth={2.5} />
-                  )}
-                </View>
-                {email.length > 3 && !isValidEmail(email) && (
-                  <Text style={[styles.hint, { color: theme.danger }]}>
-                    {t('login.invalidEmail')}
-                  </Text>
-                )}
-                {email && isValidEmail(email) && (
-                  <Text style={[styles.hint, { color: theme.success }]}>
-                    {t('registerExtra.emailValid')}
-                  </Text>
-                )}
-                {!email && (
-                  <Text style={[styles.hint, { color: theme.textMuted }]}>
-                    {t('registerExtra.emailHint')}
-                  </Text>
-                )}
-              </View>
-
-              {/* Téléphone */}
-              <View style={styles.field}>
-                <Text style={[styles.label, { color: theme.text }]}>
-                  {t('registerExtra.phoneLabel')} *
-                </Text>
-                <View
-                  style={[
-                    styles.inputRow,
-                    {
-                      backgroundColor: theme.bgInput,
-                      borderColor: phoneNumber.trim().length >= 7 ? theme.success : phoneNumber ? theme.primary : theme.border,
-                    },
-                  ]}
-                >
-                  <Phone size={20} color={phoneNumber.trim().length >= 7 ? theme.success : theme.textMuted} />
-                  <TextInput
-                    ref={phoneRef}
-                    style={[styles.input, { color: theme.text }]}
-                    value={phoneNumber}
-                    onChangeText={setPhoneNumber}
-                    placeholder={t('registerExtra.phonePlaceholder')}
-                    placeholderTextColor={theme.textMuted}
-                    keyboardType="phone-pad"
-                    returnKeyType="next"
-                    onSubmitEditing={() => passwordRef.current?.focus()}
-                  />
-                  {phoneNumber.trim().length >= 7 && (
-                    <Check size={18} color={theme.success} strokeWidth={2.5} />
-                  )}
-                </View>
-                <Text style={[styles.hint, { color: theme.textMuted }]}>
-                  {t('registerExtra.phoneHint')}
-                </Text>
-              </View>
-
-              {/* Password */}
-              <View style={styles.field}>
-                <Text style={[styles.label, { color: theme.text }]}>
-                  {t('register.passwordLabel')} *
-                </Text>
-                <View
-                  style={[
-                    styles.inputRow,
-                    {
-                      backgroundColor: theme.bgInput,
-                      borderColor:
-                        password.length === 0
-                          ? theme.border
-                          : password.length >= MIN_PASSWORD_LENGTH
-                            ? theme.success
-                            : theme.danger,
-                    },
-                  ]}
-                >
-                  <Lock
-                    size={20}
-                    color={password.length >= MIN_PASSWORD_LENGTH ? theme.success : theme.textMuted}
-                  />
-                  <TextInput
-                    ref={passwordRef}
-                    style={[styles.input, { color: theme.text }]}
-                    value={password}
-                    onChangeText={setPassword}
-                    placeholder={t('registerExtra.passwordPlaceholder', { count: MIN_PASSWORD_LENGTH })}
-                    placeholderTextColor={theme.textMuted}
-                    secureTextEntry={!showPassword}
-                    returnKeyType="done"
-                  />
-                  <TouchableOpacity
-                    onPress={() => setShowPassword(!showPassword)}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  >
-                    {showPassword ? (
-                      <EyeOff size={20} color={theme.textMuted} />
-                    ) : (
-                      <Eye size={20} color={theme.textMuted} />
-                    )}
-                  </TouchableOpacity>
-                  {password.length >= MIN_PASSWORD_LENGTH && (
-                    <Check size={18} color={theme.success} style={{ marginLeft: 4 }} />
-                  )}
-                </View>
-                {/* Strength bar + hint */}
-                {password.length > 0 && (
-                  <View style={{ marginTop: 6 }}>
-                    <View
-                      style={{
-                        height: 4,
-                        borderRadius: 2,
-                        backgroundColor: theme.border,
-                        overflow: 'hidden',
-                      }}
-                    >
-                      <View
-                        style={{
-                          width: `${Math.min((password.length / MIN_PASSWORD_LENGTH) * 100, 100)}%`,
-                          height: '100%',
-                          borderRadius: 2,
-                          backgroundColor:
-                            password.length >= MIN_PASSWORD_LENGTH ? theme.success : theme.danger,
-                        }}
-                      />
-                    </View>
-                    <Text
-                      style={[
-                        styles.hint,
-                        {
-                          color:
-                            password.length >= MIN_PASSWORD_LENGTH ? theme.success : theme.danger,
-                          marginTop: 4,
-                        },
-                      ]}
-                    >
-                      {password.length < MIN_PASSWORD_LENGTH
-                        ? t('registerExtra.passwordTooShort', {
-                            count: MIN_PASSWORD_LENGTH - password.length,
-                          })
-                        : t('registerExtra.passwordValid')}
-                    </Text>
-                  </View>
-                )}
-              </View>
-
-              {/* Secure note */}
-              <View style={[styles.secureNote, { backgroundColor: `${theme.success}08` }]}>
-                <Text style={[styles.secureNoteText, { color: theme.textMuted }]}>
-                  {t('registerExtra.secureNote')}
-                </Text>
-              </View>
+              <StepCredentials
+                theme={theme}
+                t={t}
+                email={email}
+                setEmail={(v) => set({ email: v })}
+                password={password}
+                setPassword={(v) => set({ password: v })}
+                phoneNumber={phoneNumber}
+                setPhoneNumber={(v) => set({ phoneNumber: v })}
+                showPassword={showPassword}
+                setShowPassword={(v) => set({ showPassword: v })}
+                emailRef={emailRef}
+                phoneRef={phoneRef}
+                passwordRef={passwordRef}
+              />
             </Animated.View>
           )}
 
@@ -737,8 +526,8 @@ export default function RegisterScreen() {
                     style={[styles.input, { color: theme.text }]}
                     value={villeSearch || ville}
                     onChangeText={(t) => {
-                      setVilleSearch(t);
-                      if (!t) setVille('');
+                      set({ villeSearch: t });
+                      if (!t) set({ ville: '' });
                     }}
                     placeholder={t('registerExtra.villeSearchPlaceholder')}
                     placeholderTextColor={theme.textMuted}
@@ -762,8 +551,7 @@ export default function RegisterScreen() {
                           key={v}
                           style={[styles.villeItem, { borderBottomColor: theme.borderLight }]}
                           onPress={() => {
-                            setVille(v);
-                            setVilleSearch('');
+                            set({ ville: v, villeSearch: '' });
                             quartierRef.current?.focus();
                           }}
                           activeOpacity={0.6}
@@ -776,8 +564,7 @@ export default function RegisterScreen() {
                         <TouchableOpacity
                           style={styles.villeItem}
                           onPress={() => {
-                            setVille(villeSearch.trim());
-                            setVilleSearch('');
+                            set({ ville: villeSearch.trim(), villeSearch: '' });
                           }}
                           activeOpacity={0.6}
                         >
@@ -794,8 +581,7 @@ export default function RegisterScreen() {
                 {ville ? (
                   <TouchableOpacity
                     onPress={() => {
-                      setVille('');
-                      setVilleSearch('');
+                      set({ ville: '', villeSearch: '' });
                     }}
                   >
                     <Text style={[styles.changeLink, { color: theme.primary }]}>
@@ -824,7 +610,7 @@ export default function RegisterScreen() {
                     ref={quartierRef}
                     style={[styles.input, { color: theme.text }]}
                     value={quartier}
-                    onChangeText={setQuartier}
+                    onChangeText={(v) => set({ quartier: v })}
                     placeholder={t('registerExtra.quartierPlaceholder')}
                     placeholderTextColor={theme.textMuted}
                     returnKeyType="done"
@@ -840,285 +626,35 @@ export default function RegisterScreen() {
           {/* ── Step 3: Position GPS + Conformité ── */}
           {step === 3 && (
             <Animated.View>
-              {/* Google Maps */}
-              <View style={styles.field}>
-                <Text style={[styles.label, { color: theme.text }]}>
-                  {t('registerExtra.mapTitle')}
-                </Text>
-                <Text style={[styles.hint, { color: theme.textMuted, marginBottom: 10 }]}>
-                  {t('registerExtra.mapHint')}
-                </Text>
-
-                {/* ── Address search bar ── */}
-                <View
-                  style={[
-                    styles.inputRow,
-                    {
-                      backgroundColor: theme.bgInput,
-                      borderColor: addressSearch ? theme.primary : theme.border,
-                      marginBottom: 10,
-                    },
-                  ]}
-                >
-                  <Search size={18} color={theme.textMuted} />
-                  <TextInput
-                    style={[styles.input, { color: theme.text }]}
-                    value={addressSearch}
-                    onChangeText={setAddressSearch}
-                    placeholder={t('registerExtra.addressPlaceholder')}
-                    placeholderTextColor={theme.textMuted}
-                    returnKeyType="search"
-                    onSubmitEditing={handleAddressSearch}
-                    autoFocus
-                  />
-                  {isGeoSearching ? (
-                    <ActivityIndicator size="small" color={theme.primary} />
-                  ) : (
-                    <TouchableOpacity
-                      onPress={handleAddressSearch}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    >
-                      <MapPin size={20} color={theme.primary} />
-                    </TouchableOpacity>
-                  )}
-                </View>
-
-                <View style={styles.mapContainer}>
-                  <MapView
-                    ref={mapRef}
-                    provider={googleMapsApiKey ? PROVIDER_GOOGLE : undefined}
-                    style={styles.map}
-                    initialRegion={{
-                      latitude: latitude || 33.5731,
-                      longitude: longitude || -7.5898,
-                      latitudeDelta: 0.01,
-                      longitudeDelta: 0.01,
-                    }}
-                    onPress={(e: { nativeEvent: { coordinate: { latitude: number; longitude: number } } }) => {
-                      const coords = e.nativeEvent.coordinate;
-                      setLatitude(coords.latitude);
-                      setLongitude(coords.longitude);
-                      reverseGeocodeAndLabel(coords.latitude, coords.longitude);
-                    }}
-                  >
-                    {latitude && longitude && (
-                      <Marker
-                        coordinate={{ latitude, longitude }}
-                        draggable
-                        onDragEnd={(e: { nativeEvent: { coordinate: { latitude: number; longitude: number } } }) => {
-                          const coords = e.nativeEvent.coordinate;
-                          setLatitude(coords.latitude);
-                          setLongitude(coords.longitude);
-                          reverseGeocodeAndLabel(coords.latitude, coords.longitude);
-                        }}
-                      />
-                    )}
-                  </MapView>
-
-                  {/* Get current location button */}
-                  <TouchableOpacity
-                    style={[styles.locationBtn, { backgroundColor: theme.primary }]}
-                    onPress={async () => {
-                      try {
-                        const { status } = await Location.requestForegroundPermissionsAsync();
-                        if (status !== 'granted') {
-                          Alert.alert(t('registerExtra.locationDenied'), t('registerExtra.locationDeniedMsg'));
-                          return;
-                        }
-                        const location = await Location.getCurrentPositionAsync({});
-                        setLatitude(location.coords.latitude);
-                        setLongitude(location.coords.longitude);
-                        mapRef.current?.animateToRegion({
-                          latitude: location.coords.latitude,
-                          longitude: location.coords.longitude,
-                          latitudeDelta: 0.005,
-                          longitudeDelta: 0.005,
-                        });
-                        reverseGeocodeAndLabel(location.coords.latitude, location.coords.longitude);
-                      } catch {
-                        Alert.alert(t('common.error'), t('registerExtra.locationError'));
-                      }
-                    }}
-                    activeOpacity={0.8}
-                  >
-                    <MapPinned size={18} color="#fff" strokeWidth={1.5} />
-                    <Text style={styles.locationBtnText}>{t('registerExtra.locateMe')}</Text>
-                  </TouchableOpacity>
-                </View>
-
-                {/* Address label from reverse geocoding */}
-                {latitude && longitude && (
-                  <View style={{ marginTop: 8 }}>
-                    {addressLabel ? (
-                      <Text style={[styles.hint, { color: theme.success }]}>
-                        📍 {addressLabel}
-                      </Text>
-                    ) : (
-                      <Text style={[styles.hint, { color: theme.success }]}>
-                        {t('registerExtra.positionLabel', { lat: latitude.toFixed(6), lng: longitude.toFixed(6) })}
-                      </Text>
-                    )}
-                  </View>
-                )}
-              </View>
-
-              {/* Phone number — shown here for Google users who skip step 1 */}
-              {googleIdToken && (
-                <View style={styles.field}>
-                  <Text style={[styles.label, { color: theme.text }]}>
-                    {t('registerExtra.phoneLabel')} *
-                  </Text>
-                  <View
-                    style={[
-                      styles.inputRow,
-                      {
-                        backgroundColor: theme.bgInput,
-                        borderColor: phoneNumber.trim().length >= 7 ? theme.success : phoneNumber ? theme.primary : theme.border,
-                      },
-                    ]}
-                  >
-                    <Phone size={20} color={phoneNumber.trim().length >= 7 ? theme.success : theme.textMuted} />
-                    <TextInput
-                      style={[styles.input, { color: theme.text }]}
-                      value={phoneNumber}
-                      onChangeText={setPhoneNumber}
-                      placeholder={t('registerExtra.phonePlaceholder')}
-                      placeholderTextColor={theme.textMuted}
-                      keyboardType="phone-pad"
-                      returnKeyType="done"
-                    />
-                    {phoneNumber.trim().length >= 7 && (
-                      <Check size={18} color={theme.success} strokeWidth={2.5} />
-                    )}
-                  </View>
-                  <Text style={[styles.hint, { color: theme.textMuted }]}>
-                    {t('registerExtra.phoneHint')}
-                  </Text>
-                </View>
-              )}
-
-              {/* Terms acceptance */}
-              <View style={[styles.field, { marginTop: 24 }]}>
-                <TouchableOpacity
-                  style={[styles.termsRow, { borderColor: theme.border }]}
-                  onPress={() => setTermsAccepted(!termsAccepted)}
-                  activeOpacity={0.7}
-                >
-                  <View
-                    style={[
-                      styles.checkbox,
-                      {
-                        backgroundColor: termsAccepted ? theme.primary : 'transparent',
-                        borderColor: termsAccepted ? theme.primary : theme.border,
-                      },
-                    ]}
-                  >
-                    {termsAccepted && <Check size={16} color="#fff" strokeWidth={1.5} />}
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.termsText, { color: theme.text }]}>
-                      {t('registerExtra.termsText')}{' '}
-                      <Text
-                        style={{ color: theme.primary, fontWeight: '700', textDecorationLine: 'underline' }}
-                        onPress={() => Linking.openURL('https://jitplus.com/cgu')}
-                      >
-                        {t('register.termsLink')}
-                      </Text>
-                      {' '}{t('registerExtra.and')}{' '}
-                      <Text
-                        style={{ color: theme.primary, fontWeight: '700', textDecorationLine: 'underline' }}
-                        onPress={() => Linking.openURL('https://jitplus.com/privacy')}
-                      >
-                        {t('register.privacyLink')}
-                      </Text>
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-                
-                {triedSubmit && !termsAccepted && (
-                  <Text style={[styles.hint, { color: theme.danger, marginTop: 8 }]}>
-                    {t('registerExtra.termsRequired')}
-                  </Text>
-                )}
-              </View>
-
-              {/* ── Referral code (optional) ── */}
-              <View style={[styles.field, { marginTop: 4 }]}>
-                <Text style={[styles.label, { color: theme.text }]}>
-                  {t('referral.referralCodeLabel')}
-                </Text>
-                <View
-                  style={[
-                    styles.inputRow,
-                    {
-                      backgroundColor: theme.bgInput,
-                      borderColor:
-                        referralStatus === 'valid'
-                          ? theme.success
-                          : referralStatus === 'invalid'
-                          ? theme.danger
-                          : referralCode
-                          ? theme.primary
-                          : theme.border,
-                    },
-                  ]}
-                >
-                  <Gift size={20} color={theme.textMuted} />
-                  <TextInput
-                    style={[styles.input, { color: theme.text }]}
-                    value={referralCode}
-                    onChangeText={handleReferralCodeChange}
-                    placeholder={t('referral.referralCodePlaceholder')}
-                    placeholderTextColor={theme.textMuted}
-                    autoCapitalize="characters"
-                    maxLength={12}
-                    returnKeyType="done"
-                  />
-                  {referralStatus === 'verifying' && (
-                    <ActivityIndicator size="small" color={theme.primary} />
-                  )}
-                </View>
-
-                {/* ── Referral feedback ── */}
-                {referralStatus === 'valid' && (
-                  <View style={[styles.referralCard, { backgroundColor: `${theme.success}15`, borderColor: `${theme.success}40` }]}>
-                    <Gift size={20} color={theme.success} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.referralCardLabel, { color: theme.success }]}>
-                        {t('referral.referralCodeSponsoredBy')}
-                      </Text>
-                      <Text style={[styles.referralCardName, { color: theme.text }]}>
-                        {referralNom}
-                      </Text>
-                    </View>
-                  </View>
-                )}
-
-                {referralStatus === 'invalid' && (
-                  <View style={[styles.referralCard, { backgroundColor: `${theme.danger}10`, borderColor: `${theme.danger}35` }]}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.hint, { color: theme.danger, marginTop: 0 }]}>
-                        {t('referral.referralCodeInvalid')}
-                      </Text>
-                    </View>
-                    <TouchableOpacity
-                      onPress={() => { setReferralCode(''); setReferralStatus('idle'); setReferralNom(''); }}
-                      style={[styles.referralClearBtn, { borderColor: theme.danger }]}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[styles.referralClearBtnText, { color: theme.danger }]}>
-                        {t('referral.referralCodeChangeBtn')}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-
-                {referralStatus === 'idle' && (
-                  <Text style={[styles.hint, { color: theme.textMuted }]}>
-                    {t('registerExtra.referralHint')}
-                  </Text>
-                )}
-              </View>
+              <StepMapCompliance
+                theme={theme}
+                t={t}
+                googleIdToken={googleIdToken}
+                phoneNumber={phoneNumber}
+                setPhoneNumber={(v) => set({ phoneNumber: v })}
+                latitude={latitude}
+                setLatitude={(v) => set({ latitude: v })}
+                longitude={longitude}
+                setLongitude={(v) => set({ longitude: v })}
+                addressSearch={addressSearch}
+                setAddressSearch={(v) => set({ addressSearch: v })}
+                addressLabel={addressLabel}
+                isGeoSearching={isGeoSearching}
+                termsAccepted={termsAccepted}
+                setTermsAccepted={(v) => set({ termsAccepted: v })}
+                triedSubmit={triedSubmit}
+                referralCode={referralCode}
+                referralStatus={referralStatus}
+                referralNom={referralNom}
+                handleReferralCodeChange={handleReferralCodeChange}
+                handleAddressSearch={handleAddressSearch}
+                reverseGeocodeAndLabel={reverseGeocodeAndLabel}
+                setReferralCode={(v) => set({ referralCode: v })}
+                setReferralStatus={(v) => set({ referralStatus: v })}
+                setReferralNom={(v) => set({ referralNom: v })}
+                mapRef={mapRef}
+                googleMapsApiKey={googleMapsApiKey}
+              />
             </Animated.View>
           )}
 
@@ -1200,18 +736,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // Secure note
-  secureNote: {
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginTop: 4,
-  },
-  secureNoteText: {
-    fontSize: 12,
-    textAlign: 'center',
-  },
-
   field: { marginBottom: 22 },
   label: { fontSize: 14, fontWeight: '700', marginBottom: 8, letterSpacing: 0.2 },
   inputRow: {
@@ -1226,24 +750,6 @@ const styles = StyleSheet.create({
   input: { flex: 1, fontSize: 16, paddingVertical: 0 },
 
   hint: { fontSize: 12, marginTop: 6, marginLeft: 4 },
-
-  // Categories
-  categoryGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  categoryChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    gap: 6,
-  },
-  categoryEmoji: { fontSize: 18 },
-  categoryLabel: { fontSize: 13 },
 
   // Ville
   villeList: {
@@ -1269,66 +775,6 @@ const styles = StyleSheet.create({
   villeSelectedText: { fontSize: 13, fontWeight: '700' },
   changeLink: { fontSize: 13, fontWeight: '600', marginTop: 8, marginLeft: 4 },
 
-  // Map
-  mapContainer: {
-    height: 280,
-    borderRadius: 14,
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  map: {
-    width: '100%',
-    height: '100%',
-  },
-  locationBtn: {
-    position: 'absolute',
-    bottom: 12,
-    alignSelf: 'center',
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-    gap: 6,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#1F2937',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.08,
-        shadowRadius: 4,
-      },
-      android: { elevation: 2 },
-    }),
-  },
-  locationBtnText: {
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-
-  // Terms
-  termsRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    padding: 14,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    gap: 12,
-  },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 6,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 2,
-  },
-  termsText: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-
   // Actions
   actions: { marginTop: 12, marginBottom: 8 },
   mainBtn: {
@@ -1350,104 +796,8 @@ const styles = StyleSheet.create({
   },
   mainBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 
-  // Referral feedback cards
-  referralCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginTop: 10,
-    borderWidth: 1,
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  referralCardLabel: {
-    fontSize: 12,
-    fontFamily: 'Lexend_500Medium',
-    marginBottom: 2,
-  },
-  referralCardName: {
-    fontSize: 16,
-    fontFamily: 'Lexend_700Bold',
-  },
-  referralClearBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 10,
-    borderWidth: 1.5,
-  },
-  referralClearBtnText: {
-    fontSize: 12,
-    fontFamily: 'Lexend_600SemiBold',
-  },
-
   // Footer
   footer: { alignItems: 'center', marginTop: 16, paddingBottom: 16 },
   footerText: { fontSize: 14 },
 
-  // Google sign-up
-  separator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 16,
-    gap: 12,
-  },
-  separatorLine: {
-    flex: 1,
-    height: 1,
-  },
-  separatorText: {
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  googleBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    gap: 10,
-  },
-  googleIconWrap: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...Platform.select({
-      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2 },
-      android: { elevation: 1 },
-    }),
-  },
-  googleG: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#4285F4',
-  },
-  googleBtnText: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  googleBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  googleBadgeText: {
-    fontSize: 14,
-    fontWeight: '600',
-    flex: 1,
-  },
-  googleBadgeReset: {
-    fontSize: 13,
-    fontWeight: '500',
-    textDecorationLine: 'underline',
-  },
 });

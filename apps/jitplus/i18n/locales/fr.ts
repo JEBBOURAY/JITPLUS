@@ -428,6 +428,7 @@ export default {
     launchError: 'Impossible de lancer la %{action} Google',
     notConfigured: 'Google Client ID non configuré',
     playServicesUnavailable: 'Google Play Services non disponible ou obsolète',
+    success: 'Connecté avec succès !',
   },
 
   // ── Offline ──

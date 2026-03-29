@@ -35,6 +35,7 @@ export class NotificationsController {
   }
 
   @Get('email-quota')
+  @UseGuards(PremiumGuard)
   async getEmailQuota(@CurrentUser() user: JwtPayload) {
     return this.notificationsService.getEmailQuota(user.userId);
   }

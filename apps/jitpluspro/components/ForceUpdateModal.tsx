@@ -86,11 +86,11 @@ export default function ForceUpdateModal({ status, storeUrl }: Props) {
           <View
             style={[
               styles.badge,
-              { backgroundColor: '#6B7280' + '12', borderColor: '#6B7280' + '30' },
+              { backgroundColor: palette.cyan + '12', borderColor: palette.cyan + '30' },
             ]}
           >
-            <AlertTriangle color={'#6B7280'} size={14} strokeWidth={1.5} />
-            <Text style={[styles.badgeText, { color: '#6B7280' }]}>
+            <AlertTriangle color={palette.cyan} size={14} strokeWidth={1.5} />
+            <Text style={[styles.badgeText, { color: palette.cyan }]}>
               {t('forceUpdate.versionRequired')}
             </Text>
           </View>
@@ -160,7 +160,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 8,
-    shadowColor: '#1F2937',
+    shadowColor: palette.charbon,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.08,
     shadowRadius: 8,

@@ -4,14 +4,15 @@ import { Cache } from 'cache-manager';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
+import { AuditAction } from '@prisma/client';
 import {
   ADMIN_USER_REPOSITORY, type IAdminUserRepository,
   MERCHANT_REPOSITORY, type IMerchantRepository,
   CLIENT_REPOSITORY, type IClientRepository,
+  CLIENT_REFERRAL_REPOSITORY, type IClientReferralRepository,
   TRANSACTION_REPOSITORY, type ITransactionRepository,
   REWARD_REPOSITORY, type IRewardRepository,
   NOTIFICATION_REPOSITORY, type INotificationRepository,
-  UPGRADE_REQUEST_REPOSITORY, type IUpgradeRequestRepository,
   AUDIT_LOG_REPOSITORY, type IAuditLogRepository,
   DEVICE_SESSION_REPOSITORY, type IDeviceSessionRepository,
   TRANSACTION_RUNNER, type ITransactionRunner,
@@ -29,10 +30,10 @@ export class AdminAuthService {
     @Inject(ADMIN_USER_REPOSITORY) private adminRepo: IAdminUserRepository,
     @Inject(MERCHANT_REPOSITORY) private merchantRepo: IMerchantRepository,
     @Inject(CLIENT_REPOSITORY) private clientRepo: IClientRepository,
+    @Inject(CLIENT_REFERRAL_REPOSITORY) private clientReferralRepo: IClientReferralRepository,
     @Inject(TRANSACTION_REPOSITORY) private transactionRepo: ITransactionRepository,
     @Inject(REWARD_REPOSITORY) private rewardRepo: IRewardRepository,
     @Inject(NOTIFICATION_REPOSITORY) private notificationRepo: INotificationRepository,
-    @Inject(UPGRADE_REQUEST_REPOSITORY) private upgradeRequestRepo: IUpgradeRequestRepository,
     @Inject(AUDIT_LOG_REPOSITORY) private auditLogRepo: IAuditLogRepository,
     @Inject(DEVICE_SESSION_REPOSITORY) private deviceSessionRepo: IDeviceSessionRepository,
     @Inject(TRANSACTION_RUNNER) private txRunner: ITransactionRunner,
@@ -120,11 +121,22 @@ export class AdminAuthService {
   /**
    * List all merchants with their plan info (for admin dashboard).
    */
-  async listMerchants(page = 1, limit = 20) {
+  async listMerchants(page = 1, limit = 20, search?: string) {
     const skip = (page - 1) * limit;
+
+    const where = search
+      ? {
+          OR: [
+            { nom: { contains: search, mode: 'insensitive' as const } },
+            { email: { contains: search, mode: 'insensitive' as const } },
+            { phoneNumber: { contains: search, mode: 'insensitive' as const } },
+          ],
+        }
+      : {};
 
     const [merchants, total] = await Promise.all([
       this.merchantRepo.findMany({
+        where,
         select: {
           id: true,
           nom: true,
@@ -150,7 +162,7 @@ export class AdminAuthService {
         skip,
         take: limit,
       }),
-      this.merchantRepo.count(),
+      this.merchantRepo.count({ where }),
     ]);
 
     return {
@@ -211,6 +223,119 @@ export class AdminAuthService {
       notificationCount: merchant._count.notifications,
       transactionCount: merchant._count.transactions,
       _count: undefined,
+    };
+  }
+
+  /**
+   * Subscription history for a merchant.
+   * Built from audit logs + current plan snapshot.
+   */
+  async getMerchantSubscriptionHistory(merchantId: string) {
+    const merchant = await this.merchantRepo.findUnique({
+      where: { id: merchantId },
+      select: {
+        id: true,
+        nom: true,
+        email: true,
+        plan: true,
+        planActivatedByAdmin: true,
+        planExpiresAt: true,
+        trialStartedAt: true,
+        createdAt: true,
+      },
+    });
+
+    if (!merchant) throw new NotFoundException('Commerçant non trouvé');
+
+    const actions: AuditAction[] = [
+      AuditAction.ACTIVATE_PREMIUM,
+      AuditAction.REVOKE_PREMIUM,
+      AuditAction.UPDATE_PLAN_DURATION,
+    ];
+
+    const logs = await this.auditLogRepo.findMany({
+      where: {
+        targetType: 'MERCHANT',
+        targetId: merchantId,
+        action: { in: actions },
+      },
+      select: {
+        id: true,
+        action: true,
+        adminEmail: true,
+        createdAt: true,
+        metadata: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const events = [
+      {
+        id: `created-${merchant.id}`,
+        action: 'ACCOUNT_CREATED',
+        createdAt: merchant.createdAt,
+        adminEmail: null,
+        summary: 'Création du compte commerçant',
+        metadata: null,
+      },
+      ...logs.map((log: any) => {
+        if (log.action === AuditAction.ACTIVATE_PREMIUM) {
+          return {
+            id: log.id,
+            action: log.action,
+            createdAt: log.createdAt,
+            adminEmail: log.adminEmail,
+            summary: 'Activation Premium',
+            metadata: log.metadata ?? null,
+          };
+        }
+
+        if (log.action === AuditAction.REVOKE_PREMIUM) {
+          return {
+            id: log.id,
+            action: log.action,
+            createdAt: log.createdAt,
+            adminEmail: log.adminEmail,
+            summary: 'Révocation Premium',
+            metadata: log.metadata ?? null,
+          };
+        }
+
+        const md = (log.metadata ?? {}) as Record<string, unknown>;
+        const startDate = typeof md.startDate === 'string' ? md.startDate : null;
+        const endDate = typeof md.endDate === 'string' ? md.endDate : null;
+        const dateSummary = [
+          startDate ? `début: ${startDate}` : null,
+          endDate ? `fin: ${endDate}` : null,
+        ].filter(Boolean).join(' | ');
+
+        return {
+          id: log.id,
+          action: log.action,
+          createdAt: log.createdAt,
+          adminEmail: log.adminEmail,
+          summary: dateSummary ? `Mise à jour des dates (${dateSummary})` : 'Mise à jour des dates d\'abonnement',
+          metadata: log.metadata ?? null,
+        };
+      }),
+      {
+        id: `current-${merchant.id}`,
+        action: 'CURRENT_STATE',
+        createdAt: new Date().toISOString(),
+        adminEmail: null,
+        summary: `État actuel: ${merchant.plan}${merchant.planActivatedByAdmin ? ' (activé par admin)' : ''}`,
+        metadata: {
+          plan: merchant.plan,
+          planActivatedByAdmin: merchant.planActivatedByAdmin,
+          trialStartedAt: merchant.trialStartedAt,
+          planExpiresAt: merchant.planExpiresAt,
+        },
+      },
+    ];
+
+    return {
+      merchant,
+      events,
     };
   }
 
@@ -286,10 +411,8 @@ export class AdminAuthService {
       transactionStats,
       totalRewards,
       totalNotifications,
-      pendingUpgradeCount,
       recentMerchants,
       recentAuditLogs,
-      pendingRequests,
       notifAgg,
     ] = await Promise.all([
       // Single raw query replaces 5 separate merchant count() calls
@@ -321,7 +444,6 @@ export class AdminAuthService {
       `,
       this.rewardRepo.count(),
       this.notificationRepo.count(),
-      this.upgradeRequestRepo.count({ where: { status: 'PENDING' } }),
       this.merchantRepo.findMany({
         orderBy: { createdAt: 'desc' },
         take: 5,
@@ -338,17 +460,6 @@ export class AdminAuthService {
           targetLabel: true,
           createdAt: true,
           ipAddress: true,
-        },
-      }),
-      this.upgradeRequestRepo.findMany({
-        where: { status: 'PENDING' },
-        orderBy: { createdAt: 'desc' },
-        take: 5,
-        select: {
-          id: true,
-          createdAt: true,
-          message: true,
-          merchant: { select: { id: true, nom: true, email: true, plan: true } },
         },
       }),
       this.notificationRepo.aggregate({
@@ -449,11 +560,9 @@ export class AdminAuthService {
         whatsappCount,
         emailCount,
       },
-      upgradeRequests: { pending: pendingUpgradeCount },
       trends,
       recentMerchants,
       recentAuditLogs,
-      pendingRequests,
     };
 
     await this.cache.set(cacheKey, result, ADMIN_STATS_CACHE_TTL);
@@ -548,16 +657,32 @@ export class AdminAuthService {
     const where: Record<string, unknown> = {};
 
     if (channel) {
-      where.channel = channel;
+      // Treat null channel as 'PUSH' (legacy records before channel was set)
+      if (channel === 'PUSH') {
+        where.OR = [{ channel: 'PUSH' }, { channel: null }];
+      } else {
+        where.channel = channel;
+      }
     }
 
     if (search) {
-      where.OR = [
+      const searchConditions = [
         { title: { contains: search, mode: 'insensitive' } },
         { body: { contains: search, mode: 'insensitive' } },
         { merchant: { nom: { contains: search, mode: 'insensitive' } } },
         { merchant: { email: { contains: search, mode: 'insensitive' } } },
       ];
+      // When both channel and search are active, use AND to combine them
+      if (where.OR) {
+        const channelFilter = where.OR;
+        delete where.OR;
+        where.AND = [
+          { OR: channelFilter as any },
+          { OR: searchConditions },
+        ];
+      } else {
+        where.OR = searchConditions;
+      }
     }
 
     const [notifications, total] = await Promise.all([
@@ -593,5 +718,348 @@ export class AdminAuthService {
         totalPages: Math.ceil(total / limit),
       },
     };
+  }
+
+  /**
+   * Get a single client's detailed profile.
+   */
+  async getClientDetail(clientId: string) {
+    const client = await this.clientRepo.findUnique({
+      where: { id: clientId },
+      select: {
+        id: true,
+        prenom: true,
+        nom: true,
+        email: true,
+        telephone: true,
+        countryCode: true,
+        emailVerified: true,
+        telephoneVerified: true,
+        dateNaissance: true,
+        notifPush: true,
+        notifEmail: true,
+        notifWhatsapp: true,
+        shareInfoMerchants: true,
+        termsAccepted: true,
+        referralCode: true,
+        referralBalance: true,
+        createdAt: true,
+        updatedAt: true,
+        deletedAt: true,
+        _count: {
+          select: {
+            loyaltyCards: true,
+            transactions: true,
+            notificationStatuses: true,
+          },
+        },
+        loyaltyCards: {
+          select: {
+            id: true,
+            points: true,
+            deactivatedAt: true,
+            createdAt: true,
+            merchant: {
+              select: { id: true, nom: true, categorie: true, logoUrl: true },
+            },
+          },
+          orderBy: { createdAt: 'desc' as const },
+          take: 50,
+        },
+      },
+    });
+
+    if (!client) throw new NotFoundException('Client non trouvé');
+
+    return {
+      ...client,
+      merchantCount: client._count.loyaltyCards,
+      transactionCount: client._count.transactions,
+      notificationCount: client._count.notificationStatuses,
+      _count: undefined,
+    };
+  }
+
+  /**
+   * Deactivate a client: soft-delete by setting deletedAt.
+   */
+  async deactivateClient(clientId: string): Promise<{ nom: string | null; email: string | null }> {
+    const client = await this.clientRepo.findUnique({
+      where: { id: clientId },
+      select: { nom: true, email: true, deletedAt: true },
+    });
+    if (!client) throw new NotFoundException('Client non trouvé');
+
+    await this.clientRepo.update({
+      where: { id: clientId },
+      data: { deletedAt: new Date() },
+    });
+
+    this.logger.log(`Client ${clientId} deactivated`);
+    return { nom: client.nom, email: client.email };
+  }
+
+  /**
+   * Reactivate a client: clear deletedAt.
+   */
+  async activateClient(clientId: string): Promise<{ nom: string | null; email: string | null }> {
+    const client = await this.clientRepo.findUnique({
+      where: { id: clientId },
+      select: { nom: true, email: true },
+    });
+    if (!client) throw new NotFoundException('Client non trouvé');
+
+    await this.clientRepo.update({
+      where: { id: clientId },
+      data: { deletedAt: null },
+    });
+
+    this.logger.log(`Client ${clientId} reactivated`);
+    return { nom: client.nom, email: client.email };
+  }
+
+  /**
+   * Delete a client permanently (soft-delete + anonymise).
+   */
+  async deleteClient(clientId: string): Promise<{ nom: string | null; email: string | null }> {
+    const client = await this.clientRepo.findUnique({
+      where: { id: clientId },
+      select: { nom: true, email: true },
+    });
+    if (!client) throw new NotFoundException('Client non trouvé');
+
+    await this.clientRepo.update({
+      where: { id: clientId },
+      data: {
+        deletedAt: new Date(),
+        email: `deleted_${clientId}`,
+        telephone: null,
+        password: null,
+        googleId: null,
+        pushToken: null,
+        nom: null,
+        prenom: null,
+      },
+    });
+
+    this.logger.warn(`Client ${clientId} (${client.email}) soft-deleted`);
+    return { nom: client.nom, email: client.email };
+  }
+
+  // ── Referral management ──────────────────────────────────────────────────
+
+  /**
+   * Get referral stats + list of both merchant-to-merchant and client-to-merchant referrals.
+   */
+  async getReferralStats() {
+    const [
+      totalMerchantReferrals,
+      totalClientReferrals,
+      pendingClientReferrals,
+      validatedClientReferrals,
+      totalReferralMonthsEarned,
+      totalClientReferralBalance,
+    ] = await Promise.all([
+      // Merchants that have a referrer
+      this.merchantRepo.count({ where: { referredById: { not: null } } }),
+      this.clientReferralRepo.count({}),
+      this.clientReferralRepo.count({ where: { status: 'PENDING' } }),
+      this.clientReferralRepo.count({ where: { status: 'VALIDATED' } }),
+      // Sum of referral months
+      this.rawQuery.queryRaw<{ sum: number }>`SELECT COALESCE(SUM("referral_months_earned"), 0)::int as sum FROM "merchants" WHERE "referral_months_earned" > 0`,
+      // Sum of client referral balances
+      this.rawQuery.queryRaw<{ sum: number }>`SELECT COALESCE(SUM("referral_balance"), 0)::float as sum FROM "clients" WHERE "referral_balance" > 0`,
+    ]);
+
+    return {
+      merchantToMerchant: {
+        total: totalMerchantReferrals,
+        totalMonthsEarned: totalReferralMonthsEarned[0]?.sum ?? 0,
+      },
+      clientToMerchant: {
+        total: totalClientReferrals,
+        pending: pendingClientReferrals,
+        validated: validatedClientReferrals,
+        totalBalance: totalClientReferralBalance[0]?.sum ?? 0,
+      },
+    };
+  }
+
+  /**
+   * List merchant-to-merchant referrals (merchants that were referred by another merchant).
+   */
+  async listMerchantReferrals(page = 1, limit = 20, search?: string) {
+    const skip = (page - 1) * limit;
+
+    const where: Record<string, unknown> = { referredById: { not: null } };
+    if (search) {
+      (where as any).OR = [
+        { nom: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } },
+        { referredBy: { nom: { contains: search, mode: 'insensitive' } } },
+      ];
+    }
+
+    const [referrals, total] = await Promise.all([
+      this.merchantRepo.findMany({
+        where,
+        select: {
+          id: true,
+          nom: true,
+          email: true,
+          categorie: true,
+          ville: true,
+          plan: true,
+          referralBonusCredited: true,
+          createdAt: true,
+          referredBy: {
+            select: {
+              id: true,
+              nom: true,
+              email: true,
+              referralCode: true,
+              referralMonthsEarned: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.merchantRepo.count({ where }),
+    ]);
+
+    return {
+      referrals: referrals.map((r: any) => ({
+        id: r.id,
+        nom: r.nom,
+        email: r.email,
+        categorie: r.categorie,
+        ville: r.ville,
+        plan: r.plan,
+        bonusCredited: r.referralBonusCredited,
+        createdAt: r.createdAt,
+        referrer: r.referredBy
+          ? {
+              id: r.referredBy.id,
+              nom: r.referredBy.nom,
+              email: r.referredBy.email,
+              referralCode: r.referredBy.referralCode,
+              monthsEarned: r.referredBy.referralMonthsEarned,
+            }
+          : null,
+      })),
+      pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
+  }
+
+  /**
+   * List client-to-merchant referrals.
+   */
+  async listClientReferrals(page = 1, limit = 20, status?: 'PENDING' | 'VALIDATED', search?: string) {
+    const skip = (page - 1) * limit;
+
+    const where: Record<string, unknown> = {};
+    if (status) where.status = status;
+    if (search) {
+      (where as any).OR = [
+        { client: { nom: { contains: search, mode: 'insensitive' } } },
+        { client: { prenom: { contains: search, mode: 'insensitive' } } },
+        { client: { email: { contains: search, mode: 'insensitive' } } },
+        { merchant: { nom: { contains: search, mode: 'insensitive' } } },
+      ];
+    }
+
+    const [referrals, total] = await Promise.all([
+      this.clientReferralRepo.findMany({
+        where,
+        select: {
+          id: true,
+          status: true,
+          amount: true,
+          createdAt: true,
+          validatedAt: true,
+          client: {
+            select: {
+              id: true,
+              prenom: true,
+              nom: true,
+              email: true,
+              referralCode: true,
+              referralBalance: true,
+            },
+          },
+          merchant: {
+            select: {
+              id: true,
+              nom: true,
+              email: true,
+              categorie: true,
+              plan: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.clientReferralRepo.count({ where }),
+    ]);
+
+    return {
+      referrals: referrals.map((r: any) => ({
+        id: r.id,
+        status: r.status,
+        amount: r.amount,
+        createdAt: r.createdAt,
+        validatedAt: r.validatedAt,
+        client: {
+          id: r.client.id,
+          prenom: r.client.prenom,
+          nom: r.client.nom,
+          email: r.client.email,
+          referralCode: r.client.referralCode,
+          referralBalance: r.client.referralBalance,
+        },
+        merchant: {
+          id: r.merchant.id,
+          nom: r.merchant.nom,
+          email: r.merchant.email,
+          categorie: r.merchant.categorie,
+          plan: r.merchant.plan,
+        },
+      })),
+      pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
+  }
+
+  /**
+   * List top referrers (merchants who referred the most other merchants).
+   */
+  async listTopReferrers(limit = 20) {
+    const topReferrers = await this.merchantRepo.findMany({
+      where: { referralMonthsEarned: { gt: 0 } },
+      select: {
+        id: true,
+        nom: true,
+        email: true,
+        referralCode: true,
+        referralMonthsEarned: true,
+        plan: true,
+        _count: { select: { referrals: true } },
+      },
+      orderBy: { referralMonthsEarned: 'desc' },
+      take: limit,
+    });
+
+    return topReferrers.map((m: any) => ({
+      id: m.id,
+      nom: m.nom,
+      email: m.email,
+      referralCode: m.referralCode,
+      monthsEarned: m.referralMonthsEarned,
+      referredCount: m._count.referrals,
+      plan: m.plan,
+    }));
   }
 }
