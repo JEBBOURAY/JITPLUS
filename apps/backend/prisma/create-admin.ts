@@ -8,7 +8,7 @@
  * ADMIN_PASSWORD must be set as an environment variable.
  * Safe to run multiple times — upserts by email.
  */
-import { PrismaClient, AdminRole } from '../src/generated/client';
+import { PrismaClient, AdminRole } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 
 const ADMIN_EMAIL = 'contact@jitplus.com';
