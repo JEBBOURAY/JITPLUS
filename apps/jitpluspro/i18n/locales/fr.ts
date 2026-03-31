@@ -419,6 +419,8 @@ export default {
     // Sign out
     signOut: 'Se déconnecter',
     signOutConfirm: 'Êtes-vous sûr de vouloir vous déconnecter ?',
+    notifications: 'Notifications',
+    unread: 'non lue(s)',
     contactSupport: 'Contacter le support',
     contactSupportMsg: 'Bonjour, j\'ai besoin d\'aide avec JitPlus Pro',
     profilePhoto: 'Photo de profil',

@@ -399,6 +399,8 @@ export default {
 
     signOut: 'تسجيل الخروج',
     signOutConfirm: 'هل أنت متأكد أنك تريد تسجيل الخروج؟',
+    notifications: 'الإشعارات',
+    unread: 'غير مقروءة',
     contactSupport: 'اتصل بالدعم',
     contactSupportMsg: 'مرحباً، أحتاج مساعدة مع JitPlus Pro',
     profilePhoto: 'صورة الملف الشخصي',

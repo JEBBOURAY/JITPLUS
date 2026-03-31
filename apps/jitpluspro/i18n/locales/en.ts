@@ -400,6 +400,8 @@ export default {
 
     signOut: 'Sign out',
     signOutConfirm: 'Are you sure you want to sign out?',
+    notifications: 'Notifications',
+    unread: 'unread',
     contactSupport: 'Contact support',
     contactSupportMsg: 'Hello, I need help with JitPlus Pro',
     profilePhoto: 'Profile photo',
