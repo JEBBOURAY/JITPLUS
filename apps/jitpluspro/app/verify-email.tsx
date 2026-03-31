@@ -95,7 +95,7 @@ export default function VerifyEmailScreen() {
       });
       if (isLoggedIn) {
         updateMerchant({ emailVerified: true });
-        router.replace('/(tabs)');
+        router.replace('/scan-qr');
       } else {
         Alert.alert(
           t('verifyEmail.successTitle'),

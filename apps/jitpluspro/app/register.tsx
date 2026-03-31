@@ -353,7 +353,7 @@ export default function RegisterScreen() {
       try {
         const result = await googleRegister(googleIdToken, businessData);
         if (result.success) {
-          router.replace('/(tabs)');
+          router.replace('/scan-qr');
         } else {
           Alert.alert(
             t('registerExtra.registrationError'),

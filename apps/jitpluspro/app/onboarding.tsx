@@ -77,7 +77,7 @@ export default function OnboardingScreen() {
 
   const handleFinish = useCallback(async () => {
     await completeOnboarding();
-    router.replace('/(tabs)');
+    router.replace('/scan-qr');
   }, [completeOnboarding, router]);
 
   // â”€â”€ Logo upload â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -165,7 +165,7 @@ export default function OnboardingScreen() {
   // â”€â”€ If team member, skip onboarding â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   React.useEffect(() => {
     if (isTeamMember) {
-      completeOnboarding().then(() => router.replace('/(tabs)'));
+      completeOnboarding().then(() => router.replace('/scan-qr'));
     }
   }, [isTeamMember]);
 
@@ -246,7 +246,7 @@ export default function OnboardingScreen() {
         <StepSlide visible={currentStep === 'scan'} direction={direction}>
           <StepScan
             theme={theme} t={t} bottomPadding={bottomPadding}
-            onScanNow={async () => { await completeOnboarding(); router.replace('/(tabs)'); }}
+            onScanNow={async () => { await completeOnboarding(); router.replace('/scan-qr'); }}
           />
         </StepSlide>
 

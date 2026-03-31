@@ -79,7 +79,7 @@ export default function LoginScreen() {
     setIsLoading(true);
     try {
       await signIn({ email: trimmedEmail, password }, rememberMe);
-      router.replace('/(tabs)');
+      router.replace('/scan-qr');
     } catch (err: unknown) {
       const msg = getErrorMessage(err, t('login.invalidCredentials'));
       if (msg.includes('réseau') || msg.includes('network')) Alert.alert(t('common.networkError'), msg);
