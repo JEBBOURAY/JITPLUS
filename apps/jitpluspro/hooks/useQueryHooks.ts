@@ -42,6 +42,8 @@ export const queryKeys = {
   clientStatus: (id: string) => ['client-status', id] as const,
   clients: (search: string) => ['clients', search] as const,
   notificationHistory: ['notification-history'] as const,
+  adminNotifications: ['admin-notifications'] as const,
+  adminNotifUnreadCount: ['admin-notif-unread-count'] as const,
   whatsappQuota: ['whatsapp-quota'] as const,
   emailQuota: ['email-quota'] as const,
   pendingGifts: ['pending-gifts'] as const,
@@ -535,4 +537,50 @@ export function useInvalidateQueries() {
     invalidateProfile: () => qc.invalidateQueries({ queryKey: queryKeys.profile }),
     invalidateAll: () => qc.invalidateQueries(),
   };
+}
+
+// ── Admin notifications (received from admin dashboard) ─────────
+export interface AdminNotification {
+  id: string;
+  title: string;
+  body: string;
+  channel: string | null;
+  createdAt: string;
+}
+
+export function useAdminNotifications(page = 1, enabled = true) {
+  return useQuery<{ notifications: AdminNotification[]; pagination: { total: number; page: number; limit: number; totalPages: number } }>({
+    queryKey: [...queryKeys.adminNotifications, page],
+    queryFn: async () => {
+      const res = await api.get('/merchant/admin-notifications', { params: { page, limit: 20 } });
+      return res.data;
+    },
+    staleTime: STALE.MEDIUM,
+    enabled,
+  });
+}
+
+export function useAdminNotifUnreadCount(enabled = true) {
+  return useQuery<{ count: number }>({
+    queryKey: queryKeys.adminNotifUnreadCount,
+    queryFn: async () => {
+      const res = await api.get('/merchant/admin-notifications/unread-count');
+      return res.data;
+    },
+    staleTime: STALE.FAST,
+    enabled,
+  });
+}
+
+export function useMarkAdminNotifsRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      await api.patch('/merchant/admin-notifications/mark-read');
+    },
+    onSuccess: () => {
+      qc.setQueryData(queryKeys.adminNotifUnreadCount, { count: 0 });
+      qc.invalidateQueries({ queryKey: queryKeys.adminNotifUnreadCount });
+    },
+  });
 }

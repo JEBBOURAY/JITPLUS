@@ -882,6 +882,7 @@ export default {
     noIdToken: 'Could not retrieve Google information. Please try again.',
     notConfigured: 'Google sign-in is not yet available.',
     launchError: 'Could not open Google sign-in. Check your internet connection.',
+    playServicesUnavailable: 'Google Play services are not available on this device.',
     noAccountTitle: 'No account found',
     noAccountFound: 'No account is linked to this Google email.',
     noAccountAction: 'Create your account in a few steps, then sign in with Google.',

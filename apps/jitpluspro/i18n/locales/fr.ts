@@ -906,6 +906,7 @@ export default {
     noIdToken: 'Impossible de récupérer les informations Google. Veuillez réessayer.',
     notConfigured: 'La connexion Google n\'est pas encore disponible.',
     launchError: 'Impossible d\'ouvrir la fenêtre Google. Vérifiez votre connexion internet.',
+    playServicesUnavailable: 'Les services Google Play ne sont pas disponibles sur cet appareil.',
     noAccountTitle: 'Aucun compte trouvé',
     noAccountFound: 'Aucun compte n\'est associé à cet e-mail Google.',
     noAccountAction: 'Créez votre compte en quelques étapes, puis connectez-vous avec Google.',

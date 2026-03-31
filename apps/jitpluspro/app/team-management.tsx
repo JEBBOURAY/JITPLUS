@@ -364,6 +364,7 @@ export default function TeamManagementScreen() {
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={[styles.modalOverlay, { backgroundColor: theme.bg, paddingTop: insets.top }]}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
         >
             {/* Modal header (même style que edit-profile header) */}
             <View style={[styles.modalHeader, { backgroundColor: theme.bgCard, borderBottomColor: theme.borderLight }]}>

@@ -49,6 +49,8 @@ module.exports = ({ config }) => {
       usesNonExemptEncryption: false,
       // Required for push notifications to arrive when app is in background
       backgroundModes: ['remote-notification'],
+      // Firebase config for iOS — download from Firebase Console → Project Settings → iOS app
+      googleServicesFile: './GoogleService-Info.plist',
       config: {
         googleMapsApiKey: GOOGLE_MAPS_KEY,
       },
@@ -64,6 +66,10 @@ module.exports = ({ config }) => {
         // NSPhotoLibraryAddUsageDescription is intentionally omitted.
         NSPhotoLibraryUsageDescription:
           "JitPlus Pro a besoin d'accéder à vos photos pour choisir le logo et la couverture de votre commerce.",
+        // Google Sign-In redirect — reversed iOS client ID
+        ...(IOS_GOOGLE_CLIENT_ID
+          ? { CFBundleURLTypes: [{ CFBundleURLSchemes: [IOS_GOOGLE_CLIENT_ID] }] }
+          : {}),
       },
     },
     android: {
@@ -77,7 +83,8 @@ module.exports = ({ config }) => {
         },
       },
       edgeToEdgeEnabled: true,
-      predictiveBackGestureEnabled: true,
+      // Disabled: prevents accidental back gesture from killing auth/OTP/onboarding flows
+      predictiveBackGestureEnabled: false,
       permissions: [
         'CAMERA',
         'ACCESS_FINE_LOCATION',
@@ -100,6 +107,7 @@ module.exports = ({ config }) => {
     plugins: [
       'expo-router',
       'expo-secure-store',
+      '@react-native-google-signin/google-signin',
       // Disable microphone permission — app only uses camera for QR scanning, never video recording
       [
         'expo-camera',
@@ -133,7 +141,10 @@ module.exports = ({ config }) => {
         'expo-notifications',
         {
           icon: './assets/images/jitplusprologo.png',
-          color: '#7C3AED',
+          // color removed: setting it here duplicates notification_icon_color
+          // with the one already in expo-notifications AAR resources, causing
+          // a Gradle mergeReleaseResources conflict. Color is set at runtime
+          // via setNotificationChannelAsync in notifications.ts instead.
           defaultChannel: 'jitpro-default',
           sounds: [],
         },

@@ -26,7 +26,7 @@ module.exports = ({ config }) => {
     name: 'JitPlus',
     slug: 'jitplus',
     description: 'Digital loyalty cards app — collect stamps and earn rewards at your favorite local shops.',
-    version: '1.2.4',
+    version: '1.3.0',
     orientation: 'portrait',
     icon: './assets/images/icon-white.png',
     scheme: 'jitplus',
@@ -67,7 +67,7 @@ module.exports = ({ config }) => {
       ),
     },
     android: {
-      versionCode: 25,
+      versionCode: 26,
       icon: './assets/images/icon-white.png',
       adaptiveIcon: {
         foregroundImage: './assets/images/adaptive-icon-white.png',
@@ -121,8 +121,7 @@ module.exports = ({ config }) => {
         },
       ],
       // iOS PrivacyInfo.xcprivacy — required since Apple review policy May 2024
-      // DISABLED: plugin file not yet created — re-enable after adding plugins/withPrivacyManifest.js
-      // './plugins/withPrivacyManifest',
+      './plugins/withPrivacyManifest',
       // SSL Certificate Pinning — prevents MITM attacks
       // DISABLED: Enable after setting up custom domain (api.jitplus.ma) with managed SSL cert.
       // Cloud Run's *.a.run.app wildcard cert rotates too frequently for pinning.

@@ -143,6 +143,13 @@ export class MerchantProfileService {
     return { message: 'Push token mis à jour' };
   }
 
+  async markAdminNotificationsRead(merchantId: string): Promise<void> {
+    await this.merchantRepo.update({
+      where: { id: merchantId },
+      data: { lastAdminNotifReadAt: new Date() },
+    });
+  }
+
   // â”€â”€ Device Sessions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   async getDeviceSessions(merchantId: string, currentTokenId?: string) {

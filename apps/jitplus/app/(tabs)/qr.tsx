@@ -8,7 +8,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import QRCode from 'react-native-qrcode-svg';
 import { Share2, X } from 'lucide-react-native';
 import * as Sharing from 'expo-sharing';
-import * as Brightness from 'expo-brightness';
 import { useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
@@ -45,8 +44,6 @@ export default function QRScreen() {
   const qrViewRef = useRef<any>(null);
   const [qrValue, setQrValue] = useState<string | null>(null);
   const [qrLoading, setQrLoading] = useState(true);
-  /** Stores the iOS system brightness so we can restore it later */
-  const originalBrightnessRef = useRef<number | null>(null);
 
   const [qrError, setQrError] = useState(false);
   const [showGuidBadge, setShowGuidBadge] = useState(false);
@@ -91,58 +88,15 @@ export default function QRScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client?.id]);
 
-  // Boost brightness when QR tab is focused, restore when leaving
+  // Fetch QR token and check badges when tab is focused
   useFocusEffect(
     useCallback(() => {
-      let cancelled = false;
-
-      (async () => {
-        try {
-          if (Platform.OS === 'ios') {
-            // iOS: setBrightnessAsync controls system brightness directly,
-            // so we must capture the original to restore it later.
-            const current = await Brightness.getBrightnessAsync();
-            if (cancelled) return;
-            originalBrightnessRef.current = current;
-            // Persist so we can restore even after a force-close
-            await AsyncStorage.setItem('qr_original_brightness', String(current));
-            await Brightness.setBrightnessAsync(1);
-          } else {
-            // Android: setBrightnessAsync sets an app-level override.
-            // We just apply it; cleanup will remove the override entirely.
-            if (!cancelled) {
-              await Brightness.setBrightnessAsync(1);
-            }
-          }
-        } catch (e) {
-          if (__DEV__) console.warn('Brightness error:', e);
-        }
-      })();
-
-      // Fetch QR token once (permanent, cached locally)
       fetchQrToken();
 
       // Show GUID badge only if new-user flag is set
       AsyncStorage.getItem('showGuidBadge').then((val) => {
         if (val === '1') setShowGuidBadge(true);
       });
-
-      return () => {
-        cancelled = true;
-
-        if (Platform.OS === 'ios') {
-          // iOS: restore the original system brightness
-          if (originalBrightnessRef.current !== null) {
-            Brightness.setBrightnessAsync(originalBrightnessRef.current).catch(() => {});
-            originalBrightnessRef.current = null;
-          }
-          AsyncStorage.removeItem('qr_original_brightness').catch(() => {});
-        } else {
-          // Android: remove the app-level brightness override entirely,
-          // so the device falls back to the user's system brightness setting.
-          Brightness.restoreSystemBrightnessAsync().catch(() => {});
-        }
-      };
     }, [fetchQrToken])
   );
 

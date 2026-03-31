@@ -554,13 +554,43 @@ export class NotificationsService {
     const tokens = merchants.map((m) => m.pushToken);
     this.logger.log(`Admin broadcast push to ${tokens.length} merchant(s)`);
 
+    let fcmSuccessCount = 0;
+    let fcmFailureCount = 0;
+    let invalidTokens: string[] = [];
+
     try {
       const result = await this.pushProvider.sendMulticast(tokens, title, body, undefined, { event: 'admin_broadcast' }, 'jitpro-default');
-      return { recipientCount: tokens.length, successCount: result.successCount, failureCount: result.failureCount };
+      fcmSuccessCount = result.successCount;
+      fcmFailureCount = result.failureCount;
+      invalidTokens = result.invalidTokens;
     } catch (error) {
       this.logger.error(`Admin push to merchants failed: ${error}`);
-      return { recipientCount: tokens.length, successCount: 0, failureCount: tokens.length };
+      fcmFailureCount = tokens.length;
     }
+
+    // Persist notification record for admin history
+    await this.notificationRepo.create({
+      data: {
+        title, body,
+        recipientCount: tokens.length,
+        successCount: fcmSuccessCount,
+        failureCount: fcmFailureCount,
+        isBroadcast: true,
+        channel: 'PUSH',
+        audience: 'ALL_MERCHANTS',
+      },
+    });
+
+    // Clean stale FCM tokens
+    if (invalidTokens.length > 0) {
+      this.logger.log(`Cleaning ${invalidTokens.length} invalid merchant push token(s)`);
+      await this.merchantRepo.updateMany({
+        where: { pushToken: { in: invalidTokens } },
+        data: { pushToken: null },
+      }).catch((e) => this.logger.warn(`Failed to clean stale merchant tokens: ${e}`));
+    }
+
+    return { recipientCount: tokens.length, successCount: fcmSuccessCount, failureCount: fcmFailureCount };
   }
 
   // ── Admin broadcast: push to all clients ──────────────────────────────────
@@ -569,39 +599,114 @@ export class NotificationsService {
     successCount: number;
     failureCount: number;
   }> {
-    const clients: { id: string; pushToken: string }[] = [];
-    let cursor: string | undefined;
+    // 1. Collect ALL clients with push enabled (for DB status records + WS)
+    const allClients: { id: string; pushToken: string | null }[] = [];
+    let allCursor: string | undefined;
 
     while (true) {
       const batch = await this.clientRepo.findMany({
-        where: { pushToken: { not: null }, notifPush: true, deletedAt: null },
+        where: { notifPush: true, deletedAt: null },
         select: { id: true, pushToken: true },
         take: NotificationsService.CLIENT_BATCH_SIZE,
-        ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+        ...(allCursor ? { skip: 1, cursor: { id: allCursor } } : {}),
         orderBy: { id: 'asc' },
       });
       if (batch.length === 0) break;
-      clients.push(
-        ...batch.filter((c: any): c is { id: string; pushToken: string } => !!c.pushToken),
-      );
-      cursor = batch[batch.length - 1].id;
+      allClients.push(...batch);
+      allCursor = batch[batch.length - 1].id;
       if (batch.length < NotificationsService.CLIENT_BATCH_SIZE) break;
     }
 
-    if (clients.length === 0) {
+    const pushRecipients = allClients.filter((c): c is { id: string; pushToken: string } => !!c.pushToken);
+
+    if (allClients.length === 0) {
       return { recipientCount: 0, successCount: 0, failureCount: 0 };
     }
 
-    const tokens = clients.map((c) => c.pushToken);
-    this.logger.log(`Admin broadcast push to ${tokens.length} client(s)`);
+    const tokens = pushRecipients.map((c) => c.pushToken);
+    this.logger.log(`Admin broadcast push to ${tokens.length} client(s), ${allClients.length} total`);
 
-    try {
-      const result = await this.pushProvider.sendMulticast(tokens, title, body, undefined, { event: 'admin_broadcast' });
-      return { recipientCount: tokens.length, successCount: result.successCount, failureCount: result.failureCount };
-    } catch (error) {
-      this.logger.error(`Admin push to clients failed: ${error}`);
-      return { recipientCount: tokens.length, successCount: 0, failureCount: tokens.length };
+    // 2. Send FCM push
+    let fcmSuccessCount = 0;
+    let fcmFailureCount = 0;
+    let invalidTokens: string[] = [];
+
+    if (tokens.length > 0) {
+      try {
+        const result = await this.pushProvider.sendMulticast(tokens, title, body, undefined, { event: 'admin_broadcast' });
+        fcmSuccessCount = result.successCount;
+        fcmFailureCount = result.failureCount;
+        invalidTokens = result.invalidTokens;
+      } catch (error) {
+        this.logger.error(`Admin push to clients failed: ${error}`);
+        fcmFailureCount = tokens.length;
+      }
     }
+
+    // 3. Persist notification record
+    const allClientIds = allClients.map((c) => c.id);
+    const notification = await this.notificationRepo.create({
+      data: {
+        title, body,
+        recipientCount: allClientIds.length,
+        successCount: allClientIds.length,
+        failureCount: fcmFailureCount,
+        isBroadcast: true,
+        channel: 'PUSH',
+        audience: 'ALL_CLIENTS',
+      },
+    });
+
+    // 4. Create per-client notification status records so it appears in client feeds
+    if (allClientIds.length > 0) {
+      const CHUNK_SIZE = 500;
+      try {
+        for (let i = 0; i < allClientIds.length; i += CHUNK_SIZE) {
+          await this.clientNotifStatusRepo.createMany({
+            data: allClientIds.slice(i, i + CHUNK_SIZE).map((clientId) => ({
+              clientId,
+              notificationId: notification.id,
+            })),
+            skipDuplicates: true,
+          });
+        }
+      } catch (error) {
+        this.logger.warn(`Failed to create client notification statuses for admin broadcast: ${error}`);
+      }
+    }
+
+    // 5. Emit WebSocket events in batches
+    const WS_BATCH = 500;
+    try {
+      for (let i = 0; i < allClientIds.length; i += WS_BATCH) {
+        const batch = allClientIds.slice(i, i + WS_BATCH);
+        for (const clientId of batch) {
+          this.eventsGateway.emitNotificationNew(clientId, {
+            clientId,
+            notificationId: notification.id,
+            merchantId: null,
+            title,
+            body,
+          });
+        }
+        if (i + WS_BATCH < allClientIds.length) {
+          await new Promise((r) => setImmediate(r));
+        }
+      }
+    } catch (error) {
+      this.logger.warn(`WebSocket emit failed for admin broadcast: ${error}`);
+    }
+
+    // 6. Clean stale FCM tokens
+    if (invalidTokens.length > 0) {
+      this.logger.log(`Cleaning ${invalidTokens.length} invalid client push token(s)`);
+      await this.clientRepo.updateMany({
+        where: { pushToken: { in: invalidTokens } },
+        data: { pushToken: null },
+      }).catch((e) => this.logger.warn(`Failed to clean stale client tokens: ${e}`));
+    }
+
+    return { recipientCount: allClientIds.length, successCount: allClientIds.length, failureCount: fcmFailureCount };
   }
 
   // ── Admin broadcast: email to all merchants ───────────────────────────────
@@ -633,18 +738,33 @@ export class NotificationsService {
 
     this.logger.log(`Admin email broadcast to ${merchants.length} merchant(s)`);
 
+    let result: { successCount: number; failureCount: number; total: number };
     try {
-      const result = await this.resendService.sendBlast(
+      result = await this.resendService.sendBlast(
         merchants.map((m) => ({ email: m.email, prenom: m.nom })),
         subject,
         body,
         'JitPlus Admin',
       );
-      return { recipientCount: result.total, successCount: result.successCount, failureCount: result.failureCount };
     } catch (error) {
       this.logger.error(`Admin email to merchants failed: ${error}`);
-      return { recipientCount: merchants.length, successCount: 0, failureCount: merchants.length };
+      result = { successCount: 0, failureCount: merchants.length, total: merchants.length };
     }
+
+    // Persist notification record for admin history
+    await this.notificationRepo.create({
+      data: {
+        title: subject, body,
+        recipientCount: result.total,
+        successCount: result.successCount,
+        failureCount: result.failureCount,
+        isBroadcast: true,
+        channel: 'EMAIL',
+        audience: 'ALL_MERCHANTS',
+      },
+    });
+
+    return { recipientCount: result.total, successCount: result.successCount, failureCount: result.failureCount };
   }
 
   // ── Admin broadcast: email to all clients ─────────────────────────────────
@@ -679,18 +799,33 @@ export class NotificationsService {
 
     this.logger.log(`Admin email broadcast to ${clients.length} client(s)`);
 
+    let result: { successCount: number; failureCount: number; total: number };
     try {
-      const result = await this.resendService.sendBlast(
+      result = await this.resendService.sendBlast(
         clients,
         subject,
         body,
         'JitPlus Admin',
       );
-      return { recipientCount: result.total, successCount: result.successCount, failureCount: result.failureCount };
     } catch (error) {
       this.logger.error(`Admin email to clients failed: ${error}`);
-      return { recipientCount: clients.length, successCount: 0, failureCount: clients.length };
+      result = { successCount: 0, failureCount: clients.length, total: clients.length };
     }
+
+    // Persist notification record for admin history
+    await this.notificationRepo.create({
+      data: {
+        title: subject, body,
+        recipientCount: result.total,
+        successCount: result.successCount,
+        failureCount: result.failureCount,
+        isBroadcast: true,
+        channel: 'EMAIL',
+        audience: 'ALL_CLIENTS',
+      },
+    });
+
+    return { recipientCount: result.total, successCount: result.successCount, failureCount: result.failureCount };
   }
 
   async getHistory(merchantId: string, page = 1, limit = 20): Promise<{
@@ -734,5 +869,44 @@ export class NotificationsService {
       })) as (Notification & { readCount: number; receivedCount: number })[],
       pagination: buildPagination(total, page, limit),
     };
+  }
+
+  /**
+   * Get admin broadcast notifications targeting ALL_MERCHANTS.
+   * Used by the jitpluspro app to show admin notifications in the merchant inbox.
+   */
+  async getAdminNotificationsForMerchants(page = 1, limit = 20): Promise<{
+    notifications: { id: string; title: string; body: string; channel: string | null; createdAt: Date }[];
+    pagination: PaginationResult;
+  }> {
+    const skip = (page - 1) * limit;
+    const where = { audience: 'ALL_MERCHANTS', isBroadcast: true };
+    const [notifications, total] = await Promise.all([
+      this.notificationRepo.findMany({
+        where,
+        select: { id: true, title: true, body: true, channel: true, createdAt: true },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.notificationRepo.count({ where }),
+    ]);
+
+    return {
+      notifications,
+      pagination: buildPagination(total, page, limit),
+    };
+  }
+
+  /**
+   * Count unread admin broadcast notifications for a merchant.
+   * Uses the merchant's `lastAdminNotifReadAt` timestamp if provided.
+   */
+  async countUnreadAdminNotifications(since?: Date | null): Promise<number> {
+    const where: Record<string, unknown> = { audience: 'ALL_MERCHANTS', isBroadcast: true };
+    if (since) {
+      where.createdAt = { gt: since };
+    }
+    return this.notificationRepo.count({ where });
   }
 }

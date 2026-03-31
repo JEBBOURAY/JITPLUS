@@ -112,7 +112,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     if (!store.client?.id) return;
 
-    const registerPush = async () => {
+    const registerPush = async (retries = 2) => {
       try {
         await setupAndroidChannel();
 
@@ -145,7 +145,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         }
       } catch (error) {
+        if (retries > 0) {
+          await new Promise((r) => setTimeout(r, 2000));
+          return registerPush(retries - 1);
+        }
         if (__DEV__) console.warn('[Push] Failed to register push token:', error);
+        // Report to Sentry so we have visibility on push failures in production
+        if (!__DEV__) {
+          const Sentry = require('@sentry/react-native');
+          Sentry.captureException(error, { tags: { source: 'push-registration' } });
+        }
       }
     };
 

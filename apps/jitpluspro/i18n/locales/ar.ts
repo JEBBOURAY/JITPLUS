@@ -881,6 +881,7 @@ export default {
     noIdToken: 'تعذر الحصول على معلومات Google. يرجى المحاولة مرة أخرى.',
     notConfigured: 'تسجيل الدخول بـ Google غير متاح حالياً.',
     launchError: 'تعذر فتح نافذة Google. تحقق من اتصالك بالإنترنت.',
+    playServicesUnavailable: 'خدمات Google Play غير متاحة على هذا الجهاز.',
     noAccountTitle: 'لا يوجد حساب',
     noAccountFound: 'لا يوجد حساب مرتبط بهذا البريد.',
     noAccountAction: 'أنشئ حسابك في خطوات بسيطة، ثم سجّل دخولك بـ Google.',

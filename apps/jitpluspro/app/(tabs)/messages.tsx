@@ -475,6 +475,7 @@ export default function MessagesScreen() {
       <KeyboardAvoidingView
         style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
       >
         {/* ── Header ─────────────────────────────── */}
         <LinearGradient

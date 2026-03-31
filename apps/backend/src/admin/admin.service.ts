@@ -666,11 +666,12 @@ export class AdminAuthService {
     }
 
     if (search) {
-      const searchConditions = [
+      const searchConditions: Record<string, unknown>[] = [
         { title: { contains: search, mode: 'insensitive' } },
         { body: { contains: search, mode: 'insensitive' } },
         { merchant: { nom: { contains: search, mode: 'insensitive' } } },
         { merchant: { email: { contains: search, mode: 'insensitive' } } },
+        { audience: { contains: search, mode: 'insensitive' } },
       ];
       // When both channel and search are active, use AND to combine them
       if (where.OR) {
@@ -693,6 +694,7 @@ export class AdminAuthService {
           title: true,
           body: true,
           channel: true,
+          audience: true,
           recipientCount: true,
           successCount: true,
           failureCount: true,

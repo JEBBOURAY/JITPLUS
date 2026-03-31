@@ -404,6 +404,7 @@ export default function ClientDetailScreen() {
         <KeyboardAvoidingView
           style={styles.modalOverlay}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
         >
           <View style={[styles.modalContent, { backgroundColor: theme.bgCard }]}>
             <View style={styles.modalHeader}>

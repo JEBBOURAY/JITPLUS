@@ -18,6 +18,7 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
+
 // Reanimated removed — using RN core Animated
 import {
   Search,
@@ -288,6 +289,14 @@ export default function ScanQRScreen() {
   // Debounce: prevent re-scanning the same barcode data within a cooldown
   const lastScannedRef = useRef<{ data: string; ts: number } | null>(null);
   const SCAN_COOLDOWN_MS = 5000;
+  const navTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup navigation timeouts on unmount
+  useEffect(() => {
+    return () => {
+      if (navTimeoutRef.current) clearTimeout(navTimeoutRef.current);
+    };
+  }, []);
 
   // Animations
   const pulseScale = useRef(new Animated.Value(1)).current;
@@ -339,6 +348,7 @@ export default function ScanQRScreen() {
   useFocusEffect(
     useCallback(() => {
       dispatch({ type: 'RESET_SCAN' });
+
       return () => {};
     }, [])
   );
@@ -346,7 +356,9 @@ export default function ScanQRScreen() {
   // ── Navigate to transaction after resolving clientId ──
   const navigateToTransaction = useCallback((clientId: string) => {
     set({ detected: t('scan.qrDetected') });
-    setTimeout(() => {
+    if (navTimeoutRef.current) clearTimeout(navTimeoutRef.current);
+    navTimeoutRef.current = setTimeout(() => {
+      navTimeoutRef.current = null;
       router.push({
         pathname: '/transaction-amount',
         params: { clientId },
@@ -458,7 +470,9 @@ export default function ScanQRScreen() {
       if (clients.length === 1) {
         // Exactly one match → go to transaction
         set({ detected: t('scan.clientFound', { name: [clients[0].prenom, clients[0].nom].filter(Boolean).join(' ') }) });
-        setTimeout(() => {
+        if (navTimeoutRef.current) clearTimeout(navTimeoutRef.current);
+        navTimeoutRef.current = setTimeout(() => {
+          navTimeoutRef.current = null;
           router.push({
             pathname: '/transaction-amount',
             params: { clientId: clients[0].id },
@@ -498,7 +512,7 @@ export default function ScanQRScreen() {
   if (!permission) {
     return (
       <View style={styles.permissionContainer}>
-        <StatusBar style="light" />
+        <StatusBar style="light" translucent />
         <ActivityIndicator size="large" color="#A78BFA" />
         <Text style={styles.permissionText}>{t('scan.cameraInit')}</Text>
       </View>
@@ -508,7 +522,7 @@ export default function ScanQRScreen() {
   if (!permission.granted) {
     return (
       <View style={styles.permissionContainer}>
-        <StatusBar style="light" />
+        <StatusBar style="light" translucent />
         <Animated.View style={styles.permissionContent}>
           <View style={styles.permissionIconCircle}>
             <Camera size={48} color="#A78BFA" strokeWidth={1.5} />
@@ -556,6 +570,14 @@ export default function ScanQRScreen() {
         enableTorch={isFlashOn}
         barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
         onBarcodeScanned={isScanning ? handleBarCodeScanned : undefined}
+        onMountError={(error) => {
+          if (__DEV__) console.error('[CameraView] Mount error:', error);
+          Alert.alert(
+            t('scan.cameraErrorTitle', { defaultValue: 'Erreur caméra' }),
+            t('scan.cameraErrorMsg', { defaultValue: 'Impossible d\'initialiser la caméra. Utilisez la recherche par téléphone.' }),
+            [{ text: 'OK' }],
+          );
+        }}
       />
 
       {/* ── Dark overlay with cutout ── */}

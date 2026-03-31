@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Tabs, useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -9,6 +9,7 @@ export default function TabLayout() {
   const { merchant, loading, onboardingCompleted, isTeamMember } = useAuth();
   const theme = useTheme();
   const router = useRouter();
+  const hasOpenedScanRef = useRef(false);
 
   // Single redirect chain — priority: auth → email verification → onboarding
   useEffect(() => {
@@ -26,6 +27,12 @@ export default function TabLayout() {
     }
     if (!onboardingCompleted && !isTeamMember) {
       router.replace('/onboarding');
+      return;
+    }
+    // Open scan screen automatically on first launch after login
+    if (!hasOpenedScanRef.current) {
+      hasOpenedScanRef.current = true;
+      router.push('/scan-qr');
     }
   }, [loading, merchant, onboardingCompleted, isTeamMember]);
 

@@ -62,6 +62,19 @@ Sentry.init({
 });
 // ── End Sentry init ────────────────────────────────
 
+// ── Global unhandled promise rejection handler ──────────────────
+// Catches fire-and-forget .then() without .catch() and logs to Sentry.
+if (typeof globalThis !== 'undefined') {
+  const originalHandler = (globalThis as any).onunhandledrejection;
+  (globalThis as any).onunhandledrejection = (event: any) => {
+    const error = event?.reason;
+    if (!__DEV__ && error) {
+      Sentry.captureException(error, { tags: { source: 'unhandled-promise' } });
+    }
+    if (originalHandler) originalHandler(event);
+  };
+}
+
 // ── Env validation (fail-fast in production) ────────────────────
 if (!__DEV__ && !process.env.EXPO_PUBLIC_API_URL) {
   throw new Error('[CONFIG] EXPO_PUBLIC_API_URL is required in production');
@@ -232,15 +245,19 @@ function ThemedNavigator() {
       // Invalidate caches so new data shows immediately
       queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
       queryClient.invalidateQueries({ queryKey: ['notification-history'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-notif-unread-count'] });
     });
 
     responseListener.current = Notifications.addNotificationResponseReceivedListener((response) => {
       if (__DEV__) console.log('[Pro] Notification tapped:', response.notification.request.content);
       queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
       queryClient.invalidateQueries({ queryKey: ['notification-history'] });
-      // Navigate to messages tab when user taps a notification
+      queryClient.invalidateQueries({ queryKey: ['admin-notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-notif-unread-count'] });
+      // Navigate to admin notifications when user taps a notification
       try {
-        router.push('/(tabs)/messages');
+        router.push('/admin-notifications');
       } catch (e) { if (__DEV__) console.warn('Navigation failed', e); }
     });
 
@@ -301,6 +318,7 @@ function ThemedNavigator() {
             <Stack.Screen name="my-qr" options={{ headerShown: false, animation: 'slide_from_bottom' }} />
             <Stack.Screen name="referral" options={{ headerShown: false }} />
             <Stack.Screen name="pending-gifts" options={{ headerShown: false }} />
+            <Stack.Screen name="admin-notifications" options={{ headerShown: false }} />
             <Stack.Screen
               name="onboarding"
               options={{ headerShown: false, animation: 'fade', gestureEnabled: false }}

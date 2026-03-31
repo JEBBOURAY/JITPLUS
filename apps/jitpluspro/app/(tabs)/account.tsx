@@ -69,6 +69,7 @@ export default function AccountScreen() {
   const isPremium = merchant?.plan === 'PREMIUM';
 
   const pickAndUploadLogo = useCallback(async () => {
+    if (uploadLogoMutation.isPending) return;
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],

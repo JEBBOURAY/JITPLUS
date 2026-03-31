@@ -133,8 +133,19 @@ export default function Notifications() {
                 return (
                   <tr key={n.id} style={{ borderBottom: `1px solid ${C.border}` }}>
                     <td style={td}>
-                      <div style={{ fontWeight: 600, color: C.text }}>{n.merchant.nom}</div>
-                      <div style={{ fontSize: 11, color: C.textMuted }}>{n.merchant.email}</div>
+                      {n.merchant ? (
+                        <>
+                          <div style={{ fontWeight: 600, color: C.text }}>{n.merchant.nom}</div>
+                          <div style={{ fontSize: 11, color: C.textMuted }}>{n.merchant.email}</div>
+                        </>
+                      ) : (
+                        <>
+                          <div style={{ fontWeight: 600, color: C.primary }}>Admin JitPlus</div>
+                          <div style={{ fontSize: 11, color: C.textMuted }}>
+                            {n.audience === 'ALL_MERCHANTS' ? 'Tous les commerçants' : n.audience === 'ALL_CLIENTS' ? 'Tous les clients' : 'Broadcast admin'}
+                          </div>
+                        </>
+                      )}
                     </td>
                     <td style={td}>
                       <span style={S.badge(badge.color)}>{badge.label}</span>

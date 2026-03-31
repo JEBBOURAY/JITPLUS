@@ -232,7 +232,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               const tmData = JSON.parse(storedTeamMember);
               s.setTeamMember(true, tmData);
             } catch (e) {
-              console.error('[AuthContext] Erreur parsing teamMember:', e);
+              if (__DEV__) console.error('[AuthContext] Erreur parsing teamMember:', e);
               // Remove corrupted data to prevent persistent parse failures
               await SecureStore.deleteItemAsync('teamMember').catch(() => {});
             }
@@ -251,6 +251,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
             registerPushToken().catch((err) => {
               if (__DEV__) console.warn('[AuthContext] Push token registration failed:', err);
+              // Report to Sentry so we have visibility on push failures in production
+              if (!__DEV__) {
+                const Sentry = require('@sentry/react-native');
+                Sentry.captureException(err, { tags: { source: 'push-registration' } });
+              }
             });
           } catch {
             if (__DEV__) console.warn('[AuthContext] Session expirée, retour à l\'écran de connexion');
@@ -326,6 +331,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     registerPushToken().catch((err) => {
       if (__DEV__) console.warn('[AuthContext] Push token registration failed:', err);
+      if (!__DEV__) {
+        const Sentry = require('@sentry/react-native');
+        Sentry.captureException(err, { tags: { source: 'push-registration' } });
+      }
     });
   }, []);
 

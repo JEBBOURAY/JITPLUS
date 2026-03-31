@@ -52,6 +52,7 @@ import {
   MerchantPlanService,
   MerchantReferralService,
 } from './services';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @ApiTags('Merchant')
 @ApiBearerAuth()
@@ -70,6 +71,7 @@ export class MerchantController {
     private quotaService: WhatsappQuotaService,
     private planService: MerchantPlanService,
     private referralService: MerchantReferralService,
+    private notificationsService: NotificationsService,
     private configService: ConfigService,
     @Inject(STORAGE_PROVIDER) private storageProvider: IStorageProvider,
     private imageOptimizer: ImageOptimizerService,
@@ -444,5 +446,25 @@ export class MerchantController {
   @UseGuards(MerchantOwnerGuard)
   async applyReferralMonths(@CurrentUser() user: JwtPayload) {
     return this.planService.applyEarnedReferralMonths(user.userId);
+  }
+
+  // ── Admin notifications inbox (received from admin dashboard) ─────────────
+  @Get('admin-notifications')
+  async getAdminNotifications(
+    @Query() { page, limit }: PaginationQueryDto,
+  ) {
+    return this.notificationsService.getAdminNotificationsForMerchants(page, limit);
+  }
+
+  @Get('admin-notifications/unread-count')
+  async getAdminNotificationsUnreadCount(@CurrentUser() user: JwtPayload) {
+    const merchant = await this.profileService.getProfile(user.userId);
+    return { count: await this.notificationsService.countUnreadAdminNotifications((merchant as any).lastAdminNotifReadAt) };
+  }
+
+  @Patch('admin-notifications/mark-read')
+  async markAdminNotificationsRead(@CurrentUser() user: JwtPayload) {
+    await this.profileService.markAdminNotificationsRead(user.userId);
+    return { success: true };
   }
 }

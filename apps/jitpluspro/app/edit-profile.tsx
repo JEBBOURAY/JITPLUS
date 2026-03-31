@@ -103,6 +103,7 @@ export default function EditProfileScreen() {
     <KeyboardAvoidingView
       style={[styles.container, { backgroundColor: theme.bg }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
     >
       {/* ── Header ── */}
       <View style={[styles.header, { paddingTop: insets.top + hp(8), backgroundColor: theme.bgCard, borderBottomColor: theme.borderLight }]}>

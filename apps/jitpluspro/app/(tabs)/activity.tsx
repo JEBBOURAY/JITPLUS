@@ -12,13 +12,15 @@ import {
 import {
   RefreshCw,
   Zap,
+  Bell,
 } from 'lucide-react-native';
 import { getTransactionConfig } from '@/constants/transactions';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { ActivityListSkeleton } from '@/components/Skeleton';
-import { useTransactions } from '@/hooks/useQueryHooks';
+import { useTransactions, useAdminNotifUnreadCount } from '@/hooks/useQueryHooks';
+import { useRouter } from 'expo-router';
 import { useGuardedCallback } from '@/hooks/useGuardedCallback';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Animated } from 'react-native';
@@ -103,8 +105,13 @@ export default function ActivityScreen() {
   const { focusStyle } = useFocusFade();
   const insets = useSafeAreaInsets();
 
+  const router = useRouter();
+
   // Android: "press back again to exit" on the home tab
   useExitOnBack();
+
+  const { data: unreadData } = useAdminNotifUnreadCount();
+  const unreadCount = unreadData?.count ?? 0;
 
   const {
     data,
@@ -145,6 +152,14 @@ export default function ActivityScreen() {
             <Text style={styles.headerTitle}>{t('activity.title')}</Text>
             <Text style={styles.headerSub}>{t('activity.subtitle')}</Text>
           </View>
+          <TouchableOpacity style={styles.refreshBtn} onPress={() => router.push('/admin-notifications')}>
+            <Bell size={22} color="#E0F7FA" strokeWidth={1.5} />
+            {unreadCount > 0 && (
+              <View style={styles.bellBadge}>
+                <Text style={styles.bellBadgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
         </LinearGradient>
         <View style={styles.list}>
           <ActivityListSkeleton count={6} />
@@ -165,9 +180,19 @@ export default function ActivityScreen() {
           <Text style={styles.headerTitle}>{t('activity.title')}</Text>
           <Text style={styles.headerSub}>{t('activity.subtitle')}</Text>
         </View>
-        <TouchableOpacity style={styles.refreshBtn} onPress={onRefresh}>
-          <RefreshCw size={22} color="#E0F7FA" strokeWidth={1.5} />
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity style={styles.refreshBtn} onPress={() => router.push('/admin-notifications')}>
+            <Bell size={22} color="#E0F7FA" strokeWidth={1.5} />
+            {unreadCount > 0 && (
+              <View style={styles.bellBadge}>
+                <Text style={styles.bellBadgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.refreshBtn} onPress={onRefresh}>
+            <RefreshCw size={22} color="#E0F7FA" strokeWidth={1.5} />
+          </TouchableOpacity>
+        </View>
       </LinearGradient>
 
       <FlatList
@@ -226,6 +251,11 @@ const styles = StyleSheet.create({
   },
   headerTitle: { fontSize: 24, fontWeight: '700', color: '#fff', fontFamily: 'Lexend_700Bold' },
   headerSub: { fontSize: 13, color: 'rgba(255,255,255,.7)', marginTop: 4, fontFamily: 'Lexend_500Medium' },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
   refreshBtn: {
     width: 42,
     height: 42,
@@ -235,6 +265,24 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(139,92,246,0.45)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  bellBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: '#ef4444',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  bellBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '700',
+    fontFamily: 'Inter_700Bold',
   },
   list: { paddingHorizontal: 0, paddingTop: 8, paddingBottom: 120 },
   txRow: {

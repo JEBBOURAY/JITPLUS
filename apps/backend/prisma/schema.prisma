@@ -88,6 +88,9 @@ model Merchant {
   emailQuotaMax          Int      @default(200)
   emailQuotaResetAt      DateTime @default(now())
 
+  // Admin notifications
+  lastAdminNotifReadAt   DateTime? @map("last_admin_notif_read_at")
+
   @@index([isActive])
   @@index([deletedAt])
   // Discovery queries filter by category + city — composite index avoids full table scans
@@ -414,7 +417,7 @@ model Reward {
 
 model Notification {
   id             String   @id @default(uuid())
-  merchantId     String   @map("merchant_id")
+  merchantId     String?  @map("merchant_id")
   title          String   @db.VarChar(255)
   body           String   @db.VarChar(2000)
   recipientCount Int      @default(0) @map("recipient_count")
@@ -422,14 +425,16 @@ model Notification {
   failureCount   Int      @default(0) @map("failure_count")
   isBroadcast    Boolean  @default(false) @map("is_broadcast")
   channel        String?  @map("channel")
+  audience       String?  @map("audience") @db.VarChar(30)
   createdAt      DateTime @default(now()) @map("created_at")
 
-  merchant         Merchant                   @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  merchant         Merchant?                  @relation(fields: [merchantId], references: [id], onDelete: Cascade)
   clientStatuses   ClientNotificationStatus[]
 
   @@index([channel, createdAt(sort: Desc)])
   // Merchant history + client notification list: merchantId + createdAt DESC
   @@index([merchantId, createdAt(sort: Desc)])
+  @@index([audience, createdAt(sort: Desc)])
   @@map("notifications")
 }
 

@@ -8,6 +8,7 @@ import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { hp } from '@/utils/responsive';
 
 // ── Tab configuration ─────────────────────────────────────
 const ICONS: Record<string, LucideIcon> = {
@@ -148,7 +149,7 @@ export default React.memo(function CustomTabBar({ state, navigation }: BottomTab
             {
               backgroundColor: Platform.OS === 'ios' ? 'transparent' : theme.bgTabBar,
               borderTopColor: theme.bgTabBarBorder,
-              paddingBottom: Math.max(insets.bottom, 14),
+              paddingBottom: Math.max(insets.bottom, hp(14)),
             },
           ]}
         >

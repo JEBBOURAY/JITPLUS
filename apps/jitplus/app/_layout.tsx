@@ -12,7 +12,7 @@ import { asyncStoragePersister } from '@/utils/queryPersister';
 import NetInfo from '@react-native-community/netinfo';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
-import * as Brightness from 'expo-brightness';
+
 import { ThemeProvider, useTheme } from '@/contexts/ThemeContext';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { LanguageProvider } from '@/contexts/LanguageContext';
@@ -40,6 +40,19 @@ Sentry.init({
   attachViewHierarchy: false,
 });
 // ── End Sentry init ────────────────────────────────
+
+// ── Global unhandled promise rejection handler ──────────────────
+// Catches fire-and-forget .then() without .catch() and logs to Sentry.
+if (typeof globalThis !== 'undefined') {
+  const originalHandler = (globalThis as any).onunhandledrejection;
+  (globalThis as any).onunhandledrejection = (event: any) => {
+    const error = event?.reason;
+    if (!__DEV__ && error) {
+      Sentry.captureException(error, { tags: { source: 'unhandled-promise' } });
+    }
+    if (originalHandler) originalHandler(event);
+  };
+}
 
 // ── Env validation (fail-fast in production) ────────────────────
 if (!__DEV__ && !process.env.EXPO_PUBLIC_API_URL) {
@@ -126,16 +139,7 @@ function RootLayoutNav() {
   // Invalidate notification caches when app returns from background
   useAppForegroundRefresh();
 
-  // Restore iOS brightness if the app was force-closed from the QR screen
-  useEffect(() => {
-    if (Platform.OS !== 'ios') return;
-    AsyncStorage.getItem('qr_original_brightness').then(async (val) => {
-      if (val) {
-        try { await Brightness.setBrightnessAsync(parseFloat(val)); } catch { /* ignore */ }
-        await AsyncStorage.removeItem('qr_original_brightness');
-      }
-    }).catch(() => {});
-  }, []);
+
 
   useEffect(() => {
     // Skip notification listeners in Expo Go (SDK 53+ removed push support)

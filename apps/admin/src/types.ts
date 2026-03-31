@@ -132,6 +132,7 @@ export interface NotificationRow {
   title: string;
   body: string;
   channel: string | null;
+  audience: string | null;
   recipientCount: number;
   successCount: number;
   failureCount: number;
@@ -141,7 +142,7 @@ export interface NotificationRow {
     id: string;
     nom: string;
     email: string;
-  };
+  } | null;
 }
 
 export interface NotificationsResponse {
