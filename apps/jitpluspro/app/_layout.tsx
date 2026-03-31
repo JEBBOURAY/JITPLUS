@@ -49,17 +49,22 @@ const queryClient = new QueryClient({
 // ── Sentry init (crash reporting) ──────────────────────────────
 // SECURITY: DSN is bundled in the client. Configure inbound data filters in
 // Sentry project settings to reject invalid releases and apply rate limits.
-Sentry.init({
-  dsn: process.env.EXPO_PUBLIC_SENTRY_DSN_PRO ?? '',
-  enabled: !__DEV__ && !!process.env.EXPO_PUBLIC_SENTRY_DSN_PRO,
-  environment: __DEV__ ? 'development' : 'production',
-  release: Constants.expoConfig?.version,
-  dist: String(Constants.expoConfig?.android?.versionCode ?? '0'),
-  tracesSampleRate: 0.2,
-  maxBreadcrumbs: 50,
-  attachScreenshot: false, // Disabled: screenshots can capture PII (names, cards, balances)
-  attachViewHierarchy: false, // Disabled: view hierarchy can leak PII
-});
+try {
+  Sentry.init({
+    dsn: process.env.EXPO_PUBLIC_SENTRY_DSN_PRO ?? '',
+    enabled: !__DEV__ && !!process.env.EXPO_PUBLIC_SENTRY_DSN_PRO,
+    environment: __DEV__ ? 'development' : 'production',
+    release: Constants.expoConfig?.version,
+    dist: String(Constants.expoConfig?.android?.versionCode ?? '0'),
+    tracesSampleRate: 0.2,
+    maxBreadcrumbs: 50,
+    attachScreenshot: false, // Disabled: screenshots can capture PII (names, cards, balances)
+    attachViewHierarchy: false, // Disabled: view hierarchy can leak PII
+  });
+} catch (e) {
+  // Sentry init can crash if native module is misconfigured — never block app launch
+  if (__DEV__) console.warn('[Sentry] init failed:', e);
+}
 // ── End Sentry init ────────────────────────────────
 
 // ── Global unhandled promise rejection handler ──────────────────
@@ -69,7 +74,7 @@ if (typeof globalThis !== 'undefined') {
   (globalThis as any).onunhandledrejection = (event: any) => {
     const error = event?.reason;
     if (!__DEV__ && error) {
-      Sentry.captureException(error, { tags: { source: 'unhandled-promise' } });
+      try { Sentry.captureException(error, { tags: { source: 'unhandled-promise' } }); } catch {}
     }
     if (originalHandler) originalHandler(event);
   };
@@ -77,7 +82,8 @@ if (typeof globalThis !== 'undefined') {
 
 // ── Env validation (fail-fast in production) ────────────────────
 if (!__DEV__ && !process.env.EXPO_PUBLIC_API_URL) {
-  throw new Error('[CONFIG] EXPO_PUBLIC_API_URL is required in production');
+  // Log instead of throw — crashing at module-level gives no visible error message
+  console.error('[CONFIG] EXPO_PUBLIC_API_URL is required in production');
 }
 
 // NOTE: The I18nManager forced-LTR reset has been removed.

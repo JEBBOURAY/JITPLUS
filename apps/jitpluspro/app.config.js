@@ -82,7 +82,10 @@ module.exports = ({ config }) => {
           apiKey: GOOGLE_MAPS_KEY,
         },
       },
-      edgeToEdgeEnabled: true,
+      // edgeToEdgeEnabled disabled: causes native crash on some Android 10/11 devices
+      // before the JS bundle loads (no visible error message). Re-enable once
+      // targeting Android 15+ exclusively.
+      edgeToEdgeEnabled: false,
       // Disabled: prevents accidental back gesture from killing auth/OTP/onboarding flows
       predictiveBackGestureEnabled: false,
       permissions: [
@@ -156,14 +159,14 @@ module.exports = ({ config }) => {
             "Permettre à JitPlus Pro d'accéder à votre position pour localiser votre commerce.",
         },
       ],
-      // Sentry — source map upload + native crash symbolication
-      // Requires EAS Secrets: SENTRY_ORG, SENTRY_PROJECT, SENTRY_AUTH_TOKEN
-      ...(process.env.SENTRY_AUTH_TOKEN ? [['@sentry/react-native/expo', {
-        organization: process.env.SENTRY_ORG || '',
-        project: process.env.SENTRY_PROJECT || '',
+      // Sentry — always register the config plugin so the native SDK is properly
+      // set up.  Source-map / symbol uploads happen ONLY when SENTRY_AUTH_TOKEN is set.
+      ['@sentry/react-native/expo', {
+        organization: process.env.SENTRY_ORG || 'placeholder',
+        project: process.env.SENTRY_PROJECT || 'placeholder',
         uploadNativeSymbols: false,
         autoUploadReactNativeBundles: false,
-      }]] : []),
+      }],
     ],
     extra: {
       googleMapsApiKey: GOOGLE_MAPS_KEY,
