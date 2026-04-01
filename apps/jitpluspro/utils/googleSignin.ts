@@ -17,7 +17,7 @@ try {
   // Native module unavailable (Expo Go) — GoogleSignin stays null
 }
 
-if (GoogleSignin) {
+if (GoogleSignin && WEB_CLIENT_ID) {
   GoogleSignin.configure({
     webClientId: WEB_CLIENT_ID,
     offlineAccess: false,

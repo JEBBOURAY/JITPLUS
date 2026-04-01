@@ -148,10 +148,21 @@ export default function RootLayout() {
 
   // Expo Router uses Error Boundaries to catch errors in the navigation tree.
   useEffect(() => {
-    if (error) throw error;
+    if (error) {
+      // In production, log but don't throw — the app can render with system fonts
+      if (__DEV__) throw error;
+      console.error('[Fonts] Failed to load fonts:', error);
+    }
   }, [error]);
 
-  if (!loaded) {
+  // Font loading timeout — don't block app launch forever if fonts fail
+  const [fontTimeout, setFontTimeout] = React.useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setFontTimeout(true), 5000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (!loaded && !fontTimeout && !error) {
     return null;
   }
 

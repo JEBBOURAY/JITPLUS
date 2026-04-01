@@ -42,17 +42,21 @@ export async function setupAndroidChannels() {
   if (!Notifications || isExpoGo) return;
   if (Platform.OS !== 'android') return;
 
-  await Promise.all([
-    Notifications.setNotificationChannelAsync('jitpro-default', {
-      name: 'Notifications générales',
-      importance: Notifications.AndroidImportance.HIGH,
-      sound: 'default',
-      vibrationPattern: [0, 250, 250, 250],
-    }),
-    Notifications.setNotificationChannelAsync('login-alerts', {
-      name: 'Alertes de connexion',
-      importance: Notifications.AndroidImportance.HIGH,
-      vibrationPattern: [0, 250, 250, 250],
-    }),
-  ]);
+  try {
+    await Promise.all([
+      Notifications.setNotificationChannelAsync('jitpro-default', {
+        name: 'Notifications générales',
+        importance: Notifications.AndroidImportance.HIGH,
+        sound: 'default',
+        vibrationPattern: [0, 250, 250, 250],
+      }),
+      Notifications.setNotificationChannelAsync('login-alerts', {
+        name: 'Alertes de connexion',
+        importance: Notifications.AndroidImportance.HIGH,
+        vibrationPattern: [0, 250, 250, 250],
+      }),
+    ]);
+  } catch (e) {
+    if (__DEV__) console.warn('[notifications] Failed to create Android channels:', e);
+  }
 }

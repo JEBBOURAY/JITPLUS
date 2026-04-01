@@ -76,10 +76,10 @@ const TrendChart = React.memo(function TrendChart({
   formatLabel: (bucket: string) => string;
 }) {
   const theme = useTheme();
-  const maxCount = Math.max(...data.map((item) => item.count), 1);
+  const maxCount = Math.max(...(data ?? []).map((item) => item.count), 1);
   return (
     <View style={styles.trendChart}>
-      {data.map((item) => {
+      {(data ?? []).map((item) => {
         const height = Math.max(8, Math.round((item.count / maxCount) * 90));
         return (
           <View key={item.bucket} style={styles.trendBarGroup}>

@@ -360,12 +360,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         deviceId,
       });
 
+      if (!response.data?.merchant) {
+        throw new Error('Réponse serveur invalide : données marchand manquantes');
+      }
+
       if (__DEV__) console.log('[AuthContext] Connexion réussie:', response.data.merchant.nom, '| Type:', response.data.userType);
 
       await handleAuthSuccess(response.data, {
         rememberMe,
         userType: response.data.userType,
-        teamMemberData: response.data.teamMember,
+        teamMemberData: response.data.teamMember ?? null,
       });
     } catch (error: unknown) {
       if (__DEV__) console.error('[AuthContext] Erreur de connexion:', error);
