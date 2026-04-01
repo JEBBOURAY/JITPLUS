@@ -16,6 +16,7 @@ export const AUDIT_LOG_REPOSITORY = Symbol('AUDIT_LOG_REPOSITORY');
 export const PROFILE_VIEW_REPOSITORY = Symbol('PROFILE_VIEW_REPOSITORY');
 export const REWARD_REPOSITORY = Symbol('REWARD_REPOSITORY');
 export const CLIENT_REFERRAL_REPOSITORY = Symbol('CLIENT_REFERRAL_REPOSITORY');
+export const MERCHANT_NOTIFICATION_READ_REPOSITORY = Symbol('MERCHANT_NOTIFICATION_READ_REPOSITORY');
 
 // ── Infrastructure tokens ───────────────────────────────────────────────────
 export const TRANSACTION_RUNNER = Symbol('TRANSACTION_RUNNER');

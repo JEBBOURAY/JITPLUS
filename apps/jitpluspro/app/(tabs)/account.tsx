@@ -32,7 +32,6 @@ import {
   AlertTriangle,
   MessageCircle,
   Globe,
-  Bell,
 } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme, palette } from '@/contexts/ThemeContext';
@@ -153,33 +152,6 @@ export default function AccountScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.contentContainer}
       >
-        {/* -- Notifications Bell ---------------------- */}
-        <FadeInView delay={50}>
-          <TouchableOpacity
-            style={[styles.notifRow, { backgroundColor: theme.bgCard }]}
-            onPress={() => router.push('/admin-notifications')}
-            activeOpacity={0.7}
-          >
-            <View style={[styles.notifIconWrap, { backgroundColor: `${theme.primary}18` }]}>
-              <Bell size={ms(18)} color={theme.primary} strokeWidth={1.5} />
-              {unreadCount > 0 && (
-                <View style={styles.bellBadge}>
-                  <Text style={styles.bellBadgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
-                </View>
-              )}
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.notifLabel, { color: theme.text }]}>{t('account.notifications') ?? 'Notifications'}</Text>
-              {unreadCount > 0 && (
-                <Text style={[styles.notifSub, { color: theme.primary }]}>
-                  {unreadCount} {t('account.unread') ?? 'non lue(s)'}
-                </Text>
-              )}
-            </View>
-            <ChevronDown size={ms(16)} color={theme.textMuted} strokeWidth={1.5} style={{ transform: [{ rotate: '-90deg' }] }} />
-          </TouchableOpacity>
-        </FadeInView>
-
         {/* -- Profile Card ----------------------------- */}
         <FadeInView delay={100}>
           <ProfileCard
@@ -192,6 +164,8 @@ export default function AccountScreen() {
             referralCode={referralCode}
             categoryLabel={categoryLabel}
             router={router}
+            unreadCount={unreadCount}
+            onNotifPress={() => router.push('/admin-notifications')}
           />
         </FadeInView>
 
@@ -485,56 +459,6 @@ export default function AccountScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-
-  // Notification row
-  notifRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: radius.xl,
-    padding: ms(14),
-    marginBottom: hp(12),
-    gap: wp(12),
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 12,
-    elevation: 2,
-  },
-  notifIconWrap: {
-    width: ms(40),
-    height: ms(40),
-    borderRadius: ms(20),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  notifLabel: {
-    fontSize: FS.md,
-    fontWeight: '600',
-    fontFamily: 'Lexend_600SemiBold',
-  },
-  notifSub: {
-    fontSize: FS.xs,
-    fontFamily: 'Inter_500Medium',
-    marginTop: 2,
-  },
-  bellBadge: {
-    position: 'absolute',
-    top: -4,
-    right: -4,
-    backgroundColor: '#ef4444',
-    borderRadius: 10,
-    minWidth: 18,
-    height: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 4,
-  },
-  bellBadgeText: {
-    color: '#fff',
-    fontSize: 9,
-    fontWeight: '700',
-    fontFamily: 'Inter_700Bold',
-  },
 
   // Content
   contentContainer: {

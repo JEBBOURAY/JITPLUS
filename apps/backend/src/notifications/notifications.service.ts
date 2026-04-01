@@ -8,6 +8,7 @@ import {
   CLIENT_REPOSITORY, type IClientRepository,
   NOTIFICATION_REPOSITORY, type INotificationRepository,
   CLIENT_NOTIFICATION_STATUS_REPOSITORY, type IClientNotificationStatusRepository,
+  MERCHANT_NOTIFICATION_READ_REPOSITORY, type IMerchantNotificationReadRepository,
 } from '../common/repositories';
 import { IEmailBlastProvider, EMAIL_BLAST_PROVIDER, IPushProvider, PUSH_PROVIDER, ISmsProvider, SMS_PROVIDER } from '../common/interfaces';
 import { EventsGateway } from '../events';
@@ -29,6 +30,7 @@ export class NotificationsService {
     @Inject(CLIENT_REPOSITORY) private clientRepo: IClientRepository,
     @Inject(NOTIFICATION_REPOSITORY) private notificationRepo: INotificationRepository,
     @Inject(CLIENT_NOTIFICATION_STATUS_REPOSITORY) private clientNotifStatusRepo: IClientNotificationStatusRepository,
+    @Inject(MERCHANT_NOTIFICATION_READ_REPOSITORY) private merchantNotifReadRepo: IMerchantNotificationReadRepository,
     @Inject(PUSH_PROVIDER) private pushProvider: IPushProvider,
     @Inject(EMAIL_BLAST_PROVIDER) private resendService: IEmailBlastProvider,
     @Inject(SMS_PROVIDER) private smsProvider: ISmsProvider,
@@ -873,10 +875,10 @@ export class NotificationsService {
 
   /**
    * Get admin broadcast notifications targeting ALL_MERCHANTS.
-   * Used by the jitpluspro app to show admin notifications in the merchant inbox.
+   * Includes per-merchant `isRead` status via the junction table.
    */
-  async getAdminNotificationsForMerchants(page = 1, limit = 20): Promise<{
-    notifications: { id: string; title: string; body: string; channel: string | null; createdAt: Date }[];
+  async getAdminNotificationsForMerchants(merchantId: string, page = 1, limit = 20): Promise<{
+    notifications: { id: string; title: string; body: string; channel: string | null; createdAt: Date; isRead: boolean }[];
     pagination: PaginationResult;
   }> {
     const skip = (page - 1) * limit;
@@ -892,21 +894,76 @@ export class NotificationsService {
       this.notificationRepo.count({ where }),
     ]);
 
+    // Fetch read statuses for this merchant in a single query
+    const notifIds = notifications.map((n: any) => n.id);
+    const reads = notifIds.length > 0
+      ? await this.merchantNotifReadRepo.findMany({
+          where: { merchantId, notificationId: { in: notifIds } },
+          select: { notificationId: true },
+        })
+      : [];
+    const readSet = new Set(reads.map((r: any) => r.notificationId));
+
     return {
-      notifications,
+      notifications: notifications.map((n: any) => ({
+        id: n.id,
+        title: n.title,
+        body: n.body,
+        channel: n.channel,
+        createdAt: n.createdAt,
+        isRead: readSet.has(n.id),
+      })),
       pagination: buildPagination(total, page, limit),
     };
   }
 
   /**
-   * Count unread admin broadcast notifications for a merchant.
-   * Uses the merchant's `lastAdminNotifReadAt` timestamp if provided.
+   * Mark a single admin notification as read for a merchant.
    */
-  async countUnreadAdminNotifications(since?: Date | null): Promise<number> {
-    const where: Record<string, unknown> = { audience: 'ALL_MERCHANTS', isBroadcast: true };
-    if (since) {
-      where.createdAt = { gt: since };
+  async markSingleAdminNotifRead(merchantId: string, notificationId: string): Promise<void> {
+    await this.merchantNotifReadRepo.upsert({
+      where: { merchantId_notificationId: { merchantId, notificationId } },
+      create: { merchantId, notificationId },
+      update: {},
+    });
+  }
+
+  /**
+   * Mark all unread admin broadcast notifications as read for a merchant.
+   */
+  async markAllAdminNotifsRead(merchantId: string): Promise<void> {
+    const where = { audience: 'ALL_MERCHANTS', isBroadcast: true };
+    const allNotifs = await this.notificationRepo.findMany({
+      where,
+      select: { id: true },
+    });
+
+    const existingReads = await this.merchantNotifReadRepo.findMany({
+      where: { merchantId, notificationId: { in: allNotifs.map((n: any) => n.id) } },
+      select: { notificationId: true },
+    });
+    const readSet = new Set(existingReads.map((r: any) => r.notificationId));
+    const unreadIds = allNotifs.filter((n: any) => !readSet.has(n.id)).map((n: any) => n.id);
+
+    if (unreadIds.length > 0) {
+      await this.merchantNotifReadRepo.createMany({
+        data: unreadIds.map((notificationId: string) => ({ merchantId, notificationId })),
+        skipDuplicates: true,
+      });
     }
-    return this.notificationRepo.count({ where });
+  }
+
+  /**
+   * Count unread admin broadcast notifications for a merchant.
+   */
+  async countUnreadAdminNotifications(merchantId: string): Promise<number> {
+    const where = { audience: 'ALL_MERCHANTS', isBroadcast: true };
+    const [total, readCount] = await Promise.all([
+      this.notificationRepo.count({ where }),
+      this.merchantNotifReadRepo.count({
+        where: { merchantId, notification: { audience: 'ALL_MERCHANTS', isBroadcast: true } },
+      }),
+    ]);
+    return total - readCount;
   }
 }

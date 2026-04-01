@@ -21,3 +21,4 @@ export type IAuditLogRepository = PrismaService['auditLog'];
 export type IProfileViewRepository = PrismaService['profileView'];
 export type IRewardRepository = PrismaService['reward'];
 export type IClientReferralRepository = PrismaService['clientReferral'];
+export type IMerchantNotificationReadRepository = PrismaService['merchantNotificationRead'];

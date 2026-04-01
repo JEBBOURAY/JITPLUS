@@ -90,6 +90,7 @@ model Merchant {
 
   // Admin notifications
   lastAdminNotifReadAt   DateTime? @map("last_admin_notif_read_at")
+  notificationReads      MerchantNotificationRead[]
 
   @@index([isActive])
   @@index([deletedAt])
@@ -430,12 +431,26 @@ model Notification {
 
   merchant         Merchant?                  @relation(fields: [merchantId], references: [id], onDelete: Cascade)
   clientStatuses   ClientNotificationStatus[]
+  merchantReads    MerchantNotificationRead[]
 
   @@index([channel, createdAt(sort: Desc)])
   // Merchant history + client notification list: merchantId + createdAt DESC
   @@index([merchantId, createdAt(sort: Desc)])
   @@index([audience, createdAt(sort: Desc)])
   @@map("notifications")
+}
+
+/// Per-merchant notification read status for admin broadcast notifications.
+model MerchantNotificationRead {
+  merchantId     String   @map("merchant_id")
+  notificationId String   @map("notification_id")
+  readAt         DateTime @default(now()) @map("read_at")
+
+  merchant     Merchant     @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@id([merchantId, notificationId])
+  @@map("merchant_notification_reads")
 }
 
 /// Per-client notification status: tracks read/dismissed state.

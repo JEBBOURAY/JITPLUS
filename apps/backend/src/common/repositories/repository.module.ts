@@ -20,6 +20,7 @@ import {
   PROFILE_VIEW_REPOSITORY,
   REWARD_REPOSITORY,
   CLIENT_REFERRAL_REPOSITORY,
+  MERCHANT_NOTIFICATION_READ_REPOSITORY,
   TRANSACTION_RUNNER,
   RAW_QUERY_RUNNER,
 } from './repository.tokens';
@@ -42,6 +43,7 @@ const modelProviders = [
   { provide: PROFILE_VIEW_REPOSITORY, useFactory: (p: PrismaService) => p.profileView, inject: [PrismaService] },
   { provide: REWARD_REPOSITORY, useFactory: (p: PrismaService) => p.reward, inject: [PrismaService] },
   { provide: CLIENT_REFERRAL_REPOSITORY, useFactory: (p: PrismaService) => p.clientReferral, inject: [PrismaService] },
+  { provide: MERCHANT_NOTIFICATION_READ_REPOSITORY, useFactory: (p: PrismaService) => p.merchantNotificationRead, inject: [PrismaService] },
 ];
 
 const infraProviders = [
@@ -58,6 +60,7 @@ const allTokens = [
   OTP_REPOSITORY, ADMIN_USER_REPOSITORY, AUDIT_LOG_REPOSITORY,
   PROFILE_VIEW_REPOSITORY, REWARD_REPOSITORY,
   CLIENT_REFERRAL_REPOSITORY,
+  MERCHANT_NOTIFICATION_READ_REPOSITORY,
   TRANSACTION_RUNNER, RAW_QUERY_RUNNER,
 ];
 

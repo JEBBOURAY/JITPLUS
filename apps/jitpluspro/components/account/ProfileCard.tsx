@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Pressable, Platform } from 'react-native';
-import { Camera, Lock, Crown, Zap, Calendar, AlertCircle, Gift, ChevronRight, Copy } from 'lucide-react-native';
+import { Camera, Lock, Crown, Zap, Calendar, AlertCircle, Gift, ChevronRight, Copy, Bell } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import MerchantLogo from '@/components/MerchantLogo';
@@ -18,10 +18,13 @@ interface Props {
   referralCode: string | null;
   categoryLabel: string;
   router: Router;
+  unreadCount?: number;
+  onNotifPress?: () => void;
 }
 
 export default function ProfileCard({
   theme, t, locale, merchant, uploadIsPending, onLogoPress, referralCode, categoryLabel, router,
+  unreadCount = 0, onNotifPress,
 }: Props) {
   const isPremium = merchant?.plan === 'PREMIUM';
   const isAdminPremium = merchant?.planActivatedByAdmin === true;
@@ -56,6 +59,18 @@ export default function ProfileCard({
 
   return (
     <View style={[styles.profileCard, { backgroundColor: theme.bgCard }]}>
+      {/* -- Notification Bell (top-right) ---------- */}
+      {onNotifPress && (
+        <TouchableOpacity onPress={onNotifPress} activeOpacity={0.7} style={styles.notifBell}>
+          <Bell size={ms(20)} color={theme.primary} strokeWidth={1.8} />
+          {unreadCount > 0 && (
+            <View style={styles.bellBadge}>
+              <Text style={styles.bellBadgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+      )}
+
       {/* -- Logo ---------------------------------- */}
       <View style={styles.profileCardAvatarRow}>
         <TouchableOpacity onPress={onLogoPress} activeOpacity={0.85} style={styles.avatarRingWrapper}>
@@ -214,6 +229,7 @@ export default function ProfileCard({
 
 const styles = StyleSheet.create({
   profileCard: {
+    position: 'relative' as const,
     borderRadius: radius.xl,
     marginBottom: hp(16),
     overflow: 'hidden',
@@ -353,4 +369,33 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
   },
   referralRowCodeText: { fontSize: FS.sm, fontWeight: '700', letterSpacing: 1.2 },
+  notifBell: {
+    position: 'absolute',
+    top: hp(14),
+    right: wp(14),
+    zIndex: 10,
+    width: ms(38),
+    height: ms(38),
+    borderRadius: ms(19),
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#7C3AED12',
+  },
+  bellBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    backgroundColor: '#ef4444',
+    borderRadius: 10,
+    minWidth: 16,
+    height: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  bellBadgeText: {
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: '700',
+  },
 });

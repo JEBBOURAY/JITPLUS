@@ -8,6 +8,7 @@ import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useAdminNotifUnreadCount } from '@/hooks/useQueryHooks';
 import { hp } from '@/utils/responsive';
 
 // ── Tab configuration ─────────────────────────────────────
@@ -31,10 +32,12 @@ const TabButton = React.memo(function TabButton({
   route,
   isFocused,
   navigation,
+  badge,
 }: {
   route: { key: string; name: string };
   isFocused: boolean;
   navigation: BottomTabBarProps['navigation'];
+  badge?: number;
 }) {
   const theme = useTheme();
   const { t } = useLanguage();
@@ -118,6 +121,11 @@ const TabButton = React.memo(function TabButton({
           color={isFocused ? palette.violet : theme.textMuted}
           strokeWidth={1.5}
         />
+        {!!badge && badge > 0 && (
+          <View style={styles.tabBadge}>
+            <Text style={styles.tabBadgeText}>{badge > 99 ? '99+' : badge}</Text>
+          </View>
+        )}
       </View>
       <Text
         style={[
@@ -135,6 +143,8 @@ const TabButton = React.memo(function TabButton({
 export default React.memo(function CustomTabBar({ state, navigation }: BottomTabBarProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+  const { data: unreadData } = useAdminNotifUnreadCount();
+  const unreadCount = unreadData?.count ?? 0;
 
   return (
     <View style={styles.wrapper}>
@@ -159,6 +169,7 @@ export default React.memo(function CustomTabBar({ state, navigation }: BottomTab
               route={route}
               isFocused={state.index === index}
               navigation={navigation}
+              badge={route.name === 'account' ? unreadCount : undefined}
             />
           ))}
         </View>
@@ -221,5 +232,22 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 12,
     elevation: 4,
+  },
+  tabBadge: {
+    position: 'absolute',
+    top: 0,
+    right: 2,
+    backgroundColor: '#ef4444',
+    borderRadius: 8,
+    minWidth: 16,
+    height: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  tabBadgeText: {
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: '700',
   },
 });

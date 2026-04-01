@@ -546,6 +546,7 @@ export interface AdminNotification {
   body: string;
   channel: string | null;
   createdAt: string;
+  isRead: boolean;
 }
 
 export function useAdminNotifications(page = 1, enabled = true) {
@@ -580,6 +581,20 @@ export function useMarkAdminNotifsRead() {
     },
     onSuccess: () => {
       qc.setQueryData(queryKeys.adminNotifUnreadCount, { count: 0 });
+      qc.invalidateQueries({ queryKey: queryKeys.adminNotifUnreadCount });
+      qc.invalidateQueries({ queryKey: queryKeys.adminNotifications });
+    },
+  });
+}
+
+export function useMarkSingleAdminNotifRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (notificationId: string) => {
+      await api.patch(`/merchant/admin-notifications/${notificationId}/read`);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.adminNotifications });
       qc.invalidateQueries({ queryKey: queryKeys.adminNotifUnreadCount });
     },
   });

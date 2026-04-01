@@ -451,20 +451,29 @@ export class MerchantController {
   // ── Admin notifications inbox (received from admin dashboard) ─────────────
   @Get('admin-notifications')
   async getAdminNotifications(
+    @CurrentUser() user: JwtPayload,
     @Query() { page, limit }: PaginationQueryDto,
   ) {
-    return this.notificationsService.getAdminNotificationsForMerchants(page, limit);
+    return this.notificationsService.getAdminNotificationsForMerchants(user.userId, page, limit);
   }
 
   @Get('admin-notifications/unread-count')
   async getAdminNotificationsUnreadCount(@CurrentUser() user: JwtPayload) {
-    const merchant = await this.profileService.getProfile(user.userId);
-    return { count: await this.notificationsService.countUnreadAdminNotifications((merchant as any).lastAdminNotifReadAt) };
+    return { count: await this.notificationsService.countUnreadAdminNotifications(user.userId) };
   }
 
   @Patch('admin-notifications/mark-read')
   async markAdminNotificationsRead(@CurrentUser() user: JwtPayload) {
-    await this.profileService.markAdminNotificationsRead(user.userId);
+    await this.notificationsService.markAllAdminNotifsRead(user.userId);
+    return { success: true };
+  }
+
+  @Patch('admin-notifications/:id/read')
+  async markSingleAdminNotificationRead(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') notificationId: string,
+  ) {
+    await this.notificationsService.markSingleAdminNotifRead(user.userId, notificationId);
     return { success: true };
   }
 }

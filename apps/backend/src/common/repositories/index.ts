@@ -17,6 +17,7 @@ export {
   PROFILE_VIEW_REPOSITORY,
   REWARD_REPOSITORY,
   CLIENT_REFERRAL_REPOSITORY,
+  MERCHANT_NOTIFICATION_READ_REPOSITORY,
   TRANSACTION_RUNNER,
   RAW_QUERY_RUNNER,
 } from './repository.tokens';
@@ -38,6 +39,7 @@ export type {
   IProfileViewRepository,
   IRewardRepository,
   IClientReferralRepository,
+  IMerchantNotificationReadRepository,
 } from './repository.types';
 
 // Infrastructure
