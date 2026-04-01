@@ -165,7 +165,9 @@ export default function OnboardingScreen() {
   // â”€â”€ If team member, skip onboarding â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   React.useEffect(() => {
     if (isTeamMember) {
-      completeOnboarding().then(() => router.replace('/scan-qr'));
+      completeOnboarding()
+        .then(() => router.replace('/scan-qr'))
+        .catch(() => router.replace('/scan-qr'));
     }
   }, [isTeamMember]);
 
@@ -246,7 +248,7 @@ export default function OnboardingScreen() {
         <StepSlide visible={currentStep === 'scan'} direction={direction}>
           <StepScan
             theme={theme} t={t} bottomPadding={bottomPadding}
-            onScanNow={async () => { await completeOnboarding(); router.replace('/scan-qr'); }}
+            onScanNow={async () => { try { await completeOnboarding(); } catch {} router.replace('/scan-qr'); }}
           />
         </StepSlide>
 

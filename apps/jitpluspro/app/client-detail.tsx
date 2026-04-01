@@ -216,8 +216,8 @@ export default function ClientDetailScreen() {
   const initial = (client.prenom || client.nom || '?').charAt(0).toUpperCase();
   const stampsForReward = merchant?.stampsForReward || client.stampsForReward || 10;
   const progressPct = isStampsMode
-    ? Math.min((client.points / stampsForReward) * 100, 100)
-    : Math.min((client.points / client.rewardThreshold) * 100, 100);
+    ? Math.min((client.points / (stampsForReward || 1)) * 100, 100)
+    : Math.min((client.points / (client.rewardThreshold || 1)) * 100, 100);
   // Show phone as-is — the backend stores the normalized full number (e.g. +212612345678)
   const phoneDisplay = client.telephone || null;
 
