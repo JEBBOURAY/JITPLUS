@@ -229,10 +229,8 @@ export default function ProfileCard({
 
 const styles = StyleSheet.create({
   profileCard: {
-    position: 'relative' as const,
     borderRadius: radius.xl,
     marginBottom: hp(16),
-    overflow: 'hidden',
     paddingBottom: hp(16),
     shadowColor: '#7C3AED',
     shadowOffset: { width: 0, height: 4 },
