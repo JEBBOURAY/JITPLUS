@@ -32,6 +32,8 @@ export default {
     noCountryFound: 'No country found',
     allDisplayed: '— All displayed —',
     morocco: 'Morocco',
+    stampsAbbr: 'stp',
+    pointsAbbr: 'pts',
   },
 
   errors: {
@@ -260,6 +262,8 @@ export default {
     clientNotFoundTitle: 'Client not found',
     noClientForPhone: 'No client found with number %{phone}.',
     phoneSearchError: 'Unable to search this number. Please try again.',
+    cameraErrorTitle: 'Camera error',
+    cameraErrorMsg: 'Unable to initialize the camera. Use phone search instead.',
   },
 
   account: {
@@ -351,6 +355,7 @@ export default {
     planCancelEmailSubject: 'Cancellation request — JitPlus',
     planCancelEmailBody: 'Hello,\n\nI am %{name} (%{email}) and I would like to cancel my Premium plan.\n\nThank you.',
     planErrorWhatsapp: 'Unable to open WhatsApp.',
+    planErrorEmail: 'Unable to open email app.',
     planErrorBrowser: 'Unable to open browser.',
 
     email: 'Email',
@@ -375,6 +380,7 @@ export default {
     securitySubtitle: 'Password, active sessions',
     stores: 'Connected Devices',
     storesSubtitle: 'Manage active sessions',
+    proBadge: 'PRO',
     dashboard: 'Dashboard',
     dashboardSubtitle: 'Statistics and analytics',
     dashboardLockedSubtitle: 'Available on Pro plan',

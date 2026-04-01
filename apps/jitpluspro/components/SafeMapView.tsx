@@ -66,7 +66,7 @@ function MapFallback({ style, markers, hasCoords }: FallbackProps) {
         ? `maps:0,0?q=${lat},${lng}`
         : `geo:${lat},${lng}?q=${lat},${lng}`;
     Linking.openURL(url).catch(() =>
-      Linking.openURL(`https://www.google.com/maps?q=${lat},${lng}`),
+      Linking.openURL(`https://www.google.com/maps?q=${lat},${lng}`).catch(() => {}),
     );
   }, []);
 

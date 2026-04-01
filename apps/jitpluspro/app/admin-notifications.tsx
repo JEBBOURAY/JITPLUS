@@ -54,13 +54,17 @@ export default function AdminNotificationsScreen() {
 
   const handlePress = useCallback((item: AdminNotification) => {
     if (!item.isRead) {
-      markSingleRead.mutate(item.id);
+      markSingleRead.mutate(item.id, {
+        onError: () => { if (__DEV__) console.warn('[Notif] Failed to mark as read:', item.id); },
+      });
     }
   }, [markSingleRead]);
 
   const handleMarkAllRead = useCallback(() => {
     if (unreadCount > 0) {
-      markAllRead.mutate();
+      markAllRead.mutate(undefined, {
+        onError: () => { if (__DEV__) console.warn('[Notif] Failed to mark all read'); },
+      });
     }
   }, [markAllRead, unreadCount]);
 

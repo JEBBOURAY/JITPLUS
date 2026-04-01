@@ -243,10 +243,11 @@ export default function DashboardScreen() {
     ]);
   }, [trendPeriod, queryClient]);
 
-  const unitLabel = stats?.loyaltyType === 'STAMPS' ? 'tampons' : 'points';
+  const unitLabel = stats?.loyaltyType === 'STAMPS' ? t('common.stamps') : t('common.points');
 
   const formatTrendLabel = useCallback((bucket: string) => {
     const date = new Date(bucket);
+    if (isNaN(date.getTime())) return bucket;
     const day = date.getDate();
     const month = date.getMonth() + 1;
     const year = String(date.getFullYear()).slice(2);

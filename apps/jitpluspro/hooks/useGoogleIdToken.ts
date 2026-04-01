@@ -8,28 +8,8 @@
  */
 import { useCallback, useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { GoogleSignin, isErrorWithCode, statusCodes } from '@/utils/googleSignin';
 import { WEB_CLIENT_ID } from '@/config/google';
-
-// Lazy-load the native SDK so Expo Go doesn't crash at module evaluation time.
-let GoogleSignin: typeof import('@react-native-google-signin/google-signin').GoogleSignin | null = null;
-let isErrorWithCode: typeof import('@react-native-google-signin/google-signin').isErrorWithCode | null = null;
-let statusCodes: typeof import('@react-native-google-signin/google-signin').statusCodes | null = null;
-
-try {
-  const mod = require('@react-native-google-signin/google-signin');
-  GoogleSignin = mod.GoogleSignin;
-  isErrorWithCode = mod.isErrorWithCode;
-  statusCodes = mod.statusCodes;
-} catch {
-  // Native module unavailable (Expo Go) — GoogleSignin stays null
-}
-
-if (GoogleSignin) {
-  GoogleSignin.configure({
-    webClientId: WEB_CLIENT_ID,
-    offlineAccess: false,
-  });
-}
 
 interface UseGoogleIdTokenResult {
   isLoading: boolean;
@@ -48,7 +28,7 @@ export function useGoogleIdToken(onToken: (idToken: string) => void): UseGoogleI
 
     if (!GoogleSignin || !isErrorWithCode || !statusCodes) {
       setIsLoading(false);
-      setError('Google Sign-In n\'est pas disponible dans Expo Go. Utilisez un build de développement.');
+      setError(t('googleAuth.notConfigured'));
       return;
     }
 

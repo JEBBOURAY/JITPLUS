@@ -6,20 +6,9 @@
 import { useCallback, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 import { router } from 'expo-router';
-import { isAxiosError } from 'axios';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { getErrorStatus } from '@/utils/error';
-
-/** Detect if an Apple login error indicates no matching account */
-function isNoAccountError(error: unknown): boolean {
-  const status = getErrorStatus(error);
-  if (status === 401) {
-    const msg = isAxiosError(error) ? (error.response?.data as { message?: string })?.message ?? '' : '';
-    return /aucun compte|no account|compte.*trouvé/i.test(msg);
-  }
-  return false;
-}
+import { isNoAccountError } from '@/utils/authErrors';
 
 interface UseAppleAuthOptions {
   onCancel?: () => void;

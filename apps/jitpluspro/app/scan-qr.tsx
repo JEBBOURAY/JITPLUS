@@ -18,8 +18,6 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
-
-// Reanimated removed — using RN core Animated
 import {
   Search,
   X,
@@ -54,7 +52,7 @@ const safeImpact = (style: Haptics.ImpactFeedbackStyle) => {
 };
 
 // ── Animated Search Bar ───────────────────────────────────
-function FloatingSearchBar({
+const FloatingSearchBar = React.memo(function FloatingSearchBar({
   value,
   onChangeText,
   onSubmit,
@@ -83,9 +81,9 @@ function FloatingSearchBar({
   const barScale = useRef(new Animated.Value(1)).current;
   const country = COUNTRIES[countryIndex];
 
-  const animatedBar = {
+  const animatedBar = useMemo(() => ({
     transform: [{ scale: barScale }],
-  };
+  }), [barScale]);
 
   const handleFocus = () => {
     Animated.spring(barScale, { toValue: 1.02, useNativeDriver: true, speed: 25, bounciness: 4 }).start();
@@ -150,10 +148,10 @@ function FloatingSearchBar({
       </View>
     </Animated.View>
   );
-}
+});
 
 // ── Animated Scan Line ────────────────────────────────────
-function ScanLine({ scanSize }: { scanSize: number }) {
+const ScanLine = React.memo(function ScanLine({ scanSize }: { scanSize: number }) {
   const translateY = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -184,10 +182,10 @@ function ScanLine({ scanSize }: { scanSize: number }) {
       <View style={styles.scanLineGradient} />
     </Animated.View>
   );
-}
+});
 
 // ── Corner Component ──────────────────────────────────────
-function ViewfinderCorner({ position }: { position: 'tl' | 'tr' | 'bl' | 'br' }) {
+const ViewfinderCorner = React.memo(function ViewfinderCorner({ position }: { position: 'tl' | 'tr' | 'bl' | 'br' }) {
   const borderStyle: ViewStyle = {};
   if (position.includes('t')) borderStyle.top = 0;
   if (position.includes('b')) borderStyle.bottom = 0;
@@ -207,10 +205,10 @@ function ViewfinderCorner({ position }: { position: 'tl' | 'tr' | 'bl' | 'br' })
       ]}
     />
   );
-}
+});
 
 // ── Detection Feedback Overlay ────────────────────────────
-function DetectedOverlay({ message }: { message: string }) {
+const DetectedOverlay = React.memo(function DetectedOverlay({ message }: { message: string }) {
   return (
     <View
       style={styles.detectedOverlay}
@@ -220,7 +218,7 @@ function DetectedOverlay({ message }: { message: string }) {
       </View>
     </View>
   );
-}
+});
 
 // ── Scan state reducer ────────────────────────────────────
 type MatchedClient = { id: string; nom: string; telephone?: string; email?: string };
@@ -290,6 +288,8 @@ export default function ScanQRScreen() {
   const lastScannedRef = useRef<{ data: string; ts: number } | null>(null);
   const SCAN_COOLDOWN_MS = 5000;
   const navTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Navigation mutex: prevents QR scan and phone search from navigating simultaneously
+  const isNavigatingRef = useRef(false);
 
   // Cleanup navigation timeouts on unmount
   useEffect(() => {
@@ -312,9 +312,9 @@ export default function ScanQRScreen() {
     return () => anim.stop();
   }, []);
 
-  const pulseStyle = {
+  const pulseStyle = useMemo(() => ({
     transform: [{ scale: pulseScale }],
-  };
+  }), [pulseScale]);
 
   // ── Permission request ──
   useEffect(() => {
@@ -348,13 +348,15 @@ export default function ScanQRScreen() {
   useFocusEffect(
     useCallback(() => {
       dispatch({ type: 'RESET_SCAN' });
-
+      isNavigatingRef.current = false;
       return () => {};
     }, [])
   );
 
   // ── Navigate to transaction after resolving clientId ──
   const navigateToTransaction = useCallback((clientId: string) => {
+    if (isNavigatingRef.current) return;
+    isNavigatingRef.current = true;
     set({ detected: t('scan.qrDetected') });
     if (navTimeoutRef.current) clearTimeout(navTimeoutRef.current);
     navTimeoutRef.current = setTimeout(() => {
@@ -369,7 +371,7 @@ export default function ScanQRScreen() {
   // ── QR Code handler ──
   const handleBarCodeScanned = useCallback(
     async ({ data }: { type: string; data: string }) => {
-      if (!isScanning) return;
+      if (!isScanning || isNavigatingRef.current) return;
 
       // Debounce: skip if the same barcode was scanned within cooldown
       const now = Date.now();
@@ -452,7 +454,7 @@ export default function ScanQRScreen() {
 
   // ── Phone search handler ──
   const handlePhoneSearch = useCallback(async () => {
-    if (phoneInput.length < 6 || isSearching) return;
+    if (phoneInput.length < 6 || isSearching || isNavigatingRef.current) return;
 
     Keyboard.dismiss();
     set({ isSearching: true });
@@ -471,6 +473,7 @@ export default function ScanQRScreen() {
         // Exactly one match → go to transaction
         set({ detected: t('scan.clientFound', { name: [clients[0].prenom, clients[0].nom].filter(Boolean).join(' ') }) });
         if (navTimeoutRef.current) clearTimeout(navTimeoutRef.current);
+        isNavigatingRef.current = true;
         navTimeoutRef.current = setTimeout(() => {
           navTimeoutRef.current = null;
           router.push({
@@ -573,8 +576,8 @@ export default function ScanQRScreen() {
         onMountError={(error) => {
           if (__DEV__) console.error('[CameraView] Mount error:', error);
           Alert.alert(
-            t('scan.cameraErrorTitle', { defaultValue: 'Erreur caméra' }),
-            t('scan.cameraErrorMsg', { defaultValue: 'Impossible d\'initialiser la caméra. Utilisez la recherche par téléphone.' }),
+            t('scan.cameraErrorTitle'),
+            t('scan.cameraErrorMsg'),
             [{ text: 'OK' }],
           );
         }}

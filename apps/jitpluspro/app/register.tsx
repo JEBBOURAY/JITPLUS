@@ -1,4 +1,4 @@
-import React, { useReducer, useRef, useCallback, useMemo, useEffect } from 'react';
+﻿import React, { useReducer, useRef, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,8 +11,6 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
-// Reanimated removed — plain View shim
-const Animated = { View } as const;
 import { useRouter } from 'expo-router';
 import {
   ChevronRight,
@@ -38,7 +36,7 @@ import { StepIdentity } from '@/components/register/StepIdentity';
 import { StepCredentials } from '@/components/register/StepCredentials';
 import { StepMapCompliance } from '@/components/register/StepMapCompliance';
 
-// ── Register form state ─────────────────────────────────────────────
+// â”€â”€ Register form state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 interface RegState {
   step: number;
   googleIdToken: string | null;
@@ -126,7 +124,7 @@ function regReducer(state: RegState, action: RegAction): RegState {
   }
 }
 
-// ── Referral code verification ─────────────────────────────────────────────
+// â”€â”€ Referral code verification â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function verifyReferralCode(code: string): Promise<{ id: string; nom: string } | null> {
   try {
     const { data } = await api.get(`/auth/referral/check/${encodeURIComponent(code.trim().toUpperCase())}`);
@@ -138,7 +136,7 @@ async function verifyReferralCode(code: string): Promise<{ id: string; nom: stri
 
 const TOTAL_STEPS = 4;
 
-// ── Step indicator ────────────────────────────────────────
+// â”€â”€ Step indicator â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function StepIndicator({
   current,
   total,
@@ -186,14 +184,14 @@ const si = StyleSheet.create({
   label: { fontSize: 11, fontWeight: '600', marginTop: 4, letterSpacing: 0.3 },
 });
 
-// ── Main ──────────────────────────────────────────────────
+// â”€â”€ Main â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export default function RegisterScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const theme = useTheme();
   const { googleRegister } = useAuth();
 
-  // Steps: 0 = Identité, 1 = Identifiants, 2 = Localisation, 3 = Position GPS + Conformité
+  // Steps: 0 = IdentitÃ©, 1 = Identifiants, 2 = Localisation, 3 = Position GPS + ConformitÃ©
   const [s, dispatch] = useReducer(regReducer, initialRegState);
   const set = useCallback((patch: Partial<RegState>) => dispatch({ type: 'SET', payload: patch }), []);
 
@@ -216,7 +214,7 @@ export default function RegisterScreen() {
   // Google ID token capture for registration
   const handleGoogleToken = useCallback((idToken: string) => {
     set({ googleIdToken: idToken });
-    // Skip step 1 (credentials) — jump to step 2 (location)
+    // Skip step 1 (credentials) â€” jump to step 2 (location)
     // Only skip if step 0 is complete (nom + categorie filled)
     if (step <= 0 && nom.trim().length > 0 && categorie !== null) {
       set({ step: 2 });
@@ -234,7 +232,7 @@ export default function RegisterScreen() {
   const quartierRef = useRef<TextInput>(null);
   const mapRef = useRef<SafeMapViewRef>(null);
 
-  // ── Referral code debounced check ──
+  // â”€â”€ Referral code debounced check â”€â”€
   const handleReferralCodeChange = useCallback((text: string) => {
     dispatch({ type: 'REFERRAL_CHANGE', code: text });
     const code = text.toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -252,7 +250,7 @@ export default function RegisterScreen() {
     }
   }, [set]);
 
-  // ── Validation per step ──
+  // â”€â”€ Validation per step â”€â”€
   const canProceed = () => {
     if (step === 0) return nom.trim().length > 0 && categorie !== null;
     if (step === 1) {
@@ -281,7 +279,7 @@ export default function RegisterScreen() {
     else router.back();
   };
 
-  // ── Geocode an address string → move the map to that location ──
+  // â”€â”€ Geocode an address string â†’ move the map to that location â”€â”€
   const handleAddressSearch = async () => {
     const query = addressSearch.trim();
     if (!query) return;
@@ -311,7 +309,7 @@ export default function RegisterScreen() {
     }
   };
 
-  // ── Reverse geocode coords → readable address label ──
+  // â”€â”€ Reverse geocode coords â†’ readable address label â”€â”€
   const reverseGeocodeAndLabel = async (lat: number, lng: number) => {
     try {
       const results = await reverseGeocodeAsync({ latitude: lat, longitude: lng });
@@ -327,7 +325,7 @@ export default function RegisterScreen() {
     }
   };
 
-  // ── Register ──
+  // â”€â”€ Register â”€â”€
   const handleRegister = async () => {
     const businessData = {
       nom: nom.trim(),
@@ -342,7 +340,7 @@ export default function RegisterScreen() {
       ...(referralCode.trim() && referralStatus === 'valid' && { referralCode: referralCode.trim() }),
     };
 
-    // ── Google registration flow ──
+    // â”€â”€ Google registration flow â”€â”€
     if (googleIdToken) {
       if (!nom || !categorie || !ville || !termsAccepted || !phoneNumber.trim()) {
         Alert.alert(t('common.error'), t('registerExtra.fillAllFields'));
@@ -371,7 +369,7 @@ export default function RegisterScreen() {
       return;
     }
 
-    // ── Classic registration flow ──
+    // â”€â”€ Classic registration flow â”€â”€
     if (!nom || !email || !password || !categorie || !ville || !termsAccepted) {
       Alert.alert(t('common.error'), t('registerExtra.fillAllFields'));
       return;
@@ -399,7 +397,7 @@ export default function RegisterScreen() {
     }
   };
 
-  // ── Filtered cities ──
+  // â”€â”€ Filtered cities â”€â”€
   const filteredVilles = useMemo(
     () => villeSearch
       ? VILLES.filter((v) => v.toLowerCase().includes(villeSearch.toLowerCase()))
@@ -407,7 +405,7 @@ export default function RegisterScreen() {
     [villeSearch],
   );
 
-  // ── Step titles ──
+  // â”€â”€ Step titles â”€â”€
   const stepTitles = [
     { title: t('registerExtra.step0'), sub: t('registerExtra.sub0') },
     { title: t('registerExtra.step1'), sub: t('registerExtra.sub1') },
@@ -430,7 +428,7 @@ export default function RegisterScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* ── Back / Close ── */}
+          {/* â”€â”€ Back / Close â”€â”€ */}
           <TouchableOpacity
             style={styles.backBtn}
             onPress={handleBack}
@@ -439,7 +437,7 @@ export default function RegisterScreen() {
             <ArrowLeft size={22} color={theme.text} />
           </TouchableOpacity>
 
-          {/* ── Header ── */}
+          {/* â”€â”€ Header â”€â”€ */}
           <View style={styles.header}>
             <Text style={[styles.stepLabel, { color: theme.primary }]}>
               {t('registerExtra.stepLabel', { current: step + 1, total: TOTAL_STEPS })}
@@ -452,21 +450,21 @@ export default function RegisterScreen() {
             </Text>
           </View>
 
-          {/* ── Trial badge (show on first step) ── */}
+          {/* â”€â”€ Trial badge (show on first step) â”€â”€ */}
           {step === 0 && (
             <View style={[styles.trialBadge, { backgroundColor: `${theme.primary}12`, borderColor: `${theme.primary}30` }]}>
               <Text style={[styles.trialBadgeText, { color: theme.primary }]}>
-                🎁 {t('registerExtra.trialBadge')}
+                ðŸŽ {t('registerExtra.trialBadge')}
               </Text>
             </View>
           )}
 
-          {/* ── Step indicator ── */}
+          {/* â”€â”€ Step indicator â”€â”€ */}
           <StepIndicator current={step} total={TOTAL_STEPS} theme={theme} labels={stepTitles.map((s) => s.title)} />
 
-          {/* ── Step 0: Identité du commerce ── */}
+          {/* â”€â”€ Step 0: IdentitÃ© du commerce â”€â”€ */}
           {step === 0 && (
-            <Animated.View>
+            <View>
               <StepIdentity
                 theme={theme}
                 t={t}
@@ -481,12 +479,12 @@ export default function RegisterScreen() {
                 isLoading={isLoading}
                 palette={palette}
               />
-            </Animated.View>
+            </View>
           )}
 
-          {/* ── Step 1: Identifiants ── */}
+          {/* â”€â”€ Step 1: Identifiants â”€â”€ */}
           {step === 1 && (
-            <Animated.View>
+            <View>
               <StepCredentials
                 theme={theme}
                 t={t}
@@ -502,12 +500,12 @@ export default function RegisterScreen() {
                 phoneRef={phoneRef}
                 passwordRef={passwordRef}
               />
-            </Animated.View>
+            </View>
           )}
 
-          {/* ── Step 2: Localisation ── */}
+          {/* â”€â”€ Step 2: Localisation â”€â”€ */}
           {step === 2 && (
-            <Animated.View>
+            <View>
               {/* Ville */}
               <View style={styles.field}>
                 <Text style={[styles.label, { color: theme.text }]}>
@@ -621,12 +619,12 @@ export default function RegisterScreen() {
                   {t('registerExtra.quartierHint')}
                 </Text>
               </View>
-            </Animated.View>
+            </View>
           )}
 
-          {/* ── Step 3: Position GPS + Conformité ── */}
+          {/* â”€â”€ Step 3: Position GPS + ConformitÃ© â”€â”€ */}
           {step === 3 && (
-            <Animated.View>
+            <View>
               <StepMapCompliance
                 theme={theme}
                 t={t}
@@ -660,10 +658,10 @@ export default function RegisterScreen() {
                 mapRef={mapRef}
                 googleMapsApiKey={googleMapsApiKey}
               />
-            </Animated.View>
+            </View>
           )}
 
-          {/* ── Action buttons ── */}
+          {/* â”€â”€ Action buttons â”€â”€ */}
           <View style={styles.actions}>
             <TouchableOpacity
               style={[
@@ -693,7 +691,7 @@ export default function RegisterScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* ── Footer ── */}
+          {/* â”€â”€ Footer â”€â”€ */}
           <View style={styles.footer}>
             <TouchableOpacity onPress={() => router.push('/login')}>
               <Text style={[styles.footerText, { color: theme.textSecondary }]}>
@@ -708,7 +706,7 @@ export default function RegisterScreen() {
   );
 }
 
-// ── Styles ────────────────────────────────────────────────
+// â”€â”€ Styles â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const styles = StyleSheet.create({
   container: { flex: 1 },
   scrollContent: { paddingHorizontal: 24 },

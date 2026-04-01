@@ -5,42 +5,11 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { router } from 'expo-router';
-import { isAxiosError } from 'axios';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { getErrorStatus } from '@/utils/error';
+import { GoogleSignin, isErrorWithCode, statusCodes } from '@/utils/googleSignin';
+import { isNoAccountError } from '@/utils/authErrors';
 import { WEB_CLIENT_ID } from '@/config/google';
-
-// Lazy-load the native SDK so Expo Go doesn't crash at module evaluation time.
-let GoogleSignin: typeof import('@react-native-google-signin/google-signin').GoogleSignin | null = null;
-let isErrorWithCode: typeof import('@react-native-google-signin/google-signin').isErrorWithCode | null = null;
-let statusCodes: typeof import('@react-native-google-signin/google-signin').statusCodes | null = null;
-
-try {
-  const mod = require('@react-native-google-signin/google-signin');
-  GoogleSignin = mod.GoogleSignin;
-  isErrorWithCode = mod.isErrorWithCode;
-  statusCodes = mod.statusCodes;
-} catch {
-  // Native module unavailable (Expo Go) — GoogleSignin stays null
-}
-
-if (GoogleSignin) {
-  GoogleSignin.configure({
-    webClientId: WEB_CLIENT_ID,
-    offlineAccess: false,
-  });
-}
-
-/** Detect if a Google login error indicates no matching account */
-function isNoAccountError(error: unknown): boolean {
-  const status = getErrorStatus(error);
-  if (status === 401) {
-    const msg = isAxiosError(error) ? (error.response?.data as { message?: string })?.message ?? '' : '';
-    return /aucun compte|no account|compte.*trouvé/i.test(msg);
-  }
-  return false;
-}
 
 interface UseGoogleAuthOptions {
   /** Optional callback when the flow is cancelled or errors */
@@ -68,12 +37,6 @@ export function useGoogleAuth({ onCancel }: UseGoogleAuthOptions = {}) {
     setIsLoading(true);
 
     if (!GoogleSignin || !isErrorWithCode || !statusCodes) {
-      setIsLoading(false);
-      setError('Google Sign-In n\'est pas disponible dans Expo Go. Utilisez un build de développement.');
-      return;
-    }
-
-    if (!WEB_CLIENT_ID) {
       setIsLoading(false);
       setError(t('googleAuth.notConfigured'));
       return;
@@ -137,7 +100,7 @@ export function useGoogleAuth({ onCancel }: UseGoogleAuthOptions = {}) {
       }
 
       const nativeMsg = err instanceof Error ? err.message : String(err);
-      const code = isErrorWithCode && isErrorWithCode(err) ? (err as any).code : '';
+      const code = isErrorWithCode && isErrorWithCode(err) ? (err as { code: string }).code : '';
       const userMessage = t('googleAuth.launchError');
       if (__DEV__) {
         const detail = code ? `[${code}] ${nativeMsg}` : nativeMsg;

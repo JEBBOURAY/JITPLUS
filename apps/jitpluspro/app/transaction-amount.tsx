@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useReducer } from 'react';
+import React, { useState, useEffect, useCallback, useReducer, useRef } from 'react';
 import {
   View,
   Text,
@@ -24,7 +24,6 @@ import {
 
 // lottie-react-native is NOT available in Expo Go SDK 51+
 
-// Reanimated removed — plain View shim for entering animations
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -88,6 +87,14 @@ export default function TransactionAmountScreen() {
   const { amount, loading, points, showSuccess, transactionType, selectedRewardId, screenMode, stampAmount, stamps } = state;
   const set = useCallback((payload: Partial<TxState>) => dispatch({ type: 'SET', payload }), []);
   const setSelectedRewardId = useCallback((id: string | null) => set({ selectedRewardId: id }), [set]);
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup success timer on unmount to prevent memory leak
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    };
+  }, []);
 
   // ── React Query hooks ──
   const {
@@ -297,7 +304,8 @@ export default function TransactionAmountScreen() {
       }
 
       set({ showSuccess: true });
-      setTimeout(() => {
+      successTimerRef.current = setTimeout(() => {
+        successTimerRef.current = null;
         set({ showSuccess: false });
         router.back();
       }, SUCCESS_DISPLAY_MS);
@@ -351,7 +359,8 @@ export default function TransactionAmountScreen() {
                 rewardId: selectedRewardId,
               });
               set({ transactionType: 'REDEEM_REWARD', showSuccess: true });
-              setTimeout(() => {
+              successTimerRef.current = setTimeout(() => {
+                successTimerRef.current = null;
                 set({ showSuccess: false });
                 router.back();
               }, SUCCESS_DISPLAY_MS);

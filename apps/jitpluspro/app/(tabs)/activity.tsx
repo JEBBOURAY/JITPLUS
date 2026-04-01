@@ -89,7 +89,7 @@ const TransactionRow = React.memo(function TransactionRow({
             </Text>
           )}
           <Text style={[styles.txPoints, { color }, isCancelled && styles.cancelled]}>
-            {isEarned ? '+' : '-'}{item.points} {(item.loyaltyType ?? merchantLoyaltyType) === 'STAMPS' ? 'tmp' : 'pts'}
+            {isEarned ? '+' : '-'}{item.points} {(item.loyaltyType ?? merchantLoyaltyType) === 'STAMPS' ? t('common.stampsAbbr') : t('common.pointsAbbr')}
           </Text>
         </View>
       )}

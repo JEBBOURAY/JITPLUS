@@ -28,8 +28,8 @@ export default function ProfileCard({
 }: Props) {
   const isPremium = merchant?.plan === 'PREMIUM';
   const isAdminPremium = merchant?.planActivatedByAdmin === true;
-  const planExpiresAt = merchant?.planExpiresAt ? new Date(merchant.planExpiresAt) : null;
-  const trialStartedAt = merchant?.trialStartedAt ? new Date(merchant.trialStartedAt) : null;
+  const planExpiresAt = (() => { if (!merchant?.planExpiresAt) return null; const d = new Date(merchant.planExpiresAt); return isNaN(d.getTime()) ? null : d; })();
+  const trialStartedAt = (() => { if (!merchant?.trialStartedAt) return null; const d = new Date(merchant.trialStartedAt); return isNaN(d.getTime()) ? null : d; })();
   const isTrial = isPremium && !isAdminPremium && trialStartedAt !== null && planExpiresAt !== null;
 
   const getDaysRemaining = (): number | null => {
@@ -194,7 +194,7 @@ export default function ProfileCard({
       {/* -- Referral Code ------------------------- */}
       {referralCode && (
         <Pressable
-          onPress={() => router.push('/referral' as any)}
+          onPress={() => router.push('/referral')}
           style={({ pressed }) => [
             styles.referralRow,
             { backgroundColor: `${palette.charbon}06`, borderColor: `${palette.charbon}18` },

@@ -6,8 +6,8 @@ import * as Device from 'expo-device';
 import * as Crypto from 'expo-crypto';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useQueryClient } from '@tanstack/react-query';
-import api, { onUnauthorized } from '../services/api';
-import { getErrorMessage } from '../utils/error';
+import api, { onUnauthorized } from '@/services/api';
+import { getErrorMessage } from '@/utils/error';
 import { Merchant, LoginCredentials, AuthResponse, TeamMember } from '@/types';
 import { useAuthStore } from '@/stores/authStore';
 
@@ -138,6 +138,7 @@ interface AuthContextData {
   onboardingCompleted: boolean;
   signIn: (credentials: LoginCredentials, rememberMe?: boolean) => Promise<void>;
   googleLogin: (idToken: string) => Promise<{ success: boolean; error?: string; rawError?: unknown }>;
+  appleLogin: (identityToken: string, givenName?: string, familyName?: string) => Promise<{ success: boolean; error?: string; rawError?: unknown }>;
   googleRegister: (idToken: string, businessData: GoogleRegisterData) => Promise<{ success: boolean; error?: string; rawError?: unknown }>;
   signOut: () => Promise<void>;
   loadProfile: () => Promise<Merchant | null>;
@@ -387,6 +388,34 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, [handleAuthSuccess]);
 
+  const appleLogin = useCallback(async (
+    identityToken: string,
+    givenName?: string,
+    familyName?: string,
+  ): Promise<{ success: boolean; error?: string; rawError?: unknown }> => {
+    try {
+      if (__DEV__) console.log('[AuthContext] Apple login...');
+      const { deviceName, deviceOS } = getDeviceInfo();
+      const deviceId = await getOrCreateDeviceId();
+      const response = await api.post<AuthResponse>('/auth/apple-login', {
+        identityToken,
+        givenName,
+        familyName,
+        deviceName,
+        deviceOS,
+        deviceId,
+      });
+
+      if (__DEV__) console.log('[AuthContext] Apple login réussi:', response.data.merchant.nom);
+
+      await handleAuthSuccess(response.data);
+      return { success: true };
+    } catch (error: unknown) {
+      if (__DEV__) console.error('[AuthContext] Erreur Apple login:', error);
+      return { success: false, error: getErrorMessage(error, 'Échec de la connexion Apple'), rawError: error };
+    }
+  }, [handleAuthSuccess]);
+
   const googleRegister = useCallback(async (idToken: string, businessData: GoogleRegisterData): Promise<{ success: boolean; error?: string; rawError?: unknown }> => {
     try {
       if (__DEV__) console.log('[AuthContext] Google register...');
@@ -433,12 +462,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     onboardingCompleted,
     signIn,
     googleLogin,
+    appleLogin,
     googleRegister,
     signOut,
     loadProfile,
     updateMerchant,
     completeOnboarding,
-  }), [merchant, token, loading, isTeamMember, teamMember, onboardingCompleted, signIn, googleLogin, googleRegister, signOut, loadProfile, updateMerchant, completeOnboarding]);
+  }), [merchant, token, loading, isTeamMember, teamMember, onboardingCompleted, signIn, googleLogin, appleLogin, googleRegister, signOut, loadProfile, updateMerchant, completeOnboarding]);
 
   return (
     <AuthContext.Provider value={contextValue}>

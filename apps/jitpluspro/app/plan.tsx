@@ -103,7 +103,9 @@ export default function PlanScreen() {
     const body = encodeURIComponent(
       t('account.planContactEmailBody', { name: merchant?.nom ?? '', email: merchant?.email ?? '' }),
     );
-    Linking.openURL(`mailto:${UPGRADE_EMAIL}?subject=${subject}&body=${body}`);
+    Linking.openURL(`mailto:${UPGRADE_EMAIL}?subject=${subject}&body=${body}`).catch(() =>
+      Alert.alert(t('common.error'), t('account.planErrorEmail')),
+    );
   };
 
   const handleCancelSubscription = () => {
@@ -130,7 +132,9 @@ export default function PlanScreen() {
             const body = encodeURIComponent(
               t('account.planCancelEmailBody', { name: merchant?.nom ?? '', email: merchant?.email ?? '' }),
             );
-            Linking.openURL(`mailto:${UPGRADE_EMAIL}?subject=${subject}&body=${body}`);
+            Linking.openURL(`mailto:${UPGRADE_EMAIL}?subject=${subject}&body=${body}`).catch(() =>
+              Alert.alert(t('common.error'), t('account.planErrorEmail')),
+            );
           },
         },
       ],
@@ -260,7 +264,7 @@ export default function PlanScreen() {
                   {(isAdminActivated && !planInfo?.planExpiresAt)
                     ? t('account.planHeroSubUnlimited')
                     : (isAdminActivated && planInfo?.planExpiresAt)
-                    ? t('account.planHeroSubValidUntil', { date: new Date(planInfo!.planExpiresAt!).toLocaleDateString(locale === 'ar' ? 'ar-MA' : locale, { day: '2-digit', month: 'long', year: 'numeric' }) })
+                    ? t('account.planHeroSubValidUntil', { date: (() => { const d = new Date(planInfo!.planExpiresAt!); return isNaN(d.getTime()) ? '—' : d.toLocaleDateString(locale === 'ar' ? 'ar-MA' : locale, { day: '2-digit', month: 'long', year: 'numeric' }); })() })
                     : isTrial
                     ? t('account.planHeroSubTrialDays', { count: planInfo?.daysRemaining ?? 0 })
                     : t('account.planHeroSubFree')}

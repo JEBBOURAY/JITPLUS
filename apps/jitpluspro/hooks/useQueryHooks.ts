@@ -65,7 +65,7 @@ export function useStores(enabled = true) {
     queryKey: queryKeys.stores,
     queryFn: async () => {
       const res = await api.get('/merchant/stores');
-      return res.data;
+      return Array.isArray(res.data) ? res.data : [];
     },
     staleTime: STALE.MEDIUM,
     enabled,
@@ -110,7 +110,7 @@ export function useRewards(enabled = true) {
     queryKey: queryKeys.rewards,
     queryFn: async () => {
       const res = await api.get('/rewards');
-      return res.data;
+      return Array.isArray(res.data) ? res.data : [];
     },
     staleTime: STALE.MEDIUM,
     enabled,

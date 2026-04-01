@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useReducer } from 'react';
+﻿import React, { useState, useEffect, useCallback, useReducer } from 'react';
 import {
   View,
   Text,
@@ -30,10 +30,9 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import PremiumLockCard from '@/components/PremiumLockCard';
 import PremiumLockModal from '@/components/PremiumLockModal';
 import { RewardManager } from '@/components/settings/RewardManager';
-// Reanimated removed — plain View shim
-const Animated = { View } as const;
 import { DEFAULT_CURRENCY } from '@/config/currency';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import type { Merchant } from '@/types';
 
 type LoyaltyType = 'POINTS' | 'STAMPS';
 
@@ -44,7 +43,7 @@ interface Reward {
   description?: string;
 }
 
-// ── Settings reducer ──
+// â”€â”€ Settings reducer â”€â”€
 interface SettingsState {
   loyaltyType: LoyaltyType;
   stampEarningMode: 'PER_VISIT' | 'PER_AMOUNT';
@@ -77,7 +76,7 @@ const initialSettingsState: SettingsState = {
 
 type SettingsAction =
   | { type: 'SET'; payload: Partial<SettingsState> }
-  | { type: 'LOAD_FROM_MERCHANT'; merchant: Record<string, any> }
+  | { type: 'LOAD_FROM_MERCHANT'; merchant: Merchant }
   | { type: 'INCREMENT_RELOAD' };
 
 function settingsReducer(state: SettingsState, action: SettingsAction): SettingsState {
@@ -128,14 +127,14 @@ export default function SettingsScreen() {
     dispatch({ type: 'LOAD_FROM_MERCHANT', merchant });
   }, [merchant]);
 
-  // ── Switch loyalty type with confirmation ──
+  // â”€â”€ Switch loyalty type with confirmation â”€â”€
   const handleSwitchLoyaltyType = (newType: LoyaltyType) => {
     if (newType === loyaltyType) return;
-    // Just switch the local state — the conversion card below will appear
+    // Just switch the local state â€” the conversion card below will appear
     set({ loyaltyType: newType });
   };
 
-  // ── Save all loyalty settings ──
+  // â”€â”€ Save all loyalty settings â”€â”€
   const handleSave = useCallback(async () => {
     const rate = parseFloat(pointsRate);
     const conv = parseFloat(conversionRate);
@@ -280,7 +279,7 @@ export default function SettingsScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
-      {/* ── Header ── */}
+      {/* â”€â”€ Header â”€â”€ */}
       <View
         style={[
           styles.header,
@@ -305,9 +304,9 @@ export default function SettingsScreen() {
         contentContainerStyle={{ paddingBottom: 120 }}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Section: Mode de fidélité ── */}
+        {/* â”€â”€ Section: Mode de fidÃ©litÃ© â”€â”€ */}
         <Text style={[styles.sectionTitle, { color: theme.text }]}>{t('settingsPage.loyaltyMode')}</Text>
-        <Animated.View
+        <View
           style={[styles.card, { backgroundColor: theme.bgCard }]}
         >
           {!isPremium ? (
@@ -317,7 +316,7 @@ export default function SettingsScreen() {
             {t('settingsPage.loyaltyModeHint')}
           </Text>
 
-          {/* ── Segmented Control ── */}
+          {/* â”€â”€ Segmented Control â”€â”€ */}
           <View style={[styles.segment, { backgroundColor: theme.bg }]}>
             <TouchableOpacity
               style={[
@@ -368,17 +367,17 @@ export default function SettingsScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* ── Mode Change Warning + Conversion Rule ── */}
+          {/* â”€â”€ Mode Change Warning + Conversion Rule â”€â”€ */}
           {loyaltyType !== (merchant?.loyaltyType || 'POINTS') && (
             <View>
-              <Animated.View
+              <View
                 style={[styles.warningBanner, { backgroundColor: theme.warning + '18' }]}
               >
                 <AlertTriangle size={16} color={theme.warning} />
                 <Text style={[styles.warningText, { color: theme.warning }]}>
                   {t('settingsPage.switchWarning')}
                 </Text>
-              </Animated.View>
+              </View>
 
               {/* Conversion rule card */}
               <View style={[styles.conversionRuleCard, { backgroundColor: theme.bg, borderColor: theme.primary + '40' }]}>
@@ -458,7 +457,7 @@ export default function SettingsScreen() {
                             </Text>
                             <Text style={[styles.rewardConversionValues, { color: theme.textMuted }]}>
                               <Text style={{ textDecorationLine: 'line-through' }}>{r.cout} {oldUnit}</Text>
-                              {'  →  '}
+                              {'  â†’  '}
                               <Text style={{ color: theme.primary, fontWeight: '600' }}>{newCost} {newUnit}</Text>
                             </Text>
                           </View>
@@ -471,9 +470,9 @@ export default function SettingsScreen() {
             </View>
           )}
 
-          {/* ── Points Mode Settings ── */}
+          {/* â”€â”€ Points Mode Settings â”€â”€ */}
           {!isStamps && (
-            <Animated.View>
+            <View>
               <View style={styles.fieldGroup}>
                 <Text style={[styles.fieldLabel, { color: theme.text }]}>
                   {t('settingsPage.conversionRate')}
@@ -502,13 +501,13 @@ export default function SettingsScreen() {
                   </Text>
                 </View>
               </View>
-            </Animated.View>
+            </View>
           )}
 
-          {/* ── Stamps Mode Settings ── */}
+          {/* â”€â”€ Stamps Mode Settings â”€â”€ */}
           {isStamps && (
-            <Animated.View>
-              {/* ── Stamp Earning Mode ── */}
+            <View>
+              {/* â”€â”€ Stamp Earning Mode â”€â”€ */}
               <View style={styles.fieldGroup}>
                 <Text style={[styles.fieldLabel, { color: theme.text }]}>
                   {t('settingsPage.stampEarningMode')}
@@ -556,7 +555,7 @@ export default function SettingsScreen() {
                 </View>
               </View>
 
-              {/* ── Stamps conversion rate (only for PER_AMOUNT) ── */}
+              {/* â”€â”€ Stamps conversion rate (only for PER_AMOUNT) â”€â”€ */}
               {stampEarningMode === 'PER_AMOUNT' && (
               <View style={styles.fieldGroup}>
                 <Text style={[styles.fieldLabel, { color: theme.text }]}>
@@ -617,7 +616,7 @@ export default function SettingsScreen() {
                 </View>
               </View>
 
-              {/* ── Stamp Preview ── */}
+              {/* â”€â”€ Stamp Preview â”€â”€ */}
               <View style={[styles.stampPreview, { backgroundColor: theme.bg }]}>
                 <Text style={[styles.stampPreviewTitle, { color: theme.text }]}>
                   {t('settingsPage.stampPreviewTitle')}
@@ -634,7 +633,7 @@ export default function SettingsScreen() {
                             : { backgroundColor: 'transparent', borderColor: theme.border },
                         ]}
                       >
-                        {i < 3 && <Text style={styles.stampCheckmark}>✓</Text>}
+                        {i < 3 && <Text style={styles.stampCheckmark}>âœ“</Text>}
                         {i === (parseInt(stampsForReward, 10) || 10) - 1 && i >= 3 && (
                           <Gift size={14} color={theme.warning} />
                         )}
@@ -646,10 +645,10 @@ export default function SettingsScreen() {
                   {t('settingsPage.stampPreviewHint', { count: stampsForReward || 10 })}
                 </Text>
               </View>
-            </Animated.View>
+            </View>
           )}
 
-          {/* ── Accumulation Limit ── */}
+          {/* â”€â”€ Accumulation Limit â”€â”€ */}
           <View style={styles.fieldGroup}>
             <Text style={[styles.fieldLabel, { color: theme.text }]}>
               {t('settingsPage.accumulationLimit')}
@@ -713,7 +712,7 @@ export default function SettingsScreen() {
             )}
           </View>
 
-          {/* ── Save Button (loyalty settings) ──  */}
+          {/* â”€â”€ Save Button (loyalty settings) â”€â”€  */}
           <TouchableOpacity
             style={[
               styles.saveBtn,
@@ -740,9 +739,9 @@ export default function SettingsScreen() {
             )}
           </TouchableOpacity>
           </>)}
-        </Animated.View>
+        </View>
 
-        {/* ── Section: Cadeaux ── */}
+        {/* â”€â”€ Section: Cadeaux â”€â”€ */}
         <RewardManager
           theme={theme}
           t={t}
@@ -773,7 +772,7 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
-  // ── Header ──
+  // â”€â”€ Header â”€â”€
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -794,7 +793,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  // ── Sections ──
+  // â”€â”€ Sections â”€â”€
   sectionTitle: {
     fontSize: 18,
     fontWeight: '700',
@@ -816,7 +815,7 @@ const styles = StyleSheet.create({
   },
   cardLabel: { fontSize: 14, marginBottom: 14, lineHeight: 20, color: '#64748b' },
 
-  // ── Segmented Control ──
+  // â”€â”€ Segmented Control â”€â”€
   segment: {
     flexDirection: 'row',
     borderRadius: 12,
@@ -835,7 +834,7 @@ const styles = StyleSheet.create({
   segmentText: { fontSize: 14, fontWeight: '600' },
   segmentTextActive: { fontWeight: '700' },
 
-  // ── Warning ──
+  // â”€â”€ Warning â”€â”€
   warningBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -846,7 +845,7 @@ const styles = StyleSheet.create({
   },
   warningText: { fontSize: 13, fontWeight: '500', flex: 1, lineHeight: 18 },
 
-  // ── Conversion Rule Card ──
+  // â”€â”€ Conversion Rule Card â”€â”€
   conversionRuleCard: {
     marginTop: 12,
     padding: 14,
@@ -876,14 +875,14 @@ const styles = StyleSheet.create({
   conversionRuleEquals: { fontSize: 18, fontWeight: '300', marginHorizontal: 2 },
   conversionRulePreview: { fontSize: 12, fontWeight: '600', fontStyle: 'italic' },
 
-  // ── Reward conversion preview (inside conversion rule card) ──
+  // â”€â”€ Reward conversion preview (inside conversion rule card) â”€â”€
   rewardConversionPreview: { marginTop: 12, paddingTop: 10, borderTopWidth: 1 },
   rewardConversionTitle: { fontSize: 13, fontWeight: '600', marginBottom: 6 },
   rewardConversionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 4 },
   rewardConversionName: { fontSize: 12, flex: 1, marginRight: 8 },
   rewardConversionValues: { fontSize: 12 },
 
-  // ── Fields ──
+  // â”€â”€ Fields â”€â”€
   fieldGroup: { marginTop: 18 },
   fieldLabel: { fontSize: 14, fontWeight: '600', marginBottom: 4, color: '#475569' },
   fieldHint: { fontSize: 13, marginBottom: 10, lineHeight: 18, color: '#64748b' },
@@ -899,7 +898,7 @@ const styles = StyleSheet.create({
   },
   inputSuffix: { marginLeft: 12, fontSize: 13, fontWeight: '500', color: '#64748b' },
 
-  // ── Stamp Preview ──
+  // â”€â”€ Stamp Preview â”€â”€
   stampPreview: {
     marginTop: 18,
     borderRadius: 12,
@@ -924,7 +923,7 @@ const styles = StyleSheet.create({
   stampCheckmark: { color: '#fff', fontSize: 16, fontWeight: '700' },
   stampPreviewHint: { fontSize: 12, marginTop: 12 },
 
-  // ── Accumulation Limit ──
+  // â”€â”€ Accumulation Limit â”€â”€
   limitToggle: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -936,7 +935,7 @@ const styles = StyleSheet.create({
   },
   limitToggleText: { fontSize: 14, fontWeight: '600' },
 
-  // ── Save ──
+  // â”€â”€ Save â”€â”€
   saveBtn: {
     flexDirection: 'row',
     alignItems: 'center',

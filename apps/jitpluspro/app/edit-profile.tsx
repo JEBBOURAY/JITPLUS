@@ -75,7 +75,7 @@ export default function EditProfileScreen() {
 
     setSaving(true);
     try {
-      const payload: Record<string, any> = {
+      const payload = {
         nom: nom.trim(),
         description: description.trim() || undefined,
         categorie,

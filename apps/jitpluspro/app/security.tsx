@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+﻿import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -12,8 +12,6 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-// Reanimated removed — plain View shim
-const Animated = { View } as const;
 import { timeAgo } from '@/utils/date';
 import {
   ArrowLeft,
@@ -37,7 +35,7 @@ import { useTheme, type ThemeColors } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useGoogleIdToken } from '@/hooks/useGoogleIdToken';
 
-// ── PwdField (défini HORS du composant pour éviter le re-mount du TextInput) ──
+// â”€â”€ PwdField (dÃ©fini HORS du composant pour Ã©viter le re-mount du TextInput) â”€â”€
 interface PwdFieldProps {
   label: string;
   value: string;
@@ -72,7 +70,7 @@ function PwdField({ label, value, setValue, show, setShow, placeholder, theme }:
   );
 }
 
-// ── Types ─────────────────────────────────────────────────
+// â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 interface DeviceSession {
   id: string;
   deviceName: string;
@@ -101,7 +99,7 @@ export default function SecurityScreen() {
     params.tab === 'devices' ? 'devices' : params.tab === 'delete' ? 'delete' : 'password',
   );
 
-  // ── Password state ──
+  // â”€â”€ Password state â”€â”€
   const [currentPwd, setCurrentPwd] = useState('');
   const [newPwd, setNewPwd] = useState('');
   const [confirmPwd, setConfirmPwd] = useState('');
@@ -109,7 +107,7 @@ export default function SecurityScreen() {
   const [showNew, setShowNew] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // ── Delete account state ──
+  // â”€â”€ Delete account state â”€â”€
   const [deletePwd, setDeletePwd] = useState('');
   const [showDeletePwd, setShowDeletePwd] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -117,11 +115,11 @@ export default function SecurityScreen() {
   const [deleteGoogleToken, setDeleteGoogleToken] = useState<string | null>(null);
   const googleDelete = useGoogleIdToken((idToken) => setDeleteGoogleToken(idToken));
 
-  // ── Devices state ──
+  // â”€â”€ Devices state â”€â”€
   const [devices, setDevices] = useState<DeviceSession[]>([]);
   const [loadingDevices, setLoadingDevices] = useState(true);
 
-  // ── Password strength ──
+  // â”€â”€ Password strength â”€â”€
   const getStrength = (pwd: string): { label: string; color: string; width: DimensionValue } => {
     if (pwd.length === 0) return { label: '', color: theme.border, width: '0%' };
     let score = 0;
@@ -139,14 +137,14 @@ export default function SecurityScreen() {
 
   const strength = getStrength(newPwd);
 
-  // ── Load devices ──
+  // â”€â”€ Load devices â”€â”€
   const loadDevices = useCallback(async () => {
     setLoadingDevices(true);
     try {
       const res = await api.get('/merchant/devices');
       setDevices(res.data ?? []);
     } catch (error) {
-      if (__DEV__) console.error('[Security] Échec du chargement des appareils:', error);
+      if (__DEV__) console.error('[Security] Ã‰chec du chargement des appareils:', error);
     } finally {
       setLoadingDevices(false);
     }
@@ -156,7 +154,7 @@ export default function SecurityScreen() {
     if (activeTab === 'devices') loadDevices();
   }, [activeTab, loadDevices]);
 
-  // ── Change password ──
+  // â”€â”€ Change password â”€â”€
   const executePasswordChange = useCallback(async (logoutOthers: boolean) => {
     setSaving(true);
     try {
@@ -199,7 +197,7 @@ export default function SecurityScreen() {
       return;
     }
 
-    // Demander d'abord si on déconnecte les autres, puis faire un seul appel API
+    // Demander d'abord si on dÃ©connecte les autres, puis faire un seul appel API
     Alert.alert(
       t('security.changePwdTitle'),
       t('security.changePwdLogoutQuestion'),
@@ -218,7 +216,7 @@ export default function SecurityScreen() {
     );
   }, [isGoogleAccount, currentPwd, newPwd, confirmPwd, executePasswordChange, t]);
 
-  // ── Remove device ──
+  // â”€â”€ Remove device â”€â”€
   const handleRemoveDevice = (device: DeviceSession) => {
     Alert.alert(
       t('security.disconnectTitle'),
@@ -241,7 +239,7 @@ export default function SecurityScreen() {
     );
   };
 
-  // ── Tabs ──
+  // â”€â”€ Tabs â”€â”€
   const tabs: { id: TabId; label: string; icon: React.ReactNode }[] = [
     { id: 'password', label: t('security.tabPassword'), icon: <Lock size={15} color={activeTab === 'password' ? '#fff' : theme.textMuted} /> },
     { id: 'devices', label: t('security.tabDevices'), icon: <Smartphone size={15} color={activeTab === 'devices' ? '#fff' : theme.textMuted} /> },
@@ -254,7 +252,7 @@ export default function SecurityScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
     >
-      {/* ── Header ─────────────────────────────── */}
+      {/* â”€â”€ Header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <View style={[styles.header, { paddingTop: insets.top + 8, backgroundColor: theme.bgCard, borderBottomColor: theme.borderLight }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <ArrowLeft size={24} color={theme.text} />
@@ -263,7 +261,7 @@ export default function SecurityScreen() {
         <ShieldCheck size={22} color={theme.primary} />
       </View>
 
-      {/* ── Tab Switcher ───────────────────────── */}
+      {/* â”€â”€ Tab Switcher â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <View style={[styles.tabBar, { backgroundColor: theme.bgCard }]}>
         {tabs.map((tab) => {
           const isActive = activeTab === tab.id;
@@ -289,7 +287,7 @@ export default function SecurityScreen() {
         keyboardShouldPersistTaps="handled"
       >
         {activeTab === 'delete' ? (
-          <Animated.View key="delete">
+          <View key="delete">
             <View style={[styles.dangerZone, { backgroundColor: theme.danger + '08', borderColor: theme.danger + '25' }]}>
               <View style={styles.dangerHeader}>
                 <Trash2 size={20} color={theme.danger} />
@@ -300,7 +298,7 @@ export default function SecurityScreen() {
               </Text>
 
               {isGoogleAccount ? (
-                /* ── Google account: re-authenticate with Google ── */
+                /* â”€â”€ Google account: re-authenticate with Google â”€â”€ */
                 <View style={{ marginTop: 16 }}>
                   <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>
                     {t('security.deleteGooglePrompt')}
@@ -333,7 +331,7 @@ export default function SecurityScreen() {
                   ) : null}
                 </View>
               ) : (
-                /* ── Email account: enter password ── */
+                /* â”€â”€ Email account: enter password â”€â”€ */
                 <View style={{ marginTop: 16 }}>
                   <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>{t('security.currentPassword')}</Text>
                   <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.border }]}>
@@ -431,9 +429,9 @@ export default function SecurityScreen() {
                 )}
               </TouchableOpacity>
             </View>
-          </Animated.View>
+          </View>
         ) : activeTab === 'password' ? (
-          <Animated.View key="password">
+          <View key="password">
             {isGoogleAccount ? (
               <Text style={[styles.dangerText, { color: theme.textMuted, marginBottom: 12 }]}>
                 {t('security.googleSetPasswordHint')}
@@ -522,9 +520,9 @@ export default function SecurityScreen() {
                 </>
               )}
             </TouchableOpacity>
-          </Animated.View>
+          </View>
         ) : (
-          <Animated.View key="devices">
+          <View key="devices">
             {loadingDevices ? (
               <View style={styles.loadingCenter}>
                 <ActivityIndicator size="large" color={theme.primary} />
@@ -541,7 +539,7 @@ export default function SecurityScreen() {
               </View>
             ) : (
               devices.map((device) => (
-                <Animated.View
+                <View
                   key={device.id}
                   style={[styles.deviceCard, { backgroundColor: theme.bgCard }]}
                 >
@@ -623,10 +621,10 @@ export default function SecurityScreen() {
                       </TouchableOpacity>
                     )}
                   </View>
-                </Animated.View>
+                </View>
               ))
             )}
-          </Animated.View>
+          </View>
         )}
 
       </ScrollView>
@@ -634,7 +632,7 @@ export default function SecurityScreen() {
   );
 }
 
-// ── Styles ─────────────────────────────────────────────────
+// â”€â”€ Styles â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f5f5' },
 

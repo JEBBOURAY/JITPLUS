@@ -502,6 +502,7 @@ export default function MessagesScreen() {
           data={showHistory ? history : []}
           keyExtractor={keyExtractor}
           renderItem={renderNotification}
+          getItemLayout={(_, index) => ({ length: 80, offset: 80 * index, index })}
           contentContainerStyle={{ paddingBottom: 120, paddingHorizontal: 16 }}
           showsVerticalScrollIndicator={false}
           removeClippedSubviews={Platform.OS !== 'web'}

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo, useEffect } from 'react';
+import React, { useState, useRef, useMemo, useEffect, useReducer, useCallback } from 'react';
 import {
   View,
   Text,
@@ -129,6 +129,70 @@ const StoreCard = React.memo(function StoreCard({ store, merchantCategorie, onEd
   );
 });
 
+// ── Form reducer ──
+interface FormState {
+  nom: string;
+  categorie: MerchantCategory | '';
+  ville: string;
+  quartier: string;
+  adresse: string;
+  telephone: string;
+  email: string;
+  latitude: number | null;
+  longitude: number | null;
+  addressSearch: string;
+  isGeoSearching: boolean;
+  locating: boolean;
+  showCategoryPicker: boolean;
+}
+
+const INITIAL_FORM: FormState = {
+  nom: '',
+  categorie: '',
+  ville: '',
+  quartier: '',
+  adresse: '',
+  telephone: '',
+  email: '',
+  latitude: null,
+  longitude: null,
+  addressSearch: '',
+  isGeoSearching: false,
+  locating: false,
+  showCategoryPicker: false,
+};
+
+type FormAction =
+  | { type: 'SET'; payload: Partial<FormState> }
+  | { type: 'RESET'; defaults?: Partial<FormState> }
+  | { type: 'LOAD_STORE'; store: StoreType };
+
+function formReducer(state: FormState, action: FormAction): FormState {
+  switch (action.type) {
+    case 'SET':
+      return { ...state, ...action.payload };
+    case 'RESET':
+      return { ...INITIAL_FORM, ...action.defaults };
+    case 'LOAD_STORE': {
+      const s = action.store;
+      return {
+        ...state,
+        nom: s.nom,
+        categorie: s.categorie ?? '',
+        ville: s.ville ?? '',
+        quartier: s.quartier ?? '',
+        adresse: s.adresse ?? '',
+        telephone: s.telephone ?? '',
+        email: s.email ?? '',
+        latitude: s.latitude ?? null,
+        longitude: s.longitude ?? null,
+        addressSearch: s.adresse ?? '',
+        showCategoryPicker: false,
+      };
+    }
+  }
+}
+
 export default function StoresScreen() {
   const theme = useTheme();
   const { merchant } = useAuth();
@@ -152,20 +216,10 @@ export default function StoresScreen() {
   const [showModal, setShowModal] = useState(false);
   const [editingStore, setEditingStore] = useState<StoreType | null>(null);
 
-  // Form state
-  const [nom, setNom] = useState('');
-  const [categorie, setCategorie] = useState<MerchantCategory | ''>('');
-  const [ville, setVille] = useState('');
-  const [quartier, setQuartier] = useState('');
-  const [adresse, setAdresse] = useState('');
-  const [telephone, setTelephone] = useState('');
-  const [email, setEmail] = useState('');
-  const [latitude, setLatitude] = useState<number | null>(null);
-  const [longitude, setLongitude] = useState<number | null>(null);
-  const [addressSearch, setAddressSearch] = useState('');
-  const [isGeoSearching, setIsGeoSearching] = useState(false);
-  const [locating, setLocating] = useState(false);
-  const [showCategoryPicker, setShowCategoryPicker] = useState(false);
+  // Form state (reducer)
+  const [form, formDispatch] = useReducer(formReducer, INITIAL_FORM);
+  const { nom, categorie, ville, quartier, adresse, telephone, email, latitude, longitude, addressSearch, isGeoSearching, locating, showCategoryPicker } = form;
+  const setForm = useCallback((payload: Partial<FormState>) => formDispatch({ type: 'SET', payload }), []);
 
   const mapRef = useRef<SafeMapViewRef>(null);
   const overviewMapRef = useRef<SafeMapViewRef>(null);
@@ -225,16 +279,7 @@ export default function StoresScreen() {
 
   // ── Reset form ──
   const resetForm = () => {
-    setNom('');
-    setCategorie(merchant?.categorie ?? '');
-    setVille(merchant?.ville ?? '');
-    setQuartier('');
-    setAdresse('');
-    setTelephone('');
-    setEmail('');
-    setLatitude(null);
-    setLongitude(null);
-    setAddressSearch('');
+    formDispatch({ type: 'RESET', defaults: { categorie: merchant?.categorie ?? '', ville: merchant?.ville ?? '' } });
     setEditingStore(null);
   };
 
@@ -254,16 +299,7 @@ export default function StoresScreen() {
 
   const openEdit = (store: StoreType) => {
     setEditingStore(store);
-    setNom(store.nom);
-    setCategorie(store.categorie ?? '');
-    setVille(store.ville ?? '');
-    setQuartier(store.quartier ?? '');
-    setAdresse(store.adresse ?? '');
-    setTelephone(store.telephone ?? '');
-    setEmail(store.email ?? '');
-    setLatitude(store.latitude ?? null);
-    setLongitude(store.longitude ?? null);
-    setAddressSearch(store.adresse ?? '');
+    formDispatch({ type: 'LOAD_STORE', store });
     setShowModal(true);
   };
 
@@ -293,10 +329,11 @@ export default function StoresScreen() {
       if (results.length > 0) {
         const g = results[0];
         const parts = [g.street, g.name, g.district, g.subregion].filter(Boolean);
-        if (parts.length > 0) setAdresse(parts.join(', '));
-        if (g.city) setVille(g.city);
-        if (g.district) setQuartier(g.district);
-        setAddressSearch(parts.join(', '));
+        const updates: Partial<FormState> = { addressSearch: parts.join(', ') };
+        if (parts.length > 0) updates.adresse = parts.join(', ');
+        if (g.city) updates.ville = g.city;
+        if (g.district) updates.quartier = g.district;
+        setForm(updates);
       }
     } catch { /* silently ignore */ }
   };
@@ -304,15 +341,13 @@ export default function StoresScreen() {
   const handleAddressSearch = async () => {
     const q = addressSearch.trim();
     if (!q || q.length < 3) return;
-    setIsGeoSearching(true);
+    setForm({ isGeoSearching: true });
     try {
       const fullQuery = ville ? `${q}, ${ville}, ${t('common.morocco')}` : `${q}, ${t('common.morocco')}`;
       const results = await geocodeAsync(fullQuery);
       if (results.length > 0) {
         const { latitude: lat, longitude: lng } = results[0];
-        setLatitude(lat);
-        setLongitude(lng);
-        setAdresse(q);
+        setForm({ latitude: lat, longitude: lng, adresse: q });
         mapRef.current?.animateToRegion({
           latitude: lat, longitude: lng,
           latitudeDelta: 0.005, longitudeDelta: 0.005,
@@ -324,12 +359,12 @@ export default function StoresScreen() {
     } catch {
       Alert.alert(t('common.error'), t('stores.addressSearchError'));
     } finally {
-      setIsGeoSearching(false);
+      setForm({ isGeoSearching: false });
     }
   };
 
   const handleUseMyLocation = async () => {
-    setLocating(true);
+    setForm({ locating: true });
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
@@ -337,8 +372,7 @@ export default function StoresScreen() {
         return;
       }
       const loc = await Location.getCurrentPositionAsync({});
-      setLatitude(loc.coords.latitude);
-      setLongitude(loc.coords.longitude);
+      setForm({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
       mapRef.current?.animateToRegion({
         latitude: loc.coords.latitude, longitude: loc.coords.longitude,
         latitudeDelta: 0.005, longitudeDelta: 0.005,
@@ -347,7 +381,7 @@ export default function StoresScreen() {
     } catch {
       Alert.alert(t('common.error'), t('stores.locationError'));
     } finally {
-      setLocating(false);
+      setForm({ locating: false });
     }
   };
 
@@ -487,7 +521,7 @@ export default function StoresScreen() {
                   <TextInput
                     style={[styles.input, { color: theme.text }]}
                     value={nom}
-                    onChangeText={setNom}
+                    onChangeText={(v) => setForm({ nom: v })}
                     placeholder={t('stores.namePlaceholder')}
                     placeholderTextColor={theme.textMuted}
                   />
@@ -498,7 +532,7 @@ export default function StoresScreen() {
                 <Text style={[styles.label, { color: theme.text }]}>{t('stores.categoryLabel')}</Text>
                 <TouchableOpacity
                   style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: categorie ? theme.primary : theme.border }]}
-                  onPress={() => setShowCategoryPicker(true)}
+                  onPress={() => setForm({ showCategoryPicker: true })}
                 >
                   <MerchantCategoryIcon category={categorie || merchant?.categorie || MerchantCategory.AUTRE} size={22} />
                   <Text style={[styles.input, { color: categorie ? theme.text : theme.textMuted, flex: 1 }]}>
@@ -520,7 +554,7 @@ export default function StoresScreen() {
                   <TextInput
                     style={[styles.input, { color: theme.text }]}
                     value={telephone}
-                    onChangeText={setTelephone}
+                    onChangeText={(v) => setForm({ telephone: v })}
                     placeholder={t('stores.phonePlaceholder')}
                     placeholderTextColor={theme.textMuted}
                     keyboardType="phone-pad"
@@ -535,7 +569,7 @@ export default function StoresScreen() {
                   <TextInput
                     style={[styles.input, { color: theme.text }]}
                     value={email}
-                    onChangeText={setEmail}
+                    onChangeText={(v) => setForm({ email: v })}
                     placeholder={t('stores.emailPlaceholder')}
                     placeholderTextColor={theme.textMuted}
                     keyboardType="email-address"
@@ -561,7 +595,7 @@ export default function StoresScreen() {
                   <TextInput
                     style={[styles.input, { color: theme.text }]}
                     value={ville}
-                    onChangeText={setVille}
+                    onChangeText={(v) => setForm({ ville: v })}
                     placeholder={t('stores.cityPlaceholder')}
                     placeholderTextColor={theme.textMuted}
                   />
@@ -575,7 +609,7 @@ export default function StoresScreen() {
                   <TextInput
                     style={[styles.input, { color: theme.text }]}
                     value={quartier}
-                    onChangeText={setQuartier}
+                    onChangeText={(v) => setForm({ quartier: v })}
                     placeholder={t('stores.districtPlaceholder')}
                     placeholderTextColor={theme.textMuted}
                   />
@@ -585,16 +619,18 @@ export default function StoresScreen() {
                 <Text style={[styles.label, { color: theme.text }]}>{t('stores.searchAddress')}</Text>
                 <AddressAutocomplete
                   value={addressSearch}
-                  onChangeText={(text) => { setAddressSearch(text); setAdresse(text); }}
+                  onChangeText={(text) => { setForm({ addressSearch: text, adresse: text }); }}
                   placeholder={t('stores.addressSearchPlaceholder')}
                   ville={ville}
                   onSelect={(result: AddressResult) => {
-                    setLatitude(result.latitude);
-                    setLongitude(result.longitude);
-                    setAdresse(result.address);
-                    if (result.city) setVille(result.city);
-                    if (result.district) setQuartier(result.district);
-                    setAddressSearch(result.address);
+                    setForm({
+                      latitude: result.latitude,
+                      longitude: result.longitude,
+                      adresse: result.address,
+                      addressSearch: result.address,
+                      ...(result.city ? { ville: result.city } : {}),
+                      ...(result.district ? { quartier: result.district } : {}),
+                    });
                     mapRef.current?.animateToRegion({
                       latitude: result.latitude, longitude: result.longitude,
                       latitudeDelta: 0.005, longitudeDelta: 0.005,
@@ -616,8 +652,7 @@ export default function StoresScreen() {
                     }}
                     onPress={(e: { nativeEvent: { coordinate: { latitude: number; longitude: number } } }) => {
                       const coords = e.nativeEvent.coordinate;
-                      setLatitude(coords.latitude);
-                      setLongitude(coords.longitude);
+                      setForm({ latitude: coords.latitude, longitude: coords.longitude });
                       reverseGeocodeAndLabel(coords.latitude, coords.longitude);
                     }}
                   >
@@ -627,8 +662,7 @@ export default function StoresScreen() {
                         coordinate={{ latitude, longitude }}
                         onDragEnd={(e: { nativeEvent: { coordinate: { latitude: number; longitude: number } } }) => {
                           const c = e.nativeEvent.coordinate;
-                          setLatitude(c.latitude);
-                          setLongitude(c.longitude);
+                          setForm({ latitude: c.latitude, longitude: c.longitude });
                           reverseGeocodeAndLabel(c.latitude, c.longitude);
                         }}
                       />
@@ -668,7 +702,7 @@ export default function StoresScreen() {
                   <TextInput
                     style={[styles.input, { color: theme.text }]}
                     value={adresse}
-                    onChangeText={setAdresse}
+                    onChangeText={(text) => setForm({ adresse: text })}
                     placeholder={t('stores.addressAutoPlaceholder')}
                     placeholderTextColor={theme.textMuted}
                   />
@@ -683,7 +717,7 @@ export default function StoresScreen() {
 
       {/* ── Category Picker Modal ── */}
       <Modal visible={showCategoryPicker} animationType="fade" transparent>
-        <TouchableOpacity style={styles.pickerOverlay} activeOpacity={1} onPress={() => setShowCategoryPicker(false)}>
+        <TouchableOpacity style={styles.pickerOverlay} activeOpacity={1} onPress={() => setForm({ showCategoryPicker: false })}>
           <View style={[styles.pickerCard, { backgroundColor: theme.bgCard }]}>
             <Text style={[styles.pickerTitle, { color: theme.text }]}>{t('stores.categoryLabel')}</Text>
             <ScrollView style={{ maxHeight: 350 }}>
@@ -697,7 +731,7 @@ export default function StoresScreen() {
                       { borderColor: theme.border },
                       categorie === opt.value && { backgroundColor: theme.primary + '15', borderColor: theme.primary },
                     ]}
-                    onPress={() => { setCategorie(opt.value as MerchantCategory); setShowCategoryPicker(false); }}
+                    onPress={() => { setForm({ categorie: opt.value as MerchantCategory, showCategoryPicker: false }); }}
                   >
                     {meta?.emoji ? (
                       <Text style={{ fontSize: 22 }}>{meta.emoji}</Text>

@@ -36,6 +36,7 @@ const ClientCard = React.memo(function ClientCard({
   theme: ReturnType<typeof useTheme>;
   isStamps?: boolean;
 }) {
+  const { t } = useLanguage();
   const scaleAnim = useRef(new RNAnimated.Value(1)).current;
 
   const handlePressIn = () =>
@@ -79,7 +80,7 @@ const ClientCard = React.memo(function ClientCard({
 
         {/* Points à droite */}
         <Text style={[styles.pointsValue, { color: theme.primary }]}>
-          {formattedPoints} <Text style={styles.pointsLabel}>{isStamps ? 'tmp' : 'pts'}</Text>
+          {formattedPoints} <Text style={styles.pointsLabel}>{isStamps ? t('common.stampsAbbr') : t('common.pointsAbbr')}</Text>
         </Text>
         <ChevronRight size={16} color={palette.violet} style={{ marginLeft: 4 }} />
       </TouchableOpacity>

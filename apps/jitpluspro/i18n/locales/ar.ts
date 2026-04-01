@@ -32,6 +32,8 @@ export default {
     noCountryFound: 'لا توجد دولة',
     allDisplayed: '— تم عرض الكل —',
     morocco: 'المغرب',
+    stampsAbbr: 'طبع',
+    pointsAbbr: 'نقط',
   },
 
   errors: {
@@ -259,6 +261,8 @@ export default {
     clientNotFoundTitle: 'العميل غير موجود',
     noClientForPhone: 'لم يتم العثور على عميل بالرقم %{phone}.',
     phoneSearchError: 'تعذر البحث عن هذا الرقم. حاول مرة أخرى.',
+    cameraErrorTitle: 'خطأ في الكاميرا',
+    cameraErrorMsg: 'تعذر تشغيل الكاميرا. استخدم البحث برقم الهاتف.',
   },
 
   account: {
@@ -350,6 +354,7 @@ export default {
     planCancelEmailSubject: 'طلب إلغاء — JitPlus',
     planCancelEmailBody: 'مرحباً،\n\nأنا %{name} (%{email}) وأرغب في إلغاء خطتي Premium.\n\nشكراً.',
     planErrorWhatsapp: 'تعذر فتح واتساب.',
+    planErrorEmail: 'تعذر فتح تطبيق البريد الإلكتروني.',
     planErrorBrowser: 'تعذر فتح المتصفح.',
 
     email: 'البريد الإلكتروني',
@@ -374,6 +379,7 @@ export default {
     securitySubtitle: 'كلمة المرور والجلسات النشطة',
     stores: 'الأجهزة المتصلة',
     storesSubtitle: 'إدارة الجلسات النشطة',
+    proBadge: 'PRO',
     dashboard: 'لوحة التحكم',
     dashboardSubtitle: 'الإحصاءات والتحليلات',
     dashboardLockedSubtitle: 'مخصص لخطة Pro',

@@ -237,7 +237,7 @@ export default function AccountScreen() {
                     !isPremium
                       ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: ms(4) }}>
                           <View style={{ backgroundColor: '#7C3AED18', borderRadius: ms(6), paddingHorizontal: ms(6), paddingVertical: ms(2) }}>
-                            <Text style={{ fontSize: FS.xs, color: '#7C3AED', fontWeight: '600' }}>PRO</Text>
+                            <Text style={{ fontSize: FS.xs, color: '#7C3AED', fontWeight: '600' }}>{t('account.proBadge')}</Text>
                           </View>
                           <Lock size={ms(13)} color={theme.textMuted} strokeWidth={2} />
                         </View>
@@ -261,7 +261,7 @@ export default function AccountScreen() {
                     !isPremium
                       ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: ms(4) }}>
                           <View style={{ backgroundColor: '#7C3AED18', borderRadius: ms(6), paddingHorizontal: ms(6), paddingVertical: ms(2) }}>
-                            <Text style={{ fontSize: FS.xs, color: '#7C3AED', fontWeight: '600' }}>PRO</Text>
+                            <Text style={{ fontSize: FS.xs, color: '#7C3AED', fontWeight: '600' }}>{t('account.proBadge')}</Text>
                           </View>
                           <Lock size={ms(13)} color={theme.textMuted} strokeWidth={2} />
                         </View>
@@ -272,7 +272,7 @@ export default function AccountScreen() {
                       setPremiumModal({ visible: true, titleKey: 'account.teamLockedTitle', descKey: 'account.teamLockedMsg' });
                       return;
                     }
-                    router.push('/team-management' as any);
+                    router.push('/team-management');
                   }}
                 />
                 {/* Referral */}
@@ -280,7 +280,7 @@ export default function AccountScreen() {
                   icon={<Gift size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
                   label={t('referral.menuTitle')}
                   subtitle={t('referral.menuSubtitle')}
-                  onPress={() => router.push('/referral' as any)}
+                  onPress={() => router.push('/referral')}
                   noBorder
                 />
               </View>
@@ -357,7 +357,7 @@ export default function AccountScreen() {
                 icon={<Shield size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
                 label={t('account.legalSection')}
                 subtitle={t('account.legalSubtitle')}
-                onPress={() => router.push('/legal' as any)}
+                onPress={() => router.push('/legal')}
               />
               {/* Security / Password */}
               {!isTeamMember && (
@@ -385,7 +385,9 @@ export default function AccountScreen() {
                 onPress={() => {
                   const phone = process.env.EXPO_PUBLIC_SUPPORT_WHATSAPP || '';
                   const msg = encodeURIComponent(t('account.contactSupportMsg'));
-                  Linking.openURL(`https://wa.me/${phone}?text=${msg}`);
+                  Linking.openURL(`https://wa.me/${phone}?text=${msg}`).catch(() => {
+                    Alert.alert(t('common.error'), t('common.genericError'));
+                  });
                 }}
                 iconBg={`${palette.charbon}15`}
               />

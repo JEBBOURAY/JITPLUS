@@ -63,9 +63,9 @@ const api = createApiClient({
 
 // ── Dev-mode request/response logging ──
 if (IS_DEV) {
-  logInfo('API', 'URL configurée: ' + resolveApiUrl(ENV_URL, IS_DEV));
+  logInfo('API', 'Base URL: ' + resolveApiUrl(ENV_URL, IS_DEV));
   if (!ENV_URL) {
-    logInfo('API', 'EXPO_PUBLIC_API_URL non définie, utilisation du fallback local');
+    logInfo('API', 'EXPO_PUBLIC_API_URL not set, using local fallback');
   }
 
   api.interceptors.response.use(

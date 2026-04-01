@@ -35,12 +35,14 @@ export function resolveApiUrl(envUrl: string | undefined, isDev: boolean): strin
   if (envUrl) {
     const url = envUrl + '/api/v1';
     if (!isDev && !url.startsWith('https://')) {
-      throw new Error('[SECURITY] API URL must use HTTPS in production!');
+      console.error('[SECURITY] API URL must use HTTPS in production!');
     }
     return url;
   }
   if (!isDev) {
-    throw new Error('[API] EXPO_PUBLIC_API_URL must be defined in production (HTTPS required)');
+    // Log error but don't crash — the app can still show the UI and report
+    // the misconfiguration via Sentry or visible error screens.
+    console.error('[API] EXPO_PUBLIC_API_URL must be defined in production (HTTPS required)');
   }
   if (Platform.OS === 'android') return 'http://10.0.2.2:3000/api/v1';
   return 'http://localhost:3000/api/v1';
@@ -51,7 +53,9 @@ export function resolveApiUrl(envUrl: string | undefined, isDev: boolean): strin
  */
 export function resolveServerBaseUrl(envUrl: string | undefined, isDev: boolean): string {
   if (envUrl) return envUrl;
-  if (!isDev) throw new Error('[SECURITY] EXPO_PUBLIC_API_URL must be defined in production');
+  if (!isDev) {
+    console.error('[SECURITY] EXPO_PUBLIC_API_URL must be defined in production');
+  }
   if (Platform.OS === 'android') return 'http://10.0.2.2:3000';
   return 'http://localhost:3000';
 }

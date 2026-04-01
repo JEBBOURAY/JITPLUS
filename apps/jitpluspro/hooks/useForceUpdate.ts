@@ -87,7 +87,7 @@ export function useForceUpdate(): ForceUpdateState {
 
       if (cancelledRef.current) return;
 
-      const { min_ios_version, min_android_version, maintenance } = response.data;
+      const { min_ios_version = '', min_android_version = '', maintenance = false } = response.data ?? {};
 
       if (maintenance) {
         setStatus('maintenance');

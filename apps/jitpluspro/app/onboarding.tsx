@@ -76,7 +76,12 @@ export default function OnboardingScreen() {
   }, []);
 
   const handleFinish = useCallback(async () => {
-    await completeOnboarding();
+    try {
+      await completeOnboarding();
+    } catch {
+      // Best-effort — if the API call fails, still proceed so the user isn't stuck.
+      if (__DEV__) console.warn('[Onboarding] completeOnboarding failed');
+    }
     router.replace('/scan-qr');
   }, [completeOnboarding, router]);
 
@@ -168,8 +173,13 @@ export default function OnboardingScreen() {
       completeOnboarding()
         .then(() => router.replace('/scan-qr'))
         .catch(() => router.replace('/scan-qr'));
-    }
-  }, [isTeamMember]);
+    }    // Cleanup reward timer on unmount to prevent memory leak
+    return () => {
+      if (rewardTimerRef.current) {
+        clearTimeout(rewardTimerRef.current);
+        rewardTimerRef.current = null;
+      }
+    };  }, [isTeamMember]);
 
   const bottomPadding = insets.bottom + 100;
 
@@ -248,7 +258,7 @@ export default function OnboardingScreen() {
         <StepSlide visible={currentStep === 'scan'} direction={direction}>
           <StepScan
             theme={theme} t={t} bottomPadding={bottomPadding}
-            onScanNow={async () => { try { await completeOnboarding(); } catch {} router.replace('/scan-qr'); }}
+            onScanNow={async () => { try { await completeOnboarding(); } catch { /* non-blocking */ } router.replace('/scan-qr'); }}
           />
         </StepSlide>
 

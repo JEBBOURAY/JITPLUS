@@ -105,7 +105,7 @@ const TransactionItem = React.memo(function TransactionItem({
             </Text>
           )}
           <Text style={[styles.txPoints, { color }, isCancelled && styles.cancelled]}>
-            {isAdjust ? (tx.points >= 0 ? '+' : '') : isEarned ? '+' : '-'}{tx.points} {(tx.loyaltyType ?? (isStampsMode ? 'STAMPS' : 'POINTS')) === 'STAMPS' ? 'tmp' : 'pts'}
+            {isAdjust ? (tx.points >= 0 ? '+' : '') : isEarned ? '+' : '-'}{tx.points} {(tx.loyaltyType ?? (isStampsMode ? 'STAMPS' : 'POINTS')) === 'STAMPS' ? t('common.stampsAbbr') : t('common.pointsAbbr')}
           </Text>
         </View>
       )}
@@ -247,7 +247,7 @@ export default function ClientDetailScreen() {
         <View style={styles.pointsHero}>
           <Star size={20} color="#9CA3AF" strokeWidth={1.5} />
           <Text style={styles.pointsHeroValue}>{client.points}</Text>
-          <Text style={styles.pointsHeroLabel}>{isStampsMode ? 'tampons' : 'points'}</Text>
+          <Text style={styles.pointsHeroLabel}>{isStampsMode ? t('common.stamps') : t('common.points')}</Text>
         </View>
 
         {/* Adjust points buttons */}

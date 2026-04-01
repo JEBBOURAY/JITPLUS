@@ -34,6 +34,8 @@ export default {
     noCountryFound: 'Aucun pays trouvé',
     allDisplayed: '— Tout est affiché —',
     morocco: 'Maroc',
+    stampsAbbr: 'tmp',
+    pointsAbbr: 'pts',
   },
 
   // ── Errors ──
@@ -272,6 +274,8 @@ export default {
     clientNotFoundTitle: 'Client introuvable',
     noClientForPhone: 'Aucun client trouvé avec le numéro %{phone}.',
     phoneSearchError: 'Impossible de rechercher ce numéro. Réessayez.',
+    cameraErrorTitle: 'Erreur caméra',
+    cameraErrorMsg: "Impossible d'initialiser la caméra. Utilisez la recherche par téléphone.",
   },
 
   // ── Account ──
@@ -364,6 +368,7 @@ export default {
     planCancelEmailSubject: 'Demande résiliation — JitPlus',
     planCancelEmailBody: 'Bonjour,\n\nJe suis %{name} (%{email}) et je souhaite résilier mon forfait Premium.\n\nMerci.',
     planErrorWhatsapp: "Impossible d'ouvrir WhatsApp.",
+    planErrorEmail: "Impossible d'ouvrir l'application e-mail.",
     planErrorBrowser: "Impossible d'ouvrir le navigateur.",
 
     // Quick info
@@ -390,6 +395,7 @@ export default {
     securitySubtitle: 'Mot de passe, sessions actives',
     stores: 'Appareils connectés',
     storesSubtitle: 'Gérer les sessions actives',
+    proBadge: 'PRO',
     dashboard: 'Dashboard',
     dashboardSubtitle: 'Statistiques et analyses',
     dashboardLockedSubtitle: 'Réservé au plan Pro',

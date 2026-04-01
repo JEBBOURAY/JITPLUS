@@ -209,14 +209,14 @@ export function StepMapCompliance({
               {t('registerExtra.termsText')}{' '}
               <Text
                 style={{ color: theme.primary, fontWeight: '700', textDecorationLine: 'underline' }}
-                onPress={() => Linking.openURL('https://jitplus.com/cgu')}
+                onPress={() => Linking.openURL('https://jitplus.com/cgu').catch(() => {})}
               >
                 {t('register.termsLink')}
               </Text>
               {' '}{t('registerExtra.and')}{' '}
               <Text
                 style={{ color: theme.primary, fontWeight: '700', textDecorationLine: 'underline' }}
-                onPress={() => Linking.openURL('https://jitplus.com/privacy')}
+                onPress={() => Linking.openURL('https://jitplus.com/privacy').catch(() => {})}
               >
                 {t('register.privacyLink')}
               </Text>

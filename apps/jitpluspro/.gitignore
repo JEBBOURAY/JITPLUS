@@ -52,3 +52,8 @@ upload_certificate.pem
 # generated native folders
 /ios
 /android
+
+# build artifacts
+*.aab
+*.apk
+*.ipa

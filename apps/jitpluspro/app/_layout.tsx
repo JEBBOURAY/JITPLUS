@@ -49,10 +49,18 @@ const queryClient = new QueryClient({
 // ── Sentry init (crash reporting) ──────────────────────────────
 // SECURITY: DSN is bundled in the client. Configure inbound data filters in
 // Sentry project settings to reject invalid releases and apply rate limits.
+// Validate DSN format before init — an unresolved EAS secret (literal "$...") or
+// empty string would make the native SDK crash on Android.
+const _sentryDsn = process.env.EXPO_PUBLIC_SENTRY_DSN_PRO ?? '';
+const _sentryEnabled =
+  !__DEV__ &&
+  !!_sentryDsn &&
+  _sentryDsn.startsWith('https://') &&
+  _sentryDsn.includes('.sentry.io');
 try {
   Sentry.init({
-    dsn: process.env.EXPO_PUBLIC_SENTRY_DSN_PRO ?? '',
-    enabled: !__DEV__ && !!process.env.EXPO_PUBLIC_SENTRY_DSN_PRO,
+    dsn: _sentryEnabled ? _sentryDsn : '',
+    enabled: _sentryEnabled,
     environment: __DEV__ ? 'development' : 'production',
     release: Constants.expoConfig?.version,
     dist: String(Constants.expoConfig?.android?.versionCode ?? '0'),
@@ -80,10 +88,9 @@ if (typeof globalThis !== 'undefined') {
   };
 }
 
-// ── Env validation (fail-fast in production) ────────────────────
+// ── Env validation (warn in production — never crash the app) ───
 if (!__DEV__ && !process.env.EXPO_PUBLIC_API_URL) {
-  // Log instead of throw — crashing at module-level gives no visible error message
-  console.error('[CONFIG] EXPO_PUBLIC_API_URL is required in production');
+  console.error('[CONFIG] EXPO_PUBLIC_API_URL is required in production. API calls will fail.');
 }
 
 // NOTE: The I18nManager forced-LTR reset has been removed.
