@@ -212,12 +212,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       try {
         if (__DEV__) console.log('[AuthContext] Chargement de l\'authentification...');
         // Parallelize SecureStore reads to reduce boot time (~400ms → ~100ms)
-        const [storedToken, rememberMe, storedUserType, storedTeamMember] = await Promise.all([
+        const results = await Promise.allSettled([
           SecureStore.getItemAsync('accessToken'),
           SecureStore.getItemAsync('rememberMe'),
           SecureStore.getItemAsync('userType'),
           SecureStore.getItemAsync('teamMember'),
         ]);
+        const [storedToken, rememberMe, storedUserType, storedTeamMember] = results.map(
+          (r) => (r.status === 'fulfilled' ? r.value : null)
+        );
 
         if (__DEV__) {
           console.log('[AuthContext] Token:', storedToken ? 'Oui' : 'Non');
@@ -256,8 +259,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               if (__DEV__) console.warn('[AuthContext] Push token registration failed:', err);
               // Report to Sentry so we have visibility on push failures in production
               if (!__DEV__) {
-                const Sentry = require('@sentry/react-native');
-                Sentry.captureException(err, { tags: { source: 'push-registration' } });
+                try {
+                  const Sentry = require('@sentry/react-native');
+                  Sentry.captureException(err, { tags: { source: 'push-registration' } });
+                } catch {}
               }
             });
           } catch {
@@ -335,8 +340,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     registerPushToken().catch((err) => {
       if (__DEV__) console.warn('[AuthContext] Push token registration failed:', err);
       if (!__DEV__) {
-        const Sentry = require('@sentry/react-native');
-        Sentry.captureException(err, { tags: { source: 'push-registration' } });
+        try {
+          const Sentry = require('@sentry/react-native');
+          Sentry.captureException(err, { tags: { source: 'push-registration' } });
+        } catch {}
       }
     });
   }, []);

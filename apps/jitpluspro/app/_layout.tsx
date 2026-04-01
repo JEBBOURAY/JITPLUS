@@ -18,7 +18,20 @@ import { useRealtimeSocket } from '@jitplus/shared/src/useRealtimeSocket';
 import { useRealtimeEvents } from '@/hooks/useRealtimeEvents';
 import { getServerBaseUrl } from '@/services/api';
 import { logError } from '@/utils/devLogger';
-import * as Sentry from '@sentry/react-native';
+
+// ── Lazy-load Sentry to prevent native module crash on Android ──
+// The native @sentry/react-native module can crash during require() if the DSN
+// is missing or the native SDK is misconfigured. Lazy-loading ensures the app
+// still boots even if Sentry fails entirely.
+let Sentry: typeof import('@sentry/react-native') | null = null;
+try {
+  Sentry = require('@sentry/react-native');
+} catch (e) {
+  if (__DEV__) console.warn('[Sentry] Native module failed to load:', e);
+}
+// Safe no-op wrappers so callers never need null-checks
+const captureException: typeof import('@sentry/react-native').captureException =
+  (...args) => { try { Sentry?.captureException?.(...args); } catch {} return ''; };
 
 const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
 
@@ -26,13 +39,13 @@ const queryClient = new QueryClient({
   queryCache: new QueryCache({
     onError: (error, query) => {
       logError('ReactQuery', `Query failed [${String(query.queryKey)}]`, error);
-      if (!__DEV__) Sentry.captureException(error, { tags: { source: 'react-query' } });
+      if (!__DEV__) captureException(error, { tags: { source: 'react-query' } });
     },
   }),
   mutationCache: new MutationCache({
     onError: (error, _vars, _ctx, mutation) => {
       logError('Mutation', `Mutation failed [${String(mutation.options.mutationKey ?? 'anonymous')}]`, error);
-      if (!__DEV__) Sentry.captureException(error, { tags: { source: 'react-query-mutation' } });
+      if (!__DEV__) captureException(error, { tags: { source: 'react-query-mutation' } });
     },
   }),
   defaultOptions: {
@@ -58,7 +71,7 @@ const _sentryEnabled =
   _sentryDsn.startsWith('https://') &&
   _sentryDsn.includes('.sentry.io');
 try {
-  Sentry.init({
+  Sentry?.init({
     dsn: _sentryEnabled ? _sentryDsn : '',
     enabled: _sentryEnabled,
     environment: __DEV__ ? 'development' : 'production',
@@ -82,7 +95,7 @@ if (typeof globalThis !== 'undefined') {
   (globalThis as any).onunhandledrejection = (event: any) => {
     const error = event?.reason;
     if (!__DEV__ && error) {
-      try { Sentry.captureException(error, { tags: { source: 'unhandled-promise' } }); } catch {}
+      try { captureException(error, { tags: { source: 'unhandled-promise' } }); } catch {}
     }
     if (originalHandler) originalHandler(event);
   };
