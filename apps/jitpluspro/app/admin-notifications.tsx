@@ -141,9 +141,10 @@ export default function AdminNotificationsScreen() {
         {unreadCount > 0 && (
           <TouchableOpacity
             onPress={handleMarkAllRead}
+            disabled={markAllRead.isPending}
             hitSlop={8}
             activeOpacity={0.7}
-            style={styles.markAllBtn}
+            style={[styles.markAllBtn, markAllRead.isPending && { opacity: 0.5 }]}
           >
             <CheckCheck size={ms(14)} color="#fff" strokeWidth={2} />
           </TouchableOpacity>

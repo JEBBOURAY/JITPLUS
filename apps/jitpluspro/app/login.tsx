@@ -81,9 +81,14 @@ export default function LoginScreen() {
       await signIn({ email: trimmedEmail, password }, rememberMe);
       router.replace('/scan-qr');
     } catch (err: unknown) {
-      const msg = getErrorMessage(err, t('login.invalidCredentials'));
-      if (msg.includes('réseau') || msg.includes('network')) Alert.alert(t('common.networkError'), msg);
-      else setError(msg);
+      const axiosErr = err as { code?: string; response?: { status?: number }; message?: string };
+      const isNetworkError = axiosErr?.code === 'ECONNABORTED' || axiosErr?.code === 'ERR_NETWORK' || !axiosErr?.response;
+      if (isNetworkError) {
+        Alert.alert(t('common.networkError'), t('common.networkErrorMsg') || t('login.invalidCredentials'));
+      } else {
+        const msg = getErrorMessage(err, t('login.invalidCredentials'));
+        setError(msg);
+      }
     } finally {
       setIsLoading(false);
     }

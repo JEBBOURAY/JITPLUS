@@ -14,6 +14,7 @@ import {
   Animated,
   LayoutAnimation,
   UIManager,
+  Keyboard,
 } from 'react-native';
 import { timeAgo } from '@/utils/date';
 import { useGuardedCallback } from '@/hooks/useGuardedCallback';
@@ -286,7 +287,10 @@ export default function MessagesScreen() {
   }, []);
   const startCooldown = useCallback((key: CooldownKey) => {
     dispatch({ type: 'START_COOLDOWN', key });
-    const timer = setTimeout(() => dispatch({ type: 'END_COOLDOWN', key }), SEND_COOLDOWN_MS);
+    const timer = setTimeout(() => {
+      dispatch({ type: 'END_COOLDOWN', key });
+      cooldownTimers.current = cooldownTimers.current.filter((t) => t !== timer);
+    }, SEND_COOLDOWN_MS);
     cooldownTimers.current.push(timer);
   }, []);
 
@@ -296,6 +300,7 @@ export default function MessagesScreen() {
       Alert.alert(t('common.error'), t('messages.whatsappEmptyMsg'));
       return;
     }
+    Keyboard.dismiss();
 
     Alert.alert(
       t('messages.whatsappConfirmTitle'),
@@ -337,6 +342,7 @@ export default function MessagesScreen() {
       Alert.alert(t('messages.notifEmptyFieldsTitle'), t('messages.emailEmptyMsg'));
       return;
     }
+    Keyboard.dismiss();
 
     Alert.alert(
       t('messages.emailConfirmTitle'),
@@ -381,6 +387,7 @@ export default function MessagesScreen() {
       Alert.alert(t('messages.notifEmptyFieldsTitle'), t('messages.notifEmptyFields'));
       return;
     }
+    Keyboard.dismiss();
 
     Alert.alert(
       t('messages.notifConfirmTitle'),

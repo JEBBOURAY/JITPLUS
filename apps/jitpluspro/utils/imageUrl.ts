@@ -61,11 +61,9 @@ export function resolveImageUrl(path: string): string {
     try {
       const url = new URL(path);
       if (isPrivateHostname(url.hostname) && !__DEV__) {
-        console.warn('[imageUrl] blocked private hostname in production:', url.hostname);
         return '';
       }
       if (url.protocol !== 'https:' && !__DEV__) {
-        console.warn('[imageUrl] blocked non-HTTPS URL in production:', path);
         return '';
       }
       return path;

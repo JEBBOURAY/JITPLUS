@@ -233,8 +233,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               s.setTeamMember(true, tmData);
             } catch (e) {
               if (__DEV__) console.error('[AuthContext] Erreur parsing teamMember:', e);
-              // Remove corrupted data to prevent persistent parse failures
+              // Remove corrupted data and reset store to prevent incomplete auth state
+              s.setTeamMember(false, null);
               await SecureStore.deleteItemAsync('teamMember').catch(() => {});
+              await SecureStore.deleteItemAsync('userType').catch(() => {});
             }
           }
 

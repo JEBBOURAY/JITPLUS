@@ -79,6 +79,7 @@ export default function AddressAutocomplete({
   const [showDropdown, setShowDropdown] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const abortRef = useRef<AbortController | null>(null);
+  const mountedRef = useRef(true);
 
   // Fetch predictions from Google Places Autocomplete API
   const fetchPredictions = useCallback(async (input: string) => {
@@ -100,6 +101,8 @@ export default function AddressAutocomplete({
       const res = await fetch(url, { signal: controller.signal });
       const json: AutocompleteResponse = await res.json();
 
+      if (!mountedRef.current) return;
+
       if (json.status === 'OK' && json.predictions) {
         setPredictions(json.predictions.slice(0, 5));
         setShowDropdown(true);
@@ -112,7 +115,7 @@ export default function AddressAutocomplete({
         if (__DEV__) console.warn('[AddressAutocomplete] fetch error:', e);
       }
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   }, [ville]);
 
@@ -143,6 +146,8 @@ export default function AddressAutocomplete({
       const res = await fetch(url);
       const json: PlaceDetailsResponse = await res.json();
 
+      if (!mountedRef.current) return;
+
       if (json.status === 'OK' && json.result) {
         const { geometry, formatted_address, address_components } = json.result;
         const get = (type: string) =>
@@ -160,13 +165,14 @@ export default function AddressAutocomplete({
     } catch (e) {
       if (__DEV__) console.warn('[AddressAutocomplete] place details error:', e);
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   }, [onChangeText, onSelect]);
 
   // Cleanup
   useEffect(() => {
     return () => {
+      mountedRef.current = false;
       clearTimeout(debounceRef.current);
       abortRef.current?.abort();
     };

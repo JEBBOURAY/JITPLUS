@@ -28,15 +28,27 @@ export default function ForceUpdateModal({ status, storeUrl }: Props) {
 
   const handleCta = async () => {
     if (isUpdate) {
-      const canOpen = await Linking.canOpenURL(storeUrl);
-      // On some Android emulators 'market://' scheme fails — fallback to web
-      if (canOpen) {
-        await Linking.openURL(storeUrl);
-      } else {
-        const webUrl = storeUrl.startsWith('market://')
-          ? storeUrl.replace('market://details?id=', 'https://play.google.com/store/apps/details?id=')
-          : storeUrl;
-        await Linking.openURL(webUrl);
+      try {
+        const canOpen = await Linking.canOpenURL(storeUrl);
+        // On some Android emulators 'market://' scheme fails — fallback to web
+        if (canOpen) {
+          await Linking.openURL(storeUrl);
+        } else {
+          const webUrl = storeUrl.startsWith('market://')
+            ? storeUrl.replace('market://details?id=', 'https://play.google.com/store/apps/details?id=')
+            : storeUrl;
+          await Linking.openURL(webUrl);
+        }
+      } catch {
+        // Fallback: try web store URL if native linking fails
+        try {
+          const fallback = Platform.OS === 'android'
+            ? storeUrl.replace('market://details?id=', 'https://play.google.com/store/apps/details?id=')
+            : storeUrl;
+          await Linking.openURL(fallback);
+        } catch {
+          // Nothing more we can do
+        }
       }
     }
     // For maintenance, no CTA action — user must wait
