@@ -1,7 +1,14 @@
 // ── Shared network status hook ──────────────────────────────────────────────
 // Used by both JitPlus and JitPlus Pro apps — single source of truth.
 import { useEffect, useState } from 'react';
-import NetInfo, { NetInfoState } from '@react-native-community/netinfo';
+
+// Lazy-load NetInfo — if the native module isn't linked the app still boots
+let NetInfo: typeof import('@react-native-community/netinfo').default | null = null;
+try {
+  NetInfo = require('@react-native-community/netinfo').default;
+} catch {
+  // Native module unavailable — useNetworkStatus will always return null
+}
 
 /**
  * Hook that monitors network connectivity.
@@ -11,7 +18,8 @@ export function useNetworkStatus() {
   const [isConnected, setIsConnected] = useState<boolean | null>(null);
 
   useEffect(() => {
-    const unsubscribe = NetInfo.addEventListener((state: NetInfoState) => {
+    if (!NetInfo) return;
+    const unsubscribe = NetInfo.addEventListener((state: any) => {
       setIsConnected(state.isConnected);
     });
     return () => unsubscribe();
