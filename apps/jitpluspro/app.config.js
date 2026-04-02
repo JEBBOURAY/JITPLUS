@@ -26,7 +26,7 @@ module.exports = ({ config }) => {
     name: 'JitPlus Pro',
     slug: 'jitpluspro',
     description: 'Loyalty program management for local shops — scan QR codes, track customer visits, and set up stamp-based rewards.',
-    version: '1.3.0',
+    version: '1.3.1',
     orientation: 'portrait',
     icon: './assets/images/icon-white.png',
     scheme: 'jitpluspro',
@@ -159,14 +159,14 @@ module.exports = ({ config }) => {
             "Permettre à JitPlus Pro d'accéder à votre position pour localiser votre commerce.",
         },
       ],
-      // Sentry — always register the config plugin so the native SDK is properly
-      // set up.  Source-map / symbol uploads happen ONLY when SENTRY_AUTH_TOKEN is set.
-      ['@sentry/react-native/expo', {
-        organization: process.env.SENTRY_ORG || 'placeholder',
-        project: process.env.SENTRY_PROJECT || 'placeholder',
-        uploadNativeSymbols: false,
-        autoUploadReactNativeBundles: false,
-      }],
+      // Sentry — source map upload + native crash symbolication
+      // Requires EAS Secrets: SENTRY_ORG, SENTRY_PROJECT, SENTRY_AUTH_TOKEN
+      // Only register the plugin if SENTRY_AUTH_TOKEN is set — registering with
+      // placeholder values causes the native SDK to crash on Android launch.
+      ...(process.env.SENTRY_AUTH_TOKEN ? [['@sentry/react-native/expo', {
+        organization: process.env.SENTRY_ORG || '',
+        project: process.env.SENTRY_PROJECT || '',
+      }]] : []),
     ],
     extra: {
       googleMapsApiKey: GOOGLE_MAPS_KEY,
