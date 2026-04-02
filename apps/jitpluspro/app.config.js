@@ -73,6 +73,7 @@ module.exports = ({ config }) => {
       },
     },
     android: {
+      versionCode: 1,
       adaptiveIcon: {
         foregroundImage: './assets/images/adaptive-icon-white.png',
         backgroundColor: '#FFFFFF',
@@ -98,6 +99,13 @@ module.exports = ({ config }) => {
         'VIBRATE',
         // Required for expo-image-picker on Android 13+ (replaces READ_EXTERNAL_STORAGE)
         'READ_MEDIA_IMAGES',
+      ],
+      // Block excessive auto-injected permissions that trigger Play Console warnings
+      blockedPermissions: [
+        'android.permission.WRITE_SETTINGS',
+        'android.permission.READ_EXTERNAL_STORAGE',
+        'android.permission.WRITE_EXTERNAL_STORAGE',
+        'android.permission.SYSTEM_ALERT_WINDOW',
       ],
       package: 'com.jitplus.pro',
       googleServicesFile: process.env.GOOGLE_SERVICES_JSON || './google-services.json',
