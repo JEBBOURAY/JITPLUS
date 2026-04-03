@@ -20,6 +20,7 @@ export default {
     search: 'بحث',
     noResults: 'لا توجد نتائج',
     networkError: 'خطأ في الشبكة',
+    networkErrorMsg: 'تعذر الاتصال بالخادم. تحقق من اتصالك بالإنترنت وأعد المحاولة.',
     genericError: 'حدث خطأ ما',
     points: 'نقاط',
     point: 'نقطة',
@@ -39,6 +40,21 @@ export default {
   errors: {
     somethingWentWrong: 'حدث خطأ ما',
     unexpectedError: 'حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.',
+  },
+
+  // ── Auth (context) ──
+  auth: {
+    invalidServerResponse: 'استجابة غير صالحة من الخادم. يرجى المحاولة مرة أخرى.',
+    loginError: 'فشل تسجيل الدخول. تحقق من بياناتك وأعد المحاولة.',
+    googleLoginError: 'فشل تسجيل الدخول بـ Google. يرجى المحاولة مرة أخرى.',
+    appleLoginError: 'فشل تسجيل الدخول بـ Apple. يرجى المحاولة مرة أخرى.',
+    googleRegisterError: 'فشل التسجيل بـ Google. يرجى المحاولة مرة أخرى.',
+  },
+
+  // ── Upload ──
+  upload: {
+    fileTooLarge: 'الملف كبير جداً (الحد الأقصى 5 ميغا).',
+    unsupportedFileType: 'نوع ملف غير مدعوم: %{mime}.',
   },
 
   login: {
@@ -573,7 +589,8 @@ export default {
 
   // ── Settings page ──
   settingsPage: {
-    title: 'الإعدادات',
+    title: 'الولاء',
+    guideText: 'قم بإعداد برنامج الولاء في خطوتين: اختر أولاً نظام الولاء (نقاط أو طوابع)، ثم أضف الهدايا التي يمكن لعملائك الحصول عليها. اضغط على كل قسم لفتحه.',
     loyaltyMode: 'نظام الولاء',
     loyaltyModeHint: 'اختر كيفية مكافأة عملائك',
     modePoints: 'نظام النقاط',
@@ -585,10 +602,13 @@ export default {
     stampsForGift: 'عدد الطوابع للحصول على هدية',
     stampsForGiftHint: 'بعد %{count} طابع، يحصل العميل على هدية',
     stampPreviewTitle: 'معاينة بطاقة الولاء',
+    pointsPreviewTitle: 'معاينة النقاط',
+    simulatedClient: 'العميل يحاكي عملية شراء (مثال: 10 دراهم)',
+    pointsPreviewHint: 'من خلال شراء بقيمة 10 دراهم، يربح عميلك %{count} نقاط.',
     stampPreviewHint: '3 / %{count} طابع تم جمعها (مثال)',
     gifts: 'الهدايا',
     giftsHint: 'أضف الهدايا المتاحة لعملائك المخلصين',
-    giftsSection: '🎁 الهدايا',
+    giftsSection: 'الهدايا',
     giftsSectionHint: 'قم بتكوين الهدايا التي يمكن لعملائك استبدالها بنقاطهم أو طوابعهم',
     giftName: 'اسم الهدية',
     giftCost: 'التكلفة',
@@ -1201,6 +1221,23 @@ export default {
     pendingGiftsSubtitle: '%{count} هدية للتسليم',
     noPending: 'لا توجد هدايا معلقة',
     unknownReward: 'هدية غير معروفة',
+  },
+
+  // ── Category Names ──
+  categoryNames: {
+    CAFE: 'مقهى',
+    RESTAURANT: 'مطعم',
+    EPICERIE: 'بقالة',
+    BOULANGERIE: 'مخبزة',
+    PHARMACIE: 'صيدلية',
+    LIBRAIRIE: 'مكتبة',
+    VETEMENTS: 'أزياء',
+    ELECTRONIQUE: 'إلكترونيات',
+    COIFFURE: 'صالون حلاقة',
+    BEAUTE: 'جمال',
+    SPORT: 'رياضة',
+    SUPERMARCHE: 'سوبر ماركت',
+    AUTRE: 'أخرى',
   },
 
   // ── Category Descriptions ──

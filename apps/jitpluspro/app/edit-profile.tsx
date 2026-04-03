@@ -29,7 +29,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import api from '@/services/api';
 import { getErrorMessage } from '@/utils/error';
 import { MerchantCategory } from '@/types';
-import { CATEGORY_LABELS } from '@/constants/categories';
+import { CATEGORY_EMOJIS, getCategoryLabel } from '@/constants/categories';
 import { LinearGradient } from 'expo-linear-gradient';
 import { wp, hp, ms, fontSize as FS, radius } from '@/utils/responsive';
 
@@ -223,8 +223,9 @@ export default function EditProfileScreen() {
         </Text>
         <View style={[styles.card, { backgroundColor: theme.bgCard }]}>
           <View style={styles.categoryGrid}>
-            {(Object.keys(CATEGORY_LABELS) as MerchantCategory[]).map((key) => {
-              const { label, emoji } = CATEGORY_LABELS[key];
+            {(Object.values(MerchantCategory)).map((key) => {
+              const label = getCategoryLabel(key);
+              const emoji = CATEGORY_EMOJIS[key] ?? '🏷️';
               const isSelected = categorie === key;
               return (
                 <TouchableOpacity

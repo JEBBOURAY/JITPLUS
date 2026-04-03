@@ -20,6 +20,7 @@ export default {
     search: 'Search',
     noResults: 'No results',
     networkError: 'Network error',
+    networkErrorMsg: 'Unable to reach the server. Please check your internet connection and try again.',
     genericError: 'An error occurred',
     points: 'points',
     point: 'point',
@@ -39,6 +40,21 @@ export default {
   errors: {
     somethingWentWrong: 'Something went wrong',
     unexpectedError: 'An unexpected error occurred. Please try again.',
+  },
+
+  // ── Auth (context) ──
+  auth: {
+    invalidServerResponse: 'Invalid server response. Please try again.',
+    loginError: 'Login failed. Please check your credentials and try again.',
+    googleLoginError: 'Google sign-in failed. Please try again.',
+    appleLoginError: 'Apple sign-in failed. Please try again.',
+    googleRegisterError: 'Google sign-up failed. Please try again.',
+  },
+
+  // ── Upload ──
+  upload: {
+    fileTooLarge: 'File is too large (max 5 MB).',
+    unsupportedFileType: 'Unsupported file type: %{mime}.',
   },
 
   login: {
@@ -574,7 +590,8 @@ export default {
 
   // ── Settings page ──
   settingsPage: {
-    title: 'Settings',
+    title: 'Loyalty',
+    guideText: 'Set up your loyalty program in 2 steps: first choose your loyalty mode (points or stamps), then add the gifts your customers can earn. Tap each section to expand it.',
     loyaltyMode: 'Loyalty mode',
     loyaltyModeHint: 'Choose how to reward your customers',
     modePoints: 'Points mode',
@@ -586,10 +603,13 @@ export default {
     stampsForGift: 'Stamps needed for a gift',
     stampsForGiftHint: 'After %{count} stamps, the customer gets a gift',
     stampPreviewTitle: 'Loyalty card preview',
+    pointsPreviewTitle: 'Points preview',
+    simulatedClient: 'Client simulates a purchase (Ex: 10 MAD)',
+    pointsPreviewHint: 'With a 10 MAD purchase, your client earns %{count} points.',
     stampPreviewHint: '3 / %{count} stamps collected (example)',
     gifts: 'Gifts',
     giftsHint: 'Add the gifts available for your loyal customers',
-    giftsSection: '🎁 Gifts',
+    giftsSection: 'Gifts',
     giftsSectionHint: 'Configure the rewards your customers can redeem with their points or stamps',
     giftName: 'Gift name',
     giftCost: 'Cost',
@@ -1202,6 +1222,23 @@ export default {
     pendingGiftsSubtitle: '%{count} gift(s) to deliver',
     noPending: 'No pending gifts',
     unknownReward: 'Unknown reward',
+  },
+
+  // ── Category Names ──
+  categoryNames: {
+    CAFE: 'Coffee',
+    RESTAURANT: 'Restaurant',
+    EPICERIE: 'Grocery',
+    BOULANGERIE: 'Bakery',
+    PHARMACIE: 'Pharmacy',
+    LIBRAIRIE: 'Bookstore',
+    VETEMENTS: 'Fashion',
+    ELECTRONIQUE: 'Electronics',
+    COIFFURE: 'Hair salon',
+    BEAUTE: 'Beauty',
+    SPORT: 'Sport',
+    SUPERMARCHE: 'Supermarket',
+    AUTRE: 'Other',
   },
 
   // ── Category Descriptions ──

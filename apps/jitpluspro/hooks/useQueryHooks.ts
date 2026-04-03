@@ -6,6 +6,7 @@ import {
   keepPreviousData,
 } from '@tanstack/react-query';
 import api from '@/services/api';
+import i18n from '@/i18n';
 import type {
   Store,
   PlanInfo,
@@ -406,12 +407,12 @@ export function useUploadMerchantLogo() {
     mutationFn: async (asset: { uri: string; mimeType?: string | null; merchantName?: string; fileSize?: number | null }) => {
       // Validate file size before uploading
       if (asset.fileSize && asset.fileSize > MAX_LOGO_SIZE) {
-        throw new Error('Fichier trop volumineux (max 5 Mo)');
+        throw new Error(i18n.t('upload.fileTooLarge'));
       }
       const ext = (asset.uri.split('.').pop() ?? 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
       const mime = asset.mimeType ?? `image/${ext}`;
       if (!ALLOWED_LOGO_MIMES.has(mime)) {
-        throw new Error(`Type de fichier non supporté: ${mime}`);
+        throw new Error(i18n.t('upload.unsupportedFileType', { mime }));
       }
       const safeName = (asset.merchantName ?? 'commerce')
         .toLowerCase()

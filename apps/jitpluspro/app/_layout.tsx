@@ -6,7 +6,7 @@ import { useFonts } from 'expo-font';
 import { Stack, useRouter } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Image, StyleSheet, ActivityIndicator } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClient, QueryCache, MutationCache, useQueryClient } from '@tanstack/react-query';
@@ -156,7 +156,7 @@ export default function RootLayout() {
   }, [error]);
 
   // Font loading timeout — don't block app launch forever if fonts fail
-  const [fontTimeout, setFontTimeout] = React.useState(false);
+  const [fontTimeout, setFontTimeout] = useState(false);
   useEffect(() => {
     const timer = setTimeout(() => setFontTimeout(true), 5000);
     return () => clearTimeout(timer);

@@ -219,6 +219,12 @@ export class ClientService {
       return { success: false, reason: 'expo_token_not_supported' };
     }
 
+    // Clear the same token from any other client to prevent duplicate notifications
+    await this.clientRepo.updateMany({
+      where: { pushToken, id: { not: clientId } },
+      data: { pushToken: null },
+    });
+
     await this.clientRepo.update({
       where: { id: clientId },
       data: { pushToken },

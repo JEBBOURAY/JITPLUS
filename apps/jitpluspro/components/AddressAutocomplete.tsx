@@ -1,5 +1,6 @@
 /**
  * AddressAutocomplete — Google Places Autocomplete dropdown for address input.
+ * Calls the backend /geocode/* proxy (server-side API key, no app-restriction issues).
  * Shows live suggestions as the user types, biased to Morocco.
  */
 import React, { useState, useRef, useCallback, useEffect } from 'react';
@@ -8,14 +9,8 @@ import {
   ActivityIndicator, StyleSheet, Keyboard, Platform,
 } from 'react-native';
 import { Search, MapPin, X } from 'lucide-react-native';
-import Constants from 'expo-constants';
 import { useTheme } from '@/contexts/ThemeContext';
-
-const GOOGLE_MAPS_KEY =
-  process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ||
-  Constants.expoConfig?.extra?.googleMapsApiKey ||
-  Constants.expoConfig?.android?.config?.googleMaps?.apiKey ||
-  '';
+import { getServerBaseUrl } from '@/services/api';
 
 const DEBOUNCE_MS = 350;
 
@@ -27,26 +22,6 @@ interface PlacePrediction {
     main_text: string;
     secondary_text?: string;
   };
-}
-
-interface AutocompleteResponse {
-  status: string;
-  predictions?: PlacePrediction[];
-}
-
-interface PlaceDetailsResult {
-  geometry: { location: { lat: number; lng: number } };
-  formatted_address?: string;
-  address_components?: Array<{
-    long_name: string;
-    short_name: string;
-    types: string[];
-  }>;
-}
-
-interface PlaceDetailsResponse {
-  status: string;
-  result?: PlaceDetailsResult;
 }
 
 export interface AddressResult {
@@ -81,9 +56,9 @@ export default function AddressAutocomplete({
   const abortRef = useRef<AbortController | null>(null);
   const mountedRef = useRef(true);
 
-  // Fetch predictions from Google Places Autocomplete API
+  // Fetch predictions via backend proxy
   const fetchPredictions = useCallback(async (input: string) => {
-    if (!GOOGLE_MAPS_KEY || input.trim().length < 3) {
+    if (input.trim().length < 3) {
       setPredictions([]);
       setShowDropdown(false);
       return;
@@ -96,14 +71,15 @@ export default function AddressAutocomplete({
 
     setLoading(true);
     try {
-      const query = ville ? `${input}, ${ville}` : input;
-      const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(query)}&components=country:ma&language=fr&types=geocode|establishment&key=${GOOGLE_MAPS_KEY}`;
+      const params = new URLSearchParams({ input });
+      if (ville) params.set('ville', ville);
+      const url = `${getServerBaseUrl()}/geocode/autocomplete?${params}`;
       const res = await fetch(url, { signal: controller.signal });
-      const json: AutocompleteResponse = await res.json();
+      const json = await res.json();
 
       if (!mountedRef.current) return;
 
-      if (json.status === 'OK' && json.predictions) {
+      if (json.predictions?.length > 0) {
         setPredictions(json.predictions.slice(0, 5));
         setShowDropdown(true);
       } else {
@@ -138,20 +114,18 @@ export default function AddressAutocomplete({
     setPredictions([]);
     onChangeText(prediction.structured_formatting.main_text);
 
-    if (!GOOGLE_MAPS_KEY) return;
-
     setLoading(true);
     try {
-      const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(prediction.place_id)}&fields=geometry,formatted_address,address_components&language=fr&key=${GOOGLE_MAPS_KEY}`;
+      const url = `${getServerBaseUrl()}/geocode/place-details?placeId=${encodeURIComponent(prediction.place_id)}`;
       const res = await fetch(url);
-      const json: PlaceDetailsResponse = await res.json();
+      const json = await res.json();
 
       if (!mountedRef.current) return;
 
-      if (json.status === 'OK' && json.result) {
+      if (json.result) {
         const { geometry, formatted_address, address_components } = json.result;
         const get = (type: string) =>
-          address_components?.find((c) => c.types.includes(type))?.long_name;
+          address_components?.find((c: { types: string[] }) => c.types.includes(type))?.long_name;
 
         onSelect({
           latitude: geometry.location.lat,

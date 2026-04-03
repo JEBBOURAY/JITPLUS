@@ -452,6 +452,7 @@ export default function MessagesScreen() {
   if (isTeamMember) {
     return (
       <Animated.View style={[styles.container, { backgroundColor: theme.bg }, focusStyle]}>
+        <View collapsable={false}>
         <LinearGradient
           colors={[...CHANNEL_COLORS.GRADIENT]}
           start={{ x: 0, y: 0 }}
@@ -464,6 +465,7 @@ export default function MessagesScreen() {
             <Text style={styles.headerSub}>{t('messages.subtitle')}</Text>
           </View>
         </LinearGradient>
+        </View>
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32 }}>
           <Shield size={48} color={theme.textMuted} strokeWidth={1.5} />
           <Text style={{ color: theme.text, fontSize: 18, fontWeight: '700', marginTop: 16, textAlign: 'center' }}>
@@ -485,6 +487,7 @@ export default function MessagesScreen() {
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
       >
         {/* ── Header ─────────────────────────────── */}
+        <View collapsable={false}>
         <LinearGradient
           colors={[...CHANNEL_COLORS.GRADIENT]}
           start={{ x: 0, y: 0 }}
@@ -497,6 +500,7 @@ export default function MessagesScreen() {
             <Text style={styles.headerSub}>{t('messages.subtitle')}</Text>
           </View>
         </LinearGradient>
+        </View>
 
         <FlatList
           data={showHistory ? history : []}
@@ -513,7 +517,7 @@ export default function MessagesScreen() {
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />
           }
           ListHeaderComponent={
-            <>
+            <View>
               {/* ── Channel Toggle Row (Notification / WhatsApp / E-mail) ── */}
               <View style={styles.toggleRow}>
                 <TouchableOpacity
@@ -849,7 +853,7 @@ export default function MessagesScreen() {
                   ? <ChevronUp size={18} color={theme.textMuted} />
                   : <ChevronDown size={18} color={theme.textMuted} />}
               </TouchableOpacity>
-            </>
+            </View>
           }
           ListEmptyComponent={
             !showHistory ? null :

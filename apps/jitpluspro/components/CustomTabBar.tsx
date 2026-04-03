@@ -70,6 +70,7 @@ const TabButton = React.memo(function TabButton({
         activeOpacity={0.7}
         style={styles.tab}
       >
+        <View collapsable={false}>
         <LinearGradient
           colors={isFocused
             ? [palette.violet, palette.violetDark]
@@ -84,6 +85,7 @@ const TabButton = React.memo(function TabButton({
             strokeWidth={1.5}
           />
         </LinearGradient>
+        </View>
         <Text
           style={[
             styles.label,

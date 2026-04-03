@@ -5,6 +5,9 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { ActivityIndicator, View } from 'react-native';
 import CustomTabBar from '@/components/CustomTabBar';
 
+// Module-level flag — survives component remounts (resets only on full app restart)
+let _initialScanOpened = false;
+
 export default function TabLayout() {
   const { merchant, loading, onboardingCompleted, isTeamMember } = useAuth();
   const theme = useTheme();
@@ -15,6 +18,7 @@ export default function TabLayout() {
     if (loading) return;
     if (!merchant) {
       router.replace('/welcome');
+      _initialScanOpened = false;
       return;
     }
     if (!merchant.emailVerified && !merchant.googleId) {
@@ -22,11 +26,18 @@ export default function TabLayout() {
         pathname: '/verify-email',
         params: { email: merchant.email },
       });
+      _initialScanOpened = false;
       return;
     }
     if (!onboardingCompleted && !isTeamMember) {
       router.replace('/onboarding');
+      _initialScanOpened = false;
       return;
+    }
+    // All checks passed — open scanner on first load
+    if (!_initialScanOpened) {
+      _initialScanOpened = true;
+      router.push('/scan-qr');
     }
   }, [loading, merchant, onboardingCompleted, isTeamMember]);
 
@@ -42,6 +53,7 @@ export default function TabLayout() {
 
   return (
     <Tabs
+      initialRouteName="scan"
       tabBar={(props) => <CustomTabBar {...props} />}
       screenOptions={{
         headerShown: false,

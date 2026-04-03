@@ -169,10 +169,12 @@ export default function ClientsScreen() {
 
   const keyExtractor = useCallback((item: ClientListItem) => item.id, []);
 
-  // ── Skeleton loading ──
-  if (loading && clients.length === 0 && !search) {
-    return (
-      <RNAnimated.View style={[styles.container, { backgroundColor: theme.bg }, focusStyle]}>
+  const showSkeleton = loading && clients.length === 0 && !search;
+
+  return (
+    <RNAnimated.View style={[styles.container, { backgroundColor: theme.bg }, focusStyle]}>
+      {/* ── Header (single instance to avoid Fabric reparenting crash) ── */}
+      <View collapsable={false}>
         <LinearGradient
           colors={[...brandGradient]}
           start={{ x: 0, y: 0 }}
@@ -184,27 +186,12 @@ export default function ClientsScreen() {
             <Text style={styles.headerSub}>{t('clients.subtitle')}</Text>
           </View>
         </LinearGradient>
+      </View>
+
+      {showSkeleton ? (
         <ClientListSkeleton count={7} />
-      </RNAnimated.View>
-    );
-  }
-
-  return (
-    <RNAnimated.View style={[styles.container, { backgroundColor: theme.bg }, focusStyle]}>
-      {/* ── Header ── */}
-      <LinearGradient
-        colors={[...brandGradient]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={[styles.header, { paddingTop: insets.top + 12 }]}
-      >
-        <View>
-          <Text style={styles.headerTitle}>{t('clients.title')}</Text>
-            <Text style={styles.headerSub}>{t('clients.subtitle')}</Text>
-        </View>
-      </LinearGradient>
-
-      {/* ── List ── */}
+      ) : (
+      /* ── List ── */
       <FlatList
         data={clients}
         renderItem={renderClient}
@@ -225,7 +212,7 @@ export default function ClientsScreen() {
         }
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
-          <>
+          <View>
             {/* ── Search bar ── */}
             <View style={[styles.searchBar, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
               <Search size={18} color={palette.violet} />
@@ -254,11 +241,11 @@ export default function ClientsScreen() {
                 {t('clients.resultsCount', { count: clients.length })}
               </Text>
             )}
-          </>
+          </View>
         }
         ListEmptyComponent={<EmptyState search={search} theme={theme} onScan={() => router.push('/scan-qr')} />}
       />
-
+      )}
     </RNAnimated.View>
   );
 }

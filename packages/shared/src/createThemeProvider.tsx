@@ -18,6 +18,8 @@ export interface ThemeProviderConfig<T extends { mode: 'light' | 'dark' }> {
   appearance: SystemAppearanceAdapter;
   lightTheme: T;
   darkTheme: T;
+  /** Initial theme mode before the stored preference is loaded. Defaults to 'system'. */
+  defaultMode?: ThemeMode;
 }
 
 export function createThemeProvider<T extends { mode: 'light' | 'dark' }>(
@@ -33,7 +35,7 @@ export function createThemeProvider<T extends { mode: 'light' | 'dark' }>(
   });
 
   const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const [themeMode, setThemeMode] = useState<ThemeMode>('system');
+    const [themeMode, setThemeMode] = useState<ThemeMode>(config.defaultMode ?? 'system');
     const [systemColorScheme, setSystemColorScheme] = useState<'light' | 'dark'>(
       config.appearance.getColorScheme(),
     );

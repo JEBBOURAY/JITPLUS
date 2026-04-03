@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
 import { Store, Check } from 'lucide-react-native';
 import { MerchantCategory } from '@/types';
-import { CATEGORY_LABELS } from '@/constants/categories';
+import { CATEGORY_EMOJIS, getCategoryLabel } from '@/constants/categories';
 import type { ThemeColors } from '@/contexts/ThemeContext';
 
 interface Props {
@@ -63,7 +63,9 @@ export function StepIdentity({
           {t('register.categoryLabel')} *
         </Text>
         <View style={styles.categoryGrid}>
-          {Object.entries(CATEGORY_LABELS).map(([key, { label, emoji }]) => {
+          {Object.values(MerchantCategory).map((key) => {
+            const label = getCategoryLabel(key);
+            const emoji = CATEGORY_EMOJIS[key] ?? '🏷️';
             const isSelected = categorie === key;
             return (
               <TouchableOpacity
@@ -75,7 +77,7 @@ export function StepIdentity({
                     borderColor: isSelected ? theme.primary : theme.border,
                   },
                 ]}
-                onPress={() => setCategorie(key as MerchantCategory)}
+                onPress={() => setCategorie(key)}
                 activeOpacity={0.7}
               >
                 <Text style={styles.categoryEmoji}>{emoji}</Text>

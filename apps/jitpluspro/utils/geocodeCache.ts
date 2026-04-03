@@ -1,5 +1,5 @@
 import * as Location from 'expo-location';
-import Constants from 'expo-constants';
+import { getServerBaseUrl } from '@/services/api';
 
 // ── Google Geocoding API response types ──
 interface GeoLatLng {
@@ -23,19 +23,8 @@ interface GeoResult {
   address_components?: GeoAddressComponent[];
 }
 
-interface GeoResponse {
-  status: string;
-  results?: GeoResult[];
-}
-
 const CACHE_MAX = 50;
 const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
-
-const GOOGLE_MAPS_KEY =
-  process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ||
-  Constants.expoConfig?.extra?.googleMapsApiKey ||
-  Constants.expoConfig?.android?.config?.googleMaps?.apiKey ||
-  '';
 
 interface CacheEntry<V> {
   value: V;
@@ -71,17 +60,16 @@ function lruSet<K, V>(cache: Map<K, CacheEntry<V>>, key: K, value: V): void {
   cache.set(key, { value, expiresAt: now + CACHE_TTL_MS });
 }
 
-// ── Forward geocode via Google Geocoding API ──
+// ── Forward geocode via backend proxy ──
 async function googleGeocode(address: string): Promise<Location.LocationGeocodedLocation[]> {
-  if (!GOOGLE_MAPS_KEY) return [];
   // Sanitize input: trim, cap length, reject suspicious patterns
   const sanitized = address.trim().slice(0, 200);
   if (!sanitized) return [];
-  const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(sanitized)}&region=ma&language=fr&key=${GOOGLE_MAPS_KEY}`;
+  const url = `${getServerBaseUrl()}/geocode/forward?address=${encodeURIComponent(sanitized)}`;
   const res = await fetch(url);
-  const json: GeoResponse = await res.json();
-  const results = json.results;
-  if (json.status === 'OK' && results && results.length > 0) {
+  const json = await res.json();
+  const results: GeoResult[] | undefined = json.results;
+  if (results && results.length > 0) {
     return results.map((r: GeoResult) => ({
       latitude: r.geometry.location.lat,
       longitude: r.geometry.location.lng,
@@ -90,19 +78,18 @@ async function googleGeocode(address: string): Promise<Location.LocationGeocoded
   return [];
 }
 
-// ── Reverse geocode via Google Geocoding API ──
+// ── Reverse geocode via backend proxy ──
 async function googleReverseGeocode(
   lat: number,
   lng: number,
 ): Promise<Location.LocationGeocodedAddress[]> {
-  if (!GOOGLE_MAPS_KEY) return [];
   // Validate coordinate ranges
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) return [];
-  const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&language=fr&key=${GOOGLE_MAPS_KEY}`;
+  const url = `${getServerBaseUrl()}/geocode/reverse?lat=${lat}&lng=${lng}`;
   const res = await fetch(url);
-  const json: GeoResponse = await res.json();
-  const results = json.results;
-  if (json.status === 'OK' && results && results.length > 0) {
+  const json = await res.json();
+  const results: GeoResult[] | undefined = json.results;
+  if (results && results.length > 0) {
     const r = results[0];
     const get = (type: string) =>
       r.address_components?.find((c: GeoAddressComponent) => c.types?.includes(type))?.long_name ?? null;

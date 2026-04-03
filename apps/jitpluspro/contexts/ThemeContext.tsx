@@ -146,6 +146,7 @@ const darkTheme: ThemeColors = {
 
 export const { ThemeProvider, useTheme } = createThemeProvider<ThemeColors>({
   storageKey: THEME_STORAGE_KEY,
+  defaultMode: 'light',
   storage: {
     getItem: (key) => SecureStore.getItemAsync(key).then((v) => v ?? null),
     setItem: (key, val) => SecureStore.setItemAsync(key, val),

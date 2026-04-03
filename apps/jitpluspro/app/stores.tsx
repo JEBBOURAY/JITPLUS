@@ -44,8 +44,8 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
 import { Store as StoreType, MerchantCategory, CreateStorePayload } from '@/types';
-import MerchantCategoryIcon, { useCategoryMetadata, CATEGORY_OPTIONS } from '@/components/MerchantCategoryIcon';
-import { CATEGORY_LABELS } from '@/constants/categories';
+import MerchantCategoryIcon, { useCategoryMetadata } from '@/components/MerchantCategoryIcon';
+import { getCategoryLabel as getCategoryLabelFn, getCategoryOptions, CATEGORY_EMOJIS } from '@/constants/categories';
 import { useStoresCRUD, MAX_STORES } from '@/hooks/useStoresCRUD';
 import { isValidEmail } from '@/utils/validation';
 import PremiumLockModal from '@/components/PremiumLockModal';
@@ -388,8 +388,7 @@ export default function StoresScreen() {
   // ── Category helper ──
   const getCategoryLabel = (cat?: MerchantCategory | '') => {
     if (!cat) return t('stores.sameCategoryLabel');
-    const found = CATEGORY_OPTIONS.find((c) => c.value === cat);
-    return found?.label ?? cat;
+    return getCategoryLabelFn(cat);
   };
 
   // ── Main view ──
@@ -721,8 +720,8 @@ export default function StoresScreen() {
           <View style={[styles.pickerCard, { backgroundColor: theme.bgCard }]}>
             <Text style={[styles.pickerTitle, { color: theme.text }]}>{t('stores.categoryLabel')}</Text>
             <ScrollView style={{ maxHeight: 350 }}>
-              {CATEGORY_OPTIONS.map((opt) => {
-                const meta = CATEGORY_LABELS[opt.value as keyof typeof CATEGORY_LABELS];
+              {getCategoryOptions().map((opt) => {
+                const emoji = CATEGORY_EMOJIS[opt.value] ?? '🏷️';
                 return (
                   <TouchableOpacity
                     key={opt.value}
@@ -733,8 +732,8 @@ export default function StoresScreen() {
                     ]}
                     onPress={() => { setForm({ categorie: opt.value as MerchantCategory, showCategoryPicker: false }); }}
                   >
-                    {meta?.emoji ? (
-                      <Text style={{ fontSize: 22 }}>{meta.emoji}</Text>
+                    {emoji ? (
+                      <Text style={{ fontSize: 22 }}>{emoji}</Text>
                     ) : (
                       <MerchantCategoryIcon category={opt.value} size={26} />
                     )}

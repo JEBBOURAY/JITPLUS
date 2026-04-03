@@ -22,6 +22,7 @@ export default {
     search: 'Rechercher',
     noResults: 'Aucun résultat',
     networkError: 'Erreur réseau',
+    networkErrorMsg: 'Impossible de contacter le serveur. Vérifiez votre connexion internet et réessayez.',
     genericError: 'Une erreur est survenue',
     points: 'points',
     point: 'point',
@@ -42,6 +43,21 @@ export default {
   errors: {
     somethingWentWrong: "Quelque chose s'est mal passé",
     unexpectedError: 'Une erreur inattendue est survenue. Veuillez réessayer.',
+  },
+
+  // ── Auth (contexte) ──
+  auth: {
+    invalidServerResponse: 'Réponse serveur invalide. Veuillez réessayer.',
+    loginError: 'Erreur de connexion. Vérifiez vos identifiants et réessayez.',
+    googleLoginError: 'Échec de la connexion Google. Veuillez réessayer.',
+    appleLoginError: 'Échec de la connexion Apple. Veuillez réessayer.',
+    googleRegisterError: "Échec de l'inscription Google. Veuillez réessayer.",
+  },
+
+  // ── Upload ──
+  upload: {
+    fileTooLarge: 'Le fichier est trop volumineux (max 5 Mo).',
+    unsupportedFileType: 'Type de fichier non supporté : %{mime}.',
   },
 
   // ── Login ──
@@ -598,7 +614,8 @@ export default {
 
   // ── Settings page ──
   settingsPage: {
-    title: 'Paramètres',
+    title: 'Fidéliser',
+    guideText: 'Configurez votre programme de fidélité en 2 étapes : choisissez d\'abord votre mode de fidélité (points ou tampons), puis ajoutez les cadeaux que vos clients pourront obtenir. Appuyez sur chaque section pour la déplier.',
     loyaltyMode: 'Mode de fidélité',
     loyaltyModeHint: 'Choisissez comment récompenser vos clients',
     modePoints: 'Mode Points',
@@ -609,11 +626,14 @@ export default {
     conversionHint: 'Pour chaque %{rate} %{currency} dépensé, le client gagne 1 point',
     stampsForGift: 'Nombre de tampons pour un cadeau',
     stampsForGiftHint: 'Après %{count} tampons, le client obtient un cadeau',
-    stampPreviewTitle: 'Aperçu carte de fidélité',
+    stampPreviewTitle: 'Aperçu de la carte de fidélité',
+    pointsPreviewTitle: 'Aperçu des points',
+    simulatedClient: 'Client simule un achat (Ex: 10 MAD)',
+    pointsPreviewHint: 'Avec un achat de 10 MAD, votre client obtient %{count} points.',
     stampPreviewHint: '3 / %{count} tampons collectés (exemple)',
     gifts: 'Cadeaux',
     giftsHint: 'Ajoutez les cadeaux disponibles pour vos clients fidèles',
-    giftsSection: '🎁 Cadeaux',
+    giftsSection: 'Cadeaux',
     giftsSectionHint: 'Configurez les cadeaux que vos clients peuvent échanger avec leurs points ou tampons',
     giftName: 'Nom du cadeau',
     giftCost: 'Coût',
@@ -1236,6 +1256,23 @@ export default {
     pendingGiftsSubtitle: '%{count} cadeau(x) à remettre',
     noPending: 'Aucun cadeau en attente',
     unknownReward: 'Cadeau inconnu',
+  },
+
+  // ── Category Names ──
+  categoryNames: {
+    CAFE: 'Café',
+    RESTAURANT: 'Restaurant',
+    EPICERIE: 'Épicerie',
+    BOULANGERIE: 'Boulangerie',
+    PHARMACIE: 'Pharmacie',
+    LIBRAIRIE: 'Librairie',
+    VETEMENTS: 'Mode',
+    ELECTRONIQUE: 'Électronique',
+    COIFFURE: 'Coiffure',
+    BEAUTE: 'Beauté',
+    SPORT: 'Sport',
+    SUPERMARCHE: 'Supermarché',
+    AUTRE: 'Autre',
   },
 
   // ── Category Descriptions ──

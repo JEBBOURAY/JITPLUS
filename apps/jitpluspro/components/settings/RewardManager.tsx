@@ -8,7 +8,7 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { Pencil } from 'lucide-react-native';
+import { Pencil, ChevronDown, ChevronUp, Gift } from 'lucide-react-native';
 import api from '@/services/api';
 import { getErrorMessage } from '@/utils/error';
 import PremiumLockCard from '@/components/PremiumLockCard';
@@ -37,12 +37,16 @@ interface Props {
   onRewardsChange?: (rewards: Reward[]) => void;
   /** External trigger to reload rewards */
   reloadToken?: number;
+  /** Whether the section is expanded */
+  expanded?: boolean;
+  /** Toggle expand/collapse */
+  onToggleExpanded?: () => void;
 }
 
 export function RewardManager({
   theme, t, isStamps, isPremium, loyaltyType, merchant,
   conversionX, conversionY, hasAccumulationLimit, accumulationLimit,
-  onRewardsChange, reloadToken,
+  onRewardsChange, reloadToken, expanded = true, onToggleExpanded,
 }: Props) {
   const [rewards, setRewards] = useState<Reward[]>([]);
   const [loadingRewards, setLoadingRewards] = useState(false);
@@ -189,8 +193,20 @@ export function RewardManager({
 
   return (
     <>
-      <Text style={[styles.sectionTitle, { color: theme.text }]}>{t('settingsPage.giftsSection')}</Text>
-      <View style={[styles.card, { backgroundColor: theme.bgCard }]}>
+      <TouchableOpacity
+        style={styles.sectionHeader}
+        onPress={onToggleExpanded}
+        activeOpacity={0.7}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+          <Gift size={20} color={theme.primary} strokeWidth={1.5} />
+          <Text style={[styles.sectionTitle, { color: theme.text, marginTop: 0, marginBottom: 0, marginHorizontal: 0 }]}>{t('settingsPage.giftsSection')}</Text>
+        </View>
+        {expanded
+          ? <ChevronUp size={20} color={theme.textMuted} />
+          : <ChevronDown size={20} color={theme.textMuted} />}
+      </TouchableOpacity>
+      {expanded && <View style={[styles.card, { backgroundColor: theme.bgCard }]}>
         <Text style={[styles.cardLabel, { color: theme.textSecondary }]}>
           {t('settingsPage.giftsSectionHint')}
         </Text>
@@ -326,12 +342,20 @@ export function RewardManager({
             ))}
           </View>
         )}
-      </View>
+      </View>}
     </>
   );
 }
 
 const styles = StyleSheet.create({
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginHorizontal: 20,
+    marginTop: 24,
+    marginBottom: 16,
+  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: '700',

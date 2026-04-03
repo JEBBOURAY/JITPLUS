@@ -17,6 +17,7 @@ import { MailModule } from './mail/mail.module';
 import { TwilioModule } from './twilio/twilio.module';
 import { StorageModule } from './storage/storage.module';
 import { AdminModule } from './admin/admin.module';
+import { GeocodeModule } from './geocode/geocode.module';
 // GoogleWalletModule temporarily disabled for Play Store compliance
 // import { GoogleWalletModule } from './google-wallet/google-wallet.module';
 import { RequestLoggerMiddleware } from './common/middleware/request-logger.middleware';
@@ -40,6 +41,7 @@ import { THROTTLE_TTL } from './common/constants';
         CORS_ORIGINS: Joi.when('NODE_ENV', { is: 'production', then: Joi.string().required(), otherwise: Joi.string().optional() }),
         GOOGLE_CLIENT_ID: Joi.string().optional(),
         GOOGLE_ANDROID_CLIENT_ID: Joi.string().optional(),
+        GOOGLE_MAPS_API_KEY: Joi.string().optional(),
         BACKEND_URL: Joi.string().uri().optional(),
         // ── Google Cloud Platform ──────────────────────────────────────────
         GCP_PROJECT_ID: Joi.when('NODE_ENV', { is: 'production', then: Joi.string().required(), otherwise: Joi.string().optional() }),
@@ -90,6 +92,7 @@ import { THROTTLE_TTL } from './common/constants';
     NotificationsModule,
     HealthModule,
     AdminModule,
+    GeocodeModule,
     // GoogleWalletModule, // temporarily disabled for Play Store compliance
   ],
   providers: [

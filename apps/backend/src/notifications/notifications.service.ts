@@ -107,7 +107,7 @@ export class NotificationsService {
       if (batch.length < NotificationsService.CLIENT_BATCH_SIZE) break;
     }
 
-    const tokens = pushRecipients.map((r) => r.pushToken);
+    const tokens = [...new Set(pushRecipients.map((r) => r.pushToken))];
 
     // Include data payload so client-side handleFcmDataPayload triggers cache invalidation
     const fcmData: Record<string, string> = { event: 'notification_new', merchantId };

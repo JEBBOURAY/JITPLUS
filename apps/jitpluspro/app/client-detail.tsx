@@ -224,6 +224,7 @@ export default function ClientDetailScreen() {
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
       {/* ── Header ── */}
+      <View collapsable={false}>
       <LinearGradient
         colors={[...brandGradient]}
         start={{ x: 0, y: 0 }}
@@ -268,6 +269,7 @@ export default function ClientDetailScreen() {
           </TouchableOpacity>
         </View>
       </LinearGradient>
+      </View>
 
       <ScrollView
         style={styles.body}

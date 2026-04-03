@@ -411,7 +411,7 @@ export class ClientAuthService {
   async logout(clientId: string): Promise<{ success: boolean; message: string }> {
     await this.clientRepo.update({
       where: { id: clientId },
-      data: { refreshTokenHash: null },
+      data: { refreshTokenHash: null, pushToken: null },
     });
     return { success: true, message: 'Déconnexion réussie' };
   }

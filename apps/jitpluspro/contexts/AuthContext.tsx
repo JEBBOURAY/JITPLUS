@@ -8,6 +8,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useQueryClient } from '@tanstack/react-query';
 import api, { onUnauthorized } from '@/services/api';
 import { getErrorMessage } from '@/utils/error';
+import i18n from '@/i18n';
 import { Merchant, LoginCredentials, AuthResponse, TeamMember } from '@/types';
 import { useAuthStore } from '@/stores/authStore';
 
@@ -361,7 +362,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       });
 
       if (!response.data?.merchant) {
-        throw new Error('Réponse serveur invalide : données marchand manquantes');
+        throw new Error(i18n.t('auth.invalidServerResponse'));
       }
 
       if (__DEV__) console.log('[AuthContext] Connexion réussie:', response.data.merchant.nom, '| Type:', response.data.userType);
@@ -373,7 +374,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       });
     } catch (error: unknown) {
       if (__DEV__) console.error('[AuthContext] Erreur de connexion:', error);
-      throw new Error(getErrorMessage(error, 'Erreur de connexion'));
+      throw new Error(getErrorMessage(error, i18n.t('auth.loginError')));
     }
   }, [handleAuthSuccess]);
 
@@ -395,7 +396,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       return { success: true };
     } catch (error: unknown) {
       if (__DEV__) console.error('[AuthContext] Erreur Google login:', error);
-      return { success: false, error: getErrorMessage(error, 'Échec de la connexion Google'), rawError: error };
+      return { success: false, error: getErrorMessage(error, i18n.t('auth.googleLoginError')), rawError: error };
     }
   }, [handleAuthSuccess]);
 
@@ -423,7 +424,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       return { success: true };
     } catch (error: unknown) {
       if (__DEV__) console.error('[AuthContext] Erreur Apple login:', error);
-      return { success: false, error: getErrorMessage(error, 'Échec de la connexion Apple'), rawError: error };
+      return { success: false, error: getErrorMessage(error, i18n.t('auth.appleLoginError')), rawError: error };
     }
   }, [handleAuthSuccess]);
 
@@ -446,7 +447,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       return { success: true };
     } catch (error: unknown) {
       if (__DEV__) console.error('[AuthContext] Erreur Google register:', error);
-      return { success: false, error: getErrorMessage(error, "Échec de l'inscription Google"), rawError: error };
+      return { success: false, error: getErrorMessage(error, i18n.t('auth.googleRegisterError')), rawError: error };
     }
   }, [handleAuthSuccess]);
 

@@ -75,7 +75,7 @@ export default function PlanScreen() {
               await applyReferralMutation.mutateAsync();
               Alert.alert(t('account.planReferralSuccess'), t('account.planReferralSuccessMsg'));
             } catch (e) {
-              Alert.alert(t('common.error'), getErrorMessage(e));
+              Alert.alert(t('common.error'), getErrorMessage(e, t('common.genericError')));
             } finally {
               setApplyingMonths(false);
             }

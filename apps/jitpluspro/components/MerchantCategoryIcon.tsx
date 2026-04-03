@@ -16,7 +16,7 @@ import {
   type LucideIcon
 } from 'lucide-react-native';
 import { MerchantCategory } from '@/types';
-import { getCategoryLabel, CATEGORY_OPTIONS as _CATEGORY_OPTIONS } from '@/constants/categories';
+import { getCategoryLabel, getCategoryOptions } from '@/constants/categories';
 import i18n from '@/i18n';
 
 interface MerchantCategoryIconProps {
@@ -92,4 +92,4 @@ export function useCategoryMetadata(category?: MerchantCategory) {
 }
 
 /** Flat list of categories for picker UIs (re-exported from constants) */
-export const CATEGORY_OPTIONS = _CATEGORY_OPTIONS;
+export const CATEGORY_OPTIONS = getCategoryOptions();

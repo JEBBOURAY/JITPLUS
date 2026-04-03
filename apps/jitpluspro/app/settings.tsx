@@ -9,17 +9,7 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import {
-  Save,
-  Gift,
-  Settings as SettingsIcon,
-  ArrowLeft,
-  Stamp,
-  Star,
-  AlertTriangle,
-  RefreshCw,
-  ShieldCheck,
-} from 'lucide-react-native';
+import { Save, Gift, Check, Settings as SettingsIcon, ArrowLeft, Stamp, Star, AlertTriangle, RefreshCw, ShieldCheck, ChevronDown, ChevronUp } from 'lucide-react-native';
 import { useGuardedCallback } from '@/hooks/useGuardedCallback';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -113,6 +103,8 @@ export default function SettingsScreen() {
   const set = useCallback((payload: Partial<SettingsState>) => dispatch({ type: 'SET', payload }), []);
 
   const [premiumModal, setPremiumModal] = useState<{ visible: boolean; titleKey: string; descKey: string }>({ visible: false, titleKey: '', descKey: '' });
+  const [loyaltyExpanded, setLoyaltyExpanded] = useState(false);
+  const [giftsExpanded, setGiftsExpanded] = useState(false);
 
   useEffect(() => {
     if (!merchant && !authLoading) {
@@ -293,7 +285,6 @@ export default function SettingsScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <ArrowLeft size={24} color={theme.text} />
         </TouchableOpacity>
-        <SettingsIcon size={24} color={theme.primary} strokeWidth={1.5} />
         <Text style={[styles.headerTitle, { color: theme.text }]}>{t('settingsPage.title')}</Text>
         <TouchableOpacity onPress={handleRefresh} style={styles.refreshBtn}>
           <RefreshCw size={18} color={theme.primary} strokeWidth={1.5} />
@@ -304,9 +295,28 @@ export default function SettingsScreen() {
         contentContainerStyle={{ paddingBottom: 120 }}
         showsVerticalScrollIndicator={false}
       >
-        {/* â”€â”€ Section: Mode de fidÃ©litÃ© â”€â”€ */}
-        <Text style={[styles.sectionTitle, { color: theme.text }]}>{t('settingsPage.loyaltyMode')}</Text>
-        <View
+        {/* ── Guide text ── */}
+        <View style={[styles.guideContainer, { backgroundColor: theme.primaryBg || (theme.primary + '10'), borderLeftColor: theme.primary }]}>
+          <Text style={[styles.guideText, { color: theme.textSecondary }]}>
+            {t('settingsPage.guideText')}
+          </Text>
+        </View>
+
+        {/* ── Section: Mode de fidélité ── */}
+        <TouchableOpacity
+          style={styles.sectionHeader}
+          onPress={() => setLoyaltyExpanded(v => !v)}
+          activeOpacity={0.7}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+            <SettingsIcon size={20} color={theme.primary} strokeWidth={1.5} />
+            <Text style={[styles.sectionTitle, { color: theme.text, marginTop: 0, marginBottom: 0, marginHorizontal: 0 }]}>{t('settingsPage.loyaltyMode')}</Text>
+          </View>
+          {loyaltyExpanded
+            ? <ChevronUp size={20} color={theme.textMuted} />
+            : <ChevronDown size={20} color={theme.textMuted} />}
+        </TouchableOpacity>
+        {loyaltyExpanded && <View
           style={[styles.card, { backgroundColor: theme.bgCard }]}
         >
           {!isPremium ? (
@@ -504,7 +514,7 @@ export default function SettingsScreen() {
             </View>
           )}
 
-          {/* â”€â”€ Stamps Mode Settings â”€â”€ */}
+          {/* â”€â”€ Points Preview -->\n          {!isStamps && (\n            <View style={[styles.stampPreview, { backgroundColor: theme.bg }]}>\n              <Text style={[styles.stampPreviewTitle, { color: theme.text }]}>\n                {t('settingsPage.pointsPreviewTitle')}\n              </Text>\n              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: theme.primary + '15', padding: 16, borderRadius: 16, width: '100%', gap: 16 }}>\n                <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: theme.primary, alignItems: 'center', justifyContent: 'center' }}>\n                  <Star size={24} color='#fff' fill='#fff' />\n                </View>\n                <View style={{ flex: 1 }}>\n                  <Text style={{ fontSize: 13, color: theme.textMuted, marginBottom: 4 }}>{t('settingsPage.simulatedClient')}</Text>\n                  <Text style={{ fontSize: 24, fontWeight: '800', color: theme.text }}>{pointsRate || 10} <Text style={{ fontSize: 14, fontWeight: '600', color: theme.textMuted }}>Pts</Text></Text>\n                </View>\n              </View>\n              <Text style={[styles.stampPreviewHint, { color: theme.textMuted, textAlign: 'center', marginTop: 16, lineHeight: 18 }]}>\n                {t('settingsPage.pointsPreviewHint', { count: pointsRate || 10 })}\n              </Text>\n            </View>\n          )}\n\n          {/* ── Stamps Mode Settings â”€â”€ */}
           {isStamps && (
             <View>
               {/* â”€â”€ Stamp Earning Mode â”€â”€ */}
@@ -633,9 +643,9 @@ export default function SettingsScreen() {
                             : { backgroundColor: 'transparent', borderColor: theme.border },
                         ]}
                       >
-                        {i < 3 && <Text style={styles.stampCheckmark}>âœ“</Text>}
+                        {i < 3 && <Check size={16} color='#fff' strokeWidth={2} />}
                         {i === (parseInt(stampsForReward, 10) || 10) - 1 && i >= 3 && (
-                          <Gift size={14} color={theme.warning} />
+                          <Gift size={20} color={theme.primary} />
                         )}
                       </View>
                     ),
@@ -739,9 +749,9 @@ export default function SettingsScreen() {
             )}
           </TouchableOpacity>
           </>)}
-        </View>
+        </View>}
 
-        {/* â”€â”€ Section: Cadeaux â”€â”€ */}
+        {/* ── Section: Cadeaux ── */}
         <RewardManager
           theme={theme}
           t={t}
@@ -755,6 +765,8 @@ export default function SettingsScreen() {
           accumulationLimit={accumulationLimit}
           onRewardsChange={(r) => set({ rewards: r })}
           reloadToken={rewardReloadToken}
+          expanded={giftsExpanded}
+          onToggleExpanded={() => setGiftsExpanded(v => !v)}
         />
 
       </ScrollView>
@@ -793,7 +805,30 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  // â”€â”€ Sections â”€â”€
+  // ── Sections ──
+  guideContainer: {
+    marginHorizontal: 20,
+    marginTop: 16,
+    marginBottom: 4,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: '#f0f4ff',
+    borderRadius: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: '#7C3AED',
+  },
+  guideText: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  sectionHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    marginHorizontal: 20,
+    marginTop: 24,
+    marginBottom: 16,
+  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: '700',
@@ -913,9 +948,9 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   stampCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',

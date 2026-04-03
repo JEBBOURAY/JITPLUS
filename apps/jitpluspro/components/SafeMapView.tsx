@@ -172,6 +172,18 @@ const SafeMapView = forwardRef<SafeMapViewRef, SafeMapViewProps>((props, ref) =>
     fitToCoordinates: (...args: unknown[]) => nativeMapRef.current?.fitToCoordinates?.(...args),
   }), []);
 
+  /* Hooks must be called unconditionally — compute fallback data before early return */
+  const allMarkerCoords = useMemo(() => extractAllMarkerCoords(children), [children]);
+  const regionCoords = region || initialRegion;
+  const hasCoords = allMarkerCoords.length > 0 || !!regionCoords;
+  const markers = useMemo(() => {
+    return allMarkerCoords.length > 0
+      ? allMarkerCoords
+      : regionCoords
+        ? [{ latitude: regionCoords.latitude, longitude: regionCoords.longitude }]
+        : [];
+  }, [allMarkerCoords, regionCoords]);
+
   if (RNMapView && !renderTimedOut) {
     return (
       <RNMapView
@@ -210,19 +222,6 @@ const SafeMapView = forwardRef<SafeMapViewRef, SafeMapViewProps>((props, ref) =>
   }
 
   /* ----- Mode fallback (Expo Go) ----- */
-  const allMarkerCoords = useMemo(() => extractAllMarkerCoords(children), [children]);
-  const regionCoords = region || initialRegion;
-  const hasCoords = allMarkerCoords.length > 0 || !!regionCoords;
-
-  // Use markers if available, otherwise center on region
-  const markers = useMemo(() => {
-    return allMarkerCoords.length > 0
-      ? allMarkerCoords
-      : regionCoords
-        ? [{ latitude: regionCoords.latitude, longitude: regionCoords.longitude }]
-        : [];
-  }, [allMarkerCoords, regionCoords]);
-
   return <MapFallback style={style} markers={markers} hasCoords={hasCoords} />;
 });
 

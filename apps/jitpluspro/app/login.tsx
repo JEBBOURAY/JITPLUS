@@ -84,7 +84,7 @@ export default function LoginScreen() {
       const axiosErr = err as { code?: string; response?: { status?: number }; message?: string };
       const isNetworkError = axiosErr?.code === 'ECONNABORTED' || axiosErr?.code === 'ERR_NETWORK' || !axiosErr?.response;
       if (isNetworkError) {
-        Alert.alert(t('common.networkError'), t('common.networkErrorMsg') || t('login.invalidCredentials'));
+        Alert.alert(t('common.networkError'), t('common.networkErrorMsg'));
       } else {
         const msg = getErrorMessage(err, t('login.invalidCredentials'));
         setError(msg);

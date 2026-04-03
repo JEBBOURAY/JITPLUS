@@ -134,10 +134,11 @@ export default function ActivityScreen() {
 
   const keyExtractor = useCallback((item: Transaction) => item.id, []);
 
-  // ── Skeleton loading ──
-  if (loading && transactions.length === 0) {
-    return (
-      <Animated.View style={[styles.container, { backgroundColor: theme.bg }, focusStyle]}>
+  const showSkeleton = loading && transactions.length === 0;
+
+  return (
+    <Animated.View style={[styles.container, { backgroundColor: theme.bg }, focusStyle]}>
+      <View collapsable={false}>
         <LinearGradient
           colors={['#7C3AED', '#1F2937']}
           start={{ x: 0, y: 0 }}
@@ -152,30 +153,13 @@ export default function ActivityScreen() {
             <RefreshCw size={22} color="#E0F7FA" strokeWidth={1.5} />
           </TouchableOpacity>
         </LinearGradient>
+      </View>
+
+      {showSkeleton ? (
         <View style={styles.list}>
           <ActivityListSkeleton count={6} />
         </View>
-      </Animated.View>
-    );
-  }
-
-  return (
-    <Animated.View style={[styles.container, { backgroundColor: theme.bg }, focusStyle]}>
-      <LinearGradient
-        colors={['#7C3AED', '#1F2937']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={[styles.header, { paddingTop: insets.top + 12 }]}
-      >
-        <View>
-          <Text style={styles.headerTitle}>{t('activity.title')}</Text>
-          <Text style={styles.headerSub}>{t('activity.subtitle')}</Text>
-        </View>
-        <TouchableOpacity style={styles.refreshBtn} onPress={onRefresh}>
-          <RefreshCw size={22} color="#E0F7FA" strokeWidth={1.5} />
-        </TouchableOpacity>
-      </LinearGradient>
-
+      ) : (
       <FlatList
         data={transactions}
         renderItem={renderTx}
@@ -217,6 +201,7 @@ export default function ActivityScreen() {
           </View>
         }
       />
+      )}
     </Animated.View>
   );
 }
