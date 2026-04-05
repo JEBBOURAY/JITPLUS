@@ -283,6 +283,9 @@ export default {
   },
 
   account: {
+    guideText: 'Manage your account here, from subscription details to keeping your data secure.',
+    securityGuideText: 'Secure your account by updating your password and controlling connected devices.',
+    planGuideText: 'Check the benefits of your current plan and upgrade to unlock Pro features.',
     planPremium: 'Premium Account',
     planTrial: 'Premium Trial',
     planFree: 'Free Account',
@@ -564,6 +567,7 @@ export default {
 
   // ── Dashboard ──
   dashboard: {
+    guideText: 'Track your loyalty program stats: scans, new clients, and sales data.',
     title: 'Dashboard',
     periodDay: 'Day',
     periodWeek: 'Week',
@@ -719,6 +723,7 @@ export default {
 
   // ── Team management ──
   team: {
+    guideText: 'Manage your staff access here without compromising your admin settings.',
     title: 'Team management',
     accessDenied: 'Access restricted',
     accessDeniedMsg: 'Only the owner can manage the team.',
@@ -862,6 +867,7 @@ export default {
     quartierHint: 'Optional — helps customers find you',
     mapTitle: 'Exact location on the map',
     mapHint: 'Search your address, tap the map or use your current position',
+    mapLocateRecommend: 'For better accuracy, we strongly recommend using the "Locate me" button or the search bar.',
     addressPlaceholder: 'Type an address, street or place...',
     positionLabel: '✓ Position: %{lat}, %{lng}',
     termsRequired: 'Please accept the terms to continue',
@@ -922,6 +928,7 @@ export default {
 
   // ── Edit profile ──
   editProfile: {
+    guideText: 'Personalize your business appearance such as name, description, and colors to attract customers.',
     title: 'Edit business',
     tabProfile: 'Profile',
     tabVisual: 'Visuals',
@@ -977,6 +984,7 @@ export default {
 
   // ── Stores management ──
   stores: {
+    guideText: 'View, add, or edit your physical locations here so customers find you easily.',
     title: 'My stores',
     addStore: 'Add',
     editStore: 'Edit store',
