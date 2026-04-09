@@ -10,6 +10,7 @@ import {
   WS_EVENTS,
   TransactionRecordedPayload,
 } from '@jitplus/shared/src/realtime';
+import { logInfo } from '@/utils/devLogger';
 import { queryKeys } from './useQueryHooks';
 
 /**
@@ -38,7 +39,7 @@ export function useRealtimeEvents(socket: Socket | null) {
       queryClient.invalidateQueries({ queryKey: ['dashboard-trends'] });
 
       if (__DEV__) {
-        console.log('[RT] Transaction recorded:', payload.type, payload.points, 'pts for client', payload.clientId);
+        logInfo('RT', 'Transaction recorded:', payload.type, payload.points, 'pts for client', payload.clientId);
       }
     };
 

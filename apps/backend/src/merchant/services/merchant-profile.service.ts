@@ -18,6 +18,8 @@ import {
   TRANSACTION_RUNNER, type ITransactionRunner,
   RAW_QUERY_RUNNER, type IRawQueryRunner,
   REWARD_REPOSITORY, type IRewardRepository,
+  TEAM_MEMBER_REPOSITORY, type ITeamMemberRepository,
+  STORE_REPOSITORY, type IStoreRepository,
 } from '../../common/repositories';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { UpdateProfileDto } from '../dto/update-profile.dto';
@@ -43,6 +45,8 @@ export class MerchantProfileService {
     @Inject(TRANSACTION_RUNNER) private txRunner: ITransactionRunner,
     @Inject(RAW_QUERY_RUNNER) private rawQuery: IRawQueryRunner,
     @Inject(REWARD_REPOSITORY) private rewardRepo: IRewardRepository,
+    @Inject(TEAM_MEMBER_REPOSITORY) private teamMemberRepo: ITeamMemberRepository,
+    @Inject(STORE_REPOSITORY) private storeRepo: IStoreRepository,
     @Inject(CACHE_MANAGER) private cache: Cache,
     private notifications: NotificationsService,
     private configService: ConfigService,
@@ -83,11 +87,7 @@ export class MerchantProfileService {
   }
 
   async updateProfile(merchantId: string, dto: UpdateProfileDto): Promise<MerchantProfileData> {
-    const { socialLinks, ...rest } = stripUndefined(dto);
-    const data: Record<string, unknown> = { ...rest };
-    if (socialLinks !== undefined) {
-      data.socialLinks = socialLinks as Record<string, unknown>;
-    }
+    const data = stripUndefined(dto);
     const result = await this.merchantRepo.update({
       where: { id: merchantId },
       data,
@@ -386,8 +386,8 @@ export class MerchantProfileService {
             this.notifications.sendToClient(
               merchantId,
               card.clientId,
-              `${merchantName} — Total de points ajusté`,
-              `Votre nombre de points a été mis à jour de ${card.points} à ${limit} ${unitLabel} suite à la mise en place d'un plafond d'accumulation.`,
+              `📊 ${merchantName} — Solde ajusté`,
+              `Votre solde est passé de ${card.points} à ${limit} ${unitLabel} chez ${merchantName}.`,
               { event: 'points_updated', merchantId, newBalance: String(limit), loyaltyType },
             ),
           ),
@@ -417,10 +417,10 @@ export class MerchantProfileService {
       t === 'STAMPS' ? 'Tampons 🎫' : 'Points 🏅';
 
     const note = `Programme de fidélité modifié : ${typeLabel(oldType)} → ${typeLabel(newType)}`;
-    const notifTitle = `${merchantName} a mis à jour son programme de fidélité`;
+    const notifTitle = `🔄 Programme fidélité mis à jour`;
     const notifBody =
-      `Le commerce ${merchantName} est passé au système ${typeLabel(newType)}. ` +
-      `Vos points ont été automatiquement convertis.`;
+      `${merchantName} est passé au système ${typeLabel(newType)}. ` +
+      `Vos ${oldType === 'STAMPS' ? 'tampons' : 'points'} ont été convertis automatiquement.`;
 
     // 1. Fetch and process clients in batches to avoid OOM on large merchants
     const BATCH_SIZE = 500;
@@ -526,12 +526,12 @@ export class MerchantProfileService {
   async deleteAccount(merchantId: string, password?: string, idToken?: string): Promise<{ message: string }> {
     const merchant = await this.merchantRepo.findUnique({
       where: { id: merchantId },
-      select: { id: true, password: true, nom: true, googleId: true },
+      select: { id: true, password: true, nom: true, email: true, googleId: true },
     });
     if (!merchant) throw new NotFoundException('Commerçant non trouvé');
 
+    // ── Identity verification ──────────────────────────────────
     if (merchant.googleId && idToken) {
-      // Google account: verify via Google token re-authentication
       try {
         const webClientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
         const androidClientIds = (this.configService.get<string>('GOOGLE_ANDROID_CLIENT_ID') || '').split(',').map(s => s.trim()).filter(Boolean);
@@ -550,33 +550,63 @@ export class MerchantProfileService {
         throw new UnauthorizedException('Token Google invalide');
       }
     } else if (password) {
-      // Email account or Google account that has set a password: verify via password
       const isValid = await bcrypt.compare(password, merchant.password);
       if (!isValid) throw new UnauthorizedException('Mot de passe incorrect');
     } else {
       throw new BadRequestException('Le mot de passe ou la réauthentification Google est requis');
     }
 
-    // Soft delete: mark as deleted + anonymise sensitive fields so the
-    // email/phone can be reused for a new account.  Related data (stores,
-    // cards, transactions…) stays intact for analytics.
-    await this.merchantRepo.update({
-      where: { id: merchantId },
-      data: {
-        deletedAt: new Date(),
-        email: `deleted_${merchantId}`,
-        password: '',
-        googleId: null,
-        pushToken: null,
-        phoneNumber: null,
-        isActive: false,
-      },
+    // ── Atomic soft-delete inside a transaction ────────────────
+    const now = new Date();
+
+    await this.txRunner.run(async (tx) => {
+      // 1. Soft-delete merchant: anonymise PII so email/phone can be reused
+      await tx.merchant.update({
+        where: { id: merchantId },
+        data: {
+          deletedAt: now,
+          email: `deleted_${merchantId}`,
+          password: '',
+          googleId: null,
+          pushToken: null,
+          phoneNumber: null,
+          isActive: false,
+        },
+      });
+
+      // 2. Deactivate all team members + clear credentials
+      await tx.teamMember.updateMany({
+        where: { merchantId },
+        data: { isActive: false, password: '' },
+      });
+
+      // 3. Deactivate all stores so they disappear from search/discovery
+      await tx.store.updateMany({
+        where: { merchantId },
+        data: { isActive: false },
+      });
+
+      // 4. Deactivate all loyalty cards so clients see them as expired
+      await tx.loyaltyCard.updateMany({
+        where: { merchantId, deactivatedAt: null },
+        data: { deactivatedAt: now },
+      });
+
+      // 5. Revoke all active sessions (access + refresh tokens invalidated)
+      await tx.deviceSession.deleteMany({
+        where: { merchantId },
+      });
     });
 
-    // Immediately revoke all active sessions so existing JWTs are rejected
-    await this.deviceSessionRepo.deleteMany({
-      where: { merchantId },
-    });
+    // ── Post-transaction cleanup (non-critical) ────────────────
+    await Promise.allSettled([
+      this.cache.del(`merchant:profile:${merchantId}`),
+      this.cache.del(`merchant:detail:${merchantId}`),
+    ]);
+
+    this.logger.log(
+      `Account deleted: merchantId=${merchantId} name="${merchant.nom}" email="${merchant.email}" at=${now.toISOString()}`,
+    );
 
     return { message: `Le compte "${merchant.nom}" a été supprimé.` };
   }

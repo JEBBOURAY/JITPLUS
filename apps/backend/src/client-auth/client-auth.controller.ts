@@ -8,7 +8,6 @@ import {
   UseGuards,
   Query,
   Param,
-  BadRequestException,
   HttpCode,
   HttpStatus,
   Headers,
@@ -25,7 +24,7 @@ import { ClientOnlyGuard } from '../common/guards/client-only.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtPayload } from '../common/interfaces/jwt-payload.interface';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
-import { SendOtpDto, VerifyOtpDto, CompleteProfileDto, ClientUpdateProfileDto, UpdatePushTokenDto, SendOtpEmailDto, VerifyOtpEmailDto, GoogleLoginDto, LoginEmailDto, LoginPhoneDto, SetPasswordDto, RefreshTokenDto, ClientDeleteAccountDto, ClientChangePasswordDto, SendChangeContactOtpDto, VerifyChangeContactOtpDto } from './dto';
+import { SendOtpDto, VerifyOtpDto, CompleteProfileDto, ClientUpdateProfileDto, UpdatePushTokenDto, SendOtpEmailDto, VerifyOtpEmailDto, GoogleLoginDto, LoginEmailDto, LoginPhoneDto, SetPasswordDto, RefreshTokenDto, ClientDeleteAccountDto, ClientChangePasswordDto, SendChangeContactOtpDto, VerifyChangeContactOtpDto, RequestPayoutDto } from './dto';
 
 @ApiTags('Client Auth')
 @Controller('client-auth')
@@ -200,47 +199,11 @@ export class ClientController {
     return this.clientService.getPointsOverview(user.userId, page, limit);
   }
 
-  @Get('cards')
-  async getLoyaltyCards(
-    @CurrentUser() user: JwtPayload,
-    @Query() { page, limit }: PaginationQueryDto,
-  ) {
-    const overview = await this.clientService.getPointsOverview(user.userId, page, limit);
-    return overview.cards;
-  }
-
-  @Get('transactions')
-  async getTransactions(
-    @CurrentUser() user: JwtPayload,
-    @Query() { page, limit }: PaginationQueryDto,
-  ) {
-    return this.clientService.getTransactions(user.userId, page, limit);
-  }
-
   @Get('merchants')
   async getMerchants(
     @Query() { page, limit }: PaginationQueryDto,
   ) {
     return this.clientService.getMerchants(page, limit);
-  }
-
-  /** Returns merchants within `radius` km of the given GPS coordinates,
-   *  each enriched with the calling client's loyalty-card balance (userPoints).
-   *  Must be declared before @Get('merchants/:id') to avoid route shadowing. */
-  @Get('merchants/nearby')
-  async getNearbyMerchants(
-    @CurrentUser() user: JwtPayload,
-    @Query('lat') lat: string,
-    @Query('lng') lng: string,
-    @Query('radius') radius?: string,
-  ) {
-    const latN = parseFloat(lat);
-    const lngN = parseFloat(lng);
-    if (isNaN(latN) || isNaN(lngN) || latN < -90 || latN > 90 || lngN < -180 || lngN > 180) {
-      throw new BadRequestException('Coordonnées invalides.');
-    }
-    const radiusN = radius ? Math.min(Math.abs(parseFloat(radius)), 50) : 5;
-    return this.clientService.getNearbyMerchants(user.userId, latN, lngN, radiusN);
   }
 
   @Get('merchants/:id')
@@ -303,5 +266,19 @@ export class ClientController {
   async getReferralStats(@CurrentUser() user: JwtPayload) {
     return this.clientReferralService.getReferralStats(user.userId);
   }
+
+  @Post('referral/payout')
+  async requestPayout(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: RequestPayoutDto,
+  ) {
+    return this.clientReferralService.requestPayout(user.userId, dto);
+  }
+
+  @Get('referral/payout')
+  async getPayoutHistory(@CurrentUser() user: JwtPayload) {
+    return this.clientReferralService.getPayoutHistory(user.userId);
+  }
 }
+
 

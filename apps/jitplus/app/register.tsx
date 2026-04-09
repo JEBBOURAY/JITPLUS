@@ -24,7 +24,7 @@ import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
 import { isValidEmail } from '@/utils/validation';
 import BrandText from '@/components/BrandText';
 import { DEFAULT_COUNTRY, isValidPhoneForCountry, CountryCode } from '@/utils/countryCodes';
-import CountryCodePicker from '@/components/CountryCodePicker';
+import PremiumPhoneInput from '@/components/PremiumPhoneInput';
 import FormError from '@/components/FormError';
 import { useGoogleAuth } from '@/hooks/useGoogleAuth';
 import { GoogleLogo } from '@/components/GoogleLogo';
@@ -206,25 +206,15 @@ export default function RegisterScreen() {
               </View>
 
               {/* Phone input (required) */}
-              <View style={styles.inputContainer}>
-                <View style={[styles.inputWrapper, {
-                  backgroundColor: theme.inputBg,
-                  borderColor: error ? theme.danger : phoneValid ? palette.violet : theme.inputBorder,
-                  borderWidth: phoneValid ? 2 : 1.5,
-                }]}>
-                  <CountryCodePicker selected={country} onSelect={setCountry} accentColor={palette.violet} />
-                  <View style={styles.phoneSeparator} />
-                  <TextInput
-                    style={[styles.emailInput, { color: theme.text, marginLeft: 0 }]}
-                    placeholder={'X'.repeat(country.maxDigits)}
-                    placeholderTextColor={theme.inputPlaceholder}
-                    value={phone}
-                    onChangeText={(text) => { setPhone(text.replace(/[^0-9]/g, '')); setError(''); }}
-                    keyboardType="phone-pad"
-                    maxLength={country.maxDigits}
-                  />
-                </View>
-              </View>
+              <PremiumPhoneInput
+                value={phone}
+                onChangePhone={(text) => { setPhone(text); setError(''); }}
+                country={country}
+                onChangeCountry={setCountry}
+                accentColor={palette.violet}
+                error={!!error && !phoneValid}
+                errorMessage={!phoneValid && phone.length > 0 ? t('register.phoneRequired') : undefined}
+              />
 
               {/* Terms acceptance */}
               <TouchableOpacity

@@ -1,10 +1,18 @@
 import React from 'react';
-import SharedErrorBoundary from '@jitplus/shared/src/ErrorBoundary';
+import SharedErrorBoundaryClass from '@jitplus/shared/src/ErrorBoundary';
 import i18n from '@/i18n';
 import { logError } from '@/utils/devLogger';
 
 let Sentry: typeof import('@sentry/react-native') | null = null;
 try { Sentry = require('@sentry/react-native'); } catch {}
+
+// Type assertion needed: shared package may resolve a different @types/react version
+// than the app, causing class component compatibility errors.
+const SharedErrorBoundary = SharedErrorBoundaryClass as unknown as React.ComponentType<{
+  labels?: { title: string; body: string; retry: string };
+  onError?: (error: Error, extra?: Record<string, unknown>) => void;
+  children: React.ReactNode;
+}>;
 
 /**
  * App-wide error boundary — delegates to shared component with i18n labels + Sentry.

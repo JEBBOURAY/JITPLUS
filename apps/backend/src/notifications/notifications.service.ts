@@ -18,7 +18,7 @@ import { Notification } from '@prisma/client';
 import { SendNotificationDto } from './dto/send-notification.dto';
 import { SendEmailBlastDto } from './dto/send-email-blast.dto';
 import { buildPagination, PaginationResult } from '../common/utils';
-import { DEFAULT_NOTIFICATION_LOGO, LOGO_CACHE_TTL } from '../common/constants';
+import { DEFAULT_NOTIFICATION_LOGO, LOGO_CACHE_TTL, EMAIL_LOGO_JITPLUS_PRO } from '../common/constants';
 
 @Injectable()
 export class NotificationsService {
@@ -63,21 +63,29 @@ export class NotificationsService {
     createdAt: Date;
   }> {
     // â”€â”€ 1. Collect ALL clients with a loyalty card + merchant logo â”€â”€
-    // groupBy generates a SQL GROUP BY which is more efficient than SELECT DISTINCT
-    // when combined with the composite unique index on (client_id, merchant_id).
-    const [allCards, merchant] = await Promise.all([
-      this.loyaltyCardRepo.findMany({
-        where: { merchantId, deactivatedAt: null },
-        select: { clientId: true },
-        distinct: ['clientId'],
-      }),
-      this.merchantRepo.findUnique({
-        where: { id: merchantId },
-        select: { logoUrl: true },
-      }),
-    ]);
-    const allClientIds: string[] = allCards.map((c: any) => c.clientId);
+    // Paginated with cursor to avoid loading all IDs into memory at once.
+    const merchant = await this.merchantRepo.findUnique({
+      where: { id: merchantId },
+      select: { logoUrl: true },
+    });
     const imageUrl = this.buildImageUrl(merchant?.logoUrl);
+
+    const allClientIds: string[] = [];
+    let clientCursor: string | undefined;
+    while (true) {
+      const batch = await this.loyaltyCardRepo.findMany({
+        where: { merchantId, deactivatedAt: null },
+        select: { id: true, clientId: true },
+        distinct: ['clientId'],
+        take: NotificationsService.CLIENT_BATCH_SIZE,
+        ...(clientCursor ? { skip: 1, cursor: { id: clientCursor } } : {}),
+        orderBy: { id: 'asc' },
+      });
+      if (batch.length === 0) break;
+      allClientIds.push(...batch.map((c: any) => c.clientId));
+      clientCursor = batch[batch.length - 1].id;
+      if (batch.length < NotificationsService.CLIENT_BATCH_SIZE) break;
+    }
 
     // â”€â”€ 2. Among those, find who has push tokens for FCM delivery â”€â”€
     const pushRecipients: { id: string; pushToken: string }[] = [];
@@ -285,7 +293,15 @@ export class NotificationsService {
     // 1. Fetch merchant info
     const merchant = await this.merchantRepo.findUniqueOrThrow({
       where: { id: merchantId },
-      select: { nom: true },
+      select: {
+        nom: true,
+        email: true,
+        phoneNumber: true,
+        adresse: true,
+        ville: true,
+        quartier: true,
+        logoUrl: true,
+      },
     });
 
     // 2. Collect all clients with email — cursor pagination to avoid OOM on large merchants
@@ -329,7 +345,7 @@ export class NotificationsService {
         recipients.map((r) => ({ email: r.email, prenom: r.prenom })),
         dto.subject,
         dto.body,
-        merchant.nom,
+        merchant,
       );
     } catch (error) {
       this.logger.error(`Email blast failed for merchant ${merchantId}: ${error}`);
@@ -561,7 +577,7 @@ export class NotificationsService {
     let invalidTokens: string[] = [];
 
     try {
-      const result = await this.pushProvider.sendMulticast(tokens, title, body, undefined, { event: 'admin_broadcast' }, 'jitpro-default');
+      const result = await this.pushProvider.sendMulticast(tokens, title, body, EMAIL_LOGO_JITPLUS_PRO, { event: 'admin_broadcast' }, 'jitpro-default');
       fcmSuccessCount = result.successCount;
       fcmFailureCount = result.failureCount;
       invalidTokens = result.invalidTokens;
@@ -635,7 +651,7 @@ export class NotificationsService {
 
     if (tokens.length > 0) {
       try {
-        const result = await this.pushProvider.sendMulticast(tokens, title, body, undefined, { event: 'admin_broadcast' });
+        const result = await this.pushProvider.sendMulticast(tokens, title, body, DEFAULT_NOTIFICATION_LOGO, { event: 'admin_broadcast' });
         fcmSuccessCount = result.successCount;
         fcmFailureCount = result.failureCount;
         invalidTokens = result.invalidTokens;
@@ -746,7 +762,7 @@ export class NotificationsService {
         merchants.map((m) => ({ email: m.email, prenom: m.nom })),
         subject,
         body,
-        'JitPlus Admin',
+        { nom: 'JitPlus Admin' },
       );
     } catch (error) {
       this.logger.error(`Admin email to merchants failed: ${error}`);
@@ -807,7 +823,7 @@ export class NotificationsService {
         clients,
         subject,
         body,
-        'JitPlus Admin',
+        { nom: 'JitPlus Admin' },
       );
     } catch (error) {
       this.logger.error(`Admin email to clients failed: ${error}`);

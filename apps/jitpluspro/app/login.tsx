@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -20,9 +20,9 @@ import { useTheme, palette } from '@/contexts/ThemeContext';
 import { getErrorMessage } from '@/utils/error';
 import { isValidEmail } from '@/utils/validation';
 import { MIN_PASSWORD_LENGTH } from '@/constants/app';
-import { Eye, EyeOff, Lock, Mail, ArrowRight, Check } from 'lucide-react-native';
+import { Eye, EyeOff, Lock, Mail, ArrowRight, Check, Store, Gift, X } from 'lucide-react-native';
 import BrandName from '@/components/BrandName';
-import { useLanguage, LANGUAGES } from '@/contexts/LanguageContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
 import { useGoogleAuth } from '@/hooks/useGoogleAuth';
@@ -32,13 +32,15 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(true);
+  const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
+  const [trialDismissed, setTrialDismissed] = useState(false);
   const { signIn } = useAuth();
   const router = useRouter();
   const theme = useTheme();
-  const { t, locale, setLocale } = useLanguage();
+  const { t } = useLanguage();
   const google = useGoogleAuth();
+  const passwordRef = useRef<TextInput>(null);
 
   // ── Entrance animations ──
   const logoAnim = useRef(new Animated.Value(0)).current;
@@ -56,7 +58,8 @@ export default function LoginScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const emailValid = isValidEmail(email);
+  const emailValid = useMemo(() => isValidEmail(email), [email]);
+  const canSubmit = emailValid && password.length >= MIN_PASSWORD_LENGTH;
 
   const handleLogin = useCallback(async () => {
     Keyboard.dismiss();
@@ -79,10 +82,10 @@ export default function LoginScreen() {
     setIsLoading(true);
     try {
       await signIn({ email: trimmedEmail, password }, rememberMe);
-      router.replace('/scan-qr');
+      router.replace('/(tabs)');
     } catch (err: unknown) {
-      const axiosErr = err as { code?: string; response?: { status?: number }; message?: string };
-      const isNetworkError = axiosErr?.code === 'ECONNABORTED' || axiosErr?.code === 'ERR_NETWORK' || !axiosErr?.response;
+      const axiosErr = err as { isAxiosError?: boolean; code?: string; response?: { status?: number }; message?: string };
+      const isNetworkError = axiosErr?.isAxiosError && (axiosErr?.code === 'ECONNABORTED' || axiosErr?.code === 'ERR_NETWORK' || !axiosErr?.response);
       if (isNetworkError) {
         Alert.alert(t('common.networkError'), t('common.networkErrorMsg'));
       } else {
@@ -99,7 +102,7 @@ export default function LoginScreen() {
       <SafeAreaView style={styles.container}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={{ flex: 1 }}
+          style={styles.flex1}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
         >
           <ScrollView
@@ -123,6 +126,23 @@ export default function LoginScreen() {
                 <BrandName fontSize={28} />
               </View>
               <Text style={[styles.tagline, { color: theme.textMuted }]}>{t('login.appTagline')}</Text>
+
+              {/* Trial badge */}
+              {!trialDismissed && (
+                <View style={[styles.trialBadge, { backgroundColor: `${palette.violet}10`, borderColor: `${palette.violet}30` }]}>
+                  <Gift size={ms(16)} color={palette.violet} />
+                  <Text style={[styles.trialBadgeText, { color: palette.violet }]}>
+                    {t('registerExtra.trialBadge')}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => setTrialDismissed(true)}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    activeOpacity={0.6}
+                  >
+                    <X size={ms(16)} color={palette.violet} strokeWidth={2} />
+                  </TouchableOpacity>
+                </View>
+              )}
             </Animated.View>
 
             {/* ── Google Sign-In ── */}
@@ -156,7 +176,7 @@ export default function LoginScreen() {
               {/* Google error */}
               {!!google.error && !google.noAccount && (
                 <View style={[styles.errorBanner, { backgroundColor: `${theme.danger}15`, borderColor: `${theme.danger}30` }]}>
-                  <Text style={[styles.errorText, { color: theme.danger }]}>{google.error}</Text>
+                  <Text style={[styles.errorText, { color: theme.danger }]}>{getErrorMessage(google.error, t('common.genericError'))}</Text>
                 </View>
               )}
 
@@ -213,7 +233,9 @@ export default function LoginScreen() {
                     keyboardType="email-address"
                     autoCapitalize="none"
                     autoComplete="email"
+                    textContentType="emailAddress"
                     returnKeyType="next"
+                    onSubmitEditing={() => passwordRef.current?.focus()}
                     editable={!isLoading}
                   />
                 </View>
@@ -228,6 +250,7 @@ export default function LoginScreen() {
                 }]}>
                   <Lock size={ms(18)} color={password.length >= MIN_PASSWORD_LENGTH ? palette.charbon : theme.inputPlaceholder} strokeWidth={1.5} />
                   <TextInput
+                    ref={passwordRef}
                     style={[styles.inputField, { color: theme.text }]}
                     placeholder={t('login.passwordPlaceholder')}
                     placeholderTextColor={theme.inputPlaceholder}
@@ -235,6 +258,8 @@ export default function LoginScreen() {
                     onChangeText={(v) => { setPassword(v); setError(''); }}
                     secureTextEntry={!showPassword}
                     autoCapitalize="none"
+                    autoComplete="current-password"
+                    textContentType="password"
                     returnKeyType="done"
                     onSubmitEditing={handleLogin}
                     editable={!isLoading}
@@ -282,18 +307,18 @@ export default function LoginScreen() {
               {/* Submit */}
               <TouchableOpacity
                 onPress={handleLogin}
-                disabled={isLoading}
+                disabled={!canSubmit || isLoading}
                 activeOpacity={0.85}
                 style={[styles.button, {
-                  backgroundColor: emailValid && password.length >= MIN_PASSWORD_LENGTH ? palette.charbon : '#D4D0E8',
+                  backgroundColor: canSubmit ? palette.charbon : `${palette.charbon}30`,
                 }]}
               >
                 {isLoading ? <ActivityIndicator color="#fff" /> : (
                   <>
                     <Text style={[styles.buttonText, {
-                      opacity: emailValid && password.length >= MIN_PASSWORD_LENGTH ? 1 : 0.5,
+                      opacity: canSubmit ? 1 : 0.5,
                     }]}>{t('login.loginBtn')}</Text>
-                    <ArrowRight size={ms(18)} color={emailValid && password.length >= MIN_PASSWORD_LENGTH ? '#fff' : 'rgba(255,255,255,0.5)'} strokeWidth={1.5} />
+                    <ArrowRight size={ms(18)} color={canSubmit ? '#fff' : 'rgba(255,255,255,0.5)'} strokeWidth={1.5} />
                   </>
                 )}
               </TouchableOpacity>
@@ -302,35 +327,33 @@ export default function LoginScreen() {
         </KeyboardAvoidingView>
 
         {/* ── Footer ── */}
-        <Animated.View style={[styles.footerContainer, { opacity: footerAnim }]}>
-          <Text style={[styles.footerText, { color: theme.textMuted }]}>{t('login.noAccount')}{' '}</Text>
-          <TouchableOpacity activeOpacity={0.7} onPress={() => router.push('/register')}>
-            <Text style={[styles.footerLink, { color: palette.charbon }]}>{t('login.register')}</Text>
+        <Animated.View style={[styles.footerContainer, { opacity: footerAnim, paddingHorizontal: wp(24) }]}>
+          <TouchableOpacity 
+            activeOpacity={0.8} 
+            onPress={() => router.push('/register')}
+            style={[
+              styles.registerProminentBtn, 
+              { 
+                backgroundColor: `${palette.violet}10`, 
+                borderColor: `${palette.violet}30` 
+              }
+            ]}
+          >
+            <View style={[styles.storeIconWrap, { backgroundColor: palette.violet }]}>
+              <Store size={ms(18)} color="#fff" />
+            </View>
+            <View style={styles.registerTextWrap}>
+              <Text style={[styles.registerProminentTitle, { color: theme.text }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+                {t('login.noAccount')}
+              </Text>
+              <Text style={[styles.registerProminentSub, { color: palette.violet }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
+                {t('register.subtitle')}
+              </Text>
+            </View>
+            <ArrowRight size={ms(18)} color={palette.violet} strokeWidth={2} style={{ flexShrink: 0 }} />
           </TouchableOpacity>
         </Animated.View>
 
-        {/* ── Language Selector ── */}
-        <Animated.View style={[styles.langRow, { opacity: footerAnim }]}>
-          {LANGUAGES.map((lang) => (
-            <TouchableOpacity
-              key={lang.code}
-              onPress={() => setLocale(lang.code)}
-              style={[
-                styles.langPill,
-                {
-                  backgroundColor: locale === lang.code ? `${palette.charbon}18` : 'transparent',
-                  borderColor: locale === lang.code ? palette.charbon : theme.inputBorder,
-                },
-              ]}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.langFlag}>{lang.flag}</Text>
-              <Text style={[styles.langLabel, { color: locale === lang.code ? palette.charbon : theme.textMuted }]}>
-                {lang.nativeLabel}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </Animated.View>
       </SafeAreaView>
     </View>
   );
@@ -338,6 +361,7 @@ export default function LoginScreen() {
 
 const styles = StyleSheet.create({
   gradient: { flex: 1 },
+  flex1: { flex: 1 },
   container: { flex: 1 },
   scrollContent: {
     flexGrow: 1,
@@ -356,6 +380,17 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     marginTop: hp(4),
   },
+  trialBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp(8),
+    borderWidth: 1.5,
+    borderRadius: radius.lg,
+    paddingHorizontal: wp(14),
+    paddingVertical: hp(8),
+    marginTop: hp(12),
+  },
+  trialBadgeText: { flex: 1, fontSize: fontSize.sm, fontWeight: '700' },
 
   // Form
   formSection: { paddingHorizontal: wp(4) },
@@ -428,12 +463,12 @@ const styles = StyleSheet.create({
   // Error
   errorBanner: {
     borderWidth: 1,
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    borderRadius: radius.md,
+    paddingHorizontal: wp(14),
+    paddingVertical: hp(10),
     marginBottom: hp(12),
   },
-  errorText: { fontSize: 13 },
+  errorText: { fontSize: fontSize.xs },
 
   // No-account banner (Google login → user doesn't exist yet)
   noAccountBanner: {
@@ -511,31 +546,38 @@ const styles = StyleSheet.create({
 
   // Footer
   footerContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingTop: hp(12),
-    paddingBottom: hp(8),
-  },
-  footerText: { fontSize: fontSize.sm },
-  footerLink: { fontSize: fontSize.sm, fontWeight: '700' },
-
-  // Language selector
-  langRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 10,
     paddingBottom: hp(16),
+    paddingTop: hp(8),
+    alignItems: 'center',
+    width: '100%',
   },
-  langPill: {
+  registerProminentBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
+    justifyContent: 'space-between',
+    padding: wp(14),
+    borderRadius: radius.xl,
     borderWidth: 1.5,
+    width: '100%',
   },
-  langFlag: { fontSize: 16 },
-  langLabel: { fontSize: 13 },
+  storeIconWrap: {
+    width: ms(36),
+    height: ms(36),
+    borderRadius: ms(18),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  registerProminentTitle: {
+    fontSize: fontSize.md,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  registerProminentSub: {
+    fontSize: fontSize.sm,
+    fontWeight: '600',
+  },
+  registerTextWrap: {
+    flex: 1,
+    marginHorizontal: wp(10),
+  },
 });

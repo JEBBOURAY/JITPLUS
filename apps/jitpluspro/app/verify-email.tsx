@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -20,6 +20,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import api from '@/services/api';
 import { getErrorMessage } from '@/utils/error';
+import { wp, hp, ms, fontSize as fs, radius } from '@/utils/responsive';
 
 const OTP_LENGTH = 6;
 const RESEND_COOLDOWN = 60;
@@ -54,9 +55,18 @@ export default function VerifyEmailScreen() {
     return () => anim.stop();
   }, []);
 
+  // If already verified (e.g. came back after verifying), skip this screen
+  useEffect(() => {
+    if (isLoggedIn && merchant?.emailVerified) {
+      router.replace('/(tabs)');
+    }
+  }, [isLoggedIn, merchant?.emailVerified, router]);
+
   // Auto-send OTP on mount
   useEffect(() => {
     if (!email || hasSentInitial.current) return;
+    // Don't send if already verified
+    if (isLoggedIn && merchant?.emailVerified) return;
     hasSentInitial.current = true;
     (async () => {
       try {
@@ -68,7 +78,7 @@ export default function VerifyEmailScreen() {
         // Silently fail — user can tap resend
       }
     })();
-  }, [email]);
+  }, [email, isLoggedIn, merchant?.emailVerified]);
 
   // Countdown timer — stops when it reaches 0
   useEffect(() => {
@@ -95,7 +105,7 @@ export default function VerifyEmailScreen() {
       });
       if (isLoggedIn) {
         updateMerchant({ emailVerified: true });
-        router.replace('/scan-qr');
+        router.replace('/(tabs)');
       } else {
         Alert.alert(
           t('verifyEmail.successTitle'),
@@ -138,9 +148,9 @@ export default function VerifyEmailScreen() {
     }
   }, [resendTimer, email, isResending, t]);
 
-  const maskedEmail = email
+  const maskedEmail = useMemo(() => email
     ? email.replace(/^(.{2})(.*)(@.*)$/, (_m, a, b, c) => a + '*'.repeat(Math.min(b.length, 5)) + c)
-    : '';
+    : '', [email]);
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.bg }]}>
@@ -205,7 +215,7 @@ export default function VerifyEmailScreen() {
                 styles.codeInput,
                 {
                   color: theme.text,
-                  borderColor: error ? '#ef4444' : (theme.inputBorder ?? theme.border),
+                  borderColor: error ? theme.danger : (theme.inputBorder ?? theme.border),
                   backgroundColor: theme.bgInput ?? theme.bg,
                 },
               ]}
@@ -242,7 +252,7 @@ export default function VerifyEmailScreen() {
 
             {/* Error */}
             {error ? (
-              <Text style={styles.errorText}>{error}</Text>
+              <Text style={[styles.errorText, { color: theme.danger }]}>{error}</Text>
             ) : null}
 
             {/* Verify button */}
@@ -307,11 +317,11 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   flex: { flex: 1 },
   backBtn: {
-    marginTop: 8,
-    marginLeft: 16,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    marginTop: hp(8),
+    marginLeft: wp(16),
+    width: ms(40),
+    height: ms(40),
+    borderRadius: ms(20),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -319,103 +329,102 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 24,
-    paddingBottom: 40,
+    paddingHorizontal: wp(24),
+    paddingBottom: hp(40),
   },
-  iconWrap: { marginBottom: 24 },
+  iconWrap: { marginBottom: hp(24) },
   iconCircle: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
+    width: ms(88),
+    height: ms(88),
+    borderRadius: ms(44),
     alignItems: 'center',
     justifyContent: 'center',
   },
   title: {
-    fontSize: 24,
+    fontSize: ms(24),
     fontWeight: '700',
     textAlign: 'center',
-    marginBottom: 8,
+    marginBottom: hp(8),
   },
   subtitle: {
-    fontSize: 15,
+    fontSize: fs.sm,
     textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: 32,
-    paddingHorizontal: 16,
+    lineHeight: ms(22),
+    marginBottom: hp(32),
+    paddingHorizontal: wp(16),
   },
   card: {
     width: '100%',
-    borderRadius: 16,
+    borderRadius: radius.lg,
     borderWidth: 1,
-    padding: 24,
+    padding: wp(24),
     alignItems: 'center',
   },
   codeInput: {
     width: '100%',
-    height: 56,
-    borderRadius: 12,
+    height: hp(56),
+    borderRadius: radius.md,
     borderWidth: 1.5,
-    fontSize: 28,
+    fontSize: ms(28),
     fontWeight: '700',
     letterSpacing: 12,
-    paddingHorizontal: 16,
+    paddingHorizontal: wp(16),
   },
   dotsRow: {
     flexDirection: 'row',
-    gap: 8,
-    marginTop: 12,
-    marginBottom: 8,
+    gap: wp(8),
+    marginTop: hp(12),
+    marginBottom: hp(8),
   },
   dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: ms(8),
+    height: ms(8),
+    borderRadius: ms(4),
   },
   errorText: {
-    color: '#ef4444',
-    fontSize: 13,
-    textAlign: 'center',
-    marginTop: 8,
-    marginBottom: 4,
+    fontSize: fs.xs,
+    textAlign: 'center' as const,
+    marginTop: hp(8),
+    marginBottom: hp(4),
   },
   verifyBtn: {
     width: '100%',
-    marginTop: 20,
-    borderRadius: 12,
+    marginTop: hp(20),
+    borderRadius: radius.md,
     overflow: 'hidden',
   },
   verifyBtnGradient: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 14,
-    borderRadius: 12,
+    gap: wp(8),
+    paddingVertical: hp(14),
+    borderRadius: radius.md,
   },
   verifyBtnText: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: fs.md,
     fontWeight: '700',
   },
   resendRow: {
-    marginTop: 24,
+    marginTop: hp(24),
     alignItems: 'center',
-    gap: 8,
+    gap: hp(8),
   },
   resendLabel: {
-    fontSize: 14,
+    fontSize: fs.sm,
   },
   resendTimer: {
-    fontSize: 14,
+    fontSize: fs.sm,
     fontWeight: '600',
   },
   resendBtnRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: wp(6),
   },
   resendBtnText: {
-    fontSize: 14,
+    fontSize: fs.sm,
     fontWeight: '700',
   },
 });

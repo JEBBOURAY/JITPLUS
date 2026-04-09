@@ -97,12 +97,12 @@ export const REFERRAL_BONUS_DAYS = 30;
 export const CLIENT_REFERRAL_BONUS_AMOUNT = 25;
 
 // ── Defaults ────────────────────────────────────────────────
-/** Default notification logo when merchant has no custom logo */
-export const DEFAULT_NOTIFICATION_LOGO = 'https://jitplus.com/jitpluslogo.png';
-
-/** Logo URLs used in email templates */
+/** Logo URLs used in email templates and push notifications */
 export const EMAIL_LOGO_JITPLUS = 'https://jitplus.com/jitpluslogo.png';
 export const EMAIL_LOGO_JITPLUS_PRO = 'https://jitplus.com/jitplusprologo.png';
+
+/** Default notification logo when merchant has no custom logo */
+export const DEFAULT_NOTIFICATION_LOGO = EMAIL_LOGO_JITPLUS;
 
 /** Duration of the free trial in days */
 export const TRIAL_DURATION_DAYS = 30;

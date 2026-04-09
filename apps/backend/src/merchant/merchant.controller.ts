@@ -126,6 +126,7 @@ export class MerchantController {
   }
 
   @Patch('complete-onboarding')
+  @UseGuards(MerchantOwnerGuard)
   async completeOnboarding(@CurrentUser() user: JwtPayload) {
     return this.profileService.completeOnboarding(user.userId);
   }
@@ -267,14 +268,14 @@ export class MerchantController {
   }
 
   @Get('dashboard-stats')
-  @UseGuards(PremiumGuard)
+  @UseGuards(MerchantOwnerGuard, PremiumGuard)
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 15 } })
   async getDashboardStats(@Query() { period }: DashboardQueryDto, @CurrentUser() user: JwtPayload) {
     return this.dashboardService.getDashboardStats(user.userId, period!);
   }
 
   @Get('dashboard-trends')
-  @UseGuards(PremiumGuard)
+  @UseGuards(MerchantOwnerGuard, PremiumGuard)
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 15 } })
   async getDashboardTrends(@Query() { period }: DashboardQueryDto, @CurrentUser() user: JwtPayload) {
     return this.dashboardService.getDashboardTrends(user.userId, period!);
@@ -397,7 +398,7 @@ export class MerchantController {
   }
 
   @Get('whatsapp/quota')
-  @UseGuards(PremiumGuard)
+  @UseGuards(MerchantOwnerGuard, PremiumGuard)
   async getWhatsappQuota(@CurrentUser() user: JwtPayload) {
     const merchant = await this.quotaService.getQuota(user.userId);
     return {
@@ -408,7 +409,7 @@ export class MerchantController {
   }
 
   @Post('whatsapp/record-usage')
-  @UseGuards(PremiumGuard)
+  @UseGuards(MerchantOwnerGuard, PremiumGuard)
   async recordWhatsappUsage(
     @CurrentUser() user: JwtPayload,
     @Body() dto: RecordWhatsappUsageDto,

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo, useEffect, useReducer, useCallback } from 'react';
+﻿import React, { useState, useRef, useMemo, useEffect, useReducer, useCallback } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
   Modal,
   KeyboardAvoidingView,
   Platform,
+  Image as RNImage,
 } from 'react-native';
 import {
   Store,
@@ -25,34 +26,137 @@ import {
   Mail,
   X,
   Check,
-  Search,
   ToggleLeft,
   ToggleRight,
   Navigation,
   Tag,
   Contact,
   ChevronDown,
+  Shield,
+  FileText,
+  Instagram,
+  Globe,
 } from 'lucide-react-native';
-import MapView, { Marker, PROVIDER_GOOGLE, SafeMapViewRef } from '@/components/SafeMapView';
+import PhoneInput from '@/components/PhoneInput';
+import MapView, { Marker, SafeMapViewRef } from '@/components/SafeMapView';
 import AddressAutocomplete, { AddressResult } from '@/components/AddressAutocomplete';
 import * as Location from 'expo-location';
-import { geocodeAsync, reverseGeocodeAsync } from '@/utils/geocodeCache';
+import { reverseGeocodeAsync } from '@/utils/geocodeCache';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Constants from 'expo-constants';
 import { Store as StoreType, MerchantCategory, CreateStorePayload } from '@/types';
 import MerchantCategoryIcon, { useCategoryMetadata } from '@/components/MerchantCategoryIcon';
 import { getCategoryLabel as getCategoryLabelFn, getCategoryOptions, CATEGORY_EMOJIS } from '@/constants/categories';
 import { useStoresCRUD, MAX_STORES } from '@/hooks/useStoresCRUD';
 import { isValidEmail } from '@/utils/validation';
 import PremiumLockModal from '@/components/PremiumLockModal';
+import MerchantLogo from '@/components/MerchantLogo';
+import { wp, hp, ms, fontSize as FS, radius as RAD } from '@/utils/responsive';
+import { palette } from '@/contexts/ThemeContext';
+import { resolveImageUrl } from '@/utils/imageUrl';
 
-const googleMapsApiKey = Constants.expoConfig?.android?.config?.googleMaps?.apiKey ?? '';
+const JITPRO_LOGO = require('@/assets/images/jitplusprologo.png');
 
-/** Extracted as a proper React.memo component — theme consumed internally */
+/**
+ * Premium map style — matching jitplus Discover screen.
+ * Warm ivory tones with violet-tinted water.
+ */
+const MAP_STYLE = [
+  { elementType: 'geometry', stylers: [{ color: '#FAFAF8' }] },
+  { elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#78716C' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#FAFAF8' }] },
+  { featureType: 'landscape.natural', elementType: 'geometry', stylers: [{ color: '#F5F5F0' }] },
+  { featureType: 'landscape.man_made', elementType: 'geometry', stylers: [{ color: '#F0EFEB' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#DDD6FE' }] },
+  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#A78BFA' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#FFFFFF' }] },
+  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#EDE9FE' }] },
+  { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#DDD6FE' }] },
+  { featureType: 'road.arterial', elementType: 'geometry', stylers: [{ color: '#F5F5F0' }] },
+  { featureType: 'road.arterial', elementType: 'labels.text.fill', stylers: [{ color: '#8B7E74' }] },
+  { featureType: 'road.highway', elementType: 'labels.text.fill', stylers: [{ color: '#78716C' }] },
+  { featureType: 'road.local', elementType: 'labels.text.fill', stylers: [{ color: '#A8A29E' }] },
+  { featureType: 'road', elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
+  { featureType: 'poi', stylers: [{ visibility: 'off' }] },
+  { featureType: 'transit', stylers: [{ visibility: 'off' }] },
+  { featureType: 'administrative', elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
+  { featureType: 'administrative.locality', elementType: 'labels.text.fill', stylers: [{ color: '#57534E' }] },
+  { featureType: 'administrative.locality', elementType: 'labels.text.stroke', stylers: [{ color: '#FAFAF8' }] },
+  { featureType: 'administrative.neighborhood', elementType: 'labels.text.fill', stylers: [{ color: '#A8A29E' }] },
+  { featureType: 'administrative.country', elementType: 'labels.text.fill', stylers: [{ color: '#A8A29E' }] },
+  { featureType: 'administrative.land_parcel', elementType: 'labels.text.fill', stylers: [{ color: '#D6D3D1' }] },
+] as const satisfies readonly unknown[];
+
+const MARKER_SIZE = ms(38);
+const MARKER_LOGO = ms(26);
+// 5 km ≈ 0.045° latitude delta
+const FIVE_KM_DELTA = 0.045;
+
+/** Custom map marker with merchant logo + Android bitmap tracking */
+const TrackedStoreMarker = React.memo(function TrackedStoreMarker({
+  store, logoUrl,
+}: { store: StoreType; logoUrl?: string | null }) {
+  const [error, setError] = useState(false);
+  const [tracking, setTracking] = useState(Platform.OS === 'android');
+
+  useEffect(() => {
+    if (!tracking) return;
+    const t = setTimeout(() => setTracking(false), 800);
+    return () => clearTimeout(t);
+  }, [tracking]);
+
+  const source = logoUrl && !error
+    ? { uri: resolveImageUrl(logoUrl) }
+    : JITPRO_LOGO;
+
+  return (
+    <Marker
+      coordinate={{ latitude: store.latitude!, longitude: store.longitude! }}
+      title={store.nom}
+      description={[store.adresse, store.quartier, store.ville].filter(Boolean).join(', ')}
+      anchor={{ x: 0.5, y: 0.5 }}
+      tracksViewChanges={tracking}
+    >
+      <View collapsable={false} style={markerStyles.root}>
+        <RNImage
+          source={source}
+          style={markerStyles.logo}
+          resizeMode="cover"
+          onLoad={() => { if (tracking) setTimeout(() => setTracking(false), 100); }}
+          onError={() => setError(true)}
+        />
+      </View>
+    </Marker>
+  );
+});
+
+const markerStyles = StyleSheet.create({
+  root: {
+    width: MARKER_SIZE,
+    height: MARKER_SIZE,
+    borderRadius: ms(10),
+    backgroundColor: '#FFFFFF',
+    borderWidth: 2,
+    borderColor: palette.violet,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...Platform.select({
+      ios: { shadowColor: palette.violet, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 4 },
+      android: { elevation: 6 },
+    }),
+  },
+  logo: {
+    width: MARKER_LOGO,
+    height: MARKER_LOGO,
+    borderRadius: ms(6),
+  },
+});
+
+/** Extracted as a proper React.memo component â€” theme consumed internally */
 const StoreCard = React.memo(function StoreCard({ store, merchantCategorie, onEdit, onToggle, onDelete }: {
   store: StoreType;
   merchantCategorie?: MerchantCategory;
@@ -66,98 +170,117 @@ const StoreCard = React.memo(function StoreCard({ store, merchantCategorie, onEd
   const { t } = useLanguage();
 
   return (
-    <View style={[styles.card, { backgroundColor: theme.bgCard, borderColor: theme.border }]}>
-      <View style={styles.cardHeader}>
-        <View style={styles.cardTitleRow}>
-          <MerchantCategoryIcon category={cat} size={32} />
-          <View style={{ marginLeft: 10, flex: 1 }}>
-            <Text style={[styles.cardName, { color: theme.text }]}>{store.nom}</Text>
-            <Text style={[styles.cardSub, { color: theme.textMuted }]}>{catLabel}</Text>
+    <View style={[styles.card, { backgroundColor: theme.bgCard }]}>
+      {/* Premium left accent bar */}
+      <View style={[styles.cardAccent, { backgroundColor: store.isActive ? palette.violet : theme.textMuted }]} />
+
+      <View style={styles.cardBody}>
+        {/* Top row: avatar + info + status */}
+        <View style={styles.cardTopRow}>
+          <View style={[styles.cardAvatar, { backgroundColor: palette.violet + '10' }]}>
+            <MerchantCategoryIcon category={cat} size={ms(28)} />
           </View>
-          <View style={[styles.statusBadge, { backgroundColor: store.isActive ? theme.primaryBg : `${theme.danger}14` }]}>
-            <Text style={{ fontSize: 11, fontWeight: '600', color: store.isActive ? theme.primary : theme.danger }}>
+          <View style={styles.cardInfo}>
+            <Text style={[styles.cardName, { color: theme.text }]} numberOfLines={1}>{store.nom}</Text>
+            <View style={[styles.cardCatBadge, { backgroundColor: palette.violet + '12' }]}>
+              <Text style={[styles.cardCatText, { color: palette.violet }]}>{catLabel}</Text>
+            </View>
+          </View>
+          <View style={[styles.statusBadge, { backgroundColor: store.isActive ? palette.violet + '14' : `${theme.danger}14` }]}>
+            <Text style={{ fontSize: ms(10), fontWeight: '700', color: store.isActive ? palette.violet : theme.danger }}>
               {store.isActive ? t('stores.active') : t('stores.inactive')}
             </Text>
           </View>
         </View>
-      </View>
 
-      {store.adresse ? (
-        <View style={styles.cardDetail}>
-          <MapPin size={14} color={theme.textMuted} />
-          <Text style={[styles.cardDetailText, { color: theme.textMuted }]} numberOfLines={1}>
-            {[store.adresse, store.quartier, store.ville].filter(Boolean).join(', ')}
-          </Text>
+        {/* Details */}
+        {store.adresse ? (
+          <View style={styles.cardDetail}>
+            <MapPin size={ms(12)} color={theme.textMuted} strokeWidth={1.5} />
+            <Text style={[styles.cardDetailText, { color: theme.textMuted }]} numberOfLines={1}>
+              {[store.adresse, store.quartier, store.ville].filter(Boolean).join(', ')}
+            </Text>
+          </View>
+        ) : null}
+
+        {store.telephone ? (
+          <View style={styles.cardDetail}>
+            <Phone size={ms(12)} color={theme.textMuted} strokeWidth={1.5} />
+            <Text style={[styles.cardDetailText, { color: theme.textMuted }]}>{store.telephone}</Text>
+          </View>
+        ) : null}
+
+        {store.email ? (
+          <View style={styles.cardDetail}>
+            <Mail size={ms(12)} color={theme.textMuted} strokeWidth={1.5} />
+            <Text style={[styles.cardDetailText, { color: theme.textMuted }]}>{store.email}</Text>
+          </View>
+        ) : null}
+
+        {/* Actions */}
+        <View style={styles.cardActions}>
+          <TouchableOpacity style={[styles.actionBtn, { backgroundColor: palette.violet + '10' }]} onPress={() => onEdit(store)}>
+            <Edit3 size={ms(14)} color={palette.violet} strokeWidth={1.5} />
+            <Text style={[styles.actionBtnText, { color: palette.violet }]}>{t('stores.editBtn')}</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={[styles.actionBtn, { backgroundColor: store.isActive ? palette.violet + '10' : theme.bgInput }]} onPress={() => onToggle(store)}>
+            {store.isActive
+              ? <ToggleRight size={ms(14)} color={palette.violet} strokeWidth={1.5} />
+              : <ToggleLeft size={ms(14)} color={theme.textMuted} strokeWidth={1.5} />}
+            <Text style={[styles.actionBtnText, { color: store.isActive ? palette.violet : theme.textMuted }]}>
+              {store.isActive ? t('stores.active') : t('stores.inactive')}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#fef2f2' }]} onPress={() => onDelete(store)}>
+            <Trash2 size={ms(14)} color="#dc2626" strokeWidth={1.5} />
+            <Text style={[styles.actionBtnText, { color: '#dc2626' }]}>{t('stores.deleteBtn')}</Text>
+          </TouchableOpacity>
         </View>
-      ) : null}
-
-      {store.telephone ? (
-        <View style={styles.cardDetail}>
-          <Phone size={14} color={theme.textMuted} />
-          <Text style={[styles.cardDetailText, { color: theme.textMuted }]}>{store.telephone}</Text>
-        </View>
-      ) : null}
-
-      {store.email ? (
-        <View style={styles.cardDetail}>
-          <Mail size={14} color={theme.textMuted} />
-          <Text style={[styles.cardDetailText, { color: theme.textMuted }]}>{store.email}</Text>
-        </View>
-      ) : null}
-
-      <View style={styles.cardActions}>
-        <TouchableOpacity style={[styles.actionBtn, { backgroundColor: theme.bgInput }]} onPress={() => onEdit(store)}>
-          <Edit3 size={16} color={theme.primary} />
-          <Text style={[styles.actionBtnText, { color: theme.primary }]}>{t('stores.editBtn')}</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={[styles.actionBtn, { backgroundColor: theme.bgInput }]} onPress={() => onToggle(store)}>
-          {store.isActive
-            ? <ToggleRight size={16} color={theme.primary} />
-            : <ToggleLeft size={16} color={theme.textMuted} />}
-          <Text style={[styles.actionBtnText, { color: store.isActive ? theme.primary : theme.textMuted }]}>
-            {store.isActive ? t('stores.active') : t('stores.inactive')}
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#fef2f2' }]} onPress={() => onDelete(store)}>
-          <Trash2 size={16} color="#dc2626" />
-          <Text style={[styles.actionBtnText, { color: '#dc2626' }]}>{t('stores.deleteBtn')}</Text>
-        </TouchableOpacity>
       </View>
     </View>
   );
 });
 
-// ── Form reducer ──
+// â”€â”€ Form reducer â”€â”€
+type StepIndex = 0 | 1 | 2 | 3;
+const TOTAL_STEPS = 4;
+
 interface FormState {
+  step: StepIndex;
   nom: string;
+  description: string;
   categorie: MerchantCategory | '';
   ville: string;
   quartier: string;
   adresse: string;
   telephone: string;
   email: string;
+  instagram: string;
+  tiktok: string;
   latitude: number | null;
   longitude: number | null;
   addressSearch: string;
-  isGeoSearching: boolean;
   locating: boolean;
   showCategoryPicker: boolean;
 }
 
 const INITIAL_FORM: FormState = {
+  step: 0,
   nom: '',
+  description: '',
   categorie: '',
   ville: '',
   quartier: '',
   adresse: '',
   telephone: '',
   email: '',
+  instagram: '',
+  tiktok: '',
   latitude: null,
   longitude: null,
   addressSearch: '',
-  isGeoSearching: false,
   locating: false,
   showCategoryPicker: false,
 };
@@ -177,13 +300,17 @@ function formReducer(state: FormState, action: FormAction): FormState {
       const s = action.store;
       return {
         ...state,
+        step: 0,
         nom: s.nom,
+        description: s.description ?? '',
         categorie: s.categorie ?? '',
         ville: s.ville ?? '',
         quartier: s.quartier ?? '',
         adresse: s.adresse ?? '',
         telephone: s.telephone ?? '',
         email: s.email ?? '',
+        instagram: s.socialLinks?.instagram ?? '',
+        tiktok: s.socialLinks?.tiktok ?? '',
         latitude: s.latitude ?? null,
         longitude: s.longitude ?? null,
         addressSearch: s.adresse ?? '',
@@ -195,7 +322,7 @@ function formReducer(state: FormState, action: FormAction): FormState {
 
 export default function StoresScreen() {
   const theme = useTheme();
-  const { merchant } = useAuth();
+  const { merchant, isTeamMember } = useAuth();
   const isPremium = merchant?.plan === 'PREMIUM';
   const FREE_MAX_STORES = 1;
   const effectiveMax = isPremium ? MAX_STORES : FREE_MAX_STORES;
@@ -218,13 +345,56 @@ export default function StoresScreen() {
 
   // Form state (reducer)
   const [form, formDispatch] = useReducer(formReducer, INITIAL_FORM);
-  const { nom, categorie, ville, quartier, adresse, telephone, email, latitude, longitude, addressSearch, isGeoSearching, locating, showCategoryPicker } = form;
+  const { step, nom, description, categorie, ville, quartier, adresse, telephone, email, instagram, tiktok, latitude, longitude, addressSearch, locating, showCategoryPicker } = form;
   const setForm = useCallback((payload: Partial<FormState>) => formDispatch({ type: 'SET', payload }), []);
+
+  // Step navigation helpers
+  const canGoNext = useMemo(() => {
+    if (step === 0) return nom.trim().length > 0;
+    if (step === 1) return true; // contact is optional
+    if (step === 2) return true; // social is optional
+    return true;
+  }, [step, nom]);
+
+  const goNext = useCallback(() => {
+    if (step < 3) setForm({ step: (step + 1) as StepIndex });
+  }, [step, setForm]);
+
+  const goBack = useCallback(() => {
+    if (step > 0) setForm({ step: (step - 1) as StepIndex });
+  }, [step, setForm]);
 
   const mapRef = useRef<SafeMapViewRef>(null);
   const overviewMapRef = useRef<SafeMapViewRef>(null);
 
-  // ── Stores with coordinates for overview map ──
+  // User's live GPS position (fetched once, used as default map center)
+  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') return;
+        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        setUserLocation({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
+      } catch { /* silently ignore */ }
+    })();
+  }, []);
+
+  // Auto-locate when entering step 2 with no coordinates yet
+  useEffect(() => {
+    if (step === 3 && latitude === null && longitude === null) {
+      handleUseMyLocation();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
+
+  // Default map center: store coords > user GPS > Casablanca fallback
+  const defaultCenter = useMemo(() => ({
+    latitude: latitude ?? userLocation?.latitude ?? 33.5731,
+    longitude: longitude ?? userLocation?.longitude ?? -7.5898,
+  }), [latitude, longitude, userLocation]);
+  // â”€â”€ Stores with coordinates for overview map â”€â”€
   const storesWithCoords = useMemo(
     () => stores.filter((s) => s.latitude != null && s.longitude != null),
     [stores],
@@ -256,7 +426,7 @@ export default function StoresScreen() {
     };
   }, [storesWithCoords]);
 
-  // ── Fit map to all stores when they change ──
+  // â”€â”€ Fit map to all stores when they change â”€â”€
   const fitTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => {
     if (storesWithCoords.length > 1 && overviewMapRef.current) {
@@ -277,13 +447,13 @@ export default function StoresScreen() {
     return () => clearTimeout(fitTimerRef.current);
   }, [storesWithCoords]);
 
-  // ── Reset form ──
+  // â”€â”€ Reset form â”€â”€
   const resetForm = () => {
     formDispatch({ type: 'RESET', defaults: { categorie: merchant?.categorie ?? '', ville: merchant?.ville ?? '' } });
     setEditingStore(null);
   };
 
-  // ── Open modal ──
+  // â”€â”€ Open modal â”€â”€
   const openCreate = () => {
     if (stores.length >= effectiveMax) {
       if (!isPremium) {
@@ -303,26 +473,35 @@ export default function StoresScreen() {
     setShowModal(true);
   };
 
-  // ── Save ──
+  // â”€â”€ Save â”€â”€
   const handleSave = async () => {
+    const socialLinks = {
+      instagram: instagram.trim().replace(/^@/, '').replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/.*$/, '') || undefined,
+      tiktok: tiktok.trim().replace(/^@/, '').replace(/^https?:\/\/(www\.)?tiktok\.com\/@?/, '').replace(/\/.*$/, '') || undefined,
+    };
+    const hasSocial = Object.values(socialLinks).some(Boolean);
+
     const payload: Partial<CreateStorePayload> & { nom: string } = {
       nom: nom.trim(),
+      description: description.trim() || undefined,
       ville: ville.trim() || undefined,
       quartier: quartier.trim() || undefined,
       adresse: adresse.trim() || undefined,
       telephone: telephone.trim() || undefined,
+      email: email.trim() || undefined,
       latitude: latitude ?? undefined,
       longitude: longitude ?? undefined,
       categorie: categorie || undefined,
+      socialLinks: hasSocial ? socialLinks : undefined,
     };
     const ok = await saveStore(payload as CreateStorePayload, editingStore?.id);
     if (ok) setShowModal(false);
   };
 
-  // ── Delete ──
+  // â”€â”€ Delete â”€â”€
   const handleDelete = (store: StoreType) => deleteStore(store);
 
-  // ── Geocoding helpers ──
+  // â”€â”€ Geocoding helpers â”€â”€
   const reverseGeocodeAndLabel = async (lat: number, lng: number) => {
     try {
       const results = await reverseGeocodeAsync({ latitude: lat, longitude: lng });
@@ -338,31 +517,6 @@ export default function StoresScreen() {
     } catch { /* silently ignore */ }
   };
 
-  const handleAddressSearch = async () => {
-    const q = addressSearch.trim();
-    if (!q || q.length < 3) return;
-    setForm({ isGeoSearching: true });
-    try {
-      const fullQuery = ville ? `${q}, ${ville}, ${t('common.morocco')}` : `${q}, ${t('common.morocco')}`;
-      const results = await geocodeAsync(fullQuery);
-      if (results.length > 0) {
-        const { latitude: lat, longitude: lng } = results[0];
-        setForm({ latitude: lat, longitude: lng, adresse: q });
-        mapRef.current?.animateToRegion({
-          latitude: lat, longitude: lng,
-          latitudeDelta: 0.005, longitudeDelta: 0.005,
-        });
-        await reverseGeocodeAndLabel(lat, lng);
-      } else {
-        Alert.alert(t('stores.addressNotFound'), t('stores.addressNotFoundHint'));
-      }
-    } catch {
-      Alert.alert(t('common.error'), t('stores.addressSearchError'));
-    } finally {
-      setForm({ isGeoSearching: false });
-    }
-  };
-
   const handleUseMyLocation = async () => {
     setForm({ locating: true });
     try {
@@ -371,13 +525,15 @@ export default function StoresScreen() {
         Alert.alert(t('stores.permissionDenied'), t('stores.enableLocation'));
         return;
       }
-      const loc = await Location.getCurrentPositionAsync({});
-      setForm({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const { latitude: lat, longitude: lng } = loc.coords;
+      setUserLocation({ latitude: lat, longitude: lng });
+      setForm({ latitude: lat, longitude: lng });
       mapRef.current?.animateToRegion({
-        latitude: loc.coords.latitude, longitude: loc.coords.longitude,
-        latitudeDelta: 0.005, longitudeDelta: 0.005,
+        latitude: lat, longitude: lng,
+        latitudeDelta: FIVE_KM_DELTA, longitudeDelta: FIVE_KM_DELTA,
       });
-      await reverseGeocodeAndLabel(loc.coords.latitude, loc.coords.longitude);
+      await reverseGeocodeAndLabel(lat, lng);
     } catch {
       Alert.alert(t('common.error'), t('stores.locationError'));
     } finally {
@@ -385,13 +541,26 @@ export default function StoresScreen() {
     }
   };
 
-  // ── Category helper ──
+  // â”€â”€ Category helper â”€â”€
   const getCategoryLabel = (cat?: MerchantCategory | '') => {
     if (!cat) return t('stores.sameCategoryLabel');
     return getCategoryLabelFn(cat);
   };
 
   // ── Main view ──
+  if (isTeamMember) {
+    return (
+      <View style={[styles.container, { backgroundColor: theme.bg, paddingTop: insets.top, justifyContent: 'center', alignItems: 'center', padding: 32 }]}>
+        <Shield size={48} color={theme.textMuted} strokeWidth={1.5} />
+        <Text style={{ color: theme.text, fontWeight: '600', fontSize: 16, marginTop: 16 }}>{t('common.ownerOnly')}</Text>
+        <Text style={{ color: theme.textMuted, textAlign: 'center', marginTop: 8 }}>{t('common.ownerOnlyMsg')}</Text>
+        <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 16, paddingHorizontal: 24, paddingVertical: 10, backgroundColor: theme.primary, borderRadius: 8 }}>
+          <Text style={{ color: '#fff', fontWeight: '600' }}>{t('common.back')}</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.container, { backgroundColor: theme.bg, paddingTop: insets.top }]}>
       {/* Header */}
@@ -427,26 +596,28 @@ export default function StoresScreen() {
         )}
       </View>
 
-      {/* ── Overview Map ── */}
+      {/* â”€â”€ Overview Map â”€â”€ */}
       {!loading && storesWithCoords.length > 0 && (
-        <View style={[styles.overviewMapWrapper, { borderColor: theme.border }]}>
+        <View style={styles.overviewMapWrapper}>
           <MapView
-            key={`overview-map-${storesWithCoords.length}`}
             ref={overviewMapRef}
             style={styles.overviewMap}
-            provider={googleMapsApiKey ? PROVIDER_GOOGLE : undefined}
             region={overviewRegion}
+            customMapStyle={MAP_STYLE}
+            showsPointsOfInterest={false}
+            showsBuildings={false}
+            showsIndoors={false}
+            showsTraffic={false}
             scrollEnabled={true}
             zoomEnabled={true}
             pitchEnabled={false}
             rotateEnabled={false}
           >
             {storesWithCoords.map((store) => (
-              <Marker
+              <TrackedStoreMarker
                 key={store.id}
-                coordinate={{ latitude: store.latitude!, longitude: store.longitude! }}
-                title={store.nom}
-                description={[store.adresse, store.quartier, store.ville].filter(Boolean).join(', ')}
+                store={store}
+                logoUrl={merchant?.logoUrl}
               />
             ))}
           </MapView>
@@ -475,6 +646,13 @@ export default function StoresScreen() {
           contentContainerStyle={styles.listContent}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />}
         >
+          {/* â”€â”€ Guide text â”€â”€ */}
+          <View style={[styles.guideContainer, { backgroundColor: theme.primaryBg || (theme.primary + '10'), borderLeftColor: theme.primary, marginBottom: 12 }]}>
+            <Text style={[styles.guideText, { color: theme.textSecondary }]}>
+              {t('stores.guideText')}
+            </Text>
+          </View>
+
           {stores.map((store) => (
             <StoreCard
               key={store.id}
@@ -488,240 +666,325 @@ export default function StoresScreen() {
         </ScrollView>
       )}
 
-      {/* ── Create / Edit Modal ── */}
+      {/* â”€â”€ Create / Edit Modal â”€â”€ */}
       <Modal visible={showModal} animationType="slide" transparent>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20} style={{ flex: 1 }}>
           <View style={[styles.modalOverlay]}>
             <View style={[styles.modalContent, { backgroundColor: theme.bg, paddingTop: Math.max(insets.top, 16) }]}>
-              {/* Modal header */}
+              {/* Modal header with step indicator */}
               <View style={[styles.modalHeader, { borderBottomColor: theme.border }]}>
-                <TouchableOpacity onPress={() => setShowModal(false)}>
-                  <X size={24} color={theme.text} />
+                <TouchableOpacity onPress={() => { if (step > 0) goBack(); else setShowModal(false); }}>
+                  {step > 0 ? <ArrowLeft size={ms(22)} color={theme.text} /> : <X size={ms(22)} color={theme.text} />}
                 </TouchableOpacity>
-                <Text style={[styles.modalTitle, { color: theme.text }]}>
-                  {editingStore ? t('stores.editStore') : t('stores.addStore')}
-                </Text>
-                <TouchableOpacity onPress={handleSave} disabled={saving}>
-                  {saving ? <ActivityIndicator size="small" color={theme.primary} /> : <Check size={24} color={theme.primary} />}
-                </TouchableOpacity>
+                <View style={styles.stepHeaderCenter}>
+                  <Text style={[styles.modalTitle, { color: theme.text }]}>
+                    {editingStore ? t('stores.editStore') : t('stores.addStore')}
+                  </Text>
+                  <Text style={[styles.stepLabel, { color: theme.textMuted }]}>
+                    {t('stores.stepOf', { current: step + 1, total: TOTAL_STEPS })}
+                  </Text>
+                </View>
+                <View style={{ width: ms(22) }} />
               </View>
 
-              <ScrollView contentContainerStyle={styles.formContent} keyboardShouldPersistTaps="handled">
-                {/* ── Section: Informations ── */}
-                <View style={[styles.sectionHeader, { borderBottomColor: theme.border }]}>
-                  <Tag size={16} color={theme.primary} />
-                  <Text style={[styles.sectionTitle, { color: theme.text }]}>{t('stores.sectionInfo')}</Text>
-                </View>
+              {/* Progress bar */}
+              <View style={[styles.progressTrack, { backgroundColor: theme.border }]}>
+                <View style={[styles.progressFill, { width: `${((step + 1) / TOTAL_STEPS) * 100}%` }]} />
+              </View>
 
-                {/* Nom */}
-                <Text style={[styles.label, { color: theme.text }]}>{t('stores.nameLabel')} *</Text>
-                <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: nom.trim() ? theme.success : theme.border }]}>
-                  <Store size={18} color={nom.trim() ? theme.success : theme.textMuted} />
-                  <TextInput
-                    style={[styles.input, { color: theme.text }]}
-                    value={nom}
-                    onChangeText={(v) => setForm({ nom: v })}
-                    placeholder={t('stores.namePlaceholder')}
-                    placeholderTextColor={theme.textMuted}
-                  />
-                  {nom.trim().length > 0 && <Check size={16} color={theme.success} strokeWidth={2.5} />}
+              {/* Step title + description */}
+              <View style={styles.stepTitleRow}>
+                <View style={[styles.stepIconCircle, { backgroundColor: palette.violet + '14' }]}>
+                  {step === 0 && <Tag size={ms(18)} color={palette.violet} strokeWidth={1.5} />}
+                  {step === 1 && <Contact size={ms(18)} color={palette.violet} strokeWidth={1.5} />}
+                  {step === 2 && <Instagram size={ms(18)} color={palette.violet} strokeWidth={1.5} />}
+                  {step === 3 && <MapPin size={ms(18)} color={palette.violet} strokeWidth={1.5} />}
                 </View>
-
-                {/* Catégorie */}
-                <Text style={[styles.label, { color: theme.text }]}>{t('stores.categoryLabel')}</Text>
-                <TouchableOpacity
-                  style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: categorie ? theme.primary : theme.border }]}
-                  onPress={() => setForm({ showCategoryPicker: true })}
-                >
-                  <MerchantCategoryIcon category={categorie || merchant?.categorie || MerchantCategory.AUTRE} size={22} />
-                  <Text style={[styles.input, { color: categorie ? theme.text : theme.textMuted, flex: 1 }]}>
-                    {getCategoryLabel(categorie)}
+                <View style={{ flex: 1, marginLeft: wp(12) }}>
+                  <Text style={[styles.stepTitleText, { color: theme.text }]}>
+                    {step === 0 ? t('stores.sectionInfo') : step === 1 ? t('stores.sectionContact') : step === 2 ? t('stores.sectionSocial') : t('stores.sectionLocation')}
                   </Text>
-                  <ChevronDown size={16} color={theme.textMuted} />
-                </TouchableOpacity>
-
-                {/* ── Section: Contact ── */}
-                <View style={[styles.sectionHeader, { borderBottomColor: theme.border, marginTop: 20 }]}>
-                  <Contact size={16} color={theme.primary} />
-                  <Text style={[styles.sectionTitle, { color: theme.text }]}>{t('stores.sectionContact')}</Text>
+                  <Text style={[styles.stepDesc, { color: theme.textMuted }]}>
+                    {step === 0 ? t('stores.stepInfoDesc') : step === 1 ? t('stores.stepContactDesc') : step === 2 ? t('stores.stepSocialDesc') : t('stores.stepLocationDesc')}
+                  </Text>
                 </View>
+              </View>
 
-                {/* Téléphone */}
-                <Text style={[styles.label, { color: theme.text }]}>{t('stores.phoneLabel')}</Text>
-                <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: telephone.trim().length >= 7 ? theme.success : theme.border }]}>
-                  <Phone size={18} color={telephone.trim().length >= 7 ? theme.success : theme.textMuted} />
-                  <TextInput
-                    style={[styles.input, { color: theme.text }]}
-                    value={telephone}
-                    onChangeText={(v) => setForm({ telephone: v })}
-                    placeholder={t('stores.phonePlaceholder')}
-                    placeholderTextColor={theme.textMuted}
-                    keyboardType="phone-pad"
-                  />
-                  {telephone.trim().length >= 7 && <Check size={16} color={theme.success} strokeWidth={2.5} />}
-                </View>
+              <ScrollView contentContainerStyle={styles.formContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+                {/* Step 1: Informations */}
+                {step === 0 && (
+                  <>
+                    <Text style={[styles.label, { color: theme.text }]}>{t('stores.nameLabel')} *</Text>
+                    <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: nom.trim() ? theme.success : theme.border }]}>
+                      <Store size={ms(18)} color={nom.trim() ? theme.success : theme.textMuted} />
+                      <TextInput
+                        style={[styles.input, { color: theme.text }]}
+                        value={nom}
+                        onChangeText={(v) => setForm({ nom: v })}
+                        placeholder={t('stores.namePlaceholder')}
+                        placeholderTextColor={theme.textMuted}
+                        autoFocus={!editingStore}
+                      />
+                      {nom.trim().length > 0 && <Check size={ms(16)} color={theme.success} strokeWidth={2.5} />}
+                    </View>
 
-                {/* Email */}
-                <Text style={[styles.label, { color: theme.text }]}>{t('stores.emailLabel')}</Text>
-                <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: email && isValidEmail(email) ? theme.success : email.length > 3 && !isValidEmail(email) ? theme.danger : theme.border }]}>
-                  <Mail size={18} color={email && isValidEmail(email) ? theme.success : theme.textMuted} />
-                  <TextInput
-                    style={[styles.input, { color: theme.text }]}
-                    value={email}
-                    onChangeText={(v) => setForm({ email: v })}
-                    placeholder={t('stores.emailPlaceholder')}
-                    placeholderTextColor={theme.textMuted}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                  />
-                  {email && isValidEmail(email) && <Check size={16} color={theme.success} strokeWidth={2.5} />}
-                </View>
-                {email.length > 3 && !isValidEmail(email) && (
-                  <Text style={[styles.validationHint, { color: theme.danger }]}>{t('stores.invalidEmail')}</Text>
+                    <Text style={[styles.label, { color: theme.text }]}>{t('stores.categoryLabel')}</Text>
+                    <TouchableOpacity
+                      style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: categorie ? palette.violet : theme.border }]}
+                      onPress={() => setForm({ showCategoryPicker: true })}
+                    >
+                      <MerchantCategoryIcon category={categorie || merchant?.categorie || MerchantCategory.AUTRE} size={ms(22)} />
+                      <Text style={[styles.input, { color: categorie ? theme.text : theme.textMuted, flex: 1 }]}>
+                        {getCategoryLabel(categorie)}
+                      </Text>
+                      <ChevronDown size={ms(16)} color={theme.textMuted} />
+                    </TouchableOpacity>
+
+                    <Text style={[styles.label, { color: theme.text }]}>{t('stores.descLabel')}</Text>
+                    <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.border, minHeight: ms(90), alignItems: 'flex-start' }]}>
+                      <FileText size={ms(16)} color={theme.textMuted} style={{ marginTop: ms(14) }} />
+                      <TextInput
+                        style={[styles.input, { color: theme.text, textAlignVertical: 'top', minHeight: ms(70) }]}
+                        value={description}
+                        onChangeText={(v) => setForm({ description: v })}
+                        placeholder={t('stores.descPlaceholder')}
+                        placeholderTextColor={theme.textMuted}
+                        multiline
+                        maxLength={1000}
+                      />
+                    </View>
+                    <Text style={{ fontSize: ms(11), color: theme.textMuted, textAlign: 'right', marginTop: ms(4) }}>
+                      {description.length}/1000
+                    </Text>
+                  </>
                 )}
 
-                {/* ── Section: Localisation ── */}
-                <View style={[styles.sectionHeader, { borderBottomColor: theme.border, marginTop: 20 }]}>
-                  <MapPin size={16} color={theme.primary} />
-                  <Text style={[styles.sectionTitle, { color: theme.text }]}>{t('stores.sectionLocation')}</Text>
-                </View>
+                {/* Step 2: Contact */}
+                {step === 1 && (
+                  <>
+                    <Text style={[styles.label, { color: theme.text }]}>{t('stores.phoneLabel')}</Text>
+                    <PhoneInput
+                      value={telephone}
+                      onChangeText={(v) => setForm({ telephone: v })}
+                      placeholder={t('stores.phonePlaceholder')}
+                    />
 
-                {/* Ville */}
-                <Text style={[styles.label, { color: theme.text }]}>{t('stores.cityLabel')}</Text>
-                <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: ville.trim() ? theme.success : theme.border }]}>
-                  <MapPin size={18} color={ville.trim() ? theme.success : theme.textMuted} />
-                  <TextInput
-                    style={[styles.input, { color: theme.text }]}
-                    value={ville}
-                    onChangeText={(v) => setForm({ ville: v })}
-                    placeholder={t('stores.cityPlaceholder')}
-                    placeholderTextColor={theme.textMuted}
-                  />
-                  {ville.trim().length > 0 && <Check size={16} color={theme.success} strokeWidth={2.5} />}
-                </View>
+                    <Text style={[styles.label, { color: theme.text }]}>{t('stores.emailLabel')}</Text>
+                    <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: email && isValidEmail(email) ? theme.success : email.length > 3 && !isValidEmail(email) ? theme.danger : theme.border }]}>
+                      <Mail size={ms(18)} color={email && isValidEmail(email) ? theme.success : theme.textMuted} />
+                      <TextInput
+                        style={[styles.input, { color: theme.text }]}
+                        value={email}
+                        onChangeText={(v) => setForm({ email: v })}
+                        placeholder={t('stores.emailPlaceholder')}
+                        placeholderTextColor={theme.textMuted}
+                        keyboardType="email-address"
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                      />
+                      {email && isValidEmail(email) && <Check size={ms(16)} color={theme.success} strokeWidth={2.5} />}
+                    </View>
+                    {email.length > 3 && !isValidEmail(email) && (
+                      <Text style={[styles.validationHint, { color: theme.danger }]}>{t('stores.invalidEmail')}</Text>
+                    )}
 
-                {/* Quartier */}
-                <Text style={[styles.label, { color: theme.text }]}>{t('stores.districtLabel')}</Text>
-                <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: quartier.trim() ? theme.success : theme.border }]}>
-                  <MapPin size={18} color={quartier.trim() ? theme.success : theme.textMuted} />
-                  <TextInput
-                    style={[styles.input, { color: theme.text }]}
-                    value={quartier}
-                    onChangeText={(v) => setForm({ quartier: v })}
-                    placeholder={t('stores.districtPlaceholder')}
-                    placeholderTextColor={theme.textMuted}
-                  />
-                </View>
+                    <View style={[styles.stepOptionalBadge, { backgroundColor: palette.violet + '10' }]}>
+                      <Text style={[styles.stepOptionalText, { color: palette.violet }]}>{t('stores.contactOptional')}</Text>
+                    </View>
+                  </>
+                )}
 
-                {/* Address search with autocomplete */}
-                <Text style={[styles.label, { color: theme.text }]}>{t('stores.searchAddress')}</Text>
-                <AddressAutocomplete
-                  value={addressSearch}
-                  onChangeText={(text) => { setForm({ addressSearch: text, adresse: text }); }}
-                  placeholder={t('stores.addressSearchPlaceholder')}
-                  ville={ville}
-                  onSelect={(result: AddressResult) => {
-                    setForm({
-                      latitude: result.latitude,
-                      longitude: result.longitude,
-                      adresse: result.address,
-                      addressSearch: result.address,
-                      ...(result.city ? { ville: result.city } : {}),
-                      ...(result.district ? { quartier: result.district } : {}),
-                    });
-                    mapRef.current?.animateToRegion({
-                      latitude: result.latitude, longitude: result.longitude,
-                      latitudeDelta: 0.005, longitudeDelta: 0.005,
-                    });
-                  }}
-                />
+                {/* Step 3: Réseaux sociaux */}
+                {step === 2 && (
+                  <>
+                    <View style={styles.fieldGroup}>
+                      <Text style={[styles.label, { color: theme.text }]}>Instagram</Text>
+                      <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: instagram.trim() ? theme.success : theme.border }]}>
+                        <Instagram size={ms(18)} color="#E1306C" />
+                        <TextInput
+                          style={[styles.input, { color: theme.text }]}
+                          value={instagram}
+                          onChangeText={(v) => setForm({ instagram: v })}
+                          placeholder="@nom_utilisateur"
+                          placeholderTextColor={theme.textMuted}
+                          autoCapitalize="none"
+                          autoCorrect={false}
+                        />
+                      </View>
+                    </View>
 
-                {/* Map */}
-                <View style={[styles.mapWrapper, { borderColor: theme.border }]}>
-                  <MapView
-                    ref={mapRef}
-                    style={styles.map}
-                    provider={googleMapsApiKey ? PROVIDER_GOOGLE : undefined}
-                    initialRegion={{
-                      latitude: latitude ?? 33.5731,
-                      longitude: longitude ?? -7.5898,
-                      latitudeDelta: 0.02,
-                      longitudeDelta: 0.02,
-                    }}
-                    onPress={(e: { nativeEvent: { coordinate: { latitude: number; longitude: number } } }) => {
-                      const coords = e.nativeEvent.coordinate;
-                      setForm({ latitude: coords.latitude, longitude: coords.longitude });
-                      reverseGeocodeAndLabel(coords.latitude, coords.longitude);
-                    }}
-                  >
-                    {latitude !== null && longitude !== null && (
-                      <Marker
-                        draggable
-                        coordinate={{ latitude, longitude }}
-                        onDragEnd={(e: { nativeEvent: { coordinate: { latitude: number; longitude: number } } }) => {
-                          const c = e.nativeEvent.coordinate;
-                          setForm({ latitude: c.latitude, longitude: c.longitude });
-                          reverseGeocodeAndLabel(c.latitude, c.longitude);
+                    <View style={styles.fieldGroup}>
+                      <Text style={[styles.label, { color: theme.text }]}>TikTok</Text>
+                      <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: tiktok.trim() ? theme.success : theme.border }]}>
+                        <Globe size={ms(18)} color={theme.textMuted} />
+                        <TextInput
+                          style={[styles.input, { color: theme.text }]}
+                          value={tiktok}
+                          onChangeText={(v) => setForm({ tiktok: v })}
+                          placeholder="@nom_utilisateur"
+                          placeholderTextColor={theme.textMuted}
+                          autoCapitalize="none"
+                          autoCorrect={false}
+                        />
+                      </View>
+                    </View>
+
+
+
+                    <View style={[styles.stepOptionalBadge, { backgroundColor: palette.violet + '10' }]}>
+                      <Text style={[styles.stepOptionalText, { color: palette.violet }]}>{t('stores.socialOptional')}</Text>
+                    </View>
+                  </>
+                )}
+
+                {/* Step 4: Localisation */}
+                {step === 3 && (
+                  <>
+                    <TouchableOpacity
+                      style={[styles.locateMeCard, { backgroundColor: palette.violet + '08', borderColor: palette.violet + '20' }]}
+                      onPress={handleUseMyLocation}
+                      disabled={locating}
+                      activeOpacity={0.7}
+                    >
+                      <View style={[styles.locateMeIcon, { backgroundColor: palette.violet }]}>
+                        {locating ? <ActivityIndicator size="small" color="#fff" /> : <Navigation size={ms(18)} color="#fff" strokeWidth={1.5} />}
+                      </View>
+                      <View style={{ flex: 1, marginLeft: wp(12) }}>
+                        <Text style={[styles.locateMeTitle, { color: theme.text }]}>{t('stores.locateMe')}</Text>
+                        <Text style={[styles.locateMeHint, { color: theme.textMuted }]}>{t('stores.locateMeHint')}</Text>
+                      </View>
+                    </TouchableOpacity>
+
+                    <Text style={[styles.label, { color: theme.text }]}>{t('stores.searchAddress')}</Text>
+                    <View style={{ zIndex: 1000, elevation: 10 }}>
+                      <AddressAutocomplete
+                        value={addressSearch}
+                        onChangeText={(text) => { setForm({ addressSearch: text, adresse: text }); }}
+                        placeholder={t('stores.addressSearchPlaceholder')}
+                        ville={ville}
+                        userLocation={userLocation}
+                        notFoundMessage={t('stores.addressNotFoundManual')}
+                        onSelect={(result: AddressResult) => {
+                          setForm({
+                            latitude: result.latitude,
+                            longitude: result.longitude,
+                            adresse: result.address,
+                            addressSearch: result.address,
+                            ...(result.city ? { ville: result.city } : {}),
+                            ...(result.district ? { quartier: result.district } : {}),
+                          });
+                          mapRef.current?.animateToRegion({
+                            latitude: result.latitude, longitude: result.longitude,
+                            latitudeDelta: FIVE_KM_DELTA, longitudeDelta: FIVE_KM_DELTA,
+                          });
                         }}
                       />
+                    </View>
+
+                    <View style={[styles.mapWrapper, { borderColor: palette.violet + '20' }]}>
+                      <MapView
+                        ref={mapRef}
+                        style={styles.map}
+                        customMapStyle={MAP_STYLE}
+                        initialRegion={{
+                          latitude: defaultCenter.latitude,
+                          longitude: defaultCenter.longitude,
+                          latitudeDelta: FIVE_KM_DELTA,
+                          longitudeDelta: FIVE_KM_DELTA,
+                        }}
+                        showsPointsOfInterest={false}
+                        showsBuildings={false}
+                        onPress={(e: { nativeEvent: { coordinate: { latitude: number; longitude: number } } }) => {
+                          const coords = e.nativeEvent.coordinate;
+                          setForm({ latitude: coords.latitude, longitude: coords.longitude });
+                          reverseGeocodeAndLabel(coords.latitude, coords.longitude);
+                        }}
+                      >
+                        <Marker
+                          draggable
+                          coordinate={{ latitude: defaultCenter.latitude, longitude: defaultCenter.longitude }}
+                          opacity={latitude !== null && longitude !== null ? 1 : 0}
+                          pinColor={palette.violet}
+                          onDragEnd={(e: { nativeEvent: { coordinate: { latitude: number; longitude: number } } }) => {
+                            const c = e.nativeEvent.coordinate;
+                            setForm({ latitude: c.latitude, longitude: c.longitude });
+                            reverseGeocodeAndLabel(c.latitude, c.longitude);
+                          }}
+                        />
+                      </MapView>
+                    </View>
+
+                    <Text style={[styles.mapHintText, { color: theme.textMuted }]}>{t('stores.mapHint')}</Text>
+
+                    {latitude !== null && longitude !== null && (
+                      <View style={[styles.gpsIndicator, { backgroundColor: `${theme.success}12` }]}>
+                        <Check size={ms(14)} color={theme.success} strokeWidth={2.5} />
+                        <Text style={[styles.gpsIndicatorText, { color: theme.success }]}>
+                          {adresse || `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`}
+                        </Text>
+                      </View>
                     )}
-                  </MapView>
-                </View>
 
-                <TouchableOpacity
-                  style={[styles.locationBtn, { backgroundColor: theme.primary }]}
-                  onPress={handleUseMyLocation}
-                  disabled={locating}
-                >
-                  {locating ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <>
-                      <Navigation size={16} color="#fff" strokeWidth={1.5} />
-                      <Text style={styles.locationBtnText}>{t('stores.locateMe')}</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-
-                {/* GPS indicator */}
-                {latitude !== null && longitude !== null && (
-                  <View style={[styles.gpsIndicator, { backgroundColor: `${theme.success}12` }]}>
-                    <Check size={14} color={theme.success} strokeWidth={2.5} />
-                    <Text style={[styles.gpsIndicatorText, { color: theme.success }]}>
-                      📍 {adresse || `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`}
-                    </Text>
-                  </View>
+                    <Text style={[styles.label, { color: theme.text }]}>{t('stores.addressLabel')}</Text>
+                    <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: adresse.trim() ? theme.success : theme.border }]}>
+                      <MapPin size={ms(18)} color={adresse.trim() ? theme.success : theme.textMuted} />
+                      <TextInput
+                        style={[styles.input, { color: theme.text }]}
+                        value={adresse}
+                        onChangeText={(text) => setForm({ adresse: text })}
+                        placeholder={t('stores.addressAutoPlaceholder')}
+                        placeholderTextColor={theme.textMuted}
+                      />
+                    </View>
+                  </>
                 )}
 
-                {/* Adresse (readonly, filled by geocode) */}
-                <Text style={[styles.label, { color: theme.text }]}>{t('stores.addressLabel')}</Text>
-                <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: adresse.trim() ? theme.success : theme.border }]}>
-                  <MapPin size={18} color={adresse.trim() ? theme.success : theme.textMuted} />
-                  <TextInput
-                    style={[styles.input, { color: theme.text }]}
-                    value={adresse}
-                    onChangeText={(text) => setForm({ adresse: text })}
-                    placeholder={t('stores.addressAutoPlaceholder')}
-                    placeholderTextColor={theme.textMuted}
-                  />
-                </View>
-
-                <View style={{ height: 40 }} />
+                <View style={{ height: ms(100) }} />
               </ScrollView>
+
+              {/* Bottom action bar */}
+              <View style={[styles.bottomBar, { backgroundColor: theme.bg, borderTopColor: theme.border, paddingBottom: Math.max(insets.bottom, ms(16)) }]}>
+                {step === 3 ? (
+                  <TouchableOpacity
+                    style={[styles.primaryBtn, { backgroundColor: saving ? palette.violet + '80' : palette.violet }]}
+                    onPress={handleSave}
+                    disabled={saving}
+                    activeOpacity={0.8}
+                  >
+                    {saving ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <>
+                        <Check size={ms(18)} color="#fff" strokeWidth={2} />
+                        <Text style={styles.primaryBtnText}>{editingStore ? t('stores.saveBtn') : t('stores.addStore')}</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    style={[styles.primaryBtn, { backgroundColor: canGoNext ? palette.violet : palette.violet + '40' }]}
+                    onPress={goNext}
+                    disabled={!canGoNext}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.primaryBtnText}>{t('stores.nextStep')}</Text>
+                    <ArrowLeft size={ms(16)} color="#fff" strokeWidth={2} style={{ transform: [{ rotate: '180deg' }] }} />
+                  </TouchableOpacity>
+                )}
+              </View>
             </View>
           </View>
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* ── Category Picker Modal ── */}
+      {/* â”€â”€ Category Picker Modal â”€â”€ */}
       <Modal visible={showCategoryPicker} animationType="fade" transparent>
         <TouchableOpacity style={styles.pickerOverlay} activeOpacity={1} onPress={() => setForm({ showCategoryPicker: false })}>
           <View style={[styles.pickerCard, { backgroundColor: theme.bgCard }]}>
             <Text style={[styles.pickerTitle, { color: theme.text }]}>{t('stores.categoryLabel')}</Text>
             <ScrollView style={{ maxHeight: 350 }}>
               {getCategoryOptions().map((opt) => {
-                const emoji = CATEGORY_EMOJIS[opt.value] ?? '🏷️';
+                const emoji = CATEGORY_EMOJIS[opt.value] ?? 'ðŸ·ï¸';
                 return (
                   <TouchableOpacity
                     key={opt.value}
@@ -801,28 +1064,86 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   addBtnLargeText: { color: '#fff', fontSize: 15, fontWeight: '700' },
-  listContent: { padding: 16, gap: 12, paddingBottom: 32 },
+  guideContainer: {
+    marginHorizontal: 0,
+    marginTop: 16,
+    marginBottom: 4,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: '#f0f4ff',
+    borderRadius: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: '#7C3AED',
+  },
+  guideText: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  listContent: { padding: wp(16), gap: ms(14), paddingBottom: 32 },
 
-  // Card
-  card: { borderRadius: 14, borderWidth: 1, padding: 14 },
-  cardHeader: { marginBottom: 8 },
-  cardTitleRow: { flexDirection: 'row', alignItems: 'center' },
-  cardName: { fontSize: 16, fontWeight: '700' },
-  cardSub: { fontSize: 12, marginTop: 2 },
-  statusBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
-  cardDetail: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
-  cardDetailText: { fontSize: 13, flex: 1 },
-  cardActions: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  // Card — callout style matching discover screen
+  card: {
+    borderRadius: ms(22),
+    borderWidth: 1,
+    borderColor: 'rgba(124,58,237,0.08)',
+    overflow: 'hidden',
+    ...Platform.select({
+      ios: { shadowColor: '#7C3AED', shadowOffset: { width: 0, height: hp(3) }, shadowOpacity: 0.10, shadowRadius: 16 },
+      android: { elevation: 4 },
+    }),
+  },
+  cardAccent: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: ms(4),
+    borderTopLeftRadius: ms(22),
+    borderBottomLeftRadius: ms(22),
+  },
+  cardBody: {
+    paddingVertical: wp(14),
+    paddingLeft: wp(18),
+    paddingRight: wp(14),
+  },
+  cardTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  cardAvatar: {
+    width: ms(56),
+    height: ms(56),
+    borderRadius: ms(16),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardInfo: {
+    flex: 1,
+    marginLeft: wp(12),
+  },
+  cardName: { fontSize: FS.lg, fontWeight: '700', letterSpacing: -0.3 },
+  cardCatBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: ms(8),
+    paddingVertical: ms(2),
+    borderRadius: ms(8),
+    marginTop: ms(4),
+  },
+  cardCatText: { fontSize: ms(11), fontWeight: '600' },
+  statusBadge: { paddingHorizontal: ms(8), paddingVertical: ms(3), borderRadius: ms(8) },
+  cardDetail: { flexDirection: 'row', alignItems: 'center', gap: ms(6), marginTop: ms(6) },
+  cardDetailText: { fontSize: ms(12), flex: 1 },
+  cardActions: { flexDirection: 'row', gap: ms(8), marginTop: ms(14) },
   actionBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 8,
-    borderRadius: 8,
-    gap: 4,
+    paddingVertical: ms(8),
+    borderRadius: ms(12),
+    gap: ms(4),
   },
-  actionBtnText: { fontSize: 12, fontWeight: '600' },
+  actionBtnText: { fontSize: ms(11), fontWeight: '600' },
 
   // Modal
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
@@ -859,6 +1180,7 @@ const styles = StyleSheet.create({
   },
   input: { flex: 1, fontSize: 15, paddingVertical: 0 },
   validationHint: { fontSize: 11, marginTop: 4, marginLeft: 4 },
+  fieldGroup: { marginBottom: ms(12) },
 
   // Section headers
   sectionHeader: {
@@ -872,14 +1194,19 @@ const styles = StyleSheet.create({
   },
   sectionTitle: { fontSize: 14, fontWeight: '700', letterSpacing: 0.3 },
 
-  // Overview Map
+  // Overview Map — premium style
   overviewMapWrapper: {
-    marginHorizontal: 16,
-    marginTop: 12,
-    borderRadius: 14,
+    marginHorizontal: wp(16),
+    marginTop: ms(12),
+    borderRadius: ms(22),
     overflow: 'hidden',
     borderWidth: 1,
-    height: 180,
+    borderColor: 'rgba(124,58,237,0.08)',
+    height: hp(200),
+    ...Platform.select({
+      ios: { shadowColor: '#7C3AED', shadowOffset: { width: 0, height: hp(3) }, shadowOpacity: 0.10, shadowRadius: 16 },
+      android: { elevation: 4 },
+    }),
   },
   overviewMap: { width: '100%', height: '100%' },
 
@@ -927,4 +1254,124 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   pickerOptionText: { flex: 1, fontSize: 14, fontWeight: '500' },
+
+  // Wizard stepper
+  progressTrack: {
+    height: ms(3),
+    borderRadius: ms(2),
+    marginHorizontal: wp(20),
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: ms(2),
+    backgroundColor: palette.violet,
+  },
+  stepHeaderCenter: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  stepLabel: {
+    fontSize: ms(11),
+    fontWeight: '500',
+    marginTop: ms(2),
+  },
+  stepTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: wp(20),
+    paddingVertical: ms(12),
+  },
+  stepIconCircle: {
+    width: ms(40),
+    height: ms(40),
+    borderRadius: ms(20),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepTitleText: {
+    fontSize: FS.md,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+  },
+  stepDesc: {
+    fontSize: ms(12),
+    marginTop: ms(2),
+    lineHeight: ms(16),
+  },
+
+  // Bottom action bar
+  bottomBar: {
+    flexDirection: 'row',
+    paddingHorizontal: wp(20),
+    paddingTop: ms(12),
+    borderTopWidth: 1,
+  },
+  primaryBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: ms(50),
+    borderRadius: ms(16),
+    gap: ms(8),
+    ...Platform.select({
+      ios: { shadowColor: palette.violet, shadowOffset: { width: 0, height: hp(4) }, shadowOpacity: 0.25, shadowRadius: 10 },
+      android: { elevation: 6 },
+    }),
+  },
+  primaryBtnText: {
+    color: '#fff',
+    fontSize: FS.md,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
+
+  // Step content helpers
+  rowFields: {
+    flexDirection: 'row',
+    gap: wp(12),
+  },
+  locateMeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: ms(14),
+    borderRadius: ms(16),
+    borderWidth: 1,
+    marginBottom: ms(8),
+  },
+  locateMeIcon: {
+    width: ms(40),
+    height: ms(40),
+    borderRadius: ms(12),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  locateMeTitle: {
+    fontSize: FS.sm,
+    fontWeight: '700',
+  },
+  locateMeHint: {
+    fontSize: ms(11),
+    marginTop: ms(2),
+  },
+  stepOptionalBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: ms(12),
+    paddingVertical: ms(6),
+    borderRadius: ms(10),
+    marginTop: ms(16),
+  },
+  stepOptionalText: {
+    fontSize: ms(12),
+    fontWeight: '600',
+  },
+  mapHintText: {
+    fontSize: ms(11),
+    textAlign: 'center',
+    marginTop: ms(6),
+    marginBottom: ms(4),
+  },
 });
+
+
+

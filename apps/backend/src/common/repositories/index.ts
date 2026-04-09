@@ -18,6 +18,7 @@ export {
   REWARD_REPOSITORY,
   CLIENT_REFERRAL_REPOSITORY,
   MERCHANT_NOTIFICATION_READ_REPOSITORY,
+  PAYOUT_REQUEST_REPOSITORY,
   TRANSACTION_RUNNER,
   RAW_QUERY_RUNNER,
 } from './repository.tokens';
@@ -40,6 +41,7 @@ export type {
   IRewardRepository,
   IClientReferralRepository,
   IMerchantNotificationReadRepository,
+  IPayoutRequestRepository,
 } from './repository.types';
 
 // Infrastructure

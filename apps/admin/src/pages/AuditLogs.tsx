@@ -5,6 +5,42 @@ import { C, S } from '../theme';
 import { fmtDateTime, ACTION_COLOR } from '../utils/format';
 import { getErrorMessage } from '@jitplus/shared';
 
+const ACTIONS = [
+  { value: '', label: 'Toutes les actions' },
+  { value: 'ADMIN_LOGIN', label: 'Login' },
+  { value: 'ACTIVATE_PREMIUM', label: 'Activer Premium' },
+  { value: 'REVOKE_PREMIUM', label: 'Revoquer Premium' },
+  { value: 'BAN_MERCHANT', label: 'Bannir' },
+  { value: 'UNBAN_MERCHANT', label: 'Debannir' },
+  { value: 'DELETE_MERCHANT', label: 'Suppr. commercant' },
+  { value: 'DEACTIVATE_CLIENT', label: 'Desactiver client' },
+  { value: 'ACTIVATE_CLIENT', label: 'Activer client' },
+  { value: 'DELETE_CLIENT', label: 'Suppr. client' },
+  { value: 'ADMIN_SEND_NOTIFICATION', label: 'Notification' },
+  { value: 'UPDATE_PLAN_DURATION', label: 'Modifier plan' },
+  { value: 'UPDATE_PAYOUT', label: 'Modifier retrait' },
+];
+
+const TARGET_TYPES = [
+  { value: '', label: 'Toutes les cibles' },
+  { value: 'MERCHANT', label: 'Commercant' },
+  { value: 'CLIENT', label: 'Client' },
+  { value: 'ADMIN', label: 'Admin' },
+];
+
+const pillStyle = (active: boolean): React.CSSProperties => ({
+  padding: '5px 12px',
+  fontSize: 12,
+  fontWeight: 500,
+  fontFamily: 'inherit',
+  borderRadius: 'var(--radius-sm)',
+  border: `1px solid ${active ? C.primary : C.border}`,
+  background: active ? C.primary : 'transparent',
+  color: active ? '#fff' : C.textMuted,
+  cursor: 'pointer',
+  transition: 'all 0.15s ease',
+});
+
 export default function AuditLogs() {
   const [logs, setLogs] = useState<AuditLogRow[]>([]);
   const [pagination, setPagination] = useState<Pagination | null>(null);
@@ -13,11 +49,24 @@ export default function AuditLogs() {
   const [error, setError] = useState('');
   const [expanded, setExpanded] = useState<string | null>(null);
 
-  const load = useCallback(async (p: number) => {
+  // Filters
+  const [action, setAction] = useState('');
+  const [targetType, setTargetType] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+
+  const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const res = await getAuditLogs(p, 30);
+      const res = await getAuditLogs(
+        page,
+        30,
+        action || undefined,
+        targetType || undefined,
+        dateFrom || undefined,
+        dateTo || undefined,
+      );
       setLogs(res.logs);
       setPagination(res.pagination);
     } catch (e) {
@@ -25,20 +74,84 @@ export default function AuditLogs() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [page, action, targetType, dateFrom, dateTo]);
 
-  useEffect(() => { load(page); }, [load, page]);
+  useEffect(() => { load(); }, [load]);
+
+  const resetPage = () => setPage(1);
+  const hasFilters = action || targetType || dateFrom || dateTo;
 
   return (
     <div>
-      <h2 style={{ margin: '0 0 24px', fontWeight: 800, fontSize: 22 }}>
-        Audit Logs{' '}
+      <h2 style={{ margin: '0 0 16px', fontWeight: 700, fontSize: 22, letterSpacing: '-0.02em' }}>
+        Journal d'audit{' '}
         {pagination && (
           <span style={{ color: C.textMuted, fontSize: 14, fontWeight: 400 }}>
             ({pagination.total})
           </span>
         )}
       </h2>
+
+      {/* Filters */}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
+        {/* Action filter */}
+        <select
+          value={action}
+          onChange={(e) => { setAction(e.target.value); resetPage(); }}
+          style={{
+            ...S.input,
+            width: 'auto',
+            padding: '5px 10px',
+            fontSize: 12,
+            background: action ? C.primary : C.surface,
+            color: action ? '#fff' : C.text,
+            cursor: 'pointer',
+          }}
+        >
+          {ACTIONS.map((a) => (
+            <option key={a.value} value={a.value}>{a.label}</option>
+          ))}
+        </select>
+
+        {/* Target type pills */}
+        <div style={{ display: 'flex', gap: 4 }}>
+          {TARGET_TYPES.map((t) => (
+            <button key={t.value} onClick={() => { setTargetType(t.value); resetPage(); }} style={pillStyle(targetType === t.value)}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        <div style={{ width: 1, height: 24, background: C.border }} />
+
+        {/* Date range */}
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <span style={{ fontSize: 12, color: C.textMuted }}>Du</span>
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => { setDateFrom(e.target.value); resetPage(); }}
+            style={{ ...S.input, width: 'auto', padding: '4px 8px', fontSize: 12 }}
+          />
+          <span style={{ fontSize: 12, color: C.textMuted }}>au</span>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => { setDateTo(e.target.value); resetPage(); }}
+            style={{ ...S.input, width: 'auto', padding: '4px 8px', fontSize: 12 }}
+          />
+        </div>
+
+        {/* Reset */}
+        {hasFilters && (
+          <button
+            onClick={() => { setAction(''); setTargetType(''); setDateFrom(''); setDateTo(''); resetPage(); }}
+            style={{ ...pillStyle(false), color: C.red, borderColor: C.red }}
+          >
+            Reinitialiser
+          </button>
+        )}
+      </div>
 
       <div style={S.card}>
         {loading ? (

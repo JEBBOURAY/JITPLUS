@@ -42,7 +42,6 @@ export interface Merchant {
   longitude?: number | null;
   loyaltyType: LoyaltyType;
   conversionRate?: number;
-  stampsForReward?: number;
   minRewardCost?: number | null;
   logoUrl?: string | null;
   coverUrl?: string | null;

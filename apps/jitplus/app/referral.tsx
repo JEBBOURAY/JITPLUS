@@ -1,14 +1,14 @@
 import { useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, RefreshControl, StyleSheet, Pressable,
-  TouchableOpacity, Platform, Share, ActivityIndicator, Linking,
+  TouchableOpacity, Platform, Share, ActivityIndicator, Linking, Alert,
 } from 'react-native';
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
   ArrowLeft, Copy, Share2, Gift, Clock, CheckCircle, Users,
-  Smartphone, UserPlus, CreditCard, BadgeCheck, Mail, MessageCircle,
+  Smartphone, UserPlus, CreditCard, BadgeCheck, Mail, MessageCircle, AlertCircle, Banknote,
 } from 'lucide-react-native';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 
@@ -32,12 +32,20 @@ export default function ReferralScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState(false);
+  const [requestingPayout, setRequestingPayout] = useState(false);
+  const [payoutHistory, setPayoutHistory] = useState<Array<{
+    id: string; amount: number; status: string; method: string; createdAt: string;
+  }>>([]);
 
   const fetchStats = useCallback(async () => {
     try {
       setError(false);
-      const data = await api.getReferralStats();
+      const [data, history] = await Promise.all([
+        api.getReferralStats(),
+        api.getPayoutHistory().catch(() => []),
+      ]);
       setStats(data);
+      setPayoutHistory(history);
     } catch {
       setError(true);
     } finally {
@@ -68,7 +76,7 @@ export default function ReferralScreen() {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // Clipboard access failed – ignore
+      // Clipboard access failed - ignore
     }
   }, [stats?.referralCode]);
 
@@ -78,22 +86,50 @@ export default function ReferralScreen() {
       const message = t('referral.shareMessage', { code: stats.referralCode });
       await Share.share({ message });
     } catch {
-      // User dismissed the share dialog or share failed – ignore
+      // User dismissed the share dialog or share failed - ignore
     }
   }, [stats?.referralCode, t]);
 
+  const canRequestPayout = (stats?.referralBalance ?? 0) >= 100;
+
+  const handlePayoutRequest = useCallback(() => {
+    if (!stats || !canRequestPayout) return;
+    const balance = (stats.referralBalance || 0).toFixed(0);
+    const submitPayout = async (method: 'CASH' | 'BANK_TRANSFER') => {
+      try {
+        setRequestingPayout(true);
+        await api.requestPayout(stats.referralBalance || 0, method);
+        Alert.alert('Succ\u00e8s', 'Votre demande de retrait a \u00e9t\u00e9 envoy\u00e9e. Vous serez contact\u00e9 pour finaliser le paiement.');
+        fetchStats();
+      } catch (err: any) {
+        Alert.alert('Erreur', err?.response?.data?.message || 'Une erreur est survenue.');
+      } finally {
+        setRequestingPayout(false);
+      }
+    };
+    Alert.alert(
+      'Demander le retrait',
+      `Retirer ${balance} DH \u2014 choisissez la m\u00e9thode :`,
+      [
+        { text: 'Annuler', style: 'cancel' },
+        { text: '\ud83d\udcb5 Cash', onPress: () => submitPayout('CASH') },
+        { text: '\ud83c\udfe6 Virement', onPress: () => submitPayout('BANK_TRANSFER') },
+      ],
+    );
+  }, [stats, canRequestPayout, fetchStats, t]);
+
   const formatDate = (dateStr: string | null | undefined) => {
     try {
-      if (!dateStr) return '—';
+      if (!dateStr) return '\u2014';
       const d = new Date(dateStr);
-      if (isNaN(d.getTime())) return '—';
+      if (isNaN(d.getTime())) return '\u2014';
       return d.toLocaleDateString(locale === 'ar' ? 'ar-MA' : locale === 'en' ? 'en-GB' : 'fr-FR', {
         day: '2-digit',
         month: 'short',
         year: 'numeric',
       });
     } catch {
-      return '—';
+      return '\u2014';
     }
   };
 
@@ -102,7 +138,7 @@ export default function ReferralScreen() {
   return (
     <View style={[styles.gradient, { backgroundColor: theme.bg }]}>
       <SafeAreaView style={styles.container}>
-        {/* ── Header ── */}
+        {/* Header */}
         <View style={[styles.header, isRTL && styles.headerRTL]}>
           <TouchableOpacity onPress={() => router.back()} hitSlop={12}>
             <ArrowLeft
@@ -125,16 +161,47 @@ export default function ReferralScreen() {
             <ActivityIndicator size="large" color={palette.violet} style={{ marginTop: hp(60) }} />
           ) : stats ? (
             <>
-              {/* ── Balance card ── */}
+              {/* Balance card */}
               <View style={[styles.balanceCard, { backgroundColor: palette.violet }]}>
                 <Text style={styles.balanceLabel}>{t('referral.balance')}</Text>
                 <Text style={styles.balanceAmount}>
                   {(stats.referralBalance ?? 0).toFixed(0)} {t('referral.balanceUnit')}
                 </Text>
-                <Text style={styles.balanceHint}>{t('referral.earnPerReferral')}</Text>
+                  <TouchableOpacity
+                    onPress={handlePayoutRequest}
+                    disabled={requestingPayout || !canRequestPayout}
+                    activeOpacity={canRequestPayout ? 0.7 : 1}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: canRequestPayout ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.1)',
+                      paddingHorizontal: wp(16),
+                      paddingVertical: hp(8),
+                      borderRadius: radius.md,
+                      marginTop: hp(12),
+                      opacity: canRequestPayout ? 1 : 0.6,
+                    }}
+                  >
+                    {requestingPayout ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <>
+                        <Banknote size={ms(18)} color="#fff" />
+                        <Text style={{ color: '#fff', marginLeft: wp(8), fontWeight: '600' }}>
+                          Demander le paiement
+                        </Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                  {!canRequestPayout && (
+                    <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: FS.xs, marginTop: hp(6), textAlign: 'center' }}>
+                      Minimum 100 DH requis pour demander le paiement
+                    </Text>
+                  )}
               </View>
 
-              {/* ── Referral code ── */}
+              {/* Referral code */}
               <View style={[styles.codeCard, { backgroundColor: theme.bgCard }]}>
                 <Text style={[styles.codeLabel, { color: theme.textMuted }]}>{t('referral.yourCode')}</Text>
                 <Text style={[styles.codeValue, { color: theme.text }]}>{stats.referralCode}</Text>
@@ -172,7 +239,7 @@ export default function ReferralScreen() {
                 </View>
               </View>
 
-              {/* ── Referral list ── */}
+              {/* Referral list */}
               <View style={styles.listSection}>
                 <View style={[styles.listHeader, isRTL && styles.listHeaderRTL]}>
                   <Users size={ms(18)} color={theme.text} strokeWidth={1.5} />
@@ -246,8 +313,64 @@ export default function ReferralScreen() {
                 )}
               </View>
 
-              {/* ── How it works ── */}
-              <View style={[styles.howCard, { backgroundColor: theme.bgCard }]}> 
+              {/* Payout history */}
+              {payoutHistory.length > 0 && (
+                <View style={styles.listSection}>
+                  <View style={[styles.listHeader, isRTL && styles.listHeaderRTL]}>
+                    <Banknote size={ms(18)} color={theme.text} strokeWidth={1.5} />
+                    <Text style={[styles.listTitle, { color: theme.text }]}>
+                      Historique des retraits
+                    </Text>
+                  </View>
+                  <View style={[styles.listCard, { backgroundColor: theme.bgCard }]}>
+                    {payoutHistory.map((p, idx) => {
+                      const statusConfig: Record<string, { color: string; label: string }> = {
+                        PENDING: { color: palette.gold, label: 'En attente' },
+                        APPROVED: { color: palette.emerald, label: 'Approuv\u00e9' },
+                        REJECTED: { color: palette.red, label: 'Rejet\u00e9' },
+                        PAID: { color: palette.violet, label: 'Pay\u00e9' },
+                      };
+                      const sc = statusConfig[p.status] ?? { color: palette.gold, label: p.status };
+                      return (
+                        <View
+                          key={p.id}
+                          style={[
+                            styles.referralRow,
+                            isRTL && styles.referralRowRTL,
+                            idx === payoutHistory.length - 1 && { borderBottomWidth: 0 },
+                            { borderBottomColor: theme.border },
+                          ]}
+                        >
+                          <View style={[styles.statusDot, { backgroundColor: sc.color }]} />
+                          <View style={styles.referralInfo}>
+                            <Text style={[styles.referralName, { color: theme.text }, isRTL && styles.textRTL]}>
+                              {p.amount} DH \u2014 {p.method === 'CASH' ? 'Cash' : 'Virement'}
+                            </Text>
+                            <Text style={[styles.referralMeta, { color: theme.textMuted }, isRTL && styles.textRTL]}>
+                              {formatDate(p.createdAt)}
+                            </Text>
+                          </View>
+                          <View style={[styles.statusBadge, { backgroundColor: `${sc.color}15` }]}>
+                            {p.status === 'PAID' || p.status === 'APPROVED' ? (
+                              <CheckCircle size={ms(12)} color={sc.color} strokeWidth={1.5} />
+                            ) : p.status === 'REJECTED' ? (
+                              <AlertCircle size={ms(12)} color={sc.color} strokeWidth={1.5} />
+                            ) : (
+                              <Clock size={ms(12)} color={sc.color} strokeWidth={1.5} />
+                            )}
+                            <Text style={[styles.statusText, { color: sc.color }]}>
+                              {sc.label}
+                            </Text>
+                          </View>
+                        </View>
+                      );
+                    })}
+                  </View>
+                </View>
+              )}
+
+              {/* How it works */}
+              <View style={[styles.howCard, { backgroundColor: theme.bgCard }]}>
                 <Text style={[styles.howTitle, { color: theme.text }]}>{t('referral.howTitle')}</Text>
 
                 <View style={[styles.howStep, isRTL && styles.howStepRTL]}>
@@ -303,14 +426,19 @@ export default function ReferralScreen() {
                 </View>
               </View>
 
-              {/* ── Contact support ── */}
+              {/* Contact support */}
               <View style={[styles.contactCard, { backgroundColor: theme.bgCard }]}>
                 <Text style={[styles.contactText, { color: theme.textMuted }, isRTL && styles.textRTL]}>
                   {t('referral.contactSupportDesc')}
                 </Text>
                 <View style={[styles.contactActions, isRTL && styles.codeActionsRTL]}>
                   <Pressable
-                    onPress={() => Linking.openURL('https://wa.me/33767471397?text=Bonjour%2C%20je%20souhaite%20d%C3%A9clencher%20le%20paiement%20de%20mon%20parrainage')}
+                    onPress={() => {
+                      const phone = process.env.EXPO_PUBLIC_SUPPORT_WHATSAPP || '212675346486';
+                      Linking.openURL(`whatsapp://send?phone=${phone}&text=Bonjour%2C%20je%20souhaite%20d%C3%A9clencher%20le%20paiement%20de%20mon%20parrainage`).catch(() => {
+                        Linking.openURL(`https://wa.me/${phone}?text=Bonjour%2C%20je%20souhaite%20d%C3%A9clencher%20le%20paiement%20de%20mon%20parrainage`);
+                      });
+                    }}
                     style={({ pressed }) => [
                       styles.contactBtn,
                       { backgroundColor: '#25D36615' },
@@ -373,7 +501,7 @@ const styles = StyleSheet.create({
     paddingBottom: hp(40),
   },
 
-  // ── Balance card ──
+  // Balance card
   balanceCard: {
     borderRadius: radius.xl,
     padding: wp(20),
@@ -398,7 +526,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
-  // ── Code card ──
+  // Code card
   codeCard: {
     borderRadius: radius.xl,
     padding: wp(20),
@@ -438,7 +566,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // ── List ──
+  // List
   listSection: {
     marginBottom: hp(20),
   },
@@ -480,7 +608,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
-  // ── Referral row ──
+  // Referral row
   referralRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -520,7 +648,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // ── Contact support ──
+  // Contact support
   contactCard: {
     borderRadius: radius.xl,
     padding: wp(20),
@@ -554,7 +682,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // ── How it works ──
+  // How it works
   howCard: {
     borderRadius: radius.xl,
     padding: wp(20),

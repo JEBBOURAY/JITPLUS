@@ -1,18 +1,8 @@
 import { Injectable, Inject, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Resend } from 'resend';
-import { IEmailBlastProvider, EmailBlastResult, IMailProvider, MAIL_PROVIDER } from '../common/interfaces';
-import { EMAIL_LOGO_JITPLUS } from '../common/constants';
-
-/** Escape user-supplied values before interpolating into HTML email templates */
-function escapeHtml(unsafe: string): string {
-  return unsafe
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
+import { IEmailBlastProvider, EmailBlastResult, MerchantBlastInfo, IMailProvider, MAIL_PROVIDER } from '../common/interfaces';
+import { buildMarketingBlastEmail } from '../mail/email-templates';
 
 @Injectable()
 export class ResendService implements IEmailBlastProvider {
@@ -43,7 +33,7 @@ export class ResendService implements IEmailBlastProvider {
     recipients: { email: string; prenom?: string | null }[],
     subject: string,
     body: string,
-    merchantName: string,
+    merchant: MerchantBlastInfo,
   ): Promise<EmailBlastResult> {
     if (recipients.length === 0) {
       return { total: 0, successCount: 0, failureCount: 0 };
@@ -53,29 +43,26 @@ export class ResendService implements IEmailBlastProvider {
 
     // Use Resend if available, otherwise fall back to SMTP via MailService
     if (this.resend) {
-      return this.sendViaResend(recipients, subject, body, merchantName);
+      return this.sendViaResend(recipients, subject, body, merchant);
     }
 
-    return this.sendViaSmtp(recipients, subject, body, merchantName);
+    return this.sendViaSmtp(recipients, subject, body, merchant);
   }
 
   private async sendViaResend(
     recipients: { email: string; prenom?: string | null }[],
     subject: string,
     body: string,
-    merchantName: string,
+    merchant: MerchantBlastInfo,
   ): Promise<EmailBlastResult> {
     const total = recipients.length;
-    const safeMerchantName = escapeHtml(merchantName);
 
     const emails = recipients.map((r) => {
-      const safeName = escapeHtml(r.prenom || 'cher client');
-      const safeBody = escapeHtml(body);
       return {
         from: this.fromAddress,
         to: [r.email],
         subject,
-        html: this.buildEmailHtml(safeName, safeBody, safeMerchantName),
+        html: buildMarketingBlastEmail(r.prenom || 'cher client', body, merchant),
       };
     });
 
@@ -108,18 +95,15 @@ export class ResendService implements IEmailBlastProvider {
     recipients: { email: string; prenom?: string | null }[],
     subject: string,
     body: string,
-    merchantName: string,
+    merchant: MerchantBlastInfo,
   ): Promise<EmailBlastResult> {
     const total = recipients.length;
-    const safeMerchantName = escapeHtml(merchantName);
 
     let successCount = 0;
     let failureCount = 0;
 
     for (const r of recipients) {
-      const safeName = escapeHtml(r.prenom || 'cher client');
-      const safeBody = escapeHtml(body);
-      const html = this.buildEmailHtml(safeName, safeBody, safeMerchantName);
+      const html = buildMarketingBlastEmail(r.prenom || 'cher client', body, merchant);
 
       try {
         await this.mailProvider.sendRaw(r.email, subject, html);
@@ -132,38 +116,5 @@ export class ResendService implements IEmailBlastProvider {
 
     this.logger.log(`[SMTP] Email blast "${subject}" completed: ${successCount} success, ${failureCount} failures out of ${total}`);
     return { total, successCount, failureCount };
-  }
-
-  /**
-   * Build a branded HTML email template for marketing blasts.
-   * These are sent on behalf of a merchant to their clients → JitPlus branding.
-   */
-  private buildEmailHtml(clientName: string, body: string, merchantName: string): string {
-    // Convert newlines to <br> for proper rendering
-    const formattedBody = body.replace(/\n/g, '<br/>');
-
-    return `
-      <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 32px 24px; background: #FAFAFA; border-radius: 16px;">
-        <div style="text-align: center; margin-bottom: 24px;">
-          <img src="${EMAIL_LOGO_JITPLUS}" alt="JitPlus" width="48" height="48" style="border-radius: 12px; margin-bottom: 10px;" />
-          <h1 style="font-size: 26px; font-weight: 800; letter-spacing: -0.5px; margin: 0; font-family: 'Segoe UI', Arial, sans-serif; color: #7C3AED;">JitPlus</h1>
-          <p style="color: #64748B; font-size: 14px; margin-top: 4px;">Un message de <strong>${merchantName}</strong></p>
-        </div>
-        <div style="background: #FFFFFF; border-radius: 12px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
-          <p style="color: #1E1B4B; font-size: 16px; margin: 0 0 16px;">Bonjour ${clientName},</p>
-          <div style="color: #334155; font-size: 15px; line-height: 1.7; margin: 0 0 16px;">
-            ${formattedBody}
-          </div>
-        </div>
-        <div style="text-align: center; margin-top: 24px;">
-          <p style="color: #64748B; font-size: 12px; margin: 0;">
-            Vous recevez cet e-mail car vous êtes client de <strong>${merchantName}</strong> via JitPlus.
-          </p>
-          <p style="color: #94A3B8; font-size: 11px; margin-top: 8px;">
-            © ${new Date().getFullYear()} JitPlus — Tous droits réservés
-          </p>
-        </div>
-      </div>
-    `;
   }
 }

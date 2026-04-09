@@ -11,7 +11,7 @@ import api from '@/services/api';
  */
 function parseSemver(version: string): [number, number, number] {
   const parts = version.replace(/[^0-9.]/g, '').split('.').map(Number);
-  return [parts[0] ?? 0, parts[1] ?? 0, parts[2] ?? 0];
+  return [parts[0] || 0, parts[1] || 0, parts[2] || 0];
 }
 
 /**

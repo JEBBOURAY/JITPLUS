@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
+import { logWarn } from '@/utils/devLogger';
 
 const isExpoGo = Constants.appOwnership === 'expo';
 
@@ -12,7 +13,7 @@ if (!isExpoGo) {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     Notifications = require('expo-notifications');
   } catch {
-    if (__DEV__) console.warn('[notifications] expo-notifications unavailable');
+    logWarn('notifications', 'expo-notifications unavailable');
   }
 }
 
@@ -49,14 +50,16 @@ export async function setupAndroidChannels() {
         importance: Notifications.AndroidImportance.HIGH,
         sound: 'default',
         vibrationPattern: [0, 250, 250, 250],
+        showBadge: true,
       }),
       Notifications.setNotificationChannelAsync('login-alerts', {
         name: 'Alertes de connexion',
         importance: Notifications.AndroidImportance.HIGH,
         vibrationPattern: [0, 250, 250, 250],
+        showBadge: true,
       }),
     ]);
   } catch (e) {
-    if (__DEV__) console.warn('[notifications] Failed to create Android channels:', e);
+    logWarn('notifications', 'Failed to create Android channels:', e);
   }
 }

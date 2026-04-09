@@ -12,6 +12,7 @@ import {
 } from '../api';
 import { MerchantDetail, SubscriptionHistoryEvent } from '../types';
 import PlanBadge from '../components/PlanBadge';
+import ConfirmModal from '../components/ConfirmModal';
 import { C, S } from '../theme';
 import { fmtDateTime } from '../utils/format';
 import { getErrorMessage } from '@jitplus/shared';
@@ -57,11 +58,9 @@ export default function MerchantDetailPage() {
     title: string;
     message: string;
     requireReason?: boolean;
-    requireTyping?: string; // user must type this to confirm
+    requireText?: string;
     onConfirm: (reason?: string) => Promise<unknown>;
   } | null>(null);
-  const [confirmReason, setConfirmReason] = useState('');
-  const [confirmTyping, setConfirmTyping] = useState('');
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -104,10 +103,10 @@ export default function MerchantDetailPage() {
     setActionLoading(true);
     try {
       await fn();
-      showToast(`✅ ${label}`);
+      showToast(label);
       load();
     } catch (e) {
-      showToast(`❌ ${getErrorMessage(e)}`);
+      showToast(getErrorMessage(e));
     } finally {
       setActionLoading(false);
     }
@@ -117,15 +116,13 @@ export default function MerchantDetailPage() {
     setActionLoading(true);
     try {
       await onConfirm();
-      showToast(`✅ ${label}`);
+      showToast(label);
       load();
     } catch (e) {
-      showToast(`❌ ${getErrorMessage(e)}`);
+      showToast(getErrorMessage(e));
     } finally {
       setActionLoading(false);
       setConfirmModal(null);
-      setConfirmReason('');
-      setConfirmTyping('');
     }
   };
 
@@ -167,7 +164,7 @@ export default function MerchantDetailPage() {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
-          <h2 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 800 }}>
+          <h2 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em' }}>
             {merchant.nom}
           </h2>
           <span style={{ color: C.textMuted, fontSize: 13 }}>{merchant.email}</span>
@@ -266,17 +263,17 @@ export default function MerchantDetailPage() {
                   dateForm.startDate || undefined,
                   dateForm.endDate || undefined,
                 );
-                showToast('✅ Dates mises à jour !');
+                showToast('Dates mises à jour');
                 load();
               } catch (e) {
-                showToast(`❌ ${getErrorMessage(e)}`);
+                showToast(getErrorMessage(e));
               } finally {
                 setSavingDates(false);
               }
             }}
             style={{ ...S.btn(C.primary), opacity: savingDates ? 0.5 : 1 }}
           >
-            {savingDates ? '…' : '💾 Enregistrer les dates'}
+            {savingDates ? '...' : 'Enregistrer les dates'}
           </button>
         </div>
       </div>
@@ -324,7 +321,7 @@ export default function MerchantDetailPage() {
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           {!isPremium || isTrial ? (
             <ActionBtn
-              label="✨ Activer Premium"
+              label="Activer Premium"
               color={C.primary}
               disabled={actionLoading}
               onClick={() =>
@@ -333,7 +330,7 @@ export default function MerchantDetailPage() {
             />
           ) : merchant.planActivatedByAdmin ? (
             <ActionBtn
-              label="⬇ Révoquer Premium"
+              label="Revoquer Premium"
               color={C.amber}
               outline
               disabled={actionLoading}
@@ -349,13 +346,13 @@ export default function MerchantDetailPage() {
 
           {merchant.isActive ? (
             <ActionBtn
-              label="🚫 Bannir"
+              label="Bannir"
               color={C.red}
               outline
               disabled={actionLoading}
               onClick={() =>
                 setConfirmModal({
-                  title: 'Bannir ce commerçant',
+                  title: 'Bannir ce commercant',
                   message: `Vous allez bannir "${merchant.nom}". Une raison est obligatoire.`,
                   requireReason: true,
                   onConfirm: (reason) => banMerchant(merchant.id, reason),
@@ -364,24 +361,24 @@ export default function MerchantDetailPage() {
             />
           ) : (
             <ActionBtn
-              label="✅ Débannir"
+              label="Debannir"
               color={C.green}
               disabled={actionLoading}
               onClick={() =>
-                handle(() => unbanMerchant(merchant.id), 'Commerçant débanni.')
+                handle(() => unbanMerchant(merchant.id), 'Commercant debanni.')
               }
             />
           )}
 
           <ActionBtn
-            label="🗑 Supprimer définitivement"
+            label="Supprimer definitivement"
             color={C.red}
             disabled={actionLoading}
             onClick={() =>
               setConfirmModal({
                 title: 'Suppression irréversible',
                 message: `Pour confirmer la suppression de "${merchant.nom}" et toutes ses données, tapez SUPPRIMER ci-dessous.`,
-                requireTyping: 'SUPPRIMER',
+                requireText: 'SUPPRIMER',
                 onConfirm: () => deleteMerchant(merchant.id).then(() => navigate('/merchants')),
               })
             }
@@ -390,80 +387,21 @@ export default function MerchantDetailPage() {
       </div>
 
       {/* Confirmation Modal */}
-      {confirmModal && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
-        }}>
-          <div style={{ ...S.card, width: 420, maxWidth: '90vw' }}>
-            <h3 style={{ margin: '0 0 12px', color: C.red }}>{confirmModal.title}</h3>
-            <p style={{ color: C.textMuted, fontSize: 14, marginBottom: 16 }}>{confirmModal.message}</p>
-
-            {confirmModal.requireReason && (
-              <div style={{ marginBottom: 12 }}>
-                <label style={{ display: 'block', fontSize: 12, color: C.textMuted, marginBottom: 4 }}>
-                  Raison (obligatoire)
-                </label>
-                <textarea
-                  value={confirmReason}
-                  onChange={(e) => setConfirmReason(e.target.value)}
-                  rows={3}
-                  style={{
-                    width: '100%', background: C.bg, border: `1px solid ${C.border}`,
-                    borderRadius: 8, padding: '8px 10px', color: C.text, fontSize: 13,
-                    boxSizing: 'border-box', resize: 'vertical',
-                  }}
-                />
-              </div>
-            )}
-
-            {confirmModal.requireTyping && (
-              <div style={{ marginBottom: 12 }}>
-                <label style={{ display: 'block', fontSize: 12, color: C.textMuted, marginBottom: 4 }}>
-                  Tapez « {confirmModal.requireTyping} » pour confirmer
-                </label>
-                <input
-                  value={confirmTyping}
-                  onChange={(e) => setConfirmTyping(e.target.value)}
-                  style={{
-                    width: '100%', background: C.bg, border: `1px solid ${C.border}`,
-                    borderRadius: 8, padding: '8px 10px', color: C.text, fontSize: 13,
-                    boxSizing: 'border-box',
-                  }}
-                />
-              </div>
-            )}
-
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => { setConfirmModal(null); setConfirmReason(''); setConfirmTyping(''); }}
-                style={{ ...S.btnOutline(C.textMuted), padding: '8px 16px' }}
-              >
-                Annuler
-              </button>
-              <button
-                disabled={
-                  actionLoading ||
-                  !!(confirmModal.requireReason && confirmReason.trim().length < 3) ||
-                  !!(confirmModal.requireTyping && confirmTyping !== confirmModal.requireTyping)
-                }
-                onClick={() =>
-                  handleWithModal(
-                    () => confirmModal.onConfirm(confirmReason.trim() || undefined),
-                    confirmModal.title,
-                  )
-                }
-                style={{
-                  ...S.btn(C.red), padding: '8px 16px',
-                  opacity: actionLoading ? 0.5 : 1,
-                }}
-              >
-                Confirmer
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmModal
+        open={!!confirmModal}
+        title={confirmModal?.title ?? ''}
+        message={confirmModal?.message ?? ''}
+        requireReason={confirmModal?.requireReason}
+        requireText={confirmModal?.requireText}
+        loading={actionLoading}
+        onConfirm={(reason) =>
+          handleWithModal(
+            () => confirmModal!.onConfirm(reason),
+            confirmModal!.title,
+          )
+        }
+        onCancel={() => setConfirmModal(null)}
+      />
     </div>
   );
 }

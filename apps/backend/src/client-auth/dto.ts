@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, Length, Matches, MaxLength, IsOptional, IsBoolean, IsEmail, IsDateString, ValidateIf } from 'class-validator';
+import { IsString, IsNotEmpty, IsNumber, Min, Length, Matches, MaxLength, IsOptional, IsBoolean, IsEmail, IsDateString, ValidateIf } from 'class-validator';
 
 export class SendOtpDto {
   @IsString()
@@ -228,3 +228,18 @@ export class VerifyChangeContactOtpDto {
 
 // Re-export from shared DTO to avoid duplication
 export { UpdatePushTokenDto } from '../common/dto/update-push-token.dto';
+
+export class RequestPayoutDto {
+  @IsNumber()
+  @Min(100, { message: 'Le montant minimum est de 100 DH' })
+  amount: number;
+
+  @IsString()
+  @IsNotEmpty()
+  method: string;
+
+  @IsOptional()
+  @IsString()
+  accountDetails?: string;
+}
+

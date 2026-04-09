@@ -3,6 +3,18 @@
  * never be shown to users (stack traces, SQL, ORM internals).
  */
 export function sanitizeErrorMessage(msg: string, fallback: string): string {
+  if (/ThrottlerException/i.test(msg) || /rate limit/i.test(msg)) {
+    return fallback;
+  }
+  if (msg === 'Unauthorized' || msg === 'Unauthorized.') {
+    return fallback;
+  }
+  if (msg === 'Forbidden' || msg === 'Forbidden.') {
+    return fallback;
+  }
+  if (msg === 'Bad Request') {
+    return fallback;
+  }
   const internalPatterns =
     /Error:|Exception|at\s+\w|SELECT|INSERT|UPDATE|DELETE|prisma|TypeError|Cannot read|stack.*trace/i;
   if (internalPatterns.test(msg)) return fallback;
@@ -18,7 +30,12 @@ export function getErrorMessage(error: unknown, fallback = 'Une erreur est surve
 
   if (error && typeof error === 'object') {
     // Axios-style error
-    const axiosData = (error as any)?.response?.data;
+    const axiosError = error as any;
+    if (axiosError.isAxiosError && (axiosError.message === 'Network Error' || axiosError.code === 'ECONNABORTED' || axiosError.code === 'ERR_NETWORK' || !axiosError.response)) {
+      return fallback;
+    }
+    
+    const axiosData = axiosError?.response?.data;
     if (typeof axiosData?.message === 'string') {
       msg = axiosData.message;
     } else if (Array.isArray(axiosData?.message) && axiosData.message.length > 0) {

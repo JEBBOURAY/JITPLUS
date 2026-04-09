@@ -16,6 +16,7 @@ import {
   Animated,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { logError } from '@/utils/devLogger';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import {
@@ -366,7 +367,7 @@ export default function ScanQRScreen() {
         params: { clientId },
       });
     }, NAVIGATION_DELAY_MS);
-  }, [router, set]);
+  }, [router, set, t]);
 
   // ── QR Code handler ──
   const handleBarCodeScanned = useCallback(
@@ -453,6 +454,7 @@ export default function ScanQRScreen() {
   );
 
   // ── Phone search handler ──
+  const MAX_PHONE_LENGTH = 15;
   const handlePhoneSearch = useCallback(async () => {
     if (phoneInput.length < 6 || isSearching || isNavigatingRef.current) return;
 
@@ -460,6 +462,13 @@ export default function ScanQRScreen() {
     set({ isSearching: true });
 
     const normalizedPhone = normalizePhone(phoneInput, COUNTRIES[countryIndex].dial);
+
+    // Validate phone number length to prevent malformed requests
+    if (normalizedPhone.length > MAX_PHONE_LENGTH) {
+      Alert.alert(t('common.error'), t('scan.invalidPhoneNumber'));
+      set({ isSearching: false });
+      return;
+    }
 
     try {
       const res = await api.get('/merchant/clients/scan', {
@@ -494,22 +503,22 @@ export default function ScanQRScreen() {
         );
       }
     } catch (err) {
-      if (__DEV__) console.error('Phone search error:', err);
+      logError('ScanQR', 'Phone search error:', err);
       Alert.alert(t('common.error'), t('scan.phoneSearchError'));
     } finally {
       set({ isSearching: false });
     }
-  }, [phoneInput, isSearching, router, countryIndex]);
+  }, [phoneInput, isSearching, router, countryIndex, t, set]);
 
   // ── Close handler ──
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
     safeImpact(Haptics.ImpactFeedbackStyle.Light);
     if (router.canGoBack()) {
       router.back();
     } else {
       router.replace('/(tabs)');
     }
-  };
+  }, [router]);
 
   // ── Permission states ──
   if (!permission) {
@@ -574,7 +583,7 @@ export default function ScanQRScreen() {
         barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
         onBarcodeScanned={isScanning ? handleBarCodeScanned : undefined}
         onMountError={(error) => {
-          if (__DEV__) console.error('[CameraView] Mount error:', error);
+          logError('CameraView', 'Mount error:', error);
           Alert.alert(
             t('scan.cameraErrorTitle'),
             t('scan.cameraErrorMsg'),

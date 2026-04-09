@@ -9,11 +9,14 @@ import {
   ActivityIndicator,
   ScrollView,
   Alert,
+  Platform,
+  Image as RNImage,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 import { useLocalSearchParams, useRouter, Redirect } from 'expo-router';
-import { MapPin, ArrowLeft, Info, Gift, Coins, Navigation, Star, Share2, Instagram, Globe, Eye, Users, CreditCard, Check, Store, Music, XCircle } from 'lucide-react-native';
+import { MapPin, ArrowLeft, Info, Gift, Coins, Navigation, Star, Share2, Instagram, Eye, Users, CreditCard, Check, Store, Music, XCircle, ChevronRight } from 'lucide-react-native';
 import { haptic } from '@/utils/haptics';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -141,44 +144,15 @@ export default function MerchantDetailScreen() {
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.bgCard }]} edges={['top', 'bottom']}>
-      {/* Header row */}
-      <View style={styles.headerRow}>
-        <Pressable
-          onPress={() => { haptic(); router.back(); }}
-          style={[styles.headerBtn, { borderColor: theme.borderLight }]}
-          accessibilityRole="button"
-          accessibilityLabel={t('common.back')}
-          hitSlop={8}
-        >
-          <ArrowLeft size={20} color={theme.text} strokeWidth={1.7} />
-        </Pressable>
-        <Pressable
-          onPress={async () => {
-            haptic();
-            try {
-              await Share.share({
-                message: `${t('merchant.shareText', { name: merchant.nomBoutique })}\nhttps://play.google.com/store/apps/details?id=com.jitplus.client`,
-              });
-            } catch { /* user cancelled */ }
-          }}
-          style={[styles.headerBtn, { borderColor: theme.borderLight }]}
-          accessibilityRole="button"
-          accessibilityLabel={t('merchant.shareApp')}
-          hitSlop={8}
-        >
-          <Share2 size={18} color={theme.text} strokeWidth={1.7} />
-        </Pressable>
-      </View>
-
+    <View style={[styles.container, { backgroundColor: theme.bg }]}>
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         bounces={true}
       >
-        {/* Cover photo */}
-        {merchant.coverUrl && !coverError ? (
-          <View style={styles.coverWrap}>
+        {/* ── Hero section: Cover + overlay header + logo ── */}
+        <View style={styles.heroSection}>
+          {merchant.coverUrl && !coverError ? (
             <Image
               source={resolveImageUrl(merchant.coverUrl)}
               style={styles.coverImage}
@@ -187,104 +161,153 @@ export default function MerchantDetailScreen() {
               recyclingKey={merchant.coverUrl}
               onError={() => setCoverError(true)}
             />
-          </View>
-        ) : null}
-
-        {/* Merchant identity */}
-        <View style={styles.identitySection}>
-          {merchant.logoUrl && !logoError ? (
-            <Image
-              source={resolveImageUrl(merchant.logoUrl)}
-              style={[styles.logo, { borderColor: theme.borderLight }]}
-              contentFit="cover"
-              cachePolicy="disk"
-              recyclingKey={merchant.logoUrl}
-              onError={() => setLogoError(true)}
-            />
           ) : (
-            <View style={[styles.emojiWrap, { borderColor: theme.borderLight }]}>
-              <Text style={styles.emoji}>{getCategoryEmoji(merchant.categorie)}</Text>
-            </View>
+            <LinearGradient
+              colors={[`${palette.violet}18`, `${palette.violet}08`, theme.bg]}
+              style={styles.coverImage}
+            />
           )}
+          {/* Gradient fade at bottom of cover */}
+          <LinearGradient
+            colors={['transparent', theme.bg]}
+            style={styles.coverFade}
+          />
 
-          <Text style={[styles.merchantName, { color: theme.text }]} numberOfLines={1}>
-            {merchant.nomBoutique}
-          </Text>
+          {/* Floating header buttons */}
+          <SafeAreaView edges={['top']} style={styles.floatingHeader}>
+            <Pressable
+              onPress={() => { haptic(); router.back(); }}
+              style={[styles.floatingBtn, { backgroundColor: 'rgba(255,255,255,0.85)' }]}
+              accessibilityRole="button"
+              accessibilityLabel={t('common.back')}
+              hitSlop={8}
+            >
+              <ArrowLeft size={20} color={palette.gray900} strokeWidth={1.8} />
+            </Pressable>
+            <Pressable
+              onPress={async () => {
+                haptic();
+                try {
+                  await Share.share({
+                    message: `${t('merchant.shareText', { name: merchant.nomBoutique })}\nhttps://play.google.com/store/apps/details?id=com.jitplus.client`,
+                  });
+                } catch { /* user cancelled */ }
+              }}
+              style={[styles.floatingBtn, { backgroundColor: 'rgba(255,255,255,0.85)' }]}
+              accessibilityRole="button"
+              accessibilityLabel={t('merchant.shareApp')}
+              hitSlop={8}
+            >
+              <Share2 size={18} color={palette.gray900} strokeWidth={1.8} />
+            </Pressable>
+          </SafeAreaView>
 
-          <View style={[styles.categoryBadge, { borderColor: theme.borderLight }]}>
-            <Text style={[styles.categoryText, { color: theme.textSecondary }]} numberOfLines={1}>
-              {merchant.categorie}
-            </Text>
-          </View>
-
-          <View style={styles.statsRow}>
-            <View style={[styles.statChip, { borderColor: theme.borderLight }]}>
-              <Eye size={13} color={theme.textMuted} strokeWidth={1.7} />
-              <Text style={[styles.statValue, { color: theme.textSecondary }]}>
-                {(merchant.profileViews ?? 0).toLocaleString('fr-MA')}
-              </Text>
-            </View>
-            <View style={[styles.statChip, { borderColor: theme.borderLight }]}>
-              <Users size={13} color={theme.textMuted} strokeWidth={1.7} />
-              <Text style={[styles.statValue, { color: theme.textSecondary }]}>
-                {(merchant.clientCount ?? 0).toLocaleString('fr-MA')}
-              </Text>
+          {/* Logo overlapping cover */}
+          <View style={styles.logoContainer}>
+            <View style={[styles.logoRing, { backgroundColor: theme.bg }]}>
+              {merchant.logoUrl && !logoError ? (
+                <Image
+                  source={resolveImageUrl(merchant.logoUrl)}
+                  style={styles.logo}
+                  contentFit="cover"
+                  cachePolicy="disk"
+                  recyclingKey={merchant.logoUrl}
+                  onError={() => setLogoError(true)}
+                />
+              ) : (
+                <View style={[styles.emojiWrap, { backgroundColor: `${palette.violet}10` }]}>
+                  <Text style={styles.emoji}>{getCategoryEmoji(merchant.categorie)}</Text>
+                </View>
+              )}
             </View>
           </View>
         </View>
 
-        {/* Description */}
-        {!!merchant.description && (
-          <View style={[styles.descriptionCard, { borderColor: theme.borderLight }]}>
-            <Text style={[styles.descriptionLabel, { color: theme.textMuted }]}>
-              {t('merchant.aboutUs')}
-            </Text>
-            <Text style={[styles.descriptionText, { color: theme.text }]}>
-              {merchant.description}
+        {/* ── Identity ── */}
+        <View style={styles.identitySection}>
+          <Text style={[styles.merchantName, { color: theme.text }]} numberOfLines={2}>
+            {merchant.nomBoutique}
+          </Text>
+
+          <View style={[styles.categoryBadge, { backgroundColor: `${palette.violet}10` }]}>
+            <Text style={[styles.categoryText, { color: palette.violet }]} numberOfLines={1}>
+              {getCategoryEmoji(merchant.categorie)} {merchant.categorie}
             </Text>
           </View>
-        )}
 
-        {/* Separator */}
-        <View style={[styles.separator, { backgroundColor: theme.borderLight }]} />
+          <View style={styles.statsRow}>
+            <View style={[styles.statChip, { backgroundColor: theme.bgCard }]}>
+              <Eye size={14} color={palette.violet} strokeWidth={1.8} />
+              <Text style={[styles.statValue, { color: theme.text }]}>
+                {(merchant.profileViews ?? 0).toLocaleString('fr-MA')}
+              </Text>
+              <Text style={[styles.statLabel, { color: theme.textMuted }]}>{t('merchant.views')}</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={[styles.statChip, { backgroundColor: theme.bgCard }]}>
+              <Users size={14} color={palette.violet} strokeWidth={1.8} />
+              <Text style={[styles.statValue, { color: theme.text }]}>
+                {(merchant.clientCount ?? 0).toLocaleString('fr-MA')}
+              </Text>
+              <Text style={[styles.statLabel, { color: theme.textMuted }]}>{t('merchant.clients')}</Text>
+            </View>
+          </View>
+        </View>
 
-        {/* Info cards */}
-        <View style={styles.cardsSection}>
+        {/* ── Content area ── */}
+        <View style={styles.contentArea}>
+          {/* Description */}
+          {!!merchant.description && (
+            <View style={[styles.descriptionCard, { backgroundColor: theme.bgCard }]}>
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>
+                {t('merchant.aboutUs')}
+              </Text>
+              <Text style={[styles.descriptionText, { color: theme.textSecondary }]}>
+                {merchant.description}
+              </Text>
+            </View>
+          )}
+
+          {/* Loyalty & Location cards */}
           <View style={styles.gridRow}>
             {/* Loyalty card */}
-            <View style={[styles.infoCard, { borderColor: theme.borderLight }]}>
-              <View style={styles.cardHeaderRow}>
-                <View style={[styles.cardIconBadge, { backgroundColor: `${palette.violet}12` }]}>
-                  {merchant.loyaltyType === 'STAMPS' ? (
-                    <Gift size={16} color={palette.violet} strokeWidth={1.8} />
-                  ) : (
-                    <Coins size={16} color={palette.violet} strokeWidth={1.8} />
-                  )}
-                </View>
-                <Text style={[styles.cardLabel, { color: theme.textMuted }]} numberOfLines={1}>
-                  {t('merchant.loyaltyProgram')}
-                </Text>
+            <View style={[styles.infoCard, { backgroundColor: theme.bgCard }]}>
+              <LinearGradient
+                colors={[`${palette.violet}12`, 'transparent']}
+                style={styles.infoCardGradient}
+              />
+              <View style={[styles.cardIconBadge, { backgroundColor: `${palette.violet}15` }]}>
+                {merchant.loyaltyType === 'STAMPS' ? (
+                  <Gift size={18} color={palette.violet} strokeWidth={1.8} />
+                ) : (
+                  <Coins size={18} color={palette.violet} strokeWidth={1.8} />
+                )}
               </View>
+              <Text style={[styles.cardLabel, { color: theme.textMuted }]}>
+                {t('merchant.loyaltyProgram')}
+              </Text>
               <Text style={[styles.cardValue, { color: theme.text }]} numberOfLines={1}>
                 {merchant.loyaltyType === 'STAMPS' ? t('merchant.stampCard') : t('merchant.pointsAccumulation')}
               </Text>
               <Text style={[styles.cardSub, { color: theme.textMuted }]} numberOfLines={2}>
                 {merchant.loyaltyType === 'STAMPS'
-                  ? t('merchant.stampRule', { count: merchant.stampsForReward || 10 })
+                  ? t('merchant.stampRule', { count: merchant.rewards?.[0]?.cout || 10 })
                   : t('merchant.pointsRule', { rate: merchant.conversionRate || 10 })}
               </Text>
             </View>
 
             {/* Location card */}
-            <View style={[styles.infoCard, { borderColor: theme.borderLight }]}>
-              <View style={styles.cardHeaderRow}>
-                <View style={[styles.cardIconBadge, { backgroundColor: `${palette.gold}15` }]}>
-                  <MapPin size={16} color={palette.gold} strokeWidth={1.8} />
-                </View>
-                <Text style={[styles.cardLabel, { color: theme.textMuted }]} numberOfLines={1}>
-                  {t('merchant.info')}
-                </Text>
+            <View style={[styles.infoCard, { backgroundColor: theme.bgCard }]}>
+              <LinearGradient
+                colors={[`${palette.gold}10`, 'transparent']}
+                style={styles.infoCardGradient}
+              />
+              <View style={[styles.cardIconBadge, { backgroundColor: `${palette.gold}15` }]}>
+                <MapPin size={18} color={palette.gold} strokeWidth={1.8} />
               </View>
+              <Text style={[styles.cardLabel, { color: theme.textMuted }]}>
+                {t('merchant.info')}
+              </Text>
               <Text style={[styles.cardValue, { color: theme.text }]} numberOfLines={2}>
                 {merchant.adresse || merchant.ville || t('discover.positionAvailable')}
               </Text>
@@ -298,9 +321,10 @@ export default function MerchantDetailScreen() {
           </View>
 
           {/* Reward highlight */}
-          <View style={[styles.rewardCard, { borderColor: theme.borderLight }]}>
+          <View style={[styles.rewardCard, { backgroundColor: theme.bgCard }]}>
+            <View style={styles.rewardAccent} />
             <View style={[styles.cardIconBadge, { backgroundColor: `${palette.gold}15` }]}>
-              <Star size={16} color={palette.gold} strokeWidth={1.8} />
+              <Star size={18} color={palette.gold} strokeWidth={1.8} />
             </View>
             <View style={styles.rewardTextWrap}>
               <Text style={[styles.cardLabel, { color: theme.textMuted }]}>{t('merchant.rewardsSection')}</Text>
@@ -308,130 +332,166 @@ export default function MerchantDetailScreen() {
                 {merchant.rewards?.[0]?.titre || t('merchant.noRewards')}
               </Text>
               {!!merchant.rewards?.[0] && (
-                <Text style={[styles.rewardCost, { color: theme.primary }]} numberOfLines={1}>
-                  {merchant.loyaltyType === 'STAMPS'
-                    ? t('merchant.stampsCost', { count: merchant.rewards[0].cout })
-                    : t('merchant.pointsCost', { count: merchant.rewards[0].cout.toLocaleString('fr-MA') })}
-                </Text>
+                <View style={[styles.rewardCostBadge, { backgroundColor: `${palette.violet}12` }]}>
+                  <Text style={[styles.rewardCost, { color: palette.violet }]} numberOfLines={1}>
+                    {merchant.loyaltyType === 'STAMPS'
+                      ? t('merchant.stampsCost', { count: merchant.rewards[0].cout })
+                      : t('merchant.pointsCost', { count: merchant.rewards[0].cout.toLocaleString('fr-MA') })}
+                  </Text>
+                </View>
               )}
             </View>
           </View>
 
-          {/* Quick actions */}
-          <View style={styles.actionsRow}>
-            <Pressable
-              onPress={() => {
-                haptic();
-                router.push({ pathname: '/(tabs)/discover', params: { focusMerchantId: merchant.id } });
-              }}
-              style={({ pressed }) => [styles.actionBtn, { borderColor: palette.violet, backgroundColor: `${palette.violet}08`, opacity: pressed ? 0.7 : 1 }]}
-              accessibilityRole="button"
-              accessibilityLabel={t('merchant.seeOnMap')}
-            >
-              <Navigation size={16} color={palette.violet} strokeWidth={1.8} />
-              <Text style={[styles.actionText, { color: palette.violet }]}>{t('merchant.seeOnMap')}</Text>
-            </Pressable>
+          {/* Social links */}
+          {(!!merchant.socialLinks?.instagram || !!merchant.socialLinks?.tiktok) && (
+            <View style={styles.socialRow}>
+              {!!merchant.socialLinks?.instagram && (
+                <Pressable
+                  onPress={async () => {
+                    haptic();
+                    const raw = merchant.socialLinks?.instagram ?? '';
+                    const username = raw.replace(/^@/, '').replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/.*$/, '').trim();
+                    if (!username) return;
+                    const appUrl = `instagram://user?username=${encodeURIComponent(username)}`;
+                    const webUrl = `https://www.instagram.com/${encodeURIComponent(username)}`;
+                    const canOpen = await Linking.canOpenURL(appUrl);
+                    Linking.openURL(canOpen ? appUrl : webUrl);
+                  }}
+                  style={({ pressed }) => [styles.socialBtn, { backgroundColor: '#E1306C10', opacity: pressed ? 0.7 : 1 }]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Instagram"
+                >
+                  <Instagram size={18} color="#E1306C" strokeWidth={1.8} />
+                  <Text style={[styles.socialText, { color: '#E1306C' }]}>Instagram</Text>
+                </Pressable>
+              )}
 
-            {!!merchant.socialLinks?.instagram && (
-              <Pressable
-                onPress={async () => {
-                  haptic();
-                  const raw = merchant.socialLinks?.instagram ?? '';
-                  const username = raw.replace(/^@/, '').replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/.*$/, '').trim();
-                  if (!username) return;
-                  const appUrl = `instagram://user?username=${encodeURIComponent(username)}`;
-                  const webUrl = `https://www.instagram.com/${encodeURIComponent(username)}`;
-                  const canOpen = await Linking.canOpenURL(appUrl);
-                  Linking.openURL(canOpen ? appUrl : webUrl);
-                }}
-                style={({ pressed }) => [styles.actionBtn, { borderColor: '#E1306C', backgroundColor: '#E1306C10', opacity: pressed ? 0.7 : 1 }]}
-                accessibilityRole="button"
-                accessibilityLabel="Instagram"
-              >
-                <Instagram size={16} color="#E1306C" strokeWidth={1.8} />
-                <Text style={[styles.actionText, { color: '#E1306C' }]}>Instagram</Text>
-              </Pressable>
-            )}
+              {!!merchant.socialLinks?.tiktok && (
+                <Pressable
+                  onPress={() => {
+                    haptic();
+                    const raw = merchant.socialLinks?.tiktok ?? '';
+                    const username = raw.replace(/^@/, '').replace(/^https?:\/\/(www\.)?tiktok\.com\/@?/, '').replace(/\/.*$/, '').trim();
+                    if (!username) return;
+                    Linking.openURL(`https://www.tiktok.com/@${encodeURIComponent(username)}`);
+                  }}
+                  style={({ pressed }) => [styles.socialBtn, { backgroundColor: `${palette.gray900}06`, opacity: pressed ? 0.7 : 1 }]}
+                  accessibilityRole="button"
+                  accessibilityLabel="TikTok"
+                >
+                  <Music size={18} color={palette.gray900} strokeWidth={1.8} />
+                  <Text style={[styles.socialText, { color: palette.gray900 }]}>TikTok</Text>
+                </Pressable>
+              )}
+            </View>
+          )}
 
-            {!!merchant.socialLinks?.tiktok && (
-              <Pressable
-                onPress={() => {
-                  haptic();
-                  const raw = merchant.socialLinks?.tiktok ?? '';
-                  const username = raw.replace(/^@/, '').replace(/^https?:\/\/(www\.)?tiktok\.com\/@?/, '').replace(/\/.*$/, '').trim();
-                  if (!username) return;
-                  Linking.openURL(`https://www.tiktok.com/@${encodeURIComponent(username)}`);
-                }}
-                style={({ pressed }) => [styles.actionBtn, { borderColor: '#010101', backgroundColor: '#01010108', opacity: pressed ? 0.7 : 1 }]}
-                accessibilityRole="button"
-                accessibilityLabel="TikTok"
-              >
-                <Music size={16} color="#010101" strokeWidth={1.8} />
-                <Text style={[styles.actionText, { color: '#010101' }]}>TikTok</Text>
-              </Pressable>
-            )}
-          </View>
+          {/* Other locations / multi-store section */}
+          {merchant.stores && merchant.stores.length > 1 && (
+            <View style={[styles.otherLocationsCard, { backgroundColor: theme.bgCard }]}>
+              <View style={styles.otherLocationsHeader}>
+                <View style={[styles.cardIconBadge, { backgroundColor: `${palette.violet}12` }]}>
+                  <Store size={18} color={palette.violet} strokeWidth={1.8} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.sectionTitle, { color: theme.text, marginBottom: 0 }]}>{t('merchant.otherLocationsTitle')}</Text>
+                  <Text style={[styles.otherLocationsCount, { color: theme.textMuted }]}>
+                    {t('merchant.otherLocationsCount', { count: merchant.stores.length })}
+                  </Text>
+                </View>
+              </View>
+              {merchant.stores.map((store, idx) => (
+                <Pressable
+                  key={store.id}
+                  onPress={() => {
+                    haptic();
+                    if (store.latitude != null && store.longitude != null) {
+                      router.push({ pathname: '/(tabs)/discover', params: { focusMerchantId: merchant.id } });
+                    }
+                  }}
+                  style={({ pressed }) => [
+                    styles.storeItem,
+                    { backgroundColor: pressed ? `${palette.violet}06` : 'transparent' },
+                    idx === 0 && { borderTopWidth: 0 },
+                  ]}
+                >
+                  <View style={[styles.storeItemDot, { backgroundColor: palette.violet }]} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.storeItemName, { color: theme.text }]} numberOfLines={1}>
+                      {store.nom}
+                    </Text>
+                    <Text style={[styles.storeItemAddr, { color: theme.textMuted }]} numberOfLines={1}>
+                      {store.adresse || [store.quartier, store.ville].filter(Boolean).join(', ') || t('merchant.seeOnMap')}
+                    </Text>
+                  </View>
+                  {store.latitude != null && store.longitude != null && (
+                    <ChevronRight size={16} color={palette.violet} strokeWidth={1.8} />
+                  )}
+                </Pressable>
+              ))}
+            </View>
+          )}
         </View>
       </ScrollView>
 
-      {/* Sticky bottom bar */}
-      <View style={styles.bottomBar}>
-        {(justLeft || merchant.cardDeactivated) && !justJoined ? (
-          /* Card was deactivated — show re-join */
-          <Pressable
-            onPress={handleJoinMerchant}
-            disabled={joinLoading}
-            style={({ pressed }) => [styles.joinBtn, { backgroundColor: theme.primary, opacity: pressed || joinLoading ? 0.8 : 1 }]}
-            accessibilityRole="button"
-            accessibilityLabel={t('merchant.rejoinCard')}
-          >
-            {joinLoading ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <CreditCard size={18} color="#fff" strokeWidth={1.8} />
-            )}
-            <Text style={styles.joinBtnText} numberOfLines={1}>{t('merchant.rejoinCard')}</Text>
-          </Pressable>
-        ) : (merchant.hasCard || justJoined) ? (
-          /* Active member — show member badge + leave option */
-          <View style={styles.memberBar}>
-            <View style={[styles.joinedBanner, { borderColor: theme.borderLight, flex: 1 }]}>
-              <Check size={18} color={palette.emerald} strokeWidth={1.8} />
-              <Text style={[styles.joinedText, { color: palette.emerald }]}>{t('merchant.alreadyMember')}</Text>
-            </View>
+      {/* ── Premium bottom bar ── */}
+      <View style={[styles.bottomBar, { backgroundColor: theme.bg, borderTopColor: theme.borderLight }]}>
+        <SafeAreaView edges={['bottom']} style={styles.bottomBarInner}>
+          {(justLeft || merchant.cardDeactivated) && !justJoined ? (
             <Pressable
-              onPress={handleLeaveMerchant}
-              disabled={leaveLoading}
-              style={({ pressed }) => [styles.leaveBtn, { borderColor: '#EF4444', opacity: pressed || leaveLoading ? 0.7 : 1 }]}
+              onPress={handleJoinMerchant}
+              disabled={joinLoading}
+              style={({ pressed }) => [styles.joinBtn, { backgroundColor: palette.violet, opacity: pressed || joinLoading ? 0.85 : 1 }]}
               accessibilityRole="button"
-              accessibilityLabel={t('merchant.leaveCard')}
+              accessibilityLabel={t('merchant.rejoinCard')}
             >
-              {leaveLoading ? (
-                <ActivityIndicator size="small" color="#EF4444" />
+              {joinLoading ? (
+                <ActivityIndicator size="small" color="#fff" />
               ) : (
-                <XCircle size={18} color="#EF4444" strokeWidth={1.8} />
+                <CreditCard size={18} color="#fff" strokeWidth={1.8} />
               )}
+              <Text style={styles.joinBtnText} numberOfLines={1}>{t('merchant.rejoinCard')}</Text>
             </Pressable>
-          </View>
-        ) : (
-          /* Not a member — show join */
-          <Pressable
-            onPress={handleJoinMerchant}
-            disabled={joinLoading}
-            style={({ pressed }) => [styles.joinBtn, { backgroundColor: theme.primary, opacity: pressed || joinLoading ? 0.8 : 1 }]}
-            accessibilityRole="button"
-            accessibilityLabel={t('merchant.getLoyaltyCard')}
-          >
-            {joinLoading ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <CreditCard size={18} color="#fff" strokeWidth={1.8} />
-            )}
-            <Text style={styles.joinBtnText} numberOfLines={1}>{t('merchant.getLoyaltyCard')}</Text>
-          </Pressable>
-        )}
+          ) : (merchant.hasCard || justJoined) ? (
+            <View style={styles.memberBar}>
+              <View style={[styles.joinedBanner, { backgroundColor: `${palette.emerald}08`, borderColor: `${palette.emerald}25` }]}>
+                <Check size={18} color={palette.emerald} strokeWidth={2} />
+                <Text style={[styles.joinedText, { color: palette.emerald }]}>{t('merchant.alreadyMember')}</Text>
+              </View>
+              <Pressable
+                onPress={handleLeaveMerchant}
+                disabled={leaveLoading}
+                style={({ pressed }) => [styles.leaveBtn, { borderColor: '#EF444440', backgroundColor: '#EF444408', opacity: pressed || leaveLoading ? 0.7 : 1 }]}
+                accessibilityRole="button"
+                accessibilityLabel={t('merchant.leaveCard')}
+              >
+                {leaveLoading ? (
+                  <ActivityIndicator size="small" color="#EF4444" />
+                ) : (
+                  <XCircle size={18} color="#EF4444" strokeWidth={1.8} />
+                )}
+              </Pressable>
+            </View>
+          ) : (
+            <Pressable
+              onPress={handleJoinMerchant}
+              disabled={joinLoading}
+              style={({ pressed }) => [styles.joinBtn, { backgroundColor: palette.violet, opacity: pressed || joinLoading ? 0.85 : 1 }]}
+              accessibilityRole="button"
+              accessibilityLabel={t('merchant.getLoyaltyCard')}
+            >
+              {joinLoading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <CreditCard size={18} color="#fff" strokeWidth={1.8} />
+              )}
+              <Text style={styles.joinBtnText} numberOfLines={1}>{t('merchant.getLoyaltyCard')}</Text>
+            </Pressable>
+          )}
+        </SafeAreaView>
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -450,251 +510,404 @@ const styles = StyleSheet.create({
   errorButton: { paddingHorizontal: wp(24), paddingVertical: hp(12), borderRadius: ms(14) },
   errorButtonText: { color: '#fff', fontSize: ms(15), fontWeight: '700' },
 
-  // Header
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: wp(16),
-    paddingTop: hp(6),
-    paddingBottom: hp(4),
-  },
-  headerBtn: {
-    width: ms(40),
-    height: ms(40),
-    borderRadius: ms(20),
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-  },
-
   // Scroll
   scrollContent: {
-    paddingHorizontal: wp(16),
-    paddingBottom: hp(16),
+    paddingBottom: hp(100),
   },
 
-  // Cover photo
-  coverWrap: {
-    borderRadius: ms(16),
-    overflow: 'hidden',
-    marginBottom: hp(12),
+  // ── Hero section ──
+  heroSection: {
+    position: 'relative' as const,
+    height: hp(220),
+    marginBottom: hp(40),
   },
   coverImage: {
     width: '100%',
-    height: hp(180),
-    borderRadius: ms(16),
+    height: '100%',
   },
-
-  // Identity section
-  identitySection: {
-    alignItems: 'center',
-    paddingTop: hp(8),
-    paddingBottom: hp(16),
+  coverFade: {
+    position: 'absolute' as const,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: hp(80),
+  },
+  floatingHeader: {
+    position: 'absolute' as const,
+    top: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    paddingHorizontal: wp(16),
+    paddingTop: hp(4),
+  },
+  floatingBtn: {
+    width: ms(40),
+    height: ms(40),
+    borderRadius: ms(20),
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+      },
+      android: { elevation: 4 },
+    }),
+  },
+  logoContainer: {
+    position: 'absolute' as const,
+    bottom: -ms(40),
+    alignSelf: 'center' as const,
+    left: 0,
+    right: 0,
+    alignItems: 'center' as const,
+  },
+  logoRing: {
+    width: ms(92),
+    height: ms(92),
+    borderRadius: ms(46),
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.12,
+        shadowRadius: 12,
+      },
+      android: { elevation: 8 },
+    }),
   },
   logo: {
-    width: ms(80),
-    height: ms(80),
-    borderRadius: ms(40),
-    borderWidth: 1.5,
-    marginBottom: hp(12),
+    width: ms(84),
+    height: ms(84),
+    borderRadius: ms(42),
   },
   emojiWrap: {
-    width: ms(80),
-    height: ms(80),
-    borderRadius: ms(40),
-    borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: hp(12),
+    width: ms(84),
+    height: ms(84),
+    borderRadius: ms(42),
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
   },
-  emoji: { fontSize: ms(36) },
+  emoji: { fontSize: ms(38) },
+
+  // ── Identity section ──
+  identitySection: {
+    alignItems: 'center' as const,
+    paddingHorizontal: wp(20),
+    paddingBottom: hp(20),
+  },
   merchantName: {
-    fontSize: ms(24),
-    fontWeight: '800',
-    letterSpacing: -0.4,
+    fontSize: ms(26),
+    fontWeight: '800' as const,
+    letterSpacing: -0.5,
     maxWidth: '92%',
-    marginBottom: hp(6),
-    textAlign: 'center',
+    marginBottom: hp(8),
+    textAlign: 'center' as const,
   },
   categoryBadge: {
-    paddingHorizontal: wp(12),
-    paddingVertical: hp(4),
-    borderRadius: ms(10),
-    borderWidth: 1,
-    marginBottom: hp(12),
+    paddingHorizontal: wp(14),
+    paddingVertical: hp(5),
+    borderRadius: ms(20),
+    marginBottom: hp(14),
   },
   categoryText: {
     fontSize: ms(12),
-    fontWeight: '600',
+    fontWeight: '600' as const,
   },
   statsRow: {
-    flexDirection: 'row',
-    gap: wp(10),
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: wp(6),
   },
   statChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: wp(5),
-    borderWidth: 1,
-    borderRadius: ms(999),
-    paddingHorizontal: wp(12),
-    paddingVertical: hp(5),
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: wp(6),
+    borderRadius: ms(12),
+    paddingHorizontal: wp(14),
+    paddingVertical: hp(8),
   },
   statValue: {
-    fontSize: ms(12),
-    fontWeight: '700',
+    fontSize: ms(14),
+    fontWeight: '800' as const,
+  },
+  statLabel: {
+    fontSize: ms(11),
+    fontWeight: '500' as const,
+  },
+  statDivider: {
+    width: 1,
+    height: ms(20),
+    backgroundColor: '#00000010',
+  },
+
+  // ── Content area ──
+  contentArea: {
+    paddingHorizontal: wp(16),
+    gap: hp(12),
+  },
+
+  // Section title
+  sectionTitle: {
+    fontSize: ms(16),
+    fontWeight: '700' as const,
+    letterSpacing: -0.2,
+    marginBottom: hp(8),
   },
 
   // Description
   descriptionCard: {
-    borderWidth: 1,
-    borderRadius: ms(16),
-    padding: wp(14),
-    marginBottom: hp(14),
-  },
-  descriptionLabel: {
-    fontSize: ms(12),
-    fontWeight: '600',
-    marginBottom: hp(6),
+    borderRadius: ms(18),
+    padding: wp(16),
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.04,
+        shadowRadius: 8,
+      },
+      android: { elevation: 1 },
+    }),
   },
   descriptionText: {
     fontSize: ms(14),
-    lineHeight: ms(20),
+    lineHeight: ms(22),
+    fontWeight: '400' as const,
   },
 
-  // Separator
-  separator: {
-    height: 1,
-    marginBottom: hp(14),
-  },
-
-  // Cards section
-  cardsSection: {
-    gap: hp(10),
-  },
+  // Grid
   gridRow: {
     flexDirection: 'row' as const,
     gap: wp(10),
   },
   infoCard: {
     flex: 1,
-    borderRadius: ms(16),
-    borderWidth: 1,
-    padding: wp(12),
-    minHeight: hp(110),
+    borderRadius: ms(18),
+    padding: wp(14),
+    minHeight: hp(140),
+    overflow: 'hidden' as const,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.04,
+        shadowRadius: 8,
+      },
+      android: { elevation: 1 },
+    }),
   },
-  cardHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: wp(8),
-    marginBottom: hp(8),
+  infoCardGradient: {
+    position: 'absolute' as const,
+    top: 0,
+    left: 0,
+    right: 0,
+    height: hp(60),
+    borderTopLeftRadius: ms(18),
+    borderTopRightRadius: ms(18),
   },
   cardIconBadge: {
-    width: ms(28),
-    height: ms(28),
-    borderRadius: ms(8),
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: ms(32),
+    height: ms(32),
+    borderRadius: ms(10),
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    marginBottom: hp(8),
   },
   cardLabel: {
     fontSize: ms(10),
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.3,
-    flex: 1,
+    fontWeight: '700' as const,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
+    marginBottom: hp(4),
   },
   cardValue: {
-    fontSize: ms(13),
-    fontWeight: '700',
-    lineHeight: ms(19),
+    fontSize: ms(14),
+    fontWeight: '700' as const,
+    lineHeight: ms(20),
     marginBottom: hp(4),
   },
   cardSub: {
     fontSize: ms(11),
-    fontWeight: '500',
+    fontWeight: '500' as const,
     lineHeight: ms(16),
   },
   metaLine: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
     gap: wp(5),
-    marginTop: 'auto',
+    marginTop: 'auto' as const,
   },
   metaText: {
     fontSize: ms(11),
-    fontWeight: '600',
+    fontWeight: '600' as const,
     flex: 1,
   },
 
   // Reward card
   rewardCard: {
-    borderRadius: ms(16),
-    borderWidth: 1,
-    padding: wp(12),
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: wp(10),
-    minHeight: hp(76),
+    borderRadius: ms(18),
+    padding: wp(14),
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: wp(12),
+    minHeight: hp(80),
+    overflow: 'hidden' as const,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.04,
+        shadowRadius: 8,
+      },
+      android: { elevation: 1 },
+    }),
+  },
+  rewardAccent: {
+    position: 'absolute' as const,
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: ms(4),
+    backgroundColor: palette.gold,
+    borderTopLeftRadius: ms(18),
+    borderBottomLeftRadius: ms(18),
   },
   rewardTextWrap: { flex: 1 },
   rewardMain: {
-    fontSize: ms(14),
-    fontWeight: '700',
+    fontSize: ms(15),
+    fontWeight: '700' as const,
     marginTop: hp(2),
-    marginBottom: hp(2),
+    marginBottom: hp(4),
+  },
+  rewardCostBadge: {
+    alignSelf: 'flex-start' as const,
+    paddingHorizontal: wp(10),
+    paddingVertical: hp(3),
+    borderRadius: ms(8),
   },
   rewardCost: {
     fontSize: ms(12),
-    fontWeight: '700',
+    fontWeight: '700' as const,
   },
 
-  // Action buttons
-  actionsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+  // Social buttons
+  socialRow: {
+    flexDirection: 'row' as const,
     gap: wp(10),
   },
-  actionBtn: {
+  socialBtn: {
     flex: 1,
     borderRadius: ms(14),
-    borderWidth: 1,
-    minHeight: hp(44),
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: wp(6),
+    minHeight: hp(46),
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: wp(8),
   },
-  actionText: {
-    fontSize: ms(12),
-    fontWeight: '600',
+  socialText: {
+    fontSize: ms(13),
+    fontWeight: '600' as const,
   },
 
-  // Bottom bar
+  // ── Other locations ──
+  otherLocationsCard: {
+    borderRadius: ms(18),
+    padding: wp(14),
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.04,
+        shadowRadius: 8,
+      },
+      android: { elevation: 1 },
+    }),
+  },
+  otherLocationsHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: wp(12),
+    marginBottom: hp(6),
+  },
+  otherLocationsCount: {
+    fontSize: ms(12),
+    fontWeight: '500' as const,
+    marginTop: hp(2),
+  },
+  storeItem: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: wp(12),
+    paddingVertical: hp(12),
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#00000008',
+    borderRadius: ms(8),
+    paddingHorizontal: wp(4),
+  },
+  storeItemDot: {
+    width: ms(8),
+    height: ms(8),
+    borderRadius: ms(4),
+  },
+  storeItemName: {
+    fontSize: ms(14),
+    fontWeight: '700' as const,
+  },
+  storeItemAddr: {
+    fontSize: ms(12),
+    fontWeight: '500' as const,
+    marginTop: hp(2),
+  },
+
+  // ── Bottom bar ──
   bottomBar: {
+    position: 'absolute' as const,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    borderTopWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: wp(16),
-    paddingVertical: hp(10),
+    paddingTop: hp(10),
+  },
+  bottomBarInner: {
+    // SafeAreaView handles bottom padding
   },
   joinBtn: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
     gap: wp(10),
-    paddingVertical: hp(14),
+    paddingVertical: hp(15),
     borderRadius: ms(16),
+    ...Platform.select({
+      ios: {
+        shadowColor: palette.violet,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.25,
+        shadowRadius: 12,
+      },
+      android: { elevation: 6 },
+    }),
   },
   joinBtnText: {
     color: '#fff',
-    fontSize: ms(14),
+    fontSize: ms(15),
     fontWeight: '700' as const,
     letterSpacing: 0.2,
   },
   joinedBanner: {
+    flex: 1,
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
     gap: wp(8),
-    paddingVertical: hp(12),
+    paddingVertical: hp(13),
     borderRadius: ms(14),
     borderWidth: 1,
   },
@@ -708,8 +921,8 @@ const styles = StyleSheet.create({
     gap: wp(10),
   },
   leaveBtn: {
-    width: ms(44),
-    height: ms(44),
+    width: ms(46),
+    height: ms(46),
     borderRadius: ms(14),
     borderWidth: 1.5,
     alignItems: 'center' as const,

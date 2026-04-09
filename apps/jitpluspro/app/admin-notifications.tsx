@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
   RefreshControl,
 } from 'react-native';
-import { ArrowLeft, Bell, Megaphone, Mail, Send, CheckCheck } from 'lucide-react-native';
+import { ArrowLeft, Bell, Megaphone, Mail, Send, CheckCheck, BellOff } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useTheme, brandGradient, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -23,6 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { timeAgo } from '@/utils/date';
 import { wp, hp, ms, fontSize as FS, radius } from '@/utils/responsive';
+import { logWarn } from '@/utils/devLogger';
 
 export default function AdminNotificationsScreen() {
   const theme = useTheme();
@@ -55,7 +56,7 @@ export default function AdminNotificationsScreen() {
   const handlePress = useCallback((item: AdminNotification) => {
     if (!item.isRead) {
       markSingleRead.mutate(item.id, {
-        onError: () => { if (__DEV__) console.warn('[Notif] Failed to mark as read:', item.id); },
+        onError: () => logWarn('Notif', 'Failed to mark as read:', item.id),
       });
     }
   }, [markSingleRead]);
@@ -63,7 +64,7 @@ export default function AdminNotificationsScreen() {
   const handleMarkAllRead = useCallback(() => {
     if (unreadCount > 0) {
       markAllRead.mutate(undefined, {
-        onError: () => { if (__DEV__) console.warn('[Notif] Failed to mark all read'); },
+        onError: () => logWarn('Notif', 'Failed to mark all read'),
       });
     }
   }, [markAllRead, unreadCount]);
@@ -81,12 +82,16 @@ export default function AdminNotificationsScreen() {
           {
             backgroundColor: item.isRead ? theme.bgCard : `${palette.violet}08`,
             borderColor: item.isRead ? theme.borderLight : `${palette.violet}25`,
+            borderLeftWidth: item.isRead ? 1 : ms(3),
+            borderLeftColor: item.isRead ? theme.borderLight : palette.violet,
+            shadowColor: item.isRead ? 'transparent' : palette.violet,
+            shadowOpacity: item.isRead ? 0 : 0.08,
+            shadowRadius: item.isRead ? 0 : 12,
+            shadowOffset: { width: 0, height: 2 },
+            elevation: item.isRead ? 0 : 3,
           },
         ]}
       >
-        {/* Unread dot */}
-        {!item.isRead && <View style={styles.unreadDot} />}
-
         <View style={[styles.iconWrap, { backgroundColor: color + '15' }]}>
           <Icon size={ms(18)} color={color} strokeWidth={1.6} />
         </View>
@@ -162,7 +167,7 @@ export default function AdminNotificationsScreen() {
       ) : notifications.length === 0 ? (
         <View style={styles.center}>
           <View style={[styles.emptyIcon, { backgroundColor: `${palette.violet}10` }]}>
-            <Bell size={ms(36)} color={palette.violet} strokeWidth={1.2} />
+            <BellOff size={ms(36)} color={palette.violet} strokeWidth={1.2} />
           </View>
           <Text style={[styles.emptyTitle, { color: theme.text }]}>
             {t('account.noNotifications')}
@@ -268,15 +273,6 @@ const styles = StyleSheet.create({
     padding: ms(14),
     marginBottom: hp(10),
     position: 'relative',
-  },
-  unreadDot: {
-    position: 'absolute',
-    top: ms(16),
-    left: ms(6),
-    width: ms(6),
-    height: ms(6),
-    borderRadius: ms(3),
-    backgroundColor: palette.violet,
   },
   iconWrap: {
     width: ms(40),

@@ -14,6 +14,8 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { SendVerificationEmailDto } from './dto/send-verification-email.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
+import { CheckEmailDto } from './dto/check-email.dto';
+import { CheckPhoneDto } from './dto/check-phone.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtService } from '@nestjs/jwt';
@@ -114,6 +116,21 @@ export class AuthController {
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 5 } })
   async verifyEmail(@Body() dto: VerifyEmailDto) {
     return this.authService.verifyEmail(dto.email, dto.code);
+  }
+
+  // ── Uniqueness checks (public — used during registration) ──
+  @Post('check-email')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 10 } })
+  async checkEmail(@Body() dto: CheckEmailDto) {
+    return this.authService.checkEmailExists(dto.email);
+  }
+
+  @Post('check-phone')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 10 } })
+  async checkPhone(@Body() dto: CheckPhoneDto) {
+    return this.authService.checkPhoneExists(dto.phoneNumber);
   }
 
   // ── Parrainage (public — consulté avant inscription) ──

@@ -1,12 +1,18 @@
-import { IsBoolean, IsEmail, IsEnum, IsNumber, IsOptional, IsString, MaxLength, Min, Max } from 'class-validator';
+import { IsBoolean, IsEmail, IsEnum, IsNumber, IsOptional, IsString, IsUrl, MaxLength, Min, Max, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { MerchantCategory } from '@prisma/client';
+import { SocialLinksDto } from './social-links.dto';
 
 export class UpdateStoreDto {
   @IsString()
   @MaxLength(100)
   @IsOptional()
   nom?: string;
+
+  @IsString()
+  @MaxLength(1000)
+  @IsOptional()
+  description?: string;
 
   @IsEnum(MerchantCategory)
   @IsOptional()
@@ -51,6 +57,19 @@ export class UpdateStoreDto {
   @MaxLength(255)
   @IsOptional()
   email?: string;
+
+  @IsUrl({}, { message: 'URL du logo invalide' })
+  @IsOptional()
+  logoUrl?: string;
+
+  @IsUrl({}, { message: 'URL de la couverture invalide' })
+  @IsOptional()
+  coverUrl?: string;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => SocialLinksDto)
+  socialLinks?: SocialLinksDto;
 
   @IsBoolean()
   @IsOptional()

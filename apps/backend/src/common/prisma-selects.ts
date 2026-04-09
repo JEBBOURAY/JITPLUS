@@ -26,12 +26,14 @@ export const MERCHANT_PROFILE_SELECT = {
   stampEarningMode: true,
   accumulationLimit: true,
   activeRewardId: true,
+  rewards: true,
   countryCode: true,
   phoneNumber: true,
   isActive: true,
   emailVerified: true,
   onboardingCompleted: true,
   termsAccepted: true,
+  deletedAt: true,
   googleId: true,
   plan: true,
   planExpiresAt: true,
@@ -56,6 +58,7 @@ export const MERCHANT_LOYALTY_SELECT = {
   stampsForReward: true,
   stampEarningMode: true,
   accumulationLimit: true,
+  rewards: true,
 } satisfies Prisma.MerchantSelect;
 
 /**

@@ -21,7 +21,7 @@ import api from '@/services/api';
 import { useGuardedCallback } from '@/hooks/useGuardedCallback';
 
 export default function ProfileScreen() {
-  const { merchant, loading, signOut, loadProfile } = useAuth();
+  const { merchant, loading, signOut, loadProfile, isTeamMember } = useAuth();
   const router = useRouter();
   const theme = useTheme();
   const { t } = useLanguage();
@@ -259,35 +259,39 @@ export default function ProfileScreen() {
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, { color: theme.text }]}>{t('profileView.actions')}</Text>
 
-        <TouchableOpacity
-          style={[styles.actionButton, { backgroundColor: '#7C3AED' }]}
-          onPress={() => router.push('/plan')}
-        >
-          <Crown size={20} color="#fff" strokeWidth={1.5} />
-          <Text style={[styles.actionButtonText, { color: '#fff' }]}>
-            {t('profileView.myPlan')}
-          </Text>
-        </TouchableOpacity>
+        {!isTeamMember && (
+          <>
+            <TouchableOpacity
+              style={[styles.actionButton, { backgroundColor: '#7C3AED' }]}
+              onPress={() => router.push('/plan')}
+            >
+              <Crown size={20} color="#fff" strokeWidth={1.5} />
+              <Text style={[styles.actionButtonText, { color: '#fff' }]}>
+                {t('profileView.myPlan')}
+              </Text>
+            </TouchableOpacity>
 
-        <TouchableOpacity 
-          style={[styles.actionButton, { backgroundColor: theme.warning }]} 
-          onPress={() => router.push('/settings')}
-        >
-          <Settings size={20} color="#fff" strokeWidth={1.5} />
-          <Text style={[styles.actionButtonText, { color: '#fff' }]}>
-            {t('profileView.loyaltySettings')}
-          </Text>
-        </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.actionButton, { backgroundColor: theme.warning }]} 
+              onPress={() => router.push('/settings')}
+            >
+              <Settings size={20} color="#fff" strokeWidth={1.5} />
+              <Text style={[styles.actionButtonText, { color: '#fff' }]}>
+                {t('profileView.loyaltySettings')}
+              </Text>
+            </TouchableOpacity>
 
-        <TouchableOpacity 
-          style={[styles.actionButton, { backgroundColor: theme.primary }]} 
-          onPress={() => router.push('/stores')}
-        >
-          <Store size={20} color="#fff" strokeWidth={1.5} />
-          <Text style={[styles.actionButtonText, { color: '#fff' }]}>
-            {t('profileView.myStores')}
-          </Text>
-        </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.actionButton, { backgroundColor: theme.primary }]} 
+              onPress={() => router.push('/stores')}
+            >
+              <Store size={20} color="#fff" strokeWidth={1.5} />
+              <Text style={[styles.actionButtonText, { color: '#fff' }]}>
+                {t('profileView.myStores')}
+              </Text>
+            </TouchableOpacity>
+          </>
+        )}
 
         <TouchableOpacity 
           style={[styles.actionButton, { backgroundColor: theme.primary }]} 
@@ -309,15 +313,17 @@ export default function ProfileScreen() {
           </Text>
         </TouchableOpacity>
 
-        <TouchableOpacity 
-          style={[styles.actionButton, { backgroundColor: theme.success }]} 
-          onPress={() => router.push('/dashboard')}
-        >
-          <BarChart3 size={20} color="#fff" strokeWidth={1.5} />
-          <Text style={[styles.actionButtonText, { color: '#fff' }]}>
-            {t('profileView.dashboardHistory')}
-          </Text>
-        </TouchableOpacity>
+        {!isTeamMember && (
+          <TouchableOpacity 
+            style={[styles.actionButton, { backgroundColor: theme.success }]} 
+            onPress={() => router.push('/dashboard')}
+          >
+            <BarChart3 size={20} color="#fff" strokeWidth={1.5} />
+            <Text style={[styles.actionButtonText, { color: '#fff' }]}>
+              {t('profileView.dashboardHistory')}
+            </Text>
+          </TouchableOpacity>
+        )}
 
         <TouchableOpacity style={[styles.actionButton, { backgroundColor: theme.bgCard, shadowColor: theme.shadowColor }]} onPress={guardedLoadProfile}>
           <RefreshCw size={20} color={palette.charbon} />

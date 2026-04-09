@@ -26,7 +26,7 @@ export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBo
 const LANGS = [
   { code: 'fr' as const, flag: '\uD83C\uDDEB\uD83C\uDDF7' },
   { code: 'en' as const, flag: '\uD83C\uDDEC\uD83C\uDDE7' },
-  { code: 'ar' as const, flag: '\uD83C\uDDF8\uD83C\uDDE6' },
+  { code: 'ar' as const, flag: '\uD83C\uDDF2\uD83C\uDDE6' },
 ] as const;
 
 interface Slide {

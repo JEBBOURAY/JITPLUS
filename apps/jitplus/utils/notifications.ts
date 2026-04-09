@@ -66,16 +66,26 @@ export async function setupAndroidChannel() {
       vibrationPattern: [0, 250, 250, 250],
       lightColor: '#7C3AED',
       showBadge: true,
-      // Do not pass sound: 'default' — expo-notifications treats the
-      // string as a filename in res/raw/. Use null to inherit device default.
       sound: null,
     });
 
-    // Default channel for general notifications
+    // Default channel for general/admin notifications
     await Notifications.setNotificationChannelAsync('default', {
       name: i18n.t('notifications.channelGeneral'),
       importance: Notifications.AndroidImportance.HIGH,
       showBadge: true,
+      vibrationPattern: [0, 200, 100, 200],
+      lightColor: '#3B82F6',
+      sound: null,
+    });
+
+    // Login alert notifications (new device login)
+    await Notifications.setNotificationChannelAsync('login-alerts', {
+      name: i18n.t('notifications.channelLoginAlerts', { defaultValue: 'Alertes de connexion' }),
+      importance: Notifications.AndroidImportance.HIGH,
+      showBadge: true,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: '#EF4444',
       sound: null,
     });
   }

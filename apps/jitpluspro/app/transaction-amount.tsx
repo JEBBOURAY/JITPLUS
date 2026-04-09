@@ -123,7 +123,8 @@ export default function TransactionAmountScreen() {
   // ── Stamps mode ──
   const isStampsMode = merchant?.loyaltyType === 'STAMPS';
   const isPerVisit = isStampsMode && (merchant?.stampEarningMode || 'PER_VISIT') === 'PER_VISIT';
-  const stampsForReward = merchant?.stampsForReward || customerStatus?.stampsForReward || 10;
+  const targetReward = selectedReward || rewards[0];
+  const stampsForReward = targetReward?.cout || 10;
   const { t, locale } = useLanguage();
 
   const calculatePoints = useCallback(() => {
@@ -177,7 +178,7 @@ export default function TransactionAmountScreen() {
   }, [set]);
 
   // ── Shared accumulation limit check ──
-  const checkAccumulationLimit = useCallback((): boolean => {
+  const checkAccumulationLimit = useCallback((pointsToAdd: number): number | false => {
     const currentPoints = customerStatus?.points || 0;
     if (merchant?.accumulationLimit != null && currentPoints >= merchant.accumulationLimit) {
       if (selectedRewardId && selectedReward && currentPoints >= selectedReward.cout) {
@@ -188,30 +189,45 @@ export default function TransactionAmountScreen() {
       Alert.alert(t('common.error'), t('transaction.accumulationLimitReached', { limit: merchant.accumulationLimit, unit }));
       return false;
     }
-    return true;
+    
+    if (merchant?.accumulationLimit != null && currentPoints + pointsToAdd > merchant.accumulationLimit) {
+      return merchant.accumulationLimit - currentPoints;
+    }
+    
+    return pointsToAdd;
   }, [customerStatus?.points, merchant?.accumulationLimit, selectedRewardId, selectedReward, isStampsMode, t]);
 
   // ── EARN: Points Mode ──
   const handleEarnPoints = useCallback(() => {
-    if (!checkAccumulationLimit()) return;
+    const actualPoints = checkAccumulationLimit(points);
+    if (actualPoints === false) return;
+    
     const amountNum = parseFloat(amount);
     if (!amountNum || isNaN(amountNum)) {
       Alert.alert(t('common.error'), t('transactionAmount.invalidAmount'));
       return;
     }
-    if (points === 0) {
+    if (actualPoints === 0) {
       Alert.alert(t('common.error'), t('transactionAmount.noPointsEarned'));
       return;
     }
-    const willRedeem = !!selectedRewardId && !!selectedReward && (customerStatus?.points || 0) + points >= selectedReward.cout;
+    
+    const willRedeem = !!selectedRewardId && !!selectedReward && (customerStatus?.points || 0) + actualPoints >= selectedReward.cout;
     const giftLine = willRedeem
       ? t('transactionAmount.giftOffered', { title: selectedReward!.titre, cost: selectedReward!.cout })
       : '';
+      
+    // Si la limite tronque les points, afficher un avertissement
+    const limitWarning = actualPoints < points 
+      ? `\n⚠️ Limite d'accumulation atteinte. Seulement ${actualPoints} points seront ajoutés.\n` : '';
+
     Alert.alert(
       t('transaction.confirmTitle'),
-      t('transactionAmount.confirmEarnPoints', { amount: formatCurrency(amountNum, DEFAULT_CURRENCY, getIntlLocale(locale)), points, giftLine }),
+      `${limitWarning}${t('transactionAmount.confirmEarnPoints', { amount: formatCurrency(amountNum, DEFAULT_CURRENCY, getIntlLocale(locale)), points: actualPoints, giftLine })}`,
       [
         { text: t('common.cancel'), style: 'cancel' },
+        // On envoie le montant "points" brut au back-end car c'est lui qui gère la troncature exacte 
+        // par rapport au montant d'achat pour valider la transaction.
         { text: t('transaction.validate'), onPress: () => processEarnWithAutoRedeem(amountNum, points, willRedeem) },
       ],
     );
@@ -219,16 +235,26 @@ export default function TransactionAmountScreen() {
 
   // ── EARN: Stamps Mode ──
   const handleEarnStamps = useCallback(() => {
-    if (!checkAccumulationLimit()) return;
+    let earnedStamps = isPerVisit ? 1 : stamps;
+    const actualStamps = checkAccumulationLimit(earnedStamps);
+    if (actualStamps === false) return;
+
+    if (actualStamps === 0) {
+      Alert.alert(t('common.error'), t('transaction.noStampsEarned'));
+      return;
+    }
 
     if (isPerVisit) {
       // PER_VISIT: 1 stamp per visit, no amount needed
-      const afterStamps = (customerStatus?.points || 0) + 1;
+      const afterStamps = (customerStatus?.points || 0) + actualStamps;
       const willGetReward = afterStamps >= stampsForReward && !!selectedReward;
+      
+      const limitWarning = actualStamps < earnedStamps
+        ? `\n⚠️ Limite d'accumulation atteinte. Seulement ${actualStamps} ${t('common.stamps')} ajoutés.\n` : '';
 
       Alert.alert(
         t('transaction.confirmTitle'),
-        `${t('transaction.stampsToEarn')} : 1 ${t('common.stamps')}\n` +
+        `${limitWarning}${t('transaction.stampsToEarn')} : ${actualStamps} ${t('common.stamps')}\n` +
           (willGetReward
             ? `\n🎉 ${t('transaction.rewardReached')} "${selectedReward!.titre}" (${selectedReward!.cout} ${t('common.stamps')}).`
             : `\n${t('transaction.totalAfter')} : ${afterStamps} / ${stampsForReward} ${t('common.stamps')}`),
@@ -236,7 +262,7 @@ export default function TransactionAmountScreen() {
           { text: t('common.cancel'), style: 'cancel' },
           {
             text: t('transaction.validate'),
-            onPress: () => processEarnWithAutoRedeem(0, 1, willGetReward),
+            onPress: () => processEarnWithAutoRedeem(0, earnedStamps, willGetReward),
           },
         ],
       );
@@ -248,17 +274,17 @@ export default function TransactionAmountScreen() {
       Alert.alert(t('common.error'), t('transaction.enterAmountError'));
       return;
     }
-    if (stamps === 0) {
-      Alert.alert(t('common.error'), t('transaction.noStampsEarned'));
-      return;
-    }
-    const afterStamps = (customerStatus?.points || 0) + stamps;
+    
+    const afterStamps = (customerStatus?.points || 0) + actualStamps;
     const willGetReward = afterStamps >= stampsForReward && !!selectedReward;
+    
+    const limitWarning = actualStamps < earnedStamps
+      ? `⚠️ Limite atteinte : seuil max atteint, seuls ${actualStamps} tampons crédités.\n\n` : '';
 
     Alert.alert(
       t('transaction.confirmTitle'),
-      `${t('transaction.purchaseAmount')} : ${formatCurrency(stampAmountNum, DEFAULT_CURRENCY, getIntlLocale(locale))}\n` +
-      `${t('transaction.stampsToEarn')} : ${stamps} ${t('common.stamps')}\n` +
+      `${limitWarning}${t('transaction.purchaseAmount')} : ${formatCurrency(stampAmountNum, DEFAULT_CURRENCY, getIntlLocale(locale))}\n` +
+      `${t('transaction.stampsToEarn')} : ${actualStamps} ${t('common.stamps')}\n` +
         (willGetReward
           ? t('transactionAmount.confirmEarnStampsReward', { title: selectedReward!.titre, cost: selectedReward!.cout })
           : `\n${t('transaction.totalAfter')} : ${afterStamps} / ${stampsForReward} ${t('common.stamps')}`),
@@ -266,7 +292,7 @@ export default function TransactionAmountScreen() {
         { text: t('common.cancel'), style: 'cancel' },
         {
           text: t('transaction.validate'),
-          onPress: () => processEarnWithAutoRedeem(stampAmountNum, stamps, willGetReward),
+          onPress: () => processEarnWithAutoRedeem(stampAmountNum, earnedStamps, willGetReward),
         },
       ],
     );

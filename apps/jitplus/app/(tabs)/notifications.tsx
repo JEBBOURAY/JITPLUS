@@ -48,7 +48,7 @@ function getNotifDateFmt(locale: string) {
 const COLOR_MAP: Record<string, string> = {
   reward: '#10B981',
   promo: palette.violet,
-  info: '#F59E0B',
+  info: '#3B82F6',
 };
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -321,6 +321,7 @@ export default function NotificationsScreen() {
   const renderNotif = useCallback(({ item: notif, index }: { item: ClientNotification; index: number }) => {
     const color = COLOR_MAP[notif.type] || theme.primary;
     const isUnread = !notif.isRead;
+    const isAdmin = !notif.merchantName;
     // Cache delay per ID so items don't re-animate on list updates
     if (!staggerCacheRef.current.has(notif.id)) {
       staggerCacheRef.current.set(
@@ -340,15 +341,19 @@ export default function NotificationsScreen() {
               styles.notifCard,
               {
                 backgroundColor: theme.bgCard,
-                borderLeftColor: isUnread ? palette.violet : 'transparent',
+                borderLeftColor: isUnread ? (isAdmin ? '#3B82F6' : palette.violet) : 'transparent',
                 borderLeftWidth: isUnread ? ms(3) : 0,
+                shadowColor: isUnread ? palette.violet : '#000',
+                shadowOpacity: isUnread ? 0.08 : 0.04,
+                shadowRadius: isUnread ? 12 : 8,
+                elevation: isUnread ? 3 : 2,
               },
             ]}
           >
             {/* Unread indicator dot */}
             {isUnread && (
               <View style={styles.unreadDot}>
-                <CircleDot size={ms(8)} color={palette.violet} fill={palette.violet} />
+                <CircleDot size={ms(8)} color={isAdmin ? '#3B82F6' : palette.violet} fill={isAdmin ? '#3B82F6' : palette.violet} />
               </View>
             )}
 
@@ -372,11 +377,13 @@ export default function NotificationsScreen() {
                 {notif.body}
               </Text>
               <View style={styles.notifMeta}>
-                {notif.merchantName && (
-                  <Text style={[styles.notifMerchant, { color: theme.primaryLight }]}>
-                    {notif.merchantName}
-                  </Text>
-                )}
+                <Text style={[
+                  styles.notifMerchant,
+                  { color: isAdmin ? '#3B82F6' : theme.primaryLight },
+                  isAdmin && styles.notifOfficialBadge,
+                ]}>
+                  {notif.merchantName || 'JitPlus'}
+                </Text>
                 <Text style={[styles.notifDate, { color: theme.textMuted }]}>
                   {notifDateFmt.format(new Date(notif.createdAt))}
                 </Text>
@@ -416,11 +423,9 @@ export default function NotificationsScreen() {
             <MerchantLogo logoUrl={selectedNotif.merchantLogoUrl} style={styles.modalLogoImg} />
           </View>
           <View style={{ flex: 1 }}>
-            {selectedNotif.merchantName && (
-              <Text style={[styles.modalMerchant, { color: theme.primaryLight }]}>
-                {selectedNotif.merchantName}
-              </Text>
-            )}
+            <Text style={[styles.modalMerchant, { color: !selectedNotif.merchantName ? '#3B82F6' : theme.primaryLight }]}>
+              {selectedNotif.merchantName || 'JitPlus'}
+            </Text>
             <Text style={[styles.modalDate, { color: theme.textMuted }]}>
               {notifDateFmt.format(new Date(selectedNotif.createdAt))}
             </Text>
@@ -617,6 +622,7 @@ const styles = StyleSheet.create({
   notifBody: { fontSize: fontSize.sm, lineHeight: ms(20) },
   notifMeta: { flexDirection: 'row', alignItems: 'center', gap: wp(8), marginTop: hp(6) },
   notifMerchant: { fontSize: fontSize.xs, fontWeight: '600' },
+  notifOfficialBadge: { fontWeight: '700', letterSpacing: 0.3 },
   notifDate: { fontSize: fontSize.xs },
 
   // Swipe-to-delete background

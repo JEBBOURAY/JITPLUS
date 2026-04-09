@@ -1,4 +1,10 @@
 export default {
+  // ── Password strength ──
+  passwordStrength: {
+    weak: 'Faible',
+    medium: 'Moyen',
+    strong: 'Fort',
+  },
   // ── Tabs ──
   tabs: {
     activity: 'Activité',
@@ -34,9 +40,17 @@ export default {
     searchCountry: 'Rechercher un pays...',
     noCountryFound: 'Aucun pays trouvé',
     allDisplayed: '— Tout est affiché —',
+    ownerOnly: 'Accès réservé au propriétaire',
+    ownerOnlyMsg: 'Cette section est réservée au propriétaire du commerce. Les membres d\'équipe n\'y ont pas accès.',
     morocco: 'Maroc',
     stampsAbbr: 'tmp',
     pointsAbbr: 'pts',
+  },
+
+  // ── Phone Input ──
+  phoneInput: {
+    maFormat: 'Format marocain : 5, 6 ou 7 suivi de 8 chiffres',
+    digitCount: '%{count}/%{max} chiffres',
   },
 
   // ── Errors ──
@@ -106,7 +120,7 @@ export default {
   // ── Register ──
   register: {
     title: 'Créer un compte',
-    subtitle: 'Rejoignez JitPlus Pro et gérez votre fidélité.',
+    subtitle: 'Rejoignez-nous et gérez votre fidélité',
     nameLabel: 'Nom du commerce',
     namePlaceholder: 'Ex : Coffee Corner',
     emailLabel: 'Adresse e-mail',
@@ -167,9 +181,10 @@ export default {
     noMessages: 'Aucun message envoyé',
     noMessagesHint: 'Vos notifications envoyées apparaîtront ici. Rédigez votre premier message ci-dessus !',
     messageTitle: 'Titre du message',
-    messageTitlePlaceholder: 'Ex : 🎉 Offre spéciale ce week-end !',
+    messageTitlePlaceholder: 'Ex : 🔥 -30% sur tout le menu !',
     messageBody: 'Contenu du message',
-    messageBodyPlaceholder: 'Décrivez votre promotion, événement ou message…',
+    messageBodyPlaceholder: 'Décrivez votre offre en détail : quoi, quand, conditions…',
+    composeTip: 'Un bon titre court avec un emoji attire plus de clics ! Ajoutez une offre claire dans le contenu.',
     sendToAll: 'Envoyer à tous mes clients',
     targetAll: 'Tous les clients',
     targetActive: 'Clients actifs',
@@ -296,6 +311,9 @@ export default {
 
   // ── Account ──
   account: {
+    guideText: 'Gérez les aspects liés à votre compte, de votre abonnement à la sécurité de vos données.',
+    securityGuideText: 'Sécurisez votre compte en modifiant votre mot de passe et en contrôlant les différents appareils connectés.',
+    planGuideText: 'Consultez les avantages de votre offre actuelle et passez à la vitesse supérieure en débloquant les fonctionnalités de l\'abonnement Pro.',
     // Plan
     planPremium: 'Compte Premium',
     planTrial: 'Essai Premium',
@@ -395,8 +413,6 @@ export default {
 
     // Sections
     myStore: 'Mon Commerce',
-    editStore: 'Modifier le commerce',
-    editStoreSubtitle: 'Nom, logo, description, adresse',
     manageStores: 'Mes boutiques',
     manageStoresSubtitle: 'Ajouter, modifier, gérer vos adresses',
     settings: 'Paramètres',
@@ -482,29 +498,6 @@ export default {
     restartDirectionHint: "Redémarrez l'application pour appliquer le changement de direction.",
   },
 
-  // ── Profile ──
-  profile: {
-    title: 'Mon Profil',
-    editTitle: 'Modifier le commerce',
-    save: 'Enregistrer',
-    saving: 'Enregistrement…',
-    nameLabel: 'Nom du commerce',
-    descLabel: 'Description',
-    descPlaceholder: 'Décrivez votre commerce en quelques mots…',
-    categoryLabel: 'Catégorie',
-    villeLabel: 'Ville',
-    villePlaceholder: 'Ex : Casablanca',
-    quartierLabel: 'Quartier',
-    quartierPlaceholder: 'Ex : Maarif',
-    adresseLabel: 'Adresse',
-    adressePlaceholder: 'Ex : 12 Rue Hassan II',
-    phoneLabel: 'Téléphone',
-    logoLabel: 'Logo',
-    coverLabel: 'Photo de couverture',
-    saveSuccess: 'Profil mis à jour',
-    saveError: 'Impossible de sauvegarder',
-  },
-
   // ── Profile View ──
   profileView: {
     premium: 'Premium',
@@ -588,6 +581,7 @@ export default {
 
   // ── Dashboard ──
   dashboard: {
+    guideText: 'Suivez ici les indicateurs clés de votre programme de fidélité : scans, nouveaux clients et statistiques détaillées de vos ventes.',
     title: 'Dashboard',
     periodDay: 'Jour',
     periodWeek: 'Semaine',
@@ -721,7 +715,7 @@ export default {
     disconnect: 'Déconnecter',
     dangerZone: 'Zone dangereuse',
     dangerText: 'La suppression de votre compte est définitive. Vos identifiants et données personnelles seront effacés. Les données de transactions anonymisées sont conservées conformément à nos obligations légales.',
-    deleteConfirmLabel: 'Tapez SUPPRIMER pour confirmer',
+    deleteConfirmLabel: "J'accepte la suppression définitive et irréversible de mon compte",
     deleteConfirmKeyword: 'SUPPRIMER',
     deleteFinalTitle: '⚠️ Suppression définitive',
     deleteFinalMsg: 'Êtes-vous absolument sûr(e) ? Cette action est IRRÉVERSIBLE.\n\nVos identifiants et données personnelles seront supprimés. Les données de transactions anonymisées seront conservées pour des raisons légales et comptables.',
@@ -743,6 +737,7 @@ export default {
 
   // ── Team management ──
   team: {
+    guideText: 'Gérez ici les accès de votre personnel. Invitez les différents membres de votre boutique à accéder au scanner sans compromettre vos paramètres.',
     title: "Gestion d'équipe",
     accessDenied: 'Accès réservé',
     accessDeniedMsg: "Seul le propriétaire peut gérer l'équipe.",
@@ -859,9 +854,24 @@ export default {
 
   // ── Register extra ──
   registerExtra: {
-    step0: 'Votre commerce',
-    step1: 'Vos identifiants',
-    step2: 'Votre ville',
+    step0: 'Créez votre compte',
+    step1: 'Vos informations',
+    step2: 'Sécurisez votre compte',
+    step2Store: 'Votre commerce',
+    stepShort0: 'Compte',
+    stepShort1: 'Infos',
+    stepShort2: 'Sécurité',
+    stepShort2Store: 'Commerce',
+    stepSocial: 'Réseaux & Contact',
+    stepShortSocial: 'Réseaux',
+    subSocial: 'Ajoutez vos réseaux sociaux et coordonnées (optionnel)',
+    socialOptionalHint: 'Tous ces champs sont optionnels — vous pourrez les ajouter plus tard',
+    instagramPlaceholder: 'Ex : mon_commerce',
+    tiktokPlaceholder: 'Ex : mon_commerce',
+    storePhoneLabel: 'Téléphone du commerce',
+    storePhonePlaceholder: 'Ex : 0600000000',
+    descriptionLabel: 'Description',
+    descriptionPlaceholder: 'Décrivez votre commerce en quelques mots...',
     step3: 'Emplacement & Validation',
     nextBtn: 'Continuer',
     finishBtn: 'Créer mon compte',
@@ -875,17 +885,18 @@ export default {
     and: 'et la',
     addressLabel: 'Position sélectionnée',
     noAddressSelected: 'Aucune position sélectionnée — appuyez sur la carte',
-    sub0: 'Commençons par le nom et la catégorie de votre activité',
-    sub1: 'Ces informations sécurisent votre compte',
-    sub2: 'Aidez vos clients à vous trouver facilement',
+    sub0: 'Inscrivez-vous avec votre e-mail ou votre compte Google',
+    sub1: 'Nom, prénom et numéro de téléphone du commerçant',
+    sub2: 'Choisissez un mot de passe sécurisé',
+    sub2Store: 'Configurez votre premier commerce affiché sur la carte',
     sub3: 'Dernière étape avant de lancer votre programme fidélité !',
     stepLabel: 'Étape %{current} sur %{total}',
-    villeSearchPlaceholder: 'Rechercher une ville...',
     addCity: '+ Ajouter "%{city}"',
     changeCity: 'Changer de ville',
     quartierHint: 'Optionnel — aide les clients à vous trouver',
     mapTitle: 'Position exacte sur la carte',
     mapHint: 'Recherchez votre adresse, appuyez sur la carte ou utilisez votre position',
+    mapLocateRecommend: 'Pour une meilleure précision, nous vous recommandons d\'utiliser le bouton "Localisez-moi" ou la barre de recherche.',
     addressPlaceholder: 'Tapez une adresse, rue ou lieu...',
     positionLabel: '✓ Position : %{lat}, %{lng}',
     termsRequired: 'Veuillez accepter les conditions pour continuer',
@@ -893,7 +904,7 @@ export default {
     addressNotFound: 'Adresse non trouvée',
     addressNotFoundMsg: 'Essayez avec plus de détails (rue, quartier, ville).',
     addressSearchError: 'Impossible de rechercher cette adresse.',
-    fillAllFields: 'Veuillez compléter tous les champs obligatoires et accepter les conditions',
+    fillAllFields: 'Veuillez compléter tous les champs obligatoires',
     welcomeTitle: 'Bienvenue sur JitPlus Pro ! 🎉',
     welcomeMsg: 'Votre commerce "%{nom}" a été créé avec succès.\nConnectez-vous pour commencer à fidéliser vos clients.',
     registrationError: 'Impossible de créer votre compte',
@@ -903,6 +914,10 @@ export default {
     passwordPlaceholder: 'Min. %{count} caractères',
     passwordTooShort: 'Encore %{count} caractère(s)',
     passwordValid: '✓ Mot de passe sécurisé',
+    passwordRequirements: 'Min. 8 caractères, 1 majuscule, 1 chiffre, 1 spécial',
+    confirmPasswordLabel: 'Confirmer le mot de passe',
+    confirmPasswordPlaceholder: '••••••••••••',
+    passwordMismatch: 'Les mots de passe ne correspondent pas',
     phoneLabel: 'Téléphone',
     phonePlaceholder: '+212 6XX XXX XXX',
     phoneHint: 'Utilisé pour que vos clients puissent vous contacter',
@@ -913,9 +928,17 @@ export default {
     signUpWithGoogle: "S'inscrire avec Google",
     googleLinked: 'Compte Google lié',
     googleChange: 'Changer',
+    ownerLastName: 'Nom du propriétaire',
+    ownerLastNamePlaceholder: 'Ex : Dupont',
+    ownerFirstName: 'Prénom du propriétaire',
+    ownerFirstNamePlaceholder: 'Ex : Jean',
+    ownerInfoHint: 'ℹ️ Le nom et le prénom sont optionnels. Vous pourrez les compléter plus tard.',
+    emailAlreadyUsed: 'Cet e-mail est déjà associé à un compte',
+    phoneAlreadyUsed: 'Ce numéro de téléphone est déjà associé à un compte',
+    checkEmailError: 'Impossible de vérifier cet e-mail. Veuillez réessayer.',
+    checkPhoneError: 'Impossible de vérifier ce numéro. Veuillez réessayer.',
+    registrationErrorMsg: 'Veuillez vérifier vos informations et réessayer.',
   },
-
-  // ── Email Verification ──
   verifyEmail: {
     title: 'Vérifiez votre e-mail',
     subtitle: 'Un code de vérification a été envoyé à %{email}',
@@ -944,63 +967,9 @@ export default {
     goToRegister: 'Créer un compte',
   },
 
-  // ── Edit profile ──
-  editProfile: {
-    title: 'Modifier le commerce',
-    tabProfile: 'Profil',
-    tabVisual: 'Visuel',
-    nameLabel: 'Nom du commerce',
-    descLabel: 'Description',
-    descPlaceholder: 'Décrivez votre commerce en quelques mots…',
-    categoryLabel: 'Catégorie',
-    storesSection: 'Adresses & Boutiques',
-    addStore: 'Ajouter une boutique',
-    storeNameLabel: 'Nom de la boutique',
-    storeCityLabel: 'Ville',
-    storeDistrictLabel: 'Quartier',
-    storeAddressLabel: 'Adresse',
-    storePhoneLabel: 'Téléphone',
-    searchAddress: 'Rechercher une adresse…',
-    locateMe: 'Ma position',
-    saveBtn: 'Enregistrer',
-    saving: 'Enregistrement…',
-    saveSuccess: 'Profil mis à jour',
-    saveError: 'Impossible de sauvegarder',
-    logoLabel: 'Logo',
-    coverLabel: 'Photo de couverture',
-    changePhoto: 'Changer la photo',
-    socialLinksLabel: 'Réseaux sociaux',
-    instagramPlaceholder: 'Nom d\'utilisateur Instagram',
-    tiktokPlaceholder: 'Nom d\'utilisateur TikTok',
-    addressNotFound: 'Adresse non trouvée',
-    addressNotFoundHint: 'Essayez avec plus de détails.',
-    addressSearchError: 'Impossible de rechercher cette adresse.',
-    locationDenied: 'Permission refusée',
-    locationDeniedMsg: 'Activez la localisation.',
-    locationError: "Impossible d'obtenir la position.",
-    imageUploadError: "Impossible d'envoyer l'image",
-    imageDeleteError: "Impossible de supprimer l'image",
-    nameRequired: 'Le nom du commerce est obligatoire',
-    namePlaceholder: 'Ex: Café Panorama',
-    addFirstStore: 'Ajoutez votre premier magasin',
-    storeCount: '{{count}} boutique(s) enregistrée(s)',
-    noAddress: 'Aucune adresse',
-    addLogo: 'Ajouter un logo',
-    logoHint: 'JPG, PNG ou WebP • max 2 Mo',
-    storeNamePlaceholder: 'Ex: Boutique Maarif',
-    selectCity: 'Sélectionner une ville',
-    searchCity: 'Rechercher une ville...',
-    addressPlaceholder: 'Tapez une adresse ou lieu...',
-    neighborhoodPlaceholder: 'Ex: Maarif, Guéliz, Agdal...',
-    contactSection: 'Contact',
-    phoneLabel: 'Téléphone principal',
-    phonePlaceholder: '06 XX XX XX XX',
-    emailLabel: 'Email principal',
-    emailPlaceholder: 'contact@moncommerce.ma',
-  },
-
   // ── Stores management ──
   stores: {
+    guideText: 'Consultez, ajoutez ou modifiez ici les emplacements physiques de votre enseigne pour que vos clients puissent toujours vous trouver facilement.',
     title: 'Mes boutiques',
     addStore: 'Ajouter',
     editStore: 'Modifier la boutique',
@@ -1026,16 +995,33 @@ export default {
     mapTitle: 'Position sur la carte',
     // Placeholders
     namePlaceholder: 'ex: Boutique Centre-Ville',
+    descLabel: 'Description',
+    descPlaceholder: 'Décrivez votre boutique en quelques mots...',
     phonePlaceholder: '06 XX XX XX XX',
     emailPlaceholder: 'boutique@example.com',
     cityPlaceholder: 'Casablanca',
     districtPlaceholder: 'Maârif, Gauthier...',
     addressSearchPlaceholder: 'Tapez une adresse, rue ou lieu...',
     addressAutoPlaceholder: 'Remplie automatiquement ou saisissez...',
+    facebookPlaceholder: 'Nom de la page ou lien',
+    youtubePlaceholder: 'Nom de la chaîne ou lien',
+    websiteLabel: 'Site web',
     // Section headers
     sectionInfo: 'Informations',
     sectionContact: 'Contact',
+    sectionSocial: 'Réseaux sociaux',
     sectionLocation: 'Localisation',
+    // Wizard steps
+    stepOf: 'Étape %{current}/%{total}',
+    stepInfoDesc: 'Donnez un nom, une catégorie et une description à votre point de vente.',
+    stepContactDesc: 'Ajoutez un téléphone et/ou un email pour ce magasin.',
+    stepSocialDesc: 'Ajoutez vos réseaux sociaux pour que vos clients puissent vous suivre.',
+    stepLocationDesc: 'Indiquez l\'emplacement exact de votre boutique.',
+    contactOptional: 'Ces informations sont facultatives',
+    socialOptional: 'Ces informations sont facultatives',
+    locateMeHint: 'Utiliser ma position GPS actuelle',
+    mapHint: 'Appuyez sur la carte ou déplacez le marqueur',
+    nextStep: 'Suivant',
     // Counter
     counterLabel: '%{count} / %{max} magasins',
     sameCategoryLabel: 'Même catégorie',
@@ -1044,6 +1030,7 @@ export default {
     nameRequired: 'Le nom est obligatoire',
     addressNotFound: 'Adresse non trouvée',
     addressNotFoundHint: 'Essayez avec plus de détails.',
+    addressNotFoundManual: 'Adresse non trouvée. Vérifiez l\'orthographe ou sélectionnez manuellement sur la carte.',
     addressSearchError: 'Impossible de rechercher cette adresse.',
     permissionDenied: 'Permission refusée',
     enableLocation: 'Activez la localisation.',
@@ -1189,6 +1176,14 @@ export default {
     scanStep3: 'Les points sont ajoutés instantanément !',
     scanNowBtn: 'Scanner maintenant',
     scanLaterBtn: 'Je le ferai plus tard',
+
+    // Step — Store
+    storeTitle: 'Créez votre point de vente',
+    storeSubtitle: 'Ajoutez votre premier point de vente pour permettre à vos clients de vous trouver facilement.',
+    storeCreateBtn: 'Créer le point de vente',
+    storeCreated: 'Point de vente créé ! 🏪',
+    storeNameRequired: 'Le nom du point de vente est obligatoire.',
+    storeSkipHint: 'Vous pourrez le créer plus tard depuis la section Points de vente.',
 
     // Done
     doneTitle: 'Vous êtes prêt ! 🚀',

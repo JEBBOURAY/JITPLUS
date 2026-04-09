@@ -7,6 +7,8 @@ import { FirebaseService } from '../firebase/firebase.service';
 import { MailService } from '../mail/mail.service';
 import { MerchantPlanService } from '../merchant/services/merchant-plan.service';
 import { MerchantReferralService } from '../merchant/services/merchant-referral.service';
+import { ClientReferralService } from '../client-auth/client-referral.service';
+import { JwtStrategy } from './strategies/jwt.strategy';
 import { UnauthorizedException, ConflictException } from '@nestjs/common';
 import {
   MERCHANT_REPOSITORY,
@@ -69,6 +71,7 @@ const mockPrismaService = {
   deviceSession: {
     updateMany: jest.fn(),
     findFirst: jest.fn(),
+    findMany: jest.fn(),
     create: jest.fn(),
     findUnique: jest.fn(),
     update: jest.fn(),
@@ -138,6 +141,8 @@ describe('AuthService', () => {
         { provide: JwtService, useValue: mockJwtService },
         { provide: MerchantPlanService, useValue: mockPlanService },
         { provide: MerchantReferralService, useValue: mockReferralService },
+        { provide: ClientReferralService, useValue: { validateCode: jest.fn(), createReferral: jest.fn() } },
+        { provide: JwtStrategy, useValue: { invalidateSession: jest.fn() } },
         { provide: ConfigService, useValue: mockConfigService },
       ],
     }).compile();
@@ -251,6 +256,7 @@ describe('AuthService', () => {
       mockPrismaService.merchant.update.mockResolvedValue(mockMerchant);
       mockPrismaService.deviceSession.updateMany.mockResolvedValue({ count: 0 });
       mockPrismaService.deviceSession.findFirst.mockResolvedValue(null);
+      mockPrismaService.deviceSession.findMany.mockResolvedValue([]);
       mockPrismaService.deviceSession.create.mockResolvedValue({ id: 'session-1' });
 
       const result = await service.login(

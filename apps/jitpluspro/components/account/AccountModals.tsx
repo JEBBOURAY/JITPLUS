@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  View, Text, StyleSheet, Modal, TouchableOpacity, Pressable, ActivityIndicator, Alert, Platform,
+  View, Text, StyleSheet, Modal, TouchableOpacity, Pressable, ActivityIndicator, Platform,
 } from 'react-native';
 import { Camera, Trash2, Globe, Check } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -146,9 +146,6 @@ export function LanguageModal({
                 onPress={async () => {
                   if (lang.code !== locale) {
                     await setLocale(lang.code);
-                    if (lang.code === 'ar' || locale === 'ar') {
-                      Alert.alert(t('account.language'), t('account.restartDirectionHint'), [{ text: 'OK' }]);
-                    }
                   }
                   onClose();
                 }}

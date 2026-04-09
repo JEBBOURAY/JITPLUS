@@ -1,0 +1,12 @@
+﻿[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.jitplus.pro",
+      "sha256_cert_fingerprints": [
+        "54:55:81:CB:46:7F:D1:B7:8E:26:88:89:EA:C9:F7:3C:A1:04:F5:82:BC:D2:1E:FE:B3:3D:F8:3C:9D:34:BE:F4"
+      ]
+    }
+  }
+]

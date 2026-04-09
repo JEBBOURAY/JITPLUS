@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useRef } from 'react';
+﻿import React, { useState, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,7 @@ import {
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
-import { Users, TrendingUp, RefreshCw, Repeat, ArrowLeft, Eye, Gift } from 'lucide-react-native';
+import { Users, TrendingUp, RefreshCw, Repeat, ArrowLeft, Eye, Gift, Shield } from 'lucide-react-native';
 import PremiumLockCard from '@/components/PremiumLockCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -198,7 +198,7 @@ const RewardDistributionSection = React.memo(function RewardDistributionSection(
 });
 
 export default function DashboardScreen() {
-  const { merchant } = useAuth();
+  const { merchant, isTeamMember } = useAuth();
   const theme = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -276,6 +276,19 @@ export default function DashboardScreen() {
     [trendData, t, theme.primary],
   );
 
+  if (isTeamMember) {
+    return (
+      <View style={[styles.loadingContainer, { backgroundColor: theme.bg }]}>
+        <Shield size={48} color={theme.textMuted} strokeWidth={1.5} />
+        <Text style={[styles.loadingText, { color: theme.text, fontWeight: '600', fontSize: 16 }]}>{t('common.ownerOnly')}</Text>
+        <Text style={[styles.loadingText, { color: theme.textMuted }]}>{t('common.ownerOnlyMsg')}</Text>
+        <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 16, paddingHorizontal: 24, paddingVertical: 10, backgroundColor: theme.primary, borderRadius: 8 }}>
+          <Text style={{ color: '#fff', fontWeight: '600' }}>{t('common.back')}</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   if (loadingStats) {
     return (
       <View style={[styles.loadingContainer, { backgroundColor: theme.bg }]}>
@@ -306,6 +319,13 @@ export default function DashboardScreen() {
         contentContainerStyle={styles.statsContainer}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />}
       >
+        {/* ── Guide text ── */}
+        <View style={[styles.guideContainer, { backgroundColor: theme.primaryBg || (theme.primary + '10'), borderLeftColor: theme.primary }]}>
+          <Text style={[styles.guideText, { color: theme.textSecondary }]}>
+            {t('dashboard.guideText')}
+          </Text>
+        </View>
+
         {/* Period filter tabs */}
         <View style={styles.periodHeader}>
           <View style={styles.trendTabs}>
@@ -394,7 +414,7 @@ export default function DashboardScreen() {
         <RewardDistributionSection distribution={stats?.rewardsDistribution ?? []} />
       </ScrollView>
 
-      {/* ── Premium lock overlay ── */}
+      {/* â”€â”€ Premium lock overlay â”€â”€ */}
       {!isPremium && (
         <View style={styles.premiumOverlay}>
           <View style={styles.premiumCard}>
@@ -410,6 +430,19 @@ export default function DashboardScreen() {
 }
 
 const styles = StyleSheet.create({
+  guideContainer: {
+    marginBottom: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: '#f0f4ff',
+    borderRadius: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: '#7C3AED',
+  },
+  guideText: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
   container: {
     flex: 1,
   },
@@ -608,7 +641,7 @@ const styles = StyleSheet.create({
     paddingBottom: 30,
   },
 
-  // ── Premium lock overlay ──
+  // â”€â”€ Premium lock overlay â”€â”€
   premiumOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.55)',

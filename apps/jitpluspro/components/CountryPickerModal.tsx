@@ -94,7 +94,6 @@ export default function CountryPickerModal({
           getItemLayout={(_, index) => ({ length: 52, offset: 52 * index, index })}
           maxToRenderPerBatch={15}
           windowSize={7}
-          removeClippedSubviews
           renderItem={renderCountry}
           ListEmptyComponent={
             <View style={styles.emptyWrap}>

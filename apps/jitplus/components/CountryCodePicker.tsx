@@ -23,7 +23,7 @@ interface Props {
   accentColor?: string;
 }
 
-export default function CountryCodePicker({ selected, onSelect, accentColor = palette.violet }: Props) {
+function CountryCodePicker({ selected, onSelect, accentColor = palette.violet }: Props) {
   const theme = useTheme();
   const { t } = useLanguage();
   const [visible, setVisible] = useState(false);
@@ -219,3 +219,5 @@ const styles = StyleSheet.create({
     fontSize: fontSize.sm,
   },
 });
+
+export default React.memo(CountryCodePicker);

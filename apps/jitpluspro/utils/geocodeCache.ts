@@ -1,5 +1,6 @@
 import * as Location from 'expo-location';
 import { getServerBaseUrl } from '@/services/api';
+import { logWarn } from '@/utils/devLogger';
 
 // ── Google Geocoding API response types ──
 interface GeoLatLng {
@@ -126,7 +127,7 @@ export async function geocodeAsync(address: string): Promise<Location.LocationGe
       lruSet(forwardCache, key, googleResults);
       return googleResults;
     }
-  } catch (e) { if (__DEV__) console.warn('[geocode] Google geocode failed:', e); }
+  } catch (e) { logWarn('geocode', 'Google geocode failed:', e); }
 
   // 2. Fallback: device native geocoder (expo-location)
   try {
@@ -135,7 +136,7 @@ export async function geocodeAsync(address: string): Promise<Location.LocationGe
       lruSet(forwardCache, key, results);
       return results;
     }
-  } catch (e) { if (__DEV__) console.warn('[geocode] native geocode failed:', e); }
+  } catch (e) { logWarn('geocode', 'native geocode failed:', e); }
 
   return [];
 }
@@ -161,7 +162,7 @@ export async function reverseGeocodeAsync(
       lruSet(reverseCache, key, googleResults);
       return googleResults;
     }
-  } catch (e) { if (__DEV__) console.warn('[geocode] Google reverse geocode failed:', e); }
+  } catch (e) { logWarn('geocode', 'Google reverse geocode failed:', e); }
 
   // 2. Fallback: device native geocoder
   try {
@@ -170,7 +171,7 @@ export async function reverseGeocodeAsync(
       lruSet(reverseCache, key, results);
       return results;
     }
-  } catch (e) { if (__DEV__) console.warn('[geocode] native reverse geocode failed:', e); }
+  } catch (e) { logWarn('geocode', 'native reverse geocode failed:', e); }
 
   return [];
 }

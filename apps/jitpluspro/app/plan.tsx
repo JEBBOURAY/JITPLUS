@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -36,7 +36,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { usePlan, useReferral, useApplyReferralMonths } from '@/hooks/useQueryHooks';
 import { getErrorMessage } from '@/utils/error';
 
-// ── Contact info for support ────────────────────────────────────────────────
+// â”€â”€ Contact info for support â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const UPGRADE_WHATSAPP = process.env.EXPO_PUBLIC_SUPPORT_WHATSAPP || (__DEV__ ? '212600000000' : '');
 const UPGRADE_EMAIL = process.env.EXPO_PUBLIC_SUPPORT_EMAIL || 'contact@jitplus.com';
 
@@ -47,7 +47,7 @@ interface FeatureRow {
   premium: string | boolean;
 }
 
-// ── Main Screen ─────────────────────────────────────────────────────────────
+// â”€â”€ Main Screen â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export default function PlanScreen() {
   const theme = useTheme();
   const router = useRouter();
@@ -93,8 +93,10 @@ export default function PlanScreen() {
     const msg = encodeURIComponent(
       t('account.planContactWhatsappMsg', { name: merchant?.nom ?? '', email: merchant?.email ?? '' }),
     );
-    Linking.openURL(`https://wa.me/${UPGRADE_WHATSAPP}?text=${msg}`).catch(() =>
-      Alert.alert(t('common.error'), t('account.planErrorWhatsapp')),
+    Linking.openURL(`whatsapp://send?phone=${UPGRADE_WHATSAPP}&text=${msg}`).catch(() =>
+      Linking.openURL(`https://wa.me/${UPGRADE_WHATSAPP}?text=${msg}`).catch(() =>
+        Alert.alert(t('common.error'), t('account.planErrorWhatsapp')),
+      )
     );
   };
 
@@ -108,40 +110,7 @@ export default function PlanScreen() {
     );
   };
 
-  const handleCancelSubscription = () => {
-    Alert.alert(
-      t('account.planCancelAlertTitle'),
-      t('account.planCancelAlertMsg'),
-      [
-        { text: t('account.planReferralAlertCancel'), style: 'cancel' },
-        {
-          text: t('account.planWhatsapp'),
-          onPress: () => {
-            const msg = encodeURIComponent(
-              t('account.planCancelWhatsappMsg', { name: merchant?.nom ?? '', email: merchant?.email ?? '' }),
-            );
-            Linking.openURL(`https://wa.me/${UPGRADE_WHATSAPP}?text=${msg}`).catch(() =>
-              Alert.alert(t('common.error'), t('account.planErrorWhatsapp')),
-            );
-          },
-        },
-        {
-          text: t('account.planEmail'),
-          onPress: () => {
-            const subject = encodeURIComponent(t('account.planCancelEmailSubject'));
-            const body = encodeURIComponent(
-              t('account.planCancelEmailBody', { name: merchant?.nom ?? '', email: merchant?.email ?? '' }),
-            );
-            Linking.openURL(`mailto:${UPGRADE_EMAIL}?subject=${subject}&body=${body}`).catch(() =>
-              Alert.alert(t('common.error'), t('account.planErrorEmail')),
-            );
-          },
-        },
-      ],
-    );
-  };
-
-  // ── Derived ────────────────────────────────────────────────
+  // â”€â”€ Derived â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const isPremium = planInfo?.plan === 'PREMIUM';
   const isTrial = isPremium && planInfo?.isTrial;
   const isAdminActivated = isPremium && planInfo?.planActivatedByAdmin;
@@ -215,7 +184,7 @@ export default function PlanScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
-      {/* ── Header ── */}
+      {/* â”€â”€ Header â”€â”€ */}
       <View style={[styles.header, { paddingTop: insets.top + 12, backgroundColor: theme.bgCard, borderBottomColor: theme.border }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <ArrowLeft size={22} color={theme.text} />
@@ -233,7 +202,13 @@ export default function PlanScreen() {
           contentContainerStyle={{ padding: 20, paddingBottom: insets.bottom + 50 }}
           showsVerticalScrollIndicator={false}
         >
-          {/* ── Hero plan card ── */}
+          {/* ── Guide text ── */}
+          <View style={[styles.guideContainer, { backgroundColor: theme.primaryBg || (theme.primary + '10'), borderLeftColor: theme.primary }]}>
+            <Text style={[styles.guideText, { color: theme.textSecondary }]}>
+              {t('account.planGuideText')}
+            </Text>
+          </View>
+          {/* â”€â”€ Hero plan card â”€â”€ */}
           <LinearGradient
             colors={isPremium ? ['#4C1D95', '#7C3AED', '#1F2937'] : [theme.bgCard, theme.bgCard]}
             start={{ x: 0, y: 0 }}
@@ -264,7 +239,7 @@ export default function PlanScreen() {
                   {(isAdminActivated && !planInfo?.planExpiresAt)
                     ? t('account.planHeroSubUnlimited')
                     : (isAdminActivated && planInfo?.planExpiresAt)
-                    ? t('account.planHeroSubValidUntil', { date: (() => { const d = new Date(planInfo!.planExpiresAt!); return isNaN(d.getTime()) ? '—' : d.toLocaleDateString(locale === 'ar' ? 'ar-MA' : locale, { day: '2-digit', month: 'long', year: 'numeric' }); })() })
+                    ? t('account.planHeroSubValidUntil', { date: (() => { const d = new Date(planInfo!.planExpiresAt!); return isNaN(d.getTime()) ? 'â€”' : d.toLocaleDateString(locale === 'ar' ? 'ar-MA' : locale, { day: '2-digit', month: 'long', year: 'numeric' }); })() })
                     : isTrial
                     ? t('account.planHeroSubTrialDays', { count: planInfo?.daysRemaining ?? 0 })
                     : t('account.planHeroSubFree')}
@@ -286,15 +261,15 @@ export default function PlanScreen() {
               </View>
             )}
 
-            {/* Chip jours restants pour abonnement payé */}
-            {isAdminActivated && planInfo?.planExpiresAt && planInfo?.daysRemaining != null && (
+            {/* Chip jours restants pour abonnement payÃ© */}
+            {!!isAdminActivated && !!planInfo?.planExpiresAt && planInfo?.daysRemaining != null && (
               <View style={styles.expiryChip}>
                 <Text style={styles.expiryChipText}>{t('account.planExpiryDaysChip', { count: planInfo.daysRemaining })}</Text>
               </View>
             )}
           </LinearGradient>
 
-          {/* ── Parrainage CTA ── */}
+          {/* â”€â”€ Parrainage CTA â”€â”€ */}
           {!isPremium && referral && referral.referralMonthsEarned > 0 && (
             <TouchableOpacity
               style={[styles.referralCard, { backgroundColor: palette.cyan + '15', borderColor: palette.cyan }]}
@@ -319,7 +294,7 @@ export default function PlanScreen() {
             </TouchableOpacity>
           )}
 
-          {/* ── Comparaison des fonctionnalit\u00e9s ── */}
+          {/* â”€â”€ Comparaison des fonctionnalit\u00e9s â”€â”€ */}
           <View style={styles.section}>
             <Text style={[styles.sectionTitle, { color: theme.text }]}>{t('account.planFeaturesTitle')}</Text>
             <View style={[styles.tableCard, { backgroundColor: theme.bgCard, borderColor: theme.border }]}>
@@ -360,7 +335,7 @@ export default function PlanScreen() {
             </View>
           </View>
 
-          {/* ── Actions ── */}
+          {/* â”€â”€ Actions â”€â”€ */}
           <View style={styles.section}>
             <Text style={[styles.sectionTitle, { color: theme.text }]}>
               {isPremium ? t('account.planSectionManage') : t('account.planSectionUpgrade')}
@@ -396,23 +371,6 @@ export default function PlanScreen() {
               </View>
             </TouchableOpacity>
 
-            {/* Cancel — only for paying premium users */}
-            {isPremium && !planInfo?.planActivatedByAdmin && (
-              <TouchableOpacity
-                style={[styles.btnOutline, { backgroundColor: theme.bg, borderColor: theme.danger + '40' }]}
-                onPress={handleCancelSubscription}
-                activeOpacity={0.75}
-              >
-                <View style={[styles.btnIcon, { backgroundColor: theme.danger + '12' }]}>
-                  <X size={17} color={theme.danger} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.btnOutlineTitle, { color: theme.danger }]}>{t('account.planCancelTitle')}</Text>
-                  <Text style={[styles.btnOutlineSub, { color: theme.textMuted }]}>{t('account.planCancelSub')}</Text>
-                </View>
-              </TouchableOpacity>
-            )}
-
           </View>
         </ScrollView>
       )}
@@ -420,8 +378,21 @@ export default function PlanScreen() {
   );
 }
 
-// ── Styles ───────────────────────────────────────────────────────────────────
+// â”€â”€ Styles â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const styles = StyleSheet.create({
+  guideContainer: {
+    marginBottom: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: '#f0f4ff',
+    borderRadius: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: '#7C3AED',
+  },
+  guideText: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
   container: { flex: 1 },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 

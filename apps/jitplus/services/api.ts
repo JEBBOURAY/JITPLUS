@@ -3,6 +3,7 @@ import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 import { createApiClient, resolveApiUrl, resolveServerBaseUrl } from '@jitplus/shared/src/apiFactory';
 import { AuthResponse, Client, ClientReferralStats, CompleteProfileResponse, Merchant, OtpResponse, PointsOverview, NotificationsResponse, QrTokenResponse } from '@/types';
+import { logInfo, logApiError } from '@/utils/devLogger';
 
 const ENV_URL = process.env.EXPO_PUBLIC_API_URL;
 const IS_DEV = __DEV__;
@@ -12,18 +13,30 @@ export function getServerBaseUrl(): string {
   return resolveServerBaseUrl(ENV_URL, IS_DEV);
 }
 
+// ── Storage keys ──────────────────────────────────────────
+const TOKEN_KEY = 'auth_token';
+const REFRESH_TOKEN_KEY = 'refresh_token';
+const QR_TOKEN_KEY = 'qr_permanent_token';
+const REMEMBER_ME_KEY = 'rememberMe';
+const EMAIL_OTP_NEW_USER_KEY = 'email_otp_new_user';
+
 // ── SecureStore wrapper (falls back to memory on web) ──
 const memoryTokens: Record<string, string | null> = {
-  auth_token: null,
-  refresh_token: null,
+  [TOKEN_KEY]: null,
+  [REFRESH_TOKEN_KEY]: null,
 };
 /** When false, tokens are kept in memory only (not persisted to SecureStore) */
 let _shouldPersist = true;
 
 async function getStored(key: string): Promise<string | null> {
   if (Platform.OS === 'web') return memoryTokens[key] ?? null;
+  // Check in-memory cache first — always populated by setStored,
+  // even when _shouldPersist is false (session-only tokens).
+  if (memoryTokens[key]) return memoryTokens[key];
   try {
-    return (await SecureStore.getItemAsync(key)) ?? null;
+    const value = await SecureStore.getItemAsync(key);
+    if (value) memoryTokens[key] = value; // populate cache
+    return value ?? null;
   } catch (e) {
     if (IS_DEV) console.warn(`SecureStore read failed (${key}):`, e);
     return null;
@@ -48,13 +61,13 @@ async function removeStored(key: string): Promise<void> {
   }
 }
 
-const getToken = () => getStored('auth_token');
-const setToken = (token: string) => setStored('auth_token', token);
-const removeToken = () => removeStored('auth_token');
+const getToken = () => getStored(TOKEN_KEY);
+const setToken = (token: string) => setStored(TOKEN_KEY, token);
+const removeToken = () => removeStored(TOKEN_KEY);
 
-const getRefreshToken = () => getStored('refresh_token');
-const setRefreshToken = (token: string) => setStored('refresh_token', token);
-const removeRefreshToken = () => removeStored('refresh_token');
+const getRefreshToken = () => getStored(REFRESH_TOKEN_KEY);
+const setRefreshToken = (token: string) => setStored(REFRESH_TOKEN_KEY, token);
+const removeRefreshToken = () => removeStored(REFRESH_TOKEN_KEY);
 
 const AUTH_ROUTES = [
   '/client-auth/send-otp',
@@ -101,6 +114,22 @@ class ApiService {
       },
       authRoutes: AUTH_ROUTES,
     });
+
+    // ── Dev-mode request/response logging ──
+    if (IS_DEV) {
+      logInfo('API', 'Base URL: ' + resolveApiUrl(ENV_URL, IS_DEV));
+
+      this.api.interceptors.response.use(
+        (res) => {
+          logInfo('API', `${res.config.method?.toUpperCase()} ${res.config.url} → ${res.status}`);
+          return res;
+        },
+        (error) => {
+          logApiError('API', error);
+          return Promise.reject(error);
+        },
+      );
+    }
   }
 
   // ── Auth ────────────────────────────────────────────────
@@ -281,6 +310,16 @@ class ApiService {
     return data;
   }
 
+  async requestPayout(amount: number, method: 'BANK_TRANSFER' | 'CASH', accountDetails?: string) {
+    const { data } = await this.api.post('/client/referral/payout', { amount, method, accountDetails });
+    return data;
+  }
+
+  async getPayoutHistory() {
+    const { data } = await this.api.get('/client/referral/payout');
+    return data;
+  }
+
   // ── Data Export ─────────────────────────────────────────
   async exportPersonalData(): Promise<unknown> {
     const { data } = await this.api.get('/client-auth/data-export');
@@ -306,8 +345,8 @@ class ApiService {
     await this.clearRememberMe();
     // Clear cached permanent QR token from SecureStore
     if (Platform.OS !== 'web') {
-      try { await SecureStore.deleteItemAsync('qr_permanent_token'); } catch (e) {
-        if (IS_DEV) console.warn('SecureStore delete failed (qr_permanent_token):', e);
+      try { await SecureStore.deleteItemAsync(QR_TOKEN_KEY); } catch (e) {
+        if (IS_DEV) console.warn(`SecureStore delete failed (${QR_TOKEN_KEY}):`, e);
       }
     }
   }
@@ -317,7 +356,7 @@ class ApiService {
   async setRememberMe(value: boolean): Promise<void> {
     _shouldPersist = value;
     if (Platform.OS !== 'web') {
-      try { await SecureStore.setItemAsync('rememberMe', String(value)); } catch {}
+      try { await SecureStore.setItemAsync(REMEMBER_ME_KEY, String(value)); } catch {}
     }
   }
 
@@ -325,7 +364,7 @@ class ApiService {
   async getRememberMe(): Promise<boolean> {
     if (Platform.OS === 'web') return true;
     try {
-      const val = await SecureStore.getItemAsync('rememberMe');
+      const val = await SecureStore.getItemAsync(REMEMBER_ME_KEY);
       return val === 'true';
     } catch { return false; }
   }
@@ -333,7 +372,7 @@ class ApiService {
   async clearRememberMe(): Promise<void> {
     _shouldPersist = true;
     if (Platform.OS !== 'web') {
-      try { await SecureStore.deleteItemAsync('rememberMe'); } catch {}
+      try { await SecureStore.deleteItemAsync(REMEMBER_ME_KEY); } catch {}
     }
   }
 
@@ -341,7 +380,7 @@ class ApiService {
   /** Mark that an email-OTP registration is in progress and needs a password setup */
   async setEmailOtpNewUser(): Promise<void> {
     if (Platform.OS === 'web') return;
-    try { await SecureStore.setItemAsync('email_otp_new_user', '1'); } catch (e) {
+    try { await SecureStore.setItemAsync(EMAIL_OTP_NEW_USER_KEY, '1'); } catch (e) {
       if (__DEV__) console.warn('SecureStore write failed (email_otp_new_user):', e);
     }
   }
@@ -349,13 +388,13 @@ class ApiService {
   /** Returns true if an email-OTP new registration needs password setup */
   async getEmailOtpNewUser(): Promise<boolean> {
     if (Platform.OS === 'web') return false;
-    try { return (await SecureStore.getItemAsync('email_otp_new_user')) === '1'; } catch { return false; }
+    try { return (await SecureStore.getItemAsync(EMAIL_OTP_NEW_USER_KEY)) === '1'; } catch { return false; }
   }
 
   /** Clear the flag once password has been set (or on logout) */
   async clearEmailOtpNewUser(): Promise<void> {
     if (Platform.OS === 'web') return;
-    try { await SecureStore.deleteItemAsync('email_otp_new_user'); } catch {}
+    try { await SecureStore.deleteItemAsync(EMAIL_OTP_NEW_USER_KEY); } catch {}
   }
 
   async logout(): Promise<void> {

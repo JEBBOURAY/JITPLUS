@@ -35,14 +35,12 @@ export function resolveApiUrl(envUrl: string | undefined, isDev: boolean): strin
   if (envUrl) {
     const url = envUrl + '/api/v1';
     if (!isDev && !url.startsWith('https://')) {
-      console.error('[SECURITY] API URL must use HTTPS in production!');
+      throw new Error('[SECURITY] API URL must use HTTPS in production — refusing to send requests over HTTP');
     }
     return url;
   }
   if (!isDev) {
-    // Log error but don't crash — the app can still show the UI and report
-    // the misconfiguration via Sentry or visible error screens.
-    console.error('[API] EXPO_PUBLIC_API_URL must be defined in production (HTTPS required)');
+    throw new Error('[SECURITY] EXPO_PUBLIC_API_URL must be defined in production (HTTPS required)');
   }
   if (Platform.OS === 'android') return 'http://10.0.2.2:3000/api/v1';
   return 'http://localhost:3000/api/v1';
@@ -52,9 +50,14 @@ export function resolveApiUrl(envUrl: string | undefined, isDev: boolean): strin
  * Resolve the base server URL (without /api/v1) for static assets.
  */
 export function resolveServerBaseUrl(envUrl: string | undefined, isDev: boolean): string {
-  if (envUrl) return envUrl;
+  if (envUrl) {
+    if (!isDev && !envUrl.startsWith('https://')) {
+      throw new Error('[SECURITY] Server base URL must use HTTPS in production');
+    }
+    return envUrl;
+  }
   if (!isDev) {
-    console.error('[SECURITY] EXPO_PUBLIC_API_URL must be defined in production');
+    throw new Error('[SECURITY] EXPO_PUBLIC_API_URL must be defined in production');
   }
   if (Platform.OS === 'android') return 'http://10.0.2.2:3000';
   return 'http://localhost:3000';
@@ -160,7 +163,14 @@ export function createApiClient(config: ApiFactoryConfig): AxiosInstance {
         return client(original);
       } catch (refreshError) {
         processQueue(null, refreshError);
-        config.onAuthFailure();
+        
+        // Ensure we only log out on real HTTP errors, not transient network drops
+        const ax = refreshError as any;
+        const isNetworkError = ax?.isAxiosError && (ax?.code === 'ECONNABORTED' || ax?.code === 'ERR_NETWORK' || !ax?.response);
+        if (!isNetworkError) {
+          config.onAuthFailure();
+        }
+        
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;

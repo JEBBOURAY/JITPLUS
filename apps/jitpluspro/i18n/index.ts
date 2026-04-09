@@ -16,6 +16,16 @@ function getDeviceLocale(): AppLocale {
   } else {
     raw = NativeModules.I18nManager?.localeIdentifier;
   }
+
+  // Intl fallback when NativeModules returns nothing (e.g. older Android, Expo Go)
+  if (!raw) {
+    try {
+      raw = Intl.DateTimeFormat().resolvedOptions().locale;
+    } catch {
+      // Hermes/JSC Intl unavailable — fall through to default
+    }
+  }
+
   const lang = (raw ?? '').split(/[-_]/)[0]?.toLowerCase();
   if (SUPPORTED_LOCALES.includes(lang as AppLocale)) return lang as AppLocale;
   return 'fr';

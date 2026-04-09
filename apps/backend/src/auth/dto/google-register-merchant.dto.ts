@@ -1,4 +1,4 @@
-import { IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, IsNumber, IsBoolean, IsUrl, Equals, MaxLength, Matches } from 'class-validator';
+import { IsEnum, IsNotEmpty, IsOptional, IsString, IsNumber, IsBoolean, IsUrl, MaxLength, Matches, Min, Max } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { MerchantCategory } from '@prisma/client';
 
@@ -12,18 +12,25 @@ export class GoogleRegisterMerchantDto {
   idToken: string;
 
   @IsString()
-  @IsNotEmpty()
+  @IsOptional()
   @MaxLength(100, { message: 'Le nom ne doit pas dépasser 100 caractères' })
   @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
-  nom: string;
+  nom?: string;
+
+  /** Nom du commerce (utilisé pour le premier store) */
+  @IsString()
+  @IsOptional()
+  @MaxLength(100, { message: 'Le nom du commerce ne doit pas dépasser 100 caractères' })
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
+  nomCommerce?: string;
 
   @IsEnum(MerchantCategory)
-  @IsNotEmpty()
-  categorie: MerchantCategory;
+  @IsOptional()
+  categorie?: MerchantCategory;
 
   @IsString()
-  @IsNotEmpty()
-  ville: string;
+  @IsOptional()
+  ville?: string;
 
   @IsString()
   @IsOptional()
@@ -39,21 +46,32 @@ export class GoogleRegisterMerchantDto {
 
   @IsNumber()
   @IsOptional()
+  @Min(-90, { message: 'La latitude doit être entre -90 et 90' })
+  @Max(90, { message: 'La latitude doit être entre -90 et 90' })
   latitude?: number;
 
   @IsNumber()
   @IsOptional()
+  @Min(-180, { message: 'La longitude doit être entre -180 et 180' })
+  @Max(180, { message: 'La longitude doit être entre -180 et 180' })
   longitude?: number;
 
   @IsBoolean()
-  @Equals(true, { message: "Vous devez accepter les conditions d'utilisation" })
-  termsAccepted: boolean;
+  @IsOptional()
+  termsAccepted?: boolean;
 
   @IsString()
-  @IsNotEmpty({ message: 'Le numéro de téléphone est obligatoire' })
+  @IsOptional()
   @Matches(/^\+?[0-9]{7,15}$/, { message: 'Numéro de téléphone invalide' })
   @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
-  phoneNumber: string;
+  phoneNumber?: string;
+
+  /** Prénom du propriétaire (optionnel) */
+  @IsString()
+  @IsOptional()
+  @MaxLength(100)
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
+  prenom?: string;
 
   @IsString()
   @IsOptional()
@@ -69,6 +87,34 @@ export class GoogleRegisterMerchantDto {
   @IsOptional()
   @MaxLength(100)
   deviceId?: string;
+
+  /** Description du commerce (optionnelle) */
+  @IsString()
+  @IsOptional()
+  @MaxLength(1000, { message: 'La description ne doit pas dépasser 1000 caractères' })
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
+  description?: string;
+
+  /** Téléphone du commerce (optionnel) */
+  @IsString()
+  @IsOptional()
+  @MaxLength(20)
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
+  storePhone?: string;
+
+  /** Instagram du commerce (optionnel) */
+  @IsString()
+  @IsOptional()
+  @MaxLength(200)
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
+  instagram?: string;
+
+  /** TikTok du commerce (optionnel) */
+  @IsString()
+  @IsOptional()
+  @MaxLength(200)
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
+  tiktok?: string;
 
   /** Code de parrainage optionnel d'un commerce existant */
   @IsString()

@@ -9,11 +9,21 @@ export interface EmailBlastResult {
   failureCount: number;
 }
 
+export interface MerchantBlastInfo {
+  nom: string;
+  email?: string | null;
+  phoneNumber?: string | null;
+  adresse?: string | null;
+  ville?: string | null;
+  quartier?: string | null;
+  logoUrl?: string | null;
+}
+
 export interface IEmailBlastProvider {
   sendBlast(
     recipients: { email: string; prenom?: string | null }[],
     subject: string,
     body: string,
-    merchantName: string,
+    merchant: MerchantBlastInfo,
   ): Promise<EmailBlastResult>;
 }

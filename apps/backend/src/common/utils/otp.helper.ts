@@ -1,6 +1,32 @@
-import { BadRequestException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, UnauthorizedException, HttpException, HttpStatus } from '@nestjs/common';
 import { createHash, timingSafeEqual } from 'crypto';
-import { MAX_OTP_ATTEMPTS } from '../constants';
+import { MAX_OTP_ATTEMPTS, MAX_OTP_SENDS_PER_DAY } from '../constants';
+
+/**
+ * In-memory daily OTP send counter shared across services.
+ * Key = identifier (email or phone), value = { count, resetAt }.
+ */
+const otpDailyCounter = new Map<string, { count: number; resetAt: number }>();
+
+/**
+ * Enforce daily OTP limit per identifier (email or phone).
+ * Throws 429 (TOO_MANY_REQUESTS) when the limit is exceeded.
+ */
+export function checkDailyOtpLimit(identifier: string): void {
+  const now = Date.now();
+  const entry = otpDailyCounter.get(identifier);
+  if (entry && now < entry.resetAt) {
+    if (entry.count >= MAX_OTP_SENDS_PER_DAY) {
+      throw new HttpException(
+        `Limite quotidienne atteinte (${MAX_OTP_SENDS_PER_DAY} codes/jour). Réessayez demain.`,
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+    entry.count++;
+  } else {
+    otpDailyCounter.set(identifier, { count: 1, resetAt: now + 86_400_000 });
+  }
+}
 
 /** SHA-256 hash of an OTP code (for storage / comparison) */
 export function hashOtp(code: string): string {

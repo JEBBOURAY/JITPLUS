@@ -150,27 +150,16 @@ export class MerchantTransactionService {
           }
         }
 
-        const newTransaction = await prisma.transaction.create({
-          data: {
-            clientId,
-            merchantId,
-            rewardId: rewardId || null,
-            teamMemberId: teamMemberId || null,
-            performedByName: performedByName || null,
-            type,
-            loyaltyType: merchant.loyaltyType || 'POINTS',
-            amount,
-            points,
-            ...(type === 'REDEEM_REWARD' ? { giftStatus: 'FULFILLED', fulfilledAt: new Date() } : {}),
-          },
-        });
-
         let newPoints: number;
+        let actualPointsAdded = points;
+
         if (type === 'EARN_POINTS') {
           newPoints = loyaltyCard.points + points;
           // Cap balance at accumulation limit if configured
           if (merchant.accumulationLimit != null && newPoints > merchant.accumulationLimit) {
             newPoints = merchant.accumulationLimit;
+            // Provide accurate added points (capped)
+            actualPointsAdded = newPoints - loyaltyCard.points;
           }
         } else if (type === 'REDEEM_REWARD') {
           if (loyaltyCard.points < points) {
@@ -181,12 +170,27 @@ export class MerchantTransactionService {
           throw new BadRequestException('Type de transaction invalide');
         }
 
+        const newTransaction = await prisma.transaction.create({
+          data: {
+            clientId,
+            merchantId,
+            rewardId: rewardId || null,
+            teamMemberId: teamMemberId || null,
+            performedByName: performedByName || null,
+            type,
+            loyaltyType: merchant.loyaltyType || 'POINTS',
+            amount,
+            points: type === 'EARN_POINTS' ? actualPointsAdded : points,
+            ...(type === 'REDEEM_REWARD' ? { giftStatus: 'FULFILLED', fulfilledAt: new Date() } : {}),
+          },
+        });
+
         await prisma.loyaltyCard.update({
           where: { clientId_merchantId: { clientId, merchantId } },
           data: { points: newPoints },
         });
 
-        return { transaction: newTransaction, newPoints };
+        return { transaction: newTransaction, newPoints, actualPointsAdded };
       }, {
         // RepeatableRead prevents lost-update race conditions on the loyalty card balance
         // while being significantly less contended than Serializable.
@@ -200,7 +204,7 @@ export class MerchantTransactionService {
       merchantId,
       merchantName: merchant!.nom,
       loyaltyType: (merchant!.loyaltyType as 'POINTS' | 'STAMPS') || 'POINTS',
-      points,
+      points: type === 'EARN_POINTS' ? result.actualPointsAdded : points,
       newBalance: result.newPoints,
       type,
       rewardTitle,
@@ -212,7 +216,7 @@ export class MerchantTransactionService {
       clientName: '', // Filled by the client lookup below (non-blocking)
       transactionId: result.transaction.id,
       type,
-      points,
+      points: type === 'EARN_POINTS' ? result.actualPointsAdded : points,
       newBalance: result.newPoints,
     });
 
@@ -222,7 +226,7 @@ export class MerchantTransactionService {
       merchantId,
       merchant!,
       type,
-      points,
+      type === 'EARN_POINTS' ? result.actualPointsAdded : points,
       result.newPoints,
       rewardId,
       rewardTitle,
@@ -415,8 +419,8 @@ export class MerchantTransactionService {
     rewardTitle?: string,
   ): Promise<void> {
     const isStamps = merchant.loyaltyType === 'STAMPS';
-    const unit = isStamps ? (points > 1 ? 'tampons' : 'tampon') : (points > 1 ? 'points' : 'point');
-
+    const unitFor = (n: number) => isStamps ? (n > 1 ? 'tampons' : 'tampon') : (n > 1 ? 'points' : 'point');
+    const unit = unitFor(points);
 
     // FCM data payload for instant client-side cache invalidation
     const pushData: Record<string, string> = {
@@ -434,7 +438,7 @@ export class MerchantTransactionService {
         merchantId,
         clientId,
         `+${points} ${unit} 🎉`,
-        `Vous avez gagné ${points} ${unit} chez ${merchant.nom}.`,
+        `Vous avez gagné ${points} ${unit} chez ${merchant.nom}. Solde : ${newPoints} ${unitFor(newPoints)}.`,
         pushData,
       );
 
@@ -447,8 +451,8 @@ export class MerchantTransactionService {
         await this.notifications.sendToClient(
           merchantId,
           clientId,
-          'Cadeau disponible ! 🎁',
-          `Félicitations ! Vous avez atteint ${threshold} ${isStamps ? 'tampons' : 'points'} chez ${merchant.nom}. Réclamez votre récompense !`,
+          '🎁 Récompense disponible !',
+          `Bravo ! Vous avez atteint ${threshold} ${isStamps ? 'tampons' : 'points'} chez ${merchant.nom}. Réclamez votre cadeau !`,
           { ...pushData, event: 'reward_available' },
         );
       }
@@ -459,8 +463,8 @@ export class MerchantTransactionService {
       await this.notifications.sendToClient(
         merchantId,
         clientId,
-        'Récompense utilisée ✅',
-        `Vous avez échangé ${points} ${unit} contre "${rewardName}" chez ${merchant.nom}.`,
+        '✅ Récompense utilisée',
+        `Vous avez utilisé ${points} ${unit} pour "${rewardName}" chez ${merchant.nom}. Solde : ${newPoints} ${unitFor(newPoints)}.`,
         { ...pushData, event: 'reward_redeemed', rewardTitle: rewardName },
       );
     }
@@ -545,8 +549,8 @@ export class MerchantTransactionService {
     const absPoints = Math.abs(points);
 
     const title = isAdd
-      ? `+${absPoints} ${unit} ajoutés ✏️`
-      : `-${absPoints} ${unit} retirés ✏️`;
+      ? `✅ +${absPoints} ${unit} ajoutés`
+      : `📝 -${absPoints} ${unit} retirés`;
 
     let body = isAdd
       ? `${absPoints} ${unit} ont été ajoutés à votre compte chez ${merchant.nom}.`

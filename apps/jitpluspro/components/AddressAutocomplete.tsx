@@ -11,6 +11,7 @@ import {
 import { Search, MapPin, X } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { getServerBaseUrl } from '@/services/api';
+import { logWarn } from '@/utils/devLogger';
 
 const DEBOUNCE_MS = 350;
 
@@ -37,24 +38,33 @@ interface Props {
   value: string;
   onChangeText: (text: string) => void;
   onSelect: (result: AddressResult) => void;
+  onNotFound?: () => void;
+  notFoundMessage?: string;
   placeholder?: string;
   ville?: string;
+  userLocation?: { latitude: number; longitude: number } | null;
 }
 
 export default function AddressAutocomplete({
   value,
   onChangeText,
   onSelect,
+  onNotFound,
+  notFoundMessage,
   placeholder,
   ville,
+  userLocation,
 }: Props) {
   const theme = useTheme();
   const [predictions, setPredictions] = useState<PlacePrediction[]>([]);
   const [loading, setLoading] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [showNotFound, setShowNotFound] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const abortRef = useRef<AbortController | null>(null);
   const mountedRef = useRef(true);
+  // Store geocode fallback results so we can retrieve coords on select
+  const geoFallbackRef = useRef<Map<string, { lat: number; lng: number; address: string; city?: string; district?: string }>>(new Map());
 
   // Fetch predictions via backend proxy
   const fetchPredictions = useCallback(async (input: string) => {
@@ -73,6 +83,10 @@ export default function AddressAutocomplete({
     try {
       const params = new URLSearchParams({ input });
       if (ville) params.set('ville', ville);
+      if (userLocation?.latitude != null && userLocation?.longitude != null) {
+        params.set('lat', String(userLocation.latitude));
+        params.set('lng', String(userLocation.longitude));
+      }
       const url = `${getServerBaseUrl()}/geocode/autocomplete?${params}`;
       const res = await fetch(url, { signal: controller.signal });
       const json = await res.json();
@@ -80,24 +94,70 @@ export default function AddressAutocomplete({
       if (!mountedRef.current) return;
 
       if (json.predictions?.length > 0) {
+        geoFallbackRef.current.clear();
         setPredictions(json.predictions.slice(0, 5));
         setShowDropdown(true);
+        setShowNotFound(false);
       } else {
-        setPredictions([]);
-        setShowDropdown(false);
+        // Fallback: try forward geocode (same as Google Maps search)
+        const query = ville ? `${input}, ${ville}` : input;
+        const geoUrl = `${getServerBaseUrl()}/geocode/forward?address=${encodeURIComponent(query)}`;
+        const geoRes = await fetch(geoUrl, { signal: controller.signal });
+        const geoJson = await geoRes.json();
+
+        if (!mountedRef.current) return;
+
+        if (geoJson.results?.length > 0) {
+          // Convert geocode results to prediction-like items for the dropdown
+          geoFallbackRef.current.clear();
+          const geoPredictions: PlacePrediction[] = geoJson.results
+            .slice(0, 5)
+            .map((r: { formatted_address?: string; place_id?: string; geometry?: { location: { lat: number; lng: number } }; address_components?: Array<{ long_name: string; types: string[] }> }, i: number) => {
+              const pid = r.place_id || `geo_${i}`;
+              const getComp = (type: string) =>
+                r.address_components?.find((c) => c.types.includes(type))?.long_name;
+              // Store coordinates for direct retrieval on select
+              if (r.geometry?.location) {
+                geoFallbackRef.current.set(pid, {
+                  lat: r.geometry.location.lat,
+                  lng: r.geometry.location.lng,
+                  address: r.formatted_address || input,
+                  city: getComp('locality') || getComp('administrative_area_level_2'),
+                  district: getComp('sublocality') || getComp('neighborhood'),
+                });
+              }
+              return {
+                place_id: pid,
+                description: r.formatted_address || input,
+                structured_formatting: {
+                  main_text: r.formatted_address?.split(',')[0] || input,
+                  secondary_text: r.formatted_address?.split(',').slice(1).join(',').trim() || '',
+                },
+              };
+            });
+          setPredictions(geoPredictions);
+          setShowDropdown(true);
+          setShowNotFound(false);
+        } else {
+          setPredictions([]);
+          setShowDropdown(false);
+          setShowNotFound(true);
+          onNotFound?.();
+        }
       }
     } catch (e: unknown) {
       if (e instanceof Error && e.name !== 'AbortError') {
-        if (__DEV__) console.warn('[AddressAutocomplete] fetch error:', e);
+        logWarn('AddressAutocomplete', 'fetch error:', e);
       }
     } finally {
       if (mountedRef.current) setLoading(false);
     }
-  }, [ville]);
+  }, [ville, userLocation, onNotFound]);
 
   // Debounced input handler
   const handleChangeText = useCallback((text: string) => {
     onChangeText(text);
+    setShowNotFound(false);
     clearTimeout(debounceRef.current);
     if (text.trim().length < 3) {
       setPredictions([]);
@@ -114,6 +174,21 @@ export default function AddressAutocomplete({
     setPredictions([]);
     onChangeText(prediction.structured_formatting.main_text);
 
+    // Check if this came from geocode fallback (already has coords)
+    const cached = geoFallbackRef.current.get(prediction.place_id);
+    if (cached) {
+      setShowNotFound(false);
+      onSelect({
+        latitude: cached.lat,
+        longitude: cached.lng,
+        address: prediction.structured_formatting.main_text,
+        city: cached.city,
+        district: cached.district,
+        formattedAddress: cached.address,
+      });
+      return;
+    }
+
     setLoading(true);
     try {
       const url = `${getServerBaseUrl()}/geocode/place-details?placeId=${encodeURIComponent(prediction.place_id)}`;
@@ -127,6 +202,7 @@ export default function AddressAutocomplete({
         const get = (type: string) =>
           address_components?.find((c: { types: string[] }) => c.types.includes(type))?.long_name;
 
+        setShowNotFound(false);
         onSelect({
           latitude: geometry.location.lat,
           longitude: geometry.location.lng,
@@ -135,13 +211,18 @@ export default function AddressAutocomplete({
           district: get('sublocality') || get('neighborhood'),
           formattedAddress: formatted_address,
         });
+      } else {
+        setShowNotFound(true);
+        onNotFound?.();
       }
     } catch (e) {
-      if (__DEV__) console.warn('[AddressAutocomplete] place details error:', e);
+      logWarn('AddressAutocomplete', 'place details error:', e);
+      setShowNotFound(true);
+      onNotFound?.();
     } finally {
       if (mountedRef.current) setLoading(false);
     }
-  }, [onChangeText, onSelect]);
+  }, [onChangeText, onSelect, onNotFound]);
 
   // Cleanup
   useEffect(() => {
@@ -180,6 +261,7 @@ export default function AddressAutocomplete({
               onChangeText('');
               setPredictions([]);
               setShowDropdown(false);
+              setShowNotFound(false);
             }}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
@@ -211,6 +293,16 @@ export default function AddressAutocomplete({
               </View>
             </TouchableOpacity>
           ))}
+        </View>
+      )}
+
+      {/* Not-found banner */}
+      {showNotFound && !showDropdown && value.trim().length >= 3 && (
+        <View style={[styles.notFoundBanner, { backgroundColor: '#FEF2F2', borderColor: '#FECACA' }]}>
+          <MapPin size={16} color="#EF4444" />
+          <Text style={styles.notFoundText}>
+            {notFoundMessage || 'Adresse non trouvée. Vérifiez ou sélectionnez manuellement sur la carte.'}
+          </Text>
         </View>
       )}
     </View>
@@ -274,5 +366,22 @@ const styles = StyleSheet.create({
   secondaryText: {
     fontSize: 12,
     marginTop: 2,
+  },
+  notFoundBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  notFoundText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#DC2626',
+    lineHeight: 17,
   },
 });

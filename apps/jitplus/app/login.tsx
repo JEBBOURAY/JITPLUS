@@ -29,6 +29,8 @@ import BrandText from '@/components/BrandText';
 import FormError from '@/components/FormError';
 import { GoogleLogo } from '@/components/GoogleLogo';
 
+const SHOW_WELCOME_KEY = 'showWelcome';
+
 type LoginMethod = 'select' | 'email' | 'google';
 
 export default function LoginScreen() {
@@ -39,7 +41,7 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(true);
+  const [rememberMe, setRememberMe] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   // Animations
@@ -81,7 +83,7 @@ export default function LoginScreen() {
   };
 
   // ── Email + Password flow ──
-  const handleEmailContinue = async () => {
+  const handleEmailContinue = useCallback(async () => {
     if (!emailValid) {
       setError(t('login.invalidEmail'));
       return;
@@ -97,17 +99,17 @@ export default function LoginScreen() {
     const result = await loginWithEmail(normalizedEmail, password, rememberMe);
     setIsLoading(false);
     if (result.success) {
-      await AsyncStorage.setItem('showWelcome', '1');
+      await AsyncStorage.setItem(SHOW_WELCOME_KEY, '1');
       router.replace('/(tabs)/qr');
     } else {
       // Show Alert for network errors, inline error for others
       if (result.error && result.error === t('common.networkError')) Alert.alert(t('common.networkError'), result.error);
       else setError(result.error || t('common.genericError'));
     }
-  };
+  }, [emailValid, email, password, rememberMe, loginWithEmail, t]);
 
   // ── Forgot password flow ──
-  const handleForgotPassword = async () => {
+  const handleForgotPassword = useCallback(async () => {
     if (!emailValid) {
       setError(t('login.forgotPasswordPrompt'));
       return;
@@ -125,7 +127,7 @@ export default function LoginScreen() {
     } else {
       setError(result.error || t('login.resetCodeError'));
     }
-  };
+  }, [emailValid, email, sendOtpEmail, t]);
 
   // ── Render ──
   const renderMethodSelect = () => (

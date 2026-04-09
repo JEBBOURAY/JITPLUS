@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+﻿import React, { useState, useCallback } from 'react';
 import { useGuardedCallback } from '@/hooks/useGuardedCallback';
 import { MIN_PASSWORD_LENGTH } from '@/constants/app';
 import {
@@ -29,6 +29,8 @@ import {
   Shield,
   Activity,
   Check,
+  X,
+  MapPin,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -268,7 +270,7 @@ export default function TeamManagementScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
-      {/* ── Header (même style que edit-profile) ─── */}
+      {/* â”€â”€ Header (mÃªme style que edit-profile) â”€â”€â”€ */}
       <View style={[styles.header, { paddingTop: insets.top + 8, backgroundColor: theme.bgCard, borderBottomColor: theme.borderLight }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <ArrowLeft size={24} color={theme.text} />
@@ -300,7 +302,7 @@ export default function TeamManagementScreen() {
             />
           }
         >
-          {/* ── Compteur ─── */}
+          {/* â”€â”€ Compteur â”€â”€â”€ */}
           <View style={[styles.countBanner, { backgroundColor: theme.primary + '10', borderColor: theme.primary + '25' }]}>
             <Users size={18} color={theme.primary} />
             <Text style={[styles.countText, { color: theme.primary }]}>
@@ -309,7 +311,7 @@ export default function TeamManagementScreen() {
           </View>
 
           {members.length === 0 ? (
-            /* ── Empty state ─── */
+            /* â”€â”€ Empty state â”€â”€â”€ */
             <View style={styles.emptyContainer}>
               <View style={[styles.emptyIllustration, { backgroundColor: theme.primary + '10' }]}>
                 <Users size={40} color={theme.primary} strokeWidth={1.5} />
@@ -328,7 +330,7 @@ export default function TeamManagementScreen() {
               </TouchableOpacity>
             </View>
           ) : (
-            /* ── Members list ─── */
+            /* â”€â”€ Members list â”€â”€â”€ */
             members.map((member) => (
               <MemberCard
                 key={member.id}
@@ -340,7 +342,7 @@ export default function TeamManagementScreen() {
             ))
           )}
 
-          {/* ── Info box (même style que edit-profile) ─── */}
+          {/* â”€â”€ Info box (mÃªme style que edit-profile) â”€â”€â”€ */}
           {members.length > 0 && (
             <View style={[styles.infoBox, { backgroundColor: theme.primary + '10', borderColor: theme.primary + '25' }]}>
               <Text style={[styles.infoText, { color: theme.primary }]}>
@@ -351,7 +353,7 @@ export default function TeamManagementScreen() {
         </ScrollView>
       )}
 
-      {/* ── Add/Edit Modal ─── */}
+      {/* â”€â”€ Add/Edit Modal â”€â”€â”€ */}
       <Modal
         visible={showAddModal}
         animationType="slide"
@@ -366,7 +368,7 @@ export default function TeamManagementScreen() {
           style={[styles.modalOverlay, { backgroundColor: theme.bg, paddingTop: insets.top }]}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
         >
-            {/* Modal header (même style que edit-profile header) */}
+            {/* Modal header (mÃªme style que edit-profile header) */}
             <View style={[styles.modalHeader, { backgroundColor: theme.bgCard, borderBottomColor: theme.borderLight }]}>
               <TouchableOpacity
                 onPress={() => { setShowAddModal(false); resetForm(); }}
@@ -437,20 +439,40 @@ export default function TeamManagementScreen() {
                 />
               </View>
 
-              {/* Permissions info (même style que infoBox) */}
+              {/* Permissions info (mÃªme style que infoBox) */}
               <View style={[styles.permBox, { backgroundColor: theme.primary + '10', borderColor: theme.primary + '25' }]}>
                 <Text style={[styles.permBoxTitle, { color: theme.primary }]}>{t('team.permissionsTitle')}</Text>
                 <View style={styles.permList}>
-                  <Text style={[styles.permItem, { color: theme.text }]}>{t('team.permScanQR')}</Text>
-                  <Text style={[styles.permItem, { color: theme.text }]}>{t('team.permAwardPoints')}</Text>
-                  <Text style={[styles.permItem, { color: theme.text }]}>{t('team.permViewClients')}</Text>
-                  <View style={[styles.permDivider, { backgroundColor: theme.borderLight }]} />
-                  <Text style={[styles.permItem, { color: theme.danger }]}>✗  {t('team.permNoProfile')}</Text>
-                  <Text style={[styles.permItem, { color: theme.danger }]}>✗  {t('team.permNoSettings')}</Text>
-                  <Text style={[styles.permItem, { color: theme.danger }]}>✗  {t('team.permNoTeam')}</Text>
+                    <View style={styles.permRow}>
+                      <Check size={14} color={theme.primary} />
+                      <Text style={[styles.permItem, { color: theme.text }]}>{t('team.permScanQR')}</Text>
+                    </View>
+                    <View style={styles.permRow}>
+                      <Check size={14} color={theme.primary} />
+                      <Text style={[styles.permItem, { color: theme.text }]}>{t('team.permAwardPoints')}</Text>
+                    </View>
+                    <View style={styles.permRow}>
+                      <Check size={14} color={theme.primary} />
+                      <Text style={[styles.permItem, { color: theme.text }]}>{t('team.permViewClients')}</Text>
+                    </View>
+                    
+                    <View style={[styles.permDivider, { backgroundColor: theme.borderLight }]} />
+                    
+                    <View style={styles.permRow}>
+                      <X size={14} color={theme.danger} />
+                      <Text style={[styles.permItem, { color: theme.danger }]}>{t('team.permNoProfile')}</Text>
+                    </View>
+                    <View style={styles.permRow}>
+                      <X size={14} color={theme.danger} />
+                      <Text style={[styles.permItem, { color: theme.danger }]}>{t('team.permNoSettings')}</Text>
+                    </View>
+                    <View style={styles.permRow}>
+                      <X size={14} color={theme.danger} />
+                      <Text style={[styles.permItem, { color: theme.danger }]}>{t('team.permNoTeam')}</Text>
+                    </View>
+                  </View>
                 </View>
-              </View>
-            </ScrollView>
+              </ScrollView>
         </KeyboardAvoidingView>
       </Modal>
     </View>
@@ -458,10 +480,23 @@ export default function TeamManagementScreen() {
 }
 
 const styles = StyleSheet.create({
+  guideContainer: {
+    marginBottom: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: '#f0f4ff',
+    borderRadius: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: '#7C3AED',
+  },
+  guideText: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
   container: { flex: 1 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12 },
 
-  // ── Header (identique à edit-profile) ──
+  // â”€â”€ Header (identique Ã  edit-profile) â”€â”€
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -479,7 +514,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  // ── Count banner ──
+  // â”€â”€ Count banner â”€â”€
   countBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -491,7 +526,7 @@ const styles = StyleSheet.create({
   },
   countText: { fontSize: 14, fontWeight: '600' },
 
-  // ── Member card ──
+  // â”€â”€ Member card â”€â”€
   memberCard: {
     borderRadius: 12,
     borderWidth: 1,
@@ -517,7 +552,7 @@ const styles = StyleSheet.create({
   badge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
   badgeText: { fontSize: 11, fontWeight: '600' },
 
-  // ── Meta row ──
+  // â”€â”€ Meta row â”€â”€
   metaRow: {
     flexDirection: 'row',
     paddingHorizontal: 14,
@@ -528,7 +563,7 @@ const styles = StyleSheet.create({
   metaItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   metaText: { fontSize: 12 },
 
-  // ── Action chips ──
+  // â”€â”€ Action chips â”€â”€
   actionsRow: {
     flexDirection: 'row',
     paddingHorizontal: 10,
@@ -546,7 +581,7 @@ const styles = StyleSheet.create({
   },
   actionChipText: { fontSize: 12, fontWeight: '600' },
 
-  // ── Empty state ──
+  // â”€â”€ Empty state â”€â”€
   emptyContainer: { alignItems: 'center', paddingTop: 40, paddingHorizontal: 24 },
   emptyIllustration: {
     width: 80,
@@ -569,7 +604,7 @@ const styles = StyleSheet.create({
   },
   emptyAddBtnText: { fontSize: 14, fontWeight: '700', color: '#fff' },
 
-  // ── Info box (identique à edit-profile) ──
+  // â”€â”€ Info box (identique Ã  edit-profile) â”€â”€
   infoBox: {
     marginTop: 12,
     padding: 16,
@@ -578,7 +613,7 @@ const styles = StyleSheet.create({
   },
   infoText: { fontSize: 13, lineHeight: 20 },
 
-  // ── Modal ──
+  // â”€â”€ Modal â”€â”€
   modalOverlay: {
     flex: 1,
   },
@@ -591,7 +626,7 @@ const styles = StyleSheet.create({
   },
   modalTitle: { flex: 1, fontSize: 18, fontWeight: '700', marginLeft: 12 },
 
-  // ── Form (identique à edit-profile) ──
+  // â”€â”€ Form (identique Ã  edit-profile) â”€â”€
   label: {
     fontSize: 14,
     fontWeight: '600',
@@ -612,7 +647,7 @@ const styles = StyleSheet.create({
     paddingVertical: 13,
   },
 
-  // ── Permissions box ──
+  // â”€â”€ Permissions box â”€â”€
   permBox: {
     marginTop: 24,
     padding: 16,
@@ -621,6 +656,7 @@ const styles = StyleSheet.create({
   },
   permBoxTitle: { fontSize: 14, fontWeight: '700', marginBottom: 10 },
   permList: { gap: 4 },
-  permItem: { fontSize: 13, lineHeight: 22 },
+  permItem: { fontSize: 13, lineHeight: 20 },
+    permRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   permDivider: { height: 1, marginVertical: 6 },
 });

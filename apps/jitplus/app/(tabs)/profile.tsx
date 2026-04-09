@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+﻿import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import {
   View, Text, ScrollView, RefreshControl, StyleSheet, Pressable, Alert, Platform,
   TextInput, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Image,
@@ -31,6 +31,8 @@ import { isValidEmail } from '@/utils/validation';
 import { extractErrorMessage } from '@/utils/errorMessage';
 import { formatDateInput, toIsoDate, isoDtoDmy } from '@/utils/dateInput';
 import { DRAFT_PERSIST_DEBOUNCE_MS, OTP_RESEND_COOLDOWN_S } from '@/constants';
+import PremiumPhoneInput from '@/components/PremiumPhoneInput';
+import { DEFAULT_COUNTRY, COUNTRY_CODES, isValidPhoneForCountry, type CountryCode } from '@/utils/countryCodes';
 
 export default function ProfileScreen() {
   const theme = useTheme();
@@ -56,6 +58,8 @@ export default function ProfileScreen() {
   const [editNom, setEditNom] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [editTelephone, setEditTelephone] = useState('');
+  const [editPhoneCountry, setEditPhoneCountry] = useState<CountryCode>(DEFAULT_COUNTRY);
+  const [editPhoneLocal, setEditPhoneLocal] = useState('');
   const [editDateNaissance, setEditDateNaissance] = useState('');
 
   // Preferences
@@ -108,8 +112,8 @@ export default function ProfileScreen() {
 
   // Debounced draft values — captured via ref so AppState listener doesn’t
   // cause re-subscriptions on every keystroke.
-  const draftRef = useRef({ editPrenom, editNom, editEmail, editTelephone, editDateNaissance });
-  draftRef.current = { editPrenom, editNom, editEmail, editTelephone, editDateNaissance };
+  const draftRef = useRef({ editPrenom, editNom, editEmail, editTelephone, editPhoneLocal, editPhoneCountry: editPhoneCountry.code, editDateNaissance });
+  draftRef.current = { editPrenom, editNom, editEmail, editTelephone, editPhoneLocal, editPhoneCountry: editPhoneCountry.code, editDateNaissance };
 
   useEffect(() => {
     const handleAppState = async (nextState: AppStateStatus) => {
@@ -140,6 +144,11 @@ export default function ProfileScreen() {
         setEditNom(d.editNom || '');
         setEditEmail(d.editEmail || '');
         setEditTelephone(d.editTelephone || '');
+        setEditPhoneLocal(d.editPhoneLocal || '');
+        if (d.editPhoneCountry) {
+          const found = COUNTRY_CODES.find((c) => c.code === d.editPhoneCountry);
+          if (found) setEditPhoneCountry(found);
+        }
         setEditDateNaissance(d.editDateNaissance || '');
         setIsEditing(true);
         setInfoExpanded(true);
@@ -161,7 +170,22 @@ export default function ProfileScreen() {
     setEditPrenom(client?.prenom || '');
     setEditNom(client?.nom || '');
     setEditEmail(client?.email || '');
-    setEditTelephone(client?.telephone || '');
+    // Parse existing phone into country + local digits
+    const rawPhone = client?.telephone || '';
+    if (rawPhone.startsWith('+')) {
+      const match = COUNTRY_CODES.find((c) => rawPhone.startsWith(c.dial));
+      if (match) {
+        setEditPhoneCountry(match);
+        setEditPhoneLocal(rawPhone.slice(match.dial.length));
+      } else {
+        setEditPhoneCountry(DEFAULT_COUNTRY);
+        setEditPhoneLocal(rawPhone.replace(/[^0-9]/g, ''));
+      }
+    } else {
+      setEditPhoneCountry(DEFAULT_COUNTRY);
+      setEditPhoneLocal(rawPhone.replace(/[^0-9]/g, ''));
+    }
+    setEditTelephone(rawPhone);
     setEditDateNaissance(isoDtoDmy(client?.dateNaissance));
     setInfoExpanded(true);
     setIsEditing(true);
@@ -245,8 +269,8 @@ export default function ProfileScreen() {
       Alert.alert(t('common.error'), t('profile.emailInvalid'));
       return;
     }
-    const phoneTrimmed = editTelephone.trim();
-    if (phoneTrimmed && (!/^[0-9+\s\-()]{10,15}$/.test(phoneTrimmed) || phoneTrimmed.replace(/\D/g, '').length < 8)) {
+    const phoneTrimmed = editPhoneLocal.trim();
+    if (phoneTrimmed && !isValidPhoneForCountry(phoneTrimmed, editPhoneCountry)) {
       Alert.alert(t('common.error'), t('profile.phoneInvalid'));
       return;
     }
@@ -273,7 +297,7 @@ export default function ProfileScreen() {
         prenom: editPrenom.trim(),
         nom: editNom.trim(),
         ...(emailTrimmed ? { email: emailTrimmed } : {}),
-        ...(phoneTrimmed ? { telephone: phoneTrimmed } : {}),
+        ...(phoneTrimmed ? { telephone: `${editPhoneCountry.dial}${phoneTrimmed}` } : {}),
         ...(dateNaissancePayload !== undefined ? { dateNaissance: dateNaissancePayload } : {}),
       });
       await refreshProfile?.();
@@ -644,13 +668,13 @@ export default function ProfileScreen() {
                   <View style={styles.infoContent}>
                     <Text style={[styles.infoLabel, { color: theme.textMuted }]}>{t('profile.phone')}</Text>
                     {isEditing ? (
-                      <TextInput
-                        style={[styles.infoInput, { color: theme.text, borderBottomColor: palette.violet }]}
-                        value={editTelephone}
-                        onChangeText={setEditTelephone}
-                        placeholder={t('profile.phonePlaceholder')}
-                        placeholderTextColor={theme.textMuted}
-                        keyboardType="phone-pad"
+                      <PremiumPhoneInput
+                        value={editPhoneLocal}
+                        onChangePhone={setEditPhoneLocal}
+                        country={editPhoneCountry}
+                        onChangeCountry={setEditPhoneCountry}
+                        accentColor={palette.violet}
+                        errorMessage={t('profile.phoneInvalid')}
                       />
                     ) : (
                       <Text style={[styles.infoValue, { color: theme.text }]}>{client?.telephone || '—'}</Text>
@@ -905,7 +929,12 @@ export default function ProfileScreen() {
                   </Pressable>
                   {/* ── Contacter le support ── */}
                   <Pressable
-                    onPress={() => Linking.openURL('https://wa.me/33767471397?text=Bonjour%2C%20j%27ai%20besoin%20d%27aide%20avec%20l%27app%20JitPlus')}
+                    onPress={() => {
+                      const phone = process.env.EXPO_PUBLIC_SUPPORT_WHATSAPP || '212675346486';
+                      Linking.openURL(`whatsapp://send?phone=${phone}&text=Bonjour%2C%20j%27ai%20besoin%20d%27aide%20avec%20l%27app%20JitPlus`).catch(() => {
+                        Linking.openURL(`https://wa.me/${phone}?text=Bonjour%2C%20j%27ai%20besoin%20d%27aide%20avec%20l%27app%20JitPlus`);
+                      });
+                    }}
                     android_ripple={{ color: `${palette.gold}10` }}
                     style={({ pressed }) => [
                       styles.infoRow,
@@ -1256,7 +1285,7 @@ export default function ProfileScreen() {
                   ]}
                 >
                   <Text style={styles.langFlag}>
-                    {lang === 'fr' ? '🇫🇷' : lang === 'en' ? '🇬🇧' : '🇸🇦'}
+                    {lang === 'fr' ? '🇫🇷' : lang === 'en' ? '🇬🇧' : '🇲🇦'}
                   </Text>
                   <Text style={[styles.langOptionText, { color: selected ? theme.primary : theme.text }]}>
                     {t(`languages.${lang}`)}

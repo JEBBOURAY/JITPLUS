@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import {
   View,
   Text,
@@ -26,7 +26,6 @@ import {
   Shield,
   Moon,
   Trash2,
-  Edit3,
   Store as StoreIcon,
   Gift,
   AlertTriangle,
@@ -118,7 +117,7 @@ export default function AccountScreen() {
   const referralCode = referralData?.referralCode ?? null;
 
   // Profile data is managed by React Query (useMerchantProfile, staleTime: 5min).
-  // No need to force-reload on every tab focus � pull-to-refresh or mutations handle invalidation.
+  // No need to force-reload on every tab focus ï¿½ pull-to-refresh or mutations handle invalidation.
   const { label: categoryLabel } = useCategoryMetadata(merchant?.categorie);
   const [showLanguageModal, setShowLanguageModal] = useState(false);
 
@@ -152,6 +151,7 @@ export default function AccountScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.contentContainer}
       >
+
         {/* -- Profile Card ----------------------------- */}
         <FadeInView delay={100}>
           <ProfileCard
@@ -206,13 +206,6 @@ export default function AccountScreen() {
             </TouchableOpacity>
             {storeExpanded && (
               <View style={[styles.infoCard, { backgroundColor: theme.bgCard }]}>
-                {/* Edit Commerce */}
-                <InfoRow
-                  icon={<Edit3 size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
-                  label={t('account.editStore')}
-                  subtitle={t('account.editStoreSubtitle')}
-                  onPress={() => router.push('/edit-profile')}
-                />
                 {/* Manage Stores */}
                 <InfoRow
                   icon={<StoreIcon size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
@@ -227,7 +220,7 @@ export default function AccountScreen() {
                   subtitle={t('account.settingsSubtitle')}
                   onPress={() => router.push('/settings')}
                 />
-                {/* Dashboard — locked for FREE */}
+                {/* Dashboard â€” locked for FREE */}
                 <InfoRow
                   icon={<BarChart3 size={ms(16)} color={isPremium ? palette.charbon : theme.textMuted} strokeWidth={1.5} />}
                   label={t('account.dashboard')}
@@ -251,7 +244,7 @@ export default function AccountScreen() {
                     router.push('/dashboard');
                   }}
                 />
-                {/* Team — visible for all, locked for FREE */}
+                {/* Team â€” visible for all, locked for FREE */}
                 <InfoRow
                   icon={<Users size={ms(16)} color={isPremium ? palette.charbon : theme.textMuted} strokeWidth={1.5} />}
                   label={t('account.team')}
@@ -385,8 +378,10 @@ export default function AccountScreen() {
                 onPress={() => {
                   const phone = process.env.EXPO_PUBLIC_SUPPORT_WHATSAPP || '';
                   const msg = encodeURIComponent(t('account.contactSupportMsg'));
-                  Linking.openURL(`https://wa.me/${phone}?text=${msg}`).catch(() => {
-                    Alert.alert(t('common.error'), t('common.genericError'));
+                  Linking.openURL(`whatsapp://send?phone=${phone}&text=${msg}`).catch(() => {
+                    Linking.openURL(`https://wa.me/${phone}?text=${msg}`).catch(() => {
+                      Alert.alert(t('common.error'), t('common.genericError'));
+                    });
                   });
                 }}
                 iconBg={`${palette.charbon}15`}
@@ -459,7 +454,9 @@ export default function AccountScreen() {
 }
 
 const styles = StyleSheet.create({
+
   container: { flex: 1 },
+
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
   // Content

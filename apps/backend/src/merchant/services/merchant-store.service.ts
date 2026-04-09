@@ -6,11 +6,11 @@ import {
 import { Inject } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
-import { STORE_REPOSITORY, type IStoreRepository } from '../../common/repositories';
+import { STORE_REPOSITORY, MERCHANT_REPOSITORY, type IStoreRepository, type IMerchantRepository } from '../../common/repositories';
 import { MerchantPlanService } from './merchant-plan.service';
 import { CreateStoreDto } from '../dto/create-store.dto';
 import { UpdateStoreDto } from '../dto/update-store.dto';
-import { Store } from '@prisma/client';
+import { Prisma, Store } from '@prisma/client';
 import { stripUndefined } from '../../common/utils';
 import { STORES_CACHE_TTL } from '../../common/constants';
 
@@ -18,6 +18,7 @@ import { STORES_CACHE_TTL } from '../../common/constants';
 export class MerchantStoreService {
   constructor(
     @Inject(STORE_REPOSITORY) private storeRepo: IStoreRepository,
+    @Inject(MERCHANT_REPOSITORY) private merchantRepo: IMerchantRepository,
     @Inject(CACHE_MANAGER) private cache: Cache,
     private planService: MerchantPlanService,
   ) {}
@@ -67,8 +68,13 @@ export class MerchantStoreService {
           : `Vous avez atteint la limite de ${maxStores} boutiques incluses dans votre plan Pro. Contactez notre équipe si vous avez besoin de plus.`,
       );
     }
+    const { socialLinks, ...rest } = dto;
     const store = await this.storeRepo.create({
-      data: { merchantId, ...dto },
+      data: {
+        merchantId,
+        ...rest,
+        ...(socialLinks !== undefined && { socialLinks: socialLinks as unknown as Prisma.InputJsonObject }),
+      },
     });
     await this.invalidateStoresCaches(merchantId);
     return store;
@@ -81,8 +87,40 @@ export class MerchantStoreService {
     });
     if (!store) throw new NotFoundException('Magasin non trouvé');
 
-    const data = stripUndefined(dto);
+    const { socialLinks, ...rest } = stripUndefined(dto);
+    const data = {
+      ...rest,
+      ...(socialLinks !== undefined && { socialLinks: socialLinks as unknown as Prisma.InputJsonObject }),
+    };
     const updated = await this.storeRepo.update({ where: { id: storeId }, data });
+
+    // Sync key fields to the merchant profile when the main (first) store is updated
+    const allStores = await this.storeRepo.findMany({
+      where: { merchantId },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true },
+      take: 1,
+    });
+    if (allStores.length > 0 && allStores[0].id === storeId) {
+      const merchantSync: Record<string, unknown> = {};
+      if (dto.nom !== undefined) merchantSync.nom = dto.nom;
+      if (dto.description !== undefined) merchantSync.description = dto.description;
+      if (dto.categorie !== undefined) merchantSync.categorie = dto.categorie;
+      if (dto.ville !== undefined) merchantSync.ville = dto.ville;
+      if (dto.quartier !== undefined) merchantSync.quartier = dto.quartier;
+      if (dto.adresse !== undefined) merchantSync.adresse = dto.adresse;
+      if (dto.latitude !== undefined) merchantSync.latitude = dto.latitude;
+      if (dto.longitude !== undefined) merchantSync.longitude = dto.longitude;
+      if (socialLinks !== undefined) merchantSync.socialLinks = socialLinks as unknown as Prisma.InputJsonObject;
+      if (Object.keys(merchantSync).length > 0) {
+        await this.merchantRepo.update({ where: { id: merchantId }, data: merchantSync });
+        await Promise.all([
+          this.cache.del(`merchant:detail:${merchantId}`),
+          this.cache.del(`merchant:profile:${merchantId}`),
+        ]);
+      }
+    }
+
     await this.invalidateStoresCaches(merchantId);
     return updated;
   }

@@ -32,6 +32,7 @@ import {
   Eye,
   Mail,
   Shield,
+  Lightbulb,
 } from 'lucide-react-native';
 
 // Enable LayoutAnimation on Android (old arch only — New Architecture supports it natively).
@@ -277,6 +278,9 @@ export default function MessagesScreen() {
   const { data: emailQuota } = useEmailQuota(isOwner && isPremium && showEmail);
 
   const sendRipple = useRef(new Animated.Value(0)).current;
+  const titleInputRef = useRef<TextInput>(null);
+  const bodyInputRef = useRef<TextInput>(null);
+  const [focusedField, setFocusedField] = useState<'title' | 'body' | null>(null);
 
   // Cooldown timer refs — cleaned up on unmount to prevent memory leaks
   const cooldownTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -573,6 +577,14 @@ export default function MessagesScreen() {
                 <View
                   style={[styles.composeCard, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}
                 >
+                  {/* Tip */}
+                  <View style={[styles.composeTip, { backgroundColor: theme.primary + '0D' }]}>
+                    <Lightbulb size={14} color={theme.primary} />
+                    <Text style={[styles.composeTipText, { color: theme.textSecondary }]}>
+                      {t('messages.composeTip')}
+                    </Text>
+                  </View>
+
                   {/* Title input */}
                   <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>
                     {t('messages.messageTitle')}
@@ -580,10 +592,11 @@ export default function MessagesScreen() {
                   <View
                     style={[
                       styles.inputWrapper,
-                      { backgroundColor: theme.bgInput, borderColor: theme.border },
+                      { backgroundColor: theme.bgInput, borderColor: focusedField === 'title' ? theme.primary : theme.border },
                     ]}
                   >
                     <TextInput
+                      ref={titleInputRef}
                       style={[styles.input, { color: theme.text }]}
                       value={title}
                       onChangeText={(v) => set({ title: v })}
@@ -591,6 +604,8 @@ export default function MessagesScreen() {
                       placeholderTextColor={theme.textMuted}
                       maxLength={100}
                       returnKeyType="next"
+                      onFocus={() => setFocusedField('title')}
+                      onBlur={() => setFocusedField((f) => f === 'title' ? null : f)}
                     />
                   </View>
                   <Text style={[styles.charCount, { color: charCountColor(title.length, 100, theme.textMuted, theme.warning ?? '#F59E0B', theme.danger) }]}>
@@ -606,13 +621,14 @@ export default function MessagesScreen() {
                       styles.inputWrapper,
                       {
                         backgroundColor: theme.bgInput,
-                        borderColor: theme.border,
+                        borderColor: focusedField === 'body' ? theme.primary : theme.border,
                         minHeight: 100,
                         alignItems: 'flex-start',
                       },
                     ]}
                   >
                     <TextInput
+                      ref={bodyInputRef}
                       style={[
                         styles.input,
                         { color: theme.text, textAlignVertical: 'top', minHeight: 80 },
@@ -623,11 +639,33 @@ export default function MessagesScreen() {
                       placeholderTextColor={theme.textMuted}
                       multiline
                       maxLength={500}
+                      onFocus={() => setFocusedField('body')}
+                      onBlur={() => setFocusedField((f) => f === 'body' ? null : f)}
                     />
                   </View>
                   <Text style={[styles.charCount, { color: charCountColor(body.length, 500, theme.textMuted, theme.warning ?? '#F59E0B', theme.danger) }]}>
                     {body.length}/500
                   </Text>
+
+                  {/* Quick emoji insert */}
+                  <View style={styles.emojiRow}>
+                    {['🎉', '🔥', '⭐', '💰', '🎁', '❤️', '🛍️', '✨'].map((emoji) => (
+                      <TouchableOpacity
+                        key={emoji}
+                        activeOpacity={0.6}
+                        onPress={() => {
+                          if (focusedField === 'title' || !focusedField) {
+                            set({ title: title + emoji });
+                          } else {
+                            set({ body: body + emoji });
+                          }
+                        }}
+                        style={[styles.emojiBtn, { backgroundColor: theme.bgInput }]}
+                      >
+                        <Text style={styles.emojiBtnText}>{emoji}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
                   <TouchableOpacity
                     style={[
                       styles.sendBtn,
@@ -937,6 +975,32 @@ const styles = StyleSheet.create({
   },
   input: { fontSize: 15, paddingVertical: 12, fontFamily: 'Lexend_500Medium' },
   charCount: { fontSize: 11, textAlign: 'right', marginTop: 2, fontFamily: 'Lexend_500Medium' },
+
+  composeTip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    marginBottom: 14,
+  },
+  composeTipText: { flex: 1, fontSize: 12, lineHeight: 17, fontFamily: 'Lexend_500Medium' },
+
+  emojiRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 10,
+  },
+  emojiBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emojiBtnText: { fontSize: 18 },
 
   sendBtn: {
     flexDirection: 'row',

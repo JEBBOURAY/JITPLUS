@@ -177,3 +177,35 @@ export function normalizePhone(input: string, dialCode: string = '+212'): string
 
   return `${dialCode}${cleaned}`;
 }
+
+/**
+ * Format a local phone number for display with spaces.
+ * Morocco 9-digit: "612345678" → "6 12 34 56 78"
+ * Generic: groups of 2–3 digits depending on length.
+ */
+export function formatPhoneLocal(digits: string): string {
+  const cleaned = digits.replace(/\D/g, '');
+  if (cleaned.length === 0) return '';
+
+  // Morocco-style 9-digit: X XX XX XX XX
+  if (cleaned.length === 9) {
+    return `${cleaned[0]} ${cleaned.slice(1, 3)} ${cleaned.slice(3, 5)} ${cleaned.slice(5, 7)} ${cleaned.slice(7, 9)}`;
+  }
+  // 10-digit: XX XX XX XX XX
+  if (cleaned.length === 10) {
+    return `${cleaned.slice(0, 2)} ${cleaned.slice(2, 4)} ${cleaned.slice(4, 6)} ${cleaned.slice(6, 8)} ${cleaned.slice(8, 10)}`;
+  }
+  // 8-digit: XX XX XX XX
+  if (cleaned.length === 8) {
+    return `${cleaned.slice(0, 2)} ${cleaned.slice(2, 4)} ${cleaned.slice(4, 6)} ${cleaned.slice(6, 8)}`;
+  }
+  // Fallback: groups of 2 from the right
+  const parts: string[] = [];
+  let i = cleaned.length;
+  while (i > 0) {
+    const start = Math.max(0, i - 2);
+    parts.unshift(cleaned.slice(start, i));
+    i = start;
+  }
+  return parts.join(' ');
+}

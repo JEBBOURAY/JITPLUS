@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, Inject, Logger } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
+import { randomInt } from 'crypto';
 import { MERCHANT_REPOSITORY, type IMerchantRepository } from '../../common/repositories';
 import { IMailProvider, MAIL_PROVIDER } from '../../common/interfaces';
 import { errMsg } from '../../common/utils';
@@ -225,7 +226,7 @@ export class MerchantReferralService {
     do {
       code = Array.from(
         { length: REFERRAL_CODE_LENGTH },
-        () => REFERRAL_CODE_CHARS[Math.floor(Math.random() * REFERRAL_CODE_CHARS.length)],
+        () => REFERRAL_CODE_CHARS[randomInt(REFERRAL_CODE_CHARS.length)],
       ).join('');
     } while (
       await this.merchantRepo.findUnique({

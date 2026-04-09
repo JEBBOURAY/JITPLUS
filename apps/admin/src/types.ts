@@ -282,3 +282,37 @@ export interface TopReferrer {
   referredCount: number;
   plan: MerchantPlan;
 }
+
+// ── Payout types ─────────────────────────────────────────────────────────
+
+export type PayoutStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'PAID';
+export type PayoutMethod = 'BANK_TRANSFER' | 'CASH';
+
+export interface PayoutRequestRow {
+  id: string;
+  amount: number;
+  status: PayoutStatus;
+  method: PayoutMethod;
+  accountDetails: unknown;
+  rejectionReason: string | null;
+  approvedAt: string | null;
+  rejectedAt: string | null;
+  paidAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  client: {
+    id: string;
+    nom: string | null;
+    prenom: string | null;
+    email: string | null;
+    telephone: string | null;
+    referralBalance: number;
+  };
+}
+
+export interface PayoutRequestsResponse {
+  requests: PayoutRequestRow[];
+  total: number;
+  page: number;
+  totalPages: number;
+}

@@ -4,12 +4,13 @@ import { NotificationRow, Pagination } from '../types';
 import { C, S } from '../theme';
 import { fmtDateTime, tableHeaderStyle, tableCellStyle } from '../utils/format';
 import { getErrorMessage } from '@jitplus/shared';
+import { useDebouncedSearch } from '../utils/useDebouncedSearch';
 
 const CHANNELS = [
   { value: '', label: 'Tous' },
-  { value: 'PUSH', label: '📱 Push' },
-  { value: 'WHATSAPP', label: '💬 WhatsApp' },
-  { value: 'EMAIL', label: '📧 Email' },
+  { value: 'PUSH', label: 'Push' },
+  { value: 'WHATSAPP', label: 'WhatsApp' },
+  { value: 'EMAIL', label: 'Email' },
 ];
 
 const CHANNEL_BADGE: Record<string, { color: string; label: string }> = {
@@ -24,20 +25,10 @@ export default function Notifications() {
   const [pagination, setPagination] = useState<Pagination | null>(null);
   const [page, setPage] = useState(1);
   const [channel, setChannel] = useState('');
-  const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [search, setSearch, debouncedSearch] = useDebouncedSearch(() => setPage(1));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const fetchingRef = useRef(false);
-
-  // Debounce search — also reset page to 1 (batched with React 18)
-  useEffect(() => {
-    const t = setTimeout(() => {
-      setDebouncedSearch(search);
-      setPage(1);
-    }, 400);
-    return () => clearTimeout(t);
-  }, [search]);
 
   const fetchData = useCallback(async () => {
     if (fetchingRef.current) return;
@@ -60,7 +51,7 @@ export default function Notifications() {
 
   return (
     <div style={{ paddingBottom: 48 }}>
-      <h2 style={{ margin: '0 0 4px', fontWeight: 800, fontSize: 22, color: C.text }}>Notifications</h2>
+      <h2 style={{ margin: '0 0 4px', fontWeight: 700, letterSpacing: '-0.02em', fontSize: 22, color: C.text }}>Notifications</h2>
       <p style={{ margin: '0 0 20px', fontSize: 13, color: C.textMuted }}>
         Suivi de toutes les notifications envoyées par les commerçants
       </p>
@@ -74,11 +65,16 @@ export default function Notifications() {
               key={ch.value}
               onClick={() => { setChannel(ch.value); setPage(1); }}
               style={{
-                ...S.btn(channel === ch.value ? C.primary : C.surfaceHover),
-                padding: '6px 12px',
+                padding: '5px 12px',
                 fontSize: 12,
-                opacity: channel === ch.value ? 1 : 0.7,
+                fontWeight: 500,
+                fontFamily: 'inherit',
+                borderRadius: 'var(--radius-sm)',
                 border: `1px solid ${channel === ch.value ? C.primary : C.border}`,
+                background: channel === ch.value ? C.primary : 'transparent',
+                color: channel === ch.value ? '#fff' : C.textMuted,
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
               }}
             >
               {ch.label}
@@ -86,21 +82,17 @@ export default function Notifications() {
           ))}
         </div>
 
+        <div style={{ width: 1, height: 24, background: C.border }} />
+
         {/* Search */}
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Rechercher par titre, contenu ou commerçant…"
+          placeholder="Rechercher par titre, contenu ou commercant..."
           style={{
+            ...S.input,
             flex: 1,
             minWidth: 200,
-            padding: '8px 12px',
-            background: C.surface,
-            border: `1px solid ${C.border}`,
-            borderRadius: 8,
-            color: C.text,
-            fontSize: 13,
-            outline: 'none',
           }}
         />
       </div>

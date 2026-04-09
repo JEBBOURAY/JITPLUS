@@ -52,7 +52,7 @@ export default function Login() {
         setLockedUntil(lockEnd);
         startCountdown(LOCKOUT_SECONDS);
         failedAttempts.current = 0;
-        setError(`Trop de tentatives. Réessayez dans ${LOCKOUT_SECONDS} secondes.`);
+        setError(`Trop de tentatives. Reessayez dans ${LOCKOUT_SECONDS} secondes.`);
       } else {
         setError(getErrorMessage(err, 'Erreur de connexion'));
       }
@@ -60,6 +60,8 @@ export default function Login() {
       setLoading(false);
     }
   };
+
+  const isProd = env === 'prod';
 
   return (
     <div
@@ -71,34 +73,43 @@ export default function Login() {
         background: C.bg,
       }}
     >
-      <div style={{ ...S.card, width: 380 }}>
+      <div style={{ ...S.card, width: 400, padding: 36, boxShadow: 'var(--shadow-md)' }}>
         {/* Logo */}
-        <div style={{ textAlign: 'center', marginBottom: 28 }}>
-          <div style={{ fontSize: 36, marginBottom: 8 }}>⚡</div>
-          <h1
-            style={{
-              margin: 0,
-              fontSize: 24,
-              fontWeight: 800,
-              background: `linear-gradient(90deg, ${C.primary}, ${C.cyan})`,
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-            }}
-          >
+        <div style={{ textAlign: 'center', marginBottom: 32 }}>
+          <div style={{
+            width: 48,
+            height: 48,
+            borderRadius: 'var(--radius-md)',
+            background: `linear-gradient(135deg, ${C.primary}, ${C.cyan})`,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginBottom: 16,
+          }}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+            </svg>
+          </div>
+          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: C.text, letterSpacing: '-0.02em' }}>
             JitPlus Admin
           </h1>
-          <p style={{ color: C.textMuted, fontSize: 13, marginTop: 4 }}>
-            Tableau de bord administrateur
+          <p style={{ color: C.textMuted, fontSize: 13, marginTop: 6 }}>
+            Tableau de bord d'administration
           </p>
         </div>
 
         {/* Environment selector */}
-        <div style={{ display: 'flex', gap: 6, marginBottom: 18 }}>
+        <div style={{
+          display: 'flex',
+          gap: 4,
+          marginBottom: 20,
+          background: C.bg,
+          borderRadius: 'var(--radius-sm)',
+          padding: 3,
+        }}>
           {(['dev', 'prod'] as const).map((e) => {
             const active = env === e;
             const col = e === 'prod' ? C.red : C.green;
-            const alphaCol = e === 'prod' ? C.redAlpha : C.greenAlpha;
-            const borderCol = e === 'prod' ? 'var(--theme-red-alpha)' : 'var(--theme-green-alpha)';
             return (
               <button
                 key={e}
@@ -107,40 +118,43 @@ export default function Login() {
                 style={{
                   flex: 1,
                   padding: '8px 0',
-                  borderRadius: 8,
+                  borderRadius: 'calc(var(--radius-sm) - 2px)',
                   border: 'none',
                   fontSize: 12,
-                  fontWeight: 700,
+                  fontWeight: 600,
+                  fontFamily: 'inherit',
                   cursor: 'pointer',
-                  background: active ? alphaCol : C.bg,
+                  background: active ? C.surface : 'transparent',
                   color: active ? col : C.textMuted,
-                  outline: active ? `1px solid ${borderCol}` : `1px solid ${C.border}`,
+                  boxShadow: active ? 'var(--shadow-sm)' : 'none',
+                  transition: 'all .15s ease',
                 }}
               >
-                {e === 'dev' ? '🛠 Développement' : '🚀 Production'}
+                {e === 'dev' ? 'Developpement' : 'Production'}
               </button>
             );
           })}
         </div>
-        {env === 'prod' && (
+
+        {isProd && (
           <div style={{
             background: C.redAlpha,
-            border: `1px solid var(--theme-red-alpha)`,
-            borderRadius: 8,
+            border: `1px solid ${C.red}`,
+            borderRadius: 'var(--radius-sm)',
             padding: '8px 12px',
-            marginBottom: 14,
+            marginBottom: 16,
             fontSize: 12,
             color: C.red,
             fontWeight: 600,
             textAlign: 'center',
           }}>
-            ⚠️ Connexion à la base de données PRODUCTION
+            Connexion a la base de donnees PRODUCTION
           </div>
         )}
 
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div>
-            <label style={{ display: 'block', fontSize: 12, color: C.textMuted, marginBottom: 6 }}>
+            <label style={{ display: 'block', fontSize: 13, color: C.text, marginBottom: 6, fontWeight: 500 }}>
               Email
             </label>
             <input
@@ -149,22 +163,12 @@ export default function Login() {
               onChange={(e) => setEmail(e.target.value)}
               required
               placeholder="admin@jitplus.com"
-              style={{
-                width: '100%',
-                background: C.bg,
-                border: `1px solid ${C.border}`,
-                borderRadius: 8,
-                padding: '10px 12px',
-                color: C.text,
-                fontSize: 14,
-                outline: 'none',
-                boxSizing: 'border-box',
-              }}
+              style={{ ...S.input, fontSize: 14, padding: '10px 14px' }}
             />
           </div>
 
           <div>
-            <label style={{ display: 'block', fontSize: 12, color: C.textMuted, marginBottom: 6 }}>
+            <label style={{ display: 'block', fontSize: 13, color: C.text, marginBottom: 6, fontWeight: 500 }}>
               Mot de passe
             </label>
             <input
@@ -172,18 +176,8 @@ export default function Login() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              placeholder="••••••••"
-              style={{
-                width: '100%',
-                background: C.bg,
-                border: `1px solid ${C.border}`,
-                borderRadius: 8,
-                padding: '10px 12px',
-                color: C.text,
-                fontSize: 14,
-                outline: 'none',
-                boxSizing: 'border-box',
-              }}
+              placeholder="Entrez votre mot de passe"
+              style={{ ...S.input, fontSize: 14, padding: '10px 14px' }}
             />
           </div>
 
@@ -191,8 +185,8 @@ export default function Login() {
             <div
               style={{
                 background: C.redAlpha,
-                border: `1px solid var(--theme-red-alpha)`,
-                borderRadius: 8,
+                border: `1px solid ${C.red}`,
+                borderRadius: 'var(--radius-sm)',
                 padding: '10px 12px',
                 color: C.red,
                 fontSize: 13,
@@ -208,16 +202,17 @@ export default function Login() {
             disabled={loading || isLocked}
             style={{
               ...S.btn(C.primary),
-              padding: '12px',
-              fontSize: 15,
+              padding: '11px',
+              fontSize: 14,
               marginTop: 4,
-              opacity: loading || isLocked ? 0.6 : 1,
+              opacity: loading || isLocked ? 0.5 : 1,
+              width: '100%',
             }}
           >
             {isLocked
-              ? `Verrouillé (${countdown}s)`
+              ? `Verrouille (${countdown}s)`
               : loading
-                ? 'Connexion…'
+                ? 'Connexion...'
                 : 'Se connecter'}
           </button>
         </form>

@@ -152,6 +152,9 @@ export default {
     birthdayPrivacy: 'Your date of birth will never be shared. Only on your birthday, if the merchant offers gifts, they will be informed that it\'s your special day.',
     noPasswordTitle: 'Secure login',
     noPasswordDesc: 'Your account is already secured via your login method. No additional password is needed.',
+    phoneStepTitle: 'Your phone number',
+    phoneStepSubtitle: 'Add your number to secure your account',
+    phonePrivacyHint: 'Your number will never be shared with merchants. It is only used to secure your account.',,
   },
 
   // ── Tabs ──
@@ -351,6 +354,8 @@ export default {
     info: 'Information',
     stores: 'Our stores',
     seeOnMap: 'See on map',
+    otherLocationsTitle: 'Our locations',
+    otherLocationsCount: '%{count} locations available',
     aboutUs: 'About',
     rewardsSection: 'Gifts & Rewards',
     noRewards: 'No rewards configured for this merchant',
@@ -531,6 +536,6 @@ export default {
   languages: {
     fr: 'Français',
     en: 'English',
-    ar: 'العربية',
+    ar: 'الدارجة 🇲🇦',
   },
 };

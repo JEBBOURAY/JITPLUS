@@ -17,8 +17,8 @@ import { LoginDto } from './dto/login.dto';
 import { GoogleLoginMerchantDto } from './dto/google-login-merchant.dto';
 import { GoogleRegisterMerchantDto } from './dto/google-register-merchant.dto';
 import { RegisterMerchantDto } from './dto/register-merchant.dto';
-import { BCRYPT_SALT_ROUNDS, USER_TYPE_MERCHANT, USER_TYPE_TEAM_MEMBER, DEFAULT_POINTS_RULES, OTP_MIN, OTP_MAX, OTP_EXPIRY_MS, OTP_COOLDOWN_MS, MAX_SESSIONS_PER_MERCHANT, MAX_OTP_SENDS_PER_DAY } from '../common/constants';
-import { hashOtp, validateOtp } from '../common/utils/otp.helper';
+import { BCRYPT_SALT_ROUNDS, USER_TYPE_MERCHANT, USER_TYPE_TEAM_MEMBER, DEFAULT_POINTS_RULES, OTP_MIN, OTP_MAX, OTP_EXPIRY_MS, OTP_COOLDOWN_MS, MAX_SESSIONS_PER_MERCHANT } from '../common/constants';
+import { hashOtp, validateOtp, checkDailyOtpLimit } from '../common/utils/otp.helper';
 import { errMsg } from '../common/utils';
 import { checkLockout, handleFailedLogin, resetLoginAttempts, LockoutDbOps } from '../common/utils/login-lockout.helper';
 import { MERCHANT_LOGIN_SELECT, MERCHANT_OWNER_SELECT, MERCHANT_PROFILE_SELECT } from '../common/prisma-selects';
@@ -52,9 +52,6 @@ export class AuthService {
    */
   private static readonly DUMMY_HASH = bcrypt.hashSync('dummy-password-never-used', 12);
 
-  /** In-memory daily OTP send counter: identifier → { count, resetAt } */
-  private readonly otpDailyCounter = new Map<string, { count: number; resetAt: number }>();
-
   private readonly googleClient: OAuth2Client;
 
   constructor(
@@ -73,23 +70,6 @@ export class AuthService {
     private configService: ConfigService,
   ) {
     this.googleClient = new OAuth2Client(this.configService.get<string>('GOOGLE_CLIENT_ID'));
-  }
-
-  /** Enforce daily OTP limit per identifier. Throws 429 when exceeded. */
-  private checkDailyOtpLimit(identifier: string): void {
-    const now = Date.now();
-    const entry = this.otpDailyCounter.get(identifier);
-    if (entry && now < entry.resetAt) {
-      if (entry.count >= MAX_OTP_SENDS_PER_DAY) {
-        throw new HttpException(
-          `Limite quotidienne atteinte (${MAX_OTP_SENDS_PER_DAY} codes/jour). Réessayez demain.`,
-          HttpStatus.TOO_MANY_REQUESTS,
-        );
-      }
-      entry.count++;
-    } else {
-      this.otpDailyCounter.set(identifier, { count: 1, resetAt: now + 86_400_000 });
-    }
   }
 
   /** Lockout DB ops for Merchant model */
@@ -135,11 +115,15 @@ export class AuthService {
       }),
       this.teamMemberRepo.findUnique({
         where: { email: loginDto.email },
-        select: { id: true, email: true, nom: true, password: true, role: true, isActive: true, merchantId: true, failedLoginAttempts: true, lockedUntil: true },
+        select: { id: true, email: true, nom: true, password: true, role: true, isActive: true, merchantId: true, failedLoginAttempts: true, lockedUntil: true, merchant: { select: { isActive: true } } },
       }),
     ]);
 
     if (merchant) {
+      if (!merchant.isActive || merchant.deletedAt) {
+        throw new UnauthorizedException('Votre compte a été désactivé. Veuillez contacter le support.');
+      }
+
       // Brute-force protection
       checkLockout(merchant);
 
@@ -205,6 +189,10 @@ export class AuthService {
 
       if (!ownerMerchant) {
         throw new UnauthorizedException('Commerce associé introuvable');
+      }
+
+      if (!ownerMerchant.isActive || ownerMerchant.deletedAt) {
+        throw new UnauthorizedException('Ce compte commerce n\'existe plus');
       }
 
       const { pushToken: _pt, ...ownerData } = ownerMerchant;
@@ -300,15 +288,18 @@ export class AuthService {
         });
       }
 
-      // Evict oldest sessions if over the limit
-      const sessions = await tx.deviceSession.findMany({
-        where: { merchantId },
-        orderBy: { lastActiveAt: 'desc' },
-        select: { id: true },
-      });
-      if (sessions.length > MAX_SESSIONS_PER_MERCHANT) {
-        const toDelete = sessions.slice(MAX_SESSIONS_PER_MERCHANT).map((s: any) => s.id);
-        await tx.deviceSession.deleteMany({ where: { id: { in: toDelete } } });
+      // Evict oldest sessions if over the limit — only count + delete excess
+      const sessionCount = await tx.deviceSession.count({ where: { merchantId } });
+      if (sessionCount > MAX_SESSIONS_PER_MERCHANT) {
+        const excess = await tx.deviceSession.findMany({
+          where: { merchantId },
+          orderBy: { lastActiveAt: 'desc' },
+          skip: MAX_SESSIONS_PER_MERCHANT,
+          select: { id: true },
+        });
+        if (excess.length > 0) {
+          await tx.deviceSession.deleteMany({ where: { id: { in: excess.map((s: any) => s.id) } } });
+        }
       }
     });
   }
@@ -334,10 +325,10 @@ export class AuthService {
 
     if (!token) return;
 
-    const title = '🔐 Nouvelle connexion';
+    const title = '🔐 Nouvelle connexion détectée';
     const body = deviceName
-      ? `${who} s'est connecté(e) sur ${deviceName}`
-      : `${who} s'est connecté(e) à votre commerce`;
+      ? `${who} s'est connecté(e) sur ${deviceName}. Si ce n'est pas vous, changez votre mot de passe.`
+      : `${who} s'est connecté(e) à votre commerce. Si ce n'est pas vous, changez votre mot de passe.`;
 
     await this.pushProvider.sendMulticast([token], title, body, undefined, undefined, 'login-alerts');
   }
@@ -367,7 +358,8 @@ export class AuthService {
     const incomingHash = createHash('sha256').update(refreshToken).digest('hex');
     if (incomingHash !== session.refreshTokenHash) {
       // Potential token theft — delete the session immediately
-      await this.deviceSessionRepo.delete({ where: { id: session.id } }).catch(() => {});
+      await this.deviceSessionRepo.delete({ where: { id: session.id } })
+        .catch((err) => this.logger.error(`Failed to revoke stolen session ${session.id}`, errMsg(err)));
       throw new UnauthorizedException('Token de rafraîchissement invalide.');
     }
 
@@ -386,7 +378,7 @@ export class AuthService {
       select: MERCHANT_OWNER_SELECT,
     });
 
-    if (!merchant || !merchant.isActive) {
+    if (!merchant || !merchant.isActive || merchant.deletedAt) {
       throw new UnauthorizedException('Compte commerçant inactif ou introuvable.');
     }
 
@@ -459,6 +451,9 @@ export class AuthService {
     if (!merchant) {
       throw new UnauthorizedException('Compte introuvable');
     }
+    if (!merchant.isActive) {
+      throw new UnauthorizedException('Ce compte commerce n\'existe plus');
+    }
 
     const { pushToken: _pt, ...merchantData } = merchant;
 
@@ -482,6 +477,24 @@ export class AuthService {
     };
   }
 
+  /** Check if an email is already registered. */
+  async checkEmailExists(email: string): Promise<{ exists: boolean }> {
+    const merchant = await this.merchantRepo.findUnique({
+      where: { email: email.trim().toLowerCase() },
+      select: { id: true },
+    });
+    return { exists: !!merchant };
+  }
+
+  /** Check if a phone number is already registered. */
+  async checkPhoneExists(phoneNumber: string): Promise<{ exists: boolean }> {
+    const merchant = await this.merchantRepo.findFirst({
+      where: { phoneNumber: phoneNumber.trim() },
+      select: { id: true },
+    });
+    return { exists: !!merchant };
+  }
+
   async register(registerDto: RegisterMerchantDto): Promise<AuthResult> {
     const existingMerchant = await this.merchantRepo.findUnique({
       where: { email: registerDto.email },
@@ -495,17 +508,25 @@ export class AuthService {
     const hashedPassword = await bcrypt.hash(registerDto.password, BCRYPT_SALT_ROUNDS);
     const trialData = this.planService.getTrialData();
 
+    // Display name: nomCommerce first, then owner prenom+nom, then email prefix
+    const ownerParts = [registerDto.prenom?.trim(), registerDto.nom?.trim()].filter(Boolean);
+    const ownerName = ownerParts.length > 0 ? ownerParts.join(' ') : registerDto.email.split('@')[0];
+    const nom = registerDto.nomCommerce?.trim() || ownerName;
+    // Store name uses the same value
+    const storeNom = nom;
+    const categorie = registerDto.categorie ?? ('AUTRE' as any);
+
     // â”€â”€ Valider le code de parrainage si fourni â”€â”€
     let referredById: string | undefined;
     let referredByClientId: string | undefined;
-    if (registerDto.referralCode) {
-      // Try merchant referral code first, then client referral code
+    const referralCode = registerDto.referralCode?.trim().toLowerCase();
+    if (referralCode) {
       try {
-        const referrer = await this.referralService.validateCode(registerDto.referralCode);
+        const referrer = await this.referralService.validateCode(referralCode);
         referredById = referrer.id;
       } catch {
         try {
-          const clientReferrer = await this.clientReferralService.validateCode(registerDto.referralCode);
+          const clientReferrer = await this.clientReferralService.validateCode(referralCode);
           referredByClientId = clientReferrer.id;
         } catch {
           throw new ConflictException('Code de parrainage invalide ou inexistant');
@@ -517,17 +538,24 @@ export class AuthService {
     try {
       merchant = await this.merchantRepo.create({
         data: {
-          nom: registerDto.nom,
+          nom,
           email: registerDto.email,
           password: hashedPassword,
           phoneNumber: registerDto.phoneNumber,
-          categorie: registerDto.categorie,
+          categorie,
           ville: registerDto.ville,
           quartier: registerDto.quartier,
           adresse: registerDto.adresse,
           logoUrl: registerDto.logoUrl,
           latitude: registerDto.latitude,
           longitude: registerDto.longitude,
+          ...(registerDto.description?.trim() && { description: registerDto.description.trim() }),
+          ...((registerDto.instagram?.trim() || registerDto.tiktok?.trim()) && {
+            socialLinks: {
+              ...(registerDto.instagram?.trim() && { instagram: registerDto.instagram.trim() }),
+              ...(registerDto.tiktok?.trim() && { tiktok: registerDto.tiktok.trim() }),
+            },
+          }),
           termsAccepted: registerDto.termsAccepted ?? false,
           pointsRules: DEFAULT_POINTS_RULES,
           // Plan: 30-day free PREMIUM trial
@@ -538,13 +566,21 @@ export class AuthService {
           // Auto-create the first store with the same info as the merchant
           stores: {
             create: {
-              nom: registerDto.nom,
-              categorie: registerDto.categorie,
+              nom: storeNom,
+              categorie,
               ville: registerDto.ville,
               quartier: registerDto.quartier,
               adresse: registerDto.adresse,
               latitude: registerDto.latitude,
               longitude: registerDto.longitude,
+              ...(registerDto.description?.trim() && { description: registerDto.description.trim() }),
+              ...(registerDto.storePhone?.trim() && { telephone: registerDto.storePhone.trim() }),
+              ...((registerDto.instagram?.trim() || registerDto.tiktok?.trim()) && {
+                socialLinks: {
+                  ...(registerDto.instagram?.trim() && { instagram: registerDto.instagram.trim() }),
+                  ...(registerDto.tiktok?.trim() && { tiktok: registerDto.tiktok.trim() }),
+                },
+              }),
             },
           },
         },
@@ -562,9 +598,7 @@ export class AuthService {
 
     // No destructuring needed — select already excludes sensitive fields
 
-    // Send welcome email to merchant
-    this.mailProvider.sendWelcomeMerchant(merchant.email, merchant.nom)
-      .catch((err) => this.logger.warn('Welcome email failed', errMsg(err)));
+    // Welcome email is deferred until email verification (OTP validated)
 
     // Send verification email (fire-and-forget)
     this.sendVerificationEmail(merchant.email)
@@ -589,19 +623,30 @@ export class AuthService {
       jti: sessionId,
     };
 
-    // Create a device session so the token can be revoked
-    await this.deviceSessionRepo.create({
-      data: {
-        merchantId: merchant.id,
-        tokenId: sessionId,
-        deviceName: 'register',
-        isCurrentDevice: true,
-        lastActiveAt: new Date(),
-      },
-    });
+    // Create device session + optional refresh token
+    let refreshToken: string | undefined;
+    if (registerDto.deviceName) {
+      refreshToken = randomBytes(40).toString('hex');
+      const refreshHash = createHash('sha256').update(refreshToken).digest('hex');
+      await this.registerDeviceSession(
+        merchant.id, sessionId, registerDto as any, undefined,
+        'merchant', merchant.email, nom, refreshHash,
+      );
+    } else {
+      await this.deviceSessionRepo.create({
+        data: {
+          merchantId: merchant.id,
+          tokenId: sessionId,
+          deviceName: 'register',
+          isCurrentDevice: true,
+          lastActiveAt: new Date(),
+        },
+      });
+    }
 
     return {
       access_token: this.jwtService.sign(payload),
+      ...(refreshToken && { refresh_token: refreshToken }),
       session_id: sessionId,
       merchant,
       userType: USER_TYPE_MERCHANT,
@@ -658,18 +703,25 @@ export class AuthService {
         });
 
         if (merchant) {
-          // Link Google account to existing merchant
-          await this.merchantRepo.update({
-            where: { id: merchant.id },
-            data: { googleId },
-          });
+          // Security: do NOT auto-link Google account to existing merchant.
+          // The merchant must first log in with their password, then link Google
+          // from their profile settings to prevent account hijacking.
+          if (!merchant.googleId) {
+            throw new UnauthorizedException(
+              'Un compte existe avec cet email. Connectez-vous avec votre mot de passe, puis liez votre compte Google depuis les paramètres.',
+            );
+          }
         }
       }
 
       if (!merchant) {
         throw new UnauthorizedException(
-          'Aucun compte commerçant trouvé avec cet email. Veuillez d\'abord créer un compte.',
+          "Aucun compte commerçant trouvé avec cet email. Veuillez d'abord créer un compte.",
         );
+      }
+
+      if (!merchant.isActive || merchant.deletedAt) {
+        throw new UnauthorizedException('Votre compte a été désactivé. Veuillez contacter le support.');
       }
 
       // Check lockout
@@ -776,15 +828,24 @@ export class AuthService {
     // 3. Create merchant (no password — Google-only account)
     const trialData = this.planService.getTrialData();
 
+    // Display name: nomCommerce first, then owner prenom+nom, then email prefix
+    const ownerParts = [dto.prenom?.trim(), dto.nom?.trim()].filter(Boolean);
+    const ownerName = ownerParts.length > 0 ? ownerParts.join(' ') : googleEmail.split('@')[0];
+    const nom = dto.nomCommerce?.trim() || ownerName;
+    // Store name uses the same value
+    const storeNom = nom;
+    const categorie = dto.categorie ?? ('AUTRE' as any);
+
     let referredById: string | undefined;
     let referredByClientId: string | undefined;
-    if (dto.referralCode) {
+    const referralCode = dto.referralCode?.trim().toLowerCase();
+    if (referralCode) {
       try {
-        const referrer = await this.referralService.validateCode(dto.referralCode);
+        const referrer = await this.referralService.validateCode(referralCode);
         referredById = referrer.id;
       } catch {
         try {
-          const clientReferrer = await this.clientReferralService.validateCode(dto.referralCode);
+          const clientReferrer = await this.clientReferralService.validateCode(referralCode);
           referredByClientId = clientReferrer.id;
         } catch {
           throw new ConflictException('Code de parrainage invalide ou inexistant');
@@ -799,19 +860,26 @@ export class AuthService {
 
       merchant = await this.merchantRepo.create({
         data: {
-          nom: dto.nom,
+          nom,
           email: googleEmail,
           password: dummyPasswordHash,
           googleId,
           emailVerified: true, // Google-verified email
           phoneNumber: dto.phoneNumber,
-          categorie: dto.categorie,
+          categorie,
           ville: dto.ville,
           quartier: dto.quartier,
           adresse: dto.adresse,
           logoUrl: dto.logoUrl,
           latitude: dto.latitude,
           longitude: dto.longitude,
+          ...(dto.description?.trim() && { description: dto.description.trim() }),
+          ...((dto.instagram?.trim() || dto.tiktok?.trim()) && {
+            socialLinks: {
+              ...(dto.instagram?.trim() && { instagram: dto.instagram.trim() }),
+              ...(dto.tiktok?.trim() && { tiktok: dto.tiktok.trim() }),
+            },
+          }),
           termsAccepted: dto.termsAccepted ?? false,
           pointsRules: DEFAULT_POINTS_RULES,
           ...trialData,
@@ -819,13 +887,21 @@ export class AuthService {
           ...(referredByClientId && { referredByClientId }),
           stores: {
             create: {
-              nom: dto.nom,
-              categorie: dto.categorie,
+              nom: storeNom,
+              categorie,
               ville: dto.ville,
               quartier: dto.quartier,
               adresse: dto.adresse,
               latitude: dto.latitude,
               longitude: dto.longitude,
+              ...(dto.description?.trim() && { description: dto.description.trim() }),
+              ...(dto.storePhone?.trim() && { telephone: dto.storePhone.trim() }),
+              ...((dto.instagram?.trim() || dto.tiktok?.trim()) && {
+                socialLinks: {
+                  ...(dto.instagram?.trim() && { instagram: dto.instagram.trim() }),
+                  ...(dto.tiktok?.trim() && { tiktok: dto.tiktok.trim() }),
+                },
+              }),
             },
           },
         },
@@ -841,7 +917,7 @@ export class AuthService {
       throw error;
     }
 
-    // Send welcome email
+    // Welcome email sent after Google registration (no OTP needed — email already verified)
     this.mailProvider.sendWelcomeMerchant(merchant.email, merchant.nom)
       .catch((err) => this.logger.warn('Welcome email failed', errMsg(err)));
 
@@ -900,7 +976,7 @@ export class AuthService {
 
   /** Generate, upsert, and send an OTP email. Enforces daily limit + cooldown. */
   private async sendOtpForEmail(email: string, logLabel: string): Promise<void> {
-    this.checkDailyOtpLimit(email);
+    checkDailyOtpLimit(email);
 
     const existingOtp = await this.otpRepo.findUnique({ where: { email } });
     if (existingOtp && existingOtp.expiresAt.getTime() - OTP_EXPIRY_MS + OTP_COOLDOWN_MS > Date.now()) {
@@ -921,7 +997,12 @@ export class AuthService {
       update: { code: codeHash, expiresAt, attempts: 0 },
     });
 
-    await this.mailProvider.sendOtpEmail(email, code, 'merchant');
+    try {
+      await this.mailProvider.sendOtpEmail(email, code, 'merchant');
+    } catch {
+      this.logger.error(`OTP email delivery failed for ${email}`);
+      throw new HttpException('Impossible d\'envoyer l\'email. Veuillez réessayer.', HttpStatus.SERVICE_UNAVAILABLE);
+    }
     this.logger.log(`${logLabel} OTP sent to ${email}`);
   }
 
@@ -978,15 +1059,22 @@ export class AuthService {
     );
 
     // Atomically delete OTP and mark email as verified
+    let merchantNom: string | null = null;
     await this.txRunner.run(async (tx) => {
       await tx.otp.delete({ where: { id: otpId } });
-      await tx.merchant.update({
+      const updated = await tx.merchant.update({
         where: { email: normalizedEmail },
         data: { emailVerified: true },
+        select: { nom: true },
       });
+      merchantNom = updated.nom;
     });
 
     this.logger.log(`Email verified for ${normalizedEmail}`);
+
+    // Send welcome email now that OTP is validated
+    this.mailProvider.sendWelcomeMerchant(normalizedEmail, merchantNom ?? '')
+      .catch((err) => this.logger.warn('Welcome email failed', errMsg(err)));
 
     return { success: true, message: 'Email vérifié avec succès.' };
   }

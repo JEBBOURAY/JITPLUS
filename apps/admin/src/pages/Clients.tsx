@@ -1,10 +1,30 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getClients } from '../api';
 import { ClientRow, Pagination } from '../types';
 import { C, S } from '../theme';
 import { fmtDate } from '../utils/format';
 import { getErrorMessage } from '@jitplus/shared';
+import { useDebouncedSearch } from '../utils/useDebouncedSearch';
+
+const STATUSES = [
+  { value: '', label: 'Tous' },
+  { value: 'active', label: 'Actifs' },
+  { value: 'deactivated', label: 'Desactives' },
+];
+
+const pillStyle = (active: boolean): React.CSSProperties => ({
+  padding: '5px 12px',
+  fontSize: 12,
+  fontWeight: 500,
+  fontFamily: 'inherit',
+  borderRadius: 'var(--radius-sm)',
+  border: `1px solid ${active ? C.primary : C.border}`,
+  background: active ? C.primary : 'transparent',
+  color: active ? '#fff' : C.textMuted,
+  cursor: 'pointer',
+  transition: 'all 0.15s ease',
+});
 
 export default function Clients() {
   const [clients, setClients] = useState<ClientRow[]>([]);
@@ -12,22 +32,15 @@ export default function Clients() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [search, setSearch, debouncedSearch] = useDebouncedSearch(() => setPage(1));
+  const [status, setStatus] = useState('');
   const navigate = useNavigate();
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  // Debounce search input
-  useEffect(() => {
-    debounceRef.current = setTimeout(() => { setDebouncedSearch(search); setPage(1); }, 350);
-    return () => clearTimeout(debounceRef.current);
-  }, [search]);
-
-  const load = useCallback(async (p: number, q?: string) => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const res = await getClients(p, 20, q || undefined);
+      const res = await getClients(page, 20, debouncedSearch || undefined, status || undefined);
       setClients(res.clients);
       setPagination(res.pagination);
     } catch (e) {
@@ -35,33 +48,39 @@ export default function Clients() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [page, debouncedSearch, status]);
 
-  useEffect(() => { load(page, debouncedSearch); }, [load, page, debouncedSearch]);
+  useEffect(() => { load(); }, [load]);
+
+  const resetPage = () => setPage(1);
 
   return (
     <div>
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <h2 style={{ margin: 0, fontWeight: 800, fontSize: 22 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <h2 style={{ margin: 0, fontWeight: 700, fontSize: 22, letterSpacing: '-0.02em' }}>
           Clients (JitPlus){' '}
           {pagination && <span style={{ color: C.textMuted, fontSize: 14, fontWeight: 400 }}>({pagination.total})</span>}
         </h2>
         <input
           value={search}
           onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-          placeholder="🔍  Nom, email ou téléphone…"
+          placeholder="Rechercher par nom, email ou telephone..."
           style={{
-            background: C.surface,
-            border: `1px solid ${C.border}`,
-            borderRadius: 8,
-            padding: '8px 14px',
-            color: C.text,
-            fontSize: 13,
-            outline: 'none',
+            ...S.input,
             width: 280,
+            background: C.surface,
           }}
         />
+      </div>
+
+      {/* Filters */}
+      <div style={{ display: 'flex', gap: 4, marginBottom: 20 }}>
+        {STATUSES.map((s) => (
+          <button key={s.value} onClick={() => { setStatus(s.value); resetPage(); }} style={pillStyle(status === s.value)}>
+            {s.label}
+          </button>
+        ))}
       </div>
 
       {/* Table */}

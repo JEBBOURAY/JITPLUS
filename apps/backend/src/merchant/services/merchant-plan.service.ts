@@ -254,7 +254,7 @@ export class MerchantPlanService {
       await this.pushProvider.sendToMerchant(
         merchant.pushToken,
         '🎉 Plan Premium activé !',
-        'Votre abonnement JitPlus Premium est activé. Profitez de toutes les fonctionnalités sans limite.',
+        'Félicitations ! Votre abonnement JitPlus Premium est maintenant actif. Profitez de toutes les fonctionnalités sans limite.',
         { type: 'plan_activated' },
       );
     }
@@ -291,11 +291,8 @@ export class MerchantPlanService {
     await this.invalidatePlanCache(merchantId);
     this.logger.log(`Applied ${months} referral months for merchant ${merchantId}, expires ${expiresAt.toISOString()}`);
 
-    // Credit referrers now that this merchant activated PREMIUM (fire-and-forget)
-    this.clientReferralService.creditClientForMerchant(merchantId)
-      .catch((err) => this.logger.error(`Client referral credit failed for merchant ${merchantId}`, err?.stack));
-    this.merchantReferralService.creditReferrerOnPayment(merchantId)
-      .catch((err) => this.logger.error(`Merchant referral credit failed for merchant ${merchantId}`, err?.stack));
+    // Note: referral months are free — do NOT credit the referrer here.
+    // Referrer bonus is only granted when the referred merchant pays for PREMIUM.
 
     return { planExpiresAt: expiresAt, monthsApplied: months };
   }
@@ -320,8 +317,8 @@ export class MerchantPlanService {
     if (merchant?.pushToken) {
       await this.pushProvider.sendToMerchant(
         merchant.pushToken,
-        'Plan mis à jour',
-        'Votre accès Premium a été désactivé. Votre compte est maintenant en plan Gratuit.',
+        '📋 Plan modifié — Gratuit',
+        'Votre accès Premium a été désactivé. Votre commerce fonctionne désormais avec le plan Gratuit.',
         { type: 'plan_revoked' },
       );
     }

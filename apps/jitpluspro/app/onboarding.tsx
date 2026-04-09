@@ -16,6 +16,7 @@ import { useTheme, brandGradient, brandGradientFull, palette } from '@/contexts/
 import { useLanguage } from '@/contexts/LanguageContext';
 import api from '@/services/api';
 import { getErrorMessage } from '@/utils/error';
+import { logWarn } from '@/utils/devLogger';
 import {
   StepSlide,
   ProgressDots,
@@ -25,6 +26,7 @@ import {
   StepScan,
   StepDone,
 } from '@/components/onboarding';
+
 
 // â”€â”€ Step IDs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const STEPS = ['welcome', 'logo', 'reward', 'scan', 'done'] as const;
@@ -46,6 +48,9 @@ export default function OnboardingScreen() {
   const [logoUri, setLogoUri] = useState<string | null>(merchant?.logoUrl ?? null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
 
+  // â"€â"€ Step: Store â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+  // Store configuration is now handled during registration
+
   // â”€â”€ Step 3: Reward â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [loyaltyType, setLoyaltyType] = useState<'POINTS' | 'STAMPS'>(merchant?.loyaltyType === 'STAMPS' ? 'STAMPS' : 'POINTS');
   const isStamps = loyaltyType === 'STAMPS';
@@ -58,7 +63,7 @@ export default function OnboardingScreen() {
   const rewardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [hasAccumulationLimit, setHasAccumulationLimit] = useState(false);
   const [accumulationLimit, setAccumulationLimit] = useState('');
-  const [pointsRate, setPointsRate] = useState(merchant?.pointsRate?.toString() || '10');
+  const [pointsRate, setPointsRate] = useState(merchant?.pointsRate?.toString() ?? '10');
 
   const currentStep = STEPS[stepIndex];
   const TOTAL_STEPS = STEPS.length - 1;
@@ -80,13 +85,13 @@ export default function OnboardingScreen() {
       await completeOnboarding();
     } catch {
       // Best-effort — if the API call fails, still proceed so the user isn't stuck.
-      if (__DEV__) console.warn('[Onboarding] completeOnboarding failed');
+      logWarn('Onboarding', 'completeOnboarding failed');
     }
-    router.replace('/scan-qr');
+    router.replace('/(tabs)');
   }, [completeOnboarding, router]);
 
   // â”€â”€ Logo upload â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  const pickAndUploadLogo = async () => {
+  const pickAndUploadLogo = useCallback(async () => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
@@ -118,17 +123,17 @@ export default function OnboardingScreen() {
     } finally {
       setUploadingLogo(false);
     }
-  };
+  }, [t, updateMerchant]);
 
   // â”€â”€ Save loyalty type to backend â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  const handleLoyaltyTypeChange = (type: 'POINTS' | 'STAMPS') => {
+  const handleLoyaltyTypeChange = useCallback((type: 'POINTS' | 'STAMPS') => {
     setLoyaltyType(type);
     setRewardName('');
     setRewardCost('');
-  };
+  }, []);
 
   // â”€â”€ Reward creation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  const handleCreateReward = async () => {
+  const handleCreateReward = useCallback(async () => {
     if (!rewardName.trim()) {
       Alert.alert(t('common.error'), t('onboarding.rewardNameRequired'));
       return;
@@ -165,21 +170,27 @@ export default function OnboardingScreen() {
     } finally {
       setCreatingReward(false);
     }
-  };
-
-  // â”€â”€ If team member, skip onboarding â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  }, [rewardName, rewardCost, rewardDesc, isStamps, loyaltyType, stampEarningMode, pointsRate, hasAccumulationLimit, accumulationLimit, t, updateMerchant, goNext]);
+  // ── If team member, skip onboarding ─────────────────────────────
   React.useEffect(() => {
     if (isTeamMember) {
       completeOnboarding()
         .then(() => router.replace('/scan-qr'))
         .catch(() => router.replace('/scan-qr'));
-    }    // Cleanup reward timer on unmount to prevent memory leak
+    }
+    // Cleanup reward timer on unmount to prevent memory leak
     return () => {
       if (rewardTimerRef.current) {
         clearTimeout(rewardTimerRef.current);
         rewardTimerRef.current = null;
       }
-    };  }, [isTeamMember]);
+    };
+  }, [isTeamMember, completeOnboarding, router]);
+
+  const handleScanNow = useCallback(async () => {
+    try { await completeOnboarding(); } catch { /* non-blocking */ }
+    router.replace('/(tabs)');
+  }, [completeOnboarding, router]);
 
   const bottomPadding = insets.bottom + 100;
 
@@ -216,7 +227,7 @@ export default function OnboardingScreen() {
 
         {currentStep !== 'welcome' && currentStep !== 'done' && (
           <Text style={styles.stepLabel}>
-            {t('onboarding.stepOf', { current: stepIndex, total: TOTAL_STEPS - 1 })}
+            {t('onboarding.stepOf', { current: stepIndex, total: TOTAL_STEPS })}
           </Text>
         )}
 
@@ -258,7 +269,7 @@ export default function OnboardingScreen() {
         <StepSlide visible={currentStep === 'scan'} direction={direction}>
           <StepScan
             theme={theme} t={t} bottomPadding={bottomPadding}
-            onScanNow={async () => { try { await completeOnboarding(); } catch { /* non-blocking */ } router.replace('/scan-qr'); }}
+            onScanNow={handleScanNow}
           />
         </StepSlide>
 

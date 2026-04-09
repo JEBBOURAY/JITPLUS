@@ -15,7 +15,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { THROTTLE_TTL } from '../common/constants';
 import { Request } from 'express';
-import { AuditAction } from '@prisma/client';
+import { AuditAction, PayoutStatus } from '@prisma/client';
 import { AuditLogService, AuditLogContext } from './audit-log.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AdminGuard } from '../auth/guards/admin.guard';
@@ -25,7 +25,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtPayload } from '../common/interfaces/jwt-payload.interface';
 import { AdminLoginDto } from './dto/admin-login.dto';
-import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
+import { PaginationQueryDto, MerchantListQueryDto, ClientListQueryDto, NotificationListQueryDto } from '../common/dto/pagination-query.dto';
 import { AuditLogQueryDto } from './dto/audit-log-query.dto';
 import { BanMerchantDto } from './dto/ban-merchant.dto';
 import { SetPlanDatesDto } from './dto/set-plan-dates.dto';
@@ -87,6 +87,19 @@ export class AdminController {
     return result;
   }
 
+  // ── Admin logout ──────────────────────────────────────────────────────────
+
+  @Post('logout')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Admin logout — revokes the current session token' })
+  async logout(@CurrentUser() user: JwtPayload) {
+    if (user.sessionId) {
+      await this.adminService.logout(user.sessionId);
+    }
+    return { message: 'Déconnecté' };
+  }
+
   // ── Protected: all routes below require admin JWT ────────────────────────
 
   @Get('stats')
@@ -99,11 +112,8 @@ export class AdminController {
   @Get('merchants')
   @UseGuards(JwtAuthGuard, AdminGuard)
   @ApiOperation({ summary: 'Paginated list of all merchants' })
-  async listMerchants(
-    @Query() { page, limit }: PaginationQueryDto,
-    @Query('search') search?: string,
-  ) {
-    return this.adminService.listMerchants(page, limit, search);
+  async listMerchants(@Query() query: MerchantListQueryDto) {
+    return this.adminService.listMerchants(query.page, query.limit, query.search, query.plan, query.status, query.categorie);
   }
 
   @Get('merchants/:id')
@@ -296,22 +306,15 @@ export class AdminController {
   @Get('clients')
   @UseGuards(JwtAuthGuard, AdminGuard)
   @ApiOperation({ summary: 'Paginated list of all registered clients with contact info' })
-  async listClients(
-    @Query() { page, limit }: PaginationQueryDto,
-    @Query('search') search?: string,
-  ) {
-    return this.adminService.listClients(page, limit, search);
+  async listClients(@Query() query: ClientListQueryDto) {
+    return this.adminService.listClients(query.page, query.limit, query.search, query.status);
   }
 
   @Get('notifications')
   @UseGuards(JwtAuthGuard, AdminGuard)
   @ApiOperation({ summary: 'Paginated list of all notifications across merchants' })
-  async listNotifications(
-    @Query() { page, limit }: PaginationQueryDto,
-    @Query('channel') channel?: string,
-    @Query('search') search?: string,
-  ) {
-    return this.adminService.listNotifications(page, limit, channel, search);
+  async listNotifications(@Query() query: NotificationListQueryDto) {
+    return this.adminService.listNotifications(query.page, query.limit, query.channel, query.search);
   }
 
   // ── Client management ───────────────────────────────────────────────────
@@ -492,4 +495,33 @@ export class AdminController {
   async listTopReferrers(@Query('limit') limit?: string) {
     return this.adminService.listTopReferrers(limit ? parseInt(limit, 10) : 20);
   }
+
+  @Get('referrals/payout-requests')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @ApiOperation({ summary: 'List client payout requests' })
+  async listPayoutRequests(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('status') status?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.adminService.listPayoutRequests(
+      page ? parseInt(page, 10) : 1,
+      limit ? parseInt(limit, 10) : 20,
+      status as PayoutStatus,
+      search,
+    );
+  }
+
+  @Patch('referrals/payout-requests/:id/status')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @ApiOperation({ summary: 'Approve or reject a payout request' })
+  async updatePayoutRequestStatus(
+    @Param('id') id: string,
+    @Body('status') status: PayoutStatus,
+    @CurrentUser() admin: JwtPayload,
+  ) {
+    return this.adminService.updatePayoutRequestStatus(id, status, admin.sub);
+  }
 }
+

@@ -1,4 +1,4 @@
-import React, { useRef, useCallback, useState } from 'react';
+import React, { useRef, useCallback, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,6 @@ import {
   FlatList,
   NativeSyntheticEvent,
   NativeScrollEvent,
-  Alert,
   useWindowDimensions,
 } from 'react-native';
 import { router } from 'expo-router';
@@ -16,14 +15,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ScanLine, Users, BarChart3, Bell, Gift, ArrowRight } from 'lucide-react-native';
 import { useTheme, palette, brandGradient } from '@/contexts/ThemeContext';
-import { useLanguage } from '@/contexts/LanguageContext';
+import { useLanguage, LANGUAGES } from '@/contexts/LanguageContext';
 import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
-
-const LANGS = [
-  { code: 'fr' as const, flag: '\uD83C\uDDEB\uD83C\uDDF7' },
-  { code: 'en' as const, flag: '\uD83C\uDDEC\uD83C\uDDE7' },
-  { code: 'ar' as const, flag: '\uD83C\uDDF8\uD83C\uDDE6' },
-] as const;
 
 interface Slide {
   key: string;
@@ -39,7 +32,7 @@ export default function WelcomeScreen() {
   const flatListRef = useRef<FlatList>(null);
   const { width: SCREEN_WIDTH } = useWindowDimensions();
 
-  const slides: Slide[] = [
+  const slides = useMemo<Slide[]>(() => [
     {
       key: 'scanner',
       icon: <ScanLine size={ms(56)} color={palette.violet} />,
@@ -70,7 +63,7 @@ export default function WelcomeScreen() {
       titleKey: 'welcome.featureRewardsTitle',
       descKey: 'welcome.featureRewardsDesc',
     },
-  ];
+  ], []);
 
   const isLast = activeIndex === slides.length - 1;
 
@@ -113,7 +106,7 @@ export default function WelcomeScreen() {
       {/* Language picker */}
       <SafeAreaView edges={['top']} style={styles.langBar}>
         <View style={styles.langRow}>
-          {LANGS.map(({ code, flag }) => {
+          {LANGUAGES.map(({ code, flag }) => {
             const active = locale === code;
             return (
               <TouchableOpacity
@@ -122,13 +115,6 @@ export default function WelcomeScreen() {
                 onPress={async () => {
                   if (code !== locale) {
                     await setLocale(code);
-                    if (code === 'ar' || locale === 'ar') {
-                      Alert.alert(
-                        t('profile.language'),
-                        t('profile.restartRequired'),
-                        [{ text: t('common.ok') }],
-                      );
-                    }
                   }
                 }}
                 style={[
@@ -186,7 +172,7 @@ export default function WelcomeScreen() {
             <Text style={styles.nextBtnText}>
               {isLast ? t('welcome.start') : t('welcome.next')}
             </Text>
-            <ArrowRight size={ms(20)} color="#FFFFFF" style={{ marginLeft: wp(8) }} />
+            <ArrowRight size={ms(20)} color="#FFFFFF" style={styles.nextBtnIcon} />
           </LinearGradient>
         </TouchableOpacity>
 
@@ -257,6 +243,7 @@ const styles = StyleSheet.create({
     fontSize: fontSize.md,
     color: '#FFFFFF',
   },
+  nextBtnIcon: { marginLeft: wp(8) },
   madeIn: {
     fontFamily: 'Lexend_400Regular',
     fontSize: fontSize.xs,

@@ -1,4 +1,5 @@
 import { getServerBaseUrl } from '@/services/api';
+import { logWarn } from '@/utils/devLogger';
 
 /**
  * Resolve an image URL for display.
@@ -68,7 +69,7 @@ export function resolveImageUrl(path: string): string {
       }
       return path;
     } catch {
-      if (__DEV__) console.warn('[imageUrl] invalid URL:', path);
+      logWarn('imageUrl', 'invalid URL:', path);
       return '';
     }
   }

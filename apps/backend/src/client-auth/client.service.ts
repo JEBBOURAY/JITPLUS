@@ -4,7 +4,6 @@ import { Cache } from 'cache-manager';
 import {
   CLIENT_REPOSITORY, type IClientRepository,
   LOYALTY_CARD_REPOSITORY, type ILoyaltyCardRepository,
-  TRANSACTION_REPOSITORY, type ITransactionRepository,
   MERCHANT_REPOSITORY, type IMerchantRepository,
   NOTIFICATION_REPOSITORY, type INotificationRepository,
   CLIENT_NOTIFICATION_STATUS_REPOSITORY, type IClientNotificationStatusRepository,
@@ -15,17 +14,6 @@ import * as bcrypt from 'bcryptjs';
 import { buildPagination } from '../common/utils';
 import { MERCHANTS_LIST_CACHE_TTL, MERCHANT_DETAIL_CACHE_TTL, UNREAD_COUNT_CACHE_TTL } from '../common/constants';
 
-/** Great-circle distance in km (Haversine formula). */
-function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
 @Injectable()
 export class ClientService {
   private readonly logger = new Logger(ClientService.name);
@@ -33,7 +21,6 @@ export class ClientService {
   constructor(
     @Inject(CLIENT_REPOSITORY) private clientRepo: IClientRepository,
     @Inject(LOYALTY_CARD_REPOSITORY) private loyaltyCardRepo: ILoyaltyCardRepository,
-    @Inject(TRANSACTION_REPOSITORY) private transactionRepo: ITransactionRepository,
     @Inject(MERCHANT_REPOSITORY) private merchantRepo: IMerchantRepository,
     @Inject(NOTIFICATION_REPOSITORY) private notificationRepo: INotificationRepository,
     @Inject(CLIENT_NOTIFICATION_STATUS_REPOSITORY) private clientNotifStatusRepo: IClientNotificationStatusRepository,
@@ -303,66 +290,14 @@ export class ClientService {
     };
   }
 
-  async getTransactions(clientId: string, page: number = 1, limit: number = 20) {
-    const skip = (page - 1) * limit;
-    const where = { clientId, type: { not: 'LOYALTY_PROGRAM_CHANGE' as const } };
-
-    const [transactions, total] = await Promise.all([
-      this.transactionRepo.findMany({
-        where,
-        select: {
-          id: true,
-          merchantId: true,
-          clientId: true,
-          amount: true,
-          points: true,
-          type: true,
-          note: true,
-          createdAt: true,
-          merchant: {
-            select: {
-              id: true,
-              nom: true,
-              categorie: true,
-            },
-          },
-        },
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: limit,
-      }),
-      this.transactionRepo.count({ where }),
-    ]);
-
-    return {
-      transactions: transactions.map((t: any) => ({
-        id: t.id,
-        merchantId: t.merchantId,
-        clientId: t.clientId,
-        amount: t.amount,
-        pointsEarned: t.points,
-        type: t.type === 'EARN_POINTS' ? 'EARN' : t.type === 'ADJUST_POINTS' ? 'ADJUST' : 'REDEEM',
-        note: t.note ?? null,
-        createdAt: t.createdAt,
-        merchant: t.merchant
-          ? {
-              nomBoutique: t.merchant.nom,
-              categorie: t.merchant.categorie,
-            }
-          : undefined,
-      })),
-      pagination: buildPagination(total, page, limit),
-    };
-  }
-
   async getMerchantById(id: string, clientId: string) {
     // Cache the merchant data (shared across all clients)
     const merchantCacheKey = `merchant:detail:${id}`;
     let m = await this.cache.get<any>(merchantCacheKey);
 
     if (!m) {
-      m = await this.merchantRepo.findUnique({
-        where: { id, isActive: true },
+      m = await this.merchantRepo.findFirst({
+        where: { id, isActive: true, stores: { some: { isActive: true } } },
         select: {
           id: true,
           nom: true,
@@ -510,7 +445,11 @@ export class ClientService {
     const skip = (page - 1) * limit;
     const [merchants, total] = await Promise.all([
       this.merchantRepo.findMany({
-          where: { isActive: true, deletedAt: null },
+        where: {
+          isActive: true,
+          deletedAt: null,
+          stores: { some: { isActive: true } },
+        },
         select: {
           id: true,
           nom: true,
@@ -542,7 +481,13 @@ export class ClientService {
         skip,
         take: limit,
       }),
-      this.merchantRepo.count({ where: { isActive: true } }),
+      this.merchantRepo.count({
+        where: {
+          isActive: true,
+          deletedAt: null,
+          stores: { some: { isActive: true } },
+        },
+      }),
     ]);
 
     const result = this.formatMerchantList(merchants, total, page, limit);
@@ -595,142 +540,6 @@ export class ClientService {
       merchants: entries,
       pagination: buildPagination(total, page, limit),
     };
-  }
-
-  /**
-   * Returns active merchants within `radiusKm` of the given coordinates,
-   * enriched with the client's loyalty-card balance (userPoints) for each.
-   * Distance filtering is done in-process with the Haversine formula.
-   * Max radius is capped at 50 km to prevent accidental large queries.
-   */
-  async getNearbyMerchants(clientId: string, lat: number, lng: number, radiusKm = 5) {
-    const safeRadius = Math.min(radiusKm, 50);
-
-    // Bounding-box pre-filter: 1° lat ≈ 111 km
-    const latDelta = safeRadius / 111;
-    const lngDelta = safeRadius / (111 * Math.cos((lat * Math.PI) / 180));
-
-    const merchants = await this.merchantRepo.findMany({
-      where: {
-        isActive: true,
-        latitude:  { gte: lat - latDelta, lte: lat + latDelta },
-        longitude: { gte: lng - lngDelta, lte: lng + lngDelta },
-      },
-      select: {
-        id: true, nom: true, categorie: true, description: true,
-        ville: true, quartier: true, adresse: true,
-        latitude: true, longitude: true,
-        loyaltyType: true, conversionRate: true, stampsForReward: true,
-        logoUrl: true,
-        stores: {
-          where: { isActive: true },
-          select: {
-            id: true, nom: true, ville: true, quartier: true,
-            adresse: true, latitude: true, longitude: true,
-          },
-        },
-      },
-      take: 200,
-    });
-
-    // Also find merchants whose stores are in the bounding box even if the merchant itself isn't
-    const merchantsViaStores = await this.merchantRepo.findMany({
-      where: {
-        isActive: true,
-        stores: {
-          some: {
-            isActive: true,
-            latitude:  { gte: lat - latDelta, lte: lat + latDelta },
-            longitude: { gte: lng - lngDelta, lte: lng + lngDelta },
-          },
-        },
-        // Exclude merchants already fetched above
-        NOT: {
-          latitude:  { gte: lat - latDelta, lte: lat + latDelta },
-          longitude: { gte: lng - lngDelta, lte: lng + lngDelta },
-        },
-      },
-      select: {
-        id: true, nom: true, categorie: true, description: true,
-        ville: true, quartier: true, adresse: true,
-        latitude: true, longitude: true,
-        loyaltyType: true, conversionRate: true, stampsForReward: true,
-        logoUrl: true,
-        stores: {
-          where: { isActive: true },
-          select: {
-            id: true, nom: true, ville: true, quartier: true,
-            adresse: true, latitude: true, longitude: true,
-          },
-        },
-      },
-      take: 200,
-    });
-
-    const allMerchants = [...merchants, ...merchantsViaStores];
-
-    // Build flat list of points: merchant itself + each store with coords
-    type NearbyEntry = {
-      merchantId: string; lat: number; lng: number;
-      merchant: (typeof allMerchants)[0]; store?: (typeof allMerchants)[0]['stores'][0];
-    };
-    
-    // Set a strict candidate ceiling to protect the event loop.
-    // At most 400 points to evaluate.
-    const candidates: NearbyEntry[] = [];
-    const MAX_CANDIDATES = 400; 
-
-    for (const m of allMerchants) {
-      if (candidates.length >= MAX_CANDIDATES) break;
-      if (m.latitude != null && m.longitude != null) {
-        candidates.push({ merchantId: m.id, lat: m.latitude, lng: m.longitude, merchant: m });
-      }
-      for (const s of m.stores) {
-        if (candidates.length >= MAX_CANDIDATES) break;
-        if (s.latitude != null && s.longitude != null) {
-          // Skip if store coords are identical to merchant's main coords
-          if (s.latitude === m.latitude && s.longitude === m.longitude) continue;
-          candidates.push({ merchantId: m.id, lat: s.latitude, lng: s.longitude, merchant: m, store: s });
-        }
-      }
-    }
-
-    const nearby = candidates.filter((c) => haversineKm(lat, lng, c.lat, c.lng) <= safeRadius)
-      // Cap final returned array size to save network payload weight
-      .slice(0, 100);
-
-    if (nearby.length === 0) return [];
-
-    const nearbyIds = [...new Set(nearby.map((c) => c.merchantId))];
-    const cards = await this.loyaltyCardRepo.findMany({
-      where: { clientId, merchantId: { in: nearbyIds } },
-      select: { merchantId: true, points: true },
-    });
-
-    const pointsMap = new Map(cards.map((c: any) => [c.merchantId, c.points]));
-
-    return nearby.map((c: any) => {
-      const m = c.merchant;
-      const s = c.store;
-      return {
-        id: m.id,
-        nomBoutique: m.nom,
-        categorie: m.categorie,
-        description: m.description,
-        ville: s?.ville ?? m.ville,
-        adresse: s
-          ? (s.adresse || (s.quartier ? `${s.quartier}, ${s.ville ?? m.ville}` : (m.adresse || m.ville)))
-          : (m.adresse || (m.quartier ? `${m.quartier}, ${m.ville}` : m.ville)),
-        latitude: c.lat,
-        longitude: c.lng,
-        loyaltyType: m.loyaltyType,
-        conversionRate: m.conversionRate,
-        stampsForReward: m.stampsForReward,
-        logoUrl: m.logoUrl ?? null,
-        userPoints: pointsMap.get(m.id) ?? 0,
-        ...(s ? { storeId: s.id, storeName: s.nom } : {}),
-      };
-    });
   }
 
   /**

@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { Save, Gift, Check, Settings as SettingsIcon, ArrowLeft, Stamp, Star, AlertTriangle, RefreshCw, ShieldCheck, ChevronDown, ChevronUp } from 'lucide-react-native';
+import { Save, Gift, Check, Settings as SettingsIcon, ArrowLeft, Stamp, Star, AlertTriangle, RefreshCw, ShieldCheck, ChevronDown, ChevronUp, Shield } from 'lucide-react-native';
 import { useGuardedCallback } from '@/hooks/useGuardedCallback';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -92,7 +92,7 @@ function settingsReducer(state: SettingsState, action: SettingsAction): Settings
 }
 
 export default function SettingsScreen() {
-  const { merchant, loading: authLoading, updateMerchant } = useAuth();
+  const { merchant, loading: authLoading, updateMerchant, isTeamMember } = useAuth();
   const theme = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -249,6 +249,19 @@ export default function SettingsScreen() {
       set({ saving: false });
     }
   }, [loyaltyType, stampEarningMode, pointsRate, conversionRate, stampsForReward, conversionX, conversionY, hasAccumulationLimit, accumulationLimit, merchant, updateMerchant, t]);
+
+  if (isTeamMember) {
+    return (
+      <View style={[styles.centered, { backgroundColor: theme.bg }]}>
+        <Shield size={48} color={theme.textMuted} strokeWidth={1.5} />
+        <Text style={{ color: theme.text, fontWeight: '600', fontSize: 16, marginTop: 16 }}>{t('common.ownerOnly')}</Text>
+        <Text style={{ color: theme.textMuted, textAlign: 'center', marginTop: 8, paddingHorizontal: 32 }}>{t('common.ownerOnlyMsg')}</Text>
+        <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 16, paddingHorizontal: 24, paddingVertical: 10, backgroundColor: theme.primary, borderRadius: 8 }}>
+          <Text style={{ color: '#fff', fontWeight: '600' }}>{t('common.back')}</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   if (authLoading || !merchant) {
     return (
@@ -596,65 +609,6 @@ export default function SettingsScreen() {
                 </View>
               </View>
               )}
-
-              <View style={styles.fieldGroup}>
-                <Text style={[styles.fieldLabel, { color: theme.text }]}>
-                  {t('settingsPage.stampsForGift')}
-                </Text>
-                <Text style={[styles.fieldHint, { color: theme.textMuted }]}>
-                  {t('settingsPage.stampsForGiftHint', { count: stampsForReward || '__' })}
-                </Text>
-                <View style={styles.inputRow}>
-                  <TextInput
-                    style={[
-                      styles.input,
-                      {
-                        backgroundColor: theme.bgInput,
-                        color: theme.text,
-                        borderColor: theme.border,
-                      },
-                    ]}
-                    value={stampsForReward}
-                    onChangeText={(v) => set({ stampsForReward: v })}
-                    keyboardType="numeric"
-                    placeholder="10"
-                    placeholderTextColor={theme.textMuted}
-                  />
-                  <Text style={[styles.inputSuffix, { color: theme.textSecondary }]}>
-                    {t('settingsPage.stampsUnit')}
-                  </Text>
-                </View>
-              </View>
-
-              {/* â”€â”€ Stamp Preview â”€â”€ */}
-              <View style={[styles.stampPreview, { backgroundColor: theme.bg }]}>
-                <Text style={[styles.stampPreviewTitle, { color: theme.text }]}>
-                  {t('settingsPage.stampPreviewTitle')}
-                </Text>
-                <View style={styles.stampGrid}>
-                  {Array.from({ length: Math.min(parseInt(stampsForReward, 10) || 10, 20) }).map(
-                    (_, i) => (
-                      <View
-                        key={i}
-                        style={[
-                          styles.stampCircle,
-                          i < 3
-                            ? { backgroundColor: theme.primary, borderColor: theme.primary }
-                            : { backgroundColor: 'transparent', borderColor: theme.border },
-                        ]}
-                      >
-                        {i < 3 && <Check size={16} color='#fff' strokeWidth={2} />}
-                        {i === (parseInt(stampsForReward, 10) || 10) - 1 && i >= 3 && (
-                          <Gift size={20} color={theme.primary} />
-                        )}
-                      </View>
-                    ),
-                  )}
-                </View>
-                <Text style={[styles.stampPreviewHint, { color: theme.textMuted }]}>
-                  {t('settingsPage.stampPreviewHint', { count: stampsForReward || 10 })}
-                </Text>
-              </View>
             </View>
           )}
 

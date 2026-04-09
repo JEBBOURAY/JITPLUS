@@ -85,7 +85,7 @@ export class FirebaseService implements OnModuleInit, IPushProvider {
           notification: { channelId: androidChannelId, ...(imageUrl ? { imageUrl } : {}) },
         },
         apns: {
-          payload: { aps: { sound: 'default' } },
+          payload: { aps: { sound: 'default', badge: 1 } },
           fcmOptions: imageUrl ? { imageUrl } : undefined,
         },
         ...(data ? { data } : {}),

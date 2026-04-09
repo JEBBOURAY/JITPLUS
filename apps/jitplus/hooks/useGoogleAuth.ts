@@ -107,7 +107,7 @@ export function useGoogleAuth({ actionLabel, onCancel }: UseGoogleAuthOptions) {
         setIsLoading(false);
         if (result.isNewUser) {
           // New users: go to complete-profile immediately (no delay needed)
-          router.push('/complete-profile');
+          router.push('/complete-profile?isGoogleUser=1');
         } else {
           // Returning users: flash success state briefly before navigating
           setIsSuccess(true);

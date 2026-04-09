@@ -67,6 +67,7 @@ export interface Store {
   id: string;
   merchantId: string;
   nom: string;
+  description?: string;
   categorie?: MerchantCategory;
   ville?: string;
   quartier?: string;
@@ -75,6 +76,9 @@ export interface Store {
   longitude?: number;
   telephone?: string;
   email?: string;
+  logoUrl?: string;
+  coverUrl?: string;
+  socialLinks?: SocialLinks | null;
   isActive?: boolean;
   createdAt?: string;
   updatedAt?: string;
@@ -251,6 +255,7 @@ export interface NotificationRecord {
 
 export interface CreateStorePayload {
   nom: string;
+  description?: string;
   categorie?: string;
   ville?: string;
   quartier?: string;
@@ -258,6 +263,10 @@ export interface CreateStorePayload {
   latitude?: number;
   longitude?: number;
   telephone?: string;
+  email?: string;
+  logoUrl?: string;
+  coverUrl?: string;
+  socialLinks?: SocialLinks | null;
   isActive?: boolean;
 }
 

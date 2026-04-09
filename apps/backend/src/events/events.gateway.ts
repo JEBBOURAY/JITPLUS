@@ -3,6 +3,7 @@ import {
   WebSocketServer,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  OnGatewayInit,
 } from '@nestjs/websockets';
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -45,16 +46,52 @@ import {
   pingInterval: 25_000,
   pingTimeout: 20_000,
 })
-export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit {
   @WebSocketServer()
   server: Server;
 
   private readonly logger = new Logger(EventsGateway.name);
+  /** Re-verify tokens every 5 minutes to disconnect revoked sessions */
+  private static readonly TOKEN_RECHECK_MS = 5 * 60 * 1000;
+  private recheckInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     private jwtService: JwtService,
     private config: ConfigService,
   ) {}
+
+  afterInit() {
+    // Periodically re-verify all connected sockets' tokens
+    this.recheckInterval = setInterval(() => {
+      this.recheckConnectedTokens();
+    }, EventsGateway.TOKEN_RECHECK_MS);
+  }
+
+  /** Re-verify JWT for every connected socket; disconnect expired/revoked ones */
+  private recheckConnectedTokens() {
+    const sockets = this.server?.sockets?.sockets;
+    if (!sockets) return;
+
+    for (const [, socket] of sockets) {
+      const token =
+        socket.handshake.auth?.token ||
+        socket.handshake.headers?.authorization?.replace('Bearer ', '');
+      if (!token) {
+        socket.emit('auth_error', { message: 'Token missing' });
+        socket.disconnect(true);
+        continue;
+      }
+      try {
+        this.jwtService.verify(token, {
+          secret: this.config.getOrThrow<string>('JWT_SECRET'),
+        });
+      } catch {
+        this.logger.debug(`WS token expired/revoked for ${socket.data.userId}, disconnecting ${socket.id}`);
+        socket.emit('auth_error', { message: 'Token expired or revoked' });
+        socket.disconnect(true);
+      }
+    }
+  }
 
   async handleConnection(client: Socket) {
     try {

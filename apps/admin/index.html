@@ -2,54 +2,72 @@
 <html lang="fr">
   <head>
     <meta charset="UTF-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' http://localhost:3000 https://*.jitplus.app https://*.jitplus.ma; img-src 'self' data: https://storage.googleapis.com blob:; font-src 'self' data:; frame-src 'none'; object-src 'none'; base-uri 'self';" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; connect-src 'self' http://localhost:3000 https://*.jitplus.app https://*.jitplus.ma; img-src 'self' data: https://storage.googleapis.com blob:; font-src 'self' data: https://fonts.gstatic.com; frame-src 'none'; object-src 'none'; base-uri 'self';" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>JitPlus — Admin</title>
     <style>
       :root {
-        --theme-bg: #F8FAFC;
+        --theme-bg: #F7F8FA;
         --theme-surface: #FFFFFF;
-        --theme-surface-hover: #F1F5F9;
-        --theme-border: #E2E8F0;
-        --theme-text: #0F172A;
-        --theme-text-muted: #64748B;
-        --theme-primary: #7C3AED;
-        --theme-primary-light: #8B5CF6;
-        --theme-cyan: #06B6D4;
-        --theme-green: #10B981;
-        --theme-red: #EF4444;
-        --theme-amber: #F59E0B;
-        --theme-blue: #3b82f6;
+        --theme-surface-hover: #F1F3F5;
+        --theme-surface-alt: #F0F2F5;
+        --theme-border: #E4E7EC;
+        --theme-border-light: #F0F2F5;
+        --theme-text: #101828;
+        --theme-text-muted: #667085;
+        --theme-primary: #6C47FF;
+        --theme-primary-light: #8B6FFF;
+        --theme-primary-dark: #5234CC;
+        --theme-cyan: #0EA5E9;
+        --theme-green: #12B76A;
+        --theme-red: #F04438;
+        --theme-amber: #F79009;
+        --theme-blue: #2E90FA;
 
-        --theme-primary-alpha: rgba(124, 58, 237, 0.15);
-        --theme-green-alpha: rgba(16, 185, 129, 0.15);
-        --theme-red-alpha: rgba(239, 68, 68, 0.15);
-      }
-      @media (prefers-color-scheme: dark) {
-        :root {
-          --theme-bg: #0B0F14;
-          --theme-surface: #1A1F2B;
-          --theme-surface-hover: #2D3443;
-          --theme-border: rgba(255,255,255,0.10);
-          --theme-text: #F1F5F9;
-          --theme-text-muted: #9CA3AF;
-          --theme-primary: #A78BFA;
-          --theme-primary-light: #C4B5FD;
-          --theme-cyan: #22d3ee;
-          --theme-green: #34D399;
-          --theme-red: #F87171;
-          --theme-amber: #FBBF24;
-          --theme-blue: #60a5fa;
+        --theme-primary-alpha: rgba(108, 71, 255, 0.10);
+        --theme-green-alpha: rgba(18, 183, 106, 0.10);
+        --theme-red-alpha: rgba(240, 68, 56, 0.10);
 
-          --theme-primary-alpha: rgba(167, 139, 250, 0.15);
-          --theme-green-alpha: rgba(52, 211, 153, 0.15);
-          --theme-red-alpha: rgba(248, 113, 113, 0.15);
-        }
+        --shadow-sm: 0 1px 2px rgba(16,24,40,0.05);
+        --shadow-md: 0 4px 12px rgba(16,24,40,0.08);
+        --shadow-lg: 0 12px 40px rgba(16,24,40,0.12);
+        --radius-sm: 6px;
+        --radius-md: 10px;
+        --radius-lg: 14px;
       }
       *, *::before, *::after { box-sizing: border-box; }
-      body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol'; background: var(--theme-bg); color: var(--theme-text); }
+      body {
+        margin: 0;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        background: var(--theme-bg);
+        color: var(--theme-text);
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        font-feature-settings: 'cv11', 'ss01';
+      }
       #root { min-height: 100vh; }
+      ::selection {
+        background: var(--theme-primary-alpha);
+        color: var(--theme-primary);
+      }
+      ::-webkit-scrollbar { width: 6px; height: 6px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: var(--theme-border); border-radius: 3px; }
+      ::-webkit-scrollbar-thumb:hover { background: var(--theme-text-muted); }
+      input:focus, textarea:focus, select:focus {
+        outline: none;
+        border-color: var(--theme-primary) !important;
+        box-shadow: 0 0 0 3px var(--theme-primary-alpha) !important;
+      }
+      button { transition: all 0.15s ease; }
+      button:hover { opacity: 0.9; }
+      button:active { transform: scale(0.98); }
+      a { transition: color 0.15s ease; }
+      table { border-spacing: 0; }
     </style>
   </head>
   <body>

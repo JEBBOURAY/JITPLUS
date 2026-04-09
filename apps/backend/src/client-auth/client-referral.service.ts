@@ -1,10 +1,12 @@
-import { Injectable, NotFoundException, Inject, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Inject, Logger } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
-import { Prisma } from '@prisma/client';
+import { Prisma, PayoutMethod, PayoutStatus } from '@prisma/client';
+import { RequestPayoutDto } from './dto';
 import { Cache } from 'cache-manager';
 import {
   CLIENT_REPOSITORY, type IClientRepository,
   CLIENT_REFERRAL_REPOSITORY, type IClientReferralRepository,
+  PAYOUT_REQUEST_REPOSITORY, type IPayoutRequestRepository,
   MERCHANT_REPOSITORY, type IMerchantRepository,
   TRANSACTION_RUNNER,
 } from '../common/repositories';
@@ -38,6 +40,7 @@ export class ClientReferralService {
   constructor(
     @Inject(CLIENT_REPOSITORY) private clientRepo: IClientRepository,
     @Inject(CLIENT_REFERRAL_REPOSITORY) private clientReferralRepo: IClientReferralRepository,
+    @Inject(PAYOUT_REQUEST_REPOSITORY) private payoutReqRepo: IPayoutRequestRepository,
     @Inject(MERCHANT_REPOSITORY) private merchantRepo: IMerchantRepository,
     @Inject(TRANSACTION_RUNNER) private readonly tx: ITransactionRunner,
     @Inject(CACHE_MANAGER) private readonly cache: Cache,
@@ -197,6 +200,49 @@ export class ClientReferralService {
     );
   }
 
+
+  async requestPayout(clientId: string, dto: RequestPayoutDto) {
+    if (dto.amount < 100) {
+      throw new BadRequestException('Le montant minimum est de 100 DH');
+    }
+    return this.tx.run(async (prisma) => {
+      const client = await prisma.client.findUnique({
+        where: { id: clientId },
+        select: { referralBalance: true },
+      });
+
+      if (!client) throw new NotFoundException('Client non trouv\u00e9');
+      if (client.referralBalance < dto.amount) {
+        throw new BadRequestException('Solde de parrainage insuffisant');
+      }
+
+      await prisma.client.update({
+        where: { id: clientId },
+        data: { referralBalance: { decrement: dto.amount } },
+      });
+
+      const request = await prisma.payoutRequest.create({
+        data: {
+          clientId,
+          amount: dto.amount,
+          method: dto.method as PayoutMethod,
+          accountDetails: dto.accountDetails ?? Prisma.DbNull,
+          status: PayoutStatus.PENDING,
+        },
+      });
+
+      await this.invalidateCache(clientId);
+      return request;
+    });
+  }
+
+  async getPayoutHistory(clientId: string) {
+    return this.payoutReqRepo.findMany({
+      where: { clientId },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
   private async invalidateCache(clientId: string): Promise<void> {
     await this.cache.del(`client-referral:stats:${clientId}`);
   }
@@ -218,3 +264,4 @@ export class ClientReferralService {
     return code;
   }
 }
+

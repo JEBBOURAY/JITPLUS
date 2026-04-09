@@ -5,73 +5,7 @@ import { ClientDetail as ClientDetailType } from '../types';
 import { C, S } from '../theme';
 import { fmtDate, fmtDateTime } from '../utils/format';
 import { getErrorMessage } from '@jitplus/shared';
-
-// ── Confirmation modal ─────────────────────────────────────────────────────────
-function ConfirmModal({
-  open,
-  title,
-  message,
-  confirmLabel,
-  confirmColor,
-  requireText,
-  onConfirm,
-  onCancel,
-}: {
-  open: boolean;
-  title: string;
-  message: string;
-  confirmLabel: string;
-  confirmColor: string;
-  requireText?: string;
-  onConfirm: () => void;
-  onCancel: () => void;
-}) {
-  const [typed, setTyped] = useState('');
-
-  if (!open) return null;
-
-  const canConfirm = requireText ? typed === requireText : true;
-
-  return (
-    <div
-      style={{
-        position: 'fixed', inset: 0, background: '#000a', display: 'flex',
-        alignItems: 'center', justifyContent: 'center', zIndex: 1000,
-      }}
-      onClick={onCancel}
-    >
-      <div
-        style={{ ...S.card, maxWidth: 420, width: '90%' }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h3 style={{ margin: '0 0 12px', color: C.text, fontSize: 16 }}>{title}</h3>
-        <p style={{ margin: '0 0 16px', color: C.textMuted, fontSize: 13, lineHeight: 1.5 }}>{message}</p>
-        {requireText && (
-          <input
-            value={typed}
-            onChange={(e) => setTyped(e.target.value)}
-            placeholder={`Tapez « ${requireText} » pour confirmer`}
-            style={{
-              width: '100%', padding: '8px 12px', marginBottom: 16,
-              background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8,
-              color: C.text, fontSize: 13, outline: 'none', boxSizing: 'border-box',
-            }}
-          />
-        )}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          <button onClick={onCancel} style={S.btnOutline()}>Annuler</button>
-          <button
-            onClick={() => { onConfirm(); setTyped(''); }}
-            disabled={!canConfirm}
-            style={{ ...S.btn(confirmColor), opacity: canConfirm ? 1 : 0.4 }}
-          >
-            {confirmLabel}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
+import ConfirmModal from '../components/ConfirmModal';
 
 // ── Info row ───────────────────────────────────────────────────────────────────
 function InfoRow({ label, value, color }: { label: string; value: React.ReactNode; color?: string }) {
@@ -119,7 +53,7 @@ export default function ClientDetailPage() {
         setClient(updated);
       }
     } catch (e) {
-      showToast(`❌ ${getErrorMessage(e)}`);
+      showToast(getErrorMessage(e));
     } finally {
       setActionLoading(false);
       setModal(null);
@@ -152,7 +86,7 @@ export default function ClientDetailPage() {
           <button onClick={() => navigate('/clients')} style={{ ...S.btnOutline(), padding: '6px 12px' }}>
             ← Retour
           </button>
-          <h2 style={{ margin: 0, fontWeight: 800, fontSize: 22, color: C.text }}>{fullName}</h2>
+          <h2 style={{ margin: 0, fontWeight: 700, letterSpacing: '-0.02em', fontSize: 22, color: C.text }}>{fullName}</h2>
           {isDeactivated && <span style={S.badge(C.red)}>Désactivé</span>}
         </div>
       </div>
@@ -166,9 +100,9 @@ export default function ClientDetailPage() {
           <InfoRow label="Prénom" value={client.prenom ?? '—'} />
           <InfoRow label="Nom" value={client.nom ?? '—'} />
           <InfoRow label="Email" value={client.email ?? '—'} color={client.emailVerified ? C.green : C.textMuted} />
-          <InfoRow label="Email vérifié" value={client.emailVerified ? '✅ Oui' : '❌ Non'} />
-          <InfoRow label="Téléphone" value={client.telephone ?? '—'} color={client.telephoneVerified ? C.green : C.textMuted} />
-          <InfoRow label="Tél. vérifié" value={client.telephoneVerified ? '✅ Oui' : '❌ Non'} />
+          <InfoRow label="Email verifie" value={client.emailVerified ? 'Oui' : 'Non'} color={client.emailVerified ? C.green : C.textMuted} />
+          <InfoRow label="Telephone" value={client.telephone ?? '--'} color={client.telephoneVerified ? C.green : C.textMuted} />
+          <InfoRow label="Tel. verifie" value={client.telephoneVerified ? 'Oui' : 'Non'} color={client.telephoneVerified ? C.green : C.textMuted} />
           <InfoRow label="Pays" value={<span style={S.badge(C.blue)}>{client.countryCode}</span>} />
           <InfoRow label="Date de naissance" value={client.dateNaissance ? fmtDate(client.dateNaissance) : '—'} />
           <InfoRow label="Inscrit le" value={fmtDateTime(client.createdAt)} />
@@ -183,15 +117,15 @@ export default function ClientDetailPage() {
             <h3 style={{ margin: '0 0 14px', fontSize: 14, fontWeight: 700, color: C.text }}>Statistiques</h3>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
               <div style={{ textAlign: 'center' }}>
-                <p style={{ margin: 0, fontSize: 26, fontWeight: 800, color: C.primary }}>{client.merchantCount}</p>
+                <p style={{ margin: 0, fontSize: 26, fontWeight: 700, color: C.primary }}>{client.merchantCount}</p>
                 <p style={{ margin: '2px 0 0', fontSize: 11, color: C.textMuted }}>Commerçants</p>
               </div>
               <div style={{ textAlign: 'center' }}>
-                <p style={{ margin: 0, fontSize: 26, fontWeight: 800, color: C.cyan }}>{client.transactionCount}</p>
+                <p style={{ margin: 0, fontSize: 26, fontWeight: 700, color: C.cyan }}>{client.transactionCount}</p>
                 <p style={{ margin: '2px 0 0', fontSize: 11, color: C.textMuted }}>Transactions</p>
               </div>
               <div style={{ textAlign: 'center' }}>
-                <p style={{ margin: 0, fontSize: 26, fontWeight: 800, color: C.amber }}>{client.notificationCount}</p>
+                <p style={{ margin: 0, fontSize: 26, fontWeight: 700, color: C.amber }}>{client.notificationCount}</p>
                 <p style={{ margin: '2px 0 0', fontSize: 11, color: C.textMuted }}>Notifications</p>
               </div>
             </div>
@@ -200,11 +134,11 @@ export default function ClientDetailPage() {
           {/* Preferences */}
           <div style={S.card}>
             <h3 style={{ margin: '0 0 14px', fontSize: 14, fontWeight: 700, color: C.text }}>Préférences</h3>
-            <InfoRow label="Notif. Push" value={client.notifPush ? '✅ Activé' : '❌ Désactivé'} />
-            <InfoRow label="Notif. Email" value={client.notifEmail ? '✅ Activé' : '❌ Désactivé'} />
-            <InfoRow label="Notif. WhatsApp" value={client.notifWhatsapp ? '✅ Activé' : '❌ Désactivé'} />
-            <InfoRow label="Partage info" value={client.shareInfoMerchants ? '✅ Oui' : '❌ Non'} />
-            <InfoRow label="CGU acceptées" value={client.termsAccepted ? '✅ Oui' : '❌ Non'} />
+            <InfoRow label="Notif. Push" value={client.notifPush ? 'Active' : 'Desactive'} color={client.notifPush ? C.green : C.textMuted} />
+            <InfoRow label="Notif. Email" value={client.notifEmail ? 'Active' : 'Desactive'} color={client.notifEmail ? C.green : C.textMuted} />
+            <InfoRow label="Notif. WhatsApp" value={client.notifWhatsapp ? 'Active' : 'Desactive'} color={client.notifWhatsapp ? C.green : C.textMuted} />
+            <InfoRow label="Partage info" value={client.shareInfoMerchants ? 'Oui' : 'Non'} color={client.shareInfoMerchants ? C.green : C.textMuted} />
+            <InfoRow label="CGU acceptees" value={client.termsAccepted ? 'Oui' : 'Non'} color={client.termsAccepted ? C.green : C.textMuted} />
           </div>
 
           {/* Referral */}
@@ -277,7 +211,7 @@ export default function ClientDetailPage() {
               onClick={() => setModal('activate')}
               style={S.btn(C.green)}
             >
-              ✅ Réactiver le compte
+              Reactiver le compte
             </button>
           ) : (
             <button
@@ -285,7 +219,7 @@ export default function ClientDetailPage() {
               onClick={() => setModal('deactivate')}
               style={S.btn(C.amber)}
             >
-              ⛔ Désactiver le compte
+              Desactiver le compte
             </button>
           )}
           <button
@@ -293,7 +227,7 @@ export default function ClientDetailPage() {
             onClick={() => setModal('delete')}
             style={S.btn(C.red)}
           >
-            🗑️ Supprimer définitivement
+            Supprimer definitivement
           </button>
         </div>
       </div>

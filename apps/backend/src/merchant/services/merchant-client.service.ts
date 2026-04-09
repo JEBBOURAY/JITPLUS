@@ -211,7 +211,7 @@ export class MerchantClientService {
       hasReward: loyaltyCard.points >= rewardThreshold,
       rewardThreshold,
       loyaltyType: merchant?.loyaltyType || DEFAULT_LOYALTY_TYPE,
-      stampsForReward: merchant?.stampsForReward || DEFAULT_STAMPS_FOR_REWARD,
+      stampsForReward: rewardThreshold,
     };
   }
 
@@ -269,7 +269,7 @@ export class MerchantClientService {
         reward: t.reward ? { id: t.reward.id, titre: t.reward.titre, cout: t.reward.cout } : null,
       })),
       loyaltyType: merchant?.loyaltyType || DEFAULT_LOYALTY_TYPE,
-      stampsForReward: merchant?.stampsForReward || DEFAULT_STAMPS_FOR_REWARD,
+      stampsForReward: rewardThreshold,
     };
   }
 }

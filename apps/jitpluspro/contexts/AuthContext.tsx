@@ -8,6 +8,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useQueryClient } from '@tanstack/react-query';
 import api, { onUnauthorized } from '@/services/api';
 import { getErrorMessage } from '@/utils/error';
+import { logInfo, logWarn, logError } from '@/utils/devLogger';
 import i18n from '@/i18n';
 import { Merchant, LoginCredentials, AuthResponse, TeamMember } from '@/types';
 import { useAuthStore } from '@/stores/authStore';
@@ -25,7 +26,7 @@ const getNotifications = () => {
     _notifications = require('expo-notifications');
     return _notifications;
   } catch (e) {
-    if (__DEV__) console.warn('expo-notifications unavailable', e);
+    logWarn('Push', 'expo-notifications unavailable', e);
     return null;
   }
 };
@@ -62,18 +63,18 @@ const getOrCreateDeviceId = async (): Promise<string> => {
 const registerPushToken = async (promptIfNeeded = false) => {
   try {
     if (!Device.isDevice) {
-      if (__DEV__) console.log('[Push] Pas un appareil physique, skip');
+      logInfo('Push', 'Pas un appareil physique, skip');
       return;
     }
 
     const Notif = getNotifications();
     if (!Notif) {
-      if (__DEV__) console.log('[Push] Notifications non disponibles, skip');
+      logInfo('Push', 'Notifications non disponibles, skip');
       return;
     }
 
     if (typeof Notif.getPermissionsAsync !== 'function') {
-      if (__DEV__) console.log('[Push] Notifications non disponibles (Expo Go)');
+      logInfo('Push', 'Notifications non disponibles (Expo Go)');
       return;
     }
 
@@ -82,7 +83,7 @@ const registerPushToken = async (promptIfNeeded = false) => {
 
     if (existingStatus !== 'granted') {
       if (!promptIfNeeded) {
-        if (__DEV__) console.log('[Push] Permission non accordée — attente action utilisateur');
+        logInfo('Push', 'Permission non accordée — attente action utilisateur');
         return;
       }
       const { status } = await Notif.requestPermissionsAsync();
@@ -90,7 +91,7 @@ const registerPushToken = async (promptIfNeeded = false) => {
     }
 
     if (finalStatus !== 'granted') {
-      if (__DEV__) console.log('[Push] Permission refusée');
+      logInfo('Push', 'Permission refusée');
       return;
     }
 
@@ -101,7 +102,7 @@ const registerPushToken = async (promptIfNeeded = false) => {
       undefined;
 
     if (!projectId) {
-      if (__DEV__) console.warn('[Push] Pas de projectId EAS configuré, skip push token');
+      logWarn('Push', 'Pas de projectId EAS configuré, skip push token');
       return;
     }
 
@@ -110,20 +111,20 @@ const registerPushToken = async (promptIfNeeded = false) => {
     try {
       const nativeToken = await Notif.getDevicePushTokenAsync();
       pushToken = nativeToken.data as string;
-      if (__DEV__) console.log('[Push] Native device token:', pushToken);
+      logInfo('Push', 'Native device token:', pushToken);
     } catch (e) {
       // Native token unavailable — cannot register for push (Firebase Admin SDK
       // only supports native FCM/APNs tokens, not Expo push tokens).
-      if (__DEV__) console.warn('[Push] Native token unavailable, skipping push registration:', e);
+      logWarn('Push', 'Native token unavailable, skipping push registration:', e);
       return;
     }
-    if (__DEV__) console.log('[Push] Token:', pushToken);
+    logInfo('Push', 'Token:', pushToken);
 
     // Envoyer au backend
     await api.patch('/merchant/push-token', { pushToken });
-    if (__DEV__) console.log('[Push] Token enregistré sur le backend');
+    logInfo('Push', 'Token enregistré sur le backend');
   } catch (error) {
-    if (__DEV__) console.warn('[Push] Erreur enregistrement token:', error);
+    logWarn('Push', 'Erreur enregistrement token:', error);
   }
 };
 
@@ -138,6 +139,7 @@ interface AuthContextData {
   teamMember: TeamMember | null;
   onboardingCompleted: boolean;
   signIn: (credentials: LoginCredentials, rememberMe?: boolean) => Promise<void>;
+  register: (data: RegisterData) => Promise<void>;
   googleLogin: (idToken: string) => Promise<{ success: boolean; error?: string; rawError?: unknown }>;
   appleLogin: (identityToken: string, givenName?: string, familyName?: string) => Promise<{ success: boolean; error?: string; rawError?: unknown }>;
   googleRegister: (idToken: string, businessData: GoogleRegisterData) => Promise<{ success: boolean; error?: string; rawError?: unknown }>;
@@ -149,16 +151,39 @@ interface AuthContextData {
 
 /** Business info needed for Google-based merchant registration */
 export interface GoogleRegisterData {
-  nom: string;
-  categorie: string;
-  ville: string;
-  phoneNumber: string;
+  nomCommerce?: string;
+  categorie?: string;
+  ville?: string;
+  phoneNumber?: string;
   quartier?: string;
   adresse?: string;
   latitude?: number;
   longitude?: number;
-  termsAccepted: boolean;
+  termsAccepted?: boolean;
   referralCode?: string;
+  description?: string;
+  storePhone?: string;
+  instagram?: string;
+  tiktok?: string;
+}
+
+/** Data for standard email/password registration */
+export interface RegisterData {
+  email: string;
+  password: string;
+  nomCommerce?: string;
+  categorie?: string;
+  ville?: string;
+  quartier?: string;
+  adresse?: string;
+  latitude?: number;
+  longitude?: number;
+  termsAccepted?: boolean;
+  referralCode?: string;
+  description?: string;
+  storePhone?: string;
+  instagram?: string;
+  tiktok?: string;
 }
 
 const AuthContext = createContext<AuthContextData | null>(null);
@@ -187,23 +212,24 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       useAuthStore.getState().reset();
       useAuthStore.getState().setLoading(false);
     } catch (error) {
-      if (__DEV__) console.error('Erreur lors de la déconnexion:', error);
+      logError('Auth', 'Erreur lors de la déconnexion:', error);
     }
   }, []);
 
   const loadProfile = useCallback(async (): Promise<Merchant | null> => {
     try {
-      if (__DEV__) console.log('[AuthContext] Chargement du profil...');
+      logInfo('Auth', 'Chargement du profil...');
       const response = await api.get<Merchant>('/merchant/profile');
-      if (__DEV__) console.log('[AuthContext] Profil chargé:', response.data.nom);
+      logInfo('Auth', 'Profil chargé:', response.data.nom);
       useAuthStore.getState().setMerchant(response.data);
       return response.data;
     } catch (error: unknown) {
-      if (__DEV__) console.error('[AuthContext] Erreur profil:', error);
-      await signOut();
+      logError('Auth', 'Erreur profil:', error);
+      // Supprimé : signOut() aveugle. C'est le rôle de l'intercepteur API (401) de déconnecter proprement l'utilisateur.
+      // Un simple fail réseau ne doit pas déconnecter l'utilisateur actif.
       throw error;
     }
-  }, [signOut]);
+  }, []);
 
   useEffect(() => {
     // Android notification channels are now set up in _layout.tsx via utils/notifications.ts
@@ -211,7 +237,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const loadStoredAuth = async () => {
       const s = useAuthStore.getState();
       try {
-        if (__DEV__) console.log('[AuthContext] Chargement de l\'authentification...');
+        logInfo('Auth', 'Chargement de l\'authentification...');
         // Parallelize SecureStore reads to reduce boot time (~400ms → ~100ms)
         const results = await Promise.allSettled([
           SecureStore.getItemAsync('accessToken'),
@@ -224,9 +250,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         );
 
         if (__DEV__) {
-          console.log('[AuthContext] Token:', storedToken ? 'Oui' : 'Non');
-          console.log('[AuthContext] Remember:', rememberMe);
-          console.log('[AuthContext] Type:', storedUserType);
+          logInfo('Auth', 'Token:', storedToken ? 'Oui' : 'Non');
+          logInfo('Auth', 'Remember:', rememberMe);
+          logInfo('Auth', 'Type:', storedUserType);
         }
 
         if (storedToken && rememberMe === 'true') {
@@ -237,7 +263,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               const tmData = JSON.parse(storedTeamMember);
               s.setTeamMember(true, tmData);
             } catch (e) {
-              if (__DEV__) console.error('[AuthContext] Erreur parsing teamMember:', e);
+              logError('Auth', 'Erreur parsing teamMember:', e);
               // Remove corrupted data and reset store to prevent incomplete auth state
               s.setTeamMember(false, null);
               await SecureStore.deleteItemAsync('teamMember').catch(() => {});
@@ -256,8 +282,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               useAuthStore.getState().setOnboardingCompleted(true);
               await SecureStore.setItemAsync('onboardingCompleted', 'true');
             }
-            registerPushToken().catch((err) => {
-              if (__DEV__) console.warn('[AuthContext] Push token registration failed:', err);
+            registerPushToken(true).catch((err) => {
+              logWarn('Auth', 'Push token registration failed:', err);
               // Report to Sentry so we have visibility on push failures in production
               if (!__DEV__) {
                 try {
@@ -267,7 +293,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               }
             });
           } catch {
-            if (__DEV__) console.warn('[AuthContext] Session expirée, retour à l\'écran de connexion');
+            logWarn('Auth', 'Session expirée, retour à l\'écran de connexion');
             return;
           }
         } else if (storedToken) {
@@ -282,10 +308,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           s.reset();
         }
       } catch (error) {
-        if (__DEV__) console.warn('[AuthContext] Erreur lors du chargement de l\'authentification:', error);
+        logWarn('Auth', 'Erreur lors du chargement de l\'authentification:', error);
         await signOut();
       } finally {
-        if (__DEV__) console.log('[AuthContext] Chargement terminé');
+        logInfo('Auth', 'Chargement terminé');
         useAuthStore.getState().setLoading(false);
       }
     };
@@ -293,7 +319,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     loadStoredAuth();
 
     const unsubscribe = onUnauthorized(() => {
-      if (__DEV__) console.log('[AuthContext] 401 détecté, déconnexion automatique');
+      logInfo('Auth', '401 détecté, déconnexion automatique');
       const s = useAuthStore.getState();
       s.setToken(null);
       s.setMerchant(null);
@@ -312,11 +338,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const { access_token, refresh_token, session_id, merchant: merchantData } = response;
     const { rememberMe = true, userType, teamMemberData } = options;
 
-    if (rememberMe) {
-      await SecureStore.setItemAsync('accessToken', access_token);
-      if (refresh_token) await SecureStore.setItemAsync('refreshToken', refresh_token);
-      if (session_id) await SecureStore.setItemAsync('sessionId', session_id);
-    }
+    // Always store tokens in SecureStore so the API interceptor can attach them.
+    // The rememberMe flag only controls whether the session persists across app restarts
+    // (checked in loadStoredAuth on launch).
+    await SecureStore.setItemAsync('accessToken', access_token);
+    if (refresh_token) await SecureStore.setItemAsync('refreshToken', refresh_token);
+    if (session_id) await SecureStore.setItemAsync('sessionId', session_id);
     await SecureStore.setItemAsync('rememberMe', String(rememberMe));
 
     const s = useAuthStore.getState();
@@ -338,8 +365,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       await SecureStore.setItemAsync('onboardingCompleted', 'true');
     }
 
-    registerPushToken().catch((err) => {
-      if (__DEV__) console.warn('[AuthContext] Push token registration failed:', err);
+    registerPushToken(true).catch((err) => {
+      logWarn('Auth', 'Push token registration failed:', err);
       if (!__DEV__) {
         try {
           const Sentry = require('@sentry/react-native');
@@ -351,7 +378,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const signIn = useCallback(async (credentials: LoginCredentials, rememberMe = false) => {
     try {
-      if (__DEV__) console.log('[AuthContext] Tentative de connexion...');
+      logInfo('Auth', 'Tentative de connexion...');
       const { deviceName, deviceOS } = getDeviceInfo();
       const deviceId = await getOrCreateDeviceId();
       const response = await api.post<AuthResponse>('/auth/login', {
@@ -365,7 +392,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         throw new Error(i18n.t('auth.invalidServerResponse'));
       }
 
-      if (__DEV__) console.log('[AuthContext] Connexion réussie:', response.data.merchant.nom, '| Type:', response.data.userType);
+      logInfo('Auth', 'Connexion réussie:', response.data.merchant.nom, '| Type:', response.data.userType);
 
       await handleAuthSuccess(response.data, {
         rememberMe,
@@ -373,14 +400,39 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         teamMemberData: response.data.teamMember ?? null,
       });
     } catch (error: unknown) {
-      if (__DEV__) console.error('[AuthContext] Erreur de connexion:', error);
-      throw new Error(getErrorMessage(error, i18n.t('auth.loginError')));
+      logError('Auth', 'Erreur de connexion:', error);
+      throw error;
+    }
+  }, [handleAuthSuccess]);
+
+  const register = useCallback(async (data: RegisterData) => {
+    try {
+      logInfo('Auth', 'Inscription...');
+      const { deviceName, deviceOS } = getDeviceInfo();
+      const deviceId = await getOrCreateDeviceId();
+      const response = await api.post<AuthResponse>('/auth/register', {
+        ...data,
+        deviceName,
+        deviceOS,
+        deviceId,
+      });
+
+      if (!response.data?.merchant) {
+        throw new Error(i18n.t('auth.invalidServerResponse'));
+      }
+
+      logInfo('Auth', 'Inscription réussie:', response.data.merchant.nom);
+
+      await handleAuthSuccess(response.data, { rememberMe: true });
+    } catch (error: unknown) {
+      logError('Auth', 'Erreur inscription:', error);
+      throw error;
     }
   }, [handleAuthSuccess]);
 
   const googleLogin = useCallback(async (idToken: string): Promise<{ success: boolean; error?: string; rawError?: unknown }> => {
     try {
-      if (__DEV__) console.log('[AuthContext] Google login...');
+      logInfo('Auth', 'Google login...');
       const { deviceName, deviceOS } = getDeviceInfo();
       const deviceId = await getOrCreateDeviceId();
       const response = await api.post<AuthResponse>('/auth/google-login', {
@@ -390,12 +442,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         deviceId,
       });
 
-      if (__DEV__) console.log('[AuthContext] Google login réussi:', response.data.merchant.nom);
+      logInfo('Auth', 'Google login réussi:', response.data.merchant.nom);
 
       await handleAuthSuccess(response.data);
       return { success: true };
     } catch (error: unknown) {
-      if (__DEV__) console.error('[AuthContext] Erreur Google login:', error);
+      logError('Auth', 'Erreur Google login:', error);
       return { success: false, error: getErrorMessage(error, i18n.t('auth.googleLoginError')), rawError: error };
     }
   }, [handleAuthSuccess]);
@@ -406,7 +458,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     familyName?: string,
   ): Promise<{ success: boolean; error?: string; rawError?: unknown }> => {
     try {
-      if (__DEV__) console.log('[AuthContext] Apple login...');
+      logInfo('Auth', 'Apple login...');
       const { deviceName, deviceOS } = getDeviceInfo();
       const deviceId = await getOrCreateDeviceId();
       const response = await api.post<AuthResponse>('/auth/apple-login', {
@@ -418,19 +470,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         deviceId,
       });
 
-      if (__DEV__) console.log('[AuthContext] Apple login réussi:', response.data.merchant.nom);
+      logInfo('Auth', 'Apple login réussi:', response.data.merchant.nom);
 
       await handleAuthSuccess(response.data);
       return { success: true };
     } catch (error: unknown) {
-      if (__DEV__) console.error('[AuthContext] Erreur Apple login:', error);
+      logError('Auth', 'Erreur Apple login:', error);
       return { success: false, error: getErrorMessage(error, i18n.t('auth.appleLoginError')), rawError: error };
     }
   }, [handleAuthSuccess]);
 
   const googleRegister = useCallback(async (idToken: string, businessData: GoogleRegisterData): Promise<{ success: boolean; error?: string; rawError?: unknown }> => {
     try {
-      if (__DEV__) console.log('[AuthContext] Google register...');
+      logInfo('Auth', 'Google register...');
       const { deviceName, deviceOS } = getDeviceInfo();
       const deviceId = await getOrCreateDeviceId();
       const response = await api.post<AuthResponse>('/auth/google-register', {
@@ -441,12 +493,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         deviceId,
       });
 
-      if (__DEV__) console.log('[AuthContext] Google register réussi:', response.data.merchant.nom);
+      logInfo('Auth', 'Google register réussi:', response.data.merchant.nom);
 
       await handleAuthSuccess(response.data);
       return { success: true };
     } catch (error: unknown) {
-      if (__DEV__) console.error('[AuthContext] Erreur Google register:', error);
+      logError('Auth', 'Erreur Google register:', error);
       return { success: false, error: getErrorMessage(error, i18n.t('auth.googleRegisterError')), rawError: error };
     }
   }, [handleAuthSuccess]);
@@ -454,11 +506,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const completeOnboarding = useCallback(async () => {
     try {
       await api.patch('/merchant/complete-onboarding');
+      await SecureStore.setItemAsync('onboardingCompleted', 'true');
+      useAuthStore.getState().setOnboardingCompleted(true);
     } catch (error) {
-      if (__DEV__) console.warn('[AuthContext] completeOnboarding API error:', error);
+      logWarn('Auth', 'completeOnboarding API error:', error);
+      // Still update local state so user isn't stuck, backend will sync on next login
+      await SecureStore.setItemAsync('onboardingCompleted', 'true');
+      useAuthStore.getState().setOnboardingCompleted(true);
     }
-    await SecureStore.setItemAsync('onboardingCompleted', 'true');
-    useAuthStore.getState().setOnboardingCompleted(true);
   }, []);
 
   const updateMerchant = useCallback((data: Partial<Merchant>) => {
@@ -473,6 +528,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     teamMember,
     onboardingCompleted,
     signIn,
+    register,
     googleLogin,
     appleLogin,
     googleRegister,
@@ -480,7 +536,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     loadProfile,
     updateMerchant,
     completeOnboarding,
-  }), [merchant, token, loading, isTeamMember, teamMember, onboardingCompleted, signIn, googleLogin, appleLogin, googleRegister, signOut, loadProfile, updateMerchant, completeOnboarding]);
+  }), [merchant, token, loading, isTeamMember, teamMember, onboardingCompleted, signIn, register, googleLogin, appleLogin, googleRegister, signOut, loadProfile, updateMerchant, completeOnboarding]);
 
   return (
     <AuthContext.Provider value={contextValue}>

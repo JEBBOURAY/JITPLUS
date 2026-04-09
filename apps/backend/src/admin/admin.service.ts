@@ -4,12 +4,13 @@ import { Cache } from 'cache-manager';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
-import { AuditAction } from '@prisma/client';
+import { AuditAction, PayoutStatus } from '@prisma/client';
 import {
   ADMIN_USER_REPOSITORY, type IAdminUserRepository,
   MERCHANT_REPOSITORY, type IMerchantRepository,
   CLIENT_REPOSITORY, type IClientRepository,
   CLIENT_REFERRAL_REPOSITORY, type IClientReferralRepository,
+  PAYOUT_REQUEST_REPOSITORY, type IPayoutRequestRepository,
   TRANSACTION_REPOSITORY, type ITransactionRepository,
   REWARD_REPOSITORY, type IRewardRepository,
   NOTIFICATION_REPOSITORY, type INotificationRepository,
@@ -22,6 +23,9 @@ import { checkLockout, handleFailedLogin, resetLoginAttempts, LockoutDbOps } fro
 
 import { ADMIN_STATS_CACHE_TTL } from '../common/constants';
 
+/** TTL for admin session revocation cache entries (24 hours) */
+const ADMIN_REVOKE_TTL = 24 * 60 * 60 * 1000;
+
 @Injectable()
 export class AdminAuthService {
   private readonly logger = new Logger(AdminAuthService.name);
@@ -31,6 +35,7 @@ export class AdminAuthService {
     @Inject(MERCHANT_REPOSITORY) private merchantRepo: IMerchantRepository,
     @Inject(CLIENT_REPOSITORY) private clientRepo: IClientRepository,
     @Inject(CLIENT_REFERRAL_REPOSITORY) private clientReferralRepo: IClientReferralRepository,
+    @Inject(PAYOUT_REQUEST_REPOSITORY) private payoutReqRepo: IPayoutRequestRepository,
     @Inject(TRANSACTION_REPOSITORY) private transactionRepo: ITransactionRepository,
     @Inject(REWARD_REPOSITORY) private rewardRepo: IRewardRepository,
     @Inject(NOTIFICATION_REPOSITORY) private notificationRepo: INotificationRepository,
@@ -41,6 +46,17 @@ export class AdminAuthService {
     @Inject(CACHE_MANAGER) private cache: Cache,
     private jwtService: JwtService,
   ) {}
+
+  /**
+   * Revoke an admin session by blacklisting its jti in cache.
+   * The JWT remains cryptographically valid but will be rejected by JwtStrategy.
+   */
+  async logout(jti: string): Promise<{ message: string }> {
+    await this.cache.set(`admin-revoked:${jti}`, true, ADMIN_REVOKE_TTL);
+    await this.cache.del(`admin-session:${jti}`);
+    this.logger.log(`Admin session revoked (jti: ${jti})`);
+    return { message: 'Déconnecté' };
+  }
 
   /**
    * Authenticate an admin by email + password.
@@ -107,6 +123,10 @@ export class AdminAuthService {
     const token = this.jwtService.sign(payload);
     this.logger.log(`Admin ${admin.email} logged in (jti: ${jti})`);
 
+    // Cache admin session for revocation support
+    // TTL = 24h (max reasonable JWT lifetime), auto-cleans expired entries
+    await this.cache.set(`admin-session:${jti}`, true, 24 * 60 * 60 * 1000);
+
     return {
       access_token: token,
       admin: {
@@ -121,18 +141,36 @@ export class AdminAuthService {
   /**
    * List all merchants with their plan info (for admin dashboard).
    */
-  async listMerchants(page = 1, limit = 20, search?: string) {
+  async listMerchants(page = 1, limit = 20, search?: string, plan?: string, status?: string, categorie?: string) {
     const skip = (page - 1) * limit;
 
-    const where = search
-      ? {
-          OR: [
-            { nom: { contains: search, mode: 'insensitive' as const } },
-            { email: { contains: search, mode: 'insensitive' as const } },
-            { phoneNumber: { contains: search, mode: 'insensitive' as const } },
-          ],
-        }
-      : {};
+    const where: Record<string, unknown> = {};
+
+    if (search) {
+      where.OR = [
+        { nom: { contains: search, mode: 'insensitive' as const } },
+        { email: { contains: search, mode: 'insensitive' as const } },
+        { phoneNumber: { contains: search, mode: 'insensitive' as const } },
+      ];
+    }
+
+    if (plan === 'FREE' || plan === 'PREMIUM') {
+      where.plan = plan;
+    }
+
+    if (status === 'active') {
+      where.isActive = true;
+      where.deletedAt = null;
+    } else if (status === 'banned') {
+      where.isActive = false;
+      where.deletedAt = null;
+    } else if (status === 'deleted') {
+      where.deletedAt = { not: null };
+    }
+
+    if (categorie) {
+      where.categorie = categorie;
+    }
 
     const [merchants, total] = await Promise.all([
       this.merchantRepo.findMany({
@@ -467,22 +505,22 @@ export class AdminAuthService {
       }),
     ]);
 
-    const ms = merchantStats[0];
-    const cs = clientStats[0];
-    const ts = transactionStats[0];
+    const merchantRow = merchantStats[0];
+    const clientRow = clientStats[0];
+    const txRow = transactionStats[0];
 
-    const totalMerchants = Number(ms?.total ?? 0);
-    const activeMerchants = Number(ms?.active ?? 0);
-    const bannedMerchants = Number(ms?.banned ?? 0);
-    const freeMerchants = Number(ms?.free ?? 0);
-    const premiumMerchants = Number(ms?.premium ?? 0);
-    const totalClients = Number(cs?.total ?? 0);
-    const newClientsThisMonth = Number(cs?.new_this_month ?? 0);
-    const totalTransactions = Number(ts?.total ?? 0);
-    const transactionsThisMonth = Number(ts?.this_month ?? 0);
-    const earnPointsCount = Number(ts?.earn ?? 0);
-    const redeemRewardCount = Number(ts?.redeem ?? 0);
-    const adjustPointsCount = Number(ts?.adjust ?? 0);
+    const totalMerchants = Number(merchantRow?.total ?? 0);
+    const activeMerchants = Number(merchantRow?.active ?? 0);
+    const bannedMerchants = Number(merchantRow?.banned ?? 0);
+    const freeMerchants = Number(merchantRow?.free ?? 0);
+    const premiumMerchants = Number(merchantRow?.premium ?? 0);
+    const totalClients = Number(clientRow?.total ?? 0);
+    const newClientsThisMonth = Number(clientRow?.new_this_month ?? 0);
+    const totalTransactions = Number(txRow?.total ?? 0);
+    const transactionsThisMonth = Number(txRow?.this_month ?? 0);
+    const earnPointsCount = Number(txRow?.earn ?? 0);
+    const redeemRewardCount = Number(txRow?.redeem ?? 0);
+    const adjustPointsCount = Number(txRow?.adjust ?? 0);
 
     // Per-channel notification counts + monthly trends in 2 raw queries instead of 15 individual counts
     const sixMonthsAgo = monthBuckets[0].start;
@@ -572,19 +610,25 @@ export class AdminAuthService {
   /**
    * List all registered clients with contact info (for admin dashboard).
    */
-  async listClients(page = 1, limit = 20, search?: string) {
+  async listClients(page = 1, limit = 20, search?: string, status?: string) {
     const skip = (page - 1) * limit;
 
-    const where = search
-      ? {
-          OR: [
-            { nom: { contains: search, mode: 'insensitive' as const } },
-            { prenom: { contains: search, mode: 'insensitive' as const } },
-            { email: { contains: search, mode: 'insensitive' as const } },
-            { telephone: { contains: search, mode: 'insensitive' as const } },
-          ],
-        }
-      : {};
+    const where: Record<string, unknown> = {};
+
+    if (search) {
+      where.OR = [
+        { nom: { contains: search, mode: 'insensitive' as const } },
+        { prenom: { contains: search, mode: 'insensitive' as const } },
+        { email: { contains: search, mode: 'insensitive' as const } },
+        { telephone: { contains: search, mode: 'insensitive' as const } },
+      ];
+    }
+
+    if (status === 'active') {
+      where.deletedAt = null;
+    } else if (status === 'deactivated') {
+      where.deletedAt = { not: null };
+    }
 
     const [clients, total] = await Promise.all([
       this.clientRepo.findMany({
@@ -1064,4 +1108,102 @@ export class AdminAuthService {
       plan: m.plan,
     }));
   }
+
+    /**
+     * List client payout requests.
+     */
+    async listPayoutRequests(page = 1, limit = 20, status?: PayoutStatus, search?: string) {
+      const skip = (page - 1) * limit;
+
+      const where: any = {};
+      if (status) where.status = status;
+      if (search) {
+        where.client = {
+          OR: [
+            { nom: { contains: search, mode: 'insensitive' } },
+            { prenom: { contains: search, mode: 'insensitive' } },
+            { email: { contains: search, mode: 'insensitive' } },
+            { telephone: { contains: search, mode: 'insensitive' } },
+          ],
+        };
+      }
+
+      const [requests, total] = await Promise.all([
+        this.payoutReqRepo.findMany({
+          where,
+          include: {
+            client: {
+              select: {
+                id: true,
+                nom: true,
+                prenom: true,
+                email: true,
+                telephone: true,
+                referralBalance: true,
+              },
+            },
+          },
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: limit,
+        }),
+        this.payoutReqRepo.count({ where }),
+      ]);
+
+      return {
+        requests,
+        total,
+        page,
+        totalPages: Math.ceil(total / limit),
+      };
+    }
+
+    /**
+     * Update payout request status.
+     * Note: If rejected, we must refund the client's balance.
+     */
+    async updatePayoutRequestStatus(id: string, status: PayoutStatus, adminId: string) {
+      return this.txRunner.run(async (prisma) => {
+        const req = await prisma.payoutRequest.findUnique({ where: { id } });
+        if (!req) throw new NotFoundException('Demande de paiement non trouvée');
+        if (req.status === status) return req;
+
+        const oldStatus = req.status;
+
+        if (oldStatus === PayoutStatus.REJECTED || oldStatus === PayoutStatus.PAID) {
+          throw new ForbiddenException('Impossible de modifier une demande déjà traitée');
+        }
+
+        const updated = await prisma.payoutRequest.update({
+          where: { id },
+          data: { status },
+        });
+
+        // Refund if rejected
+        if (status === PayoutStatus.REJECTED) {
+          await prisma.client.update({
+            where: { id: req.clientId },
+            data: { referralBalance: { increment: req.amount } },
+          });
+        }
+
+        // Fetch admin email for audit log
+        const admin = await prisma.admin.findUnique({ where: { id: adminId }, select: { email: true } });
+
+        await prisma.auditLog.create({
+          data: {
+            adminId,
+            adminEmail: admin?.email ?? 'unknown',
+            action: AuditAction.UPDATE_PAYOUT,
+            targetType: 'CLIENT',
+            targetId: id,
+            targetLabel: `PayoutRequest ${id}`,
+            metadata: { oldStatus, newStatus: status, amount: req.amount },
+            ipAddress: 'admin-dashboard',
+          },
+        });
+
+        return updated;
+      });
+    }
 }

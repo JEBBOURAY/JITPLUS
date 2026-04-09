@@ -126,7 +126,7 @@ const FallbackMerchantCard = memo(function FallbackMerchantCard({
         <MerchantLogo logoUrl={merchant.logoUrl} style={styles.fallbackLogo} />
       </View>
       <View style={{ flex: 1 }}>
-        <Text style={[styles.fallbackName, { color: theme.text }]} numberOfLines={1}>{merchant.nomBoutique}</Text>
+        <Text style={[styles.fallbackName, { color: theme.text }]} numberOfLines={1}>{merchant.storeName || merchant.nomBoutique}</Text>
         {merchant.categorie && (
           <View style={[styles.catBadge, { backgroundColor: palette.violet + '15' }]}>
             <Text style={[styles.catBadgeText, { color: palette.violet }]}>{merchant.categorie}</Text>
@@ -192,7 +192,7 @@ const MerchantCallout = memo(function MerchantCallout({
           )}
         </View>
         <View style={styles.calloutInfo}>
-          <Text style={[styles.calloutName, { color: theme.text }]} numberOfLines={1}>{merchant.nomBoutique}</Text>
+          <Text style={[styles.calloutName, { color: theme.text }]} numberOfLines={1}>{merchant.storeName || merchant.nomBoutique}</Text>
           {merchant.categorie && (
             <View style={[styles.catBadge, { backgroundColor: palette.violet + '12', marginTop: hp(3) }]}>
               <Text style={[styles.catBadgeText, { color: palette.violet }]}>{merchant.categorie}</Text>
@@ -318,6 +318,7 @@ export default function DiscoverScreen() {
   const filteredMerchants = useMemo(() => merchants.filter((m) => {
     const matchesSearch =
       m.nomBoutique?.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+      m.storeName?.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
       m.categorie?.toLowerCase().includes(debouncedSearch.toLowerCase());
     const matchesCategory = selectedCategory === 'all' || m.categorie === selectedCategory;
     return matchesSearch && matchesCategory;
@@ -349,7 +350,7 @@ export default function DiscoverScreen() {
 
   const openInMaps = useCallback((m: Merchant) => {
     if (!m.latitude || !m.longitude) return;
-    const label = encodeURIComponent(m.nomBoutique);
+    const label = encodeURIComponent(m.storeName || m.nomBoutique);
     const url = Platform.select({
       ios: `maps://app?daddr=${m.latitude},${m.longitude}&q=${label}`,
       android: `google.navigation:q=${m.latitude},${m.longitude}&label=${label}`,

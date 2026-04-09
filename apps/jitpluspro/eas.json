@@ -12,7 +12,7 @@
         "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "$EXPO_PUBLIC_GOOGLE_MAPS_API_KEY",
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "290470991104-hvhs4jm96jgg6qq7et1ggv5jb0pcjvaa.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "290470991104-bsa48hg4dtah6417i708gh6eh52nkk0b.apps.googleusercontent.com",
-        "EXPO_PUBLIC_SUPPORT_WHATSAPP": "$EXPO_PUBLIC_SUPPORT_WHATSAPP",
+        "EXPO_PUBLIC_SUPPORT_WHATSAPP": "212675346486",
         "EXPO_PUBLIC_SUPPORT_EMAIL": "contact@jitplus.com",
         "EXPO_PUBLIC_PRIVACY_URL": "https://jitplus.com/privacy",
         "EXPO_PUBLIC_TERMS_URL": "https://jitplus.com/cgu",
@@ -31,7 +31,7 @@
         "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "$EXPO_PUBLIC_GOOGLE_MAPS_API_KEY",
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "290470991104-hvhs4jm96jgg6qq7et1ggv5jb0pcjvaa.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "290470991104-bsa48hg4dtah6417i708gh6eh52nkk0b.apps.googleusercontent.com",
-        "EXPO_PUBLIC_SUPPORT_WHATSAPP": "$EXPO_PUBLIC_SUPPORT_WHATSAPP",
+        "EXPO_PUBLIC_SUPPORT_WHATSAPP": "212675346486",
         "EXPO_PUBLIC_SUPPORT_EMAIL": "contact@jitplus.com",
         "EXPO_PUBLIC_PRIVACY_URL": "https://jitplus.com/privacy",
         "EXPO_PUBLIC_TERMS_URL": "https://jitplus.com/cgu",
@@ -47,7 +47,7 @@
         "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "$EXPO_PUBLIC_GOOGLE_MAPS_API_KEY",
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "290470991104-hvhs4jm96jgg6qq7et1ggv5jb0pcjvaa.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "290470991104-bsa48hg4dtah6417i708gh6eh52nkk0b.apps.googleusercontent.com",
-        "EXPO_PUBLIC_SUPPORT_WHATSAPP": "$EXPO_PUBLIC_SUPPORT_WHATSAPP",
+        "EXPO_PUBLIC_SUPPORT_WHATSAPP": "212675346486",
         "EXPO_PUBLIC_SUPPORT_EMAIL": "contact@jitplus.com",
         "EXPO_PUBLIC_PRIVACY_URL": "https://jitplus.com/privacy",
         "EXPO_PUBLIC_TERMS_URL": "https://jitplus.com/cgu",
@@ -67,7 +67,7 @@
         "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "$EXPO_PUBLIC_GOOGLE_MAPS_API_KEY",
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "290470991104-hvhs4jm96jgg6qq7et1ggv5jb0pcjvaa.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "290470991104-bsa48hg4dtah6417i708gh6eh52nkk0b.apps.googleusercontent.com",
-        "EXPO_PUBLIC_SUPPORT_WHATSAPP": "$EXPO_PUBLIC_SUPPORT_WHATSAPP",
+        "EXPO_PUBLIC_SUPPORT_WHATSAPP": "212675346486",
         "EXPO_PUBLIC_SUPPORT_EMAIL": "contact@jitplus.com",
         "EXPO_PUBLIC_PRIVACY_URL": "https://jitplus.com/privacy",
         "EXPO_PUBLIC_TERMS_URL": "https://jitplus.com/cgu",
@@ -92,3 +92,4 @@
     }
   }
 }
+

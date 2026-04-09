@@ -7,4 +7,5 @@ export {
   COUNTRY_CODES,
   DEFAULT_COUNTRY,
   isValidPhoneForCountry,
+  formatPhoneLocal,
 } from '@jitplus/shared';

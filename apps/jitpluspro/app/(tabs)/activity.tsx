@@ -30,6 +30,8 @@ import { useExitOnBack } from '@/hooks/useExitOnBack';
 import { formatDateTime } from '@/utils/date';
 import type { Transaction } from '@/types';
 
+const HEADER_GRADIENT: [string, string] = ['#7C3AED', '#1F2937'];
+
 /* ── Memoized row — avoids re-render of every row on list updates ── */
 const TransactionRow = React.memo(function TransactionRow({
   item,
@@ -140,7 +142,7 @@ export default function ActivityScreen() {
     <Animated.View style={[styles.container, { backgroundColor: theme.bg }, focusStyle]}>
       <View collapsable={false}>
         <LinearGradient
-          colors={['#7C3AED', '#1F2937']}
+          colors={HEADER_GRADIENT}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
           style={[styles.header, { paddingTop: insets.top + 12 }]}

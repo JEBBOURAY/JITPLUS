@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback } from 'react';
+﻿import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import {
   Platform,
 } from 'react-native';
 import { timeAgo } from '@/utils/date';
+import { logError } from '@/utils/devLogger';
 import {
   ArrowLeft,
   Lock,
@@ -91,7 +92,7 @@ export default function SecurityScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ tab?: string }>();
-  const { signOut, merchant } = useAuth();
+  const { signOut, merchant, isTeamMember } = useAuth();
   const { t } = useLanguage();
   const isGoogleAccount = !!merchant?.googleId;
 
@@ -119,23 +120,21 @@ export default function SecurityScreen() {
   const [devices, setDevices] = useState<DeviceSession[]>([]);
   const [loadingDevices, setLoadingDevices] = useState(true);
 
-  // â”€â”€ Password strength â”€â”€
-  const getStrength = (pwd: string): { label: string; color: string; width: DimensionValue } => {
-    if (pwd.length === 0) return { label: '', color: theme.border, width: '0%' };
+  // ── Password strength ──
+  const strength = useMemo(() => {
+    if (newPwd.length === 0) return { label: '', color: theme.border, width: '0%' as DimensionValue };
     let score = 0;
-    if (pwd.length >= 8) score++;
-    if (pwd.length >= 10) score++;
-    if (/[A-Z]/.test(pwd)) score++;
-    if (/[0-9]/.test(pwd)) score++;
-    if (/[^A-Za-z0-9]/.test(pwd)) score++;
+    if (newPwd.length >= 8) score++;
+    if (newPwd.length >= 10) score++;
+    if (/[A-Z]/.test(newPwd)) score++;
+    if (/[0-9]/.test(newPwd)) score++;
+    if (/[^A-Za-z0-9]/.test(newPwd)) score++;
 
-    if (score <= 1) return { label: t('security.strengthWeak'), color: theme.danger, width: '20%' };
-    if (score <= 2) return { label: t('security.strengthMedium'), color: theme.warning, width: '45%' };
-    if (score <= 3) return { label: t('security.strengthGood'), color: theme.primary, width: '70%' };
-    return { label: t('security.strengthStrong'), color: theme.success, width: '100%' };
-  };
-
-  const strength = getStrength(newPwd);
+    if (score <= 1) return { label: t('security.strengthWeak'), color: theme.danger, width: '20%' as DimensionValue };
+    if (score <= 2) return { label: t('security.strengthMedium'), color: theme.warning, width: '45%' as DimensionValue };
+    if (score <= 3) return { label: t('security.strengthGood'), color: theme.primary, width: '70%' as DimensionValue };
+    return { label: t('security.strengthStrong'), color: theme.success, width: '100%' as DimensionValue };
+  }, [newPwd, theme, t]);
 
   // â”€â”€ Load devices â”€â”€
   const loadDevices = useCallback(async () => {
@@ -144,7 +143,7 @@ export default function SecurityScreen() {
       const res = await api.get('/merchant/devices');
       setDevices(res.data ?? []);
     } catch (error) {
-      if (__DEV__) console.error('[Security] Ã‰chec du chargement des appareils:', error);
+      logError('Security', 'Échec du chargement des appareils:', error);
     } finally {
       setLoadingDevices(false);
     }
@@ -217,7 +216,7 @@ export default function SecurityScreen() {
   }, [isGoogleAccount, currentPwd, newPwd, confirmPwd, executePasswordChange, t]);
 
   // â”€â”€ Remove device â”€â”€
-  const handleRemoveDevice = (device: DeviceSession) => {
+  const handleRemoveDevice = useCallback((device: DeviceSession) => {
     Alert.alert(
       t('security.disconnectTitle'),
       t('security.disconnectMsg', { name: device.deviceName }),
@@ -237,9 +236,21 @@ export default function SecurityScreen() {
         },
       ],
     );
-  };
+  }, [t]);
 
-  // â”€â”€ Tabs â”€â”€
+  if (isTeamMember) {
+    return (
+      <View style={[styles.container, { backgroundColor: theme.bg, justifyContent: 'center', alignItems: 'center', padding: 32 }]}>
+        <ShieldCheck size={48} color={theme.textMuted} strokeWidth={1.5} />
+        <Text style={{ color: theme.text, fontWeight: '600', fontSize: 16, marginTop: 16 }}>{t('common.ownerOnly')}</Text>
+        <Text style={{ color: theme.textMuted, textAlign: 'center', marginTop: 8 }}>{t('common.ownerOnlyMsg')}</Text>
+        <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 16, paddingHorizontal: 24, paddingVertical: 10, backgroundColor: theme.primary, borderRadius: 8 }}>
+          <Text style={{ color: '#fff', fontWeight: '600' }}>{t('common.back')}</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   const tabs: { id: TabId; label: string; icon: React.ReactNode }[] = [
     { id: 'password', label: t('security.tabPassword'), icon: <Lock size={15} color={activeTab === 'password' ? '#fff' : theme.textMuted} /> },
     { id: 'devices', label: t('security.tabDevices'), icon: <Smartphone size={15} color={activeTab === 'devices' ? '#fff' : theme.textMuted} /> },
@@ -260,6 +271,13 @@ export default function SecurityScreen() {
         <Text style={[styles.headerTitle, { color: theme.text }]}>{t('security.title')}</Text>
         <ShieldCheck size={22} color={theme.primary} />
       </View>
+
+        {/* ── Guide text ── */}
+        <View style={[styles.guideContainer, { backgroundColor: theme.primaryBg || (theme.primary + '10'), borderLeftColor: theme.primary }]}>
+          <Text style={[styles.guideText, { color: theme.textSecondary }]}>
+            {t('account.securityGuideText')}
+          </Text>
+        </View>
 
       {/* â”€â”€ Tab Switcher â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <View style={[styles.tabBar, { backgroundColor: theme.bgCard }]}>
@@ -634,6 +652,21 @@ export default function SecurityScreen() {
 
 // â”€â”€ Styles â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const styles = StyleSheet.create({
+  guideContainer: {
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 4,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: '#f0f4ff',
+    borderRadius: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: '#7C3AED',
+  },
+  guideText: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
   container: { flex: 1, backgroundColor: '#f5f5f5' },
 
   // Header

@@ -8,11 +8,11 @@ import {
 } from '../common/repositories';
 import { randomInt, randomBytes, createHash, createHmac, randomUUID } from 'crypto';
 import * as bcrypt from 'bcryptjs';
-import { OTP_MIN, OTP_MAX, OTP_EXPIRY_MS, OTP_COOLDOWN_MS, MAX_OTP_ATTEMPTS, BCRYPT_SALT_ROUNDS, MAX_OTP_SENDS_PER_DAY } from '../common/constants';
+import { OTP_MIN, OTP_MAX, OTP_EXPIRY_MS, OTP_COOLDOWN_MS, MAX_OTP_ATTEMPTS, BCRYPT_SALT_ROUNDS } from '../common/constants';
 import { errMsg } from '../common/utils';
 import { checkLockout, handleFailedLogin, resetLoginAttempts, LockoutDbOps } from '../common/utils/login-lockout.helper';
 import { CLIENT_AUTH_SELECT, CLIENT_LOGIN_SELECT } from '../common/prisma-selects';
-import { validateOtp, handleOtpMismatch, hashOtp, OtpDbOps, OtpRecord } from '../common/utils/otp.helper';
+import { validateOtp, handleOtpMismatch, hashOtp, checkDailyOtpLimit, OtpDbOps, OtpRecord } from '../common/utils/otp.helper';
 import { IMailProvider, MAIL_PROVIDER, ISmsProvider, SMS_PROVIDER } from '../common/interfaces';
 import { OAuth2Client } from 'google-auth-library';
 
@@ -52,9 +52,6 @@ export class ClientAuthService {
   // Dummy hash for timing-safe comparison when user not found
   private static readonly DUMMY_HASH = '$2a$12$LJ3m4ys3Lz0KDlu0BRahYOiFMfGHgdOUmrGfEdKnXqJRikMOFbECi';
 
-  /** In-memory daily OTP send counter: identifier → { count, resetAt } */
-  private readonly otpDailyCounter = new Map<string, { count: number; resetAt: number }>();
-
   constructor(
     @Inject(CLIENT_REPOSITORY) private clientRepo: IClientRepository,
     @Inject(OTP_REPOSITORY) private otpRepo: IOtpRepository,
@@ -64,27 +61,6 @@ export class ClientAuthService {
     @Inject(SMS_PROVIDER) private smsProvider: ISmsProvider,
   ) {
     this.googleClient = new OAuth2Client();
-  }
-
-  /**
-   * Enforce daily OTP limit per identifier (phone or email).
-   * Throws 429 if the identifier has exceeded MAX_OTP_SENDS_PER_DAY.
-   */
-  private checkDailyOtpLimit(identifier: string): void {
-    const now = Date.now();
-    const entry = this.otpDailyCounter.get(identifier);
-    if (entry && now < entry.resetAt) {
-      if (entry.count >= MAX_OTP_SENDS_PER_DAY) {
-        throw new HttpException(
-          `Limite quotidienne atteinte (${MAX_OTP_SENDS_PER_DAY} codes/jour). Réessayez demain.`,
-          HttpStatus.TOO_MANY_REQUESTS,
-        );
-      }
-      entry.count++;
-    } else {
-      // Reset or create counter for next 24 hours
-      this.otpDailyCounter.set(identifier, { count: 1, resetAt: now + 86_400_000 });
-    }
   }
 
   /** Lockout DB ops for Client model */
@@ -205,7 +181,7 @@ export class ClientAuthService {
     }
 
     // Daily OTP send limit per phone number
-    this.checkDailyOtpLimit(normalizedPhone);
+    checkDailyOtpLimit(normalizedPhone);
 
     // Per-identifier cooldown — prevent OTP spam even if IP changes
     const existingOtp = await this.otpRepo.findUnique({ where: { telephone: normalizedPhone } });
@@ -510,7 +486,7 @@ export class ClientAuthService {
     }
 
     // Daily OTP send limit per email
-    this.checkDailyOtpLimit(normalizedEmail);
+    checkDailyOtpLimit(normalizedEmail);
 
     // Per-identifier cooldown — prevent OTP spam even if IP changes
     const existingOtp = await this.otpRepo.findUnique({ where: { email: normalizedEmail } });
@@ -541,7 +517,12 @@ export class ClientAuthService {
     });
 
     // Send OTP email — client-facing branding (JitPlus, not JitPlus Pro)
-    await this.mailProvider.sendOtpEmail(normalizedEmail, code, 'client');
+    try {
+      await this.mailProvider.sendOtpEmail(normalizedEmail, code, 'client');
+    } catch {
+      this.logger.error(`OTP email delivery failed for ${normalizedEmail}`);
+      throw new HttpException('Impossible d\'envoyer l\'email. Veuillez réessayer.', HttpStatus.SERVICE_UNAVAILABLE);
+    }
 
     this.logger.log(`OTP envoyé à ${normalizedEmail}`);
 
@@ -678,8 +659,7 @@ export class ClientAuthService {
 
       if (!client) {
         try {
-          // Google provides name + email — accept terms implicitly (user consented by choosing Google)
-          const hasFullName = !!given_name && !!family_name;
+          // Google provides name + email — terms will be accepted during complete-profile step
           client = await this.clientRepo.create({
             data: {
               email: email.toLowerCase(),
@@ -687,7 +667,7 @@ export class ClientAuthService {
               googleId,
               prenom: given_name || null,
               nom: family_name || null,
-              termsAccepted: hasFullName,
+              termsAccepted: false,
             },
             select: CLIENT_AUTH_SELECT,
           });
@@ -991,7 +971,7 @@ export class ClientAuthService {
       if (existing && existing.id !== clientId) {
         throw new ConflictException('Cette adresse email est déjà utilisée par un autre compte.');
       }
-      this.checkDailyOtpLimit(normalizedEmail);
+      checkDailyOtpLimit(normalizedEmail);
       const existingOtp = await this.otpRepo.findUnique({ where: { email: normalizedEmail } });
       if (existingOtp && existingOtp.expiresAt.getTime() - OTP_EXPIRY_MS + OTP_COOLDOWN_MS > Date.now()) {
         throw new HttpException('Veuillez patienter avant de renvoyer un code.', HttpStatus.TOO_MANY_REQUESTS);
@@ -1007,7 +987,12 @@ export class ClientAuthService {
       if (process.env.NODE_ENV === 'development') {
         this.logger.debug(`[DEV] OTP changement email ${normalizedEmail}: ${code}`);
       }
-      await this.mailProvider.sendOtpEmail(normalizedEmail, code, 'client');
+      try {
+        await this.mailProvider.sendOtpEmail(normalizedEmail, code, 'client');
+      } catch {
+        this.logger.error(`OTP email delivery failed for ${normalizedEmail}`);
+        throw new HttpException('Impossible d\'envoyer l\'email. Veuillez réessayer.', HttpStatus.SERVICE_UNAVAILABLE);
+      }
       return { success: true, message: 'Code envoyé par email' };
     } else {
       const normalizedPhone = this.normalizePhone(value);
@@ -1018,7 +1003,7 @@ export class ClientAuthService {
       if (existing && existing.id !== clientId) {
         throw new ConflictException('Ce numéro de téléphone est déjà utilisé par un autre compte.');
       }
-      this.checkDailyOtpLimit(normalizedPhone);
+      checkDailyOtpLimit(normalizedPhone);
       const existingOtp = await this.otpRepo.findUnique({ where: { telephone: normalizedPhone } });
       if (existingOtp && existingOtp.expiresAt.getTime() - OTP_EXPIRY_MS + OTP_COOLDOWN_MS > Date.now()) {
         throw new HttpException('Veuillez patienter avant de renvoyer un code.', HttpStatus.TOO_MANY_REQUESTS);

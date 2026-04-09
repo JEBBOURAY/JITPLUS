@@ -152,6 +152,9 @@ export default {
     birthdayPrivacy: 'Votre date de naissance ne sera jamais partagée. Seul le jour de votre anniversaire, si le commerce offre des cadeaux, le commerçant sera informé que c\'est votre jour spécial.',
     noPasswordTitle: 'Connexion sécurisée',
     noPasswordDesc: 'Votre compte est déjà sécurisé via votre méthode de connexion. Aucun mot de passe supplémentaire n\'est nécessaire.',
+    phoneStepTitle: 'Votre numéro de téléphone',
+    phoneStepSubtitle: 'Ajoutez votre numéro pour sécuriser votre compte',
+    phonePrivacyHint: 'Votre numéro ne sera jamais partagé avec les commerces. Il sert uniquement à sécuriser votre compte.',
   },
 
   // ── Tabs ──
@@ -353,6 +356,8 @@ export default {
     info: 'Informations',
     stores: 'Nos boutiques',
     seeOnMap: 'Voir sur la carte',
+    otherLocationsTitle: 'Nos points de vente',
+    otherLocationsCount: '%{count} établissements disponibles',
     aboutUs: 'À propos',
     rewardsSection: 'Cadeaux & Récompenses',
     noRewards: 'Aucune récompense configurée pour ce commerce',
@@ -533,6 +538,6 @@ export default {
   languages: {
     fr: 'Français',
     en: 'English',
-    ar: 'العربية',
+    ar: 'الدارجة 🇲🇦',
   },
 };

@@ -32,3 +32,43 @@ export class SearchPaginationQueryDto extends PaginationQueryDto {
   @IsString()
   search?: string;
 }
+
+/**
+ * Merchant list query — search + plan/status/categorie filters.
+ */
+export class MerchantListQueryDto extends SearchPaginationQueryDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  plan?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  status?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  categorie?: string;
+}
+
+/**
+ * Client list query — search + status filter.
+ */
+export class ClientListQueryDto extends SearchPaginationQueryDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  status?: string;
+}
+
+/**
+ * Notification list query — search + channel filter.
+ */
+export class NotificationListQueryDto extends SearchPaginationQueryDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  channel?: string;
+}

@@ -9,7 +9,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   User, ArrowRight, ArrowLeft, CheckCircle2, Sparkles, Calendar,
-  Lock, Eye, EyeOff, Gift, Shield, Info,
+  Lock, Eye, EyeOff, Gift, Shield, Info, Phone,
 } from 'lucide-react-native';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -20,6 +20,8 @@ import BrandText from '@/components/BrandText';
 import FormError from '@/components/FormError';
 import { formatDateInput, toIsoDate } from '@/utils/dateInput';
 import { getPasswordStrength, isValidPassword } from '@/utils/passwordStrength';
+import PremiumPhoneInput from '@/components/PremiumPhoneInput';
+import { DEFAULT_COUNTRY, isValidPhoneForCountry, CountryCode } from '@/utils/countryCodes';
 
 const RE_NAME_STRIP = /[^a-zA-Z\u00C0-\u024F\s'-]/g;
 
@@ -70,8 +72,9 @@ export default function CompleteProfileScreen() {
   const theme = useTheme();
   const { t } = useLanguage();
   const { completeProfile, client } = useAuth();
-  const { needsPassword } = useLocalSearchParams<{ needsPassword?: string }>();
+  const { needsPassword, isGoogleUser } = useLocalSearchParams<{ needsPassword?: string; isGoogleUser?: string }>();
   const showPasswordStep = needsPassword === '1';
+  const isGoogle = isGoogleUser === '1';
 
   const [step, setStep] = useState(0);
   const [prenom, setPrenom] = useState(client?.prenom ?? '');
@@ -79,6 +82,8 @@ export default function CompleteProfileScreen() {
   const [dateNaissance, setDateNaissance] = useState('');
   const [password, setPasswordValue] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [phone, setPhone] = useState('');
+  const [country, setCountry] = useState<CountryCode>(DEFAULT_COUNTRY);
   const [showPw, setShowPw] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -94,8 +99,10 @@ export default function CompleteProfileScreen() {
   const submittingRef = useRef(false);
   const scrollRef = useRef<ScrollView>(null);
 
-  // Steps visible to the user (skip step 1 when no password needed)
-  const visibleSteps = showPasswordStep ? [0, 1, 2] : [0, 2];
+  // Steps visible to the user
+  // Email users: name → password → birthday
+  // Google users: name → phone → birthday
+  const visibleSteps = [0, 1, 2];
   const visibleStepIndex = visibleSteps.indexOf(step);
   const displayTotal = visibleSteps.length;
 
@@ -135,33 +142,33 @@ export default function CompleteProfileScreen() {
   const dateValid = dateNaissance.length === 10 && !!toIsoDate(dateNaissance);
 
   const canNextStep0 = prenomOk && nomOk;
-  const canNextStep1 = showPasswordStep ? (isValidPw && passwordsMatch) : true;
+  const phoneValid = isGoogle ? isValidPhoneForCountry(phone, country) : true;
+  const canNextStep1 = showPasswordStep ? (isValidPw && passwordsMatch) : isGoogle ? phoneValid : true;
 
   // Callbacks
   const onPrenomChange = useCallback((v: string) => { setPrenom(sanitizeName(v)); setError(''); }, []);
   const onNomChange = useCallback((v: string) => { setNom(sanitizeName(v)); setError(''); }, []);
   const onDateChange = useCallback((v: string) => setDateNaissance(formatDateInput(v)), []);
+  const onPhoneChange = useCallback((v: string) => { setPhone(v); setError(''); }, []);
   const onPwChange = useCallback((v: string) => { setPasswordValue(v); setError(''); }, []);
   const onConfirmChange = useCallback((v: string) => { setConfirmPassword(v); setError(''); }, []);
 
   const goNext = useCallback(() => {
     if (step === 0) {
       if (!canNextStep0) { setError(t('completeProfile.nameError')); return; }
-      // Skip the password step entirely for Google users (no password needed)
-      animateStep(showPasswordStep ? 1 : 2);
+      animateStep(1);
     } else if (step === 1) {
       if (showPasswordStep && !canNextStep1) { setError(t('setPassword.validationError')); return; }
+      if (isGoogle && !phoneValid) { setError(t('completeProfile.phoneError')); return; }
       animateStep(2);
     }
-  }, [step, canNextStep0, canNextStep1, showPasswordStep, animateStep, t]);
+  }, [step, canNextStep0, canNextStep1, showPasswordStep, isGoogle, phoneValid, animateStep, t]);
 
   const goBack = useCallback(() => {
     if (step > 0) {
-      // Mirror goNext: skip the password step back for Google users
-      const prevStep = (step === 2 && !showPasswordStep) ? 0 : step - 1;
-      animateStep(prevStep);
+      animateStep(step - 1);
     }
-  }, [step, showPasswordStep, animateStep]);
+  }, [step, animateStep]);
 
   const handleSubmit = useCallback(async () => {
     if (submittingRef.current) return;
@@ -170,7 +177,8 @@ export default function CompleteProfileScreen() {
     setError('');
     const isoDate = dateNaissance.length === 10 ? toIsoDate(dateNaissance) : undefined;
     const pw = showPasswordStep ? password : undefined;
-    const result = await completeProfile(prenomTrimmed, nomTrimmed, true, undefined, isoDate, pw);
+    const fullPhone = isGoogle && phone ? `${country.dial}${phone}` : undefined;
+    const result = await completeProfile(prenomTrimmed, nomTrimmed, true, fullPhone, isoDate, pw);
     submittingRef.current = false;
     setIsLoading(false);
     if (result.success) {
@@ -184,7 +192,7 @@ export default function CompleteProfileScreen() {
         setError(result.error || t('common.genericError'));
       }
     }
-  }, [prenomTrimmed, nomTrimmed, dateNaissance, showPasswordStep, password, completeProfile, t]);
+  }, [prenomTrimmed, nomTrimmed, dateNaissance, showPasswordStep, password, isGoogle, phone, country, completeProfile, t]);
 
   // Animated style
   const stepStyle = useMemo(() => ({
@@ -200,17 +208,17 @@ export default function CompleteProfileScreen() {
   // Step titles & subtitles
   const stepTitles = useMemo(() => [
     t('completeProfile.step1Title'),
-    t('completeProfile.step2Title'),
+    isGoogle ? t('completeProfile.phoneStepTitle') : t('completeProfile.step2Title'),
     t('completeProfile.step3Title'),
-  ], [t]);
+  ], [t, isGoogle]);
 
   const stepSubtitles = useMemo(() => [
     t('completeProfile.step1Subtitle'),
-    t('completeProfile.step2Subtitle'),
+    isGoogle ? t('completeProfile.phoneStepSubtitle') : t('completeProfile.step2Subtitle'),
     t('completeProfile.step3Subtitle'),
-  ], [t]);
+  ], [t, isGoogle]);
 
-  const stepIcons = [User, Shield, Gift];
+  const stepIcons = [User, isGoogle ? Phone : Shield, Gift];
   const StepIcon = stepIcons[step];
 
   const btnColors = (step === 0 ? canNextStep0 : step === 1 ? canNextStep1 : true) ? ACTIVE_COLORS : DISABLED_COLORS;
@@ -414,6 +422,26 @@ export default function CompleteProfileScreen() {
                         </Text>
                       </View>
                     </>
+                  ) : isGoogle ? (
+                    /* Google users: collect phone number */
+                    <View>
+                      <PremiumPhoneInput
+                        value={phone}
+                        onChangePhone={onPhoneChange}
+                        country={country}
+                        onChangeCountry={setCountry}
+                        accentColor={palette.violet}
+                        error={!!error && !phoneValid}
+                        errorMessage={!phoneValid && phone.length > 0 ? t('completeProfile.phoneError') : undefined}
+                      />
+
+                      <View style={[s.infoBox, { backgroundColor: `${palette.violet}08` }]}>
+                        <Info size={ICON_16} color={palette.violet} strokeWidth={1.5} />
+                        <Text style={[s.infoText, { color: theme.textMuted }]}>
+                          {t('completeProfile.phonePrivacyHint')}
+                        </Text>
+                      </View>
+                    </View>
                   ) : (
                     /* No password needed — auto-skip or show "no password needed" */
                     <View style={s.noPasswordBlock}>

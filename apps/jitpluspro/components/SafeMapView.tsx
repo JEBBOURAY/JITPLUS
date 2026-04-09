@@ -17,6 +17,7 @@ import {
 import { MapPin, ExternalLink, Navigation } from 'lucide-react-native';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { palette } from '@/contexts/ThemeContext';
+import { logInfo, logWarn } from '@/utils/devLogger';
 
 /* ---------- Chargement conditionnel de react-native-maps ---------- */
 let RNMapView: React.ComponentType<any> | null = null;
@@ -29,7 +30,7 @@ try {
   RNMarker = maps.Marker;
   RN_PROVIDER_GOOGLE = maps.PROVIDER_GOOGLE;
 } catch (e) {
-  if (__DEV__) console.warn('[SafeMapView] react-native-maps not available (Expo Go?):', e);
+  if (__DEV__) logWarn('SafeMapView', 'react-native-maps not available (Expo Go?):', e);
 }
 
 export const PROVIDER_GOOGLE = RN_PROVIDER_GOOGLE;
@@ -133,6 +134,11 @@ interface SafeMapViewProps {
   pitchEnabled?: boolean;
   rotateEnabled?: boolean;
   mapType?: string;
+  customMapStyle?: readonly unknown[];
+  showsPointsOfInterest?: boolean;
+  showsBuildings?: boolean;
+  showsIndoors?: boolean;
+  showsTraffic?: boolean;
 }
 
 const SafeMapView = forwardRef<SafeMapViewRef, SafeMapViewProps>((props, ref) => {
@@ -158,8 +164,8 @@ const SafeMapView = forwardRef<SafeMapViewRef, SafeMapViewProps>((props, ref) =>
     if (!RNMapView || mapLoaded) return;
     const t = setTimeout(() => {
       if (mountedRef.current) {
-        if (__DEV__) console.warn('[SafeMapView] map render timed out after 9s — switching to fallback');
-        setRenderTimedOut(true);
+        if (__DEV__) logWarn('SafeMapView', 'map render timed out after 9s — switching to fallback');
+        // setRenderTimedOut(true); // DISABLED: Some production networks or devices take longer than 9s.
       }
     }, 9000);
     return () => clearTimeout(t);
@@ -184,11 +190,17 @@ const SafeMapView = forwardRef<SafeMapViewRef, SafeMapViewProps>((props, ref) =>
         : [];
   }, [allMarkerCoords, regionCoords]);
 
+  // Always use Google Maps provider on Android — Apple Maps is iOS-only.
+  // Previous code conditionally set provider based on Constants.expoConfig path
+  // which is often empty at runtime in production builds, causing maps to fail.
+  const providerProp = Platform.OS === 'android' ? { provider: RN_PROVIDER_GOOGLE } : {};
+
   if (RNMapView && !renderTimedOut) {
     return (
       <RNMapView
         ref={nativeMapRef}
         style={style}
+        {...providerProp}
         {...androidRendererProp}
         initialRegion={initialRegion}
         region={region}
@@ -201,12 +213,12 @@ const SafeMapView = forwardRef<SafeMapViewRef, SafeMapViewProps>((props, ref) =>
             const locale = Platform.OS === 'ios'
               ? NativeModules.SettingsManager?.settings?.AppleLocale ?? NativeModules.SettingsManager?.settings?.AppleLanguages?.[0]
               : NativeModules.I18nManager?.localeIdentifier;
-            console.log(`[SafeMapView] ✓ Google Maps ready — device locale: ${locale}`);
-            console.log(`[SafeMapView] ✓ Provider: ${rest.provider ?? 'default'}`);
+            logInfo('SafeMapView', `✓ Google Maps ready — device locale: ${locale}`);
+            logInfo('SafeMapView', `✓ Provider: ${rest.provider ?? 'default'}`);
             if (Platform.OS === 'android' && configuredRenderer) {
-              console.log(`[SafeMapView] ✓ Android renderer: ${configuredRenderer}`);
+              logInfo('SafeMapView', `✓ Android renderer: ${configuredRenderer}`);
             }
-            console.log('[SafeMapView] ✓ Region bias: MA (via withMoroccoRegion plugin)');
+            logInfo('SafeMapView', '✓ Region bias: MA (via withMoroccoRegion plugin)');
           }
           onMapReadyProp?.();
         }}

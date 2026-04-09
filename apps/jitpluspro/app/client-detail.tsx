@@ -128,18 +128,14 @@ export default function ClientDetailScreen() {
   const [adjustNote, setAdjustNote] = useState('');
   const { t, locale } = useLanguage();
 
-  // Guard: invalid or missing UUID
-  if (!id || !isValidUUID(id)) {
-    router.back();
-    return null;
-  }
+  const validId = id && isValidUUID(id);
 
   const {
     data: client,
     isLoading: loading,
     refetch,
     isRefetching: refreshing,
-  } = useClientDetail(id);
+  } = useClientDetail(validId ? id : '');
 
   const adjustMutation = useAdjustPoints();
 
@@ -151,6 +147,10 @@ export default function ClientDetailScreen() {
     setAdjustNote('');
     setAdjustModalVisible(true);
   }, []);
+
+  const isStampsMode = client
+    ? (merchant?.loyaltyType === 'STAMPS' || client.loyaltyType === 'STAMPS')
+    : false;
 
   const handleAdjustPoints = useCallback(async () => {
     const pts = parseInt(adjustPoints, 10);
@@ -190,11 +190,24 @@ export default function ClientDetailScreen() {
         },
       ],
     );
-  }, [adjustPoints, adjustMode, adjustNote, adjustMutation, id, client, t]);
+  }, [adjustPoints, adjustMode, adjustNote, adjustMutation, id, client, isStampsMode, t]);
 
-  const isStampsMode = client
-    ? (merchant?.loyaltyType === 'STAMPS' || client.loyaltyType === 'STAMPS')
-    : false;
+  const stampsForReward = merchant?.stampsForReward || client?.stampsForReward || 10;
+  const progressPct = useMemo(
+    () => {
+      if (!client) return 0;
+      return isStampsMode
+        ? Math.min((client.points / (stampsForReward || 1)) * 100, 100)
+        : Math.min((client.points / (client.rewardThreshold || 1)) * 100, 100);
+    },
+    [isStampsMode, client, stampsForReward],
+  );
+
+  // Guard: invalid or missing UUID — after all hooks
+  if (!validId) {
+    router.back();
+    return null;
+  }
 
   if (loading) {
     return (
@@ -214,10 +227,6 @@ export default function ClientDetailScreen() {
 
   const displayName = [client.prenom, client.nom].filter(Boolean).join(' ') || '?';
   const initial = (client.prenom || client.nom || '?').charAt(0).toUpperCase();
-  const stampsForReward = merchant?.stampsForReward || client.stampsForReward || 10;
-  const progressPct = isStampsMode
-    ? Math.min((client.points / (stampsForReward || 1)) * 100, 100)
-    : Math.min((client.points / (client.rewardThreshold || 1)) * 100, 100);
   // Show phone as-is — the backend stores the normalized full number (e.g. +212612345678)
   const phoneDisplay = client.telephone || null;
 

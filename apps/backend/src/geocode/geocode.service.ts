@@ -42,11 +42,16 @@ export class GeocodeService {
     }
   }
 
-  async autocomplete(input: string, ville?: string): Promise<PlacePrediction[]> {
+  async autocomplete(input: string, ville?: string, lat?: number, lng?: number): Promise<PlacePrediction[]> {
     if (!this.apiKey || input.trim().length < 2) return [];
 
     const query = ville ? `${input}, ${ville}` : input;
-    const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(query)}&components=country:ma&language=fr&types=geocode|establishment&key=${this.apiKey}`;
+    let url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(query)}&components=country:ma&language=fr&key=${this.apiKey}`;
+
+    // Location bias: prioritize results near user (50km radius)
+    if (lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng)) {
+      url += `&location=${lat},${lng}&radius=50000`;
+    }
 
     try {
       const res = await fetch(url);

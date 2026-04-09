@@ -40,9 +40,17 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: JwtTokenPayload): Promise<JwtPayload> {
-    // DeviceSession is a merchant-only concept — the table has a required merchantId FK.
-    // Admins and clients don't create DeviceSessions, so only validate for merchant tokens.
-    if (payload.jti && payload.type === 'merchant') {
+    // Check admin session revocation (cache-based blacklist)
+    if (payload.jti && payload.type === 'admin') {
+      const revoked = await this.cacheManager.get<boolean>(`admin-revoked:${payload.jti}`);
+      if (revoked) {
+        throw new UnauthorizedException('Session admin révoquée. Veuillez vous reconnecter.');
+      }
+    }
+
+    // Validate DeviceSession for merchant and team_member tokens.
+    // This ensures revoked sessions (logout) are immediately rejected.
+    if (payload.jti && (payload.type === 'merchant' || payload.type === 'team_member')) {
       const now = Date.now();
       const cached = await this.cacheManager.get<number>(`session:${payload.jti}`);
 

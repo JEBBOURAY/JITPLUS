@@ -17,7 +17,7 @@ import Constants from 'expo-constants';
 import { useRealtimeSocket } from '@jitplus/shared/src/useRealtimeSocket';
 import { useRealtimeEvents } from '@/hooks/useRealtimeEvents';
 import { getServerBaseUrl } from '@/services/api';
-import { logError } from '@/utils/devLogger';
+import { logError, logWarn, logInfo } from '@/utils/devLogger';
 
 // ── Lazy-load Sentry to prevent native module crash on Android ──
 // The native @sentry/react-native module can crash during require() if the DSN
@@ -27,7 +27,7 @@ let Sentry: typeof import('@sentry/react-native') | null = null;
 try {
   Sentry = require('@sentry/react-native');
 } catch (e) {
-  if (__DEV__) console.warn('[Sentry] Native module failed to load:', e);
+  logWarn('Sentry', 'Native module failed to load:', e);
 }
 // Safe no-op wrappers so callers never need null-checks
 const captureException: typeof import('@sentry/react-native').captureException =
@@ -84,7 +84,7 @@ try {
   });
 } catch (e) {
   // Sentry init can crash if native module is misconfigured — never block app launch
-  if (__DEV__) console.warn('[Sentry] init failed:', e);
+  logWarn('Sentry', 'init failed:', e);
 }
 // ── End Sentry init ────────────────────────────────
 
@@ -278,7 +278,7 @@ function ThemedNavigator() {
     // in utils/notifications.ts. Here we listen for received + tapped events.
 
     notificationListener.current = Notifications.addNotificationReceivedListener((notification) => {
-      if (__DEV__) console.log('[Pro] Notification received:', notification.request.content);
+      logInfo('Notifications', 'Notification received:', notification.request.content);
       // Invalidate caches so new data shows immediately
       queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
       queryClient.invalidateQueries({ queryKey: ['notification-history'] });
@@ -287,7 +287,7 @@ function ThemedNavigator() {
     });
 
     responseListener.current = Notifications.addNotificationResponseReceivedListener((response) => {
-      if (__DEV__) console.log('[Pro] Notification tapped:', response.notification.request.content);
+      logInfo('Notifications', 'Notification tapped:', response.notification.request.content);
       queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
       queryClient.invalidateQueries({ queryKey: ['notification-history'] });
       queryClient.invalidateQueries({ queryKey: ['admin-notifications'] });
@@ -295,7 +295,7 @@ function ThemedNavigator() {
       // Navigate to admin notifications when user taps a notification
       try {
         router.push('/admin-notifications');
-      } catch (e) { if (__DEV__) console.warn('Navigation failed', e); }
+      } catch (e) { logWarn('Notifications', 'Navigation failed', e); }
     });
 
     return () => {
@@ -345,7 +345,6 @@ function ThemedNavigator() {
                 animation: 'slide_from_right',
               }}
             />
-            <Stack.Screen name="edit-profile" options={{ headerShown: false }} />
             <Stack.Screen name="settings" options={{ headerShown: false }} />
             <Stack.Screen name="dashboard" options={{ headerShown: false }} />
             <Stack.Screen name="security" options={{ headerShown: false }} />

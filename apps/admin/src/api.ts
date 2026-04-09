@@ -12,6 +12,9 @@ import type {
   ClientReferralsResponse,
   TopReferrer,
   MerchantSubscriptionHistoryResponse,
+  PayoutRequestsResponse,
+  PayoutRequestRow,
+  PayoutStatus,
 } from './types';
 
 // ── Environment config ─────────────────────────────────────────────────────────
@@ -128,11 +131,14 @@ export async function login(email: string, password: string): Promise<AdminInfo>
 export const getStats = () => req<GlobalStats>('/admin/stats');
 
 // ── Merchants ──────────────────────────────────────────────────────────────────
-export const getMerchants = (page = 1, limit = 20, search?: string) => {
+export const getMerchants = (page = 1, limit = 20, search?: string, plan?: string, status?: string, categorie?: string) => {
   const qs = new URLSearchParams({
     page: String(page),
     limit: String(limit),
     ...(search ? { search } : {}),
+    ...(plan ? { plan } : {}),
+    ...(status ? { status } : {}),
+    ...(categorie ? { categorie } : {}),
   }).toString();
   return req<MerchantsResponse>(`/admin/merchants?${qs}`);
 };
@@ -168,8 +174,17 @@ export const setPlanDates = (id: string, startDate?: string, endDate?: string) =
   });
 
 // ── Audit logs ──────────────────────────────────────────────────────────────────
-export const getAuditLogs = (page = 1, limit = 30) =>
-  req<AuditLogsResponse>(`/admin/audit-logs?page=${page}&limit=${limit}`);
+export const getAuditLogs = (page = 1, limit = 30, action?: string, targetType?: string, from?: string, to?: string) => {
+  const qs = new URLSearchParams({
+    page: String(page),
+    limit: String(limit),
+    ...(action ? { action } : {}),
+    ...(targetType ? { targetType } : {}),
+    ...(from ? { from } : {}),
+    ...(to ? { to } : {}),
+  }).toString();
+  return req<AuditLogsResponse>(`/admin/audit-logs?${qs}`);
+};
 
 // ── Notifications ──────────────────────────────────────────────────────────────
 export const getNotifications = (page = 1, limit = 20, channel?: string, search?: string) => {
@@ -183,11 +198,12 @@ export const getNotifications = (page = 1, limit = 20, channel?: string, search?
 };
 
 // ── Clients ────────────────────────────────────────────────────────────────────
-export const getClients = (page = 1, limit = 20, search?: string) => {
+export const getClients = (page = 1, limit = 20, search?: string, status?: string) => {
   const qs = new URLSearchParams({
     page: String(page),
     limit: String(limit),
     ...(search ? { search } : {}),
+    ...(status ? { status } : {}),
   }).toString();
   return req<ClientsResponse>(`/admin/clients?${qs}`);
 };
@@ -244,3 +260,20 @@ export const getClientReferrals = (page = 1, limit = 20, status?: string, search
 
 export const getTopReferrers = (limit = 20) =>
   req<TopReferrer[]>(`/admin/referrals/top-referrers?limit=${limit}`);
+
+// ── Payout requests ────────────────────────────────────────────────────────
+export const getPayoutRequests = (page = 1, limit = 20, status?: PayoutStatus, search?: string) => {
+  const qs = new URLSearchParams({
+    page: String(page),
+    limit: String(limit),
+    ...(status ? { status } : {}),
+    ...(search ? { search } : {}),
+  }).toString();
+  return req<PayoutRequestsResponse>(`/admin/referrals/payout-requests?${qs}`);
+};
+
+export const updatePayoutRequestStatus = (id: string, status: PayoutStatus) =>
+  req<PayoutRequestRow>(`/admin/referrals/payout-requests/${id}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  });

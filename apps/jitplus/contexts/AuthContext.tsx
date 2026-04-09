@@ -5,6 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '@/services/api';
 import { Client } from '@/types';
 import { extractErrorMessage } from '@/utils/errorMessage';
+import { logInfo, logWarn, logError } from '@/utils/devLogger';
 import { isNativePushRuntimeAvailable, registerForPushNotifications, setupAndroidChannel } from '@/utils/notifications';
 import { useAuthStore } from '@/stores/authStore';
 
@@ -56,6 +57,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const loadStoredAuth = async () => {
       try {
+        logInfo('Auth', 'Chargement de l\'authentification...');
         // Restore needsPasswordSetup flag (survives app restarts)
         const storedNeedsPw = await api.getEmailOtpNewUser();
         if (cancelled || sessionVersionRef.current !== version) return;
@@ -66,11 +68,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (cancelled || sessionVersionRef.current !== version) return;
 
         if (token && rememberMe) {
+          logInfo('Auth', 'Token trouvé, restauration session...');
           // Token exists and user wanted to be remembered
           const profile = await api.getProfile();
           if (cancelled || sessionVersionRef.current !== version) return;
           if (profile?.id) {
             store.setClient(profile);
+            logInfo('Auth', 'Profil restauré:', profile.prenom, profile.nom);
           } else {
             // Profile response is invalid — clear tokens
             await api.clearAuth();
@@ -83,18 +87,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (cancelled || sessionVersionRef.current !== version) return;
         // Token invalid or expired — clear stored credentials and show login
         await api.clearAuth();
-        if (__DEV__) {
-          const isExpired401 =
-            error && typeof error === 'object' && 'response' in error &&
-            (error as { response?: { status?: number } }).response?.status === 401;
-          if (isExpired401) {
-            console.log('[Auth] Session expired, returning to login');
-          } else {
-            console.warn('Failed to restore session:', error);
-          }
+        const isExpired401 =
+          error && typeof error === 'object' && 'response' in error &&
+          (error as { response?: { status?: number } }).response?.status === 401;
+        if (isExpired401) {
+          logInfo('Auth', 'Session expirée, retour à l\'écran de connexion');
+        } else {
+          logWarn('Auth', 'Erreur restauration session:', error);
         }
       } finally {
         if (!cancelled && sessionVersionRef.current === version) {
+          logInfo('Auth', 'Chargement terminé');
           store.setLoading(false);
         }
       }
@@ -120,11 +123,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const pushToken = await registerForPushNotifications();
           if (pushToken) {
             const result = await api.updatePushToken(pushToken);
-            if (__DEV__) console.log('Push token sent to backend (Android):', pushToken.substring(0, 12), result);
-          } else {
-            if (__DEV__ && isNativePushRuntimeAvailable()) {
-              console.warn('[Push] No token obtained on Android — notifications will not work');
-            }
+            logInfo('Push', 'Token envoyé au backend (Android):', pushToken.substring(0, 12), result);
+          } else if (isNativePushRuntimeAvailable()) {
+            logWarn('Push', 'Aucun token obtenu sur Android — notifications ne fonctionneront pas');
           }
         } else {
           const alreadyGranted = await (async () => {
@@ -138,10 +139,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const pushToken = await registerForPushNotifications();
             if (pushToken) {
               await api.updatePushToken(pushToken);
-              if (__DEV__) console.log('Push token sent to backend (iOS)');
+              logInfo('Push', 'Token envoyé au backend (iOS)');
             }
           } else {
-            if (__DEV__) console.log('iOS push permission not yet granted — deferring to notification tab');
+            logInfo('Push', 'Permission iOS pas encore accordée — report à l\'onglet notifications');
           }
         }
       } catch (error) {
@@ -149,7 +150,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           await new Promise((r) => setTimeout(r, 2000));
           return registerPush(retries - 1);
         }
-        if (__DEV__) console.warn('[Push] Failed to register push token:', error);
+        logWarn('Push', 'Échec enregistrement token:', error);
         // Report to Sentry so we have visibility on push failures in production
         if (!__DEV__) {
           const Sentry = require('@sentry/react-native');
@@ -175,6 +176,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const response = await api.verifyOtp(telephone, code, isRegister);
       store.setClient(response.client);
+      logInfo('Auth', 'OTP vérifié:', response.client?.prenom, '| nouveau:', response.isNewUser);
       // Flag phone-OTP new registrations so set-password is shown even after app restart
       if (response.isNewUser && isRegister) {
         await api.setEmailOtpNewUser();
@@ -201,6 +203,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const response = await api.verifyOtpEmail(email, code, isRegister);
       store.setClient(response.client);
+      logInfo('Auth', 'OTP email vérifié:', response.client?.prenom, '| nouveau:', response.isNewUser);
       // Flag email-OTP new registrations so set-password is shown even after app restart
       if (response.isNewUser && isRegister) {
         await api.setEmailOtpNewUser();
@@ -220,6 +223,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await api.setRememberMe(true);
       const response = await api.googleLogin(idToken);
       store.setClient(response.client);
+      logInfo('Auth', 'Google login réussi:', response.client?.prenom, '| nouveau:', response.isNewUser);
       return { success: true, isNewUser: response.isNewUser };
     } catch (error: unknown) {
       return { success: false, error: extractErrorMessage(error) };
@@ -232,6 +236,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await api.setRememberMe(rememberMe);
       const response = await api.loginWithEmail(email, password);
       store.setClient(response.client);
+      logInfo('Auth', 'Connexion email réussie:', response.client?.prenom);
       return { success: true };
     } catch (error: unknown) {
       return { success: false, error: extractErrorMessage(error) };
@@ -244,6 +249,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await api.setRememberMe(rememberMe);
       const response = await api.loginWithPhone(telephone, password);
       store.setClient(response.client);
+      logInfo('Auth', 'Connexion téléphone réussie:', response.client?.prenom);
       return { success: true };
     } catch (error: unknown) {
       return { success: false, error: extractErrorMessage(error) };
@@ -304,6 +310,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       import('expo-secure-store').then((ss) => ss.deleteItemAsync('profile_draft')),
     ]);
     store.reset();
+    logInfo('Auth', 'Déconnexion terminée');
   }, [queryClient]);
 
   const refreshProfile = useCallback(async () => {
@@ -320,7 +327,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           store.setClient(null);
         }
       }
-      if (__DEV__) console.error('Failed to refresh profile:', error);
+      logError('Auth', 'Erreur rafraîchissement profil:', error);
     }
   }, []);
 
