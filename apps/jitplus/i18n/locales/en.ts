@@ -154,7 +154,7 @@ export default {
     noPasswordDesc: 'Your account is already secured via your login method. No additional password is needed.',
     phoneStepTitle: 'Your phone number',
     phoneStepSubtitle: 'Add your number to secure your account',
-    phonePrivacyHint: 'Your number will never be shared with merchants. It is only used to secure your account.',,
+    phonePrivacyHint: 'Your number will never be shared with merchants. It is only used to secure your account.',
   },
 
   // ── Tabs ──
