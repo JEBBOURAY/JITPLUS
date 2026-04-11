@@ -11,6 +11,8 @@ module.exports = {
   collectCoverageFrom: [
     'utils/**/*.{ts,tsx}',
     'constants/**/*.{ts,tsx}',
+    'components/**/*.{ts,tsx}',
+    'hooks/**/*.{ts,tsx}',
     '!**/*.d.ts',
   ],
   coverageThreshold: {

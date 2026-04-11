@@ -66,7 +66,7 @@ services:
     env_file:
       - .env.production
     environment:
-      DATABASE_URL: "postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-jit_db}?schema=public&connection_limit=20&pool_timeout=30"
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-jit_db}?schema=public&connection_limit=20&pool_timeout=30&sslmode=prefer"
       NODE_ENV: production
       PORT: 3000
       SKIP_MIGRATIONS: "1"

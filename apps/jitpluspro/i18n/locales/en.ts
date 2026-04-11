@@ -86,6 +86,7 @@ export default {
     passwordTooShort: 'Password must be at least %{min} characters',
     invalidCredentials: 'Incorrect email or password. Please check your credentials.',
     loginWithGoogle: 'Continue with Google',
+    loginWithApple: 'Continue with Apple',
     orDivider: 'or',
   },
 
@@ -473,6 +474,8 @@ export default {
     logoUploadError: 'Failed to upload logo',
     logoDeleteError: 'Failed to delete logo',
     restartDirectionHint: 'Restart the app to apply the direction change.',
+    restartTitle: 'Restart required',
+    restartRequired: 'Please close and reopen the app to apply the selected language direction.',
   },
 
   profile: {
@@ -538,6 +541,8 @@ export default {
     myQRCode: 'My QR Code',
     dashboardHistory: 'Dashboard & History',
     refreshProfile: 'Refresh profile',
+    editProfileName: 'Edit profile name',
+    profileNameError: 'Unable to update profile name.',
     signOut: 'Sign out',
   },
 
@@ -726,6 +731,7 @@ export default {
     googleSetPasswordHint: 'Your account was created with Google. You can set a password below without needing the old one.',
     enterCurrentPassword: 'Enter your current password',
     passwordTooShort: 'New password must be at least 8 characters',
+    passwordRequirements: 'Password must contain at least 8 characters, one uppercase letter, one number, and one special character',
     passwordMismatch: 'Passwords do not match',
     changePwdError: 'Unable to change password',
     disconnectError: 'Unable to disconnect this device',
@@ -865,6 +871,8 @@ export default {
     socialOptionalHint: 'All fields are optional — you can add them later',
     instagramPlaceholder: 'e.g. my_business',
     tiktokPlaceholder: 'e.g. my_business',
+    websiteLabel: 'Website',
+    websitePlaceholder: 'https://www.mybusiness.com',
     storePhoneLabel: 'Store phone',
     storePhonePlaceholder: 'e.g. 0600000000',
     descriptionLabel: 'Description',
@@ -923,6 +931,7 @@ export default {
     trialBadge: '30-day Premium trial included',
     secureNote: '🔒 Your data is secure and will never be shared',
     signUpWithGoogle: 'Sign up with Google',
+    signUpWithApple: 'Sign up with Apple',
     googleLinked: 'Google account linked',
     googleChange: 'Change',
     ownerLastName: 'Owner last name',
@@ -964,6 +973,16 @@ export default {
     noAccountFound: 'No account is linked to this Google email.',
     noAccountAction: 'Create your account in a few steps, then sign in with Google.',
     goToRegister: 'Create an account',
+  },
+
+  // ── Apple Auth ──
+  appleAuth: {
+    error: 'Apple sign-in failed. Please try again.',
+    noToken: 'Could not retrieve Apple token. Please try again.',
+    notAvailable: 'Apple sign-in is not available on this device.',
+    noAccountTitle: 'No account found',
+    noAccountFound: 'No account is linked to this Apple ID.',
+    noAccountAction: 'Create your account in a few steps, then sign in with Apple.',
   },
 
   // ── Stores management ──
@@ -1016,6 +1035,10 @@ export default {
     stepLocationDesc: 'Set the exact location of your store.',
     contactOptional: 'This information is optional',
     socialOptional: 'This information is optional',
+    referenceLabel: 'Main',
+    branchEmailHint: 'Email is managed from the main store. Edit it from the first store\'s page.',
+    branchDescHint: 'Description is managed from the main store. Edit it from the first store\'s page.',
+    branchSocialHint: 'Social media and website are managed from the main store. Changes apply to all your locations.',
     locateMeHint: 'Use my current GPS location',
     mapHint: 'Tap the map or drag the marker',
     nextStep: 'Next',

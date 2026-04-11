@@ -19,8 +19,8 @@ export const DEFAULT_PAGE_SIZE = 20;
 /** Milliseconds in a day */
 export const MS_PER_DAY = 86_400_000;
 
-/** OTP maximum attempts before lockout */
-export const MAX_OTP_ATTEMPTS = 5;
+/** OTP maximum attempts before lockout (reduced from 5 to harden brute-force resistance) */
+export const MAX_OTP_ATTEMPTS = 3;
 
 /** OTP expiry time in milliseconds (5 minutes) */
 export const OTP_EXPIRY_MS = 5 * 60 * 1000;
@@ -59,12 +59,12 @@ export const MAX_OTP_SENDS_PER_DAY = 10;
 export const THROTTLE_TTL = 60_000;
 
 // ── Cache TTLs ──────────────────────────────────────────────
-/** How long resolved merchant plans are cached (1 min) */
-export const PLAN_CACHE_TTL = 60_000;
-/** How long merchant logos are cached in the notification service (5 min) */
-export const LOGO_CACHE_TTL = 5 * 60_000;
-/** How long JWT-strategy session lookups are cached (30 s) */
-export const SESSION_CACHE_TTL = 30_000;
+/** How long resolved merchant plans are cached (3 min — plans rarely change) */
+export const PLAN_CACHE_TTL = 3 * 60_000;
+/** How long merchant logos are cached in the notification service (1h — logos almost never change) */
+export const LOGO_CACHE_TTL = 60 * 60_000;
+/** How long JWT-strategy session lookups are cached (10 s — shorter window to limit replay after logout) */
+export const SESSION_CACHE_TTL = 10_000;
 /** Throttle interval before updating lastActiveAt in device session (5 min) */
 export const LAST_ACTIVE_THROTTLE_MS = 5 * 60_000;
 
@@ -73,10 +73,10 @@ export const LAST_ACTIVE_THROTTLE_MS = 5 * 60_000;
 export const MERCHANTS_LIST_CACHE_TTL = 5 * 60_000;
 /** Single merchant detail page — rewards / info (3 min) */
 export const MERCHANT_DETAIL_CACHE_TTL = 3 * 60_000;
-/** Rewards catalogue per merchant (3 min) */
-export const REWARDS_CACHE_TTL = 3 * 60_000;
-/** Merchant stores list (3 min) */
-export const STORES_CACHE_TTL = 3 * 60_000;
+/** Rewards catalogue per merchant (10 min — rewards change infrequently) */
+export const REWARDS_CACHE_TTL = 10 * 60_000;
+/** Merchant stores list (10 min — stores change infrequently) */
+export const STORES_CACHE_TTL = 10 * 60_000;
 /** Merchant profile — own profile (1 min) */
 export const MERCHANT_PROFILE_CACHE_TTL = 60_000;
 /** Unread notification count (30 s) */

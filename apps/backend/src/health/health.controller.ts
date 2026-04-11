@@ -1,4 +1,4 @@
-import { Controller, Get, Inject } from '@nestjs/common';
+import { Controller, Get, Header, Inject } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
 import { ConfigService } from '@nestjs/config';
@@ -45,6 +45,7 @@ export class HealthController {
    */
   @Get('version')
   @SkipThrottle()
+  @Header('Cache-Control', 'public, max-age=300')
   version() {
     return {
       api_version: API_VERSION,

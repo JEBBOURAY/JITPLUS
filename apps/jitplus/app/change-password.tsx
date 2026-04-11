@@ -117,7 +117,7 @@ export default function ChangePasswordScreen() {
                   borderColor: theme.inputBorder,
                   borderWidth: 1.5,
                 }]}>
-                  <Lock size={ms(18)} color={theme.inputPlaceholder} strokeWidth={1.5} />
+                  <Lock size={ms(18)} color={theme.inputPlaceholder} strokeWidth={2} />
                   <TextInput
                     style={[styles.input, { color: theme.text }]}
                     placeholder={t('changePassword.currentPasswordPlaceholder')}
@@ -133,8 +133,8 @@ export default function ChangePasswordScreen() {
                   />
                   <TouchableOpacity onPress={() => setShowCurrent(!showCurrent)} hitSlop={8}>
                     {showCurrent
-                      ? <EyeOff size={ms(20)} color={theme.inputPlaceholder} strokeWidth={1.5} />
-                      : <Eye size={ms(20)} color={theme.inputPlaceholder} strokeWidth={1.5} />}
+                      ? <EyeOff size={ms(20)} color={theme.inputPlaceholder} strokeWidth={2} />
+                      : <Eye size={ms(20)} color={theme.inputPlaceholder} strokeWidth={2} />}
                   </TouchableOpacity>
                 </View>
               </View>
@@ -150,7 +150,7 @@ export default function ChangePasswordScreen() {
                 borderColor: isValidPassword ? palette.violet : theme.inputBorder,
                 borderWidth: isValidPassword ? 2 : 1.5,
               }]}>
-                <Lock size={ms(18)} color={isValidPassword ? palette.violet : theme.inputPlaceholder} strokeWidth={1.5} />
+                <Lock size={ms(18)} color={isValidPassword ? palette.violet : theme.inputPlaceholder} strokeWidth={2} />
                 <TextInput
                   ref={newRef}
                   style={[styles.input, { color: theme.text }]}
@@ -167,8 +167,8 @@ export default function ChangePasswordScreen() {
                 />
                 <TouchableOpacity onPress={() => setShowNew(!showNew)} hitSlop={8}>
                   {showNew
-                    ? <EyeOff size={ms(20)} color={theme.inputPlaceholder} strokeWidth={1.5} />
-                    : <Eye size={ms(20)} color={theme.inputPlaceholder} strokeWidth={1.5} />}
+                    ? <EyeOff size={ms(20)} color={theme.inputPlaceholder} strokeWidth={2} />
+                    : <Eye size={ms(20)} color={theme.inputPlaceholder} strokeWidth={2} />}
                 </TouchableOpacity>
               </View>
             </View>
@@ -193,7 +193,7 @@ export default function ChangePasswordScreen() {
                 borderColor: passwordsMatch ? palette.violet : theme.inputBorder,
                 borderWidth: passwordsMatch ? 2 : 1.5,
               }]}>
-                <CheckCircle2 size={ms(18)} color={passwordsMatch ? palette.violet : theme.inputPlaceholder} strokeWidth={1.5} />
+                <CheckCircle2 size={ms(18)} color={passwordsMatch ? palette.violet : theme.inputPlaceholder} strokeWidth={2} />
                 <TextInput
                   ref={confirmRef}
                   style={[styles.input, { color: theme.text }]}
@@ -209,8 +209,8 @@ export default function ChangePasswordScreen() {
                 />
                 <TouchableOpacity onPress={() => setShowConfirm(!showConfirm)} hitSlop={8}>
                   {showConfirm
-                    ? <EyeOff size={ms(20)} color={theme.inputPlaceholder} strokeWidth={1.5} />
-                    : <Eye size={ms(20)} color={theme.inputPlaceholder} strokeWidth={1.5} />}
+                    ? <EyeOff size={ms(20)} color={theme.inputPlaceholder} strokeWidth={2} />
+                    : <Eye size={ms(20)} color={theme.inputPlaceholder} strokeWidth={2} />}
                 </TouchableOpacity>
               </View>
             </View>

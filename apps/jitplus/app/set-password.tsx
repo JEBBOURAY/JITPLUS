@@ -69,7 +69,7 @@ export default function SetPasswordScreen() {
       await AsyncStorage.setItem('showWelcome', '1');
       router.replace('/(tabs)/qr');
     } else {
-      if (result.error && result.error === t('common.networkError')) {
+      if (result.isNetworkError) {
         Alert.alert(t('common.networkError'), result.error);
       } else {
         setError(result.error || t('common.genericError'));
@@ -124,7 +124,7 @@ export default function SetPasswordScreen() {
                   borderColor: error && !isValidPassword ? theme.danger : isValidPassword ? palette.violet : theme.inputBorder,
                   borderWidth: isValidPassword ? 2 : 1.5,
                 }]}>
-                  <Lock size={ms(18)} color={isValidPassword ? palette.violet : theme.inputPlaceholder} strokeWidth={1.5} />
+                  <Lock size={ms(18)} color={isValidPassword ? palette.violet : theme.inputPlaceholder} strokeWidth={2} />
                   <TextInput
                     style={[styles.input, { color: theme.text }]}
                     placeholder={t('setPassword.placeholder')}
@@ -139,9 +139,9 @@ export default function SetPasswordScreen() {
                   />
                   <TouchableOpacity onPress={() => setShowPassword(!showPassword)} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={showPassword ? t('login.hidePassword') : t('login.showPassword')}>
                     {showPassword ? (
-                      <EyeOff size={ms(20)} color={theme.inputPlaceholder} strokeWidth={1.5} />
+                      <EyeOff size={ms(20)} color={theme.inputPlaceholder} strokeWidth={2} />
                     ) : (
-                      <Eye size={ms(20)} color={theme.inputPlaceholder} strokeWidth={1.5} />
+                      <Eye size={ms(20)} color={theme.inputPlaceholder} strokeWidth={2} />
                     )}
                   </TouchableOpacity>
                 </View>
@@ -164,7 +164,7 @@ export default function SetPasswordScreen() {
                   borderColor: error && !passwordsMatch ? theme.danger : passwordsMatch ? palette.violet : theme.inputBorder,
                   borderWidth: passwordsMatch ? 2 : 1.5,
                 }]}>
-                  <CheckCircle2 size={ms(18)} color={passwordsMatch ? palette.violet : theme.inputPlaceholder} strokeWidth={1.5} />
+                  <CheckCircle2 size={ms(18)} color={passwordsMatch ? palette.violet : theme.inputPlaceholder} strokeWidth={2} />
                   <TextInput
                     ref={confirmRef}
                     style={[styles.input, { color: theme.text }]}
@@ -179,9 +179,9 @@ export default function SetPasswordScreen() {
                   />
                   <TouchableOpacity onPress={() => setShowConfirm(!showConfirm)} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={showConfirm ? t('login.hidePassword') : t('login.showPassword')}>
                     {showConfirm ? (
-                      <EyeOff size={ms(20)} color={theme.inputPlaceholder} strokeWidth={1.5} />
+                      <EyeOff size={ms(20)} color={theme.inputPlaceholder} strokeWidth={2} />
                     ) : (
-                      <Eye size={ms(20)} color={theme.inputPlaceholder} strokeWidth={1.5} />
+                      <Eye size={ms(20)} color={theme.inputPlaceholder} strokeWidth={2} />
                     )}
                   </TouchableOpacity>
                 </View>

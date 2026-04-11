@@ -23,13 +23,21 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
 import { isValidEmail } from '@/utils/validation';
 import { useGoogleAuth } from '@/hooks/useGoogleAuth';
+import { useAppleAuth } from '@/hooks/useAppleAuth';
 import { haptic } from '@/utils/haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import BrandText from '@/components/BrandText';
 import FormError from '@/components/FormError';
 import { GoogleLogo } from '@/components/GoogleLogo';
+import { AppleLogo } from '@/components/AppleLogo';
 
 const SHOW_WELCOME_KEY = 'showWelcome';
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOGIN_LOCKOUT_MS = 2 * 60 * 1_000; // 2-minute lockout
+const LOGIN_COOLDOWN_MS = 3_000; // 3s between attempts
+const SS_LOGIN_LOCKOUT = 'login_lockout_until';
+const SS_LOGIN_ATTEMPTS = 'login_attempt_count';
 
 type LoginMethod = 'select' | 'email' | 'google';
 
@@ -44,6 +52,10 @@ export default function LoginScreen() {
   const [rememberMe, setRememberMe] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  // Client-side login rate limiting
+  const loginAttemptsRef = useRef(0);
+  const lastLoginAttemptRef = useRef(0);
+  const loginLockoutRef = useRef(0);
   // Animations
   const logoAnim = useRef(new Animated.Value(0)).current;
   const cardAnim = useRef(new Animated.Value(0)).current;
@@ -60,6 +72,18 @@ export default function LoginScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Restore persisted login lockout state
+  useEffect(() => {
+    (async () => {
+      const [lockStr, attStr] = await Promise.all([
+        SecureStore.getItemAsync(SS_LOGIN_LOCKOUT),
+        SecureStore.getItemAsync(SS_LOGIN_ATTEMPTS),
+      ]);
+      if (lockStr) loginLockoutRef.current = Number(lockStr);
+      if (attStr) loginAttemptsRef.current = Number(attStr);
+    })();
+  }, []);
+
   const emailValid = isValidEmail(email);
 
   const handleBack = useCallback(() => {
@@ -70,6 +94,9 @@ export default function LoginScreen() {
 
   // Google auth — shared hook (no stale closures, no setTimeout)
   const google = useGoogleAuth({ actionLabel: t('login.loginButton'), onCancel: handleBack });
+
+  // Apple auth — iOS only
+  const apple = useAppleAuth({ actionLabel: t('login.loginButton'), onCancel: handleBack });
 
   // Sync google hook errors/loading into local state
   useEffect(() => { if (google.error) setError(google.error); }, [google.error]);
@@ -92,6 +119,30 @@ export default function LoginScreen() {
       setError(t('login.passwordTooShort'));
       return;
     }
+
+    // Client-side rate limiting
+    const now = Date.now();
+    if (loginLockoutRef.current > now) {
+      const secsLeft = Math.ceil((loginLockoutRef.current - now) / 1000);
+      setError(t('login.tooManyAttempts', { seconds: secsLeft }));
+      return;
+    }
+    if (now - lastLoginAttemptRef.current < LOGIN_COOLDOWN_MS) {
+      setError(t('login.tooFast'));
+      return;
+    }
+    if (loginAttemptsRef.current >= MAX_LOGIN_ATTEMPTS) {
+      loginLockoutRef.current = now + LOGIN_LOCKOUT_MS;
+      loginAttemptsRef.current = 0;
+      SecureStore.setItemAsync(SS_LOGIN_LOCKOUT, String(loginLockoutRef.current));
+      SecureStore.setItemAsync(SS_LOGIN_ATTEMPTS, '0');
+      setError(t('login.tooManyAttempts', { seconds: 120 }));
+      return;
+    }
+    loginAttemptsRef.current += 1;
+    lastLoginAttemptRef.current = now;
+    SecureStore.setItemAsync(SS_LOGIN_ATTEMPTS, String(loginAttemptsRef.current));
+
     setIsLoading(true);
     setError('');
     const normalizedEmail = email.trim().toLowerCase();
@@ -99,11 +150,13 @@ export default function LoginScreen() {
     const result = await loginWithEmail(normalizedEmail, password, rememberMe);
     setIsLoading(false);
     if (result.success) {
+      SecureStore.deleteItemAsync(SS_LOGIN_LOCKOUT);
+      SecureStore.deleteItemAsync(SS_LOGIN_ATTEMPTS);
       await AsyncStorage.setItem(SHOW_WELCOME_KEY, '1');
       router.replace('/(tabs)/qr');
     } else {
       // Show Alert for network errors, inline error for others
-      if (result.error && result.error === t('common.networkError')) Alert.alert(t('common.networkError'), result.error);
+      if (result.isNetworkError) Alert.alert(t('common.networkError'), result.error);
       else setError(result.error || t('common.genericError'));
     }
   }, [emailValid, email, password, rememberMe, loginWithEmail, t]);
@@ -148,8 +201,79 @@ export default function LoginScreen() {
         <Text style={[styles.socialBtnText, { color: theme.text }]}>{t('login.loginWithGoogle')}</Text>
       </TouchableOpacity>
 
-      {/* Show Google errors on this screen too (safety net) */}
-      {error ? <FormError message={error} /> : null}
+      {/* Apple — iOS only */}
+      {apple.isAvailable && (
+        <TouchableOpacity
+          style={[styles.socialBtn, { backgroundColor: '#000', borderColor: '#000' }]}
+          onPress={() => { haptic(); apple.promptApple(); }}
+          disabled={isLoading || apple.isLoading}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={t('login.loginWithApple')}
+        >
+          <AppleLogo size={ms(20)} color="#fff" />
+          <Text style={[styles.socialBtnText, { color: '#fff' }]}>{t('login.loginWithApple')}</Text>
+        </TouchableOpacity>
+      )}
+
+      {/* Google error */}
+      {!!google.error && !google.noAccount && (
+        <FormError message={google.error} />
+      )}
+
+      {/* Google no-account banner — guide user to register */}
+      {google.noAccount && (
+        <View style={[styles.noAccountBanner, { backgroundColor: `${palette.violet}08`, borderColor: `${palette.violet}25` }]}>
+          <Text style={[styles.noAccountTitle, { color: theme.text }]}>
+            {t('googleAuth.noAccountTitle')}
+          </Text>
+          <Text style={[styles.noAccountMsg, { color: theme.textMuted }]}>
+            {t('googleAuth.noAccountAction')}
+          </Text>
+          <TouchableOpacity
+            onPress={() => {
+              google.dismissNoAccount();
+              router.push('/register');
+            }}
+            activeOpacity={0.85}
+            style={[styles.noAccountBtn, { backgroundColor: palette.violet }]}
+          >
+            <Text style={styles.noAccountBtnText}>{t('googleAuth.goToRegister')}</Text>
+            <ArrowRight size={ms(16)} color="#fff" strokeWidth={1.5} />
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Apple error */}
+      {!!apple.error && !apple.noAccount && (
+        <FormError message={apple.error} />
+      )}
+
+      {/* Apple no-account banner */}
+      {apple.noAccount && (
+        <View style={[styles.noAccountBanner, { backgroundColor: `${palette.violet}08`, borderColor: `${palette.violet}25` }]}>
+          <Text style={[styles.noAccountTitle, { color: theme.text }]}>
+            {t('appleAuth.noAccountTitle')}
+          </Text>
+          <Text style={[styles.noAccountMsg, { color: theme.textMuted }]}>
+            {t('appleAuth.noAccountAction')}
+          </Text>
+          <TouchableOpacity
+            onPress={() => {
+              apple.dismissNoAccount();
+              router.push('/register');
+            }}
+            activeOpacity={0.85}
+            style={[styles.noAccountBtn, { backgroundColor: palette.violet }]}
+          >
+            <Text style={styles.noAccountBtnText}>{t('appleAuth.goToRegister')}</Text>
+            <ArrowRight size={ms(16)} color="#fff" strokeWidth={1.5} />
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Other errors */}
+      {error && !google.error && !apple.error ? <FormError message={error} /> : null}
 
       {/* Separator */}
       <View style={styles.separator}>
@@ -164,7 +288,7 @@ export default function LoginScreen() {
         onPress={() => selectMethod('email')}
         activeOpacity={0.7}
       >
-        <Mail size={ms(20)} color="#fff" strokeWidth={1.5} />
+        <Mail size={ms(20)} color="#fff" strokeWidth={2} />
         <Text style={[styles.socialBtnText, { color: '#fff' }]}>{t('login.loginByEmail')}</Text>
       </TouchableOpacity>
     </Animated.View>
@@ -176,7 +300,7 @@ export default function LoginScreen() {
       transform: [{ translateY: cardAnim.interpolate({ inputRange: [0, 1], outputRange: [30, 0] }) }],
     }]}>
       <TouchableOpacity onPress={handleBack} style={styles.backBtn} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={t('common.back')}>
-        <ChevronLeft size={ms(22)} color={theme.text} strokeWidth={1.5} />
+        <ChevronLeft size={ms(22)} color={theme.text} strokeWidth={2} />
       </TouchableOpacity>
 
       <View style={{ marginBottom: hp(24) }}>
@@ -192,7 +316,7 @@ export default function LoginScreen() {
           borderColor: error ? theme.danger : emailValid ? palette.violet : theme.inputBorder,
           borderWidth: emailValid ? 2 : 1.5,
         }]}>
-          <Mail size={ms(18)} color={emailValid ? palette.violet : theme.inputPlaceholder} strokeWidth={1.5} />
+          <Mail size={ms(18)} color={emailValid ? palette.violet : theme.inputPlaceholder} strokeWidth={2} />
           <TextInput
             style={[styles.emailInput, { color: theme.text }]}
             placeholder={t('login.emailPlaceholder')}
@@ -212,7 +336,7 @@ export default function LoginScreen() {
           borderColor: error ? theme.danger : password.length >= 8 ? palette.violet : theme.inputBorder,
           borderWidth: password.length >= 8 ? 2 : 1.5,
         }]}>
-          <Lock size={ms(18)} color={password.length >= 8 ? palette.violet : theme.inputPlaceholder} strokeWidth={1.5} />
+          <Lock size={ms(18)} color={password.length >= 8 ? palette.violet : theme.inputPlaceholder} strokeWidth={2} />
           <TextInput
             style={[styles.emailInput, { color: theme.text }]}
             placeholder={t('login.password')}
@@ -224,9 +348,9 @@ export default function LoginScreen() {
           />
           <TouchableOpacity onPress={() => setShowPassword(!showPassword)} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={showPassword ? t('login.hidePassword') : t('login.showPassword')}>
             {showPassword ? (
-              <EyeOff size={ms(20)} color={theme.inputPlaceholder} strokeWidth={1.5} />
+              <EyeOff size={ms(20)} color={theme.inputPlaceholder} strokeWidth={2} />
             ) : (
-              <Eye size={ms(20)} color={theme.inputPlaceholder} strokeWidth={1.5} />
+              <Eye size={ms(20)} color={theme.inputPlaceholder} strokeWidth={2} />
             )}
           </TouchableOpacity>
         </View>
@@ -278,7 +402,7 @@ export default function LoginScreen() {
         accessibilityRole="button"
         accessibilityLabel={t('common.back')}
       >
-        <ChevronLeft size={ms(22)} color={theme.text} strokeWidth={1.5} />
+        <ChevronLeft size={ms(22)} color={theme.text} strokeWidth={2} />
       </TouchableOpacity>
 
       <View style={[styles.formHeader, { alignItems: 'center' }]}>
@@ -293,7 +417,7 @@ export default function LoginScreen() {
           </View>
         ) : google.isSuccess ? (
           <View style={{ alignItems: 'center', gap: hp(10), marginTop: hp(16) }}>
-            <CheckCircle size={ms(52)} color="#34A853" strokeWidth={1.5} />
+            <CheckCircle size={ms(52)} color="#34A853" strokeWidth={2} />
             <Text style={{ color: '#34A853', fontWeight: '700', fontSize: fontSize.md }}>{t('googleAuth.success')}</Text>
           </View>
         ) : error ? (
@@ -429,6 +553,41 @@ const styles = StyleSheet.create({
   },
   separatorLine: { flex: 1, height: 1 },
   separatorText: { fontSize: fontSize.sm, fontWeight: '500' },
+
+  // No-account banner (Google/Apple login → user doesn't exist yet)
+  noAccountBanner: {
+    borderWidth: 1.5,
+    borderRadius: 16,
+    paddingHorizontal: wp(16),
+    paddingVertical: hp(14),
+    marginBottom: hp(12),
+    gap: hp(6),
+  },
+  noAccountTitle: {
+    fontSize: fontSize.md,
+    fontWeight: '700',
+    fontFamily: 'Lexend_700Bold',
+  },
+  noAccountMsg: {
+    fontSize: fontSize.sm,
+    lineHeight: ms(20),
+    fontFamily: 'Lexend_400Regular',
+  },
+  noAccountBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.md,
+    height: hp(42),
+    gap: wp(6),
+    marginTop: hp(4),
+  },
+  noAccountBtnText: {
+    color: '#fff',
+    fontSize: fontSize.sm,
+    fontWeight: '600',
+    fontFamily: 'Lexend_600SemiBold',
+  },
 
   // Footer
   footerContainer: {

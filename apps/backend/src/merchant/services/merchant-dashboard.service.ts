@@ -3,11 +3,7 @@ import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
 import { Prisma } from '@prisma/client';
 import {
-  LOYALTY_CARD_REPOSITORY, type ILoyaltyCardRepository,
-  TRANSACTION_REPOSITORY, type ITransactionRepository,
   REWARD_REPOSITORY, type IRewardRepository,
-  MERCHANT_REPOSITORY, type IMerchantRepository,
-  PROFILE_VIEW_REPOSITORY, type IProfileViewRepository,
   RAW_QUERY_RUNNER, type IRawQueryRunner,
 } from '../../common/repositories';
 import { MS_PER_DAY, DEFAULT_LOYALTY_TYPE } from '../../common/constants';
@@ -15,15 +11,11 @@ import { buildDateFilter } from '../../common/utils';
 
 @Injectable()
 export class MerchantDashboardService {
-  private static readonly STATS_TTL = 60_000;  // 1 minute
-  private static readonly TRENDS_TTL = 120_000; // 2 minutes
+  private static readonly STATS_TTL = 5 * 60_000;  // 5 minutes (stats queries are expensive raw SQL)
+  private static readonly TRENDS_TTL = 10 * 60_000;  // 10 minutes (historical data, can be slightly stale)
 
   constructor(
-    @Inject(LOYALTY_CARD_REPOSITORY) private loyaltyCardRepo: ILoyaltyCardRepository,
-    @Inject(TRANSACTION_REPOSITORY) private transactionRepo: ITransactionRepository,
     @Inject(REWARD_REPOSITORY) private rewardRepo: IRewardRepository,
-    @Inject(MERCHANT_REPOSITORY) private merchantRepo: IMerchantRepository,
-    @Inject(PROFILE_VIEW_REPOSITORY) private profileViewRepo: IProfileViewRepository,
     @Inject(RAW_QUERY_RUNNER) private rawQuery: IRawQueryRunner,
     @Inject(CACHE_MANAGER) private cache: Cache,
   ) {}
@@ -38,59 +30,61 @@ export class MerchantDashboardService {
       dateFilter = buildDateFilter(period);
     }
 
-    const txWhere = {
-      merchantId,
-      status: 'ACTIVE' as const,
-      ...(dateFilter ? { createdAt: dateFilter } : {}),
-    };
+    const startDate = dateFilter ? dateFilter.gte : null;
 
-    const [
-      totalClients,
-      pointsSum,
-      redeemedSum,
-      totalTransactions,
-      rewards,
-      rewardRedemptions,
-      merchant,
-      unknownRedemptions,
-      profileViewCount,
-    ] = await Promise.all([
-      this.loyaltyCardRepo.count({
-        where: { merchantId, ...(dateFilter ? { createdAt: dateFilter } : {}) },
-      }),
-      this.loyaltyCardRepo.aggregate({
-        where: { merchantId, ...(dateFilter ? { createdAt: dateFilter } : {}) },
-        _sum: { points: true },
-      }),
-      this.transactionRepo.aggregate({
-        where: { ...txWhere, type: 'REDEEM_REWARD' },
-        _sum: { points: true },
-      }),
-      this.transactionRepo.count({ where: txWhere }),
+    // ── Single raw SQL instead of 9 ORM queries ──────────────────────────────
+    // Scans loyalty_cards, transactions, merchants, profile_views_log in one round-trip.
+    const [statsRow] = await this.rawQuery.queryRaw<{
+      total_clients: number;
+      total_points: number;
+      total_redeemed_points: number;
+      total_transactions: number;
+      unknown_redemptions: number;
+      profile_views: number;
+      loyalty_type: string;
+      all_profile_views: number;
+    }>(Prisma.sql`
+      SELECT
+        (SELECT COUNT(*)::int FROM loyalty_cards
+         WHERE merchant_id = ${merchantId}
+           AND (${startDate}::timestamp IS NULL OR created_at >= ${startDate})) AS total_clients,
+        (SELECT COALESCE(SUM(points), 0)::int FROM loyalty_cards
+         WHERE merchant_id = ${merchantId}
+           AND (${startDate}::timestamp IS NULL OR created_at >= ${startDate})) AS total_points,
+        (SELECT COALESCE(SUM(t.points), 0)::int FROM transactions t
+         WHERE t.merchant_id = ${merchantId} AND t.status = 'ACTIVE' AND t.type = 'REDEEM_REWARD'
+           AND (${startDate}::timestamp IS NULL OR t.created_at >= ${startDate})) AS total_redeemed_points,
+        (SELECT COUNT(*)::int FROM transactions t
+         WHERE t.merchant_id = ${merchantId} AND t.status = 'ACTIVE'
+           AND (${startDate}::timestamp IS NULL OR t.created_at >= ${startDate})) AS total_transactions,
+        (SELECT COUNT(*)::int FROM transactions t
+         WHERE t.merchant_id = ${merchantId} AND t.status = 'ACTIVE' AND t.type = 'REDEEM_REWARD' AND t.reward_id IS NULL
+           AND (${startDate}::timestamp IS NULL OR t.created_at >= ${startDate})) AS unknown_redemptions,
+        (SELECT COUNT(*)::int FROM profile_views_log
+         WHERE merchant_id = ${merchantId}
+           AND (${startDate}::timestamp IS NULL OR view_date >= ${startDate}::date)) AS profile_views,
+        (SELECT loyalty_type FROM merchants WHERE id = ${merchantId}) AS loyalty_type,
+        (SELECT profile_views FROM merchants WHERE id = ${merchantId}) AS all_profile_views
+    `);
+
+    // Reward distribution still needs the reward list + grouped counts (2 queries, not 9)
+    const [rewards, rewardRedemptions] = await Promise.all([
       this.rewardRepo.findMany({
         where: { merchantId },
         select: { id: true, titre: true },
         orderBy: { createdAt: 'asc' },
       }),
-      this.transactionRepo.groupBy({
-        by: ['rewardId'],
-        where: { ...txWhere, type: 'REDEEM_REWARD', rewardId: { not: null } },
-        _count: { _all: true },
-      }),
-      this.merchantRepo.findUnique({
-        where: { id: merchantId },
-        select: { loyaltyType: true, profileViews: true },
-      }),
-      this.transactionRepo.count({
-        where: { ...txWhere, type: 'REDEEM_REWARD', rewardId: null },
-      }),
-      this.profileViewRepo.count({
-        where: { merchantId, ...(dateFilter ? { viewDate: dateFilter } : {}) },
-      }),
+      this.rawQuery.queryRaw<{ reward_id: string; cnt: number }>(Prisma.sql`
+        SELECT reward_id, COUNT(*)::int AS cnt
+        FROM transactions
+        WHERE merchant_id = ${merchantId} AND status = 'ACTIVE' AND type = 'REDEEM_REWARD' AND reward_id IS NOT NULL
+          AND (${startDate}::timestamp IS NULL OR created_at >= ${startDate})
+        GROUP BY reward_id
+      `),
     ]);
 
     const rewardCounts = new Map<string, number>(
-      rewardRedemptions.map((entry: any) => [entry.rewardId as string, entry._count?._all ?? 0]),
+      rewardRedemptions.map((r: any) => [r.reward_id as string, r.cnt ?? 0]),
     );
 
     const rewardsDistribution: Array<{
@@ -103,6 +97,7 @@ export class MerchantDashboardService {
       count: rewardCounts.get(reward.id) || 0,
     }));
 
+    const unknownRedemptions = statsRow?.unknown_redemptions ?? 0;
     if (unknownRedemptions > 0) {
       rewardsDistribution.push({
         rewardId: null,
@@ -112,14 +107,14 @@ export class MerchantDashboardService {
     }
 
     const result = {
-      totalClients,
-      totalPoints: pointsSum._sum.points ?? 0,
-      totalRedeemedPoints: redeemedSum._sum.points ?? 0,
-      totalTransactions,
+      totalClients: statsRow?.total_clients ?? 0,
+      totalPoints: statsRow?.total_points ?? 0,
+      totalRedeemedPoints: statsRow?.total_redeemed_points ?? 0,
+      totalTransactions: statsRow?.total_transactions ?? 0,
       totalRewardsGiven: Array.from(rewardCounts.values()).reduce((a: number, b: number) => a + b, 0) + unknownRedemptions,
-      profileViews: dateFilter ? profileViewCount : (merchant?.profileViews ?? 0),
+      profileViews: dateFilter ? (statsRow?.profile_views ?? 0) : (statsRow?.all_profile_views ?? 0),
       rewardsDistribution,
-      loyaltyType: merchant?.loyaltyType || DEFAULT_LOYALTY_TYPE,
+      loyaltyType: statsRow?.loyalty_type || DEFAULT_LOYALTY_TYPE,
     };
 
     await this.cache.set(cacheKey, result, MerchantDashboardService.STATS_TTL);

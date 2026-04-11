@@ -1,8 +1,8 @@
-﻿import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import {
-  View, Text, ScrollView, RefreshControl, StyleSheet, Pressable, Alert, Platform,
+  View, Text, ScrollView, RefreshControl, Pressable, Alert, Platform, Linking,
   TextInput, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Image,
-  Modal, Linking, AppState, AppStateStatus,
+  AppState, AppStateStatus,
 } from 'react-native';
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -12,7 +12,7 @@ import * as Sharing from 'expo-sharing';
 import Constants from 'expo-constants';
 import {
   User, LogOut, Phone, Mail, Pencil, Check, X, Trash2, AlertTriangle,
-  Share2, MessageCircle, ChevronDown, ChevronRight, Moon, Info, Globe, FileDown, Shield,
+  Share2, MessageCircle, ChevronDown, ChevronRight, Moon, Globe, FileDown, Shield,
   Star, MessageSquare, Calendar, Sparkles, Lock, ShieldCheck, Gift,
 } from 'lucide-react-native';
 import { haptic, HapticStyle } from '@/utils/haptics';
@@ -24,13 +24,14 @@ import { api } from '@/services/api';
 import FadeInView from '@/components/FadeInView';
 import GuestGuard from '@/components/GuestGuard';
 import Skeleton from '@/components/Skeleton';
+import { DeleteAccountModal, OtpVerificationModal, LanguageModal, profileStyles as styles } from '@/components/profile';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import { wp, hp, ms, fontSize as FS, radius } from '@/utils/responsive';
 import { isValidEmail } from '@/utils/validation';
 import { extractErrorMessage } from '@/utils/errorMessage';
 import { formatDateInput, toIsoDate, isoDtoDmy } from '@/utils/dateInput';
-import { DRAFT_PERSIST_DEBOUNCE_MS, OTP_RESEND_COOLDOWN_S } from '@/constants';
+import { DRAFT_PERSIST_DEBOUNCE_MS, OTP_RESEND_COOLDOWN_S, getStoreUrl } from '@/constants';
 import PremiumPhoneInput from '@/components/PremiumPhoneInput';
 import { DEFAULT_COUNTRY, COUNTRY_CODES, isValidPhoneForCountry, type CountryCode } from '@/utils/countryCodes';
 
@@ -47,8 +48,6 @@ export default function ProfileScreen() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [deleteConfirmText, setDeleteConfirmText] = useState('');
-  const [deletePassword, setDeletePassword] = useState('');
   const [infoExpanded, setInfoExpanded] = useState(false);
   const [prefExpanded, setPrefExpanded] = useState(false);
   const [compteExpanded, setCompteExpanded] = useState(false);
@@ -110,7 +109,7 @@ export default function ProfileScreen() {
   isEditingRef.current = isEditing;
   const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Debounced draft values — captured via ref so AppState listener doesn’t
+  // Debounced draft values — captured via ref so AppState listener doesn't
   // cause re-subscriptions on every keystroke.
   const draftRef = useRef({ editPrenom, editNom, editEmail, editTelephone, editPhoneLocal, editPhoneCountry: editPhoneCountry.code, editDateNaissance });
   draftRef.current = { editPrenom, editNom, editEmail, editTelephone, editPhoneLocal, editPhoneCountry: editPhoneCountry.code, editDateNaissance };
@@ -355,8 +354,6 @@ export default function ProfileScreen() {
 
   const handleDeleteAccount = () => {
     haptic(HapticStyle.Heavy);
-    setDeleteConfirmText('');
-    setDeletePassword('');
     setShowDeleteModal(true);
   };
 
@@ -393,13 +390,11 @@ export default function ProfileScreen() {
 
   if (isGuest) return <GuestGuard />;
 
-  const confirmDelete = async () => {
-    if (deleteConfirmText.trim().toUpperCase() !== t('profile.deleteConfirmWord').toUpperCase()) return;
-    if (!deletePassword) return;
+  const confirmDelete = async (password: string) => {
     setShowDeleteModal(false);
     setIsDeleting(true);
     try {
-      await api.deleteAccount(deletePassword);
+      await api.deleteAccount(password);
       Alert.alert(t('profile.accountDeleted'), t('profile.accountDeletedMsg'));
       await logout();
       router.replace('/login');
@@ -953,12 +948,7 @@ export default function ProfileScreen() {
                   </Pressable>
                   {/* ── Noter l'application ── */}
                   <Pressable
-                    onPress={() => {
-                      const url = Platform.OS === 'ios'
-                        ? 'https://apps.apple.com/app/id6744903766'
-                        : 'https://play.google.com/store/apps/details?id=com.jitplus.client';
-                      Linking.openURL(url);
-                    }}
+                    onPress={() => Linking.openURL(getStoreUrl())}
                     android_ripple={{ color: `${palette.gold}10` }}
                     style={({ pressed }) => [
                       styles.infoRow,
@@ -1080,592 +1070,31 @@ export default function ProfileScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* ── Delete Account Confirmation Modal ── */}
-      <Modal
+      <DeleteAccountModal
         visible={showDeleteModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowDeleteModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { backgroundColor: theme.bgCard }]}>
-            <View style={[styles.modalIconCircle, { backgroundColor: `${theme.danger}12` }]}>
-              <AlertTriangle size={ms(28)} color={theme.danger} strokeWidth={1.5} />
-            </View>
-            <Text style={[styles.modalTitle, { color: theme.text }]}>{t('profile.deleteModalTitle')}</Text>
-            <Text style={[styles.modalBody, { color: theme.textMuted }]}>
-              {t('profile.deleteModalBody')}
-            </Text>
-            <Text style={[styles.modalInstruction, { color: theme.textSecondary }]}>
-              {t('profile.deleteConfirmPrompt')}
-            </Text>
-            <TextInput
-              style={[styles.modalInput, {
-                color: theme.text,
-                  borderColor: deleteConfirmText.trim().toUpperCase() === t('profile.deleteConfirmWord').toUpperCase() ? theme.danger : theme.border,
-                backgroundColor: theme.bgInput,
-              }]}
-              value={deleteConfirmText}
-              onChangeText={setDeleteConfirmText}
-              placeholder={t('profile.deleteConfirmWord')}
-              placeholderTextColor={theme.textMuted}
-              autoCapitalize="characters"
-              autoCorrect={false}
-            />
-            {client?.hasPassword ? (
-              <>
-                <Text style={[styles.modalInstruction, { color: theme.textSecondary, marginTop: ms(8) }]}>
-                  {t('profile.deletePasswordPrompt')}
-                </Text>
-                <TextInput
-                  style={[styles.modalInput, {
-                    color: theme.text,
-                    borderColor: deletePassword.length > 0 ? theme.danger : theme.border,
-                    backgroundColor: theme.bgInput,
-                  }]}
-                  value={deletePassword}
-                  onChangeText={setDeletePassword}
-                  placeholder={t('profile.deletePasswordPlaceholder')}
-                  placeholderTextColor={theme.textMuted}
-                  secureTextEntry
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-              </>
-            ) : (
-              <Text style={[styles.modalInstruction, { color: theme.danger, marginTop: ms(8) }]}>
-                {t('profile.deleteNoPasswordWarning')}
-              </Text>
-            )}
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={[styles.modalBtn, { backgroundColor: theme.bgInput }]}
-                onPress={() => setShowDeleteModal(false)}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.modalBtnText, { color: theme.text }]}>{t('common.cancel')}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalBtn, {
-                  backgroundColor: (deleteConfirmText.trim().toUpperCase() === t('profile.deleteConfirmWord').toUpperCase() && deletePassword.length > 0) ? theme.danger : `${theme.danger}30`,
-                }]}
-                onPress={confirmDelete}
-                disabled={deleteConfirmText.trim().toUpperCase() !== t('profile.deleteConfirmWord').toUpperCase() || !deletePassword}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.modalBtnText, { color: '#fff' }]}>{t('common.delete')}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+        hasPassword={!!client?.hasPassword}
+        onClose={() => setShowDeleteModal(false)}
+        onConfirm={confirmDelete}
+      />
 
-      {/* ── OTP Verification Modal ── */}
-      <Modal
+      <OtpVerificationModal
         visible={showOtpModal}
-        transparent
-        animationType="fade"
-        onRequestClose={dismissOtpModal}
-      >
-        <Pressable style={styles.modalOverlay} onPress={dismissOtpModal}>
-          <Pressable style={[styles.otpModalCard, { backgroundColor: theme.bgCard }]} onPress={(e) => e.stopPropagation()}>
-            <View style={[styles.modalIconCircle, { backgroundColor: `${palette.violet}12` }]}>
-              <ShieldCheck size={ms(28)} color={palette.violet} strokeWidth={1.5} />
-            </View>
-            <Text style={[styles.modalTitle, { color: theme.text }]}>{t('profile.otpVerifyTitle')}</Text>
-            <Text style={[styles.otpModalDesc, { color: theme.textMuted }]}>
-              {t('profile.otpVerifyDesc', { value: otpTarget?.value || '' })}
-            </Text>
+        targetValue={otpTarget?.value || ''}
+        otpCode={otpCode}
+        otpError={otpError}
+        isVerifying={isVerifyingOtp}
+        isSending={isSendingOtp}
+        resendTimer={otpResendTimer}
+        onChangeCode={(code) => { setOtpCode(code); setOtpError(''); }}
+        onVerify={verifyOtpAndApply}
+        onResend={resendOtp}
+        onClose={dismissOtpModal}
+      />
 
-            <TextInput
-              style={[styles.otpInput, {
-                color: theme.text,
-                borderColor: otpError ? theme.danger : otpCode.length === 6 ? palette.violet : theme.border,
-                backgroundColor: theme.bgInput,
-              }]}
-              value={otpCode}
-              onChangeText={(v) => { setOtpCode(v.replace(/\D/g, '').slice(0, 6)); setOtpError(''); }}
-              placeholder={t('profile.otpVerifyPlaceholder')}
-              placeholderTextColor={theme.textMuted}
-              keyboardType="number-pad"
-              maxLength={6}
-              autoFocus
-              textAlign="center"
-            />
-            {!!otpError && (
-              <Text style={[styles.otpErrorText, { color: theme.danger }]}>{otpError}</Text>
-            )}
-
-            <View style={styles.otpResendRow}>
-              {otpResendTimer > 0 ? (
-                <Text style={[styles.otpResendText, { color: theme.textMuted }]}>
-                  {t('profile.otpResendTimer', { seconds: otpResendTimer })}
-                </Text>
-              ) : (
-                <TouchableOpacity onPress={resendOtp} disabled={isSendingOtp} activeOpacity={0.7}>
-                  {isSendingOtp ? (
-                    <ActivityIndicator size="small" color={palette.violet} />
-                  ) : (
-                    <Text style={[styles.otpResendText, { color: palette.violet }]}>
-                      {t('profile.otpResend')}
-                    </Text>
-                  )}
-                </TouchableOpacity>
-              )}
-            </View>
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={[styles.modalBtn, { backgroundColor: theme.bgInput }]}
-                onPress={dismissOtpModal}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.modalBtnText, { color: theme.text }]}>{t('common.cancel')}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalBtn, {
-                  backgroundColor: otpCode.length === 6 ? palette.violet : `${palette.violet}30`,
-                }]}
-                onPress={verifyOtpAndApply}
-                disabled={otpCode.length !== 6 || isVerifyingOtp}
-                activeOpacity={0.7}
-              >
-                {isVerifyingOtp ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text style={[styles.modalBtnText, { color: '#fff' }]}>{t('common.confirm')}</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
-
-      {/* ── Language Selector Modal ── */}
-      <Modal
+      <LanguageModal
         visible={showLanguageModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowLanguageModal(false)}
-      >
-        <Pressable style={styles.modalOverlay} onPress={() => setShowLanguageModal(false)}>
-          <View style={[styles.langModalCard, { backgroundColor: theme.bgCard }]}>
-            <View style={[styles.modalIconCircle, { backgroundColor: `${palette.gold}12` }]}>
-              <Globe size={ms(28)} color={palette.gold} strokeWidth={1.5} />
-            </View>
-            <Text style={[styles.modalTitle, { color: theme.text }]}>{t('profile.language')}</Text>
-            <Text style={[styles.langModalDesc, { color: theme.textMuted }]}>
-              {t('profile.languageDesc')}
-            </Text>
-
-            {(['fr', 'en', 'ar'] as const).map((lang) => {
-              const selected = locale === lang;
-              return (
-                <Pressable
-                  key={lang}
-                  onPress={async () => {
-                    if (lang !== locale) {
-                      await setLocale(lang);
-                      if (lang === 'ar' || locale === 'ar') {
-                        Alert.alert(
-                          t('profile.language'),
-                          t('profile.restartRequired'),
-                          [{ text: t('common.ok') }],
-                        );
-                      }
-                    }
-                    setShowLanguageModal(false);
-                  }}
-                  android_ripple={{ color: `${palette.violet}10` }}
-                  style={({ pressed }) => [
-                    styles.langOption,
-                    { borderColor: selected ? theme.primary : theme.borderLight },
-                    selected && { backgroundColor: `${theme.primary}08` },
-                    pressed && Platform.OS === 'ios' && { opacity: 0.7 },
-                  ]}
-                >
-                  <Text style={styles.langFlag}>
-                    {lang === 'fr' ? '🇫🇷' : lang === 'en' ? '🇬🇧' : '🇲🇦'}
-                  </Text>
-                  <Text style={[styles.langOptionText, { color: selected ? theme.primary : theme.text }]}>
-                    {t(`languages.${lang}`)}
-                  </Text>
-                  {selected && (
-                    <View style={[styles.langCheck, { backgroundColor: theme.primary }]}>
-                      <Check size={ms(12)} color="#fff" strokeWidth={3} />
-                    </View>
-                  )}
-                </Pressable>
-              );
-            })}
-          </View>
-        </Pressable>
-      </Modal>
+        onClose={() => setShowLanguageModal(false)}
+      />
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-
-  // Header
-  header: { paddingBottom: hp(24), borderBottomLeftRadius: ms(28), borderBottomRightRadius: ms(28) },
-  headerContent: { paddingHorizontal: wp(24), paddingTop: hp(8) },
-  headerTitle: { fontSize: FS['2xl'], fontWeight: '700', color: '#fff', letterSpacing: -0.3 },
-
-  // Profile card
-  profileCard: {
-    borderRadius: radius.xl, padding: wp(16), marginBottom: hp(16),
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 12, elevation: 2,
-  },
-  profileRow: { flexDirection: 'row', alignItems: 'center', gap: wp(14) },
-  avatarGradient: {
-    width: ms(56), height: ms(56), borderRadius: ms(28),
-    alignItems: 'center', justifyContent: 'center',
-  },
-  avatarText: { fontSize: FS.lg, fontWeight: '700', color: '#fff', letterSpacing: 1 },
-  profileInfo: { flex: 1 },
-  profileName: { fontSize: FS.lg, fontWeight: '700', letterSpacing: -0.3 },
-  editHeaderBtn: {
-    width: ms(38), height: ms(38), borderRadius: ms(19),
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: `${palette.violet}20`,
-  },
-
-  // Referral banner
-  referralBanner: {
-    borderRadius: radius.xl,
-    overflow: 'hidden',
-    marginBottom: hp(16),
-  },
-  referralBannerGradient: {
-    borderRadius: radius.xl,
-    padding: wp(16),
-  },
-  referralBannerContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: wp(12),
-  },
-  referralBannerIconWrap: {
-    width: ms(42),
-    height: ms(42),
-    borderRadius: ms(21),
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  referralBannerTextWrap: {
-    flex: 1,
-  },
-  referralBannerTitle: {
-    fontSize: FS.md,
-    fontWeight: '700',
-    color: '#fff',
-    marginBottom: hp(3),
-  },
-  referralBannerDesc: {
-    fontSize: FS.xs,
-    color: 'rgba(255,255,255,0.85)',
-    lineHeight: ms(17),
-  },
-
-
-  // Content
-  contentContainer: { paddingHorizontal: wp(20), paddingTop: hp(40), paddingBottom: hp(120), flexGrow: 1, justifyContent: 'center' },
-
-  // Section
-  sectionHeaderRow: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    marginBottom: hp(8), marginTop: hp(8),
-  },
-  sectionTitle: {
-    fontSize: FS.xs, fontWeight: '700', textTransform: 'uppercase',
-    letterSpacing: 0.5, marginBottom: hp(8), marginLeft: wp(4), marginTop: hp(8),
-  },
-  editActions: { flexDirection: 'row', gap: wp(8) },
-  editActionBtn: {
-    width: ms(34), height: ms(34), borderRadius: ms(17),
-    alignItems: 'center', justifyContent: 'center',
-  },
-
-  // Info card
-  infoCard: {
-    borderRadius: radius.xl, overflow: 'hidden', marginBottom: hp(16),
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 12, elevation: 2,
-  },
-  infoRow: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: wp(16), paddingVertical: hp(14), gap: wp(12),
-    borderBottomWidth: 0.5,
-  },
-  infoIconBox: {
-    width: ms(36), height: ms(36), borderRadius: ms(12),
-    alignItems: 'center', justifyContent: 'center',
-  },
-  infoContent: { flex: 1 },
-  infoLabel: { fontSize: FS.xs, marginBottom: hp(2) },
-  infoValue: { fontSize: FS.md, fontWeight: '500' },
-  infoInput: {
-    fontSize: FS.md, fontWeight: '500', paddingVertical: hp(2),
-    borderBottomWidth: 1.5, marginTop: hp(2),
-  },
-
-  // Delete
-  deleteCard: {
-    flexDirection: 'row', alignItems: 'center', gap: wp(14),
-    padding: wp(16), borderRadius: radius.xl, borderWidth: 1, marginBottom: hp(16),
-  },
-  deleteIcon: {
-    width: ms(44), height: ms(44), borderRadius: ms(14),
-    alignItems: 'center', justifyContent: 'center',
-  },
-  deleteContent: { flex: 1 },
-  deleteTitle: { fontSize: FS.md, fontWeight: '600', marginBottom: hp(2) },
-  deleteDesc: { fontSize: FS.xs, lineHeight: ms(18) },
-
-  // Logo footer
-  logoFooter: { alignItems: 'center', paddingTop: hp(28), paddingBottom: hp(10) },
-  logoRow: { flexDirection: 'row', alignItems: 'flex-start' },
-  logoImage: { width: ms(64), height: ms(64), borderRadius: ms(14) },
-  logoSubtext: { fontSize: FS.xs, marginTop: hp(8), fontWeight: '500', letterSpacing: 0.3 },
-  versionText: { fontSize: FS.xs, marginTop: hp(4), opacity: 0.5, fontWeight: '400' },
-
-  // Toggle
-  toggle: {
-    width: ms(48), height: ms(28), borderRadius: ms(14),
-    justifyContent: 'center', paddingHorizontal: ms(3),
-  },
-  toggleOn: {
-    backgroundColor: palette.violet,
-  },
-  toggleKnob: {
-    width: ms(22), height: ms(22), borderRadius: ms(11),
-    backgroundColor: '#fff',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06, shadowRadius: 2, elevation: 2,
-  },
-  toggleKnobOn: {
-    alignSelf: 'flex-end' as const,
-  },
-
-  /* ── Profile completion card ── */
-  profileCompletionCard: {
-    borderRadius: radius.lg,
-    padding: wp(14),
-    marginBottom: hp(14),
-    borderWidth: 1,
-  },
-  profileCompletionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: wp(10),
-    marginBottom: hp(10),
-  },
-  profileCompletionBadge: {
-    width: ms(30),
-    height: ms(30),
-    borderRadius: ms(15),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  profileCompletionTextWrap: { flex: 1 },
-  profileCompletionTitle: { fontSize: FS.md, fontWeight: '700' },
-  profileCompletionHint: { fontSize: FS.xs, fontWeight: '500', marginTop: hp(3), lineHeight: ms(17) },
-  profileCompletionPercent: { fontSize: FS.md, fontWeight: '800' },
-  profileCompletionTrack: {
-    height: ms(8),
-    borderRadius: ms(4),
-    overflow: 'hidden',
-  },
-  profileCompletionFill: { height: '100%', borderRadius: ms(4) },
-  profileCompletionFooter: {
-    marginTop: hp(10),
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  profileCompletionCta: { fontSize: FS.xs, fontWeight: '700' },
-
-  /* ── Delete Modal ── */
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: ms(24),
-  },
-  modalCard: {
-    width: '100%',
-    borderRadius: ms(20),
-    padding: ms(24),
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.10,
-    shadowRadius: 16,
-    elevation: 6,
-  },
-  modalIconCircle: {
-    width: ms(56),
-    height: ms(56),
-    borderRadius: ms(28),
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: hp(12),
-  },
-  modalTitle: {
-    fontSize: ms(18),
-    fontWeight: '700',
-    marginBottom: hp(8),
-  },
-  modalBody: {
-    fontSize: ms(14),
-    textAlign: 'center',
-    lineHeight: ms(20),
-    marginBottom: hp(16),
-  },
-  modalInstruction: {
-    fontSize: ms(13),
-    marginBottom: hp(8),
-    textAlign: 'center',
-  },
-  modalInput: {
-    width: '100%',
-    borderWidth: 1.5,
-    borderRadius: ms(12),
-    paddingHorizontal: ms(14),
-    paddingVertical: hp(10),
-    fontSize: ms(16),
-    fontWeight: '700',
-    textAlign: 'center',
-    letterSpacing: 2,
-    marginBottom: hp(16),
-  },
-  modalActions: {
-    flexDirection: 'row',
-    gap: ms(12),
-    width: '100%',
-  },
-  modalBtn: {
-    flex: 1,
-    paddingVertical: hp(12),
-    borderRadius: ms(12),
-    alignItems: 'center',
-  },
-  modalBtnText: {
-    fontSize: ms(14),
-    fontWeight: '700',
-  },
-
-  /* ── Language selector ── */
-  langBadge: {
-    fontSize: FS.xs,
-    fontWeight: '700',
-    paddingHorizontal: ms(10),
-    paddingVertical: hp(4),
-    borderRadius: radius.md,
-    overflow: 'hidden',
-  },
-  langModalCard: {
-    width: '100%',
-    borderRadius: ms(20),
-    padding: ms(24),
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.10,
-    shadowRadius: 16,
-    elevation: 6,
-  },
-  langModalDesc: {
-    fontSize: ms(13),
-    textAlign: 'center',
-    marginBottom: hp(16),
-  },
-  langOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    width: '100%',
-    padding: ms(14),
-    borderRadius: ms(14),
-    borderWidth: 1.5,
-    marginBottom: hp(10),
-    gap: ms(12),
-  },
-  langFlag: {
-    fontSize: ms(22),
-  },
-  langOptionText: {
-    flex: 1,
-    fontSize: FS.md,
-    fontWeight: '600',
-  },
-  langCheck: {
-    width: ms(22),
-    height: ms(22),
-    borderRadius: ms(11),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  /* ── OTP verification modal ── */
-  otpModalCard: {
-    width: '100%',
-    borderRadius: ms(20),
-    padding: ms(24),
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.10,
-    shadowRadius: 16,
-    elevation: 6,
-  },
-  otpModalDesc: {
-    fontSize: ms(13),
-    textAlign: 'center',
-    marginBottom: hp(16),
-  },
-  otpInput: {
-    width: '100%',
-    fontSize: FS.xl,
-    fontWeight: '700',
-    letterSpacing: ms(8),
-    borderWidth: 1.5,
-    borderRadius: radius.lg,
-    paddingVertical: hp(14),
-    paddingHorizontal: wp(16),
-  },
-  otpErrorText: {
-    fontSize: FS.xs,
-    marginTop: hp(6),
-    textAlign: 'center',
-  },
-  otpResendRow: {
-    marginTop: hp(12),
-    marginBottom: hp(16),
-    alignItems: 'center',
-  },
-  otpResendText: {
-    fontSize: FS.sm,
-    fontWeight: '600',
-  },
-
-  /* ── Pending verification badge ── */
-  pendingBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    gap: wp(4),
-    backgroundColor: `${palette.gold}15`,
-    paddingHorizontal: wp(8),
-    paddingVertical: hp(4),
-    borderRadius: radius.md,
-    marginTop: hp(4),
-  },
-  pendingBadgeText: {
-    fontSize: ms(10),
-    fontWeight: '700',
-    color: palette.gold,
-  },
-});

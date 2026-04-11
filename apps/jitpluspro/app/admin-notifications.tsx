@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   RefreshControl,
+  Platform,
 } from 'react-native';
 import { ArrowLeft, Bell, Megaphone, Mail, Send, CheckCheck, BellOff } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
@@ -21,6 +22,7 @@ import {
 } from '@/hooks/useQueryHooks';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import { timeAgo } from '@/utils/date';
 import { wp, hp, ms, fontSize as FS, radius } from '@/utils/responsive';
 import { logWarn } from '@/utils/devLogger';
@@ -120,7 +122,7 @@ export default function AdminNotificationsScreen() {
               {timeAgo(item.createdAt, locale)}
             </Text>
             {item.isRead && (
-              <CheckCheck size={ms(12)} color={theme.textMuted} strokeWidth={1.5} />
+              <CheckCheck size={ms(12)} color={theme.textMuted} strokeWidth={2} />
             )}
           </View>
         </View>
@@ -133,32 +135,47 @@ export default function AdminNotificationsScreen() {
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
       {/* Header */}
-      <LinearGradient colors={brandGradient} style={[styles.header, { paddingTop: insets.top + 8 }]}>
-        <TouchableOpacity onPress={() => router.back()} hitSlop={12} style={styles.backBtn}>
-          <ArrowLeft size={22} color="#fff" />
-        </TouchableOpacity>
-        <View style={styles.headerCenter}>
-          <Bell size={18} color="#fff" style={{ marginRight: 6 }} />
-          <Text style={styles.headerTitle}>{t('account.notifications')}</Text>
-          {unreadCount > 0 && (
-            <View style={styles.headerBadge}>
-              <Text style={styles.headerBadgeText}>{unreadCount}</Text>
-            </View>
-          )}
-        </View>
-        <View style={{ flex: 1 }} />
-        {unreadCount > 0 && (
-          <TouchableOpacity
-            onPress={handleMarkAllRead}
-            disabled={markAllRead.isPending}
-            hitSlop={8}
-            activeOpacity={0.7}
-            style={[styles.markAllBtn, markAllRead.isPending && { opacity: 0.5 }]}
+      <View collapsable={false}>
+        <LinearGradient colors={brandGradient} style={styles.headerGradient}>
+          <BlurView
+            intensity={Platform.OS === 'ios' ? 40 : 20}
+            tint={theme.mode === 'dark' ? 'dark' : 'default'}
+            style={[styles.headerBlur, { paddingTop: insets.top + 12 }]}
           >
-            <CheckCheck size={ms(14)} color="#fff" strokeWidth={2} />
-          </TouchableOpacity>
-        )}
-      </LinearGradient>
+            <View style={styles.glassOverlay} />
+            <View style={styles.header}>
+              <TouchableOpacity onPress={() => router.back()} hitSlop={12} style={styles.backBtn}>
+                <ArrowLeft size={22} color="#fff" />
+              </TouchableOpacity>
+              <View style={styles.headerCenter}>
+                <Bell size={18} color="#fff" style={{ marginRight: 6 }} />
+                <Text style={styles.headerTitle}>{t('account.notifications')}</Text>
+                {unreadCount > 0 && (
+                  <View style={styles.headerBadge}>
+                    <Text style={styles.headerBadgeText}>{unreadCount}</Text>
+                  </View>
+                )}
+              </View>
+              <View style={{ flex: 1 }} />
+              {unreadCount > 0 && (
+                <TouchableOpacity
+                  onPress={handleMarkAllRead}
+                  disabled={markAllRead.isPending}
+                  hitSlop={8}
+                  activeOpacity={0.7}
+                  style={[styles.markAllBtn, markAllRead.isPending && { opacity: 0.5 }]}
+                >
+                  <CheckCheck size={ms(14)} color="#fff" strokeWidth={2} />
+                </TouchableOpacity>
+              )}
+            </View>
+          </BlurView>
+        </LinearGradient>
+        <LinearGradient
+          colors={['rgba(124,58,237,0.3)', 'transparent']}
+          style={styles.headerFade}
+        />
+      </View>
 
       {isLoading ? (
         <View style={styles.center}>
@@ -194,12 +211,19 @@ export default function AdminNotificationsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  headerGradient: { overflow: 'hidden' },
+  headerBlur: { overflow: 'hidden' },
+  glassOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingBottom: hp(14),
     paddingHorizontal: wp(16),
   },
+  headerFade: { height: 4 },
   backBtn: {
     marginRight: wp(8),
     padding: 4,
@@ -227,7 +251,7 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 10,
     fontWeight: '700',
-    fontFamily: 'Inter_700Bold',
+    fontFamily: 'Lexend_700Bold',
   },
   markAllBtn: {
     backgroundColor: 'rgba(255,255,255,0.2)',
@@ -258,7 +282,7 @@ const styles = StyleSheet.create({
   },
   emptySubtitle: {
     fontSize: FS.sm,
-    fontFamily: 'Inter_400Regular',
+    fontFamily: 'Lexend_400Regular',
     textAlign: 'center',
     lineHeight: ms(20),
   },
@@ -296,7 +320,7 @@ const styles = StyleSheet.create({
   },
   cardText: {
     fontSize: FS.sm,
-    fontFamily: 'Inter_400Regular',
+    fontFamily: 'Lexend_400Regular',
     lineHeight: ms(18),
     marginBottom: hp(6),
   },
@@ -307,6 +331,6 @@ const styles = StyleSheet.create({
   },
   cardTime: {
     fontSize: ms(11),
-    fontFamily: 'Inter_400Regular',
+    fontFamily: 'Lexend_400Regular',
   },
 });

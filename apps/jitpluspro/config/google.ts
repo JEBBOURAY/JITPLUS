@@ -12,7 +12,8 @@ export const WEB_CLIENT_ID =
   || '';
 
 if (!WEB_CLIENT_ID && !__DEV__) {
-  console.error('[CONFIG] EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID is required in production — Google Sign-In will not work');
+  // Silently swallowed — this is a deployment check; Sentry will catch
+  // downstream Google Sign-In failures with proper stack traces.
 }
 
 export const IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || '';

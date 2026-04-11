@@ -18,6 +18,7 @@ model Merchant {
   email                String           @unique @db.VarChar(255)
   password             String           @db.VarChar(255)
   googleId             String?          @unique @map("google_id") @db.VarChar(255)
+  appleId              String?          @unique @map("apple_id") @db.VarChar(255)
   pushToken            String?          @map("push_token") @db.VarChar(512)
   termsAccepted        Boolean          @default(false) @map("terms_accepted")
   categorie            MerchantCategory
@@ -101,6 +102,9 @@ model Merchant {
   // Admin dashboard: count by plan, filter active+plan
   @@index([plan])
   @@index([isActive, plan])
+  // Admin list filtering: plan + active + date sort
+  @@index([plan, isActive, createdAt(sort: Desc)])
+  @@index([appleId])
   @@map("merchants")
 }
 
@@ -254,6 +258,7 @@ model Client {
   telephone           String?   @unique @db.VarChar(20)
   telephoneVerified   Boolean   @default(false) @map("telephone_verified")
   googleId            String?   @unique @map("google_id") @db.VarChar(255)
+  appleId             String?   @unique @map("apple_id") @db.VarChar(255)
   countryCode         String    @default("MA") @map("country_code") @db.VarChar(5)
   pushToken           String?   @map("push_token") @db.VarChar(512)
   refreshTokenHash    String?   @unique @map("refresh_token_hash")
@@ -289,7 +294,10 @@ model Client {
   // refreshTokenHash is @unique — implicit index
   // Notification broadcast: filters on pushToken IS NOT NULL + notifPush = true
   @@index([notifPush])
+  // Broadcast-optimised: covers WHERE notifPush=true AND deletedAt IS NULL AND pushToken IS NOT NULL
+  @@index([notifPush, deletedAt, pushToken])
   @@index([googleId])
+  @@index([appleId])
   @@map("clients")
 }
 
@@ -324,6 +332,8 @@ model LoyaltyCard {
   @@index([merchantId, createdAt])
   // Accumulation cap queries: fetch cards over limit for a merchant
   @@index([merchantId, points])
+  // Broadcast notification: cursor-paginated lookup of active cards per merchant
+  @@index([merchantId, deactivatedAt, clientId])
   @@map("loyalty_cards")
 }
 
@@ -359,6 +369,8 @@ model Transaction {
   @@index([status, createdAt(sort: Desc)])
   // Pending gifts lookup: quickly find PENDING gifts for a merchant
   @@index([merchantId, giftStatus, createdAt])
+  // Dashboard + transaction history: merchant sorted by date
+  @@index([merchantId, createdAt(sort: Desc)])
   @@map("transactions")
 }
 
@@ -440,6 +452,8 @@ model Notification {
   merchantReads  MerchantNotificationRead[]
 
   @@index([channel, createdAt(sort: Desc)])
+  // Admin stats: groupBy channel filtered by audience
+  @@index([channel, audience, createdAt(sort: Desc)])
   // Merchant history + client notification list: merchantId + createdAt DESC
   @@index([merchantId, createdAt(sort: Desc)])
   @@index([audience, createdAt(sort: Desc)])
@@ -456,6 +470,7 @@ model MerchantNotificationRead {
   notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
 
   @@id([merchantId, notificationId])
+  @@index([notificationId])
   @@map("merchant_notification_reads")
 }
 
@@ -476,6 +491,7 @@ model ClientNotificationStatus {
   @@unique([clientId, notificationId])
   @@index([clientId, isDismissed])
   @@index([clientId, isRead])
+  @@index([notificationId])
   @@map("client_notification_statuses")
 }
 
@@ -574,5 +590,6 @@ model PayoutRequest {
 
   @@index([clientId])
   @@index([status])
+  @@index([status, createdAt(sort: Desc)])
   @@map("payout_requests")
 }

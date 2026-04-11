@@ -18,7 +18,7 @@ export default function ScanScreen() {
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
       <View style={styles.content}>
         <View style={[styles.iconCircle, { backgroundColor: theme.primaryBg }]}>
-          <QrCode size={52} color={theme.primary} strokeWidth={1.5} />
+          <QrCode size={52} color={theme.primary} strokeWidth={2} />
         </View>
         <Text style={[styles.title, { color: theme.text }]}>{t('scanTab.title')}</Text>
         <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
@@ -29,7 +29,7 @@ export default function ScanScreen() {
           onPress={() => router.push('/scan-qr')}
           activeOpacity={0.8}
         >
-          <QrCode size={20} color="#fff" strokeWidth={1.5} />
+          <QrCode size={20} color="#fff" strokeWidth={2} />
           <Text style={styles.buttonText}>{t('scanTab.openBtn')}</Text>
         </TouchableOpacity>
       </View>
@@ -52,12 +52,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 24,
   },
-  title: { fontSize: 22, fontWeight: '700', marginBottom: 8 },
+  title: { fontSize: 22, fontWeight: '700', marginBottom: 8, fontFamily: 'Lexend_700Bold' },
   subtitle: {
     fontSize: 15,
     textAlign: 'center',
     lineHeight: 22,
     marginBottom: 28,
+    fontFamily: 'Lexend_400Regular',
   },
   button: {
     flexDirection: 'row',
@@ -72,5 +73,5 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 4,
   },
-  buttonText: { fontSize: 16, fontWeight: '700', color: '#fff' },
+  buttonText: { fontSize: 16, fontWeight: '700', color: '#fff', fontFamily: 'Lexend_700Bold' },
 });

@@ -1,15 +1,14 @@
 import { useState, useCallback, useRef, useEffect, useMemo, memo, type ComponentProps } from 'react';
 import {
   View, Text, TextInput, StyleSheet, ScrollView, FlatList, Pressable,
-  Platform, TouchableOpacity, Linking, Keyboard, Image as RNImage, I18nManager,
+  Platform, TouchableOpacity, Linking, Keyboard, I18nManager,
   ActivityIndicator, useWindowDimensions,
 } from 'react-native';
-import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import {
-  Search, MapPin, ChevronRight, X,
-  Navigation, ExternalLink, LocateFixed, SlidersHorizontal,
+  Search, MapPin, X,
+  LocateFixed, SlidersHorizontal,
 } from 'lucide-react-native';
 import { haptic, HapticStyle } from '@/utils/haptics';
 import * as Location from 'expo-location';
@@ -20,12 +19,10 @@ import { Merchant } from '@/types';
 import FadeInView from '@/components/FadeInView';
 import SafeMapView, { Marker, MAPS_AVAILABLE } from '@/components/SafeMapView';
 import { CATEGORIES } from '@/utils/categories';
-import { getDistanceKm, formatDistance } from '@/utils/distance';
+import { getDistanceKm } from '@/utils/distance';
 import { wp, hp, ms, fontSize as FS, radius } from '@/utils/responsive';
 import { useMerchants } from '@/hooks/useQueryHooks';
-import { resolveImageUrl } from '@/utils/imageUrl';
 import { prefetchImages } from '@/utils/imageCache';
-import MerchantLogo from '@/components/MerchantLogo';
 import MapMarker from '@/components/MapMarker';
 import ClusterMarker from '@/components/ClusterMarker';
 import { useMapClustering } from '@/utils/mapClustering';
@@ -34,6 +31,8 @@ import {
   MERCHANT_FOCUS_ZOOM_DELTA, USER_LOCATION_ZOOM_DELTA, USER_CENTER_ZOOM_DELTA,
   CLUSTER_ZOOM_DIVISOR, COMPACT_SCREEN_HEIGHT,
 } from '@/constants';
+import { FallbackMerchantCard, MerchantCallout } from '@/components/discover';
+import { discoverStyles as styles } from '@/components/discover/discoverStyles';
 
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 
@@ -89,144 +88,18 @@ const MAP_STYLE = [
  * On iOS the snapshot is reliable so we always pass false.
  */
 const TRACK_DELAY_MS = 500;
+const IS_ANDROID = Platform.OS === 'android';
 
 const TrackedMarker = memo(function TrackedMarker(
   props: ComponentProps<typeof Marker>,
 ) {
-  const [tracked, setTracked] = useState(Platform.OS === 'android');
+  const [tracked, setTracked] = useState(IS_ANDROID);
   useEffect(() => {
-    if (Platform.OS !== 'android') return;
+    if (!IS_ANDROID) return;
     const t = setTimeout(() => setTracked(false), TRACK_DELAY_MS);
     return () => clearTimeout(t);
   }, []);
   return <Marker {...props} tracksViewChanges={tracked} />;
-});
-
-// ── Extracted memoized sub-components ────────────────────
-
-const FallbackMerchantCard = memo(function FallbackMerchantCard({
-  merchant,
-  distance,
-  onPress,
-  onNavigate,
-}: {
-  merchant: Merchant;
-  distance: number | null;
-  onPress: () => void;
-  onNavigate: () => void;
-}) {
-  const theme = useTheme();
-  const { t } = useLanguage();
-  return (
-    <Pressable
-      style={[styles.fallbackCard, { backgroundColor: theme.bgCard }]}
-      onPress={onPress}
-    >
-      <View style={[styles.fallbackAvatar, { backgroundColor: palette.violet + '15' }]}>
-        <MerchantLogo logoUrl={merchant.logoUrl} style={styles.fallbackLogo} />
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text style={[styles.fallbackName, { color: theme.text }]} numberOfLines={1}>{merchant.storeName || merchant.nomBoutique}</Text>
-        {merchant.categorie && (
-          <View style={[styles.catBadge, { backgroundColor: palette.violet + '15' }]}>
-            <Text style={[styles.catBadgeText, { color: palette.violet }]}>{merchant.categorie}</Text>
-          </View>
-        )}
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: wp(4), marginTop: hp(2) }}>
-          <MapPin size={ms(11)} color={theme.textMuted} strokeWidth={1.5} />
-          <Text style={[styles.fallbackAddr, { color: theme.textMuted }]} numberOfLines={1}>
-            {merchant.adresse || merchant.ville || t('discover.positionAvailable')}
-          </Text>
-        </View>
-        {distance !== null && (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: wp(3), marginTop: hp(3) }}>
-            <Navigation size={ms(10)} color={palette.violet} strokeWidth={1.5} />
-            <Text style={{ fontSize: FS.xs, fontWeight: '700', color: palette.violet }}>
-              {formatDistance(distance)}
-            </Text>
-          </View>
-        )}
-      </View>
-      <TouchableOpacity
-        style={[styles.fallbackNavBtn, { backgroundColor: palette.violet }]}
-        activeOpacity={0.7} onPress={onNavigate}
-      >
-        <ExternalLink size={ms(14)} color="#fff" strokeWidth={1.5} />
-      </TouchableOpacity>
-    </Pressable>
-  );
-});
-
-const MerchantCallout = memo(function MerchantCallout({
-  merchant,
-  distance,
-  onPress,
-  onNavigate,
-  style,
-}: {
-  merchant: Merchant;
-  distance: number | null;
-  onPress: () => void;
-  onNavigate: () => void;
-  style?: import('react-native').ViewStyle;
-}) {
-  const theme = useTheme();
-  const { t } = useLanguage();
-  const [logoError, setLogoError] = useState(false);
-  return (
-    <View style={[styles.calloutWrapper, style]}>
-      <Pressable style={[styles.calloutCard, { backgroundColor: theme.bgCard }]} onPress={onPress}>
-        {/* Premium left accent bar */}
-        <View style={styles.calloutAccent} />
-        <View style={[styles.calloutAvatar, { backgroundColor: palette.violet + '10' }]}>
-          {merchant.logoUrl && !logoError ? (
-            <Image
-              source={resolveImageUrl(merchant.logoUrl)}
-              style={styles.merchantLogo}
-              contentFit="cover"
-              cachePolicy="disk"
-              onError={() => setLogoError(true)}
-            />
-          ) : (
-            <RNImage source={require('@/assets/images/jitpluslogo.png')} style={styles.merchantLogo} resizeMode="contain" />
-          )}
-        </View>
-        <View style={styles.calloutInfo}>
-          <Text style={[styles.calloutName, { color: theme.text }]} numberOfLines={1}>{merchant.storeName || merchant.nomBoutique}</Text>
-          {merchant.categorie && (
-            <View style={[styles.catBadge, { backgroundColor: palette.violet + '12', marginTop: hp(3) }]}>
-              <Text style={[styles.catBadgeText, { color: palette.violet }]}>{merchant.categorie}</Text>
-            </View>
-          )}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: wp(4), marginTop: hp(5) }}>
-            <MapPin size={ms(11)} color={theme.textMuted} strokeWidth={1.5} />
-            <Text style={{ fontSize: FS.xs, color: theme.textMuted }} numberOfLines={1}>
-              {merchant.adresse || merchant.ville || ''}
-            </Text>
-          </View>
-          {distance != null && (
-            <View style={styles.calloutDistRow}>
-              <Navigation size={ms(10)} color={palette.violet} strokeWidth={1.5} />
-              <Text style={styles.calloutDist}>
-                {formatDistance(distance)}
-              </Text>
-            </View>
-          )}
-        </View>
-        <View style={styles.calloutActions}>
-          <TouchableOpacity
-            style={[styles.navBtn, { backgroundColor: palette.violet }]}
-            activeOpacity={0.7} onPress={onNavigate}
-            accessibilityRole="button"
-            accessibilityLabel={t('discover.positionAvailable')}
-          >
-            <Navigation size={ms(16)} color="#fff" strokeWidth={1.5} />
-          </TouchableOpacity>
-          <ChevronRight size={ms(18)} color={theme.textMuted} strokeWidth={1.5} />
-        </View>
-      </Pressable>
-    </View>
-  );
 });
 
 export default function DiscoverScreen() {
@@ -547,7 +420,7 @@ export default function DiscoverScreen() {
             ListEmptyComponent={
               !isLoading ? (
                 <View style={styles.emptyState}>
-                  <MapPin size={ms(40)} color={theme.textMuted} strokeWidth={1.5} />
+                  <MapPin size={ms(40)} color={theme.textMuted} strokeWidth={2} />
                   <Text style={[styles.emptyTitle, { color: theme.text }]}>{t('discover.noMerchantFound')}</Text>
                   <Text style={[styles.emptyText, { color: theme.textMuted }]}>
                     {searchQuery ? t('discover.noResultsFor', { query: searchQuery }) : t('discover.noGeoMerchant')}
@@ -563,7 +436,7 @@ export default function DiscoverScreen() {
       <View style={[styles.topBar, { top: topBarTop, paddingHorizontal: isVeryCompact ? wp(12) : wp(16) }]} pointerEvents="box-none">
         {showSearch ? (
           <View style={[styles.searchBarExpanded, { backgroundColor: theme.bgCard, height: isVeryCompact ? ms(46) : ms(52), paddingHorizontal: isVeryCompact ? wp(14) : wp(18) }]}>
-            <Search size={isVeryCompact ? ms(16) : ms(18)} color={theme.textMuted} strokeWidth={1.5} />
+            <Search size={isVeryCompact ? ms(16) : ms(18)} color={theme.textMuted} strokeWidth={2} />
             <TextInput
               ref={searchInputRef}
               style={[styles.searchInput, { color: theme.text, fontSize: isVeryCompact ? FS.sm : FS.md }]}
@@ -574,17 +447,17 @@ export default function DiscoverScreen() {
             />
             <Pressable onPress={toggleSearch} hitSlop={8} accessibilityRole="button" accessibilityLabel={t('discover.searchPlaceholder')}>
               <View style={[styles.closePill, { backgroundColor: theme.bgInput, width: isVeryCompact ? ms(26) : ms(30), height: isVeryCompact ? ms(26) : ms(30), borderRadius: isVeryCompact ? ms(13) : ms(15) }]}>
-                <X size={isVeryCompact ? ms(12) : ms(14)} color={theme.textMuted} strokeWidth={1.5} />
+                <X size={isVeryCompact ? ms(12) : ms(14)} color={theme.textMuted} strokeWidth={2} />
               </View>
             </Pressable>
           </View>
         ) : (
           <View style={styles.topButtons}>
             <TouchableOpacity style={[styles.floatingBtn, { backgroundColor: theme.bgCard, width: isVeryCompact ? ms(42) : ms(48), height: isVeryCompact ? ms(42) : ms(48), borderRadius: isVeryCompact ? ms(21) : ms(24) }]} activeOpacity={0.8} onPress={toggleSearch} accessibilityRole="button" accessibilityLabel={t('discover.searchPlaceholder')}>
-              <Search size={isVeryCompact ? ms(18) : ms(20)} color={theme.text} strokeWidth={1.5} />
+              <Search size={isVeryCompact ? ms(18) : ms(20)} color={theme.text} strokeWidth={2} />
             </TouchableOpacity>
             <View style={[styles.counterBadge, { backgroundColor: theme.bgCard, paddingHorizontal: isVeryCompact ? wp(12) : wp(16), paddingVertical: isVeryCompact ? hp(7) : hp(10) }]}>
-              <MapPin size={isVeryCompact ? ms(12) : ms(13)} color={palette.violet} strokeWidth={1.5} />
+              <MapPin size={isVeryCompact ? ms(12) : ms(13)} color={palette.violet} strokeWidth={2} />
               <Text style={[styles.counterText, { color: theme.text, fontSize: isVeryCompact ? FS.xs : FS.sm }]}>
                 {t('discover.merchantCount', { count: mappableMerchants.length })}
               </Text>
@@ -595,7 +468,7 @@ export default function DiscoverScreen() {
               accessibilityRole="button"
               accessibilityState={{ expanded: showFilters }}
             >
-              <SlidersHorizontal size={isVeryCompact ? ms(18) : ms(20)} color={showFilters ? '#fff' : theme.text} strokeWidth={1.5} />
+              <SlidersHorizontal size={isVeryCompact ? ms(18) : ms(20)} color={showFilters ? '#fff' : theme.text} strokeWidth={2} />
               {activeFilterCount > 0 && <View style={styles.filterDot} />}
             </TouchableOpacity>
           </View>
@@ -622,7 +495,7 @@ export default function DiscoverScreen() {
                       ? { backgroundColor: palette.violet, borderColor: palette.violet }
                       : { backgroundColor: theme.bgCard, borderColor: theme.border },
                   ]}>
-                    <Icon size={isVeryCompact ? ms(11) : ms(13)} color={isActive ? '#fff' : theme.textMuted} strokeWidth={1.5} />
+                    <Icon size={isVeryCompact ? ms(11) : ms(13)} color={isActive ? '#fff' : theme.textMuted} strokeWidth={2} />
                     <Text style={[styles.chipLabel, { color: isActive ? '#fff' : theme.text, fontSize: isVeryCompact ? ms(10.5) : FS.xs }]}>
                       {t(cat.labelKey)}
                     </Text>
@@ -642,7 +515,7 @@ export default function DiscoverScreen() {
           accessibilityRole="button"
           accessibilityLabel={t('discover.positionAvailable')}
         >
-          <LocateFixed size={isVeryCompact ? ms(17) : ms(20)} color={palette.violet} strokeWidth={1.5} />
+          <LocateFixed size={isVeryCompact ? ms(17) : ms(20)} color={palette.violet} strokeWidth={2} />
         </TouchableOpacity>
       )}
 
@@ -682,7 +555,7 @@ export default function DiscoverScreen() {
             onPress={() => refetch()}
             accessibilityRole="button"
           >
-            <MapPin size={ms(32)} color={theme.textMuted} strokeWidth={1.5} />
+            <MapPin size={ms(32)} color={theme.textMuted} strokeWidth={2} />
             <Text style={[styles.emptyTitle, { color: theme.text }]}>{t('discover.noMerchantFound')}</Text>
             <Text style={[styles.emptyText, { color: palette.violet }]}>{t('common.retry')}</Text>
           </TouchableOpacity>
@@ -693,7 +566,7 @@ export default function DiscoverScreen() {
       {mappableMerchants.length === 0 && !isLoading && !isError && mapReady && MAPS_AVAILABLE && (
         <View style={styles.emptyOverlay} pointerEvents="box-none">
           <View style={[styles.emptyCard, { backgroundColor: theme.bgCard }]}>
-            <MapPin size={ms(32)} color={theme.textMuted} strokeWidth={1.5} />
+            <MapPin size={ms(32)} color={theme.textMuted} strokeWidth={2} />
             <Text style={[styles.emptyTitle, { color: theme.text }]}>{t('discover.noMerchantFound')}</Text>
             <Text style={[styles.emptyText, { color: theme.textMuted }]}>
               {searchQuery
@@ -708,144 +581,3 @@ export default function DiscoverScreen() {
     </View>
   );
 }
-
-// ── Premium shadow tokens ──
-const SHADOW_PREMIUM = {
-  shadowColor: palette.violet, shadowOpacity: 0.10,
-  shadowOffset: { width: 0, height: hp(3) }, shadowRadius: 16, elevation: 4,
-};
-const SHADOW = {
-  shadowColor: '#000', shadowOpacity: 0.06,
-  shadowOffset: { width: 0, height: hp(2) }, shadowRadius: 12, elevation: 3,
-};
-const SHADOW_LIGHT = {
-  shadowColor: '#000', shadowOpacity: 0.04,
-  shadowOffset: { width: 0, height: hp(1) }, shadowRadius: 8, elevation: 2,
-};
-
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-
-  // Top bar
-  topBar: { position: 'absolute', left: 0, right: 0, paddingHorizontal: wp(16), zIndex: 10 },
-  topButtons: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  floatingBtn: {
-    width: ms(48), height: ms(48), borderRadius: ms(24),
-    backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: 'rgba(124,58,237,0.06)', ...SHADOW_PREMIUM,
-  },
-  counterBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: wp(6),
-    backgroundColor: '#fff', paddingHorizontal: wp(16), paddingVertical: hp(10),
-    borderRadius: ms(24), borderWidth: 1, borderColor: 'rgba(124,58,237,0.06)', ...SHADOW_PREMIUM,
-  },
-  counterText: { fontSize: FS.sm, fontWeight: '700', color: '#1e293b' },
-  filterDot: {
-    position: 'absolute', top: ms(8), right: ms(8),
-    width: ms(8), height: ms(8), borderRadius: ms(4),
-    backgroundColor: palette.violet, borderWidth: 1.5, borderColor: '#fff',
-  },
-
-  // Search
-  searchBarExpanded: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff',
-    borderRadius: ms(28), paddingHorizontal: wp(18), height: ms(52), gap: wp(10),
-    borderWidth: 1, borderColor: 'rgba(124,58,237,0.08)', ...SHADOW_PREMIUM,
-  },
-  searchInput: { flex: 1, fontSize: FS.md, color: '#1e293b', paddingVertical: 0 },
-  closePill: {
-    width: ms(30), height: ms(30), borderRadius: ms(15),
-    backgroundColor: '#f1f5f9', alignItems: 'center', justifyContent: 'center',
-  },
-
-  // Filters
-  filterBar: { position: 'absolute', left: 0, right: 0, zIndex: 9 },
-  filterScroll: { paddingHorizontal: wp(16), paddingVertical: hp(4), gap: wp(6) },
-  chip: {
-    flexDirection: 'row', alignItems: 'center', gap: wp(5),
-    paddingHorizontal: wp(14), paddingVertical: hp(8),
-    borderRadius: ms(20), borderWidth: 1, marginRight: wp(2), ...SHADOW_LIGHT,
-  },
-  chipLabel: { fontSize: FS.xs, fontWeight: '600' },
-
-  // Merchant logos (callout + fallback)
-  merchantLogo: { width: ms(38), height: ms(38), borderRadius: ms(10) },
-  fallbackLogo: { width: ms(34), height: ms(34), borderRadius: ms(10) },
-
-  // Locate
-  locateBtn: {
-    position: 'absolute', right: wp(16),
-    width: ms(48), height: ms(48), borderRadius: ms(24),
-    backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: 'rgba(124,58,237,0.06)', ...SHADOW_PREMIUM, zIndex: 10,
-  },
-
-  // Callout
-  calloutWrapper: {
-    position: 'absolute', left: wp(16), right: wp(16), zIndex: 10,
-  },
-  calloutCard: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#fff', borderRadius: ms(22), padding: wp(14),
-    borderWidth: 1, borderColor: 'rgba(124,58,237,0.08)',
-    overflow: 'hidden', ...SHADOW_PREMIUM,
-  },
-  calloutAccent: {
-    position: 'absolute', left: 0, top: 0, bottom: 0,
-    width: ms(4), borderTopLeftRadius: ms(22), borderBottomLeftRadius: ms(22),
-    backgroundColor: palette.violet,
-  },
-  calloutAvatar: {
-    width: ms(56), height: ms(56), borderRadius: ms(16),
-    alignItems: 'center', justifyContent: 'center', marginRight: wp(12), overflow: 'hidden',
-  },
-  calloutInfo: { flex: 1 },
-  calloutName: { fontSize: FS.lg, fontWeight: '700', color: '#1e293b', letterSpacing: -0.3 },
-  calloutActions: { alignItems: 'center', gap: hp(8), marginLeft: wp(8) },
-  calloutDistRow: {
-    flexDirection: 'row', alignItems: 'center', gap: wp(3), marginTop: hp(4),
-    backgroundColor: 'rgba(124,58,237,0.06)', alignSelf: 'flex-start',
-    paddingHorizontal: wp(8), paddingVertical: hp(2), borderRadius: ms(8),
-  },
-  calloutDist: {
-    fontSize: FS.xs, fontWeight: '700', color: palette.violet, letterSpacing: 0.2,
-  },
-  navBtn: {
-    width: ms(42), height: ms(42), borderRadius: ms(14),
-    alignItems: 'center', justifyContent: 'center',
-  },
-  catBadge: { alignSelf: 'flex-start', paddingHorizontal: wp(8), paddingVertical: hp(2), borderRadius: radius.sm },
-  catBadgeText: { fontSize: ms(11), fontWeight: '600' },
-
-  // Empty
-  emptyOverlay: {
-    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-    alignItems: 'center', justifyContent: 'center', zIndex: 5,
-  },
-  emptyCard: {
-    alignItems: 'center', backgroundColor: '#fff',
-    padding: wp(28), borderRadius: radius['2xl'], marginHorizontal: wp(40),
-    borderWidth: 1, borderColor: 'rgba(124,58,237,0.06)', ...SHADOW_PREMIUM,
-  },
-  emptyState: { alignItems: 'center', paddingTop: hp(60) },
-  emptyTitle: { fontSize: FS.lg, fontWeight: '700', color: '#334155', marginTop: hp(12) },
-  emptyText: { fontSize: FS.sm, color: '#94a3b8', textAlign: 'center', marginTop: hp(6), lineHeight: ms(20) },
-
-  // Fallback
-  fallbackList: { paddingHorizontal: wp(16) },
-  fallbackCard: {
-    flexDirection: 'row', alignItems: 'center',
-    borderRadius: ms(18), padding: wp(14), marginBottom: hp(10),
-    borderWidth: 1, borderColor: 'rgba(124,58,237,0.06)', ...SHADOW_LIGHT,
-  },
-  fallbackAvatar: {
-    width: ms(50), height: ms(50), borderRadius: ms(16),
-    alignItems: 'center', justifyContent: 'center', marginRight: wp(12), overflow: 'hidden',
-  },
-  fallbackName: { fontSize: FS.md, fontWeight: '700', color: '#1e293b', marginBottom: hp(2) },
-  fallbackAddr: { fontSize: FS.xs, color: '#94a3b8' },
-  fallbackNavBtn: {
-    width: ms(40), height: ms(40), borderRadius: ms(14),
-    alignItems: 'center', justifyContent: 'center', marginLeft: wp(8),
-  },
-});

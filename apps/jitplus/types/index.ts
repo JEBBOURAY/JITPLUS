@@ -71,6 +71,7 @@ export interface Merchant {
     latitude?: number;
     longitude?: number;
     telephone?: string;
+    email?: string;
   }[];
 }
 

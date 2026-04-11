@@ -7,11 +7,15 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
+  Platform,
 } from 'react-native';
 import { Users, TrendingUp, RefreshCw, Repeat, ArrowLeft, Eye, Gift, Shield } from 'lucide-react-native';
 import PremiumLockCard from '@/components/PremiumLockCard';
 import { useAuth } from '@/contexts/AuthContext';
-import { useTheme } from '@/contexts/ThemeContext';
+import { useRequireAuth } from '@/hooks/useRequireAuth';
+import { useTheme, brandGradient } from '@/contexts/ThemeContext';
+import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import { useRouter } from 'expo-router';
 import { useLanguage } from '@/contexts/LanguageContext';
 
@@ -198,12 +202,15 @@ const RewardDistributionSection = React.memo(function RewardDistributionSection(
 });
 
 export default function DashboardScreen() {
+  const shouldWait = useRequireAuth();
   const { merchant, isTeamMember } = useAuth();
   const theme = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { t, locale } = useLanguage();
   const queryClient = useQueryClient();
+
+  if (shouldWait) return null;
 
   const isPremium = merchant?.plan === 'PREMIUM';
 
@@ -265,25 +272,26 @@ export default function DashboardScreen() {
     return date.toLocaleDateString(locale === 'ar' ? 'ar-MA' : locale === 'en' ? 'en-US' : 'fr-FR', { month: 'short' });
   }, [trendPeriod, locale]);
 
+  const primaryColor = theme.primary;
   const trendCharts = useMemo<{ key: string; title: string; color: string; data: TrendPoint[] }[]>(
     () => trendData
       ? [
-          { key: 'transactions', title: t('dashboard.transactions'), color: theme.primary, data: trendData.transactions },
+          { key: 'transactions', title: t('dashboard.transactions'), color: primaryColor, data: trendData.transactions },
           { key: 'newClients', title: t('dashboard.trendNewClients'), color: '#7C3AED', data: trendData.newClients },
-          { key: 'rewardsGiven', title: t('dashboard.trendGifts'), color: theme.primary, data: trendData.rewardsGiven },
+          { key: 'rewardsGiven', title: t('dashboard.trendGifts'), color: primaryColor, data: trendData.rewardsGiven },
         ]
       : [],
-    [trendData, t, theme.primary],
+    [trendData, t, primaryColor],
   );
 
   if (isTeamMember) {
     return (
       <View style={[styles.loadingContainer, { backgroundColor: theme.bg }]}>
         <Shield size={48} color={theme.textMuted} strokeWidth={1.5} />
-        <Text style={[styles.loadingText, { color: theme.text, fontWeight: '600', fontSize: 16 }]}>{t('common.ownerOnly')}</Text>
-        <Text style={[styles.loadingText, { color: theme.textMuted }]}>{t('common.ownerOnlyMsg')}</Text>
-        <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 16, paddingHorizontal: 24, paddingVertical: 10, backgroundColor: theme.primary, borderRadius: 8 }}>
-          <Text style={{ color: '#fff', fontWeight: '600' }}>{t('common.back')}</Text>
+        <Text style={[styles.loadingText, { color: theme.text, fontWeight: '600', fontSize: 16, fontFamily: 'Lexend_600SemiBold' }]}>{t('common.ownerOnly')}</Text>
+        <Text style={[styles.loadingText, { color: theme.textMuted, fontFamily: 'Lexend_400Regular' }]}>{t('common.ownerOnlyMsg')}</Text>
+        <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 16, paddingHorizontal: 24, paddingVertical: 10, backgroundColor: theme.primary, borderRadius: 10 }}>
+          <Text style={{ color: '#fff', fontWeight: '600', fontFamily: 'Lexend_600SemiBold' }}>{t('common.back')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -301,18 +309,36 @@ export default function DashboardScreen() {
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
       {/* En-tete */}
-      <View
-        style={[styles.header, { paddingTop: insets.top + 12 }]}
-      >
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <ArrowLeft size={22} color={theme.text} />
-        </TouchableOpacity>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.headerTitle, { color: theme.text }]}>{t('dashboard.title')}</Text>
-        </View>
-        <TouchableOpacity style={[styles.refreshButton, { backgroundColor: theme.primaryBg }]} onPress={onRefresh}>
-          <RefreshCw size={20} color={theme.primary} strokeWidth={1.5} />
-        </TouchableOpacity>
+      <View collapsable={false}>
+        <LinearGradient
+          colors={[...brandGradient]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.headerGradient}
+        >
+          <BlurView
+            intensity={Platform.OS === 'ios' ? 40 : 20}
+            tint={theme.mode === 'dark' ? 'dark' : 'default'}
+            style={[styles.headerBlur, { paddingTop: insets.top + 16 }]}
+          >
+            <View style={styles.glassOverlay} />
+            <View style={styles.header}>
+              <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+                <ArrowLeft size={22} color="#fff" />
+              </TouchableOpacity>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.headerTitle}>{t('dashboard.title')}</Text>
+              </View>
+              <TouchableOpacity style={styles.refreshButton} onPress={onRefresh}>
+                <RefreshCw size={20} color="rgba(255,255,255,0.85)" strokeWidth={1.5} />
+              </TouchableOpacity>
+            </View>
+          </BlurView>
+        </LinearGradient>
+        <LinearGradient
+          colors={['rgba(124,58,237,0.3)', 'transparent']}
+          style={styles.headerFade}
+        />
       </View>
 
       <ScrollView
@@ -434,14 +460,13 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     paddingVertical: 12,
     paddingHorizontal: 16,
-    backgroundColor: '#f0f4ff',
     borderRadius: 12,
     borderLeftWidth: 3,
-    borderLeftColor: '#7C3AED',
   },
   guideText: {
     fontSize: 14,
     lineHeight: 20,
+    fontFamily: 'Lexend_400Regular',
   },
   container: {
     flex: 1,
@@ -454,17 +479,22 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 10,
     fontSize: 16,
+    fontFamily: 'Lexend_400Regular',
+  },
+
+  // Header — glassmorphism
+  headerGradient: { overflow: 'hidden' },
+  headerBlur: { overflow: 'hidden' },
+  glassOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255,255,255,0.08)',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingBottom: 18,
-    paddingHorizontal: 20,
+    paddingBottom: 20,
+    paddingHorizontal: 24,
     gap: 10,
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
   },
   backBtn: {
     padding: 4,
@@ -473,8 +503,9 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#fff',
+    color: '#FFFFFF',
     fontFamily: 'Lexend_700Bold',
+    letterSpacing: -0.3,
   },
   headerSubtitle: {
     fontSize: 13,
@@ -482,6 +513,7 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.75)',
     fontFamily: 'Lexend_400Regular',
   },
+  headerFade: { height: 4 },
   refreshButton: {
     width: 36,
     height: 36,
@@ -494,6 +526,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     marginBottom: 15,
+    fontFamily: 'Lexend_700Bold',
   },
   statsRow: {
     flexDirection: 'row',
@@ -519,6 +552,7 @@ const styles = StyleSheet.create({
   trendTabText: {
     fontSize: 12,
     fontWeight: '700',
+    fontFamily: 'Lexend_700Bold',
   },
   trendChart: {
     marginTop: 10,
@@ -549,6 +583,7 @@ const styles = StyleSheet.create({
   trendCardTitle: {
     fontSize: 14,
     fontWeight: '700',
+    fontFamily: 'Lexend_700Bold',
   },
   trendBarGroup: {
     flex: 1,
@@ -563,6 +598,7 @@ const styles = StyleSheet.create({
   trendBarValue: {
     fontSize: 11,
     fontWeight: '700',
+    fontFamily: 'Lexend_700Bold',
   },
   trendBar: {
     width: '100%',
@@ -572,6 +608,7 @@ const styles = StyleSheet.create({
   trendLabel: {
     fontSize: 10,
     marginTop: 6,
+    fontFamily: 'Lexend_400Regular',
   },
   trendEmpty: {
     paddingVertical: 16,
@@ -579,6 +616,7 @@ const styles = StyleSheet.create({
   },
   trendEmptyText: {
     fontSize: 12,
+    fontFamily: 'Lexend_400Regular',
   },
   statCard: {
     flex: 1,
@@ -587,11 +625,6 @@ const styles = StyleSheet.create({
     padding: 16,
     borderLeftWidth: 4,
     borderWidth: 1,
-    shadowColor: '#1F2937',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
   },
   statIconContainer: {
     width: 44,
@@ -609,10 +642,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
     marginBottom: 4,
+    fontFamily: 'Lexend_500Medium',
   },
   statValue: {
     fontSize: 24,
     fontWeight: '700',
+    fontFamily: 'Lexend_700Bold',
   },
   distributionList: {
     gap: 12,
@@ -624,8 +659,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   distributionInfo: { marginBottom: 10 },
-  distributionTitle: { fontSize: 14, fontWeight: '700' },
-  distributionCount: { fontSize: 12, marginTop: 4 },
+  distributionTitle: { fontSize: 14, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
+  distributionCount: { fontSize: 12, marginTop: 4, fontFamily: 'Lexend_400Regular' },
   distributionBarTrack: {
     height: 8,
     borderRadius: 6,
@@ -635,7 +670,7 @@ const styles = StyleSheet.create({
   distributionEmpty: {
     paddingVertical: 12,
   },
-  distributionEmptyText: { fontSize: 13 },
+  distributionEmptyText: { fontSize: 13, fontFamily: 'Lexend_400Regular' },
   statsContainer: {
     padding: 20,
     paddingBottom: 30,

@@ -87,6 +87,7 @@ export class MailService implements IMailProvider {
     newExpiry: Date | null,
   ): Promise<void> {
     const safeNewMerchantNom = escapeHtml(newMerchantNom);
+    const safeReferrerNom = escapeHtml(referrerNom);
     const html = buildReferralBonusEmail(referrerNom, newMerchantNom, newExpiry);
     await this.send(to, this.fromAddress, `🎁 ${safeNewMerchantNom} a rejoint JitPlus grâce à vous — 1 mois offert !`, html, 'referral-bonus');
   }

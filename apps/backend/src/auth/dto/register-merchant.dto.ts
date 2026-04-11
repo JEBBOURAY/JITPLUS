@@ -106,6 +106,13 @@ export class RegisterMerchantDto {
   @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
   tiktok?: string;
 
+  /** Site web du commerce (optionnel) */
+  @IsString()
+  @IsOptional()
+  @MaxLength(200)
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
+  website?: string;
+
   /** Code de parrainage optionnel d'un commerce existant */
   @IsString()
   @IsOptional()

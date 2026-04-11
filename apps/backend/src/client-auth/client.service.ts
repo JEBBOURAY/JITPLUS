@@ -181,16 +181,20 @@ export class ClientService {
       throw new UnauthorizedException('Mot de passe incorrect');
     }
 
-    // Soft delete: mark as deleted + anonymise sensitive fields so the
-    // email/phone can be reused for a new account.
+    // Soft delete: mark as deleted + anonymise ALL PII so the
+    // email/phone/social IDs can be reused for a new account.
     await this.clientRepo.update({
       where: { id: clientId },
       data: {
         deletedAt: new Date(),
+        prenom: null,
+        nom: null,
         email: null,
         telephone: null,
         password: null,
+        dateNaissance: null,
         googleId: null,
+        appleId: null,
         pushToken: null,
         refreshTokenHash: null,
       },
@@ -301,6 +305,7 @@ export class ClientService {
         select: {
           id: true,
           nom: true,
+          email: true,
           categorie: true,
           description: true,
           ville: true,
@@ -326,6 +331,7 @@ export class ClientService {
               latitude: true,
               longitude: true,
               telephone: true,
+              email: true,
             },
           },
           rewards: {

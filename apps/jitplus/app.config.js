@@ -15,7 +15,10 @@ module.exports = ({ config }) => {
   if (!googleWebClientId) {
     try {
       const gs = require('./google-services.json');
-      const oauthClient = gs.client?.[0]?.oauth_client?.find((c) => c.client_type === 3);
+      // Web client (type 3) lives in other_platform_oauth_client, not oauth_client
+      const oauthClient =
+        gs.client?.[0]?.oauth_client?.find((c) => c.client_type === 3) ||
+        gs.client?.[0]?.services?.appinvite_service?.other_platform_oauth_client?.find((c) => c.client_type === 3);
       if (oauthClient) googleWebClientId = oauthClient.client_id;
     } catch { /* google-services.json not present — CI/CD will inject via env */ }
   }
@@ -26,7 +29,7 @@ module.exports = ({ config }) => {
     name: 'JitPlus',
     slug: 'jitplus',
     description: 'Digital loyalty cards app — collect stamps and earn rewards at your favorite local shops.',
-    version: '1.3.2',
+    version: '1.3.4',
     orientation: 'portrait',
     icon: './assets/images/icon-white.png',
     scheme: 'jitplus',
@@ -39,8 +42,12 @@ module.exports = ({ config }) => {
       backgroundColor: '#FFFFFF',
     },
     ios: {
-      supportsTablet: true,
+      supportsTablet: false,
       bundleIdentifier: 'com.jitplus.client',
+      // Initial build number — EAS autoIncrement bumps this on every production build
+      buildNumber: '30',
+      // Portrait-only app: disable iPad Split View / Slide Over to avoid orientation-support review issues
+      requiresFullScreen: true,
       // Firebase config for iOS — download from Firebase Console
       googleServicesFile: './GoogleService-Info.plist',
       // Declare standard-exempt HTTPS encryption → no export compliance questionnaire
@@ -50,30 +57,27 @@ module.exports = ({ config }) => {
       config: {
         googleMapsApiKey: GOOGLE_MAPS_KEY,
       },
-      // URL schemes: app deep-link + Google OAuth reversed client ID redirect
-      ...(IOS_GOOGLE_CLIENT_ID
-        ? { infoPlist: {
-            NSLocationWhenInUseUsageDescription:
-              "Permettre à JitPlus d'accéder à votre position pour trouver les commerces autour de vous.",
-            // Google Sign-In redirect — reversed iOS client ID
-            CFBundleURLTypes: [
-              { CFBundleURLSchemes: [IOS_GOOGLE_CLIENT_ID] },
-            ],
-          }}
-        : { infoPlist: {
-            NSLocationWhenInUseUsageDescription:
-              "Permettre à JitPlus d'accéder à votre position pour trouver les commerces autour de vous.",
-          }}
-      ),
+      infoPlist: {
+        // Belt-and-suspenders: explicit Info.plist entry mirrors usesNonExemptEncryption above
+        ITSAppUsesNonExemptEncryption: false,
+        NSLocationWhenInUseUsageDescription:
+          "Permettre à JitPlus d'accéder à votre position pour trouver les commerces autour de vous.",
+        // Google Sign-In redirect — reversed iOS client ID
+        ...(IOS_GOOGLE_CLIENT_ID
+          ? { CFBundleURLTypes: [{ CFBundleURLSchemes: [IOS_GOOGLE_CLIENT_ID] }] }
+          : {}),
+      },
     },
     android: {
-      versionCode: 28,
+      versionCode: 30,
       icon: './assets/images/icon-white.png',
       adaptiveIcon: {
         foregroundImage: './assets/images/adaptive-icon-white.png',
         backgroundColor: '#FFFFFF',
       },
-      edgeToEdgeEnabled: true,
+      // Disabled: causes native crash on some Android 10/11 devices before
+      // the JS bundle loads. Re-enable once targeting Android 15+ exclusively.
+      edgeToEdgeEnabled: false,
       // Prevents unexpected back gesture from killing auth/OTP flows
       predictiveBackGestureEnabled: false,
       package: 'com.jitplus.client',
@@ -107,6 +111,7 @@ module.exports = ({ config }) => {
       'expo-router',
       'expo-secure-store',
       '@react-native-google-signin/google-signin',
+      'expo-apple-authentication',
       [
         'expo-splash-screen',
         {
@@ -116,7 +121,7 @@ module.exports = ({ config }) => {
           imageWidth: 220,
           dark: {
             image: './assets/images/jitpluslogo.png',
-            backgroundColor: '#FFFFFF',
+            backgroundColor: '#0F172A',
           },
         },
       ],

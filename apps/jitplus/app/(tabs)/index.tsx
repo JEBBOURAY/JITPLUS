@@ -20,6 +20,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import FadeInView from '@/components/FadeInView';
 import GlassCard from '@/components/GlassCard';
+import ReferralPopup from '@/components/home/ReferralPopup';
 import Skeleton from '@/components/Skeleton';
 import { getCategoryEmoji, CATEGORIES } from '@/utils/categories';
 import { getDistanceSafe } from '@/utils/distance';
@@ -67,12 +68,14 @@ const CardItem = React.memo(function CardItem({
   t,
   isClosest,
   locale,
+  searchHighlight,
 }: {
   card: LoyaltyCard;
   onPress: () => void;
   t: (scope: string, options?: Record<string, unknown>) => string;
   isClosest?: boolean;
   locale?: string;
+  searchHighlight?: string;
 }) {
   const theme = useTheme();
   const isStamps = card.merchant?.loyaltyType === 'STAMPS';
@@ -95,9 +98,26 @@ const CardItem = React.memo(function CardItem({
   const pointsPct = Math.round(pointsProgress * 100);
   const pointsComplete = balance >= nextTarget;
 
-  // Animated progress bar — re-runs when balance changes
   const progressAnim = useRef(new Animated.Value(0)).current;
   const animTarget = isStamps ? stampsEarned / goal : pointsProgress;
+
+  // ── Reward celebration: glow + pulse ──
+  const rewardReady = stampsComplete || pointsComplete;
+  const glowAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!rewardReady) { glowAnim.setValue(0); return; }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(glowAnim, { toValue: 1, duration: 1200, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(glowAnim, { toValue: 0, duration: 1200, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rewardReady]);
+  const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.13] });
+  const pulseScale = glowAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [1, 1.08, 1] });
   useEffect(() => {
     Animated.timing(progressAnim, {
       toValue: animTarget,
@@ -138,6 +158,13 @@ const CardItem = React.memo(function CardItem({
         accessibilityRole="button"
         accessibilityLabel={t('home.cardAccessibility', { name: card.merchant?.nomBoutique || t('common.shop') })}
       >
+        {/* Reward glow overlay */}
+        {rewardReady && (
+          <Animated.View
+            pointerEvents="none"
+            style={[StyleSheet.absoluteFill, { backgroundColor: '#F59E0B', borderRadius: 16, opacity: glowOpacity }]}
+          />
+        )}
         {/* ── Premium accent bar ── */}
         <LinearGradient
           colors={[palette.violetDark, palette.violet]}
@@ -167,7 +194,24 @@ const CardItem = React.memo(function CardItem({
           {/* Name row */}
           <View style={styles.cardNameRow}>
             <Text style={[styles.cardName, { color: theme.text }]} numberOfLines={1}>
-              {isMerchantUnavailable ? t('home.unavailableMerchantName') : (card.merchant?.nomBoutique || t('common.shop'))}
+              {isMerchantUnavailable
+                ? t('home.unavailableMerchantName')
+                : (() => {
+                    const name = card.merchant?.nomBoutique || t('common.shop');
+                    if (!searchHighlight) return name;
+                    const idx = name.toLowerCase().indexOf(searchHighlight.toLowerCase());
+                    if (idx < 0) return name;
+                    return (
+                      <>
+                        {name.slice(0, idx)}
+                        <Text style={{ color: palette.violet, fontWeight: '800' }}>
+                          {name.slice(idx, idx + searchHighlight.length)}
+                        </Text>
+                        {name.slice(idx + searchHighlight.length)}
+                      </>
+                    );
+                  })()
+              }
             </Text>
             <RNImage
               source={JITPLUS_LOGO}
@@ -178,7 +222,7 @@ const CardItem = React.memo(function CardItem({
           {/* Nearest badge */}
           {isClosest && (
             <View style={[styles.closestBadge, { backgroundColor: `${palette.emerald}18` }]}>
-              <MapPin size={ms(9)} color={palette.emerald} strokeWidth={1.5} />
+              <MapPin size={ms(9)} color={palette.emerald} strokeWidth={2} />
               <Text style={[styles.closestBadgeText, { color: palette.emerald }]}>
                 {t('home.nearestBadge')}
               </Text>
@@ -187,7 +231,7 @@ const CardItem = React.memo(function CardItem({
 
           {isMerchantUnavailable ? (
             <View style={[styles.unavailableBanner, { backgroundColor: `${theme.danger}10` }]}>
-              <AlertCircle size={ms(12)} color={theme.danger} strokeWidth={1.8} />
+              <AlertCircle size={ms(12)} color={theme.danger} strokeWidth={2} />
               <Text style={[styles.unavailableText, { color: theme.danger }]}>
                 {t('home.unavailableMerchantMessage')}
               </Text>
@@ -234,11 +278,11 @@ const CardItem = React.memo(function CardItem({
               </View>
 
               {stampsComplete ? (
-                <View style={[styles.rewardBanner, { backgroundColor: `${palette.emerald}22` }]}>
+                <Animated.View style={[styles.rewardBanner, { backgroundColor: `${palette.emerald}22`, transform: [{ scale: pulseScale }] }]}>
                   <Text style={[styles.rewardBannerText, { color: palette.emerald }]}>
                     {t('home.rewardReady')}
                   </Text>
-                </View>
+                </Animated.View>
               ) : (
                 <Text style={[styles.stampsMeta, { color: theme.textMuted }]}>
                   {t('home.stampsRemaining', { count: stampsRemaining })}
@@ -250,17 +294,17 @@ const CardItem = React.memo(function CardItem({
             <>
               <View style={styles.pointsTopRow}>
                 <View style={styles.pointsValueRow}>
-                  <Coins size={ms(12)} color={palette.violet} strokeWidth={1.5} />
+                  <Coins size={ms(12)} color={palette.violet} strokeWidth={2} />
                   <Text style={[styles.pointsValue, { color: palette.violet }]}>
                     {balance.toLocaleString('fr-MA')} pts
                   </Text>
                 </View>
                 {pointsComplete ? (
-                  <View style={[styles.rewardBadge, { backgroundColor: `${palette.emerald}22` }]}>
+                  <Animated.View style={[styles.rewardBadge, { backgroundColor: `${palette.emerald}22`, transform: [{ scale: pulseScale }] }]}>
                     <Text style={[styles.rewardBadgeText, { color: palette.emerald }]}>
                       {t('home.rewardReady')}
                     </Text>
-                  </View>
+                  </Animated.View>
                 ) : (
                   <Text style={[styles.pointsPct, { color: theme.textMuted }]}>{pointsPct}%</Text>
                 )}
@@ -297,7 +341,7 @@ const CardItem = React.memo(function CardItem({
           </Text>
         </View>
 
-        {!isMerchantUnavailable && <ChevronRight size={ms(18)} color={theme.textMuted} strokeWidth={1.5} />}
+        {!isMerchantUnavailable && <ChevronRight size={ms(18)} color={theme.textMuted} strokeWidth={2} />}
       </View>
     </GlassCard>
   );
@@ -315,6 +359,7 @@ export default function HomeScreen() {
 
   const [showWelcome, setShowWelcome] = useState(false);
   const welcomeAnim = useRef(new Animated.Value(0)).current;
+  const [showReferral, setShowReferral] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>('recent');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
@@ -324,10 +369,11 @@ export default function HomeScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const searchInputRef = useRef<TextInput>(null);
+  const flatListRef = useRef<FlatList>(null);
 
-  // Debounce search to avoid re-filtering on every keystroke
+  // Debounce search — faster for responsiveness
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(searchQuery), DEBOUNCE_MS);
+    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 150);
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
@@ -349,6 +395,25 @@ export default function HomeScreen() {
     refetch,
     isRefetching,
   } = usePointsOverview(!!client);
+
+  // ── Predictive search suggestions (instant, no debounce) ──
+  const searchSuggestions = useMemo(() => {
+    if (!searchQuery || searchQuery.length < 1) return [];
+    const q = searchQuery.toLowerCase();
+    const rawCards = pointsData?.cards ?? [];
+    const seen = new Set<string>();
+    return rawCards
+      .filter((c) => {
+        const name = c.merchant?.nomBoutique;
+        if (!name || seen.has(name)) return false;
+        const match = name.toLowerCase().includes(q) ||
+          c.merchant?.categorie?.toLowerCase().includes(q);
+        if (match) seen.add(name);
+        return match;
+      })
+      .slice(0, 5)
+      .map((c) => ({ id: c.merchantId, name: c.merchant!.nomBoutique, category: c.merchant?.categorie }));
+  }, [searchQuery, pointsData?.cards]);
 
   // ── Notifications cache for reward banner ──
   const { data: notifData } = useNotifications(!!client);
@@ -423,6 +488,25 @@ export default function HomeScreen() {
     }, [welcomeAnim])
   );
 
+  // ── Referral popup — show once every 3 days, after a short delay ──
+  useFocusEffect(
+    useCallback(() => {
+      let timer: ReturnType<typeof setTimeout>;
+      (async () => {
+        const lastShown = await AsyncStorage.getItem('@jitplus_referral_ts');
+        const THREE_DAYS = 3 * 24 * 60 * 60 * 1000;
+        if (lastShown && Date.now() - Number(lastShown) < THREE_DAYS) return;
+        timer = setTimeout(() => setShowReferral(true), 4000);
+      })();
+      return () => { if (timer) clearTimeout(timer); };
+    }, [])
+  );
+
+  const dismissReferral = useCallback(async () => {
+    setShowReferral(false);
+    await AsyncStorage.setItem('@jitplus_referral_ts', String(Date.now()));
+  }, []);
+
   // ── Reward notification banner on focus ──
   useFocusEffect(
     useCallback(() => {
@@ -443,7 +527,7 @@ export default function HomeScreen() {
         Animated.timing(rewardBannerAnim, { toValue: 1, duration: BANNER_ANIM_DURATION_MS, useNativeDriver: true }),
         Animated.delay(REWARD_BANNER_VISIBLE_MS),
         Animated.timing(rewardBannerAnim, { toValue: 0, duration: BANNER_ANIM_DURATION_MS, useNativeDriver: true }),
-      ]).start(() => setRewardBannerNotif(null));
+      ]).start(() => { setRewardBannerNotif(null); });
     }, [notifData, rewardBannerAnim])
   );
 
@@ -468,6 +552,17 @@ export default function HomeScreen() {
       return matchesCategory && matchesSearch;
     });
   }, [pointsData?.cards, selectedCategory, debouncedSearch]);
+
+  // ── Category counts for filter badges ──
+  const categoryCounts = useMemo(() => {
+    const rawCards = pointsData?.cards ?? [];
+    const counts: Record<string, number> = { all: rawCards.length };
+    for (const c of rawCards) {
+      const cat = c.merchant?.categorie;
+      if (cat) counts[cat] = (counts[cat] || 0) + 1;
+    }
+    return counts;
+  }, [pointsData?.cards]);
 
   // ── Sort cards based on selected filter ──
   const cards = useMemo(() => {
@@ -519,18 +614,31 @@ export default function HomeScreen() {
     router.push({ pathname: '/merchant/[id]', params: { id: merchantId } });
   }, [router]);
 
+  // ── Tap a search suggestion → fill search, scroll to card ──
+  const handleSuggestionTap = useCallback((name: string) => {
+    haptic();
+    setSearchQuery(name);
+    setDebouncedSearch(name);
+    Keyboard.dismiss();
+    const idx = cards.findIndex((c) => c.merchant?.nomBoutique === name);
+    if (idx >= 0 && flatListRef.current) {
+      flatListRef.current.scrollToIndex({ index: idx, animated: true, viewOffset: ms(80) });
+    }
+  }, [cards]);
+
   const renderCard = useCallback(({ item: card, index }: { item: LoyaltyCard; index: number }) => (
     <CardItem
       card={card}
       t={t}
       locale={locale}
+      searchHighlight={debouncedSearch}
       isClosest={sortMode === 'closest' && index === 0 && !!userLocation}
       onPress={() => {
         if (!card.merchant?.id || !card.merchant?.nomBoutique) return;
         handleCardPress(card.merchantId);
       }}
     />
-  ), [handleCardPress, t, locale, sortMode, userLocation]);
+  ), [handleCardPress, t, locale, debouncedSearch, sortMode, userLocation]);
 
   const keyExtractor = useCallback((item: LoyaltyCard) => item.id, []);
 
@@ -559,7 +667,7 @@ export default function HomeScreen() {
             accessibilityRole="button"
             accessibilityLabel={t('home.reloadAccessibility')}
           >
-            <AlertCircle size={ms(16)} color={theme.danger} strokeWidth={1.5} />
+            <AlertCircle size={ms(16)} color={theme.danger} strokeWidth={2} />
             <Text style={[styles.errorBannerText, { color: theme.danger }]}>
               {t('home.loadError')}
             </Text>
@@ -587,20 +695,25 @@ export default function HomeScreen() {
 
   const listEmpty = useMemo(() => {
     if (isLoading) return null;
+    const isSearchEmpty = !!debouncedSearch && cards.length === 0;
     return (
       <View style={[styles.emptyCards, { backgroundColor: theme.bgCard }]}>
         <View style={[styles.emptyIcon, { backgroundColor: theme.primaryBg }]}>
-          <CreditCard size={ms(28)} color={theme.textMuted} strokeWidth={1.5} />
+          {isSearchEmpty
+            ? <Search size={ms(28)} color={theme.textMuted} strokeWidth={2} />
+            : <CreditCard size={ms(28)} color={theme.textMuted} strokeWidth={2} />}
         </View>
         <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
-          {t('home.noCards')}
+          {isSearchEmpty ? t('home.noSearchResults', { query: debouncedSearch }) : t('home.noCards')}
         </Text>
-        <Text style={[styles.emptyHint, { color: theme.textMuted }]}>
-          {t('home.noCardsHint')}
-        </Text>
+        {!isSearchEmpty && (
+          <Text style={[styles.emptyHint, { color: theme.textMuted }]}>
+            {t('home.noCardsHint')}
+          </Text>
+        )}
       </View>
     );
-  }, [isLoading, theme, t]);
+  }, [isLoading, theme, t, debouncedSearch, cards.length]);
 
   // Guest users see a login prompt on this tab
   if (isGuest) return <GuestGuard />;
@@ -610,8 +723,9 @@ export default function HomeScreen() {
       {/* Floating top bar — discover style */}
       <View style={[styles.topBar, { top: insets.top + ms(10) }]} pointerEvents="box-none">
         {showSearch ? (
+          <View>
             <View style={[styles.searchBarExpanded, { backgroundColor: theme.bgCard, borderWidth: 1, borderColor: theme.border }]}>
-            <Search size={ms(18)} color={theme.textMuted} strokeWidth={1.5} />
+            <Search size={ms(18)} color={theme.textMuted} strokeWidth={2} />
             <TextInput
               ref={searchInputRef}
               style={[styles.searchInput, { color: theme.text }]}
@@ -620,19 +734,60 @@ export default function HomeScreen() {
               value={searchQuery} onChangeText={setSearchQuery}
               returnKeyType="search" autoFocus
             />
+            {debouncedSearch ? (
+              <Text style={[styles.searchCount, { color: palette.violet }]}>
+                {cards.length}
+              </Text>
+            ) : null}
             <Pressable onPress={toggleSearch} hitSlop={8}>
               <View style={[styles.closePill, { backgroundColor: theme.bgElevated }]}>
-                <X size={ms(14)} color={theme.textMuted} strokeWidth={1.5} />
+                <X size={ms(14)} color={theme.textMuted} strokeWidth={2} />
               </View>
             </Pressable>
+          </View>
+            {/* Predictive suggestions */}
+            {searchQuery.length > 0 && searchSuggestions.length > 0 && (
+              <View style={[styles.suggestionsBox, { backgroundColor: theme.bgCard, borderColor: theme.border }]}>
+                {searchSuggestions.map((s) => {
+                  const name = s.name;
+                  const q = searchQuery.toLowerCase();
+                  const idx = name.toLowerCase().indexOf(q);
+                  return (
+                    <Pressable
+                      key={s.id}
+                      style={({ pressed }) => [styles.suggestionRow, pressed && { backgroundColor: `${palette.violet}08` }]}
+                      onPress={() => handleSuggestionTap(name)}
+                    >
+                      <Search size={ms(13)} color={theme.textMuted} strokeWidth={1.5} />
+                      <Text style={[styles.suggestionText, { color: theme.text }]} numberOfLines={1}>
+                        {idx >= 0 ? (
+                          <>
+                            {name.slice(0, idx)}
+                            <Text style={{ color: palette.violet, fontWeight: '700' }}>
+                              {name.slice(idx, idx + searchQuery.length)}
+                            </Text>
+                            {name.slice(idx + searchQuery.length)}
+                          </>
+                        ) : name}
+                      </Text>
+                      {s.category && (
+                        <Text style={[styles.suggestionCategory, { color: theme.textMuted }]}>
+                          {getCategoryEmoji(s.category)}
+                        </Text>
+                      )}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
           </View>
         ) : (
           <View style={styles.topButtons}>
             <TouchableOpacity style={[styles.floatingBtn, { backgroundColor: theme.bgCard, borderWidth: 1, borderColor: theme.border }]} activeOpacity={0.8} onPress={toggleSearch}>
-              <Search size={ms(20)} color={theme.text} strokeWidth={1.5} />
+              <Search size={ms(20)} color={theme.text} strokeWidth={2} />
             </TouchableOpacity>
             <View style={[styles.counterBadge, { backgroundColor: theme.bgCard, borderWidth: 1, borderColor: theme.border }]}>
-              <CreditCard size={ms(13)} color={palette.violet} strokeWidth={1.5} />
+              <CreditCard size={ms(13)} color={palette.violet} strokeWidth={2} />
               <Text style={[styles.counterText, { color: theme.text }]}>
                 {t('home.cardCount', { count: cards.length })}
               </Text>
@@ -644,7 +799,7 @@ export default function HomeScreen() {
               accessibilityLabel={t('home.searchPlaceholder')}
               accessibilityState={{ expanded: showFilters }}
             >
-              <SlidersHorizontal size={ms(20)} color={showFilters ? '#fff' : theme.text} strokeWidth={1.5} />
+              <SlidersHorizontal size={ms(20)} color={showFilters ? '#fff' : theme.text} strokeWidth={2} />
               {activeFilterCount > 0 && <View style={styles.filterDot} />}
             </TouchableOpacity>
           </View>
@@ -659,6 +814,7 @@ export default function HomeScreen() {
             {CATEGORIES.map((cat) => {
               const isActive = selectedCategory === cat.id;
               const Icon = cat.icon;
+              const count = categoryCounts[cat.id] || 0;
               return (
                 <Pressable key={cat.id} onPress={() => handleCategoryChange(cat.id)} accessibilityRole="button" accessibilityState={{ selected: isActive }}>
                   <View style={[
@@ -667,10 +823,17 @@ export default function HomeScreen() {
                       ? { backgroundColor: palette.violet, borderColor: palette.violet }
                       : { backgroundColor: theme.bgCard, borderColor: theme.border },
                   ]}>
-                    <Icon size={ms(13)} color={isActive ? '#fff' : theme.textMuted} strokeWidth={1.5} />
+                    <Icon size={ms(13)} color={isActive ? '#fff' : theme.textMuted} strokeWidth={2} />
                     <Text style={[styles.chipLabel, { color: isActive ? '#fff' : theme.text }]}>
                       {t(cat.labelKey)}
                     </Text>
+                    {count > 0 && (
+                      <View style={[styles.chipCount, { backgroundColor: isActive ? 'rgba(255,255,255,0.25)' : `${palette.violet}15` }]}>
+                        <Text style={[styles.chipCountText, { color: isActive ? '#fff' : palette.violet }]}>
+                          {count}
+                        </Text>
+                      </View>
+                    )}
                   </View>
                 </Pressable>
               );
@@ -688,7 +851,7 @@ export default function HomeScreen() {
                       ? { backgroundColor: palette.violet, borderColor: palette.violet }
                       : { backgroundColor: theme.bgCard, borderColor: theme.border },
                   ]}>
-                    <Icon size={ms(13)} color={active ? '#fff' : theme.textMuted} strokeWidth={1.5} />
+                    <Icon size={ms(13)} color={active ? '#fff' : theme.textMuted} strokeWidth={2} />
                     <Text style={[styles.chipLabel, { color: active ? '#fff' : theme.text }]}>
                       {t(labelKey)}
                     </Text>
@@ -718,7 +881,7 @@ export default function HomeScreen() {
             onPress={() => { haptic(); router.push('/(tabs)/notifications'); setRewardBannerNotif(null); }}
           >
             <LinearGradient colors={GRADIENT_EMERALD} start={GRADIENT_H_START} end={GRADIENT_H_END} style={styles.rewardNotifGradient}>
-              <Bell size={ms(15)} color="#fff" strokeWidth={1.5} />
+              <Bell size={ms(15)} color="#fff" strokeWidth={2} />
               <Text style={styles.rewardNotifText} numberOfLines={1}>
                 {rewardBannerNotif.merchantName
                   ? `🎁 ${t('home.rewardBannerWithMerchant', { name: rewardBannerNotif.merchantName })}`
@@ -730,6 +893,7 @@ export default function HomeScreen() {
       )}
 
       <FlatList
+        ref={flatListRef}
         data={isLoading ? [] : cards}
         renderItem={renderCard}
         keyExtractor={keyExtractor}
@@ -751,6 +915,9 @@ export default function HomeScreen() {
         initialNumToRender={8}
       />
       <StatusBar style={theme.mode === 'dark' ? 'light' : 'dark'} />
+
+      {/* Referral popup */}
+      <ReferralPopup visible={showReferral} onClose={dismissReferral} />
     </View>
   );
 }
@@ -918,10 +1085,27 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: hp(2) }, shadowRadius: 12, elevation: 3,
   },
   searchInput: { flex: 1, fontSize: fontSize.md, paddingVertical: 0 },
+  searchCount: { fontSize: fontSize.xs, fontWeight: '700', minWidth: ms(20), textAlign: 'center' },
   closePill: {
     width: ms(28), height: ms(28), borderRadius: ms(14),
     backgroundColor: '#f1f5f9', alignItems: 'center', justifyContent: 'center',
   },
+
+  // Predictive search suggestions
+  suggestionsBox: {
+    marginTop: hp(4),
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    overflow: 'hidden',
+    shadowColor: '#000', shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 4 }, shadowRadius: 12, elevation: 4,
+  },
+  suggestionRow: {
+    flexDirection: 'row', alignItems: 'center', gap: wp(10),
+    paddingVertical: hp(11), paddingHorizontal: wp(16),
+  },
+  suggestionText: { flex: 1, fontSize: fontSize.sm, fontWeight: '500' },
+  suggestionCategory: { fontSize: fontSize.sm },
 
   // Floating filter bar (category chips)
   floatingFilterBar: { position: 'absolute', left: 0, right: 0, zIndex: 9 },
@@ -934,6 +1118,12 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: hp(2) }, shadowRadius: 8, elevation: 2,
   },
   chipLabel: { fontSize: fontSize.xs, fontWeight: '600' },
+  chipCount: {
+    minWidth: ms(18), height: ms(18), borderRadius: ms(9),
+    alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: wp(4),
+  },
+  chipCountText: { fontSize: ms(10), fontWeight: '700' },
 
   // ── Closest badge ──
   closestBadge: {

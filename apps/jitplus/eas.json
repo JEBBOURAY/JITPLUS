@@ -1,7 +1,7 @@
-{
+﻿{
   "cli": {
     "version": ">= 12.0.0",
-    "appVersionSource": "local"
+    "appVersionSource": "remote"
   },
   "build": {
     "development": {
@@ -20,35 +20,36 @@
       "env": {
         "EXPO_PUBLIC_API_URL": "https://jitplus-api-290470991104.europe-west9.run.app",
         "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "$EXPO_PUBLIC_GOOGLE_MAPS_API_KEY",
-        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "290470991104-hvhs4jm96jgg6qq7et1ggv5jb0pcjvaa.apps.googleusercontent.com",
-        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "290470991104-lf3bjf9kbsk75foej1h06mr1iugv02fq.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "290470991104-71koh2ac0h2ai8tppb5t8bsnmoo9mdtj.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "290470991104-5av1uiocig1l5k2rfq9ehb9ui5vb9oj9.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "$EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID",
         "EXPO_PUBLIC_SENTRY_DSN": "$EXPO_PUBLIC_SENTRY_DSN",
         "EXPO_PUBLIC_SUPPORT_WHATSAPP": "212675346486"
       }
     },
     "production": {
-      "autoIncrement": false,
+      "autoIncrement": true,
       "env": {
         "EXPO_PUBLIC_API_URL": "https://jitplus-api-290470991104.europe-west9.run.app",
         "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "$EXPO_PUBLIC_GOOGLE_MAPS_API_KEY",
-        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "290470991104-hvhs4jm96jgg6qq7et1ggv5jb0pcjvaa.apps.googleusercontent.com",
-        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "290470991104-lf3bjf9kbsk75foej1h06mr1iugv02fq.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "290470991104-71koh2ac0h2ai8tppb5t8bsnmoo9mdtj.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "290470991104-5av1uiocig1l5k2rfq9ehb9ui5vb9oj9.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "$EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID",
         "EXPO_PUBLIC_SENTRY_DSN": "$EXPO_PUBLIC_SENTRY_DSN",
-        "EXPO_PUBLIC_SUPPORT_WHATSAPP": "212675346486"
+        "EXPO_PUBLIC_SUPPORT_WHATSAPP": "212675346486",
+        "EXPO_PUBLIC_IOS_APP_ID": "$EXPO_PUBLIC_IOS_APP_ID"
       }
     },
     "production-apk": {
-      "autoIncrement": false,
+      "autoIncrement": true,
       "android": {
         "buildType": "apk"
       },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://jitplus-api-290470991104.europe-west9.run.app",
         "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "$EXPO_PUBLIC_GOOGLE_MAPS_API_KEY",
-        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "290470991104-hvhs4jm96jgg6qq7et1ggv5jb0pcjvaa.apps.googleusercontent.com",
-        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "290470991104-lf3bjf9kbsk75foej1h06mr1iugv02fq.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "290470991104-71koh2ac0h2ai8tppb5t8bsnmoo9mdtj.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "290470991104-5av1uiocig1l5k2rfq9ehb9ui5vb9oj9.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "$EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID",
         "EXPO_PUBLIC_SENTRY_DSN": "$EXPO_PUBLIC_SENTRY_DSN",
         "EXPO_PUBLIC_SUPPORT_WHATSAPP": "212675346486"

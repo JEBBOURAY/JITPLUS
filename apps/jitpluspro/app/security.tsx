@@ -31,10 +31,14 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import api from '@/services/api';
 import { getErrorMessage } from '@/utils/error';
+import { isValidPassword } from '@/utils/passwordStrength';
 import { useAuth } from '@/contexts/AuthContext';
-import { useTheme, type ThemeColors } from '@/contexts/ThemeContext';
+import { useRequireAuth } from '@/hooks/useRequireAuth';
+import { useTheme, brandGradient, type ThemeColors } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useGoogleIdToken } from '@/hooks/useGoogleIdToken';
+import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 
 // â”€â”€ PwdField (dÃ©fini HORS du composant pour Ã©viter le re-mount du TextInput) â”€â”€
 interface PwdFieldProps {
@@ -88,12 +92,16 @@ interface DeviceSession {
 type TabId = 'password' | 'devices' | 'delete';
 
 export default function SecurityScreen() {
+  const shouldWait = useRequireAuth();
   const theme = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ tab?: string }>();
   const { signOut, merchant, isTeamMember } = useAuth();
   const { t } = useLanguage();
+
+  if (shouldWait) return null;
+
   const isGoogleAccount = !!merchant?.googleId;
 
   const [activeTab, setActiveTab] = useState<TabId>(
@@ -187,8 +195,8 @@ export default function SecurityScreen() {
       Alert.alert(t('common.error'), t('security.enterCurrentPassword'));
       return;
     }
-    if (newPwd.length < 8) {
-      Alert.alert(t('common.error'), t('security.passwordTooShort'));
+    if (!isValidPassword(newPwd)) {
+      Alert.alert(t('common.error'), t('security.passwordRequirements'));
       return;
     }
     if (newPwd !== confirmPwd) {
@@ -242,10 +250,10 @@ export default function SecurityScreen() {
     return (
       <View style={[styles.container, { backgroundColor: theme.bg, justifyContent: 'center', alignItems: 'center', padding: 32 }]}>
         <ShieldCheck size={48} color={theme.textMuted} strokeWidth={1.5} />
-        <Text style={{ color: theme.text, fontWeight: '600', fontSize: 16, marginTop: 16 }}>{t('common.ownerOnly')}</Text>
-        <Text style={{ color: theme.textMuted, textAlign: 'center', marginTop: 8 }}>{t('common.ownerOnlyMsg')}</Text>
-        <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 16, paddingHorizontal: 24, paddingVertical: 10, backgroundColor: theme.primary, borderRadius: 8 }}>
-          <Text style={{ color: '#fff', fontWeight: '600' }}>{t('common.back')}</Text>
+        <Text style={{ color: theme.text, fontWeight: '600', fontSize: 16, marginTop: 16, fontFamily: 'Lexend_600SemiBold' }}>{t('common.ownerOnly')}</Text>
+        <Text style={{ color: theme.textMuted, textAlign: 'center', marginTop: 8, fontFamily: 'Lexend_400Regular' }}>{t('common.ownerOnlyMsg')}</Text>
+        <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 16, paddingHorizontal: 24, paddingVertical: 10, backgroundColor: theme.primary, borderRadius: 10 }}>
+          <Text style={{ color: '#fff', fontWeight: '600', fontFamily: 'Lexend_600SemiBold' }}>{t('common.back')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -264,12 +272,32 @@ export default function SecurityScreen() {
       keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
     >
       {/* â”€â”€ Header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-      <View style={[styles.header, { paddingTop: insets.top + 8, backgroundColor: theme.bgCard, borderBottomColor: theme.borderLight }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <ArrowLeft size={24} color={theme.text} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.text }]}>{t('security.title')}</Text>
-        <ShieldCheck size={22} color={theme.primary} />
+      <View collapsable={false}>
+        <LinearGradient
+          colors={[...brandGradient]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.headerGradient}
+        >
+          <BlurView
+            intensity={Platform.OS === 'ios' ? 40 : 20}
+            tint={theme.mode === 'dark' ? 'dark' : 'default'}
+            style={[styles.headerBlur, { paddingTop: insets.top + 16 }]}
+          >
+            <View style={styles.glassOverlay} />
+            <View style={styles.header}>
+              <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+                <ArrowLeft size={22} color="#fff" />
+              </TouchableOpacity>
+              <Text style={styles.headerTitle}>{t('security.title')}</Text>
+              <ShieldCheck size={22} color="rgba(255,255,255,0.8)" />
+            </View>
+          </BlurView>
+        </LinearGradient>
+        <LinearGradient
+          colors={['rgba(124,58,237,0.3)', 'transparent']}
+          style={styles.headerFade}
+        />
       </View>
 
         {/* ── Guide text ── */}
@@ -280,7 +308,7 @@ export default function SecurityScreen() {
         </View>
 
       {/* â”€â”€ Tab Switcher â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-      <View style={[styles.tabBar, { backgroundColor: theme.bgCard }]}>
+      <View style={[styles.tabBar, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
         {tabs.map((tab) => {
           const isActive = activeTab === tab.id;
           return (
@@ -345,7 +373,7 @@ export default function SecurityScreen() {
                     </TouchableOpacity>
                   )}
                   {googleDelete.error ? (
-                    <Text style={{ color: theme.danger, fontSize: 12, marginTop: 4 }}>{googleDelete.error}</Text>
+                    <Text style={{ color: theme.danger, fontSize: 12, marginTop: 4, fontFamily: 'Lexend_400Regular' }}>{googleDelete.error}</Text>
                   ) : null}
                 </View>
               ) : (
@@ -520,13 +548,13 @@ export default function SecurityScreen() {
                 styles.saveBtn,
                 {
                   backgroundColor:
-                    (isGoogleAccount || currentPwd) && newPwd.length >= 8 && newPwd === confirmPwd
+                    (isGoogleAccount || currentPwd) && isValidPassword(newPwd) && newPwd === confirmPwd
                       ? theme.primary
                       : theme.border,
                 },
               ]}
               onPress={handleChangePassword}
-              disabled={saving || (!isGoogleAccount && !currentPwd) || newPwd.length < 8 || newPwd !== confirmPwd}
+              disabled={saving || (!isGoogleAccount && !currentPwd) || !isValidPassword(newPwd) || newPwd !== confirmPwd}
               activeOpacity={0.8}
             >
               {saving ? (
@@ -559,7 +587,7 @@ export default function SecurityScreen() {
               devices.map((device) => (
                 <View
                   key={device.id}
-                  style={[styles.deviceCard, { backgroundColor: theme.bgCard }]}
+                  style={[styles.deviceCard, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}
                 >
                   <View style={styles.deviceRow}>
                     <View
@@ -658,29 +686,33 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     paddingVertical: 12,
     paddingHorizontal: 16,
-    backgroundColor: '#f0f4ff',
     borderRadius: 12,
     borderLeftWidth: 3,
-    borderLeftColor: '#7C3AED',
   },
   guideText: {
     fontSize: 14,
     lineHeight: 20,
+    fontFamily: 'Lexend_400Regular',
   },
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
+  container: { flex: 1 },
 
-  // Header
+  // Header — glassmorphism
+  headerGradient: { overflow: 'hidden' },
+  headerBlur: { overflow: 'hidden' },
+  glassOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    backgroundColor: '#fff',
-    borderBottomColor: '#e2e8f0',
+    paddingHorizontal: 24,
+    paddingBottom: 20,
+    gap: 10,
   },
   backBtn: { padding: 4 },
-  headerTitle: { flex: 1, fontSize: 18, fontWeight: '700', marginLeft: 12, color: '#1e293b' },
+  headerTitle: { flex: 1, fontSize: 20, fontWeight: '700', marginLeft: 8, color: '#FFFFFF', fontFamily: 'Lexend_700Bold', letterSpacing: -0.3 },
+  headerFade: { height: 4 },
 
   // Tabs
   tabBar: {
@@ -688,15 +720,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     gap: 8,
-    backgroundColor: '#fff',
     borderRadius: 12,
     marginHorizontal: 16,
     marginTop: 12,
-    shadowColor: '#1F2937',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    borderWidth: 1,
   },
   tab: {
     flex: 1,
@@ -704,13 +731,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 10,
-    borderRadius: 12,
+    borderRadius: 10,
     gap: 6,
   },
-  tabLabel: { fontSize: 13, fontWeight: '600' },
+  tabLabel: { fontSize: 13, fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
 
   // Password form
-  fieldLabel: { fontSize: 14, fontWeight: '600', marginBottom: 6, color: '#475569' },
+  fieldLabel: { fontSize: 14, fontWeight: '600', marginBottom: 6, fontFamily: 'Lexend_600SemiBold' },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -718,10 +745,8 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 14,
     gap: 10,
-    backgroundColor: '#fff',
-    borderColor: '#e2e8f0',
   },
-  input: { flex: 1, fontSize: 15, paddingVertical: 13, color: '#1e293b' },
+  input: { flex: 1, fontSize: 15, paddingVertical: 13, fontFamily: 'Lexend_500Medium' },
 
   strengthRow: {
     flexDirection: 'row',
@@ -736,7 +761,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   strengthFill: { height: '100%', borderRadius: 2 },
-  strengthLabel: { fontSize: 12, fontWeight: '600', minWidth: 45 },
+  strengthLabel: { fontSize: 12, fontWeight: '600', minWidth: 45, fontFamily: 'Lexend_600SemiBold' },
 
   saveBtn: {
     flexDirection: 'row',
@@ -746,36 +771,27 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginTop: 28,
     gap: 10,
-    shadowColor: '#1F2937',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
   },
-  saveBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  saveBtnText: { color: '#fff', fontSize: 15, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
 
   // Devices
   loadingCenter: { alignItems: 'center', paddingTop: 60 },
   emptyDevices: { alignItems: 'center', paddingTop: 60 },
-  emptyTitle: { fontSize: 18, fontWeight: '700', marginTop: 16 },
+  emptyTitle: { fontSize: 18, fontWeight: '700', marginTop: 16, fontFamily: 'Lexend_700Bold' },
   emptyText: {
     fontSize: 13,
     textAlign: 'center',
     marginTop: 8,
     paddingHorizontal: 30,
     lineHeight: 20,
+    fontFamily: 'Lexend_400Regular',
   },
 
   deviceCard: {
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 16,
     marginBottom: 12,
-    backgroundColor: '#fff',
-    shadowColor: '#1F2937',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    borderWidth: 1,
   },
   deviceRow: { flexDirection: 'row', alignItems: 'center' },
   deviceIcon: {
@@ -787,23 +803,23 @@ const styles = StyleSheet.create({
   },
   deviceInfo: { flex: 1, marginLeft: 14 },
   deviceNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  deviceName: { fontSize: 15, fontWeight: '600' },
+  deviceName: { fontSize: 15, fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
   currentBadge: {
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 8,
   },
-  currentBadgeText: { fontSize: 10, fontWeight: '700' },
-  deviceOS: { fontSize: 12, marginTop: 2 },
+  currentBadgeText: { fontSize: 10, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
+  deviceOS: { fontSize: 12, marginTop: 2, fontFamily: 'Lexend_400Regular' },
   deviceMeta: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
-  deviceMetaText: { fontSize: 11 },
+  deviceMetaText: { fontSize: 11, fontFamily: 'Lexend_400Regular' },
   userTypeBadge: {
     paddingHorizontal: 6,
     paddingVertical: 1,
     borderRadius: 6,
     marginLeft: 6,
   },
-  userTypeBadgeText: { fontSize: 9, fontWeight: '700' },
+  userTypeBadgeText: { fontSize: 9, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
 
   removeBtn: {
     width: 36,
@@ -830,10 +846,12 @@ const styles = StyleSheet.create({
   dangerTitle: {
     fontSize: 16,
     fontWeight: '700',
+    fontFamily: 'Lexend_700Bold',
   },
   dangerText: {
     fontSize: 13,
     lineHeight: 20,
+    fontFamily: 'Lexend_400Regular',
   },
   deleteBtn: {
     flexDirection: 'row',
@@ -848,5 +866,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
     fontWeight: '700',
+    fontFamily: 'Lexend_700Bold',
   },
 });

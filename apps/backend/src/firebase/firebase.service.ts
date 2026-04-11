@@ -6,7 +6,9 @@ import { IPushProvider, PushMulticastResult } from '../common/interfaces';
 @Injectable()
 export class FirebaseService implements OnModuleInit, IPushProvider {
   private readonly logger = new Logger(FirebaseService.name);
-  private app: admin.app.App;
+  private app: admin.app.App | null = null;
+  /** Whether credentials are present (lazy-init will succeed) */
+  private credentialsAvailable = false;
 
   constructor(private config: ConfigService) {}
 
@@ -23,6 +25,20 @@ export class FirebaseService implements OnModuleInit, IPushProvider {
       return;
     }
 
+    // Defer SDK initialization to first use — saves ~50-100 MB RAM and 1-2s cold start
+    this.credentialsAvailable = true;
+    this.logger.log(`Firebase credentials found (project: ${projectId}) — SDK will lazy-init on first push`);
+  }
+
+  /** Lazily initialize Firebase Admin SDK on first actual use */
+  private ensureInitialized(): boolean {
+    if (this.app) return true;
+    if (!this.credentialsAvailable) return false;
+
+    const projectId = this.config.get<string>('FIREBASE_PROJECT_ID')!.trim();
+    const clientEmail = this.config.get<string>('FIREBASE_CLIENT_EMAIL')!.trim();
+    const privateKey = this.config.get<string>('FIREBASE_PRIVATE_KEY')!.trim();
+
     try {
       this.app = admin.initializeApp({
         credential: admin.credential.cert({
@@ -32,14 +48,17 @@ export class FirebaseService implements OnModuleInit, IPushProvider {
         }),
       });
       this.logger.log(`Firebase Admin SDK initialized (project: ${projectId})`);
+      return true;
     } catch (error) {
       this.logger.error(`Firebase Admin SDK initialization FAILED – push notifications will be SIMULATED: ${error}`);
+      this.credentialsAvailable = false;
+      return false;
     }
   }
 
   /** Whether Firebase Admin SDK is properly initialized (not in simulation mode). */
   get isInitialized(): boolean {
-    return !!this.app;
+    return !!this.app || this.credentialsAvailable;
   }
 
   private static readonly MAX_TOKENS_PER_BATCH = 500;
@@ -61,8 +80,8 @@ export class FirebaseService implements OnModuleInit, IPushProvider {
       return { successCount: 0, failureCount: 0, invalidTokens: [] };
     }
 
-    // If Firebase is not initialized, simulate the send
-    if (!this.app) {
+    // If Firebase is not initialized (and can't be), simulate the send
+    if (!this.ensureInitialized()) {
       this.logger.warn(
         `[SIMULATED] Push notification to ${tokens.length} device(s): "${title}" – "${body}"`,
       );
@@ -139,7 +158,7 @@ export class FirebaseService implements OnModuleInit, IPushProvider {
   ): Promise<void> {
     if (!token) return;
 
-    if (!this.app) {
+    if (!this.ensureInitialized()) {
       this.logger.warn(`[SIMULATED] Merchant push: "${title}" – "${body}"`);
       return;
     }

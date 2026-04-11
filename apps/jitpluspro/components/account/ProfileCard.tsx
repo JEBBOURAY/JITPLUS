@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Pressable, Platform } from 'react-native';
-import { Camera, Lock, Crown, Zap, Calendar, AlertCircle, Gift, ChevronRight, Copy, Bell } from 'lucide-react-native';
+import { Camera, Lock, Crown, Zap, Calendar, AlertCircle, Gift, ChevronRight, Copy, Bell, Edit3 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import MerchantLogo from '@/components/MerchantLogo';
@@ -20,11 +20,12 @@ interface Props {
   router: Router;
   unreadCount?: number;
   onNotifPress?: () => void;
+  onEditName?: () => void;
 }
 
-export default function ProfileCard({
+export default React.memo(function ProfileCard({
   theme, t, locale, merchant, uploadIsPending, onLogoPress, referralCode, categoryLabel, router,
-  unreadCount = 0, onNotifPress,
+  unreadCount = 0, onNotifPress, onEditName,
 }: Props) {
   const isPremium = merchant?.plan === 'PREMIUM';
   const isAdminPremium = merchant?.planActivatedByAdmin === true;
@@ -109,7 +110,14 @@ export default function ProfileCard({
             }
           </LinearGradient>
         </TouchableOpacity>
-        <Text style={[styles.profileName, { color: theme.text }]}>{merchant?.nom}</Text>
+        <View style={styles.profileNameRow}>
+          <Text style={[styles.profileName, { color: theme.text }]}>{merchant?.nom}</Text>
+          {onEditName && (
+            <TouchableOpacity onPress={onEditName} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Edit3 size={ms(14)} color={theme.textMuted} strokeWidth={2} />
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       {/* -- Plan Row ------------------------------ */}
@@ -225,7 +233,7 @@ export default function ProfileCard({
       )}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   profileCard: {
@@ -285,8 +293,9 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     zIndex: 5,
   },
-  avatarText: { fontSize: FS.xl, fontWeight: '700', color: '#fff', letterSpacing: 1 },
-  profileName: { fontSize: FS.lg, fontWeight: '700', letterSpacing: -0.3, textAlign: 'center' },
+  avatarText: { fontSize: FS.xl, fontWeight: '700', color: '#fff', letterSpacing: 1, fontFamily: 'Lexend_700Bold' },
+  profileNameRow: { flexDirection: 'row', alignItems: 'center', gap: wp(6) },
+  profileName: { fontSize: FS.lg, fontWeight: '700', letterSpacing: -0.3, textAlign: 'center', fontFamily: 'Lexend_700Bold' },
   planRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -307,16 +316,16 @@ const styles = StyleSheet.create({
   },
   planRowContent: { flex: 1, gap: hp(3) },
   planRowHeader: { flexDirection: 'row', alignItems: 'center', gap: wp(8) },
-  planRowTitle: { fontSize: FS.md, fontWeight: '700' },
+  planRowTitle: { fontSize: FS.md, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
   planRowBadge: {
     paddingHorizontal: wp(7),
     paddingVertical: hp(2),
     borderRadius: radius.sm,
   },
-  planRowBadgeText: { fontSize: 9, fontWeight: '700', letterSpacing: 0.8 },
+  planRowBadgeText: { fontSize: 9, fontWeight: '700', letterSpacing: 0.8, fontFamily: 'Lexend_700Bold' },
   planRowSub: { fontSize: FS.xs, color: '#9CA3AF', lineHeight: FS.xs * 1.4 },
   planRowExpiryLine: { flexDirection: 'row', alignItems: 'center', gap: wp(5) },
-  planRowExpiry: { fontSize: FS.xs, fontWeight: '600' },
+  planRowExpiry: { fontSize: FS.xs, fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
   planRowDaysChip: {
     alignSelf: 'flex-start',
     paddingHorizontal: wp(8),
@@ -324,7 +333,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
     marginTop: hp(2),
   },
-  planRowDaysText: { fontSize: 11, fontWeight: '700' },
+  planRowDaysText: { fontSize: 11, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
   planRowRenew: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -356,7 +365,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   referralRowContent: { flex: 1, gap: hp(1) },
-  referralRowLabel: { fontSize: FS.sm, fontWeight: '700' },
+  referralRowLabel: { fontSize: FS.sm, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
   referralRowHint: { fontSize: FS.xs, lineHeight: FS.xs * 1.3 },
   referralRowCode: {
     flexDirection: 'row',
@@ -366,7 +375,7 @@ const styles = StyleSheet.create({
     paddingVertical: hp(6),
     borderRadius: radius.md,
   },
-  referralRowCodeText: { fontSize: FS.sm, fontWeight: '700', letterSpacing: 1.2 },
+  referralRowCodeText: { fontSize: FS.sm, fontWeight: '700', letterSpacing: 1.2, fontFamily: 'Lexend_700Bold' },
   notifBell: {
     position: 'absolute',
     top: hp(14),
@@ -395,5 +404,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 9,
     fontWeight: '700',
+    fontFamily: 'Lexend_700Bold',
   },
 });

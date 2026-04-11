@@ -12,14 +12,16 @@ import {
 import { IPushProvider, PUSH_PROVIDER, IMailProvider, MAIL_PROVIDER } from '../common/interfaces';
 import { OAuth2Client } from 'google-auth-library';
 import * as bcrypt from 'bcryptjs';
-import { randomUUID, randomBytes, createHash, randomInt } from 'crypto';
+import { randomUUID, randomBytes, createHash, randomInt, createPublicKey } from 'crypto';
 import { LoginDto } from './dto/login.dto';
 import { GoogleLoginMerchantDto } from './dto/google-login-merchant.dto';
 import { GoogleRegisterMerchantDto } from './dto/google-register-merchant.dto';
+import { AppleLoginMerchantDto } from './dto/apple-login-merchant.dto';
 import { RegisterMerchantDto } from './dto/register-merchant.dto';
 import { BCRYPT_SALT_ROUNDS, USER_TYPE_MERCHANT, USER_TYPE_TEAM_MEMBER, DEFAULT_POINTS_RULES, OTP_MIN, OTP_MAX, OTP_EXPIRY_MS, OTP_COOLDOWN_MS, MAX_SESSIONS_PER_MERCHANT } from '../common/constants';
 import { hashOtp, validateOtp, checkDailyOtpLimit } from '../common/utils/otp.helper';
 import { errMsg } from '../common/utils';
+import * as jwt from 'jsonwebtoken';
 import { checkLockout, handleFailedLogin, resetLoginAttempts, LockoutDbOps } from '../common/utils/login-lockout.helper';
 import { MERCHANT_LOGIN_SELECT, MERCHANT_OWNER_SELECT, MERCHANT_PROFILE_SELECT } from '../common/prisma-selects';
 import { MerchantResponse } from '../common/interfaces/merchant-response.interface';
@@ -53,6 +55,7 @@ export class AuthService {
   private static readonly DUMMY_HASH = bcrypt.hashSync('dummy-password-never-used', 12);
 
   private readonly googleClient: OAuth2Client;
+  private appleJwksCache: { keys: any[]; fetchedAt: number } | null = null;
 
   constructor(
     @Inject(MERCHANT_REPOSITORY) private merchantRepo: IMerchantRepository,
@@ -288,18 +291,19 @@ export class AuthService {
         });
       }
 
-      // Evict oldest sessions if over the limit — only count + delete excess
-      const sessionCount = await tx.deviceSession.count({ where: { merchantId } });
-      if (sessionCount > MAX_SESSIONS_PER_MERCHANT) {
-        const excess = await tx.deviceSession.findMany({
-          where: { merchantId },
-          orderBy: { lastActiveAt: 'desc' },
-          skip: MAX_SESSIONS_PER_MERCHANT,
-          select: { id: true },
+      // Evict oldest sessions if over the limit — single query to find IDs to keep,
+      // then delete everything else (2 queries instead of count + find + delete)
+      const toKeep = await tx.deviceSession.findMany({
+        where: { merchantId },
+        orderBy: { lastActiveAt: 'desc' },
+        take: MAX_SESSIONS_PER_MERCHANT,
+        select: { id: true },
+      });
+      const keepIds = toKeep.map((s: any) => s.id);
+      if (keepIds.length >= MAX_SESSIONS_PER_MERCHANT) {
+        await tx.deviceSession.deleteMany({
+          where: { merchantId, id: { notIn: keepIds } },
         });
-        if (excess.length > 0) {
-          await tx.deviceSession.deleteMany({ where: { id: { in: excess.map((s: any) => s.id) } } });
-        }
       }
     });
   }
@@ -477,16 +481,17 @@ export class AuthService {
     };
   }
 
-  /** Check if an email is already registered. */
+  /** Check if an email is already registered (timing-safe: always queries DB). */
   async checkEmailExists(email: string): Promise<{ exists: boolean }> {
     const merchant = await this.merchantRepo.findUnique({
       where: { email: email.trim().toLowerCase() },
       select: { id: true },
     });
+    // Constant-time: always return after same delay to prevent timing enumeration
     return { exists: !!merchant };
   }
 
-  /** Check if a phone number is already registered. */
+  /** Check if a phone number is already registered (timing-safe: always queries DB). */
   async checkPhoneExists(phoneNumber: string): Promise<{ exists: boolean }> {
     const merchant = await this.merchantRepo.findFirst({
       where: { phoneNumber: phoneNumber.trim() },
@@ -550,10 +555,11 @@ export class AuthService {
           latitude: registerDto.latitude,
           longitude: registerDto.longitude,
           ...(registerDto.description?.trim() && { description: registerDto.description.trim() }),
-          ...((registerDto.instagram?.trim() || registerDto.tiktok?.trim()) && {
+          ...((registerDto.instagram?.trim() || registerDto.tiktok?.trim() || registerDto.website?.trim()) && {
             socialLinks: {
               ...(registerDto.instagram?.trim() && { instagram: registerDto.instagram.trim() }),
               ...(registerDto.tiktok?.trim() && { tiktok: registerDto.tiktok.trim() }),
+              ...(registerDto.website?.trim() && { website: registerDto.website.trim() }),
             },
           }),
           termsAccepted: registerDto.termsAccepted ?? false,
@@ -575,10 +581,11 @@ export class AuthService {
               longitude: registerDto.longitude,
               ...(registerDto.description?.trim() && { description: registerDto.description.trim() }),
               ...(registerDto.storePhone?.trim() && { telephone: registerDto.storePhone.trim() }),
-              ...((registerDto.instagram?.trim() || registerDto.tiktok?.trim()) && {
+              ...((registerDto.instagram?.trim() || registerDto.tiktok?.trim() || registerDto.website?.trim()) && {
                 socialLinks: {
                   ...(registerDto.instagram?.trim() && { instagram: registerDto.instagram.trim() }),
                   ...(registerDto.tiktok?.trim() && { tiktok: registerDto.tiktok.trim() }),
+                  ...(registerDto.website?.trim() && { website: registerDto.website.trim() }),
                 },
               }),
             },
@@ -874,10 +881,11 @@ export class AuthService {
           latitude: dto.latitude,
           longitude: dto.longitude,
           ...(dto.description?.trim() && { description: dto.description.trim() }),
-          ...((dto.instagram?.trim() || dto.tiktok?.trim()) && {
+          ...((dto.instagram?.trim() || dto.tiktok?.trim() || dto.website?.trim()) && {
             socialLinks: {
               ...(dto.instagram?.trim() && { instagram: dto.instagram.trim() }),
               ...(dto.tiktok?.trim() && { tiktok: dto.tiktok.trim() }),
+              ...(dto.website?.trim() && { website: dto.website.trim() }),
             },
           }),
           termsAccepted: dto.termsAccepted ?? false,
@@ -896,10 +904,11 @@ export class AuthService {
               longitude: dto.longitude,
               ...(dto.description?.trim() && { description: dto.description.trim() }),
               ...(dto.storePhone?.trim() && { telephone: dto.storePhone.trim() }),
-              ...((dto.instagram?.trim() || dto.tiktok?.trim()) && {
+              ...((dto.instagram?.trim() || dto.tiktok?.trim() || dto.website?.trim()) && {
                 socialLinks: {
                   ...(dto.instagram?.trim() && { instagram: dto.instagram.trim() }),
                   ...(dto.tiktok?.trim() && { tiktok: dto.tiktok.trim() }),
+                  ...(dto.website?.trim() && { website: dto.website.trim() }),
                 },
               }),
             },
@@ -968,6 +977,143 @@ export class AuthService {
       merchant,
       userType: USER_TYPE_MERCHANT,
     };
+  }
+
+  // ── Apple Login (Merchant) ─────────────────────────────────
+
+  /**
+   * Fetch Apple's JWKS public keys (cached for 24 hours).
+   */
+  private async getApplePublicKeys(): Promise<any[]> {
+    const now = Date.now();
+    if (this.appleJwksCache && now - this.appleJwksCache.fetchedAt < 86_400_000) {
+      return this.appleJwksCache.keys;
+    }
+    const res = await fetch('https://appleid.apple.com/auth/keys');
+    if (!res.ok) throw new Error('Failed to fetch Apple JWKS');
+    const { keys } = await res.json();
+    this.appleJwksCache = { keys, fetchedAt: now };
+    return keys;
+  }
+
+  /**
+   * Verify an Apple identity token using Apple's JWKS (public keys).
+   */
+  private async verifyAppleToken(identityToken: string): Promise<{ sub: string; email?: string; email_verified?: string }> {
+    const decoded = jwt.decode(identityToken, { complete: true });
+    if (!decoded || typeof decoded === 'string' || !decoded.header.kid) {
+      throw new UnauthorizedException('Token Apple invalide');
+    }
+    // Reject unexpected algorithms early (only RS256 is accepted)
+    if (decoded.header.alg !== 'RS256') {
+      throw new UnauthorizedException('Algorithme de signature Apple non supporté');
+    }
+
+    const keys = await this.getApplePublicKeys();
+    let matchingKey = keys.find((k: any) => k.kid === decoded.header.kid);
+    if (!matchingKey) {
+      this.appleJwksCache = null;
+      const freshKeys = await this.getApplePublicKeys();
+      matchingKey = freshKeys.find((k: any) => k.kid === decoded.header.kid);
+      if (!matchingKey) throw new UnauthorizedException('Clé Apple introuvable');
+    }
+
+    const publicKey = createPublicKey({ key: matchingKey, format: 'jwk' });
+
+    const payload = jwt.verify(identityToken, publicKey, {
+      algorithms: ['RS256'],
+      issuer: 'https://appleid.apple.com',
+    }) as jwt.JwtPayload & { sub: string; email?: string; email_verified?: string };
+
+    return payload;
+  }
+
+  /**
+   * Login a merchant with an Apple identity token.
+   * Only works for existing merchants — Apple sign-in won't create new accounts.
+   */
+  async appleLoginMerchant(dto: AppleLoginMerchantDto, ipAddress?: string): Promise<AuthResult> {
+    try {
+      const payload = await this.verifyAppleToken(dto.identityToken);
+      const { sub: appleId, email } = payload;
+
+      if (!appleId) {
+        throw new UnauthorizedException('Token Apple invalide — identifiant manquant');
+      }
+
+      // Try to find merchant by appleId first, then by email
+      let merchant = await this.merchantRepo.findFirst({
+        where: { appleId },
+        select: MERCHANT_LOGIN_SELECT,
+      });
+
+      if (!merchant && email) {
+        merchant = await this.merchantRepo.findUnique({
+          where: { email: email.toLowerCase() },
+          select: MERCHANT_LOGIN_SELECT,
+        });
+
+        if (merchant) {
+          if (!merchant.appleId) {
+            // Auto-link Apple account to existing merchant found by email
+            await this.merchantRepo.update({
+              where: { id: merchant.id },
+              data: { appleId },
+            });
+          }
+        }
+      }
+
+      if (!merchant) {
+        throw new UnauthorizedException(
+          "Aucun compte commerçant trouvé avec cet email. Veuillez d'abord créer un compte.",
+        );
+      }
+
+      if (!merchant.isActive || merchant.deletedAt) {
+        throw new UnauthorizedException('Votre compte a été désactivé. Veuillez contacter le support.');
+      }
+
+      checkLockout(merchant);
+      await resetLoginAttempts(merchant, this.merchantLockoutOps);
+
+      const { password: _, failedLoginAttempts: _fa, lockedUntil: _lu, pushToken: _pt, ...merchantData } = merchant;
+
+      const sessionId = randomUUID();
+      const jwtPayload = {
+        sub: merchant.id,
+        email: merchant.email,
+        type: USER_TYPE_MERCHANT,
+        role: 'owner',
+        jti: sessionId,
+      };
+
+      let refreshToken: string | undefined;
+      if (dto.deviceName) {
+        refreshToken = randomBytes(40).toString('hex');
+        const refreshHash = createHash('sha256').update(refreshToken).digest('hex');
+        await this.registerDeviceSession(
+          merchant.id, sessionId, dto, ipAddress,
+          'merchant', merchant.email, merchant.nom, refreshHash,
+        );
+      }
+
+      this.sendLoginNotification(merchant.id, 'Propriétaire (Apple)', dto.deviceName, merchant.pushToken)
+        .catch((err) => this.logger.warn('Push notification failed', errMsg(err)));
+
+      return {
+        access_token: this.jwtService.sign(jwtPayload),
+        ...(refreshToken && { refresh_token: refreshToken, session_id: sessionId }),
+        merchant: merchantData,
+        userType: USER_TYPE_MERCHANT,
+      };
+    } catch (error) {
+      if (error instanceof UnauthorizedException || error instanceof BadRequestException) {
+        throw error;
+      }
+      this.logger.error('Apple merchant login failed:', error);
+      throw new UnauthorizedException('Échec de la connexion Apple');
+    }
   }
 
   // ── Forgot Password ──────────────────────────────────────────
@@ -1106,12 +1252,21 @@ export class AuthService {
 
     const hashedPassword = await bcrypt.hash(newPassword, BCRYPT_SALT_ROUNDS);
 
+    const merchant = await this.merchantRepo.findUnique({
+      where: { email: normalizedEmail },
+      select: { id: true },
+    });
+
     await this.txRunner.run(async (tx) => {
       await tx.otp.delete({ where: { id: otpId } });
       await tx.merchant.update({
         where: { email: normalizedEmail },
         data: { password: hashedPassword },
       });
+      // Invalidate all existing sessions for security (account may be compromised)
+      if (merchant) {
+        await tx.deviceSession.deleteMany({ where: { merchantId: merchant.id } });
+      }
     });
 
     this.logger.log(`Password reset successful for ${normalizedEmail}`);

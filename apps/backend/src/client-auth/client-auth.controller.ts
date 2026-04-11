@@ -24,7 +24,7 @@ import { ClientOnlyGuard } from '../common/guards/client-only.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtPayload } from '../common/interfaces/jwt-payload.interface';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
-import { SendOtpDto, VerifyOtpDto, CompleteProfileDto, ClientUpdateProfileDto, UpdatePushTokenDto, SendOtpEmailDto, VerifyOtpEmailDto, GoogleLoginDto, LoginEmailDto, LoginPhoneDto, SetPasswordDto, RefreshTokenDto, ClientDeleteAccountDto, ClientChangePasswordDto, SendChangeContactOtpDto, VerifyChangeContactOtpDto, RequestPayoutDto } from './dto';
+import { SendOtpDto, VerifyOtpDto, CompleteProfileDto, ClientUpdateProfileDto, UpdatePushTokenDto, SendOtpEmailDto, VerifyOtpEmailDto, GoogleLoginDto, AppleLoginDto, LoginEmailDto, LoginPhoneDto, SetPasswordDto, RefreshTokenDto, ClientDeleteAccountDto, ClientChangePasswordDto, SendChangeContactOtpDto, VerifyChangeContactOtpDto, RequestPayoutDto } from './dto';
 
 @ApiTags('Client Auth')
 @Controller('client-auth')
@@ -36,7 +36,7 @@ export class ClientAuthController {
   ) {}
 
   @Post('refresh')
-  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 10 } })
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 5 } })
   async refreshToken(@Body() dto: RefreshTokenDto) {
     return this.clientAuthService.refreshAccessToken(dto.refresh_token);
   }
@@ -84,6 +84,12 @@ export class ClientAuthController {
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 10 } })
   async googleLogin(@Body() dto: GoogleLoginDto) {
     return this.clientAuthService.googleLogin(dto.idToken);
+  }
+
+  @Post('apple-login')
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 10 } })
+  async appleLogin(@Body() dto: AppleLoginDto) {
+    return this.clientAuthService.appleLogin(dto.identityToken, dto.givenName, dto.familyName);
   }
 
   @Post('login-email')

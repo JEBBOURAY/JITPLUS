@@ -5,6 +5,7 @@ import { isValidEmail } from '@/utils/validation';
 import type { ThemeColors } from '@/contexts/ThemeContext';
 import { palette } from '@/contexts/ThemeContext';
 import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
+import { AppleLogo } from '@/components/AppleLogo';
 
 interface Props {
   theme: ThemeColors;
@@ -19,12 +20,18 @@ interface Props {
     isLoading: boolean;
     error: string | null;
   };
+  apple?: {
+    promptApple: () => void;
+    isLoading: boolean;
+    error: string;
+    isAvailable: boolean;
+  };
   isLoading: boolean;
 }
 
 function StepAccountInner({
   theme, t, email, setEmail, emailRef,
-  googleIdToken, setGoogleIdToken, google, isLoading,
+  googleIdToken, setGoogleIdToken, google, apple, isLoading,
 }: Props) {
   const emailValid = email ? isValidEmail(email) : false;
   return (
@@ -57,6 +64,35 @@ function StepAccountInner({
           {!!google.error && (
             <Text style={[styles.hint, { color: theme.danger, textAlign: 'center', marginTop: 4 }]}>
               {google.error}
+            </Text>
+          )}
+
+          {/* Apple Sign-Up — iOS only */}
+          {apple?.isAvailable && (
+            <TouchableOpacity
+              style={[styles.googleBtn, { backgroundColor: '#000', borderColor: '#000', marginTop: hp(8) }]}
+              onPress={apple.promptApple}
+              disabled={apple.isLoading || isLoading}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={t('registerExtra.signUpWithApple')}
+            >
+              {apple.isLoading ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <>
+                  <AppleLogo size={ms(20)} color="#fff" />
+                  <Text style={[styles.googleBtnText, { color: '#fff' }]}>
+                    {t('registerExtra.signUpWithApple')}
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+          )}
+
+          {!!apple?.error && (
+            <Text style={[styles.hint, { color: theme.danger, textAlign: 'center', marginTop: 4 }]}>
+              {apple.error}
             </Text>
           )}
 

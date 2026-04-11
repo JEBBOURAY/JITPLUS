@@ -44,6 +44,11 @@ export class TwilioService implements ISmsProvider {
    *
    * @returns `true` if the message was accepted by Twilio, `false` otherwise.
    */
+  // Circuit breaker: skip template approach after repeated failures to avoid
+  // double Twilio API calls (template attempt + plain text fallback).
+  private templateFailureCount = 0;
+  private static readonly TEMPLATE_FAILURE_THRESHOLD = 3;
+
   async sendWhatsAppOtp(to: string, code: string): Promise<boolean> {
     if (!this.client) {
       this.logger.warn(`[NO-CLIENT] OTP ${code} for ${to} — Twilio not configured`);
@@ -53,7 +58,7 @@ export class TwilioService implements ISmsProvider {
     const destination = this.toWhatsappAddress(to);
 
     try {
-      if (this.otpContentSid) {
+      if (this.otpContentSid && this.templateFailureCount < TwilioService.TEMPLATE_FAILURE_THRESHOLD) {
         try {
           // Content Template approach (required for production WhatsApp Business)
           await this.client.messages.create({
@@ -62,11 +67,14 @@ export class TwilioService implements ISmsProvider {
             contentSid: this.otpContentSid,
             contentVariables: JSON.stringify({ '1': code }),
           });
+          // Reset on success
+          this.templateFailureCount = 0;
         } catch (templateError: unknown) {
+          this.templateFailureCount++;
           const templateErrMsg = templateError instanceof Error ? templateError.message : String(templateError);
-          // Some accounts fail because of template approval / locale / variables mismatch.
-          // Fallback to plain text avoids OTP outage while template is being fixed.
-          this.logger.warn(`OTP template send failed, retrying as plain text: ${templateErrMsg}`);
+          this.logger.warn(
+            `OTP template send failed (${this.templateFailureCount}/${TwilioService.TEMPLATE_FAILURE_THRESHOLD}), retrying as plain text: ${templateErrMsg}`,
+          );
           await this.client.messages.create({
             from: this.whatsappFrom,
             to: destination,

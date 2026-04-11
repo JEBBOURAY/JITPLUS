@@ -28,6 +28,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 20,
     fontWeight: 'bold',
+    fontFamily: 'Lexend_700Bold',
   },
   link: {
     marginTop: 15,
@@ -36,5 +37,6 @@ const styles = StyleSheet.create({
   linkText: {
     fontSize: 14,
     color: '#7C3AED',
+    fontFamily: 'Lexend_400Regular',
   },
 });

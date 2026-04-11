@@ -76,6 +76,7 @@ const AUTH_ROUTES = [
   '/client-auth/login-email',
   '/client-auth/login-phone',
   '/client-auth/google-login',
+  '/client-auth/apple-login',
 ];
 
 class ApiService {
@@ -171,6 +172,13 @@ class ApiService {
     return data;
   }
 
+  // ── Apple Login ─────────────────────────────────────────
+  async appleLogin(identityToken: string, givenName?: string, familyName?: string): Promise<AuthResponse> {
+    const { data } = await this.api.post('/client-auth/apple-login', { identityToken, givenName, familyName });
+    await this.persistTokens(data);
+    return data;
+  }
+
   // ── Email + Password Login ──────────────────────────────
   async loginWithEmail(email: string, password: string): Promise<AuthResponse> {
     const { data } = await this.api.post('/client-auth/login-email', { email, password });
@@ -246,11 +254,11 @@ class ApiService {
   }
 
   // ── Discover ────────────────────────────────────────────
-  async getMerchants(): Promise<Merchant[]> {
+  async getMerchants(page = 1, limit = 100): Promise<Merchant[]> {
     // Use public endpoint when no auth token (guest mode), authenticated endpoint otherwise
     const token = await this.getStoredToken();
     const url = token ? '/client/merchants' : '/client-auth/merchants';
-    const { data } = await this.api.get(url);
+    const { data } = await this.api.get(url, { params: { page, limit } });
     // Backend returns { merchants: [...], pagination: {...} }
     if (Array.isArray(data)) return data;
     if (data?.merchants && Array.isArray(data.merchants)) return data.merchants;

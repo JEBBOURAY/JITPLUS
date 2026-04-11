@@ -8,9 +8,6 @@ import { Prisma, PrismaClient } from '@prisma/client';
 const CONNECTION_LIMIT = parseInt(process.env.DATABASE_POOL_SIZE || '10', 10);
 const POOL_TIMEOUT_SECS = 20; // seconds to wait for a free connection
 
-// Models with soft-delete (deletedAt column)
-const SOFT_DELETE_MODELS = ['Merchant', 'Client'] as const;
-
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PrismaService.name);
@@ -35,13 +32,15 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
           : [{ emit: 'event', level: 'query' }],
     });
 
-    // Log slow queries — warn at 500ms (SLA target), error at 2s (critical)
+    // Log slow queries in non-production; in production only critical slow queries (>2s)
+    // to reduce Cloud Logging ingestion costs.
+    const isProd = process.env.NODE_ENV === 'production';
     (this as any).$on('query', (e: { duration: number; query: string }) => {
       if (e.duration > 2000) {
         this.logger.error(
           `Critical slow query: "${e.query.slice(0, 120)}" took ${e.duration}ms`
         );
-      } else if (e.duration > 500) {
+      } else if (!isProd && e.duration > 500) {
         this.logger.warn(
           `Slow query: "${e.query.slice(0, 120)}" took ${e.duration}ms`
         );
@@ -49,28 +48,24 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     });
 
     // ── Soft-delete with Prisma Extensions ──────────────────────────────────────
-    this._extendedClient = this.$extends({
-      query: {
-        $allModels: {
-          async $allOperations({ model, operation, args, query }: any) {
-            if (SOFT_DELETE_MODELS.includes(model as any)) {
-              const readOps = ['findUnique', 'findFirst', 'findMany', 'count', 'aggregate', 'groupBy'];
-              if (readOps.includes(operation)) {
-                if (args.where?.deletedAt === undefined) {
-                  if (operation === 'findUnique') {
-                    // findUnique doesn't allow filtering by non-unique fields, change to findFirst mapping where possible, or just let findUnique fail if it's strict
-                    // The safer extension approach for findUnique is just dropping it if deletedAt is present, but simple injection works for most cases
-                    args.where = { ...args.where, deletedAt: null };
-                  } else {
-                    args.where = { ...args.where, deletedAt: null };
-                  }
-                }
-              }
-            }
-            return query(args);
-          }
+    // Per-model interceptors — only Merchant and Client get the deletedAt filter,
+    // all other models bypass the extension entirely (zero overhead).
+    const softDeleteReadOps = ['findUnique', 'findFirst', 'findMany', 'count', 'aggregate', 'groupBy'] as const;
+
+    const injectDeletedAtFilter = async ({ operation, args, query }: any) => {
+      if (softDeleteReadOps.includes(operation)) {
+        if (args.where?.deletedAt === undefined) {
+          args.where = { ...args.where, deletedAt: null };
         }
       }
+      return query(args);
+    };
+
+    this._extendedClient = this.$extends({
+      query: {
+        merchant: { $allOperations: injectDeletedAtFilter },
+        client: { $allOperations: injectDeletedAtFilter },
+      },
     });
   }
 

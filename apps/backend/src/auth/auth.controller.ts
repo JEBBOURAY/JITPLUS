@@ -8,6 +8,7 @@ import { ClientReferralService } from '../client-auth/client-referral.service';
 import { LoginDto } from './dto/login.dto';
 import { GoogleLoginMerchantDto } from './dto/google-login-merchant.dto';
 import { GoogleRegisterMerchantDto } from './dto/google-register-merchant.dto';
+import { AppleLoginMerchantDto } from './dto/apple-login-merchant.dto';
 import { RegisterMerchantDto } from './dto/register-merchant.dto';
 import { RefreshMerchantTokenDto } from './dto/refresh-merchant-token.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
@@ -58,6 +59,14 @@ export class AuthController {
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 3 } })
   async googleRegister(@Body() dto: GoogleRegisterMerchantDto) {
     return this.authService.googleRegisterMerchant(dto);
+  }
+
+  @Post('apple-login')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 10 } })
+  async appleLogin(@Body() dto: AppleLoginMerchantDto, @Req() req: Request) {
+    const ipAddress = req.ip || 'unknown';
+    return this.authService.appleLoginMerchant(dto, ipAddress);
   }
 
   @Post('refresh-token')
@@ -121,14 +130,14 @@ export class AuthController {
   // ── Uniqueness checks (public — used during registration) ──
   @Post('check-email')
   @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 10 } })
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 3 } })
   async checkEmail(@Body() dto: CheckEmailDto) {
     return this.authService.checkEmailExists(dto.email);
   }
 
   @Post('check-phone')
   @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 10 } })
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 3 } })
   async checkPhone(@Body() dto: CheckPhoneDto) {
     return this.authService.checkPhoneExists(dto.phoneNumber);
   }

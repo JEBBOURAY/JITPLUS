@@ -84,13 +84,26 @@ export class MerchantController {
     // Strip invisible control chars / BOM that QR scanners may inject
     const token = dto.token.replace(/[\x00-\x1f\x7f-\x9f\uFEFF]/g, '').trim();
 
-    const dotIdx = token.indexOf('.');
-    if (dotIdx < 1) {
-      throw new BadRequestException('QR code invalide.');
-    }
+    // Determine version: "v1.{idB64}.{sig}" (versioned) vs "{idB64}.{sig}" (legacy)
+    let version: string;
+    let idB64: string;
+    let sig: string;
 
-    const idB64 = token.substring(0, dotIdx);
-    const sig = token.substring(dotIdx + 1);
+    if (token.startsWith('v1.')) {
+      version = 'v1';
+      const rest = token.substring(3);
+      const dotIdx = rest.indexOf('.');
+      if (dotIdx < 1) throw new BadRequestException('QR code invalide.');
+      idB64 = rest.substring(0, dotIdx);
+      sig = rest.substring(dotIdx + 1);
+    } else {
+      // Legacy unversioned format — backward compatible
+      version = 'v0';
+      const dotIdx = token.indexOf('.');
+      if (dotIdx < 1) throw new BadRequestException('QR code invalide.');
+      idB64 = token.substring(0, dotIdx);
+      sig = token.substring(dotIdx + 1);
+    }
 
     let clientId: string;
     try {
@@ -100,13 +113,15 @@ export class MerchantController {
     }
 
     const secret = this.configService.getOrThrow<string>('QR_HMAC_SECRET');
-    const expected = createHmac('sha256', secret).update(clientId).digest('base64url');
+    // v1 includes the version prefix in the HMAC input, v0 does not
+    const hmacInput = version === 'v1' ? `v1:${clientId}` : clientId;
+    const expected = createHmac('sha256', secret).update(hmacInput).digest('base64url');
 
     if (
       sig.length !== expected.length ||
       !timingSafeEqual(Buffer.from(sig), Buffer.from(expected))
     ) {
-      this.logger.warn(`QR verify failed – HMAC mismatch [len=${token.length}]`);
+      this.logger.warn(`QR verify failed – HMAC mismatch [version=${version}, len=${token.length}]`);
       throw new BadRequestException('QR code invalide.');
     }
 
@@ -160,7 +175,7 @@ export class MerchantController {
     if (!file) throw new BadRequestException('Aucun fichier envoyé');
 
     // Validate magic bytes — MIME from Content-Type header is client-controlled
-    const { fileTypeFromBuffer } = await (Function('return import("file-type")')() as Promise<typeof import('file-type')>);
+    const { fileTypeFromBuffer } = await import('file-type');
     const detected = await fileTypeFromBuffer(file.buffer);
     if (!detected || !ALLOWED_MIMES.includes(detected.mime)) {
       throw new BadRequestException('Le contenu du fichier ne correspond pas à un format image autorisé (JPG, PNG, WebP).');
@@ -192,6 +207,7 @@ export class MerchantController {
   }
 
   @Patch('push-token')
+  @UseGuards(MerchantOwnerGuard)
   async updatePushToken(@Body() dto: UpdatePushTokenDto, @CurrentUser() user: JwtPayload) {
     return this.profileService.updatePushToken(user.userId, dto.pushToken);
   }

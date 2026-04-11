@@ -92,5 +92,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     marginTop: 14,
+    fontFamily: 'Lexend_600SemiBold',
   },
 });

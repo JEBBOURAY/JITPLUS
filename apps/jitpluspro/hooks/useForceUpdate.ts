@@ -59,8 +59,8 @@ function getStoreUrl(): string {
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
-/** Re-check interval: 5 minutes */
-const RECHECK_INTERVAL_MS = 5 * 60 * 1000;
+/** Re-check interval: 30 minutes (version/maintenance changes are rare) */
+const RECHECK_INTERVAL_MS = 30 * 60 * 1000;
 
 /**
  * Checks the backend `/health/version` endpoint on mount and periodically,

@@ -63,6 +63,22 @@ export class GoogleLoginDto {
   idToken: string;
 }
 
+export class AppleLoginDto {
+  @IsString()
+  @IsNotEmpty({ message: 'Le token Apple est requis' })
+  identityToken: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  givenName?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  familyName?: string;
+}
+
 export class CompleteProfileDto {
   @IsString()
   @IsNotEmpty({ message: 'Le prénom est requis' })

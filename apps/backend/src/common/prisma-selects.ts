@@ -35,6 +35,7 @@ export const MERCHANT_PROFILE_SELECT = {
   termsAccepted: true,
   deletedAt: true,
   googleId: true,
+  appleId: true,
   plan: true,
   planExpiresAt: true,
   planActivatedByAdmin: true,
@@ -42,6 +43,29 @@ export const MERCHANT_PROFILE_SELECT = {
   lastAdminNotifReadAt: true,
   createdAt: true,
   updatedAt: true,
+} satisfies Prisma.MerchantSelect;
+
+/**
+ * Lightweight merchant list select — used for listing/discovery endpoints.
+ * Omits heavy JSON fields (rewards, socialLinks, pointsRules) to reduce
+ * payload by ~70% and lower serialization overhead in list responses.
+ */
+export const MERCHANT_LIST_SELECT = {
+  id: true,
+  nom: true,
+  categorie: true,
+  description: true,
+  ville: true,
+  quartier: true,
+  adresse: true,
+  latitude: true,
+  longitude: true,
+  logoUrl: true,
+  coverUrl: true,
+  loyaltyType: true,
+  isActive: true,
+  plan: true,
+  createdAt: true,
 } satisfies Prisma.MerchantSelect;
 
 /** Explicit return type for operations that use MERCHANT_PROFILE_SELECT. */
@@ -95,6 +119,7 @@ export const CLIENT_AUTH_SELECT = {
   telephone: true,
   telephoneVerified: true,
   googleId: true,
+  appleId: true,
   password: true,
   termsAccepted: true,
   shareInfoMerchants: true,

@@ -12,17 +12,17 @@ interface TransactionTypeConfig {
 export const TRANSACTION_TYPE_CONFIG: Record<TransactionType, TransactionTypeConfig> = {
   EARN_POINTS: {
     icon: Plus,
-    color: (theme) => theme.success,
+    color: (theme) => theme.primary,
     sign: '+',
   },
   REDEEM_REWARD: {
     icon: Minus,
-    color: (theme) => theme.warning,
+    color: (theme) => theme.accent,
     sign: '-',
   },
   ADJUST_POINTS: {
     icon: Pencil,
-    color: (theme) => theme.primary,
+    color: (theme) => theme.accent,
     sign: '',
   },
   LOYALTY_PROGRAM_CHANGE: {

@@ -30,6 +30,7 @@ export interface MerchantRow {
 
 export interface MerchantDetail extends MerchantRow {
   phoneNumber: string | null;
+  socialLinks: { website?: string; instagram?: string; tiktok?: string; facebook?: string; snapchat?: string; youtube?: string } | null;
   notificationCount: number;
   transactionCount: number;
 }

@@ -4,6 +4,9 @@ import { resolveImageUrl } from './imageUrl';
 /** Set of URLs already prefetched during this session — avoids duplicate network calls. */
 const prefetched = new Set<string>();
 
+/** Evict the oldest entries when the cache exceeds this size to prevent memory bloat. */
+const MAX_CACHE_SIZE = 500;
+
 /** Maximum number of concurrent prefetch requests to avoid UI jank. */
 const BATCH_SIZE = 6;
 
@@ -19,6 +22,11 @@ export function prefetchImages(urls: (string | null | undefined)[]): void {
   for (const url of unique) {
     const resolved = resolveImageUrl(url);
     if (prefetched.has(resolved)) continue;
+    // LRU eviction: remove oldest entry instead of clearing the entire set
+    if (prefetched.size >= MAX_CACHE_SIZE) {
+      const oldest = prefetched.values().next().value;
+      if (oldest) prefetched.delete(oldest);
+    }
     prefetched.add(resolved);
     pending.push(resolved);
   }

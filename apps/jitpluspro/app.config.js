@@ -15,7 +15,10 @@ module.exports = ({ config }) => {
   if (!googleWebClientId) {
     try {
       const gs = require('./google-services.json');
-      const oauthClient = gs.client?.[0]?.oauth_client?.find((c) => c.client_type === 3);
+      // Web client (type 3) lives in other_platform_oauth_client, not oauth_client
+      const oauthClient =
+        gs.client?.[0]?.oauth_client?.find((c) => c.client_type === 3) ||
+        gs.client?.[0]?.services?.appinvite_service?.other_platform_oauth_client?.find((c) => c.client_type === 3);
       if (oauthClient) googleWebClientId = oauthClient.client_id;
     } catch { /* google-services.json not present — CI/CD will inject via env */ }
   }
@@ -39,7 +42,7 @@ module.exports = ({ config }) => {
       backgroundColor: '#FFFFFF',
     },
     ios: {
-      supportsTablet: true,
+      supportsTablet: false,
       bundleIdentifier: 'com.jitplus.pro',
       // Initial build number — EAS autoIncrement bumps this on every production build
       buildNumber: '2',
@@ -119,6 +122,20 @@ module.exports = ({ config }) => {
       'expo-router',
       'expo-secure-store',
       '@react-native-google-signin/google-signin',
+      'expo-apple-authentication',
+      [
+        'expo-splash-screen',
+        {
+          image: './assets/images/jitplusprologo.png',
+          resizeMode: 'contain',
+          backgroundColor: '#FFFFFF',
+          imageWidth: 220,
+          dark: {
+            image: './assets/images/jitplusprologo.png',
+            backgroundColor: '#0F172A',
+          },
+        },
+      ],
       // Disable microphone permission — app only uses camera for QR scanning, never video recording
       [
         'expo-camera',

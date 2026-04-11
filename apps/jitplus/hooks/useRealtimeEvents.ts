@@ -15,6 +15,9 @@ import {
   NotificationNewPayload,
 } from '@jitplus/shared/src/realtime';
 import { queryKeys } from './useQueryHooks';
+import { useWsStore } from '@/stores/wsStore';
+import type { NotificationsResponse } from '@/types';
+import type { InfiniteData } from '@tanstack/react-query';
 
 /** Optimistically increment unread count by 1 for instant badge update. */
 function optimisticIncrementUnread(
@@ -35,9 +38,21 @@ function optimisticIncrementUnread(
  */
 export function useRealtimeEvents(socket: Socket | null) {
   const queryClient = useQueryClient();
+  const setWsConnected = useWsStore((s) => s.setConnected);
 
   useEffect(() => {
-    if (!socket) return;
+    if (!socket) {
+      setWsConnected(false);
+      return;
+    }
+
+    // Track WS connection state for polling hooks
+    const onConnect = () => setWsConnected(true);
+    const onDisconnect = () => setWsConnected(false);
+    socket.on('connect', onConnect);
+    socket.on('disconnect', onDisconnect);
+    // Set initial state
+    setWsConnected(socket.connected);
 
     // ── Points/stamps balance updated ────────────────────────
     const onPointsUpdated = (payload: PointsUpdatedPayload) => {
@@ -50,21 +65,50 @@ export function useRealtimeEvents(socket: Socket | null) {
     };
 
     // ── New notification received ────────────────────────────
-    const onNotificationNew = (_payload: NotificationNewPayload) => {
+    const onNotificationNew = (payload: NotificationNewPayload) => {
       optimisticIncrementUnread(queryClient);
 
-      // Invalidate notifications feed (will refetch in background)
-      queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
+      // Optimistic insert into the first page of the infinite notifications cache
+      // instead of invalidating the entire cache (avoids a full refetch).
+      queryClient.setQueryData<InfiniteData<NotificationsResponse>>(
+        queryKeys.notifications,
+        (old) => {
+          if (!old?.pages?.length) return old;
+          const stub = {
+            id: payload.notificationId,
+            title: payload.title,
+            body: payload.body,
+            type: 'info' as const,
+            merchantName: null,
+            merchantCategory: null,
+            merchantLogoUrl: null,
+            isRead: false,
+            readAt: null,
+            createdAt: new Date().toISOString(),
+          };
+          const firstPage = old.pages[0];
+          return {
+            ...old,
+            pages: [
+              { ...firstPage, notifications: [stub, ...firstPage.notifications] },
+              ...old.pages.slice(1),
+            ],
+          };
+        },
+      );
     };
 
     socket.on(WS_EVENTS.POINTS_UPDATED, onPointsUpdated);
     socket.on(WS_EVENTS.NOTIFICATION_NEW, onNotificationNew);
 
     return () => {
+      socket.off('connect', onConnect);
+      socket.off('disconnect', onDisconnect);
       socket.off(WS_EVENTS.POINTS_UPDATED, onPointsUpdated);
       socket.off(WS_EVENTS.NOTIFICATION_NEW, onNotificationNew);
+      setWsConnected(false);
     };
-  }, [socket, queryClient]);
+  }, [socket, queryClient, setWsConnected]);
 }
 
 /**
@@ -98,22 +142,31 @@ export function handleFcmDataPayload(
 }
 
 /**
- * Invalidate notification-related caches when the app returns to foreground.
- * Ensures notifications received via FCM while backgrounded are immediately visible.
+ * Invalidate notification-related caches when the app returns to foreground
+ * after being in background for more than 2 minutes.
+ * Avoids unnecessary refetches for quick app switches (e.g. phone calls).
  */
 export function useAppForegroundRefresh() {
   const queryClient = useQueryClient();
   const appState = useRef(AppState.currentState);
+  const backgroundSince = useRef<number>(0);
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState: AppStateStatus) => {
+      if (nextState.match(/inactive|background/)) {
+        backgroundSince.current = Date.now();
+      }
       if (
         appState.current.match(/inactive|background/) &&
         nextState === 'active'
       ) {
-        queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
-        queryClient.invalidateQueries({ queryKey: queryKeys.unreadCount });
-        queryClient.invalidateQueries({ queryKey: queryKeys.points });
+        // Only invalidate if app was in background for more than 2 minutes
+        const elapsed = Date.now() - backgroundSince.current;
+        if (elapsed > 2 * 60 * 1000) {
+          queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
+          queryClient.invalidateQueries({ queryKey: queryKeys.unreadCount });
+          queryClient.invalidateQueries({ queryKey: queryKeys.points });
+        }
       }
       appState.current = nextState;
     });

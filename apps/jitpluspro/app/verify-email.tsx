@@ -185,7 +185,7 @@ export default function VerifyEmailScreen() {
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
             >
-              <Mail color="#fff" size={40} strokeWidth={1.5} />
+              <Mail color="#fff" size={40} strokeWidth={2} />
             </LinearGradient>
           </Animated.View>
 
@@ -275,7 +275,7 @@ export default function VerifyEmailScreen() {
                   <ActivityIndicator color="#fff" size="small" />
                 ) : (
                   <>
-                    <ShieldCheck color="#fff" size={20} strokeWidth={1.5} />
+                    <ShieldCheck color="#fff" size={20} strokeWidth={2} />
                     <Text style={styles.verifyBtnText}>{t('verifyEmail.verifyBtn')}</Text>
                   </>
                 )}
@@ -298,7 +298,7 @@ export default function VerifyEmailScreen() {
                   <ActivityIndicator color={palette.violet} size="small" />
                 ) : (
                   <View style={styles.resendBtnRow}>
-                    <RefreshCw color={palette.violet} size={16} strokeWidth={1.5} />
+                    <RefreshCw color={palette.violet} size={16} strokeWidth={2} />
                     <Text style={[styles.resendBtnText, { color: palette.violet }]}>
                       {t('verifyEmail.resendBtn')}
                     </Text>

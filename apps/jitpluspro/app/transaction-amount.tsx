@@ -25,6 +25,7 @@ import {
 // lottie-react-native is NOT available in Expo Go SDK 51+
 
 import { useAuth } from '@/contexts/AuthContext';
+import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { getErrorMessage } from '@/utils/error';
@@ -77,11 +78,14 @@ function txReducer(state: TxState, action: TxAction): TxState {
 }
 
 export default function TransactionAmountScreen() {
+  const shouldWait = useRequireAuth();
   const router = useRouter();
   const { clientId } = useLocalSearchParams<{ clientId: string }>();
   const { merchant } = useAuth();
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+
+  if (shouldWait) return null;
 
   const [state, dispatch] = useReducer(txReducer, initialTxState);
   const { amount, loading, points, showSuccess, transactionType, selectedRewardId, screenMode, stampAmount, stamps } = state;
@@ -436,7 +440,7 @@ export default function TransactionAmountScreen() {
           {/* ── Client Card ── */}
           <View style={[styles.clientCard, { backgroundColor: theme.bgCard }]}>
             <View style={[styles.clientIconContainer, { backgroundColor: theme.primaryBg }]}>
-              <User size={32} color={theme.primary} strokeWidth={1.5} />
+              <User size={32} color={theme.primary} strokeWidth={2} />
             </View>
             <View style={styles.clientInfo}>
               <Text style={[styles.clientLabel, { color: theme.textMuted }]}>{t('transaction.clientLabel')}</Text>
@@ -446,9 +450,9 @@ export default function TransactionAmountScreen() {
             </View>
             <View style={[styles.pointsBadge, { backgroundColor: theme.success + '14' }]}>
               {isStampsMode ? (
-                <Stamp size={18} color={theme.success} strokeWidth={1.5} />
+                <Stamp size={18} color={theme.success} strokeWidth={2} />
               ) : (
-                <Gift size={18} color={theme.success} strokeWidth={1.5} />
+                <Gift size={18} color={theme.success} strokeWidth={2} />
               )}
               <Text style={[styles.pointsText, { color: theme.success }]}>
                 {customerStatus?.points || 0} {isStampsMode ? t('common.stamps') : t('common.points')}
@@ -491,7 +495,7 @@ export default function TransactionAmountScreen() {
                 </View>
               ) : rewards.filter((r) => (customerStatus?.points || 0) >= r.cout).length === 0 ? (
                 <View style={[styles.rewardSelectorCard, { backgroundColor: theme.bgCard, alignItems: 'center', gap: 8 }]}>
-                  <Gift size={40} color={theme.textMuted} strokeWidth={1.5} />
+                  <Gift size={40} color={theme.textMuted} strokeWidth={2} />
                   <Text style={[styles.rewardSelectorEmpty, { color: theme.textMuted, textAlign: 'center' }]}>
                     {t('transactionAmount.notEnoughForReward')}
                   </Text>
@@ -563,7 +567,7 @@ export default function TransactionAmountScreen() {
                 ]}
                 disabled
               >
-                <Stamp size={24} color={stamps > 0 ? theme.success : theme.textMuted} strokeWidth={1.5} />
+                <Stamp size={24} color={stamps > 0 ? theme.success : theme.textMuted} strokeWidth={2} />
                 <Text
                   style={[
                     styles.calculateButtonText,
@@ -680,7 +684,7 @@ export default function TransactionAmountScreen() {
               <ActivityIndicator color="#fff" />
             ) : (
               <>
-                <CheckCircle size={20} color="#fff" strokeWidth={1.5} />
+                <CheckCircle size={20} color="#fff" strokeWidth={2} />
                 <Text style={styles.validateButtonText}>{t('transaction.validate')}</Text>
               </>
             )}
@@ -704,7 +708,7 @@ export default function TransactionAmountScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  loadingText: { marginTop: 10, fontSize: 16 },
+  loadingText: { marginTop: 10, fontSize: 16, fontFamily: 'Lexend_400Regular' },
 
   // ── Header ──
   header: {
@@ -715,7 +719,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   closeButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
-  headerTitle: { fontSize: 20, fontWeight: '700', color: '#fff' },
+  headerTitle: { fontSize: 20, fontWeight: '700', color: '#fff', fontFamily: 'Lexend_700Bold' },
   content: { flex: 1 },
 
   // ── Client Card ──
@@ -741,8 +745,8 @@ const styles = StyleSheet.create({
     marginRight: 14,
   },
   clientInfo: { flex: 1 },
-  clientLabel: { fontSize: 12, fontWeight: '500', marginBottom: 2 },
-  clientName: { fontSize: 18, fontWeight: '700' },
+  clientLabel: { fontSize: 12, fontWeight: '500', marginBottom: 2, fontFamily: 'Lexend_500Medium' },
+  clientName: { fontSize: 18, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
   pointsBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -751,7 +755,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     gap: 6,
   },
-  pointsText: { fontSize: 14, fontWeight: '700' },
+  pointsText: { fontSize: 14, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
 
   // ── Stamp Grid Card ──
   stampGridCard: {
@@ -780,7 +784,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.06,
     shadowRadius: 6,
   },
-  stampCounterLabel: { fontSize: 14, fontWeight: '600', marginBottom: 18 },
+  stampCounterLabel: { fontSize: 14, fontWeight: '600', marginBottom: 18, fontFamily: 'Lexend_600SemiBold' },
   stampCounterRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -803,7 +807,7 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     gap: 2,
   },
-  stampCountValue: { fontSize: 24, fontWeight: '700' },
+  stampCountValue: { fontSize: 24, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
   quickStampsRow: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -816,7 +820,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1.5,
   },
-  quickStampText: { fontSize: 15, fontWeight: '700' },
+  quickStampText: { fontSize: 15, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
 
   // ── Amount Input ──
   amountInputCard: {
@@ -826,7 +830,7 @@ const styles = StyleSheet.create({
     padding: 20,
     alignItems: 'center',
   },
-  amountLabel: { fontSize: 14, fontWeight: '500', marginBottom: 10 },
+  amountLabel: { fontSize: 14, fontWeight: '500', marginBottom: 10, fontFamily: 'Lexend_500Medium' },
   amountInput: {
     fontSize: 36,
     fontWeight: '700',
@@ -835,11 +839,13 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     width: '80%',
     letterSpacing: 1,
+    fontFamily: 'Lexend_700Bold',
   },
   amountInputCurrency: {
     fontSize: 16,
     fontWeight: '600',
     marginTop: 8,
+    fontFamily: 'Lexend_600SemiBold',
   },
 
   // ── Calculate / Points preview ──
@@ -853,7 +859,7 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 10,
   },
-  calculateButtonText: { fontSize: 16, fontWeight: '700' },
+  calculateButtonText: { fontSize: 16, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
 
   // ── Mode Tabs ──
   modeTabs: {
@@ -870,7 +876,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: 'center',
   },
-  modeTabText: { fontSize: 13, fontWeight: '700' },
+  modeTabText: { fontSize: 13, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
 
   // ── Reward Selector ──
   rewardSelectorCard: {
@@ -888,6 +894,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     lineHeight: 20,
+    fontFamily: 'Lexend_500Medium',
   },
 
   // ── Actions ──
@@ -907,7 +914,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1.5,
   },
-  cancelButtonText: { fontSize: 16, fontWeight: '700' },
+  cancelButtonText: { fontSize: 16, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
   validateButton: {
     flex: 2,
     paddingVertical: 16,
@@ -917,5 +924,5 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
   },
-  validateButtonText: { fontSize: 16, fontWeight: '700', color: '#fff' },
+  validateButtonText: { fontSize: 16, fontWeight: '700', color: '#fff', fontFamily: 'Lexend_700Bold' },
 });

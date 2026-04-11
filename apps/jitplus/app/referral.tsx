@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import {
   View, Text, ScrollView, RefreshControl, StyleSheet, Pressable,
   TouchableOpacity, Platform, Share, ActivityIndicator, Linking, Alert,
@@ -11,6 +11,7 @@ import {
   Smartphone, UserPlus, CreditCard, BadgeCheck, Mail, MessageCircle, AlertCircle, Banknote,
 } from 'lucide-react-native';
 import { useTheme, palette } from '@/contexts/ThemeContext';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 // Lazy-loaded to avoid native crash if the module isn't linked
 let Clipboard: typeof import('expo-clipboard') | null = null;
@@ -26,45 +27,42 @@ export default function ReferralScreen() {
   const theme = useTheme();
   const { t, locale } = useLanguage();
   const router = useRouter();
+  const queryClient = useQueryClient();
 
-  const [stats, setStats] = useState<ClientReferralStats | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [error, setError] = useState(false);
-  const [requestingPayout, setRequestingPayout] = useState(false);
-  const [payoutHistory, setPayoutHistory] = useState<Array<{
+  const { data: stats = null, isLoading: statsLoading, isError: statsError, refetch: refetchStats } = useQuery<ClientReferralStats>({
+    queryKey: ['referralStats'],
+    queryFn: () => api.getReferralStats(),
+    staleTime: 2 * 60 * 1000, // 2 min
+  });
+
+  const { data: payoutHistory = [], refetch: refetchHistory } = useQuery<Array<{
     id: string; amount: number; status: string; method: string; createdAt: string;
-  }>>([]);
+  }>>({
+    queryKey: ['payoutHistory'],
+    queryFn: () => api.getPayoutHistory().catch(() => []),
+    staleTime: 2 * 60 * 1000,
+  });
 
-  const fetchStats = useCallback(async () => {
-    try {
-      setError(false);
-      const [data, history] = await Promise.all([
-        api.getReferralStats(),
-        api.getPayoutHistory().catch(() => []),
-      ]);
-      setStats(data);
-      setPayoutHistory(history);
-    } catch {
-      setError(true);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
+  const loading = statsLoading;
+  const error = statsError;
 
+  const [copied, setCopied] = useState(false);
+  const [requestingPayout, setRequestingPayout] = useState(false);
+
+  // Refetch on focus only if data is stale
   useFocusEffect(
     useCallback(() => {
-      setLoading(true);
-      fetchStats();
-    }, [fetchStats]),
+      refetchStats();
+      refetchHistory();
+    }, [refetchStats, refetchHistory]),
   );
 
-  const onRefresh = useCallback(() => {
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    fetchStats();
-  }, [fetchStats]);
+    await Promise.all([refetchStats(), refetchHistory()]);
+    setRefreshing(false);
+  }, [refetchStats, refetchHistory]);
 
   const handleCopy = useCallback(async () => {
     if (!stats?.referralCode) return;
@@ -100,7 +98,8 @@ export default function ReferralScreen() {
         setRequestingPayout(true);
         await api.requestPayout(stats.referralBalance || 0, method);
         Alert.alert('Succ\u00e8s', 'Votre demande de retrait a \u00e9t\u00e9 envoy\u00e9e. Vous serez contact\u00e9 pour finaliser le paiement.');
-        fetchStats();
+        refetchStats();
+        refetchHistory();
       } catch (err: any) {
         Alert.alert('Erreur', err?.response?.data?.message || 'Une erreur est survenue.');
       } finally {
@@ -116,7 +115,7 @@ export default function ReferralScreen() {
         { text: '\ud83c\udfe6 Virement', onPress: () => submitPayout('BANK_TRANSFER') },
       ],
     );
-  }, [stats, canRequestPayout, fetchStats, t]);
+  }, [stats, canRequestPayout, refetchStats, refetchHistory, t]);
 
   const formatDate = (dateStr: string | null | undefined) => {
     try {
@@ -144,7 +143,7 @@ export default function ReferralScreen() {
             <ArrowLeft
               size={ms(22)}
               color={theme.text}
-              strokeWidth={1.5}
+              strokeWidth={2}
               style={isRTL ? { transform: [{ scaleX: -1 }] } : undefined}
             />
           </TouchableOpacity>
@@ -215,9 +214,9 @@ export default function ReferralScreen() {
                     ]}
                   >
                     {copied ? (
-                      <CheckCircle size={ms(16)} color={palette.emerald} strokeWidth={1.5} />
+                      <CheckCircle size={ms(16)} color={palette.emerald} strokeWidth={2} />
                     ) : (
-                      <Copy size={ms(16)} color={palette.violet} strokeWidth={1.5} />
+                      <Copy size={ms(16)} color={palette.violet} strokeWidth={2} />
                     )}
                     <Text style={[styles.codeBtnText, { color: copied ? palette.emerald : palette.violet }]}>
                       {copied ? t('referral.codeCopied') : t('referral.copyCode')}
@@ -231,7 +230,7 @@ export default function ReferralScreen() {
                       pressed && { opacity: 0.7 },
                     ]}
                   >
-                    <Share2 size={ms(16)} color={palette.violet} strokeWidth={1.5} />
+                    <Share2 size={ms(16)} color={palette.violet} strokeWidth={2} />
                     <Text style={[styles.codeBtnText, { color: palette.violet }]}>
                       {t('referral.shareCode')}
                     </Text>
@@ -242,7 +241,7 @@ export default function ReferralScreen() {
               {/* Referral list */}
               <View style={styles.listSection}>
                 <View style={[styles.listHeader, isRTL && styles.listHeaderRTL]}>
-                  <Users size={ms(18)} color={theme.text} strokeWidth={1.5} />
+                  <Users size={ms(18)} color={theme.text} strokeWidth={2} />
                   <Text style={[styles.listTitle, { color: theme.text }]}>
                     {t('referral.referralList')} ({stats.referredCount ?? 0})
                   </Text>
@@ -292,9 +291,9 @@ export default function ReferralScreen() {
                           ]}
                         >
                           {ref.status === 'VALIDATED' ? (
-                            <CheckCircle size={ms(12)} color={palette.emerald} strokeWidth={1.5} />
+                            <CheckCircle size={ms(12)} color={palette.emerald} strokeWidth={2} />
                           ) : (
-                            <Clock size={ms(12)} color={palette.gold} strokeWidth={1.5} />
+                            <Clock size={ms(12)} color={palette.gold} strokeWidth={2} />
                           )}
                           <Text
                             style={[
@@ -317,7 +316,7 @@ export default function ReferralScreen() {
               {payoutHistory.length > 0 && (
                 <View style={styles.listSection}>
                   <View style={[styles.listHeader, isRTL && styles.listHeaderRTL]}>
-                    <Banknote size={ms(18)} color={theme.text} strokeWidth={1.5} />
+                    <Banknote size={ms(18)} color={theme.text} strokeWidth={2} />
                     <Text style={[styles.listTitle, { color: theme.text }]}>
                       Historique des retraits
                     </Text>
@@ -352,11 +351,11 @@ export default function ReferralScreen() {
                           </View>
                           <View style={[styles.statusBadge, { backgroundColor: `${sc.color}15` }]}>
                             {p.status === 'PAID' || p.status === 'APPROVED' ? (
-                              <CheckCircle size={ms(12)} color={sc.color} strokeWidth={1.5} />
+                              <CheckCircle size={ms(12)} color={sc.color} strokeWidth={2} />
                             ) : p.status === 'REJECTED' ? (
-                              <AlertCircle size={ms(12)} color={sc.color} strokeWidth={1.5} />
+                              <AlertCircle size={ms(12)} color={sc.color} strokeWidth={2} />
                             ) : (
-                              <Clock size={ms(12)} color={sc.color} strokeWidth={1.5} />
+                              <Clock size={ms(12)} color={sc.color} strokeWidth={2} />
                             )}
                             <Text style={[styles.statusText, { color: sc.color }]}>
                               {sc.label}
@@ -378,7 +377,7 @@ export default function ReferralScreen() {
                     <View style={styles.howStepNumber}>
                       <Text style={styles.howStepNumberText}>1</Text>
                     </View>
-                    <Share2 size={ms(16)} color={palette.gold} strokeWidth={1.5} />
+                    <Share2 size={ms(16)} color={palette.gold} strokeWidth={2} />
                   </View>
                   <View style={styles.howStepContent}>
                     <Text style={[styles.howStepTitle, { color: theme.text }]}>{t('referral.howStep1Title')}</Text>
@@ -391,7 +390,7 @@ export default function ReferralScreen() {
                     <View style={styles.howStepNumber}>
                       <Text style={styles.howStepNumberText}>2</Text>
                     </View>
-                    <Smartphone size={ms(16)} color={palette.gold} strokeWidth={1.5} />
+                    <Smartphone size={ms(16)} color={palette.gold} strokeWidth={2} />
                   </View>
                   <View style={styles.howStepContent}>
                     <Text style={[styles.howStepTitle, { color: theme.text }]}>{t('referral.howStep2Title')}</Text>
@@ -404,7 +403,7 @@ export default function ReferralScreen() {
                     <View style={styles.howStepNumber}>
                       <Text style={styles.howStepNumberText}>3</Text>
                     </View>
-                    <BadgeCheck size={ms(16)} color={palette.gold} strokeWidth={1.5} />
+                    <BadgeCheck size={ms(16)} color={palette.gold} strokeWidth={2} />
                   </View>
                   <View style={styles.howStepContent}>
                     <Text style={[styles.howStepTitle, { color: theme.text }]}>{t('referral.howStep3Title')}</Text>
@@ -417,7 +416,7 @@ export default function ReferralScreen() {
                     <View style={styles.howStepNumber}>
                       <Text style={styles.howStepNumberText}>4</Text>
                     </View>
-                    <CreditCard size={ms(16)} color={palette.gold} strokeWidth={1.5} />
+                    <CreditCard size={ms(16)} color={palette.gold} strokeWidth={2} />
                   </View>
                   <View style={styles.howStepContent}>
                     <Text style={[styles.howStepTitle, { color: theme.text }]}>{t('referral.howStep4Title')}</Text>
@@ -445,7 +444,7 @@ export default function ReferralScreen() {
                       pressed && { opacity: 0.7 },
                     ]}
                   >
-                    <MessageCircle size={ms(16)} color="#25D366" strokeWidth={1.5} />
+                    <MessageCircle size={ms(16)} color="#25D366" strokeWidth={2} />
                     <Text style={[styles.contactBtnText, { color: '#25D366' }]}>WhatsApp</Text>
                   </Pressable>
                   <Pressable
@@ -456,7 +455,7 @@ export default function ReferralScreen() {
                       pressed && { opacity: 0.7 },
                     ]}
                   >
-                    <Mail size={ms(16)} color={palette.red} strokeWidth={1.5} />
+                    <Mail size={ms(16)} color={palette.red} strokeWidth={2} />
                     <Text style={[styles.contactBtnText, { color: palette.red }]}>Email</Text>
                   </Pressable>
                 </View>
@@ -468,7 +467,7 @@ export default function ReferralScreen() {
                 {t('common.genericError')}
               </Text>
               <Pressable
-                onPress={() => { setLoading(true); fetchStats(); }}
+                onPress={() => { refetchStats(); refetchHistory(); }}
                 style={{ backgroundColor: palette.violet, paddingHorizontal: wp(24), paddingVertical: hp(10), borderRadius: radius.md }}
               >
                 <Text style={{ color: '#fff', fontWeight: '600', fontSize: FS.sm }}>{t('common.retry')}</Text>

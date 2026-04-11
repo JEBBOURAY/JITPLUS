@@ -15,9 +15,15 @@ function isPrivateHostname(hostname: string): boolean {
     hostname === '0.0.0.0' ||
     hostname === '[::]' ||
     hostname === '[::1]' ||
+    hostname === '::1' ||
+    hostname === '0:0:0:0:0:0:0:1' ||
     hostname.endsWith('.local') ||
     hostname.endsWith('.internal')
   ) return true;
+
+  // Check IPv6 loopback variants (bracketed or bare)
+  const bare = hostname.replace(/^\[|\]$/g, '');
+  if (bare === '::1' || bare === '::' || bare === '0:0:0:0:0:0:0:1' || bare === '0:0:0:0:0:0:0:0') return true;
 
   // Check IPv4 private ranges
   const parts = hostname.split('.');

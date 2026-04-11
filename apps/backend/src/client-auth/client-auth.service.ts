@@ -15,6 +15,8 @@ import { CLIENT_AUTH_SELECT, CLIENT_LOGIN_SELECT } from '../common/prisma-select
 import { validateOtp, handleOtpMismatch, hashOtp, checkDailyOtpLimit, OtpDbOps, OtpRecord } from '../common/utils/otp.helper';
 import { IMailProvider, MAIL_PROVIDER, ISmsProvider, SMS_PROVIDER } from '../common/interfaces';
 import { OAuth2Client } from 'google-auth-library';
+import * as jwt from 'jsonwebtoken';
+import { createPublicKey } from 'crypto';
 
 /** Shape returned by buildAuthResponse — access + refresh tokens + client data. */
 export interface ClientAuthResponse {
@@ -49,6 +51,7 @@ export interface ClientProfileResult {
 export class ClientAuthService {
   private readonly logger = new Logger(ClientAuthService.name);
   private readonly googleClient: OAuth2Client;
+  private appleJwksCache: { keys: any[]; fetchedAt: number } | null = null;
   // Dummy hash for timing-safe comparison when user not found
   private static readonly DUMMY_HASH = '$2a$12$LJ3m4ys3Lz0KDlu0BRahYOiFMfGHgdOUmrGfEdKnXqJRikMOFbECi';
 
@@ -209,9 +212,9 @@ export class ClientAuthService {
       },
     });
 
-    // In dev only, log the code for convenience
+    // In dev only, log a hint (never log the full code)
     if (process.env.NODE_ENV === 'development') {
-      this.logger.debug(`[DEV] OTP pour ${normalizedPhone}: ${code}`);
+      this.logger.debug(`[DEV] OTP envoyé à ${normalizedPhone} (derniers chiffres: ${code.slice(-2)})`);
     }
 
     // Send OTP via WhatsApp (Twilio) — works in both dev (sandbox) and prod
@@ -600,8 +603,12 @@ export class ClientAuthService {
    */
   async googleLogin(idToken: string): Promise<ClientAuthResponse> {
     try {
-      // Dev bypass: accept fake token ONLY in development environment
-      if (process.env.NODE_ENV === 'development' && idToken === 'dev-google-token') {
+      // Dev bypass: accept fake token ONLY when explicitly opted-in via a dedicated flag
+      if (
+        process.env.NODE_ENV === 'development' &&
+        process.env.ALLOW_DEV_AUTH_BYPASS === 'true' &&
+        idToken === 'dev-google-token'
+      ) {
         const devEmail = 'dev-google@test.com';
         let client = await this.clientRepo.findUnique({ where: { email: devEmail }, select: CLIENT_AUTH_SELECT });
         const isNewUser = !client || !client.nom;
@@ -687,6 +694,117 @@ export class ClientAuthService {
       }
       this.logger.error('Google login failed:', error);
       throw new UnauthorizedException('Échec de la connexion Google');
+    }
+  }
+
+  // ── Apple Login ────────────────────────────────────────
+
+  /**
+   * Fetch Apple's JWKS public keys (cached for 24 hours).
+   */
+  private async getApplePublicKeys(): Promise<any[]> {
+    const now = Date.now();
+    if (this.appleJwksCache && now - this.appleJwksCache.fetchedAt < 86_400_000) {
+      return this.appleJwksCache.keys;
+    }
+    const res = await fetch('https://appleid.apple.com/auth/keys');
+    if (!res.ok) throw new Error('Failed to fetch Apple JWKS');
+    const { keys } = await res.json();
+    this.appleJwksCache = { keys, fetchedAt: now };
+    return keys;
+  }
+
+  /**
+   * Verify an Apple identity token using Apple's JWKS (public keys).
+   * @returns Decoded JWT payload with sub, email, etc.
+   */
+  private async verifyAppleToken(identityToken: string): Promise<{ sub: string; email?: string; email_verified?: string }> {
+    const decoded = jwt.decode(identityToken, { complete: true });
+    if (!decoded || typeof decoded === 'string' || !decoded.header.kid) {
+      throw new UnauthorizedException('Token Apple invalide');
+    }
+    // Reject unexpected algorithms early (only RS256 is accepted)
+    if (decoded.header.alg !== 'RS256') {
+      throw new UnauthorizedException('Algorithme de signature Apple non supporté');
+    }
+
+    const keys = await this.getApplePublicKeys();
+    let matchingKey = keys.find((k: any) => k.kid === decoded.header.kid);
+    if (!matchingKey) {
+      // Invalidate cache and retry once (Apple may have rotated keys)
+      this.appleJwksCache = null;
+      const freshKeys = await this.getApplePublicKeys();
+      matchingKey = freshKeys.find((k: any) => k.kid === decoded.header.kid);
+      if (!matchingKey) throw new UnauthorizedException('Cl\u00e9 Apple introuvable');
+    }
+
+    const publicKey = createPublicKey({ key: matchingKey, format: 'jwk' });
+
+    const payload = jwt.verify(identityToken, publicKey, {
+      algorithms: ['RS256'],
+      issuer: 'https://appleid.apple.com',
+    }) as jwt.JwtPayload & { sub: string; email?: string; email_verified?: string };
+
+    return payload;
+  }
+
+  /**
+   * Login with Apple identity token.
+   * Verifies the token using Apple's JWKS endpoint.
+   */
+  async appleLogin(identityToken: string, givenName?: string, familyName?: string): Promise<ClientAuthResponse> {
+    try {
+      const payload = await this.verifyAppleToken(identityToken);
+      const { sub: appleId, email } = payload;
+
+      if (!appleId) {
+        throw new UnauthorizedException('Token Apple invalide — identifiant manquant');
+      }
+
+      // Try to find client by appleId first, then by email
+      let client = await this.clientRepo.findFirst({ where: { appleId }, select: CLIENT_AUTH_SELECT });
+
+      if (!client && email) {
+        client = await this.clientRepo.findUnique({ where: { email: email.toLowerCase() }, select: CLIENT_AUTH_SELECT });
+        if (client) {
+          // Link Apple account to existing client
+          client = await this.clientRepo.update({
+            where: { id: client.id },
+            data: { appleId },
+            select: CLIENT_AUTH_SELECT,
+          }) as typeof client;
+        }
+      }
+
+      if (!client) {
+        try {
+          client = await this.clientRepo.create({
+            data: {
+              email: email ? email.toLowerCase() : null,
+              emailVerified: !!email,
+              appleId,
+              prenom: givenName || null,
+              nom: familyName || null,
+              termsAccepted: false,
+            },
+            select: CLIENT_AUTH_SELECT,
+          });
+        } catch (error: any) {
+          if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+            throw new ConflictException('Un compte avec cet email ou ce compte Apple existe déjà');
+          }
+          throw error;
+        }
+      }
+
+      const isNewUser = !client || !client.nom;
+      return this.buildAuthResponse(client, isNewUser);
+    } catch (error) {
+      if (error instanceof UnauthorizedException || error instanceof BadRequestException || error instanceof ConflictException) {
+        throw error;
+      }
+      this.logger.error('Apple login failed:', error);
+      throw new UnauthorizedException('Échec de la connexion Apple');
     }
   }
 
@@ -851,6 +969,14 @@ export class ClientAuthService {
    * Validation (min 8 chars, uppercase, digit, special char) is handled by SetPasswordDto.
    */
   async setPassword(clientId: string, password: string): Promise<ClientProfileResult> {
+    const existing = await this.clientRepo.findUnique({
+      where: { id: clientId },
+      select: { password: true },
+    });
+    if (existing?.password) {
+      throw new BadRequestException('Un mot de passe existe déjà. Utilisez le changement de mot de passe.');
+    }
+
     const hashedPassword = await bcrypt.hash(password, BCRYPT_SALT_ROUNDS);
 
     const client = await this.clientRepo.update({
@@ -936,8 +1062,8 @@ export class ClientAuthService {
   // â”€â”€ QR Token â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   /**
    * Permanent HMAC-signed QR token for merchant scanning.
-   * Format: base64url(clientId) + "." + HMAC-SHA256(secret, clientId)
-   * Deterministic & never expires — safe to share as image.
+   * Format v1: "v1." + base64url(clientId) + "." + HMAC-SHA256(secret, "v1:" + clientId)
+   * Versioned so the secret can be rotated (add v2 with QR_HMAC_SECRET_V2).
    */
   async generateQrToken(clientId: string): Promise<{ qr_token: string }> {
     const client = await this.clientRepo.findUnique({ where: { id: clientId }, select: { id: true } });
@@ -947,8 +1073,8 @@ export class ClientAuthService {
 
     const secret = this.configService.getOrThrow<string>('QR_HMAC_SECRET');
     const idPart = Buffer.from(client.id).toString('base64url');
-    const sig = createHmac('sha256', secret).update(client.id).digest('base64url');
-    const qr_token = `${idPart}.${sig}`;
+    const sig = createHmac('sha256', secret).update(`v1:${client.id}`).digest('base64url');
+    const qr_token = `v1.${idPart}.${sig}`;
 
     return { qr_token };
   }

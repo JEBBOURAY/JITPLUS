@@ -105,10 +105,10 @@ const FloatingSearchBar = React.memo(function FloatingSearchBar({
       ]}
     >
       <View style={[styles.searchBar, isFocused && styles.searchBarFocused]}>
-        <Search size={18} color="rgba(255,255,255,0.6)" strokeWidth={1.5} />
+        <Search size={18} color="rgba(255,255,255,0.6)" strokeWidth={2} />
         <TouchableOpacity style={styles.prefixContainer} onPress={onToggleCountry} activeOpacity={0.7}>
           <Text style={styles.prefixText}>{country.flag} {country.dial}</Text>
-          <ChevronDown size={12} color="#C4B5FD" strokeWidth={1.5} style={{ marginLeft: 2 }} />
+          <ChevronDown size={12} color="#C4B5FD" strokeWidth={2} style={{ marginLeft: 2 }} />
         </TouchableOpacity>
         <TextInput
           ref={inputRef}
@@ -142,7 +142,7 @@ const FloatingSearchBar = React.memo(function FloatingSearchBar({
             {isSearching ? (
               <ActivityIndicator size="small" color="#fff" />
             ) : (
-              <ArrowRight size={18} color="#fff" strokeWidth={1.5} />
+              <ArrowRight size={18} color="#fff" strokeWidth={2} />
             )}
           </TouchableOpacity>
         )}
@@ -299,10 +299,14 @@ export default function ScanQRScreen() {
     };
   }, []);
 
-  // Animations
+  // Animations — only run when actively scanning to save CPU/battery
   const pulseScale = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
+    if (!isScanning) {
+      pulseScale.setValue(1);
+      return;
+    }
     const anim = Animated.loop(
       Animated.sequence([
         Animated.timing(pulseScale, { toValue: 1.08, duration: 1200, useNativeDriver: true }),
@@ -311,7 +315,7 @@ export default function ScanQRScreen() {
     );
     anim.start();
     return () => anim.stop();
-  }, []);
+  }, [isScanning]);
 
   const pulseStyle = useMemo(() => ({
     transform: [{ scale: pulseScale }],
@@ -537,7 +541,7 @@ export default function ScanQRScreen() {
         <StatusBar style="light" translucent />
         <Animated.View style={styles.permissionContent}>
           <View style={styles.permissionIconCircle}>
-            <Camera size={48} color="#A78BFA" strokeWidth={1.5} />
+            <Camera size={48} color="#A78BFA" strokeWidth={2} />
           </View>
           <Text style={styles.permissionTitle}>{t('scan.cameraPermission')}</Text>
           <Text style={styles.permissionDesc}>
@@ -650,9 +654,9 @@ export default function ScanQRScreen() {
             activeOpacity={0.7}
           >
             {isFlashOn ? (
-              <Zap size={22} color="#A78BFA" strokeWidth={1.5} fill="#A78BFA" />
+              <Zap size={22} color="#A78BFA" strokeWidth={2} fill="#A78BFA" />
             ) : (
-              <ZapOff size={22} color="rgba(255,255,255,0.8)" strokeWidth={1.5} />
+              <ZapOff size={22} color="rgba(255,255,255,0.8)" strokeWidth={2} />
             )}
             <Text
               style={[
@@ -673,7 +677,7 @@ export default function ScanQRScreen() {
             }}
             activeOpacity={0.7}
           >
-            <Phone size={22} color="rgba(255,255,255,0.8)" strokeWidth={1.5} />
+            <Phone size={22} color="rgba(255,255,255,0.8)" strokeWidth={2} />
             <Text style={styles.actionBtnLabel}>{t('scan.manual')}</Text>
           </TouchableOpacity>
 
@@ -683,7 +687,7 @@ export default function ScanQRScreen() {
             onPress={handleClose}
             activeOpacity={0.7}
           >
-            <ChevronDown size={22} color="rgba(255,255,255,0.8)" strokeWidth={1.5} />
+            <ChevronDown size={22} color="rgba(255,255,255,0.8)" strokeWidth={2} />
             <Text style={styles.actionBtnLabel}>{t('common.close')}</Text>
           </TouchableOpacity>
         </View>
@@ -1016,7 +1020,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.1)',
   },
-  cpTitle: { flex: 1, fontSize: 18, fontWeight: '700', marginLeft: 12, color: '#fff' },
+  cpTitle: { flex: 1, fontSize: 18, fontWeight: '700', marginLeft: 12, color: '#fff', fontFamily: 'Lexend_700Bold' },
   cpSearchRow: {
     paddingHorizontal: 16,
     paddingVertical: 10,
@@ -1033,7 +1037,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     gap: 8,
   },
-  cpSearchInput: { flex: 1, fontSize: 15, paddingVertical: 10, color: '#fff' },
+  cpSearchInput: { flex: 1, fontSize: 15, paddingVertical: 10, color: '#fff', fontFamily: 'Lexend_400Regular' },
   cpRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1043,14 +1047,14 @@ const styles = StyleSheet.create({
     borderBottomColor: '#231F33',
   },
   cpFlag: { fontSize: 24, marginRight: 12 },
-  cpCountryName: { fontSize: 15, fontWeight: '500', color: '#fff' },
-  cpDial: { fontSize: 14, fontWeight: '600', color: 'rgba(255,255,255,0.5)' },
+  cpCountryName: { fontSize: 15, fontWeight: '500', color: '#fff', fontFamily: 'Lexend_500Medium' },
+  cpDial: { fontSize: 14, fontWeight: '600', color: 'rgba(255,255,255,0.5)', fontFamily: 'Lexend_600SemiBold' },
   flexMain: { flex: 1 },
-  clientSubtitle: { color: 'rgba(255,255,255,0.5)', fontSize: 12, marginTop: 2 },
+  clientSubtitle: { color: 'rgba(255,255,255,0.5)', fontSize: 12, marginTop: 2, fontFamily: 'Lexend_400Regular' },
   checkIcon: { marginLeft: 8 },
   iconPadding: { padding: 4 },
   spacerWidth32: { width: 32 },
-  selectClientText: { color: 'rgba(255,255,255,0.6)', fontSize: 13, paddingHorizontal: 20, paddingBottom: 12 },
+  selectClientText: { color: 'rgba(255,255,255,0.6)', fontSize: 13, paddingHorizontal: 20, paddingBottom: 12, fontFamily: 'Lexend_400Regular' },
   emptyContainer: { padding: 32, alignItems: 'center' },
-  emptyText: { color: 'rgba(255,255,255,0.5)', fontSize: 14 },
+  emptyText: { color: 'rgba(255,255,255,0.5)', fontSize: 14, fontFamily: 'Lexend_400Regular' },
 });

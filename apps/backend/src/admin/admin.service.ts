@@ -237,6 +237,7 @@ export class AdminAuthService {
         planActivatedByAdmin: true,
         trialStartedAt: true,
         profileViews: true,
+        socialLinks: true,
         isActive: true,
         createdAt: true,
         _count: {

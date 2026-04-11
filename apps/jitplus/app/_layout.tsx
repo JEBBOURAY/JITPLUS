@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Platform, View, Image, StyleSheet, ActivityIndicator } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -13,6 +13,7 @@ import NetInfo from '@react-native-community/netinfo';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ThemeProvider, useTheme } from '@/contexts/ThemeContext';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { LanguageProvider } from '@/contexts/LanguageContext';
@@ -24,6 +25,8 @@ import { getServerBaseUrl } from '@/services/api';
 import Constants from 'expo-constants';
 import * as Sentry from '@sentry/react-native';
 import { setupAndroidChannel } from '@/utils/notifications';
+import { useForceUpdate } from '@/hooks/useForceUpdate';
+import ForceUpdateModal from '@/components/ForceUpdateModal';
 
 // ── Sentry init (crash reporting) ──────────────────────────────
 // SECURITY: DSN is bundled in the client. Configure inbound data filters in
@@ -33,7 +36,11 @@ Sentry.init({
   enabled: !__DEV__ && !!process.env.EXPO_PUBLIC_SENTRY_DSN,
   environment: __DEV__ ? 'development' : 'production',
   release: Constants.expoConfig?.version,
-  dist: String(Constants.expoConfig?.android?.versionCode ?? '0'),
+  dist: String(
+    Platform.OS === 'ios'
+      ? Constants.expoConfig?.ios?.buildNumber ?? '0'
+      : Constants.expoConfig?.android?.versionCode ?? '0'
+  ),
   tracesSampleRate: 0.2,
   maxBreadcrumbs: 50,
   attachScreenshot: false, // Disabled: screenshots can capture PII (names, cards, balances)
@@ -54,9 +61,9 @@ if (typeof globalThis !== 'undefined') {
   };
 }
 
-// ── Env validation (fail-fast in production) ────────────────────
+// ── Env validation (warn in production — never crash the app) ───
 if (!__DEV__ && !process.env.EXPO_PUBLIC_API_URL) {
-  throw new Error('[CONFIG] EXPO_PUBLIC_API_URL is required in production');
+  Sentry.captureMessage('EXPO_PUBLIC_API_URL is missing in production', 'error');
 }
 
 const isExpoGo = Constants.appOwnership === 'expo';
@@ -81,7 +88,9 @@ onlineManager.setEventListener((setOnline) => {
   });
 });
 
-const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+// SECURITY: Reduced from 24h to 4h to limit data exposure window if device is
+// seized/rooted. AsyncStorage is unencrypted — shorter TTL = less recoverable data.
+const CACHE_MAX_AGE = 4 * 60 * 60 * 1000; // 4 hours
 
 const queryClient = new QueryClient({
   queryCache: new QueryCache({
@@ -97,13 +106,14 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: 2,
+      retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 30_000),
       refetchOnWindowFocus: false,
       // Must be >= persister maxAge so the in-memory cache isn't garbage-
       // collected before the persister considers it valid.
-      gcTime: TWENTY_FOUR_HOURS,
-      // Always re-fetch after a network reconnection so data is fresh
-      // after the app comes back online (e.g. offline → 4G transition).
-      refetchOnReconnect: 'always',
+      gcTime: CACHE_MAX_AGE,
+      // Re-fetch stale queries after a network reconnection (e.g. offline → 4G).
+      // 'stale' avoids re-fetching all queries — only stale ones are refreshed.
+      refetchOnReconnect: true,
     },
   },
 });
@@ -115,6 +125,7 @@ function RootLayoutNav() {
   const queryClient = useQueryClient();
   const notificationListener = useRef<{ remove(): void } | null>(null);
   const responseListener = useRef<{ remove(): void } | null>(null);
+  const { status: forceUpdateStatus, storeUrl: forceUpdateStoreUrl } = useForceUpdate();
 
   // Redirect to welcome screen whenever the user logs out (client becomes null)
   useEffect(() => {
@@ -184,6 +195,9 @@ function RootLayoutNav() {
   return (
     <NavThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
       <OfflineBanner />
+      {(forceUpdateStatus === 'update' || forceUpdateStatus === 'maintenance') && (
+        <ForceUpdateModal status={forceUpdateStatus} storeUrl={forceUpdateStoreUrl} />
+      )}
       <StatusBar style={isDark ? 'light' : 'dark'} translucent backgroundColor="transparent" />
       <ErrorBoundary>
         <Stack
@@ -249,9 +263,21 @@ export default function RootLayout() {
     SpaceMono: require('@/assets/fonts/SpaceMono-Regular.ttf'),
   });
 
+  // Expo Router uses Error Boundaries to catch errors in the navigation tree.
   useEffect(() => {
-    if (error) throw error;
+    if (error) {
+      // In production, report but don't throw — the app can render with system fonts
+      if (__DEV__) throw error;
+      Sentry.captureException(error, { tags: { source: 'font-loading' } });
+    }
   }, [error]);
+
+  // Font loading timeout — don't block app launch forever if fonts fail
+  const [fontTimeout, setFontTimeout] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setFontTimeout(true), 5000);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Set up Android notification channels as early as possible — before auth
   // resolves, so FCM notifications arriving before login are not silently
@@ -261,37 +287,39 @@ export default function RootLayout() {
   }, []);
 
   // Don't render anything until fonts are loaded — SplashGate handles hideAsync
-  if (!loaded) {
+  if (!loaded && !fontTimeout && !error) {
     return null;
   }
 
   return (
-    <PersistQueryClientProvider
-      client={queryClient}
-      persistOptions={{
-        persister: asyncStoragePersister,
-        maxAge: TWENTY_FOUR_HOURS,
-        dehydrateOptions: {
-          shouldDehydrateQuery: (query) =>
-            query.state.status === 'success' &&
-            // Geo queries change with every map pan — not worth persisting
-            !query.queryKey.includes('merchants-nearby') &&
-            // Never persist sensitive data (profile, auth, tokens, etc.)
-            !['profile', 'auth', 'token', 'otp', 'password'].includes(
-              String(query.queryKey[0] ?? '').toLowerCase(),
-            ),
-        },
-      }}
-    >
-      <LanguageProvider>
-        <ThemeProvider>
-          <AuthProvider>
-            <SplashGate>
-              <RootLayoutNav />
-            </SplashGate>
-          </AuthProvider>
-        </ThemeProvider>
-      </LanguageProvider>
-    </PersistQueryClientProvider>
+    <SafeAreaProvider>
+      <PersistQueryClientProvider
+        client={queryClient}
+        persistOptions={{
+          persister: asyncStoragePersister,
+          maxAge: CACHE_MAX_AGE,
+          dehydrateOptions: {
+            shouldDehydrateQuery: (query) =>
+              query.state.status === 'success' &&
+              // Geo queries change with every map pan — not worth persisting
+              !query.queryKey.includes('merchants-nearby') &&
+              // Never persist sensitive data (profile, auth, tokens, etc.)
+              !['profile', 'auth', 'token', 'otp', 'password'].includes(
+                String(query.queryKey[0] ?? '').toLowerCase(),
+              ),
+          },
+        }}
+      >
+        <LanguageProvider>
+          <ThemeProvider>
+            <AuthProvider>
+              <SplashGate>
+                <RootLayoutNav />
+              </SplashGate>
+            </AuthProvider>
+          </ThemeProvider>
+        </LanguageProvider>
+      </PersistQueryClientProvider>
+    </SafeAreaProvider>
   );
 }

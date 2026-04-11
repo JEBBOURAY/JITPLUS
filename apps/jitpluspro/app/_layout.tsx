@@ -7,9 +7,10 @@ import { Stack, useRouter } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Image, StyleSheet, ActivityIndicator } from 'react-native';
+import { Platform, View, Image, StyleSheet, ActivityIndicator } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { QueryClient, QueryCache, MutationCache, useQueryClient } from '@tanstack/react-query';
+import { QueryClient, QueryCache, MutationCache, onlineManager, useQueryClient } from '@tanstack/react-query';
+import NetInfo from '@react-native-community/netinfo';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { asyncStoragePersister } from '@/utils/queryPersister';
 import * as SecureStore from 'expo-secure-store';
@@ -33,7 +34,17 @@ try {
 const captureException: typeof import('@sentry/react-native').captureException =
   (...args) => { try { Sentry?.captureException?.(...args); } catch {} return ''; };
 
-const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+// SECURITY: Reduced from 24h to 4h to limit data exposure window if device is
+// seized/rooted. AsyncStorage is unencrypted — shorter TTL = less recoverable data.
+const CACHE_MAX_AGE = 4 * 60 * 60 * 1000; // 4 hours
+
+// Sync React Query's online state with NetInfo — pauses mutations offline
+// and auto-replays them on reconnect.
+onlineManager.setEventListener((setOnline) => {
+  return NetInfo.addEventListener((state) => {
+    setOnline(!!state.isConnected);
+  });
+});
 
 const queryClient = new QueryClient({
   queryCache: new QueryCache({
@@ -51,10 +62,12 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: 2,
+      retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 30_000),
       staleTime: 2 * 60 * 1000,
       // Must be >= persister maxAge so in-memory cache isn't GC'd
       // before the persister considers it valid.
-      gcTime: TWENTY_FOUR_HOURS,
+      gcTime: CACHE_MAX_AGE,
+      refetchOnReconnect: 'always',
     },
   },
 });
@@ -76,7 +89,11 @@ try {
     enabled: _sentryEnabled,
     environment: __DEV__ ? 'development' : 'production',
     release: Constants.expoConfig?.version,
-    dist: String(Constants.expoConfig?.android?.versionCode ?? '0'),
+    dist: String(
+      Platform.OS === 'ios'
+        ? Constants.expoConfig?.ios?.buildNumber ?? '0'
+        : Constants.expoConfig?.android?.versionCode ?? '0'
+    ),
     tracesSampleRate: 0.2,
     maxBreadcrumbs: 50,
     attachScreenshot: false, // Disabled: screenshots can capture PII (names, cards, balances)
@@ -103,7 +120,7 @@ if (typeof globalThis !== 'undefined') {
 
 // ── Env validation (warn in production — never crash the app) ───
 if (!__DEV__ && !process.env.EXPO_PUBLIC_API_URL) {
-  console.error('[CONFIG] EXPO_PUBLIC_API_URL is required in production. API calls will fail.');
+  captureException(new Error('EXPO_PUBLIC_API_URL is missing in production'));
 }
 
 // NOTE: The I18nManager forced-LTR reset has been removed.
@@ -149,9 +166,9 @@ export default function RootLayout() {
   // Expo Router uses Error Boundaries to catch errors in the navigation tree.
   useEffect(() => {
     if (error) {
-      // In production, log but don't throw — the app can render with system fonts
+      // In production, report but don't throw — the app can render with system fonts
       if (__DEV__) throw error;
-      console.error('[Fonts] Failed to load fonts:', error);
+      captureException(error, { tags: { source: 'font-loading' } });
     }
   }, [error]);
 
@@ -222,14 +239,20 @@ function RootLayoutNav() {
           client={queryClient}
         persistOptions={{
           persister: asyncStoragePersister,
-          maxAge: TWENTY_FOUR_HOURS,
+          maxAge: CACHE_MAX_AGE,
           dehydrateOptions: {
             shouldDehydrateQuery: (query) =>
               query.state.status === 'success' &&
-              // Never persist sensitive data (profile, auth, tokens, etc.)
-              !['profile', 'auth', 'token', 'otp', 'password', 'session', 'credentials'].includes(
-                String(query.queryKey[0] ?? '').toLowerCase(),
-              ),
+              // Whitelist approach: only persist known-safe cache keys.
+              // Unknown keys are NOT persisted — safer than a blacklist.
+              [
+                'stores', 'rewards', 'plan', 'referral',
+                'dashboard-stats', 'dashboard-trends',
+                'transactions', 'clients',
+                'notification-history', 'admin-notifications',
+                'admin-notif-unread-count', 'whatsapp-quota', 'email-quota',
+                'pending-gifts', 'team-members',
+              ].includes(String(query.queryKey[0] ?? '').toLowerCase()),
           },
         }}
       >
@@ -279,23 +302,32 @@ function ThemedNavigator() {
 
     notificationListener.current = Notifications.addNotificationReceivedListener((notification) => {
       logInfo('Notifications', 'Notification received:', notification.request.content);
-      // Invalidate caches so new data shows immediately
-      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
-      queryClient.invalidateQueries({ queryKey: ['notification-history'] });
+      // Only invalidate notification-related caches — dashboard-stats is not
+      // affected by push notifications and caused unnecessary request bursts.
       queryClient.invalidateQueries({ queryKey: ['admin-notifications'] });
       queryClient.invalidateQueries({ queryKey: ['admin-notif-unread-count'] });
     });
 
     responseListener.current = Notifications.addNotificationResponseReceivedListener((response) => {
       logInfo('Notifications', 'Notification tapped:', response.notification.request.content);
-      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
-      queryClient.invalidateQueries({ queryKey: ['notification-history'] });
       queryClient.invalidateQueries({ queryKey: ['admin-notifications'] });
       queryClient.invalidateQueries({ queryKey: ['admin-notif-unread-count'] });
       // Navigate to admin notifications when user taps a notification
       try {
         router.push('/admin-notifications');
       } catch (e) { logWarn('Notifications', 'Navigation failed', e); }
+    });
+
+    // Handle cold-start: app was killed, user tapped a notification to launch it
+    Notifications.getLastNotificationResponseAsync().then((response) => {
+      if (response) {
+        logInfo('Notifications', 'Cold-start notification:', response.notification.request.content);
+        queryClient.invalidateQueries({ queryKey: ['admin-notifications'] });
+        queryClient.invalidateQueries({ queryKey: ['admin-notif-unread-count'] });
+        try {
+          router.push('/admin-notifications');
+        } catch (e) { logWarn('Notifications', 'Cold-start navigation failed', e); }
+      }
     });
 
     return () => {
@@ -348,12 +380,9 @@ function ThemedNavigator() {
             <Stack.Screen name="settings" options={{ headerShown: false }} />
             <Stack.Screen name="dashboard" options={{ headerShown: false }} />
             <Stack.Screen name="security" options={{ headerShown: false }} />
-            <Stack.Screen name="profile" options={{ headerShown: false }} />
             <Stack.Screen name="team-management" options={{ headerShown: false }} />
             <Stack.Screen name="stores" options={{ headerShown: false }} />
-            <Stack.Screen name="my-qr" options={{ headerShown: false, animation: 'slide_from_bottom' }} />
             <Stack.Screen name="referral" options={{ headerShown: false }} />
-            <Stack.Screen name="pending-gifts" options={{ headerShown: false }} />
             <Stack.Screen name="admin-notifications" options={{ headerShown: false }} />
             <Stack.Screen
               name="onboarding"

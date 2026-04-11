@@ -16,7 +16,8 @@ COPY apps/backend/package.json ./apps/backend/
 COPY apps/backend/prisma ./apps/backend/prisma/
 
 # Install ALL dependencies (including devDependencies for build)
-RUN pnpm install --frozen-lockfile --filter backend...
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile --filter backend...
 
 # Copy backend source code
 COPY apps/backend/ ./apps/backend/
@@ -43,7 +44,8 @@ COPY apps/backend/package.json ./
 COPY apps/backend/prisma ./prisma/
 
 # Install ONLY production dependencies (standalone, flat node_modules — no workspace symlinks)
-RUN pnpm install --prod --no-frozen-lockfile
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
+    pnpm install --prod --no-frozen-lockfile
 
 # Generate Prisma Client (needed for runtime engine binaries)
 RUN pnpm exec prisma generate --schema ./prisma/schema.prisma
@@ -51,8 +53,8 @@ RUN pnpm exec prisma generate --schema ./prisma/schema.prisma
 # ── Stage 3: Runner (Final Image) ──
 FROM node:22-alpine AS runner
 
-# Patch OS-level CVEs (zlib, etc.)
-RUN apk update && apk upgrade --no-cache
+# Patch OS-level CVEs (zlib, etc.) + install dumb-init + openssl in a single layer
+RUN apk update && apk upgrade --no-cache && apk add --no-cache dumb-init openssl
 
 # Remove npm entirely — not needed at runtime (only node runs dist/main).
 # This eliminates all CVEs from npm's bundled deps (tar, minimatch, glob, diff).
@@ -83,9 +85,6 @@ COPY --from=builder /app/apps/backend/prisma ./prisma
 COPY apps/backend/docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod +x /app/docker-entrypoint.sh
 
-# dumb-init for proper PID 1 signal handling
-RUN apk add --no-cache dumb-init openssl
-
 # Transfer ownership to non-root user (needed for Prisma engine extraction)
 RUN chown -R appuser:appgroup /app
 
@@ -94,6 +93,10 @@ USER appuser
 
 # Expose the application port
 EXPOSE 3000
+
+# Health check for container orchestration
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:3000/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
 
 # Entrypoint: dumb-init ensures graceful shutdown signals are forwarded
 ENTRYPOINT ["dumb-init", "--"]

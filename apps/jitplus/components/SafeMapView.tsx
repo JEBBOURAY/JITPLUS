@@ -8,6 +8,7 @@ import { Platform, View, Text, StyleSheet, NativeModules } from 'react-native';
 import type MapViewType from 'react-native-maps';
 import type { Marker as MarkerType, MapViewProps, MapMarkerProps } from 'react-native-maps';
 import { wp, ms } from '@/utils/responsive';
+import i18n from '@/i18n';
 
 let RNMapView: typeof MapViewType | null = null;
 let RNMarker: typeof MarkerType | null = null;
@@ -41,8 +42,8 @@ const SafeMapView = forwardRef<MapViewType, MapViewProps>((props, ref) => {
   if (!MAPS_AVAILABLE || !RNMapView) {
     return (
       <View style={fallbackStyles.container}>
-        <Text style={fallbackStyles.text}>🗺️ Carte indisponible dans Expo Go</Text>
-        <Text style={fallbackStyles.hint}>Utilisez un dev build pour voir la carte</Text>
+        <Text style={fallbackStyles.text}>🗺️ {i18n.t('discover.mapUnavailable', { defaultValue: 'Map unavailable in Expo Go' })}</Text>
+        <Text style={fallbackStyles.hint}>{i18n.t('discover.mapUnavailableHint', { defaultValue: 'Use a dev build to see the map' })}</Text>
       </View>
     );
   }
@@ -50,8 +51,8 @@ const SafeMapView = forwardRef<MapViewType, MapViewProps>((props, ref) => {
   if (renderTimedOut) {
     return (
       <View style={fallbackStyles.container}>
-        <Text style={fallbackStyles.text}>Carte indisponible temporairement</Text>
-        <Text style={fallbackStyles.hint}>Verifiez la cle Google Maps (package + SHA-1)</Text>
+        <Text style={fallbackStyles.text}>{i18n.t('discover.mapTemporarilyUnavailable', { defaultValue: 'Map temporarily unavailable' })}</Text>
+        <Text style={fallbackStyles.hint}>{i18n.t('discover.mapCheckApiKey', { defaultValue: 'Check Google Maps key (package + SHA-1)' })}</Text>
       </View>
     );
   }

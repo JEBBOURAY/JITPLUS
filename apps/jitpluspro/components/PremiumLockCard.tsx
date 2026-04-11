@@ -114,6 +114,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: palette.violetLight,
     letterSpacing: 1,
+    fontFamily: 'Lexend_700Bold',
   },
   title: {
     fontSize: 17,
@@ -121,6 +122,7 @@ const styles = StyleSheet.create({
     color: '#fff',
     textAlign: 'center',
     marginTop: 2,
+    fontFamily: 'Lexend_700Bold',
   },
   desc: {
     fontSize: 13,
@@ -145,5 +147,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
     fontWeight: '700',
+    fontFamily: 'Lexend_700Bold',
   },
 });

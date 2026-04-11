@@ -1,0 +1,43 @@
+# ── Git ──
+.git
+.gitignore
+
+# ── IDE / Editor ──
+.vscode
+.idea
+*.swp
+*.swo
+
+# ── Environment files (secrets must come from Secret Manager) ──
+.env
+.env.*
+
+# ── Node modules (rebuilt inside Docker) ──
+node_modules
+
+# ── Build outputs ──
+dist
+coverage
+*.log
+
+# ── Mobile apps (not needed for backend Docker build) ──
+apps/jitplus
+apps/jitpluspro
+apps/admin
+
+# ── Documentation & tooling ──
+docs
+tools
+*.md
+!apps/backend/prisma/*.md
+
+# ── Expo / EAS ──
+.easignore
+app.json
+eas.json
+auth.service.ts
+
+# ── Test & dev scripts ──
+start.ps1
+test-*.ps1
+docker-compose*.yml

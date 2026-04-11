@@ -19,7 +19,14 @@ export class EmailQuotaService {
   async getQuota(merchantId: string): Promise<Merchant> {
     const merchant = await this.merchantRepo.findUniqueOrThrow({
       where: { id: merchantId },
-    });
+      select: {
+        id: true,
+        emailQuotaUsed: true,
+        emailQuotaMax: true,
+        emailQuotaResetAt: true,
+        nom: true,
+      },
+    }) as Merchant;
 
     const now = new Date();
     if (now > merchant.emailQuotaResetAt) {

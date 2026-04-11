@@ -6,8 +6,9 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
+  Linking,
 } from 'react-native';
-import { Mail, Star, Coins, RefreshCw, LogOut, QrCode, BarChart3, Settings, CheckCircle2, Circle, Store, Crown, Clock, Check, X, Sparkles } from 'lucide-react-native';
+import { Mail, Star, Coins, RefreshCw, LogOut, QrCode, BarChart3, Settings, CheckCircle2, Circle, Store, Crown, Clock, Check, X, Sparkles, Instagram, Music } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -130,6 +131,52 @@ export default function ProfileScreen() {
               <Text style={[styles.infoValue, { color: theme.text }]}>{merchant.email}</Text>
             </View>
           </View>
+
+          {!!merchant.socialLinks?.instagram && (
+            <>
+              <View style={[styles.divider, { backgroundColor: theme.border }]} />
+              <TouchableOpacity
+                style={styles.infoRow}
+                activeOpacity={0.7}
+                onPress={() => {
+                  const raw = merchant.socialLinks?.instagram ?? '';
+                  const username = raw.replace(/^@/, '').replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/.*$/, '').trim();
+                  if (username) Linking.openURL(`https://www.instagram.com/${encodeURIComponent(username)}`);
+                }}
+              >
+                <Instagram size={20} color="#E1306C" />
+                <View style={styles.infoContent}>
+                  <Text style={[styles.infoLabel, { color: theme.textMuted }]}>Instagram</Text>
+                  <Text style={[styles.infoValue, { color: '#E1306C' }]}>
+                    {merchant.socialLinks.instagram.startsWith('@') ? merchant.socialLinks.instagram : `@${merchant.socialLinks.instagram}`}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            </>
+          )}
+
+          {!!merchant.socialLinks?.tiktok && (
+            <>
+              <View style={[styles.divider, { backgroundColor: theme.border }]} />
+              <TouchableOpacity
+                style={styles.infoRow}
+                activeOpacity={0.7}
+                onPress={() => {
+                  const raw = merchant.socialLinks?.tiktok ?? '';
+                  const username = raw.replace(/^@/, '').replace(/^https?:\/\/(www\.)?tiktok\.com\/@?/, '').replace(/\/.*$/, '').trim();
+                  if (username) Linking.openURL(`https://www.tiktok.com/@${encodeURIComponent(username)}`);
+                }}
+              >
+                <Music size={20} color={palette.charbon} />
+                <View style={styles.infoContent}>
+                  <Text style={[styles.infoLabel, { color: theme.textMuted }]}>TikTok</Text>
+                  <Text style={[styles.infoValue, { color: theme.text }]}>
+                    {merchant.socialLinks.tiktok.startsWith('@') ? merchant.socialLinks.tiktok : `@${merchant.socialLinks.tiktok}`}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            </>
+          )}
 
           <View style={[styles.divider, { backgroundColor: theme.border }]} />
 
@@ -378,6 +425,7 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: 'bold',
     marginBottom: 8,
+    fontFamily: 'Lexend_700Bold',
   },
   categoryBadge: {
     paddingHorizontal: 16,
@@ -387,6 +435,7 @@ const styles = StyleSheet.create({
   categoryText: {
     fontSize: 14,
     fontWeight: '600',
+    fontFamily: 'Lexend_600SemiBold',
   },
   section: {
     padding: 24,
@@ -395,6 +444,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     marginBottom: 16,
+    fontFamily: 'Lexend_700Bold',
   },
   card: {
     borderRadius: 12,
@@ -416,10 +466,12 @@ const styles = StyleSheet.create({
   infoLabel: {
     fontSize: 12,
     marginBottom: 4,
+    fontFamily: 'Lexend_400Regular',
   },
   infoValue: {
     fontSize: 16,
     fontWeight: '500',
+    fontFamily: 'Lexend_500Medium',
   },
   divider: {
     height: 1,
@@ -440,6 +492,7 @@ const styles = StyleSheet.create({
     marginLeft: 12,
     fontSize: 16,
     fontWeight: '600',
+    fontFamily: 'Lexend_600SemiBold',
   },
   complianceRow: {
     flexDirection: 'row',
@@ -453,10 +506,12 @@ const styles = StyleSheet.create({
   complianceLabel: {
     fontSize: 14,
     fontWeight: '600',
+    fontFamily: 'Lexend_600SemiBold',
   },
   complianceStatus: {
     fontSize: 13,
     marginTop: 4,
     fontWeight: '500',
+    fontFamily: 'Lexend_500Medium',
   },
 });

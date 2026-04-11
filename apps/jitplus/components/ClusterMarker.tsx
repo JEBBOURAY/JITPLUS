@@ -13,7 +13,7 @@ interface Props {
 
 const ClusterMarker = memo(function ClusterMarker({ count }: Props) {
   return (
-    <View collapsable={false} style={styles.root}>
+    <View collapsable={false} style={styles.root} accessibilityLabel={`${count} merchants`} accessibilityRole="image">
       <View collapsable={false} style={styles.square}>
         <Text style={styles.countText}>{String(count)}</Text>
       </View>

@@ -26,6 +26,8 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
 import { useGoogleAuth } from '@/hooks/useGoogleAuth';
+import { useAppleAuth } from '@/hooks/useAppleAuth';
+import { AppleLogo } from '@/components/AppleLogo';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -40,6 +42,7 @@ export default function LoginScreen() {
   const theme = useTheme();
   const { t } = useLanguage();
   const google = useGoogleAuth();
+  const apple = useAppleAuth();
   const passwordRef = useRef<TextInput>(null);
 
   // ── Entrance animations ──
@@ -173,6 +176,31 @@ export default function LoginScreen() {
                 )}
               </TouchableOpacity>
 
+              {/* Apple Sign-In — iOS only */}
+              {apple.isAvailable && (
+                <TouchableOpacity
+                  onPress={apple.promptApple}
+                  disabled={apple.isLoading || isLoading}
+                  activeOpacity={0.85}
+                  style={[styles.googleBtn, {
+                    backgroundColor: '#000',
+                    borderColor: '#000',
+                    marginTop: hp(8),
+                  }]}
+                >
+                  {apple.isLoading ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <>
+                      <AppleLogo size={ms(20)} color="#fff" />
+                      <Text style={[styles.googleBtnText, { color: '#fff' }]}>
+                        {t('login.loginWithApple')}
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
+
               {/* Google error */}
               {!!google.error && !google.noAccount && (
                 <View style={[styles.errorBanner, { backgroundColor: `${theme.danger}15`, borderColor: `${theme.danger}30` }]}>
@@ -198,6 +226,36 @@ export default function LoginScreen() {
                     style={[styles.noAccountBtn, { backgroundColor: palette.charbon }]}
                   >
                     <Text style={styles.noAccountBtnText}>{t('googleAuth.goToRegister')}</Text>
+                    <ArrowRight size={ms(16)} color="#fff" strokeWidth={1.5} />
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* Apple error */}
+              {!!apple.error && !apple.noAccount && (
+                <View style={[styles.errorBanner, { backgroundColor: `${theme.danger}15`, borderColor: `${theme.danger}30` }]}>
+                  <Text style={[styles.errorText, { color: theme.danger }]}>{apple.error}</Text>
+                </View>
+              )}
+
+              {/* Apple no-account banner */}
+              {apple.noAccount && (
+                <View style={[styles.noAccountBanner, { backgroundColor: `${palette.charbon}08`, borderColor: `${palette.charbon}25` }]}>
+                  <Text style={[styles.noAccountTitle, { color: theme.text }]}>
+                    {t('appleAuth.noAccountTitle')}
+                  </Text>
+                  <Text style={[styles.noAccountMsg, { color: theme.textMuted }]}>
+                    {t('appleAuth.noAccountAction')}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      apple.dismissNoAccount();
+                      router.push('/register');
+                    }}
+                    activeOpacity={0.85}
+                    style={[styles.noAccountBtn, { backgroundColor: palette.charbon }]}
+                  >
+                    <Text style={styles.noAccountBtnText}>{t('appleAuth.noAccountTitle')}</Text>
                     <ArrowRight size={ms(16)} color="#fff" strokeWidth={1.5} />
                   </TouchableOpacity>
                 </View>
@@ -379,6 +437,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     letterSpacing: 0.5,
     marginTop: hp(4),
+    fontFamily: 'Lexend_500Medium',
   },
   trialBadge: {
     flexDirection: 'row',
@@ -390,7 +449,7 @@ const styles = StyleSheet.create({
     paddingVertical: hp(8),
     marginTop: hp(12),
   },
-  trialBadgeText: { flex: 1, fontSize: fontSize.sm, fontWeight: '700' },
+  trialBadgeText: { flex: 1, fontSize: fontSize.sm, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
 
   // Form
   formSection: { paddingHorizontal: wp(4) },
@@ -426,6 +485,7 @@ const styles = StyleSheet.create({
   googleBtnText: {
     fontSize: fontSize.md,
     fontWeight: '600',
+    fontFamily: 'Lexend_600SemiBold',
   },
 
   // Divider
@@ -442,6 +502,7 @@ const styles = StyleSheet.create({
   dividerText: {
     fontSize: fontSize.sm,
     fontWeight: '500',
+    fontFamily: 'Lexend_500Medium',
   },
 
   // Input
@@ -458,6 +519,7 @@ const styles = StyleSheet.create({
     fontSize: fontSize.md,
     fontWeight: '500',
     marginLeft: wp(10),
+    fontFamily: 'Lexend_500Medium',
   },
 
   // Error
@@ -468,7 +530,7 @@ const styles = StyleSheet.create({
     paddingVertical: hp(10),
     marginBottom: hp(12),
   },
-  errorText: { fontSize: fontSize.xs },
+  errorText: { fontSize: fontSize.xs, fontFamily: 'Lexend_400Regular' },
 
   // No-account banner (Google login → user doesn't exist yet)
   noAccountBanner: {
@@ -482,10 +544,12 @@ const styles = StyleSheet.create({
   noAccountTitle: {
     fontSize: fontSize.md,
     fontWeight: '700',
+    fontFamily: 'Lexend_700Bold',
   },
   noAccountMsg: {
     fontSize: fontSize.sm,
     lineHeight: ms(20),
+    fontFamily: 'Lexend_400Regular',
   },
   noAccountBtn: {
     flexDirection: 'row',
@@ -500,6 +564,7 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: fontSize.sm,
     fontWeight: '700',
+    fontFamily: 'Lexend_700Bold',
   },
 
   // Forgot password
@@ -508,6 +573,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textAlign: 'right',
     marginBottom: hp(8),
+    fontFamily: 'Lexend_600SemiBold',
   },
 
   // Remember me
@@ -525,7 +591,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  rememberText: { fontSize: fontSize.sm, fontWeight: '500' },
+  rememberText: { fontSize: fontSize.sm, fontWeight: '500', fontFamily: 'Lexend_500Medium' },
 
   // Button
   button: {
@@ -542,6 +608,7 @@ const styles = StyleSheet.create({
     fontSize: fontSize.lg,
     fontWeight: '700',
     letterSpacing: 0.5,
+    fontFamily: 'Lexend_700Bold',
   },
 
   // Footer
@@ -571,10 +638,12 @@ const styles = StyleSheet.create({
     fontSize: fontSize.md,
     fontWeight: '700',
     marginBottom: 2,
+    fontFamily: 'Lexend_700Bold',
   },
   registerProminentSub: {
     fontSize: fontSize.sm,
     fontWeight: '600',
+    fontFamily: 'Lexend_600SemiBold',
   },
   registerTextWrap: {
     flex: 1,

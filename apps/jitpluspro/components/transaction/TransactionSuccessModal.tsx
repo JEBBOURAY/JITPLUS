@@ -80,6 +80,6 @@ const styles = StyleSheet.create({
     maxWidth: 340,
   },
   animation: { width: 120, height: 120 },
-  title: { fontSize: 22, fontWeight: '800', textAlign: 'center', marginTop: 12 },
-  message: { fontSize: 15, textAlign: 'center', marginTop: 8, lineHeight: 22 },
+  title: { fontSize: 22, fontWeight: '800', textAlign: 'center', marginTop: 12, fontFamily: 'Lexend_700Bold' },
+  message: { fontSize: 15, textAlign: 'center', marginTop: 8, lineHeight: 22, fontFamily: 'Lexend_400Regular' },
 });

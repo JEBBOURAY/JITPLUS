@@ -10,6 +10,8 @@ import {
   Alert,
   Animated,
   Linking,
+  TextInput,
+  Modal,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { getErrorMessage } from '@/utils/error';
@@ -31,8 +33,11 @@ import {
   AlertTriangle,
   MessageCircle,
   Globe,
+  Check,
+  X,
 } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
+import api from '@/services/api';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useRouter } from 'expo-router';
 import { useCategoryMetadata } from '@/components/MerchantCategoryIcon';
@@ -54,10 +59,14 @@ export default function AccountScreen() {
   const uploadLogoMutation = useUploadMerchantLogo();
   const deleteLogoMutation = useDeleteMerchantLogo();
 
-  // Collapsible section states
-  const [storeExpanded, setStoreExpanded] = useState(false);
-  const [prefExpanded, setPrefExpanded] = useState(false);
-  const [compteExpanded, setCompteExpanded] = useState(false);
+  // Collapsible section states — single state to avoid triple re-renders
+  const [expandedSection, setExpandedSection] = useState<'store' | 'pref' | 'compte' | null>(null);
+  const toggleSection = useCallback((section: 'store' | 'pref' | 'compte') => {
+    setExpandedSection((prev) => (prev === section ? null : section));
+  }, []);
+  const storeExpanded = expandedSection === 'store';
+  const prefExpanded = expandedSection === 'pref';
+  const compteExpanded = expandedSection === 'compte';
   const [showLogoModal, setShowLogoModal] = useState(false);
   const [premiumModal, setPremiumModal] = useState<{ visible: boolean; titleKey: string; descKey: string }>({
     visible: false,
@@ -121,6 +130,32 @@ export default function AccountScreen() {
   const { label: categoryLabel } = useCategoryMetadata(merchant?.categorie);
   const [showLanguageModal, setShowLanguageModal] = useState(false);
 
+  // ── Profile name edit ──
+  const [showNameModal, setShowNameModal] = useState(false);
+  const [profileName, setProfileName] = useState('');
+  const [savingName, setSavingName] = useState(false);
+
+  const handleEditName = useCallback(() => {
+    if (isTeamMember) return;
+    setProfileName(merchant?.nom ?? '');
+    setShowNameModal(true);
+  }, [merchant?.nom, isTeamMember]);
+
+  const handleSaveName = useCallback(async () => {
+    const trimmed = profileName.trim();
+    if (!trimmed || trimmed === merchant?.nom) { setShowNameModal(false); return; }
+    setSavingName(true);
+    try {
+      await api.patch('/merchant/profile', { nom: trimmed });
+      updateMerchant({ ...merchant!, nom: trimmed });
+      setShowNameModal(false);
+    } catch (err) {
+      Alert.alert(t('common.error'), t('profileView.profileNameError'));
+    } finally {
+      setSavingName(false);
+    }
+  }, [profileName, merchant, updateMerchant, t]);
+
   const handleSignOut = async () => {
     Alert.alert(t('account.signOut'), t('account.signOutConfirm'), [
       { text: t('common.cancel'), style: 'cancel' },
@@ -166,6 +201,7 @@ export default function AccountScreen() {
             router={router}
             unreadCount={unreadCount}
             onNotifPress={() => router.push('/admin-notifications')}
+            onEditName={!isTeamMember ? handleEditName : undefined}
           />
         </FadeInView>
 
@@ -192,7 +228,7 @@ export default function AccountScreen() {
         {!isTeamMember && (
           <FadeInView delay={300}>
             <TouchableOpacity
-              onPress={() => setStoreExpanded(!storeExpanded)}
+              onPress={() => toggleSection('store')}
               activeOpacity={0.7}
               style={styles.sectionHeaderRow}
             >
@@ -284,7 +320,7 @@ export default function AccountScreen() {
         {/* -- Preferences Section ---------------------- */}
         <FadeInView delay={400}>
           <TouchableOpacity
-            onPress={() => setPrefExpanded(!prefExpanded)}
+            onPress={() => toggleSection('pref')}
             activeOpacity={0.7}
             style={styles.sectionHeaderRow}
           >
@@ -331,7 +367,7 @@ export default function AccountScreen() {
         {/* -- Compte Section ---------------------------- */}
         <FadeInView delay={500}>
           <TouchableOpacity
-            onPress={() => setCompteExpanded(!compteExpanded)}
+            onPress={() => toggleSection('compte')}
             activeOpacity={0.7}
             style={styles.sectionHeaderRow}
           >
@@ -449,6 +485,36 @@ export default function AccountScreen() {
         titleKey={premiumModal.titleKey}
         descKey={premiumModal.descKey}
       />
+
+      {/* ── Edit Profile Name Modal ── */}
+      <Modal visible={showNameModal} transparent animationType="fade" onRequestClose={() => setShowNameModal(false)}>
+        <View style={styles.nameModalOverlay}>
+          <View style={[styles.nameModalCard, { backgroundColor: theme.bgCard }]}>
+            <Text style={[styles.nameModalTitle, { color: theme.text }]}>{t('profileView.editProfileName')}</Text>
+            <TextInput
+              style={[styles.nameModalInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bgInput }]}
+              value={profileName}
+              onChangeText={setProfileName}
+              maxLength={100}
+              autoFocus
+              returnKeyType="done"
+              onSubmitEditing={handleSaveName}
+              placeholder={t('profileView.editProfileName')}
+              placeholderTextColor={theme.textMuted}
+            />
+            <View style={styles.nameModalActions}>
+              <TouchableOpacity onPress={() => setShowNameModal(false)} style={[styles.nameModalBtn, { backgroundColor: theme.bgElevated }]}>
+                <X size={ms(16)} color={theme.textMuted} />
+                <Text style={[styles.nameModalBtnText, { color: theme.textMuted }]}>{t('common.cancel')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleSaveName} disabled={savingName || !profileName.trim()} style={[styles.nameModalBtn, { backgroundColor: palette.violet, opacity: profileName.trim() ? 1 : 0.5 }]}>
+                {savingName ? <ActivityIndicator size={14} color="#fff" /> : <Check size={ms(16)} color="#fff" />}
+                <Text style={[styles.nameModalBtnText, { color: '#fff' }]}>{t('common.save')}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </Animated.View>
   );
 }
@@ -482,6 +548,7 @@ const styles = StyleSheet.create({
     marginBottom: hp(8),
     marginLeft: wp(4),
     marginTop: hp(8),
+    fontFamily: 'Lexend_700Bold',
   },
 
   // Info card
@@ -511,8 +578,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   infoContent: { flex: 1 },
-  infoLabel: { fontSize: FS.xs, marginBottom: hp(2) },
-  infoValue: { fontSize: FS.md, fontWeight: '500' },
+  infoLabel: { fontSize: FS.xs, marginBottom: hp(2), fontFamily: 'Lexend_400Regular' },
+  infoValue: { fontSize: FS.md, fontWeight: '500', fontFamily: 'Lexend_500Medium' },
 
   // Team banner
   teamBanner: {
@@ -560,6 +627,15 @@ const styles = StyleSheet.create({
   // Logo footer
   logoFooter: { alignItems: 'center', paddingTop: hp(28), paddingBottom: hp(10) },
   logoImage: { width: ms(64), height: ms(64), borderRadius: ms(14) },
-  logoSubtext: { fontSize: FS.xs, marginTop: hp(8), fontWeight: '500', letterSpacing: 0.3 },
-  versionText: { fontSize: FS.xs, marginTop: hp(4), opacity: 0.5, fontWeight: '400' },
+  logoSubtext: { fontSize: FS.xs, marginTop: hp(8), fontWeight: '500', letterSpacing: 0.3, fontFamily: 'Lexend_500Medium' },
+  versionText: { fontSize: FS.xs, marginTop: hp(4), opacity: 0.5, fontWeight: '400', fontFamily: 'Lexend_400Regular' },
+
+  // Edit profile name modal
+  nameModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', paddingHorizontal: wp(24) },
+  nameModalCard: { borderRadius: radius.xl, padding: ms(20), gap: hp(16) },
+  nameModalTitle: { fontSize: FS.lg, fontWeight: '700', textAlign: 'center', fontFamily: 'Lexend_700Bold' },
+  nameModalInput: { fontSize: FS.md, fontWeight: '600', borderWidth: 1, borderRadius: radius.md, paddingHorizontal: wp(14), paddingVertical: hp(12), fontFamily: 'Lexend_600SemiBold' },
+  nameModalActions: { flexDirection: 'row', gap: wp(10) },
+  nameModalBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: wp(6), paddingVertical: hp(12), borderRadius: radius.md },
+  nameModalBtnText: { fontSize: FS.sm, fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
 });

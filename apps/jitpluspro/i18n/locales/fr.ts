@@ -92,6 +92,7 @@ export default {
     passwordTooShort: 'Le mot de passe doit contenir au moins %{min} caractères',
     invalidCredentials: 'E-mail ou mot de passe incorrect. Vérifiez vos identifiants.',
     loginWithGoogle: 'Continuer avec Google',
+    loginWithApple: 'Continuer avec Apple',
     orDivider: 'ou',
   },
 
@@ -496,6 +497,8 @@ export default {
     logoUploadError: "Impossible d'envoyer le logo",
     logoDeleteError: 'Impossible de supprimer le logo',
     restartDirectionHint: "Redémarrez l'application pour appliquer le changement de direction.",
+    restartTitle: 'Redémarrage requis',
+    restartRequired: "Veuillez fermer et relancer l'application pour appliquer la direction de la langue sélectionnée.",
   },
 
   // ── Profile View ──
@@ -540,6 +543,8 @@ export default {
     myQRCode: 'Mon QR Code',
     dashboardHistory: 'Dashboard & Historique',
     refreshProfile: 'Actualiser le profil',
+    editProfileName: 'Modifier le nom du profil',
+    profileNameError: 'Impossible de modifier le nom du profil.',
     signOut: 'Se déconnecter',
   },
 
@@ -729,6 +734,7 @@ export default {
     googleSetPasswordHint: 'Votre compte a été créé avec Google. Vous pouvez définir un mot de passe ci-dessous sans avoir besoin de l\'ancien.',
     enterCurrentPassword: 'Entrez votre mot de passe actuel',
     passwordTooShort: 'Le nouveau mot de passe doit contenir au moins 8 caractères',
+    passwordRequirements: 'Le mot de passe doit contenir au moins 8 caractères, une majuscule, un chiffre et un caractère spécial',
     passwordMismatch: 'Les mots de passe ne correspondent pas',
     changePwdError: 'Impossible de changer le mot de passe',
     disconnectError: 'Impossible de déconnecter cet appareil',
@@ -868,6 +874,8 @@ export default {
     socialOptionalHint: 'Tous ces champs sont optionnels — vous pourrez les ajouter plus tard',
     instagramPlaceholder: 'Ex : mon_commerce',
     tiktokPlaceholder: 'Ex : mon_commerce',
+    websiteLabel: 'Site web',
+    websitePlaceholder: 'https://www.moncommerce.ma',
     storePhoneLabel: 'Téléphone du commerce',
     storePhonePlaceholder: 'Ex : 0600000000',
     descriptionLabel: 'Description',
@@ -926,6 +934,7 @@ export default {
     trialBadge: '30 jours d\'essai Premium offerts',
     secureNote: '🔒 Vos données sont protégées et ne seront jamais partagées',
     signUpWithGoogle: "S'inscrire avec Google",
+    signUpWithApple: "S'inscrire avec Apple",
     googleLinked: 'Compte Google lié',
     googleChange: 'Changer',
     ownerLastName: 'Nom du propriétaire',
@@ -965,6 +974,16 @@ export default {
     noAccountFound: 'Aucun compte n\'est associé à cet e-mail Google.',
     noAccountAction: 'Créez votre compte en quelques étapes, puis connectez-vous avec Google.',
     goToRegister: 'Créer un compte',
+  },
+
+  // ── Apple Auth ──
+  appleAuth: {
+    error: 'La connexion avec Apple a échoué. Veuillez réessayer.',
+    noToken: 'Impossible de récupérer le token Apple. Veuillez réessayer.',
+    notAvailable: 'La connexion Apple n\'est pas disponible sur cet appareil.',
+    noAccountTitle: 'Aucun compte trouvé',
+    noAccountFound: 'Aucun compte n\'est associé à cet identifiant Apple.',
+    noAccountAction: 'Créez votre compte en quelques étapes, puis connectez-vous avec Apple.',
   },
 
   // ── Stores management ──
@@ -1019,6 +1038,10 @@ export default {
     stepLocationDesc: 'Indiquez l\'emplacement exact de votre boutique.',
     contactOptional: 'Ces informations sont facultatives',
     socialOptional: 'Ces informations sont facultatives',
+    referenceLabel: 'Référent',
+    branchEmailHint: 'L\'email est géré depuis le magasin référent. Modifiez-le depuis la fiche du 1er magasin.',
+    branchDescHint: 'La description est gérée depuis le magasin référent. Modifiez-la depuis la fiche du 1er magasin.',
+    branchSocialHint: 'Les réseaux sociaux et le site web sont gérés depuis le magasin référent. Ces modifications s\'appliqueront à tous vos points de vente.',
     locateMeHint: 'Utiliser ma position GPS actuelle',
     mapHint: 'Appuyez sur la carte ou déplacez le marqueur',
     nextStep: 'Suivant',

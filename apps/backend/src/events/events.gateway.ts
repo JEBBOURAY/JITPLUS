@@ -5,7 +5,7 @@ import {
   OnGatewayDisconnect,
   OnGatewayInit,
 } from '@nestjs/websockets';
-import { Logger } from '@nestjs/common';
+import { Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Server, Socket } from 'socket.io';
@@ -42,18 +42,19 @@ import {
     },
     credentials: true,
   },
-  transports: ['websocket', 'polling'],
+  transports: ['websocket'],
   pingInterval: 25_000,
   pingTimeout: 20_000,
 })
-export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit {
+export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit, OnModuleDestroy {
   @WebSocketServer()
   server: Server;
 
   private readonly logger = new Logger(EventsGateway.name);
-  /** Re-verify tokens every 5 minutes to disconnect revoked sessions */
-  private static readonly TOKEN_RECHECK_MS = 5 * 60 * 1000;
+  /** Re-verify tokens periodically to disconnect revoked sessions (1h — JWT strategy already validates per-request) */
+  private static readonly TOKEN_RECHECK_MS = 60 * 60 * 1000;
   private recheckInterval: ReturnType<typeof setInterval> | null = null;
+  private jwtSecret: string;
 
   constructor(
     private jwtService: JwtService,
@@ -61,10 +62,19 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect, 
   ) {}
 
   afterInit() {
+    // Cache JWT secret once to avoid repeated config lookups
+    this.jwtSecret = this.config.getOrThrow<string>('JWT_SECRET');
     // Periodically re-verify all connected sockets' tokens
     this.recheckInterval = setInterval(() => {
       this.recheckConnectedTokens();
     }, EventsGateway.TOKEN_RECHECK_MS);
+  }
+
+  onModuleDestroy() {
+    if (this.recheckInterval) {
+      clearInterval(this.recheckInterval);
+      this.recheckInterval = null;
+    }
   }
 
   /** Re-verify JWT for every connected socket; disconnect expired/revoked ones */
@@ -83,7 +93,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect, 
       }
       try {
         this.jwtService.verify(token, {
-          secret: this.config.getOrThrow<string>('JWT_SECRET'),
+          secret: this.jwtSecret,
         });
       } catch {
         this.logger.debug(`WS token expired/revoked for ${socket.data.userId}, disconnecting ${socket.id}`);
@@ -106,7 +116,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect, 
       }
 
       const payload = this.jwtService.verify(token, {
-        secret: this.config.getOrThrow<string>('JWT_SECRET'),
+        secret: this.jwtSecret,
       });
 
       const userId = payload.sub;

@@ -32,8 +32,11 @@ import {
   X,
   MapPin,
 } from 'lucide-react-native';
-import { useTheme } from '@/contexts/ThemeContext';
+import { useTheme, brandGradient } from '@/contexts/ThemeContext';
+import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import { useAuth } from '@/contexts/AuthContext';
+import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getErrorMessage } from '@/utils/error';
@@ -139,11 +142,14 @@ const MemberCard = React.memo(function MemberCard({
 });
 
 export default function TeamManagementScreen() {
+  const shouldWait = useRequireAuth();
   const theme = useTheme();
   const { isTeamMember } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { t } = useLanguage();
+
+  if (shouldWait) return null;
 
   const { data: members = [], isLoading: loading, isRefetching: refreshing, refetch } = useTeamMembers(!isTeamMember);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -270,19 +276,39 @@ export default function TeamManagementScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
-      {/* â”€â”€ Header (mÃªme style que edit-profile) â”€â”€â”€ */}
-      <View style={[styles.header, { paddingTop: insets.top + 8, backgroundColor: theme.bgCard, borderBottomColor: theme.borderLight }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <ArrowLeft size={24} color={theme.text} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.text }]}>{t('team.title')}</Text>
-        <TouchableOpacity
-          onPress={openAddModal}
-          style={[styles.addBtn, { backgroundColor: theme.primary }]}
-          activeOpacity={0.7}
+      {/* ── Header ─── */}
+      <View collapsable={false}>
+        <LinearGradient
+          colors={[...brandGradient]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.headerGradient}
         >
-          <UserPlus size={20} color="#fff" strokeWidth={1.5} />
-        </TouchableOpacity>
+          <BlurView
+            intensity={Platform.OS === 'ios' ? 40 : 20}
+            tint={theme.mode === 'dark' ? 'dark' : 'default'}
+            style={[styles.headerBlur, { paddingTop: insets.top + 16 }]}
+          >
+            <View style={styles.glassOverlay} />
+            <View style={styles.header}>
+              <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+                <ArrowLeft size={22} color="#fff" />
+              </TouchableOpacity>
+              <Text style={styles.headerTitle}>{t('team.title')}</Text>
+              <TouchableOpacity
+                onPress={openAddModal}
+                style={[styles.addBtn, { backgroundColor: 'rgba(255,255,255,0.15)' }]}
+                activeOpacity={0.7}
+              >
+                <UserPlus size={20} color="#fff" strokeWidth={1.5} />
+              </TouchableOpacity>
+            </View>
+          </BlurView>
+        </LinearGradient>
+        <LinearGradient
+          colors={['rgba(124,58,237,0.3)', 'transparent']}
+          style={styles.headerFade}
+        />
       </View>
 
       {loading ? (
@@ -484,28 +510,33 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     paddingVertical: 12,
     paddingHorizontal: 16,
-    backgroundColor: '#f0f4ff',
     borderRadius: 12,
     borderLeftWidth: 3,
-    borderLeftColor: '#7C3AED',
   },
   guideText: {
     fontSize: 14,
     lineHeight: 20,
+    fontFamily: 'Lexend_400Regular',
   },
   container: { flex: 1 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12 },
 
-  // â”€â”€ Header (identique Ã  edit-profile) â”€â”€
+  // ── Header — glassmorphism ──
+  headerGradient: { overflow: 'hidden' },
+  headerBlur: { overflow: 'hidden' },
+  glassOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
+    paddingHorizontal: 24,
+    paddingBottom: 20,
   },
   backBtn: { padding: 4 },
-  headerTitle: { flex: 1, fontSize: 18, fontWeight: '700', marginLeft: 12 },
+  headerTitle: { flex: 1, fontSize: 20, fontWeight: '700', marginLeft: 12, color: '#FFFFFF', fontFamily: 'Lexend_700Bold', letterSpacing: -0.3 },
+  headerFade: { height: 4 },
   addBtn: {
     width: 40,
     height: 40,
@@ -524,7 +555,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     marginBottom: 16,
   },
-  countText: { fontSize: 14, fontWeight: '600' },
+  countText: { fontSize: 14, fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
 
   // â”€â”€ Member card â”€â”€
   memberCard: {
@@ -547,10 +578,10 @@ const styles = StyleSheet.create({
   },
   memberInfo: { flex: 1, marginLeft: 12 },
   memberNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  memberName: { fontSize: 15, fontWeight: '600' },
-  memberEmail: { fontSize: 13, marginTop: 2 },
+  memberName: { fontSize: 15, fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
+  memberEmail: { fontSize: 13, marginTop: 2, fontFamily: 'Lexend_400Regular' },
   badge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
-  badgeText: { fontSize: 11, fontWeight: '600' },
+  badgeText: { fontSize: 11, fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
 
   // â”€â”€ Meta row â”€â”€
   metaRow: {
@@ -561,7 +592,7 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   metaItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  metaText: { fontSize: 12 },
+  metaText: { fontSize: 12, fontFamily: 'Lexend_400Regular' },
 
   // â”€â”€ Action chips â”€â”€
   actionsRow: {
@@ -579,7 +610,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 10,
   },
-  actionChipText: { fontSize: 12, fontWeight: '600' },
+  actionChipText: { fontSize: 12, fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
 
   // â”€â”€ Empty state â”€â”€
   emptyContainer: { alignItems: 'center', paddingTop: 40, paddingHorizontal: 24 },
@@ -591,8 +622,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 16,
   },
-  emptyTitle: { fontSize: 18, fontWeight: '700', marginBottom: 6 },
-  emptyText: { fontSize: 14, textAlign: 'center', lineHeight: 20 },
+  emptyTitle: { fontSize: 18, fontWeight: '700', marginBottom: 6, fontFamily: 'Lexend_700Bold' },
+  emptyText: { fontSize: 14, textAlign: 'center', lineHeight: 20, fontFamily: 'Lexend_400Regular' },
   emptyAddBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -602,7 +633,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginTop: 20,
   },
-  emptyAddBtnText: { fontSize: 14, fontWeight: '700', color: '#fff' },
+  emptyAddBtnText: { fontSize: 14, fontWeight: '700', color: '#fff', fontFamily: 'Lexend_700Bold' },
 
   // â”€â”€ Info box (identique Ã  edit-profile) â”€â”€
   infoBox: {
@@ -611,7 +642,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
   },
-  infoText: { fontSize: 13, lineHeight: 20 },
+  infoText: { fontSize: 13, lineHeight: 20, fontFamily: 'Lexend_400Regular' },
 
   // â”€â”€ Modal â”€â”€
   modalOverlay: {
@@ -624,7 +655,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderBottomWidth: 1,
   },
-  modalTitle: { flex: 1, fontSize: 18, fontWeight: '700', marginLeft: 12 },
+  modalTitle: { flex: 1, fontSize: 18, fontWeight: '700', marginLeft: 12, fontFamily: 'Lexend_700Bold' },
 
   // â”€â”€ Form (identique Ã  edit-profile) â”€â”€
   label: {
@@ -632,6 +663,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 18,
     marginBottom: 6,
+    fontFamily: 'Lexend_600SemiBold',
   },
   inputWrapper: {
     flexDirection: 'row',
@@ -645,6 +677,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     paddingVertical: 13,
+    fontFamily: 'Lexend_500Medium',
   },
 
   // â”€â”€ Permissions box â”€â”€
@@ -654,9 +687,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
   },
-  permBoxTitle: { fontSize: 14, fontWeight: '700', marginBottom: 10 },
+  permBoxTitle: { fontSize: 14, fontWeight: '700', marginBottom: 10, fontFamily: 'Lexend_700Bold' },
   permList: { gap: 4 },
-  permItem: { fontSize: 13, lineHeight: 20 },
+  permItem: { fontSize: 13, lineHeight: 20, fontFamily: 'Lexend_400Regular' },
     permRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   permDivider: { height: 1, marginVertical: 6 },
 });

@@ -2,7 +2,7 @@ import React, { useCallback, useMemo, useState, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, RefreshControl,
   TouchableOpacity, Alert, Platform, Linking, Image,
-  Modal, ScrollView, Animated, PanResponder, Dimensions,
+  Modal, ScrollView, Animated, PanResponder, Dimensions, I18nManager,
 } from 'react-native';
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -55,7 +55,7 @@ const SCREEN_WIDTH = Dimensions.get('window').width;
 const SWIPE_THRESHOLD = SCREEN_WIDTH * SWIPE_THRESHOLD_RATIO;
 
 // ── Swipeable wrapper for notification cards ──
-const SwipeableNotifCard = React.memo(function SwipeableNotifCard({ onDismiss, children }: { onDismiss: () => void; children: React.ReactNode }) {
+const SwipeableNotifCard = React.memo(function SwipeableNotifCard({ onDismiss, children, dismissLabel }: { onDismiss: () => void; children: React.ReactNode; dismissLabel: string }) {
   const translateX = useRef(new Animated.Value(0)).current;
   const rowHeight = useRef(new Animated.Value(1)).current;
   // Keep a stable ref to onDismiss so the PanResponder always calls the latest callback
@@ -71,7 +71,8 @@ const SwipeableNotifCard = React.memo(function SwipeableNotifCard({ onDismiss, c
       },
       onPanResponderRelease: (_, gesture) => {
         if (Math.abs(gesture.dx) > SWIPE_THRESHOLD) {
-          const toValue = gesture.dx > 0 ? SCREEN_WIDTH : -SCREEN_WIDTH;
+          const direction = I18nManager.isRTL ? -1 : 1;
+          const toValue = gesture.dx > 0 ? SCREEN_WIDTH * direction : -SCREEN_WIDTH * direction;
           Animated.timing(translateX, {
             toValue,
             duration: SWIPE_DISMISS_DURATION_MS,
@@ -116,14 +117,20 @@ const SwipeableNotifCard = React.memo(function SwipeableNotifCard({ onDismiss, c
     >
       <Animated.View style={[styles.swipeBackground, { opacity: swipeBgOpacity }]}>
         <View style={styles.swipeAction}>
-          <Trash2 size={ms(20)} color="#fff" strokeWidth={1.5} />
+          <Trash2 size={ms(20)} color="#fff" strokeWidth={2} />
         </View>
         <View style={styles.swipeAction}>
-          <Trash2 size={ms(20)} color="#fff" strokeWidth={1.5} />
+          <Trash2 size={ms(20)} color="#fff" strokeWidth={2} />
         </View>
       </Animated.View>
       <Animated.View
         style={{ transform: [{ translateX }], opacity }}
+        accessible
+        accessibilityActions={[{ name: 'dismiss', label: dismissLabel }]}
+        onAccessibilityAction={(event) => {
+          if (event.nativeEvent.actionName === 'dismiss') onDismissRef.current();
+        }}
+        accessibilityHint={dismissLabel}
         {...panResponder.panHandlers}
       >
         {children}
@@ -296,7 +303,7 @@ export default function NotificationsScreen() {
             accessibilityRole="button"
             accessibilityLabel={t('notifications.readAll', { count: unreadCount })}
           >
-            <CheckCheck size={ms(14)} color={palette.violet} strokeWidth={1.5} />
+            <CheckCheck size={ms(14)} color={palette.violet} strokeWidth={2} />
             <Text style={[styles.actionBtnText, { color: palette.violet }]}>
               {t('notifications.readAll', { count: unreadCount })}
             </Text>
@@ -309,7 +316,7 @@ export default function NotificationsScreen() {
           accessibilityRole="button"
           accessibilityLabel={t('notifications.deleteAll')}
         >
-          <Trash2 size={ms(14)} color="#EF4444" strokeWidth={1.5} />
+          <Trash2 size={ms(14)} color="#EF4444" strokeWidth={2} />
           <Text style={[styles.actionBtnText, { color: '#EF4444' }]}>{t('notifications.deleteAll')}</Text>
         </TouchableOpacity>
       </View>
@@ -333,7 +340,7 @@ export default function NotificationsScreen() {
 
     return (
       <FadeInView key={notif.id} delay={animDelay}>
-        <SwipeableNotifCard onDismiss={() => handleDismiss(notif.id)}>
+        <SwipeableNotifCard onDismiss={() => handleDismiss(notif.id)} dismissLabel={t('notifications.swipeToDismiss')}>
           <TouchableOpacity
             activeOpacity={0.75}
             onPress={() => handleTapNotification(notif)}
@@ -435,7 +442,7 @@ export default function NotificationsScreen() {
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             style={{ padding: ms(4) }}
           >
-            <X size={ms(20)} color={theme.textMuted} strokeWidth={1.5} />
+            <X size={ms(20)} color={theme.textMuted} strokeWidth={2} />
           </TouchableOpacity>
         </View>
 
@@ -499,7 +506,7 @@ export default function NotificationsScreen() {
                   <View style={[styles.pushBanner, { backgroundColor: `${palette.gold}12`, borderColor: `${palette.gold}35` }]}>
                     <View style={styles.pushBannerTop}>
                       <View style={[styles.pushBannerIcon, { backgroundColor: `${palette.gold}20` }]}>
-                        <BellRing size={ms(20)} color={palette.gold} strokeWidth={1.5} />
+                        <BellRing size={ms(20)} color={palette.gold} strokeWidth={2} />
                       </View>
                       <View style={{ flex: 1 }}>
                         <Text style={[styles.pushBannerTitle, { color: theme.text }]}>
@@ -514,7 +521,7 @@ export default function NotificationsScreen() {
                         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                         style={{ padding: ms(4) }}
                       >
-                        <X size={ms(16)} color={theme.textMuted} strokeWidth={1.5} />
+                        <X size={ms(16)} color={theme.textMuted} strokeWidth={2} />
                       </TouchableOpacity>
                     </View>
                     <TouchableOpacity
@@ -522,7 +529,7 @@ export default function NotificationsScreen() {
                       activeOpacity={0.7}
                       style={[styles.pushBannerBtn, { backgroundColor: `${palette.gold}22` }]}
                     >
-                      <Settings size={ms(14)} color={palette.gold} strokeWidth={1.5} />
+                      <Settings size={ms(14)} color={palette.gold} strokeWidth={2} />
                       <Text style={[styles.pushBannerBtnText, { color: palette.gold }]}>{t('notifications.enableButton')}</Text>
                     </TouchableOpacity>
                   </View>
@@ -544,7 +551,7 @@ export default function NotificationsScreen() {
               <FadeInView delay={200}>
                 <View style={styles.emptyState}>
                   <View style={[styles.emptyIcon, { backgroundColor: theme.primaryBg }]}>
-                    <BellOff size={ms(36)} color={theme.textMuted} strokeWidth={1.5} />
+                    <BellOff size={ms(36)} color={theme.textMuted} strokeWidth={2} />
                   </View>
                   <Text style={[styles.emptyTitle, { color: theme.text }]}>{t('notifications.noNotifications')}</Text>
                   <Text style={[styles.emptyText, { color: theme.textMuted }]}>

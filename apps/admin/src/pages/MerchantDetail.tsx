@@ -178,6 +178,7 @@ export default function MerchantDetailPage() {
           ['Catégorie', merchant.categorie],
           ['Ville', merchant.ville ?? '—'],
           ['Téléphone', merchant.phoneNumber ?? '—'],
+          ['Site web', (merchant.socialLinks as any)?.website ?? '—'],
           ['Inscrit le', fmtDateTime(merchant.createdAt)],
           ['Clients', merchant.clientCount],
           ['Boutiques', merchant.storeCount],

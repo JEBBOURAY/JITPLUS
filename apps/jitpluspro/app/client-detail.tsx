@@ -31,6 +31,7 @@ import {
 import { getTransactionConfig } from '@/constants/transactions';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
+import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { useTheme, brandGradient } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import StampGrid from '@/components/StampGrid';
@@ -117,11 +118,14 @@ const TransactionItem = React.memo(function TransactionItem({
 import type { ClientDetailTransaction } from '@/types';
 
 export default function ClientDetailScreen() {
+  const shouldWait = useRequireAuth();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { merchant } = useAuth();
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+
+  if (shouldWait) return null;
   const [adjustModalVisible, setAdjustModalVisible] = useState(false);
   const [adjustMode, setAdjustMode] = useState<'add' | 'remove'>('add');
   const [adjustPoints, setAdjustPoints] = useState('');
@@ -507,9 +511,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 12,
   },
-  avatarLargeText: { fontSize: 34, fontWeight: '700', color: '#fff' },
-  clientName: { fontSize: 24, fontWeight: '700', color: '#fff' },
-  memberSince: { fontSize: 13, color: 'rgba(255,255,255,.65)', marginTop: 4 },
+  avatarLargeText: { fontSize: 34, fontWeight: '700', color: '#fff', fontFamily: 'Lexend_700Bold' },
+  clientName: { fontSize: 24, fontWeight: '700', color: '#fff', fontFamily: 'Lexend_700Bold' },
+  memberSince: { fontSize: 13, color: 'rgba(255,255,255,.65)', marginTop: 4, fontFamily: 'Lexend_400Regular' },
   pointsHero: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -520,25 +524,18 @@ const styles = StyleSheet.create({
     marginTop: 16,
     gap: 6,
   },
-  pointsHeroValue: { fontSize: 22, fontWeight: '700', color: '#fff' },
-  pointsHeroLabel: { fontSize: 14, fontWeight: '600', color: 'rgba(255,255,255,.75)' },
+  pointsHeroValue: { fontSize: 22, fontWeight: '700', color: '#fff', fontFamily: 'Lexend_700Bold' },
+  pointsHeroLabel: { fontSize: 14, fontWeight: '600', color: 'rgba(255,255,255,.75)', fontFamily: 'Lexend_600SemiBold' },
 
   // ── Body ──
   body: { flex: 1, paddingHorizontal: 16, paddingTop: 20 },
 
   // ── Card ──
   card: {
-    backgroundColor: '#fff',
     borderRadius: 18,
     padding: 18,
     marginBottom: 14,
-    elevation: 2,
-    shadowColor: '#1F2937',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
     borderWidth: 1,
-    borderColor: '#f8f9fb',
   },
   cardHeader: {
     flexDirection: 'row',
@@ -546,7 +543,7 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 16,
   },
-  cardTitle: { fontSize: 16, fontWeight: '700', flex: 1 },
+  cardTitle: { fontSize: 16, fontWeight: '700', flex: 1, fontFamily: 'Lexend_700Bold' },
   cardCount: {
     fontSize: 13,
     fontWeight: '700',
@@ -554,6 +551,7 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     borderRadius: 10,
     overflow: 'hidden',
+    fontFamily: 'Lexend_700Bold',
   },
 
   // ── Progress ──
@@ -572,8 +570,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 10,
   },
-  progressText: { fontSize: 13, fontWeight: '600' },
-  progressRemaining: { fontSize: 12 },
+  progressText: { fontSize: 13, fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
+  progressRemaining: { fontSize: 12, fontFamily: 'Lexend_400Regular' },
   progressBadge: {
     fontSize: 12,
     fontWeight: '700',
@@ -581,6 +579,7 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderRadius: 10,
     overflow: 'hidden',
+    fontFamily: 'Lexend_700Bold',
   },
 
   // ── Contact ──
@@ -591,7 +590,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderBottomWidth: 1,
   },
-  contactText: { fontSize: 14, flex: 1 },
+  contactText: { fontSize: 14, flex: 1, fontFamily: 'Lexend_400Regular' },
 
   // ── Status Badge ──
   statusBadgeContainer: {
@@ -609,10 +608,11 @@ const styles = StyleSheet.create({
   statusBadgeText: {
     fontSize: 13,
     fontWeight: '600',
+    fontFamily: 'Lexend_600SemiBold',
   },
 
   // ── Transactions ──
-  noTx: { fontSize: 14, textAlign: 'center', paddingVertical: 20 },
+  noTx: { fontSize: 14, textAlign: 'center', paddingVertical: 20, fontFamily: 'Lexend_400Regular' },
   txRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -628,18 +628,18 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   txInfo: { flex: 1 },
-  txType: { fontSize: 14, fontWeight: '600' },
-  txRewardName: { fontSize: 12, fontWeight: '600', marginTop: 1 },
+  txType: { fontSize: 14, fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
+  txRewardName: { fontSize: 12, fontWeight: '600', marginTop: 1, fontFamily: 'Lexend_600SemiBold' },
   txRewardRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   txGiftBadge: { paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4 },
-  txGiftBadgeText: { fontSize: 9, fontWeight: '700' },
-  txDate: { fontSize: 12, marginTop: 2 },
-  txCancelLabel: { fontSize: 11, fontWeight: '600', marginTop: 1 },
+  txGiftBadgeText: { fontSize: 9, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
+  txDate: { fontSize: 12, marginTop: 2, fontFamily: 'Lexend_400Regular' },
+  txCancelLabel: { fontSize: 11, fontWeight: '600', marginTop: 1, fontFamily: 'Lexend_600SemiBold' },
   cancelled: { textDecorationLine: 'line-through', opacity: 0.5 },
   txRight: { alignItems: 'flex-end' },
-  txAmount: { fontSize: 13, fontWeight: '600' },
-  txPoints: { fontSize: 14, fontWeight: '700', marginTop: 2 },
-  txNote: { fontSize: 12, marginTop: 2, fontStyle: 'italic' },
+  txAmount: { fontSize: 13, fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
+  txPoints: { fontSize: 14, fontWeight: '700', marginTop: 2, fontFamily: 'Lexend_700Bold' },
+  txNote: { fontSize: 12, marginTop: 2, fontStyle: 'italic', fontFamily: 'Lexend_400Regular' },
 
   // ── Adjust Buttons ──
   adjustButtons: {
@@ -659,7 +659,7 @@ const styles = StyleSheet.create({
   },
   adjustBtnAdd: { backgroundColor: 'rgba(255,255,255,0.25)' },
   adjustBtnRemove: { backgroundColor: 'rgba(255,255,255,0.15)' },
-  adjustBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  adjustBtnText: { color: '#fff', fontSize: 14, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
 
   // ── Modal ──
   modalOverlay: {
@@ -679,14 +679,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 20,
   },
-  modalTitle: { fontSize: 20, fontWeight: '700' },
-  modalLabel: { fontSize: 14, fontWeight: '600', marginBottom: 6, marginTop: 12 },
+  modalTitle: { fontSize: 20, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
+  modalLabel: { fontSize: 14, fontWeight: '600', marginBottom: 6, marginTop: 12, fontFamily: 'Lexend_600SemiBold' },
   modalInput: {
     fontSize: 16,
     paddingHorizontal: 14,
     paddingVertical: 12,
     borderRadius: 12,
     borderWidth: 1,
+    fontFamily: 'Lexend_500Medium',
   },
   modalInputMultiline: {
     minHeight: 80,
@@ -699,5 +700,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  modalConfirmText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  modalConfirmText: { color: '#fff', fontSize: 16, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
 });

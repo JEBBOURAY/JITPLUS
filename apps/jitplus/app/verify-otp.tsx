@@ -15,6 +15,7 @@ import {
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 import { router, useLocalSearchParams } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import { ArrowLeft } from 'lucide-react-native';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import BrandText from '@/components/BrandText';
@@ -25,6 +26,12 @@ import { wp, hp, ms, fontSize, radius, SCREEN } from '@/utils/responsive';
 import FormError from '@/components/FormError';
 
 const OTP_LENGTH = 6;
+const MAX_ATTEMPTS = 5;
+const COOLDOWN_MS = 5_000; // 5 seconds between attempts
+const LOCKOUT_MS = 2 * 60 * 1_000; // 2-minute lockout after max attempts
+
+const SS_LOCKOUT_UNTIL = 'otp_lockout_until';
+const SS_ATTEMPT_COUNT = 'otp_attempt_count';
 
 export default function VerifyOtpScreen() {
   const theme = useTheme();
@@ -44,9 +51,6 @@ export default function VerifyOtpScreen() {
   const attemptCountRef = useRef(0);
   const lastAttemptRef = useRef(0);
   const lockoutUntilRef = useRef(0);
-  const MAX_ATTEMPTS = 5;
-  const COOLDOWN_MS = 5000; // 5 seconds between attempts
-  const LOCKOUT_MS = 2 * 60 * 1000; // 2-minute lockout after max attempts
 
   // Animations
   const headerAnim = useRef(new Animated.Value(0)).current;
@@ -60,6 +64,18 @@ export default function VerifyOtpScreen() {
     anim.start();
     return () => anim.stop();
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Restore persisted lockout state (survives app restart)
+  useEffect(() => {
+    (async () => {
+      const [lockStr, attStr] = await Promise.all([
+        SecureStore.getItemAsync(SS_LOCKOUT_UNTIL),
+        SecureStore.getItemAsync(SS_ATTEMPT_COUNT),
+      ]);
+      if (lockStr) lockoutUntilRef.current = Number(lockStr);
+      if (attStr) attemptCountRef.current = Number(attStr);
+    })();
   }, []);
 
   useEffect(() => {
@@ -88,12 +104,15 @@ export default function VerifyOtpScreen() {
     if (attemptCountRef.current >= MAX_ATTEMPTS) {
       lockoutUntilRef.current = now + LOCKOUT_MS;
       attemptCountRef.current = 0; // reset counter for after lockout
+      SecureStore.setItemAsync(SS_LOCKOUT_UNTIL, String(lockoutUntilRef.current));
+      SecureStore.setItemAsync(SS_ATTEMPT_COUNT, '0');
       setError(t('verifyOtp.tooManyAttempts'));
       setCode('');
       return;
     }
     attemptCountRef.current += 1;
     lastAttemptRef.current = now;
+    SecureStore.setItemAsync(SS_ATTEMPT_COUNT, String(attemptCountRef.current));
 
     verifyingRef.current = true;
     setIsLoading(true);
@@ -106,6 +125,9 @@ export default function VerifyOtpScreen() {
     verifyingRef.current = false;
 
     if (result.success) {
+      // Clear persisted lockout state on success
+      SecureStore.deleteItemAsync(SS_LOCKOUT_UNTIL);
+      SecureStore.deleteItemAsync(SS_ATTEMPT_COUNT);
       if (isForgotPasswordFlow) {
         // Forgot password: user is now authenticated via OTP, go to set new password
         router.replace('/set-password');

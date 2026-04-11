@@ -25,7 +25,7 @@ export default function LegalScreen() {
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 12, backgroundColor: theme.bgCard, borderBottomColor: theme.border }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.7}>
-          <ArrowLeft size={ms(22)} color={theme.text} strokeWidth={1.5} />
+          <ArrowLeft size={ms(22)} color={theme.text} strokeWidth={2} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: theme.text }]}>{t('legal.headerTitle')}</Text>
         <View style={styles.backBtn} />

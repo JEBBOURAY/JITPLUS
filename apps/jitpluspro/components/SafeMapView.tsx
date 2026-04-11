@@ -145,31 +145,11 @@ const SafeMapView = forwardRef<SafeMapViewRef, SafeMapViewProps>((props, ref) =>
   const { children, initialRegion, region, style, onPress, onLongPress, onMapReady: onMapReadyProp, onMapLoaded: onMapLoadedProp, ...rest } = props;
   const nativeMapRef = useRef<{ animateToRegion?: (...args: unknown[]) => void; animateCamera?: (...args: unknown[]) => void; fitToCoordinates?: (...args: unknown[]) => void } | null>(null);
   const [, setMapReady] = useState(false);
-  const [mapLoaded, setMapLoaded] = useState(false);
-  const [renderTimedOut, setRenderTimedOut] = useState(false);
   const configuredRenderer = (process.env.EXPO_PUBLIC_GOOGLE_MAPS_RENDERER ?? '').toUpperCase();
   const androidRendererProp =
     Platform.OS === 'android' && (configuredRenderer === 'LEGACY' || configuredRenderer === 'LATEST')
       ? { googleRenderer: configuredRenderer as 'LEGACY' | 'LATEST' }
       : {};
-
-  const mountedRef = useRef(true);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => { mountedRef.current = false; };
-  }, []);
-
-  useEffect(() => {
-    if (!RNMapView || mapLoaded) return;
-    const t = setTimeout(() => {
-      if (mountedRef.current) {
-        if (__DEV__) logWarn('SafeMapView', 'map render timed out after 9s — switching to fallback');
-        // setRenderTimedOut(true); // DISABLED: Some production networks or devices take longer than 9s.
-      }
-    }, 9000);
-    return () => clearTimeout(t);
-  }, [mapLoaded]);
 
   /* Expose map methods: forward to native ref when available, no-op otherwise */
   useImperativeHandle(ref, () => ({
@@ -195,7 +175,7 @@ const SafeMapView = forwardRef<SafeMapViewRef, SafeMapViewProps>((props, ref) =>
   // which is often empty at runtime in production builds, causing maps to fail.
   const providerProp = Platform.OS === 'android' ? { provider: RN_PROVIDER_GOOGLE } : {};
 
-  if (RNMapView && !renderTimedOut) {
+  if (RNMapView) {
     return (
       <RNMapView
         ref={nativeMapRef}
@@ -223,8 +203,6 @@ const SafeMapView = forwardRef<SafeMapViewRef, SafeMapViewProps>((props, ref) =>
           onMapReadyProp?.();
         }}
         onMapLoaded={() => {
-          setMapLoaded(true);
-          setRenderTimedOut(false);
           onMapLoadedProp?.();
         }}
       >
@@ -268,6 +246,7 @@ const styles = StyleSheet.create({
     color: palette.gray500,
     marginTop: 8,
     textAlign: 'center',
+    fontFamily: 'Lexend_600SemiBold',
   },
   fallbackText: {
     fontSize: 12,
@@ -275,6 +254,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 4,
     lineHeight: 18,
+    fontFamily: 'Lexend_400Regular',
   },
   markerList: {
     marginTop: 12,
@@ -295,5 +275,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#fff',
     fontWeight: '600',
+    fontFamily: 'Lexend_600SemiBold',
   },
 });

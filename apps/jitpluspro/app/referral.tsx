@@ -9,6 +9,7 @@ import {
   Share,
   Alert,
   Pressable,
+  Platform,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -30,7 +31,9 @@ import {
   Infinity,
   Clock,
 } from 'lucide-react-native';
-import { useTheme } from '@/contexts/ThemeContext';
+import { useTheme, brandGradient } from '@/contexts/ThemeContext';
+import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import { useLanguage } from '@/contexts/LanguageContext';
 import api from '@/services/api';
 import { formatDate } from '@/utils/date';
@@ -117,21 +120,32 @@ export default function ReferralScreen() {
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
       {/* ── Header ───────────────────────────────────────── */}
-      <View
-        style={[
-          styles.header,
-          {
-            paddingTop: insets.top + 8,
-            backgroundColor: theme.bgCard,
-            borderBottomColor: theme.borderLight,
-          },
-        ]}
-      >
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.7}>
-          <ArrowLeft size={22} color={theme.text} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.text }]}>{t('referral.title')}</Text>
-        <View style={{ width: 40 }} />
+      <View collapsable={false}>
+        <LinearGradient
+          colors={[...brandGradient]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.headerGradient}
+        >
+          <BlurView
+            intensity={Platform.OS === 'ios' ? 40 : 20}
+            tint={theme.mode === 'dark' ? 'dark' : 'default'}
+            style={[styles.headerBlur, { paddingTop: insets.top + 16 }]}
+          >
+            <View style={styles.glassOverlay} />
+            <View style={styles.header}>
+              <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.7}>
+                <ArrowLeft size={22} color="#fff" />
+              </TouchableOpacity>
+              <Text style={styles.headerTitle}>{t('referral.title')}</Text>
+              <View style={{ width: 40 }} />
+            </View>
+          </BlurView>
+        </LinearGradient>
+        <LinearGradient
+          colors={['rgba(124,58,237,0.3)', 'transparent']}
+          style={styles.headerFade}
+        />
       </View>
 
       {loading ? (
@@ -179,7 +193,7 @@ export default function ReferralScreen() {
                 onPress={handleCopy}
               >
                 {copied ? (
-                  <Check size={18} color={theme.success} strokeWidth={1.5} />
+                  <Check size={18} color={theme.success} strokeWidth={2} />
                 ) : (
                   <Copy size={18} color={theme.primary} />
                 )}
@@ -258,7 +272,7 @@ export default function ReferralScreen() {
                         <View style={[styles.statusBadge, { backgroundColor: m.validated ? theme.success + '18' : theme.warning + '18' }]}>
                           {m.validated
                             ? <Check size={10} color={theme.success} strokeWidth={3} />
-                            : <Clock size={10} color={theme.warning} strokeWidth={2.5} />}
+                            : <Clock size={10} color={theme.warning} strokeWidth={2} />}
                           <Text style={[styles.statusText, { color: m.validated ? theme.success : theme.warning }]}>
                             {m.validated ? t('referral.statusValidated') : t('referral.statusPending')}
                           </Text>
@@ -333,13 +347,19 @@ export default function ReferralScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
 
+  // Header — glassmorphism
+  headerGradient: { overflow: 'hidden' },
+  headerBlur: { overflow: 'hidden' },
+  glassOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
+    paddingHorizontal: 24,
+    paddingBottom: 20,
   },
   backBtn: {
     width: 40,
@@ -349,9 +369,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '700',
+    color: '#FFFFFF',
+    fontFamily: 'Lexend_700Bold',
+    letterSpacing: -0.3,
   },
+  headerFade: { height: 4 },
 
   center: {
     flex: 1,
@@ -360,10 +384,10 @@ const styles = StyleSheet.create({
     gap: 12,
     padding: 24,
   },
-  loadingText: { fontSize: 14, marginTop: 8 },
-  errorText: { fontSize: 15, textAlign: 'center' },
+  loadingText: { fontSize: 14, marginTop: 8, fontFamily: 'Lexend_400Regular' },
+  errorText: { fontSize: 15, textAlign: 'center', fontFamily: 'Lexend_400Regular' },
   retryBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10, marginTop: 4 },
-  retryBtnText: { fontWeight: '600', fontSize: 14 },
+  retryBtnText: { fontWeight: '600', fontSize: 14, fontFamily: 'Lexend_600SemiBold' },
 
   scroll: { paddingHorizontal: 20, paddingTop: 20, gap: 16 },
 
@@ -372,6 +396,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     textAlign: 'center',
     marginBottom: 4,
+    fontFamily: 'Lexend_400Regular',
   },
 
   // Code card
@@ -390,12 +415,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 4,
   },
-  codeLabel: { fontSize: 13, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8 },
+  codeLabel: { fontSize: 13, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8, fontFamily: 'Lexend_600SemiBold' },
   codeValue: {
     fontSize: 34,
     fontWeight: '700',
     letterSpacing: 4,
     marginVertical: 4,
+    fontFamily: 'Lexend_700Bold',
   },
   codeActions: {
     flexDirection: 'row',
@@ -412,7 +438,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 10,
   },
-  codeActionText: { fontSize: 14, fontWeight: '600' },
+  codeActionText: { fontSize: 14, fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
 
   // Stats banner
   statsBanner: {
@@ -423,7 +449,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
   },
-  statsBannerText: { fontSize: 15, fontWeight: '700' },
+  statsBannerText: { fontSize: 15, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
 
   // How it works
   howItWorksCard: {
@@ -435,6 +461,7 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '700',
     marginBottom: 18,
+    fontFamily: 'Lexend_700Bold',
   },
   stepRow: {
     flexDirection: 'row',
@@ -466,15 +493,18 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.8,
     marginBottom: 2,
+    fontFamily: 'Lexend_700Bold',
   },
   stepTitle: {
     fontSize: 15,
     fontWeight: '700',
     marginBottom: 4,
+    fontFamily: 'Lexend_700Bold',
   },
   stepDesc: {
     fontSize: 13,
     lineHeight: 19,
+    fontFamily: 'Lexend_400Regular',
   },
 
   // Reward card
@@ -497,16 +527,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  rewardTitle: { fontSize: 15, fontWeight: '700' },
-  rewardDesc: { fontSize: 14, lineHeight: 21 },
-  rewardHint: { fontSize: 12, lineHeight: 18, fontStyle: 'italic' },
+  rewardTitle: { fontSize: 15, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
+  rewardDesc: { fontSize: 14, lineHeight: 21, fontFamily: 'Lexend_400Regular' },
+  rewardHint: { fontSize: 12, lineHeight: 18, fontStyle: 'italic', fontFamily: 'Lexend_400Regular' },
   applyBtn: {
     borderRadius: 10,
     paddingVertical: 12,
     alignItems: 'center',
     marginTop: 4,
   },
-  applyBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  applyBtnText: { color: '#fff', fontWeight: '700', fontSize: 14, fontFamily: 'Lexend_700Bold' },
 
   // Empty
   emptyCard: {
@@ -516,8 +546,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  emptyTitle: { fontSize: 16, fontWeight: '700' },
-  emptyHint: { fontSize: 14, textAlign: 'center', lineHeight: 20 },
+  emptyTitle: { fontSize: 16, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
+  emptyHint: { fontSize: 14, textAlign: 'center', lineHeight: 20, fontFamily: 'Lexend_400Regular' },
 
   // List
   listCard: {
@@ -540,10 +570,10 @@ const styles = StyleSheet.create({
   },
   merchantInfo: { flex: 1 },
   merchantNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 },
-  merchantName: { fontSize: 15, fontWeight: '600', flexShrink: 1 },
+  merchantName: { fontSize: 15, fontWeight: '600', flexShrink: 1, fontFamily: 'Lexend_600SemiBold' },
   statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 },
-  statusText: { fontSize: 10, fontWeight: '700' },
+  statusText: { fontSize: 10, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
   merchantMeta: { flexDirection: 'row', alignItems: 'center', gap: 3, flexWrap: 'wrap' },
-  merchantMetaText: { fontSize: 12 },
+  merchantMetaText: { fontSize: 12, fontFamily: 'Lexend_400Regular' },
   divider: { height: 1, marginHorizontal: 14 },
 });

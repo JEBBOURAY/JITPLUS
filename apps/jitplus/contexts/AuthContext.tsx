@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '@/services/api';
 import { Client } from '@/types';
-import { extractErrorMessage } from '@/utils/errorMessage';
+import { extractErrorMessage, isNetworkError as checkNetworkError } from '@/utils/errorMessage';
 import { logInfo, logWarn, logError } from '@/utils/devLogger';
 import { isNativePushRuntimeAvailable, registerForPushNotifications, setupAndroidChannel } from '@/utils/notifications';
 import { useAuthStore } from '@/stores/authStore';
@@ -24,14 +24,15 @@ interface AuthContextType {
   enterGuestMode: () => void;
   sendOtp: (telephone: string, isRegister?: boolean) => Promise<{ success: boolean; error?: string }>;
   verifyOtp: (telephone: string, code: string, isRegister?: boolean) => Promise<{ success: boolean; isNewUser?: boolean; error?: string }>;
-  sendOtpEmail: (email: string, isRegister?: boolean, telephone?: string) => Promise<{ success: boolean; error?: string }>;
+  sendOtpEmail: (email: string, isRegister?: boolean, telephone?: string) => Promise<{ success: boolean; error?: string; isNetworkError?: boolean }>;
   verifyOtpEmail: (email: string, code: string, isRegister?: boolean) => Promise<{ success: boolean; isNewUser?: boolean; error?: string }>;
-  loginWithEmail: (email: string, password: string, rememberMe?: boolean) => Promise<{ success: boolean; error?: string }>;
-  loginWithPhone: (telephone: string, password: string, rememberMe?: boolean) => Promise<{ success: boolean; error?: string }>;
-  setPassword: (password: string) => Promise<{ success: boolean; error?: string }>;
-  googleLogin: (idToken: string) => Promise<{ success: boolean; isNewUser?: boolean; error?: string }>;
+  loginWithEmail: (email: string, password: string, rememberMe?: boolean) => Promise<{ success: boolean; error?: string; isNetworkError?: boolean }>;
+  loginWithPhone: (telephone: string, password: string, rememberMe?: boolean) => Promise<{ success: boolean; error?: string; isNetworkError?: boolean }>;
+  setPassword: (password: string) => Promise<{ success: boolean; error?: string; isNetworkError?: boolean }>;
+  googleLogin: (idToken: string) => Promise<{ success: boolean; isNewUser?: boolean; error?: string; rawError?: unknown }>;
+  appleLogin: (identityToken: string, givenName?: string, familyName?: string) => Promise<{ success: boolean; isNewUser?: boolean; error?: string; rawError?: unknown }>;
 
-  completeProfile: (prenom: string, nom: string, termsAccepted: boolean, telephone?: string, dateNaissance?: string, password?: string) => Promise<{ success: boolean; error?: string }>;
+  completeProfile: (prenom: string, nom: string, termsAccepted: boolean, telephone?: string, dateNaissance?: string, password?: string) => Promise<{ success: boolean; error?: string; isNetworkError?: boolean }>;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -168,7 +169,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await api.sendOtp(telephone, isRegister);
       return { success: true };
     } catch (error: unknown) {
-      return { success: false, error: extractErrorMessage(error) };
+      return { success: false, error: extractErrorMessage(error), isNetworkError: checkNetworkError(error) };
     }
   }, []);
 
@@ -184,7 +185,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       return { success: true, isNewUser: response.isNewUser };
     } catch (error: unknown) {
-      return { success: false, error: extractErrorMessage(error) };
+      return { success: false, error: extractErrorMessage(error), isNetworkError: checkNetworkError(error) };
     }
   }, []);
 
@@ -195,7 +196,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await api.sendOtpEmail(email, isRegister, telephone);
       return { success: true };
     } catch (error: unknown) {
-      return { success: false, error: extractErrorMessage(error) };
+      return { success: false, error: extractErrorMessage(error), isNetworkError: checkNetworkError(error) };
     }
   }, []);
 
@@ -211,7 +212,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       return { success: true, isNewUser: response.isNewUser };
     } catch (error: unknown) {
-      return { success: false, error: extractErrorMessage(error) };
+      return { success: false, error: extractErrorMessage(error), isNetworkError: checkNetworkError(error) };
     }
   }, []);
 
@@ -226,7 +227,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       logInfo('Auth', 'Google login réussi:', response.client?.prenom, '| nouveau:', response.isNewUser);
       return { success: true, isNewUser: response.isNewUser };
     } catch (error: unknown) {
-      return { success: false, error: extractErrorMessage(error) };
+      return { success: false, error: extractErrorMessage(error), isNetworkError: checkNetworkError(error), rawError: error };
+    }
+  }, []);
+
+  const appleLogin = useCallback(async (identityToken: string, givenName?: string, familyName?: string) => {
+    sessionVersionRef.current++;
+    try {
+      await api.setRememberMe(true);
+      const response = await api.appleLogin(identityToken, givenName, familyName);
+      store.setClient(response.client);
+      logInfo('Auth', 'Apple login réussi:', response.client?.prenom, '| nouveau:', response.isNewUser);
+      return { success: true, isNewUser: response.isNewUser };
+    } catch (error: unknown) {
+      return { success: false, error: extractErrorMessage(error), isNetworkError: checkNetworkError(error), rawError: error };
     }
   }, []);
 
@@ -239,7 +253,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       logInfo('Auth', 'Connexion email réussie:', response.client?.prenom);
       return { success: true };
     } catch (error: unknown) {
-      return { success: false, error: extractErrorMessage(error) };
+      return { success: false, error: extractErrorMessage(error), isNetworkError: checkNetworkError(error) };
     }
   }, []);
 
@@ -252,7 +266,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       logInfo('Auth', 'Connexion téléphone réussie:', response.client?.prenom);
       return { success: true };
     } catch (error: unknown) {
-      return { success: false, error: extractErrorMessage(error) };
+      return { success: false, error: extractErrorMessage(error), isNetworkError: checkNetworkError(error) };
     }
   }, []);
 
@@ -265,7 +279,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       store.setNeedsPasswordSetup(false);
       return { success: true };
     } catch (error: unknown) {
-      return { success: false, error: extractErrorMessage(error) };
+      return { success: false, error: extractErrorMessage(error), isNetworkError: checkNetworkError(error) };
     }
   }, []);
 
@@ -280,7 +294,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       return { success: true };
     } catch (error: unknown) {
-      return { success: false, error: extractErrorMessage(error) };
+      return { success: false, error: extractErrorMessage(error), isNetworkError: checkNetworkError(error) };
     }
   }, []);
 
@@ -351,10 +365,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     loginWithPhone,
     setPassword: setPasswordFn,
     googleLogin,
+    appleLogin,
     completeProfile,
     logout,
     refreshProfile,
-  }), [store.client, store.loading, store.needsPasswordSetup, store.isGuest, enterGuestMode, sendOtp, verifyOtp, sendOtpEmail, verifyOtpEmail, loginWithEmail, loginWithPhone, setPasswordFn, googleLogin, completeProfile, logout, refreshProfile]);
+  }), [store.client, store.loading, store.needsPasswordSetup, store.isGuest, enterGuestMode, sendOtp, verifyOtp, sendOtpEmail, verifyOtpEmail, loginWithEmail, loginWithPhone, setPasswordFn, googleLogin, appleLogin, completeProfile, logout, refreshProfile]);
 
   return (
     <AuthContext.Provider value={value}>

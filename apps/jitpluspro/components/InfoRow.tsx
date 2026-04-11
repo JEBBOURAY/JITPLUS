@@ -74,6 +74,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   content: { flex: 1 },
-  label: { fontSize: FS.xs, marginBottom: hp(2) },
-  value: { fontSize: FS.md, fontWeight: '500' },
+  label: { fontSize: FS.xs, marginBottom: hp(2), fontFamily: 'Lexend_400Regular' },
+  value: { fontSize: FS.md, fontWeight: '500', fontFamily: 'Lexend_500Medium' },
 });

@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -295,7 +295,7 @@ export default function OnboardingScreen() {
         >
           {stepIndex > 0 ? (
             <TouchableOpacity style={[styles.backBtn, { borderColor: theme.border }]} onPress={goBack}>
-              <ChevronLeft color={theme.textSecondary} size={20} strokeWidth={1.5} />
+              <ChevronLeft color={theme.textSecondary} size={20} strokeWidth={2} />
               <Text style={[styles.backBtnText, { color: theme.textSecondary }]}>
                 {t('onboarding.back')}
               </Text>
@@ -308,7 +308,7 @@ export default function OnboardingScreen() {
             <TouchableOpacity style={styles.nextBtn} onPress={goNext} activeOpacity={0.85}>
               <LinearGradient colors={brandGradient} style={styles.nextBtnGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
                 <Text style={styles.nextBtnText}>{t('onboarding.welcomeBtn')}</Text>
-                <ChevronRight color={palette.white} size={20} strokeWidth={1.5} />
+                <ChevronRight color={palette.white} size={20} strokeWidth={2} />
               </LinearGradient>
             </TouchableOpacity>
           )}
@@ -317,7 +317,7 @@ export default function OnboardingScreen() {
             <TouchableOpacity style={styles.nextBtn} onPress={goNext} activeOpacity={0.85}>
               <LinearGradient colors={brandGradient} style={styles.nextBtnGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
                 <Text style={styles.nextBtnText}>{t('onboarding.next')}</Text>
-                <ChevronRight color={palette.white} size={20} strokeWidth={1.5} />
+                <ChevronRight color={palette.white} size={20} strokeWidth={2} />
               </LinearGradient>
             </TouchableOpacity>
           )}
@@ -329,7 +329,7 @@ export default function OnboardingScreen() {
                 style={styles.nextBtnGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
               >
                 <Text style={styles.nextBtnText}>{t('onboarding.next')}</Text>
-                <ChevronRight color={palette.white} size={20} strokeWidth={1.5} />
+                <ChevronRight color={palette.white} size={20} strokeWidth={2} />
               </LinearGradient>
             </TouchableOpacity>
           )}
@@ -341,7 +341,7 @@ export default function OnboardingScreen() {
                 style={styles.nextBtnGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
               >
                 <Text style={styles.nextBtnText}>{t('onboarding.scanLaterBtn')}</Text>
-                <ChevronRight color={palette.white} size={20} strokeWidth={1.5} />
+                <ChevronRight color={palette.white} size={20} strokeWidth={2} />
               </LinearGradient>
             </TouchableOpacity>
           )}

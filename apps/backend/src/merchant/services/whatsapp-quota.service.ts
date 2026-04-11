@@ -20,7 +20,14 @@ export class WhatsappQuotaService {
     return this.txRunner.run(async (tx) => {
       let merchant = await tx.merchant.findUniqueOrThrow({
         where: { id: merchantId },
-      });
+        select: {
+          id: true,
+          whatsappQuotaUsed: true,
+          whatsappQuotaMax: true,
+          whatsappQuotaResetAt: true,
+          nom: true,
+        },
+      }) as Merchant;
 
       const now = new Date();
       if (now > merchant.whatsappQuotaResetAt) {

@@ -6,7 +6,7 @@ import {
   UnauthorizedException,
   Inject,
 } from '@nestjs/common';
-import { MerchantPlan } from '@prisma/client';
+import { MerchantPlan, Prisma } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
@@ -116,6 +116,12 @@ export class MerchantProfileService {
       if (!isValid) throw new UnauthorizedException('Mot de passe actuel incorrect');
     }
 
+    // Prevent reusing the same password
+    if (merchant.password) {
+      const isSame = await bcrypt.compare(dto.newPassword, merchant.password);
+      if (isSame) throw new BadRequestException('Le nouveau mot de passe doit être différent de l\'ancien');
+    }
+
     const hashedPassword = await bcrypt.hash(dto.newPassword, BCRYPT_SALT_ROUNDS);
     await this.merchantRepo.update({
       where: { id: merchantId },
@@ -173,20 +179,19 @@ export class MerchantProfileService {
     merchantId: string,
     deviceInfo: { deviceName: string; deviceOS?: string; ipAddress?: string },
   ) {
-    return this.txRunner.run(async (tx) => {
-      // 1. Find existing session first
-      const existing = await tx.deviceSession.findFirst({
-        where: { merchantId, deviceName: deviceInfo.deviceName },
-        select: { id: true },
-      });
+    // Read outside transaction to minimise lock duration
+    const existing = await this.deviceSessionRepo.findFirst({
+      where: { merchantId, deviceName: deviceInfo.deviceName },
+      select: { id: true },
+    });
 
-      // 2. Clear all current-device flags AFTER finding
+    return this.txRunner.run(async (tx) => {
+      // Clear all current-device flags (lightweight bulk UPDATE)
       await tx.deviceSession.updateMany({
         where: { merchantId },
         data: { isCurrentDevice: false },
       });
 
-      // 3. Upsert
       if (existing) {
         return tx.deviceSession.update({
           where: { id: existing.id },
@@ -560,16 +565,28 @@ export class MerchantProfileService {
     const now = new Date();
 
     await this.txRunner.run(async (tx) => {
-      // 1. Soft-delete merchant: anonymise PII so email/phone can be reused
+      // 1. Soft-delete merchant: anonymise ALL PII so email/phone/social IDs can be reused
       await tx.merchant.update({
         where: { id: merchantId },
         data: {
           deletedAt: now,
+          nom: `Compte supprimé`,
           email: `deleted_${merchantId}`,
           password: '',
           googleId: null,
+          appleId: null,
           pushToken: null,
           phoneNumber: null,
+          description: null,
+          ville: null,
+          quartier: null,
+          adresse: null,
+          latitude: null,
+          longitude: null,
+          logoUrl: null,
+          coverUrl: null,
+          socialLinks: Prisma.DbNull,
+          referralCode: null,
           isActive: false,
         },
       });

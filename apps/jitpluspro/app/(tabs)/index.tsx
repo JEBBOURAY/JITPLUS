@@ -14,6 +14,7 @@ import { Users, Search, X, UserPlus, ChevronRight } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useFocusFade } from '@/hooks/useFocusFade';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme, brandGradient, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -99,9 +100,9 @@ function EmptyState({ search, theme, onScan }: { search: string; theme: ReturnTy
         <View style={[styles.emptyCircle2, { backgroundColor: theme.mode === 'dark' ? '#1e1b4b' : '#ddd6fe' }]} />
         <View style={[styles.emptyIconCircle, { backgroundColor: theme.primaryBg }]}>
           {search ? (
-            <Search size={40} color={theme.primary} strokeWidth={1.5} />
+            <Search size={40} color={theme.primary} strokeWidth={2} />
           ) : (
-            <Users size={40} color={theme.primary} strokeWidth={1.5} />
+            <Users size={40} color={theme.primary} strokeWidth={2} />
           )}
         </View>
       </View>
@@ -173,19 +174,32 @@ export default function ClientsScreen() {
 
   return (
     <RNAnimated.View style={[styles.container, { backgroundColor: theme.bg }, focusStyle]}>
-      {/* ── Header (single instance to avoid Fabric reparenting crash) ── */}
+      {/* ── Glassmorphism header ── */}
       <View collapsable={false}>
         <LinearGradient
           colors={[...brandGradient]}
           start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={[styles.header, { paddingTop: insets.top + 12 }]}
+          end={{ x: 1, y: 1 }}
+          style={styles.headerGradient}
         >
-          <View>
-            <Text style={styles.headerTitle}>{t('clients.title')}</Text>
-            <Text style={styles.headerSub}>{t('clients.subtitle')}</Text>
-          </View>
+          <BlurView
+            intensity={Platform.OS === 'ios' ? 40 : 20}
+            tint={theme.mode === 'dark' ? 'dark' : 'default'}
+            style={[styles.headerBlur, { paddingTop: insets.top + 16 }]}
+          >
+            <View style={styles.glassOverlay} />
+            <View style={styles.header}>
+              <View>
+                <Text style={styles.headerTitle}>{t('clients.title')}</Text>
+                <Text style={styles.headerSub}>{t('clients.subtitle')}</Text>
+              </View>
+            </View>
+          </BlurView>
         </LinearGradient>
+        <LinearGradient
+          colors={['rgba(124,58,237,0.3)', 'transparent']}
+          style={styles.headerFade}
+        />
       </View>
 
       {showSkeleton ? (
@@ -265,18 +279,41 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
   },
-  pendingBannerText: { fontSize: 13, fontWeight: '600', color: '#7C3AED', fontFamily: 'Inter_600SemiBold' },
+  pendingBannerText: { fontSize: 13, fontWeight: '600', color: '#7C3AED', fontFamily: 'Lexend_600SemiBold' },
 
-  // ── Header ──
+  // ── Header — glassmorphism ──
+  headerGradient: {
+    overflow: 'hidden',
+  },
+  headerBlur: {
+    overflow: 'hidden',
+  },
+  glassOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingBottom: 20,
-    paddingHorizontal: 20,
+    paddingBottom: 24,
+    paddingHorizontal: 24,
   },
-  headerTitle: { fontSize: 24, fontWeight: '700', color: '#fff', fontFamily: 'Lexend_700Bold' },
-  headerSub: { fontSize: 13, color: 'rgba(255,255,255,.7)', marginTop: 4, fontFamily: 'Lexend_500Medium' },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    fontFamily: 'Lexend_700Bold',
+    letterSpacing: -0.5,
+  },
+  headerSub: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.55)',
+    marginTop: 6,
+    fontFamily: 'Lexend_400Regular',
+    letterSpacing: 0.3,
+  },
+  headerFade: { height: 4 },
 
   // ── Search ──
   searchBar: {

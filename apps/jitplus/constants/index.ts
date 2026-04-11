@@ -71,3 +71,21 @@ export const MIN_NAME_LENGTH = 2;
 export const MAX_NAME_LENGTH = 50;
 /** Minimum password length */
 export const MIN_PASSWORD_LENGTH = 8;
+
+// ── Store URLs ──
+/** Android package name on Google Play */
+export const ANDROID_PACKAGE = 'com.jitplus.client';
+/** Apple App Store ID — update once the app is published on iOS */
+export const IOS_APP_ID = process.env.EXPO_PUBLIC_IOS_APP_ID ?? '';
+
+/** Returns the platform-appropriate store URL */
+export function getStoreUrl(): string {
+  const { Platform } = require('react-native');
+  if (Platform.OS === 'ios' && IOS_APP_ID) {
+    return `https://apps.apple.com/app/id${IOS_APP_ID}`;
+  }
+  if (Platform.OS === 'ios') {
+    return `https://apps.apple.com/search?term=jitplus`;
+  }
+  return `https://play.google.com/store/apps/details?id=${ANDROID_PACKAGE}`;
+}

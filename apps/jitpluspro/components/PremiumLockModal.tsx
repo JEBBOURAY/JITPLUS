@@ -155,6 +155,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: palette.violetLight,
     letterSpacing: 1.2,
+    fontFamily: 'Lexend_700Bold',
   },
   title: {
     fontSize: 19,
@@ -162,6 +163,7 @@ const styles = StyleSheet.create({
     color: '#fff',
     textAlign: 'center',
     marginTop: 2,
+    fontFamily: 'Lexend_700Bold',
   },
   desc: {
     fontSize: 14,
@@ -187,6 +189,7 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '700',
+    fontFamily: 'Lexend_700Bold',
   },
   cancelBtn: {
     paddingVertical: 8,
@@ -195,5 +198,6 @@ const styles = StyleSheet.create({
   cancelText: {
     fontSize: 14,
     fontWeight: '500',
+    fontFamily: 'Lexend_500Medium',
   },
 });

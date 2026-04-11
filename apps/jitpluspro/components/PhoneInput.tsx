@@ -261,6 +261,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     marginRight: 6,
+    fontFamily: 'Lexend_600SemiBold',
   },
   divider: {
     width: 1,
@@ -300,10 +301,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
     flex: 1,
+    fontFamily: 'Lexend_500Medium',
   },
   digitCounterText: {
     fontSize: 11,
     fontWeight: '500',
     textAlign: 'right',
+    fontFamily: 'Lexend_500Medium',
   },
 });

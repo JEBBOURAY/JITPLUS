@@ -116,7 +116,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.1)',
   },
-  title: { flex: 1, fontSize: 18, fontWeight: '700', marginLeft: 12, color: '#fff' },
+  title: { flex: 1, fontSize: 18, fontWeight: '700', marginLeft: 12, color: '#fff', fontFamily: 'Lexend_700Bold' },
   iconPad: { padding: 4 },
   spacer: { width: 32 },
   searchRow: {
@@ -144,10 +144,10 @@ const styles = StyleSheet.create({
   },
   rowSelected: { backgroundColor: 'rgba(139,92,246,0.15)' },
   flag: { fontSize: 24, marginRight: 12 },
-  name: { fontSize: 15, fontWeight: '500', color: '#fff' },
-  dial: { fontSize: 14, fontWeight: '600', color: 'rgba(255,255,255,0.5)' },
+  name: { fontSize: 15, fontWeight: '500', color: '#fff', fontFamily: 'Lexend_500Medium' },
+  dial: { fontSize: 14, fontWeight: '600', color: 'rgba(255,255,255,0.5)', fontFamily: 'Lexend_600SemiBold' },
   flex1: { flex: 1 },
   check: { marginLeft: 8 },
   emptyWrap: { padding: 32, alignItems: 'center' },
-  emptyText: { color: 'rgba(255,255,255,0.5)', fontSize: 14 },
+  emptyText: { color: 'rgba(255,255,255,0.5)', fontSize: 14, fontFamily: 'Lexend_400Regular' },
 });

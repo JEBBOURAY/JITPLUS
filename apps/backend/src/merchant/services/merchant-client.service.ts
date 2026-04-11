@@ -39,27 +39,11 @@ export class MerchantClientService {
         }
       : { loyaltyCards: { some: { merchantId, deactivatedAt: null } }, deletedAt: null };
 
+    // 1. Fetch clients + count (no nested includes — avoids N+1 sub-queries)
     const [clients, total] = await Promise.all([
       this.clientRepo.findMany({
         where,
-        select: {
-          ...CLIENT_SCAN_SELECT,
-          loyaltyCards: {
-            where: { merchantId },
-            select: { points: true, createdAt: true },
-          },
-          transactions: {
-            where: { merchantId, status: 'ACTIVE' },
-            select: { createdAt: true },
-            orderBy: { createdAt: 'desc' },
-            take: 1,
-          },
-          _count: {
-            select: {
-              transactions: { where: { merchantId, status: 'ACTIVE' } },
-            },
-          },
-        },
+        select: CLIENT_SCAN_SELECT,
         orderBy: [{ createdAt: 'desc' }],
         skip,
         take: limit,
@@ -67,13 +51,34 @@ export class MerchantClientService {
       this.clientRepo.count({ where }),
     ]);
 
+    if (clients.length === 0) {
+      return { clients: [], pagination: buildPagination(total, page, limit) };
+    }
+
+    const clientIds = clients.map((c: any) => c.id);
+
+    // 2. Batch-fetch loyalty cards + transaction stats for all clients in 2 queries
+    const [loyaltyCards, lastTransactions] = await Promise.all([
+      this.loyaltyCardRepo.findMany({
+        where: { merchantId, clientId: { in: clientIds } },
+        select: { clientId: true, points: true, createdAt: true },
+      }),
+      this.transactionRepo.groupBy({
+        by: ['clientId'],
+        where: { merchantId, clientId: { in: clientIds }, status: 'ACTIVE' },
+        _max: { createdAt: true },
+        _count: true,
+      }),
+    ]);
+
+    // 3. Build maps for O(1) lookups
+    const loyaltyMap = new Map(loyaltyCards.map((card: any) => [card.clientId, card]));
+    const txMap = buildTxMap(lastTransactions);
+
     return {
       clients: clients.map((client: any) => {
-        const loyaltyCard = client.loyaltyCards[0];
-        const lastTx = client.transactions[0];
-        const tx = lastTx
-          ? { lastVisit: lastTx.createdAt, txCount: client._count.transactions }
-          : undefined;
+        const loyaltyCard = loyaltyMap.get(client.id) as { points: number; createdAt: Date } | undefined;
+        const tx = txMap.get(client.id);
         return mapClientResponse(client, loyaltyCard, tx);
       }),
       pagination: buildPagination(total, page, limit),
@@ -216,6 +221,13 @@ export class MerchantClientService {
   }
 
   async getClientDetail(clientId: string, merchantId: string) {
+    // IDOR protection: verify the client has a loyalty card with this merchant
+    const ownershipCheck = await this.loyaltyCardRepo.findUnique({
+      where: { clientId_merchantId: { clientId, merchantId } },
+      select: { id: true },
+    });
+    if (!ownershipCheck) throw new NotFoundException('Client non trouvé');
+
     const [client, loyaltyCard, transactions, merchant] = await Promise.all([
       this.clientRepo.findUnique({
         where: { id: clientId },

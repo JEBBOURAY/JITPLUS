@@ -13,17 +13,25 @@ import Notifications from './pages/Notifications';
 import SendNotification from './pages/SendNotification';
 import Referrals from './pages/Referrals';
 
+// Cache token validation for 1 minute to avoid re-validating on every route change
+let _authValidUntil = 0;
+
 function PrivateRoute({ children }: { children: React.ReactNode }) {
-  const [status, setStatus] = useState<'loading' | 'ok' | 'unauthorized'>(
-    getToken() ? 'loading' : 'unauthorized',
-  );
+  const [status, setStatus] = useState<'loading' | 'ok' | 'unauthorized'>(() => {
+    if (!getToken()) return 'unauthorized';
+    // If recently validated, skip the API call
+    if (Date.now() < _authValidUntil) return 'ok';
+    return 'loading';
+  });
 
   useEffect(() => {
     if (!getToken()) { setStatus('unauthorized'); return; }
+    // Skip validation if still within the cached window
+    if (Date.now() < _authValidUntil) { setStatus('ok'); return; }
     // Validate token freshness with a lightweight API call
     getStats()
-      .then(() => setStatus('ok'))
-      .catch(() => { setToken(null); setStatus('unauthorized'); });
+      .then(() => { _authValidUntil = Date.now() + 60 * 1000; setStatus('ok'); })
+      .catch(() => { _authValidUntil = 0; setToken(null); setStatus('unauthorized'); });
   }, []);
 
   if (status === 'loading') {

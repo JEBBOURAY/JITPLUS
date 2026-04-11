@@ -18,11 +18,19 @@ export class RequestLoggerMiddleware implements NestMiddleware {
     res.on('finish', () => {
       const duration = Date.now() - start;
       const { statusCode } = res;
-      const level = statusCode >= 500 ? 'error' : statusCode >= 400 ? 'warn' : 'log';
 
-      this.logger[level](
-        `[${requestId}] ${method} ${originalUrl} ${statusCode} ${duration}ms — ${userAgent}`,
-      );
+      // GreenOps: only log errors (4xx/5xx) and slow requests (>1s)
+      // to reduce Cloud Logging ingestion costs ($0.50/GB).
+      if (statusCode >= 400) {
+        const level = statusCode >= 500 ? 'error' : 'warn';
+        this.logger[level](
+          `[${requestId}] ${method} ${originalUrl} ${statusCode} ${duration}ms — ${userAgent}`,
+        );
+      } else if (duration > 1000) {
+        this.logger.warn(
+          `[${requestId}] SLOW ${method} ${originalUrl} ${statusCode} ${duration}ms`,
+        );
+      }
     });
 
     next();

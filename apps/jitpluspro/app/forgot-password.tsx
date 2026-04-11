@@ -46,7 +46,9 @@ export default function ForgotPasswordScreen() {
   const passwordInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
-    Animated.timing(fadeAnim, { toValue: 1, duration: 400, useNativeDriver: true }).start();
+    const anim = Animated.timing(fadeAnim, { toValue: 1, duration: 400, useNativeDriver: true });
+    anim.start();
+    return () => anim.stop();
   }, [fadeAnim]);
 
   // Cooldown timer for resend
@@ -58,8 +60,10 @@ export default function ForgotPasswordScreen() {
 
   // Auto-focus OTP input when step changes
   useEffect(() => {
-    if (step === 'otp') setTimeout(() => otpInputRef.current?.focus(), 300);
-    if (step === 'password') setTimeout(() => passwordInputRef.current?.focus(), 300);
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    if (step === 'otp') timers.push(setTimeout(() => otpInputRef.current?.focus(), 300));
+    if (step === 'password') timers.push(setTimeout(() => passwordInputRef.current?.focus(), 300));
+    return () => timers.forEach(clearTimeout);
   }, [step]);
 
   const emailValid = isValidEmail(email);
@@ -170,14 +174,14 @@ export default function ForgotPasswordScreen() {
           >
             {/* Back button */}
             <TouchableOpacity onPress={handleBack} style={styles.backButton} activeOpacity={0.7}>
-              <ArrowLeft size={ms(22)} color={theme.text} strokeWidth={1.5} />
+              <ArrowLeft size={ms(22)} color={theme.text} strokeWidth={2} />
             </TouchableOpacity>
 
             <Animated.View style={[styles.formSection, { opacity: fadeAnim }]}>
               {/* Header */}
               <View style={styles.header}>
                 <View style={[styles.iconCircle, { backgroundColor: `${palette.charbon}12` }]}>
-                  <KeyRound size={ms(28)} color={palette.charbon} strokeWidth={1.5} />
+                  <KeyRound size={ms(28)} color={palette.charbon} strokeWidth={2} />
                 </View>
                 <Text style={[styles.title, { color: theme.text }]}>
                   {step === 'email' && t('forgotPassword.title')}
@@ -200,7 +204,7 @@ export default function ForgotPasswordScreen() {
                       borderColor: error ? theme.danger : emailValid ? palette.charbon : theme.inputBorder,
                       borderWidth: emailValid ? 2 : 1.5,
                     }]}>
-                      <Mail size={ms(18)} color={emailValid ? palette.charbon : theme.inputPlaceholder} strokeWidth={1.5} />
+                      <Mail size={ms(18)} color={emailValid ? palette.charbon : theme.inputPlaceholder} strokeWidth={2} />
                       <TextInput
                         style={[styles.inputField, { color: theme.text }]}
                         placeholder={t('login.emailPlaceholder')}
@@ -234,7 +238,7 @@ export default function ForgotPasswordScreen() {
                         <Text style={[styles.buttonText, { opacity: emailValid ? 1 : 0.5 }]}>
                           {t('forgotPassword.sendCode')}
                         </Text>
-                        <ArrowRight size={ms(18)} color={emailValid ? '#fff' : 'rgba(255,255,255,0.5)'} strokeWidth={1.5} />
+                        <ArrowRight size={ms(18)} color={emailValid ? '#fff' : 'rgba(255,255,255,0.5)'} strokeWidth={2} />
                       </>
                     )}
                   </TouchableOpacity>
@@ -250,7 +254,7 @@ export default function ForgotPasswordScreen() {
                       borderColor: error ? theme.danger : code.length === 6 ? palette.charbon : theme.inputBorder,
                       borderWidth: code.length === 6 ? 2 : 1.5,
                     }]}>
-                      <KeyRound size={ms(18)} color={code.length === 6 ? palette.charbon : theme.inputPlaceholder} strokeWidth={1.5} />
+                      <KeyRound size={ms(18)} color={code.length === 6 ? palette.charbon : theme.inputPlaceholder} strokeWidth={2} />
                       <TextInput
                         ref={otpInputRef}
                         style={[styles.inputField, { color: theme.text, letterSpacing: 8, textAlign: 'center' }]}
@@ -284,7 +288,7 @@ export default function ForgotPasswordScreen() {
                         <Text style={[styles.buttonText, { opacity: code.length === 6 ? 1 : 0.5 }]}>
                           {t('forgotPassword.verify')}
                         </Text>
-                        <ArrowRight size={ms(18)} color={code.length === 6 ? '#fff' : 'rgba(255,255,255,0.5)'} strokeWidth={1.5} />
+                        <ArrowRight size={ms(18)} color={code.length === 6 ? '#fff' : 'rgba(255,255,255,0.5)'} strokeWidth={2} />
                       </>
                     )}
                   </TouchableOpacity>
@@ -314,7 +318,7 @@ export default function ForgotPasswordScreen() {
                       borderColor: error ? theme.danger : newPassword.length >= MIN_PASSWORD_LENGTH ? palette.charbon : theme.inputBorder,
                       borderWidth: newPassword.length >= MIN_PASSWORD_LENGTH ? 2 : 1.5,
                     }]}>
-                      <Lock size={ms(18)} color={newPassword.length >= MIN_PASSWORD_LENGTH ? palette.charbon : theme.inputPlaceholder} strokeWidth={1.5} />
+                      <Lock size={ms(18)} color={newPassword.length >= MIN_PASSWORD_LENGTH ? palette.charbon : theme.inputPlaceholder} strokeWidth={2} />
                       <TextInput
                         ref={passwordInputRef}
                         style={[styles.inputField, { color: theme.text }]}
@@ -333,8 +337,8 @@ export default function ForgotPasswordScreen() {
                         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                       >
                         {showPassword
-                          ? <EyeOff size={ms(20)} color={theme.inputPlaceholder} strokeWidth={1.5} />
-                          : <Eye size={ms(20)} color={theme.inputPlaceholder} strokeWidth={1.5} />}
+                          ? <EyeOff size={ms(20)} color={theme.inputPlaceholder} strokeWidth={2} />
+                          : <Eye size={ms(20)} color={theme.inputPlaceholder} strokeWidth={2} />}
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -345,7 +349,7 @@ export default function ForgotPasswordScreen() {
                       borderColor: error ? theme.danger : confirmPassword.length >= MIN_PASSWORD_LENGTH && confirmPassword === newPassword ? palette.charbon : theme.inputBorder,
                       borderWidth: confirmPassword === newPassword && confirmPassword.length >= MIN_PASSWORD_LENGTH ? 2 : 1.5,
                     }]}>
-                      <Lock size={ms(18)} color={confirmPassword === newPassword && confirmPassword.length >= MIN_PASSWORD_LENGTH ? palette.charbon : theme.inputPlaceholder} strokeWidth={1.5} />
+                      <Lock size={ms(18)} color={confirmPassword === newPassword && confirmPassword.length >= MIN_PASSWORD_LENGTH ? palette.charbon : theme.inputPlaceholder} strokeWidth={2} />
                       <TextInput
                         style={[styles.inputField, { color: theme.text }]}
                         placeholder={t('forgotPassword.confirmPasswordPlaceholder')}
@@ -386,7 +390,7 @@ export default function ForgotPasswordScreen() {
                         <ArrowRight size={ms(18)} color={
                           newPassword.length >= MIN_PASSWORD_LENGTH && confirmPassword === newPassword
                             ? '#fff' : 'rgba(255,255,255,0.5)'
-                        } strokeWidth={1.5} />
+                        } strokeWidth={2} />
                       </>
                     )}
                   </TouchableOpacity>

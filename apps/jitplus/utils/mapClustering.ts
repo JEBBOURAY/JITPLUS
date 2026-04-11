@@ -5,9 +5,15 @@
  * Handles marker aggregation and expansion logic.
  */
 import { useState, useEffect, useRef } from 'react';
-import Supercluster, { type AnyProps } from 'supercluster';
+import Supercluster, { type AnyProps, type PointFeature } from 'supercluster';
 import type { Merchant } from '@/types';
 import { getDistanceKm } from '@/utils/distance';
+
+interface MerchantPointProps extends AnyProps {
+  cluster: false;
+  merchantId: string;
+  pointId: string;
+}
 
 /** Minimum pan distance (km) required to trigger a cluster recalculation. */
 const RECLUSTER_PAN_THRESHOLD_KM = 0.5;
@@ -55,9 +61,9 @@ export function useMapClustering(
   const [mapItems, setMapItems] = useState<MapItem[]>([]);
 
   // Lazy-init Supercluster once (avoids re-creating on every render)
-  const clusterRef = useRef<Supercluster<AnyProps, AnyProps> | null>(null);
+  const clusterRef = useRef<Supercluster<MerchantPointProps, AnyProps> | null>(null);
   if (!clusterRef.current) {
-    clusterRef.current = new Supercluster({ radius: 45, maxZoom: 16 });
+    clusterRef.current = new Supercluster<MerchantPointProps, AnyProps>({ radius: 45, maxZoom: 16 });
   }
 
   /** Last region for which clusters were actually computed (FinOps: skip tiny pans). */
@@ -79,11 +85,11 @@ export function useMapClustering(
 
     // ── Reload index when merchants data changes ──
     if (dataChanged) {
-      const points = merchants
+      const points: PointFeature<MerchantPointProps>[] = merchants
         .filter((m) => m.latitude != null && m.longitude != null && isFinite(m.latitude) && isFinite(m.longitude))
         .map((m) => ({
           type: 'Feature' as const,
-          properties: { ...m, cluster: false, merchantId: m.id, pointId: m.storeId ? `${m.id}-${m.storeId}` : m.id },
+          properties: { ...m, cluster: false as const, merchantId: m.id, pointId: m.storeId ? `${m.id}-${m.storeId}` : m.id },
           geometry: {
             type: 'Point' as const,
             coordinates: [m.longitude!, m.latitude!],
@@ -91,8 +97,7 @@ export function useMapClustering(
         }));
 
       try {
-        // Supercluster type expects GeoJSON features, which we provide.
-        clusterRef.current!.load(points as unknown as GeoJSON.Feature<GeoJSON.Point, any>[]);
+        clusterRef.current!.load(points);
       } catch (e) {
         if (__DEV__) console.warn('[mapClustering] Supercluster.load failed', e);
         return;
@@ -131,9 +136,9 @@ export function useMapClustering(
 
       const newItems: MapItem[] = clusters.map((c) => {
         const [lng, lat] = c.geometry.coordinates;
-        const props = c.properties as any;
+        const props = c.properties;
 
-        if (props.cluster) {
+        if ('cluster' in props && props.cluster) {
           return {
             type: 'cluster' as const,
             id: `cluster-${props.cluster_id}`,
@@ -149,7 +154,7 @@ export function useMapClustering(
         return {
           type: 'merchant' as const,
           id: props.pointId ?? props.merchantId,
-          merchant: props as Merchant,
+          merchant: props as unknown as Merchant,
           latitude: lat,
           longitude: lng,
         };

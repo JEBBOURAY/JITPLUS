@@ -47,31 +47,31 @@ export default function WelcomeScreen() {
   const slides: Slide[] = [
     {
       key: 'cards',
-      icon: <Ticket size={ms(56)} color={theme.text} strokeWidth={1.5} />,
+      icon: <Ticket size={ms(56)} color={theme.text} strokeWidth={2} />,
       titleKey: 'welcome.featureCardsTitle',
       descKey: 'welcome.featureCardsDesc',
     },
     {
       key: 'discover',
-      icon: <MapPin size={ms(56)} color={theme.text} strokeWidth={1.5} />,
+      icon: <MapPin size={ms(56)} color={theme.text} strokeWidth={2} />,
       titleKey: 'welcome.featureDiscoverTitle',
       descKey: 'welcome.featureDiscoverDesc',
     },
     {
       key: 'qr',
-      icon: <QrCode size={ms(56)} color={theme.text} strokeWidth={1.5} />,
+      icon: <QrCode size={ms(56)} color={theme.text} strokeWidth={2} />,
       titleKey: 'welcome.featureQrTitle',
       descKey: 'welcome.featureQrDesc',
     },
     {
       key: 'notifications',
-      icon: <Bell size={ms(56)} color={theme.text} strokeWidth={1.5} />,
+      icon: <Bell size={ms(56)} color={theme.text} strokeWidth={2} />,
       titleKey: 'welcome.featureNotifTitle',
       descKey: 'welcome.featureNotifDesc',
     },
     {
       key: 'rewards',
-      icon: <Gift size={ms(56)} color={theme.text} strokeWidth={1.5} />,
+      icon: <Gift size={ms(56)} color={theme.text} strokeWidth={2} />,
       titleKey: 'welcome.featureRewardsTitle',
       descKey: 'welcome.featureRewardsDesc',
     },
@@ -82,7 +82,7 @@ export default function WelcomeScreen() {
   const handleScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const index = Math.round(e.nativeEvent.contentOffset.x / screenWidth);
     setActiveIndex(index);
-  }, []);
+  }, [screenWidth]);
 
   const handleNext = useCallback(() => {
     if (isLast) {
@@ -159,7 +159,7 @@ export default function WelcomeScreen() {
         pagingEnabled
         showsHorizontalScrollIndicator={false}
         onScroll={handleScroll}
-        scrollEventThrottle={16}
+        scrollEventThrottle={32}
         bounces={false}
       />
 
@@ -198,7 +198,7 @@ export default function WelcomeScreen() {
 
         {/* Guest explore link */}
         <TouchableOpacity activeOpacity={0.7} onPress={handleExplore} style={styles.exploreBtn}>
-          <Eye size={ms(16)} color={theme.textSecondary} strokeWidth={1.5} style={{ marginRight: wp(6) }} />
+          <Eye size={ms(16)} color={theme.textSecondary} strokeWidth={2} style={{ marginRight: wp(6) }} />
           <Text style={[styles.exploreBtnText, { color: theme.textSecondary }]}>
             {t('welcome.exploreGuest')}
           </Text>

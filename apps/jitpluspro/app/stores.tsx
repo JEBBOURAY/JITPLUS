@@ -44,6 +44,7 @@ import * as Location from 'expo-location';
 import { reverseGeocodeAsync } from '@/utils/geocodeCache';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -54,9 +55,11 @@ import { useStoresCRUD, MAX_STORES } from '@/hooks/useStoresCRUD';
 import { isValidEmail } from '@/utils/validation';
 import PremiumLockModal from '@/components/PremiumLockModal';
 import MerchantLogo from '@/components/MerchantLogo';
-import { wp, hp, ms, fontSize as FS, radius as RAD } from '@/utils/responsive';
-import { palette } from '@/contexts/ThemeContext';
+import { wp, hp, ms, fontSize as FS } from '@/utils/responsive';
+import { palette, brandGradient } from '@/contexts/ThemeContext';
 import { resolveImageUrl } from '@/utils/imageUrl';
+import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 
 const JITPRO_LOGO = require('@/assets/images/jitplusprologo.png');
 
@@ -157,9 +160,10 @@ const markerStyles = StyleSheet.create({
 });
 
 /** Extracted as a proper React.memo component â€” theme consumed internally */
-const StoreCard = React.memo(function StoreCard({ store, merchantCategorie, onEdit, onToggle, onDelete }: {
+const StoreCard = React.memo(function StoreCard({ store, merchantCategorie, isReference, onEdit, onToggle, onDelete }: {
   store: StoreType;
   merchantCategorie?: MerchantCategory;
+  isReference?: boolean;
   onEdit: (s: StoreType) => void;
   onToggle: (s: StoreType) => void;
   onDelete: (s: StoreType) => void;
@@ -181,7 +185,15 @@ const StoreCard = React.memo(function StoreCard({ store, merchantCategorie, onEd
             <MerchantCategoryIcon category={cat} size={ms(28)} />
           </View>
           <View style={styles.cardInfo}>
-            <Text style={[styles.cardName, { color: theme.text }]} numberOfLines={1}>{store.nom}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: ms(6) }}>
+              <Text style={[styles.cardName, { color: theme.text, flex: 1 }]} numberOfLines={1}>{store.nom}</Text>
+              {isReference && (
+                <View style={[styles.referenceBadge, { backgroundColor: palette.violet + '14' }]}>
+                  <Shield size={ms(10)} color={palette.violet} strokeWidth={2} />
+                  <Text style={[styles.referenceBadgeText, { color: palette.violet }]}>{t('stores.referenceLabel')}</Text>
+                </View>
+              )}
+            </View>
             <View style={[styles.cardCatBadge, { backgroundColor: palette.violet + '12' }]}>
               <Text style={[styles.cardCatText, { color: palette.violet }]}>{catLabel}</Text>
             </View>
@@ -259,6 +271,7 @@ interface FormState {
   email: string;
   instagram: string;
   tiktok: string;
+  website: string;
   latitude: number | null;
   longitude: number | null;
   addressSearch: string;
@@ -278,6 +291,7 @@ const INITIAL_FORM: FormState = {
   email: '',
   instagram: '',
   tiktok: '',
+  website: '',
   latitude: null,
   longitude: null,
   addressSearch: '',
@@ -311,6 +325,7 @@ function formReducer(state: FormState, action: FormAction): FormState {
         email: s.email ?? '',
         instagram: s.socialLinks?.instagram ?? '',
         tiktok: s.socialLinks?.tiktok ?? '',
+        website: s.socialLinks?.website ?? '',
         latitude: s.latitude ?? null,
         longitude: s.longitude ?? null,
         addressSearch: s.adresse ?? '',
@@ -321,8 +336,12 @@ function formReducer(state: FormState, action: FormAction): FormState {
 }
 
 export default function StoresScreen() {
+  const shouldWait = useRequireAuth();
   const theme = useTheme();
   const { merchant, isTeamMember } = useAuth();
+
+  if (shouldWait) return null;
+
   const isPremium = merchant?.plan === 'PREMIUM';
   const FREE_MAX_STORES = 1;
   const effectiveMax = isPremium ? MAX_STORES : FREE_MAX_STORES;
@@ -335,7 +354,7 @@ export default function StoresScreen() {
 
   const {
     stores, loading, refreshing, saving, onRefresh,
-    canCreateStore, alertMaxStores, saveStore, deleteStore, toggleActive,
+    alertMaxStores, saveStore, deleteStore, toggleActive,
   } = useStoresCRUD();
 
   const { t } = useLanguage();
@@ -343,9 +362,21 @@ export default function StoresScreen() {
   const [showModal, setShowModal] = useState(false);
   const [editingStore, setEditingStore] = useState<StoreType | null>(null);
 
+  // ── Reference store = oldest store (first in list, sorted by createdAt asc) ──
+  const referenceStore = useMemo(() => stores.length > 0 ? stores[0] : null, [stores]);
+  const isEditingReferenceStore = useMemo(() => {
+    if (!editingStore) return true; // creating = treat as reference if it's the first
+    return referenceStore?.id === editingStore.id;
+  }, [editingStore, referenceStore]);
+  // For branches: is this a non-reference store being created (stores already exist)?
+  const isBranch = useMemo(() => {
+    if (editingStore) return !isEditingReferenceStore;
+    return stores.length > 0; // creating when stores exist = branch
+  }, [editingStore, isEditingReferenceStore, stores.length]);
+
   // Form state (reducer)
   const [form, formDispatch] = useReducer(formReducer, INITIAL_FORM);
-  const { step, nom, description, categorie, ville, quartier, adresse, telephone, email, instagram, tiktok, latitude, longitude, addressSearch, locating, showCategoryPicker } = form;
+  const { step, nom, description, categorie, ville, quartier, adresse, telephone, email, instagram, tiktok, website, latitude, longitude, addressSearch, locating, showCategoryPicker } = form;
   const setForm = useCallback((payload: Partial<FormState>) => formDispatch({ type: 'SET', payload }), []);
 
   // Step navigation helpers
@@ -475,24 +506,25 @@ export default function StoresScreen() {
 
   // â”€â”€ Save â”€â”€
   const handleSave = async () => {
-    const socialLinks = {
+    const socialLinks = isBranch ? undefined : {
       instagram: instagram.trim().replace(/^@/, '').replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/.*$/, '') || undefined,
       tiktok: tiktok.trim().replace(/^@/, '').replace(/^https?:\/\/(www\.)?tiktok\.com\/@?/, '').replace(/\/.*$/, '') || undefined,
+      website: website.trim() || undefined,
     };
-    const hasSocial = Object.values(socialLinks).some(Boolean);
+    const hasSocial = socialLinks ? Object.values(socialLinks).some(Boolean) : false;
 
     const payload: Partial<CreateStorePayload> & { nom: string } = {
       nom: nom.trim(),
-      description: description.trim() || undefined,
+      ...(!isBranch && { description: description.trim() || undefined }),
       ville: ville.trim() || undefined,
       quartier: quartier.trim() || undefined,
       adresse: adresse.trim() || undefined,
       telephone: telephone.trim() || undefined,
-      email: email.trim() || undefined,
+      ...(!isBranch && { email: email.trim() || undefined }),
       latitude: latitude ?? undefined,
       longitude: longitude ?? undefined,
       categorie: categorie || undefined,
-      socialLinks: hasSocial ? socialLinks : undefined,
+      ...(!isBranch && { socialLinks: hasSocial ? socialLinks : undefined }),
     };
     const ok = await saveStore(payload as CreateStorePayload, editingStore?.id);
     if (ok) setShowModal(false);
@@ -552,24 +584,44 @@ export default function StoresScreen() {
     return (
       <View style={[styles.container, { backgroundColor: theme.bg, paddingTop: insets.top, justifyContent: 'center', alignItems: 'center', padding: 32 }]}>
         <Shield size={48} color={theme.textMuted} strokeWidth={1.5} />
-        <Text style={{ color: theme.text, fontWeight: '600', fontSize: 16, marginTop: 16 }}>{t('common.ownerOnly')}</Text>
-        <Text style={{ color: theme.textMuted, textAlign: 'center', marginTop: 8 }}>{t('common.ownerOnlyMsg')}</Text>
-        <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 16, paddingHorizontal: 24, paddingVertical: 10, backgroundColor: theme.primary, borderRadius: 8 }}>
-          <Text style={{ color: '#fff', fontWeight: '600' }}>{t('common.back')}</Text>
+        <Text style={{ color: theme.text, fontWeight: '600', fontSize: 16, marginTop: 16, fontFamily: 'Lexend_600SemiBold' }}>{t('common.ownerOnly')}</Text>
+        <Text style={{ color: theme.textMuted, textAlign: 'center', marginTop: 8, fontFamily: 'Lexend_400Regular' }}>{t('common.ownerOnlyMsg')}</Text>
+        <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 16, paddingHorizontal: 24, paddingVertical: 10, backgroundColor: theme.primary, borderRadius: 10 }}>
+          <Text style={{ color: '#fff', fontWeight: '600', fontFamily: 'Lexend_600SemiBold' }}>{t('common.back')}</Text>
         </TouchableOpacity>
       </View>
     );
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.bg, paddingTop: insets.top }]}>
+    <View style={[styles.container, { backgroundColor: theme.bg }]}>
       {/* Header */}
-      <View style={[styles.header, { borderBottomColor: theme.border }]}>
-        <TouchableOpacity onPress={() => router.back()} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-          <ArrowLeft size={24} color={theme.text} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.text }]}>{t('stores.title')}</Text>
-        <View style={{ width: 24 }} />
+      <View collapsable={false}>
+        <LinearGradient
+          colors={[...brandGradient]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.headerGradient}
+        >
+          <BlurView
+            intensity={Platform.OS === 'ios' ? 40 : 20}
+            tint={theme.mode === 'dark' ? 'dark' : 'default'}
+            style={[styles.headerBlur, { paddingTop: insets.top + 16 }]}
+          >
+            <View style={styles.glassOverlay} />
+            <View style={styles.header}>
+              <TouchableOpacity onPress={() => router.back()} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <ArrowLeft size={22} color="#fff" />
+              </TouchableOpacity>
+              <Text style={styles.headerTitle}>{t('stores.title')}</Text>
+              <View style={{ width: 24 }} />
+            </View>
+          </BlurView>
+        </LinearGradient>
+        <LinearGradient
+          colors={['rgba(124,58,237,0.3)', 'transparent']}
+          style={styles.headerFade}
+        />
       </View>
 
       {/* Counter */}
@@ -653,11 +705,12 @@ export default function StoresScreen() {
             </Text>
           </View>
 
-          {stores.map((store) => (
+          {stores.map((store, index) => (
             <StoreCard
               key={store.id}
               store={store}
               merchantCategorie={merchant?.categorie}
+              isReference={index === 0}
               onEdit={openEdit}
               onToggle={toggleActive}
               onDelete={handleDelete}
@@ -740,22 +793,47 @@ export default function StoresScreen() {
                       <ChevronDown size={ms(16)} color={theme.textMuted} />
                     </TouchableOpacity>
 
-                    <Text style={[styles.label, { color: theme.text }]}>{t('stores.descLabel')}</Text>
-                    <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.border, minHeight: ms(90), alignItems: 'flex-start' }]}>
-                      <FileText size={ms(16)} color={theme.textMuted} style={{ marginTop: ms(14) }} />
-                      <TextInput
-                        style={[styles.input, { color: theme.text, textAlignVertical: 'top', minHeight: ms(70) }]}
-                        value={description}
-                        onChangeText={(v) => setForm({ description: v })}
-                        placeholder={t('stores.descPlaceholder')}
-                        placeholderTextColor={theme.textMuted}
-                        multiline
-                        maxLength={1000}
-                      />
-                    </View>
-                    <Text style={{ fontSize: ms(11), color: theme.textMuted, textAlign: 'right', marginTop: ms(4) }}>
-                      {description.length}/1000
-                    </Text>
+                    {isBranch ? (
+                      <>
+                        {referenceStore?.description ? (
+                          <>
+                            <Text style={[styles.label, { color: theme.textMuted }]}>{t('stores.descLabel')}</Text>
+                            <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.border, minHeight: ms(90), alignItems: 'flex-start', opacity: 0.6 }]}>
+                              <FileText size={ms(16)} color={theme.textMuted} style={{ marginTop: ms(14) }} />
+                              <Text style={[styles.input, { color: theme.textMuted, minHeight: ms(70) }]}>
+                                {referenceStore.description}
+                              </Text>
+                              <Lock size={ms(14)} color={theme.textMuted} style={{ marginTop: ms(14) }} />
+                            </View>
+                          </>
+                        ) : null}
+                        <View style={[styles.branchHintBadge, { backgroundColor: palette.violet + '08', borderColor: palette.violet + '20' }]}>
+                          <Lock size={ms(14)} color={palette.violet} />
+                          <Text style={[styles.branchHintText, { color: palette.violet }]}>
+                            {t('stores.branchDescHint')}
+                          </Text>
+                        </View>
+                      </>
+                    ) : (
+                      <>
+                        <Text style={[styles.label, { color: theme.text }]}>{t('stores.descLabel')}</Text>
+                        <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.border, minHeight: ms(90), alignItems: 'flex-start' }]}>
+                          <FileText size={ms(16)} color={theme.textMuted} style={{ marginTop: ms(14) }} />
+                          <TextInput
+                            style={[styles.input, { color: theme.text, textAlignVertical: 'top', minHeight: ms(70) }]}
+                            value={description}
+                            onChangeText={(v) => setForm({ description: v })}
+                            placeholder={t('stores.descPlaceholder')}
+                            placeholderTextColor={theme.textMuted}
+                            multiline
+                            maxLength={1000}
+                          />
+                        </View>
+                        <Text style={{ fontSize: ms(11), color: theme.textMuted, textAlign: 'right', marginTop: ms(4) }}>
+                          {description.length}/1000
+                        </Text>
+                      </>
+                    )}
                   </>
                 )}
 
@@ -769,23 +847,48 @@ export default function StoresScreen() {
                       placeholder={t('stores.phonePlaceholder')}
                     />
 
-                    <Text style={[styles.label, { color: theme.text }]}>{t('stores.emailLabel')}</Text>
-                    <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: email && isValidEmail(email) ? theme.success : email.length > 3 && !isValidEmail(email) ? theme.danger : theme.border }]}>
-                      <Mail size={ms(18)} color={email && isValidEmail(email) ? theme.success : theme.textMuted} />
-                      <TextInput
-                        style={[styles.input, { color: theme.text }]}
-                        value={email}
-                        onChangeText={(v) => setForm({ email: v })}
-                        placeholder={t('stores.emailPlaceholder')}
-                        placeholderTextColor={theme.textMuted}
-                        keyboardType="email-address"
-                        autoCapitalize="none"
-                        autoCorrect={false}
-                      />
-                      {email && isValidEmail(email) && <Check size={ms(16)} color={theme.success} strokeWidth={2.5} />}
-                    </View>
-                    {email.length > 3 && !isValidEmail(email) && (
-                      <Text style={[styles.validationHint, { color: theme.danger }]}>{t('stores.invalidEmail')}</Text>
+                    {isBranch ? (
+                      <>
+                        {referenceStore?.email ? (
+                          <>
+                            <Text style={[styles.label, { color: theme.textMuted }]}>{t('stores.emailLabel')}</Text>
+                            <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.border, opacity: 0.6 }]}>
+                              <Mail size={ms(18)} color={theme.textMuted} />
+                              <Text style={[styles.input, { color: theme.textMuted }]} numberOfLines={1}>
+                                {referenceStore.email}
+                              </Text>
+                              <Lock size={ms(14)} color={theme.textMuted} />
+                            </View>
+                          </>
+                        ) : null}
+                        <View style={[styles.branchHintBadge, { backgroundColor: palette.violet + '08', borderColor: palette.violet + '20' }]}>
+                          <Lock size={ms(14)} color={palette.violet} />
+                          <Text style={[styles.branchHintText, { color: palette.violet }]}>
+                            {t('stores.branchEmailHint')}
+                          </Text>
+                        </View>
+                      </>
+                    ) : (
+                      <>
+                        <Text style={[styles.label, { color: theme.text }]}>{t('stores.emailLabel')}</Text>
+                        <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: email && isValidEmail(email) ? theme.success : email.length > 3 && !isValidEmail(email) ? theme.danger : theme.border }]}>
+                          <Mail size={ms(18)} color={email && isValidEmail(email) ? theme.success : theme.textMuted} />
+                          <TextInput
+                            style={[styles.input, { color: theme.text }]}
+                            value={email}
+                            onChangeText={(v) => setForm({ email: v })}
+                            placeholder={t('stores.emailPlaceholder')}
+                            placeholderTextColor={theme.textMuted}
+                            keyboardType="email-address"
+                            autoCapitalize="none"
+                            autoCorrect={false}
+                          />
+                          {email && isValidEmail(email) && <Check size={ms(16)} color={theme.success} strokeWidth={2.5} />}
+                        </View>
+                        {email.length > 3 && !isValidEmail(email) && (
+                          <Text style={[styles.validationHint, { color: theme.danger }]}>{t('stores.invalidEmail')}</Text>
+                        )}
+                      </>
                     )}
 
                     <View style={[styles.stepOptionalBadge, { backgroundColor: palette.violet + '10' }]}>
@@ -797,39 +900,104 @@ export default function StoresScreen() {
                 {/* Step 3: Réseaux sociaux */}
                 {step === 2 && (
                   <>
-                    <View style={styles.fieldGroup}>
-                      <Text style={[styles.label, { color: theme.text }]}>Instagram</Text>
-                      <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: instagram.trim() ? theme.success : theme.border }]}>
-                        <Instagram size={ms(18)} color="#E1306C" />
-                        <TextInput
-                          style={[styles.input, { color: theme.text }]}
-                          value={instagram}
-                          onChangeText={(v) => setForm({ instagram: v })}
-                          placeholder="@nom_utilisateur"
-                          placeholderTextColor={theme.textMuted}
-                          autoCapitalize="none"
-                          autoCorrect={false}
-                        />
-                      </View>
-                    </View>
+                    {isBranch ? (
+                      <>
+                        {/* Read-only inherited social fields */}
+                        {referenceStore?.socialLinks?.instagram ? (
+                          <View style={styles.fieldGroup}>
+                            <Text style={[styles.label, { color: theme.textMuted }]}>Instagram</Text>
+                            <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.border, opacity: 0.6 }]}>
+                              <Instagram size={ms(18)} color="#E1306C" />
+                              <Text style={[styles.input, { color: theme.textMuted }]} numberOfLines={1}>
+                                @{referenceStore.socialLinks.instagram}
+                              </Text>
+                              <Lock size={ms(14)} color={theme.textMuted} />
+                            </View>
+                          </View>
+                        ) : null}
+                        {referenceStore?.socialLinks?.tiktok ? (
+                          <View style={styles.fieldGroup}>
+                            <Text style={[styles.label, { color: theme.textMuted }]}>TikTok</Text>
+                            <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.border, opacity: 0.6 }]}>
+                              <Globe size={ms(18)} color={theme.textMuted} />
+                              <Text style={[styles.input, { color: theme.textMuted }]} numberOfLines={1}>
+                                @{referenceStore.socialLinks.tiktok}
+                              </Text>
+                              <Lock size={ms(14)} color={theme.textMuted} />
+                            </View>
+                          </View>
+                        ) : null}
+                        {referenceStore?.socialLinks?.website ? (
+                          <View style={styles.fieldGroup}>
+                            <Text style={[styles.label, { color: theme.textMuted }]}>{t('stores.websiteLabel')}</Text>
+                            <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.border, opacity: 0.6 }]}>
+                              <Globe size={ms(18)} color={theme.textMuted} />
+                              <Text style={[styles.input, { color: theme.textMuted }]} numberOfLines={1}>
+                                {referenceStore.socialLinks.website}
+                              </Text>
+                              <Lock size={ms(14)} color={theme.textMuted} />
+                            </View>
+                          </View>
+                        ) : null}
+                        <View style={[styles.branchHintBadge, { backgroundColor: palette.violet + '08', borderColor: palette.violet + '20' }]}>
+                          <Lock size={ms(14)} color={palette.violet} />
+                          <Text style={[styles.branchHintText, { color: palette.violet }]}>
+                            {t('stores.branchSocialHint')}
+                          </Text>
+                        </View>
+                      </>
+                    ) : (
+                      <>
+                        <View style={styles.fieldGroup}>
+                          <Text style={[styles.label, { color: theme.text }]}>Instagram</Text>
+                          <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: instagram.trim() ? theme.success : theme.border }]}>
+                            <Instagram size={ms(18)} color="#E1306C" />
+                            <TextInput
+                              style={[styles.input, { color: theme.text }]}
+                              value={instagram}
+                              onChangeText={(v) => setForm({ instagram: v })}
+                              placeholder="@nom_utilisateur"
+                              placeholderTextColor={theme.textMuted}
+                              autoCapitalize="none"
+                              autoCorrect={false}
+                            />
+                          </View>
+                        </View>
 
-                    <View style={styles.fieldGroup}>
-                      <Text style={[styles.label, { color: theme.text }]}>TikTok</Text>
-                      <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: tiktok.trim() ? theme.success : theme.border }]}>
-                        <Globe size={ms(18)} color={theme.textMuted} />
-                        <TextInput
-                          style={[styles.input, { color: theme.text }]}
-                          value={tiktok}
-                          onChangeText={(v) => setForm({ tiktok: v })}
-                          placeholder="@nom_utilisateur"
-                          placeholderTextColor={theme.textMuted}
-                          autoCapitalize="none"
-                          autoCorrect={false}
-                        />
-                      </View>
-                    </View>
+                        <View style={styles.fieldGroup}>
+                          <Text style={[styles.label, { color: theme.text }]}>TikTok</Text>
+                          <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: tiktok.trim() ? theme.success : theme.border }]}>
+                            <Globe size={ms(18)} color={theme.textMuted} />
+                            <TextInput
+                              style={[styles.input, { color: theme.text }]}
+                              value={tiktok}
+                              onChangeText={(v) => setForm({ tiktok: v })}
+                              placeholder="@nom_utilisateur"
+                              placeholderTextColor={theme.textMuted}
+                              autoCapitalize="none"
+                              autoCorrect={false}
+                            />
+                          </View>
+                        </View>
 
-
+                        <View style={styles.fieldGroup}>
+                          <Text style={[styles.label, { color: theme.text }]}>{t('stores.websiteLabel')}</Text>
+                          <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: website.trim() ? theme.success : theme.border }]}>
+                            <Globe size={ms(18)} color={website.trim() ? palette.violet : theme.textMuted} />
+                            <TextInput
+                              style={[styles.input, { color: theme.text }]}
+                              value={website}
+                              onChangeText={(v) => setForm({ website: v })}
+                              placeholder="https://www.example.com"
+                              placeholderTextColor={theme.textMuted}
+                              autoCapitalize="none"
+                              autoCorrect={false}
+                              keyboardType="url"
+                            />
+                          </View>
+                        </View>
+                      </>
+                    )}
 
                     <View style={[styles.stepOptionalBadge, { backgroundColor: palette.violet + '10' }]}>
                       <Text style={[styles.stepOptionalText, { color: palette.violet }]}>{t('stores.socialOptional')}</Text>
@@ -1022,15 +1190,23 @@ export default function StoresScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+
+  // Header — glassmorphism
+  headerGradient: { overflow: 'hidden' },
+  headerBlur: { overflow: 'hidden' },
+  glassOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
+    paddingHorizontal: 24,
+    paddingBottom: 20,
   },
-  headerTitle: { fontSize: 18, fontWeight: '700' },
+  headerTitle: { fontSize: 20, fontWeight: '700', color: '#FFFFFF', fontFamily: 'Lexend_700Bold', letterSpacing: -0.3 },
+  headerFade: { height: 4 },
   counterRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1041,7 +1217,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: 8,
   },
-  counterText: { flex: 1, fontSize: 14, fontWeight: '600' },
+  counterText: { flex: 1, fontSize: 14, fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
   addBtnSmall: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1050,10 +1226,10 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     gap: 4,
   },
-  addBtnSmallText: { color: '#fff', fontSize: 13, fontWeight: '600' },
+  addBtnSmallText: { color: '#fff', fontSize: 13, fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
-  emptyTitle: { fontSize: 18, fontWeight: '700', marginTop: 16 },
-  emptyText: { fontSize: 14, textAlign: 'center', marginTop: 8, lineHeight: 22 },
+  emptyTitle: { fontSize: 18, fontWeight: '700', marginTop: 16, fontFamily: 'Lexend_700Bold' },
+  emptyText: { fontSize: 14, textAlign: 'center', marginTop: 8, lineHeight: 22, fontFamily: 'Lexend_400Regular' },
   addBtnLarge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1063,21 +1239,20 @@ const styles = StyleSheet.create({
     gap: 8,
     marginTop: 20,
   },
-  addBtnLargeText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  addBtnLargeText: { color: '#fff', fontSize: 15, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
   guideContainer: {
     marginHorizontal: 0,
     marginTop: 16,
     marginBottom: 4,
     paddingVertical: 12,
     paddingHorizontal: 16,
-    backgroundColor: '#f0f4ff',
     borderRadius: 12,
     borderLeftWidth: 3,
-    borderLeftColor: '#7C3AED',
   },
   guideText: {
     fontSize: 14,
     lineHeight: 20,
+    fontFamily: 'Lexend_400Regular',
   },
   listContent: { padding: wp(16), gap: ms(14), paddingBottom: 32 },
 
@@ -1121,7 +1296,7 @@ const styles = StyleSheet.create({
     flex: 1,
     marginLeft: wp(12),
   },
-  cardName: { fontSize: FS.lg, fontWeight: '700', letterSpacing: -0.3 },
+  cardName: { fontSize: FS.lg, fontWeight: '700', letterSpacing: -0.3, fontFamily: 'Lexend_700Bold' },
   cardCatBadge: {
     alignSelf: 'flex-start',
     paddingHorizontal: ms(8),
@@ -1129,10 +1304,10 @@ const styles = StyleSheet.create({
     borderRadius: ms(8),
     marginTop: ms(4),
   },
-  cardCatText: { fontSize: ms(11), fontWeight: '600' },
+  cardCatText: { fontSize: ms(11), fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
   statusBadge: { paddingHorizontal: ms(8), paddingVertical: ms(3), borderRadius: ms(8) },
   cardDetail: { flexDirection: 'row', alignItems: 'center', gap: ms(6), marginTop: ms(6) },
-  cardDetailText: { fontSize: ms(12), flex: 1 },
+  cardDetailText: { fontSize: ms(12), flex: 1, fontFamily: 'Lexend_400Regular' },
   cardActions: { flexDirection: 'row', gap: ms(8), marginTop: ms(14) },
   actionBtn: {
     flex: 1,
@@ -1143,7 +1318,7 @@ const styles = StyleSheet.create({
     borderRadius: ms(12),
     gap: ms(4),
   },
-  actionBtnText: { fontSize: ms(11), fontWeight: '600' },
+  actionBtnText: { fontSize: ms(11), fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
 
   // Modal
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
@@ -1164,11 +1339,11 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderBottomWidth: 1,
   },
-  modalTitle: { fontSize: 17, fontWeight: '700' },
+  modalTitle: { fontSize: 17, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
   formContent: { paddingHorizontal: 20, paddingTop: 16 },
 
   // Form
-  label: { fontSize: 13, fontWeight: '600', marginTop: 14, marginBottom: 6 },
+  label: { fontSize: 13, fontWeight: '600', marginTop: 14, marginBottom: 6, fontFamily: 'Lexend_600SemiBold' },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1178,21 +1353,9 @@ const styles = StyleSheet.create({
     height: 50,
     gap: 10,
   },
-  input: { flex: 1, fontSize: 15, paddingVertical: 0 },
-  validationHint: { fontSize: 11, marginTop: 4, marginLeft: 4 },
+  input: { flex: 1, fontSize: 15, paddingVertical: 0, fontFamily: 'Lexend_500Medium' },
+  validationHint: { fontSize: 11, marginTop: 4, marginLeft: 4, fontFamily: 'Lexend_400Regular' },
   fieldGroup: { marginBottom: ms(12) },
-
-  // Section headers
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingBottom: 8,
-    marginBottom: 4,
-    marginTop: 8,
-    borderBottomWidth: 1,
-  },
-  sectionTitle: { fontSize: 14, fontWeight: '700', letterSpacing: 0.3 },
 
   // Overview Map — premium style
   overviewMapWrapper: {
@@ -1213,20 +1376,6 @@ const styles = StyleSheet.create({
   // Map
   mapWrapper: { borderRadius: 14, overflow: 'hidden', marginTop: 8, borderWidth: 1, height: 260 },
   map: { width: '100%', height: '100%' },
-  locationBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 10,
-    borderRadius: 20,
-    gap: 6,
-    marginTop: 8,
-    ...Platform.select({
-      ios: { shadowColor: '#1F2937', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 4 },
-      android: { elevation: 2 },
-    }),
-  },
-  locationBtnText: { color: '#fff', fontSize: 14, fontWeight: '600' },
   gpsIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1236,12 +1385,12 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 10,
   },
-  gpsIndicatorText: { fontSize: 12, fontWeight: '500', flex: 1 },
+  gpsIndicatorText: { fontSize: 12, fontWeight: '500', flex: 1, fontFamily: 'Lexend_500Medium' },
 
   // Category picker
   pickerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 24 },
   pickerCard: { borderRadius: 16, padding: 16 },
-  pickerTitle: { fontSize: 17, fontWeight: '700', marginBottom: 12, textAlign: 'center' },
+  pickerTitle: { fontSize: 17, fontWeight: '700', marginBottom: 12, textAlign: 'center', fontFamily: 'Lexend_700Bold' },
   pickerOption: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1253,7 +1402,7 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
     marginBottom: 6,
   },
-  pickerOptionText: { flex: 1, fontSize: 14, fontWeight: '500' },
+  pickerOptionText: { flex: 1, fontSize: 14, fontWeight: '500', fontFamily: 'Lexend_500Medium' },
 
   // Wizard stepper
   progressTrack: {
@@ -1274,6 +1423,7 @@ const styles = StyleSheet.create({
     fontSize: ms(11),
     fontWeight: '500',
     marginTop: ms(2),
+    fontFamily: 'Lexend_500Medium',
   },
   stepTitleRow: {
     flexDirection: 'row',
@@ -1292,11 +1442,13 @@ const styles = StyleSheet.create({
     fontSize: FS.md,
     fontWeight: '700',
     letterSpacing: -0.2,
+    fontFamily: 'Lexend_700Bold',
   },
   stepDesc: {
     fontSize: ms(12),
     marginTop: ms(2),
     lineHeight: ms(16),
+    fontFamily: 'Lexend_400Regular',
   },
 
   // Bottom action bar
@@ -1324,13 +1476,9 @@ const styles = StyleSheet.create({
     fontSize: FS.md,
     fontWeight: '700',
     letterSpacing: 0.2,
+    fontFamily: 'Lexend_700Bold',
   },
 
-  // Step content helpers
-  rowFields: {
-    flexDirection: 'row',
-    gap: wp(12),
-  },
   locateMeCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1349,10 +1497,12 @@ const styles = StyleSheet.create({
   locateMeTitle: {
     fontSize: FS.sm,
     fontWeight: '700',
+    fontFamily: 'Lexend_700Bold',
   },
   locateMeHint: {
     fontSize: ms(11),
     marginTop: ms(2),
+    fontFamily: 'Lexend_400Regular',
   },
   stepOptionalBadge: {
     alignSelf: 'flex-start',
@@ -1364,12 +1514,45 @@ const styles = StyleSheet.create({
   stepOptionalText: {
     fontSize: ms(12),
     fontWeight: '600',
+    fontFamily: 'Lexend_600SemiBold',
+  },
+  branchHintBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: ms(8),
+    padding: ms(12),
+    borderRadius: ms(12),
+    borderWidth: 1,
+    marginTop: ms(14),
+  },
+  branchHintText: {
+    flex: 1,
+    fontSize: ms(12),
+    fontWeight: '600',
+    lineHeight: ms(17),
+    fontFamily: 'Lexend_600SemiBold',
+  },
+  referenceBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: ms(6),
+    paddingVertical: ms(2),
+    borderRadius: ms(6),
+    gap: ms(3),
+  },
+  referenceBadgeText: {
+    fontSize: ms(9),
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    fontFamily: 'Lexend_700Bold',
   },
   mapHintText: {
     fontSize: ms(11),
     textAlign: 'center',
     marginTop: ms(6),
     marginBottom: ms(4),
+    fontFamily: 'Lexend_400Regular',
   },
 });
 

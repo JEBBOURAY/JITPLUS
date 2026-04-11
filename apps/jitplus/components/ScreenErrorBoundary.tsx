@@ -29,7 +29,7 @@ export function ScreenErrorBoundary({ error, retry }: { error: Error; retry: () 
   }, [error]);
 
   return (
-    <View style={[styles.container, { backgroundColor: c.bg }]} accessibilityRole="alert">
+    <View style={[styles.container, { backgroundColor: c.bg }]} accessibilityRole="alert" accessibilityLiveRegion="polite">
       <View style={[styles.iconCircle, { backgroundColor: c.iconBg }]}>
         <AlertTriangle size={36} color={c.danger} strokeWidth={1.5} />
       </View>

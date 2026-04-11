@@ -8,11 +8,12 @@ import {
   TextInput,
   ActivityIndicator,
   Alert,
+  Platform,
 } from 'react-native';
 import { Save, Gift, Check, Settings as SettingsIcon, ArrowLeft, Stamp, Star, AlertTriangle, RefreshCw, ShieldCheck, ChevronDown, ChevronUp, Shield } from 'lucide-react-native';
 import { useGuardedCallback } from '@/hooks/useGuardedCallback';
 import { useAuth } from '@/contexts/AuthContext';
-import { useTheme } from '@/contexts/ThemeContext';
+import { useTheme, brandGradient } from '@/contexts/ThemeContext';
 import { useRouter } from 'expo-router';
 import api from '@/services/api';
 import { getErrorMessage } from '@/utils/error';
@@ -22,6 +23,8 @@ import PremiumLockModal from '@/components/PremiumLockModal';
 import { RewardManager } from '@/components/settings/RewardManager';
 import { DEFAULT_CURRENCY } from '@/config/currency';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import type { Merchant } from '@/types';
 
 type LoyaltyType = 'POINTS' | 'STAMPS';
@@ -254,10 +257,10 @@ export default function SettingsScreen() {
     return (
       <View style={[styles.centered, { backgroundColor: theme.bg }]}>
         <Shield size={48} color={theme.textMuted} strokeWidth={1.5} />
-        <Text style={{ color: theme.text, fontWeight: '600', fontSize: 16, marginTop: 16 }}>{t('common.ownerOnly')}</Text>
-        <Text style={{ color: theme.textMuted, textAlign: 'center', marginTop: 8, paddingHorizontal: 32 }}>{t('common.ownerOnlyMsg')}</Text>
+        <Text style={{ color: theme.text, fontWeight: '600', fontSize: 16, marginTop: 16, fontFamily: 'Lexend_600SemiBold' }}>{t('common.ownerOnly')}</Text>
+        <Text style={{ color: theme.textMuted, textAlign: 'center', marginTop: 8, paddingHorizontal: 32, fontFamily: 'Lexend_400Regular' }}>{t('common.ownerOnlyMsg')}</Text>
         <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 16, paddingHorizontal: 24, paddingVertical: 10, backgroundColor: theme.primary, borderRadius: 8 }}>
-          <Text style={{ color: '#fff', fontWeight: '600' }}>{t('common.back')}</Text>
+          <Text style={{ color: '#fff', fontWeight: '600', fontFamily: 'Lexend_600SemiBold' }}>{t('common.back')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -284,24 +287,35 @@ export default function SettingsScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
-      {/* â”€â”€ Header â”€â”€ */}
-      <View
-        style={[
-          styles.header,
-          {
-            backgroundColor: theme.bgCard,
-            borderBottomColor: theme.borderLight,
-            paddingTop: insets.top + 8,
-          },
-        ]}
-      >
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <ArrowLeft size={24} color={theme.text} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.text }]}>{t('settingsPage.title')}</Text>
-        <TouchableOpacity onPress={handleRefresh} style={styles.refreshBtn}>
-          <RefreshCw size={18} color={theme.primary} strokeWidth={1.5} />
-        </TouchableOpacity>
+      {/* ── Glassmorphism Header ── */}
+      <View collapsable={false}>
+        <LinearGradient
+          colors={[...brandGradient]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.headerGradient}
+        >
+          <BlurView
+            intensity={Platform.OS === 'ios' ? 40 : 20}
+            tint={theme.mode === 'dark' ? 'dark' : 'default'}
+            style={[styles.headerBlur, { paddingTop: insets.top + 16 }]}
+          >
+            <View style={styles.glassOverlay} />
+            <View style={styles.header}>
+              <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+                <ArrowLeft size={22} color="#fff" />
+              </TouchableOpacity>
+              <Text style={styles.headerTitle}>{t('settingsPage.title')}</Text>
+              <TouchableOpacity onPress={handleRefresh} style={styles.refreshBtn}>
+                <RefreshCw size={18} color="rgba(255,255,255,0.9)" strokeWidth={1.5} />
+              </TouchableOpacity>
+            </View>
+          </BlurView>
+        </LinearGradient>
+        <LinearGradient
+          colors={['rgba(124,58,237,0.3)', 'transparent']}
+          style={styles.headerFade}
+        />
       </View>
 
       <ScrollView
@@ -738,26 +752,33 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
-  // â”€â”€ Header â”€â”€
+  // ── Header — glassmorphism ──
+  headerGradient: { overflow: 'hidden' },
+  headerBlur: { overflow: 'hidden' },
+  glassOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingTop: 20,
-    paddingBottom: 16,
-    paddingHorizontal: 20,
+    paddingBottom: 20,
+    paddingHorizontal: 24,
     gap: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
   },
   backBtn: { marginRight: 2 },
-  headerTitle: { fontSize: 18, fontWeight: '700', color: '#1e293b', flex: 1 },
+  headerTitle: { fontSize: 20, fontWeight: '700', color: '#FFFFFF', flex: 1, fontFamily: 'Lexend_700Bold', letterSpacing: -0.3 },
   refreshBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.20)',
     alignItems: 'center',
     justifyContent: 'center',
   },
+  headerFade: { height: 4 },
 
   // ── Sections ──
   guideContainer: {
@@ -766,14 +787,13 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     paddingVertical: 12,
     paddingHorizontal: 16,
-    backgroundColor: '#f0f4ff',
     borderRadius: 12,
     borderLeftWidth: 3,
-    borderLeftColor: '#7C3AED',
   },
   guideText: {
     fontSize: 14,
     lineHeight: 20,
+    fontFamily: 'Lexend_400Regular',
   },
   sectionHeader: {
     flexDirection: 'row' as const,
@@ -789,20 +809,16 @@ const styles = StyleSheet.create({
     marginHorizontal: 20,
     marginTop: 24,
     marginBottom: 16,
-    color: '#1e293b',
+    fontFamily: 'Lexend_700Bold',
+    letterSpacing: -0.3,
   },
   card: {
     marginHorizontal: 16,
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 16,
-    backgroundColor: '#fff',
-    shadowColor: '#1F2937',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    borderWidth: 1,
   },
-  cardLabel: { fontSize: 14, marginBottom: 14, lineHeight: 20, color: '#64748b' },
+  cardLabel: { fontSize: 14, marginBottom: 14, lineHeight: 20, fontFamily: 'Lexend_400Regular' },
 
   // â”€â”€ Segmented Control â”€â”€
   segment: {
@@ -820,8 +836,8 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     gap: 8,
   },
-  segmentText: { fontSize: 14, fontWeight: '600' },
-  segmentTextActive: { fontWeight: '700' },
+  segmentText: { fontSize: 14, fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
+  segmentTextActive: { fontWeight: '700', fontFamily: 'Lexend_700Bold' },
 
   // â”€â”€ Warning â”€â”€
   warningBanner: {
@@ -832,7 +848,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     gap: 10,
   },
-  warningText: { fontSize: 13, fontWeight: '500', flex: 1, lineHeight: 18 },
+  warningText: { fontSize: 13, fontWeight: '500', flex: 1, lineHeight: 18, fontFamily: 'Lexend_500Medium' },
 
   // â”€â”€ Conversion Rule Card â”€â”€
   conversionRuleCard: {
@@ -842,8 +858,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: 10,
   },
-  conversionRuleTitle: { fontSize: 14, fontWeight: '700' },
-  conversionRuleHint: { fontSize: 12, lineHeight: 17 },
+  conversionRuleTitle: { fontSize: 14, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
+  conversionRuleHint: { fontSize: 12, lineHeight: 17, fontFamily: 'Lexend_400Regular' },
   conversionRuleRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -859,22 +875,23 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     textAlign: 'center',
+    fontFamily: 'Lexend_700Bold',
   },
-  conversionRuleUnit: { fontSize: 12, fontWeight: '600' },
-  conversionRuleEquals: { fontSize: 18, fontWeight: '300', marginHorizontal: 2 },
-  conversionRulePreview: { fontSize: 12, fontWeight: '600', fontStyle: 'italic' },
+  conversionRuleUnit: { fontSize: 12, fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
+  conversionRuleEquals: { fontSize: 18, fontWeight: '300', marginHorizontal: 2, fontFamily: 'Lexend_400Regular' },
+  conversionRulePreview: { fontSize: 12, fontWeight: '600', fontStyle: 'italic', fontFamily: 'Lexend_500Medium' },
 
   // â”€â”€ Reward conversion preview (inside conversion rule card) â”€â”€
   rewardConversionPreview: { marginTop: 12, paddingTop: 10, borderTopWidth: 1 },
-  rewardConversionTitle: { fontSize: 13, fontWeight: '600', marginBottom: 6 },
+  rewardConversionTitle: { fontSize: 13, fontWeight: '600', marginBottom: 6, fontFamily: 'Lexend_600SemiBold' },
   rewardConversionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 4 },
-  rewardConversionName: { fontSize: 12, flex: 1, marginRight: 8 },
-  rewardConversionValues: { fontSize: 12 },
+  rewardConversionName: { fontSize: 12, flex: 1, marginRight: 8, fontFamily: 'Lexend_400Regular' },
+  rewardConversionValues: { fontSize: 12, fontFamily: 'Lexend_500Medium' },
 
   // â”€â”€ Fields â”€â”€
   fieldGroup: { marginTop: 18 },
-  fieldLabel: { fontSize: 14, fontWeight: '600', marginBottom: 4, color: '#475569' },
-  fieldHint: { fontSize: 13, marginBottom: 10, lineHeight: 18, color: '#64748b' },
+  fieldLabel: { fontSize: 14, fontWeight: '600', marginBottom: 4, fontFamily: 'Lexend_600SemiBold' },
+  fieldHint: { fontSize: 13, marginBottom: 10, lineHeight: 18, fontFamily: 'Lexend_400Regular' },
   inputRow: { flexDirection: 'row', alignItems: 'center' },
   input: {
     flex: 1,
@@ -883,9 +900,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 15,
-    fontWeight: '500',
+    fontFamily: 'Lexend_500Medium',
   },
-  inputSuffix: { marginLeft: 12, fontSize: 13, fontWeight: '500', color: '#64748b' },
+  inputSuffix: { marginLeft: 12, fontSize: 13, fontWeight: '500', fontFamily: 'Lexend_500Medium' },
 
   // â”€â”€ Stamp Preview â”€â”€
   stampPreview: {
@@ -894,7 +911,7 @@ const styles = StyleSheet.create({
     padding: 16,
     alignItems: 'center',
   },
-  stampPreviewTitle: { fontSize: 14, fontWeight: '700', marginBottom: 14 },
+  stampPreviewTitle: { fontSize: 14, fontWeight: '700', marginBottom: 14, fontFamily: 'Lexend_700Bold' },
   stampGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -909,8 +926,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  stampCheckmark: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  stampPreviewHint: { fontSize: 12, marginTop: 12 },
+  stampCheckmark: { color: '#fff', fontSize: 16, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
+  stampPreviewHint: { fontSize: 12, marginTop: 12, fontFamily: 'Lexend_400Regular' },
 
   // â”€â”€ Accumulation Limit â”€â”€
   limitToggle: {
@@ -922,7 +939,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: 10,
   },
-  limitToggleText: { fontSize: 14, fontWeight: '600' },
+  limitToggleText: { fontSize: 14, fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
 
   // â”€â”€ Save â”€â”€
   saveBtn: {
@@ -934,6 +951,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     gap: 8,
   },
-  saveBtnText: { fontSize: 15, fontWeight: '700' },
+  saveBtnText: { fontSize: 15, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
 
 });

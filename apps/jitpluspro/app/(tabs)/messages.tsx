@@ -57,6 +57,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { getErrorMessage } from '@/utils/error';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import { useFocusFade } from '@/hooks/useFocusFade';
 import PremiumLockCard from '@/components/PremiumLockCard';
 import { useNotificationHistory, useWhatsappQuota, useEmailQuota, useSendPushNotification, useSendWhatsApp, useSendEmail } from '@/hooks/useQueryHooks';
@@ -460,15 +461,28 @@ export default function MessagesScreen() {
         <LinearGradient
           colors={[...CHANNEL_COLORS.GRADIENT]}
           start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={[styles.header, { paddingTop: insets.top + 12 }]}
+          end={{ x: 1, y: 1 }}
+          style={styles.headerGradient}
         >
-          <Megaphone size={26} color="#EDE9FE" strokeWidth={1.5} />
-          <View style={styles.headerText}>
-            <Text style={styles.headerTitle}>{t('messages.title')}</Text>
-            <Text style={styles.headerSub}>{t('messages.subtitle')}</Text>
-          </View>
+          <BlurView
+            intensity={Platform.OS === 'ios' ? 40 : 20}
+            tint={theme.mode === 'dark' ? 'dark' : 'default'}
+            style={[styles.headerBlur, { paddingTop: insets.top + 16 }]}
+          >
+            <View style={styles.glassOverlay} />
+            <View style={styles.header}>
+              <Megaphone size={26} color="#EDE9FE" strokeWidth={1.5} />
+              <View style={styles.headerText}>
+                <Text style={styles.headerTitle}>{t('messages.title')}</Text>
+                <Text style={styles.headerSub}>{t('messages.subtitle')}</Text>
+              </View>
+            </View>
+          </BlurView>
         </LinearGradient>
+        <LinearGradient
+          colors={['rgba(124,58,237,0.3)', 'transparent']}
+          style={styles.headerFade}
+        />
         </View>
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32 }}>
           <Shield size={48} color={theme.textMuted} strokeWidth={1.5} />
@@ -495,15 +509,28 @@ export default function MessagesScreen() {
         <LinearGradient
           colors={[...CHANNEL_COLORS.GRADIENT]}
           start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={[styles.header, { paddingTop: insets.top + 12 }]}
+          end={{ x: 1, y: 1 }}
+          style={styles.headerGradient}
         >
-          <Megaphone size={26} color="#EDE9FE" strokeWidth={1.5} />
-          <View style={styles.headerText}>
-          <Text style={styles.headerTitle}>{t('messages.title')}</Text>
-            <Text style={styles.headerSub}>{t('messages.subtitle')}</Text>
-          </View>
+          <BlurView
+            intensity={Platform.OS === 'ios' ? 40 : 20}
+            tint={theme.mode === 'dark' ? 'dark' : 'default'}
+            style={[styles.headerBlur, { paddingTop: insets.top + 16 }]}
+          >
+            <View style={styles.glassOverlay} />
+            <View style={styles.header}>
+              <Megaphone size={26} color="#EDE9FE" strokeWidth={1.5} />
+              <View style={styles.headerText}>
+                <Text style={styles.headerTitle}>{t('messages.title')}</Text>
+                <Text style={styles.headerSub}>{t('messages.subtitle')}</Text>
+              </View>
+            </View>
+          </BlurView>
         </LinearGradient>
+        <LinearGradient
+          colors={['rgba(124,58,237,0.3)', 'transparent']}
+          style={styles.headerFade}
+        />
         </View>
 
         <FlatList
@@ -919,17 +946,40 @@ export default function MessagesScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
 
-  // Header
+  // Header — glassmorphism
+  headerGradient: {
+    overflow: 'hidden',
+  },
+  headerBlur: {
+    overflow: 'hidden',
+  },
+  glassOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingBottom: 20,
-    paddingHorizontal: 20,
+    paddingBottom: 24,
+    paddingHorizontal: 24,
     gap: 14,
   },
   headerText: { flex: 1 },
-  headerTitle: { fontSize: 24, fontWeight: '700', color: '#fff', fontFamily: 'Lexend_700Bold' },
-  headerSub: { fontSize: 13, color: 'rgba(255,255,255,.7)', marginTop: 4, fontFamily: 'Lexend_500Medium' },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    fontFamily: 'Lexend_700Bold',
+    letterSpacing: -0.5,
+  },
+  headerSub: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.55)',
+    marginTop: 6,
+    fontFamily: 'Lexend_400Regular',
+    letterSpacing: 0.3,
+  },
+  headerFade: { height: 4 },
 
   // Toggle row
   toggleRow: {

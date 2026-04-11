@@ -97,7 +97,7 @@ export default function Referrals() {
           payoutSearch || undefined,
         );
         setPayoutReqs(res.requests);
-        setPayoutPag({ page: res.page, totalPages: res.totalPages, total: res.total });
+        setPayoutPag({ page: res.page, totalPages: res.totalPages, total: res.total, limit: 20 });
       } else {
         const res = await getTopReferrers(30);
         setTopRefs(res);

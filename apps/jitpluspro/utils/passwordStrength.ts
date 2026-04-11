@@ -10,11 +10,14 @@ export interface PasswordStrengthResult {
 
 const RE_UPPER = /[A-Z]/;
 const RE_DIGIT = /[0-9]/;
-const RE_SPECIAL = /[^A-Za-z0-9]/;
+const RE_SPECIAL = /[!@#$%^&*()\-_=+{}\[\]|\\;:'",.<>?/~`]/;
 
-/** Check if a password meets the backend requirements (8+ chars, uppercase, digit, special). */
+/** Maximum password length to prevent ReDoS / excessive hashing cost */
+const MAX_PASSWORD_LENGTH = 128;
+
+/** Check if a password meets the backend requirements (8–128 chars, uppercase, digit, special). */
 export function isValidPassword(pw: string): boolean {
-  return pw.length >= 8 && RE_UPPER.test(pw) && RE_DIGIT.test(pw) && RE_SPECIAL.test(pw);
+  return pw.length >= 8 && pw.length <= MAX_PASSWORD_LENGTH && RE_UPPER.test(pw) && RE_DIGIT.test(pw) && RE_SPECIAL.test(pw);
 }
 
 /**

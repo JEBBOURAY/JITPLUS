@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Alert,
   Linking,
+  Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -31,7 +32,8 @@ import {
   QrCode,
 } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
-import { useTheme, palette } from '@/contexts/ThemeContext';
+import { useTheme, palette, brandGradient } from '@/contexts/ThemeContext';
+import { BlurView } from 'expo-blur';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { usePlan, useReferral, useApplyReferralMonths } from '@/hooks/useQueryHooks';
 import { getErrorMessage } from '@/utils/error';
@@ -185,12 +187,32 @@ export default function PlanScreen() {
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
       {/* â”€â”€ Header â”€â”€ */}
-      <View style={[styles.header, { paddingTop: insets.top + 12, backgroundColor: theme.bgCard, borderBottomColor: theme.border }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <ArrowLeft size={22} color={theme.text} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.text }]}>{t('account.planPageTitle')}</Text>
-        <View style={{ width: 40 }} />
+      <View collapsable={false}>
+        <LinearGradient
+          colors={[...brandGradient]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.headerGradient}
+        >
+          <BlurView
+            intensity={Platform.OS === 'ios' ? 40 : 20}
+            tint={theme.mode === 'dark' ? 'dark' : 'default'}
+            style={[styles.headerBlur, { paddingTop: insets.top + 16 }]}
+          >
+            <View style={styles.glassOverlay} />
+            <View style={styles.header}>
+              <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+                <ArrowLeft size={22} color="#fff" />
+              </TouchableOpacity>
+              <Text style={styles.headerTitle}>{t('account.planPageTitle')}</Text>
+              <View style={{ width: 40 }} />
+            </View>
+          </BlurView>
+        </LinearGradient>
+        <LinearGradient
+          colors={['rgba(124,58,237,0.3)', 'transparent']}
+          style={styles.headerFade}
+        />
       </View>
 
       {loading ? (
@@ -384,29 +406,34 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     paddingVertical: 12,
     paddingHorizontal: 16,
-    backgroundColor: '#f0f4ff',
     borderRadius: 12,
     borderLeftWidth: 3,
-    borderLeftColor: '#7C3AED',
   },
   guideText: {
     fontSize: 14,
     lineHeight: 20,
+    fontFamily: 'Lexend_400Regular',
   },
   container: { flex: 1 },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
-  // Header
+  // Header — glassmorphism
+  headerGradient: { overflow: 'hidden' },
+  headerBlur: { overflow: 'hidden' },
+  glassOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingBottom: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 24,
+    paddingBottom: 20,
   },
   backBtn: { width: 40, alignItems: 'flex-start' },
-  headerTitle: { fontSize: 17, fontWeight: '700' },
+  headerTitle: { fontSize: 20, fontWeight: '700', color: '#FFFFFF', fontFamily: 'Lexend_700Bold', letterSpacing: -0.3 },
+  headerFade: { height: 4 },
 
   // Hero card
   heroCard: { borderRadius: 20, padding: 22, marginBottom: 16 },
@@ -420,14 +447,14 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     marginBottom: 16,
   },
-  heroBadgeText: { fontSize: 10, fontWeight: '700', letterSpacing: 1 },
+  heroBadgeText: { fontSize: 10, fontWeight: '700', letterSpacing: 1, fontFamily: 'Lexend_700Bold' },
   heroRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  heroTitle: { fontSize: 24, fontWeight: '700', marginBottom: 5 },
-  heroSub: { fontSize: 13, lineHeight: 19 },
+  heroTitle: { fontSize: 24, fontWeight: '700', marginBottom: 5, fontFamily: 'Lexend_700Bold' },
+  heroSub: { fontSize: 13, lineHeight: 19, fontFamily: 'Lexend_400Regular' },
   progressWrap: { marginTop: 18 },
   progressTrack: { height: 6, borderRadius: 3, overflow: 'hidden' },
   progressFill: { height: 6, borderRadius: 3, backgroundColor: '#fff' },
-  progressText: { fontSize: 11, color: 'rgba(255,255,255,0.7)' },
+  progressText: { fontSize: 11, color: 'rgba(255,255,255,0.7)', fontFamily: 'Lexend_400Regular' },
   expiryChip: {
     marginTop: 14,
     alignSelf: 'flex-start',
@@ -436,7 +463,7 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: 20,
   },
-  expiryChipText: { color: '#fff', fontSize: 12, fontWeight: '600' },
+  expiryChipText: { color: '#fff', fontSize: 12, fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
 
   // Referral
   referralCard: {
@@ -448,12 +475,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     marginBottom: 16,
   },
-  referralTitle: { fontSize: 14, fontWeight: '700' },
-  referralSub: { fontSize: 12, marginTop: 2 },
+  referralTitle: { fontSize: 14, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
+  referralSub: { fontSize: 12, marginTop: 2, fontFamily: 'Lexend_400Regular' },
 
   // Sections
   section: { marginBottom: 20 },
-  sectionTitle: { fontSize: 15, fontWeight: '700', marginBottom: 12 },
+  sectionTitle: { fontSize: 15, fontWeight: '700', marginBottom: 12, fontFamily: 'Lexend_700Bold' },
 
   // Features table
   tableCard: { borderRadius: 14, borderWidth: 1, overflow: 'hidden' },
@@ -472,12 +499,12 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingVertical: 5,
   },
-  tableHeadLabel: { fontSize: 12, fontWeight: '700', letterSpacing: 0.2 },
+  tableHeadLabel: { fontSize: 12, fontWeight: '700', letterSpacing: 0.2, fontFamily: 'Lexend_700Bold' },
   tableRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 11 },
   rowLabel: { flex: 2, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  rowLabelText: { fontSize: 13, flex: 1 },
+  rowLabelText: { fontSize: 13, flex: 1, fontFamily: 'Lexend_400Regular' },
   rowCell: { flex: 1, alignItems: 'center', paddingVertical: 3 },
-  cellVal: { fontSize: 11, fontWeight: '600', textAlign: 'center' },
+  cellVal: { fontSize: 11, fontWeight: '600', textAlign: 'center', fontFamily: 'Lexend_600SemiBold' },
 
   // Action buttons
   btnPrimary: { borderRadius: 14, overflow: 'hidden', marginBottom: 10 },
@@ -489,7 +516,7 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
     paddingHorizontal: 20,
   },
-  btnPrimaryText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  btnPrimaryText: { color: '#fff', fontWeight: '700', fontSize: 15, fontFamily: 'Lexend_700Bold' },
   btnOutline: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -500,8 +527,8 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   btnIcon: { width: 38, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  btnOutlineTitle: { fontSize: 14, fontWeight: '700' },
-  btnOutlineSub: { fontSize: 12, marginTop: 1 },
+  btnOutlineTitle: { fontSize: 14, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
+  btnOutlineSub: { fontSize: 12, marginTop: 1, fontFamily: 'Lexend_400Regular' },
   // Legacy aliases (keep for compatibility if referenced elsewhere)
   planHeaderRow: {},
   planHeaderCell: {},

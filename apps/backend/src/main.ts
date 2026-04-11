@@ -1,14 +1,11 @@
 // ── Sentry must be initialized before all other imports ────────────────────
 import * as Sentry from '@sentry/nestjs';
-import { nodeProfilingIntegration } from '@sentry/profiling-node';
 
 Sentry.init({
   dsn: process.env.SENTRY_DSN || '',
   enabled: !!process.env.SENTRY_DSN,
   environment: process.env.NODE_ENV || 'development',
-  integrations: [nodeProfilingIntegration()],
-  tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
-  profilesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 0.0,
+  tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.05 : 1.0,
 });
 // ── End Sentry init ──────────────────────────────────────────────────────────
 
@@ -21,7 +18,6 @@ import {
 } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { ValidationError } from 'class-validator';
-import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import helmet from 'helmet';
 import compression from 'compression';
 import { join } from 'path';
@@ -49,6 +45,7 @@ async function bootstrap() {
   // Security headers
   app.use(helmet({
     hsts: { maxAge: 31536000, includeSubDomains: true, preload: true },
+    noSniff: true, // X-Content-Type-Options: nosniff — prevents MIME-type sniffing
     contentSecurityPolicy: isProd
       ? {
           directives: {
@@ -88,11 +85,11 @@ async function bootstrap() {
     throw new Error('[SECURITY] CORS_ORIGINS must not be "*" in production — specify exact origins');
   }
   const allowedOrigins = corsOrigins
-    ? corsOrigins.split(',').map((o) => o.trim())
+    ? corsOrigins.split(',').map((o) => o.trim()).filter(Boolean)
     : '*';
   app.enableCors({
     origin: allowedOrigins,
-    credentials: Array.isArray(allowedOrigins),
+    credentials: allowedOrigins !== '*',
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   });
@@ -113,8 +110,9 @@ async function bootstrap() {
     }),
   );
 
-  // ── Swagger / OpenAPI (dev only) ──────────────────────────
+  // ── Swagger / OpenAPI (dev only — lazy-loaded to avoid bundling in prod) ──
   if (!isProd) {
+    const { SwaggerModule, DocumentBuilder } = await import('@nestjs/swagger');
     const swaggerConfig = new DocumentBuilder()
       .setTitle('JitPlus API')
       .setDescription('API documentation for the JitPlus loyalty platform')

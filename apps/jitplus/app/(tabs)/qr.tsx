@@ -40,8 +40,7 @@ export default function QRScreen() {
   const { t } = useLanguage();
   const insets = useSafeAreaInsets();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const qrViewRef = useRef<any>(null);
+  const qrViewRef = useRef<ViewShotType | null>(null);
   const [qrValue, setQrValue] = useState<string | null>(null);
   const [qrLoading, setQrLoading] = useState(true);
 
@@ -58,7 +57,8 @@ export default function QRScreen() {
       const cached = Platform.OS === 'web'
         ? null // Web has no SecureStore — always fetch fresh
         : await SecureStore.getItemAsync(QR_TOKEN_STORAGE_KEY);
-      if (cached) {
+      // Accept only versioned tokens (v1.xxx); invalidate legacy unversioned cache
+      if (cached && cached.startsWith('v1.')) {
         setQrValue(`jitplus://scan/${cached}`);
         setQrLoading(false);
         return;
@@ -88,16 +88,19 @@ export default function QRScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client?.id]);
 
-  // Fetch QR token and check badges when tab is focused
+  // Fetch QR token only once — subsequent focuses skip if already loaded.
+  // The token is permanent and cached in SecureStore, no need to re-fetch on every focus.
   useFocusEffect(
     useCallback(() => {
-      fetchQrToken();
+      if (!qrValue) {
+        fetchQrToken();
+      }
 
       // Show GUID badge only if new-user flag is set
       AsyncStorage.getItem('showGuidBadge').then((val) => {
         if (val === '1') setShowGuidBadge(true);
       });
-    }, [fetchQrToken])
+    }, [fetchQrToken, qrValue])
   );
 
   const handleShareQR = useCallback(async () => {
@@ -200,7 +203,7 @@ export default function QRScreen() {
                         }}
                         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                       >
-                        <X size={ms(12)} color={theme.primary} strokeWidth={1.5} />
+                        <X size={ms(12)} color={theme.primary} strokeWidth={2} />
                       </TouchableOpacity>
                     </View>
                   )}
@@ -227,7 +230,7 @@ export default function QRScreen() {
               accessibilityLabel={t('qr.shareAccessibility')}
             >
               <View style={[styles.actionIconBg, { backgroundColor: theme.primaryBg }]}>
-                <Share2 size={ms(18)} color={theme.primary} strokeWidth={1.5} />
+                <Share2 size={ms(18)} color={theme.primary} strokeWidth={2} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.actionTitle, { color: theme.text }]}>{t('qr.shareTitle')}</Text>

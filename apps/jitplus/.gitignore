@@ -16,6 +16,9 @@ google-services.json
 # Play Store service account key — NEVER commit
 play-store-key.json
 
+# EAS credentials — contains keystore passwords
+credentials.json
+
 # Environment files
 .env
 .env.local

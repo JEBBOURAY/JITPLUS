@@ -30,6 +30,7 @@ import { isValidPassword } from '@/utils/passwordStrength';
 import { isValidEmail } from '@/utils/validation';
 import { getErrorMessage } from '@/utils/error';
 import { useGoogleIdToken } from '@/hooks/useGoogleIdToken';
+import { useAppleAuth } from '@/hooks/useAppleAuth';
 import { StepAccount } from '@/components/register/StepAccount';
 import { StepPassword } from '@/components/register/StepPassword';
 import { StepStoreConfig } from '@/components/register/StepStoreConfig';
@@ -56,6 +57,7 @@ interface RegState {
   // Social info (step 4)
   instagram: string;
   tiktok: string;
+  website: string;
   storePhone: string;
   description: string;
   // Referral
@@ -85,6 +87,7 @@ const initialRegState: RegState = {
   longitude: null,
   instagram: '',
   tiktok: '',
+  website: '',
   storePhone: '',
   description: '',
   referralCode: '',
@@ -183,8 +186,8 @@ const si = StyleSheet.create({
   },
   lineWrap: { flex: 1, justifyContent: 'center', height: ms(28) },
   line: { height: ms(2), borderRadius: ms(1) },
-  num: { fontSize: ms(12), fontWeight: '700' },
-  label: { fontSize: fontSize.xs, marginTop: hp(2) },
+  num: { fontSize: ms(12), fontWeight: '700', fontFamily: 'Lexend_700Bold' },
+  label: { fontSize: fontSize.xs, marginTop: hp(2), fontFamily: 'Lexend_500Medium' },
 });
 
 // ── Main ────────────────────────────────────────────────────────
@@ -207,7 +210,7 @@ export default function RegisterScreen() {
   const {
     step, googleIdToken, email, password, confirmPassword, showPassword,
     nomCommerce, categorie, ville, quartier, adresse, latitude, longitude,
-    instagram, tiktok, storePhone, description,
+    instagram, tiktok, website, storePhone, description,
     referralCode,
     isLoading,
   } = s;
@@ -251,6 +254,7 @@ export default function RegisterScreen() {
     }
   }, [step, set, animateStepTransition]);
   const google = useGoogleIdToken(handleGoogleToken);
+  const apple = useAppleAuth();
 
   // Refs
   const emailRef = useRef<TextInput>(null);
@@ -286,7 +290,7 @@ export default function RegisterScreen() {
     const {
       nomCommerce: nc, categorie: cat, ville: v, quartier: q,
       adresse: addr, latitude: lat, longitude: lng,
-      instagram: ig, tiktok: tk, storePhone: sp, description: desc,
+      instagram: ig, tiktok: tk, website: ws, storePhone: sp, description: desc,
       referralCode: rc,
       googleIdToken: gToken, email: em, password: pw,
     } = sRef.current;
@@ -294,6 +298,7 @@ export default function RegisterScreen() {
     // Clean social handles: strip @ prefix and full URLs
     const cleanIg = ig.trim().replace(/^@/, '').replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/.*$/, '');
     const cleanTk = tk.trim().replace(/^@/, '').replace(/^https?:\/\/(www\.)?tiktok\.com\/@?/, '').replace(/\/.*$/, '');
+    const cleanWs = ws.trim();
 
     const storeData = {
       nomCommerce: nc.trim(),
@@ -307,6 +312,7 @@ export default function RegisterScreen() {
       ...(sp.trim() && { storePhone: sp.trim() }),
       ...(cleanIg && { instagram: cleanIg }),
       ...(cleanTk && { tiktok: cleanTk }),
+      ...(cleanWs && { website: cleanWs }),
       ...(rc.trim() && { referralCode: rc.trim() }),
     };
 
@@ -500,6 +506,7 @@ export default function RegisterScreen() {
                   googleIdToken={googleIdToken}
                   setGoogleIdToken={(v) => set({ googleIdToken: v })}
                   google={google}
+                  apple={apple}
                   isLoading={isLoading}
                 />
               )}
@@ -533,7 +540,7 @@ export default function RegisterScreen() {
                 <StepSocialInfo
                   theme={theme}
                   t={t}
-                  data={{ instagram, tiktok, storePhone, description, referralCode }}
+                  data={{ instagram, tiktok, website, storePhone, description, referralCode }}
                   setData={(patch) => set(patch as Partial<RegState>)}
                 />
               )}
@@ -651,17 +658,20 @@ const styles = StyleSheet.create({
     letterSpacing: 1.2,
     textTransform: 'uppercase',
     marginBottom: hp(2),
+    fontFamily: 'Lexend_700Bold',
   },
   title: {
     fontSize: ms(20),
     fontWeight: '800',
     letterSpacing: -0.5,
     marginBottom: hp(1),
+    fontFamily: 'Lexend_700Bold',
   },
   subtitle: {
     fontSize: fontSize.xs,
     lineHeight: ms(18),
     fontWeight: '500',
+    fontFamily: 'Lexend_500Medium',
   },
 
   // Step content
@@ -675,7 +685,7 @@ const styles = StyleSheet.create({
     paddingVertical: hp(10),
     marginBottom: hp(8),
   },
-  stepErrorText: { fontSize: fontSize.sm, fontWeight: '600', textAlign: 'center' },
+  stepErrorText: { fontSize: fontSize.sm, fontWeight: '600', textAlign: 'center', fontFamily: 'Lexend_600SemiBold' },
 
   // Actions
   actions: { marginTop: hp(2), marginBottom: hp(4) },
@@ -696,7 +706,7 @@ const styles = StyleSheet.create({
       android: { elevation: 4 },
     }),
   },
-  mainBtnText: { color: '#fff', fontSize: fontSize.lg, fontWeight: '700', letterSpacing: 0.5 },
+  mainBtnText: { color: '#fff', fontSize: fontSize.lg, fontWeight: '700', letterSpacing: 0.5, fontFamily: 'Lexend_700Bold' },
 
   // Footer
   footer: { marginBottom: hp(12) },
@@ -716,6 +726,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  loginPromptTitle: { fontSize: fontSize.sm, fontWeight: '500', marginBottom: 2 },
-  loginPromptSub: { fontSize: fontSize.sm, fontWeight: '700' },
+  loginPromptTitle: { fontSize: fontSize.sm, fontWeight: '500', marginBottom: 2, fontFamily: 'Lexend_500Medium' },
+  loginPromptSub: { fontSize: fontSize.sm, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
 });

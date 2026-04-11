@@ -23,7 +23,7 @@ import { getPasswordStrength, isValidPassword } from '@/utils/passwordStrength';
 import PremiumPhoneInput from '@/components/PremiumPhoneInput';
 import { DEFAULT_COUNTRY, isValidPhoneForCountry, CountryCode } from '@/utils/countryCodes';
 
-const RE_NAME_STRIP = /[^a-zA-Z\u00C0-\u024F\s'-]/g;
+const RE_NAME_STRIP = /[^\p{L}\p{M}\s'-]/gu;
 
 const sanitizeName = (text: string) => text.replace(RE_NAME_STRIP, '');
 
@@ -54,11 +54,11 @@ const StrengthBar = memo(function StrengthBar({ pct, color, label }: { pct: numb
   );
 });
 
-const StepDot = memo(function StepDot({ index, current, theme }: { index: number; current: number; theme: any }) {
+const StepDot = memo(function StepDot({ index, current, theme }: { index: number; current: number; theme: { border: string } }) {
   const active = index <= current;
   return (
     <View style={[s.stepDot, { backgroundColor: active ? palette.violet : theme.border }]}>
-      {index < current && <CheckCircle2 size={ms(12)} color="#fff" strokeWidth={2.5} />}
+      {index < current && <CheckCircle2 size={ms(12)} color="#fff" strokeWidth={2} />}
       {index === current && <View style={s.stepDotInner} />}
     </View>
   );
@@ -186,7 +186,7 @@ export default function CompleteProfileScreen() {
       await AsyncStorage.setItem('showWelcome', '1');
       router.replace('/(tabs)/qr');
     } else {
-      if (result.error && result.error === t('common.networkError')) {
+      if (result.isNetworkError) {
         Alert.alert(t('common.networkError'), result.error);
       } else {
         setError(result.error || t('common.genericError'));
@@ -299,7 +299,7 @@ export default function CompleteProfileScreen() {
                       backgroundColor: theme.bgInput,
                       borderColor: prenomOk ? palette.violet : theme.border,
                     }]}>
-                      <User size={ICON_18} color={prenomOk ? palette.violet : theme.textMuted} strokeWidth={1.5} />
+                      <User size={ICON_18} color={prenomOk ? palette.violet : theme.textMuted} strokeWidth={2} />
                       <TextInput
                         style={[s.input, { color: theme.text }]}
                         placeholder={t('completeProfile.firstNamePlaceholder')}
@@ -312,7 +312,7 @@ export default function CompleteProfileScreen() {
                         returnKeyType="next"
                         onSubmitEditing={() => nomRef.current?.focus()}
                       />
-                      {prenomOk && <CheckCircle2 size={ICON_16} color={palette.violet} strokeWidth={1.5} />}
+                      {prenomOk && <CheckCircle2 size={ICON_16} color={palette.violet} strokeWidth={2} />}
                     </View>
                   </View>
 
@@ -322,7 +322,7 @@ export default function CompleteProfileScreen() {
                       backgroundColor: theme.bgInput,
                       borderColor: nomOk ? palette.violet : theme.border,
                     }]}>
-                      <User size={ICON_18} color={nomOk ? palette.violet : theme.textMuted} strokeWidth={1.5} />
+                      <User size={ICON_18} color={nomOk ? palette.violet : theme.textMuted} strokeWidth={2} />
                       <TextInput
                         ref={nomRef}
                         style={[s.input, { color: theme.text }]}
@@ -335,13 +335,13 @@ export default function CompleteProfileScreen() {
                         returnKeyType="done"
                         onSubmitEditing={canNextStep0 ? goNext : undefined}
                       />
-                      {nomOk && <CheckCircle2 size={ICON_16} color={palette.violet} strokeWidth={1.5} />}
+                      {nomOk && <CheckCircle2 size={ICON_16} color={palette.violet} strokeWidth={2} />}
                     </View>
                   </View>
 
                   {/* Privacy info */}
                   <View style={[s.infoBox, { backgroundColor: `${palette.violet}08` }]}>
-                    <Info size={ICON_16} color={palette.violet} strokeWidth={1.5} />
+                    <Info size={ICON_16} color={palette.violet} strokeWidth={2} />
                     <Text style={[s.infoText, { color: theme.textMuted }]}>
                       {t('completeProfile.namePrivacyHint')}
                     </Text>
@@ -361,7 +361,7 @@ export default function CompleteProfileScreen() {
                           borderColor: isValidPw ? palette.violet : theme.border,
                           borderWidth: isValidPw ? 2 : 1.5,
                         }]}>
-                          <Lock size={ICON_18} color={isValidPw ? palette.violet : theme.textMuted} strokeWidth={1.5} />
+                          <Lock size={ICON_18} color={isValidPw ? palette.violet : theme.textMuted} strokeWidth={2} />
                           <TextInput
                             ref={pwRef}
                             style={[s.input, { color: theme.text }]}
@@ -377,8 +377,8 @@ export default function CompleteProfileScreen() {
                           />
                           <TouchableOpacity onPress={() => setShowPw(v => !v)} activeOpacity={0.7}>
                             {showPw
-                              ? <EyeOff size={ICON_20} color={theme.textMuted} strokeWidth={1.5} />
-                              : <Eye size={ICON_20} color={theme.textMuted} strokeWidth={1.5} />}
+                              ? <EyeOff size={ICON_20} color={theme.textMuted} strokeWidth={2} />
+                              : <Eye size={ICON_20} color={theme.textMuted} strokeWidth={2} />}
                           </TouchableOpacity>
                         </View>
                       </View>
@@ -394,7 +394,7 @@ export default function CompleteProfileScreen() {
                           borderColor: passwordsMatch ? palette.violet : theme.border,
                           borderWidth: passwordsMatch ? 2 : 1.5,
                         }]}>
-                          <CheckCircle2 size={ICON_18} color={passwordsMatch ? palette.violet : theme.textMuted} strokeWidth={1.5} />
+                          <CheckCircle2 size={ICON_18} color={passwordsMatch ? palette.violet : theme.textMuted} strokeWidth={2} />
                           <TextInput
                             ref={confirmRef}
                             style={[s.input, { color: theme.text }]}
@@ -409,14 +409,14 @@ export default function CompleteProfileScreen() {
                           />
                           <TouchableOpacity onPress={() => setShowConfirm(v => !v)} activeOpacity={0.7}>
                             {showConfirm
-                              ? <EyeOff size={ICON_20} color={theme.textMuted} strokeWidth={1.5} />
-                              : <Eye size={ICON_20} color={theme.textMuted} strokeWidth={1.5} />}
+                              ? <EyeOff size={ICON_20} color={theme.textMuted} strokeWidth={2} />
+                              : <Eye size={ICON_20} color={theme.textMuted} strokeWidth={2} />}
                           </TouchableOpacity>
                         </View>
                       </View>
 
                       <View style={[s.infoBox, { backgroundColor: `${palette.violet}08` }]}>
-                        <Shield size={ICON_16} color={palette.violet} strokeWidth={1.5} />
+                        <Shield size={ICON_16} color={palette.violet} strokeWidth={2} />
                         <Text style={[s.infoText, { color: theme.textMuted }]}>
                           {t('completeProfile.passwordHint')}
                         </Text>
@@ -436,7 +436,7 @@ export default function CompleteProfileScreen() {
                       />
 
                       <View style={[s.infoBox, { backgroundColor: `${palette.violet}08` }]}>
-                        <Info size={ICON_16} color={palette.violet} strokeWidth={1.5} />
+                        <Info size={ICON_16} color={palette.violet} strokeWidth={2} />
                         <Text style={[s.infoText, { color: theme.textMuted }]}>
                           {t('completeProfile.phonePrivacyHint')}
                         </Text>
@@ -446,7 +446,7 @@ export default function CompleteProfileScreen() {
                     /* No password needed — auto-skip or show "no password needed" */
                     <View style={s.noPasswordBlock}>
                       <View style={[s.noPasswordIcon, { backgroundColor: `${palette.violet}10` }]}>
-                        <CheckCircle2 size={ms(32)} color={palette.violet} strokeWidth={1.5} />
+                        <CheckCircle2 size={ms(32)} color={palette.violet} strokeWidth={2} />
                       </View>
                       <Text style={[s.noPasswordTitle, { color: theme.text }]}>
                         {t('completeProfile.noPasswordTitle')}
@@ -471,7 +471,7 @@ export default function CompleteProfileScreen() {
                       backgroundColor: theme.bgInput,
                       borderColor: dateValid ? palette.violet : theme.border,
                     }]}>
-                      <Calendar size={ICON_18} color={dateValid ? palette.violet : theme.textMuted} strokeWidth={1.5} />
+                      <Calendar size={ICON_18} color={dateValid ? palette.violet : theme.textMuted} strokeWidth={2} />
                       <TextInput
                         style={[s.input, { color: theme.text }]}
                         placeholder={t('completeProfile.dateNaissancePlaceholder')}
@@ -483,13 +483,13 @@ export default function CompleteProfileScreen() {
                         autoFocus
                         returnKeyType="done"
                       />
-                      {dateValid && <CheckCircle2 size={ICON_16} color={palette.violet} strokeWidth={1.5} />}
+                      {dateValid && <CheckCircle2 size={ICON_16} color={palette.violet} strokeWidth={2} />}
                     </View>
                   </View>
 
                   {/* Birthday gift info */}
                   <View style={[s.birthdayCard, { backgroundColor: `${palette.gold}12`, borderColor: `${palette.gold}30` }]}>
-                    <Gift size={ICON_20} color={palette.gold} strokeWidth={1.5} />
+                    <Gift size={ICON_20} color={palette.gold} strokeWidth={2} />
                     <View style={{ flex: 1 }}>
                       <Text style={[s.birthdayTitle, { color: palette.gray900 }]}>
                         {t('completeProfile.birthdayGiftTitle')}
@@ -502,7 +502,7 @@ export default function CompleteProfileScreen() {
 
                   {/* Privacy reassurance */}
                   <View style={[s.infoBox, { backgroundColor: `${palette.violet}08` }]}>
-                    <Lock size={ICON_16} color={palette.violet} strokeWidth={1.5} />
+                    <Lock size={ICON_16} color={palette.violet} strokeWidth={2} />
                     <Text style={[s.infoText, { color: theme.textMuted }]}>
                       {t('completeProfile.birthdayPrivacy')}
                     </Text>
@@ -518,7 +518,7 @@ export default function CompleteProfileScreen() {
           <View style={[s.bottomBar, { borderTopColor: theme.border }]}>
             {step > 0 ? (
               <TouchableOpacity onPress={goBack} style={[s.backBtn, { borderColor: theme.border }]} activeOpacity={0.7}>
-                <ArrowLeft size={ICON_20} color={theme.text} strokeWidth={1.5} />
+                <ArrowLeft size={ICON_20} color={theme.text} strokeWidth={2} />
               </TouchableOpacity>
             ) : (
               <View style={s.backBtnPlaceholder} />

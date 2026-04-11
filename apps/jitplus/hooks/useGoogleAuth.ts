@@ -9,6 +9,7 @@ import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '@/contexts/AuthContext';
 import { haptic } from '@/utils/haptics';
+import { isNoAccountError } from '@/utils/authErrors';
 import * as Haptics from 'expo-haptics';
 import i18n from '@/i18n';
 
@@ -50,6 +51,7 @@ export function useGoogleAuth({ actionLabel, onCancel }: UseGoogleAuthOptions) {
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [error, setError] = useState('');
+  const [noAccount, setNoAccount] = useState(false);
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -60,6 +62,7 @@ export function useGoogleAuth({ actionLabel, onCancel }: UseGoogleAuthOptions) {
   const promptGoogle = useCallback(async () => {
     setError('');
     setIsSuccess(false);
+    setNoAccount(false);
     setIsLoading(true);
 
     if (!GoogleSignin || !isErrorWithCode || !statusCodes) {
@@ -119,7 +122,12 @@ export function useGoogleAuth({ actionLabel, onCancel }: UseGoogleAuthOptions) {
         }
       } else {
         setIsLoading(false);
-        setError(result.error || i18n.t('googleAuth.error', { action: actionLabel }));
+        if (result.rawError && isNoAccountError(result.rawError)) {
+          setNoAccount(true);
+          setError(i18n.t('googleAuth.noAccountFound'));
+        } else {
+          setError(result.error || i18n.t('googleAuth.error', { action: actionLabel }));
+        }
         // Don't call onCancel — let user see the error and retry
       }
     } catch (err) {
@@ -157,5 +165,10 @@ export function useGoogleAuth({ actionLabel, onCancel }: UseGoogleAuthOptions) {
     }
   }, [actionLabel, googleLogin, onCancel]);
 
-  return { isLoading, isSuccess, error, setError, setIsLoading, promptGoogle };
+  const dismissNoAccount = useCallback(() => {
+    setNoAccount(false);
+    setError('');
+  }, []);
+
+  return { isLoading, isSuccess, error, setError, setIsLoading, promptGoogle, noAccount, dismissNoAccount };
 }

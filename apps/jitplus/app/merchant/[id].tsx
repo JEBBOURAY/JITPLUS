@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,13 +10,12 @@ import {
   ScrollView,
   Alert,
   Platform,
-  Image as RNImage,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 import { useLocalSearchParams, useRouter, Redirect } from 'expo-router';
-import { MapPin, ArrowLeft, Info, Gift, Coins, Navigation, Star, Share2, Instagram, Eye, Users, CreditCard, Check, Store, Music, XCircle, ChevronRight } from 'lucide-react-native';
+import { ArrowLeft, AlertCircle, Stamp, Coins, Award, Send, Instagram, Eye, Users, Wallet, BadgeCheck, MapPin, Music2, LogOut, ChevronRight, Phone, Globe, Mail } from 'lucide-react-native';
 import { haptic } from '@/utils/haptics';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -29,6 +28,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { api } from '@/services/api';
 import { wp, hp, ms } from '@/utils/responsive';
 import { resolveImageUrl } from '@/utils/imageUrl';
+import { getDistanceSafe, formatDistance } from '@/utils/distance';
+import * as Location from 'expo-location';
 
 export default function MerchantDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -45,6 +46,21 @@ export default function MerchantDetailScreen() {
   const [justLeft, setJustLeft] = useState(false);
   const [logoError, setLogoError] = useState(false);
   const [coverError, setCoverError] = useState(false);
+  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+          const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+          if (mounted) setUserLocation({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
+        }
+      } catch { /* location unavailable */ }
+    })();
+    return () => { mounted = false; };
+  }, []);
 
   const handleJoinMerchant = useCallback(async () => {
     if (!id || joinLoading || merchant?.hasCard || justJoined) return;
@@ -58,10 +74,11 @@ export default function MerchantDetailScreen() {
       queryClient.invalidateQueries({ queryKey: ['points'] });
     } catch (e) {
       if (__DEV__) console.warn('Join merchant error:', e);
+      Alert.alert(t('common.error'), t('merchant.joinError'));
     } finally {
       setJoinLoading(false);
     }
-  }, [id, joinLoading, merchant?.hasCard, justJoined, queryClient]);
+  }, [id, joinLoading, merchant?.hasCard, justJoined, queryClient, t]);
 
   const handleLeaveMerchant = useCallback(() => {
     if (!id || !merchant || leaveLoading) return;
@@ -89,6 +106,7 @@ export default function MerchantDetailScreen() {
               queryClient.invalidateQueries({ queryKey: ['points'] });
             } catch (e) {
               if (__DEV__) console.warn('Leave merchant error:', e);
+              Alert.alert(t('common.error'), t('merchant.leaveError'));
             } finally {
               setLeaveLoading(false);
             }
@@ -110,10 +128,7 @@ export default function MerchantDetailScreen() {
           <Skeleton width={ms(80)} height={ms(80)} borderRadius={ms(40)} />
           <Skeleton width={wp(200)} height={hp(24)} borderRadius={ms(8)} />
           <Skeleton width={wp(120)} height={hp(18)} borderRadius={ms(9)} />
-          <View style={styles.loadingGrid}>
-            <Skeleton width="48%" height={hp(100)} borderRadius={ms(16)} />
-            <Skeleton width="48%" height={hp(100)} borderRadius={ms(16)} />
-          </View>
+          <Skeleton width="100%" height={hp(100)} borderRadius={ms(16)} />
           <Skeleton width="100%" height={hp(80)} borderRadius={ms(16)} />
           <Skeleton width="100%" height={hp(50)} borderRadius={ms(14)} />
         </View>
@@ -126,7 +141,7 @@ export default function MerchantDetailScreen() {
       <SafeAreaView style={[styles.container, { backgroundColor: theme.bgCard }]} edges={['top', 'bottom']}>
         <View style={styles.errorContainer}>
           <View style={[styles.errorIcon, { backgroundColor: theme.borderLight }]}>
-            <Info size={28} color={theme.textMuted} />
+            <AlertCircle size={28} color={theme.textMuted} strokeWidth={2} />
           </View>
           <Text style={[styles.errorTitle, { color: theme.text }]}>{t('merchant.notFound')}</Text>
           <Text style={[styles.errorText, { color: theme.textMuted }]}>
@@ -148,7 +163,6 @@ export default function MerchantDetailScreen() {
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
-        bounces={true}
       >
         {/* ── Hero section: Cover + overlay header + logo ── */}
         <View style={styles.heroSection}>
@@ -182,14 +196,17 @@ export default function MerchantDetailScreen() {
               accessibilityLabel={t('common.back')}
               hitSlop={8}
             >
-              <ArrowLeft size={20} color={palette.gray900} strokeWidth={1.8} />
+              <ArrowLeft size={20} color={palette.gray900} strokeWidth={2} />
             </Pressable>
             <Pressable
               onPress={async () => {
                 haptic();
                 try {
+                  const deepLink = `jitplus://merchant/${merchant.id}`;
+                  const { getStoreUrl } = require('@/constants');
+                  const storeUrl = getStoreUrl();
                   await Share.share({
-                    message: `${t('merchant.shareText', { name: merchant.nomBoutique })}\nhttps://play.google.com/store/apps/details?id=com.jitplus.client`,
+                    message: `${t('merchant.shareText', { name: merchant.nomBoutique })}\n\n${deepLink}\n\n${t('merchant.shareDownload')}\n${storeUrl}`,
                   });
                 } catch { /* user cancelled */ }
               }}
@@ -198,7 +215,7 @@ export default function MerchantDetailScreen() {
               accessibilityLabel={t('merchant.shareApp')}
               hitSlop={8}
             >
-              <Share2 size={18} color={palette.gray900} strokeWidth={1.8} />
+              <Send size={18} color={palette.gray900} strokeWidth={2} />
             </Pressable>
           </SafeAreaView>
 
@@ -237,7 +254,7 @@ export default function MerchantDetailScreen() {
 
           <View style={styles.statsRow}>
             <View style={[styles.statChip, { backgroundColor: theme.bgCard }]}>
-              <Eye size={14} color={palette.violet} strokeWidth={1.8} />
+              <Eye size={15} color={palette.violet} strokeWidth={2} />
               <Text style={[styles.statValue, { color: theme.text }]}>
                 {(merchant.profileViews ?? 0).toLocaleString('fr-MA')}
               </Text>
@@ -245,7 +262,7 @@ export default function MerchantDetailScreen() {
             </View>
             <View style={styles.statDivider} />
             <View style={[styles.statChip, { backgroundColor: theme.bgCard }]}>
-              <Users size={14} color={palette.violet} strokeWidth={1.8} />
+              <Users size={15} color={palette.violet} strokeWidth={2} />
               <Text style={[styles.statValue, { color: theme.text }]}>
                 {(merchant.clientCount ?? 0).toLocaleString('fr-MA')}
               </Text>
@@ -254,97 +271,12 @@ export default function MerchantDetailScreen() {
           </View>
         </View>
 
-        {/* ── Content area ── */}
-        <View style={styles.contentArea}>
-          {/* Description */}
-          {!!merchant.description && (
-            <View style={[styles.descriptionCard, { backgroundColor: theme.bgCard }]}>
-              <Text style={[styles.sectionTitle, { color: theme.text }]}>
-                {t('merchant.aboutUs')}
-              </Text>
-              <Text style={[styles.descriptionText, { color: theme.textSecondary }]}>
-                {merchant.description}
-              </Text>
-            </View>
-          )}
-
-          {/* Loyalty & Location cards */}
-          <View style={styles.gridRow}>
-            {/* Loyalty card */}
-            <View style={[styles.infoCard, { backgroundColor: theme.bgCard }]}>
-              <LinearGradient
-                colors={[`${palette.violet}12`, 'transparent']}
-                style={styles.infoCardGradient}
-              />
-              <View style={[styles.cardIconBadge, { backgroundColor: `${palette.violet}15` }]}>
-                {merchant.loyaltyType === 'STAMPS' ? (
-                  <Gift size={18} color={palette.violet} strokeWidth={1.8} />
-                ) : (
-                  <Coins size={18} color={palette.violet} strokeWidth={1.8} />
-                )}
-              </View>
-              <Text style={[styles.cardLabel, { color: theme.textMuted }]}>
-                {t('merchant.loyaltyProgram')}
-              </Text>
-              <Text style={[styles.cardValue, { color: theme.text }]} numberOfLines={1}>
-                {merchant.loyaltyType === 'STAMPS' ? t('merchant.stampCard') : t('merchant.pointsAccumulation')}
-              </Text>
-              <Text style={[styles.cardSub, { color: theme.textMuted }]} numberOfLines={2}>
-                {merchant.loyaltyType === 'STAMPS'
-                  ? t('merchant.stampRule', { count: merchant.rewards?.[0]?.cout || 10 })
-                  : t('merchant.pointsRule', { rate: merchant.conversionRate || 10 })}
-              </Text>
-            </View>
-
-            {/* Location card */}
-            <View style={[styles.infoCard, { backgroundColor: theme.bgCard }]}>
-              <LinearGradient
-                colors={[`${palette.gold}10`, 'transparent']}
-                style={styles.infoCardGradient}
-              />
-              <View style={[styles.cardIconBadge, { backgroundColor: `${palette.gold}15` }]}>
-                <MapPin size={18} color={palette.gold} strokeWidth={1.8} />
-              </View>
-              <Text style={[styles.cardLabel, { color: theme.textMuted }]}>
-                {t('merchant.info')}
-              </Text>
-              <Text style={[styles.cardValue, { color: theme.text }]} numberOfLines={2}>
-                {merchant.adresse || merchant.ville || t('discover.positionAvailable')}
-              </Text>
-              <View style={styles.metaLine}>
-                <Store size={12} color={theme.textMuted} strokeWidth={1.7} />
-                <Text style={[styles.metaText, { color: theme.textMuted }]} numberOfLines={1}>
-                  {merchant.stores?.length ? `${merchant.stores.length} ${t('merchant.stores')}` : t('merchant.seeOnMap')}
-                </Text>
-              </View>
-            </View>
-          </View>
-
-          {/* Reward highlight */}
-          <View style={[styles.rewardCard, { backgroundColor: theme.bgCard }]}>
-            <View style={styles.rewardAccent} />
-            <View style={[styles.cardIconBadge, { backgroundColor: `${palette.gold}15` }]}>
-              <Star size={18} color={palette.gold} strokeWidth={1.8} />
-            </View>
-            <View style={styles.rewardTextWrap}>
-              <Text style={[styles.cardLabel, { color: theme.textMuted }]}>{t('merchant.rewardsSection')}</Text>
-              <Text style={[styles.rewardMain, { color: theme.text }]} numberOfLines={1}>
-                {merchant.rewards?.[0]?.titre || t('merchant.noRewards')}
-              </Text>
-              {!!merchant.rewards?.[0] && (
-                <View style={[styles.rewardCostBadge, { backgroundColor: `${palette.violet}12` }]}>
-                  <Text style={[styles.rewardCost, { color: palette.violet }]} numberOfLines={1}>
-                    {merchant.loyaltyType === 'STAMPS'
-                      ? t('merchant.stampsCost', { count: merchant.rewards[0].cout })
-                      : t('merchant.pointsCost', { count: merchant.rewards[0].cout.toLocaleString('fr-MA') })}
-                  </Text>
-                </View>
-              )}
-            </View>
-          </View>
-
-          {/* Social links */}
-          {(!!merchant.socialLinks?.instagram || !!merchant.socialLinks?.tiktok) && (
+        {/* Social links + Email */}
+        {(() => {
+            const storeEmail = merchant.stores?.find(s => !!s.email)?.email;
+            const hasLinks = !!storeEmail || !!merchant.socialLinks?.instagram || !!merchant.socialLinks?.tiktok || !!merchant.socialLinks?.website;
+            if (!hasLinks) return null;
+            return (
             <View style={styles.socialRow}>
               {!!merchant.socialLinks?.instagram && (
                 <Pressable
@@ -358,12 +290,11 @@ export default function MerchantDetailScreen() {
                     const canOpen = await Linking.canOpenURL(appUrl);
                     Linking.openURL(canOpen ? appUrl : webUrl);
                   }}
-                  style={({ pressed }) => [styles.socialBtn, { backgroundColor: '#E1306C10', opacity: pressed ? 0.7 : 1 }]}
+                  style={({ pressed }) => [styles.socialIconBtn, { backgroundColor: '#E1306C12', opacity: pressed ? 0.7 : 1 }]}
                   accessibilityRole="button"
                   accessibilityLabel="Instagram"
                 >
-                  <Instagram size={18} color="#E1306C" strokeWidth={1.8} />
-                  <Text style={[styles.socialText, { color: '#E1306C' }]}>Instagram</Text>
+                  <Instagram size={18} color="#E1306C" strokeWidth={2} />
                 </Pressable>
               )}
 
@@ -376,29 +307,134 @@ export default function MerchantDetailScreen() {
                     if (!username) return;
                     Linking.openURL(`https://www.tiktok.com/@${encodeURIComponent(username)}`);
                   }}
-                  style={({ pressed }) => [styles.socialBtn, { backgroundColor: `${palette.gray900}06`, opacity: pressed ? 0.7 : 1 }]}
+                  style={({ pressed }) => [styles.socialIconBtn, { backgroundColor: `${palette.gray900}08`, opacity: pressed ? 0.7 : 1 }]}
                   accessibilityRole="button"
                   accessibilityLabel="TikTok"
                 >
-                  <Music size={18} color={palette.gray900} strokeWidth={1.8} />
-                  <Text style={[styles.socialText, { color: palette.gray900 }]}>TikTok</Text>
+                  <Music2 size={18} color={palette.gray900} strokeWidth={2} />
+                </Pressable>
+              )}
+
+              {!!storeEmail && (
+                <Pressable
+                  onPress={() => {
+                    haptic();
+                    Linking.openURL(`mailto:${storeEmail}`);
+                  }}
+                  style={({ pressed }) => [styles.socialIconBtn, { backgroundColor: '#EA433512', opacity: pressed ? 0.7 : 1 }]}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('merchant.email')}
+                >
+                  <Mail size={18} color="#EA4335" strokeWidth={2} />
+                </Pressable>
+              )}
+
+              {!!merchant.socialLinks?.website && (
+                <Pressable
+                  onPress={() => {
+                    haptic();
+                    let url = merchant.socialLinks?.website ?? '';
+                    if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
+                    Linking.openURL(url);
+                  }}
+                  style={({ pressed }) => [styles.socialIconBtn, { backgroundColor: `${palette.violet}10`, opacity: pressed ? 0.7 : 1 }]}
+                  accessibilityRole="link"
+                  accessibilityLabel={t('merchant.website')}
+                >
+                  <Globe size={18} color={palette.violet} strokeWidth={2} />
                 </Pressable>
               )}
             </View>
+            );
+          })()}
+
+        {/* ── Content area ── */}
+        <View style={styles.contentArea}>
+          {/* Description */}
+          {!!merchant.description && (
+            <LinearGradient
+              colors={[theme.bgCard, `${palette.violet}10`, `${palette.violet}18`]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={[styles.descriptionCard, { backgroundColor: theme.bgCard }]}>
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>
+                {t('merchant.aboutUs')}
+              </Text>
+              <Text style={[styles.descriptionText, { color: theme.textSecondary }]}>
+                {merchant.description}
+              </Text>
+            </LinearGradient>
           )}
 
-          {/* Other locations / multi-store section */}
-          {merchant.stores && merchant.stores.length > 1 && (
-            <View style={[styles.otherLocationsCard, { backgroundColor: theme.bgCard }]}>
+          {/* Loyalty & Reward combined card */}
+          <LinearGradient
+            colors={[theme.bgCard, `${palette.gold}10`, `${palette.gold}18`]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[styles.loyaltyRewardCard, { backgroundColor: theme.bgCard }]}>
+            <View style={styles.loyaltyRow}>
+              <View style={[styles.cardIconBadge, { backgroundColor: `${palette.violet}15` }]}>
+                {merchant.loyaltyType === 'STAMPS' ? (
+                  <Stamp size={18} color={palette.violet} strokeWidth={2} />
+                ) : (
+                  <Coins size={18} color={palette.violet} strokeWidth={2} />
+                )}
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.cardLabel, { color: theme.textMuted }]}>
+                  {t('merchant.loyaltyProgram')}
+                </Text>
+                <Text style={[styles.cardValue, { color: theme.text }]} numberOfLines={1}>
+                  {merchant.loyaltyType === 'STAMPS' ? t('merchant.stampCard') : t('merchant.pointsAccumulation')}
+                </Text>
+              </View>
+            </View>
+
+            {!!merchant.rewards?.[0] && (
+              <>
+                <View style={[styles.loyaltyDivider, { backgroundColor: theme.borderLight }]} />
+                <View style={styles.loyaltyRow}>
+                  <View style={[styles.cardIconBadge, { backgroundColor: `${palette.violet}15` }]}>
+                    <Award size={18} color={palette.violet} strokeWidth={2} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.cardLabel, { color: theme.textMuted }]}>{t('merchant.rewardsSection')}</Text>
+                    <Text style={[styles.rewardMain, { color: theme.text }]} numberOfLines={1}>
+                      {merchant.rewards[0].titre}
+                    </Text>
+                    <View style={[styles.rewardCostBadge, { backgroundColor: `${palette.violet}12` }]}>
+                      <Text style={[styles.rewardCost, { color: palette.violet }]} numberOfLines={1}>
+                        {merchant.loyaltyType === 'STAMPS'
+                          ? t('merchant.stampsCost', { count: merchant.rewards[0].cout })
+                          : t('merchant.pointsCost', { count: merchant.rewards[0].cout.toLocaleString('fr-MA') })}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              </>
+            )}
+          </LinearGradient>
+
+          {/* Locations section */}
+          {merchant.stores && merchant.stores.length >= 1 && (
+            <LinearGradient
+              colors={[theme.bgCard, `${palette.violet}10`, `${palette.violet}18`]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={[styles.otherLocationsCard, { backgroundColor: theme.bgCard }]}>
               <View style={styles.otherLocationsHeader}>
-                <View style={[styles.cardIconBadge, { backgroundColor: `${palette.violet}12` }]}>
-                  <Store size={18} color={palette.violet} strokeWidth={1.8} />
+                <View style={[styles.cardIconBadge, { backgroundColor: `${palette.gold}12` }]}>
+                  <MapPin size={18} color={palette.gold} strokeWidth={2} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.sectionTitle, { color: theme.text, marginBottom: 0 }]}>{t('merchant.otherLocationsTitle')}</Text>
-                  <Text style={[styles.otherLocationsCount, { color: theme.textMuted }]}>
-                    {t('merchant.otherLocationsCount', { count: merchant.stores.length })}
+                  <Text style={[styles.sectionTitle, { color: theme.text, marginBottom: 0 }]}>
+                    {merchant.stores.length > 1 ? t('merchant.otherLocationsTitle') : t('merchant.locationTitle')}
                   </Text>
+                  {merchant.stores.length > 1 && (
+                    <Text style={[styles.otherLocationsCount, { color: theme.textMuted }]}>
+                      {t('merchant.otherLocationsCount', { count: merchant.stores.length })}
+                    </Text>
+                  )}
                 </View>
               </View>
               {merchant.stores.map((store, idx) => (
@@ -412,25 +448,49 @@ export default function MerchantDetailScreen() {
                   }}
                   style={({ pressed }) => [
                     styles.storeItem,
-                    { backgroundColor: pressed ? `${palette.violet}06` : 'transparent' },
+                    { backgroundColor: pressed ? `${palette.gold}06` : 'transparent' },
                     idx === 0 && { borderTopWidth: 0 },
                   ]}
                 >
-                  <View style={[styles.storeItemDot, { backgroundColor: palette.violet }]} />
+                  <View style={[styles.storeItemDot, { backgroundColor: palette.gold }]} />
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.storeItemName, { color: theme.text }]} numberOfLines={1}>
                       {store.nom}
                     </Text>
-                    <Text style={[styles.storeItemAddr, { color: theme.textMuted }]} numberOfLines={1}>
-                      {store.adresse || [store.quartier, store.ville].filter(Boolean).join(', ') || t('merchant.seeOnMap')}
-                    </Text>
+                    {(store.adresse || store.quartier || store.ville) && (
+                      <Text style={[styles.storeAddress, { color: theme.textMuted }]} numberOfLines={1}>
+                        {store.adresse || [store.quartier, store.ville].filter(Boolean).join(', ')}
+                      </Text>
+                    )}
+                    {!!store.telephone && (
+                      <Pressable
+                        onPress={() => {
+                          haptic();
+                          Linking.openURL(`tel:${store.telephone}`);
+                        }}
+                        hitSlop={4}
+                        style={({ pressed }) => [styles.storePhoneRow, { opacity: pressed ? 0.6 : 1 }]}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${t('merchant.call')} ${store.nom}`}
+                      >
+                        <Phone size={13} color={palette.emerald} strokeWidth={2} />
+                        <Text style={[styles.storePhone, { color: palette.emerald }]} numberOfLines={1}>
+                          {store.telephone}
+                        </Text>
+                      </Pressable>
+                    )}
                   </View>
+                  {userLocation && store.latitude != null && store.longitude != null && (
+                    <Text style={[styles.storeDistance, { color: theme.textMuted }]} numberOfLines={1}>
+                      {formatDistance(getDistanceSafe(userLocation.latitude, userLocation.longitude, store.latitude, store.longitude))}
+                    </Text>
+                  )}
                   {store.latitude != null && store.longitude != null && (
-                    <ChevronRight size={16} color={palette.violet} strokeWidth={1.8} />
+                    <ChevronRight size={16} color={palette.gold} strokeWidth={2} />
                   )}
                 </Pressable>
               ))}
-            </View>
+            </LinearGradient>
           )}
         </View>
       </ScrollView>
@@ -449,14 +509,14 @@ export default function MerchantDetailScreen() {
               {joinLoading ? (
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
-                <CreditCard size={18} color="#fff" strokeWidth={1.8} />
+                <Wallet size={18} color="#fff" strokeWidth={2} />
               )}
               <Text style={styles.joinBtnText} numberOfLines={1}>{t('merchant.rejoinCard')}</Text>
             </Pressable>
           ) : (merchant.hasCard || justJoined) ? (
             <View style={styles.memberBar}>
               <View style={[styles.joinedBanner, { backgroundColor: `${palette.emerald}08`, borderColor: `${palette.emerald}25` }]}>
-                <Check size={18} color={palette.emerald} strokeWidth={2} />
+                <BadgeCheck size={18} color={palette.emerald} strokeWidth={2} />
                 <Text style={[styles.joinedText, { color: palette.emerald }]}>{t('merchant.alreadyMember')}</Text>
               </View>
               <Pressable
@@ -469,7 +529,7 @@ export default function MerchantDetailScreen() {
                 {leaveLoading ? (
                   <ActivityIndicator size="small" color="#EF4444" />
                 ) : (
-                  <XCircle size={18} color="#EF4444" strokeWidth={1.8} />
+                  <LogOut size={18} color="#EF4444" strokeWidth={2} />
                 )}
               </Pressable>
             </View>
@@ -484,7 +544,7 @@ export default function MerchantDetailScreen() {
               {joinLoading ? (
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
-                <CreditCard size={18} color="#fff" strokeWidth={1.8} />
+                <Wallet size={18} color="#fff" strokeWidth={2} />
               )}
               <Text style={styles.joinBtnText} numberOfLines={1}>{t('merchant.getLoyaltyCard')}</Text>
             </Pressable>
@@ -500,7 +560,6 @@ const styles = StyleSheet.create({
 
   // Loading
   loadingWrap: { flex: 1, paddingHorizontal: wp(20), paddingTop: hp(24), gap: hp(14), alignItems: 'center' },
-  loadingGrid: { flexDirection: 'row', justifyContent: 'space-between', width: '100%' },
 
   // Error
   errorContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: wp(40) },
@@ -682,16 +741,9 @@ const styles = StyleSheet.create({
   },
 
   // Grid
-  gridRow: {
-    flexDirection: 'row' as const,
-    gap: wp(10),
-  },
-  infoCard: {
-    flex: 1,
+  loyaltyRewardCard: {
     borderRadius: ms(18),
-    padding: wp(14),
-    minHeight: hp(140),
-    overflow: 'hidden' as const,
+    padding: wp(16),
     ...Platform.select({
       ios: {
         shadowColor: '#000',
@@ -702,14 +754,14 @@ const styles = StyleSheet.create({
       android: { elevation: 1 },
     }),
   },
-  infoCardGradient: {
-    position: 'absolute' as const,
-    top: 0,
-    left: 0,
-    right: 0,
-    height: hp(60),
-    borderTopLeftRadius: ms(18),
-    borderTopRightRadius: ms(18),
+  loyaltyRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: wp(12),
+  },
+  loyaltyDivider: {
+    height: StyleSheet.hairlineWidth,
+    marginVertical: hp(12),
   },
   cardIconBadge: {
     width: ms(32),
@@ -717,10 +769,9 @@ const styles = StyleSheet.create({
     borderRadius: ms(10),
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
-    marginBottom: hp(8),
   },
   cardLabel: {
-    fontSize: ms(10),
+    fontSize: ms(11),
     fontWeight: '700' as const,
     textTransform: 'uppercase' as const,
     letterSpacing: 0.5,
@@ -730,59 +781,13 @@ const styles = StyleSheet.create({
     fontSize: ms(14),
     fontWeight: '700' as const,
     lineHeight: ms(20),
-    marginBottom: hp(4),
-  },
-  cardSub: {
-    fontSize: ms(11),
-    fontWeight: '500' as const,
-    lineHeight: ms(16),
-  },
-  metaLine: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: wp(5),
-    marginTop: 'auto' as const,
-  },
-  metaText: {
-    fontSize: ms(11),
-    fontWeight: '600' as const,
-    flex: 1,
   },
 
-  // Reward card
-  rewardCard: {
-    borderRadius: ms(18),
-    padding: wp(14),
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: wp(12),
-    minHeight: hp(80),
-    overflow: 'hidden' as const,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.04,
-        shadowRadius: 8,
-      },
-      android: { elevation: 1 },
-    }),
-  },
-  rewardAccent: {
-    position: 'absolute' as const,
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: ms(4),
-    backgroundColor: palette.gold,
-    borderTopLeftRadius: ms(18),
-    borderBottomLeftRadius: ms(18),
-  },
-  rewardTextWrap: { flex: 1 },
+  // Reward
   rewardMain: {
-    fontSize: ms(15),
+    fontSize: ms(14),
     fontWeight: '700' as const,
-    marginTop: hp(2),
+    lineHeight: ms(20),
     marginBottom: hp(4),
   },
   rewardCostBadge: {
@@ -799,20 +804,17 @@ const styles = StyleSheet.create({
   // Social buttons
   socialRow: {
     flexDirection: 'row' as const,
-    gap: wp(10),
-  },
-  socialBtn: {
-    flex: 1,
-    borderRadius: ms(14),
-    minHeight: hp(46),
-    flexDirection: 'row' as const,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
-    gap: wp(8),
+    gap: wp(14),
+    paddingBottom: hp(16),
   },
-  socialText: {
-    fontSize: ms(13),
-    fontWeight: '600' as const,
+  socialIconBtn: {
+    width: ms(42),
+    height: ms(42),
+    borderRadius: ms(21),
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
   },
 
   // ── Other locations ──
@@ -858,11 +860,29 @@ const styles = StyleSheet.create({
   storeItemName: {
     fontSize: ms(14),
     fontWeight: '700' as const,
+    lineHeight: ms(20),
   },
-  storeItemAddr: {
+  storeAddress: {
     fontSize: ms(12),
-    fontWeight: '500' as const,
+    fontWeight: '400' as const,
+    lineHeight: ms(17),
     marginTop: hp(2),
+  },
+  storePhoneRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: wp(5),
+    marginTop: hp(4),
+  },
+  storePhone: {
+    fontSize: ms(12),
+    fontWeight: '600' as const,
+    lineHeight: ms(17),
+  },
+  storeDistance: {
+    fontSize: ms(12),
+    fontWeight: '600' as const,
+    marginRight: wp(4),
   },
 
   // ── Bottom bar ──

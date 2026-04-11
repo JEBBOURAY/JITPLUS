@@ -66,14 +66,20 @@ export class StorageService implements IStorageProvider {
     });
 
     return new Promise((resolve, reject) => {
+      // Timeout to prevent stalled uploads from hanging the worker indefinitely
+      const uploadTimeout = setTimeout(() => {
+        stream.destroy();
+        reject(new Error('Upload timeout: GCS stream stalled for 30s'));
+      }, 30_000);
+
       stream.on('error', (err) => {
+        clearTimeout(uploadTimeout);
         this.logger.error(`Erreur lors de l'upload vers GCS: ${err.message}`, err.stack);
         reject(err);
       });
 
       stream.on('finish', async () => {
-        // En prod, il est préférable que le bucket soit configuré en accès public pour les lectures
-        // L'URL publique est généralement https://storage.googleapis.com/<bucket>/<path>
+        clearTimeout(uploadTimeout);
         const publicUrl = `https://storage.googleapis.com/${this.bucketName}/${fileName}`;
         this.logger.log(`Fichier uploadé avec succès: ${publicUrl}`);
         resolve(publicUrl);

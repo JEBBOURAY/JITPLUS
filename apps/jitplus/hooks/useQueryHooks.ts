@@ -5,6 +5,7 @@
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { api } from '@/services/api';
 import { PointsOverview, Merchant, NotificationsResponse } from '@/types';
+import { useWsStore } from '@/stores/wsStore';
 
 // ── Query keys (centralised for easy invalidation) ──
 
@@ -65,11 +66,17 @@ export function useNotifications(enabled = true) {
 // timer is active regardless of how many components subscribe.
 
 export function useUnreadNotificationCount(enabled = true) {
+  const wsConnected = useWsStore((s) => s.connected);
   return useQuery<{ unreadCount: number }>({
     queryKey: queryKeys.unreadCount,
     queryFn: () => api.getUnreadCount(),
     staleTime: 10 * 1000, // 10s — WS/FCM handle real-time, low staleTime for quick foreground refresh
-    refetchInterval: 30 * 1000, // poll every 30s — tighter fallback when WS is down
+    // Poll only when WebSocket is disconnected; WS handles real-time updates otherwise
+    refetchInterval: wsConnected ? false : 60 * 1000,
+    // Stop polling when the app is backgrounded to save battery & network
+    refetchIntervalInBackground: false,
+    // Exponential backoff on retries to avoid retry storms on poor connectivity
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 30_000),
     enabled,
   });
 }

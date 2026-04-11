@@ -3,7 +3,7 @@ import {
   View, Text, TextInput,
   StyleSheet, Platform, ActivityIndicator,
 } from 'react-native';
-import { Instagram, FileText, Music, Gift } from 'lucide-react-native';
+import { Instagram, FileText, Music, Gift, Globe } from 'lucide-react-native';
 import type { ThemeColors } from '@/contexts/ThemeContext';
 import { palette } from '@/contexts/ThemeContext';
 import { ms, wp, hp, fontSize, radius } from '@/utils/responsive';
@@ -13,6 +13,7 @@ import PhoneInput from '@/components/PhoneInput';
 export interface SocialInfoData {
   instagram: string;
   tiktok: string;
+  website: string;
   storePhone: string;
   description: string;
   referralCode: string;
@@ -26,7 +27,7 @@ interface Props {
 }
 
 function StepSocialInfoInner({ theme, t, data, setData }: Props) {
-  const { instagram, tiktok, storePhone, description, referralCode } = data;
+  const { instagram, tiktok, website, storePhone, description, referralCode } = data;
 
   // Referral code validation state
   const [referralStatus, setReferralStatus] = useState<'idle' | 'checking' | 'valid' | 'invalid'>('idle');
@@ -107,6 +108,29 @@ function StepSocialInfoInner({ theme, t, data, setData }: Props) {
             placeholderTextColor={theme.textMuted}
             autoCapitalize="none"
             autoCorrect={false}
+            maxLength={200}
+          />
+        </View>
+      </View>
+
+      {/* ── Website ── */}
+      <View style={styles.fieldGroup}>
+        <Text style={[styles.label, { color: theme.text }]}>{t('registerExtra.websiteLabel')}</Text>
+        <View style={[styles.inputWrapper, {
+          backgroundColor: theme.bgInput,
+          borderColor: website.trim() ? palette.charbon : theme.border,
+          borderWidth: website.trim() ? 2 : 1.5,
+        }]}>
+          <Globe size={ms(16)} color={website.trim() ? palette.charbon : theme.textMuted} />
+          <TextInput
+            style={[styles.input, { color: theme.text }]}
+            value={website}
+            onChangeText={(v) => setData({ website: v })}
+            placeholder={t('registerExtra.websitePlaceholder')}
+            placeholderTextColor={theme.textMuted}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
             maxLength={200}
           />
         </View>

@@ -144,7 +144,7 @@ export default function LegalScreen() {
 
         {/* ── Legal links ────────────────────────────── */}
         <LegalRow
-          icon={<Shield size={22} color="#6B7280" strokeWidth={1.5} />}
+          icon={<Shield size={22} color="#6B7280" strokeWidth={2} />}
           label={t('legal.privacyPolicy')}
           subtitle={t('legal.privacyPolicySubtitle')}
           onPress={() => openUrl(PRIVACY_URL)}
@@ -155,7 +155,7 @@ export default function LegalScreen() {
         />
 
         <LegalRow
-          icon={<FileText size={22} color="#6B7280" strokeWidth={1.5} />}
+          icon={<FileText size={22} color="#6B7280" strokeWidth={2} />}
           label={t('legal.terms')}
           subtitle={t('legal.termsSubtitle')}
           onPress={() => openUrl(TERMS_URL)}
@@ -166,7 +166,7 @@ export default function LegalScreen() {
         />
 
         <LegalRow
-          icon={<Database size={22} color="#6B7280" strokeWidth={1.5} />}
+          icon={<Database size={22} color="#6B7280" strokeWidth={2} />}
           label={t('legal.dataRights')}
           subtitle={t('legal.dataRightsSubtitle')}
           onPress={() => openUrl(DATA_RIGHTS_URL)}
@@ -177,7 +177,7 @@ export default function LegalScreen() {
         />
 
         <LegalRow
-          icon={<Mail size={22} color={theme.primary} strokeWidth={1.5} />}
+          icon={<Mail size={22} color={theme.primary} strokeWidth={2} />}
           label={t('legal.contact')}
           subtitle={t('legal.contactSubtitle')}
           onPress={openMail}

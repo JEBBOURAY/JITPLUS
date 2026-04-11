@@ -20,8 +20,15 @@ expo-env.d.ts
 *.mobileprovision
 play-store-key.json
 
+# EAS credentials — contains keystore passwords
+credentials.json
+
 # Metro
 .metro-health-check*
+
+# Firebase credentials — never commit
+GoogleService-Info.plist
+google-services.json
 
 # Environment files
 .env

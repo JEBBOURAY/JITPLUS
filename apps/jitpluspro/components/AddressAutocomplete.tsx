@@ -362,10 +362,12 @@ const styles = StyleSheet.create({
   mainText: {
     fontSize: 14,
     fontWeight: '600',
+    fontFamily: 'Lexend_600SemiBold',
   },
   secondaryText: {
     fontSize: 12,
     marginTop: 2,
+    fontFamily: 'Lexend_400Regular',
   },
   notFoundBanner: {
     flexDirection: 'row',

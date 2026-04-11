@@ -27,7 +27,9 @@ import { DEFAULT_COUNTRY, isValidPhoneForCountry, CountryCode } from '@/utils/co
 import PremiumPhoneInput from '@/components/PremiumPhoneInput';
 import FormError from '@/components/FormError';
 import { useGoogleAuth } from '@/hooks/useGoogleAuth';
+import { useAppleAuth } from '@/hooks/useAppleAuth';
 import { GoogleLogo } from '@/components/GoogleLogo';
+import { AppleLogo } from '@/components/AppleLogo';
 import { haptic } from '@/utils/haptics';
 
 export default function RegisterScreen() {
@@ -43,6 +45,9 @@ export default function RegisterScreen() {
 
   // Google auth — shared hook (no stale closures, no eslint-disable)
   const google = useGoogleAuth({ actionLabel: t('register.signUpButton') });
+
+  // Apple auth — iOS only
+  const apple = useAppleAuth({ actionLabel: t('register.signUpButton') });
 
   // Sync google hook errors/loading into local state
   useEffect(() => { if (google.error) setError(google.error); }, [google.error]);
@@ -93,7 +98,7 @@ export default function RegisterScreen() {
         params: { telephone: normalizedEmail, isEmail: '1', isRegister: '1' },
       });
     } else {
-      if (result.error && result.error === t('common.networkError')) {
+      if (result.isNetworkError) {
         Alert.alert(t('common.networkError'), result.error);
       } else {
         setError(result.error || t('common.genericError'));
@@ -122,7 +127,7 @@ export default function RegisterScreen() {
               accessibilityRole="button"
               accessibilityLabel={t('common.back')}
             >
-              <ChevronLeft size={ms(24)} color={theme.text} strokeWidth={1.5} />
+              <ChevronLeft size={ms(24)} color={theme.text} strokeWidth={2} />
             </TouchableOpacity>
 
             {/* Logo */}
@@ -178,6 +183,36 @@ export default function RegisterScreen() {
                 )}
               </TouchableOpacity>
 
+              {/* Apple Sign-In — iOS only */}
+              {apple.isAvailable && (
+                <TouchableOpacity
+                  style={[styles.googleBtn, { backgroundColor: '#000', borderColor: '#000' }]}
+                  onPress={() => {
+                    if (!termsAccepted) { setError(t('register.termsRequired')); return; }
+                    haptic();
+                    apple.promptApple();
+                  }}
+                  disabled={isLoading}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('register.signUpWithApple')}
+                >
+                  {apple.isLoading ? (
+                    <>
+                      <ActivityIndicator size="small" color="#fff" />
+                      <Text style={[styles.googleBtnText, { color: '#fff', opacity: 0.7 }]}>
+                        {t('login.googleLoginInProgress')}
+                      </Text>
+                    </>
+                  ) : (
+                    <>
+                      <AppleLogo size={ms(20)} color="#fff" />
+                      <Text style={[styles.googleBtnText, { color: '#fff' }]}>{t('register.signUpWithApple')}</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
+
               {/* Separator */}
               <View style={styles.separator}>
                 <View style={[styles.separatorLine, { backgroundColor: theme.inputBorder }]} />
@@ -192,7 +227,7 @@ export default function RegisterScreen() {
                   borderColor: error ? theme.danger : emailValid ? palette.violet : theme.inputBorder,
                   borderWidth: emailValid ? 2 : 1.5,
                 }]}>
-                  <Mail size={ms(18)} color={emailValid ? palette.violet : theme.inputPlaceholder} strokeWidth={1.5} />
+                  <Mail size={ms(18)} color={emailValid ? palette.violet : theme.inputPlaceholder} strokeWidth={2} />
                   <TextInput
                     style={[styles.emailInput, { color: theme.text }]}
                     placeholder={t('login.emailPlaceholder')}

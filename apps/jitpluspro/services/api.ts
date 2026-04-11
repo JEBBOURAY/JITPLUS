@@ -7,6 +7,11 @@ import { logApiError, logInfo } from '@/utils/devLogger';
 const ENV_URL = process.env.EXPO_PUBLIC_API_URL;
 const IS_DEV = __DEV__;
 
+// SECURITY: Ensure production API URL uses HTTPS to prevent cleartext traffic
+if (!IS_DEV && ENV_URL && !ENV_URL.startsWith('https://')) {
+  logApiError('api', new Error(`EXPO_PUBLIC_API_URL must use HTTPS in production. Current: ${ENV_URL}`));
+}
+
 // ── Event emitter for signaling 401 to consumers (AuthContext) ──
 type AuthEventListener = () => void;
 const authListeners: AuthEventListener[] = [];
@@ -24,6 +29,7 @@ const AUTH_ROUTES = [
   '/auth/login',
   '/auth/register',
   '/auth/google-login',
+  '/auth/apple-login',
   '/auth/refresh-token',
   '/auth/forgot-password',
   '/auth/reset-password',

@@ -60,6 +60,12 @@ const STALE = {
   SLOW: 5 * 60 * 1000,    // 5m  — plan, referral, profile
 } as const;
 
+// Garbage-collection time — ephemeral queries don't need 24h in-memory cache
+const GC = {
+  FAST: 5 * 60 * 1000,        // 5min — client status (navigated away = GC)
+  SHORT: 10 * 60 * 1000,      // 10min — per-client detail, transactions
+} as const;
+
 // ── Stores ──────────────────────────────────────────────────────
 export function useStores(enabled = true) {
   return useQuery<Store[]>({
@@ -214,6 +220,7 @@ export function useClientDetail(id: string | undefined, enabled = true) {
       return res.data;
     },
     staleTime: STALE.SHORT,
+    gcTime: GC.SHORT,
     enabled: !!id && enabled,
   });
 }
@@ -241,6 +248,7 @@ export function useClientStatus(clientId: string | undefined, enabled = true) {
       return res.data;
     },
     staleTime: STALE.FAST,
+    gcTime: GC.FAST,
     enabled: !!clientId && enabled,
   });
 }
