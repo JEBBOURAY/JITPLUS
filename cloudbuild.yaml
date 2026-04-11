@@ -45,6 +45,8 @@ steps:
   # ── 1. Build the Docker image ───────────────────────────────────────────────
   - name: gcr.io/cloud-builders/docker
     id: build
+    env:
+      - DOCKER_BUILDKIT=1
     args:
       - build
       - --pull
