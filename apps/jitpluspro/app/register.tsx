@@ -359,7 +359,7 @@ export default function RegisterScreen() {
       });
       router.replace({
         pathname: '/verify-email',
-        params: { email: em.trim().toLowerCase() },
+        params: { email: em.trim().toLowerCase(), fromRegister: '1' },
       });
     } catch (error: unknown) {
       const ax = error as { isAxiosError?: boolean; code?: string; response?: any };

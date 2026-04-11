@@ -25,12 +25,18 @@ import { wp, hp, ms, fontSize as fs, radius } from '@/utils/responsive';
 const OTP_LENGTH = 6;
 const RESEND_COOLDOWN = 60;
 
+// Module-level guard: prevents duplicate sends across remounts (ref resets on
+// unmount, but the module variable persists). Keyed by email so switching
+// accounts still works.
+let _lastSentEmail: string | null = null;
+let _lastSentAt = 0;
+
 export default function VerifyEmailScreen() {
   const router = useRouter();
   const theme = useTheme();
   const { t } = useLanguage();
   const { merchant, updateMerchant } = useAuth();
-  const { email } = useLocalSearchParams<{ email: string }>();
+  const { email, fromRegister } = useLocalSearchParams<{ email: string; fromRegister?: string }>();
   const isLoggedIn = !!merchant;
 
   const [code, setCode] = useState('');
@@ -62,23 +68,41 @@ export default function VerifyEmailScreen() {
     }
   }, [isLoggedIn, merchant?.emailVerified, router]);
 
-  // Auto-send OTP on mount
+  // Auto-send OTP on mount — skips if the backend already sent one during
+  // registration (fromRegister param) or if this component remounts.
   useEffect(() => {
     if (!email || hasSentInitial.current) return;
     // Don't send if already verified
     if (isLoggedIn && merchant?.emailVerified) return;
+    const normalizedEmail = email.trim().toLowerCase();
+    // If we just came from registration, the backend already sent the OTP
+    if (fromRegister === '1') {
+      hasSentInitial.current = true;
+      _lastSentEmail = normalizedEmail;
+      _lastSentAt = Date.now();
+      setResendTimer(RESEND_COOLDOWN);
+      return;
+    }
+    // Module-level dedup: skip if we already sent for this email recently
+    if (_lastSentEmail === normalizedEmail && Date.now() - _lastSentAt < RESEND_COOLDOWN * 1000) {
+      hasSentInitial.current = true;
+      setResendTimer(Math.max(0, RESEND_COOLDOWN - Math.floor((Date.now() - _lastSentAt) / 1000)));
+      return;
+    }
     hasSentInitial.current = true;
+    _lastSentEmail = normalizedEmail;
+    _lastSentAt = Date.now();
     (async () => {
       try {
         await api.post('/auth/send-verification-email', {
-          email: email.trim().toLowerCase(),
+          email: normalizedEmail,
         });
         setResendTimer(RESEND_COOLDOWN);
       } catch {
         // Silently fail — user can tap resend
       }
     })();
-  }, [email, isLoggedIn, merchant?.emailVerified]);
+  }, [email, isLoggedIn, merchant?.emailVerified, fromRegister]);
 
   // Countdown timer — stops when it reaches 0
   useEffect(() => {
