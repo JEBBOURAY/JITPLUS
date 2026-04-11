@@ -121,6 +121,9 @@ importers:
       joi:
         specifier: ^18.0.2
         version: 18.0.2
+      jsonwebtoken:
+        specifier: ^9.0.3
+        version: 9.0.3
       nodemailer:
         specifier: ^8.0.4
         version: 8.0.4
