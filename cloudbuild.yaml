@@ -116,7 +116,7 @@ steps:
       - --min-instances=0
       - --max-instances=10
       - --concurrency=80
-      - --memory=384Mi
+      - --memory=512Mi
       - --cpu=1
       - --cpu-boost
       - --execution-environment=gen2
