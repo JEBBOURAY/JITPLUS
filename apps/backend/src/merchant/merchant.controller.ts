@@ -41,6 +41,16 @@ import { MerchantProfileData } from '../common/prisma-selects';
 const ALLOWED_MIMES = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2 MB
 
+/** Detect MIME from magic bytes — supports JPEG, PNG, WebP only. */
+function detectMimeFromBuffer(buffer: Buffer): string | null {
+  if (buffer.length < 12) return null;
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return 'image/jpeg';
+  if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) return 'image/png';
+  if (buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46 &&
+      buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50) return 'image/webp';
+  return null;
+}
+
 import {
   MerchantProfileService,
   MerchantClientService,
@@ -175,9 +185,8 @@ export class MerchantController {
     if (!file) throw new BadRequestException('Aucun fichier envoyé');
 
     // Validate magic bytes — MIME from Content-Type header is client-controlled
-    const { fileTypeFromBuffer } = await import('file-type');
-    const detected = await fileTypeFromBuffer(file.buffer);
-    if (!detected || !ALLOWED_MIMES.includes(detected.mime)) {
+    const detectedMime = detectMimeFromBuffer(file.buffer);
+    if (!detectedMime || !ALLOWED_MIMES.includes(detectedMime)) {
       throw new BadRequestException('Le contenu du fichier ne correspond pas à un format image autorisé (JPG, PNG, WebP).');
     }
 

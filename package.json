@@ -22,6 +22,13 @@
       "ajv": ">=8.18.0",
       "@tootallnate/once": ">=3.0.1",
       "picomatch": ">=4.0.4"
-    }
+    },
+    "onlyBuiltDependencies": [
+      "@prisma/client",
+      "@prisma/engines",
+      "prisma",
+      "sharp",
+      "protobufjs"
+    ]
   }
 }

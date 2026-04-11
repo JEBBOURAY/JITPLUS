@@ -5,8 +5,8 @@ RUN apk update && apk upgrade --no-cache && apk add --no-cache openssl
 
 WORKDIR /app
 
-# Enable pnpm
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# Enable pnpm — pin version to match packageManager in root package.json
+RUN corepack enable && corepack prepare pnpm@10.29.3 --activate
 
 # Copy monorepo root dependency files first
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
@@ -35,8 +35,8 @@ RUN apk update && apk upgrade --no-cache && apk add --no-cache openssl
 
 WORKDIR /app
 
-# Enable pnpm
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# Enable pnpm — pin version to match packageManager in root package.json
+RUN corepack enable && corepack prepare pnpm@10.29.3 --activate
 
 # Copy ONLY backend package.json (no workspace = standalone mode).
 # In standalone mode, pnpm.overrides in this file ARE applied (it acts as the root).
