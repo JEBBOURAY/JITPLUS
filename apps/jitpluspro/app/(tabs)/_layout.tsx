@@ -13,18 +13,24 @@ export default function TabLayout() {
   const theme = useTheme();
   const router = useRouter();
 
+  // Derive stable booleans so the effect doesn't re-fire when merchant
+  // properties update (e.g. loyaltyType change during onboarding).
+  const isAuthenticated = !!merchant;
+  const needsEmailVerification = isAuthenticated && !merchant.emailVerified && !merchant.googleId;
+  const merchantEmail = merchant?.email;
+
   // Single redirect chain — priority: auth → email verification → onboarding
   useEffect(() => {
     if (loading) return;
-    if (!merchant) {
+    if (!isAuthenticated) {
       router.replace('/welcome');
       _initialScanOpened = false;
       return;
     }
-    if (!merchant.emailVerified && !merchant.googleId) {
+    if (needsEmailVerification) {
       router.replace({
         pathname: '/verify-email',
-        params: { email: merchant.email },
+        params: { email: merchantEmail! },
       });
       _initialScanOpened = false;
       return;
@@ -39,7 +45,7 @@ export default function TabLayout() {
       _initialScanOpened = true;
       router.push('/scan-qr');
     }
-  }, [loading, merchant, onboardingCompleted, isTeamMember]);
+  }, [loading, isAuthenticated, needsEmailVerification, onboardingCompleted, isTeamMember]);
 
   if (loading) {
     return (
