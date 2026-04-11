@@ -16,6 +16,9 @@ else
     export DATABASE_URL="$DIRECT_DATABASE_URL"
   fi
 
+  # Resolve any previously-failed migration so deploy can re-apply it
+  ./node_modules/.bin/prisma migrate resolve --rolled-back 20260411001656_add_payout_status_index --schema ./prisma/schema.prisma 2>/dev/null || true
+
   # Use the locally installed Prisma CLI (avoids npx downloading it)
   ./node_modules/.bin/prisma migrate deploy --schema ./prisma/schema.prisma
   echo "[Entrypoint] Migrations complete."

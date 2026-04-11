@@ -1,11 +1,17 @@
 -- CreateEnum
-CREATE TYPE "PayoutStatus" AS ENUM ('PENDING', 'APPROVED', 'REJECTED', 'PAID');
+DO $$ BEGIN
+  CREATE TYPE "PayoutStatus" AS ENUM ('PENDING', 'APPROVED', 'REJECTED', 'PAID');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- CreateEnum
-CREATE TYPE "PayoutMethod" AS ENUM ('BANK_TRANSFER', 'CASH');
+DO $$ BEGIN
+  CREATE TYPE "PayoutMethod" AS ENUM ('BANK_TRANSFER', 'CASH');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- CreateTable
-CREATE TABLE "payout_requests" (
+CREATE TABLE IF NOT EXISTS "payout_requests" (
     "id" TEXT NOT NULL,
     "client_id" TEXT NOT NULL,
     "amount" DOUBLE PRECISION NOT NULL,
@@ -23,13 +29,16 @@ CREATE TABLE "payout_requests" (
 );
 
 -- CreateIndex
-CREATE INDEX "payout_requests_client_id_idx" ON "payout_requests"("client_id");
+CREATE INDEX IF NOT EXISTS "payout_requests_client_id_idx" ON "payout_requests"("client_id");
 
 -- CreateIndex
-CREATE INDEX "payout_requests_status_idx" ON "payout_requests"("status");
+CREATE INDEX IF NOT EXISTS "payout_requests_status_idx" ON "payout_requests"("status");
 
 -- CreateIndex
-CREATE INDEX "payout_requests_status_created_at_idx" ON "payout_requests"("status", "created_at" DESC);
+CREATE INDEX IF NOT EXISTS "payout_requests_status_created_at_idx" ON "payout_requests"("status", "created_at" DESC);
 
 -- AddForeignKey
-ALTER TABLE "payout_requests" ADD CONSTRAINT "payout_requests_client_id_fkey" FOREIGN KEY ("client_id") REFERENCES "clients"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "payout_requests" ADD CONSTRAINT "payout_requests_client_id_fkey" FOREIGN KEY ("client_id") REFERENCES "clients"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
