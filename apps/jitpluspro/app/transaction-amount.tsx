@@ -85,8 +85,6 @@ export default function TransactionAmountScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
 
-  if (shouldWait) return null;
-
   const [state, dispatch] = useReducer(txReducer, initialTxState);
   const { amount, loading, points, showSuccess, transactionType, selectedRewardId, screenMode, stampAmount, stamps } = state;
   const set = useCallback((payload: Partial<TxState>) => dispatch({ type: 'SET', payload }), []);
@@ -408,6 +406,8 @@ export default function TransactionAmountScreen() {
   // ── Derived ──
   const amountNum = parseFloat(amount || '0') || 0;
   const isValidAmount = amountNum > 0;
+
+  if (shouldWait) return null;
 
   if (loadingCustomer) {
     return (

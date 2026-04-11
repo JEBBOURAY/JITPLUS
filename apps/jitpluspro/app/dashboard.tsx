@@ -210,8 +210,6 @@ export default function DashboardScreen() {
   const { t, locale } = useLanguage();
   const queryClient = useQueryClient();
 
-  if (shouldWait) return null;
-
   const isPremium = merchant?.plan === 'PREMIUM';
 
   const [trendPeriod, setTrendPeriod] = useState<TrendPeriod>('day');
@@ -283,6 +281,8 @@ export default function DashboardScreen() {
       : [],
     [trendData, t, primaryColor],
   );
+
+  if (shouldWait) return null;
 
   if (isTeamMember) {
     return (

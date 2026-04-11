@@ -149,8 +149,6 @@ export default function TeamManagementScreen() {
   const insets = useSafeAreaInsets();
   const { t } = useLanguage();
 
-  if (shouldWait) return null;
-
   const { data: members = [], isLoading: loading, isRefetching: refreshing, refetch } = useTeamMembers(!isTeamMember);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingMember, setEditingMember] = useState<TeamMember | null>(null);
@@ -254,6 +252,8 @@ export default function TeamManagementScreen() {
   };
 
   // Team members should not see this screen
+  if (shouldWait) return null;
+
   if (isTeamMember) {
     return (
       <View style={[styles.container, { backgroundColor: theme.bg }]}>

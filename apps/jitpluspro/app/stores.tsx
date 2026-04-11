@@ -340,8 +340,6 @@ export default function StoresScreen() {
   const theme = useTheme();
   const { merchant, isTeamMember } = useAuth();
 
-  if (shouldWait) return null;
-
   const isPremium = merchant?.plan === 'PREMIUM';
   const FREE_MAX_STORES = 1;
   const effectiveMax = isPremium ? MAX_STORES : FREE_MAX_STORES;
@@ -580,6 +578,8 @@ export default function StoresScreen() {
   };
 
   // ── Main view ──
+  if (shouldWait) return null;
+
   if (isTeamMember) {
     return (
       <View style={[styles.container, { backgroundColor: theme.bg, paddingTop: insets.top, justifyContent: 'center', alignItems: 'center', padding: 32 }]}>

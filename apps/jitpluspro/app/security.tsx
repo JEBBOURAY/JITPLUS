@@ -100,8 +100,6 @@ export default function SecurityScreen() {
   const { signOut, merchant, isTeamMember } = useAuth();
   const { t } = useLanguage();
 
-  if (shouldWait) return null;
-
   const isGoogleAccount = !!merchant?.googleId;
 
   const [activeTab, setActiveTab] = useState<TabId>(
@@ -245,6 +243,8 @@ export default function SecurityScreen() {
       ],
     );
   }, [t]);
+
+  if (shouldWait) return null;
 
   if (isTeamMember) {
     return (

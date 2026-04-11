@@ -125,7 +125,6 @@ export default function ClientDetailScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
 
-  if (shouldWait) return null;
   const [adjustModalVisible, setAdjustModalVisible] = useState(false);
   const [adjustMode, setAdjustMode] = useState<'add' | 'remove'>('add');
   const [adjustPoints, setAdjustPoints] = useState('');
@@ -206,6 +205,9 @@ export default function ClientDetailScreen() {
     },
     [isStampsMode, client, stampsForReward],
   );
+
+  // Guard: auth not ready
+  if (shouldWait) return null;
 
   // Guard: invalid or missing UUID — after all hooks
   if (!validId) {
