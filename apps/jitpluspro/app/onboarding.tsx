@@ -1,10 +1,11 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
@@ -60,7 +61,6 @@ export default function OnboardingScreen() {
   const [rewardDesc, setRewardDesc] = useState('');
   const [creatingReward, setCreatingReward] = useState(false);
   const [rewardCreated, setRewardCreated] = useState(false);
-  const rewardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [hasAccumulationLimit, setHasAccumulationLimit] = useState(false);
   const [accumulationLimit, setAccumulationLimit] = useState('');
   const [pointsRate, setPointsRate] = useState(merchant?.pointsRate?.toString() ?? '10');
@@ -70,7 +70,6 @@ export default function OnboardingScreen() {
 
   // â”€â”€ Navigation helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const goNext = useCallback(() => {
-    if (rewardTimerRef.current) { clearTimeout(rewardTimerRef.current); rewardTimerRef.current = null; }
     setDirection('enter');
     setStepIndex((prev) => Math.min(prev + 1, STEPS.length - 1));
   }, []);
@@ -132,44 +131,45 @@ export default function OnboardingScreen() {
     setRewardCost('');
   }, []);
 
-  // â”€â”€ Reward creation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  const handleCreateReward = useCallback(async () => {
-    if (!rewardName.trim()) {
-      Alert.alert(t('common.error'), t('onboarding.rewardNameRequired'));
-      return;
+  // ── Reward step "Suivant" — auto-saves loyalty settings + reward ──────────
+  const handleRewardNext = useCallback(async () => {
+    // If the user filled in a reward name, validate and save everything
+    const hasRewardData = rewardName.trim().length > 0;
+    if (hasRewardData) {
+      const costNum = parseInt(rewardCost, 10);
+      if (!rewardCost || isNaN(costNum) || costNum < 1) {
+        Alert.alert(t('common.error'), isStamps ? t('onboarding.rewardStampsRequired') : t('onboarding.rewardCostRequired'));
+        return;
+      }
+      setCreatingReward(true);
+      try {
+        const limitVal = parseInt(accumulationLimit, 10);
+        const rateVal = parseFloat(pointsRate);
+        await api.patch('/merchant/loyalty-settings', {
+          loyaltyType,
+          stampEarningMode: isStamps ? stampEarningMode : undefined,
+          pointsRate: !isNaN(rateVal) && rateVal > 0 ? rateVal : 10,
+          accumulationLimit: hasAccumulationLimit && !isNaN(limitVal) && limitVal >= 1 ? limitVal : null,
+        });
+        await api.post('/rewards', {
+          titre: rewardName.trim(),
+          cout: costNum,
+          description: rewardDesc.trim() || undefined,
+        });
+        updateMerchant({
+          loyaltyType,
+          pointsRate: !isNaN(rateVal) && rateVal > 0 ? rateVal : 10,
+          stampEarningMode: isStamps ? stampEarningMode : undefined,
+        });
+        setRewardCreated(true);
+      } catch (err) {
+        Alert.alert(t('common.error'), getErrorMessage(err, t('onboarding.rewardError')));
+        return; // Don't advance on error
+      } finally {
+        setCreatingReward(false);
+      }
     }
-    const costNum = parseInt(rewardCost, 10);
-    if (!rewardCost || isNaN(costNum) || costNum < 1) {
-      Alert.alert(t('common.error'), isStamps ? t('onboarding.rewardStampsRequired') : t('onboarding.rewardCostRequired'));
-      return;
-    }
-    setCreatingReward(true);
-    try {
-      const limitVal = parseInt(accumulationLimit, 10);
-      const rateVal = parseFloat(pointsRate);
-      await api.patch('/merchant/loyalty-settings', {
-        loyaltyType,
-        stampEarningMode: isStamps ? stampEarningMode : undefined,
-        pointsRate: !isNaN(rateVal) && rateVal > 0 ? rateVal : 10,
-        accumulationLimit: hasAccumulationLimit && !isNaN(limitVal) && limitVal >= 1 ? limitVal : null,
-      });
-      await api.post('/rewards', {
-        titre: rewardName.trim(),
-        cout: costNum,
-        description: rewardDesc.trim() || undefined,
-      });
-      updateMerchant({
-        loyaltyType,
-        pointsRate: !isNaN(rateVal) && rateVal > 0 ? rateVal : 10,
-        stampEarningMode: isStamps ? stampEarningMode : undefined,
-      });
-      setRewardCreated(true);
-      rewardTimerRef.current = setTimeout(() => goNext(), 900);
-    } catch (err) {
-      Alert.alert(t('common.error'), getErrorMessage(err, t('onboarding.rewardError')));
-    } finally {
-      setCreatingReward(false);
-    }
+    goNext();
   }, [rewardName, rewardCost, rewardDesc, isStamps, loyaltyType, stampEarningMode, pointsRate, hasAccumulationLimit, accumulationLimit, t, updateMerchant, goNext]);
   // ── If team member, skip onboarding ─────────────────────────────
   React.useEffect(() => {
@@ -178,13 +178,6 @@ export default function OnboardingScreen() {
         .then(() => router.replace('/scan-qr'))
         .catch(() => router.replace('/scan-qr'));
     }
-    // Cleanup reward timer on unmount to prevent memory leak
-    return () => {
-      if (rewardTimerRef.current) {
-        clearTimeout(rewardTimerRef.current);
-        rewardTimerRef.current = null;
-      }
-    };
   }, [isTeamMember, completeOnboarding, router]);
 
   const handleScanNow = useCallback(async () => {
@@ -261,8 +254,8 @@ export default function OnboardingScreen() {
             pointsRate={pointsRate} setPointsRate={setPointsRate}
             hasAccumulationLimit={hasAccumulationLimit} setHasAccumulationLimit={setHasAccumulationLimit}
             accumulationLimit={accumulationLimit} setAccumulationLimit={setAccumulationLimit}
-            creatingReward={creatingReward} rewardCreated={rewardCreated}
-            onCreateReward={handleCreateReward} onLoyaltyTypeChange={handleLoyaltyTypeChange}
+            rewardCreated={rewardCreated}
+            onLoyaltyTypeChange={handleLoyaltyTypeChange}
           />
         </StepSlide>
 
@@ -323,13 +316,19 @@ export default function OnboardingScreen() {
           )}
 
           {currentStep === 'reward' && (
-            <TouchableOpacity style={styles.nextBtn} onPress={goNext} activeOpacity={0.85}>
+            <TouchableOpacity style={styles.nextBtn} onPress={handleRewardNext} disabled={creatingReward} activeOpacity={0.85}>
               <LinearGradient
-                colors={rewardCreated ? [palette.violet, palette.violetDark] : [palette.gray400, palette.gray500]}
+                colors={creatingReward ? [palette.gray400, palette.gray500] : brandGradient}
                 style={styles.nextBtnGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
               >
-                <Text style={styles.nextBtnText}>{t('onboarding.next')}</Text>
-                <ChevronRight color={palette.white} size={20} strokeWidth={2} />
+                {creatingReward ? (
+                  <ActivityIndicator color={palette.white} size="small" />
+                ) : (
+                  <>
+                    <Text style={styles.nextBtnText}>{t('onboarding.next')}</Text>
+                    <ChevronRight color={palette.white} size={20} strokeWidth={2} />
+                  </>
+                )}
               </LinearGradient>
             </TouchableOpacity>
           )}

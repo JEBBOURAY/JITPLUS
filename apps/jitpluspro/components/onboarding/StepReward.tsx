@@ -5,7 +5,6 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
-  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
@@ -44,9 +43,7 @@ interface Props {
   setHasAccumulationLimit: (v: boolean) => void;
   accumulationLimit: string;
   setAccumulationLimit: (v: string) => void;
-  creatingReward: boolean;
   rewardCreated: boolean;
-  onCreateReward: () => void;
   onLoyaltyTypeChange: (type: 'POINTS' | 'STAMPS') => void;
 }
 
@@ -57,7 +54,7 @@ export function StepReward({
   rewardDesc, setRewardDesc, pointsRate, setPointsRate,
   hasAccumulationLimit, setHasAccumulationLimit,
   accumulationLimit, setAccumulationLimit,
-  creatingReward, rewardCreated, onCreateReward, onLoyaltyTypeChange,
+  rewardCreated, onLoyaltyTypeChange,
 }: Props) {
   return (
     <KeyboardAvoidingView
@@ -287,38 +284,13 @@ export function StepReward({
           )}
         </View>
 
-        {/* Create button */}
-        <TouchableOpacity
-          style={[styles.createRewardBtn, { opacity: creatingReward ? 0.7 : 1 }]}
-          onPress={onCreateReward}
-          disabled={creatingReward || rewardCreated}
-          activeOpacity={0.85}
-        >
-          <LinearGradient
-            colors={rewardCreated ? [palette.violet, palette.violetDark] : brandGradient}
-            style={styles.createRewardGradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-          >
-            {creatingReward ? (
-              <ActivityIndicator color={palette.white} size="small" />
-            ) : rewardCreated ? (
-              <>
-                <Check color={palette.white} size={20} strokeWidth={1.5} />
-                <Text style={styles.createRewardText}>{t('onboarding.rewardCreated')}</Text>
-              </>
-            ) : (
-              <>
-                <Gift color={palette.white} size={20} strokeWidth={1.5} />
-                <Text style={styles.createRewardText}>{t('onboarding.rewardCreateBtn')}</Text>
-              </>
-            )}
-          </LinearGradient>
-        </TouchableOpacity>
-
-        <Text style={[styles.skipHint, { color: theme.textMuted }]}>
-          {t('onboarding.rewardSkipHint')}
-        </Text>
+        {/* Reward created confirmation */}
+        {rewardCreated && (
+          <View style={[styles.rewardCreatedBanner, { backgroundColor: palette.violet + '15', borderColor: palette.violet }]}>
+            <Check color={palette.violet} size={20} strokeWidth={1.5} />
+            <Text style={[styles.rewardCreatedText, { color: palette.violet }]}>{t('onboarding.rewardCreated')}</Text>
+          </View>
+        )}
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -555,6 +527,21 @@ const styles = StyleSheet.create({
   createRewardText: {
     color: palette.white,
     fontSize: 16,
+    fontFamily: 'Lexend_600SemiBold',
+  },
+  rewardCreatedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    width: '100%',
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingVertical: 14,
+    marginBottom: 8,
+  },
+  rewardCreatedText: {
+    fontSize: 15,
     fontFamily: 'Lexend_600SemiBold',
   },
   skipHint: {
