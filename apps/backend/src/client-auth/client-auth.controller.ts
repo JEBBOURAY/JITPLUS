@@ -110,6 +110,13 @@ export class ClientAuthController {
     return this.clientAuthService.setPassword(user.userId, dto.password);
   }
 
+  @Post('reset-password-otp')
+  @Throttle({ default: { ttl: 60000, limit: 5 } })
+  @UseGuards(AuthGuard('jwt'), ClientOnlyGuard)
+  async resetPasswordOtp(@CurrentUser() user: JwtPayload, @Body() dto: SetPasswordDto) {
+    return this.clientAuthService.resetPasswordOtp(user.userId, dto.password);
+  }
+
   @Patch('change-password')
   @Throttle({ default: { ttl: 60000, limit: 5 } })
   @UseGuards(AuthGuard('jwt'), ClientOnlyGuard)

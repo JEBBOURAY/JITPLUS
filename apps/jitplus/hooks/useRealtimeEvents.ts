@@ -126,14 +126,15 @@ export function handleFcmDataPayload(
     case 'points_updated':
     case 'reward_available':
     case 'reward_redeemed':
+      // Only invalidate points — notification list will be refreshed by its own staleTime
       queryClient.invalidateQueries({ queryKey: queryKeys.points });
-      queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
-      queryClient.invalidateQueries({ queryKey: queryKeys.unreadCount });
       break;
     case 'notification_new': {
+      // Optimistic +1 badge is enough — skip redundant invalidateQueries on
+      // unreadCount to avoid a second network request that overwrites the
+      // optimistic value before the server round-trip completes.
       optimisticIncrementUnread(queryClient);
       queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
-      queryClient.invalidateQueries({ queryKey: queryKeys.unreadCount });
       break;
     }
     default:
@@ -160,9 +161,9 @@ export function useAppForegroundRefresh() {
         appState.current.match(/inactive|background/) &&
         nextState === 'active'
       ) {
-        // Only invalidate if app was in background for more than 2 minutes
+        // Only invalidate if app was in background for more than 5 minutes
         const elapsed = Date.now() - backgroundSince.current;
-        if (elapsed > 2 * 60 * 1000) {
+        if (elapsed > 5 * 60 * 1000) {
           queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
           queryClient.invalidateQueries({ queryKey: queryKeys.unreadCount });
           queryClient.invalidateQueries({ queryKey: queryKeys.points });

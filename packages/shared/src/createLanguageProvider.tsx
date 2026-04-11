@@ -21,7 +21,6 @@ export interface LanguageProviderConfig<L extends string> {
   storage: LangStorageAdapter;
   i18n: I18nInstance;
   rtl: RTLManager;
-  showRestartAlert(isRTL: boolean): void;
   validLocales: readonly L[];
   defaultLocale: L;
   rtlLocales: readonly L[];
@@ -72,7 +71,6 @@ export function createLanguageProvider<L extends string>(config: LanguageProvide
       if (config.rtl.isRTL !== rtl) {
         config.rtl.allowRTL(rtl);
         config.rtl.forceRTL(rtl);
-        config.showRestartAlert(rtl);
       }
     }, []);
 

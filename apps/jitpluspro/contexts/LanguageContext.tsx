@@ -1,4 +1,4 @@
-import { I18nManager, Alert } from 'react-native';
+import { I18nManager } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import i18n, { detectedLocale } from '@/i18n';
 import { createLanguageProvider } from '@jitplus/shared/src/createLanguageProvider';
@@ -12,14 +12,6 @@ export const LANGUAGES: { code: AppLocale; label: string; flag: string; nativeLa
   { code: 'ar', label: '\u0627\u0644\u062F\u0627\u0631\u0650\u062C\u0629',   flag: '\u{1F1F2}\u{1F1E6}', nativeLabel: '\u0627\u0644\u062F\u0627\u0631\u0650\u062C\u0629'  },
 ];
 
-const showRestartAlert = () => {
-  Alert.alert(
-    i18n.t('account.restartTitle'),
-    i18n.t('account.restartRequired'),
-    [{ text: 'OK' }],
-  );
-};
-
 export const { LanguageProvider, useLanguage } = createLanguageProvider<AppLocale>({
   storageKey: 'jitpluspro_language',
   storage: {
@@ -28,7 +20,6 @@ export const { LanguageProvider, useLanguage } = createLanguageProvider<AppLocal
   },
   i18n,
   rtl: I18nManager,
-  showRestartAlert,
   validLocales: ['fr', 'en', 'ar'],
   defaultLocale: detectedLocale,
   rtlLocales: ['ar'],

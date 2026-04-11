@@ -181,24 +181,58 @@ export class ClientService {
       throw new UnauthorizedException('Mot de passe incorrect');
     }
 
-    // Soft delete: mark as deleted + anonymise ALL PII so the
-    // email/phone/social IDs can be reused for a new account.
-    await this.clientRepo.update({
-      where: { id: clientId },
-      data: {
-        deletedAt: new Date(),
-        prenom: null,
-        nom: null,
-        email: null,
-        telephone: null,
-        password: null,
-        dateNaissance: null,
-        googleId: null,
-        appleId: null,
-        pushToken: null,
-        refreshTokenHash: null,
-      },
+    // Atomic soft-delete inside a transaction to ensure all related data
+    // is cleaned up. Prevents orphaned records leaking to recreated accounts.
+    const now = new Date();
+
+    await this.txRunner.run(async (tx) => {
+      // 1. Soft-delete client: anonymise ALL PII so email/phone/social IDs can be reused
+      await tx.client.update({
+        where: { id: clientId },
+        data: {
+          deletedAt: now,
+          prenom: null,
+          nom: null,
+          email: null,
+          telephone: null,
+          password: null,
+          dateNaissance: null,
+          googleId: null,
+          appleId: null,
+          pushToken: null,
+          refreshTokenHash: null,
+          referralCode: null,
+          referralBalance: 0,
+        },
+      });
+
+      // 2. Deactivate all loyalty cards (cannot delete — Transaction references with Restrict)
+      await tx.loyaltyCard.updateMany({
+        where: { clientId, deactivatedAt: null },
+        data: { deactivatedAt: now },
+      });
+
+      // 3. Clean up notification read statuses
+      await tx.clientNotificationStatus.deleteMany({
+        where: { clientId },
+      });
+
+      // 4. Clean up browsing history (privacy)
+      await tx.profileView.deleteMany({
+        where: { clientId },
+      });
+
+      // 5. Clean up referral records
+      await tx.clientReferral.deleteMany({
+        where: { clientId },
+      });
+
+      // 6. Clean up payout requests
+      await tx.payoutRequest.deleteMany({
+        where: { clientId },
+      });
     });
+
     return { success: true, message: 'Compte supprimé avec succès' };
   }
 

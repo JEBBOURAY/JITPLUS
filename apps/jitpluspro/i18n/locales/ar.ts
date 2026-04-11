@@ -61,6 +61,7 @@ export default {
     googleLoginError: 'مانجحش الدخول بـ Google. عفاك عاود.',
     appleLoginError: 'مانجحش الدخول بـ Apple. عفاك عاود.',
     googleRegisterError: 'ماقدرناش نقادو كونط بـ Google. عفاك عاود.',
+    appleRegisterError: 'ماقدرناش نقادو كونط بـ Apple. عفاك عاود.',
   },
 
   // ── Upload ──
@@ -282,7 +283,8 @@ export default {
     clientFound: 'لقينا الكليان: %{name}',
     clientsFound: 'لقينا %{count} كليان',
     selectClient: 'ختار الكليان اللي بغيتي:',
-    verifying: 'كنتحققو…',    qrDetected: 'لقينا كود QR',
+    verifying: 'كنتحققو…',
+    qrDetected: 'لقينا كود QR',
     qrInvalidTitle: 'كود QR غير صالح',
     tokenMissing: 'الكود ماكاينش.',
     qrExpiredFallback: 'كود QR سالي أولا ماشي صالح. قول للكليان يدير ميزاجور لكود QR.',
@@ -414,8 +416,8 @@ export default {
     teamLockedMsg: 'إدارة الفريق من الميزات المتقدمة. تواصل مع الفريق ديالنا باش تعرف كثر.',
     security: 'الأمان',
     securitySubtitle: 'المودپاس والجلسات النشطة',
-    devices: 'الأجهزة المتصلة',
-    devicesSubtitle: 'سير الجلسات النشطة',
+    stores: 'الأجهزة المتصلة',
+    storesSubtitle: 'سير الجلسات النشطة',
     proBadge: 'PRO',
     dashboard: 'لوحة التحكم',
     dashboardSubtitle: 'الإحصائيات والأرقام',
@@ -891,6 +893,7 @@ export default {
     referralHint: 'ماشي ضروري — دخل كود التاجر اللي عيّط عليك',
     addressNotFound: 'مالقيناش العنوان',
     addressNotFoundMsg: 'عاود بتفاصيل كثر (شارع، حي، مدينة).',
+    addressSearchTip: 'باش تكون الدقة حسن، استعمل الموقع الأوتوماتيكي أولا حدد تجارتك مباشرة على الخريطة.',
     addressSearchError: 'ماقدرناش نقلبو على هاد العنوان.',
     fillAllFields: 'عفاك كمل كامل الحقول الضرورية',
     welcomeTitle: 'مرحبا بيك ف JitPlus Pro! 🎉',
@@ -917,6 +920,8 @@ export default {
     signUpWithApple: 'قاد كونط بكونط Apple',
     googleLinked: 'كونط Google مرتبط',
     googleChange: 'بدل',
+    appleLinked: 'كونط Apple مرتبط',
+    appleChange: 'بدل',
     ownerLastName: 'كنية مول الحانوت',
     ownerLastNamePlaceholder: 'مثال: العلوي',
     ownerFirstName: 'سمية مول الحانوت',
@@ -1032,6 +1037,7 @@ export default {
     addressNotFound: 'العنوان ماكاينش',
     addressNotFoundHint: 'عاود بتفاصيل كثر.',
     addressNotFoundManual: 'مالقيناش العنوان. تأكد من الكتابة أولا حدد باليد فالخريطة.',
+    addressSearchTip: 'باش تكون الدقة حسن، استعمل الموقع الأوتوماتيكي أولا حدد تجارتك مباشرة على الخريطة.',
     addressSearchError: 'ماقدرناش نقلبو على هاد العنوان.',
     permissionDenied: 'ترفض الإذن',
     enableLocation: 'فعّل خدمة البلاصة.',
@@ -1121,6 +1127,8 @@ export default {
     logoError: 'ماقدرناش نرفعو الشعار. عاود.',
 
     loyaltyTypeLabel: 'نوع برنامج الولاء',
+    ruleTitle: 'ضبط البرنامج ديالك',
+    ruleSubtitle: 'اختار نوع الولاء وإعدادات التحويل اللي كتناسب تجارتك.',
     loyaltyPoints: 'نقط',
     loyaltyPointsDesc: 'الكليان كيربح نقط مع كل شرا',
     loyaltyStamps: 'طوابع',
@@ -1148,6 +1156,11 @@ export default {
     rewardStampsRequired: 'عدد الطوابع خاصو يكون > 0.',
     rewardStampsLabel: 'الطوابع الضرورية',
     rewardStampsPlaceholder: 'مثال: 10',
+
+    // Step 4 — Gift
+    giftTitle: 'قاد لول كادو ديالك',
+    giftSubtitle: 'حدّد الكادو اللي غادي يحصلو عليه الكليان مقابل النقط أولا الطوابع.',
+    giftSkipHint: 'تقدر تزيد كادويات أخرى من بعد من قسم الكادويات.',
 
     // Conversion rate
     conversionRateLabel: 'معدل التحويل',
@@ -1339,6 +1352,16 @@ export default {
 
   onboardingExtra: {
     logoFileHint: 'JPG, PNG – الحد الأقصى 5 MB',
+  },
+
+  // ── Setup Reminder ──
+  setupReminder: {
+    title: 'الإعداد ناقص',
+    subtitle: 'كمّل هاد الخطوات باش تعطي أحسن تجربة للزبناء ديالك.',
+    noLogo: 'زيد اللوغو ديالك',
+    noLoyalty: 'ضبط برنامج الولاء ديالك',
+    noRewards: 'زيد الهدايا',
+    fixBtn: 'كمّل دابا',
   },
 
   notFound: {

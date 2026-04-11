@@ -6,7 +6,7 @@ import { Prisma, PrismaClient } from '@prisma/client';
 // instance that's only 3 connections. We set 10 to handle concurrent requests
 // while staying well under Cloud SQL's max_connections (usually 100-400).
 const CONNECTION_LIMIT = parseInt(process.env.DATABASE_POOL_SIZE || '10', 10);
-const POOL_TIMEOUT_SECS = 20; // seconds to wait for a free connection
+const POOL_TIMEOUT_SECS = 5; // fail-fast: avoid queueing on 512Mi Cloud Run
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {

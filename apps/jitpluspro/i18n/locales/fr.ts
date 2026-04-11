@@ -66,6 +66,7 @@ export default {
     googleLoginError: 'Échec de la connexion Google. Veuillez réessayer.',
     appleLoginError: 'Échec de la connexion Apple. Veuillez réessayer.',
     googleRegisterError: "Échec de l'inscription Google. Veuillez réessayer.",
+    appleRegisterError: "Échec de l'inscription Apple. Veuillez réessayer.",
   },
 
   // ── Upload ──
@@ -917,6 +918,7 @@ export default {
     referralHint: "Optionnel — entrez le code d'un commerce qui vous a parrainé",
     addressNotFound: 'Adresse non trouvée',
     addressNotFoundMsg: 'Essayez avec plus de détails (rue, quartier, ville).',
+    addressSearchTip: 'Pour une meilleure précision, utilisez la localisation automatique ou pointez directement votre commerce sur la carte.',
     addressSearchError: 'Impossible de rechercher cette adresse.',
     fillAllFields: 'Veuillez compléter tous les champs obligatoires',
     welcomeTitle: 'Bienvenue sur JitPlus Pro ! 🎉',
@@ -943,6 +945,8 @@ export default {
     signUpWithApple: "S'inscrire avec Apple",
     googleLinked: 'Compte Google lié',
     googleChange: 'Changer',
+    appleLinked: 'Compte Apple lié',
+    appleChange: 'Changer',
     ownerLastName: 'Nom du propriétaire',
     ownerLastNamePlaceholder: 'Ex : Dupont',
     ownerFirstName: 'Prénom du propriétaire',
@@ -1060,6 +1064,7 @@ export default {
     addressNotFound: 'Adresse non trouvée',
     addressNotFoundHint: 'Essayez avec plus de détails.',
     addressNotFoundManual: 'Adresse non trouvée. Vérifiez l\'orthographe ou sélectionnez manuellement sur la carte.',
+    addressSearchTip: 'Pour une meilleure précision, utilisez la localisation automatique ou pointez directement votre commerce sur la carte.',
     addressSearchError: 'Impossible de rechercher cette adresse.',
     permissionDenied: 'Permission refusée',
     enableLocation: 'Activez la localisation.',
@@ -1153,6 +1158,8 @@ export default {
 
     // Step 3 — Reward
     loyaltyTypeLabel: 'Type de programme de fidélité',
+    ruleTitle: 'Configurez votre programme',
+    ruleSubtitle: 'Choisissez le type de fidélité et les paramètres de conversion adaptés à votre commerce.',
     loyaltyPoints: 'Points',
     loyaltyPointsDesc: 'Les clients cumulent des points à chaque achat',
     loyaltyStamps: 'Tampons',
@@ -1180,6 +1187,11 @@ export default {
     rewardStampsRequired: 'Le nombre de tampons doit être supérieur à 0.',
     rewardStampsLabel: 'Tampons requis',
     rewardStampsPlaceholder: 'Ex : 10',
+
+    // Step 4 — Gift
+    giftTitle: 'Créez votre premier cadeau',
+    giftSubtitle: 'Définissez le cadeau que vos clients recevront en échange de leurs points ou tampons.',
+    giftSkipHint: 'Vous pourrez en ajouter plus tard depuis la section Cadeaux.',
 
     // Conversion rate
     conversionRateLabel: 'Taux de conversion',
@@ -1376,6 +1388,16 @@ export default {
   // ── Onboarding extra ──
   onboardingExtra: {
     logoFileHint: 'JPG, PNG – max 5 MB',
+  },
+
+  // ── Setup Reminder ──
+  setupReminder: {
+    title: 'Configuration incomplète',
+    subtitle: 'Complétez ces étapes pour offrir la meilleure expérience à vos clients.',
+    noLogo: 'Ajoutez votre logo',
+    noLoyalty: 'Configurez votre programme de fidélité',
+    noRewards: 'Ajoutez des récompenses',
+    fixBtn: 'Compléter maintenant',
   },
 
   // ── Not Found ──

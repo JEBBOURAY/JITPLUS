@@ -143,6 +143,7 @@ interface AuthContextData {
   googleLogin: (idToken: string) => Promise<{ success: boolean; error?: string; rawError?: unknown }>;
   appleLogin: (identityToken: string, givenName?: string, familyName?: string) => Promise<{ success: boolean; error?: string; rawError?: unknown }>;
   googleRegister: (idToken: string, businessData: GoogleRegisterData) => Promise<{ success: boolean; error?: string; rawError?: unknown }>;
+  appleRegister: (identityToken: string, givenName: string | undefined, familyName: string | undefined, businessData: AppleRegisterData) => Promise<{ success: boolean; error?: string; rawError?: unknown }>;
   signOut: () => Promise<void>;
   loadProfile: () => Promise<Merchant | null>;
   updateMerchant: (data: Partial<Merchant>) => void;
@@ -151,6 +152,24 @@ interface AuthContextData {
 
 /** Business info needed for Google-based merchant registration */
 export interface GoogleRegisterData {
+  nomCommerce?: string;
+  categorie?: string;
+  ville?: string;
+  phoneNumber?: string;
+  quartier?: string;
+  adresse?: string;
+  latitude?: number;
+  longitude?: number;
+  termsAccepted?: boolean;
+  referralCode?: string;
+  description?: string;
+  storePhone?: string;
+  instagram?: string;
+  tiktok?: string;
+}
+
+/** Business info needed for Apple-based merchant registration */
+export interface AppleRegisterData {
   nomCommerce?: string;
   categorie?: string;
   ville?: string;
@@ -503,6 +522,36 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, [handleAuthSuccess]);
 
+  const appleRegister = useCallback(async (
+    identityToken: string,
+    givenName: string | undefined,
+    familyName: string | undefined,
+    businessData: AppleRegisterData,
+  ): Promise<{ success: boolean; error?: string; rawError?: unknown }> => {
+    try {
+      logInfo('Auth', 'Apple register...');
+      const { deviceName, deviceOS } = getDeviceInfo();
+      const deviceId = await getOrCreateDeviceId();
+      const response = await api.post<AuthResponse>('/auth/apple-register', {
+        identityToken,
+        givenName,
+        familyName,
+        ...businessData,
+        deviceName,
+        deviceOS,
+        deviceId,
+      });
+
+      logInfo('Auth', 'Apple register réussi:', response.data.merchant.nom);
+
+      await handleAuthSuccess(response.data);
+      return { success: true };
+    } catch (error: unknown) {
+      logError('Auth', 'Erreur Apple register:', error);
+      return { success: false, error: getErrorMessage(error, i18n.t('auth.appleRegisterError')), rawError: error };
+    }
+  }, [handleAuthSuccess]);
+
   const completeOnboarding = useCallback(async () => {
     try {
       await api.patch('/merchant/complete-onboarding');
@@ -532,11 +581,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     googleLogin,
     appleLogin,
     googleRegister,
+    appleRegister,
     signOut,
     loadProfile,
     updateMerchant,
     completeOnboarding,
-  }), [merchant, token, loading, isTeamMember, teamMember, onboardingCompleted, signIn, register, googleLogin, appleLogin, googleRegister, signOut, loadProfile, updateMerchant, completeOnboarding]);
+  }), [merchant, token, loading, isTeamMember, teamMember, onboardingCompleted, signIn, register, googleLogin, appleLogin, googleRegister, appleRegister, signOut, loadProfile, updateMerchant, completeOnboarding]);
 
   return (
     <AuthContext.Provider value={contextValue}>

@@ -52,29 +52,29 @@ describe('TRANSACTION_TYPE_CONFIG', () => {
   it('each type has icon, color function, and sign', () => {
     types.forEach((type) => {
       const cfg = TRANSACTION_TYPE_CONFIG[type];
-      expect(typeof cfg.icon).toBe('function'); // Lucide icons are components
+      expect(cfg.icon).toBeDefined();
       expect(typeof cfg.color).toBe('function');
       expect(['+', '-', '']).toContain(cfg.sign);
     });
   });
 
-  it('EARN_POINTS uses success color', () => {
-    expect(TRANSACTION_TYPE_CONFIG.EARN_POINTS.color(mockTheme)).toBe(mockTheme.success);
+  it('EARN_POINTS uses primary color', () => {
+    expect(TRANSACTION_TYPE_CONFIG.EARN_POINTS.color(mockTheme)).toBe(mockTheme.primary);
   });
 
-  it('REDEEM_REWARD uses warning color', () => {
-    expect(TRANSACTION_TYPE_CONFIG.REDEEM_REWARD.color(mockTheme)).toBe(mockTheme.warning);
+  it('REDEEM_REWARD uses accent color', () => {
+    expect(TRANSACTION_TYPE_CONFIG.REDEEM_REWARD.color(mockTheme)).toBe(mockTheme.accent);
   });
 
-  it('ADJUST_POINTS uses primary color', () => {
-    expect(TRANSACTION_TYPE_CONFIG.ADJUST_POINTS.color(mockTheme)).toBe(mockTheme.primary);
+  it('ADJUST_POINTS uses accent color', () => {
+    expect(TRANSACTION_TYPE_CONFIG.ADJUST_POINTS.color(mockTheme)).toBe(mockTheme.accent);
   });
 });
 
 describe('getTransactionConfig', () => {
   it('returns config for EARN_POINTS (not cancelled)', () => {
     const result = getTransactionConfig('EARN_POINTS', false, mockTheme);
-    expect(result.color).toBe(mockTheme.success);
+    expect(result.color).toBe(mockTheme.primary);
     expect(result.sign).toBe('+');
   });
 

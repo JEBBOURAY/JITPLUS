@@ -11,15 +11,15 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
-  Gift,
   Check,
   Coins,
   Stamp,
   ShieldCheck,
   Footprints,
   Hash,
+  Settings,
 } from 'lucide-react-native';
-import { brandGradient, palette } from '@/contexts/ThemeContext';
+import { palette } from '@/contexts/ThemeContext';
 import { DEFAULT_CURRENCY } from '@/config/currency';
 import type { ThemeProp } from './shared';
 
@@ -31,30 +31,22 @@ interface Props {
   isStamps: boolean;
   stampEarningMode: 'PER_VISIT' | 'PER_AMOUNT';
   setStampEarningMode: (m: 'PER_VISIT' | 'PER_AMOUNT') => void;
-  rewardName: string;
-  setRewardName: (v: string) => void;
-  rewardCost: string;
-  setRewardCost: (v: string) => void;
-  rewardDesc: string;
-  setRewardDesc: (v: string) => void;
   pointsRate: string;
   setPointsRate: (v: string) => void;
   hasAccumulationLimit: boolean;
   setHasAccumulationLimit: (v: boolean) => void;
   accumulationLimit: string;
   setAccumulationLimit: (v: string) => void;
-  rewardCreated: boolean;
   onLoyaltyTypeChange: (type: 'POINTS' | 'STAMPS') => void;
 }
 
 export function StepReward({
   theme, t, bottomPadding,
   loyaltyType, isStamps, stampEarningMode, setStampEarningMode,
-  rewardName, setRewardName, rewardCost, setRewardCost,
-  rewardDesc, setRewardDesc, pointsRate, setPointsRate,
+  pointsRate, setPointsRate,
   hasAccumulationLimit, setHasAccumulationLimit,
   accumulationLimit, setAccumulationLimit,
-  rewardCreated, onLoyaltyTypeChange,
+  onLoyaltyTypeChange,
 }: Props) {
   return (
     <KeyboardAvoidingView
@@ -73,15 +65,15 @@ export function StepReward({
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
           >
-            <Gift color={palette.white} size={44} strokeWidth={1.5} />
+            <Settings color={palette.white} size={44} strokeWidth={1.5} />
           </LinearGradient>
         </View>
 
         <Text style={[styles.stepTitle, { color: theme.text }]}>
-          {t('onboarding.rewardTitle')}
+          {t('onboarding.ruleTitle')}
         </Text>
         <Text style={[styles.stepSubtitle, { color: theme.textMuted }]}>
-          {t('onboarding.rewardSubtitle')}
+          {t('onboarding.ruleSubtitle')}
         </Text>
 
         {/* Loyalty type toggle */}
@@ -171,63 +163,6 @@ export function StepReward({
           </View>
         )}
 
-        {/* Suggestion chips */}
-        <View style={styles.suggestionsRow}>
-          {(isStamps
-            ? [t('onboarding.suggStamp1'), t('onboarding.suggStamp2'), t('onboarding.suggStamp3')]
-            : [t('onboarding.suggPoint1'), t('onboarding.suggPoint2'), t('onboarding.suggPoint3')]
-          ).map((sugg) => (
-            <TouchableOpacity
-              key={sugg}
-              style={[styles.suggestionChip, { borderColor: theme.borderLight, backgroundColor: theme.bgCard }]}
-              onPress={() => setRewardName(sugg.replace(/^[\u{1F300}-\u{1F9FF}] /u, ''))}
-            >
-              <Text style={[styles.suggestionText, { color: theme.textSecondary }]}>{sugg}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {/* Reward form */}
-        <View style={[styles.formCard, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
-          <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>
-            {t('onboarding.rewardNameLabel')} *
-          </Text>
-          <TextInput
-            style={[styles.input, { color: theme.text, backgroundColor: theme.bgInput, borderColor: theme.inputBorder }]}
-            placeholder={t('onboarding.rewardNamePlaceholder')}
-            placeholderTextColor={theme.textMuted}
-            value={rewardName}
-            onChangeText={setRewardName}
-            maxLength={80}
-          />
-          <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>
-            {isStamps ? t('onboarding.rewardStampsLabel') : t('onboarding.rewardCostLabel')} *
-          </Text>
-          <TextInput
-            style={[styles.input, { color: theme.text, backgroundColor: theme.bgInput, borderColor: theme.inputBorder }]}
-            placeholder={isStamps ? t('onboarding.rewardStampsPlaceholder') : t('onboarding.rewardCostPlaceholder')}
-            placeholderTextColor={theme.textMuted}
-            value={rewardCost}
-            onChangeText={setRewardCost}
-            keyboardType="number-pad"
-            maxLength={6}
-          />
-          <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>
-            {t('onboarding.rewardDescLabel')}
-          </Text>
-          <TextInput
-            style={[styles.input, styles.inputMultiline, { color: theme.text, backgroundColor: theme.bgInput, borderColor: theme.inputBorder }]}
-            placeholder={t('onboarding.rewardDescPlaceholder')}
-            placeholderTextColor={theme.textMuted}
-            value={rewardDesc}
-            onChangeText={setRewardDesc}
-            multiline
-            numberOfLines={3}
-            textAlignVertical="top"
-            maxLength={200}
-          />
-        </View>
-
         {/* Accumulation limit */}
         <View style={[styles.formCard, { backgroundColor: theme.bgCard, borderColor: theme.borderLight, marginBottom: 16 }]}>
           <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>
@@ -283,14 +218,6 @@ export function StepReward({
             </View>
           )}
         </View>
-
-        {/* Reward created confirmation */}
-        {rewardCreated && (
-          <View style={[styles.rewardCreatedBanner, { backgroundColor: palette.violet + '15', borderColor: palette.violet }]}>
-            <Check color={palette.violet} size={20} strokeWidth={1.5} />
-            <Text style={[styles.rewardCreatedText, { color: palette.violet }]}>{t('onboarding.rewardCreated')}</Text>
-          </View>
-        )}
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -416,7 +343,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: 'Lexend_400Regular',
   },
-  inputMultiline: { minHeight: 72, paddingTop: 11 },
   formCard: {
     width: '100%',
     borderRadius: 16,
@@ -469,20 +395,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  suggestionsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 16,
-    justifyContent: 'center',
-  },
-  suggestionChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    borderWidth: 1,
-  },
-  suggestionText: { fontSize: 13, fontFamily: 'Lexend_400Regular' },
   conversionRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -516,39 +428,4 @@ const styles = StyleSheet.create({
   limitToggleText: { fontSize: 14, fontFamily: 'Lexend_500Medium' },
   limitInputRow: { flexDirection: 'row', alignItems: 'center' },
   limitSuffix: { marginLeft: 10, fontSize: 13, fontFamily: 'Lexend_400Regular' },
-  createRewardBtn: { width: '100%', borderRadius: 14, overflow: 'hidden' },
-  createRewardGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-    gap: 8,
-  },
-  createRewardText: {
-    color: palette.white,
-    fontSize: 16,
-    fontFamily: 'Lexend_600SemiBold',
-  },
-  rewardCreatedBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    width: '100%',
-    borderRadius: 14,
-    borderWidth: 1,
-    paddingVertical: 14,
-    marginBottom: 8,
-  },
-  rewardCreatedText: {
-    fontSize: 15,
-    fontFamily: 'Lexend_600SemiBold',
-  },
-  skipHint: {
-    fontSize: 12,
-    fontFamily: 'Lexend_400Regular',
-    textAlign: 'center',
-    marginTop: 6,
-    maxWidth: 280,
-  },
 });

@@ -9,6 +9,7 @@ import { LoginDto } from './dto/login.dto';
 import { GoogleLoginMerchantDto } from './dto/google-login-merchant.dto';
 import { GoogleRegisterMerchantDto } from './dto/google-register-merchant.dto';
 import { AppleLoginMerchantDto } from './dto/apple-login-merchant.dto';
+import { AppleRegisterMerchantDto } from './dto/apple-register-merchant.dto';
 import { RegisterMerchantDto } from './dto/register-merchant.dto';
 import { RefreshMerchantTokenDto } from './dto/refresh-merchant-token.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
@@ -67,6 +68,12 @@ export class AuthController {
   async appleLogin(@Body() dto: AppleLoginMerchantDto, @Req() req: Request) {
     const ipAddress = req.ip || 'unknown';
     return this.authService.appleLoginMerchant(dto, ipAddress);
+  }
+
+  @Post('apple-register')
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 3 } })
+  async appleRegister(@Body() dto: AppleRegisterMerchantDto) {
+    return this.authService.appleRegisterMerchant(dto);
   }
 
   @Post('refresh-token')

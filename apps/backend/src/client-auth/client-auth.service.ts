@@ -1005,6 +1005,52 @@ export class ClientAuthService {
       },
     };
   }
+
+  /**
+   * Reset password for a client who verified identity via OTP (forgot password flow).
+   * Unlike setPassword(), this allows overwriting an existing password.
+   */
+  async resetPasswordOtp(clientId: string, newPassword: string): Promise<ClientProfileResult> {
+    const client = await this.clientRepo.findUnique({
+      where: { id: clientId },
+      select: { id: true, password: true },
+    });
+    if (!client) throw new BadRequestException('Client introuvable');
+
+    // Prevent setting same password
+    if (client.password) {
+      const isSame = await bcrypt.compare(newPassword, client.password);
+      if (isSame) throw new BadRequestException('Le nouveau mot de passe doit être différent de l\'ancien');
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, BCRYPT_SALT_ROUNDS);
+    const updated = await this.clientRepo.update({
+      where: { id: clientId },
+      data: { password: hashedPassword, refreshTokenHash: null },
+      select: CLIENT_AUTH_SELECT,
+    });
+
+    return {
+      success: true,
+      client: {
+        id: updated.id,
+        prenom: updated.prenom,
+        nom: updated.nom,
+        email: updated.email,
+        emailVerified: (updated as any).emailVerified ?? false,
+        telephone: updated.telephone,
+        telephoneVerified: (updated as any).telephoneVerified ?? false,
+        termsAccepted: updated.termsAccepted,
+        shareInfoMerchants: updated.shareInfoMerchants,
+        notifPush: updated.notifPush,
+        notifWhatsapp: updated.notifWhatsapp,
+        dateNaissance: updated.dateNaissance ?? null,
+        hasPassword: true,
+        createdAt: updated.createdAt,
+      },
+    };
+  }
+
   /**
    * Change password for an authenticated client.
    * Google-only accounts can set an initial password without providing currentPassword.

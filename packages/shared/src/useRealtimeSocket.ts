@@ -52,6 +52,8 @@ export function useRealtimeSocket(config: RealtimeSocketConfig): Socket | null {
     if (!token) return;
 
     authFailures.current = 0;
+    // Cache the token in memory to avoid disk I/O on every reconnect attempt
+    let cachedToken = token;
 
     const newSocket = io(serverUrl, {
       transports: ['websocket'],
@@ -63,11 +65,10 @@ export function useRealtimeSocket(config: RealtimeSocketConfig): Socket | null {
       timeout: 10000,
     });
 
-    // Refresh token on every reconnect attempt so expired JWTs are replaced
-    newSocket.io.on('reconnect_attempt', async () => {
-      const freshToken = await getTokenRef.current();
-      if (freshToken) {
-        (newSocket.auth as Record<string, string>).token = freshToken;
+    // Use cached token on reconnect — only refresh from disk on auth failures
+    newSocket.io.on('reconnect_attempt', () => {
+      if (cachedToken) {
+        (newSocket.auth as Record<string, string>).token = cachedToken;
       }
     });
 
@@ -86,9 +87,10 @@ export function useRealtimeSocket(config: RealtimeSocketConfig): Socket | null {
           if (__DEV__) console.warn('[WS] Too many auth failures, stopping reconnection');
           newSocket.disconnect();
         } else {
-          // Re-fetch token and reconnect with fresh credentials
+          // Re-fetch token from disk only on auth failures (not every reconnect)
           getTokenRef.current().then((freshToken) => {
             if (freshToken) {
+              cachedToken = freshToken;
               (newSocket.auth as Record<string, string>).token = freshToken;
               newSocket.connect();
             }

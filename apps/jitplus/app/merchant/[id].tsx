@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
+import { useFocusEffect } from 'expo-router';
 import {
   View,
   Text,
@@ -15,7 +16,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 import { useLocalSearchParams, useRouter, Redirect } from 'expo-router';
-import { ArrowLeft, AlertCircle, Stamp, Coins, Award, Send, Instagram, Eye, Users, Wallet, BadgeCheck, MapPin, Music2, LogOut, ChevronRight, Phone, Globe, Mail } from 'lucide-react-native';
+import { ArrowLeft, AlertCircle, Stamp, Coins, Gift, Send, Instagram, Eye, Users, Wallet, BadgeCheck, MapPin, Music2, LogOut, ChevronRight, Phone, Globe, Mail } from 'lucide-react-native';
 import { haptic } from '@/utils/haptics';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -38,8 +39,14 @@ export default function MerchantDetailScreen() {
   const { t } = useLanguage();
   const router = useRouter();
 
-  const { data: merchant, isLoading: loading } = useMerchantById(id, isAuthenticated);
+  const { data: merchant, isLoading: loading, refetch } = useMerchantById(id, isAuthenticated);
   const queryClient = useQueryClient();
+
+  useFocusEffect(
+    useCallback(() => {
+      refetch();
+    }, [refetch]),
+  );
   const [joinLoading, setJoinLoading] = useState(false);
   const [justJoined, setJustJoined] = useState(false);
   const [leaveLoading, setLeaveLoading] = useState(false);
@@ -388,29 +395,43 @@ export default function MerchantDetailScreen() {
                   {merchant.loyaltyType === 'STAMPS' ? t('merchant.stampCard') : t('merchant.pointsAccumulation')}
                 </Text>
               </View>
+              {(merchant.hasCard || justJoined) && merchant.cardBalance != null && (
+                <View style={[styles.balanceBadge, { backgroundColor: `${palette.violet}15` }]}>
+                  <Text style={[styles.balanceBadgeText, { color: palette.violet }]}>
+                    {merchant.loyaltyType === 'STAMPS'
+                      ? t('merchant.yourStamps', { count: merchant.cardBalance })
+                      : t('merchant.yourPoints', { count: merchant.cardBalance })}
+                  </Text>
+                </View>
+              )}
             </View>
 
-            {!!merchant.rewards?.[0] && (
+            {merchant.rewards && merchant.rewards.length > 0 && (
               <>
                 <View style={[styles.loyaltyDivider, { backgroundColor: theme.borderLight }]} />
-                <View style={styles.loyaltyRow}>
+                <View style={styles.rewardsSectionHeader}>
                   <View style={[styles.cardIconBadge, { backgroundColor: `${palette.violet}15` }]}>
-                    <Award size={18} color={palette.violet} strokeWidth={2} />
+                    <Gift size={18} color={palette.violet} strokeWidth={2} />
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.cardLabel, { color: theme.textMuted }]}>{t('merchant.rewardsSection')}</Text>
-                    <Text style={[styles.rewardMain, { color: theme.text }]} numberOfLines={1}>
-                      {merchant.rewards[0].titre}
-                    </Text>
-                    <View style={[styles.rewardCostBadge, { backgroundColor: `${palette.violet}12` }]}>
-                      <Text style={[styles.rewardCost, { color: palette.violet }]} numberOfLines={1}>
-                        {merchant.loyaltyType === 'STAMPS'
-                          ? t('merchant.stampsCost', { count: merchant.rewards[0].cout })
-                          : t('merchant.pointsCost', { count: merchant.rewards[0].cout.toLocaleString('fr-MA') })}
-                      </Text>
-                    </View>
-                  </View>
+                  <Text style={[styles.cardLabel, { color: theme.textMuted, marginBottom: 0 }]}>{t('merchant.rewardsSection')}</Text>
                 </View>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.rewardsScroll} contentContainerStyle={styles.rewardsScrollContent}>
+                  {merchant.rewards.map((reward, idx) => (
+                    <View key={reward.id || idx} style={[styles.rewardCard, { backgroundColor: `${palette.violet}08`, borderColor: `${palette.violet}20` }]}>
+                      <Gift size={22} color={palette.violet} strokeWidth={1.8} />
+                      <Text style={[styles.rewardCardTitle, { color: theme.text }]} numberOfLines={2}>
+                        {reward.titre}
+                      </Text>
+                      <View style={[styles.rewardCostBadge, { backgroundColor: `${palette.violet}15` }]}>
+                        <Text style={[styles.rewardCost, { color: palette.violet }]} numberOfLines={1}>
+                          {merchant.loyaltyType === 'STAMPS'
+                            ? t('merchant.stampsCost', { count: reward.cout })
+                            : t('merchant.pointsCost', { count: reward.cout.toLocaleString('fr-MA') })}
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
+                </ScrollView>
               </>
             )}
           </LinearGradient>
@@ -443,7 +464,12 @@ export default function MerchantDetailScreen() {
                   onPress={() => {
                     haptic();
                     if (store.latitude != null && store.longitude != null) {
-                      router.push({ pathname: '/(tabs)/discover', params: { focusMerchantId: merchant.id } });
+                      const label = encodeURIComponent(store.nom || merchant.nomBoutique);
+                      const url = Platform.select({
+                        ios: `maps:0,0?q=${label}@${store.latitude},${store.longitude}`,
+                        default: `geo:${store.latitude},${store.longitude}?q=${store.latitude},${store.longitude}(${label})`,
+                      });
+                      Linking.openURL(url);
                     }
                   }}
                   style={({ pressed }) => [
@@ -782,22 +808,55 @@ const styles = StyleSheet.create({
     fontWeight: '700' as const,
     lineHeight: ms(20),
   },
+  balanceBadge: {
+    paddingHorizontal: wp(10),
+    paddingVertical: hp(4),
+    borderRadius: ms(10),
+    alignSelf: 'flex-start' as const,
+  },
+  balanceBadgeText: {
+    fontSize: ms(13),
+    fontWeight: '800' as const,
+  },
 
   // Reward
-  rewardMain: {
-    fontSize: ms(14),
-    fontWeight: '700' as const,
-    lineHeight: ms(20),
+  rewardsSectionHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: wp(8),
+    paddingHorizontal: wp(16),
+    marginBottom: hp(8),
+  },
+  rewardsScroll: {
     marginBottom: hp(4),
   },
+  rewardsScrollContent: {
+    paddingHorizontal: wp(16),
+    gap: wp(10),
+  },
+  rewardCard: {
+    alignItems: 'center' as const,
+    width: wp(120),
+    paddingVertical: hp(12),
+    paddingHorizontal: wp(10),
+    borderRadius: ms(14),
+    borderWidth: 1,
+  },
+  rewardCardTitle: {
+    fontSize: ms(12),
+    fontWeight: '700' as const,
+    lineHeight: ms(16),
+    textAlign: 'center' as const,
+    marginTop: hp(6),
+    marginBottom: hp(6),
+  },
   rewardCostBadge: {
-    alignSelf: 'flex-start' as const,
     paddingHorizontal: wp(10),
     paddingVertical: hp(3),
     borderRadius: ms(8),
   },
   rewardCost: {
-    fontSize: ms(12),
+    fontSize: ms(11),
     fontWeight: '700' as const,
   },
 

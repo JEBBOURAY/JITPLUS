@@ -128,6 +128,11 @@ export class FirebaseService implements OnModuleInit, IPushProvider {
             invalidTokens.push(batch[idx]);
           }
         });
+
+        // Yield between batches to avoid Firebase quota spikes on large sends
+        if (tokens.length > 1000 && i + FirebaseService.MAX_TOKENS_PER_BATCH < tokens.length) {
+          await new Promise((r) => setTimeout(r, 100));
+        }
       } catch (error) {
         this.logger.error(`FCM batch send failed (${batch.length} tokens): ${error}`);
         totalFailure += batch.length;

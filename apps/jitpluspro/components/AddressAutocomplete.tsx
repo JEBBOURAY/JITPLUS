@@ -8,8 +8,9 @@ import {
   View, Text, TextInput, TouchableOpacity, FlatList,
   ActivityIndicator, StyleSheet, Keyboard, Platform,
 } from 'react-native';
-import { Search, MapPin, X } from 'lucide-react-native';
+import { Search, MapPin, X, Info } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { getServerBaseUrl } from '@/services/api';
 import { logWarn } from '@/utils/devLogger';
 
@@ -56,6 +57,7 @@ export default function AddressAutocomplete({
   userLocation,
 }: Props) {
   const theme = useTheme();
+  const { t } = useLanguage();
   const [predictions, setPredictions] = useState<PlacePrediction[]>([]);
   const [loading, setLoading] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
@@ -270,6 +272,16 @@ export default function AddressAutocomplete({
         ) : null}
       </View>
 
+      {/* Address hint */}
+      {!showDropdown && !showNotFound && (
+        <View style={styles.hintBanner}>
+          <Info size={14} color={theme.textMuted} style={{ marginTop: 1 }} />
+          <Text style={[styles.hintText, { color: theme.textMuted }]}>
+            {t('stores.addressSearchTip')}
+          </Text>
+        </View>
+      )}
+
       {/* Dropdown */}
       {showDropdown && predictions.length > 0 && (
         <View style={[styles.dropdown, { backgroundColor: theme.bgCard, borderColor: theme.border }]}>
@@ -301,7 +313,7 @@ export default function AddressAutocomplete({
         <View style={[styles.notFoundBanner, { backgroundColor: '#FEF2F2', borderColor: '#FECACA' }]}>
           <MapPin size={16} color="#EF4444" />
           <Text style={styles.notFoundText}>
-            {notFoundMessage || 'Adresse non trouvée. Vérifiez ou sélectionnez manuellement sur la carte.'}
+            {notFoundMessage || t('stores.addressNotFoundManual')}
           </Text>
         </View>
       )}
@@ -385,5 +397,18 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#DC2626',
     lineHeight: 17,
+  },
+  hintBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    marginTop: 6,
+    paddingHorizontal: 4,
+  },
+  hintText: {
+    flex: 1,
+    fontSize: 11.5,
+    lineHeight: 16,
+    fontFamily: 'Lexend_400Regular',
   },
 });

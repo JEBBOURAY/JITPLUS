@@ -6,9 +6,10 @@ import { useFonts } from 'expo-font';
 import { Stack, useRouter } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { Platform, View, Image, StyleSheet, ActivityIndicator } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { ms } from '@/utils/responsive';
 import { QueryClient, QueryCache, MutationCache, onlineManager, useQueryClient } from '@tanstack/react-query';
 import NetInfo from '@react-native-community/netinfo';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
@@ -67,7 +68,7 @@ const queryClient = new QueryClient({
       // Must be >= persister maxAge so in-memory cache isn't GC'd
       // before the persister considers it valid.
       gcTime: CACHE_MAX_AGE,
-      refetchOnReconnect: 'always',
+      refetchOnReconnect: true,
     },
   },
 });
@@ -94,7 +95,7 @@ try {
         ? Constants.expoConfig?.ios?.buildNumber ?? '0'
         : Constants.expoConfig?.android?.versionCode ?? '0'
     ),
-    tracesSampleRate: 0.2,
+    tracesSampleRate: 0.05,
     maxBreadcrumbs: 50,
     attachScreenshot: false, // Disabled: screenshots can capture PII (names, cards, balances)
     attachViewHierarchy: false, // Disabled: view hierarchy can leak PII
@@ -123,10 +124,9 @@ if (!__DEV__ && !process.env.EXPO_PUBLIC_API_URL) {
   captureException(new Error('EXPO_PUBLIC_API_URL is missing in production'));
 }
 
-// NOTE: The I18nManager forced-LTR reset has been removed.
-// React Native persists the direction set by I18nManager.forceRTL across
-// relaunches. The LanguageContext handles direction changes with an app-restart
-// prompt, allowing Arabic (RTL) to work correctly.
+// RTL/LTR direction is applied live via the `direction` style prop
+// in ThemedNavigator. I18nManager.forceRTL() persists the setting for
+// cold starts. No restart alert is needed.
 
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { ThemeProvider, useTheme } from '@/contexts/ThemeContext';
@@ -137,7 +137,10 @@ import OfflineBanner from '@/components/OfflineBanner';
 import ForceUpdateModal from '@/components/ForceUpdateModal';
 import { useForceUpdate } from '@/hooks/useForceUpdate';
 import ReferralPopup from '@/components/ReferralPopup';
-import { useReferral } from '@/hooks/useQueryHooks';
+import SetupReminderPopup, { type SetupIssue } from '@/components/SetupReminderPopup';
+import { useReferral, useRewards } from '@/hooks/useQueryHooks';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { Image as ImageIcon, Award, Settings as SettingsIcon } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export {
@@ -289,31 +292,73 @@ function ThemedNavigator() {
   const referralCode = referralData?.referralCode ?? null;
   const [showReferral, setShowReferral] = useState(false);
   const referralTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasMerchant = !!merchant;
 
   useEffect(() => {
-    if (!merchant || isTeamMember) return;
-    let cancelled = false;
+    if (!hasMerchant || isTeamMember) return;
 
+    let cancelled = false;
     (async () => {
-      try {
-        const ts = await AsyncStorage.getItem('@jitpluspro_referral_popup_ts');
-        const threeDays = 3 * 24 * 60 * 60 * 1000;
-        if (ts && Date.now() - Number(ts) < threeDays) return;
-        referralTimer.current = setTimeout(() => {
-          if (!cancelled) setShowReferral(true);
-        }, 4000);
-      } catch {}
+      const ts = await AsyncStorage.getItem('@jitpluspro_referral_popup_ts').catch(() => null);
+      const threeDays = 3 * 24 * 60 * 60 * 1000;
+      if (ts && Date.now() - Number(ts) < threeDays) return;
+      if (cancelled) return;
+      referralTimer.current = setTimeout(() => {
+        setShowReferral(true);
+      }, 4000);
     })();
 
     return () => {
       cancelled = true;
       if (referralTimer.current) clearTimeout(referralTimer.current);
     };
-  }, [merchant, isTeamMember]);
+  }, [hasMerchant, isTeamMember]);
 
-  const dismissReferral = useCallback(() => {
+  const dismissReferral = useCallback(async () => {
     setShowReferral(false);
-    AsyncStorage.setItem('@jitpluspro_referral_popup_ts', String(Date.now())).catch(() => {});
+    try {
+      await AsyncStorage.setItem('@jitpluspro_referral_popup_ts', String(Date.now()));
+    } catch {}
+  }, []);
+
+  // ── Setup reminder popup (global — above all screens) ──
+  const { t } = useLanguage();
+  const { data: rewardsData } = useRewards(!isTeamMember && !!merchant && !!merchant.onboardingCompleted);
+  const [showSetupReminder, setShowSetupReminder] = useState(false);
+  const setupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const setupIssues = useMemo<SetupIssue[]>(() => {
+    if (!merchant || !merchant.onboardingCompleted) return [];
+    const items: SetupIssue[] = [];
+    if (!merchant.logoUrl) {
+      items.push({ key: 'logo', icon: <ImageIcon size={ms(16)} color="#F59E0B" strokeWidth={2} />, label: t('setupReminder.noLogo') });
+    }
+    if (!merchant.loyaltyType) {
+      items.push({ key: 'loyalty', icon: <SettingsIcon size={ms(16)} color="#F59E0B" strokeWidth={2} />, label: t('setupReminder.noLoyalty') });
+    }
+    if (!rewardsData || rewardsData.length === 0) {
+      items.push({ key: 'rewards', icon: <Award size={ms(16)} color="#F59E0B" strokeWidth={2} />, label: t('setupReminder.noRewards') });
+    }
+    return items;
+  }, [merchant, rewardsData, t]);
+
+  const hasSetupIssues = setupIssues.length > 0;
+  const onboardingDone = !!merchant?.onboardingCompleted;
+
+  useEffect(() => {
+    if (!hasMerchant || isTeamMember || !onboardingDone || !hasSetupIssues) return;
+
+    setupTimer.current = setTimeout(() => {
+      setShowSetupReminder(true);
+    }, 6000);
+
+    return () => {
+      if (setupTimer.current) clearTimeout(setupTimer.current);
+    };
+  }, [hasMerchant, isTeamMember, onboardingDone, hasSetupIssues]);
+
+  const dismissSetupReminder = useCallback(() => {
+    setShowSetupReminder(false);
   }, []);
 
   // ── Real-time WebSocket connection ────────────────────────
@@ -373,7 +418,7 @@ function ThemedNavigator() {
 
   return (
     <NavThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
-      <View style={{ flex: 1 }}>
+      <View style={{ flex: 1, direction: 'ltr' }}>
       <OfflineBanner />
       {(status === 'update' || status === 'maintenance') && (
         <ForceUpdateModal status={status} storeUrl={storeUrl} />
@@ -426,6 +471,7 @@ function ThemedNavigator() {
             />
           </Stack>
       <ReferralPopup visible={showReferral} onClose={dismissReferral} referralCode={referralCode} />
+      <SetupReminderPopup visible={showSetupReminder && !showReferral} onClose={dismissSetupReminder} issues={setupIssues} />
       </View>
         </NavThemeProvider>
       );

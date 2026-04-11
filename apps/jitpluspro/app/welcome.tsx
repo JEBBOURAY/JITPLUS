@@ -1,10 +1,9 @@
-import React, { useRef, useCallback, useState, useMemo } from 'react';
+import React, { useRef, useCallback, useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  Image,
   FlatList,
   NativeSyntheticEvent,
   NativeScrollEvent,
@@ -14,6 +13,7 @@ import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ScanLine, Users, BarChart3, Bell, Gift, ArrowRight } from 'lucide-react-native';
+import Svg, { Defs, LinearGradient as SvgGradient, Stop, Text as SvgText } from 'react-native-svg';
 import { useTheme, palette, brandGradient } from '@/contexts/ThemeContext';
 import { useLanguage, LANGUAGES } from '@/contexts/LanguageContext';
 import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
@@ -32,38 +32,44 @@ export default function WelcomeScreen() {
   const flatListRef = useRef<FlatList>(null);
   const { width: SCREEN_WIDTH } = useWindowDimensions();
 
+  // Reset carousel to first slide on language change
+  useEffect(() => {
+    setActiveIndex(0);
+    flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
+  }, [locale]);
+
   const slides = useMemo<Slide[]>(() => [
     {
       key: 'scanner',
-      icon: <ScanLine size={ms(56)} color={palette.violet} />,
+      icon: <ScanLine size={ms(56)} color={theme.text} strokeWidth={2} />,
       titleKey: 'welcome.featureScanTitle',
       descKey: 'welcome.featureScanDesc',
     },
     {
       key: 'clients',
-      icon: <Users size={ms(56)} color={palette.cyan} />,
+      icon: <Users size={ms(56)} color={theme.text} strokeWidth={2} />,
       titleKey: 'welcome.featureClientsTitle',
       descKey: 'welcome.featureClientsDesc',
     },
     {
       key: 'dashboard',
-      icon: <BarChart3 size={ms(56)} color={palette.violet} />,
+      icon: <BarChart3 size={ms(56)} color={theme.text} strokeWidth={2} />,
       titleKey: 'welcome.featureDashboardTitle',
       descKey: 'welcome.featureDashboardDesc',
     },
     {
       key: 'notifications',
-      icon: <Bell size={ms(56)} color={palette.cyan} />,
+      icon: <Bell size={ms(56)} color={theme.text} strokeWidth={2} />,
       titleKey: 'welcome.featureNotifTitle',
       descKey: 'welcome.featureNotifDesc',
     },
     {
       key: 'rewards',
-      icon: <Gift size={ms(56)} color={palette.violet} />,
+      icon: <Gift size={ms(56)} color={theme.text} strokeWidth={2} />,
       titleKey: 'welcome.featureRewardsTitle',
       descKey: 'welcome.featureRewardsDesc',
     },
-  ], []);
+  ], [theme.text]);
 
   const isLast = activeIndex === slides.length - 1;
 
@@ -82,13 +88,28 @@ export default function WelcomeScreen() {
 
   const renderSlide = useCallback(({ item }: { item: Slide }) => (
     <View style={[styles.slide, { width: SCREEN_WIDTH }]}>
-      {/* Logo */}
-      <Image
-        source={require('@/assets/images/jitplusprologo.png')}
-        style={styles.logo}
-        resizeMode="contain"
-      />
-      <Text style={[styles.appName, { color: theme.text }]}>JitPlus Pro</Text>
+      {/* Brand */}
+      <View style={styles.brandRow}>
+        <Svg width={SCREEN_WIDTH * 0.55} height={ms(38)}>
+          <Defs>
+            <SvgGradient id="brandPro" x1="0%" y1="0%" x2="100%" y2="0%">
+              <Stop offset="0%" stopColor="#7C3AED" />
+              <Stop offset="100%" stopColor="#1F2937" />
+            </SvgGradient>
+          </Defs>
+          <SvgText
+            fill="url(#brandPro)"
+            fontSize={ms(24)}
+            fontWeight="700"
+            fontFamily="Lexend_700Bold"
+            x={SCREEN_WIDTH * 0.275}
+            y={ms(28)}
+            textAnchor="middle"
+          >
+            JitPlus Pro
+          </SvgText>
+        </Svg>
+      </View>
 
       {/* Icon */}
       <View style={[styles.iconCircle, { backgroundColor: theme.accentBg }]}>
@@ -99,7 +120,7 @@ export default function WelcomeScreen() {
       <Text style={[styles.slideTitle, { color: theme.text }]}>{t(item.titleKey)}</Text>
       <Text style={[styles.slideDesc, { color: theme.textSecondary }]}>{t(item.descKey)}</Text>
     </View>
-  ), [theme, t]);
+  ), [theme, t, SCREEN_WIDTH]);
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
@@ -141,6 +162,7 @@ export default function WelcomeScreen() {
         scrollEventThrottle={16}
         bounces={false}
         getItemLayout={(_data, index) => ({ length: SCREEN_WIDTH, offset: SCREEN_WIDTH * index, index })}
+        style={{ direction: 'ltr' }}
       />
 
       {/* Bottom: dots + button */}
@@ -190,10 +212,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: wp(32),
   },
-  logo: { width: wp(72), height: wp(72), borderRadius: wp(18), marginBottom: hp(6) },
-  appName: {
-    fontFamily: 'Lexend_700Bold',
-    fontSize: fontSize.lg,
+  brandRow: {
+    alignItems: 'center',
     marginBottom: hp(32),
   },
   iconCircle: {
@@ -221,6 +241,7 @@ const styles = StyleSheet.create({
   bottomSafe: { paddingHorizontal: wp(24), paddingBottom: hp(12) },
   dotsRow: {
     flexDirection: 'row',
+    direction: 'ltr',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: hp(20),

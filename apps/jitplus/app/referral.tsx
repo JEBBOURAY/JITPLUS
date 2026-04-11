@@ -97,22 +97,22 @@ export default function ReferralScreen() {
       try {
         setRequestingPayout(true);
         await api.requestPayout(stats.referralBalance || 0, method);
-        Alert.alert('Succ\u00e8s', 'Votre demande de retrait a \u00e9t\u00e9 envoy\u00e9e. Vous serez contact\u00e9 pour finaliser le paiement.');
+        Alert.alert(t('common.success'), t('referral.payoutSuccess'));
         refetchStats();
         refetchHistory();
       } catch (err: any) {
-        Alert.alert('Erreur', err?.response?.data?.message || 'Une erreur est survenue.');
+        Alert.alert(t('common.error'), err?.response?.data?.message || t('referral.payoutError'));
       } finally {
         setRequestingPayout(false);
       }
     };
     Alert.alert(
-      'Demander le retrait',
-      `Retirer ${balance} DH \u2014 choisissez la m\u00e9thode :`,
+      t('referral.payoutTitle'),
+      t('referral.payoutConfirm', { amount: balance }),
       [
-        { text: 'Annuler', style: 'cancel' },
-        { text: '\ud83d\udcb5 Cash', onPress: () => submitPayout('CASH') },
-        { text: '\ud83c\udfe6 Virement', onPress: () => submitPayout('BANK_TRANSFER') },
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('referral.payoutCash'), onPress: () => submitPayout('CASH') },
+        { text: t('referral.payoutTransfer'), onPress: () => submitPayout('BANK_TRANSFER') },
       ],
     );
   }, [stats, canRequestPayout, refetchStats, refetchHistory, t]);
@@ -434,9 +434,8 @@ export default function ReferralScreen() {
                   <Pressable
                     onPress={() => {
                       const phone = process.env.EXPO_PUBLIC_SUPPORT_WHATSAPP || '212675346486';
-                      Linking.openURL(`whatsapp://send?phone=${phone}&text=Bonjour%2C%20je%20souhaite%20d%C3%A9clencher%20le%20paiement%20de%20mon%20parrainage`).catch(() => {
-                        Linking.openURL(`https://wa.me/${phone}?text=Bonjour%2C%20je%20souhaite%20d%C3%A9clencher%20le%20paiement%20de%20mon%20parrainage`);
-                      });
+                      const msg = encodeURIComponent('Bonjour, je souhaite déclencher le paiement de mon parrainage');
+                      Linking.openURL(`https://wa.me/${phone}?text=${msg}`).catch(() => {});
                     }}
                     style={({ pressed }) => [
                       styles.contactBtn,

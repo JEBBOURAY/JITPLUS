@@ -22,6 +22,7 @@ import { GeocodeModule } from './geocode/geocode.module';
 // import { GoogleWalletModule } from './google-wallet/google-wallet.module';
 import { RequestLoggerMiddleware } from './common/middleware/request-logger.middleware';
 import { OtpCleanupService } from './common/tasks/otp-cleanup.service';
+import { MerchantReminderService } from './common/tasks/merchant-reminder.service';
 import { UserThrottlerGuard } from './common/guards/user-throttler.guard';
 import { RepositoryModule } from './common/repositories';
 import { EventsModule } from './events';
@@ -98,6 +99,7 @@ import { THROTTLE_TTL } from './common/constants';
   providers: [
     { provide: APP_GUARD, useClass: UserThrottlerGuard },
     OtpCleanupService,
+    MerchantReminderService,
   ],
 })
 export class AppModule implements NestModule {

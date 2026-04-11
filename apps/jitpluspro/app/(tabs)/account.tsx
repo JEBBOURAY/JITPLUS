@@ -412,12 +412,10 @@ export default function AccountScreen() {
                 icon={<MessageCircle size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
                 label={t('account.contactSupport')}
                 onPress={() => {
-                  const phone = process.env.EXPO_PUBLIC_SUPPORT_WHATSAPP || '';
+                  const phone = process.env.EXPO_PUBLIC_SUPPORT_WHATSAPP || '212675346486';
                   const msg = encodeURIComponent(t('account.contactSupportMsg'));
-                  Linking.openURL(`whatsapp://send?phone=${phone}&text=${msg}`).catch(() => {
-                    Linking.openURL(`https://wa.me/${phone}?text=${msg}`).catch(() => {
-                      Alert.alert(t('common.error'), t('common.genericError'));
-                    });
+                  Linking.openURL(`https://wa.me/${phone}?text=${msg}`).catch(() => {
+                    Alert.alert(t('common.error'), t('common.genericError'));
                   });
                 }}
                 iconBg={`${palette.charbon}15`}

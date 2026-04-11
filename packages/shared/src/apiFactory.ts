@@ -63,13 +63,14 @@ export function resolveServerBaseUrl(envUrl: string | undefined, isDev: boolean)
   return 'http://localhost:3000';
 }
 
-const MAX_RETRIES = 2;
+const MAX_RETRIES = 1;
 const RETRY_BASE_MS = 1000;
 
 /**
  * Create a pre-configured Axios instance with:
  * - Auth header injection
- * - Automatic retry on network/5xx errors (exponential backoff)
+ * - Automatic retry on network/5xx/429 errors (single retry with backoff;
+ *   React Query handles additional retries at the query level)
  * - 401 handling with token refresh + request queue
  */
 export function createApiClient(config: ApiFactoryConfig): AxiosInstance {

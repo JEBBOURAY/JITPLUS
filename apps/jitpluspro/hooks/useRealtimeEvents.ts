@@ -24,6 +24,18 @@ export function useRealtimeEvents(socket: Socket | null) {
   useEffect(() => {
     if (!socket) return;
 
+    // Debounce transactions list invalidation — batch rapid-fire RT events
+    // (e.g. 10 scans in 5 seconds) into a single refetch.
+    let txDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const debouncedInvalidateTx = () => {
+      if (txDebounceTimer) clearTimeout(txDebounceTimer);
+      txDebounceTimer = setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: queryKeys.transactions });
+        queryClient.invalidateQueries({ queryKey: ['dashboard-stats'], refetchType: 'none' });
+        queryClient.invalidateQueries({ queryKey: ['dashboard-trends'], refetchType: 'none' });
+      }, 2_000);
+    };
+
     // ── Transaction recorded (by any team member / device) ───
     const onTransactionRecorded = (payload: TransactionRecordedPayload) => {
       // SECURITY: Verify the event belongs to the current merchant
@@ -35,13 +47,8 @@ export function useRealtimeEvents(socket: Socket | null) {
       // Targeted invalidation: only the affected client's detail & status
       queryClient.invalidateQueries({ queryKey: queryKeys.clientDetail(payload.clientId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.clientStatus(payload.clientId) });
-      // Invalidate transactions list
-      queryClient.invalidateQueries({ queryKey: queryKeys.transactions });
-      // Mark dashboard caches as stale but don't refetch eagerly — they will
-      // refetch on next access thanks to their STALE.LONG (3 min) staleTime.
-      // This avoids 6 simultaneous refetches on every single transaction.
-      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'], refetchType: 'none' });
-      queryClient.invalidateQueries({ queryKey: ['dashboard-trends'], refetchType: 'none' });
+      // Debounce: batch transactions + dashboard invalidation (2s window)
+      debouncedInvalidateTx();
 
       if (__DEV__) {
         logInfo('RT', 'Transaction recorded:', payload.type, payload.points, 'pts for client', payload.clientId);
@@ -51,6 +58,7 @@ export function useRealtimeEvents(socket: Socket | null) {
     socket.on(WS_EVENTS.TRANSACTION_RECORDED, onTransactionRecorded);
 
     return () => {
+      if (txDebounceTimer) clearTimeout(txDebounceTimer);
       socket.off(WS_EVENTS.TRANSACTION_RECORDED, onTransactionRecorded);
     };
   }, [socket, queryClient]);

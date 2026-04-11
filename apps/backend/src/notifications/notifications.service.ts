@@ -66,11 +66,8 @@ export class NotificationsService {
     // Collect ALL clients with a loyalty card + push info.
     // Single paginated query fetches both client IDs and push tokens,
     // avoiding a duplicate second pass over the same data.
-    const merchant = await this.merchantRepo.findUnique({
-      where: { id: merchantId },
-      select: { logoUrl: true },
-    });
-    const imageUrl = this.buildImageUrl(merchant?.logoUrl);
+    const logoUrl = await this.getMerchantLogoUrl(merchantId);
+    const imageUrl = this.buildImageUrl(logoUrl);
 
     const allClientIds: string[] = [];
     const pushRecipients: { id: string; pushToken: string }[] = [];
@@ -148,7 +145,7 @@ export class NotificationsService {
 
     // Emit WebSocket events using batch room targeting (single emit per batch)
     // instead of N individual emits — reduces CPU overhead by ~100x for large broadcasts
-    const WS_BATCH = 1000;
+    const WS_BATCH = 250;
     try {
       for (let i = 0; i < uniqueClientIds.length; i += WS_BATCH) {
         const batch = uniqueClientIds.slice(i, i + WS_BATCH);
@@ -884,8 +881,18 @@ export class NotificationsService {
     notifications: { id: string; title: string; body: string; channel: string | null; createdAt: Date; isRead: boolean }[];
     pagination: PaginationResult;
   }> {
+    // Only show broadcasts sent after the merchant's account was created
+    // so recreated accounts don't inherit old notifications.
+    const merchant = await this.merchantRepo.findUnique({
+      where: { id: merchantId },
+      select: { createdAt: true },
+    });
     const skip = (page - 1) * limit;
-    const where = { audience: 'ALL_MERCHANTS', isBroadcast: true };
+    const where = {
+      audience: 'ALL_MERCHANTS',
+      isBroadcast: true,
+      ...(merchant?.createdAt ? { createdAt: { gte: merchant.createdAt } } : {}),
+    };
     const [notifications, total] = await Promise.all([
       this.notificationRepo.findMany({
         where,
@@ -935,7 +942,15 @@ export class NotificationsService {
    * Mark all unread admin broadcast notifications as read for a merchant.
    */
   async markAllAdminNotifsRead(merchantId: string): Promise<void> {
-    const where = { audience: 'ALL_MERCHANTS', isBroadcast: true };
+    const merchant = await this.merchantRepo.findUnique({
+      where: { id: merchantId },
+      select: { createdAt: true },
+    });
+    const where = {
+      audience: 'ALL_MERCHANTS',
+      isBroadcast: true,
+      ...(merchant?.createdAt ? { createdAt: { gte: merchant.createdAt } } : {}),
+    };
     const allNotifs = await this.notificationRepo.findMany({
       where,
       select: { id: true },
@@ -960,11 +975,19 @@ export class NotificationsService {
    * Count unread admin broadcast notifications for a merchant.
    */
   async countUnreadAdminNotifications(merchantId: string): Promise<number> {
-    const where = { audience: 'ALL_MERCHANTS', isBroadcast: true };
+    const merchant = await this.merchantRepo.findUnique({
+      where: { id: merchantId },
+      select: { createdAt: true },
+    });
+    const where = {
+      audience: 'ALL_MERCHANTS',
+      isBroadcast: true,
+      ...(merchant?.createdAt ? { createdAt: { gte: merchant.createdAt } } : {}),
+    };
     const [total, readCount] = await Promise.all([
       this.notificationRepo.count({ where }),
       this.merchantNotifReadRepo.count({
-        where: { merchantId, notification: { audience: 'ALL_MERCHANTS', isBroadcast: true } },
+        where: { merchantId, notification: where },
       }),
     ]);
     return total - readCount;

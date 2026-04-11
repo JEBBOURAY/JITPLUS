@@ -29,6 +29,7 @@ interface AuthContextType {
   loginWithEmail: (email: string, password: string, rememberMe?: boolean) => Promise<{ success: boolean; error?: string; isNetworkError?: boolean }>;
   loginWithPhone: (telephone: string, password: string, rememberMe?: boolean) => Promise<{ success: boolean; error?: string; isNetworkError?: boolean }>;
   setPassword: (password: string) => Promise<{ success: boolean; error?: string; isNetworkError?: boolean }>;
+  resetPasswordOtp: (password: string) => Promise<{ success: boolean; error?: string; isNetworkError?: boolean }>;
   googleLogin: (idToken: string) => Promise<{ success: boolean; isNewUser?: boolean; error?: string; rawError?: unknown }>;
   appleLogin: (identityToken: string, givenName?: string, familyName?: string) => Promise<{ success: boolean; isNewUser?: boolean; error?: string; rawError?: unknown }>;
 
@@ -59,14 +60,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const loadStoredAuth = async () => {
       try {
         logInfo('Auth', 'Chargement de l\'authentification...');
-        // Restore needsPasswordSetup flag (survives app restarts)
-        const storedNeedsPw = await api.getEmailOtpNewUser();
+        // Parallel local-storage reads (no network — safe to parallelize)
+        const [storedNeedsPw, rememberMe, token] = await Promise.all([
+          api.getEmailOtpNewUser(),
+          api.getRememberMe(),
+          api.getStoredToken(),
+        ]);
         if (cancelled || sessionVersionRef.current !== version) return;
         if (storedNeedsPw) store.setNeedsPasswordSetup(true);
-
-        const rememberMe = await api.getRememberMe();
-        const token = await api.getStoredToken();
-        if (cancelled || sessionVersionRef.current !== version) return;
 
         if (token && rememberMe) {
           logInfo('Auth', 'Token trouvé, restauration session...');
@@ -283,6 +284,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
+  const resetPasswordOtpFn = useCallback(async (password: string) => {
+    try {
+      const response = await api.resetPasswordOtp(password);
+      store.setClient(response.client);
+      return { success: true };
+    } catch (error: unknown) {
+      return { success: false, error: extractErrorMessage(error), isNetworkError: checkNetworkError(error) };
+    }
+  }, []);
+
   const completeProfile = useCallback(async (prenom: string, nom: string, termsAccepted: boolean, telephone?: string, dateNaissance?: string, password?: string) => {
     try {
       const response = await api.completeProfile(prenom, nom, termsAccepted, telephone, dateNaissance, password);
@@ -320,8 +331,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       AsyncStorage.removeItem('showWelcome'),
       AsyncStorage.removeItem('showGuidBadge'),
       // Clear QR token + profile draft from SecureStore
-      import('expo-secure-store').then((ss) => ss.deleteItemAsync('qr_permanent_token')),
-      import('expo-secure-store').then((ss) => ss.deleteItemAsync('profile_draft')),
+      import('expo-secure-store').then((ss) => ss.deleteItemAsync('qr_permanent_token')).catch(() => {}),
+      import('expo-secure-store').then((ss) => ss.deleteItemAsync('profile_draft')).catch(() => {}),
     ]);
     store.reset();
     logInfo('Auth', 'Déconnexion terminée');
@@ -364,12 +375,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     loginWithEmail,
     loginWithPhone,
     setPassword: setPasswordFn,
+    resetPasswordOtp: resetPasswordOtpFn,
     googleLogin,
     appleLogin,
     completeProfile,
     logout,
     refreshProfile,
-  }), [store.client, store.loading, store.needsPasswordSetup, store.isGuest, enterGuestMode, sendOtp, verifyOtp, sendOtpEmail, verifyOtpEmail, loginWithEmail, loginWithPhone, setPasswordFn, googleLogin, appleLogin, completeProfile, logout, refreshProfile]);
+  }), [store.client, store.loading, store.needsPasswordSetup, store.isGuest, enterGuestMode, sendOtp, verifyOtp, sendOtpEmail, verifyOtpEmail, loginWithEmail, loginWithPhone, setPasswordFn, resetPasswordOtpFn, googleLogin, appleLogin, completeProfile, logout, refreshProfile]);
 
   return (
     <AuthContext.Provider value={value}>

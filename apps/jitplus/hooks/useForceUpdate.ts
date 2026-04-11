@@ -48,7 +48,7 @@ function getStoreUrl(): string {
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
-const RECHECK_INTERVAL_MS = 30 * 60 * 1000;
+const RECHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6h — version changes are rare, no need to poll every 30min
 
 export function useForceUpdate(): ForceUpdateState {
   const [status, setStatus] = useState<ForceUpdateStatus>('checking');

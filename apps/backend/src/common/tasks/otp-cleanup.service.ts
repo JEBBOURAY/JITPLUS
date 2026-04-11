@@ -21,6 +21,9 @@ export class OtpCleanupService {
       const result = await this.otpRepo.deleteMany({
         where: {
           expiresAt: { lt: new Date() },
+          // Leverage @@index([expiresAt, createdAt]) — only scan OTPs created
+          // in the last 48h (when most expire) instead of full table scan.
+          createdAt: { gte: new Date(Date.now() - 48 * 60 * 60 * 1000) },
         },
       });
 

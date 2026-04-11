@@ -8,6 +8,11 @@ import { logInfo, logApiError } from '@/utils/devLogger';
 const ENV_URL = process.env.EXPO_PUBLIC_API_URL;
 const IS_DEV = __DEV__;
 
+// SECURITY: Ensure production API URL uses HTTPS to prevent cleartext traffic
+if (!IS_DEV && ENV_URL && !ENV_URL.startsWith('https://')) {
+  logApiError('api', new Error(`EXPO_PUBLIC_API_URL must use HTTPS in production. Current: ${ENV_URL}`));
+}
+
 /** Base server URL (without /api/v1) — used for static assets like uploaded images */
 export function getServerBaseUrl(): string {
   return resolveServerBaseUrl(ENV_URL, IS_DEV);
@@ -195,6 +200,11 @@ class ApiService {
 
   async setPassword(password: string): Promise<{ success: boolean; client: Client }> {
     const { data } = await this.api.post('/client-auth/set-password', { password });
+    return data;
+  }
+
+  async resetPasswordOtp(password: string): Promise<{ success: boolean; client: Client }> {
+    const { data } = await this.api.post('/client-auth/reset-password-otp', { password });
     return data;
   }
 

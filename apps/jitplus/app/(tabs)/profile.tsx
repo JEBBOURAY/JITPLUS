@@ -926,9 +926,8 @@ export default function ProfileScreen() {
                   <Pressable
                     onPress={() => {
                       const phone = process.env.EXPO_PUBLIC_SUPPORT_WHATSAPP || '212675346486';
-                      Linking.openURL(`whatsapp://send?phone=${phone}&text=Bonjour%2C%20j%27ai%20besoin%20d%27aide%20avec%20l%27app%20JitPlus`).catch(() => {
-                        Linking.openURL(`https://wa.me/${phone}?text=Bonjour%2C%20j%27ai%20besoin%20d%27aide%20avec%20l%27app%20JitPlus`);
-                      });
+                      const msg = encodeURIComponent('Bonjour, j\'ai besoin d\'aide avec l\'app JitPlus');
+                      Linking.openURL(`https://wa.me/${phone}?text=${msg}`).catch(() => {});
                     }}
                     android_ripple={{ color: `${palette.gold}10` }}
                     style={({ pressed }) => [

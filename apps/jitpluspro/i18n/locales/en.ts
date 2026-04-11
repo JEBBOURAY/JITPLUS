@@ -61,6 +61,7 @@ export default {
     googleLoginError: 'Google sign-in failed. Please try again.',
     appleLoginError: 'Apple sign-in failed. Please try again.',
     googleRegisterError: 'Google sign-up failed. Please try again.',
+    appleRegisterError: 'Apple sign-up failed. Please try again.',
   },
 
   // ── Upload ──
@@ -914,6 +915,7 @@ export default {
     referralHint: 'Optional — enter the code of a business that referred you',
     addressNotFound: 'Address not found',
     addressNotFoundMsg: 'Try with more details (street, district, city).',
+    addressSearchTip: 'For better accuracy, use automatic location or point your business directly on the map.',
     addressSearchError: 'Unable to search for this address.',
     fillAllFields: 'Please complete all required fields',
     welcomeTitle: 'Welcome to JitPlus Pro! 🎉',
@@ -940,6 +942,8 @@ export default {
     signUpWithApple: 'Sign up with Apple',
     googleLinked: 'Google account linked',
     googleChange: 'Change',
+    appleLinked: 'Apple account linked',
+    appleChange: 'Change',
     ownerLastName: 'Owner last name',
     ownerLastNamePlaceholder: 'e.g. Smith',
     ownerFirstName: 'Owner first name',
@@ -1055,6 +1059,7 @@ export default {
     addressNotFound: 'Address not found',
     addressNotFoundHint: 'Try with more details.',
     addressNotFoundManual: 'Address not found. Check the spelling or select manually on the map.',
+    addressSearchTip: 'For better accuracy, use automatic location or point your business directly on the map.',
     addressSearchError: 'Unable to search this address.',
     permissionDenied: 'Permission denied',
     enableLocation: 'Enable location services.',
@@ -1144,6 +1149,8 @@ export default {
     logoError: 'Unable to upload logo. Please try again.',
 
     loyaltyTypeLabel: 'Loyalty program type',
+    ruleTitle: 'Configure your program',
+    ruleSubtitle: 'Choose the loyalty type and conversion settings that fit your business.',
     loyaltyPoints: 'Points',
     loyaltyPointsDesc: 'Customers earn points with each purchase',
     loyaltyStamps: 'Stamps',
@@ -1171,6 +1178,11 @@ export default {
     rewardStampsRequired: 'Stamps required must be greater than 0.',
     rewardStampsLabel: 'Stamps required',
     rewardStampsPlaceholder: 'E.g.: 10',
+
+    // Step 4 — Gift
+    giftTitle: 'Create your first gift',
+    giftSubtitle: 'Define the gift your customers will receive in exchange for their accumulated points or stamps.',
+    giftSkipHint: 'You can add more later from the Gifts section.',
 
     // Conversion rate
     conversionRateLabel: 'Conversion rate',
@@ -1362,6 +1374,16 @@ export default {
 
   onboardingExtra: {
     logoFileHint: 'JPG, PNG – max 5 MB',
+  },
+
+  // ── Setup Reminder ──
+  setupReminder: {
+    title: 'Incomplete setup',
+    subtitle: 'Complete these steps to offer the best experience to your customers.',
+    noLogo: 'Add your logo',
+    noLoyalty: 'Configure your loyalty program',
+    noRewards: 'Add rewards',
+    fixBtn: 'Complete now',
   },
 
   notFound: {

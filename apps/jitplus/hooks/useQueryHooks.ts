@@ -33,7 +33,7 @@ export function useMerchants(enabled = true) {
   return useQuery<Merchant[]>({
     queryKey: queryKeys.merchants,
     queryFn: () => api.getMerchants(),
-    staleTime: 5 * 60 * 1000, // 5 min — merchant list changes rarely
+    staleTime: 30 * 60 * 1000, // 30 min — merchant list changes very rarely
     enabled,
   });
 }
@@ -72,7 +72,7 @@ export function useUnreadNotificationCount(enabled = true) {
     queryFn: () => api.getUnreadCount(),
     staleTime: 10 * 1000, // 10s — WS/FCM handle real-time, low staleTime for quick foreground refresh
     // Poll only when WebSocket is disconnected; WS handles real-time updates otherwise
-    refetchInterval: wsConnected ? false : 60 * 1000,
+    refetchInterval: wsConnected ? false : 2 * 60 * 1000,
     // Stop polling when the app is backgrounded to save battery & network
     refetchIntervalInBackground: false,
     // Exponential backoff on retries to avoid retry storms on poor connectivity
@@ -154,7 +154,7 @@ export function useMerchantById(id: string | undefined, enabled = true) {
   return useQuery<Merchant>({
     queryKey: ['merchant', id] as const,
     queryFn: () => api.getMerchantById(id!),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 30_000,
     enabled: enabled && !!id,
   });
 }

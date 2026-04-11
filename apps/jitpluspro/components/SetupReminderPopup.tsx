@@ -1,23 +1,30 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Text, Pressable, Animated, Easing, Share, StyleSheet } from 'react-native';
+import { View, Text, Pressable, Animated, Easing, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Gift, X, Share2, Users } from 'lucide-react-native';
+import { AlertTriangle, X, ChevronRight } from 'lucide-react-native';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { ms, wp, hp, fontSize, radius } from '@/utils/responsive';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { logWarn } from '@/utils/devLogger';
+import { useRouter } from 'expo-router';
+
+export interface SetupIssue {
+  key: 'logo' | 'loyalty' | 'rewards';
+  icon: React.ReactNode;
+  label: string;
+}
 
 interface Props {
   visible: boolean;
   onClose: () => void;
-  referralCode: string | null;
+  issues: SetupIssue[];
 }
 
-export default function ReferralPopup({ visible, onClose, referralCode }: Props) {
+export default function SetupReminderPopup({ visible, onClose, issues }: Props) {
   const theme = useTheme();
   const { t } = useLanguage();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
 
   const slideAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -35,8 +42,8 @@ export default function ReferralPopup({ visible, onClose, referralCode }: Props)
 
       pulseLoop.current = Animated.loop(
         Animated.sequence([
-          Animated.timing(pulseAnim, { toValue: 1.06, duration: 1000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-          Animated.timing(pulseAnim, { toValue: 1, duration: 1000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1.04, duration: 1200, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 1200, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
         ]),
       );
       pulseLoop.current.start();
@@ -48,26 +55,20 @@ export default function ReferralPopup({ visible, onClose, referralCode }: Props)
     };
   }, [visible, slideAnim, pulseAnim]);
 
-  const handleShare = async () => {
-    try {
-      await Share.share({
-        message: t('referralScreen.shareMessage', { code: referralCode ?? '' }),
-        title: 'JitPlus Pro',
-      });
-    } catch (err: any) {
-      if (err?.message && !err.message.includes('cancel') && !err.message.includes('dismiss')) {
-        logWarn('ReferralPopup', 'Share failed', err);
-      }
-    }
-  };
-
   const handleClose = () => {
     Animated.timing(slideAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
       onClose();
     });
   };
 
-  if (!visible) return null;
+  const handleFix = () => {
+    Animated.timing(slideAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
+      onClose();
+      router.push('/settings');
+    });
+  };
+
+  if (!visible || issues.length === 0) return null;
 
   const translateY = slideAnim.interpolate({ inputRange: [0, 1], outputRange: [120, 0] });
   const opacity = slideAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, 0.8, 1] });
@@ -92,46 +93,50 @@ export default function ReferralPopup({ visible, onClose, referralCode }: Props)
           <X size={ms(14)} color={theme.textMuted} strokeWidth={2.5} />
         </Pressable>
 
-        {/* Icon + gradient accent */}
+        {/* Icon */}
         <LinearGradient
-          colors={[palette.violetDark, palette.violet]}
+          colors={['#EF4444', '#DC2626']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.iconCircle}
         >
-          <Gift size={ms(20)} color="#fff" strokeWidth={2} />
+          <AlertTriangle size={ms(20)} color="#fff" strokeWidth={2} />
         </LinearGradient>
 
-        {/* Text */}
+        {/* Title */}
         <Text style={[styles.title, { color: theme.text }]}>
-          {t('referral.popupTitle')}
+          {t('setupReminder.title')}
         </Text>
         <Text style={[styles.subtitle, { color: theme.textMuted }]}>
-          {t('referral.popupSubtitle')}
+          {t('setupReminder.subtitle')}
         </Text>
 
-        {/* Share button */}
-        <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
-          <Pressable onPress={handleShare} accessibilityRole="button">
+        {/* Issues list */}
+        <View style={styles.issuesList}>
+          {issues.map((issue) => (
+            <View key={issue.key} style={[styles.issueRow, { backgroundColor: theme.bgElevated }]}>
+              {issue.icon}
+              <Text style={[styles.issueText, { color: theme.text }]} numberOfLines={1}>
+                {issue.label}
+              </Text>
+            </View>
+          ))}
+        </View>
+
+        {/* CTA button */}
+        <Animated.View style={{ transform: [{ scale: pulseAnim }], width: '100%' }}>
+          <Pressable onPress={handleFix} accessibilityRole="button">
             <LinearGradient
-              colors={[palette.violetDark, palette.violet]}
+              colors={['#EF4444', '#DC2626']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
-              style={styles.shareBtn}
+              style={styles.fixBtn}
             >
-              <Share2 size={ms(15)} color="#fff" strokeWidth={2} />
-              <Text style={styles.shareBtnText}>{t('referral.popupShareButton')}</Text>
+              <Text style={styles.fixBtnText}>{t('setupReminder.fixBtn')}</Text>
+              <ChevronRight size={ms(16)} color="#fff" strokeWidth={2.5} />
             </LinearGradient>
           </Pressable>
         </Animated.View>
-
-        {/* Social proof */}
-        <View style={styles.socialRow}>
-          <Users size={ms(12)} color={theme.textMuted} strokeWidth={1.5} />
-          <Text style={[styles.socialText, { color: theme.textMuted }]}>
-            {t('referral.socialProof')}
-          </Text>
-        </View>
       </View>
     </Animated.View>
   );
@@ -142,7 +147,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: wp(16),
     right: wp(16),
-    zIndex: 30,
+    zIndex: 31,
   },
   card: {
     borderRadius: radius.xl,
@@ -184,30 +189,40 @@ const styles = StyleSheet.create({
     fontSize: fontSize.sm,
     textAlign: 'center',
     lineHeight: ms(20),
-    marginBottom: hp(14),
+    marginBottom: hp(12),
     paddingHorizontal: wp(8),
   },
-  shareBtn: {
+  issuesList: {
+    width: '100%',
+    gap: hp(6),
+    marginBottom: hp(14),
+  },
+  issueRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: wp(8),
+    gap: wp(10),
+    paddingVertical: hp(8),
+    paddingHorizontal: wp(12),
+    borderRadius: radius.md,
+  },
+  issueText: {
+    fontSize: fontSize.sm,
+    fontWeight: '500',
+    flex: 1,
+  },
+  fixBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: wp(6),
     paddingVertical: hp(12),
     paddingHorizontal: wp(28),
     borderRadius: ms(24),
+    width: '100%',
   },
-  shareBtnText: {
+  fixBtnText: {
     color: '#fff',
     fontSize: fontSize.sm,
     fontWeight: '700',
-  },
-  socialRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: wp(5),
-    marginTop: hp(10),
-  },
-  socialText: {
-    fontSize: fontSize.xs,
-    fontWeight: '500',
   },
 });

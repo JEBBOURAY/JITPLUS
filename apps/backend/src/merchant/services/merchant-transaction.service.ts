@@ -259,9 +259,9 @@ export class MerchantTransactionService {
           fulfilledAt: true,
           note: true,
           createdAt: true,
-          client: { select: { id: true, prenom: true, nom: true, email: true, shareInfoMerchants: true } },
+          client: { select: { id: true, prenom: true, nom: true, shareInfoMerchants: true } },
           teamMember: { select: { id: true, nom: true } },
-          reward: { select: { id: true, titre: true, cout: true } },
+          reward: { select: { titre: true, cout: true } },
         },
         orderBy: { createdAt: 'desc' },
         skip,
@@ -278,7 +278,6 @@ export class MerchantTransactionService {
             ...tx.client,
             prenom: maskName(tx.client.prenom),
             nom: maskName(tx.client.nom),
-            email: null,
           },
         };
       }

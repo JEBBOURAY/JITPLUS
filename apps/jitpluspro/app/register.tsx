@@ -30,7 +30,7 @@ import { isValidPassword } from '@/utils/passwordStrength';
 import { isValidEmail } from '@/utils/validation';
 import { getErrorMessage } from '@/utils/error';
 import { useGoogleIdToken } from '@/hooks/useGoogleIdToken';
-import { useAppleAuth } from '@/hooks/useAppleAuth';
+import { useAppleIdToken } from '@/hooks/useAppleIdToken';
 import { StepAccount } from '@/components/register/StepAccount';
 import { StepPassword } from '@/components/register/StepPassword';
 import { StepStoreConfig } from '@/components/register/StepStoreConfig';
@@ -42,6 +42,9 @@ import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
 interface RegState {
   step: number;
   googleIdToken: string | null;
+  appleIdentityToken: string | null;
+  appleGivenName: string | undefined;
+  appleFamilyName: string | undefined;
   email: string;
   password: string;
   confirmPassword: string;
@@ -74,6 +77,9 @@ type RegAction =
 const initialRegState: RegState = {
   step: 0,
   googleIdToken: null,
+  appleIdentityToken: null,
+  appleGivenName: undefined,
+  appleFamilyName: undefined,
   email: '',
   password: '',
   confirmPassword: '',
@@ -194,7 +200,7 @@ const si = StyleSheet.create({
 export default function RegisterScreen() {
   const router = useRouter();
   const theme = useTheme();
-  const { googleRegister, register: authRegister } = useAuth();
+  const { googleRegister, appleRegister, register: authRegister } = useAuth();
   const { t } = useLanguage();
 
   const [s, dispatch] = useReducer(regReducer, initialRegState);
@@ -208,7 +214,8 @@ export default function RegisterScreen() {
   }, []);
 
   const {
-    step, googleIdToken, email, password, confirmPassword, showPassword,
+    step, googleIdToken, appleIdentityToken, appleGivenName, appleFamilyName,
+    email, password, confirmPassword, showPassword,
     nomCommerce, categorie, ville, quartier, adresse, latitude, longitude,
     instagram, tiktok, website, storePhone, description,
     referralCode,
@@ -218,8 +225,9 @@ export default function RegisterScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const [stepError, setStepError] = useState('');
 
-  // Google users skip password step → 3 effective steps (account, store, social)
-  const effectiveTotal = googleIdToken ? 3 : TOTAL_STEPS;
+  // Google/Apple users skip password step → 3 effective steps (account, store, social)
+  const isSocialAuth = !!googleIdToken || !!appleIdentityToken;
+  const effectiveTotal = isSocialAuth ? 3 : TOTAL_STEPS;
 
   // ── Entrance animations ──
   const headerAnim = useRef(new Animated.Value(0)).current;
@@ -247,14 +255,28 @@ export default function RegisterScreen() {
 
   // Google ID token capture — goes straight to step 1 (store config)
   const handleGoogleToken = useCallback((idToken: string) => {
-    set({ googleIdToken: idToken });
+    set({ googleIdToken: idToken, appleIdentityToken: null });
     if (step === 0) {
       dispatch({ type: 'NEXT_STEP' });
       animateStepTransition();
     }
   }, [step, set, animateStepTransition]);
   const google = useGoogleIdToken(handleGoogleToken);
-  const apple = useAppleAuth();
+
+  // Apple ID token capture — same flow as Google (skip password)
+  const handleAppleToken = useCallback((data: { identityToken: string; givenName?: string; familyName?: string }) => {
+    set({
+      appleIdentityToken: data.identityToken,
+      appleGivenName: data.givenName,
+      appleFamilyName: data.familyName,
+      googleIdToken: null,
+    });
+    if (step === 0) {
+      dispatch({ type: 'NEXT_STEP' });
+      animateStepTransition();
+    }
+  }, [step, set, animateStepTransition]);
+  const apple = useAppleIdToken(handleAppleToken);
 
   // Refs
   const emailRef = useRef<TextInput>(null);
@@ -264,25 +286,25 @@ export default function RegisterScreen() {
   // ── Validation per step ──
   const canProceed = useMemo(() => {
     if (step === 0) {
-      if (googleIdToken) return true;
+      if (isSocialAuth) return true;
       return isValidEmail(email);
     }
     if (step === 1) {
-      // Google users see store config at step 1
-      if (googleIdToken) return !!nomCommerce.trim();
+      // Google/Apple users see store config at step 1
+      if (isSocialAuth) return !!nomCommerce.trim();
       // Standard users see password at step 1
       return isValidPassword(password) && password === confirmPassword;
     }
     if (step === 2) {
-      // Google users see social info at step 2 (all optional → always valid)
-      if (googleIdToken) return true;
+      // Google/Apple users see social info at step 2 (all optional → always valid)
+      if (isSocialAuth) return true;
       // Standard users see store config at step 2
       return !!nomCommerce.trim();
     }
     // Step 3 (standard only): social info — all fields optional
     if (step === 3) return true;
     return false;
-  }, [step, googleIdToken, email, password, confirmPassword, nomCommerce]);
+  }, [step, isSocialAuth, email, password, confirmPassword, nomCommerce]);
 
   // ── Register ──
   const handleRegister = useCallback(async () => {
@@ -292,7 +314,9 @@ export default function RegisterScreen() {
       adresse: addr, latitude: lat, longitude: lng,
       instagram: ig, tiktok: tk, website: ws, storePhone: sp, description: desc,
       referralCode: rc,
-      googleIdToken: gToken, email: em, password: pw,
+      googleIdToken: gToken, appleIdentityToken: aToken,
+      appleGivenName: aGivenName, appleFamilyName: aFamilyName,
+      email: em, password: pw,
     } = sRef.current;
 
     // Clean social handles: strip @ prefix and full URLs
@@ -345,6 +369,35 @@ export default function RegisterScreen() {
       return;
     }
 
+    if (aToken) {
+      if (!nc.trim()) {
+        Alert.alert(t('common.error'), t('registerExtra.fillAllFields'));
+        return;
+      }
+      dispatch({ type: 'SET_LOADING', loading: true });
+      try {
+        const result = await appleRegister(aToken, aGivenName, aFamilyName, {
+          ...storeData,
+          termsAccepted: true,
+        });
+        if (result.success) {
+          router.replace('/(tabs)');
+        } else {
+          Alert.alert(t('registerExtra.registrationError'), result.error || t('registerExtra.registrationErrorMsg'));
+        }
+      } catch (error: unknown) {
+        const ax = error as { isAxiosError?: boolean; code?: string; response?: any };
+        const isNetwork = ax?.isAxiosError && (ax?.code === 'ECONNABORTED' || ax?.code === 'ERR_NETWORK' || !ax?.response);
+        Alert.alert(
+          isNetwork ? t('common.networkError') : t('registerExtra.registrationError'),
+          isNetwork ? t('common.networkErrorMsg') : getErrorMessage(error, t('registerExtra.registrationErrorMsg')),
+        );
+      } finally {
+        dispatch({ type: 'SET_LOADING', loading: false });
+      }
+      return;
+    }
+
     if (!em || !pw || !nc.trim()) {
       Alert.alert(t('common.error'), t('registerExtra.fillAllFields'));
       return;
@@ -371,13 +424,13 @@ export default function RegisterScreen() {
     } finally {
       dispatch({ type: 'SET_LOADING', loading: false });
     }
-  }, [googleRegister, authRegister, router, t]);
+  }, [googleRegister, appleRegister, authRegister, router, t]);
 
   const handleNext = useCallback(async () => {
     setStepError('');
 
-    // Step 0: check email uniqueness (skip for Google)
-    if (step === 0 && !googleIdToken) {
+    // Step 0: check email uniqueness (skip for Google/Apple)
+    if (step === 0 && !googleIdToken && !appleIdentityToken) {
       if (!canProceed) return;
       dispatch({ type: 'SET_LOADING', loading: true });
       try {
@@ -414,7 +467,7 @@ export default function RegisterScreen() {
   }, [step, animateStepTransition, router]);
 
   const stepTitles = useMemo(() => {
-    if (googleIdToken) {
+    if (isSocialAuth) {
       return [
         { title: t('registerExtra.step0'), sub: t('registerExtra.sub0') },
         { title: t('registerExtra.step2Store'), sub: t('registerExtra.sub2Store') },
@@ -427,12 +480,12 @@ export default function RegisterScreen() {
       { title: t('registerExtra.step2Store'), sub: t('registerExtra.sub2Store') },
       { title: t('registerExtra.stepSocial'), sub: t('registerExtra.subSocial') },
     ];
-  }, [t, googleIdToken]);
+  }, [t, isSocialAuth]);
 
-  const stepShortLabels = useMemo(() => googleIdToken
+  const stepShortLabels = useMemo(() => isSocialAuth
     ? [t('registerExtra.stepShort0'), t('registerExtra.stepShort2Store'), t('registerExtra.stepShortSocial')]
     : [t('registerExtra.stepShort0'), t('registerExtra.stepShort2'), t('registerExtra.stepShort2Store'), t('registerExtra.stepShortSocial')],
-  [t, googleIdToken]);
+  [t, isSocialAuth]);
 
   return (
     <View style={[styles.gradient, { backgroundColor: theme.bg }]}>
@@ -505,13 +558,15 @@ export default function RegisterScreen() {
                   emailRef={emailRef}
                   googleIdToken={googleIdToken}
                   setGoogleIdToken={(v) => set({ googleIdToken: v })}
+                  appleIdentityToken={appleIdentityToken}
+                  setAppleIdentityToken={(v) => set({ appleIdentityToken: v, appleGivenName: undefined, appleFamilyName: undefined })}
                   google={google}
                   apple={apple}
                   isLoading={isLoading}
                 />
               )}
 
-              {step === 1 && !googleIdToken && (
+              {step === 1 && !isSocialAuth && (
                 <StepPassword
                   theme={theme}
                   t={t}
@@ -527,7 +582,7 @@ export default function RegisterScreen() {
                 />
               )}
 
-              {((step === 1 && googleIdToken) || (step === 2 && !googleIdToken)) && (
+              {((step === 1 && isSocialAuth) || (step === 2 && !isSocialAuth)) && (
                 <StepStoreConfig
                   theme={theme}
                   t={t}
@@ -536,7 +591,7 @@ export default function RegisterScreen() {
                 />
               )}
 
-              {((step === 2 && googleIdToken) || (step === 3 && !googleIdToken)) && (
+              {((step === 2 && isSocialAuth) || (step === 3 && !isSocialAuth)) && (
                 <StepSocialInfo
                   theme={theme}
                   t={t}

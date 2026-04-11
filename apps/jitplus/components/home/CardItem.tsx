@@ -45,7 +45,7 @@ const CardItem = React.memo(function CardItem({
   const balance = card.balance ?? 0;
 
   // ── STAMPS ──
-  const goal = card.merchant?.rewards?.[0]?.cout || DEFAULT_STAMPS_GOAL;
+  const goal = card.merchant?.minRewardCost ?? card.merchant?.rewards?.[0]?.cout ?? DEFAULT_STAMPS_GOAL;
   const stampsEarned = Math.min(balance, goal);
   const stampsRemaining = Math.max(0, goal - stampsEarned);
   const stampsComplete = stampsEarned >= goal;

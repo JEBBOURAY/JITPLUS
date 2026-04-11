@@ -130,7 +130,7 @@ export default function VerifyOtpScreen() {
       SecureStore.deleteItemAsync(SS_ATTEMPT_COUNT);
       if (isForgotPasswordFlow) {
         // Forgot password: user is now authenticated via OTP, go to set new password
-        router.replace('/set-password');
+        router.replace({ pathname: '/set-password', params: { isForgotPassword: '1' } });
       } else if (result.isNewUser) {
         router.push({
           pathname: '/complete-profile',

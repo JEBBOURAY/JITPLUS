@@ -95,10 +95,8 @@ export default function PlanScreen() {
     const msg = encodeURIComponent(
       t('account.planContactWhatsappMsg', { name: merchant?.nom ?? '', email: merchant?.email ?? '' }),
     );
-    Linking.openURL(`whatsapp://send?phone=${UPGRADE_WHATSAPP}&text=${msg}`).catch(() =>
-      Linking.openURL(`https://wa.me/${UPGRADE_WHATSAPP}?text=${msg}`).catch(() =>
-        Alert.alert(t('common.error'), t('account.planErrorWhatsapp')),
-      )
+    Linking.openURL(`https://wa.me/${UPGRADE_WHATSAPP}?text=${msg}`).catch(() =>
+      Alert.alert(t('common.error'), t('account.planErrorWhatsapp')),
     );
   };
 

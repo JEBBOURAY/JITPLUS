@@ -32,7 +32,7 @@ import { getTransactionConfig } from '@/constants/transactions';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
-import { useTheme, brandGradient } from '@/contexts/ThemeContext';
+import { useTheme, brandGradient, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import StampGrid from '@/components/StampGrid';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -462,7 +462,7 @@ export default function ClientDetailScreen() {
             <TouchableOpacity
               style={[
                 styles.modalConfirmBtn,
-                { backgroundColor: adjustMode === 'add' ? theme.primary : theme.danger },
+                { backgroundColor: adjustMode === 'add' ? palette.violet : palette.charbon },
                 adjustMutation.isPending && { opacity: 0.6 },
               ]}
               onPress={handleAdjustPoints}

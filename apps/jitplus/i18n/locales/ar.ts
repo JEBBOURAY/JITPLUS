@@ -86,6 +86,8 @@ export default {
   setPassword: {
     title: 'دير المودپاس',
     subtitle: 'هاد المودپاس غتخليك تدخل بسهولة',
+    resetTitle: 'بدل المودپاس',
+    resetSubtitle: 'ختار مودپاس جديد للكونط ديالك',
     placeholder: 'المودپاس (8 حروف على الأقل)',
     confirmPlaceholder: 'كونفيرمي المودپاس',
     submit: 'كونفيرمي',
@@ -357,6 +359,8 @@ export default {
     loyaltyProgram: 'برنامج الولاء',
     stampCard: 'كرطة الطوابع',
     pointsAccumulation: 'تجميع النقط',
+    yourStamps: '%{count} طابع',
+    yourPoints: '%{count} نقطة',
     stampRule: 'كادو وحدة كل %{count} طوابع',
     pointsRule: '%{rate} درهم = 1 نقطة',
     info: 'المعلومات',
@@ -487,6 +491,7 @@ export default {
     next: 'لقدام',
     start: 'يالاه!',
     exploreGuest: 'تفرج بلا كونط',
+    madeIn: 'Made in Morocco \uD83C\uDDF2\uD83C\uDDE6',
   },
 
   // ── Guest mode ──

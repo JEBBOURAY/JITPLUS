@@ -46,9 +46,7 @@ export default function ForgotPasswordScreen() {
   const passwordInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
-    const anim = Animated.timing(fadeAnim, { toValue: 1, duration: 400, useNativeDriver: true });
-    anim.start();
-    return () => anim.stop();
+    Animated.timing(fadeAnim, { toValue: 1, duration: 400, useNativeDriver: true }).start();
   }, [fadeAnim]);
 
   // Cooldown timer for resend
@@ -60,10 +58,8 @@ export default function ForgotPasswordScreen() {
 
   // Auto-focus OTP input when step changes
   useEffect(() => {
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    if (step === 'otp') timers.push(setTimeout(() => otpInputRef.current?.focus(), 300));
-    if (step === 'password') timers.push(setTimeout(() => passwordInputRef.current?.focus(), 300));
-    return () => timers.forEach(clearTimeout);
+    if (step === 'otp') setTimeout(() => otpInputRef.current?.focus(), 300);
+    if (step === 'password') setTimeout(() => passwordInputRef.current?.focus(), 300);
   }, [step]);
 
   const emailValid = isValidEmail(email);

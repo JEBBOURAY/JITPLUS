@@ -10,11 +10,13 @@ import {
 } from './services';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { MerchantPlanModule } from './merchant-plan.module';
+import { EventsModule } from '../events/events.module';
 
 @Module({
   imports: [
     NotificationsModule,
     MerchantPlanModule,
+    EventsModule,
   ],
   controllers: [MerchantController],
   providers: [

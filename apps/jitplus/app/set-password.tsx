@@ -5,7 +5,7 @@ import {
   ScrollView, Animated, Image,
 } from 'react-native';
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Lock, Eye, EyeOff, ArrowRight, CheckCircle2 } from 'lucide-react-native';
 import { useTheme, palette } from '@/contexts/ThemeContext';
@@ -20,7 +20,9 @@ import { getPasswordStrength, isValidPassword as checkPassword } from '@/utils/p
 export default function SetPasswordScreen() {
   const theme = useTheme();
   const { t } = useLanguage();
-  const { setPassword } = useAuth();
+  const { setPassword, resetPasswordOtp } = useAuth();
+  const { isForgotPassword } = useLocalSearchParams<{ isForgotPassword?: string }>();
+  const isForgotPasswordFlow = isForgotPassword === '1';
   const [password, setPasswordValue] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -62,7 +64,9 @@ export default function SetPasswordScreen() {
 
     setIsLoading(true);
     setError('');
-    const result = await setPassword(password);
+    const result = isForgotPasswordFlow
+      ? await resetPasswordOtp(password)
+      : await setPassword(password);
     setIsLoading(false);
 
     if (result.success) {
@@ -111,9 +115,11 @@ export default function SetPasswordScreen() {
               transform: [{ translateY: formAnim.interpolate({ inputRange: [0, 1], outputRange: [30, 0] }) }],
             }]}>
               <View style={{ marginBottom: hp(24) }}>
-                <Text style={[styles.title, { color: theme.text }]}>{t('setPassword.title')}</Text>
+                <Text style={[styles.title, { color: theme.text }]}>
+                  {isForgotPasswordFlow ? t('setPassword.resetTitle') : t('setPassword.title')}
+                </Text>
                 <Text style={[styles.subtitle, { color: theme.inputPlaceholder }]}>
-                  {t('setPassword.subtitle')}
+                  {isForgotPasswordFlow ? t('setPassword.resetSubtitle') : t('setPassword.subtitle')}
                 </Text>
               </View>
 

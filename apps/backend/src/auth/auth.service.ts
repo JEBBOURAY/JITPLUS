@@ -17,6 +17,7 @@ import { LoginDto } from './dto/login.dto';
 import { GoogleLoginMerchantDto } from './dto/google-login-merchant.dto';
 import { GoogleRegisterMerchantDto } from './dto/google-register-merchant.dto';
 import { AppleLoginMerchantDto } from './dto/apple-login-merchant.dto';
+import { AppleRegisterMerchantDto } from './dto/apple-register-merchant.dto';
 import { RegisterMerchantDto } from './dto/register-merchant.dto';
 import { BCRYPT_SALT_ROUNDS, USER_TYPE_MERCHANT, USER_TYPE_TEAM_MEMBER, DEFAULT_POINTS_RULES, OTP_MIN, OTP_MAX, OTP_EXPIRY_MS, OTP_COOLDOWN_MS, MAX_SESSIONS_PER_MERCHANT } from '../common/constants';
 import { hashOtp, validateOtp, checkDailyOtpLimit } from '../common/utils/otp.helper';
@@ -1029,6 +1030,196 @@ export class AuthService {
   }
 
   /**
+   * Register a new merchant using Apple Sign-In.
+   * Mirrors googleRegisterMerchant but uses Apple identity token.
+   */
+  async appleRegisterMerchant(dto: AppleRegisterMerchantDto): Promise<AuthResult> {
+    // 1. Verify the Apple token
+    let appleId: string;
+    let appleEmail: string;
+    try {
+      const payload = await this.verifyAppleToken(dto.identityToken);
+      appleId = payload.sub;
+      appleEmail = payload.email?.toLowerCase() ?? '';
+
+      if (!appleId) {
+        throw new UnauthorizedException('Token Apple invalide — identifiant manquant');
+      }
+
+      if (!appleEmail) {
+        throw new BadRequestException("Impossible de récupérer l'email du compte Apple");
+      }
+    } catch (error) {
+      if (error instanceof UnauthorizedException || error instanceof BadRequestException) {
+        throw error;
+      }
+      this.logger.error('Apple token verification failed:', error);
+      throw new UnauthorizedException('Token Apple invalide');
+    }
+
+    // 2. Check if merchant already exists
+    const existingByApple = await this.merchantRepo.findFirst({
+      where: { appleId },
+      select: { id: true },
+    });
+    if (existingByApple) {
+      throw new ConflictException('Un compte commerçant est déjà associé à ce compte Apple');
+    }
+
+    const existingByEmail = await this.merchantRepo.findUnique({
+      where: { email: appleEmail },
+      select: { id: true },
+    });
+    if (existingByEmail) {
+      throw new ConflictException('Un compte commerçant avec cet email existe déjà');
+    }
+
+    // 3. Create merchant (no password — Apple-only account)
+    const trialData = this.planService.getTrialData();
+
+    // Display name: nomCommerce first, then Apple name, then email prefix
+    const ownerParts = [
+      dto.prenom?.trim() || dto.givenName?.trim(),
+      dto.nom?.trim() || dto.familyName?.trim(),
+    ].filter(Boolean);
+    const ownerName = ownerParts.length > 0 ? ownerParts.join(' ') : appleEmail.split('@')[0];
+    const nom = dto.nomCommerce?.trim() || ownerName;
+    const storeNom = nom;
+    const categorie = dto.categorie ?? ('AUTRE' as any);
+
+    let referredById: string | undefined;
+    let referredByClientId: string | undefined;
+    const referralCode = dto.referralCode?.trim().toLowerCase();
+    if (referralCode) {
+      try {
+        const referrer = await this.referralService.validateCode(referralCode);
+        referredById = referrer.id;
+      } catch {
+        try {
+          const clientReferrer = await this.clientReferralService.validateCode(referralCode);
+          referredByClientId = clientReferrer.id;
+        } catch {
+          throw new ConflictException('Code de parrainage invalide ou inexistant');
+        }
+      }
+    }
+
+    let merchant;
+    try {
+      // Apple-only account: set a random password hash (cannot be used for login)
+      const dummyPasswordHash = await bcrypt.hash(randomBytes(32).toString('hex'), BCRYPT_SALT_ROUNDS);
+
+      merchant = await this.merchantRepo.create({
+        data: {
+          nom,
+          email: appleEmail,
+          password: dummyPasswordHash,
+          appleId,
+          emailVerified: true, // Apple-verified email
+          phoneNumber: dto.phoneNumber,
+          categorie,
+          ville: dto.ville,
+          quartier: dto.quartier,
+          adresse: dto.adresse,
+          logoUrl: dto.logoUrl,
+          latitude: dto.latitude,
+          longitude: dto.longitude,
+          ...(dto.description?.trim() && { description: dto.description.trim() }),
+          ...((dto.instagram?.trim() || dto.tiktok?.trim() || dto.website?.trim()) && {
+            socialLinks: {
+              ...(dto.instagram?.trim() && { instagram: dto.instagram.trim() }),
+              ...(dto.tiktok?.trim() && { tiktok: dto.tiktok.trim() }),
+              ...(dto.website?.trim() && { website: dto.website.trim() }),
+            },
+          }),
+          termsAccepted: dto.termsAccepted ?? false,
+          pointsRules: DEFAULT_POINTS_RULES,
+          ...trialData,
+          ...(referredById && { referredById }),
+          ...(referredByClientId && { referredByClientId }),
+          stores: {
+            create: {
+              nom: storeNom,
+              categorie,
+              ville: dto.ville,
+              quartier: dto.quartier,
+              adresse: dto.adresse,
+              latitude: dto.latitude,
+              longitude: dto.longitude,
+              ...(dto.description?.trim() && { description: dto.description.trim() }),
+              ...(dto.storePhone?.trim() && { telephone: dto.storePhone.trim() }),
+              ...((dto.instagram?.trim() || dto.tiktok?.trim() || dto.website?.trim()) && {
+                socialLinks: {
+                  ...(dto.instagram?.trim() && { instagram: dto.instagram.trim() }),
+                  ...(dto.tiktok?.trim() && { tiktok: dto.tiktok.trim() }),
+                  ...(dto.website?.trim() && { website: dto.website.trim() }),
+                },
+              }),
+            },
+          },
+        },
+        select: {
+          ...MERCHANT_PROFILE_SELECT,
+          stores: true,
+        },
+      });
+    } catch (error: any) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new ConflictException('Un compte commerçant avec cet email existe déjà');
+      }
+      throw error;
+    }
+
+    // Welcome email (no OTP needed — email already verified by Apple)
+    this.mailProvider.sendWelcomeMerchant(merchant.email, merchant.nom)
+      .catch((err) => this.logger.warn('Welcome email failed', errMsg(err)));
+
+    // Create client referral record (fire-and-forget)
+    if (referredByClientId) {
+      this.clientReferralService.createReferral(referredByClientId, merchant.id)
+        .catch((err) => this.logger.warn('Client referral creation failed', errMsg(err)));
+    }
+
+    const sessionId = randomUUID();
+    const jwtPayload = {
+      sub: merchant.id,
+      email: merchant.email,
+      type: USER_TYPE_MERCHANT,
+      role: 'owner',
+      jti: sessionId,
+    };
+
+    // Create device session + optional refresh token
+    let refreshToken: string | undefined;
+    if (dto.deviceName) {
+      refreshToken = randomBytes(40).toString('hex');
+      const refreshHash = createHash('sha256').update(refreshToken).digest('hex');
+      await this.registerDeviceSession(
+        merchant.id, sessionId, dto, undefined,
+        'merchant', merchant.email, merchant.nom, refreshHash,
+      );
+    } else {
+      await this.deviceSessionRepo.create({
+        data: {
+          merchantId: merchant.id,
+          tokenId: sessionId,
+          deviceName: 'apple-register',
+          isCurrentDevice: true,
+          lastActiveAt: new Date(),
+        },
+      });
+    }
+
+    return {
+      access_token: this.jwtService.sign(jwtPayload),
+      ...(refreshToken && { refresh_token: refreshToken }),
+      session_id: sessionId,
+      merchant,
+      userType: USER_TYPE_MERCHANT,
+    };
+  }
+
+  /**
    * Login a merchant with an Apple identity token.
    * Only works for existing merchants — Apple sign-in won't create new accounts.
    */
@@ -1234,12 +1425,12 @@ export class AuthService {
     });
 
     if (!merchant) {
-      return { success: true, message: 'Si un compte existe avec cet email, un code a été envoyé.' };
+      throw new BadRequestException('Aucun compte trouvé avec cet email.');
     }
 
     await this.sendOtpForEmail(normalizedEmail, 'Password reset');
 
-    return { success: true, message: 'Si un compte existe avec cet email, un code a été envoyé.' };
+    return { success: true, message: 'Un code de réinitialisation a été envoyé à votre email.' };
   }
 
   async resetPassword(email: string, code: string, newPassword: string): Promise<{ success: boolean; message: string }> {

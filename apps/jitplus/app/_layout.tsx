@@ -31,9 +31,17 @@ import ForceUpdateModal from '@/components/ForceUpdateModal';
 // ── Sentry init (crash reporting) ──────────────────────────────
 // SECURITY: DSN is bundled in the client. Configure inbound data filters in
 // Sentry project settings to reject invalid releases and apply rate limits.
+// Validate DSN format before init — an unresolved EAS secret (literal "$...") or
+// empty string would make the native SDK crash on Android.
+const _sentryDsn = process.env.EXPO_PUBLIC_SENTRY_DSN ?? '';
+const _sentryEnabled =
+  !__DEV__ &&
+  !!_sentryDsn &&
+  _sentryDsn.startsWith('https://') &&
+  _sentryDsn.includes('.sentry.io');
 Sentry.init({
-  dsn: process.env.EXPO_PUBLIC_SENTRY_DSN ?? '',
-  enabled: !__DEV__ && !!process.env.EXPO_PUBLIC_SENTRY_DSN,
+  dsn: _sentryEnabled ? _sentryDsn : '',
+  enabled: _sentryEnabled,
   environment: __DEV__ ? 'development' : 'production',
   release: Constants.expoConfig?.version,
   dist: String(
@@ -41,8 +49,8 @@ Sentry.init({
       ? Constants.expoConfig?.ios?.buildNumber ?? '0'
       : Constants.expoConfig?.android?.versionCode ?? '0'
   ),
-  tracesSampleRate: 0.2,
-  maxBreadcrumbs: 50,
+  tracesSampleRate: 0.05,
+  maxBreadcrumbs: 20,
   attachScreenshot: false, // Disabled: screenshots can capture PII (names, cards, balances)
   attachViewHierarchy: false,
 });
@@ -194,6 +202,7 @@ function RootLayoutNav() {
 
   return (
     <NavThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
+      <View style={{ flex: 1, direction: 'ltr' }}>
       <OfflineBanner />
       {(forceUpdateStatus === 'update' || forceUpdateStatus === 'maintenance') && (
         <ForceUpdateModal status={forceUpdateStatus} storeUrl={forceUpdateStoreUrl} />
@@ -220,6 +229,7 @@ function RootLayoutNav() {
           <Stack.Screen name="legal" options={{ animation: 'slide_from_right' }} />
         </Stack>
       </ErrorBoundary>
+      </View>
     </NavThemeProvider>
   );
 }
@@ -275,7 +285,7 @@ export default function RootLayout() {
   // Font loading timeout — don't block app launch forever if fonts fail
   const [fontTimeout, setFontTimeout] = useState(false);
   useEffect(() => {
-    const timer = setTimeout(() => setFontTimeout(true), 5000);
+    const timer = setTimeout(() => setFontTimeout(true), 3000);
     return () => clearTimeout(timer);
   }, []);
 

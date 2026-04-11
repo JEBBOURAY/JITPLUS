@@ -8,6 +8,14 @@ import { MAX_OTP_ATTEMPTS, MAX_OTP_SENDS_PER_DAY } from '../constants';
  */
 const otpDailyCounter = new Map<string, { count: number; resetAt: number }>();
 
+/** Evict expired entries every 30 minutes to prevent unbounded Map growth. */
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of otpDailyCounter) {
+    if (now >= entry.resetAt) otpDailyCounter.delete(key);
+  }
+}, 30 * 60_000).unref();
+
 /**
  * Enforce daily OTP limit per identifier (email or phone).
  * Throws 429 (TOO_MANY_REQUESTS) when the limit is exceeded.

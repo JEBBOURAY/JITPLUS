@@ -7,7 +7,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import {
-  Search, MapPin, X,
+  Search, MapPin, X, ChevronRight,
   LocateFixed, SlidersHorizontal,
 } from 'lucide-react-native';
 import { haptic, HapticStyle } from '@/utils/haptics';
@@ -19,10 +19,13 @@ import { Merchant } from '@/types';
 import FadeInView from '@/components/FadeInView';
 import SafeMapView, { Marker, MAPS_AVAILABLE } from '@/components/SafeMapView';
 import { CATEGORIES } from '@/utils/categories';
+import { getCategoryEmoji } from '@/utils/categories';
 import { getDistanceKm } from '@/utils/distance';
 import { wp, hp, ms, fontSize as FS, radius } from '@/utils/responsive';
 import { useMerchants } from '@/hooks/useQueryHooks';
 import { prefetchImages } from '@/utils/imageCache';
+import { Image } from 'expo-image';
+import { resolveImageUrl } from '@/utils/imageUrl';
 import MapMarker from '@/components/MapMarker';
 import ClusterMarker from '@/components/ClusterMarker';
 import { useMapClustering } from '@/utils/mapClustering';
@@ -435,22 +438,84 @@ export default function DiscoverScreen() {
       {/* Floating UI */}
       <View style={[styles.topBar, { top: topBarTop, paddingHorizontal: isVeryCompact ? wp(12) : wp(16) }]} pointerEvents="box-none">
         {showSearch ? (
-          <View style={[styles.searchBarExpanded, { backgroundColor: theme.bgCard, height: isVeryCompact ? ms(46) : ms(52), paddingHorizontal: isVeryCompact ? wp(14) : wp(18) }]}>
-            <Search size={isVeryCompact ? ms(16) : ms(18)} color={theme.textMuted} strokeWidth={2} />
-            <TextInput
-              ref={searchInputRef}
-              style={[styles.searchInput, { color: theme.text, fontSize: isVeryCompact ? FS.sm : FS.md }]}
-              placeholder={t('discover.searchPlaceholder')}
-              placeholderTextColor={theme.inputPlaceholder}
-              value={searchQuery} onChangeText={setSearchQuery}
-              returnKeyType="search" autoFocus
-            />
-            <Pressable onPress={toggleSearch} hitSlop={8} accessibilityRole="button" accessibilityLabel={t('discover.searchPlaceholder')}>
-              <View style={[styles.closePill, { backgroundColor: theme.bgInput, width: isVeryCompact ? ms(26) : ms(30), height: isVeryCompact ? ms(26) : ms(30), borderRadius: isVeryCompact ? ms(13) : ms(15) }]}>
-                <X size={isVeryCompact ? ms(12) : ms(14)} color={theme.textMuted} strokeWidth={2} />
+          <>
+            <View style={[styles.searchBarExpanded, { backgroundColor: theme.bgCard, height: isVeryCompact ? ms(46) : ms(52), paddingHorizontal: isVeryCompact ? wp(14) : wp(18) }]}>
+              <Search size={isVeryCompact ? ms(16) : ms(18)} color={theme.textMuted} strokeWidth={2} />
+              <TextInput
+                ref={searchInputRef}
+                style={[styles.searchInput, { color: theme.text, fontSize: isVeryCompact ? FS.sm : FS.md }]}
+                placeholder={t('discover.searchPlaceholder')}
+                placeholderTextColor={theme.inputPlaceholder}
+                value={searchQuery} onChangeText={setSearchQuery}
+                returnKeyType="search" autoFocus
+              />
+              <Pressable onPress={toggleSearch} hitSlop={8} accessibilityRole="button" accessibilityLabel={t('discover.searchPlaceholder')}>
+                <View style={[styles.closePill, { backgroundColor: theme.bgInput, width: isVeryCompact ? ms(26) : ms(30), height: isVeryCompact ? ms(26) : ms(30), borderRadius: isVeryCompact ? ms(13) : ms(15) }]}>
+                  <X size={isVeryCompact ? ms(12) : ms(14)} color={theme.textMuted} strokeWidth={2} />
+                </View>
+              </Pressable>
+            </View>
+            {/* Search results dropdown */}
+            {debouncedSearch.trim().length >= 2 && filteredMerchants.length > 0 && (
+              <View style={[searchResultsStyles.dropdown, { backgroundColor: theme.bgCard, borderColor: theme.border }]}>
+                <ScrollView
+                  keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator={false}
+                  style={searchResultsStyles.scroll}
+                >
+                  {filteredMerchants.slice(0, 6).map((m) => (
+                    <Pressable
+                      key={m.storeId ? `${m.id}-${m.storeId}` : m.id}
+                      onPress={() => {
+                        haptic();
+                        setShowSearch(false);
+                        setSearchQuery('');
+                        Keyboard.dismiss();
+                        router.push({ pathname: '/merchant/[id]', params: { id: m.id } });
+                      }}
+                      style={({ pressed }) => [
+                        searchResultsStyles.item,
+                        { borderBottomColor: theme.border },
+                        pressed && { backgroundColor: `${palette.violet}08` },
+                      ]}
+                    >
+                      {m.logoUrl ? (
+                        <Image
+                          source={resolveImageUrl(m.logoUrl)}
+                          style={searchResultsStyles.logo}
+                          contentFit="cover"
+                          transition={200}
+                        />
+                      ) : (
+                        <View style={[searchResultsStyles.logoFallback, { backgroundColor: `${palette.violet}10` }]}>
+                          <Text style={searchResultsStyles.emojiText}>{getCategoryEmoji(m.categorie)}</Text>
+                        </View>
+                      )}
+                      <View style={searchResultsStyles.info}>
+                        <Text style={[searchResultsStyles.name, { color: theme.text }]} numberOfLines={1}>
+                          {m.storeName || m.nomBoutique}
+                        </Text>
+                        {(m.ville || m.categorie) && (
+                          <Text style={[searchResultsStyles.sub, { color: theme.textMuted }]} numberOfLines={1}>
+                            {[m.categorie, m.ville].filter(Boolean).join(' · ')}
+                          </Text>
+                        )}
+                      </View>
+                      <ChevronRight size={ms(14)} color={theme.textMuted} strokeWidth={2} />
+                    </Pressable>
+                  ))}
+                </ScrollView>
               </View>
-            </Pressable>
-          </View>
+            )}
+            {debouncedSearch.trim().length >= 2 && filteredMerchants.length === 0 && (
+              <View style={[searchResultsStyles.dropdown, searchResultsStyles.emptyDropdown, { backgroundColor: theme.bgCard, borderColor: theme.border }]}>
+                <MapPin size={ms(20)} color={theme.textMuted} strokeWidth={2} />
+                <Text style={[searchResultsStyles.emptyText, { color: theme.textMuted }]}>
+                  {t('discover.noResultsFor', { query: debouncedSearch })}
+                </Text>
+              </View>
+            )}
+          </>
         ) : (
           <View style={styles.topButtons}>
             <TouchableOpacity style={[styles.floatingBtn, { backgroundColor: theme.bgCard, width: isVeryCompact ? ms(42) : ms(48), height: isVeryCompact ? ms(42) : ms(48), borderRadius: isVeryCompact ? ms(21) : ms(24) }]} activeOpacity={0.8} onPress={toggleSearch} accessibilityRole="button" accessibilityLabel={t('discover.searchPlaceholder')}>
@@ -581,3 +646,73 @@ export default function DiscoverScreen() {
     </View>
   );
 }
+
+const searchResultsStyles = StyleSheet.create({
+  dropdown: {
+    marginTop: ms(6),
+    borderRadius: ms(16),
+    borderWidth: 1,
+    overflow: 'hidden',
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOpacity: 0.08, shadowOffset: { width: 0, height: 4 }, shadowRadius: 12 },
+      android: { elevation: 6 },
+    }),
+  },
+  scroll: {
+    maxHeight: ms(300),
+  },
+  item: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: ms(12),
+    paddingHorizontal: ms(14),
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    gap: ms(10),
+  },
+  emoji: {
+    width: ms(36),
+    height: ms(36),
+    borderRadius: ms(10),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logo: {
+    width: ms(36),
+    height: ms(36),
+    borderRadius: ms(10),
+  },
+  logoFallback: {
+    width: ms(36),
+    height: ms(36),
+    borderRadius: ms(10),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emojiText: {
+    fontSize: ms(16),
+  },
+  info: {
+    flex: 1,
+  },
+  name: {
+    fontSize: FS.md,
+    fontWeight: '600',
+    fontFamily: 'Lexend_600SemiBold',
+  },
+  sub: {
+    fontSize: FS.xs,
+    marginTop: ms(2),
+    fontFamily: 'Lexend_400Regular',
+  },
+  emptyDropdown: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: ms(20),
+    gap: ms(8),
+  },
+  emptyText: {
+    fontSize: FS.sm,
+    fontFamily: 'Lexend_400Regular',
+    textAlign: 'center',
+  },
+});

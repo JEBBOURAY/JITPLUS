@@ -86,6 +86,8 @@ export default {
   setPassword: {
     title: 'Créez votre mot de passe',
     subtitle: 'Ce mot de passe vous permettra de vous reconnecter facilement',
+    resetTitle: 'Réinitialiser le mot de passe',
+    resetSubtitle: 'Choisissez un nouveau mot de passe pour votre compte',
     placeholder: 'Mot de passe (min. 8 caractères)',
     confirmPlaceholder: 'Confirmez le mot de passe',
     submit: 'Valider',
@@ -357,6 +359,8 @@ export default {
     loyaltyProgram: 'Programme de fidélité',
     stampCard: 'Carte à tampons',
     pointsAccumulation: 'Cumul de points',
+    yourStamps: '%{count} tampons',
+    yourPoints: '%{count} pts',
     stampRule: '1 cadeau tous les %{count} tampons',
     pointsRule: '%{rate} DH = 1 point',
     info: 'Informations',
@@ -487,6 +491,7 @@ export default {
     next: 'Suivant',
     start: 'C\'est parti !',
     exploreGuest: 'Explorer sans compte',
+    madeIn: 'Made in Morocco \uD83C\uDDF2\uD83C\uDDE6',
   },
 
   // ── Guest mode ──

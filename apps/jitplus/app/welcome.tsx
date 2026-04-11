@@ -1,4 +1,4 @@
-import React, { useRef, useCallback, useState } from 'react';
+import React, { useRef, useCallback, useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,8 +7,6 @@ import {
   FlatList,
   NativeSyntheticEvent,
   NativeScrollEvent,
-  Platform,
-  Alert,
   useWindowDimensions,
 } from 'react-native';
 import { router } from 'expo-router';
@@ -44,7 +42,13 @@ export default function WelcomeScreen() {
   const [activeIndex, setActiveIndex] = useState(0);
   const flatListRef = useRef<FlatList>(null);
 
-  const slides: Slide[] = [
+  // Reset carousel to first slide on language change
+  useEffect(() => {
+    setActiveIndex(0);
+    flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
+  }, [locale]);
+
+  const slides = useMemo<Slide[]>(() => [
     {
       key: 'cards',
       icon: <Ticket size={ms(56)} color={theme.text} strokeWidth={2} />,
@@ -75,7 +79,7 @@ export default function WelcomeScreen() {
       titleKey: 'welcome.featureRewardsTitle',
       descKey: 'welcome.featureRewardsDesc',
     },
-  ];
+  ], [theme.text]);
 
   const isLast = activeIndex === slides.length - 1;
 
@@ -129,13 +133,6 @@ export default function WelcomeScreen() {
                 onPress={async () => {
                   if (code !== locale) {
                     await setLocale(code);
-                    if (code === 'ar' || locale === 'ar') {
-                      Alert.alert(
-                        t('profile.language'),
-                        t('profile.restartRequired'),
-                        [{ text: t('common.ok') }],
-                      );
-                    }
                   }
                 }}
                 style={[
@@ -161,6 +158,8 @@ export default function WelcomeScreen() {
         onScroll={handleScroll}
         scrollEventThrottle={32}
         bounces={false}
+        getItemLayout={(_data, index) => ({ length: screenWidth, offset: screenWidth * index, index })}
+        style={{ direction: 'ltr' }}
       />
 
       {/* Bottom: dots + button */}
@@ -192,7 +191,7 @@ export default function WelcomeScreen() {
             <Text style={styles.nextBtnText}>
               {isLast ? t('welcome.start') : t('welcome.next')}
             </Text>
-            <ArrowRight size={ms(20)} color="#FFFFFF" style={{ marginLeft: wp(8) }} />
+            <ArrowRight size={ms(20)} color="#FFFFFF" style={styles.nextBtnIcon} />
           </LinearGradient>
         </TouchableOpacity>
 
@@ -204,7 +203,7 @@ export default function WelcomeScreen() {
           </Text>
         </TouchableOpacity>
 
-        <Text style={[styles.madeIn, { color: theme.textMuted }]}>Made in Morocco 🇲🇦</Text>
+        <Text style={[styles.madeIn, { color: theme.textMuted }]}>{t('welcome.madeIn')}</Text>
       </SafeAreaView>
     </View>
   );
@@ -221,9 +220,6 @@ const styles = StyleSheet.create({
   brandRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: hp(32),
-  },
-  appName: {
     marginBottom: hp(32),
   },
   iconCircle: {
@@ -251,6 +247,7 @@ const styles = StyleSheet.create({
   bottomSafe: { paddingHorizontal: wp(24), paddingBottom: hp(12) },
   dotsRow: {
     flexDirection: 'row',
+    direction: 'ltr',
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: hp(16),
@@ -275,6 +272,7 @@ const styles = StyleSheet.create({
     fontSize: fontSize.md,
     color: '#FFFFFF',
   },
+  nextBtnIcon: { marginLeft: wp(8) },
   exploreBtn: {
     flexDirection: 'row',
     alignItems: 'center',

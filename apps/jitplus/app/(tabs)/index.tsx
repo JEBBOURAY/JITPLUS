@@ -7,7 +7,7 @@ import { Image } from 'expo-image';
 import { StatusBar } from 'expo-status-bar';
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 import { LinearGradient } from 'expo-linear-gradient';
-import { CreditCard, AlertCircle, ChevronRight, Gift, Coins, Clock, MapPin, Trophy, Shuffle, Search, SlidersHorizontal, X, Sparkles, Bell } from 'lucide-react-native';
+import { CreditCard, AlertCircle, ChevronRight, Gift, Coins, Clock, MapPin, Trophy, Shuffle, Search, SlidersHorizontal, X, Sparkles, Bell, Stamp } from 'lucide-react-native';
 import { haptic, HapticStyle } from '@/utils/haptics';
 import * as Location from 'expo-location';
 import { useTheme, palette } from '@/contexts/ThemeContext';
@@ -86,7 +86,7 @@ const CardItem = React.memo(function CardItem({
   const balance = card.balance ?? 0;
 
   // ── STAMPS ──
-  const goal = card.merchant?.rewards?.[0]?.cout || DEFAULT_STAMPS_GOAL;
+  const goal = card.merchant?.minRewardCost ?? card.merchant?.rewards?.[0]?.cout ?? DEFAULT_STAMPS_GOAL;
   const stampsEarned = Math.min(balance, goal);
   const stampsRemaining = Math.max(0, goal - stampsEarned);
   const stampsComplete = stampsEarned >= goal;
@@ -129,12 +129,16 @@ const CardItem = React.memo(function CardItem({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [animTarget]);
 
-  // Max stamp dots shown; extras are mentioned as "+N"
+  // Show all stamp dots with adaptive sizing
   const visibleStamps = Math.min(goal, MAX_VISIBLE_STAMPS);
   const stampDots = useMemo(
     () => Array.from({ length: visibleStamps }, (_, i) => i < stampsEarned),
     [visibleStamps, stampsEarned],
   );
+  // Dynamic dot size: shrink dots when there are many stamps to keep card compact
+  const dotSize = goal <= 10 ? ms(26) : goal <= 15 ? ms(22) : ms(18);
+  const dotRadius = dotSize / 2;
+  const dotBorder = goal <= 15 ? 1.5 : 1;
 
   // Pre-compute stamp dot styles to avoid inline object allocation in map()
   const stampStyles = useMemo(() => ({
@@ -237,7 +241,7 @@ const CardItem = React.memo(function CardItem({
               </Text>
             </View>
           ) : isStamps ? (
-            /* ── STAMPS: visual circle grid ── */
+            /* ── STAMPS: adaptive dot grid ── */
             <>
               <View style={styles.stampsGrid}>
                 {stampDots.map((filled, i) => {
@@ -247,13 +251,13 @@ const CardItem = React.memo(function CardItem({
                       <View
                         key={i}
                         style={[
-                          styles.stampDot,
+                          { width: dotSize, height: dotSize, borderRadius: dotRadius, borderWidth: dotBorder, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
                           filled ? stampStyles.filledLogo : stampStyles.emptyLogo,
                         ]}
                       >
                         <Image
                           source={resolveImageUrl(card.merchant!.logoUrl!)}
-                          style={[styles.stampLogo, filled ? stampStyles.logoFilled : stampStyles.logoEmpty]}
+                          style={[{ width: '100%', height: '100%', borderRadius: dotRadius }, filled ? stampStyles.logoFilled : stampStyles.logoEmpty]}
                           contentFit="cover"
                           cachePolicy="disk"
                         />
@@ -264,16 +268,16 @@ const CardItem = React.memo(function CardItem({
                     <View
                       key={i}
                       style={[
-                        styles.stampDot,
+                        { width: dotSize, height: dotSize, borderRadius: dotRadius, borderWidth: dotBorder, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
                         filled ? stampStyles.filledNoLogo : stampStyles.emptyNoLogo,
                       ]}
                     >
-                      {filled && <Text style={styles.stampCheck}>✓</Text>}
+                      {filled && <Text style={[styles.stampCheck, goal > 15 && { fontSize: ms(9) }]}>✓</Text>}
                     </View>
                   );
                 })}
-                {goal > 20 && (
-                  <Text style={[styles.stampsExtra, { color: theme.textMuted }]}>+{goal - 20}</Text>
+                {goal > MAX_VISIBLE_STAMPS && (
+                  <Text style={[styles.stampsExtra, { color: theme.textMuted }]}>+{goal - MAX_VISIBLE_STAMPS}</Text>
                 )}
               </View>
 
@@ -983,6 +987,24 @@ const styles = StyleSheet.create({
   stampCheck: { color: '#fff', fontSize: ms(12), fontWeight: '700' },
   stampsExtra: { fontSize: fontSize.xs, fontWeight: '600', alignSelf: 'center' as const },
   stampsMeta: { fontSize: fontSize.xs, fontWeight: '500', marginTop: hp(1) },
+  stampsProgressRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: wp(6),
+    marginTop: hp(4),
+    marginBottom: hp(4),
+  },
+  stampsCounter: { fontSize: fontSize.sm, fontWeight: '700' },
+  stampsProgressTrack: {
+    flex: 1,
+    height: ms(4),
+    borderRadius: ms(2),
+    overflow: 'hidden' as const,
+  },
+  stampsProgressFill: {
+    height: '100%' as const,
+    borderRadius: ms(2),
+  },
 
   // ── Points bar ──
   pointsTopRow: {

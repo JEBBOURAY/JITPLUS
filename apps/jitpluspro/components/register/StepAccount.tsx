@@ -15,6 +15,8 @@ interface Props {
   emailRef: RefObject<TextInput | null>;
   googleIdToken: string | null;
   setGoogleIdToken: (v: string | null) => void;
+  appleIdentityToken?: string | null;
+  setAppleIdentityToken?: (v: string | null) => void;
   google: {
     promptGoogle: () => void;
     isLoading: boolean;
@@ -31,13 +33,15 @@ interface Props {
 
 function StepAccountInner({
   theme, t, email, setEmail, emailRef,
-  googleIdToken, setGoogleIdToken, google, apple, isLoading,
+  googleIdToken, setGoogleIdToken, appleIdentityToken, setAppleIdentityToken,
+  google, apple, isLoading,
 }: Props) {
   const emailValid = email ? isValidEmail(email) : false;
+  const hasSocialAuth = !!googleIdToken || !!appleIdentityToken;
   return (
     <>
       {/* Google Sign-Up */}
-      {!googleIdToken && (
+      {!hasSocialAuth && (
         <>
           <TouchableOpacity
             style={[styles.googleBtn, { backgroundColor: theme.bgCard, borderColor: theme.border }]}
@@ -121,8 +125,23 @@ function StepAccountInner({
         </View>
       )}
 
+      {/* Apple linked badge */}
+      {appleIdentityToken && (
+        <View style={[styles.googleBadge, { backgroundColor: `${theme.success}12`, borderColor: `${theme.success}30` }]}>
+          <Check size={16} color={theme.success} strokeWidth={2} />
+          <Text style={[styles.googleBadgeText, { color: theme.success }]}>
+            {t('registerExtra.appleLinked')}
+          </Text>
+          <TouchableOpacity onPress={() => setAppleIdentityToken?.(null)} activeOpacity={0.7}>
+            <Text style={[styles.googleBadgeReset, { color: theme.textMuted }]}>
+              {t('registerExtra.appleChange')}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Email */}
-      {!googleIdToken && (
+      {!hasSocialAuth && (
         <View style={styles.field}>
           <Text style={[styles.label, { color: theme.text }]}>
             {t('register.emailLabel')} *

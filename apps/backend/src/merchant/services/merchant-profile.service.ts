@@ -22,6 +22,7 @@ import {
   STORE_REPOSITORY, type IStoreRepository,
 } from '../../common/repositories';
 import { NotificationsService } from '../../notifications/notifications.service';
+import { EventsGateway } from '../../events/events.gateway';
 import { UpdateProfileDto } from '../dto/update-profile.dto';
 import { ChangePasswordDto } from '../dto/change-password.dto';
 import { UpdateLoyaltySettingsDto } from '../dto/update-loyalty-settings.dto';
@@ -49,6 +50,7 @@ export class MerchantProfileService {
     @Inject(STORE_REPOSITORY) private storeRepo: IStoreRepository,
     @Inject(CACHE_MANAGER) private cache: Cache,
     private notifications: NotificationsService,
+    private eventsGateway: EventsGateway,
     private configService: ConfigService,
   ) {
     this.googleClient = new OAuth2Client(this.configService.get<string>('GOOGLE_CLIENT_ID'));
@@ -473,6 +475,32 @@ export class MerchantProfileService {
       title: notifTitle,
       body: notifBody,
     });
+
+    // 4. Emit points_updated via WebSocket so client caches are invalidated instantly
+    const EMIT_BATCH = 500;
+    let emitSkip = 0;
+    while (true) {
+      const cards = await this.loyaltyCardRepo.findMany({
+        where: { merchantId },
+        select: { clientId: true, points: true },
+        take: EMIT_BATCH,
+        skip: emitSkip,
+      });
+      if (cards.length === 0) break;
+      for (const card of cards as { clientId: string; points: number }[]) {
+        this.eventsGateway.emitPointsUpdated(card.clientId, {
+          clientId: card.clientId,
+          merchantId,
+          merchantName,
+          loyaltyType: newType as 'POINTS' | 'STAMPS',
+          points: 0,
+          newBalance: card.points,
+          type: 'ADJUST_POINTS',
+        });
+      }
+      emitSkip += EMIT_BATCH;
+      if (cards.length < EMIT_BATCH) break;
+    }
   }
 
   /**
@@ -494,6 +522,9 @@ export class MerchantProfileService {
     newType: string,
     conversionRate: number,
   ) {
+    if (!conversionRate || conversionRate <= 0) {
+      throw new BadRequestException('Le taux de conversion doit être supérieur à zéro');
+    }
     if (oldType === 'POINTS' && newType === 'STAMPS') {
       // Convert client balances: points → stamps
       await this.rawQuery.executeRaw`
@@ -613,9 +644,20 @@ export class MerchantProfileService {
       await tx.deviceSession.deleteMany({
         where: { merchantId },
       });
-    });
 
-    // ── Post-transaction cleanup (non-critical) ────────────────
+      // 6. Clean up notification data so recreated accounts start fresh
+      await tx.merchantNotificationRead.deleteMany({
+        where: { merchantId },
+      });
+      await tx.notification.deleteMany({
+        where: { merchantId },
+      });
+
+      // 7. Delete orphan-prone related data
+      await tx.reward.deleteMany({ where: { merchantId } });
+      await tx.profileView.deleteMany({ where: { merchantId } });
+      await tx.clientReferral.deleteMany({ where: { merchantId } });
+    });
     await Promise.allSettled([
       this.cache.del(`merchant:profile:${merchantId}`),
       this.cache.del(`merchant:detail:${merchantId}`),

@@ -30,7 +30,7 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
     if (Date.now() < _authValidUntil) { setStatus('ok'); return; }
     // Validate token freshness with a lightweight API call
     getStats()
-      .then(() => { _authValidUntil = Date.now() + 60 * 1000; setStatus('ok'); })
+      .then(() => { _authValidUntil = Date.now() + 5 * 60 * 1000; setStatus('ok'); })
       .catch(() => { _authValidUntil = 0; setToken(null); setStatus('unauthorized'); });
   }, []);
 
