@@ -294,6 +294,12 @@ export default {
     phoneSearchError: 'Unable to search this number. Please try again.',
     cameraErrorTitle: 'Camera error',
     cameraErrorMsg: 'Unable to initialize the camera. Use phone search instead.',
+    guideTitle: 'How to scan a client?',
+    guideStep1: 'Ask your client to download the JitPlus app (for clients)',
+    guideStep2: 'They create their account and get their personal QR code',
+    guideStep3: 'Scan their QR code here to give them points or stamps',
+    guideHint: 'Your client doesn\'t have the app yet? Invite them to download it!',
+    guideGotIt: 'Got it',
   },
 
   account: {
@@ -1102,6 +1108,10 @@ export default {
     step3Desc: 'When the referred business subscribes to a paid Premium plan, you automatically receive +1 Premium month.',
     step4Title: 'Stack without limits!',
     step4Desc: 'Each new referral = 1 extra month. The more you invite, the longer you enjoy the Pro plan for free!',
+    popupTitle: 'Earn free Premium!',
+    popupSubtitle: 'Refer a business and get +1 free Premium month automatically.',
+    popupShareButton: 'Share my code',
+    socialProof: 'Dozens of businesses are already referring',
   },
 
   // ── Onboarding ──

@@ -126,7 +126,7 @@ export default function AccountScreen() {
   const referralCode = referralData?.referralCode ?? null;
 
   // Profile data is managed by React Query (useMerchantProfile, staleTime: 5min).
-  // No need to force-reload on every tab focus ï¿½ pull-to-refresh or mutations handle invalidation.
+  // No need to force-reload on every tab focus — pull-to-refresh or mutations handle invalidation.
   const { label: categoryLabel } = useCategoryMetadata(merchant?.categorie);
   const [showLanguageModal, setShowLanguageModal] = useState(false);
 

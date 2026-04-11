@@ -6,7 +6,7 @@ import { useFonts } from 'expo-font';
 import { Stack, useRouter } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Platform, View, Image, StyleSheet, ActivityIndicator } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClient, QueryCache, MutationCache, onlineManager, useQueryClient } from '@tanstack/react-query';
@@ -136,6 +136,9 @@ import AppErrorBoundary from '@/components/ErrorBoundary';
 import OfflineBanner from '@/components/OfflineBanner';
 import ForceUpdateModal from '@/components/ForceUpdateModal';
 import { useForceUpdate } from '@/hooks/useForceUpdate';
+import ReferralPopup from '@/components/ReferralPopup';
+import { useReferral } from '@/hooks/useQueryHooks';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -274,12 +277,44 @@ function RootLayoutNav() {
 function ThemedNavigator() {
   const theme = useTheme();
   const { isDark } = theme;
-  const { merchant } = useAuth();
+  const { merchant, isTeamMember } = useAuth();
   const { status, storeUrl } = useForceUpdate();
   const router = useRouter();
   const queryClient = useQueryClient();
   const notificationListener = useRef<{ remove(): void } | null>(null);
   const responseListener = useRef<{ remove(): void } | null>(null);
+
+  // ── Referral popup (global — above all screens) ──
+  const { data: referralData } = useReferral(!isTeamMember && !!merchant);
+  const referralCode = referralData?.referralCode ?? null;
+  const [showReferral, setShowReferral] = useState(false);
+  const referralTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!merchant || isTeamMember) return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const ts = await AsyncStorage.getItem('@jitpluspro_referral_popup_ts');
+        const threeDays = 3 * 24 * 60 * 60 * 1000;
+        if (ts && Date.now() - Number(ts) < threeDays) return;
+        referralTimer.current = setTimeout(() => {
+          if (!cancelled) setShowReferral(true);
+        }, 4000);
+      } catch {}
+    })();
+
+    return () => {
+      cancelled = true;
+      if (referralTimer.current) clearTimeout(referralTimer.current);
+    };
+  }, [merchant, isTeamMember]);
+
+  const dismissReferral = useCallback(() => {
+    setShowReferral(false);
+    AsyncStorage.setItem('@jitpluspro_referral_popup_ts', String(Date.now())).catch(() => {});
+  }, []);
 
   // ── Real-time WebSocket connection ────────────────────────
   const socket = useRealtimeSocket({
@@ -338,6 +373,7 @@ function ThemedNavigator() {
 
   return (
     <NavThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
+      <View style={{ flex: 1 }}>
       <OfflineBanner />
       {(status === 'update' || status === 'maintenance') && (
         <ForceUpdateModal status={status} storeUrl={storeUrl} />
@@ -389,6 +425,8 @@ function ThemedNavigator() {
               options={{ headerShown: false, animation: 'fade', gestureEnabled: false }}
             />
           </Stack>
+      <ReferralPopup visible={showReferral} onClose={dismissReferral} referralCode={referralCode} />
+      </View>
         </NavThemeProvider>
       );
 }

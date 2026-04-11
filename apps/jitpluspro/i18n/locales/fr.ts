@@ -308,6 +308,12 @@ export default {
     phoneSearchError: 'Impossible de rechercher ce numéro. Réessayez.',
     cameraErrorTitle: 'Erreur caméra',
     cameraErrorMsg: "Impossible d'initialiser la caméra. Utilisez la recherche par téléphone.",
+    guideTitle: 'Comment scanner un client ?',
+    guideStep1: 'Demandez à votre client de télécharger l\'app JitPlus (dédiée aux clients)',
+    guideStep2: 'Il crée son compte et obtient son QR code personnel',
+    guideStep3: 'Scannez son QR code ici pour lui attribuer des points ou tampons',
+    guideHint: 'Votre client n\'a pas encore l\'app ? Invitez-le à la télécharger !',
+    guideGotIt: 'J\'ai compris',
   },
 
   // ── Account ──
@@ -1107,6 +1113,10 @@ export default {
     step3Desc: 'Quand le commerce parrainé souscrit à un plan Premium payant, vous recevez automatiquement +1 mois Premium.',
     step4Title: 'Cumulez sans limite !',
     step4Desc: 'Chaque nouveau parrainage = 1 mois supplémentaire. Plus vous invitez, plus vous bénéficiez du plan Pro gratuitement !',
+    popupTitle: 'Gagnez du Premium gratuit !',
+    popupSubtitle: 'Parrainez un commerce et recevez +1 mois Premium offert automatiquement.',
+    popupShareButton: 'Partager mon code',
+    socialProof: 'Des dizaines de commerces parrainent déjà',
   },
 
   // ── Onboarding ──

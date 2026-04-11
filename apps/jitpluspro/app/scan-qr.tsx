@@ -1,4 +1,4 @@
-import React, { useReducer, useCallback, useEffect, useRef, useMemo } from 'react';
+import React, { useReducer, useCallback, useEffect, useRef, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -43,6 +43,8 @@ import { useLanguage } from '@/contexts/LanguageContext';
 
 import { COUNTRIES } from '@/constants/Countries';
 import CountryPickerModal from '@/components/CountryPickerModal';
+import FirstScanGuide from '@/components/FirstScanGuide';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Safe haptic wrappers — no-op on devices without haptic engine
 const safeNotification = (type: Haptics.NotificationFeedbackType) => {
@@ -291,6 +293,23 @@ export default function ScanQRScreen() {
   const navTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Navigation mutex: prevents QR scan and phone search from navigating simultaneously
   const isNavigatingRef = useRef(false);
+
+  // ── First-scan guide popup ──
+  const [showGuide, setShowGuide] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const done = await AsyncStorage.getItem('@jitpluspro_first_scan_guide');
+        if (!done) setShowGuide(true);
+      } catch {}
+    })();
+  }, []);
+
+  const dismissGuide = useCallback(() => {
+    setShowGuide(false);
+    AsyncStorage.setItem('@jitpluspro_first_scan_guide', '1').catch(() => {});
+  }, []);
 
   // Cleanup navigation timeouts on unmount
   useEffect(() => {
@@ -732,6 +751,9 @@ export default function ScanQRScreen() {
         onClose={() => set({ showCountryPicker: false })}
         topInset={insets.top}
       />
+
+      {/* ── First scan guide ─── */}
+      <FirstScanGuide visible={showGuide} onClose={dismissGuide} />
     </View>
   );
 }
