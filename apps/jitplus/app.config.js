@@ -134,8 +134,7 @@ module.exports = ({ config }) => {
       // Network security — enforces HTTPS, blocks cleartext traffic in production
       './plugins/withNetworkSecurity',
       // Force Google Maps region to Morocco — ensures correct border rendering (Sahara)
-      // DISABLED: plugin file not yet created — re-enable after adding plugins/withMoroccoRegion.js
-      // './plugins/withMoroccoRegion',
+      './plugins/withMoroccoRegion',
       [
         'expo-notifications',
         {

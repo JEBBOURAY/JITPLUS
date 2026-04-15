@@ -68,7 +68,6 @@ export default function AddressAutocomplete({
   // Store geocode fallback results so we can retrieve coords on select
   const geoFallbackRef = useRef<Map<string, { lat: number; lng: number; address: string; city?: string; district?: string }>>(new Map());
 
-  // Fetch predictions via backend proxy
   const fetchPredictions = useCallback(async (input: string) => {
     if (input.trim().length < 3) {
       setPredictions([]);
@@ -169,7 +168,6 @@ export default function AddressAutocomplete({
     debounceRef.current = setTimeout(() => fetchPredictions(text), DEBOUNCE_MS);
   }, [onChangeText, fetchPredictions]);
 
-  // Get place details (coordinates) when user selects a prediction
   const handleSelectPrediction = useCallback(async (prediction: PlacePrediction) => {
     Keyboard.dismiss();
     setShowDropdown(false);

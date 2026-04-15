@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import { useEffect } from 'react';
 import {
   View,
   Text,
@@ -16,10 +16,9 @@ import MerchantCategoryIcon, { useCategoryMetadata } from '@/components/Merchant
 import MerchantLogo from '@/components/MerchantLogo';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { PlanInfo } from '@/types';
 import { DEFAULT_CURRENCY } from '@/config/currency';
-import api from '@/services/api';
 import { useGuardedCallback } from '@/hooks/useGuardedCallback';
+import { usePlan } from '@/hooks/useQueryHooks';
 
 export default function ProfileScreen() {
   const { merchant, loading, signOut, loadProfile, isTeamMember } = useAuth();
@@ -28,22 +27,7 @@ export default function ProfileScreen() {
   const { t } = useLanguage();
   const insets = useSafeAreaInsets();
   const { label: categoryLabel } = useCategoryMetadata(merchant?.categorie);
-
-  // ── Plan state ──
-  const [planInfo, setPlanInfo] = useState<PlanInfo | null>(null);
-
-  const loadPlanInfo = useCallback(async () => {
-    try {
-      const res = await api.get('/merchant/plan');
-      setPlanInfo(res.data);
-    } catch {
-      // silent
-    }
-  }, []);
-
-  useEffect(() => {
-    if (merchant) loadPlanInfo();
-  }, [merchant, loadPlanInfo]);
+  const { data: planInfo } = usePlan(!!merchant);
 
   useEffect(() => {
     if (!merchant && !loading) {
@@ -92,7 +76,6 @@ export default function ProfileScreen() {
           <Text style={[styles.categoryText, { color: theme.primary }]}>{categoryLabel}</Text>
         </View>
 
-        {/* Plan badge */}
         {planInfo && (
           <View style={[
             styles.categoryBadge,
@@ -206,7 +189,6 @@ export default function ProfileScreen() {
         </View>
       </View>
 
-      {/* Plan details section */}
       {planInfo && (
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>{t('profileView.subscription')}</Text>
@@ -248,7 +230,6 @@ export default function ProfileScreen() {
                 </TouchableOpacity>
               </>
             )}
-            {/* Feature list */}
             <View style={[styles.divider, { backgroundColor: theme.border }]} />
             <View style={{ paddingVertical: 8, gap: 6 }}>
               <Text style={{ color: theme.text, fontSize: 13, fontWeight: '600', fontFamily: 'Lexend_600SemiBold', marginBottom: 4 }}>
@@ -282,23 +263,15 @@ export default function ProfileScreen() {
         
         <View style={[styles.card, { backgroundColor: theme.bgCard, shadowColor: theme.shadowColor }]}>
           <View style={styles.complianceRow}>
-            {merchant.termsAccepted ? (
-              <>
-                <CheckCircle2 size={20} color={palette.charbon} strokeWidth={1.5} />
-                <View style={styles.complianceContent}>
-                  <Text style={[styles.complianceLabel, { color: theme.textSecondary }]}>{t('profileView.legalNotices')}</Text>
-                  <Text style={[styles.complianceStatus, { color: theme.success }]}>{t('profileView.accepted')}</Text>
-                </View>
-              </>
-            ) : (
-              <>
-                <Circle size={20} color={palette.charbon} strokeWidth={1.5} />
-                <View style={styles.complianceContent}>
-                  <Text style={[styles.complianceLabel, { color: theme.textSecondary }]}>{t('profileView.legalNotices')}</Text>
-                  <Text style={[styles.complianceStatus, { color: theme.danger }]}>{t('profileView.notAccepted')}</Text>
-                </View>
-              </>
-            )}
+            {merchant.termsAccepted
+              ? <CheckCircle2 size={20} color={palette.charbon} strokeWidth={1.5} />
+              : <Circle size={20} color={palette.charbon} strokeWidth={1.5} />}
+            <View style={styles.complianceContent}>
+              <Text style={[styles.complianceLabel, { color: theme.textSecondary }]}>{t('profileView.legalNotices')}</Text>
+              <Text style={[styles.complianceStatus, { color: merchant.termsAccepted ? theme.success : theme.danger }]}>
+                {merchant.termsAccepted ? t('profileView.accepted') : t('profileView.notAccepted')}
+              </Text>
+            </View>
           </View>
         </View>
       </View>

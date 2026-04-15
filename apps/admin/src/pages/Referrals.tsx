@@ -126,12 +126,10 @@ export default function Referrals() {
     setPayoutPage(1);
   };
 
-  // Reset page on filter change
   useEffect(() => { setClientPage(1); }, [clientFilter]);
   useEffect(() => { setPayoutPage(1); }, [payoutFilter]);
 
-  // ── Stat cards ─────────────────────────────────────────────────────────────
-  const StatCard = ({ label, value, color, alphaColor }: { icon: string; label: string; value: string | number; color: string; alphaColor?: string }) => (
+  const StatCard = ({ label, value, color }: { label: string; value: string | number; color: string }) => (
     <div style={{
       ...S.card, flex: 1, minWidth: 140, display: 'flex', alignItems: 'center', gap: 14, position: 'relative', overflow: 'hidden',
     }}>
@@ -167,12 +165,12 @@ export default function Referrals() {
       {/* Stats row */}
       {stats && (
         <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
-          <StatCard icon="" label="Parrainages M-M" value={stats.merchantToMerchant.total} color={C.primary} alphaColor={C.primaryAlpha} />
-          <StatCard icon="" label="Mois offerts (total)" value={stats.merchantToMerchant.totalMonthsEarned} color={C.cyan} alphaColor="rgba(6, 182, 212, 0.15)" />
-          <StatCard icon="" label="Parrainages C-M" value={stats.clientToMerchant.total} color={C.green} alphaColor={C.greenAlpha} />
-          <StatCard icon="" label="En attente" value={stats.clientToMerchant.pending} color={C.amber} alphaColor="rgba(245, 158, 11, 0.15)" />
-          <StatCard icon="" label="Valides" value={stats.clientToMerchant.validated} color={C.green} alphaColor={C.greenAlpha} />
-          <StatCard icon="" label="Balance totale" value={`${stats.clientToMerchant.totalBalance} DH`} color={C.blue} alphaColor="rgba(59, 130, 246, 0.15)" />
+          <StatCard label="Parrainages M-M" value={stats.merchantToMerchant.total} color={C.primary} />
+          <StatCard label="Mois offerts (total)" value={stats.merchantToMerchant.totalMonthsEarned} color={C.cyan} />
+          <StatCard label="Parrainages C-M" value={stats.clientToMerchant.total} color={C.green} />
+          <StatCard label="En attente" value={stats.clientToMerchant.pending} color={C.amber} />
+          <StatCard label="Valides" value={stats.clientToMerchant.validated} color={C.green} />
+          <StatCard label="Balance totale" value={`${stats.clientToMerchant.totalBalance} DH`} color={C.blue} />
         </div>
       )}
 

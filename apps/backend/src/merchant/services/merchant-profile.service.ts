@@ -26,12 +26,14 @@ import { EventsGateway } from '../../events/events.gateway';
 import { UpdateProfileDto } from '../dto/update-profile.dto';
 import { ChangePasswordDto } from '../dto/change-password.dto';
 import { UpdateLoyaltySettingsDto } from '../dto/update-loyalty-settings.dto';
+import { AuditLogService, AuditAction, AuditTargetType } from '../../admin/audit-log.service';
 import * as bcrypt from 'bcryptjs';
 import { OAuth2Client } from 'google-auth-library';
 import { BCRYPT_SALT_ROUNDS } from '../../common/constants';
 import { MERCHANT_PROFILE_SELECT, MerchantProfileData } from '../../common/prisma-selects';
 import { MERCHANT_PROFILE_CACHE_TTL } from '../../common/constants';
 import { stripUndefined } from '../../common/utils';
+import { getNotifTranslations } from '../../common/utils/notification-i18n';
 
 @Injectable()
 export class MerchantProfileService {
@@ -52,6 +54,7 @@ export class MerchantProfileService {
     private notifications: NotificationsService,
     private eventsGateway: EventsGateway,
     private configService: ConfigService,
+    private auditLogService: AuditLogService,
   ) {
     this.googleClient = new OAuth2Client(this.configService.get<string>('GOOGLE_CLIENT_ID'));
   }
@@ -143,10 +146,11 @@ export class MerchantProfileService {
     return { message: 'Mot de passe modifié avec succès', devicesDisconnected };
   }
 
-  async updatePushToken(merchantId: string, pushToken: string): Promise<{ message: string }> {
+  async updatePushToken(merchantId: string, pushToken: string, language?: string): Promise<{ message: string }> {
+    const tokenValue = pushToken || null; // Empty string → null (clears token on logout)
     await this.merchantRepo.update({
       where: { id: merchantId },
-      data: { pushToken },
+      data: { pushToken: tokenValue, ...(language ? { language } : {}) },
     });
     return { message: 'Push token mis à jour' };
   }
@@ -333,6 +337,21 @@ export class MerchantProfileService {
       this.cache.del(`merchant:detail:${merchantId}`),
       this.cache.del(`merchant:profile:${merchantId}`),
     ]);
+
+    this.auditLogService.log({
+      ctx: { actorType: 'MERCHANT', merchantId },
+      action: AuditAction.UPDATE_LOYALTY_SETTINGS,
+      targetType: AuditTargetType.MERCHANT,
+      targetId: merchantId,
+      metadata: {
+        loyaltyType: dto.loyaltyType,
+        conversionRate: dto.conversionRate,
+        stampsForReward: dto.stampsForReward,
+        accumulationLimit: dto.accumulationLimit,
+        loyaltyTypeChanged,
+      },
+    });
+
     return updated;
   }
 
@@ -348,8 +367,6 @@ export class MerchantProfileService {
     limit: number,
     loyaltyType: string,
   ): Promise<void> {
-    const unitLabel = loyaltyType === 'STAMPS' ? 'tampons' : 'points';
-
     // 1. Fetch ALL affected cards in one query (with points > limit)
     const BATCH_SIZE = 500;
     let totalCapped = 0;
@@ -358,7 +375,7 @@ export class MerchantProfileService {
       // Fetch a batch — no skip needed since we update matching rows each iteration
       const cards = await this.loyaltyCardRepo.findMany({
         where: { merchantId, points: { gt: limit } },
-        select: { id: true, clientId: true, points: true },
+        select: { id: true, clientId: true, points: true, client: { select: { language: true } } },
         take: BATCH_SIZE,
       });
 
@@ -373,15 +390,19 @@ export class MerchantProfileService {
 
       // 3. Bulk insert all ADJUST_POINTS transactions (instead of N individual creates)
       await this.transactionRepoDelegate.createMany({
-        data: cards.map((card: any) => ({
-          clientId: card.clientId,
-          merchantId,
-          type: 'ADJUST_POINTS' as const,
-          loyaltyType: loyaltyType as any,
-          points: limit - card.points,
-          amount: 0,
-          note: `Limite d'accumulation appliquée: ${card.points} → ${limit} ${unitLabel}`,
-        })),
+        data: cards.map((card: any) => {
+          const t = getNotifTranslations(card.client?.language);
+          const unitLabel = loyaltyType === 'STAMPS' ? t.unitStamps(card.points) : t.unitPoints(card.points);
+          return {
+            clientId: card.clientId,
+            merchantId,
+            type: 'ADJUST_POINTS' as const,
+            loyaltyType: loyaltyType as any,
+            points: limit - card.points,
+            amount: 0,
+            note: t.capNote(card.points, limit, unitLabel),
+          };
+        }),
       });
 
       // 4. Send push notifications in parallel (fire-and-forget per batch)
@@ -389,15 +410,17 @@ export class MerchantProfileService {
       for (let i = 0; i < cards.length; i += NOTIF_CONCURRENCY) {
         const chunk = cards.slice(i, i + NOTIF_CONCURRENCY);
         await Promise.allSettled(
-          chunk.map((card: any) =>
-            this.notifications.sendToClient(
+          chunk.map((card: any) => {
+            const t = getNotifTranslations(card.client?.language);
+            const unitLabel = loyaltyType === 'STAMPS' ? t.unitStamps(card.points) : t.unitPoints(card.points);
+            return this.notifications.sendToClient(
               merchantId,
               card.clientId,
-              `📊 ${merchantName} — Solde ajusté`,
-              `Votre solde est passé de ${card.points} à ${limit} ${unitLabel} chez ${merchantName}.`,
+              t.capTitle(merchantName),
+              t.capBody(card.points, limit, unitLabel, merchantName),
               { event: 'points_updated', merchantId, newBalance: String(limit), loyaltyType },
-            ),
-          ),
+            );
+          }),
         );
       }
 
@@ -406,7 +429,7 @@ export class MerchantProfileService {
     }
 
     this.logger.log(
-      `Capped ${totalCapped} loyalty card(s) to ${limit} ${unitLabel} for merchant ${merchantId}`,
+      `Capped ${totalCapped} loyalty card(s) to ${limit} for merchant ${merchantId}`,
     );
   }
 
@@ -666,6 +689,15 @@ export class MerchantProfileService {
     this.logger.log(
       `Account deleted: merchantId=${merchantId} name="${merchant.nom}" email="${merchant.email}" at=${now.toISOString()}`,
     );
+
+    this.auditLogService.log({
+      ctx: { actorType: 'MERCHANT', merchantId },
+      action: AuditAction.DELETE_MERCHANT,
+      targetType: AuditTargetType.MERCHANT,
+      targetId: merchantId,
+      targetLabel: `${merchant.nom} (${merchant.email})`,
+      metadata: { selfDelete: true },
+    });
 
     return { message: `Le compte "${merchant.nom}" a été supprimé.` };
   }

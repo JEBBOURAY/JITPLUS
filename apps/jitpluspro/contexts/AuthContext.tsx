@@ -120,8 +120,11 @@ const registerPushToken = async (promptIfNeeded = false) => {
     }
     logInfo('Push', 'Token:', pushToken);
 
+    // Read the stored app language to sync with backend
+    const language = await AsyncStorage.getItem('jitpluspro_language') || 'fr';
+
     // Envoyer au backend
-    await api.patch('/merchant/push-token', { pushToken });
+    await api.patch('/merchant/push-token', { pushToken, language });
     logInfo('Push', 'Token enregistré sur le backend');
   } catch (error) {
     logWarn('Push', 'Erreur enregistrement token:', error);
@@ -215,9 +218,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const signOut = useCallback(async () => {
     try {
+      // Clear push token from backend so this device stops receiving notifications
+      api.patch('/merchant/push-token', { pushToken: '' }).catch(() => {});
       // Fire-and-forget — don't block local cleanup on server response
       api.post('/auth/logout').catch(() => {});
-      // Delete all tokens in parallel — if one fails the rest still clear
       await Promise.allSettled([
         SecureStore.deleteItemAsync('accessToken'),
         SecureStore.deleteItemAsync('refreshToken'),
@@ -283,7 +287,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               s.setTeamMember(true, tmData);
             } catch (e) {
               logError('Auth', 'Erreur parsing teamMember:', e);
-              // Remove corrupted data and reset store to prevent incomplete auth state
               s.setTeamMember(false, null);
               await SecureStore.deleteItemAsync('teamMember').catch(() => {});
               await SecureStore.deleteItemAsync('userType').catch(() => {});

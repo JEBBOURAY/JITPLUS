@@ -16,12 +16,12 @@ import * as SecureStore from 'expo-secure-store';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ThemeProvider, useTheme } from '@/contexts/ThemeContext';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
-import { LanguageProvider } from '@/contexts/LanguageContext';
+import { LanguageProvider, useLanguage } from '@/contexts/LanguageContext';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import OfflineBanner from '@/components/OfflineBanner';
 import { useRealtimeSocket } from '@jitplus/shared/src/useRealtimeSocket';
 import { useRealtimeEvents, handleFcmDataPayload, useAppForegroundRefresh } from '@/hooks/useRealtimeEvents';
-import { getServerBaseUrl } from '@/services/api';
+import { api, getServerBaseUrl } from '@/services/api';
 import Constants from 'expo-constants';
 import * as Sentry from '@sentry/react-native';
 import { setupAndroidChannel } from '@/utils/notifications';
@@ -134,6 +134,7 @@ function RootLayoutNav() {
   const notificationListener = useRef<{ remove(): void } | null>(null);
   const responseListener = useRef<{ remove(): void } | null>(null);
   const { status: forceUpdateStatus, storeUrl: forceUpdateStoreUrl } = useForceUpdate();
+  const { locale } = useLanguage();
 
   // Redirect to welcome screen whenever the user logs out (client becomes null)
   useEffect(() => {
@@ -141,6 +142,13 @@ function RootLayoutNav() {
       router.replace('/welcome');
     }
   }, [client, router]);
+
+  // Sync local language preference to backend once when client is authenticated
+  useEffect(() => {
+    if (client && locale) {
+      api.updateProfile({ language: locale }).catch(() => {});
+    }
+  }, [client?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Real-time WebSocket connection ────────────────────────
   const socket = useRealtimeSocket({
@@ -164,6 +172,37 @@ function RootLayoutNav() {
     // Skip notification listeners in Expo Go (SDK 53+ removed push support)
     if (!Notifications || isExpoGo) return;
 
+    // Route notification tap to the correct screen based on event type
+    const navigateByAction = (data?: Record<string, string>) => {
+      try {
+        const event = data?.event;
+        const merchantId = data?.merchantId;
+        switch (event) {
+          case 'points_updated':
+          case 'reward_available':
+          case 'reward_redeemed':
+            if (merchantId) {
+              router.push({ pathname: '/merchant/[id]', params: { id: merchantId } });
+            } else {
+              router.push('/(tabs)/notifications');
+            }
+            break;
+          default:
+            router.push('/(tabs)/notifications');
+            break;
+        }
+      } catch (e) { if (__DEV__) console.warn('Navigation failed', e); }
+    };
+
+    // Listen for push token changes (FCM rotation) — re-register with backend
+    const tokenSub = Notifications.addPushTokenListener(({ data: newToken }) => {
+      if (__DEV__) console.log('Push token rotated, re-registering');
+      api.updatePushToken(newToken as string).catch(() => {});
+    });
+
+    // Reset iOS badge count on app open
+    Notifications.setBadgeCountAsync(0).catch(() => {});
+
     // Listen for incoming notifications while app is in foreground
     notificationListener.current = Notifications.addNotificationReceivedListener((notification) => {
       if (__DEV__) console.log('Notification received:', notification.request.content);
@@ -175,13 +214,11 @@ function RootLayoutNav() {
     // Listen for notification taps (user interacted with the notification)
     responseListener.current = Notifications.addNotificationResponseReceivedListener((response) => {
       if (__DEV__) console.log('Notification tapped:', response.notification.request.content);
+      Notifications!.setBadgeCountAsync(0).catch(() => {});
       // Invalidate caches from FCM data payload for instant feed update
       const tapData = response.notification.request.content.data as Record<string, string> | undefined;
       handleFcmDataPayload(tapData, queryClient);
-      // Navigate to notifications tab when user taps a notification
-      try {
-        router.push('/(tabs)/notifications');
-      } catch (e) { if (__DEV__) console.warn('Navigation failed', e); }
+      navigateByAction(tapData);
     });
 
     // Handle cold-start: app was killed, user tapped a notification to launch it
@@ -189,10 +226,12 @@ function RootLayoutNav() {
       if (response) {
         const coldData = response.notification.request.content.data as Record<string, string> | undefined;
         handleFcmDataPayload(coldData, queryClient);
+        navigateByAction(coldData);
       }
     });
 
     return () => {
+      tokenSub.remove();
       notificationListener.current?.remove();
       responseListener.current?.remove();
     };

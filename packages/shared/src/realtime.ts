@@ -28,7 +28,7 @@ export interface PointsUpdatedPayload {
 export interface NotificationNewPayload {
   clientId: string;
   notificationId: string;
-  merchantId: string;
+  merchantId: string | null;
   title: string;
   body: string;
 }

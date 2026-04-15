@@ -23,6 +23,7 @@ import { GeocodeModule } from './geocode/geocode.module';
 import { RequestLoggerMiddleware } from './common/middleware/request-logger.middleware';
 import { OtpCleanupService } from './common/tasks/otp-cleanup.service';
 import { MerchantReminderService } from './common/tasks/merchant-reminder.service';
+import { MerchantEngagementService } from './common/tasks/merchant-engagement.service';
 import { UserThrottlerGuard } from './common/guards/user-throttler.guard';
 import { RepositoryModule } from './common/repositories';
 import { EventsModule } from './events';
@@ -67,6 +68,10 @@ import { THROTTLE_TTL } from './common/constants';
         FIREBASE_CLIENT_EMAIL: Joi.when('NODE_ENV', { is: 'production', then: Joi.string().required(), otherwise: Joi.string().optional() }),
         FIREBASE_PRIVATE_KEY: Joi.when('NODE_ENV', { is: 'production', then: Joi.string().required(), otherwise: Joi.string().optional() }),
         QR_HMAC_SECRET: Joi.when('NODE_ENV', { is: 'production', then: Joi.string().min(32).required(), otherwise: Joi.string().optional() }),
+        // SECURITY: Sentry DSN is required in production for error monitoring
+        SENTRY_DSN: Joi.when('NODE_ENV', { is: 'production', then: Joi.string().uri().required(), otherwise: Joi.string().optional() }),
+        // SECURITY: Dev auth bypass must NEVER be enabled in production
+        ALLOW_DEV_AUTH_BYPASS: Joi.when('NODE_ENV', { is: 'production', then: Joi.forbidden(), otherwise: Joi.string().optional() }),
       }),
       validationOptions: { allowUnknown: true },
     }),
@@ -100,6 +105,7 @@ import { THROTTLE_TTL } from './common/constants';
     { provide: APP_GUARD, useClass: UserThrottlerGuard },
     OtpCleanupService,
     MerchantReminderService,
+    MerchantEngagementService,
   ],
 })
 export class AppModule implements NestModule {

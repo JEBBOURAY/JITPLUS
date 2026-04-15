@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -86,12 +86,16 @@ export default function ReferralScreen() {
     }, [fetchStats]),
   );
 
+  const copyTimer = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => () => clearTimeout(copyTimer.current), []);
+
   const handleCopy = async () => {
     if (!stats?.referralCode) return;
     try {
       await Clipboard.setStringAsync(stats.referralCode);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      clearTimeout(copyTimer.current);
+      copyTimer.current = setTimeout(() => setCopied(false), 2000);
     } catch {
       Alert.alert(t('common.error'), t('referralScreen.copyError'));
     }

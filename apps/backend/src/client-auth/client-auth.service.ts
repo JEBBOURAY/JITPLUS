@@ -8,7 +8,7 @@ import {
 } from '../common/repositories';
 import { randomInt, randomBytes, createHash, createHmac, randomUUID } from 'crypto';
 import * as bcrypt from 'bcryptjs';
-import { OTP_MIN, OTP_MAX, OTP_EXPIRY_MS, OTP_COOLDOWN_MS, MAX_OTP_ATTEMPTS, BCRYPT_SALT_ROUNDS } from '../common/constants';
+import { OTP_MIN, OTP_MAX, OTP_EXPIRY_MS, OTP_COOLDOWN_MS, MAX_OTP_ATTEMPTS, BCRYPT_SALT_ROUNDS, CLIENT_REFRESH_TOKEN_DAYS, MS_PER_DAY } from '../common/constants';
 import { errMsg } from '../common/utils';
 import { checkLockout, handleFailedLogin, resetLoginAttempts, LockoutDbOps } from '../common/utils/login-lockout.helper';
 import { CLIENT_AUTH_SELECT, CLIENT_LOGIN_SELECT } from '../common/prisma-selects';
@@ -354,11 +354,15 @@ export class ClientAuthService {
     };
     const access_token = this.jwtService.sign(payload);
 
-    // Generate & persist hashed refresh token (rotation)
+    // Generate & persist hashed refresh token (rotation) with expiration
     const refresh_token = this.generateRefreshToken();
+    const refreshTokenExpiresAt = new Date(Date.now() + CLIENT_REFRESH_TOKEN_DAYS * MS_PER_DAY);
     await this.clientRepo.update({
       where: { id: client.id },
-      data: { refreshTokenHash: this.hashRefreshToken(refresh_token) },
+      data: {
+        refreshTokenHash: this.hashRefreshToken(refresh_token),
+        refreshTokenExpiresAt,
+      },
     });
 
       return {
@@ -390,7 +394,7 @@ export class ClientAuthService {
   async logout(clientId: string): Promise<{ success: boolean; message: string }> {
     await this.clientRepo.update({
       where: { id: clientId },
-      data: { refreshTokenHash: null, pushToken: null },
+      data: { refreshTokenHash: null, refreshTokenExpiresAt: null, pushToken: null },
     });
     return { success: true, message: 'Déconnexion réussie' };
   }
@@ -405,11 +409,21 @@ export class ClientAuthService {
     // Find the client that owns this refresh token
     const client = await this.clientRepo.findFirst({
       where: { refreshTokenHash: hash },
-      select: CLIENT_AUTH_SELECT,
+      select: { ...CLIENT_AUTH_SELECT, refreshTokenExpiresAt: true },
     });
 
     if (!client) {
       throw new UnauthorizedException('Refresh token invalide ou expiré');
+    }
+
+    // Check expiration — reject tokens older than CLIENT_REFRESH_TOKEN_DAYS
+    if ((client as any).refreshTokenExpiresAt && new Date((client as any).refreshTokenExpiresAt) < new Date()) {
+      // Invalidate the expired token
+      await this.clientRepo.update({
+        where: { id: client.id },
+        data: { refreshTokenHash: null, refreshTokenExpiresAt: null },
+      });
+      throw new UnauthorizedException('Refresh token expiré — veuillez vous reconnecter');
     }
 
     // Rotate: issue new access + refresh tokens
@@ -423,10 +437,14 @@ export class ClientAuthService {
     };
     const access_token = this.jwtService.sign(payload);
     const new_refresh_token = this.generateRefreshToken();
+    const newRefreshTokenExpiresAt = new Date(Date.now() + CLIENT_REFRESH_TOKEN_DAYS * MS_PER_DAY);
 
     await this.clientRepo.update({
       where: { id: client.id },
-      data: { refreshTokenHash: this.hashRefreshToken(new_refresh_token) },
+      data: {
+        refreshTokenHash: this.hashRefreshToken(new_refresh_token),
+        refreshTokenExpiresAt: newRefreshTokenExpiresAt,
+      },
     });
 
     return {

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect, memo, useReducer } from 'react';
+import React, { useState, useRef, useCallback, useEffect, memo, useReducer, useMemo } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,7 @@ import {
   LayoutAnimation,
   UIManager,
   Keyboard,
+  ScrollView,
 } from 'react-native';
 import { timeAgo } from '@/utils/date';
 import { useGuardedCallback } from '@/hooks/useGuardedCallback';
@@ -24,7 +25,6 @@ import {
   CheckCircle2,
   XCircle,
   Users,
-  Megaphone,
   Clock,
   ChevronDown,
   ChevronUp,
@@ -33,7 +33,10 @@ import {
   Mail,
   Shield,
   Lightbulb,
+  X,
+  Zap,
 } from 'lucide-react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Enable LayoutAnimation on Android (old arch only — New Architecture supports it natively).
 // On New Architecture (Fabric), LayoutAnimation works out of the box.
@@ -49,7 +52,6 @@ if (
 const CHANNEL_COLORS = {
   WHATSAPP: '#25D366',
   EMAIL: '#EA4335',
-  GRADIENT: ['#7C3AED', '#1F2937'] as const,
 } as const;
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
@@ -57,7 +59,6 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { getErrorMessage } from '@/utils/error';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
 import { useFocusFade } from '@/hooks/useFocusFade';
 import PremiumLockCard from '@/components/PremiumLockCard';
 import { useNotificationHistory, useWhatsappQuota, useEmailQuota, useSendPushNotification, useSendWhatsApp, useSendEmail } from '@/hooks/useQueryHooks';
@@ -65,6 +66,45 @@ import type { NotificationRecord } from '@/hooks/useQueryHooks';
 
 // ── Cooldown duration after a successful send (ms) ──
 const SEND_COOLDOWN_MS = 30_000;
+
+const BANNER_DISMISSED_KEY = 'messages_banner_dismissed';
+
+/* ── Tip banner — dismissable with "don't show again" ── */
+const MessagesBanner = React.memo(function MessagesBanner({
+  onDismiss,
+  onDismissForever,
+}: {
+  onDismiss: () => void;
+  onDismissForever: () => void;
+}) {
+  const theme = useTheme();
+  const { t } = useLanguage();
+  const isDark = theme.mode === 'dark';
+
+  return (
+    <View style={[bannerStyles.wrapper, { backgroundColor: isDark ? 'rgba(124,58,237,0.12)' : 'rgba(124,58,237,0.06)', borderColor: isDark ? 'rgba(124,58,237,0.25)' : 'rgba(124,58,237,0.15)' }]}>
+      <LinearGradient
+        colors={['rgba(124,58,237,0.08)', 'transparent']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+      <TouchableOpacity style={bannerStyles.closeBtn} onPress={onDismiss} hitSlop={8}>
+        <X size={16} color={theme.textMuted} strokeWidth={2} />
+      </TouchableOpacity>
+      <View style={bannerStyles.content}>
+        <Zap size={18} color={theme.primary} strokeWidth={1.8} />
+        <View style={bannerStyles.textWrap}>
+          <Text style={[bannerStyles.title, { color: theme.text }]}>{t('messages.bannerTitle')}</Text>
+          <Text style={[bannerStyles.desc, { color: theme.textMuted }]}>{t('messages.bannerDesc')}</Text>
+        </View>
+      </View>
+      <TouchableOpacity onPress={onDismissForever} style={bannerStyles.hideBtn} hitSlop={4}>
+        <Text style={[bannerStyles.hideText, { color: theme.textMuted }]}>{t('messages.bannerHide')}</Text>
+      </TouchableOpacity>
+    </View>
+  );
+});
 
 /**
  * Handle 403 errors from notification endpoints.
@@ -187,6 +227,9 @@ const NotificationCard = memo(function NotificationCard({
   );
 });
 
+// ── History channel filter ──
+type HistoryFilter = 'ALL' | 'PUSH' | 'EMAIL' | 'WHATSAPP';
+
 // ── Messages reducer ──
 interface MsgState {
   title: string;
@@ -202,6 +245,7 @@ interface MsgState {
   emailCooldown: boolean;
   expandedId: string | null;
   showHistory: boolean;
+  historyFilter: HistoryFilter;
 }
 
 const initialMsgState: MsgState = {
@@ -218,6 +262,7 @@ const initialMsgState: MsgState = {
   emailCooldown: false,
   expandedId: null,
   showHistory: false,
+  historyFilter: 'ALL',
 };
 
 type SectionKey = 'showCompose' | 'showWhatsApp' | 'showEmail' | 'showHistory';
@@ -229,7 +274,8 @@ type MsgAction =
   | { type: 'START_COOLDOWN'; key: CooldownKey }
   | { type: 'END_COOLDOWN'; key: CooldownKey }
   | { type: 'RESET_FORM'; form: 'push' | 'whatsapp' | 'email' }
-  | { type: 'TOGGLE_EXPANDED'; id: string };
+  | { type: 'TOGGLE_EXPANDED'; id: string }
+  | { type: 'SET_HISTORY_FILTER'; filter: HistoryFilter };
 
 const allSections: SectionKey[] = ['showCompose', 'showWhatsApp', 'showEmail', 'showHistory'];
 
@@ -252,6 +298,8 @@ function msgReducer(state: MsgState, action: MsgAction): MsgState {
       return { ...state, emailSubject: '', emailBody: '' };
     case 'TOGGLE_EXPANDED':
       return { ...state, expandedId: state.expandedId === action.id ? null : action.id };
+    case 'SET_HISTORY_FILTER':
+      return { ...state, historyFilter: action.filter };
   }
 }
 
@@ -264,8 +312,26 @@ export default function MessagesScreen() {
   const { focusStyle } = useFocusFade();
   const { t, locale } = useLanguage();
 
+  // ── Banner dismiss state ──
+  const [bannerVisible, setBannerVisible] = useState(false);
+
+  useEffect(() => {
+    AsyncStorage.getItem(BANNER_DISMISSED_KEY).then((val) => {
+      if (val !== 'true') setBannerVisible(true);
+    });
+  }, []);
+
+  const dismissBanner = useCallback(() => {
+    setBannerVisible(false);
+  }, []);
+
+  const dismissBannerForever = useCallback(() => {
+    setBannerVisible(false);
+    AsyncStorage.setItem(BANNER_DISMISSED_KEY, 'true');
+  }, []);
+
   const [state, dispatch] = useReducer(msgReducer, initialMsgState);
-  const { title, body, showCompose, whatsappMessage, showWhatsApp, emailSubject, emailBody, showEmail, pushCooldown, whatsappCooldown, emailCooldown, expandedId, showHistory } = state;
+  const { title, body, showCompose, whatsappMessage, showWhatsApp, emailSubject, emailBody, showEmail, pushCooldown, whatsappCooldown, emailCooldown, expandedId, showHistory, historyFilter } = state;
   const set = useCallback((payload: Partial<MsgState>) => dispatch({ type: 'SET', payload }), []);
 
   // ── React Query mutations ──
@@ -274,9 +340,19 @@ export default function MessagesScreen() {
   const emailMutation = useSendEmail();
 
   // ── React Query hooks (disabled for team members — backend requires owner) ──
-  const { data: history = [], isLoading: loading, isRefetching: refreshing, refetch: refetchHistory } = useNotificationHistory(isOwner);
+  // History is only fetched when the user opens the history section
+  const { data: history = [], isLoading: loading, isRefetching: refreshing, refetch: refetchHistory } = useNotificationHistory(isOwner && showHistory);
   const { data: whatsappQuota } = useWhatsappQuota(isOwner && isPremium && showWhatsApp);
   const { data: emailQuota } = useEmailQuota(isOwner && isPremium && showEmail);
+
+  // ── Filtered history ──
+  const filteredHistory = useMemo(() => {
+    if (historyFilter === 'ALL') return history;
+    return history.filter((n) => {
+      const ch = n.channel ?? 'PUSH';
+      return ch === historyFilter;
+    });
+  }, [history, historyFilter]);
 
   const sendRipple = useRef(new Animated.Value(0)).current;
   const titleInputRef = useRef<TextInput>(null);
@@ -453,37 +529,27 @@ export default function MessagesScreen() {
 
   const keyExtractor = useCallback((item: NotificationRecord) => item.id, []);
 
-  // ── Team members cannot access notifications ──
+  const ItemSeparator = useCallback(() => <View style={styles.separator} />, []);
+
+  // ── Filter pills config ──
+  const filterOptions: { key: HistoryFilter; label: string }[] = useMemo(() => [
+    { key: 'ALL', label: t('messages.filterAll') },
+    { key: 'PUSH', label: t('messages.filterPush') },
+    { key: 'EMAIL', label: t('messages.filterEmail') },
+  ], [t]);
+
+  // focusStyle is provided by useFocusFade()
   if (isTeamMember) {
     return (
       <Animated.View style={[styles.container, { backgroundColor: theme.bg }, focusStyle]}>
-        <View collapsable={false}>
-        <LinearGradient
-          colors={[...CHANNEL_COLORS.GRADIENT]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.headerGradient}
-        >
-          <BlurView
-            intensity={Platform.OS === 'ios' ? 40 : 20}
-            tint={theme.mode === 'dark' ? 'dark' : 'default'}
-            style={[styles.headerBlur, { paddingTop: insets.top + 16 }]}
-          >
-            <View style={styles.glassOverlay} />
-            <View style={styles.header}>
-              <Megaphone size={26} color="#EDE9FE" strokeWidth={1.5} />
-              <View style={styles.headerText}>
-                <Text style={styles.headerTitle}>{t('messages.title')}</Text>
-                <Text style={styles.headerSub}>{t('messages.subtitle')}</Text>
-              </View>
-            </View>
-          </BlurView>
-        </LinearGradient>
-        <LinearGradient
-          colors={['rgba(124,58,237,0.3)', 'transparent']}
-          style={styles.headerFade}
-        />
+        <View style={[styles.headerBar, { paddingTop: insets.top + 12 }]}>
+          <Text style={[styles.headerTitle, { color: theme.text }]}>{t('messages.title')}</Text>
         </View>
+        {bannerVisible && (
+          <View style={{ paddingHorizontal: 16, paddingTop: 8 }}>
+            <MessagesBanner onDismiss={dismissBanner} onDismissForever={dismissBannerForever} />
+          </View>
+        )}
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32 }}>
           <Shield size={48} color={theme.textMuted} strokeWidth={1.5} />
           <Text style={{ color: theme.text, fontSize: 18, fontWeight: '700', marginTop: 16, textAlign: 'center' }}>
@@ -504,46 +570,29 @@ export default function MessagesScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
       >
-        {/* ── Header ─────────────────────────────── */}
-        <View collapsable={false}>
-        <LinearGradient
-          colors={[...CHANNEL_COLORS.GRADIENT]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.headerGradient}
-        >
-          <BlurView
-            intensity={Platform.OS === 'ios' ? 40 : 20}
-            tint={theme.mode === 'dark' ? 'dark' : 'default'}
-            style={[styles.headerBlur, { paddingTop: insets.top + 16 }]}
-          >
-            <View style={styles.glassOverlay} />
-            <View style={styles.header}>
-              <Megaphone size={26} color="#EDE9FE" strokeWidth={1.5} />
-              <View style={styles.headerText}>
-                <Text style={styles.headerTitle}>{t('messages.title')}</Text>
-                <Text style={styles.headerSub}>{t('messages.subtitle')}</Text>
-              </View>
-            </View>
-          </BlurView>
-        </LinearGradient>
-        <LinearGradient
-          colors={['rgba(124,58,237,0.3)', 'transparent']}
-          style={styles.headerFade}
-        />
+        {/* ── Simple header ── */}
+        <View style={[styles.headerBar, { paddingTop: insets.top + 12 }]}>
+          <Text style={[styles.headerTitle, { color: theme.text }]}>{t('messages.title')}</Text>
         </View>
 
+        {/* ── Dismissable tip banner ── */}
+        {bannerVisible && (
+          <View style={{ paddingHorizontal: 16, paddingTop: 8 }}>
+            <MessagesBanner onDismiss={dismissBanner} onDismissForever={dismissBannerForever} />
+          </View>
+        )}
+
         <FlatList
-          data={showHistory ? history : []}
+          data={showHistory ? filteredHistory : []}
           keyExtractor={keyExtractor}
           renderItem={renderNotification}
-          getItemLayout={(_, index) => ({ length: 80, offset: 80 * index, index })}
           contentContainerStyle={{ paddingBottom: 120, paddingHorizontal: 16 }}
           showsVerticalScrollIndicator={false}
           removeClippedSubviews={Platform.OS !== 'web'}
           maxToRenderPerBatch={8}
           windowSize={5}
           initialNumToRender={8}
+          ItemSeparatorComponent={ItemSeparator}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />
           }
@@ -674,25 +723,6 @@ export default function MessagesScreen() {
                     {body.length}/500
                   </Text>
 
-                  {/* Quick emoji insert */}
-                  <View style={styles.emojiRow}>
-                    {['🎉', '🔥', '⭐', '💰', '🎁', '❤️', '🛍️', '✨'].map((emoji) => (
-                      <TouchableOpacity
-                        key={emoji}
-                        activeOpacity={0.6}
-                        onPress={() => {
-                          if (focusedField === 'title' || !focusedField) {
-                            set({ title: title + emoji });
-                          } else {
-                            set({ body: body + emoji });
-                          }
-                        }}
-                        style={[styles.emojiBtn, { backgroundColor: theme.bgInput }]}
-                      >
-                        <Text style={styles.emojiBtnText}>{emoji}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
                   <TouchableOpacity
                     style={[
                       styles.sendBtn,
@@ -905,19 +935,55 @@ export default function MessagesScreen() {
                 </View>
               )}
 
-              {/* ── History title (toggle) ────────── */}
-              <TouchableOpacity
-                onPress={() => { animateAccordion(); dispatch({ type: 'TOGGLE_SECTION', section: 'showHistory' }); }}
-                activeOpacity={0.7}
-                style={styles.historyToggle}
-              >
+              {/* ── History section ────────── */}
+              <View style={styles.historyToggle}>
                 <Text style={[styles.sectionTitle, { color: theme.text, marginTop: 0, marginBottom: 0 }]}>
                   {t('messages.history')}
                 </Text>
-                {showHistory
-                  ? <ChevronUp size={18} color={theme.textMuted} />
-                  : <ChevronDown size={18} color={theme.textMuted} />}
-              </TouchableOpacity>
+              </View>
+
+              {!showHistory ? (
+                <View style={styles.showHistoryCta}>
+                  <View style={[styles.emptyIllustration, { backgroundColor: theme.primaryBg }]}>
+                    <Clock size={36} color={theme.primary} strokeWidth={1.2} />
+                  </View>
+                  <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
+                    {t('messages.showHistoryHint')}
+                  </Text>
+                  <TouchableOpacity
+                    style={[styles.showHistoryBtn, { backgroundColor: theme.primary }]}
+                    onPress={() => dispatch({ type: 'SET', payload: { showHistory: true } })}
+                    activeOpacity={0.7}
+                  >
+                    <Bell size={18} color="#fff" strokeWidth={2} />
+                    <Text style={styles.showHistoryBtnText}>{t('messages.showHistory')}</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                /* ── Filter pills ── */
+                <View style={{ paddingTop: 4, paddingBottom: 8 }}>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+                    {filterOptions.map((opt) => {
+                      const active = historyFilter === opt.key;
+                      return (
+                        <TouchableOpacity
+                          key={opt.key}
+                          onPress={() => dispatch({ type: 'SET_HISTORY_FILTER', filter: opt.key })}
+                          activeOpacity={0.7}
+                          style={[
+                            styles.filterPill,
+                            { backgroundColor: active ? theme.primary : theme.bgCard, borderColor: active ? theme.primary : theme.borderLight },
+                          ]}
+                        >
+                          <Text style={[styles.filterPillText, { color: active ? '#fff' : theme.text }]}>
+                            {opt.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+              )}
             </View>
           }
           ListEmptyComponent={
@@ -928,13 +994,23 @@ export default function MessagesScreen() {
               </View>
             ) : (
               <View style={styles.emptyContainer}>
-                <Bell size={56} color={theme.textMuted} strokeWidth={1.5} />
+                <View style={[styles.emptyIllustration, { backgroundColor: theme.primary + '14' }]}>
+                  <Bell size={40} color={theme.primary} strokeWidth={1.5} />
+                </View>
                 <Text style={[styles.emptyTitle, { color: theme.text }]}>{t('messages.noMessages')}</Text>
                 <Text style={[styles.emptyText, { color: theme.textMuted }]}>
                   {t('messages.noMessagesHint')}
                 </Text>
               </View>
             )
+          }
+          ListFooterComponent={
+            showHistory && filteredHistory.length > 0 ? (
+              <View style={styles.footerEndWrap}>
+                <View style={[styles.footerDivider, { backgroundColor: theme.border }]} />
+                <Text style={[styles.footerEnd, { color: theme.textMuted }]}>{t('messages.allDisplayed')}</Text>
+              </View>
+            ) : null
           }
         />
       </KeyboardAvoidingView>
@@ -946,40 +1022,21 @@ export default function MessagesScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
 
-  // Header — glassmorphism
-  headerGradient: {
-    overflow: 'hidden',
-  },
-  headerBlur: {
-    overflow: 'hidden',
-  },
-  glassOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-  },
-  header: {
+  /* Header bar — simple title */
+  headerBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingBottom: 24,
+    justifyContent: 'space-between',
     paddingHorizontal: 24,
-    gap: 14,
+    paddingBottom: 12,
   },
-  headerText: { flex: 1 },
   headerTitle: {
     fontSize: 28,
     fontWeight: '700',
-    color: '#FFFFFF',
     fontFamily: 'Lexend_700Bold',
     letterSpacing: -0.5,
   },
-  headerSub: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.55)',
-    marginTop: 6,
-    fontFamily: 'Lexend_400Regular',
-    letterSpacing: 0.3,
-  },
-  headerFade: { height: 4 },
+
 
   // Toggle row
   toggleRow: {
@@ -994,7 +1051,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 6,
     paddingVertical: 12,
-    borderRadius: 20,
+    borderRadius: 14,
     gap: 4,
     elevation: 2,
     shadowColor: '#1F2937',
@@ -1008,7 +1065,7 @@ const styles = StyleSheet.create({
   // Compose card
   composeCard: {
     marginTop: 8,
-    borderRadius: 24,
+    borderRadius: 14,
     padding: 18,
     elevation: 3,
     shadowColor: '#1F2937',
@@ -1020,7 +1077,7 @@ const styles = StyleSheet.create({
   fieldLabel: { fontSize: 13, fontWeight: '600', marginBottom: 6, fontFamily: 'Lexend_600SemiBold' },
   inputWrapper: {
     borderWidth: 1,
-    borderRadius: 20,
+    borderRadius: 14,
     paddingHorizontal: 14,
   },
   input: { fontSize: 15, paddingVertical: 12, fontFamily: 'Lexend_500Medium' },
@@ -1037,27 +1094,12 @@ const styles = StyleSheet.create({
   },
   composeTipText: { flex: 1, fontSize: 12, lineHeight: 17, fontFamily: 'Lexend_500Medium' },
 
-  emojiRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 10,
-  },
-  emojiBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emojiBtnText: { fontSize: 18 },
-
   sendBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 15,
-    borderRadius: 24,
+    borderRadius: 14,
     marginTop: 16,
     gap: 10,
     overflow: 'hidden',
@@ -1086,9 +1128,9 @@ const styles = StyleSheet.create({
 
   // Notification card
   notifCard: {
-    borderRadius: 24,
-    padding: 16,
-    marginBottom: 10,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 0,
     elevation: 3,
     shadowColor: '#1F2937',
     shadowOffset: { width: 0, height: 2 },
@@ -1104,7 +1146,7 @@ const styles = StyleSheet.create({
   notifIcon: {
     width: 36,
     height: 36,
-    borderRadius: 12,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1120,10 +1162,45 @@ const styles = StyleSheet.create({
     marginTop: 28,
     marginBottom: 12,
   },
+
+  // Show history CTA
+  showHistoryCta: {
+    alignItems: 'center',
+    paddingTop: 20,
+    paddingBottom: 12,
+  },
+  showHistoryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 14,
+  },
+  showHistoryBtnText: { fontSize: 15, fontWeight: '700', color: '#fff', fontFamily: 'Lexend_600SemiBold' },
+
+  // Filter pills
+  filterRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 2,
+  },
+  filterPill: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  filterPillText: {
+    fontSize: 13,
+    fontWeight: '600',
+    fontFamily: 'Lexend_600SemiBold',
+  },
   channelBadge: {
     paddingHorizontal: 8,
     paddingVertical: 2,
-    borderRadius: 20,
+    borderRadius: 14,
     borderWidth: 1,
     alignSelf: 'flex-start',
   },
@@ -1140,7 +1217,14 @@ const styles = StyleSheet.create({
   statText: { fontSize: 12, fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
 
   // Empty
-  emptyContainer: { alignItems: 'center', paddingTop: 60 },
+  emptyContainer: { alignItems: 'center', paddingTop: 80 },
+  emptyIllustration: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   emptyTitle: { fontSize: 18, fontWeight: '700', marginTop: 16, fontFamily: 'Lexend_600SemiBold' },
   emptyText: {
     fontSize: 13,
@@ -1149,5 +1233,65 @@ const styles = StyleSheet.create({
     paddingHorizontal: 40,
     lineHeight: 20,
     fontFamily: 'Lexend_500Medium',
+  },
+
+  // Separator & footer
+  separator: { height: 8 },
+  footerEndWrap: { alignItems: 'center', paddingVertical: 24 },
+  footerDivider: { width: 48, height: 3, borderRadius: 2, marginBottom: 10, opacity: 0.3 },
+  footerEnd: { fontSize: 12, fontFamily: 'Lexend_500Medium', opacity: 0.5 },
+});
+
+const bannerStyles = StyleSheet.create({
+  wrapper: {
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 14,
+    overflow: 'hidden',
+  },
+  closeBtn: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    zIndex: 1,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  content: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    paddingRight: 24,
+  },
+  textWrap: {
+    flex: 1,
+  },
+  title: {
+    fontSize: 14,
+    fontWeight: '600',
+    fontFamily: 'Lexend_600SemiBold',
+    letterSpacing: -0.2,
+  },
+  desc: {
+    fontSize: 12,
+    fontFamily: 'Lexend_400Regular',
+    lineHeight: 18,
+    marginTop: 3,
+    letterSpacing: 0.1,
+  },
+  hideBtn: {
+    alignSelf: 'flex-end',
+    marginTop: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 2,
+  },
+  hideText: {
+    fontSize: 11,
+    fontFamily: 'Lexend_500Medium',
+    textDecorationLine: 'underline',
+    letterSpacing: 0.1,
   },
 });

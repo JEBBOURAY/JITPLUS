@@ -17,6 +17,7 @@ export interface Client {
   notifWhatsapp?: boolean;
   notifPush?: boolean;
   notifEmail?: boolean;
+  language?: string;
   dateNaissance?: string | null;
   hasPassword?: boolean;
   createdAt: string;

@@ -52,8 +52,8 @@ export const ACTION_LABELS: Record<string, string> = {
   ACTIVATE_CLIENT: 'Client réactivé',
   DELETE_CLIENT: 'Client supprimé',
   ADMIN_SEND_NOTIFICATION: 'Notification envoyée',
-  RESET_PASSWORD: 'Mot de passe réinitialisé',
   UPDATE_PLAN_DURATION: 'Durée du plan modifiée',
+  UPDATE_PAYOUT: 'Modifier demande de retrait',
 
 };
 
@@ -69,8 +69,8 @@ export const ACTION_COLOR: Record<string, string> = {
   ACTIVATE_CLIENT: C.green,
   DELETE_CLIENT: C.red,
   ADMIN_SEND_NOTIFICATION: C.cyan,
-  RESET_PASSWORD: C.amber,
   UPDATE_PLAN_DURATION: C.cyan,
+  UPDATE_PAYOUT: C.amber,
 
 };
 

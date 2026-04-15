@@ -7,6 +7,7 @@ import { Inject } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
 import { STORE_REPOSITORY, MERCHANT_REPOSITORY, type IStoreRepository, type IMerchantRepository } from '../../common/repositories';
+import { AuditLogService, AuditAction, AuditTargetType } from '../../admin/audit-log.service';
 import { MerchantPlanService } from './merchant-plan.service';
 import { CreateStoreDto } from '../dto/create-store.dto';
 import { UpdateStoreDto } from '../dto/update-store.dto';
@@ -21,6 +22,7 @@ export class MerchantStoreService {
     @Inject(MERCHANT_REPOSITORY) private merchantRepo: IMerchantRepository,
     @Inject(CACHE_MANAGER) private cache: Cache,
     private planService: MerchantPlanService,
+    private auditLogService: AuditLogService,
   ) {}
 
   private storesCacheKey(merchantId: string): string {
@@ -77,6 +79,15 @@ export class MerchantStoreService {
       },
     });
     await this.invalidateStoresCaches(merchantId);
+
+    this.auditLogService.log({
+      ctx: { actorType: 'MERCHANT', merchantId },
+      action: AuditAction.CREATE_STORE,
+      targetType: AuditTargetType.MERCHANT,
+      targetId: store.id,
+      targetLabel: store.nom,
+    });
+
     return store;
   }
 
@@ -177,6 +188,15 @@ export class MerchantStoreService {
 
     await this.storeRepo.delete({ where: { id: storeId } });
     await this.invalidateStoresCaches(merchantId);
+
+    this.auditLogService.log({
+      ctx: { actorType: 'MERCHANT', merchantId },
+      action: AuditAction.DELETE_STORE,
+      targetType: AuditTargetType.MERCHANT,
+      targetId: storeId,
+      targetLabel: store.nom,
+    });
+
     return { success: true, message: 'Magasin supprimé' };
   }
 }

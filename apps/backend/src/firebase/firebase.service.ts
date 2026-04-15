@@ -160,12 +160,12 @@ export class FirebaseService implements OnModuleInit, IPushProvider {
     title: string,
     body: string,
     data?: Record<string, string>,
-  ): Promise<void> {
-    if (!token) return;
+  ): Promise<{ invalidToken: boolean }> {
+    if (!token) return { invalidToken: false };
 
     if (!this.ensureInitialized()) {
       this.logger.warn(`[SIMULATED] Merchant push: "${title}" – "${body}"`);
-      return;
+      return { invalidToken: false };
     }
 
     try {
@@ -184,8 +184,18 @@ export class FirebaseService implements OnModuleInit, IPushProvider {
 
       await admin.messaging().send(message);
       this.logger.log(`Merchant push delivered: "${title}"`);
+      return { invalidToken: false };
     } catch (err) {
-      this.logger.warn(`Merchant push failed (token may be stale): ${(err as Error).message}`);
+      const code = (err as { code?: string }).code;
+      const isInvalid = code === 'messaging/registration-token-not-registered'
+        || code === 'messaging/invalid-registration-token'
+        || code === 'messaging/invalid-argument';
+      if (isInvalid) {
+        this.logger.warn(`Merchant push failed — stale token detected: ${code}`);
+      } else {
+        this.logger.warn(`Merchant push failed: ${(err as Error).message}`);
+      }
+      return { invalidToken: isInvalid };
     }
   }
 }

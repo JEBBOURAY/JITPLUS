@@ -86,6 +86,10 @@ export const ADMIN_STATS_CACHE_TTL = 2 * 60_000;
 /** Referral stats cache (5 min) */
 export const REFERRAL_STATS_CACHE_TTL = 5 * 60_000;
 
+// ── Client refresh token ────────────────────────────────────
+/** Client refresh token lifetime in days */
+export const CLIENT_REFRESH_TOKEN_DAYS = 30;
+
 // ── Referral ────────────────────────────────────────────────
 /** Characters allowed in referral codes (no ambiguous chars like 0/O, I/1) */
 export const REFERRAL_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -115,7 +119,7 @@ export const USER_TYPE_MERCHANT = 'merchant' as const;
 export const USER_TYPE_TEAM_MEMBER = 'team_member' as const;
 
 /** Max consecutive failed login attempts before temporary lockout */
-export const MAX_LOGIN_ATTEMPTS = 10;
+export const MAX_LOGIN_ATTEMPTS = 5;
 
 /** Maximum concurrent device sessions per merchant */
 export const MAX_SESSIONS_PER_MERCHANT = 5;

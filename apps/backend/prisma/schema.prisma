@@ -20,6 +20,7 @@ model Merchant {
   googleId             String?          @unique @map("google_id") @db.VarChar(255)
   appleId              String?          @unique @map("apple_id") @db.VarChar(255)
   pushToken            String?          @map("push_token") @db.VarChar(512)
+  language             String           @default("fr") @db.VarChar(5)
   termsAccepted        Boolean          @default(false) @map("terms_accepted")
   categorie            MerchantCategory
   description          String?          @db.VarChar(1000)
@@ -192,6 +193,15 @@ enum AuditAction {
   DELETE_CLIENT
   // Admin notifications
   ADMIN_SEND_NOTIFICATION
+  // Merchant operations (auditable for compliance)
+  CREATE_REWARD
+  DELETE_REWARD
+  CREATE_TEAM_MEMBER
+  DELETE_TEAM_MEMBER
+  CREATE_STORE
+  DELETE_STORE
+  CANCEL_TRANSACTION
+  UPDATE_LOYALTY_SETTINGS
   // Future-proof slots
   RESET_PASSWORD
   UPDATE_PLAN_DURATION
@@ -204,13 +214,22 @@ enum AuditTargetType {
   ADMIN
 }
 
+enum AuditActorType {
+  ADMIN
+  MERCHANT
+}
+
 // ── Audit log table ───────────────────────────────────────────
 model AuditLog {
   id          String          @id @default(uuid())
-  /// Admin who performed the action
-  adminId     String          @map("admin_id")
-  admin       Admin           @relation(fields: [adminId], references: [id], onDelete: Cascade)
-  adminEmail  String          @map("admin_email")
+  /// Type of actor: ADMIN or MERCHANT
+  actorType   AuditActorType  @default(ADMIN) @map("actor_type")
+  /// Admin who performed the action (nullable for merchant-initiated actions)
+  adminId     String?         @map("admin_id")
+  admin       Admin?          @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  adminEmail  String?         @map("admin_email")
+  /// Merchant who performed the action (nullable for admin-initiated actions)
+  merchantId  String?         @map("merchant_id")
   action      AuditAction
   /// Type of resource affected: "MERCHANT", "CLIENT", "ADMIN"
   targetType  AuditTargetType @map("target_type")
@@ -220,12 +239,13 @@ model AuditLog {
   targetLabel String?         @map("target_label")
   /// Extra context as JSON (old plan, new plan, reason, …)
   metadata    Json?
-  /// Client IP address of the admin
+  /// Client IP address of the actor
   ipAddress   String?         @map("ip_address")
   userAgent   String?         @map("user_agent")
   createdAt   DateTime        @default(now()) @map("created_at")
 
   @@index([adminId])
+  @@index([merchantId])
   @@index([action])
   @@index([targetType, targetId])
   @@index([createdAt(sort: Desc)])
@@ -262,11 +282,13 @@ model Client {
   countryCode         String    @default("MA") @map("country_code") @db.VarChar(5)
   pushToken           String?   @map("push_token") @db.VarChar(512)
   refreshTokenHash    String?   @unique @map("refresh_token_hash")
+  refreshTokenExpiresAt DateTime? @map("refresh_token_expires_at")
   termsAccepted       Boolean   @default(false) @map("terms_accepted")
   shareInfoMerchants  Boolean   @default(false) @map("share_info_merchants")
   notifPush           Boolean   @default(true) @map("notif_push")
   notifEmail          Boolean   @default(true) @map("notif_email")
   notifWhatsapp       Boolean   @default(true) @map("notif_whatsapp")
+  language            String    @default("fr") @db.VarChar(5)
   dateNaissance       DateTime? @map("date_naissance")
   failedLoginAttempts Int       @default(0) @map("failed_login_attempts")
   lockedUntil         DateTime? @map("locked_until")

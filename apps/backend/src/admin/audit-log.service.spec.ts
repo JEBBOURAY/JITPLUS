@@ -68,8 +68,10 @@ describe('AuditLogService', () => {
 
       expect(mockAuditLogRepo.create).toHaveBeenCalledWith({
         data: {
+          actorType: 'ADMIN',
           adminId: mockCtx.adminId,
           adminEmail: mockCtx.adminEmail,
+          merchantId: null,
           action: AuditAction.ADMIN_LOGIN,
           targetType: 'ADMIN',
           targetId: null,

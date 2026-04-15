@@ -12,6 +12,7 @@ import {
   TRANSACTION_REPOSITORY,
   TRANSACTION_RUNNER,
 } from '../../common/repositories';
+import { AuditLogService } from '../../admin/audit-log.service';
 
 // ── Mocks ──────────────────────────────────────────────────────────────────────
 
@@ -136,6 +137,7 @@ describe('MerchantTransactionService', () => {
         { provide: NotificationsService, useValue: mockNotifications },
         { provide: EventsGateway, useValue: mockEventsGateway },
         { provide: MerchantPlanService, useValue: mockPlanService },
+        { provide: AuditLogService, useValue: { log: jest.fn() } },
 
       ],
     }).compile();

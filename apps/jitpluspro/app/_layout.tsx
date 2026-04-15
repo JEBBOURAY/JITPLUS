@@ -18,7 +18,7 @@ import * as SecureStore from 'expo-secure-store';
 import Constants from 'expo-constants';
 import { useRealtimeSocket } from '@jitplus/shared/src/useRealtimeSocket';
 import { useRealtimeEvents } from '@/hooks/useRealtimeEvents';
-import { getServerBaseUrl } from '@/services/api';
+import api, { getServerBaseUrl } from '@/services/api';
 import { logError, logWarn, logInfo } from '@/utils/devLogger';
 
 // ── Lazy-load Sentry to prevent native module crash on Android ──
@@ -380,6 +380,18 @@ function ThemedNavigator() {
     // Show notifications in foreground is handled by setNotificationHandler
     // in utils/notifications.ts. Here we listen for received + tapped events.
 
+    // Listen for push token changes (FCM rotation) — re-register with backend
+    const tokenSub = Notifications.addPushTokenListener(({ data: newToken }) => {
+      logInfo('Notifications', 'Push token rotated, re-registering');
+      AsyncStorage.getItem('jitpluspro_language').then((lang) => {
+        api.patch('/merchant/push-token', { pushToken: newToken, language: lang || 'fr' })
+          .catch((e) => logWarn('Notifications', 'Token refresh sync failed', e));
+      });
+    });
+
+    // Reset iOS badge when app is foregrounded
+    Notifications.setBadgeCountAsync(0).catch(() => {});
+
     notificationListener.current = Notifications.addNotificationReceivedListener((notification) => {
       logInfo('Notifications', 'Notification received:', notification.request.content);
       // Only invalidate notification-related caches — dashboard-stats is not
@@ -388,14 +400,26 @@ function ThemedNavigator() {
       queryClient.invalidateQueries({ queryKey: ['admin-notif-unread-count'] });
     });
 
+    const navigateByAction = (action?: string) => {
+      try {
+        switch (action) {
+          case 'open_referral':  router.push('/referral'); break;
+          case 'open_settings':  router.push('/settings'); break;
+          case 'open_logo':      router.push('/(tabs)/account'); break;
+          case 'open_scan':      router.push('/(tabs)/scan'); break;
+          case 'open_plan':      router.push('/(tabs)/account'); break;
+          default:               router.push('/admin-notifications'); break;
+        }
+      } catch (e) { logWarn('Notifications', 'Navigation failed', e); }
+    };
+
     responseListener.current = Notifications.addNotificationResponseReceivedListener((response) => {
       logInfo('Notifications', 'Notification tapped:', response.notification.request.content);
+      Notifications.setBadgeCountAsync(0).catch(() => {});
       queryClient.invalidateQueries({ queryKey: ['admin-notifications'] });
       queryClient.invalidateQueries({ queryKey: ['admin-notif-unread-count'] });
-      // Navigate to admin notifications when user taps a notification
-      try {
-        router.push('/admin-notifications');
-      } catch (e) { logWarn('Notifications', 'Navigation failed', e); }
+      const action = response.notification.request.content.data?.action as string | undefined;
+      navigateByAction(action);
     });
 
     // Handle cold-start: app was killed, user tapped a notification to launch it
@@ -404,13 +428,13 @@ function ThemedNavigator() {
         logInfo('Notifications', 'Cold-start notification:', response.notification.request.content);
         queryClient.invalidateQueries({ queryKey: ['admin-notifications'] });
         queryClient.invalidateQueries({ queryKey: ['admin-notif-unread-count'] });
-        try {
-          router.push('/admin-notifications');
-        } catch (e) { logWarn('Notifications', 'Cold-start navigation failed', e); }
+        const action = response.notification.request.content.data?.action as string | undefined;
+        navigateByAction(action);
       }
     });
 
     return () => {
+      tokenSub.remove();
       notificationListener.current?.remove();
       responseListener.current?.remove();
     };

@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException, ConflictException } from '@nestjs/common';
 import { MerchantTeamService } from './merchant-team.service';
 import { TEAM_MEMBER_REPOSITORY, MERCHANT_REPOSITORY } from '../../common/repositories';
+import { AuditLogService } from '../../admin/audit-log.service';
 import * as bcrypt from 'bcryptjs';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -47,6 +48,7 @@ describe('MerchantTeamService', () => {
         MerchantTeamService,
         { provide: TEAM_MEMBER_REPOSITORY, useValue: mockTeamMemberRepo },
         { provide: MERCHANT_REPOSITORY, useValue: mockMerchantRepo },
+        { provide: AuditLogService, useValue: { log: jest.fn() } },
       ],
     }).compile();
 

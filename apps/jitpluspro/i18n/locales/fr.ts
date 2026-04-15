@@ -153,6 +153,11 @@ export default {
     points: '%{count} pts',
     stamps: '%{count} tampons',
     addClient: 'Scanner un premier client',
+    showClients: 'Afficher mes clients',
+    showClientsHint: 'Appuyez pour charger et afficher votre liste de clients',
+    bannerTitle: 'Vos clients fidèles',
+    bannerDesc: 'Retrouvez ici tous vos clients inscrits à votre programme de fidélité. Consultez leurs points ou tampons accumulés, recherchez un client par nom ou téléphone, et accédez à sa fiche détaillée en un tap.',
+    bannerHide: 'Ne plus me montrer',
   },
 
   // ── Activity ──
@@ -161,16 +166,22 @@ export default {
     subtitle: 'Suivez l\'activité et les points de vos clients',
     noActivity: 'Aucune activité',
     noActivityHint: "L'historique de vos clients apparaîtra ici après votre premier scan.",
+    selectFilter: 'Sélectionnez un filtre pour afficher les transactions',
     allDisplayed: '— Tout est affiché —',
     cancelled: 'Annulée',
     by: 'par %{name}',
     filterAll: 'Tout',
     filterEarned: 'Gains',
     filterRedeemed: 'Échanges',
+    filterAdjust: 'Ajustements',
+    filterTeam: 'Équipe',
     today: "Aujourd'hui",
     yesterday: 'Hier',
     earned: '+%{count} pts',
     redeemed: 'Échangé',
+    bannerTitle: 'Historique en temps réel',
+    bannerDesc: 'Cette page affiche toutes les transactions de vos clients : points gagnés, récompenses échangées et annulations. Filtrez par type (Gains / Échanges) pour analyser votre activité et suivre vos ventes fidélité au quotidien.',
+    bannerHide: 'Ne plus me montrer',
   },
 
   // ── Push Marketing (messages) ──
@@ -182,6 +193,7 @@ export default {
     channelEmail: 'E-mail',
     noMessages: 'Aucun message envoyé',
     noMessagesHint: 'Vos notifications envoyées apparaîtront ici. Rédigez votre premier message ci-dessus !',
+    allDisplayed: 'Tout est affiché',
     messageTitle: 'Titre du message',
     messageTitlePlaceholder: 'Ex : 🔥 -30% sur tout le menu !',
     messageBody: 'Contenu du message',
@@ -247,6 +259,14 @@ export default {
     statRead: '%{count} lu(s)',
     ownerOnly: 'Accès réservé au propriétaire',
     ownerOnlyMsg: "L'envoi de notifications est réservé au propriétaire du commerce. Contactez votre responsable pour envoyer des messages.",
+    bannerTitle: 'Communiquez avec vos clients',
+    bannerDesc: 'Envoyez des notifications push, e-mails ou WhatsApp à tous vos clients fidèles. Rédigez un titre et un message, choisissez votre canal, puis envoyez. Consultez l\'historique pour voir les statistiques d\'envoi (destinataires, reçus, lus).',
+    bannerHide: 'Ne plus me montrer',
+    showHistory: 'Afficher l\'historique',
+    showHistoryHint: 'Appuyez pour charger l\'historique de vos envois',
+    filterAll: 'Tout',
+    filterPush: 'Push',
+    filterEmail: 'E-mail',
   },
 
   // ── Stores CRUD ──
@@ -508,6 +528,29 @@ export default {
     restartRequired: "Veuillez fermer et relancer l'application pour appliquer la direction de la langue sélectionnée.",
   },
 
+  // ── Profile (Store Edit) ──
+  profile: {
+    title: 'Mon profil',
+    editTitle: 'Modifier le commerce',
+    save: 'Enregistrer',
+    saving: 'Enregistrement…',
+    nameLabel: 'Nom du commerce',
+    descLabel: 'Description',
+    descPlaceholder: 'Décrivez votre commerce en quelques mots…',
+    categoryLabel: 'Catégorie',
+    villeLabel: 'Ville',
+    villePlaceholder: 'Ex : Casablanca',
+    quartierLabel: 'Quartier',
+    quartierPlaceholder: 'Ex : Maarif',
+    adresseLabel: 'Adresse',
+    adressePlaceholder: 'Ex : 12 rue Hassan II',
+    phoneLabel: 'Téléphone',
+    logoLabel: 'Logo',
+    coverLabel: 'Photo de couverture',
+    saveSuccess: 'Profil mis à jour',
+    saveError: 'Impossible de sauvegarder. Vérifiez votre connexion et réessayez.',
+  },
+
   // ── Profile View ──
   profileView: {
     premium: 'Premium',
@@ -690,8 +733,8 @@ export default {
     deleteRewardTitle: 'Supprimer ce cadeau ?',
     deleteRewardMsg: 'Cette action est irréversible.',
     deleteRewardError: 'Impossible de supprimer',
-    saveError: 'Impossible de sauvegarder',
-    editRewardError: 'Impossible de modifier',
+    saveError: 'Impossible de sauvegarder les paramètres. Vérifiez votre connexion et réessayez.',
+    editRewardError: 'Impossible de modifier le cadeau. Veuillez réessayer.',
   },
 
   // ── Security page ──
@@ -826,6 +869,7 @@ export default {
 
   // ── Client detail ──
   clientDetail: {
+    title: 'Détail client',
     memberSince: 'Client depuis %{date}',
     addBtn: 'Ajouter',
     removeBtn: 'Retirer',

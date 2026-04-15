@@ -234,7 +234,7 @@ class ApiService {
     return data;
   }
 
-  async updateProfile(updates: Partial<Pick<Client, 'prenom' | 'nom' | 'email' | 'telephone' | 'countryCode' | 'shareInfoMerchants' | 'notifWhatsapp' | 'dateNaissance'>> & { dateNaissance?: string | null }): Promise<Client> {
+  async updateProfile(updates: Partial<Pick<Client, 'prenom' | 'nom' | 'email' | 'telephone' | 'countryCode' | 'shareInfoMerchants' | 'notifWhatsapp' | 'language' | 'dateNaissance'>> & { dateNaissance?: string | null }): Promise<Client> {
     const { data } = await this.api.patch('/client-auth/profile', updates);
     return data;
   }

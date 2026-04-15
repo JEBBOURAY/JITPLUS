@@ -36,6 +36,7 @@ describe('OtpCleanupService', () => {
       expect(mockOtpRepo.deleteMany).toHaveBeenCalledWith({
         where: {
           expiresAt: { lt: expect.any(Date) },
+          createdAt: { gte: expect.any(Date) },
         },
       });
       // The cutoff date should be close to now (within 1 second)

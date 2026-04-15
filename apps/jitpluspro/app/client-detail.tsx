@@ -32,10 +32,9 @@ import { getTransactionConfig } from '@/constants/transactions';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
-import { useTheme, brandGradient, palette } from '@/contexts/ThemeContext';
+import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import StampGrid from '@/components/StampGrid';
-import { LinearGradient } from 'expo-linear-gradient';
 import { formatDate, formatDateTime } from '@/utils/date';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatCurrency, DEFAULT_CURRENCY, getIntlLocale } from '@/config/currency';
@@ -238,52 +237,13 @@ export default function ClientDetailScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
-      {/* ── Header ── */}
-      <View collapsable={false}>
-      <LinearGradient
-        colors={[...brandGradient]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={[styles.header, { paddingTop: insets.top + 12 }]}
-      >
-        <TouchableOpacity style={[styles.backBtn, { top: insets.top + 8 }]} onPress={() => router.back()}>
-          <ArrowLeft size={22} color="#fff" />
+      {/* ── Simple header ── */}
+      <View style={[styles.headerBar, { paddingTop: insets.top + 12 }]}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+          <ArrowLeft size={22} color={theme.text} />
         </TouchableOpacity>
-
-        <View style={styles.avatarLarge}>
-          <Text style={styles.avatarLargeText}>{initial}</Text>
-        </View>
-
-        <Text style={styles.clientName}>{displayName}</Text>
-        <Text style={styles.memberSince}>
-          {t('clientDetail.memberSince', { date: formatDate(client.memberSince, locale) })}
-        </Text>
-
-        {/* Points hero */}
-        <View style={styles.pointsHero}>
-          <Star size={20} color="#9CA3AF" strokeWidth={1.5} />
-          <Text style={styles.pointsHeroValue}>{client.points}</Text>
-          <Text style={styles.pointsHeroLabel}>{isStampsMode ? t('common.stamps') : t('common.points')}</Text>
-        </View>
-
-        {/* Adjust points buttons */}
-        <View style={styles.adjustButtons}>
-          <TouchableOpacity
-            style={[styles.adjustBtn, styles.adjustBtnAdd]}
-            onPress={() => openAdjustModal('add')}
-          >
-            <PlusCircle size={16} color="#fff" />
-            <Text style={styles.adjustBtnText}>{t('clientDetail.addBtn')}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.adjustBtn, styles.adjustBtnRemove]}
-            onPress={() => openAdjustModal('remove')}
-          >
-            <MinusCircle size={16} color="#fff" />
-            <Text style={styles.adjustBtnText}>{t('clientDetail.removeBtn')}</Text>
-          </TouchableOpacity>
-        </View>
-      </LinearGradient>
+        <Text style={[styles.headerTitle, { color: theme.text }]}>{t('clientDetail.title')}</Text>
+        <View style={{ width: 40 }} />
       </View>
 
       <ScrollView
@@ -299,6 +259,43 @@ export default function ClientDetailScreen() {
           />
         }
       >
+        {/* ── Profile card ── */}
+        <View style={[styles.card, { backgroundColor: theme.bgCard, borderColor: theme.borderLight, shadowColor: theme.shadowColor }]}>
+          <View style={styles.profileSection}>
+            <View style={[styles.avatarLarge, { backgroundColor: theme.primary + '14' }]}>
+              <Text style={[styles.avatarLargeText, { color: theme.primary }]}>{initial}</Text>
+            </View>
+            <Text style={[styles.profileName, { color: theme.text }]}>{displayName}</Text>
+            <Text style={[styles.memberSince, { color: theme.textMuted }]}>
+              {t('clientDetail.memberSince', { date: formatDate(client.memberSince, locale) })}
+            </Text>
+
+            {/* Points hero */}
+            <View style={[styles.pointsHero, { backgroundColor: theme.primaryBg }]}>
+              <Star size={18} color={theme.primary} strokeWidth={1.5} />
+              <Text style={[styles.pointsHeroValue, { color: theme.text }]}>{client.points}</Text>
+              <Text style={[styles.pointsHeroLabel, { color: theme.textMuted }]}>{isStampsMode ? t('common.stamps') : t('common.points')}</Text>
+            </View>
+          </View>
+
+          {/* Adjust points buttons */}
+          <View style={styles.adjustButtons}>
+            <TouchableOpacity
+              style={[styles.adjustBtn, { backgroundColor: theme.primary }]}
+              onPress={() => openAdjustModal('add')}
+            >
+              <PlusCircle size={16} color="#fff" />
+              <Text style={styles.adjustBtnText}>{t('clientDetail.addBtn')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.adjustBtn, { backgroundColor: theme.isDark ? palette.charbon : '#374151' }]}
+              onPress={() => openAdjustModal('remove')}
+            >
+              <MinusCircle size={16} color="#fff" />
+              <Text style={styles.adjustBtnText}>{t('clientDetail.removeBtn')}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
         {/* ── Progress to reward ── */}
         <View style={[styles.card, { backgroundColor: theme.bgCard, borderColor: theme.borderLight, shadowColor: theme.shadowColor }]}>
           <View style={styles.cardHeader}>
@@ -487,56 +484,62 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
-  // ── Header ──
-  header: {
+  // ── Header bar ──
+  headerBar: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingBottom: 28,
-    borderBottomLeftRadius: 28,
-    borderBottomRightRadius: 28,
+    justifyContent: 'space-between',
+    paddingHorizontal: 24,
+    paddingBottom: 12,
+  },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: '700',
+    fontFamily: 'Lexend_700Bold',
+    letterSpacing: -0.5,
   },
   backBtn: {
-    position: 'absolute',
-    left: 16,
     width: 40,
     height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,.2)',
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  profileSection: {
+    alignItems: 'center',
+    paddingBottom: 8,
+  },
   avatarLarge: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: 'rgba(255,255,255,.25)',
+    width: 72,
+    height: 72,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
   },
-  avatarLargeText: { fontSize: 34, fontWeight: '700', color: '#fff', fontFamily: 'Lexend_700Bold' },
-  clientName: { fontSize: 24, fontWeight: '700', color: '#fff', fontFamily: 'Lexend_700Bold' },
-  memberSince: { fontSize: 13, color: 'rgba(255,255,255,.65)', marginTop: 4, fontFamily: 'Lexend_400Regular' },
+  avatarLargeText: { fontSize: 28, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
+  profileName: { fontSize: 22, fontWeight: '700', fontFamily: 'Lexend_700Bold', letterSpacing: -0.3 },
+  memberSince: { fontSize: 13, marginTop: 4, fontFamily: 'Lexend_400Regular' },
   pointsHero: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,.2)',
-    paddingHorizontal: 18,
+    paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
-    marginTop: 16,
+    marginTop: 14,
     gap: 6,
   },
-  pointsHeroValue: { fontSize: 22, fontWeight: '700', color: '#fff', fontFamily: 'Lexend_700Bold' },
-  pointsHeroLabel: { fontSize: 14, fontWeight: '600', color: 'rgba(255,255,255,.75)', fontFamily: 'Lexend_600SemiBold' },
+  pointsHeroValue: { fontSize: 20, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
+  pointsHeroLabel: { fontSize: 13, fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
 
   // ── Body ──
   body: { flex: 1, paddingHorizontal: 16, paddingTop: 20 },
 
   // ── Card ──
   card: {
-    borderRadius: 18,
-    padding: 18,
-    marginBottom: 14,
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 12,
     borderWidth: 1,
   },
   cardHeader: {
@@ -647,8 +650,7 @@ const styles = StyleSheet.create({
   adjustButtons: {
     flexDirection: 'row',
     gap: 10,
-    marginTop: 14,
-    paddingHorizontal: 20,
+    marginTop: 12,
   },
   adjustBtn: {
     flex: 1,
@@ -656,11 +658,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 10,
-    borderRadius: 14,
+    borderRadius: 12,
     gap: 6,
   },
-  adjustBtnAdd: { backgroundColor: 'rgba(255,255,255,0.25)' },
-  adjustBtnRemove: { backgroundColor: 'rgba(255,255,255,0.15)' },
   adjustBtnText: { color: '#fff', fontSize: 14, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
 
   // ── Modal ──

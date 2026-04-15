@@ -145,6 +145,11 @@ export default {
     points: '%{count} pts',
     stamps: '%{count} stamps',
     addClient: 'Scan first client',
+    showClients: 'Show my clients',
+    showClientsHint: 'Tap to load and display your client list',
+    bannerTitle: 'Your loyal clients',
+    bannerDesc: 'Find all clients enrolled in your loyalty program here. Check their accumulated points or stamps, search by name or phone, and tap to view their full profile.',
+    bannerHide: 'Don\'t show again',
   },
 
   activity: {
@@ -152,16 +157,22 @@ export default {
     subtitle: 'Track activity and points',
     noActivity: 'No activity yet',
     noActivityHint: 'Activity will appear here after your first scan.',
+    selectFilter: 'Select a filter to display transactions',
     allDisplayed: '— All displayed —',
     cancelled: 'Cancelled',
     by: 'by %{name}',
     filterAll: 'All',
     filterEarned: 'Earned',
     filterRedeemed: 'Redeemed',
+    filterAdjust: 'Adjustments',
+    filterTeam: 'Team',
     today: 'Today',
     yesterday: 'Yesterday',
     earned: '+%{count} pts',
     redeemed: 'Redeemed',
+    bannerTitle: 'Real-time history',
+    bannerDesc: 'This page shows all your client transactions: points earned, rewards redeemed and cancellations. Filter by type (Earned / Redeemed) to analyze your activity and track daily loyalty sales.',
+    bannerHide: 'Don\'t show again',
   },
 
   messages: {
@@ -172,6 +183,7 @@ export default {
     channelEmail: 'Email',
     noMessages: 'No messages sent yet',
     noMessagesHint: 'Your sent notifications will appear here. Write your first message above!',
+    allDisplayed: 'All displayed',
     messageTitle: 'Message title',
     messageTitlePlaceholder: 'Ex: 🔥 -30% off the whole menu!',
     messageBody: 'Message body',
@@ -234,6 +246,14 @@ export default {
     statRead: '%{count} read',
     ownerOnly: 'Owner access only',
     ownerOnlyMsg: 'Sending notifications is restricted to the store owner. Contact your manager to send messages.',
+    bannerTitle: 'Reach your clients',
+    bannerDesc: 'Send push notifications, emails or WhatsApp messages to all your loyal clients. Write a title and message, pick your channel, then send. Check the history to see delivery stats (recipients, delivered, read).',
+    bannerHide: 'Don\'t show again',
+    showHistory: 'Show history',
+    showHistoryHint: 'Tap to load your send history',
+    filterAll: 'All',
+    filterPush: 'Push',
+    filterEmail: 'Email',
   },
 
   // ── Stores CRUD ──
@@ -504,7 +524,7 @@ export default {
     logoLabel: 'Logo',
     coverLabel: 'Cover photo',
     saveSuccess: 'Profile updated',
-    saveError: 'Unable to save',
+    saveError: 'Unable to save profile. Please check your connection and try again.',
   },
 
   profileView: {
@@ -687,8 +707,8 @@ export default {
     deleteRewardTitle: 'Delete this gift?',
     deleteRewardMsg: 'This action is irreversible.',
     deleteRewardError: 'Unable to delete',
-    saveError: 'Unable to save',
-    editRewardError: 'Unable to edit',
+    saveError: 'Unable to save settings. Please check your connection and try again.',
+    editRewardError: 'Unable to edit the reward. Please try again.',
   },
 
   // ── Security page ──
@@ -823,6 +843,7 @@ export default {
 
   // ── Client detail ──
   clientDetail: {
+    title: 'Client detail',
     memberSince: 'Client since %{date}',
     addBtn: 'Add',
     removeBtn: 'Remove',

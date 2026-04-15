@@ -29,16 +29,8 @@ export const palette = {
   gold: '#FCD34D',
   // Aliases kept for compat
   cyan: '#6B7280',
-  neonCyan: '#6B7280',
-  neonBlue: '#38BDF8',
-  neonPink: '#F472B6',
-  amber: '#F59E0B',
-  emerald: '#10B981',
-  red: '#EF4444',
   // Neutral spectrum
   white: '#FFFFFF',
-  offWhite: '#FAFAFE',
-  gray50: '#F8FAFC',
   gray100: '#F1F5F9',
   gray200: '#E2E8F0',
   gray400: '#94A3B8',

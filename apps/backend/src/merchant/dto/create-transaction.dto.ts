@@ -1,4 +1,4 @@
-import { IsEnum, IsNumber, IsOptional, IsPositive, IsString, IsUUID, Min } from 'class-validator';
+import { IsEnum, IsNumber, IsOptional, IsPositive, IsString, IsUUID, Min, Max } from 'class-validator';
 
 export class CreateTransactionDto {
   @IsUUID()
@@ -7,12 +7,14 @@ export class CreateTransactionDto {
   @IsEnum(['EARN_POINTS', 'REDEEM_REWARD'])
   type: 'EARN_POINTS' | 'REDEEM_REWARD';
 
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0, { message: 'Le montant ne peut pas être négatif' })
+  @Max(1000000, { message: 'Le montant ne peut pas dépasser 1 000 000 DH' })
   amount: number;
 
   @IsNumber()
   @IsPositive({ message: 'Le nombre de points doit être supérieur à zéro' })
+  @Max(1000000, { message: 'Le nombre de points ne peut pas dépasser 1 000 000' })
   points: number;
 
   @IsUUID()

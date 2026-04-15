@@ -145,6 +145,11 @@ export default {
     points: '%{count} نقطة',
     stamps: '%{count} طابع',
     addClient: 'مسح لول كليان',
+    showClients: 'بيّن الكليان ديالي',
+    showClientsHint: 'كليكي باش تشوف ليست ديال الكليان',
+    bannerTitle: 'الكليان الأوفياء',
+    bannerDesc: 'لقا هنا كاع الكليان لي مسجلين فبرنامج الولاء ديالك. شوف النقط أو الطوابع ديالهم، قلّب بالسمية أو رقم التليفون، وكليكي باش تشوف الملف ديالهم بالتفصيل.',
+    bannerHide: 'ما تبيّنهاش ليا مرة أخرى',
   },
 
   activity: {
@@ -152,16 +157,22 @@ export default {
     subtitle: 'تتبع النشاط والنقط',
     noActivity: 'ماكاين نشاط',
     noActivityHint: 'غادي يبان النشاط هنا مورا لول مسح.',
+    selectFilter: 'اختار فيلتر باش تبان الترانزاكشن',
     allDisplayed: '— تعرضو گاع —',
     cancelled: 'ملغية',
     by: 'بواسطة %{name}',
     filterAll: 'الكل',
     filterEarned: 'مجموع',
     filterRedeemed: 'خدا كادو',
+    filterAdjust: 'تعديلات',
+    filterTeam: 'الفريق',
     today: 'النهار',
     yesterday: 'البارح',
     earned: '+%{count} نقطة',
     redeemed: 'خدا كادو',
+    bannerTitle: 'التاريخ فالوقت الحقيقي',
+    bannerDesc: 'هاد الصفحة كتبيّن كاع الترانزاكشن ديال كليانك: النقط لي ربحو، الكادوات لي خداو والإلغاءات. فيلتري بالنوع (مجموع / خدا كادو) باش تحلل النشاط ديالك وتتبع المبيعات كل نهار.',
+    bannerHide: 'ما تبيّنهاش ليا مرة أخرى',
   },
 
   messages: {
@@ -172,6 +183,7 @@ export default {
     channelEmail: 'إيمايل',
     noMessages: 'مازال ماسيفطتي حتا ميساج',
     noMessagesHint: 'غادي يبانو الإشعارات ديالك هنا. كتب لول ميساج!',
+    allDisplayed: 'تعرض الكل',
     messageTitle: 'عنوان الميساج',
     messageTitlePlaceholder: 'مثال: 🔥 خصم 30% على كل القائمة!',
     messageBody: 'محتوى الميساج',
@@ -234,6 +246,14 @@ export default {
     statRead: '%{count} مقري',
     ownerOnly: 'غير لمول الحانوت',
     ownerOnlyMsg: 'سيفط الإشعارات غير لمول الحانوت. تواصل مع المسؤول ديالك باش يسيفط الميساجات.',
+    bannerTitle: 'تواصل مع كليانك',
+    bannerDesc: 'سيفط إشعارات أو إيميلات أو واتساب لكاع الكليان الأوفياء. كتب العنوان والميساج، ختار القناة، وسيفط. شوف التاريخ باش تشوف إحصائيات الإرسال (مستلمين، مسيفطين، مقريين).',
+    bannerHide: 'ما تبيّنهاش ليا مرة أخرى',
+    showHistory: 'بين التاريخ',
+    showHistoryHint: 'كليكي باش تشوف تاريخ الإرسالات',
+    filterAll: 'الكل',
+    filterPush: 'إشعار',
+    filterEmail: 'إيميل',
   },
 
   // ── Stores CRUD ──
@@ -485,6 +505,29 @@ export default {
     restartRequired: 'عفاك سد الأپليكاسيون وعاود حلها باش يتبدل اتجاه الدارجة (من اليمين لليسار).',
   },
 
+  // ── پروفيل (بدل التجارة) ──
+  profile: {
+    title: 'الپروفيل ديالي',
+    editTitle: 'بدل التجارة',
+    save: 'سجل',
+    saving: 'كنسجلو…',
+    nameLabel: 'سمية التجارة',
+    descLabel: 'الوصف',
+    descPlaceholder: 'وصّف التجارة ديالك بكلمات قليلة…',
+    categoryLabel: 'الفئة',
+    villeLabel: 'المدينة',
+    villePlaceholder: 'مثال: الدار البيضاء',
+    quartierLabel: 'الحي',
+    quartierPlaceholder: 'مثال: المعاريف',
+    adresseLabel: 'العنوان',
+    adressePlaceholder: 'مثال: 12 شارع الحسن الثاني',
+    phoneLabel: 'الهاتف',
+    logoLabel: 'الشعار',
+    coverLabel: 'صورة الغلاف',
+    saveSuccess: 'تم ميزاجور الپروفيل',
+    saveError: 'ماقدرناش نسجلو. تأكد من الكونيكسيون وعاود.',
+  },
+
   profileView: {
     premium: 'Premium',
     trialPremium: 'تجربة Premium — %{days} نهار متبقي',
@@ -665,8 +708,8 @@ export default {
     deleteRewardTitle: 'مسح هاد الكادو؟',
     deleteRewardMsg: 'مايمكنش ترجع فهادشي.',
     deleteRewardError: 'ماقدرناش نمسحوها',
-    saveError: 'ماقدرناش نسجلو',
-    editRewardError: 'ماقدرناش نبدلوها',
+    saveError: 'ماقدرناش نسجلو الإعدادات. تأكد من الكونيكسيون وعاود.',
+    editRewardError: 'ماقدرناش نبدلو الكادو. عفاك عاود.',
   },
 
   // ── Security page ──
@@ -801,6 +844,7 @@ export default {
 
   // ── Client detail ──
   clientDetail: {
+    title: 'تفاصيل الكليان',
     memberSince: 'كليان منذ %{date}',
     addBtn: 'زيد',
     removeBtn: 'طرح',

@@ -24,11 +24,12 @@ export interface IPushProvider {
   /**
    * Send a push notification to a single merchant device.
    * Errors are caught internally — never throws.
+   * Returns whether the token was invalid (stale/expired).
    */
   sendToMerchant(
     token: string,
     title: string,
     body: string,
     data?: Record<string, string>,
-  ): Promise<void>;
+  ): Promise<{ invalidToken: boolean }>;
 }

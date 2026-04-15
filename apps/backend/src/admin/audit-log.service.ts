@@ -1,9 +1,25 @@
 import { Injectable, Logger, Inject } from '@nestjs/common';
-import { AuditAction, AuditTargetType, Prisma } from '@prisma/client';
+import { AuditAction, AuditActorType, AuditTargetType, Prisma } from '@prisma/client';
 import { AUDIT_LOG_REPOSITORY, type IAuditLogRepository } from '../common/repositories';
 
-export { AuditAction, AuditTargetType };
+export { AuditAction, AuditActorType, AuditTargetType };
 
+export interface AdminAuditContext {
+  actorType: 'ADMIN';
+  adminId: string;
+  adminEmail: string;
+  ipAddress?: string;
+  userAgent?: string;
+}
+
+export interface MerchantAuditContext {
+  actorType: 'MERCHANT';
+  merchantId: string;
+  ipAddress?: string;
+  userAgent?: string;
+}
+
+/** @deprecated Use AdminAuditContext instead */
 export interface AuditLogContext {
   adminId: string;
   adminEmail: string;
@@ -11,8 +27,10 @@ export interface AuditLogContext {
   userAgent?: string;
 }
 
+export type AuditContext = AdminAuditContext | MerchantAuditContext | AuditLogContext;
+
 export interface LogEntryInput {
-  ctx: AuditLogContext;
+  ctx: AuditContext;
   action: AuditAction;
   targetType: AuditTargetType;
   targetId?: string;
@@ -35,10 +53,15 @@ export class AuditLogService {
    */
   async log(input: LogEntryInput): Promise<void> {
     try {
+      const ctx = input.ctx;
+      const isMerchant = 'actorType' in ctx && ctx.actorType === 'MERCHANT';
+
       await this.auditLogRepo.create({
         data: {
-          adminId: input.ctx.adminId,
-          adminEmail: input.ctx.adminEmail,
+          actorType: isMerchant ? AuditActorType.MERCHANT : AuditActorType.ADMIN,
+          adminId: isMerchant ? null : (ctx as AdminAuditContext | AuditLogContext).adminId,
+          adminEmail: isMerchant ? null : (ctx as AdminAuditContext | AuditLogContext).adminEmail,
+          merchantId: isMerchant ? (ctx as MerchantAuditContext).merchantId : null,
           action: input.action,
           targetType: input.targetType,
           targetId: input.targetId ?? null,

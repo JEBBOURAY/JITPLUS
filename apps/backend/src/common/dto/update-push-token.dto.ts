@@ -1,5 +1,5 @@
-import { IsString, IsNotEmpty } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { IsString, IsNotEmpty, IsOptional, IsIn } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
  * Shared push-token update DTO — used by both merchant and client controllers.
@@ -10,4 +10,10 @@ export class UpdatePushTokenDto {
   @IsString()
   @IsNotEmpty()
   pushToken: string;
+
+  @ApiPropertyOptional({ description: 'App language preference (fr, en, ar)' })
+  @IsString()
+  @IsIn(['fr', 'en', 'ar'])
+  @IsOptional()
+  language?: string;
 }

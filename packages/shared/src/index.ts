@@ -10,6 +10,7 @@ export * from './validation';
 export * from './error';
 export * from './date';
 export * from './types';
+export * from './imageUrl';
 
 // React Native specific — import directly:
 //   import { createApiClient } from '@jitplus/shared/src/apiFactory'

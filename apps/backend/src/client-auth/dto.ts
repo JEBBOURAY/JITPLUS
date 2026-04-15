@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsNumber, Min, Length, Matches, MaxLength, IsOptional, IsBoolean, IsEmail, IsDateString, ValidateIf } from 'class-validator';
+import { IsString, IsNotEmpty, IsNumber, Min, Length, Matches, MaxLength, IsOptional, IsBoolean, IsEmail, IsDateString, ValidateIf, IsIn } from 'class-validator';
 
 export class SendOtpDto {
   @IsString()
@@ -145,6 +145,11 @@ export class ClientUpdateProfileDto {
   @IsOptional()
   @IsBoolean()
   notifWhatsapp?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['fr', 'en', 'ar'], { message: 'Langue invalide (fr, en, ar)' })
+  language?: string;
 
   @IsOptional()
   @ValidateIf(o => o.dateNaissance !== null)

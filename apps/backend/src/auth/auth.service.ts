@@ -158,7 +158,7 @@ export class AuthService {
       }
 
       // Notifier le propriétaire
-      this.sendLoginNotification(merchant.id, 'Propriétaire', loginDto.deviceName, merchant.pushToken)
+      this.sendLoginNotification(merchant.id, 'Propriétaire', loginDto.deviceName, merchant.pushToken, merchant.language)
         .catch((err) => this.logger.warn('Push notification failed', errMsg(err)));
 
       return {
@@ -220,7 +220,7 @@ export class AuthService {
       }
 
       // Notifier le propriétaire qu'un membre d'équipe s'est connecté
-      this.sendLoginNotification(ownerMerchant.id, teamMember.nom, loginDto.deviceName, ownerMerchant.pushToken)
+      this.sendLoginNotification(ownerMerchant.id, teamMember.nom, loginDto.deviceName, ownerMerchant.pushToken, ownerMerchant.language)
         .catch((err) => this.logger.warn('Push notification failed', errMsg(err)));
 
       return {
@@ -317,23 +317,44 @@ export class AuthService {
     who: string,
     deviceName?: string,
     pushToken?: string | null,
+    language?: string | null,
   ) {
     // Si pas de pushToken fourni, le chercher en base
     let token = pushToken;
+    let lang = language;
     if (!token) {
       const merchant = await this.merchantRepo.findUnique({
         where: { id: merchantId },
-        select: { pushToken: true },
+        select: { pushToken: true, language: true },
       });
       token = merchant?.pushToken;
+      lang = merchant?.language;
     }
 
     if (!token) return;
 
-    const title = '🔐 Nouvelle connexion détectée';
-    const body = deviceName
-      ? `${who} s'est connecté(e) sur ${deviceName}. Si ce n'est pas vous, changez votre mot de passe.`
-      : `${who} s'est connecté(e) à votre commerce. Si ce n'est pas vous, changez votre mot de passe.`;
+    const l = (lang === 'en' || lang === 'ar' ? lang : 'fr') as 'fr' | 'en' | 'ar';
+    const LOGIN_MESSAGES = {
+      fr: {
+        title: '🔐 Nouvelle connexion détectée',
+        withDevice: (w: string, d: string) => `${w} s'est connecté(e) sur ${d}. Si ce n'est pas vous, changez votre mot de passe.`,
+        noDevice: (w: string) => `${w} s'est connecté(e) à votre commerce. Si ce n'est pas vous, changez votre mot de passe.`,
+      },
+      en: {
+        title: '🔐 New login detected',
+        withDevice: (w: string, d: string) => `${w} logged in on ${d}. If this wasn't you, change your password.`,
+        noDevice: (w: string) => `${w} logged in to your business. If this wasn't you, change your password.`,
+      },
+      ar: {
+        title: '🔐 كونيكسيون جديدة',
+        withDevice: (w: string, d: string) => `${w} دخل(ات) من ${d}. إلا ماشي نتا، بدل الباسوورد ديالك.`,
+        noDevice: (w: string) => `${w} دخل(ات) للكومرس ديالك. إلا ماشي نتا، بدل الباسوورد ديالك.`,
+      },
+    };
+
+    const msg = LOGIN_MESSAGES[l];
+    const title = msg.title;
+    const body = deviceName ? msg.withDevice(who, deviceName) : msg.noDevice(who);
 
     await this.pushProvider.sendMulticast([token], title, body, undefined, undefined, 'login-alerts');
   }
@@ -759,7 +780,7 @@ export class AuthService {
       }
 
       // Notify owner
-      this.sendLoginNotification(merchant.id, 'Propriétaire (Google)', dto.deviceName, merchant.pushToken)
+      this.sendLoginNotification(merchant.id, 'Propriétaire (Google)', dto.deviceName, merchant.pushToken, merchant.language)
         .catch((err) => this.logger.warn('Push notification failed', errMsg(err)));
 
       return {
@@ -1289,7 +1310,7 @@ export class AuthService {
         );
       }
 
-      this.sendLoginNotification(merchant.id, 'Propriétaire (Apple)', dto.deviceName, merchant.pushToken)
+      this.sendLoginNotification(merchant.id, 'Propriétaire (Apple)', dto.deviceName, merchant.pushToken, merchant.language)
         .catch((err) => this.logger.warn('Push notification failed', errMsg(err)));
 
       return {

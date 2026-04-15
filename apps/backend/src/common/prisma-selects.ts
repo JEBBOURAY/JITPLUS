@@ -41,6 +41,7 @@ export const MERCHANT_PROFILE_SELECT = {
   planActivatedByAdmin: true,
   trialStartedAt: true,
   lastAdminNotifReadAt: true,
+  language: true,
   createdAt: true,
   updatedAt: true,
 } satisfies Prisma.MerchantSelect;

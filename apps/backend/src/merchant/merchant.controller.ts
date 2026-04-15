@@ -18,16 +18,9 @@ import { JwtPayload } from '../common/interfaces/jwt-payload.interface';
 import { PaginationQueryDto, SearchPaginationQueryDto } from '../common/dto/pagination-query.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
-import { CreateTeamMemberDto } from './dto/create-team-member.dto';
-import { UpdateTeamMemberDto } from './dto/update-team-member.dto';
-import { CreateTransactionDto } from './dto/create-transaction.dto';
-import { AdjustPointsDto } from './dto/adjust-points.dto';
 import { UpdatePushTokenDto } from './dto/update-push-token.dto';
 import { UpdateSettingsDto } from './dto/update-settings.dto';
 import { UpdateLoyaltySettingsDto, PreviewAccumulationLimitDto } from './dto/update-loyalty-settings.dto';
-import { DashboardQueryDto } from './dto/dashboard-query.dto';
-import { CreateStoreDto } from './dto/create-store.dto';
-import { UpdateStoreDto } from './dto/update-store.dto';
 import { UploadQueryDto, UploadType } from './dto/upload-logo.dto';
 import { VerifyQrDto } from './dto/verify-qr.dto';
 import { VerifyClientDto } from './dto/verify-client.dto';
@@ -54,10 +47,6 @@ function detectMimeFromBuffer(buffer: Buffer): string | null {
 import {
   MerchantProfileService,
   MerchantClientService,
-  MerchantTransactionService,
-  MerchantDashboardService,
-  MerchantTeamService,
-  MerchantStoreService,
   WhatsappQuotaService,
   MerchantPlanService,
   MerchantReferralService,
@@ -74,10 +63,6 @@ export class MerchantController {
   constructor(
     private profileService: MerchantProfileService,
     private clientService: MerchantClientService,
-    private transactionService: MerchantTransactionService,
-    private dashboardService: MerchantDashboardService,
-    private teamService: MerchantTeamService,
-    private storeService: MerchantStoreService,
     private quotaService: WhatsappQuotaService,
     private planService: MerchantPlanService,
     private referralService: MerchantReferralService,
@@ -165,6 +150,7 @@ export class MerchantController {
   // ── Upload logo / cover ───────────────────────────────────
   @Post('upload-image')
   @UseGuards(MerchantOwnerGuard)
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 10 } })
   @UseInterceptors(
     FileInterceptor('file', {
       // storage: memoryStorage() // Default behavior
@@ -218,7 +204,7 @@ export class MerchantController {
   @Patch('push-token')
   @UseGuards(MerchantOwnerGuard)
   async updatePushToken(@Body() dto: UpdatePushTokenDto, @CurrentUser() user: JwtPayload) {
-    return this.profileService.updatePushToken(user.userId, dto.pushToken);
+    return this.profileService.updatePushToken(user.userId, dto.pushToken, dto.language);
   }
 
   @Get('devices')
@@ -241,8 +227,7 @@ export class MerchantController {
 
   // ── Delete Account (permanent, requires password or Google re-auth) ──────────
   @Post('delete-account')
-  @UseGuards(MerchantOwnerGuard)
-  async deleteAccount(@Body() dto: DeleteAccountDto, @CurrentUser() user: JwtPayload) {
+  @UseGuards(MerchantOwnerGuard)  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 3 } })  async deleteAccount(@Body() dto: DeleteAccountDto, @CurrentUser() user: JwtPayload) {
     return this.profileService.deleteAccount(user.userId, dto.password, dto.idToken);
   }
 
@@ -282,66 +267,6 @@ export class MerchantController {
     return this.clientService.getClientDetail(clientId, user.userId);
   }
 
-  @Post('transactions')
-  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 30 } })
-  async createTransaction(
-    @Body() dto: CreateTransactionDto,
-    @CurrentUser() user: JwtPayload,
-  ) {
-    const { clientId, type, amount, points, rewardId } = dto;
-    return this.transactionService.createTransaction(clientId, user.userId, type, amount, points, rewardId, user.teamMemberId ?? undefined, user.teamMemberName ?? undefined);
-  }
-
-  @Get('dashboard-stats')
-  @UseGuards(MerchantOwnerGuard, PremiumGuard)
-  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 15 } })
-  async getDashboardStats(@Query() { period }: DashboardQueryDto, @CurrentUser() user: JwtPayload) {
-    return this.dashboardService.getDashboardStats(user.userId, period!);
-  }
-
-  @Get('dashboard-trends')
-  @UseGuards(MerchantOwnerGuard, PremiumGuard)
-  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 15 } })
-  async getDashboardTrends(@Query() { period }: DashboardQueryDto, @CurrentUser() user: JwtPayload) {
-    return this.dashboardService.getDashboardTrends(user.userId, period!);
-  }
-
-  @Get('transactions')
-  async getTransactions(@Query() { page, limit }: PaginationQueryDto, @CurrentUser() user: JwtPayload) {
-    return this.transactionService.getTransactions(user.userId, page, limit);
-  }
-
-  @Patch('transactions/:id/cancel')
-  async cancelTransaction(@Param('id') transactionId: string, @CurrentUser() user: JwtPayload) {
-    return this.transactionService.cancelTransaction(transactionId, user.userId);
-  }
-
-  @Patch('transactions/:id/fulfill')
-  async fulfillGift(@Param('id') transactionId: string, @CurrentUser() user: JwtPayload) {
-    return this.transactionService.fulfillGift(transactionId, user.userId);
-  }
-
-  @Get('pending-gifts')
-  async getPendingGifts(@CurrentUser() user: JwtPayload) {
-    return this.transactionService.getPendingGifts(user.userId);
-  }
-
-  @Post('transactions/adjust')
-  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 20 } })
-  async adjustPoints(
-    @Body() dto: AdjustPointsDto,
-    @CurrentUser() user: JwtPayload,
-  ) {
-    return this.transactionService.adjustPoints(
-      dto.clientId,
-      user.userId,
-      dto.points,
-      dto.note,
-      user.teamMemberId ?? undefined,
-      user.teamMemberName ?? undefined,
-    );
-  }
-
   @Patch('settings')
   @UseGuards(MerchantOwnerGuard)
   async updateSettings(@Body() dto: UpdateSettingsDto, @CurrentUser() user: JwtPayload): Promise<MerchantProfileData> {
@@ -359,67 +284,12 @@ export class MerchantController {
 
   @Patch('loyalty-settings')
   @UseGuards(MerchantOwnerGuard, PremiumGuard)
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 10 } })
   async updateLoyaltySettings(
     @Body() dto: UpdateLoyaltySettingsDto,
     @CurrentUser() user: JwtPayload,
   ): Promise<MerchantProfileData> {
     return this.profileService.updateLoyaltySettings(user.userId, dto);
-  }
-
-  @Get('team')
-  @UseGuards(MerchantOwnerGuard, PremiumGuard)
-  async getTeamMembers(@CurrentUser() user: JwtPayload) {
-    return this.teamService.getTeamMembers(user.userId);
-  }
-
-  @Post('team')
-  @UseGuards(MerchantOwnerGuard, PremiumGuard)
-  async createTeamMember(@Body() dto: CreateTeamMemberDto, @CurrentUser() user: JwtPayload) {
-    return this.teamService.createTeamMember(user.userId, dto);
-  }
-
-  @Patch('team/:id')
-  @UseGuards(MerchantOwnerGuard, PremiumGuard)
-  async updateTeamMember(@Param('id') memberId: string, @Body() dto: UpdateTeamMemberDto, @CurrentUser() user: JwtPayload) {
-    return this.teamService.updateTeamMember(user.userId, memberId, dto);
-  }
-
-  @Delete('team/:id')
-  @UseGuards(MerchantOwnerGuard, PremiumGuard)
-  async deleteTeamMember(@Param('id') memberId: string, @CurrentUser() user: JwtPayload) {
-    return this.teamService.deleteTeamMember(user.userId, memberId);
-  }
-
-  // ── Stores (multi-magasin) ──
-
-  @Get('stores')
-  @UseGuards(MerchantOwnerGuard)
-  async getStores(@CurrentUser() user: JwtPayload) {
-    return this.storeService.getStores(user.userId);
-  }
-
-  @Get('stores/:id')
-  @UseGuards(MerchantOwnerGuard)
-  async getStore(@Param('id') storeId: string, @CurrentUser() user: JwtPayload) {
-    return this.storeService.getStore(user.userId, storeId);
-  }
-
-  @Post('stores')
-  @UseGuards(MerchantOwnerGuard)
-  async createStore(@Body() dto: CreateStoreDto, @CurrentUser() user: JwtPayload) {
-    return this.storeService.createStore(user.userId, dto);
-  }
-
-  @Patch('stores/:id')
-  @UseGuards(MerchantOwnerGuard)
-  async updateStore(@Param('id') storeId: string, @Body() dto: UpdateStoreDto, @CurrentUser() user: JwtPayload) {
-    return this.storeService.updateStore(user.userId, storeId, dto);
-  }
-
-  @Delete('stores/:id')
-  @UseGuards(MerchantOwnerGuard)
-  async deleteStore(@Param('id') storeId: string, @CurrentUser() user: JwtPayload) {
-    return this.storeService.deleteStore(user.userId, storeId);
   }
 
   @Get('whatsapp/quota')

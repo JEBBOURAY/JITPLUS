@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,23 +8,24 @@ import {
   TouchableOpacity,
   Platform,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import {
-  RefreshCw,
   Zap,
   ArrowUpRight,
   ArrowDownLeft,
+  X,
+  Filter,
 } from 'lucide-react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getTransactionConfig } from '@/constants/transactions';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { ActivityListSkeleton } from '@/components/Skeleton';
 import { useTransactions } from '@/hooks/useQueryHooks';
-import { useRouter } from 'expo-router';
 import { useGuardedCallback } from '@/hooks/useGuardedCallback';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
 import { Animated } from 'react-native';
 import { formatCurrency, DEFAULT_CURRENCY, getIntlLocale } from '@/config/currency';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -33,7 +34,46 @@ import { useExitOnBack } from '@/hooks/useExitOnBack';
 import { formatDateTime } from '@/utils/date';
 import type { Transaction } from '@/types';
 
-const HEADER_GRADIENT: [string, string, string] = ['#5B21B6', '#7C3AED', '#1F2937'];
+type FilterType = 'ALL' | 'EARN_POINTS' | 'REDEEM_REWARD' | 'ADJUST_POINTS' | 'LOYALTY_PROGRAM_CHANGE';
+
+const BANNER_DISMISSED_KEY = 'activity_banner_dismissed';
+
+/* ── Tip banner — dismissable with "don't show again" ── */
+const ActivityBanner = React.memo(function ActivityBanner({
+  onDismiss,
+  onDismissForever,
+}: {
+  onDismiss: () => void;
+  onDismissForever: () => void;
+}) {
+  const theme = useTheme();
+  const { t } = useLanguage();
+  const isDark = theme.mode === 'dark';
+
+  return (
+    <View style={[bannerStyles.wrapper, { backgroundColor: isDark ? 'rgba(124,58,237,0.12)' : 'rgba(124,58,237,0.06)', borderColor: isDark ? 'rgba(124,58,237,0.25)' : 'rgba(124,58,237,0.15)' }]}>
+      <LinearGradient
+        colors={['rgba(124,58,237,0.08)', 'transparent']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+      <TouchableOpacity style={bannerStyles.closeBtn} onPress={onDismiss} hitSlop={8}>
+        <X size={16} color={theme.textMuted} strokeWidth={2} />
+      </TouchableOpacity>
+      <View style={bannerStyles.content}>
+        <Zap size={18} color={theme.primary} strokeWidth={1.8} />
+        <View style={bannerStyles.textWrap}>
+          <Text style={[bannerStyles.title, { color: theme.text }]}>{t('activity.bannerTitle')}</Text>
+          <Text style={[bannerStyles.desc, { color: theme.textMuted }]}>{t('activity.bannerDesc')}</Text>
+        </View>
+      </View>
+      <TouchableOpacity onPress={onDismissForever} style={bannerStyles.hideBtn} hitSlop={4}>
+        <Text style={[bannerStyles.hideText, { color: theme.textMuted }]}>{t('activity.bannerHide')}</Text>
+      </TouchableOpacity>
+    </View>
+  );
+});
 
 /* ── Memoized row — avoids re-render of every row on list updates ── */
 const TransactionRow = React.memo(function TransactionRow({
@@ -135,10 +175,26 @@ export default function ActivityScreen() {
   const { focusStyle } = useFocusFade();
   const insets = useSafeAreaInsets();
 
-  const router = useRouter();
-
   // Android: "press back again to exit" on the home tab
   useExitOnBack();
+
+  // ── Banner dismiss state ──
+  const [bannerVisible, setBannerVisible] = useState(false);
+
+  useEffect(() => {
+    AsyncStorage.getItem(BANNER_DISMISSED_KEY).then((val) => {
+      if (val !== 'true') setBannerVisible(true);
+    });
+  }, []);
+
+  const dismissBanner = useCallback(() => {
+    setBannerVisible(false);
+  }, []);
+
+  const dismissBannerForever = useCallback(() => {
+    setBannerVisible(false);
+    AsyncStorage.setItem(BANNER_DISMISSED_KEY, 'true');
+  }, []);
 
   const {
     data,
@@ -155,6 +211,15 @@ export default function ActivityScreen() {
     [data],
   );
 
+  // ── Filter state ──
+  const [activeFilter, setActiveFilter] = useState<FilterType | null>(null);
+
+  const filteredTransactions = useMemo<Transaction[]>(() => {
+    if (!activeFilter) return [];
+    if (activeFilter === 'ALL') return transactions;
+    return transactions.filter((tx) => tx.type === activeFilter);
+  }, [transactions, activeFilter]);
+
   const onRefresh = useGuardedCallback(async () => {
     await refetch();
   }, [refetch]);
@@ -165,55 +230,85 @@ export default function ActivityScreen() {
 
   const keyExtractor = useCallback((item: Transaction) => item.id, []);
 
+  const ItemSeparator = useCallback(() => <View style={styles.separator} />, []);
+
   const showSkeleton = loading && transactions.length === 0;
 
   return (
     <Animated.View style={[styles.container, { backgroundColor: theme.bg }, focusStyle]}>
-      {/* ── Glassmorphism header ── */}
-      <View collapsable={false}>
-        <LinearGradient
-          colors={HEADER_GRADIENT}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.headerGradient}
-        >
-          <BlurView
-            intensity={Platform.OS === 'ios' ? 40 : 20}
-            tint={theme.mode === 'dark' ? 'dark' : 'default'}
-            style={[styles.headerBlur, { paddingTop: insets.top + 16 }]}
-          >
-            {/* Glass overlay */}
-            <View style={styles.glassOverlay} />
+      {/* ── Simple header ── */}
+      <View style={[styles.headerBar, { paddingTop: insets.top + 12 }]}>
+        <Text style={[styles.headerTitle, { color: theme.text }]}>{t('activity.title')}</Text>
+      </View>
 
-            <View style={styles.header}>
-              <View style={styles.headerContent}>
-                <Text style={styles.headerTitle}>{t('activity.title')}</Text>
-                <Text style={styles.headerSub}>{t('activity.subtitle')}</Text>
-              </View>
+      {/* ── Dismissable tip banner ── */}
+      {bannerVisible && (
+        <View style={{ paddingHorizontal: 16, paddingTop: 8 }}>
+          <ActivityBanner onDismiss={dismissBanner} onDismissForever={dismissBannerForever} />
+        </View>
+      )}
+
+      {/* ── Filter pills ── */}
+      <View style={styles.filterWrapper}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterRow}
+        >
+          {([
+            { key: 'ALL' as FilterType, label: t('activity.filterAll') },
+            { key: 'EARN_POINTS' as FilterType, label: t('activity.filterEarned') },
+            { key: 'REDEEM_REWARD' as FilterType, label: t('activity.filterRedeemed') },
+            { key: 'ADJUST_POINTS' as FilterType, label: t('activity.filterAdjust') },
+            { key: 'LOYALTY_PROGRAM_CHANGE' as FilterType, label: t('activity.filterTeam') },
+          ]).map(({ key, label }) => {
+            const isActive = activeFilter === key;
+            return (
               <TouchableOpacity
-                style={styles.refreshBtn}
-                onPress={onRefresh}
+                key={key}
                 activeOpacity={0.7}
+                onPress={() => setActiveFilter(isActive ? null : key)}
+                style={[
+                  styles.filterPill,
+                  {
+                    backgroundColor: isActive ? theme.primary + '18' : theme.bgCard,
+                    borderColor: isActive ? theme.primary : theme.borderLight,
+                  },
+                ]}
               >
-                <RefreshCw size={20} color="rgba(255,255,255,0.9)" strokeWidth={1.8} />
+                <Text
+                  style={[
+                    styles.filterPillText,
+                    { color: isActive ? theme.primary : theme.textMuted },
+                  ]}
+                >
+                  {label}
+                </Text>
               </TouchableOpacity>
-            </View>
-          </BlurView>
-        </LinearGradient>
-        {/* Decorative fade line */}
-        <LinearGradient
-          colors={['rgba(124,58,237,0.3)', 'transparent']}
-          style={styles.headerFade}
-        />
+            );
+          })}
+        </ScrollView>
       </View>
 
       {showSkeleton ? (
         <View style={styles.list}>
           <ActivityListSkeleton count={6} />
         </View>
+      ) : !activeFilter ? (
+        <View style={styles.emptyContainer}>
+          <View style={[styles.emptyIllustration, { backgroundColor: theme.primaryBg }]}>
+            <Filter size={40} color={theme.primary} strokeWidth={1.2} />
+          </View>
+          <Text style={[styles.emptyTitle, { color: theme.text }]}>
+            {t('activity.title')}
+          </Text>
+          <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
+            {t('activity.selectFilter')}
+          </Text>
+        </View>
       ) : (
       <FlatList
-        data={transactions}
+        data={filteredTransactions}
         renderItem={renderTx}
         keyExtractor={keyExtractor}
         contentContainerStyle={styles.list}
@@ -223,7 +318,7 @@ export default function ActivityScreen() {
         initialNumToRender={10}
         onEndReached={() => { if (hasMore) loadMore(); }}
         onEndReachedThreshold={0.3}
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
+        ItemSeparatorComponent={ItemSeparator}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -237,7 +332,7 @@ export default function ActivityScreen() {
             <View style={styles.footerLoader}>
               <ActivityIndicator size="small" color={theme.primary} />
             </View>
-          ) : !hasMore && transactions.length > 0 ? (
+          ) : !hasMore && filteredTransactions.length > 0 ? (
             <View style={styles.footerEndWrap}>
               <View style={[styles.footerDivider, { backgroundColor: theme.border }]} />
               <Text style={[styles.footerEnd, { color: theme.textMuted }]}>
@@ -269,56 +364,42 @@ export default function ActivityScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
 
-  /* Header — glassmorphism */
-  headerGradient: {
-    overflow: 'hidden',
-  },
-  headerBlur: {
-    overflow: 'hidden',
-  },
-  glassOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-  },
-  header: {
+  /* Header bar — simple title + refresh */
+  headerBar: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    paddingBottom: 24,
     paddingHorizontal: 24,
+    paddingBottom: 12,
   },
-  headerContent: { flex: 1, marginRight: 16 },
   headerTitle: {
     fontSize: 28,
     fontWeight: '700',
-    color: '#FFFFFF',
     fontFamily: 'Lexend_700Bold',
     letterSpacing: -0.5,
   },
-  headerSub: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.55)',
-    marginTop: 6,
-    fontFamily: 'Lexend_400Regular',
-    letterSpacing: 0.3,
+
+  /* Filter pills */
+  filterWrapper: {
+    paddingBottom: 8,
+    paddingTop: 4,
   },
-  headerFade: { height: 4 },
-  refreshBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.10)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.20)',
+  filterRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 2,
-    ...(Platform.OS === 'ios' ? {
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.15,
-      shadowRadius: 6,
-    } : { elevation: 3 }),
+    gap: 8,
+    paddingHorizontal: 16,
+  },
+  filterPill: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  filterPillText: {
+    fontSize: 13,
+    fontWeight: '600',
+    fontFamily: 'Lexend_600SemiBold',
   },
 
   /* List */
@@ -456,5 +537,60 @@ const styles = StyleSheet.create({
     fontFamily: 'Lexend_400Regular',
     letterSpacing: 0.2,
     opacity: 0.5,
+  },
+});
+
+/* ── Banner styles ── */
+const bannerStyles = StyleSheet.create({
+  wrapper: {
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 14,
+    overflow: 'hidden',
+  },
+  closeBtn: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    zIndex: 1,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  content: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    paddingRight: 24,
+  },
+  textWrap: {
+    flex: 1,
+  },
+  title: {
+    fontSize: 14,
+    fontWeight: '600',
+    fontFamily: 'Lexend_600SemiBold',
+    letterSpacing: -0.2,
+  },
+  desc: {
+    fontSize: 12,
+    fontFamily: 'Lexend_400Regular',
+    lineHeight: 18,
+    marginTop: 3,
+    letterSpacing: 0.1,
+  },
+  hideBtn: {
+    alignSelf: 'flex-end',
+    marginTop: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 2,
+  },
+  hideText: {
+    fontSize: 11,
+    fontFamily: 'Lexend_500Medium',
+    textDecorationLine: 'underline',
+    letterSpacing: 0.1,
   },
 });

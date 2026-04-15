@@ -2,8 +2,9 @@
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { MerchantStoreService } from './merchant-store.service';
-import { STORE_REPOSITORY } from '../../common/repositories';
+import { STORE_REPOSITORY, MERCHANT_REPOSITORY } from '../../common/repositories';
 import { MerchantPlanService } from './merchant-plan.service';
+import { AuditLogService } from '../../admin/audit-log.service';
 
 // â”€â”€ Fixtures â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -33,6 +34,12 @@ const mockStoreRepo = {
   delete: jest.fn(),
 };
 
+const mockMerchantRepo = {
+  findUnique: jest.fn(),
+  findUniqueOrThrow: jest.fn(),
+  update: jest.fn(),
+};
+
 const mockPlanService = {
   getMaxStores: jest.fn(),
 };
@@ -53,8 +60,10 @@ describe('MerchantStoreService', () => {
       providers: [
         MerchantStoreService,
         { provide: STORE_REPOSITORY, useValue: mockStoreRepo },
+        { provide: MERCHANT_REPOSITORY, useValue: mockMerchantRepo },
         { provide: CACHE_MANAGER, useValue: mockCache },
         { provide: MerchantPlanService, useValue: mockPlanService },
+        { provide: AuditLogService, useValue: { log: jest.fn() } },
       ],
     }).compile();
 

@@ -43,6 +43,7 @@ export class ClientService {
         countryCode: true,
         shareInfoMerchants: true,
         notifWhatsapp: true,
+        language: true,
         dateNaissance: true,
         pushToken: true,
         password: true,
@@ -83,6 +84,7 @@ export class ClientService {
       countryCode?: string;
       shareInfoMerchants?: boolean;
       notifWhatsapp?: boolean;
+      language?: string;
       dateNaissance?: string | null;
     },
   ) {
@@ -111,13 +113,17 @@ export class ClientService {
     }
 
     // Convert dateNaissance ISO string → Date, or null to clear
-    const { dateNaissance: dateNaissanceStr, ...restUpdates } = updates;
+    const { dateNaissance: dateNaissanceStr, language, ...restUpdates } = updates;
     const data: {
       prenom?: string; nom?: string; email?: string; telephone?: string;
       countryCode?: string; shareInfoMerchants?: boolean; notifWhatsapp?: boolean;
+      language?: string;
       dateNaissance?: Date | null;
       emailVerified?: boolean; telephoneVerified?: boolean;
     } = { ...restUpdates };
+    if (language) {
+      data.language = language;
+    }
     if ('dateNaissance' in updates) {
       data.dateNaissance = dateNaissanceStr ? new Date(dateNaissanceStr) : null;
     }
@@ -150,6 +156,7 @@ export class ClientService {
         countryCode: true,
         shareInfoMerchants: true,
         notifWhatsapp: true,
+        language: true,
         dateNaissance: true,
         createdAt: true,
         updatedAt: true,
@@ -237,24 +244,29 @@ export class ClientService {
   }
 
   async updatePushToken(clientId: string, pushToken: string) {
-    // Reject Expo push tokens — the backend uses Firebase Admin SDK which
-    // only accepts native FCM (Android) or APNs (iOS) device tokens.
-    if (pushToken.startsWith('ExponentPushToken[') || pushToken.startsWith('ExpoPushToken[')) {
-      this.logger.warn(`Rejected Expo push token for client ${clientId} — only native FCM/APNs tokens are accepted`);
-      return { success: false, reason: 'expo_token_not_supported' };
-    }
+    // Empty string means "clear the token" (e.g. on logout)
+    const tokenValue = pushToken || null;
 
-    // Clear the same token from any other client to prevent duplicate notifications
-    await this.clientRepo.updateMany({
-      where: { pushToken, id: { not: clientId } },
-      data: { pushToken: null },
-    });
+    if (tokenValue) {
+      // Reject Expo push tokens — the backend uses Firebase Admin SDK which
+      // only accepts native FCM (Android) or APNs (iOS) device tokens.
+      if (tokenValue.startsWith('ExponentPushToken[') || tokenValue.startsWith('ExpoPushToken[')) {
+        this.logger.warn(`Rejected Expo push token for client ${clientId} — only native FCM/APNs tokens are accepted`);
+        return { success: false, reason: 'expo_token_not_supported' };
+      }
+
+      // Clear the same token from any other client to prevent duplicate notifications
+      await this.clientRepo.updateMany({
+        where: { pushToken: tokenValue, id: { not: clientId } },
+        data: { pushToken: null },
+      });
+    }
 
     await this.clientRepo.update({
       where: { id: clientId },
-      data: { pushToken },
+      data: { pushToken: tokenValue },
     });
-    this.logger.log(`Push token updated for client ${clientId} (${pushToken.substring(0, 12)}…)`);
+    this.logger.log(`Push token ${tokenValue ? 'updated' : 'cleared'} for client ${clientId}`);
     return { success: true };
   }
 

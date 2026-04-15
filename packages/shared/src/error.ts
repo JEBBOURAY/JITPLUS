@@ -60,3 +60,19 @@ export function getErrorStatus(error: unknown): number | undefined {
   }
   return undefined;
 }
+
+/**
+ * Returns true if the backend returned 401 with a "no account" message.
+ * Used by Google and Apple social login flows.
+ */
+export function isNoAccountError(error: unknown): boolean {
+  const status = getErrorStatus(error);
+  if (status === 401) {
+    const msg =
+      error && typeof error === 'object' && (error as any)?.isAxiosError
+        ? ((error as any)?.response?.data as { message?: string })?.message ?? ''
+        : '';
+    return /aucun compte|no account|compte.*trouvé/i.test(msg);
+  }
+  return false;
+}

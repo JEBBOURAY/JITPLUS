@@ -42,6 +42,43 @@ export const PLAN_LIMITS = {
   },
 } as const;
 
+// ── Localized plan push messages ──
+type PlanLang = 'fr' | 'en' | 'ar';
+function planLang(v?: string | null): PlanLang {
+  return v === 'en' || v === 'ar' ? v : 'fr';
+}
+
+const PLAN_MESSAGES = {
+  activated: {
+    fr: {
+      title: '🎉 Plan Premium activé !',
+      body: 'Félicitations ! Votre abonnement JitPlus Premium est maintenant actif. Profitez de toutes les fonctionnalités sans limite.',
+    },
+    en: {
+      title: '🎉 Premium Plan activated!',
+      body: 'Congratulations! Your JitPlus Premium subscription is now active. Enjoy all features with no limits.',
+    },
+    ar: {
+      title: '🎉 بلان بريميوم تفعل!',
+      body: 'مبروك! الاشتراك ديالك فـ JitPlus Premium ولا نشيط. استافد من كاع الميزات بلا حدود.',
+    },
+  },
+  revoked: {
+    fr: {
+      title: '📋 Plan modifié — Gratuit',
+      body: 'Votre accès Premium a été désactivé. Votre commerce fonctionne désormais avec le plan Gratuit.',
+    },
+    en: {
+      title: '📋 Plan changed — Free',
+      body: 'Your Premium access has been deactivated. Your business now runs on the Free plan.',
+    },
+    ar: {
+      title: '📋 البلان تبدل — مجاني',
+      body: 'الأكسي بريميوم تعطل. الكومرس ديالك دابا خدام بالبلان المجاني.',
+    },
+  },
+} as const;
+
 @Injectable()
 export class MerchantPlanService {
   private readonly logger = new Logger(MerchantPlanService.name);
@@ -238,7 +275,7 @@ export class MerchantPlanService {
         planExpiresAt: null,
         referralMonthsEarned: 0,
       },
-      select: { pushToken: true },
+      select: { pushToken: true, language: true },
     });
     await this.invalidatePlanCache(merchantId);
     this.logger.log(`Admin activated PREMIUM for merchant ${merchantId}`);
@@ -251,11 +288,12 @@ export class MerchantPlanService {
       .catch((err) => this.logger.error(`Merchant referral credit failed for merchant ${merchantId}`, err?.stack));
     // ── Push notification ────────────────────────────────────────
     if (merchant?.pushToken) {
+      const msg = PLAN_MESSAGES.activated[planLang(merchant.language)];
       await this.pushProvider.sendToMerchant(
         merchant.pushToken,
-        '🎉 Plan Premium activé !',
-        'Félicitations ! Votre abonnement JitPlus Premium est maintenant actif. Profitez de toutes les fonctionnalités sans limite.',
-        { type: 'plan_activated' },
+        msg.title,
+        msg.body,
+        { action: 'open_plan' },
       );
     }
   }
@@ -308,18 +346,19 @@ export class MerchantPlanService {
         planActivatedByAdmin: false,
         planExpiresAt: null,
       },
-      select: { pushToken: true },
+      select: { pushToken: true, language: true },
     });
     await this.invalidatePlanCache(merchantId);
     this.logger.log(`Admin revoked PREMIUM for merchant ${merchantId}`);
 
-    // ── Push notification ────────────────────────────────────────
+    // ── Push notification ────────────────────────────────────────────
     if (merchant?.pushToken) {
+      const msg = PLAN_MESSAGES.revoked[planLang(merchant.language)];
       await this.pushProvider.sendToMerchant(
         merchant.pushToken,
-        '📋 Plan modifié — Gratuit',
-        'Votre accès Premium a été désactivé. Votre commerce fonctionne désormais avec le plan Gratuit.',
-        { type: 'plan_revoked' },
+        msg.title,
+        msg.body,
+        { action: 'open_plan' },
       );
     }
   }

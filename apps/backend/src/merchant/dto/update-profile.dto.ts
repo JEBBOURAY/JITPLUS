@@ -1,7 +1,8 @@
-import { IsEmail, IsOptional, IsString, IsUrl, MaxLength, Matches } from 'class-validator';
+import { IsEmail, IsOptional, IsString, IsUrl, MaxLength, MinLength, Matches } from 'class-validator';
 
 export class UpdateProfileDto {
   @IsString()
+  @MinLength(1, { message: 'Le nom ne peut pas être vide' })
   @MaxLength(100, { message: 'Le nom ne doit pas dépasser 100 caractères' })
   @IsOptional()
   nom?: string;

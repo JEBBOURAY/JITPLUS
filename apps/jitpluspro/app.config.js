@@ -29,7 +29,7 @@ module.exports = ({ config }) => {
     name: 'JitPlus Pro',
     slug: 'jitpluspro',
     description: 'Loyalty program management for local shops — scan QR codes, track customer visits, and set up stamp-based rewards.',
-    version: '1.3.9',
+    version: '1.4.0',
     orientation: 'portrait',
     icon: './assets/images/icon-white.png',
     scheme: 'jitpluspro',
@@ -45,7 +45,7 @@ module.exports = ({ config }) => {
       supportsTablet: false,
       bundleIdentifier: 'com.jitplus.pro',
       // Initial build number — EAS autoIncrement bumps this on every production build
-      buildNumber: '3',
+      buildNumber: '4',
       // Portrait-only app: disable iPad Split View / Slide Over to avoid orientation-support review issues
       requiresFullScreen: true,
       // Declares standard HTTPS encryption — waives export compliance questionnaire
@@ -76,7 +76,7 @@ module.exports = ({ config }) => {
       },
     },
     android: {
-      versionCode: 3,
+      versionCode: 4,
       adaptiveIcon: {
         foregroundImage: './assets/images/adaptive-icon-white.png',
         backgroundColor: '#FFFFFF',
@@ -164,7 +164,7 @@ module.exports = ({ config }) => {
       // managed SSL certificate. Cloud Run *.a.run.app certs rotate too frequently.
       // './plugins/withCertificatePinning',
       // Force Google Maps region to Morocco — ensures correct border rendering (Sahara)
-      // './plugins/withMoroccoRegion',
+      './plugins/withMoroccoRegion',
       [
         'expo-notifications',
         {

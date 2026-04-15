@@ -7,6 +7,8 @@ import {
   LOYALTY_CARD_REPOSITORY,
 } from '../../common/repositories';
 import { PUSH_PROVIDER } from '../../common/interfaces';
+import { ClientReferralService } from '../../client-auth/client-referral.service';
+import { MerchantReferralService } from './merchant-referral.service';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -55,6 +57,16 @@ const mockFirebase = {
   sendToMerchant: jest.fn(),
 };
 
+const mockClientReferralService = {
+  creditReferralReward: jest.fn().mockResolvedValue(undefined),
+  creditClientForMerchant: jest.fn().mockResolvedValue(undefined),
+};
+
+const mockMerchantReferralService = {
+  creditReferralReward: jest.fn().mockResolvedValue(undefined),
+  creditReferrerOnPayment: jest.fn().mockResolvedValue(undefined),
+};
+
 // ── Suite ─────────────────────────────────────────────────────────────────────
 
 describe('MerchantPlanService', () => {
@@ -68,6 +80,8 @@ describe('MerchantPlanService', () => {
         { provide: LOYALTY_CARD_REPOSITORY, useValue: mockPrisma.loyaltyCard },
         { provide: CACHE_MANAGER, useValue: mockCache },
         { provide: PUSH_PROVIDER, useValue: mockFirebase },
+        { provide: ClientReferralService, useValue: mockClientReferralService },
+        { provide: MerchantReferralService, useValue: mockMerchantReferralService },
       ],
     }).compile();
 

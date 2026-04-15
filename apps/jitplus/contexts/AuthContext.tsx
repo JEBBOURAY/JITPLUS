@@ -310,6 +310,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const logout = useCallback(async () => {
+    // Clear push token first so the device stops receiving push for this account
+    await api.updatePushToken('').catch(() => {});
     // Revoke refresh token server-side — retry once on network failure
     let logoutSucceeded = false;
     for (let attempt = 0; attempt < LOGOUT_MAX_RETRIES && !logoutSucceeded; attempt++) {

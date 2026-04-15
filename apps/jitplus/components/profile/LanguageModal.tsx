@@ -4,6 +4,7 @@ import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { ms } from '@/utils/responsive';
 import { profileStyles as styles } from './profileStyles';
+import { api } from '@/services/api';
 
 interface Props {
   visible: boolean;
@@ -37,6 +38,7 @@ export default function LanguageModal({ visible, onClose }: Props) {
                 onPress={async () => {
                   if (lang !== locale) {
                     await setLocale(lang);
+                    api.updateProfile({ language: lang }).catch(() => {});
                   }
                   onClose();
                 }}

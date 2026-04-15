@@ -8,6 +8,7 @@ import {
   TEAM_MEMBER_REPOSITORY, type ITeamMemberRepository,
   MERCHANT_REPOSITORY, type IMerchantRepository,
 } from '../../common/repositories';
+import { AuditLogService, AuditAction, AuditTargetType } from '../../admin/audit-log.service';
 import { CreateTeamMemberDto } from '../dto/create-team-member.dto';
 import { UpdateTeamMemberDto } from '../dto/update-team-member.dto';
 import * as bcrypt from 'bcryptjs';
@@ -19,6 +20,7 @@ export class MerchantTeamService {
   constructor(
     @Inject(TEAM_MEMBER_REPOSITORY) private teamMemberRepo: ITeamMemberRepository,
     @Inject(MERCHANT_REPOSITORY) private merchantRepo: IMerchantRepository,
+    private auditLogService: AuditLogService,
   ) {}
 
   async getTeamMembers(merchantId: string) {
@@ -64,7 +66,7 @@ export class MerchantTeamService {
 
     const hashedPassword = await bcrypt.hash(dto.password, BCRYPT_SALT_ROUNDS);
 
-    return this.teamMemberRepo.create({
+    const member = await this.teamMemberRepo.create({
       data: {
         merchantId,
         nom: dto.nom,
@@ -80,6 +82,16 @@ export class MerchantTeamService {
         createdAt: true,
       },
     });
+
+    this.auditLogService.log({
+      ctx: { actorType: 'MERCHANT', merchantId },
+      action: AuditAction.CREATE_TEAM_MEMBER,
+      targetType: AuditTargetType.MERCHANT,
+      targetId: member.id,
+      targetLabel: `${dto.nom} (${dto.email})`,
+    });
+
+    return member;
   }
 
   async updateTeamMember(merchantId: string, memberId: string, dto: UpdateTeamMemberDto) {
@@ -146,6 +158,14 @@ export class MerchantTeamService {
     }
 
     await this.teamMemberRepo.delete({ where: { id: memberId } });
+
+    this.auditLogService.log({
+      ctx: { actorType: 'MERCHANT', merchantId },
+      action: AuditAction.DELETE_TEAM_MEMBER,
+      targetType: AuditTargetType.MERCHANT,
+      targetId: memberId,
+    });
+
     return { success: true, message: "Membre d'équipe supprimé" };
   }
 }

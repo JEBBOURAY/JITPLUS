@@ -23,15 +23,33 @@ export class HealthController {
   @SkipThrottle()
   async check() {
     let dbStatus = 'ok';
+    let dbLatencyMs: number | null = null;
     try {
+      const start = Date.now();
       await this.rawQuery.queryRaw(Prisma.sql`SELECT 1`);
+      dbLatencyMs = Date.now() - start;
     } catch {
       dbStatus = 'down';
     }
 
     const fcm = this.firebase.isInitialized ? 'ok' : 'simulated';
+
+    // Check critical env vars presence (without exposing values)
+    const envCheck = {
+      smtp: !!this.config.get('SMTP_HOST'),
+      twilio: !!this.config.get('TWILIO_ACCOUNT_SID'),
+      storage: !!this.config.get('GCP_STORAGE_BUCKET_NAME'),
+    };
+
     const status = dbStatus === 'ok' && fcm === 'ok' ? 'ok' : 'degraded';
-    return { status, db: dbStatus, fcm, timestamp: new Date().toISOString() };
+    return {
+      status,
+      db: dbStatus,
+      dbLatencyMs,
+      fcm,
+      services: envCheck,
+      timestamp: new Date().toISOString(),
+    };
   }
 
   /**

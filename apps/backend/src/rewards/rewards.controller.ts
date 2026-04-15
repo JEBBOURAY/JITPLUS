@@ -1,5 +1,6 @@
 import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { RewardsService } from './rewards.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { MerchantTypeGuard } from '../auth/guards/merchant-type.guard';
@@ -8,6 +9,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtPayload } from '../common/interfaces/jwt-payload.interface';
 import { CreateRewardDto } from './dto/create-reward.dto';
 import { UpdateRewardDto } from './dto/update-reward.dto';
+import { THROTTLE_TTL } from '../common/constants';
 
 @ApiTags('Rewards')
 @ApiBearerAuth()
@@ -28,18 +30,21 @@ export class RewardsController {
 
   @Post()
   @UseGuards(MerchantOwnerGuard)
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 10 } })
   async create(@Body() dto: CreateRewardDto, @CurrentUser() user: JwtPayload) {
     return this.rewardsService.create(user.userId, dto);
   }
 
   @Put(':id')
   @UseGuards(MerchantOwnerGuard)
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 20 } })
   async update(@Param('id') id: string, @Body() dto: UpdateRewardDto, @CurrentUser() user: JwtPayload) {
     return this.rewardsService.update(id, user.userId, dto);
   }
 
   @Delete(':id')
   @UseGuards(MerchantOwnerGuard)
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 10 } })
   async remove(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
     return this.rewardsService.remove(id, user.userId);
   }

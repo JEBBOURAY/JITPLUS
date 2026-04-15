@@ -1,8 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException, BadRequestException } from '@nestjs/common';
+import { NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { RewardsService } from './rewards.service';
 import { REWARD_REPOSITORY } from './reward.repository.interface';
+import { MerchantPlanService } from '../merchant/services/merchant-plan.service';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -33,6 +34,10 @@ const mockCache = {
   del: jest.fn(),
 };
 
+const mockPlanService = {
+  isPremium: jest.fn().mockResolvedValue(true),
+};
+
 // ── Suite ─────────────────────────────────────────────────────────────────────
 
 describe('RewardsService', () => {
@@ -44,6 +49,7 @@ describe('RewardsService', () => {
         RewardsService,
         { provide: REWARD_REPOSITORY, useValue: mockRewardRepo },
         { provide: CACHE_MANAGER, useValue: mockCache },
+        { provide: MerchantPlanService, useValue: mockPlanService },
       ],
     }).compile();
 
