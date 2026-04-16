@@ -22,12 +22,9 @@ interface AuthContextType {
   /** True when an email-OTP new registration is waiting for a password to be set */
   needsPasswordSetup: boolean;
   enterGuestMode: () => void;
-  sendOtp: (telephone: string, isRegister?: boolean) => Promise<{ success: boolean; error?: string }>;
-  verifyOtp: (telephone: string, code: string, isRegister?: boolean) => Promise<{ success: boolean; isNewUser?: boolean; error?: string }>;
-  sendOtpEmail: (email: string, isRegister?: boolean, telephone?: string) => Promise<{ success: boolean; error?: string; isNetworkError?: boolean }>;
+  sendOtpEmail: (email: string, isRegister?: boolean) => Promise<{ success: boolean; error?: string; isNetworkError?: boolean }>;
   verifyOtpEmail: (email: string, code: string, isRegister?: boolean) => Promise<{ success: boolean; isNewUser?: boolean; error?: string }>;
   loginWithEmail: (email: string, password: string, rememberMe?: boolean) => Promise<{ success: boolean; error?: string; isNetworkError?: boolean }>;
-  loginWithPhone: (telephone: string, password: string, rememberMe?: boolean) => Promise<{ success: boolean; error?: string; isNetworkError?: boolean }>;
   setPassword: (password: string) => Promise<{ success: boolean; error?: string; isNetworkError?: boolean }>;
   resetPasswordOtp: (password: string) => Promise<{ success: boolean; error?: string; isNetworkError?: boolean }>;
   googleLogin: (idToken: string) => Promise<{ success: boolean; isNewUser?: boolean; error?: string; rawError?: unknown }>;
@@ -165,36 +162,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.client?.id]);
 
-  const sendOtp = useCallback(async (telephone: string, isRegister = false) => {
+  const sendOtpEmail = useCallback(async (email: string, isRegister = false) => {
     try {
-      await api.sendOtp(telephone, isRegister);
-      return { success: true };
-    } catch (error: unknown) {
-      return { success: false, error: extractErrorMessage(error), isNetworkError: checkNetworkError(error) };
-    }
-  }, []);
-
-  const verifyOtp = useCallback(async (telephone: string, code: string, isRegister = false) => {
-    try {
-      const response = await api.verifyOtp(telephone, code, isRegister);
-      store.setClient(response.client);
-      logInfo('Auth', 'OTP vérifié:', response.client?.prenom, '| nouveau:', response.isNewUser);
-      // Flag phone-OTP new registrations so set-password is shown even after app restart
-      if (response.isNewUser && isRegister) {
-        await api.setEmailOtpNewUser();
-        store.setNeedsPasswordSetup(true);
-      }
-      return { success: true, isNewUser: response.isNewUser };
-    } catch (error: unknown) {
-      return { success: false, error: extractErrorMessage(error), isNetworkError: checkNetworkError(error) };
-    }
-  }, []);
-
-
-
-  const sendOtpEmail = useCallback(async (email: string, isRegister = false, telephone?: string) => {
-    try {
-      await api.sendOtpEmail(email, isRegister, telephone);
+      await api.sendOtpEmail(email, isRegister);
       return { success: true };
     } catch (error: unknown) {
       return { success: false, error: extractErrorMessage(error), isNetworkError: checkNetworkError(error) };
@@ -252,19 +222,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const response = await api.loginWithEmail(email, password);
       store.setClient(response.client);
       logInfo('Auth', 'Connexion email réussie:', response.client?.prenom);
-      return { success: true };
-    } catch (error: unknown) {
-      return { success: false, error: extractErrorMessage(error), isNetworkError: checkNetworkError(error) };
-    }
-  }, []);
-
-  const loginWithPhone = useCallback(async (telephone: string, password: string, rememberMe = true) => {
-    sessionVersionRef.current++;
-    try {
-      await api.setRememberMe(rememberMe);
-      const response = await api.loginWithPhone(telephone, password);
-      store.setClient(response.client);
-      logInfo('Auth', 'Connexion téléphone réussie:', response.client?.prenom);
       return { success: true };
     } catch (error: unknown) {
       return { success: false, error: extractErrorMessage(error), isNetworkError: checkNetworkError(error) };
@@ -370,12 +327,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     isGuest: store.isGuest,
     needsPasswordSetup: store.needsPasswordSetup,
     enterGuestMode,
-    sendOtp,
-    verifyOtp,
     sendOtpEmail,
     verifyOtpEmail,
     loginWithEmail,
-    loginWithPhone,
     setPassword: setPasswordFn,
     resetPasswordOtp: resetPasswordOtpFn,
     googleLogin,
@@ -383,7 +337,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     completeProfile,
     logout,
     refreshProfile,
-  }), [store.client, store.loading, store.needsPasswordSetup, store.isGuest, enterGuestMode, sendOtp, verifyOtp, sendOtpEmail, verifyOtpEmail, loginWithEmail, loginWithPhone, setPasswordFn, resetPasswordOtpFn, googleLogin, appleLogin, completeProfile, logout, refreshProfile]);
+  }), [store.client, store.loading, store.needsPasswordSetup, store.isGuest, enterGuestMode, sendOtpEmail, verifyOtpEmail, loginWithEmail, setPasswordFn, resetPasswordOtpFn, googleLogin, appleLogin, completeProfile, logout, refreshProfile]);
 
   return (
     <AuthContext.Provider value={value}>

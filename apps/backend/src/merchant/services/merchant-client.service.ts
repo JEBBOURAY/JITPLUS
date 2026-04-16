@@ -141,7 +141,7 @@ export class MerchantClientService {
       ? await Promise.all([
           this.loyaltyCardRepo.findMany({
             where: { merchantId, clientId: { in: clientIds } },
-            select: { clientId: true, points: true, createdAt: true },
+            select: { clientId: true, points: true, createdAt: true, deactivatedAt: true },
           }),
           this.transactionRepo.groupBy({
             by: ['clientId'],
@@ -171,7 +171,7 @@ export class MerchantClientService {
       }),
       this.loyaltyCardRepo.findUnique({
         where: { clientId_merchantId: { clientId, merchantId } },
-        select: { id: true, points: true, createdAt: true },
+        select: { id: true, points: true, createdAt: true, deactivatedAt: true },
       }),
       this.merchantRepo.findUnique({
         where: { id: merchantId },
@@ -180,21 +180,29 @@ export class MerchantClientService {
     ]);
     if (!client) throw new NotFoundException('Client non trouvé');
 
+    // If the card exists but is deactivated, reactivate it (merchant scanning = implicit rejoin)
     let loyaltyCard = loyaltyCardResult;
+    if (loyaltyCard?.deactivatedAt) {
+      loyaltyCard = await this.loyaltyCardRepo.update({
+        where: { id: loyaltyCard.id },
+        data: { deactivatedAt: null },
+        select: { id: true, points: true, createdAt: true, deactivatedAt: true },
+      });
+    }
     if (!loyaltyCard) {
       // Enforce client limit for FREE plan before creating loyalty card
       await this.planService.assertCanAddClient(merchantId);
       try {
         loyaltyCard = await this.loyaltyCardRepo.create({
           data: { clientId, merchantId, points: 0 },
-          select: { id: true, points: true, createdAt: true },
+          select: { id: true, points: true, createdAt: true, deactivatedAt: true },
         });
       } catch (e: any) {
         // P2002 = unique constraint: a concurrent request created the card first
         if (e?.code === 'P2002') {
           loyaltyCard = await this.loyaltyCardRepo.findUnique({
             where: { clientId_merchantId: { clientId, merchantId } },
-            select: { id: true, points: true, createdAt: true },
+            select: { id: true, points: true, createdAt: true, deactivatedAt: true },
           });
           if (!loyaltyCard) throw e;
         } else {
@@ -212,8 +220,8 @@ export class MerchantClientService {
       nom: shared ? client.nom : maskName(client.nom),
       email: shared ? client.email : null,
       telephone: shared ? client.telephone : null,
-      points: loyaltyCard.points,
-      hasReward: loyaltyCard.points >= rewardThreshold,
+      points: loyaltyCard!.points,
+      hasReward: loyaltyCard!.points >= rewardThreshold,
       rewardThreshold,
       loyaltyType: merchant?.loyaltyType || DEFAULT_LOYALTY_TYPE,
       stampsForReward: rewardThreshold,
@@ -221,12 +229,12 @@ export class MerchantClientService {
   }
 
   async getClientDetail(clientId: string, merchantId: string) {
-    // IDOR protection: verify the client has a loyalty card with this merchant
+    // IDOR protection: verify the client has an active loyalty card with this merchant
     const ownershipCheck = await this.loyaltyCardRepo.findUnique({
       where: { clientId_merchantId: { clientId, merchantId } },
-      select: { id: true },
+      select: { id: true, deactivatedAt: true },
     });
-    if (!ownershipCheck) throw new NotFoundException('Client non trouvé');
+    if (!ownershipCheck || ownershipCheck.deactivatedAt) throw new NotFoundException('Client non trouvé');
 
     const [client, loyaltyCard, transactions, merchant] = await Promise.all([
       this.clientRepo.findUnique({
@@ -235,7 +243,7 @@ export class MerchantClientService {
       }),
       this.loyaltyCardRepo.findUnique({
         where: { clientId_merchantId: { clientId, merchantId } },
-        select: { points: true, createdAt: true },
+        select: { points: true, createdAt: true, deactivatedAt: true },
       }),
       this.transactionRepo.findMany({
         where: { clientId, merchantId },

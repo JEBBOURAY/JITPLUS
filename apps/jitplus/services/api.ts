@@ -75,11 +75,8 @@ const setRefreshToken = (token: string) => setStored(REFRESH_TOKEN_KEY, token);
 const removeRefreshToken = () => removeStored(REFRESH_TOKEN_KEY);
 
 const AUTH_ROUTES = [
-  '/client-auth/send-otp',
-  '/client-auth/verify-otp',
   '/client-auth/refresh',
   '/client-auth/login-email',
-  '/client-auth/login-phone',
   '/client-auth/google-login',
   '/client-auth/apple-login',
 ];
@@ -139,10 +136,6 @@ class ApiService {
   }
 
   // ── Auth ────────────────────────────────────────────────
-  async sendOtp(telephone: string, isRegister = false): Promise<OtpResponse> {
-    const { data } = await this.api.post('/client-auth/send-otp', { telephone, isRegister });
-    return data;
-  }
 
   /** Store both tokens from an auth response */
   private async persistTokens(data: { access_token?: string; refresh_token?: string }) {
@@ -150,17 +143,11 @@ class ApiService {
     if (data.refresh_token) await setRefreshToken(data.refresh_token);
   }
 
-  async verifyOtp(telephone: string, code: string, isRegister = false): Promise<AuthResponse> {
-    const { data } = await this.api.post('/client-auth/verify-otp', { telephone, code, isRegister });
-    await this.persistTokens(data);
-    return data;
-  }
-
   // devLogin removed — endpoint only available via direct HTTP in dev builds
 
   // ── Email OTP ───────────────────────────────────────────
-  async sendOtpEmail(email: string, isRegister = false, telephone?: string): Promise<OtpResponse> {
-    const { data } = await this.api.post('/client-auth/send-otp-email', { email, isRegister, ...(telephone && { telephone }) });
+  async sendOtpEmail(email: string, isRegister = false): Promise<OtpResponse> {
+    const { data } = await this.api.post('/client-auth/send-otp-email', { email, isRegister });
     return data;
   }
 
@@ -187,13 +174,6 @@ class ApiService {
   // ── Email + Password Login ──────────────────────────────
   async loginWithEmail(email: string, password: string): Promise<AuthResponse> {
     const { data } = await this.api.post('/client-auth/login-email', { email, password });
-    await this.persistTokens(data);
-    return data;
-  }
-
-  // ── Phone + Password Login ──────────────────────────────
-  async loginWithPhone(telephone: string, password: string): Promise<AuthResponse> {
-    const { data } = await this.api.post('/client-auth/login-phone', { telephone, password });
     await this.persistTokens(data);
     return data;
   }
@@ -258,6 +238,11 @@ class ApiService {
   }
 
   // ── Points & Cards ──────────────────────────────────────
+  async getProfileStats(): Promise<{ totalScans: number; totalRewards: number }> {
+    const { data } = await this.api.get('/client/stats');
+    return data;
+  }
+
   async getPointsOverview(): Promise<PointsOverview> {
     const { data } = await this.api.get('/client/points');
     return data;
@@ -374,7 +359,9 @@ class ApiService {
   async setRememberMe(value: boolean): Promise<void> {
     _shouldPersist = value;
     if (Platform.OS !== 'web') {
-      try { await SecureStore.setItemAsync(REMEMBER_ME_KEY, String(value)); } catch {}
+      try { await SecureStore.setItemAsync(REMEMBER_ME_KEY, String(value)); } catch (e) {
+        if (IS_DEV) console.warn(`SecureStore write failed (${REMEMBER_ME_KEY}):`, e);
+      }
     }
   }
 
@@ -384,13 +371,18 @@ class ApiService {
     try {
       const val = await SecureStore.getItemAsync(REMEMBER_ME_KEY);
       return val === 'true';
-    } catch { return false; }
+    } catch (e) {
+      if (IS_DEV) console.warn(`SecureStore read failed (${REMEMBER_ME_KEY}):`, e);
+      return false;
+    }
   }
 
   async clearRememberMe(): Promise<void> {
     _shouldPersist = true;
     if (Platform.OS !== 'web') {
-      try { await SecureStore.deleteItemAsync(REMEMBER_ME_KEY); } catch {}
+      try { await SecureStore.deleteItemAsync(REMEMBER_ME_KEY); } catch (e) {
+        if (IS_DEV) console.warn(`SecureStore delete failed (${REMEMBER_ME_KEY}):`, e);
+      }
     }
   }
 
@@ -406,13 +398,18 @@ class ApiService {
   /** Returns true if an email-OTP new registration needs password setup */
   async getEmailOtpNewUser(): Promise<boolean> {
     if (Platform.OS === 'web') return false;
-    try { return (await SecureStore.getItemAsync(EMAIL_OTP_NEW_USER_KEY)) === '1'; } catch { return false; }
+    try { return (await SecureStore.getItemAsync(EMAIL_OTP_NEW_USER_KEY)) === '1'; } catch (e) {
+      if (IS_DEV) console.warn(`SecureStore read failed (${EMAIL_OTP_NEW_USER_KEY}):`, e);
+      return false;
+    }
   }
 
   /** Clear the flag once password has been set (or on logout) */
   async clearEmailOtpNewUser(): Promise<void> {
     if (Platform.OS === 'web') return;
-    try { await SecureStore.deleteItemAsync(EMAIL_OTP_NEW_USER_KEY); } catch {}
+    try { await SecureStore.deleteItemAsync(EMAIL_OTP_NEW_USER_KEY); } catch (e) {
+      if (IS_DEV) console.warn(`SecureStore delete failed (${EMAIL_OTP_NEW_USER_KEY}):`, e);
+    }
   }
 
   async logout(): Promise<void> {

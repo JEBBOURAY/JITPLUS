@@ -19,7 +19,6 @@ import {
   ChevronRight,
   Info,
 } from 'lucide-react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import Constants from 'expo-constants';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -106,24 +105,18 @@ export default function LegalScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
-      {/* ── Header ─────────────────────────────────── */}
-      <LinearGradient
-        colors={['#7C3AED', '#1F2937']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={[styles.header, { paddingTop: insets.top + 8 }]}
-      >
+      {/* ── Simple header — matches activity style ── */}
+      <View style={[styles.headerBar, { paddingTop: insets.top + 12 }]}>
         <TouchableOpacity
           onPress={() => router.back()}
           style={styles.backBtn}
           accessibilityRole="button"
           accessibilityLabel={t('common.back')}
         >
-          <ArrowLeft size={24} color="#fff" />
+          <ArrowLeft size={22} color={theme.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>{t('legal.title')}</Text>
-        <View style={styles.headerRight} />
-      </LinearGradient>
+        <Text style={[styles.headerTitle, { color: theme.text }]}>{t('legal.title')}</Text>
+      </View>
 
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 32 }]}
@@ -203,12 +196,13 @@ export default function LegalScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
 
-  // ── Header ──
-  header: {
+  // ── Header — simple bar (activity style) ──
+  headerBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingBottom: 16,
-    paddingHorizontal: 16,
+    paddingHorizontal: 24,
+    paddingBottom: 12,
+    gap: 10,
   },
   backBtn: {
     width: 40,
@@ -216,17 +210,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.15)',
   },
   headerTitle: {
     flex: 1,
-    textAlign: 'center',
-    fontSize: 18,
+    fontSize: 28,
     fontWeight: '700',
-    color: '#fff',
     fontFamily: 'Lexend_700Bold',
+    letterSpacing: -0.5,
   },
-  headerRight: { width: 40 },
 
   // ── Content ──
   content: {

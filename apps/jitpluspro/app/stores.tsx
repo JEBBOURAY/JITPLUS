@@ -56,10 +56,8 @@ import { isValidEmail } from '@/utils/validation';
 import PremiumLockModal from '@/components/PremiumLockModal';
 import MerchantLogo from '@/components/MerchantLogo';
 import { wp, hp, ms, fontSize as FS } from '@/utils/responsive';
-import { palette, brandGradient } from '@/contexts/ThemeContext';
+import { palette } from '@/contexts/ThemeContext';
 import { resolveImageUrl } from '@/utils/imageUrl';
-import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
 
 const JITPRO_LOGO = require('@/assets/images/jitplusprologo.png');
 
@@ -595,33 +593,12 @@ export default function StoresScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
-      {/* Header */}
-      <View collapsable={false}>
-        <LinearGradient
-          colors={[...brandGradient]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.headerGradient}
-        >
-          <BlurView
-            intensity={Platform.OS === 'ios' ? 40 : 20}
-            tint={theme.mode === 'dark' ? 'dark' : 'default'}
-            style={[styles.headerBlur, { paddingTop: insets.top + 16 }]}
-          >
-            <View style={styles.glassOverlay} />
-            <View style={styles.header}>
-              <TouchableOpacity onPress={() => router.back()} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                <ArrowLeft size={22} color="#fff" />
-              </TouchableOpacity>
-              <Text style={styles.headerTitle}>{t('stores.title')}</Text>
-              <View style={{ width: 24 }} />
-            </View>
-          </BlurView>
-        </LinearGradient>
-        <LinearGradient
-          colors={['rgba(124,58,237,0.3)', 'transparent']}
-          style={styles.headerFade}
-        />
+      {/* ── Simple header — matches activity style ── */}
+      <View style={[styles.headerBar, { paddingTop: insets.top + 12 }]}>
+        <TouchableOpacity onPress={() => router.back()} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <ArrowLeft size={22} color={theme.text} />
+        </TouchableOpacity>
+        <Text style={[styles.headerTitle, { color: theme.text }]}>{t('stores.title')}</Text>
       </View>
 
       {/* Counter */}
@@ -1191,22 +1168,21 @@ export default function StoresScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
 
-  // Header — glassmorphism
-  headerGradient: { overflow: 'hidden' },
-  headerBlur: { overflow: 'hidden' },
-  glassOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-  },
-  header: {
+  // Header — simple bar (activity style)
+  headerBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: 24,
-    paddingBottom: 20,
+    paddingBottom: 12,
+    gap: 10,
   },
-  headerTitle: { fontSize: 20, fontWeight: '700', color: '#FFFFFF', fontFamily: 'Lexend_700Bold', letterSpacing: -0.3 },
-  headerFade: { height: 4 },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: '700',
+    fontFamily: 'Lexend_700Bold',
+    letterSpacing: -0.5,
+    flex: 1,
+  },
   counterRow: {
     flexDirection: 'row',
     alignItems: 'center',

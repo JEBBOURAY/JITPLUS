@@ -3,7 +3,7 @@ import { DarkTheme, DefaultTheme, ThemeProvider as NavThemeProvider } from '@rea
 import { Lexend_400Regular, Lexend_500Medium, Lexend_600SemiBold, Lexend_700Bold } from '@expo-google-fonts/lexend';
 import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
 import { useFonts } from 'expo-font';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
@@ -47,17 +47,46 @@ onlineManager.setEventListener((setOnline) => {
   });
 });
 
+// ── Persist options (module-level to avoid re-creating on every render) ─────
+const persistOptions = {
+  persister: asyncStoragePersister,
+  maxAge: CACHE_MAX_AGE,
+  dehydrateOptions: {
+    shouldDehydrateQuery: (query: { state: { status: string }; queryKey: readonly unknown[] }) =>
+      query.state.status === 'success' &&
+      [
+        'stores', 'rewards', 'plan', 'referral',
+        'dashboard-stats', 'dashboard-trends',
+        'transactions', 'clients',
+        'notification-history', 'admin-notifications',
+        'admin-notif-unread-count', 'whatsapp-quota', 'email-quota',
+        'pending-gifts', 'team-members',
+      ].includes(String(query.queryKey[0] ?? '').toLowerCase()),
+  },
+};
+
+// Skip expected HTTP 4xx errors (business/validation failures) from Sentry.
+// Only report 5xx, network errors, and non-HTTP errors.
+function isServerOrNetworkError(error: unknown): boolean {
+  const status = (error as { response?: { status?: number } })?.response?.status;
+  return !status || status >= 500;
+}
+
 const queryClient = new QueryClient({
   queryCache: new QueryCache({
     onError: (error, query) => {
       logError('ReactQuery', `Query failed [${String(query.queryKey)}]`, error);
-      if (!__DEV__) captureException(error, { tags: { source: 'react-query' } });
+      if (!__DEV__ && isServerOrNetworkError(error)) {
+        captureException(error, { tags: { source: 'react-query' } });
+      }
     },
   }),
   mutationCache: new MutationCache({
     onError: (error, _vars, _ctx, mutation) => {
       logError('Mutation', `Mutation failed [${String(mutation.options.mutationKey ?? 'anonymous')}]`, error);
-      if (!__DEV__) captureException(error, { tags: { source: 'react-query-mutation' } });
+      if (!__DEV__ && isServerOrNetworkError(error)) {
+        captureException(error, { tags: { source: 'react-query-mutation' } });
+      }
     },
   }),
   defaultOptions: {
@@ -99,6 +128,18 @@ try {
     maxBreadcrumbs: 50,
     attachScreenshot: false, // Disabled: screenshots can capture PII (names, cards, balances)
     attachViewHierarchy: false, // Disabled: view hierarchy can leak PII
+    ignoreErrors: [
+      'No refresh token',
+      'No refresh credentials',
+      'Session expired',
+      'Network Error',
+      'ECONNABORTED',
+    ],
+    beforeSend(event) {
+      const msg = event.exception?.values?.[0]?.value ?? '';
+      if (/No refresh (token|credentials)|Session expired/i.test(msg)) return null;
+      return event;
+    },
   });
 } catch (e) {
   // Sentry init can crash if native module is misconfigured — never block app launch
@@ -113,7 +154,11 @@ if (typeof globalThis !== 'undefined') {
   (globalThis as any).onunhandledrejection = (event: any) => {
     const error = event?.reason;
     if (!__DEV__ && error) {
-      try { captureException(error, { tags: { source: 'unhandled-promise' } }); } catch {}
+      // Skip expected auth failures — already handled by onAuthFailure / onUnauthorized
+      const msg = error?.message ?? '';
+      if (!/No refresh (token|credentials)|Session expired/i.test(msg)) {
+        try { captureException(error, { tags: { source: 'unhandled-promise' } }); } catch {}
+      }
     }
     if (originalHandler) originalHandler(event);
   };
@@ -243,25 +288,8 @@ function RootLayoutNav() {
       <AppErrorBoundary>
         <PersistQueryClientProvider
           client={queryClient}
-        persistOptions={{
-          persister: asyncStoragePersister,
-          maxAge: CACHE_MAX_AGE,
-          dehydrateOptions: {
-            shouldDehydrateQuery: (query) =>
-              query.state.status === 'success' &&
-              // Whitelist approach: only persist known-safe cache keys.
-              // Unknown keys are NOT persisted — safer than a blacklist.
-              [
-                'stores', 'rewards', 'plan', 'referral',
-                'dashboard-stats', 'dashboard-trends',
-                'transactions', 'clients',
-                'notification-history', 'admin-notifications',
-                'admin-notif-unread-count', 'whatsapp-quota', 'email-quota',
-                'pending-gifts', 'team-members',
-              ].includes(String(query.queryKey[0] ?? '').toLowerCase()),
-          },
-        }}
-      >
+          persistOptions={persistOptions}
+        >
       <AuthProvider>
         <ThemeProvider>
           <LanguageProvider>
@@ -277,13 +305,28 @@ function RootLayoutNav() {
   );
 }
 
+// Public routes that don't require authentication
+const PUBLIC_ROUTES = new Set(['welcome', 'login', 'register', 'verify-email']);
+
 function ThemedNavigator() {
   const theme = useTheme();
   const { isDark } = theme;
-  const { merchant, isTeamMember } = useAuth();
+  const { merchant, isTeamMember, loading } = useAuth();
   const { status, storeUrl } = useForceUpdate();
   const router = useRouter();
+  const segments = useSegments();
   const queryClient = useQueryClient();
+
+  // SECURITY: Redirect unauthenticated deep links to welcome.
+  // Without this, a deep link to e.g. jitpluspro://security could
+  // render a protected screen without auth.
+  useEffect(() => {
+    if (loading) return;
+    const firstSegment = segments[0] ?? '';
+    if (!merchant && !PUBLIC_ROUTES.has(firstSegment)) {
+      router.replace('/welcome');
+    }
+  }, [loading, merchant, segments, router]);
   const notificationListener = useRef<{ remove(): void } | null>(null);
   const responseListener = useRef<{ remove(): void } | null>(null);
 
@@ -392,30 +435,38 @@ function ThemedNavigator() {
     // Reset iOS badge when app is foregrounded
     Notifications.setBadgeCountAsync(0).catch(() => {});
 
+    // SECURITY/PERF: Debounce notification-received invalidations — if 5 push
+    // notifications arrive in quick succession, we batch into a single refetch
+    // instead of firing 10 HTTP requests (2 per notification).
+    let notifDebounceTimer: ReturnType<typeof setTimeout> | null = null;
     notificationListener.current = Notifications.addNotificationReceivedListener((notification) => {
       logInfo('Notifications', 'Notification received:', notification.request.content);
-      // Only invalidate notification-related caches — dashboard-stats is not
-      // affected by push notifications and caused unnecessary request bursts.
-      queryClient.invalidateQueries({ queryKey: ['admin-notifications'] });
-      queryClient.invalidateQueries({ queryKey: ['admin-notif-unread-count'] });
+      if (notifDebounceTimer) clearTimeout(notifDebounceTimer);
+      notifDebounceTimer = setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ['admin-notifications'] });
+        queryClient.invalidateQueries({ queryKey: ['admin-notif-unread-count'] });
+      }, 300);
     });
 
     const navigateByAction = (action?: string) => {
       try {
         switch (action) {
-          case 'open_referral':  router.push('/referral'); break;
-          case 'open_settings':  router.push('/settings'); break;
-          case 'open_logo':      router.push('/(tabs)/account'); break;
-          case 'open_scan':      router.push('/(tabs)/scan'); break;
-          case 'open_plan':      router.push('/(tabs)/account'); break;
-          default:               router.push('/admin-notifications'); break;
+          case 'open_referral':      router.push('/referral'); break;
+          case 'open_settings':      router.push('/settings'); break;
+          case 'open_logo':          router.push('/(tabs)/account'); break;
+          case 'open_scan':          router.push('/(tabs)/scan'); break;
+          case 'open_plan':          router.push('/(tabs)/account'); break;
+          case 'open_dashboard':     router.push('/(tabs)'); break;
+          case 'open_clients':       router.push('/(tabs)/activity'); break;
+          case 'open_notifications': router.push('/(tabs)/messages'); break;
+          default:                   router.push('/admin-notifications'); break;
         }
       } catch (e) { logWarn('Notifications', 'Navigation failed', e); }
     };
 
     responseListener.current = Notifications.addNotificationResponseReceivedListener((response) => {
       logInfo('Notifications', 'Notification tapped:', response.notification.request.content);
-      Notifications.setBadgeCountAsync(0).catch(() => {});
+      Notifications!.setBadgeCountAsync(0).catch(() => {});
       queryClient.invalidateQueries({ queryKey: ['admin-notifications'] });
       queryClient.invalidateQueries({ queryKey: ['admin-notif-unread-count'] });
       const action = response.notification.request.content.data?.action as string | undefined;
@@ -434,6 +485,7 @@ function ThemedNavigator() {
     });
 
     return () => {
+      if (notifDebounceTimer) clearTimeout(notifDebounceTimer);
       tokenSub.remove();
       notificationListener.current?.remove();
       responseListener.current?.remove();

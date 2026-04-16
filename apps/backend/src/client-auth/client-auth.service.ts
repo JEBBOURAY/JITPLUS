@@ -158,77 +158,7 @@ export class ClientAuthService {
     return /^\+\d{10,15}$/.test(normalizedPhone);
   }
 
-  /**
-   * Generate and store OTP for phone number
-   */
-  async sendOtp(telephone: string, isRegister = false): Promise<{ success: boolean; message: string }> {
-    const normalizedPhone = this.normalizePhone(telephone);
 
-    // Validate international format
-    if (!this.isValidPhone(normalizedPhone)) {
-      throw new BadRequestException('Format de numéro de téléphone invalide');
-    }
-
-    // Check account existence before sending OTP
-    const existingClient = await this.clientRepo.findUnique({
-      where: { telephone: normalizedPhone },
-      select: { id: true },
-    });
-
-    if (isRegister && existingClient) {
-      throw new ConflictException('Un compte avec ce numéro de téléphone existe déjà. Veuillez vous connecter.');
-    }
-
-    if (!isRegister && !existingClient) {
-      throw new BadRequestException('Aucun compte n\'est associé à ce numéro. Veuillez d\'abord ajouter votre numéro à votre profil ou vous inscrire.');
-    }
-
-    // Daily OTP send limit per phone number
-    checkDailyOtpLimit(normalizedPhone);
-
-    // Per-identifier cooldown — prevent OTP spam even if IP changes
-    const existingOtp = await this.otpRepo.findUnique({ where: { telephone: normalizedPhone } });
-    if (existingOtp && existingOtp.expiresAt.getTime() - OTP_EXPIRY_MS + OTP_COOLDOWN_MS > Date.now()) {
-      throw new HttpException('Veuillez patienter avant de renvoyer un code.', HttpStatus.TOO_MANY_REQUESTS);
-    }
-
-    // Generate 6-digit OTP (cryptographically secure)
-    const code = randomInt(OTP_MIN, OTP_MAX).toString();
-    const codeHash = hashOtp(code);
-    const expiresAt = new Date(Date.now() + OTP_EXPIRY_MS);
-
-    // Store or update OTP (hash only — never store plaintext)
-    await this.otpRepo.upsert({
-      where: { telephone: normalizedPhone },
-      create: {
-        telephone: normalizedPhone,
-        code: codeHash,
-        expiresAt,
-      },
-      update: {
-        code: codeHash,
-        expiresAt,
-        attempts: 0,
-      },
-    });
-
-    // In dev only, log a hint (never log the full code)
-    if (process.env.NODE_ENV === 'development') {
-      this.logger.debug(`[DEV] OTP envoyé à ${normalizedPhone} (derniers chiffres: ${code.slice(-2)})`);
-    }
-
-    // Send OTP via WhatsApp (Twilio) — works in both dev (sandbox) and prod
-    const sent = await this.smsProvider.sendWhatsAppOtp(normalizedPhone, code);
-    if (!sent) {
-      this.logger.warn(`OTP WhatsApp non envoyé à ${normalizedPhone} — vérifiez la config Twilio`);
-      throw new HttpException(
-        "Impossible d'envoyer le code WhatsApp. Veuillez réessayer ou choisir la connexion par email.",
-        HttpStatus.SERVICE_UNAVAILABLE,
-      );
-    }
-
-    return { success: true, message: 'Code envoyé avec succès' };
-  }
 
   /** Shared DB callbacks for OTP helper */
   private get otpDbOps(): OtpDbOps {
@@ -256,63 +186,7 @@ export class ClientAuthService {
     throw error;
   }
 
-  /**
-   * Verify OTP and return JWT token + isNewUser flag
-   */
-  async verifyOtp(telephone: string, code: string): Promise<ClientAuthResponse> {
-    const normalizedPhone = this.normalizePhone(telephone);
 
-    const otpRecord = await this.otpRepo.findUnique({
-      where: { telephone: normalizedPhone },
-    });
-
-    try {
-      validateOtp(otpRecord, code, 'Aucun code n\'a été envoyé à ce numéro');
-    } catch (error) {
-      await this.handleOtpError(error, otpRecord);
-    }
-
-    // Delete OTP after successful verification + find client in parallel
-    const [, client] = await Promise.all([
-      this.otpRepo.delete({ where: { id: otpRecord!.id } }),
-      this.clientRepo.findUnique({
-        where: { telephone: normalizedPhone },
-        select: CLIENT_AUTH_SELECT,
-      }),
-    ]);
-
-    let resolvedClient = client;
-
-    const isNewUser = !resolvedClient || !resolvedClient.nom;
-
-    if (!resolvedClient) {
-      try {
-        resolvedClient = await this.clientRepo.create({
-          data: {
-            telephone: normalizedPhone,
-            telephoneVerified: true,
-            countryCode: this.extractCountryCode(normalizedPhone),
-            nom: null,
-            email: null,
-          },
-          select: CLIENT_AUTH_SELECT,
-        });
-      } catch (error: any) {
-        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-          throw new ConflictException('Un compte avec ce numéro de téléphone existe déjà');
-        }
-        throw error;
-      }
-    }
-
-    // Mark phone as verified since OTP was validated
-    if (resolvedClient && !(resolvedClient as any).telephoneVerified) {
-      await this.clientRepo.update({ where: { id: resolvedClient.id }, data: { telephoneVerified: true } });
-      (resolvedClient as any).telephoneVerified = true;
-    }
-
-    return this.buildAuthResponse(resolvedClient, isNewUser);
-  }
 
   /** Generate a cryptographically random refresh token */
   private generateRefreshToken(): string {
@@ -474,7 +348,7 @@ export class ClientAuthService {
   /**
    * Send OTP to email address
    */
-  async sendOtpEmail(email: string, isRegister = false, telephone?: string): Promise<{ success: boolean; message: string }> {
+  async sendOtpEmail(email: string, isRegister = false): Promise<{ success: boolean; message: string }> {
     const normalizedEmail = email.trim().toLowerCase();
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
@@ -495,17 +369,6 @@ export class ClientAuthService {
       throw new BadRequestException('Aucun compte n\'est associé à cet email. Veuillez d\'abord ajouter votre email à votre profil ou vous inscrire.');
     }
 
-    // If registering with a phone, ensure the phone is not already taken by an active account
-    if (isRegister && telephone) {
-      const phoneInUse = await this.clientRepo.findFirst({
-        where: { telephone, deletedAt: null },
-        select: { id: true },
-      });
-      if (phoneInUse) {
-        throw new ConflictException('Ce numéro de téléphone est déjà associé à un autre compte.');
-      }
-    }
-
     // Daily OTP send limit per email
     checkDailyOtpLimit(normalizedEmail);
 
@@ -520,17 +383,14 @@ export class ClientAuthService {
     const expiresAt = new Date(Date.now() + OTP_EXPIRY_MS);
 
     // Upsert OTP by email (hash only — never store plaintext)
-    // Store telephone alongside email so verifyOtpEmail can attach it to the new client
     await this.otpRepo.upsert({
       where: { email: normalizedEmail },
       create: {
         email: normalizedEmail,
-        telephone: telephone || null,
         code: codeHash,
         expiresAt,
       },
       update: {
-        telephone: telephone || null,
         code: codeHash,
         expiresAt,
         attempts: 0,
@@ -572,9 +432,6 @@ export class ClientAuthService {
       this.clientRepo.findUnique({ where: { email: normalizedEmail }, select: CLIENT_AUTH_SELECT }),
     ]);
 
-    // telephone was stored alongside the OTP during registration
-    const registrationPhone = otpRecord!.telephone;
-
     let resolvedClient = client;
     const isNewUser = !resolvedClient || !resolvedClient.nom;
 
@@ -589,7 +446,6 @@ export class ClientAuthService {
             email: normalizedEmail,
             emailVerified: true,
             nom: null,
-            ...(registrationPhone && { telephone: registrationPhone }),
           },
           select: CLIENT_AUTH_SELECT,
         });
@@ -758,9 +614,13 @@ export class ClientAuthService {
 
     const publicKey = createPublicKey({ key: matchingKey, format: 'jwk' });
 
+    // APPLE_BUNDLE_IDS: comma-separated list of bundle IDs (e.g. "com.jitplus.client,com.jitplus.pro")
+    const appleBundleIds = (this.configService.get<string>('APPLE_BUNDLE_IDS') || '').split(',').map(s => s.trim()).filter(Boolean);
+
     const payload = jwt.verify(identityToken, publicKey, {
       algorithms: ['RS256'],
       issuer: 'https://appleid.apple.com',
+      ...(appleBundleIds.length > 0 && { audience: appleBundleIds as [string, ...string[]] }),
     }) as jwt.JwtPayload & { sub: string; email?: string; email_verified?: string };
 
     return payload;
@@ -922,43 +782,10 @@ export class ClientAuthService {
       select: CLIENT_LOGIN_SELECT,
     });
 
-    // Timing-safe: always run bcrypt compare even if user not found
-    const isValid = await bcrypt.compare(
-      password,
-      client?.password ?? ClientAuthService.DUMMY_HASH,
-    );
-
-    if (!client || !client.password || !isValid) {
-      if (client) {
-        await handleFailedLogin(client, this.clientLockoutOps);
-      }
-      throw new BadRequestException(genericError);
+    // Brute-force protection — check BEFORE bcrypt to avoid resource waste on locked accounts
+    if (client) {
+      checkLockout(client);
     }
-
-    // Brute-force protection
-    checkLockout(client);
-
-    // Successful login — reset failed attempts
-    await resetLoginAttempts(client, this.clientLockoutOps);
-
-    return this.buildAuthResponse(client, false);
-  }
-
-  /**
-   * Login with phone number and password (no OTP required)
-   */
-  async loginWithPhonePassword(telephone: string, password: string): Promise<ClientAuthResponse> {
-    const normalizedPhone = this.normalizePhone(telephone);
-    const genericError = 'Numéro ou mot de passe incorrect.';
-
-    if (!this.isValidPhone(normalizedPhone)) {
-      throw new BadRequestException('Format de numéro de téléphone invalide');
-    }
-
-    const client = await this.clientRepo.findUnique({
-      where: { telephone: normalizedPhone },
-      select: CLIENT_LOGIN_SELECT,
-    });
 
     // Timing-safe: always run bcrypt compare even if user not found
     const isValid = await bcrypt.compare(
@@ -972,9 +799,6 @@ export class ClientAuthService {
       }
       throw new BadRequestException(genericError);
     }
-
-    // Brute-force protection
-    checkLockout(client);
 
     // Successful login — reset failed attempts
     await resetLoginAttempts(client, this.clientLockoutOps);

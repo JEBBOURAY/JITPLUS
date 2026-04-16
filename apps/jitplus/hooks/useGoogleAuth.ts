@@ -153,7 +153,7 @@ export function useGoogleAuth({ actionLabel, onCancel }: UseGoogleAuthOptions) {
 
       // Show user-friendly message; include native details only in development
       const nativeMsg = err instanceof Error ? err.message : String(err);
-      const code = isErrorWithCode && isErrorWithCode(err) ? (err as any).code : '';
+      const code = isErrorWithCode && isErrorWithCode(err) ? (err as { code: string }).code : '';
       const userMessage = i18n.t('googleAuth.launchError', { action: actionLabel });
       if (__DEV__) {
         const detail = code ? `[${code}] ${nativeMsg}` : nativeMsg;

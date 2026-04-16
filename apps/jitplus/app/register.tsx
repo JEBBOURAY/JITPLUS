@@ -12,10 +12,11 @@ import {
   Animated,
   Image,
   ScrollView,
+  Keyboard,
 } from 'react-native';
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 import { router } from 'expo-router';
-import { ArrowRight, Mail, ChevronLeft, Check, Phone } from 'lucide-react-native';
+import { ArrowRight, Mail, ChevronLeft, Check } from 'lucide-react-native';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -23,8 +24,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
 import { isValidEmail } from '@/utils/validation';
 import BrandText from '@/components/BrandText';
-import { DEFAULT_COUNTRY, isValidPhoneForCountry, CountryCode } from '@/utils/countryCodes';
-import PremiumPhoneInput from '@/components/PremiumPhoneInput';
+
 import FormError from '@/components/FormError';
 import { useGoogleAuth } from '@/hooks/useGoogleAuth';
 import { useAppleAuth } from '@/hooks/useAppleAuth';
@@ -37,8 +37,6 @@ export default function RegisterScreen() {
   const { t } = useLanguage();
   const { sendOtpEmail } = useAuth();
   const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
-  const [country, setCountry] = useState<CountryCode>(DEFAULT_COUNTRY);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [termsAccepted, setTermsAccepted] = useState(false);
@@ -69,8 +67,7 @@ export default function RegisterScreen() {
   }, []);
 
   const emailValid = isValidEmail(email);
-  const phoneValid = isValidPhoneForCountry(phone, country);
-  const inputValid = emailValid && phoneValid;
+  const inputValid = emailValid;
 
   const handleRegister = async () => {
     if (!termsAccepted) {
@@ -81,16 +78,12 @@ export default function RegisterScreen() {
       setError(t('login.invalidEmail'));
       return;
     }
-    if (!phoneValid) {
-      setError(t('register.phoneRequired'));
-      return;
-    }
+    Keyboard.dismiss();
     setIsLoading(true);
     setError('');
     const normalizedEmail = email.trim().toLowerCase();
-    const fullPhone = `${country.dial}${phone}`;
 
-    const result = await sendOtpEmail(normalizedEmail, true, fullPhone);
+    const result = await sendOtpEmail(normalizedEmail, true);
     setIsLoading(false);
     if (result.success) {
       router.push({
@@ -239,17 +232,6 @@ export default function RegisterScreen() {
                   />
                 </View>
               </View>
-
-              {/* Phone input (required) */}
-              <PremiumPhoneInput
-                value={phone}
-                onChangePhone={(text) => { setPhone(text); setError(''); }}
-                country={country}
-                onChangeCountry={setCountry}
-                accentColor={palette.violet}
-                error={!!error && !phoneValid}
-                errorMessage={!phoneValid && phone.length > 0 ? t('register.phoneRequired') : undefined}
-              />
 
               {/* Terms acceptance */}
               <TouchableOpacity

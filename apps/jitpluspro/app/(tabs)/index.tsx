@@ -263,6 +263,7 @@ export default function ClientsScreen() {
         maxToRenderPerBatch={10}
         windowSize={7}
         initialNumToRender={10}
+        updateCellsBatchingPeriod={50}
         ItemSeparatorComponent={ItemSeparator}
         refreshControl={
           <RefreshControl

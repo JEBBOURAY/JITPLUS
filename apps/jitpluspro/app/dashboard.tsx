@@ -7,15 +7,12 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
-  Platform,
 } from 'react-native';
-import { Users, TrendingUp, RefreshCw, Repeat, ArrowLeft, Eye, Gift, Shield } from 'lucide-react-native';
+import { Users, TrendingUp, Repeat, ArrowLeft, Eye, Gift, Shield } from 'lucide-react-native';
 import PremiumLockCard from '@/components/PremiumLockCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
-import { useTheme, brandGradient } from '@/contexts/ThemeContext';
-import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
+import { useTheme } from '@/contexts/ThemeContext';
 import { useRouter } from 'expo-router';
 import { useLanguage } from '@/contexts/LanguageContext';
 
@@ -308,37 +305,12 @@ export default function DashboardScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
-      {/* En-tete */}
-      <View collapsable={false}>
-        <LinearGradient
-          colors={[...brandGradient]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.headerGradient}
-        >
-          <BlurView
-            intensity={Platform.OS === 'ios' ? 40 : 20}
-            tint={theme.mode === 'dark' ? 'dark' : 'default'}
-            style={[styles.headerBlur, { paddingTop: insets.top + 16 }]}
-          >
-            <View style={styles.glassOverlay} />
-            <View style={styles.header}>
-              <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-                <ArrowLeft size={22} color="#fff" />
-              </TouchableOpacity>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.headerTitle}>{t('dashboard.title')}</Text>
-              </View>
-              <TouchableOpacity style={styles.refreshButton} onPress={onRefresh}>
-                <RefreshCw size={20} color="rgba(255,255,255,0.85)" strokeWidth={1.5} />
-              </TouchableOpacity>
-            </View>
-          </BlurView>
-        </LinearGradient>
-        <LinearGradient
-          colors={['rgba(124,58,237,0.3)', 'transparent']}
-          style={styles.headerFade}
-        />
+      {/* ── Simple header — matches activity style ── */}
+      <View style={[styles.headerBar, { paddingTop: insets.top + 12 }]}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <ArrowLeft size={22} color={theme.text} />
+        </TouchableOpacity>
+        <Text style={[styles.headerTitle, { color: theme.text }]}>{t('dashboard.title')}</Text>
       </View>
 
       <ScrollView
@@ -482,18 +454,12 @@ const styles = StyleSheet.create({
     fontFamily: 'Lexend_400Regular',
   },
 
-  // Header — glassmorphism
-  headerGradient: { overflow: 'hidden' },
-  headerBlur: { overflow: 'hidden' },
-  glassOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-  },
-  header: {
+  // Header — simple bar (activity style)
+  headerBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingBottom: 20,
     paddingHorizontal: 24,
+    paddingBottom: 12,
     gap: 10,
   },
   backBtn: {
@@ -501,26 +467,11 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   headerTitle: {
-    fontSize: 20,
+    fontSize: 28,
     fontWeight: '700',
-    color: '#FFFFFF',
     fontFamily: 'Lexend_700Bold',
-    letterSpacing: -0.3,
-  },
-  headerSubtitle: {
-    fontSize: 13,
-    marginTop: 2,
-    color: 'rgba(255,255,255,0.75)',
-    fontFamily: 'Lexend_400Regular',
-  },
-  headerFade: { height: 4 },
-  refreshButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    letterSpacing: -0.5,
+    flex: 1,
   },
   sectionTitle: {
     fontSize: 18,

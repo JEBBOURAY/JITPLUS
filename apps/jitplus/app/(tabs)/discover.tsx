@@ -172,7 +172,7 @@ export default function DiscoverScreen() {
       try {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status === 'granted') {
-          const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+          const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced, timeInterval: 10000 });
           const coords = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
           if (mounted) {
             setUserLocation(coords);

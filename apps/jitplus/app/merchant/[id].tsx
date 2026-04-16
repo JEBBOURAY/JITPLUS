@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useFocusEffect } from 'expo-router';
 import {
   View,
@@ -51,6 +51,8 @@ export default function MerchantDetailScreen() {
   const [justJoined, setJustJoined] = useState(false);
   const [leaveLoading, setLeaveLoading] = useState(false);
   const [justLeft, setJustLeft] = useState(false);
+  const joiningRef = useRef(false);
+  const leavingRef = useRef(false);
   const [logoError, setLogoError] = useState(false);
   const [coverError, setCoverError] = useState(false);
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
@@ -61,7 +63,7 @@ export default function MerchantDetailScreen() {
       try {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status === 'granted') {
-          const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+          const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced, timeInterval: 10000 });
           if (mounted) setUserLocation({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
         }
       } catch { /* location unavailable */ }
@@ -70,7 +72,8 @@ export default function MerchantDetailScreen() {
   }, []);
 
   const handleJoinMerchant = useCallback(async () => {
-    if (!id || joinLoading || merchant?.hasCard || justJoined) return;
+    if (!id || joiningRef.current || merchant?.hasCard || justJoined) return;
+    joiningRef.current = true;
     setJoinLoading(true);
     try {
       await api.joinMerchant(id);
@@ -83,9 +86,10 @@ export default function MerchantDetailScreen() {
       if (__DEV__) console.warn('Join merchant error:', e);
       Alert.alert(t('common.error'), t('merchant.joinError'));
     } finally {
+      joiningRef.current = false;
       setJoinLoading(false);
     }
-  }, [id, joinLoading, merchant?.hasCard, justJoined, queryClient, t]);
+  }, [id, merchant?.hasCard, justJoined, queryClient, t]);
 
   const handleLeaveMerchant = useCallback(() => {
     if (!id || !merchant || leaveLoading) return;
@@ -103,6 +107,8 @@ export default function MerchantDetailScreen() {
           text: t('merchant.leaveConfirm'),
           style: 'destructive',
           onPress: async () => {
+            if (leavingRef.current) return;
+            leavingRef.current = true;
             setLeaveLoading(true);
             try {
               await api.leaveMerchant(id);
@@ -115,6 +121,7 @@ export default function MerchantDetailScreen() {
               if (__DEV__) console.warn('Leave merchant error:', e);
               Alert.alert(t('common.error'), t('merchant.leaveError'));
             } finally {
+              leavingRef.current = false;
               setLeaveLoading(false);
             }
           },
@@ -299,7 +306,7 @@ export default function MerchantDetailScreen() {
                   }}
                   style={({ pressed }) => [styles.socialIconBtn, { backgroundColor: '#E1306C12', opacity: pressed ? 0.7 : 1 }]}
                   accessibilityRole="button"
-                  accessibilityLabel="Instagram"
+                  accessibilityLabel={t('merchant.openInstagram')}
                 >
                   <Instagram size={18} color="#E1306C" strokeWidth={2} />
                 </Pressable>
@@ -316,7 +323,7 @@ export default function MerchantDetailScreen() {
                   }}
                   style={({ pressed }) => [styles.socialIconBtn, { backgroundColor: `${palette.gray900}08`, opacity: pressed ? 0.7 : 1 }]}
                   accessibilityRole="button"
-                  accessibilityLabel="TikTok"
+                  accessibilityLabel={t('merchant.openTiktok')}
                 >
                   <Music2 size={18} color={palette.gray900} strokeWidth={2} />
                 </Pressable>
@@ -342,7 +349,11 @@ export default function MerchantDetailScreen() {
                     haptic();
                     let url = merchant.socialLinks?.website ?? '';
                     if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
-                    Linking.openURL(url);
+                    try {
+                      const parsed = new URL(url);
+                      if (!['http:', 'https:'].includes(parsed.protocol)) return;
+                      Linking.openURL(parsed.href);
+                    } catch { /* invalid URL — ignore */ }
                   }}
                   style={({ pressed }) => [styles.socialIconBtn, { backgroundColor: `${palette.violet}10`, opacity: pressed ? 0.7 : 1 }]}
                   accessibilityRole="link"
@@ -823,15 +834,13 @@ const styles = StyleSheet.create({
   rewardsSectionHeader: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
-    gap: wp(8),
-    paddingHorizontal: wp(16),
+    gap: wp(12),
     marginBottom: hp(8),
   },
   rewardsScroll: {
     marginBottom: hp(4),
   },
   rewardsScrollContent: {
-    paddingHorizontal: wp(16),
     gap: wp(10),
   },
   rewardCard: {

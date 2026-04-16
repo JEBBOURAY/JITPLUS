@@ -20,8 +20,8 @@ export default function LanguageModal({ visible, onClose }: Props) {
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.modalOverlay} onPress={onClose}>
-        <View style={[styles.langModalCard, { backgroundColor: theme.bgCard }]}>
+      <Pressable style={styles.modalOverlay} onPress={onClose} accessibilityRole="button" accessibilityLabel={t('common.close')}>
+        <View style={[styles.langModalCard, { backgroundColor: theme.bgCard }]} accessibilityRole="summary" accessibilityLabel={t('profile.language')} accessibilityViewIsModal={true}>
           <View style={[styles.modalIconCircle, { backgroundColor: `${palette.gold}12` }]}>
             <Globe size={ms(28)} color={palette.gold} strokeWidth={1.5} />
           </View>

@@ -137,6 +137,22 @@ export function handleFcmDataPayload(
       queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
       break;
     }
+    // Automated campaign events — invalidate relevant caches
+    case 'welcome_series':
+    case 'reengagement':
+    case 'feature_highlight':
+    case 'friday_campaign':
+    case 'admin_broadcast':
+      optimisticIncrementUnread(queryClient);
+      queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
+      break;
+    case 'reward_reminder':
+      queryClient.invalidateQueries({ queryKey: queryKeys.points });
+      optimisticIncrementUnread(queryClient);
+      break;
+    case 'weekly_digest':
+      queryClient.invalidateQueries({ queryKey: queryKeys.points });
+      break;
     default:
       if (__DEV__) console.log('[FCM] Unhandled event type:', data.event);
   }

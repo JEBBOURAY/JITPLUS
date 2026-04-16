@@ -50,6 +50,7 @@ export default function SetPasswordScreen() {
 
   const isValidPassword = checkPassword(password);
   const passwordsMatch = password === confirmPassword && confirmPassword.length > 0;
+  const showMismatch = confirmPassword.length > 0 && !passwordsMatch;
   const canSubmit = isValidPassword && passwordsMatch;
 
   const handleSubmit = async () => {
@@ -167,7 +168,7 @@ export default function SetPasswordScreen() {
               <View style={styles.inputContainer}>
                 <View style={[styles.inputWrapper, {
                   backgroundColor: theme.inputBg,
-                  borderColor: error && !passwordsMatch ? theme.danger : passwordsMatch ? palette.violet : theme.inputBorder,
+                  borderColor: (error || showMismatch) && !passwordsMatch ? theme.danger : passwordsMatch ? palette.violet : theme.inputBorder,
                   borderWidth: passwordsMatch ? 2 : 1.5,
                 }]}>
                   <CheckCircle2 size={ms(18)} color={passwordsMatch ? palette.violet : theme.inputPlaceholder} strokeWidth={2} />
@@ -192,6 +193,12 @@ export default function SetPasswordScreen() {
                   </TouchableOpacity>
                 </View>
               </View>
+
+              {showMismatch && (
+                <Text style={{ color: theme.danger, fontSize: fontSize.xs, marginTop: hp(4), marginBottom: hp(4), marginLeft: wp(4) }}>
+                  {t('setPassword.mismatchError')}
+                </Text>
+              )}
 
               <FormError message={error} />
 

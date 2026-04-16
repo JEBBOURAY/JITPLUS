@@ -135,15 +135,21 @@ export class MerchantTransactionService {
         // race conditions where two concurrent requests read the same balance.
         let loyaltyCard = await prisma.loyaltyCard.findUnique({
           where: { clientId_merchantId: { clientId, merchantId } },
-          select: { id: true, points: true },
+          select: { id: true, points: true, deactivatedAt: true },
         });
+
+        if (loyaltyCard?.deactivatedAt) {
+          throw new BadRequestException(
+            'Le client a quitté ce programme de fidélité. Il doit rejoindre à nouveau avant de pouvoir accumuler des points.',
+          );
+        }
 
         if (!loyaltyCard) {
           // Enforce client limit for FREE plan before creating loyalty card
           await this.planService.assertCanAddClient(merchantId);
           loyaltyCard = await prisma.loyaltyCard.create({
             data: { clientId, merchantId, points: 0 },
-            select: { id: true, points: true },
+            select: { id: true, points: true, deactivatedAt: true },
           });
         }
 
@@ -521,15 +527,21 @@ export class MerchantTransactionService {
       this.txRunner.run(async (prisma) => {
         let loyaltyCard = await prisma.loyaltyCard.findUnique({
           where: { clientId_merchantId: { clientId, merchantId } },
-          select: { id: true, points: true },
+          select: { id: true, points: true, deactivatedAt: true },
         });
+
+        if (loyaltyCard?.deactivatedAt) {
+          throw new BadRequestException(
+            'Le client a quitté ce programme de fidélité. Il doit rejoindre à nouveau.',
+          );
+        }
 
         if (!loyaltyCard) {
           // Enforce client limit for FREE plan
           await this.planService.assertCanAddClient(merchantId);
           loyaltyCard = await prisma.loyaltyCard.create({
             data: { clientId, merchantId, points: 0 },
-            select: { id: true, points: true },
+            select: { id: true, points: true, deactivatedAt: true },
           });
         }
 

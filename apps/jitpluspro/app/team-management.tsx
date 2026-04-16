@@ -32,9 +32,7 @@ import {
   X,
   MapPin,
 } from 'lucide-react-native';
-import { useTheme, brandGradient } from '@/contexts/ThemeContext';
-import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
+import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { useRouter } from 'expo-router';
@@ -193,6 +191,11 @@ export default function TeamManagementScreen() {
       return;
     }
 
+    if (!editingMember && members.some(m => m.email.toLowerCase() === formEmail.trim().toLowerCase())) {
+      Alert.alert(t('common.error'), t('team.emailAlreadyExists'));
+      return;
+    }
+
     if (!editingMember && !formPassword.trim()) {
       Alert.alert(t('common.error'), t('team.passwordRequired'));
       return;
@@ -276,39 +279,19 @@ export default function TeamManagementScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
-      {/* ── Header ─── */}
-      <View collapsable={false}>
-        <LinearGradient
-          colors={[...brandGradient]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.headerGradient}
+      {/* ── Simple header — matches activity style ── */}
+      <View style={[styles.headerBar, { paddingTop: insets.top + 12 }]}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <ArrowLeft size={22} color={theme.text} />
+        </TouchableOpacity>
+        <Text style={[styles.headerTitle, { color: theme.text }]}>{t('team.title')}</Text>
+        <TouchableOpacity
+          onPress={openAddModal}
+          style={[styles.addBtn, { backgroundColor: theme.primary + '18' }]}
+          activeOpacity={0.7}
         >
-          <BlurView
-            intensity={Platform.OS === 'ios' ? 40 : 20}
-            tint={theme.mode === 'dark' ? 'dark' : 'default'}
-            style={[styles.headerBlur, { paddingTop: insets.top + 16 }]}
-          >
-            <View style={styles.glassOverlay} />
-            <View style={styles.header}>
-              <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-                <ArrowLeft size={22} color="#fff" />
-              </TouchableOpacity>
-              <Text style={styles.headerTitle}>{t('team.title')}</Text>
-              <TouchableOpacity
-                onPress={openAddModal}
-                style={[styles.addBtn, { backgroundColor: 'rgba(255,255,255,0.15)' }]}
-                activeOpacity={0.7}
-              >
-                <UserPlus size={20} color="#fff" strokeWidth={1.5} />
-              </TouchableOpacity>
-            </View>
-          </BlurView>
-        </LinearGradient>
-        <LinearGradient
-          colors={['rgba(124,58,237,0.3)', 'transparent']}
-          style={styles.headerFade}
-        />
+          <UserPlus size={20} color={theme.primary} strokeWidth={1.5} />
+        </TouchableOpacity>
       </View>
 
       {loading ? (
@@ -521,22 +504,23 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12 },
 
-  // ── Header — glassmorphism ──
-  headerGradient: { overflow: 'hidden' },
-  headerBlur: { overflow: 'hidden' },
-  glassOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-  },
-  header: {
+  // ── Header — simple bar (activity style) ──
+  headerBar: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 24,
-    paddingBottom: 20,
+    paddingBottom: 12,
+    gap: 10,
   },
   backBtn: { padding: 4 },
-  headerTitle: { flex: 1, fontSize: 20, fontWeight: '700', marginLeft: 12, color: '#FFFFFF', fontFamily: 'Lexend_700Bold', letterSpacing: -0.3 },
-  headerFade: { height: 4 },
+  headerTitle: {
+    flex: 1,
+    fontSize: 28,
+    fontWeight: '700',
+    marginLeft: 12,
+    fontFamily: 'Lexend_700Bold',
+    letterSpacing: -0.5,
+  },
   addBtn: {
     width: 40,
     height: 40,

@@ -34,11 +34,10 @@ import { getErrorMessage } from '@/utils/error';
 import { isValidPassword } from '@/utils/passwordStrength';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
-import { useTheme, brandGradient, type ThemeColors } from '@/contexts/ThemeContext';
+import { useTheme, type ThemeColors } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useGoogleIdToken } from '@/hooks/useGoogleIdToken';
-import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
+import { useAppleIdToken } from '@/hooks/useAppleIdToken';
 
 // â”€â”€ PwdField (dÃ©fini HORS du composant pour Ã©viter le re-mount du TextInput) â”€â”€
 interface PwdFieldProps {
@@ -101,6 +100,8 @@ export default function SecurityScreen() {
   const { t } = useLanguage();
 
   const isGoogleAccount = !!merchant?.googleId;
+  const isAppleAccount = !!merchant?.appleId;
+  const isSocialAccount = isGoogleAccount || isAppleAccount;
 
   const [activeTab, setActiveTab] = useState<TabId>(
     params.tab === 'devices' ? 'devices' : params.tab === 'delete' ? 'delete' : 'password',
@@ -114,13 +115,15 @@ export default function SecurityScreen() {
   const [showNew, setShowNew] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // â”€â”€ Delete account state â”€â”€
+  // ── Delete account state ──
   const [deletePwd, setDeletePwd] = useState('');
   const [showDeletePwd, setShowDeletePwd] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteConfirmed, setDeleteConfirmed] = useState(false);
   const [deleteGoogleToken, setDeleteGoogleToken] = useState<string | null>(null);
   const googleDelete = useGoogleIdToken((idToken) => setDeleteGoogleToken(idToken));
+  const [deleteAppleToken, setDeleteAppleToken] = useState<string | null>(null);
+  const appleDelete = useAppleIdToken((data) => setDeleteAppleToken(data.identityToken));
 
   // â”€â”€ Devices state â”€â”€
   const [devices, setDevices] = useState<DeviceSession[]>([]);
@@ -164,7 +167,7 @@ export default function SecurityScreen() {
     setSaving(true);
     try {
       const res = await api.patch('/merchant/password', {
-        ...(isGoogleAccount ? {} : { currentPassword: currentPwd }),
+        ...(isSocialAccount ? {} : { currentPassword: currentPwd }),
         newPassword: newPwd,
         logoutOthers,
       });
@@ -186,10 +189,10 @@ export default function SecurityScreen() {
     } finally {
       setSaving(false);
     }
-  }, [isGoogleAccount, currentPwd, newPwd, activeTab, loadDevices, t]);
+  }, [isSocialAccount, currentPwd, newPwd, activeTab, loadDevices, t]);
 
   const handleChangePassword = useCallback(async () => {
-    if (!isGoogleAccount && !currentPwd.trim()) {
+    if (!isSocialAccount && !currentPwd.trim()) {
       Alert.alert(t('common.error'), t('security.enterCurrentPassword'));
       return;
     }
@@ -219,7 +222,7 @@ export default function SecurityScreen() {
         { text: t('common.cancel'), style: 'cancel' },
       ],
     );
-  }, [isGoogleAccount, currentPwd, newPwd, confirmPwd, executePasswordChange, t]);
+  }, [isSocialAccount, currentPwd, newPwd, confirmPwd, executePasswordChange, t]);
 
   // â”€â”€ Remove device â”€â”€
   const handleRemoveDevice = useCallback((device: DeviceSession) => {
@@ -272,32 +275,12 @@ export default function SecurityScreen() {
       keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
     >
       {/* â”€â”€ Header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-      <View collapsable={false}>
-        <LinearGradient
-          colors={[...brandGradient]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.headerGradient}
-        >
-          <BlurView
-            intensity={Platform.OS === 'ios' ? 40 : 20}
-            tint={theme.mode === 'dark' ? 'dark' : 'default'}
-            style={[styles.headerBlur, { paddingTop: insets.top + 16 }]}
-          >
-            <View style={styles.glassOverlay} />
-            <View style={styles.header}>
-              <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-                <ArrowLeft size={22} color="#fff" />
-              </TouchableOpacity>
-              <Text style={styles.headerTitle}>{t('security.title')}</Text>
-              <ShieldCheck size={22} color="rgba(255,255,255,0.8)" />
-            </View>
-          </BlurView>
-        </LinearGradient>
-        <LinearGradient
-          colors={['rgba(124,58,237,0.3)', 'transparent']}
-          style={styles.headerFade}
-        />
+      {/* ── Simple header — matches activity style ── */}
+      <View style={[styles.headerBar, { paddingTop: insets.top + 12 }]}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <ArrowLeft size={22} color={theme.text} />
+        </TouchableOpacity>
+        <Text style={[styles.headerTitle, { color: theme.text }]}>{t('security.title')}</Text>
       </View>
 
         {/* ── Guide text ── */}
@@ -344,7 +327,7 @@ export default function SecurityScreen() {
               </Text>
 
               {isGoogleAccount ? (
-                /* â”€â”€ Google account: re-authenticate with Google â”€â”€ */
+                /* -- Google account: re-authenticate with Google -- */
                 <View style={{ marginTop: 16 }}>
                   <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>
                     {t('security.deleteGooglePrompt')}
@@ -376,8 +359,45 @@ export default function SecurityScreen() {
                     <Text style={{ color: theme.danger, fontSize: 12, marginTop: 4, fontFamily: 'Lexend_400Regular' }}>{googleDelete.error}</Text>
                   ) : null}
                 </View>
+              ) : isAppleAccount ? (
+                /* -- Apple account: re-authenticate with Apple -- */
+                <View style={{ marginTop: 16 }}>
+                  <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>
+                    {t('security.deleteApplePrompt')}
+                  </Text>
+                  {deleteAppleToken ? (
+                    <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.danger }]}>
+                      <Check size={18} color={theme.danger} />
+                      <Text style={[styles.input, { color: theme.danger, fontWeight: '600' }]}>
+                        {t('security.appleVerified')}
+                      </Text>
+                    </View>
+                  ) : appleDelete.isAvailable ? (
+                    <TouchableOpacity
+                      style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.border, justifyContent: 'center' }]}
+                      onPress={appleDelete.promptApple}
+                      disabled={appleDelete.isLoading}
+                      activeOpacity={0.7}
+                    >
+                      {appleDelete.isLoading ? (
+                        <ActivityIndicator size="small" color={theme.danger} />
+                      ) : (
+                        <Text style={[styles.input, { color: theme.danger, fontWeight: '600', textAlign: 'center' }]}>
+                          {t('security.deleteAppleBtn')}
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  ) : (
+                    <Text style={[styles.fieldLabel, { color: theme.textMuted, marginTop: 8 }]}>
+                      {t('security.appleOnlyIos')}
+                    </Text>
+                  )}
+                  {appleDelete.error ? (
+                    <Text style={{ color: theme.danger, fontSize: 12, marginTop: 4, fontFamily: 'Lexend_400Regular' }}>{appleDelete.error}</Text>
+                  ) : null}
+                </View>
               ) : (
-                /* â”€â”€ Email account: enter password â”€â”€ */
+                /* -- Email account: enter password -- */
                 <View style={{ marginTop: 16 }}>
                   <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>{t('security.currentPassword')}</Text>
                   <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.border }]}>
@@ -398,7 +418,6 @@ export default function SecurityScreen() {
                   </View>
                 </View>
               )}
-
               <View style={{ marginTop: 12 }}>
                 <TouchableOpacity
                   style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8 }}
@@ -422,12 +441,12 @@ export default function SecurityScreen() {
                   styles.deleteBtn,
                   {
                     backgroundColor:
-                      (isGoogleAccount ? !!deleteGoogleToken : deletePwd.length >= 6) && deleteConfirmed
+                      (isGoogleAccount ? !!deleteGoogleToken : isAppleAccount ? !!deleteAppleToken : deletePwd.length >= 6) && deleteConfirmed
                         ? theme.danger
                         : theme.border,
                   },
                 ]}
-                disabled={deleting || (isGoogleAccount ? !deleteGoogleToken : deletePwd.length < 6) || !deleteConfirmed}
+                disabled={deleting || (isGoogleAccount ? !deleteGoogleToken : isAppleAccount ? !deleteAppleToken : deletePwd.length < 6) || !deleteConfirmed}
                 activeOpacity={0.8}
                 onPress={() => {
                   Alert.alert(
@@ -443,11 +462,17 @@ export default function SecurityScreen() {
                             Alert.alert(t('common.error'), t('security.deleteGooglePrompt'));
                             return;
                           }
+                          if (isAppleAccount && !deleteAppleToken) {
+                            Alert.alert(t('common.error'), t('security.deleteApplePrompt'));
+                            return;
+                          }
                           setDeleting(true);
                           try {
                             const body = isGoogleAccount
                               ? { idToken: deleteGoogleToken }
-                              : { password: deletePwd };
+                              : isAppleAccount
+                                ? { appleIdentityToken: deleteAppleToken }
+                                : { password: deletePwd };
                             await api.post('/merchant/delete-account', body);
                             Alert.alert(
                               t('security.deletedTitle'),
@@ -478,9 +503,9 @@ export default function SecurityScreen() {
           </View>
         ) : activeTab === 'password' ? (
           <View key="password">
-            {isGoogleAccount ? (
+            {isSocialAccount ? (
               <Text style={[styles.dangerText, { color: theme.textMuted, marginBottom: 12 }]}>
-                {t('security.googleSetPasswordHint')}
+                {t(isAppleAccount ? 'security.appleSetPasswordHint' : 'security.googleSetPasswordHint')}
               </Text>
             ) : (
               <PwdField
@@ -548,13 +573,13 @@ export default function SecurityScreen() {
                 styles.saveBtn,
                 {
                   backgroundColor:
-                    (isGoogleAccount || currentPwd) && isValidPassword(newPwd) && newPwd === confirmPwd
+                    (isSocialAccount || currentPwd) && isValidPassword(newPwd) && newPwd === confirmPwd
                       ? theme.primary
                       : theme.border,
                 },
               ]}
               onPress={handleChangePassword}
-              disabled={saving || (!isGoogleAccount && !currentPwd) || !isValidPassword(newPwd) || newPwd !== confirmPwd}
+              disabled={saving || (!isSocialAccount && !currentPwd) || !isValidPassword(newPwd) || newPwd !== confirmPwd}
               activeOpacity={0.8}
             >
               {saving ? (
@@ -696,23 +721,23 @@ const styles = StyleSheet.create({
   },
   container: { flex: 1 },
 
-  // Header — glassmorphism
-  headerGradient: { overflow: 'hidden' },
-  headerBlur: { overflow: 'hidden' },
-  glassOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-  },
-  header: {
+  // Header — simple bar (activity style)
+  headerBar: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 24,
-    paddingBottom: 20,
+    paddingBottom: 12,
     gap: 10,
   },
   backBtn: { padding: 4 },
-  headerTitle: { flex: 1, fontSize: 20, fontWeight: '700', marginLeft: 8, color: '#FFFFFF', fontFamily: 'Lexend_700Bold', letterSpacing: -0.3 },
-  headerFade: { height: 4 },
+  headerTitle: {
+    flex: 1,
+    fontSize: 28,
+    fontWeight: '700',
+    marginLeft: 8,
+    fontFamily: 'Lexend_700Bold',
+    letterSpacing: -0.5,
+  },
 
   // Tabs
   tabBar: {

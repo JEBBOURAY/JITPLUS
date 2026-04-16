@@ -24,6 +24,13 @@ import { RequestLoggerMiddleware } from './common/middleware/request-logger.midd
 import { OtpCleanupService } from './common/tasks/otp-cleanup.service';
 import { MerchantReminderService } from './common/tasks/merchant-reminder.service';
 import { MerchantEngagementService } from './common/tasks/merchant-engagement.service';
+import { MerchantSmartCampaignService } from './common/tasks/merchant-smart-campaign.service';
+import { ClientWelcomeService } from './common/tasks/client-welcome.service';
+import { ClientReengagementService } from './common/tasks/client-reengagement.service';
+import { ClientRewardReminderService } from './common/tasks/client-reward-reminder.service';
+import { ClientWeeklyDigestService } from './common/tasks/client-weekly-digest.service';
+import { ClientEmailCampaignService } from './common/tasks/client-email-campaign.service';
+import { MerchantEmailCampaignService } from './common/tasks/merchant-email-campaign.service';
 import { UserThrottlerGuard } from './common/guards/user-throttler.guard';
 import { RepositoryModule } from './common/repositories';
 import { EventsModule } from './events';
@@ -43,6 +50,7 @@ import { THROTTLE_TTL } from './common/constants';
         CORS_ORIGINS: Joi.when('NODE_ENV', { is: 'production', then: Joi.string().required(), otherwise: Joi.string().optional() }),
         GOOGLE_CLIENT_ID: Joi.string().optional(),
         GOOGLE_ANDROID_CLIENT_ID: Joi.string().optional(),
+        APPLE_BUNDLE_IDS: Joi.string().optional(),
         GOOGLE_MAPS_API_KEY: Joi.string().optional(),
         BACKEND_URL: Joi.string().uri().optional(),
         // ── Google Cloud Platform ──────────────────────────────────────────
@@ -106,6 +114,13 @@ import { THROTTLE_TTL } from './common/constants';
     OtpCleanupService,
     MerchantReminderService,
     MerchantEngagementService,
+    MerchantSmartCampaignService,
+    ClientWelcomeService,
+    ClientReengagementService,
+    ClientRewardReminderService,
+    ClientWeeklyDigestService,
+    ClientEmailCampaignService,
+    MerchantEmailCampaignService,
   ],
 })
 export class AppModule implements NestModule {

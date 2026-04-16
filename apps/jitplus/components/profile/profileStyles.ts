@@ -12,17 +12,16 @@ export const profileStyles = StyleSheet.create({
 
   // Profile card
   profileCard: {
-    borderRadius: radius.xl, padding: wp(16), marginBottom: hp(16),
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 12, elevation: 2,
+    padding: wp(16), marginBottom: hp(16),
   },
-  profileRow: { flexDirection: 'row', alignItems: 'center', gap: wp(14) },
+  profileRow: { alignItems: 'center', gap: hp(8) },
   avatarGradient: {
     width: ms(56), height: ms(56), borderRadius: ms(28),
     alignItems: 'center', justifyContent: 'center',
   },
   avatarText: { fontSize: FS.lg, fontWeight: '700', color: '#fff', letterSpacing: 1 },
-  profileInfo: { flex: 1 },
-  profileName: { fontSize: FS.lg, fontWeight: '700', letterSpacing: -0.3 },
+  profileInfo: { alignItems: 'center' },
+  profileName: { fontSize: FS.lg, fontWeight: '700', letterSpacing: -0.3, textAlign: 'center' },
   editHeaderBtn: {
     width: ms(38), height: ms(38), borderRadius: ms(19),
     alignItems: 'center', justifyContent: 'center',

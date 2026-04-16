@@ -24,7 +24,7 @@ import { ClientOnlyGuard } from '../common/guards/client-only.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtPayload } from '../common/interfaces/jwt-payload.interface';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
-import { SendOtpDto, VerifyOtpDto, CompleteProfileDto, ClientUpdateProfileDto, UpdatePushTokenDto, SendOtpEmailDto, VerifyOtpEmailDto, GoogleLoginDto, AppleLoginDto, LoginEmailDto, LoginPhoneDto, SetPasswordDto, RefreshTokenDto, ClientDeleteAccountDto, ClientChangePasswordDto, SendChangeContactOtpDto, VerifyChangeContactOtpDto, RequestPayoutDto } from './dto';
+import { SendOtpEmailDto, VerifyOtpEmailDto, CompleteProfileDto, ClientUpdateProfileDto, UpdatePushTokenDto, GoogleLoginDto, AppleLoginDto, LoginEmailDto, SetPasswordDto, RefreshTokenDto, ClientDeleteAccountDto, ClientChangePasswordDto, SendChangeContactOtpDto, VerifyChangeContactOtpDto, RequestPayoutDto } from './dto';
 
 @ApiTags('Client Auth')
 @Controller('client-auth')
@@ -56,22 +56,10 @@ export class ClientAuthController {
     return { success: true, message: 'Déconnecté' };
   }
 
-  @Post('send-otp')
-  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 3 } })  // 3 OTP/minute max per IP
-  async sendOtp(@Body() dto: SendOtpDto) {
-    return this.clientAuthService.sendOtp(dto.telephone, dto.isRegister ?? false);
-  }
-
-  @Post('verify-otp')
-  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 5 } })  // 5 attempts/minute
-  async verifyOtp(@Body() dto: VerifyOtpDto) {
-    return this.clientAuthService.verifyOtp(dto.telephone, dto.code);
-  }
-
   @Post('send-otp-email')
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 3 } })
   async sendOtpEmail(@Body() dto: SendOtpEmailDto) {
-    return this.clientAuthService.sendOtpEmail(dto.email, dto.isRegister ?? false, dto.telephone);
+    return this.clientAuthService.sendOtpEmail(dto.email, dto.isRegister ?? false);
   }
 
   @Post('verify-otp-email')
@@ -96,12 +84,6 @@ export class ClientAuthController {
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 5 } })
   async loginWithEmail(@Body() dto: LoginEmailDto) {
     return this.clientAuthService.loginWithEmailPassword(dto.email, dto.password);
-  }
-
-  @Post('login-phone')
-  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 5 } })
-  async loginWithPhone(@Body() dto: LoginPhoneDto) {
-    return this.clientAuthService.loginWithPhonePassword(dto.telephone, dto.password);
   }
 
   @Post('set-password')
@@ -203,6 +185,11 @@ export class ClientController {
     private readonly clientService: ClientService,
     private readonly clientReferralService: ClientReferralService,
   ) {}
+
+  @Get('stats')
+  async getProfileStats(@CurrentUser() user: JwtPayload) {
+    return this.clientService.getProfileStats(user.userId);
+  }
 
   @Get('points')
   async getPointsOverview(

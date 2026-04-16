@@ -41,6 +41,7 @@ export interface Merchant {
   coverUrl?: string;
   socialLinks?: SocialLinks | null;
   googleId?: string | null;
+  appleId?: string | null;
   pointsRate?: number;
   loyaltyType?: LoyaltyType;
   conversionRate?: number;

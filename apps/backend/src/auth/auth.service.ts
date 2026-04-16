@@ -1042,9 +1042,13 @@ export class AuthService {
 
     const publicKey = createPublicKey({ key: matchingKey, format: 'jwk' });
 
+    // APPLE_BUNDLE_IDS: comma-separated list of bundle IDs (e.g. "com.jitplus.client,com.jitplus.pro")
+    const appleBundleIds = (this.configService.get<string>('APPLE_BUNDLE_IDS') || '').split(',').map(s => s.trim()).filter(Boolean);
+
     const payload = jwt.verify(identityToken, publicKey, {
       algorithms: ['RS256'],
       issuer: 'https://appleid.apple.com',
+      ...(appleBundleIds.length > 0 && { audience: appleBundleIds as [string, ...string[]] }),
     }) as jwt.JwtPayload & { sub: string; email?: string; email_verified?: string };
 
     return payload;
@@ -1266,12 +1270,13 @@ export class AuthService {
         });
 
         if (merchant) {
+          // Security: do NOT auto-link Apple account to existing merchant.
+          // The merchant must first log in with their password, then link Apple
+          // from their profile settings to prevent account hijacking.
           if (!merchant.appleId) {
-            // Auto-link Apple account to existing merchant found by email
-            await this.merchantRepo.update({
-              where: { id: merchant.id },
-              data: { appleId },
-            });
+            throw new UnauthorizedException(
+              'Un compte existe avec cet email. Connectez-vous avec votre mot de passe, puis liez votre compte Apple depuis les paramètres.',
+            );
           }
         }
       }
@@ -1445,8 +1450,9 @@ export class AuthService {
       select: { id: true },
     });
 
+    // Return same message regardless of account existence to prevent email enumeration
     if (!merchant) {
-      throw new BadRequestException('Aucun compte trouvé avec cet email.');
+      return { success: true, message: 'Si un compte existe avec cet email, un code de réinitialisation a été envoyé.' };
     }
 
     await this.sendOtpForEmail(normalizedEmail, 'Password reset');

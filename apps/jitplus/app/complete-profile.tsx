@@ -9,7 +9,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   User, ArrowRight, ArrowLeft, CheckCircle2, Sparkles, Calendar,
-  Lock, Eye, EyeOff, Gift, Shield, Info, Phone,
+  Lock, Eye, EyeOff, Gift, Shield, Info,
 } from 'lucide-react-native';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -20,8 +20,7 @@ import BrandText from '@/components/BrandText';
 import FormError from '@/components/FormError';
 import { formatDateInput, toIsoDate } from '@/utils/dateInput';
 import { getPasswordStrength, isValidPassword } from '@/utils/passwordStrength';
-import PremiumPhoneInput from '@/components/PremiumPhoneInput';
-import { DEFAULT_COUNTRY, isValidPhoneForCountry, CountryCode } from '@/utils/countryCodes';
+
 
 const RE_NAME_STRIP = /[^\p{L}\p{M}\s'-]/gu;
 
@@ -74,7 +73,6 @@ export default function CompleteProfileScreen() {
   const { completeProfile, client } = useAuth();
   const { needsPassword, isGoogleUser } = useLocalSearchParams<{ needsPassword?: string; isGoogleUser?: string }>();
   const showPasswordStep = needsPassword === '1';
-  const isGoogle = isGoogleUser === '1';
 
   const [step, setStep] = useState(0);
   const [prenom, setPrenom] = useState(client?.prenom ?? '');
@@ -82,8 +80,6 @@ export default function CompleteProfileScreen() {
   const [dateNaissance, setDateNaissance] = useState('');
   const [password, setPasswordValue] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [phone, setPhone] = useState('');
-  const [country, setCountry] = useState<CountryCode>(DEFAULT_COUNTRY);
   const [showPw, setShowPw] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -142,14 +138,12 @@ export default function CompleteProfileScreen() {
   const dateValid = dateNaissance.length === 10 && !!toIsoDate(dateNaissance);
 
   const canNextStep0 = prenomOk && nomOk;
-  const phoneValid = isGoogle ? isValidPhoneForCountry(phone, country) : true;
-  const canNextStep1 = showPasswordStep ? (isValidPw && passwordsMatch) : isGoogle ? phoneValid : true;
+  const canNextStep1 = showPasswordStep ? (isValidPw && passwordsMatch) : true;
 
   // Callbacks
   const onPrenomChange = useCallback((v: string) => { setPrenom(sanitizeName(v)); setError(''); }, []);
   const onNomChange = useCallback((v: string) => { setNom(sanitizeName(v)); setError(''); }, []);
   const onDateChange = useCallback((v: string) => setDateNaissance(formatDateInput(v)), []);
-  const onPhoneChange = useCallback((v: string) => { setPhone(v); setError(''); }, []);
   const onPwChange = useCallback((v: string) => { setPasswordValue(v); setError(''); }, []);
   const onConfirmChange = useCallback((v: string) => { setConfirmPassword(v); setError(''); }, []);
 
@@ -159,10 +153,9 @@ export default function CompleteProfileScreen() {
       animateStep(1);
     } else if (step === 1) {
       if (showPasswordStep && !canNextStep1) { setError(t('setPassword.validationError')); return; }
-      if (isGoogle && !phoneValid) { setError(t('completeProfile.phoneError')); return; }
       animateStep(2);
     }
-  }, [step, canNextStep0, canNextStep1, showPasswordStep, isGoogle, phoneValid, animateStep, t]);
+  }, [step, canNextStep0, canNextStep1, showPasswordStep, animateStep, t]);
 
   const goBack = useCallback(() => {
     if (step > 0) {
@@ -177,8 +170,7 @@ export default function CompleteProfileScreen() {
     setError('');
     const isoDate = dateNaissance.length === 10 ? toIsoDate(dateNaissance) : undefined;
     const pw = showPasswordStep ? password : undefined;
-    const fullPhone = isGoogle && phone ? `${country.dial}${phone}` : undefined;
-    const result = await completeProfile(prenomTrimmed, nomTrimmed, true, fullPhone, isoDate, pw);
+    const result = await completeProfile(prenomTrimmed, nomTrimmed, true, undefined, isoDate, pw);
     submittingRef.current = false;
     setIsLoading(false);
     if (result.success) {
@@ -192,7 +184,7 @@ export default function CompleteProfileScreen() {
         setError(result.error || t('common.genericError'));
       }
     }
-  }, [prenomTrimmed, nomTrimmed, dateNaissance, showPasswordStep, password, isGoogle, phone, country, completeProfile, t]);
+  }, [prenomTrimmed, nomTrimmed, dateNaissance, showPasswordStep, password, completeProfile, t]);
 
   // Animated style
   const stepStyle = useMemo(() => ({
@@ -208,17 +200,17 @@ export default function CompleteProfileScreen() {
   // Step titles & subtitles
   const stepTitles = useMemo(() => [
     t('completeProfile.step1Title'),
-    isGoogle ? t('completeProfile.phoneStepTitle') : t('completeProfile.step2Title'),
+    t('completeProfile.step2Title'),
     t('completeProfile.step3Title'),
-  ], [t, isGoogle]);
+  ], [t]);
 
   const stepSubtitles = useMemo(() => [
     t('completeProfile.step1Subtitle'),
-    isGoogle ? t('completeProfile.phoneStepSubtitle') : t('completeProfile.step2Subtitle'),
+    t('completeProfile.step2Subtitle'),
     t('completeProfile.step3Subtitle'),
-  ], [t, isGoogle]);
+  ], [t]);
 
-  const stepIcons = [User, isGoogle ? Phone : Shield, Gift];
+  const stepIcons = [User, Shield, Gift];
   const StepIcon = stepIcons[step];
 
   const btnColors = (step === 0 ? canNextStep0 : step === 1 ? canNextStep1 : true) ? ACTIVE_COLORS : DISABLED_COLORS;
@@ -422,26 +414,6 @@ export default function CompleteProfileScreen() {
                         </Text>
                       </View>
                     </>
-                  ) : isGoogle ? (
-                    /* Google users: collect phone number */
-                    <View>
-                      <PremiumPhoneInput
-                        value={phone}
-                        onChangePhone={onPhoneChange}
-                        country={country}
-                        onChangeCountry={setCountry}
-                        accentColor={palette.violet}
-                        error={!!error && !phoneValid}
-                        errorMessage={!phoneValid && phone.length > 0 ? t('completeProfile.phoneError') : undefined}
-                      />
-
-                      <View style={[s.infoBox, { backgroundColor: `${palette.violet}08` }]}>
-                        <Info size={ICON_16} color={palette.violet} strokeWidth={2} />
-                        <Text style={[s.infoText, { color: theme.textMuted }]}>
-                          {t('completeProfile.phonePrivacyHint')}
-                        </Text>
-                      </View>
-                    </View>
                   ) : (
                     /* No password needed — auto-skip or show "no password needed" */
                     <View style={s.noPasswordBlock}>

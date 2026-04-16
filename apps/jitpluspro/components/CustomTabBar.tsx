@@ -66,6 +66,7 @@ const TabButton = React.memo(function TabButton({
         accessibilityRole="button"
         accessibilityState={isFocused ? { selected: true } : {}}
         accessibilityLabel={label}
+        accessibilityHint={t('tabs.scanHint')}
         onPress={onPress}
         activeOpacity={0.7}
         style={styles.tab}

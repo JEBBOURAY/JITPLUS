@@ -251,7 +251,7 @@ interface MsgState {
 const initialMsgState: MsgState = {
   title: '',
   body: '',
-  showCompose: true,
+  showCompose: false,
   whatsappMessage: '',
   showWhatsApp: false,
   emailSubject: '',

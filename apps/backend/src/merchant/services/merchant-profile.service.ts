@@ -28,6 +28,8 @@ import { ChangePasswordDto } from '../dto/change-password.dto';
 import { UpdateLoyaltySettingsDto } from '../dto/update-loyalty-settings.dto';
 import { AuditLogService, AuditAction, AuditTargetType } from '../../admin/audit-log.service';
 import * as bcrypt from 'bcryptjs';
+import * as jwt from 'jsonwebtoken';
+import { createPublicKey } from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
 import { BCRYPT_SALT_ROUNDS } from '../../common/constants';
 import { MERCHANT_PROFILE_SELECT, MerchantProfileData } from '../../common/prisma-selects';
@@ -39,6 +41,7 @@ import { getNotifTranslations } from '../../common/utils/notification-i18n';
 export class MerchantProfileService {
   private readonly logger = new Logger(MerchantProfileService.name);
   private readonly googleClient: OAuth2Client;
+  private appleJwksCache: { keys: any[]; fetchedAt: number } | null = null;
 
   constructor(
     @Inject(MERCHANT_REPOSITORY) private merchantRepo: IMerchantRepository,
@@ -93,6 +96,18 @@ export class MerchantProfileService {
 
   async updateProfile(merchantId: string, dto: UpdateProfileDto): Promise<MerchantProfileData> {
     const data = stripUndefined(dto);
+
+    // If email is being changed, reset emailVerified so merchant must re-verify
+    if (data.email) {
+      const current = await this.merchantRepo.findUnique({
+        where: { id: merchantId },
+        select: { email: true },
+      });
+      if (current && current.email !== data.email) {
+        (data as any).emailVerified = false;
+      }
+    }
+
     const result = await this.merchantRepo.update({
       where: { id: merchantId },
       data,
@@ -582,10 +597,10 @@ export class MerchantProfileService {
 
   // ── Delete Account (soft delete) ─────────────────────────────
 
-  async deleteAccount(merchantId: string, password?: string, idToken?: string): Promise<{ message: string }> {
+  async deleteAccount(merchantId: string, password?: string, idToken?: string, appleIdentityToken?: string): Promise<{ message: string }> {
     const merchant = await this.merchantRepo.findUnique({
       where: { id: merchantId },
-      select: { id: true, password: true, nom: true, email: true, googleId: true },
+      select: { id: true, password: true, nom: true, email: true, googleId: true, appleId: true },
     });
     if (!merchant) throw new NotFoundException('Commerçant non trouvé');
 
@@ -608,11 +623,21 @@ export class MerchantProfileService {
         if (error instanceof UnauthorizedException) throw error;
         throw new UnauthorizedException('Token Google invalide');
       }
+    } else if (merchant.appleId && appleIdentityToken) {
+      try {
+        const applePayload = await this.verifyAppleTokenForDeletion(appleIdentityToken);
+        if (applePayload.sub !== merchant.appleId) {
+          throw new UnauthorizedException('Le compte Apple ne correspond pas');
+        }
+      } catch (error) {
+        if (error instanceof UnauthorizedException) throw error;
+        throw new UnauthorizedException('Token Apple invalide');
+      }
     } else if (password) {
       const isValid = await bcrypt.compare(password, merchant.password);
       if (!isValid) throw new UnauthorizedException('Mot de passe incorrect');
     } else {
-      throw new BadRequestException('Le mot de passe ou la réauthentification Google est requis');
+      throw new BadRequestException('Le mot de passe ou la réauthentification Google/Apple est requis');
     }
 
     // ── Atomic soft-delete inside a transaction ────────────────
@@ -700,5 +725,48 @@ export class MerchantProfileService {
     });
 
     return { message: `Le compte "${merchant.nom}" a été supprimé.` };
+  }
+
+  /** Verify Apple identity token for account deletion re-auth */
+  private async verifyAppleTokenForDeletion(identityToken: string): Promise<{ sub: string }> {
+    const decoded = jwt.decode(identityToken, { complete: true });
+    if (!decoded || typeof decoded === 'string' || !decoded.header.kid) {
+      throw new UnauthorizedException('Token Apple invalide');
+    }
+    if (decoded.header.alg !== 'RS256') {
+      throw new UnauthorizedException('Algorithme de signature Apple non supporté');
+    }
+
+    const keys = await this.getApplePublicKeys();
+    let matchingKey = keys.find((k: any) => k.kid === decoded.header.kid);
+    if (!matchingKey) {
+      this.appleJwksCache = null;
+      const freshKeys = await this.getApplePublicKeys();
+      matchingKey = freshKeys.find((k: any) => k.kid === decoded.header.kid);
+      if (!matchingKey) throw new UnauthorizedException('Clé Apple introuvable');
+    }
+
+    const publicKey = createPublicKey({ key: matchingKey, format: 'jwk' });
+    const appleBundleIds = (this.configService.get<string>('APPLE_BUNDLE_IDS') || '').split(',').map(s => s.trim()).filter(Boolean);
+
+    const payload = jwt.verify(identityToken, publicKey, {
+      algorithms: ['RS256'],
+      issuer: 'https://appleid.apple.com',
+      ...(appleBundleIds.length > 0 && { audience: appleBundleIds as [string, ...string[]] }),
+    }) as jwt.JwtPayload & { sub: string };
+
+    return payload;
+  }
+
+  private async getApplePublicKeys(): Promise<any[]> {
+    const now = Date.now();
+    if (this.appleJwksCache && now - this.appleJwksCache.fetchedAt < 86_400_000) {
+      return this.appleJwksCache.keys;
+    }
+    const res = await fetch('https://appleid.apple.com/auth/keys');
+    if (!res.ok) throw new Error('Failed to fetch Apple JWKS');
+    const { keys } = await res.json();
+    this.appleJwksCache = { keys, fetchedAt: now };
+    return keys;
   }
 }

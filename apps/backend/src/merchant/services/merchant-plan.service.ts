@@ -389,7 +389,7 @@ export class MerchantPlanService {
     if (plan === 'PREMIUM') return;
 
     const count = await this.loyaltyCardRepo.count({
-      where: { merchantId },
+      where: { merchantId, deactivatedAt: null },
     });
 
     if (count >= FREE_MAX_CLIENTS) {

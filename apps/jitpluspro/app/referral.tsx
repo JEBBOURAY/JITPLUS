@@ -9,7 +9,6 @@ import {
   Share,
   Alert,
   Pressable,
-  Platform,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -31,9 +30,7 @@ import {
   Infinity,
   Clock,
 } from 'lucide-react-native';
-import { useTheme, brandGradient } from '@/contexts/ThemeContext';
-import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
+import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import api from '@/services/api';
 import { formatDate } from '@/utils/date';
@@ -78,7 +75,7 @@ export default function ReferralScreen() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useFocusEffect(
     useCallback(() => {
@@ -86,7 +83,7 @@ export default function ReferralScreen() {
     }, [fetchStats]),
   );
 
-  const copyTimer = useRef<ReturnType<typeof setTimeout>>();
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(copyTimer.current), []);
 
   const handleCopy = async () => {
@@ -123,33 +120,12 @@ export default function ReferralScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
-      {/* ── Header ───────────────────────────────────────── */}
-      <View collapsable={false}>
-        <LinearGradient
-          colors={[...brandGradient]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.headerGradient}
-        >
-          <BlurView
-            intensity={Platform.OS === 'ios' ? 40 : 20}
-            tint={theme.mode === 'dark' ? 'dark' : 'default'}
-            style={[styles.headerBlur, { paddingTop: insets.top + 16 }]}
-          >
-            <View style={styles.glassOverlay} />
-            <View style={styles.header}>
-              <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.7}>
-                <ArrowLeft size={22} color="#fff" />
-              </TouchableOpacity>
-              <Text style={styles.headerTitle}>{t('referral.title')}</Text>
-              <View style={{ width: 40 }} />
-            </View>
-          </BlurView>
-        </LinearGradient>
-        <LinearGradient
-          colors={['rgba(124,58,237,0.3)', 'transparent']}
-          style={styles.headerFade}
-        />
+      {/* ── Simple header — matches activity style ── */}
+      <View style={[styles.headerBar, { paddingTop: insets.top + 12 }]}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.7}>
+          <ArrowLeft size={22} color={theme.text} />
+        </TouchableOpacity>
+        <Text style={[styles.headerTitle, { color: theme.text }]}>{t('referral.title')}</Text>
       </View>
 
       {loading ? (
@@ -351,19 +327,13 @@ export default function ReferralScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
 
-  // Header — glassmorphism
-  headerGradient: { overflow: 'hidden' },
-  headerBlur: { overflow: 'hidden' },
-  glassOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-  },
-  header: {
+  // Header — simple bar (activity style)
+  headerBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: 24,
-    paddingBottom: 20,
+    paddingBottom: 12,
+    gap: 10,
   },
   backBtn: {
     width: 40,
@@ -373,13 +343,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerTitle: {
-    fontSize: 20,
+    fontSize: 28,
     fontWeight: '700',
-    color: '#FFFFFF',
     fontFamily: 'Lexend_700Bold',
-    letterSpacing: -0.3,
+    letterSpacing: -0.5,
+    flex: 1,
   },
-  headerFade: { height: 4 },
 
   center: {
     flex: 1,

@@ -90,7 +90,7 @@ export const discoverStyles = StyleSheet.create({
   },
   calloutInfo: { flex: 1 },
   calloutName: { fontSize: FS.lg, fontWeight: '700', color: '#1e293b', letterSpacing: -0.3 },
-  calloutActions: { alignItems: 'center', gap: hp(8), marginLeft: wp(8) },
+  calloutActions: { alignItems: 'center', gap: hp(8), marginStart: wp(8) },
   calloutDistRow: {
     flexDirection: 'row', alignItems: 'center', gap: wp(3), marginTop: hp(4),
     backgroundColor: 'rgba(124,58,237,0.06)', alignSelf: 'flex-start',

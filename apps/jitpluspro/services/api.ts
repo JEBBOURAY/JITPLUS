@@ -46,7 +46,10 @@ const api = createApiClient({
   refreshToken: async () => {
     const refreshToken = await SecureStore.getItemAsync('refreshToken');
     const sessionId = await SecureStore.getItemAsync('sessionId');
-    if (!refreshToken || !sessionId) throw new Error('No refresh credentials');
+    if (!refreshToken || !sessionId) {
+      // Missing credentials → treat as auth failure (session expired), not a crash
+      throw Object.assign(new Error('No refresh credentials'), { isAuthExpired: true, response: { status: 401 } });
+    }
 
     const baseURL = resolveApiUrl(ENV_URL, IS_DEV);
     const { data } = await axios.post(`${baseURL}/auth/refresh-token`, {

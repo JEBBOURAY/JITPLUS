@@ -1,8 +1,7 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { Crown, Sparkles } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 
@@ -14,7 +13,6 @@ interface PremiumLockCardProps {
 export default React.memo(function PremiumLockCard({ descriptionKey, titleKey }: PremiumLockCardProps) {
   const theme = useTheme();
   const { t } = useLanguage();
-  const router = useRouter();
 
   return (
     <View style={[styles.wrapper, { borderColor: palette.premiumBorder }]}>
@@ -52,23 +50,6 @@ export default React.memo(function PremiumLockCard({ descriptionKey, titleKey }:
         <Text style={[styles.desc, { color: theme.textSecondary }]}>
           {t(descriptionKey)}
         </Text>
-
-        {/* CTA button */}
-        <TouchableOpacity
-          onPress={() => router.push('/plan')}
-          activeOpacity={0.85}
-          style={styles.btnWrap}
-        >
-          <LinearGradient
-            colors={[palette.violetDark, palette.violet]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.btn}
-          >
-            <Crown size={15} color={palette.gold} strokeWidth={2} />
-            <Text style={styles.btnText}>{t('messages.discoverPremium')}</Text>
-          </LinearGradient>
-        </TouchableOpacity>
       </LinearGradient>
     </View>
   );

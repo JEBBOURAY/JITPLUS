@@ -1,32 +1,5 @@
 import { IsString, IsNotEmpty, IsNumber, Min, Length, Matches, MaxLength, IsOptional, IsBoolean, IsEmail, IsDateString, ValidateIf, IsIn } from 'class-validator';
 
-export class SendOtpDto {
-  @IsString()
-  @IsNotEmpty()
-  @Matches(/^[0-9+\s\-()]{10,15}$/, { message: 'Numéro de téléphone invalide' })
-  telephone: string;
-
-  @IsOptional()
-  @IsBoolean()
-  isRegister?: boolean;
-}
-
-export class VerifyOtpDto {
-  @IsString()
-  @IsNotEmpty()
-  @Matches(/^[0-9+\s\-()]{10,15}$/, { message: 'Numéro de téléphone invalide' })
-  telephone: string;
-
-  @IsString()
-  @IsNotEmpty()
-  @Length(6, 6, { message: 'Le code doit contenir 6 chiffres' })
-  code: string;
-
-  @IsOptional()
-  @IsBoolean()
-  isRegister?: boolean;
-}
-
 export class SendOtpEmailDto {
   @IsEmail({}, { message: 'Adresse email invalide' })
   @IsNotEmpty()
@@ -35,11 +8,6 @@ export class SendOtpEmailDto {
   @IsOptional()
   @IsBoolean()
   isRegister?: boolean;
-
-  @IsOptional()
-  @IsString()
-  @Matches(/^\+[1-9]\d{6,14}$/, { message: 'Numéro de téléphone invalide (format international requis)' })
-  telephone?: string;
 }
 
 export class VerifyOtpEmailDto {
@@ -167,17 +135,6 @@ export class LoginEmailDto {
   password: string;
 }
 
-export class LoginPhoneDto {
-  @IsString()
-  @IsNotEmpty()
-  @Matches(/^[0-9+\s\-()]{10,15}$/, { message: 'Numéro de téléphone invalide' })
-  telephone: string;
-
-  @IsString()
-  @IsNotEmpty({ message: 'Le mot de passe est requis' })
-  password: string;
-}
-
 export class SetPasswordDto {
   @IsString()
   @IsNotEmpty({ message: 'Le mot de passe est requis' })
@@ -210,9 +167,9 @@ export class RefreshTokenDto {
 }
 
 export class ClientDeleteAccountDto {
+  @IsOptional()
   @IsString()
-  @IsNotEmpty({ message: 'Le mot de passe est requis' })
-  password: string;
+  password?: string;
 
   @IsString()
   @IsNotEmpty({ message: 'Veuillez confirmer la suppression en tapant "SUPPRIMER"' })

@@ -12,6 +12,7 @@ import {
   Animated,
   Image,
   ScrollView,
+  Keyboard,
 } from 'react-native';
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 import { router } from 'expo-router';
@@ -143,6 +144,7 @@ export default function LoginScreen() {
     lastLoginAttemptRef.current = now;
     SecureStore.setItemAsync(SS_LOGIN_ATTEMPTS, String(loginAttemptsRef.current));
 
+    Keyboard.dismiss();
     setIsLoading(true);
     setError('');
     const normalizedEmail = email.trim().toLowerCase();

@@ -8,12 +8,11 @@ import {
   TextInput,
   ActivityIndicator,
   Alert,
-  Platform,
 } from 'react-native';
-import { Save, Gift, Check, Settings as SettingsIcon, ArrowLeft, Stamp, Star, AlertTriangle, RefreshCw, ShieldCheck, ChevronDown, ChevronUp, Shield } from 'lucide-react-native';
+import { Save, Gift, Check, Settings as SettingsIcon, ArrowLeft, Stamp, Star, AlertTriangle, ShieldCheck, ChevronDown, ChevronUp, Shield } from 'lucide-react-native';
 import { useGuardedCallback } from '@/hooks/useGuardedCallback';
 import { useAuth } from '@/contexts/AuthContext';
-import { useTheme, brandGradient } from '@/contexts/ThemeContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { useRouter } from 'expo-router';
 import api from '@/services/api';
 import { getErrorMessage } from '@/utils/error';
@@ -23,8 +22,6 @@ import PremiumLockModal from '@/components/PremiumLockModal';
 import { RewardManager } from '@/components/settings/RewardManager';
 import { DEFAULT_CURRENCY } from '@/config/currency';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
 import type { Merchant } from '@/types';
 
 type LoyaltyType = 'POINTS' | 'STAMPS';
@@ -117,10 +114,6 @@ export default function SettingsScreen() {
     }
   }, [merchant, authLoading]);
 
-  const handleRefresh = useGuardedCallback(async () => {
-    if (!merchant) return;
-    dispatch({ type: 'LOAD_FROM_MERCHANT', merchant });
-  }, [merchant]);
 
   // â”€â”€ Switch loyalty type with confirmation â”€â”€
   const handleSwitchLoyaltyType = (newType: LoyaltyType) => {
@@ -287,35 +280,12 @@ export default function SettingsScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
-      {/* ── Glassmorphism Header ── */}
-      <View collapsable={false}>
-        <LinearGradient
-          colors={[...brandGradient]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.headerGradient}
-        >
-          <BlurView
-            intensity={Platform.OS === 'ios' ? 40 : 20}
-            tint={theme.mode === 'dark' ? 'dark' : 'default'}
-            style={[styles.headerBlur, { paddingTop: insets.top + 16 }]}
-          >
-            <View style={styles.glassOverlay} />
-            <View style={styles.header}>
-              <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-                <ArrowLeft size={22} color="#fff" />
-              </TouchableOpacity>
-              <Text style={styles.headerTitle}>{t('settingsPage.title')}</Text>
-              <TouchableOpacity onPress={handleRefresh} style={styles.refreshBtn}>
-                <RefreshCw size={18} color="rgba(255,255,255,0.9)" strokeWidth={1.5} />
-              </TouchableOpacity>
-            </View>
-          </BlurView>
-        </LinearGradient>
-        <LinearGradient
-          colors={['rgba(124,58,237,0.3)', 'transparent']}
-          style={styles.headerFade}
-        />
+      {/* ── Simple header — matches activity style ── */}
+      <View style={[styles.headerBar, { paddingTop: insets.top + 12 }]}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <ArrowLeft size={22} color={theme.text} />
+        </TouchableOpacity>
+        <Text style={[styles.headerTitle, { color: theme.text }]}>{t('settingsPage.title')}</Text>
       </View>
 
       <ScrollView
@@ -344,7 +314,7 @@ export default function SettingsScreen() {
             : <ChevronDown size={20} color={theme.textMuted} />}
         </TouchableOpacity>
         {loyaltyExpanded && <View
-          style={[styles.card, { backgroundColor: theme.bgCard }]}
+          style={[styles.card, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}
         >
           {!isPremium ? (
             <PremiumLockCard titleKey="settingsPage.premiumLoyaltyTitle" descriptionKey="settingsPage.premiumLoyaltyDesc" />
@@ -752,33 +722,23 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
-  // ── Header — glassmorphism ──
-  headerGradient: { overflow: 'hidden' },
-  headerBlur: { overflow: 'hidden' },
-  glassOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-  },
-  header: {
+  // ── Header — simple bar (activity style) ──
+  headerBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingBottom: 20,
     paddingHorizontal: 24,
+    paddingBottom: 12,
     gap: 10,
   },
   backBtn: { marginRight: 2 },
-  headerTitle: { fontSize: 20, fontWeight: '700', color: '#FFFFFF', flex: 1, fontFamily: 'Lexend_700Bold', letterSpacing: -0.3 },
-  refreshBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.10)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.20)',
-    alignItems: 'center',
-    justifyContent: 'center',
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: '700',
+    fontFamily: 'Lexend_700Bold',
+    letterSpacing: -0.5,
+    flex: 1,
   },
-  headerFade: { height: 4 },
+
 
   // ── Sections ──
   guideContainer: {
@@ -817,6 +777,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     padding: 16,
     borderWidth: 1,
+    borderColor: 'transparent',
   },
   cardLabel: { fontSize: 14, marginBottom: 14, lineHeight: 20, fontFamily: 'Lexend_400Regular' },
 

@@ -38,8 +38,8 @@ export default function PremiumLockModal({ visible, onClose, titleKey, descKey }
       statusBarTranslucent
       onRequestClose={onClose}
     >
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={styles.sheetOuter} onPress={(e) => e.stopPropagation()}>
+      <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel={t('common.close')}>
+        <Pressable style={styles.sheetOuter} onPress={(e) => e.stopPropagation()} accessibilityRole="summary" accessibilityViewIsModal={true}>
           {/* Sheet */}
           <LinearGradient
             colors={['#120826', palette.premiumBg]}

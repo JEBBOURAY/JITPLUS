@@ -8,6 +8,7 @@ import {
   NOTIFICATION_REPOSITORY, type INotificationRepository,
   CLIENT_NOTIFICATION_STATUS_REPOSITORY, type IClientNotificationStatusRepository,
   PROFILE_VIEW_REPOSITORY, type IProfileViewRepository,
+  TRANSACTION_REPOSITORY, type ITransactionRepository,
   TRANSACTION_RUNNER, type ITransactionRunner,
 } from '../common/repositories';
 import * as bcrypt from 'bcryptjs';
@@ -25,6 +26,7 @@ export class ClientService {
     @Inject(NOTIFICATION_REPOSITORY) private notificationRepo: INotificationRepository,
     @Inject(CLIENT_NOTIFICATION_STATUS_REPOSITORY) private clientNotifStatusRepo: IClientNotificationStatusRepository,
     @Inject(PROFILE_VIEW_REPOSITORY) private profileViewRepo: IProfileViewRepository,
+    @Inject(TRANSACTION_REPOSITORY) private transactionRepo: ITransactionRepository,
     @Inject(TRANSACTION_RUNNER) private txRunner: ITransactionRunner,
     @Inject(CACHE_MANAGER) private cache: Cache,
   ) {}
@@ -167,26 +169,27 @@ export class ClientService {
   async deleteAccount(clientId: string, password?: string) {
     const client = await this.clientRepo.findUnique({
       where: { id: clientId },
-      select: { id: true, password: true },
+      select: { id: true, password: true, googleId: true, appleId: true },
     });
 
     if (!client) {
       throw new BadRequestException('Compte introuvable');
     }
 
-    // Always require password for account deletion
-    if (!client.password) {
-      throw new BadRequestException('Veuillez d\'abord définir un mot de passe depuis votre profil avant de supprimer votre compte');
+    // Identity verification: password required for password-based accounts,
+    // social-only accounts (no password) can delete without re-auth since
+    // they are already authenticated via JWT.
+    if (client.password) {
+      if (!password) {
+        throw new BadRequestException('Le mot de passe est requis pour supprimer votre compte');
+      }
+      const isValid = await bcrypt.compare(password, client.password);
+      if (!isValid) {
+        throw new UnauthorizedException('Mot de passe incorrect');
+      }
     }
-
-    if (!password) {
-      throw new BadRequestException('Le mot de passe est requis pour supprimer votre compte');
-    }
-
-    const isValid = await bcrypt.compare(password, client.password);
-    if (!isValid) {
-      throw new UnauthorizedException('Mot de passe incorrect');
-    }
+    // Social-only users (Google/Apple, no password) are already authenticated
+    // via their JWT — no additional re-auth needed.
 
     // Atomic soft-delete inside a transaction to ensure all related data
     // is cleaned up. Prevents orphaned records leaking to recreated accounts.
@@ -268,6 +271,18 @@ export class ClientService {
     });
     this.logger.log(`Push token ${tokenValue ? 'updated' : 'cleared'} for client ${clientId}`);
     return { success: true };
+  }
+
+  async getProfileStats(clientId: string) {
+    const [totalScans, totalRewards] = await Promise.all([
+      this.transactionRepo.count({
+        where: { clientId, type: 'EARN_POINTS', status: 'ACTIVE' },
+      }),
+      this.transactionRepo.count({
+        where: { clientId, type: 'REDEEM_REWARD', status: 'ACTIVE' },
+      }),
+    ]);
+    return { totalScans, totalRewards };
   }
 
   async getPointsOverview(clientId: string, page: number = 1, limit: number = 50) {

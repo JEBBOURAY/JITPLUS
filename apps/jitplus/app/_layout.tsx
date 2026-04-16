@@ -53,7 +53,20 @@ Sentry.init({
   maxBreadcrumbs: 20,
   attachScreenshot: false, // Disabled: screenshots can capture PII (names, cards, balances)
   attachViewHierarchy: false,
+  ignoreErrors: [
+    'No refresh token',
+    'Session expired',
+    'Network Error',
+    'ECONNABORTED',
+  ],
+  beforeSend(event) {
+    // Suppress expected auth-failure errors that are already handled by the app
+    const msg = event.exception?.values?.[0]?.value ?? '';
+    if (/No refresh token|Session expired/i.test(msg)) return null;
+    return event;
+  },
 });
+
 // ── End Sentry init ────────────────────────────────
 
 // ── Global unhandled promise rejection handler ──────────────────
@@ -63,7 +76,11 @@ if (typeof globalThis !== 'undefined') {
   (globalThis as any).onunhandledrejection = (event: any) => {
     const error = event?.reason;
     if (!__DEV__ && error) {
-      Sentry.captureException(error, { tags: { source: 'unhandled-promise' } });
+      // Skip expected auth failures — already handled by onAuthFailure / onUnauthorized
+      const msg = error?.message ?? '';
+      if (!/No refresh token|Session expired/i.test(msg)) {
+        Sentry.captureException(error, { tags: { source: 'unhandled-promise' } });
+      }
     }
     if (originalHandler) originalHandler(event);
   };
@@ -100,15 +117,26 @@ onlineManager.setEventListener((setOnline) => {
 // seized/rooted. AsyncStorage is unencrypted — shorter TTL = less recoverable data.
 const CACHE_MAX_AGE = 4 * 60 * 60 * 1000; // 4 hours
 
+// Skip expected HTTP 4xx errors (business/validation failures) from Sentry.
+// Only report 5xx, network errors, and non-HTTP errors.
+function isServerOrNetworkError(error: unknown): boolean {
+  const status = (error as { response?: { status?: number } })?.response?.status;
+  return !status || status >= 500;
+}
+
 const queryClient = new QueryClient({
   queryCache: new QueryCache({
     onError: (error) => {
-      if (!__DEV__) Sentry.captureException(error, { tags: { source: 'react-query' } });
+      if (!__DEV__ && isServerOrNetworkError(error)) {
+        Sentry.captureException(error, { tags: { source: 'react-query' } });
+      }
     },
   }),
   mutationCache: new MutationCache({
     onError: (error) => {
-      if (!__DEV__) Sentry.captureException(error, { tags: { source: 'react-query-mutation' } });
+      if (!__DEV__ && isServerOrNetworkError(error)) {
+        Sentry.captureException(error, { tags: { source: 'react-query-mutation' } });
+      }
     },
   }),
   defaultOptions: {
@@ -176,7 +204,38 @@ function RootLayoutNav() {
     const navigateByAction = (data?: Record<string, string>) => {
       try {
         const event = data?.event;
+        const action = data?.action;
         const merchantId = data?.merchantId;
+
+        // Handle action-based deep links from automated campaigns
+        if (action) {
+          switch (action) {
+            case 'open_explore':
+              router.push('/(tabs)/discover');
+              return;
+            case 'open_scan':
+              router.push('/(tabs)/qr');
+              return;
+            case 'open_referral':
+              router.push('/referral');
+              return;
+            case 'open_cards':
+              router.push('/(tabs)');
+              return;
+            case 'open_card':
+              if (merchantId) {
+                router.push({ pathname: '/merchant/[id]', params: { id: merchantId } });
+                return;
+              }
+              router.push('/(tabs)');
+              return;
+            case 'open_notifications':
+              router.push('/(tabs)/notifications');
+              return;
+          }
+        }
+
+        // Handle event-based navigation (transactional notifications)
         switch (event) {
           case 'points_updated':
           case 'reward_available':

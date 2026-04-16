@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useGuardedCallback } from '@/hooks/useGuardedCallback';
 import {
   View,
@@ -131,6 +131,14 @@ export default function ClientDetailScreen() {
   const { t, locale } = useLanguage();
 
   const validId = id && isValidUUID(id);
+
+  useEffect(() => {
+    if (!validId) {
+      Alert.alert(t('common.error'), t('clientDetail.invalidClient'), [
+        { text: 'OK', onPress: () => router.back() },
+      ]);
+    }
+  }, [validId, t, router]);
 
   const {
     data: client,

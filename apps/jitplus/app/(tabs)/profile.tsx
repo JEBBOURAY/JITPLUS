@@ -13,7 +13,7 @@ import Constants from 'expo-constants';
 import {
   User, LogOut, Phone, Mail, Pencil, Check, X, Trash2, AlertTriangle,
   Share2, MessageCircle, ChevronDown, ChevronRight, Moon, Globe, FileDown, Shield,
-  Star, MessageSquare, Calendar, Sparkles, Lock, ShieldCheck, Gift,
+  Star, MessageSquare, Calendar, Sparkles, Lock, ShieldCheck, Gift, ScanLine, Trophy,
 } from 'lucide-react-native';
 import { haptic, HapticStyle } from '@/utils/haptics';
 import { useGuardedCallback } from '@/hooks/useGuardedCallback';
@@ -48,6 +48,7 @@ export default function ProfileScreen() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [profileStats, setProfileStats] = useState<{ totalScans: number; totalRewards: number } | null>(null);
   const [infoExpanded, setInfoExpanded] = useState(false);
   const [prefExpanded, setPrefExpanded] = useState(false);
   const [compteExpanded, setCompteExpanded] = useState(false);
@@ -163,6 +164,8 @@ export default function ProfileScreen() {
       setShareInfoMerchants(client.shareInfoMerchants ?? false);
       setNotifWhatsapp(client.notifWhatsapp ?? true);
     }
+    // Fetch profile stats
+    api.getProfileStats().then(setProfileStats).catch(() => {});
   }, [client, refreshProfile]));
 
   const startEditing = () => {
@@ -314,7 +317,10 @@ export default function ProfileScreen() {
   const handleRefresh = useGuardedCallback(async () => {
     setIsRefreshing(true);
     haptic(HapticStyle.Light);
-    await refreshProfile?.();
+    await Promise.all([
+      refreshProfile?.(),
+      api.getProfileStats().then(setProfileStats).catch(() => {}),
+    ]);
     setIsRefreshing(false);
   }, [refreshProfile]);
 
@@ -382,7 +388,10 @@ export default function ProfileScreen() {
       await FileSystem.deleteAsync(fileUri, { idempotent: true }).catch(() => {});
     } catch (err) {
       if (__DEV__) console.error('Export error:', err);
-      Alert.alert(t('common.error'), t('profile.exportDataError'));
+      Alert.alert(t('common.error'), t('profile.exportDataError'), [
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('common.retry'), onPress: () => handleExportData() },
+      ]);
     } finally {
       setIsExporting(false);
     }
@@ -400,7 +409,10 @@ export default function ProfileScreen() {
       router.replace('/login');
     } catch (error) {
       if (__DEV__) console.error('Delete account error:', error);
-      Alert.alert(t('common.error'), t('profile.accountDeleteError'));
+      Alert.alert(t('common.error'), t('profile.accountDeleteError'), [
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('common.retry'), onPress: () => confirmDelete(password) },
+      ]);
     } finally {
       setIsDeleting(false);
     }
@@ -426,7 +438,7 @@ export default function ProfileScreen() {
           <View style={styles.contentContainer}>
             {/* Profile card */}
             <FadeInView delay={100}>
-              <View style={[styles.profileCard, { backgroundColor: theme.bgCard }]}>
+              <View style={styles.profileCard}>
                 <View style={styles.profileRow}>
                   <LinearGradient
                     colors={[palette.gold, palette.violetVivid]}
@@ -447,6 +459,54 @@ export default function ProfileScreen() {
                     ) : (
                       <Text style={[styles.profileName, { color: theme.text }]}>{client?.prenom} {client?.nom}</Text>
                     )}
+                  </View>
+                </View>
+
+                {/* Stats row */}
+                <View style={{
+                  flexDirection: 'row',
+                  marginTop: hp(14),
+                  gap: wp(12),
+                }}>
+                  <View style={{
+                    flex: 1,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    backgroundColor: `${palette.violet}10`,
+                    borderRadius: radius.lg,
+                    paddingVertical: hp(10),
+                    paddingHorizontal: wp(12),
+                    gap: wp(8),
+                  }}>
+                    <ScanLine size={ms(18)} color={palette.violet} strokeWidth={1.8} />
+                    <View>
+                      <Text style={{ fontSize: FS.lg, fontWeight: '700', color: theme.text }}>
+                        {profileStats?.totalScans ?? '—'}
+                      </Text>
+                      <Text style={{ fontSize: FS.xs, color: theme.textMuted }}>
+                        {t('profile.totalScans')}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={{
+                    flex: 1,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    backgroundColor: `${palette.gold}15`,
+                    borderRadius: radius.lg,
+                    paddingVertical: hp(10),
+                    paddingHorizontal: wp(12),
+                    gap: wp(8),
+                  }}>
+                    <Gift size={ms(18)} color={palette.gold} strokeWidth={1.8} />
+                    <View>
+                      <Text style={{ fontSize: FS.lg, fontWeight: '700', color: theme.text }}>
+                        {profileStats?.totalRewards ?? '—'}
+                      </Text>
+                      <Text style={{ fontSize: FS.xs, color: theme.textMuted }}>
+                        {t('profile.totalRewards')}
+                      </Text>
+                    </View>
                   </View>
                 </View>
               </View>

@@ -66,7 +66,7 @@ export function maskName(name: string | null | undefined): string | null {
  */
 export function mapClientResponse(
   client: { id: string; prenom?: string | null; nom: string | null; email: string | null; telephone: string | null; shareInfoMerchants?: boolean; createdAt: Date },
-  loyaltyCard: { points: number; createdAt: Date } | undefined | null,
+  loyaltyCard: { points: number; createdAt: Date; deactivatedAt?: Date | null } | undefined | null,
   tx: { lastVisit: Date | null; txCount: number } | undefined,
 ) {
   const shared = client.shareInfoMerchants !== false;
@@ -80,6 +80,7 @@ export function mapClientResponse(
     totalTransactions: tx?.txCount ?? 0,
     lastVisit: tx?.lastVisit ?? loyaltyCard?.createdAt ?? client.createdAt,
     memberSince: loyaltyCard?.createdAt ?? client.createdAt,
+    cardDeactivated: !!loyaltyCard?.deactivatedAt,
   };
 }
 

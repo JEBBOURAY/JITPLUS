@@ -37,8 +37,8 @@ export default function VerifyOtpScreen() {
   const theme = useTheme();
   const { t } = useLanguage();
   const { telephone, isEmail, isRegister, isForgotPassword } = useLocalSearchParams<{ telephone: string; isEmail?: string; isRegister?: string; isForgotPassword?: string }>();
-  const { verifyOtp, sendOtp, verifyOtpEmail, sendOtpEmail } = useAuth();
-  const isEmailFlow = isEmail === '1';
+  const { verifyOtpEmail, sendOtpEmail } = useAuth();
+  const isEmailFlow = true;
   const isRegisterFlow = isRegister === '1';
   const isForgotPasswordFlow = isForgotPassword === '1';
   const [code, setCode] = useState('');
@@ -118,9 +118,7 @@ export default function VerifyOtpScreen() {
     setIsLoading(true);
     setError('');
 
-    const result = isEmailFlow
-      ? await verifyOtpEmail(telephone, code, isRegisterFlow)
-      : await verifyOtp(telephone, code, isRegisterFlow);
+    const result = await verifyOtpEmail(telephone, code, isRegisterFlow);
     setIsLoading(false);
     verifyingRef.current = false;
 
@@ -145,7 +143,7 @@ export default function VerifyOtpScreen() {
       setError(result.error || t('verifyOtp.invalidCode'));
       setCode('');
     }
-  }, [code, telephone, isEmailFlow, isRegisterFlow, isForgotPasswordFlow, verifyOtp, verifyOtpEmail, t]);
+  }, [code, telephone, isRegisterFlow, isForgotPasswordFlow, verifyOtpEmail, t]);
 
   useEffect(() => {
     if (code.length === OTP_LENGTH && !isLoading) {
@@ -156,18 +154,13 @@ export default function VerifyOtpScreen() {
 
   const handleResend = async () => {
     if (resendTimer > 0 || !telephone) return;
-    setResendTimer(60);
     setError('');
-    const result = isEmailFlow
-      ? await sendOtpEmail(telephone, isRegisterFlow)
-      : await sendOtp(telephone, isRegisterFlow);
-    if (!result.success) {
+    const result = await sendOtpEmail(telephone, isRegisterFlow);
+    if (result.success) {
+      setResendTimer(60);
+    } else {
       setError(result.error || t('verifyOtp.resendError'));
     }
-  };
-
-  const formatPhone = (phone: string) => {
-    return phone.replace(/(\d{2})(?=\d)/g, '$1 ');
   };
 
   // Responsive OTP box size
@@ -206,8 +199,8 @@ export default function VerifyOtpScreen() {
             </View>
             <Text style={styles.title}>{isForgotPasswordFlow ? t('verifyOtp.resetTitle') : t('verifyOtp.verifyTitle')}</Text>
             <Text style={styles.subtitle}>
-              {isEmailFlow ? t('verifyOtp.codeSentTo') : t('verifyOtp.codeSentVia')}{' '}{'\n'}
-              <Text style={styles.phone}>{isEmailFlow ? (telephone || '') : formatPhone(telephone || '')}</Text>
+              {t('verifyOtp.codeSentTo')}{' '}{'\n'}
+              <Text style={styles.phone}>{telephone || ''}</Text>
             </Text>
           </Animated.View>
 

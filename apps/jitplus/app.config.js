@@ -7,7 +7,9 @@ module.exports = ({ config }) => {
   // Reversed client ID from Google Cloud Console → OAuth 2.0 → iOS client
   // e.g. "com.googleusercontent.apps.XXXXXXX-YYYYYYY"
   const IOS_GOOGLE_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || '';
-  const PRIVACY_POLICY_URL = 'https://jitplus.com/privacy';
+  const PRIVACY_POLICY_URL =
+    process.env.EXPO_PUBLIC_PRIVACY_URL ||
+    'https://jitplus.com/privacy';
 
   // Extract Google Web Client ID from google-services.json (single source of truth)
   // to avoid duplicating it in .env and risking divergence.
@@ -29,7 +31,7 @@ module.exports = ({ config }) => {
     name: 'JitPlus',
     slug: 'jitplus',
     description: 'Digital loyalty cards app — collect stamps and earn rewards at your favorite local shops.',
-    version: '1.3.5',
+    version: '1.3.6',
     orientation: 'portrait',
     icon: './assets/images/icon-white.png',
     scheme: 'jitplus',
@@ -45,7 +47,7 @@ module.exports = ({ config }) => {
       supportsTablet: false,
       bundleIdentifier: 'com.jitplus.client',
       // Initial build number — EAS autoIncrement bumps this on every production build
-      buildNumber: '31',
+      buildNumber: '32',
       // Portrait-only app: disable iPad Split View / Slide Over to avoid orientation-support review issues
       requiresFullScreen: true,
       // Firebase config for iOS — download from Firebase Console
@@ -69,7 +71,7 @@ module.exports = ({ config }) => {
       },
     },
     android: {
-      versionCode: 31,
+      versionCode: 32,
       icon: './assets/images/icon-white.png',
       adaptiveIcon: {
         foregroundImage: './assets/images/adaptive-icon-white.png',

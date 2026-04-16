@@ -191,7 +191,7 @@ export class AdminAuthService {
           createdAt: true,
           _count: {
             select: {
-              loyaltyCards: true,
+              loyaltyCards: { where: { deactivatedAt: null } },
               stores: true,
             },
           },
@@ -242,7 +242,7 @@ export class AdminAuthService {
         createdAt: true,
         _count: {
           select: {
-            loyaltyCards: true,
+            loyaltyCards: { where: { deactivatedAt: null } },
             stores: true,
             notifications: true,
             transactions: true,
@@ -642,7 +642,7 @@ export class AdminAuthService {
           telephone: true,
           countryCode: true,
           createdAt: true,
-          _count: { select: { loyaltyCards: true } },
+                  _count: { select: { loyaltyCards: { where: { deactivatedAt: null } } } },
         },
         orderBy: { createdAt: 'desc' },
         skip,
@@ -848,7 +848,7 @@ export class AdminAuthService {
         deletedAt: true,
         _count: {
           select: {
-            loyaltyCards: true,
+            loyaltyCards: { where: { deactivatedAt: null } },
             transactions: true,
             notificationStatuses: true,
           },

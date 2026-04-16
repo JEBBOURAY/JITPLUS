@@ -178,7 +178,10 @@ export default function OnboardingScreen() {
         });
         setRewardCreated(true);
       } catch (err) {
-        Alert.alert(t('common.error'), getErrorMessage(err, t('onboarding.rewardError')));
+        Alert.alert(t('common.error'), getErrorMessage(err, t('onboarding.rewardError')), [
+          { text: t('common.cancel'), style: 'cancel' },
+          { text: t('common.retry'), onPress: () => handleGiftNext() },
+        ]);
         return;
       } finally {
         setCreatingReward(false);
