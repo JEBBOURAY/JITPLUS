@@ -1,10 +1,14 @@
 import { Injectable, Logger, Inject } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import {
   CLIENT_REPOSITORY, type IClientRepository,
   LOYALTY_CARD_REPOSITORY, type ILoyaltyCardRepository,
+  MERCHANT_REPOSITORY, type IMerchantRepository,
   TRANSACTION_REPOSITORY, type ITransactionRepository,
   REWARD_REPOSITORY, type IRewardRepository,
+  CAMPAIGN_SENT_TRACKER_REPOSITORY, type ICampaignSentTrackerRepository,
 } from '../repositories';
 import { IMailProvider, MAIL_PROVIDER } from '../interfaces';
 import {
@@ -20,9 +24,75 @@ import {
   buildReferralCampaignEmail,
   buildFeatureStampsEmail,
   buildFeatureQREmail,
+  pickLang,
+  type Lang,
 } from '../../mail/campaign-templates';
 
-type Lang = 'fr' | 'en' | 'ar';
+// ─── Subject localization ────────────────────────────────────────────────────
+// Keep the subjects table here so `campaign-templates.ts` stays focused on HTML.
+
+const SUBJECTS = {
+  welcome_day1: {
+    fr: '🏪 Découvrez les commerces autour de vous !',
+    en: '🏪 Discover shops around you!',
+    ar: '🏪 اكتشف المحلات اللي قريبين منك!',
+  },
+  welcome_day3: {
+    fr: '⭐ Gagnez vos premiers points de fidélité !',
+    en: '⭐ Earn your first loyalty points!',
+    ar: '⭐ اربح أول النقط ديال الوفاء ديالك!',
+  },
+  welcome_day7: {
+    fr: '🎁 Invitez vos amis, gagnez des récompenses !',
+    en: '🎁 Invite your friends, earn rewards!',
+    ar: '🎁 عيّط لصحابك واربح كادوات!',
+  },
+  reengage_7d: {
+    fr: '💫 Vos points vous attendent !',
+    en: '💫 Your points are waiting!',
+    ar: '💫 النقط ديالك كتسناك!',
+  },
+  reengage_14d: {
+    fr: '🔥 Ne perdez pas vos avantages !',
+    en: '🔥 Don\'t lose your perks!',
+    ar: '🔥 ما تضيعش المزايا ديالك!',
+  },
+  reengage_30d: {
+    fr: '😢 Vous nous manquez !',
+    en: '😢 We miss you!',
+    ar: '😢 كتخصرنا!',
+  },
+  reward_available: {
+    fr: (m: string) => `🎉 Récompense disponible chez ${m} !`,
+    en: (m: string) => `🎉 Reward available at ${m}!`,
+    ar: (m: string) => `🎉 كادو متاح عند ${m}!`,
+  },
+  reward_almost: {
+    fr: (n: number) => `🔥 Plus que ${n} points pour votre récompense !`,
+    en: (n: number) => `🔥 Only ${n} more points for your reward!`,
+    ar: (n: number) => `🔥 بقا ${n} نقط للكادو ديالك!`,
+  },
+  weekly_digest: {
+    fr: (p: number, n: number) => `📊 Votre semaine : +${p} points chez ${n} commerce(s)`,
+    en: (p: number, n: number) => `📊 Your week: +${p} points at ${n} shop(s)`,
+    ar: (p: number, n: number) => `📊 السيمانة ديالك: +${p} نقطة عند ${n} محل`,
+  },
+  feature_stamps: {
+    fr: '📋 Le saviez-vous ? Les cartes de tampons JitPlus !',
+    en: '📋 Did you know? JitPlus stamp cards!',
+    ar: '📋 واش كنتي تعرف؟ كارطات الطوابع ديال جيت بلوس!',
+  },
+  feature_qr: {
+    fr: '📱 Scanner = Gagner ! Découvrez comment ça marche',
+    en: '📱 Scan = Earn! See how it works',
+    ar: '📱 سكاني = اربح! شوف كيفاش كتخدم',
+  },
+  referral: {
+    fr: '💰 Parrainez et gagnez 25 DH !',
+    en: '💰 Refer a friend and earn 25 DH!',
+    ar: '💰 بارطاجي واربح 25 درهم!',
+  },
+} as const;
 
 /**
  * Automated email campaigns for JIT+ clients.
@@ -48,10 +118,54 @@ export class ClientEmailCampaignService {
   constructor(
     @Inject(CLIENT_REPOSITORY) private readonly clientRepo: IClientRepository,
     @Inject(LOYALTY_CARD_REPOSITORY) private readonly loyaltyCardRepo: ILoyaltyCardRepository,
+    @Inject(MERCHANT_REPOSITORY) private readonly merchantRepo: IMerchantRepository,
     @Inject(TRANSACTION_REPOSITORY) private readonly txRepo: ITransactionRepository,
     @Inject(REWARD_REPOSITORY) private readonly rewardRepo: IRewardRepository,
+    @Inject(CAMPAIGN_SENT_TRACKER_REPOSITORY) private readonly campaignTrackerRepo: ICampaignSentTrackerRepository,
     @Inject(MAIL_PROVIDER) private readonly mailProvider: IMailProvider,
+    private readonly jwtService: JwtService,
+    private readonly configService: ConfigService,
   ) {}
+
+  /** Build RFC 8058 one-click unsubscribe URL signed with JWT (365d TTL). */
+  private buildUnsubscribeUrl(clientId: string): string | undefined {
+    try {
+      const base = this.configService.get<string>('PUBLIC_API_URL')?.trim();
+      if (!base) return undefined;
+      const token = this.jwtService.sign(
+        { clientId, purpose: 'unsubscribe_email' },
+        { expiresIn: '365d' },
+      );
+      return `${base.replace(/\/$/, '')}/public/unsubscribe/email?t=${encodeURIComponent(token)}`;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * Check if a client was already sent a given campaign.
+   * Returns true if already sent (skip), false if not.
+   */
+  private async alreadySent(clientId: string, campaignId: string, channel = 'EMAIL'): Promise<boolean> {
+    const existing = await this.campaignTrackerRepo.findUnique({
+      where: { clientId_campaignId_channel: { clientId, campaignId, channel } },
+      select: { id: true },
+    });
+    return existing !== null;
+  }
+
+  /**
+   * Mark a campaign as sent for a client (idempotent via skipDuplicates pattern).
+   */
+  private async markSent(clientId: string, campaignId: string, channel = 'EMAIL'): Promise<void> {
+    try {
+      await this.campaignTrackerRepo.create({
+        data: { clientId, campaignId, channel },
+      });
+    } catch {
+      // Unique constraint — already marked, safe to ignore
+    }
+  }
 
   // ── Welcome Series Email ────────────────────────────────────────────────
   @Cron('30 9 * * *') // Daily at 09:30 UTC
@@ -77,7 +191,7 @@ export class ClientEmailCampaignService {
             notifEmail: true,
             email: { not: null },
           },
-          select: { id: true, email: true, prenom: true },
+          select: { id: true, email: true, prenom: true, language: true },
         });
 
         if (clients.length === 0) continue;
@@ -85,14 +199,14 @@ export class ClientEmailCampaignService {
         // For day3, skip clients who already have loyalty cards
         let eligibleClients = clients;
         if (step === 'day3') {
-          const clientIds = clients.map((c) => c.id);
+          const clientIds = clients.map((c: any) => c.id);
           const clientsWithCards = await this.loyaltyCardRepo.findMany({
             where: { clientId: { in: clientIds }, deactivatedAt: null },
             select: { clientId: true },
             distinct: ['clientId'],
           });
           const engagedIds = new Set(clientsWithCards.map((c: { clientId: string }) => c.clientId));
-          eligibleClients = clients.filter((c) => !engagedIds.has(c.id));
+          eligibleClients = clients.filter((c: any) => !engagedIds.has(c.id));
         }
 
         const buildEmail = {
@@ -101,17 +215,17 @@ export class ClientEmailCampaignService {
           day7: buildWelcomeDay7Email,
         }[step];
 
-        const subjects = {
-          day1: '🏪 Découvrez les commerces autour de vous !',
-          day3: '⭐ Gagnez vos premiers points de fidélité !',
-          day7: '🎁 Invitez vos amis, gagnez des récompenses !',
-        };
+        const subjectKey = ({ day1: 'welcome_day1', day3: 'welcome_day3', day7: 'welcome_day7' } as const)[step];
 
         for (const client of eligibleClients) {
           if (!client.email) continue;
+          const campaignId = `welcome_${step}`;
+          if (await this.alreadySent(client.id, campaignId)) continue;
           try {
-            const html = buildEmail(client.prenom ?? undefined);
-            await this.mailProvider.sendRaw(client.email, subjects[step], html);
+            const lang: Lang = pickLang(client.language);
+            const html = buildEmail(client.prenom ?? undefined, lang);
+            await this.mailProvider.sendRaw(client.email, SUBJECTS[subjectKey][lang], html, this.buildUnsubscribeUrl(client.id));
+            await this.markSent(client.id, campaignId);
             results[step]++;
           } catch (e) {
             this.logger.warn(`Welcome ${step} email failed for ${client.email}: ${e}`);
@@ -149,7 +263,7 @@ export class ClientEmailCampaignService {
             email: { not: null },
             loyaltyCards: { some: { deactivatedAt: null } },
           },
-          select: { id: true, email: true, prenom: true },
+          select: { id: true, email: true, prenom: true, language: true },
           take: ClientEmailCampaignService.BATCH_SIZE,
           ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
           orderBy: { id: 'asc' },
@@ -175,27 +289,35 @@ export class ClientEmailCampaignService {
           let subject: string | null = null;
           let resultKey: keyof typeof results | null = null;
 
-          // Pick the right window: 30d, 14d, 7d (only one email per client)
-          // Target clients who are EXACTLY in the day range (±1 day) to avoid re-sending
+          // Pick the right window: 30d, 14d, 7d (only one email per client).
+          // Tiers are checked from highest to lowest with `>=` so a client who
+          // is inactive 40 days still receives the 30d win-back email (the
+          // cron can miss a run, a user can be skipped by dedup, etc).
+          // Dedup by `lastTx.createdAt` date prevents sending the same tier
+          // twice for the same inactivity window.
           const daysSinceLastTx = Math.floor((now.getTime() - lastTx.createdAt.getTime()) / 86_400_000);
+          const lang: Lang = pickLang(client.language);
 
-          if (daysSinceLastTx >= 29 && daysSinceLastTx <= 31) {
-            html = buildReengagement30dEmail(client.prenom ?? undefined);
-            subject = '😢 Vous nous manquez !';
+          if (daysSinceLastTx >= 30) {
+            html = buildReengagement30dEmail(client.prenom ?? undefined, lang);
+            subject = SUBJECTS.reengage_30d[lang];
             resultKey = 'd30';
-          } else if (daysSinceLastTx >= 13 && daysSinceLastTx <= 15) {
-            html = buildReengagement14dEmail(client.prenom ?? undefined);
-            subject = '🔥 Ne perdez pas vos avantages !';
+          } else if (daysSinceLastTx >= 14) {
+            html = buildReengagement14dEmail(client.prenom ?? undefined, lang);
+            subject = SUBJECTS.reengage_14d[lang];
             resultKey = 'd14';
-          } else if (daysSinceLastTx >= 6 && daysSinceLastTx <= 8) {
-            html = buildReengagement7dEmail(client.prenom ?? undefined);
-            subject = '💫 Vos points vous attendent !';
+          } else if (daysSinceLastTx >= 7) {
+            html = buildReengagement7dEmail(client.prenom ?? undefined, lang);
+            subject = SUBJECTS.reengage_7d[lang];
             resultKey = 'd7';
           }
 
           if (html && subject && resultKey) {
+            const campaignId = `reengagement_${resultKey}_${lastTx.createdAt.toISOString().slice(0, 10)}`;
+            if (await this.alreadySent(client.id, campaignId)) continue;
             try {
-              await this.mailProvider.sendRaw(client.email, subject, html);
+              await this.mailProvider.sendRaw(client.email, subject, html, this.buildUnsubscribeUrl(client.id));
+              await this.markSent(client.id, campaignId);
               results[resultKey]++;
             } catch (e) {
               this.logger.warn(`Re-engagement email failed for ${client.email}: ${e}`);
@@ -251,8 +373,8 @@ export class ClientEmailCampaignService {
         const notifiedClients = new Set<string>();
 
         // Batch load related data
-        const merchantIds = [...new Set(cards.map((c) => c.merchantId))];
-        const clientIds = [...new Set(cards.map((c) => c.clientId))];
+        const merchantIds = [...new Set(cards.map((c: any) => c.merchantId))];
+        const clientIds = [...new Set(cards.map((c: any) => c.clientId))];
 
         const rewards = await this.rewardRepo.findMany({
           where: { merchantId: { in: merchantIds } },
@@ -266,11 +388,18 @@ export class ClientEmailCampaignService {
           }
         }
 
+        // Batch load merchant names
+        const merchants = await this.merchantRepo.findMany({
+          where: { id: { in: merchantIds } },
+          select: { id: true, nom: true, loyaltyType: true },
+        });
+        const merchantMap = new Map<string, any>(merchants.map((m: any) => [m.id, m]));
+
         const clients = await this.clientRepo.findMany({
           where: { id: { in: clientIds } },
-          select: { id: true, email: true, prenom: true },
+          select: { id: true, email: true, prenom: true, language: true },
         });
-        const clientMap = new Map(clients.map((c) => [c.id, c]));
+        const clientMap = new Map<string, any>(clients.map((c: any) => [c.id, c]));
 
         for (const card of cards) {
           if (notifiedClients.has(card.clientId)) continue;
@@ -280,28 +409,48 @@ export class ClientEmailCampaignService {
           const cheapest = rewardsByMerchant.get(card.merchantId);
           if (!cheapest) continue;
 
+          const merchant = merchantMap.get(card.merchantId);
+          const merchantName = merchant?.nom || 'votre commerce';
+          const isStamps = merchant?.loyaltyType === 'STAMPS';
           const points = card.points || 0;
+          const lang: Lang = pickLang(client.language);
 
           try {
             if (points >= cheapest.cout) {
+              const campaignId = `reward_available_${card.merchantId}_${new Date().toISOString().slice(0, 10)}`;
+              if (await this.alreadySent(card.clientId, campaignId)) {
+                notifiedClients.add(card.clientId);
+                continue;
+              }
               const html = buildRewardAvailableEmail(
                 client.prenom ?? undefined,
-                'votre commerce', // We'd need merchant name here
+                merchantName,
                 cheapest.titre,
                 points,
+                card.merchantId,
+                lang,
               );
-              await this.mailProvider.sendRaw(client.email, '🎉 Vous avez une récompense disponible !', html);
+              await this.mailProvider.sendRaw(client.email, SUBJECTS.reward_available[lang](merchantName), html, this.buildUnsubscribeUrl(card.clientId));
+              await this.markSent(card.clientId, campaignId);
               availableCount++;
               notifiedClients.add(card.clientId);
             } else if (points >= cheapest.cout * 0.8) {
               const remaining = cheapest.cout - points;
+              const campaignId = `reward_almost_${card.merchantId}_${new Date().toISOString().slice(0, 10)}`;
+              if (await this.alreadySent(card.clientId, campaignId)) {
+                notifiedClients.add(card.clientId);
+                continue;
+              }
               const html = buildAlmostThereEmail(
                 client.prenom ?? undefined,
-                'votre commerce',
+                merchantName,
                 remaining,
-                false,
+                isStamps,
+                card.merchantId,
+                lang,
               );
-              await this.mailProvider.sendRaw(client.email, `🔥 Plus que ${remaining} points pour votre récompense !`, html);
+              await this.mailProvider.sendRaw(client.email, SUBJECTS.reward_almost[lang](remaining), html, this.buildUnsubscribeUrl(card.clientId));
+              await this.markSent(card.clientId, campaignId);
               almostCount++;
               notifiedClients.add(card.clientId);
             }
@@ -367,25 +516,33 @@ export class ClientEmailCampaignService {
       const clientIds = [...clientStats.keys()];
       const clients = await this.clientRepo.findMany({
         where: { id: { in: clientIds } },
-        select: { id: true, email: true, prenom: true },
+        select: { id: true, email: true, prenom: true, language: true },
       });
 
       for (const client of clients) {
         if (!client.email) continue;
         const stats = clientStats.get(client.id);
         if (!stats) continue;
+        // One digest per ISO-week
+        const isoWeek = new Date().toISOString().slice(0, 10);
+        const campaignId = `weekly_digest_${isoWeek}`;
+        if (await this.alreadySent(client.id, campaignId)) continue;
 
         try {
+          const lang: Lang = pickLang(client.language);
           const html = buildWeeklyDigestEmail(
             client.prenom ?? undefined,
             stats.totalPoints,
             stats.merchants.size,
+            lang,
           );
           await this.mailProvider.sendRaw(
             client.email,
-            `📊 Votre semaine : +${stats.totalPoints} points chez ${stats.merchants.size} commerce(s)`,
+            SUBJECTS.weekly_digest[lang](stats.totalPoints, stats.merchants.size),
             html,
+            this.buildUnsubscribeUrl(client.id),
           );
+          await this.markSent(client.id, campaignId);
           digestCount++;
         } catch (e) {
           this.logger.warn(`Weekly digest email failed for ${client.email}: ${e}`);
@@ -407,11 +564,7 @@ export class ClientEmailCampaignService {
       const weekNumber = Math.floor(Date.now() / (7 * 86_400_000));
       const features = [buildFeatureStampsEmail, buildFeatureQREmail] as const;
       const buildEmail = features[weekNumber % features.length];
-      const subjects = [
-        '📋 Le saviez-vous ? Les cartes de tampons JitPlus !',
-        '📱 Scanner = Gagner ! Découvrez comment ça marche',
-      ];
-      const subject = subjects[weekNumber % subjects.length];
+      const subjectKey: 'feature_stamps' | 'feature_qr' = weekNumber % 2 === 0 ? 'feature_stamps' : 'feature_qr';
 
       const twoDaysAgo = new Date(Date.now() - 2 * 86_400_000);
       let emailCount = 0;
@@ -425,7 +578,7 @@ export class ClientEmailCampaignService {
             email: { not: null },
             createdAt: { lte: twoDaysAgo },
           },
-          select: { id: true, email: true, prenom: true },
+          select: { id: true, email: true, prenom: true, language: true },
           take: ClientEmailCampaignService.BATCH_SIZE,
           ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
           orderBy: { id: 'asc' },
@@ -434,9 +587,13 @@ export class ClientEmailCampaignService {
 
         for (const client of clients) {
           if (!client.email) continue;
+          const campaignId = `feature_highlight_w${weekNumber}`;
+          if (await this.alreadySent(client.id, campaignId)) continue;
           try {
-            const html = buildEmail(client.prenom ?? undefined);
-            await this.mailProvider.sendRaw(client.email, subject, html);
+            const lang: Lang = pickLang(client.language);
+            const html = buildEmail(client.prenom ?? undefined, lang);
+            await this.mailProvider.sendRaw(client.email, SUBJECTS[subjectKey][lang], html, this.buildUnsubscribeUrl(client.id));
+            await this.markSent(client.id, campaignId);
             emailCount++;
           } catch (e) {
             this.logger.warn(`Feature highlight email failed for ${client.email}: ${e}`);
@@ -476,7 +633,7 @@ export class ClientEmailCampaignService {
             notifEmail: true,
             email: { not: null },
           },
-          select: { id: true, email: true, prenom: true },
+          select: { id: true, email: true, prenom: true, language: true },
           take: ClientEmailCampaignService.BATCH_SIZE,
           ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
           orderBy: { id: 'asc' },
@@ -485,9 +642,13 @@ export class ClientEmailCampaignService {
 
         for (const client of clients) {
           if (!client.email) continue;
+          const campaignId = `referral_w${weekNumber}`;
+          if (await this.alreadySent(client.id, campaignId)) continue;
           try {
-            const html = buildReferralCampaignEmail(client.prenom ?? undefined);
-            await this.mailProvider.sendRaw(client.email, '💰 Parrainez et gagnez 25 DH !', html);
+            const lang: Lang = pickLang(client.language);
+            const html = buildReferralCampaignEmail(client.prenom ?? undefined, lang);
+            await this.mailProvider.sendRaw(client.email, SUBJECTS.referral[lang], html, this.buildUnsubscribeUrl(client.id));
+            await this.markSent(client.id, campaignId);
             emailCount++;
           } catch (e) {
             this.logger.warn(`Referral email failed for ${client.email}: ${e}`);

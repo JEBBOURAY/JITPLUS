@@ -65,6 +65,8 @@ interface RegState {
   description: string;
   // Referral
   referralCode: string;
+  // Terms
+  termsAccepted: boolean;
   isLoading: boolean;
 }
 
@@ -97,6 +99,7 @@ const initialRegState: RegState = {
   storePhone: '',
   description: '',
   referralCode: '',
+  termsAccepted: false,
   isLoading: false,
 };
 
@@ -218,7 +221,7 @@ export default function RegisterScreen() {
     email, password, confirmPassword, showPassword,
     nomCommerce, categorie, ville, quartier, adresse, latitude, longitude,
     instagram, tiktok, website, storePhone, description,
-    referralCode,
+    referralCode, termsAccepted,
     isLoading,
   } = s;
 
@@ -296,15 +299,15 @@ export default function RegisterScreen() {
       return isValidPassword(password) && password === confirmPassword;
     }
     if (step === 2) {
-      // Google/Apple users see social info at step 2 (all optional → always valid)
-      if (isSocialAuth) return true;
+      // Google/Apple users see social info at step 2 — terms must be accepted
+      if (isSocialAuth) return termsAccepted;
       // Standard users see store config at step 2
       return !!nomCommerce.trim();
     }
-    // Step 3 (standard only): social info — all fields optional
-    if (step === 3) return true;
+    // Step 3 (standard only): social info — terms must be accepted
+    if (step === 3) return termsAccepted;
     return false;
-  }, [step, isSocialAuth, email, password, confirmPassword, nomCommerce]);
+  }, [step, isSocialAuth, email, password, confirmPassword, nomCommerce, termsAccepted]);
 
   // ── Register ──
   const handleRegister = useCallback(async () => {
@@ -349,7 +352,7 @@ export default function RegisterScreen() {
       try {
         const result = await googleRegister(gToken, {
           ...storeData,
-          termsAccepted: true,
+          termsAccepted,
         });
         if (result.success) {
           router.replace('/(tabs)');
@@ -378,7 +381,7 @@ export default function RegisterScreen() {
       try {
         const result = await appleRegister(aToken, aGivenName, aFamilyName, {
           ...storeData,
-          termsAccepted: true,
+          termsAccepted,
         });
         if (result.success) {
           router.replace('/(tabs)');
@@ -408,7 +411,7 @@ export default function RegisterScreen() {
         email: em.trim().toLowerCase(),
         password: pw,
         ...storeData,
-        termsAccepted: true,
+        termsAccepted,
       });
       router.replace({
         pathname: '/verify-email',
@@ -608,6 +611,27 @@ export default function RegisterScreen() {
               </View>
             )}
 
+            {/* ── Terms checkbox (last step) ── */}
+            {((step === 2 && isSocialAuth) || (step === 3 && !isSocialAuth)) && (
+              <TouchableOpacity
+                style={styles.termsRow}
+                onPress={() => set({ termsAccepted: !termsAccepted })}
+                activeOpacity={0.7}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: termsAccepted }}
+              >
+                <View style={[styles.checkbox, { borderColor: termsAccepted ? theme.primary : theme.border, backgroundColor: termsAccepted ? theme.primary : 'transparent' }]}>
+                  {termsAccepted && <Check size={ms(14)} color="#fff" strokeWidth={2.5} />}
+                </View>
+                <Text style={[styles.termsText, { color: theme.textSecondary }]}>
+                  {t('registerExtra.termsText')}{' '}
+                  <Text style={{ color: theme.primary, fontWeight: '600' }} onPress={() => router.push('/legal')}>
+                    {t('registerExtra.termsLink') || t('legal.terms')}
+                  </Text>
+                </Text>
+              </TouchableOpacity>
+            )}
+
             {/* ── Action button ── */}
             <Animated.View style={[styles.actions, { opacity: footerAnim }]}>
               <TouchableOpacity
@@ -741,6 +765,11 @@ const styles = StyleSheet.create({
     marginBottom: hp(8),
   },
   stepErrorText: { fontSize: fontSize.sm, fontWeight: '600', textAlign: 'center', fontFamily: 'Lexend_600SemiBold' },
+
+  // Terms checkbox
+  termsRow: { flexDirection: 'row', alignItems: 'center', marginTop: hp(1.5), marginBottom: hp(1), paddingHorizontal: wp(1) },
+  checkbox: { width: ms(22), height: ms(22), borderRadius: 6, borderWidth: 2, alignItems: 'center', justifyContent: 'center', marginRight: ms(10) },
+  termsText: { flex: 1, fontSize: fontSize.sm, lineHeight: ms(20), fontFamily: 'Lexend_400Regular' },
 
   // Actions
   actions: { marginTop: hp(2), marginBottom: hp(4) },

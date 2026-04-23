@@ -95,7 +95,7 @@ export default function AdminNotificationsScreen() {
         ]}
       >
         <View style={[styles.iconWrap, { backgroundColor: color + '15' }]}>
-          <Icon size={ms(18)} color={color} strokeWidth={1.6} />
+          <Icon size={ms(16)} color={color} strokeWidth={1.5} />
         </View>
         <View style={styles.cardBody}>
           <Text
@@ -122,7 +122,7 @@ export default function AdminNotificationsScreen() {
               {timeAgo(item.createdAt, locale)}
             </Text>
             {item.isRead && (
-              <CheckCheck size={ms(12)} color={theme.textMuted} strokeWidth={2} />
+              <CheckCheck size={ms(12)} color={theme.textMuted} strokeWidth={1.5} />
             )}
           </View>
         </View>
@@ -183,8 +183,8 @@ export default function AdminNotificationsScreen() {
         </View>
       ) : notifications.length === 0 ? (
         <View style={styles.center}>
-          <View style={[styles.emptyIcon, { backgroundColor: `${palette.violet}10` }]}>
-            <BellOff size={ms(36)} color={palette.violet} strokeWidth={1.2} />
+          <View style={[styles.emptyIcon, { backgroundColor: `${palette.charbon}12` }]}>
+            <BellOff size={ms(36)} color={palette.charbon} strokeWidth={1.5} />
           </View>
           <Text style={[styles.emptyTitle, { color: theme.text }]}>
             {t('account.noNotifications')}
@@ -271,9 +271,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: wp(32),
   },
   emptyIcon: {
-    width: ms(72),
-    height: ms(72),
-    borderRadius: ms(36),
+    width: ms(88),
+    height: ms(88),
+    borderRadius: ms(24),
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: hp(16),
@@ -302,9 +302,9 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   iconWrap: {
-    width: ms(40),
-    height: ms(40),
-    borderRadius: ms(20),
+    width: ms(36),
+    height: ms(36),
+    borderRadius: ms(12),
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: wp(12),

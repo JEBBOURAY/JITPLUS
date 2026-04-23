@@ -18,10 +18,25 @@ export class FirebaseService implements OnModuleInit, IPushProvider {
     const privateKey = this.config.get<string>('FIREBASE_PRIVATE_KEY')?.trim();
 
     if (!projectId || !clientEmail || !privateKey) {
-      this.logger.warn(
+      const env = this.config.get<string>('NODE_ENV');
+      const msg =
         `Firebase credentials incomplete – push notifications will be SIMULATED. ` +
-        `projectId=${!!projectId}, clientEmail=${!!clientEmail}, privateKey=${!!privateKey}`,
-      );
+        `projectId=${!!projectId}, clientEmail=${!!clientEmail}, privateKey=${!!privateKey}`;
+      if (env === 'production') {
+        // Escalate in prod: silent simulation in prod is a severe config bug
+        this.logger.error(msg);
+        try {
+          const Sentry = require('@sentry/node');
+          Sentry.captureMessage?.('Firebase simulation mode in production', {
+            level: 'error',
+            tags: { source: 'firebase-service', env },
+          });
+        } catch {
+          // Sentry not installed — already logged
+        }
+      } else {
+        this.logger.warn(msg);
+      }
       return;
     }
 
@@ -101,7 +116,13 @@ export class FirebaseService implements OnModuleInit, IPushProvider {
         notification: { title, body, ...(imageUrl ? { imageUrl } : {}) },
         android: {
           priority: 'high',
-          notification: { channelId: androidChannelId, ...(imageUrl ? { imageUrl } : {}) },
+          notification: {
+            channelId: androidChannelId,
+            icon: 'notification_icon',
+            color: '#7C3AED',
+            sound: 'default',
+            ...(imageUrl ? { imageUrl } : {}),
+          },
         },
         apns: {
           payload: { aps: { sound: 'default', badge: 1 } },
@@ -174,7 +195,12 @@ export class FirebaseService implements OnModuleInit, IPushProvider {
         notification: { title, body },
         android: {
           priority: 'high',
-          notification: { channelId: 'jitpro-default', sound: 'default' },
+          notification: {
+            channelId: 'jitpro-default',
+            sound: 'default',
+            icon: 'notification_icon',
+            color: '#1F2937',
+          },
         },
         apns: {
           payload: { aps: { sound: 'default', badge: 1 } },

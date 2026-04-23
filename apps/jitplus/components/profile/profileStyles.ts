@@ -202,9 +202,9 @@ export const profileStyles = StyleSheet.create({
     elevation: 6,
   },
   modalIconCircle: {
-    width: ms(56),
-    height: ms(56),
-    borderRadius: ms(28),
+    width: ms(36),
+    height: ms(36),
+    borderRadius: ms(12),
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: hp(12),

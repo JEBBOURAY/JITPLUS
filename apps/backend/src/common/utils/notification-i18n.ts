@@ -27,6 +27,11 @@ const translations = {
       `Limite d'accumulation appliquée: ${oldPts} → ${newPts} ${unit}`,
     unitPoints: (n: number) => n > 1 ? 'points' : 'point',
     unitStamps: (n: number) => n > 1 ? 'tampons' : 'tampon',
+    luckyWheelTicketTitle: (n: number) => n > 1 ? `🎟️ ${n} tickets gagnés !` : '🎟️ Ticket gagné !',
+    luckyWheelTicketBody: (n: number, merchant: string) =>
+      n > 1
+        ? `Vous avez gagné ${n} tickets pour la roue de la chance chez ${merchant}. Tentez votre chance !`
+        : `Vous avez gagné un ticket pour la roue de la chance chez ${merchant}. Tentez votre chance !`,
   },
   en: {
     earnTitle: (pts: number, unit: string) => `+${pts} ${unit} 🎉`,
@@ -54,6 +59,11 @@ const translations = {
       `Accumulation limit applied: ${oldPts} → ${newPts} ${unit}`,
     unitPoints: (n: number) => n > 1 ? 'points' : 'point',
     unitStamps: (n: number) => n > 1 ? 'stamps' : 'stamp',
+    luckyWheelTicketTitle: (n: number) => n > 1 ? `🎟️ ${n} wheel tickets won!` : '🎟️ Wheel ticket won!',
+    luckyWheelTicketBody: (n: number, merchant: string) =>
+      n > 1
+        ? `You won ${n} wheel-of-fortune tickets at ${merchant}. Try your luck!`
+        : `You won a wheel-of-fortune ticket at ${merchant}. Try your luck!`,
   },
   ar: {
     earnTitle: (pts: number, unit: string) => `+${pts} ${unit} 🎉`,
@@ -81,6 +91,11 @@ const translations = {
       `تم تطبيق حد التراكم: ${oldPts} → ${newPts} ${unit}`,
     unitPoints: (n: number) => n > 1 ? 'نقاط' : 'نقطة',
     unitStamps: (n: number) => n > 1 ? 'طوابع' : 'طابع',
+    luckyWheelTicketTitle: (n: number) => n > 1 ? `🎟️ ${n} تذاكر لعجلة الحظ!` : '🎟️ تذكرة لعجلة الحظ!',
+    luckyWheelTicketBody: (n: number, merchant: string) =>
+      n > 1
+        ? `لقد ربحت ${n} تذاكر لعجلة الحظ عند ${merchant}. جرّب حظك!`
+        : `لقد ربحت تذكرة لعجلة الحظ عند ${merchant}. جرّب حظك!`,
   },
 } as const;
 

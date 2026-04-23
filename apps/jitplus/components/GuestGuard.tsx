@@ -6,6 +6,7 @@ import { LogIn } from 'lucide-react-native';
 import { useTheme, palette, brandGradient } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
+import { useAppFonts } from '@/utils/fonts';
 import BrandText from '@/components/BrandText';
 
 /**
@@ -16,21 +17,22 @@ export default function GuestGuard() {
   const theme = useTheme();
   const { t } = useLanguage();
   const router = useRouter();
+  const fonts = useAppFonts();
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
-      <View style={[styles.iconCircle, { backgroundColor: palette.violet + '15' }]}>
-        <LogIn size={ms(48)} color={palette.violet} strokeWidth={1.5} />
+      <View style={[styles.iconCircle, { backgroundColor: `${palette.gold}15` }]}>
+        <LogIn size={ms(36)} color={palette.gold} strokeWidth={1.5} />
       </View>
 
       <View style={styles.brand}>
         <BrandText size={22} />
       </View>
 
-      <Text style={[styles.title, { color: theme.text }]}>
+      <Text style={[styles.title, { color: theme.text, fontFamily: fonts.semibold }]}>
         {t('guest.loginRequired')}
       </Text>
-      <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
+      <Text style={[styles.subtitle, { color: theme.textSecondary, fontFamily: fonts.regular }]}>
         {t('guest.loginRequiredDesc')}
       </Text>
 
@@ -47,7 +49,7 @@ export default function GuestGuard() {
           end={{ x: 1, y: 0 }}
           style={styles.gradient}
         >
-          <Text style={styles.btnText}>{t('welcome.login')}</Text>
+          <Text style={[styles.btnText, { fontFamily: fonts.semibold }]}>{t('welcome.login')}</Text>
         </LinearGradient>
       </TouchableOpacity>
 
@@ -58,7 +60,7 @@ export default function GuestGuard() {
         accessibilityRole="button"
         accessibilityLabel={t('welcome.createAccount')}
       >
-        <Text style={[styles.secondaryText, { color: palette.violet }]}>
+        <Text style={[styles.secondaryText, { color: palette.violet, fontFamily: fonts.medium }]}>
           {t('welcome.createAccount')}
         </Text>
       </TouchableOpacity>
@@ -74,9 +76,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: wp(32),
   },
   iconCircle: {
-    width: wp(96),
-    height: wp(96),
-    borderRadius: wp(48),
+    width: ms(88),
+    height: ms(88),
+    borderRadius: ms(24),
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: hp(20),

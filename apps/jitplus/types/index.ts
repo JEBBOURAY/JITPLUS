@@ -30,6 +30,16 @@ export interface MerchantReward {
   description?: string | null;
 }
 
+export interface MerchantActiveLuckyWheel {
+  id: string;
+  name: string;
+  description: string | null;
+  endsAt: string;
+  minSpendAmount: number;
+  globalWinRate: number;
+  prizes: { id: string; label: string; description: string | null; weight?: number }[];
+}
+
 // SocialLinks re-exported from @jitplus/shared above
 
 export interface Merchant {
@@ -43,6 +53,8 @@ export interface Merchant {
   longitude?: number | null;
   loyaltyType: LoyaltyType;
   conversionRate?: number;
+  pointsRate?: number;
+  stampsForReward?: number;
   minRewardCost?: number | null;
   logoUrl?: string | null;
   coverUrl?: string | null;
@@ -50,6 +62,8 @@ export interface Merchant {
   profileViews?: number;
   clientCount?: number;
   rewards?: MerchantReward[];
+  /** Active luckyWheel campaign for this merchant */
+  activeLuckyWheel?: MerchantActiveLuckyWheel | null;
   /** Balance du client chez ce marchand (retourné par /merchants/nearby) */
   userPoints?: number;
   /** Whether the client already has a loyalty card with this merchant */
@@ -159,3 +173,71 @@ export interface ClientReferralStats {
   referredCount: number;
   referrals: ClientReferral[];
 }
+
+// ── Payout ─────────────────────────────────────────────
+
+export type PayoutMethod = 'BANK_TRANSFER' | 'CASH';
+export type PayoutStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'COMPLETED';
+
+export interface PayoutRequest {
+  id: string;
+  clientId: string;
+  amount: number;
+  method: PayoutMethod;
+  accountDetails: string | null;
+  status: PayoutStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ── LuckyWheel ───────────────────────────────────────────
+
+export interface LuckyWheelPrize {
+  id: string;
+  label: string;
+  description: string | null;
+  weight: number;
+}
+
+export interface LuckyWheelCampaign {
+  id: string;
+  name: string;
+  merchantId: string;
+  globalWinRate: number;
+  merchant: { nom: string; logoUrl: string | null };
+  prizes: LuckyWheelPrize[];
+}
+
+export interface LuckyWheelTicket {
+  id: string;
+  clientId: string;
+  campaignId: string;
+  used: boolean;
+  createdAt: string;
+  campaign: LuckyWheelCampaign;
+}
+
+export type LuckyWheelFulfilment = 'PENDING' | 'CLAIMED' | 'EXPIRED';
+
+export interface LuckyWheelDraw {
+  id: string;
+  ticketId: string;
+  prizeId: string | null;
+  result: 'WON' | 'LOST';
+  fulfilment: LuckyWheelFulfilment | null;
+  claimBefore: string | null;
+  serverSeed: string;
+  createdAt: string;
+  prize: LuckyWheelPrize | null;
+  ticket: {
+    campaign: {
+      name: string;
+      merchantId: string;
+      merchant?: { nom: string; logoUrl: string | null };
+    };
+  };
+}
+
+export type LuckyWheelDrawResult =
+  | { result: 'LOST'; draw: LuckyWheelDraw; prize: null }
+  | { result: 'WON'; draw: LuckyWheelDraw; prize: LuckyWheelPrize };

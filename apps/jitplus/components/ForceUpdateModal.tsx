@@ -12,6 +12,7 @@ import { Download, AlertTriangle, Wrench } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, brandGradient, brandGradientFull, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useAppFonts } from '@/utils/fonts';
 import { ForceUpdateStatus } from '@/hooks/useForceUpdate';
 
 interface Props {
@@ -19,10 +20,11 @@ interface Props {
   storeUrl: string;
 }
 
-export default function ForceUpdateModal({ status, storeUrl }: Props) {
+export default React.memo(function ForceUpdateModal({ status, storeUrl }: Props) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { t } = useLanguage();
+  const fonts = useAppFonts();
 
   const isUpdate = status === 'update';
 
@@ -51,7 +53,7 @@ export default function ForceUpdateModal({ status, storeUrl }: Props) {
   };
 
   return (
-    <View style={[styles.root, { backgroundColor: theme.bg }]}>
+    <View style={[styles.root, { backgroundColor: theme.bg }]} accessibilityRole="alert" accessibilityLabel={isUpdate ? t('forceUpdate.updateTitle') : t('forceUpdate.maintenanceTitle')}>
       <LinearGradient
         colors={brandGradientFull}
         style={[styles.topStrip, { height: insets.top + 8 }]}
@@ -73,13 +75,13 @@ export default function ForceUpdateModal({ status, storeUrl }: Props) {
           )}
         </LinearGradient>
 
-        <Text style={[styles.title, { color: theme.text }]}>
+        <Text style={[styles.title, { color: theme.text, fontFamily: fonts.bold }]}>
           {isUpdate
             ? t('forceUpdate.updateTitle')
             : t('forceUpdate.maintenanceTitle')}
         </Text>
 
-        <Text style={[styles.desc, { color: theme.textMuted }]}>
+        <Text style={[styles.desc, { color: theme.textMuted, fontFamily: fonts.regular }]}>
           {isUpdate
             ? t('forceUpdate.updateDesc')
             : t('forceUpdate.maintenanceDesc')}
@@ -104,6 +106,8 @@ export default function ForceUpdateModal({ status, storeUrl }: Props) {
             style={[styles.ctaWrap, { backgroundColor: palette.violet }]}
             onPress={handleCta}
             activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel={Platform.OS === 'ios' ? t('forceUpdate.ctaIos') : t('forceUpdate.ctaAndroid')}
           >
             <View style={styles.ctaGradient}>
               <Download color={palette.white} size={20} strokeWidth={1.5} />
@@ -135,7 +139,7 @@ export default function ForceUpdateModal({ status, storeUrl }: Props) {
       </View>
     </View>
   );
-}
+})
 
 const styles = StyleSheet.create({
   root: {

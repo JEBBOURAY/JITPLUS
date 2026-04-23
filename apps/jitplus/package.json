@@ -24,9 +24,11 @@
     "test:watch": "jest --watch",
     "lint": "eslint . --ext .ts,.tsx",
     "lint:fix": "eslint . --ext .ts,.tsx --fix",
-    "format": "prettier --write \"**/*.{ts,tsx,json}\""
+    "format": "prettier --write \"**/*.{ts,tsx,json}\"",
+    "check:i18n": "node scripts/check-i18n.js"
   },
   "dependencies": {
+    "@expo-google-fonts/cairo": "^0.4.2",
     "@expo-google-fonts/lexend": "^0.4.1",
     "@jitplus/shared": "workspace:*",
     "@react-native-async-storage/async-storage": "2.2.0",
@@ -58,6 +60,7 @@
     "expo-sharing": "~14.0.8",
     "expo-splash-screen": "~31.0.13",
     "expo-status-bar": "~3.0.9",
+    "expo-updates": "~29.0.16",
     "expo-web-browser": "^15.0.10",
     "i18n-js": "^4.5.3",
     "lucide-react-native": "^0.564.0",

@@ -11,8 +11,6 @@ import { JwtPayload } from '../common/interfaces/jwt-payload.interface';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import { SendNotificationDto } from './dto/send-notification.dto';
 import { SendEmailBlastDto } from './dto/send-email-blast.dto';
-import { SendWhatsappBlastDto } from './dto/send-whatsapp-blast.dto';
-import { RecordWhatsappBlastDto } from './dto/record-whatsapp-blast.dto';
 
 @ApiTags('Notifications')
 @ApiBearerAuth()
@@ -45,24 +43,5 @@ export class NotificationsController {
     return this.notificationsService.getHistory(user.userId, page, limit);
   }
 
-  @Post('send-whatsapp-to-all')
-  @UseGuards(PremiumGuard)
-  @Throttle({ default: { ttl: 3_600_000, limit: 5 } })
-  async sendWhatsAppToAll(@Body() dto: SendWhatsappBlastDto, @CurrentUser() user: JwtPayload) {
-    return this.notificationsService.sendWhatsAppToAll(user.userId, dto.body);
-  }
 
-  @Post('record-whatsapp-blast')
-  @UseGuards(PremiumGuard)
-  async recordWhatsappBlast(
-    @Body() dto: RecordWhatsappBlastDto,
-    @CurrentUser() user: JwtPayload,
-  ) {
-    return this.notificationsService.recordWhatsappBlast(
-      user.userId,
-      dto.body,
-      dto.recipientCount,
-      dto.sentCount,
-    );
-  }
 }

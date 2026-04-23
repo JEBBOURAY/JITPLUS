@@ -23,5 +23,5 @@ export interface IMailProvider {
   ): Promise<void>;
 
   /** Send a raw HTML email (used by marketing blast fallback) */
-  sendRaw(to: string, subject: string, html: string): Promise<void>;
+  sendRaw(to: string, subject: string, html: string, unsubscribeUrl?: string): Promise<void>;
 }

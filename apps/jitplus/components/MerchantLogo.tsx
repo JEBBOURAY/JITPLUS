@@ -1,4 +1,4 @@
-import { useState, memo } from 'react';
+import { useState, useEffect, memo } from 'react';
 import { Image as RNImage, type ImageStyle, type StyleProp } from 'react-native';
 import { Image } from 'expo-image';
 import { resolveImageUrl } from '@/utils/imageUrl';
@@ -16,6 +16,12 @@ const MerchantLogo = memo(function MerchantLogo({
   merchantName?: string;
 }) {
   const [error, setError] = useState(false);
+
+  // Reset error state when logoUrl changes so a valid logo isn't stuck as broken
+  useEffect(() => {
+    setError(false);
+  }, [logoUrl]);
+
   if (logoUrl && !error) {
     return (
       <Image

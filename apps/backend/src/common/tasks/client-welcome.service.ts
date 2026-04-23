@@ -2,10 +2,8 @@ import { Injectable, Logger, Inject } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import {
   CLIENT_REPOSITORY, type IClientRepository,
-  LOYALTY_CARD_REPOSITORY, type ILoyaltyCardRepository,
-} from '../repositories';
+  LOYALTY_CARD_REPOSITORY, type ILoyaltyCardRepository,  CAMPAIGN_SENT_TRACKER_REPOSITORY, type ICampaignSentTrackerRepository,} from '../repositories';
 import { IPushProvider, PUSH_PROVIDER, PushMulticastResult } from '../interfaces';
-import { DEFAULT_NOTIFICATION_LOGO } from '../constants';
 
 // ── Welcome Series: 4-step onboarding over first 7 days ─────────────────────
 // Day 0 (signup): handled by auth controller (immediate welcome push)
@@ -84,8 +82,31 @@ export class ClientWelcomeService {
   constructor(
     @Inject(CLIENT_REPOSITORY) private readonly clientRepo: IClientRepository,
     @Inject(LOYALTY_CARD_REPOSITORY) private readonly loyaltyCardRepo: ILoyaltyCardRepository,
+    @Inject(CAMPAIGN_SENT_TRACKER_REPOSITORY) private readonly campaignTrackerRepo: ICampaignSentTrackerRepository,
     @Inject(PUSH_PROVIDER) private readonly pushProvider: IPushProvider,
   ) {}
+
+  private async alreadySent(clientId: string, campaignId: string): Promise<boolean> {
+    try {
+      const row = await this.campaignTrackerRepo.findUnique({
+        where: { clientId_campaignId_channel: { clientId, campaignId, channel: 'PUSH' } },
+        select: { id: true },
+      });
+      return !!row;
+    } catch {
+      return false;
+    }
+  }
+
+  private async markSent(clientId: string, campaignId: string): Promise<void> {
+    try {
+      await this.campaignTrackerRepo.create({
+        data: { clientId, campaignId, channel: 'PUSH' },
+      });
+    } catch {
+      // race / unique violation — safe to ignore
+    }
+  }
 
   @Cron('0 9 * * *') // Daily at 09:00 UTC
   async sendWelcomeSeries(): Promise<void> {
@@ -120,7 +141,7 @@ export class ClientWelcomeService {
         // For day3 and day7, skip clients who already have loyalty cards (already engaged)
         let eligibleClients = clients;
         if (step === 'day3' || step === 'day7') {
-          const clientIds = clients.map((c) => c.id);
+          const clientIds = clients.map((c: any) => c.id);
           const clientsWithCards = await this.loyaltyCardRepo.findMany({
             where: { clientId: { in: clientIds }, deactivatedAt: null },
             select: { clientId: true },
@@ -130,7 +151,7 @@ export class ClientWelcomeService {
 
           if (step === 'day3') {
             // Day 3: target clients who have NOT yet been scanned
-            eligibleClients = clients.filter((c) => !engagedIds.has(c.id));
+            eligibleClients = clients.filter((c: any) => !engagedIds.has(c.id));
           } else {
             // Day 7: all clients get the referral message
             eligibleClients = clients;
@@ -139,9 +160,18 @@ export class ClientWelcomeService {
 
         if (eligibleClients.length === 0) continue;
 
+        // Dedup: filter out clients who already received this welcome step
+        const campaignId = `welcome_push_${step}`;
+        const freshClients: typeof eligibleClients = [];
+        for (const c of eligibleClients) {
+          if (await this.alreadySent(c.id, campaignId)) continue;
+          freshClients.push(c);
+        }
+        if (freshClients.length === 0) continue;
+
         // Group by language for efficient sending
         const byLang = new Map<Lang, string[]>();
-        for (const c of eligibleClients) {
+        for (const c of freshClients) {
           const l = lang(c.language);
           if (!byLang.has(l)) byLang.set(l, []);
           byLang.get(l)!.push(c.pushToken!);
@@ -159,15 +189,18 @@ export class ClientWelcomeService {
             tokens,
             msg.title,
             msg.body,
-            DEFAULT_NOTIFICATION_LOGO,
+            undefined,
             { event: 'welcome_series', action: actionMap[step] },
           );
         }
 
-        results[step] = eligibleClients.length;
+        for (const c of freshClients) {
+          await this.markSent(c.id, campaignId);
+        }
+        results[step] = freshClients.length;
 
         // Clean stale tokens
-        await this.cleanStaleTokens(eligibleClients.map((c) => c.pushToken!));
+        await this.cleanStaleTokens(freshClients.map((c: any) => c.pushToken!));
       }
 
       this.logger.log(

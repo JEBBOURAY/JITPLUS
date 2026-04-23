@@ -12,7 +12,7 @@ import i18n from '@/i18n';
 
 let RNMapView: typeof MapViewType | null = null;
 let RNMarker: typeof MarkerType | null = null;
-let RN_PROVIDER_GOOGLE: any = null;
+let RN_PROVIDER_GOOGLE: 'google' | null = null;
 export let MAPS_AVAILABLE = false;
 
 try {
@@ -57,16 +57,18 @@ const SafeMapView = forwardRef<MapViewType, MapViewProps>((props, ref) => {
     );
   }
 
-  const providerProp = Platform.OS === 'android' ? { provider: RN_PROVIDER_GOOGLE } : {};
+  const providerProp = Platform.OS === 'android' && RN_PROVIDER_GOOGLE
+    ? { provider: RN_PROVIDER_GOOGLE }
+    : {};
   const configuredRenderer = (process.env.EXPO_PUBLIC_GOOGLE_MAPS_RENDERER ?? '').toUpperCase();
-  const androidRendererProp =
+  const androidRendererProp: Record<string, unknown> =
     Platform.OS === 'android' && (configuredRenderer === 'LEGACY' || configuredRenderer === 'LATEST')
       ? { googleRenderer: configuredRenderer as "LEGACY" | "LATEST" }
       : {};
   return (
     <RNMapView
       ref={ref}
-      {...androidRendererProp}
+      {...(androidRendererProp as Record<string, unknown>)}
       {...providerProp}
       {...props}
       onMapReady={() => {
@@ -87,7 +89,8 @@ const SafeMapView = forwardRef<MapViewType, MapViewProps>((props, ref) => {
       onMapLoaded={(event) => {
         setMapLoaded(true);
         setRenderTimedOut(false);
-        props.onMapLoaded?.(event);
+        // onMapLoaded is not typed in all react-native-maps versions.
+        (props as MapViewProps & { onMapLoaded?: (e: unknown) => void }).onMapLoaded?.(event);
       }}
     />
   );

@@ -15,7 +15,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
-import { getPasswordStrength, isValidPassword as checkPassword } from '@/utils/passwordStrength';
+import { getPasswordStrength, isValidPassword as checkPassword, MAX_PASSWORD_LENGTH } from '@/utils/passwordStrength';
 
 export default function SetPasswordScreen() {
   const theme = useTheme();
@@ -32,7 +32,7 @@ export default function SetPasswordScreen() {
   const confirmRef = useRef<TextInput>(null);
 
   const strength = getPasswordStrength(password, t);
-  const clearError = useCallback(() => { if (error) setError(''); }, [error]);
+  const clearError = useCallback(() => setError(''), []);
 
   // Animations
   const headerAnim = useRef(new Animated.Value(0)).current;
@@ -142,6 +142,7 @@ export default function SetPasswordScreen() {
                     autoCapitalize="none"
                     autoFocus
                     returnKeyType="next"
+                    maxLength={MAX_PASSWORD_LENGTH}
                     onSubmitEditing={() => confirmRef.current?.focus()}
                   />
                   <TouchableOpacity onPress={() => setShowPassword(!showPassword)} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={showPassword ? t('login.hidePassword') : t('login.showPassword')}>
@@ -182,6 +183,7 @@ export default function SetPasswordScreen() {
                     secureTextEntry={!showConfirm}
                     autoCapitalize="none"
                     returnKeyType="done"
+                    maxLength={MAX_PASSWORD_LENGTH}
                     onSubmitEditing={canSubmit ? handleSubmit : undefined}
                   />
                   <TouchableOpacity onPress={() => setShowConfirm(!showConfirm)} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={showConfirm ? t('login.hidePassword') : t('login.showPassword')}>

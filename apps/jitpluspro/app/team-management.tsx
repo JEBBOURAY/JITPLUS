@@ -260,7 +260,7 @@ export default function TeamManagementScreen() {
   if (isTeamMember) {
     return (
       <View style={[styles.container, { backgroundColor: theme.bg }]}>
-        <View style={[styles.header, { paddingTop: insets.top + 8, backgroundColor: theme.bgCard, borderBottomColor: theme.borderLight }]}>
+        <View style={[styles.headerBar, { paddingTop: insets.top + 8, backgroundColor: theme.bgCard, borderBottomColor: theme.borderLight, borderBottomWidth: StyleSheet.hairlineWidth }]}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <ArrowLeft size={24} color={theme.text} />
           </TouchableOpacity>

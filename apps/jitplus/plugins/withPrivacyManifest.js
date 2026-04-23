@@ -167,6 +167,20 @@ const PRIVACY_MANIFEST = `<?xml version="1.0" encoding="UTF-8"?>
             </array>
         </dict>
 
+        <!-- Device ID — FCM push token -->
+        <dict>
+            <key>NSPrivacyCollectedDataType</key>
+            <string>NSPrivacyCollectedDataTypeDeviceID</string>
+            <key>NSPrivacyCollectedDataTypeLinked</key>
+            <false/>
+            <key>NSPrivacyCollectedDataTypeTracking</key>
+            <false/>
+            <key>NSPrivacyCollectedDataTypePurposes</key>
+            <array>
+                <string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+            </array>
+        </dict>
+
     </array>
 
 </dict>

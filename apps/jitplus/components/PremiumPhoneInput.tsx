@@ -164,6 +164,7 @@ function PremiumPhoneInput({
           editable={!disabled}
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
+          accessibilityLabel={t('register.phonePlaceholder')}
           {...inputProps}
         />
 

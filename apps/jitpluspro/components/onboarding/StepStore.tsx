@@ -11,7 +11,7 @@ import * as Location from 'expo-location';
 import MapView, { Marker, SafeMapViewRef } from '@/components/SafeMapView';
 import AddressAutocomplete, { AddressResult } from '@/components/AddressAutocomplete';
 import MerchantCategoryIcon, { useCategoryMetadata } from '@/components/MerchantCategoryIcon';
-import { getCategoryLabel as getCategoryLabelFn, getCategoryOptions, CATEGORY_EMOJIS } from '@/constants/categories';
+import { getCategoryLabel as getCategoryLabelFn, getCategoryOptions } from '@/constants/categories';
 import { geocodeAsync, reverseGeocodeAsync } from '@/utils/geocodeCache';
 import { palette } from '@/contexts/ThemeContext';
 import { MerchantCategory } from '@/types';
@@ -254,7 +254,6 @@ export function StepStore({
         {showCategoryPicker && (
           <View style={[styles.categoryList, { backgroundColor: theme.bgCard, borderColor: theme.border }]}>
             {getCategoryOptions().map((opt) => {
-              const emoji = CATEGORY_EMOJIS[opt.value] ?? '';
               return (
                 <TouchableOpacity
                   key={opt.value}
@@ -265,7 +264,7 @@ export function StepStore({
                   ]}
                   onPress={() => setForm({ categorie: opt.value as MerchantCategory, showCategoryPicker: false })}
                 >
-                  {emoji ? <Text style={{ fontSize: 20 }}>{emoji}</Text> : <MerchantCategoryIcon category={opt.value} size={22} />}
+                  <MerchantCategoryIcon category={opt.value} size={22} />
                   <Text style={[styles.categoryOptionText, { color: theme.text }]}>{opt.label}</Text>
                   {categorie === opt.value && <Check size={16} color={palette.violet} />}
                 </TouchableOpacity>

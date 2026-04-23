@@ -251,11 +251,6 @@ export default function QRScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
 
-  // Header
-  header: { paddingBottom: hp(24), borderBottomLeftRadius: ms(28), borderBottomRightRadius: ms(28) },
-  headerContent: { paddingHorizontal: wp(24), paddingTop: hp(8) },
-  headerTitle: { fontSize: fontSize['2xl'], fontWeight: '700', color: '#fff', letterSpacing: -0.3 },
-  headerSubtitle: { fontSize: fontSize.sm, color: 'rgba(255,255,255,0.65)', marginTop: hp(4) },
   qrLoadingState: { width: QR_SIZE, height: QR_SIZE, justifyContent: 'center', alignItems: 'center' },
   qrErrorState: { width: QR_SIZE, height: QR_SIZE, justifyContent: 'center', alignItems: 'center', paddingHorizontal: wp(20) },
   qrGeneratingText: { fontSize: fontSize.xs, marginTop: hp(8) },

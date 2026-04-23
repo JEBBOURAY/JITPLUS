@@ -18,6 +18,7 @@ import { useTheme, palette } from '@/contexts/ThemeContext';
 import { getErrorMessage } from '@/utils/error';
 import { isValidEmail } from '@/utils/validation';
 import { MIN_PASSWORD_LENGTH } from '@/constants/app';
+import { isValidPassword } from '@/utils/passwordStrength';
 import { Mail, ArrowRight, ArrowLeft, Lock, KeyRound, Eye, EyeOff } from 'lucide-react-native';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -123,6 +124,10 @@ export default function ForgotPasswordScreen() {
 
     if (newPassword.length < MIN_PASSWORD_LENGTH) {
       setError(t('login.passwordTooShort', { min: MIN_PASSWORD_LENGTH }));
+      return;
+    }
+    if (!isValidPassword(newPassword)) {
+      setError(t('forgotPassword.passwordRequirements'));
       return;
     }
     if (newPassword !== confirmPassword) {

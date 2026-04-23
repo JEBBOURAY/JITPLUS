@@ -4,7 +4,7 @@
  */
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { api } from '@/services/api';
-import { PointsOverview, Merchant, NotificationsResponse } from '@/types';
+import { PointsOverview, Merchant, NotificationsResponse, LuckyWheelTicket, LuckyWheelDraw } from '@/types';
 import { useWsStore } from '@/stores/wsStore';
 
 // ── Query keys (centralised for easy invalidation) ──
@@ -14,6 +14,9 @@ export const queryKeys = {
   merchants: ['merchants'] as const,
   notifications: ['notifications'] as const,
   unreadCount: ['notifications-unread-count'] as const,
+  luckyWheelDraws: ['lucky-wheel-available-draws'] as const,
+  luckyWheelHistory: ['lucky-wheel-history'] as const,
+  transactionsHistory: ['transactions-history'] as const,
 } as const;
 
 // ── Points / loyalty cards ──
@@ -23,6 +26,34 @@ export function usePointsOverview(enabled = true) {
     queryKey: queryKeys.points,
     queryFn: () => api.getPointsOverview(),
     staleTime: 30 * 1000, // 30s — WS auto-invalidates on transactions
+    enabled,
+  });
+}
+
+export function useTransactionsHistory(enabled = true) {
+  return useInfiniteQuery({
+    queryKey: queryKeys.transactionsHistory,
+    queryFn: ({ pageParam = 1 }) => api.getTransactionsHistory(pageParam as number, 20),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage: any) => {
+      const { currentPage, lastPage: maxPage } = lastPage.pagination;
+      return currentPage < maxPage ? currentPage + 1 : undefined;
+    },
+    staleTime: 30 * 1000,
+    enabled,
+  });
+}
+
+export function useRewardsHistory(enabled = true) {
+  return useInfiniteQuery({
+    queryKey: ['rewardsHistory'],
+    queryFn: ({ pageParam = 1 }) => api.getRewardsHistory(pageParam as number, 20),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage: any) => {
+      const { page, totalPages } = lastPage.meta || lastPage.pagination || { page: 1, totalPages: 1 };
+      return page < totalPages ? page + 1 : undefined;
+    },
+    staleTime: 30 * 1000,
     enabled,
   });
 }
@@ -156,6 +187,37 @@ export function useMerchantById(id: string | undefined, enabled = true) {
     queryFn: () => api.getMerchantById(id!),
     staleTime: 30_000,
     enabled: enabled && !!id,
+  });
+}
+
+// ── LuckyWheel ──
+
+export function useLuckyWheelAvailableDraws(enabled = true) {
+  return useQuery<LuckyWheelTicket[]>({
+    queryKey: queryKeys.luckyWheelDraws,
+    queryFn: () => api.getLuckyWheelAvailableDraws(),
+    staleTime: 30_000,
+    enabled,
+  });
+}
+
+export function useLuckyWheelHistory(enabled = true) {
+  return useQuery<LuckyWheelDraw[]>({
+    queryKey: queryKeys.luckyWheelHistory,
+    queryFn: () => api.getLuckyWheelHistory(),
+    staleTime: 30_000,
+    enabled,
+  });
+}
+
+export function useTriggerLuckyWheelDraw() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (ticketId: string) => api.triggerLuckyWheelDraw(ticketId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.luckyWheelDraws });
+      queryClient.invalidateQueries({ queryKey: queryKeys.luckyWheelHistory });
+    },
   });
 }
 

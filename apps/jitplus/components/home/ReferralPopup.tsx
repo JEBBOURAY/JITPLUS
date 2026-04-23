@@ -14,13 +14,14 @@ interface Props {
   onClose: () => void;
 }
 
-export default function ReferralPopup({ visible, onClose }: Props) {
+export default React.memo(function ReferralPopup({ visible, onClose }: Props) {
   const theme = useTheme();
   const { t } = useLanguage();
   const insets = useSafeAreaInsets();
 
   const slideAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const pulseLoopRef = useRef<Animated.CompositeAnimation | null>(null);
 
   useEffect(() => {
     if (visible) {
@@ -33,15 +34,25 @@ export default function ReferralPopup({ visible, onClose }: Props) {
       }).start();
 
       // Subtle pulse on the share button
-      Animated.loop(
+      pulseLoopRef.current = Animated.loop(
         Animated.sequence([
           Animated.timing(pulseAnim, { toValue: 1.06, duration: 1000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
           Animated.timing(pulseAnim, { toValue: 1, duration: 1000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
         ]),
-      ).start();
+      );
+      pulseLoopRef.current.start();
     } else {
+      // Stop the pulse loop to prevent animation memory leak
+      pulseLoopRef.current?.stop();
+      pulseLoopRef.current = null;
+      pulseAnim.setValue(1);
       Animated.timing(slideAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start();
     }
+
+    return () => {
+      pulseLoopRef.current?.stop();
+      pulseLoopRef.current = null;
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
@@ -132,7 +143,7 @@ export default function ReferralPopup({ visible, onClose }: Props) {
       </View>
     </Animated.View>
   );
-}
+})
 
 const styles = StyleSheet.create({
   container: {

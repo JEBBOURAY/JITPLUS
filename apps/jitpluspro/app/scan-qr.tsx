@@ -30,6 +30,7 @@ import {
   ChevronDown,
   AlertCircle,
   ArrowLeft,
+  Check,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -40,6 +41,7 @@ import { normalizePhone } from '@/utils/normalizePhone';
 import { isValidUUID } from '@/utils/validation';
 import { SCAN_AREA_RATIO, NAVIGATION_DELAY_MS } from '@/constants/app';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useTheme } from '@/contexts/ThemeContext';
 
 import { COUNTRIES } from '@/constants/Countries';
 import CountryPickerModal from '@/components/CountryPickerModal';
@@ -217,7 +219,10 @@ const DetectedOverlay = React.memo(function DetectedOverlay({ message }: { messa
       style={styles.detectedOverlay}
     >
       <View style={styles.detectedBadge}>
-        <Text style={styles.detectedText}>✓ {message}</Text>
+        <View style={styles.detectedRow}>
+          <Check size={16} color="#0F0D1A" strokeWidth={3} />
+          <Text style={styles.detectedText}>{message}</Text>
+        </View>
       </View>
     </View>
   );
@@ -278,6 +283,7 @@ export default function ScanQRScreen() {
   const insets = useSafeAreaInsets();
   const inputRef = useRef<TextInput | null>(null);
   const { t } = useLanguage();
+  const theme = useTheme();
   const [permission, requestPermission] = useCameraPermissions();
   const { width: SCREEN_W, height: SCREEN_H } = useWindowDimensions();
   const SCAN_SIZE = SCREEN_W * SCAN_AREA_RATIO;
@@ -302,7 +308,7 @@ export default function ScanQRScreen() {
       try {
         const done = await AsyncStorage.getItem('@jitpluspro_first_scan_guide');
         if (!done) setShowGuide(true);
-      } catch {}
+      } catch (e) { logError('scan-guide', 'load', e); }
     })();
   }, []);
 
@@ -349,7 +355,7 @@ export default function ScanQRScreen() {
 
   const renderMatchedClient = useCallback(({ item }: { item: MatchedClient }) => (
     <TouchableOpacity
-      style={styles.cpRow}
+      style={[styles.cpRow, { borderBottomColor: theme.borderLight }]}
       onPress={() => {
         set({ matchedClients: [] });
         router.push({
@@ -360,14 +366,14 @@ export default function ScanQRScreen() {
       activeOpacity={0.6}
     >
       <View style={styles.flexMain}>
-        <Text style={styles.cpCountryName}>{item.nom}</Text>
-        <Text style={styles.clientSubtitle}>
+        <Text style={[styles.cpCountryName, { color: theme.text }]}>{item.nom}</Text>
+        <Text style={[styles.clientSubtitle, { color: theme.textMuted }]}>
           {item.telephone || item.email || ''}
         </Text>
       </View>
-      <ArrowRight size={18} color="#A78BFA" />
+      <ArrowRight size={18} color={theme.primary} />
     </TouchableOpacity>
-  ), [router]);
+  ), [router, theme]);
 
   useFocusEffect(
     useCallback(() => {
@@ -546,29 +552,29 @@ export default function ScanQRScreen() {
   // ── Permission states ──
   if (!permission) {
     return (
-      <View style={styles.permissionContainer}>
-        <StatusBar style="light" translucent />
-        <ActivityIndicator size="large" color="#A78BFA" />
-        <Text style={styles.permissionText}>{t('scan.cameraInit')}</Text>
+      <View style={[styles.permissionContainer, { backgroundColor: theme.bg }]}>
+        <StatusBar style={theme.mode === 'dark' ? 'light' : 'dark'} translucent />
+        <ActivityIndicator size="large" color={theme.primary} />
+        <Text style={[styles.permissionText, { color: theme.textMuted }]}>{t('scan.cameraInit')}</Text>
       </View>
     );
   }
 
   if (!permission.granted) {
     return (
-      <View style={styles.permissionContainer}>
-        <StatusBar style="light" translucent />
+      <View style={[styles.permissionContainer, { backgroundColor: theme.bg }]}>
+        <StatusBar style={theme.mode === 'dark' ? 'light' : 'dark'} translucent />
         <Animated.View style={styles.permissionContent}>
-          <View style={styles.permissionIconCircle}>
-            <Camera size={48} color="#A78BFA" strokeWidth={2} />
+          <View style={[styles.permissionIconCircle, { backgroundColor: theme.primaryBg, borderColor: theme.primary + '40' }]}>
+            <Camera size={48} color={theme.primary} strokeWidth={2} />
           </View>
-          <Text style={styles.permissionTitle}>{t('scan.cameraPermission')}</Text>
-          <Text style={styles.permissionDesc}>
+          <Text style={[styles.permissionTitle, { color: theme.text }]}>{t('scan.cameraPermission')}</Text>
+          <Text style={[styles.permissionDesc, { color: theme.textMuted }]}>
             {t('scan.cameraPermissionMsg')}
           </Text>
           {permission.canAskAgain ? (
             <TouchableOpacity
-              style={styles.permissionBtn}
+              style={[styles.permissionBtn, { backgroundColor: theme.primary }]}
               onPress={requestPermission}
               activeOpacity={0.8}
             >
@@ -576,8 +582,8 @@ export default function ScanQRScreen() {
             </TouchableOpacity>
           ) : (
             <View style={styles.permissionDenied}>
-              <AlertCircle size={20} color="#f87171" />
-              <Text style={styles.permissionDeniedText}>
+              <AlertCircle size={20} color={theme.danger} />
+              <Text style={[styles.permissionDeniedText, { color: theme.danger }]}>
                 {t('scan.cameraDenied')}
               </Text>
             </View>
@@ -587,7 +593,7 @@ export default function ScanQRScreen() {
             onPress={handleClose}
             activeOpacity={0.7}
           >
-            <Text style={styles.permissionBackText}>{t('common.back')}</Text>
+            <Text style={[styles.permissionBackText, { color: theme.primary }]}>{t('common.back')}</Text>
           </TouchableOpacity>
         </Animated.View>
       </View>
@@ -719,15 +725,15 @@ export default function ScanQRScreen() {
         transparent={false}
         onRequestClose={() => set({ matchedClients: [] })}
       >
-        <View style={[styles.cpContainer, { paddingTop: insets.top }]}>
-          <View style={styles.cpHeader}>
+        <View style={[styles.cpContainer, { paddingTop: insets.top, backgroundColor: theme.bg }]}>
+          <View style={[styles.cpHeader, { borderBottomColor: theme.borderLight }]}>
             <TouchableOpacity onPress={() => set({ matchedClients: [] })} style={styles.iconPadding}>
-              <ArrowLeft size={24} color="#fff" />
+              <ArrowLeft size={24} color={theme.text} />
             </TouchableOpacity>
-            <Text style={styles.cpTitle}>{t('scan.clientsFound', { count: matchedClients.length })}</Text>
+            <Text style={[styles.cpTitle, { color: theme.text }]}>{t('scan.clientsFound', { count: matchedClients.length })}</Text>
             <View style={styles.spacerWidth32} />
           </View>
-          <Text style={styles.selectClientText}>
+          <Text style={[styles.selectClientText, { color: theme.textMuted }]}>
             {t('scan.selectClient')}
           </Text>
           <FlatList
@@ -897,6 +903,11 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 16,
   },
+  detectedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   detectedText: {
     color: '#0F0D1A',
     fontSize: 16,
@@ -953,7 +964,6 @@ const styles = StyleSheet.create({
   // ── Permission screen ──
   permissionContainer: {
     flex: 1,
-    backgroundColor: '#0F0D1A',
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 32,
@@ -962,45 +972,39 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   permissionIconCircle: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    backgroundColor: 'rgba(139,92,246,0.12)',
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 24,
     borderWidth: 1,
-    borderColor: 'rgba(139,92,246,0.35)',
   },
   permissionText: {
-    color: '#7C72A0',
     fontSize: 15,
     marginTop: 16,
     fontFamily: 'Lexend_500Medium',
   },
   permissionTitle: {
-    color: '#EDE9FE',
-    fontSize: 22,
+    fontSize: 28,
     fontWeight: '700',
     marginBottom: 10,
     fontFamily: 'Lexend_700Bold',
+    letterSpacing: -0.5,
   },
   permissionDesc: {
-    color: '#7C72A0',
-    fontSize: 15,
+    fontSize: 14,
     textAlign: 'center',
     lineHeight: 22,
     marginBottom: 28,
-    fontFamily: 'Lexend_500Medium',
+    fontFamily: 'Lexend_400Regular',
+    letterSpacing: 0.1,
   },
   permissionBtn: {
-    backgroundColor: '#7C3AED',
     paddingHorizontal: 32,
     paddingVertical: 14,
-    borderRadius: 24,
+    borderRadius: 14,
     marginBottom: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(139,92,246,0.5)',
   },
   permissionBtnText: {
     color: '#fff',
@@ -1016,7 +1020,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   permissionDeniedText: {
-    color: '#f87171',
     fontSize: 14,
     flex: 1,
     fontFamily: 'Lexend_500Medium',
@@ -1026,23 +1029,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   permissionBackText: {
-    color: '#A78BFA',
     fontSize: 15,
     fontWeight: '600',
     fontFamily: 'Lexend_600SemiBold',
   },
 
   // ── Country Picker Modal ──
-  cpContainer: { flex: 1, backgroundColor: '#1a1025' },
+  cpContainer: { flex: 1 },
   cpHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: 24,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.1)',
   },
-  cpTitle: { flex: 1, fontSize: 18, fontWeight: '700', marginLeft: 12, color: '#fff', fontFamily: 'Lexend_700Bold' },
+  cpTitle: { flex: 1, fontSize: 22, fontWeight: '700', marginLeft: 12, fontFamily: 'Lexend_700Bold', letterSpacing: -0.3 },
   cpSearchRow: {
     paddingHorizontal: 16,
     paddingVertical: 10,
@@ -1063,20 +1064,19 @@ const styles = StyleSheet.create({
   cpRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 14,
     paddingHorizontal: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#231F33',
   },
   cpFlag: { fontSize: 24, marginRight: 12 },
-  cpCountryName: { fontSize: 15, fontWeight: '500', color: '#fff', fontFamily: 'Lexend_500Medium' },
+  cpCountryName: { fontSize: 15, fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
   cpDial: { fontSize: 14, fontWeight: '600', color: 'rgba(255,255,255,0.5)', fontFamily: 'Lexend_600SemiBold' },
   flexMain: { flex: 1 },
-  clientSubtitle: { color: 'rgba(255,255,255,0.5)', fontSize: 12, marginTop: 2, fontFamily: 'Lexend_400Regular' },
+  clientSubtitle: { fontSize: 12, marginTop: 3, fontFamily: 'Lexend_400Regular' },
   checkIcon: { marginLeft: 8 },
   iconPadding: { padding: 4 },
   spacerWidth32: { width: 32 },
-  selectClientText: { color: 'rgba(255,255,255,0.6)', fontSize: 13, paddingHorizontal: 20, paddingBottom: 12, fontFamily: 'Lexend_400Regular' },
+  selectClientText: { fontSize: 13, paddingHorizontal: 24, paddingVertical: 12, fontFamily: 'Lexend_400Regular' },
   emptyContainer: { padding: 32, alignItems: 'center' },
   emptyText: { color: 'rgba(255,255,255,0.5)', fontSize: 14, fontFamily: 'Lexend_400Regular' },
 });

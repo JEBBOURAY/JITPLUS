@@ -83,7 +83,12 @@ if (IS_DEV) {
       return res;
     },
     (error) => {
-      logApiError('API', error);
+      // Suppress logging for /health/version 404 — handled gracefully by useForceUpdate
+      const isVersionCheck = error?.config?.url?.includes('/health/version');
+      const is404 = error?.response?.status === 404;
+      if (!(isVersionCheck && is404)) {
+        logApiError('API', error);
+      }
       return Promise.reject(error);
     },
   );

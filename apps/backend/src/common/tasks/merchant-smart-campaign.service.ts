@@ -220,7 +220,7 @@ export class MerchantSmartCampaignService {
         await this.merchantRepo.updateMany({
           where: { id: { in: staleTokenIds } },
           data: { pushToken: null },
-        }).catch((e) => this.logger.warn(`Failed to clean stale tokens: ${e}`));
+        }).catch((e: unknown) => this.logger.warn(`Failed to clean stale tokens: ${e}`));
       }
 
       this.logger.log(
@@ -282,7 +282,7 @@ export class MerchantSmartCampaignService {
         await this.merchantRepo.updateMany({
           where: { id: { in: staleTokenIds } },
           data: { pushToken: null },
-        }).catch((e) => this.logger.warn(`Failed to clean stale tokens: ${e}`));
+        }).catch((e: unknown) => this.logger.warn(`Failed to clean stale tokens: ${e}`));
       }
 
       this.logger.log(`Feature tip (${tipKey}) sent to ${pushCount} merchants`);
@@ -339,7 +339,7 @@ export class MerchantSmartCampaignService {
         await this.merchantRepo.updateMany({
           where: { id: { in: staleTokenIds } },
           data: { pushToken: null },
-        }).catch((e) => this.logger.warn(`Failed to clean stale tokens: ${e}`));
+        }).catch((e: unknown) => this.logger.warn(`Failed to clean stale tokens: ${e}`));
       }
 
       this.logger.log(`Upgrade nudge sent to ${pushCount} free merchants`);

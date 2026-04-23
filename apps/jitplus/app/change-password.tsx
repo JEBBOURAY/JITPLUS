@@ -15,7 +15,7 @@ import { extractErrorMessage } from '@/utils/errorMessage';
 import FormError from '@/components/FormError';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
-import { getPasswordStrength, isValidPassword as checkPassword } from '@/utils/passwordStrength';
+import { getPasswordStrength, isValidPassword as checkPassword, MAX_PASSWORD_LENGTH } from '@/utils/passwordStrength';
 
 export default function ChangePasswordScreen() {
   const theme = useTheme();
@@ -40,7 +40,7 @@ export default function ChangePasswordScreen() {
   const confirmRef = useRef<TextInput>(null);
 
   const strength = getPasswordStrength(newPassword, t);
-  const clearError = useCallback(() => { if (error) setError(''); }, [error]);
+  const clearError = useCallback(() => setError(''), []);
 
   const requiresCurrent = !!client?.hasPassword;
   const isValidPassword = checkPassword(newPassword);
@@ -129,6 +129,7 @@ export default function ChangePasswordScreen() {
                     autoCorrect={false}
                     autoFocus
                     returnKeyType="next"
+                    maxLength={MAX_PASSWORD_LENGTH}
                     onSubmitEditing={() => newRef.current?.focus()}
                   />
                   <TouchableOpacity onPress={() => setShowCurrent(!showCurrent)} hitSlop={8}>
@@ -163,6 +164,7 @@ export default function ChangePasswordScreen() {
                   autoCorrect={false}
                   autoFocus={!requiresCurrent}
                   returnKeyType="next"
+                  maxLength={MAX_PASSWORD_LENGTH}
                   onSubmitEditing={() => confirmRef.current?.focus()}
                 />
                 <TouchableOpacity onPress={() => setShowNew(!showNew)} hitSlop={8}>
@@ -205,6 +207,7 @@ export default function ChangePasswordScreen() {
                   autoCapitalize="none"
                   autoCorrect={false}
                   returnKeyType="done"
+                  maxLength={MAX_PASSWORD_LENGTH}
                   onSubmitEditing={canSubmit ? handleSubmit : undefined}
                 />
                 <TouchableOpacity onPress={() => setShowConfirm(!showConfirm)} hitSlop={8}>

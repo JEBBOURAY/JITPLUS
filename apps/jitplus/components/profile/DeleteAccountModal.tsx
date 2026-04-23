@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, Modal, ActivityIndicator,
+  View, Text, TextInput, TouchableOpacity, Modal,
 } from 'react-native';
 import { AlertTriangle } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -33,9 +33,9 @@ export default function DeleteAccountModal({ visible, hasPassword, onClose, onCo
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={handleClose}>
       <View style={styles.modalOverlay}>
-        <View style={[styles.modalCard, { backgroundColor: theme.bgCard }]}>
+        <View style={[styles.modalCard, { backgroundColor: theme.bgCard }]} accessibilityRole="alert" accessibilityViewIsModal>
           <View style={[styles.modalIconCircle, { backgroundColor: `${theme.danger}12` }]}>
-            <AlertTriangle size={ms(28)} color={theme.danger} strokeWidth={1.5} />
+            <AlertTriangle size={ms(16)} color={theme.danger} strokeWidth={1.5} />
           </View>
           <Text style={[styles.modalTitle, { color: theme.text }]}>{t('profile.deleteModalTitle')}</Text>
           <Text style={[styles.modalBody, { color: theme.textMuted }]}>

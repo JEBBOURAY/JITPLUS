@@ -10,29 +10,37 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  Modal,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  User,
+  CircleUser,
   Gift,
   CheckCircle,
   X,
-  TrendingUp,
+  Award,
   Stamp,
+  Trophy,
+  Info,
+  PartyPopper,
+  ArrowLeft,
+  ShoppingBag,
+  Tag,
 } from 'lucide-react-native';
 
 // lottie-react-native is NOT available in Expo Go SDK 51+
 
 import { useAuth } from '@/contexts/AuthContext';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
-import { useTheme } from '@/contexts/ThemeContext';
+import { useTheme, palette } from '@/contexts/ThemeContext';
+import { ms } from '@/utils/responsive';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { getErrorMessage } from '@/utils/error';
 import StampGrid from '@/components/StampGrid';
 import { formatCurrency, DEFAULT_CURRENCY, getIntlLocale } from '@/config/currency';
 import { MAX_AMOUNT_DIGITS, SUCCESS_DISPLAY_MS } from '@/constants/app';
-import { useClientStatus, useRewards, useRecordTransaction } from '@/hooks/useQueryHooks';
+import { useClientStatus, useRewards, useRecordTransaction, useLuckyWheelActiveInfo } from '@/hooks/useQueryHooks';
 import { RewardSelector } from '@/components/transaction/RewardSelector';
 import { TransactionSuccessModal } from '@/components/transaction/TransactionSuccessModal';
 import { isValidUUID } from '@/utils/validation';
@@ -104,6 +112,14 @@ export default function TransactionAmountScreen() {
     isLoading: loadingCustomer,
   } = useClientStatus(clientId);
 
+  // ── Birthday popup ──
+  const [showBirthdayPopup, setShowBirthdayPopup] = useState(false);
+  useEffect(() => {
+    if (customerStatus?.isBirthday) {
+      setShowBirthdayPopup(true);
+    }
+  }, [customerStatus?.isBirthday]);
+
   const {
     data: rewardsList,
     isLoading: loadingRewards,
@@ -112,6 +128,11 @@ export default function TransactionAmountScreen() {
   const rewards = rewardsList ?? [];
   const selectedReward = rewards.find((r) => r.id === selectedRewardId) || null;
   const recordTransactionMutation = useRecordTransaction();
+
+  // ── LuckyWheel active info (for minSpendAmount on PER_VISIT) ──
+  const { data: luckyWheelInfo } = useLuckyWheelActiveInfo();
+  const luckyWheelMinSpend = luckyWheelInfo?.minSpendAmount ?? 0;
+  const [luckyWheelAmount, setLuckyWheelAmount] = useState('');
 
   // Guard: if no clientId or invalid UUID go back
   useEffect(() => {
@@ -125,6 +146,7 @@ export default function TransactionAmountScreen() {
   // ── Stamps mode ──
   const isStampsMode = merchant?.loyaltyType === 'STAMPS';
   const isPerVisit = isStampsMode && (merchant?.stampEarningMode || 'PER_VISIT') === 'PER_VISIT';
+  const hasLuckyWheelSpendReq = isPerVisit && luckyWheelMinSpend > 0;
   const targetReward = selectedReward || rewards[0];
   const stampsForReward = targetReward?.cout || 10;
   const { t, locale } = useLanguage();
@@ -136,6 +158,10 @@ export default function TransactionAmountScreen() {
       return;
     }
     const pointsRate = merchant.pointsRate || 10;
+    if (!Number.isFinite(pointsRate) || pointsRate <= 0) {
+      set({ points: 0 });
+      return;
+    }
     set({ points: Math.floor(amountNum / pointsRate) });
   }, [amount, merchant]);
 
@@ -155,12 +181,18 @@ export default function TransactionAmountScreen() {
         return;
       }
       const rate = merchant.pointsRate || 10;
+      if (!Number.isFinite(rate) || rate <= 0) {
+        set({ stamps: 0 });
+        return;
+      }
       set({ stamps: Math.floor(amountNum / rate) });
     }
   }, [stampAmount, merchant, isStampsMode, isPerVisit]);
 
   // ── Amount input handler (Points mode) ──
   const handleAmountChange = useCallback((text: string) => {
+    // Explicitly reject negative input before normalizing characters.
+    if (text.trim().startsWith('-')) return;
     // Allow only valid decimal numbers
     const cleaned = text.replace(/[^0-9.]/g, '');
     // Prevent multiple dots
@@ -172,12 +204,63 @@ export default function TransactionAmountScreen() {
 
   // ── Stamp amount input handler ──
   const handleStampAmountChange = useCallback((text: string) => {
+    // Explicitly reject negative input before normalizing characters.
+    if (text.trim().startsWith('-')) return;
     const cleaned = text.replace(/[^0-9.]/g, '');
     const parts = cleaned.split('.');
     let formatted = parts[0] || '';
     if (parts.length > 1) formatted += '.' + (parts[1]?.slice(0, 2) || '');
     if (formatted.length <= MAX_AMOUNT_DIGITS) set({ stampAmount: formatted });
   }, [set]);
+
+  // ── REDEEM ONLY (cadeau sans achat) ──
+  const handleRedeemOnly = useCallback(() => {
+    if (!selectedRewardId || !selectedReward) {
+      Alert.alert(t('common.error'), t('transactionAmount.selectReward'));
+      return;
+    }
+    const currentPoints = customerStatus?.points || 0;
+    if (currentPoints < selectedReward.cout) {
+      Alert.alert(t('common.error'), t('transactionAmount.notEnoughPoints'));
+      return;
+    }
+    Alert.alert(
+      t('transactionAmount.redeemTitle'),
+      t('transactionAmount.redeemConfirm', {
+        title: selectedReward.titre,
+        cost: selectedReward.cout,
+        unit: isStampsMode ? t('common.stamps') : t('common.points'),
+      }),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('common.confirm'),
+          onPress: async () => {
+            try {
+              set({ loading: true });
+              await recordTransactionMutation.mutateAsync({
+                clientId,
+                type: 'REDEEM_REWARD',
+                amount: 0,
+                points: selectedReward.cout,
+                rewardId: selectedRewardId,
+              });
+              set({ transactionType: 'REDEEM_REWARD', showSuccess: true });
+              successTimerRef.current = setTimeout(() => {
+                successTimerRef.current = null;
+                set({ showSuccess: false });
+                router.back();
+              }, SUCCESS_DISPLAY_MS);
+            } catch (err: unknown) {
+              Alert.alert(t('common.error'), getErrorMessage(err, t('transactionAmount.redeemError')));
+            } finally {
+              set({ loading: false });
+            }
+          },
+        },
+      ],
+    );
+  }, [selectedRewardId, selectedReward, customerStatus?.points, isStampsMode, recordTransactionMutation, clientId, router, set, t]);
 
   // ── Shared accumulation limit check ──
   const checkAccumulationLimit = useCallback((pointsToAdd: number): number | false => {
@@ -197,7 +280,7 @@ export default function TransactionAmountScreen() {
     }
     
     return pointsToAdd;
-  }, [customerStatus?.points, merchant?.accumulationLimit, selectedRewardId, selectedReward, isStampsMode, t]);
+  }, [customerStatus?.points, merchant?.accumulationLimit, selectedRewardId, selectedReward, isStampsMode, handleRedeemOnly, t]);
 
   // ── EARN: Points Mode ──
   const handleEarnPoints = useCallback(() => {
@@ -221,7 +304,7 @@ export default function TransactionAmountScreen() {
       
     // Si la limite tronque les points, afficher un avertissement
     const limitWarning = actualPoints < points 
-      ? `\n⚠️ Limite d'accumulation atteinte. Seulement ${actualPoints} points seront ajoutés.\n` : '';
+      ? `\n${t('transaction.accumulationWarning', { count: actualPoints })}\n` : '';
 
     Alert.alert(
       t('transaction.confirmTitle'),
@@ -233,7 +316,7 @@ export default function TransactionAmountScreen() {
         { text: t('transaction.validate'), onPress: () => processEarnWithAutoRedeem(amountNum, points, willRedeem) },
       ],
     );
-  }, [checkAccumulationLimit, amount, points, selectedRewardId, selectedReward, customerStatus?.points, t]);
+  }, [checkAccumulationLimit, amount, points, selectedRewardId, selectedReward, customerStatus?.points, locale, t]);
 
   // ── EARN: Stamps Mode ──
   const handleEarnStamps = useCallback(() => {
@@ -247,24 +330,25 @@ export default function TransactionAmountScreen() {
     }
 
     if (isPerVisit) {
-      // PER_VISIT: 1 stamp per visit, no amount needed
+      // PER_VISIT: 1 stamp per visit, no amount needed (unless luckyWheel minSpendAmount)
       const afterStamps = (customerStatus?.points || 0) + actualStamps;
       const willGetReward = afterStamps >= stampsForReward && !!selectedReward;
+      const luckyWheelAmountNum = parseFloat(luckyWheelAmount) || 0;
       
       const limitWarning = actualStamps < earnedStamps
-        ? `\n⚠️ Limite d'accumulation atteinte. Seulement ${actualStamps} ${t('common.stamps')} ajoutés.\n` : '';
+        ? `\n${t('transaction.accumulationWarning', { count: actualStamps })}\n` : '';
 
       Alert.alert(
         t('transaction.confirmTitle'),
         `${limitWarning}${t('transaction.stampsToEarn')} : ${actualStamps} ${t('common.stamps')}\n` +
           (willGetReward
-            ? `\n🎉 ${t('transaction.rewardReached')} "${selectedReward!.titre}" (${selectedReward!.cout} ${t('common.stamps')}).`
+            ? `\n${t('transaction.rewardReached')} "${selectedReward!.titre}" (${selectedReward!.cout} ${t('common.stamps')}).`
             : `\n${t('transaction.totalAfter')} : ${afterStamps} / ${stampsForReward} ${t('common.stamps')}`),
         [
           { text: t('common.cancel'), style: 'cancel' },
           {
             text: t('transaction.validate'),
-            onPress: () => processEarnWithAutoRedeem(0, earnedStamps, willGetReward),
+            onPress: () => processEarnWithAutoRedeem(luckyWheelAmountNum, earnedStamps, willGetReward),
           },
         ],
       );
@@ -281,7 +365,7 @@ export default function TransactionAmountScreen() {
     const willGetReward = afterStamps >= stampsForReward && !!selectedReward;
     
     const limitWarning = actualStamps < earnedStamps
-      ? `⚠️ Limite atteinte : seuil max atteint, seuls ${actualStamps} tampons crédités.\n\n` : '';
+      ? `${t('transaction.accumulationWarningStamps', { count: actualStamps })}\n\n` : '';
 
     Alert.alert(
       t('transaction.confirmTitle'),
@@ -298,7 +382,7 @@ export default function TransactionAmountScreen() {
         },
       ],
     );
-  }, [checkAccumulationLimit, isPerVisit, customerStatus?.points, stampsForReward, selectedReward, stampAmount, stamps, t]);
+  }, [checkAccumulationLimit, isPerVisit, customerStatus?.points, stampsForReward, selectedReward, stampAmount, stamps, luckyWheelAmount, locale, t]);
 
   // ── Earn stamps + auto-redeem if threshold is reached ──
   const processEarnWithAutoRedeem = async (
@@ -354,55 +438,6 @@ export default function TransactionAmountScreen() {
     ]);
   };
 
-  // ── REDEEM ONLY (cadeau sans achat) ──
-  const handleRedeemOnly = () => {
-    if (!selectedRewardId || !selectedReward) {
-      Alert.alert(t('common.error'), t('transactionAmount.selectReward'));
-      return;
-    }
-    const currentPoints = customerStatus?.points || 0;
-    if (currentPoints < selectedReward.cout) {
-      Alert.alert(t('common.error'), t('transactionAmount.notEnoughPoints'));
-      return;
-    }
-    Alert.alert(
-      t('transactionAmount.redeemTitle'),
-      t('transactionAmount.redeemConfirm', {
-        title: selectedReward.titre,
-        cost: selectedReward.cout,
-        unit: isStampsMode ? t('common.stamps') : t('common.points'),
-      }),
-      [
-        { text: t('common.cancel'), style: 'cancel' },
-        {
-          text: t('common.confirm'),
-          onPress: async () => {
-            try {
-              set({ loading: true });
-              await recordTransactionMutation.mutateAsync({
-                clientId,
-                type: 'REDEEM_REWARD',
-                amount: 0,
-                points: selectedReward.cout,
-                rewardId: selectedRewardId,
-              });
-              set({ transactionType: 'REDEEM_REWARD', showSuccess: true });
-              successTimerRef.current = setTimeout(() => {
-                successTimerRef.current = null;
-                set({ showSuccess: false });
-                router.back();
-              }, SUCCESS_DISPLAY_MS);
-            } catch (err: unknown) {
-              Alert.alert(t('common.error'), getErrorMessage(err, t('transactionAmount.redeemError')));
-            } finally {
-              set({ loading: false });
-            }
-          },
-        },
-      ],
-    );
-  };
-
   // ── Derived ──
   const amountNum = parseFloat(amount || '0') || 0;
   const isValidAmount = amountNum > 0;
@@ -426,11 +461,11 @@ export default function TransactionAmountScreen() {
         keyboardVerticalOffset={0}
       >
         {/* ── Header ── */}
-        <View style={[styles.header, { backgroundColor: theme.bgHeader, paddingTop: insets.top + 10 }]}>
-          <TouchableOpacity style={styles.closeButton} onPress={handleCancel} disabled={loading}>
-            <X size={24} color="#fff" />
+        <View style={[styles.header, { backgroundColor: theme.bg, paddingTop: insets.top + 12 }]}>
+          <TouchableOpacity style={styles.backBtn} onPress={handleCancel} disabled={loading}>
+            <ArrowLeft size={22} color={theme.text} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>
+          <Text style={[styles.headerTitle, { color: theme.text }]}>
             {isStampsMode ? t('transaction.titleStamps') : t('transaction.title')}
           </Text>
           <View style={{ width: 40 }} />
@@ -438,9 +473,9 @@ export default function TransactionAmountScreen() {
 
         <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
           {/* ── Client Card ── */}
-          <View style={[styles.clientCard, { backgroundColor: theme.bgCard }]}>
-            <View style={[styles.clientIconContainer, { backgroundColor: theme.primaryBg }]}>
-              <User size={32} color={theme.primary} strokeWidth={2} />
+          <View style={[styles.clientCard, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
+            <View style={[styles.clientIconContainer, { backgroundColor: `${palette.charbon}12` }]}>
+              <CircleUser size={ms(24)} color={palette.charbon} strokeWidth={1.5} />
             </View>
             <View style={styles.clientInfo}>
               <Text style={[styles.clientLabel, { color: theme.textMuted }]}>{t('transaction.clientLabel')}</Text>
@@ -450,9 +485,9 @@ export default function TransactionAmountScreen() {
             </View>
             <View style={[styles.pointsBadge, { backgroundColor: theme.success + '14' }]}>
               {isStampsMode ? (
-                <Stamp size={18} color={theme.success} strokeWidth={2} />
+                <Stamp size={ms(16)} color={theme.success} strokeWidth={1.5} />
               ) : (
-                <Gift size={18} color={theme.success} strokeWidth={2} />
+                <Gift size={ms(16)} color={theme.success} strokeWidth={1.5} />
               )}
               <Text style={[styles.pointsText, { color: theme.success }]}>
                 {customerStatus?.points || 0} {isStampsMode ? t('common.stamps') : t('common.points')}
@@ -461,7 +496,7 @@ export default function TransactionAmountScreen() {
           </View>
 
           {/* ── Mode Tabs ── */}
-          <View style={[styles.modeTabs, { backgroundColor: theme.bgCard }]}>
+          <View style={[styles.modeTabs, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
             <TouchableOpacity
               style={[
                 styles.modeTab,
@@ -469,6 +504,7 @@ export default function TransactionAmountScreen() {
               ]}
               onPress={() => set({ screenMode: 'earn', selectedRewardId: null })}
             >
+              <ShoppingBag size={ms(14)} color={screenMode === 'earn' ? '#fff' : theme.textSecondary} strokeWidth={1.5} />
               <Text style={[styles.modeTabText, { color: screenMode === 'earn' ? '#fff' : theme.textSecondary }]}>
                 {isStampsMode ? t('transactionAmount.tabEarnStamps') : t('transactionAmount.tabEarnPoints')}
               </Text>
@@ -480,6 +516,7 @@ export default function TransactionAmountScreen() {
               ]}
               onPress={() => set({ screenMode: 'redeem', selectedRewardId: null })}
             >
+              <Gift size={ms(14)} color={screenMode === 'redeem' ? '#fff' : theme.textSecondary} strokeWidth={1.5} />
               <Text style={[styles.modeTabText, { color: screenMode === 'redeem' ? '#fff' : theme.textSecondary }]}>
                 {t('transactionAmount.tabRedeem')}
               </Text>
@@ -490,12 +527,12 @@ export default function TransactionAmountScreen() {
           {screenMode === 'redeem' ? (
             <View>
               {loadingRewards ? (
-                <View style={[styles.rewardSelectorCard, { backgroundColor: theme.bgCard, alignItems: 'center' }]}>
+                <View style={[styles.rewardSelectorCard, { backgroundColor: theme.bgCard, borderColor: theme.borderLight, alignItems: 'center' }]}>
                   <ActivityIndicator color={theme.primary} />
                 </View>
               ) : rewards.filter((r) => (customerStatus?.points || 0) >= r.cout).length === 0 ? (
-                <View style={[styles.rewardSelectorCard, { backgroundColor: theme.bgCard, alignItems: 'center', gap: 8 }]}>
-                  <Gift size={40} color={theme.textMuted} strokeWidth={2} />
+                <View style={[styles.rewardSelectorCard, { backgroundColor: theme.bgCard, borderColor: theme.borderLight, alignItems: 'center', gap: 8 }]}>
+                  <Gift size={ms(36)} color={palette.charbon} strokeWidth={1.5} />
                   <Text style={[styles.rewardSelectorEmpty, { color: theme.textMuted, textAlign: 'center' }]}>
                     {t('transactionAmount.notEnoughForReward')}
                   </Text>
@@ -524,7 +561,7 @@ export default function TransactionAmountScreen() {
           isStampsMode ? (
             <View>
               {/* ── Stamp Grid ── */}
-              <View style={[styles.stampGridCard, { backgroundColor: theme.bgCard }]}>
+              <View style={[styles.stampGridCard, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
                 <StampGrid
                   current={customerStatus?.points || 0}
                   total={stampsForReward}
@@ -534,7 +571,7 @@ export default function TransactionAmountScreen() {
 
               {/* ── Amount input (Stamps PER_AMOUNT mode only) ── */}
               {!isPerVisit && (
-              <View style={[styles.amountInputCard, { backgroundColor: theme.bgCard }]}>
+              <View style={[styles.amountInputCard, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
                 <Text style={[styles.amountLabel, { color: theme.textSecondary }]}>
                   {t('transaction.purchaseAmount')}
                 </Text>
@@ -555,6 +592,63 @@ export default function TransactionAmountScreen() {
               </View>
               )}
 
+              {/* ── LuckyWheel min spend info + amount input (PER_VISIT only) ── */}
+              {hasLuckyWheelSpendReq && (
+                <>
+                  <View style={[styles.luckyWheelBanner, { backgroundColor: theme.warning + '14', borderColor: theme.warning + '40' }]}>
+                    <View style={styles.luckyWheelBannerRow}>
+                      <Trophy size={ms(16)} color={theme.warning} strokeWidth={1.5} />
+                      <View style={{ flex: 1, marginLeft: 10 }}>
+                        <Text style={[styles.luckyWheelBannerTitle, { color: theme.text }]}>
+                          {t('transactionAmount.luckyWheelActiveTitle')}
+                        </Text>
+                        <Text style={[styles.luckyWheelBannerText, { color: theme.textSecondary }]}>
+                          {t('transactionAmount.luckyWheelMinSpendMsg', { amount: luckyWheelMinSpend })}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                  <View style={[styles.amountInputCard, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
+                    <Text style={[styles.amountLabel, { color: theme.textSecondary }]}>
+                      {t('transactionAmount.luckyWheelAmountLabel')}
+                    </Text>
+                    <TextInput
+                      style={[styles.amountInput, { color: theme.text, borderColor: (parseFloat(luckyWheelAmount) || 0) >= luckyWheelMinSpend ? theme.success : theme.border }]}
+                      value={luckyWheelAmount}
+                      onChangeText={(text) => {
+                        const cleaned = text.replace(/[^0-9.]/g, '');
+                        const parts = cleaned.split('.');
+                        let formatted = parts[0] || '';
+                        if (parts.length > 1) formatted += '.' + (parts[1]?.slice(0, 2) || '');
+                        if (formatted.length <= MAX_AMOUNT_DIGITS) setLuckyWheelAmount(formatted);
+                      }}
+                      keyboardType="decimal-pad"
+                      placeholder="0.00"
+                      placeholderTextColor={theme.textMuted}
+                      maxLength={MAX_AMOUNT_DIGITS}
+                      returnKeyType="done"
+                    />
+                    <Text style={[styles.amountInputCurrency, { color: theme.textMuted }]}>
+                      {DEFAULT_CURRENCY.symbol}
+                    </Text>
+                  </View>
+                  {(parseFloat(luckyWheelAmount) || 0) > 0 && (parseFloat(luckyWheelAmount) || 0) < luckyWheelMinSpend && (
+                    <View style={{ marginHorizontal: 20, marginTop: 4 }}>
+                      <Text style={{ color: theme.warning, fontSize: 12, fontFamily: 'Lexend_400Regular' }}>
+                        {t('transactionAmount.luckyWheelBelowMin', { amount: luckyWheelMinSpend })}
+                      </Text>
+                    </View>
+                  )}
+                  {(parseFloat(luckyWheelAmount) || 0) >= luckyWheelMinSpend && (
+                    <View style={{ marginHorizontal: 20, marginTop: 4 }}>
+                      <Text style={{ color: theme.success, fontSize: 12, fontFamily: 'Lexend_400Regular' }}>
+                        {t('transactionAmount.luckyWheelEligible')}
+                      </Text>
+                    </View>
+                  )}
+                </>
+              )}
+
               {/* ── Stamps preview ── */}
               <TouchableOpacity
                 style={[
@@ -567,7 +661,7 @@ export default function TransactionAmountScreen() {
                 ]}
                 disabled
               >
-                <Stamp size={24} color={stamps > 0 ? theme.success : theme.textMuted} strokeWidth={2} />
+                <Stamp size={ms(20)} color={stamps > 0 ? theme.success : palette.charbon} strokeWidth={1.5} />
                 <Text
                   style={[
                     styles.calculateButtonText,
@@ -597,7 +691,7 @@ export default function TransactionAmountScreen() {
             /* ═══════════════════════════════════════════ */
             <>
               {/* Amount input */}
-              <View style={[styles.amountInputCard, { backgroundColor: theme.bgCard }]}>
+              <View style={[styles.amountInputCard, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
                 <Text style={[styles.amountLabel, { color: theme.textSecondary }]}>
                   {t('transaction.purchaseAmount')}
                 </Text>
@@ -629,7 +723,7 @@ export default function TransactionAmountScreen() {
                 ]}
                 disabled
               >
-                <TrendingUp size={24} color={points > 0 ? theme.success : theme.textMuted} />
+                <Award size={ms(20)} color={points > 0 ? theme.success : palette.charbon} strokeWidth={1.5} />
                 <Text
                   style={[
                     styles.calculateButtonText,
@@ -672,19 +766,19 @@ export default function TransactionAmountScreen() {
                 backgroundColor:
                   screenMode === 'redeem'
                     ? (!!selectedRewardId && !loading ? theme.primary : theme.border)
-                    : ((isStampsMode ? (isPerVisit ? stamps > 0 : stamps > 0 && parseFloat(stampAmount) > 0) : isValidAmount) && !loading
+                    : ((isStampsMode ? (isPerVisit ? stamps > 0 && (!hasLuckyWheelSpendReq || (parseFloat(luckyWheelAmount) || 0) > 0) : stamps > 0 && parseFloat(stampAmount) > 0) : isValidAmount) && !loading
                         ? theme.primary
                         : theme.border),
               },
             ]}
             onPress={screenMode === 'redeem' ? handleRedeemOnly : (isStampsMode ? handleEarnStamps : handleEarnPoints)}
-            disabled={screenMode === 'redeem' ? (!selectedRewardId || loading) : (isStampsMode ? (isPerVisit ? stamps < 1 || loading : !parseFloat(stampAmount) || stamps < 1 || loading) : !isValidAmount || loading)}
+            disabled={screenMode === 'redeem' ? (!selectedRewardId || loading) : (isStampsMode ? (isPerVisit ? stamps < 1 || loading || (hasLuckyWheelSpendReq && !((parseFloat(luckyWheelAmount) || 0) > 0)) : !parseFloat(stampAmount) || stamps < 1 || loading) : !isValidAmount || loading)}
           >
             {loading ? (
               <ActivityIndicator color="#fff" />
             ) : (
               <>
-                <CheckCircle size={20} color="#fff" strokeWidth={2} />
+                <CheckCircle size={ms(16)} color="#fff" strokeWidth={1.5} />
                 <Text style={styles.validateButtonText}>{t('transaction.validate')}</Text>
               </>
             )}
@@ -701,6 +795,32 @@ export default function TransactionAmountScreen() {
         stamps={stamps}
         points={points}
       />
+
+      {/* ── Birthday Popup ── */}
+      <Modal visible={showBirthdayPopup} transparent animationType="fade">
+        <View style={styles.birthdayOverlay}>
+          <View style={[styles.birthdayCard, { backgroundColor: theme.bgCard }]}>
+            <View style={[styles.birthdayCakeContainer, { backgroundColor: theme.warning + '20' }]}>
+              <PartyPopper size={ms(40)} color={theme.warning} strokeWidth={1.5} />
+            </View>
+            <Text style={[styles.birthdayTitle, { color: theme.text }]}>
+              {t('transaction.birthdayTitle')}
+            </Text>
+            <Text style={[styles.birthdayMessage, { color: theme.textMuted }]}>
+              {t('transaction.birthdayMessage', {
+                name: [customerStatus?.prenom, customerStatus?.nom].filter(Boolean).join(' ') || t('transaction.defaultClient'),
+              })}
+            </Text>
+            <TouchableOpacity
+              style={[styles.birthdayButton, { backgroundColor: theme.primary }]}
+              onPress={() => setShowBirthdayPopup(false)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.birthdayButtonText}>{t('transaction.birthdayDismiss')}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </>
   );
 }
@@ -715,26 +835,34 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingBottom: 20,
-    paddingHorizontal: 20,
+    paddingBottom: 12,
+    paddingHorizontal: 24,
   },
-  closeButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
-  headerTitle: { fontSize: 20, fontWeight: '700', color: '#fff', fontFamily: 'Lexend_700Bold' },
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: '700',
+    fontFamily: 'Lexend_700Bold',
+    letterSpacing: -0.5,
+  },
   content: { flex: 1 },
 
   // ── Client Card ──
   clientCard: {
     flexDirection: 'row',
-    marginHorizontal: 20,
+    marginHorizontal: 16,
     marginTop: 20,
     borderRadius: 14,
     padding: 18,
     alignItems: 'center',
-    elevation: 2,
-    shadowColor: '#1F2937',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
+    borderWidth: 1,
+    borderColor: 'transparent',
   },
   clientIconContainer: {
     width: 56,
@@ -759,30 +887,24 @@ const styles = StyleSheet.create({
 
   // ── Stamp Grid Card ──
   stampGridCard: {
-    marginHorizontal: 20,
+    marginHorizontal: 16,
     marginTop: 20,
     borderRadius: 14,
     padding: 22,
     alignItems: 'center',
-    elevation: 2,
-    shadowColor: '#1F2937',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
+    borderWidth: 1,
+    borderColor: 'transparent',
   },
 
   // ── Stamp Counter ──
   stampCounterCard: {
-    marginHorizontal: 20,
+    marginHorizontal: 16,
     marginTop: 16,
     borderRadius: 14,
     padding: 22,
     alignItems: 'center',
-    elevation: 2,
-    shadowColor: '#1F2937',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
+    borderWidth: 1,
+    borderColor: 'transparent',
   },
   stampCounterLabel: { fontSize: 14, fontWeight: '600', marginBottom: 18, fontFamily: 'Lexend_600SemiBold' },
   stampCounterRow: {
@@ -824,11 +946,13 @@ const styles = StyleSheet.create({
 
   // ── Amount Input ──
   amountInputCard: {
-    marginHorizontal: 20,
+    marginHorizontal: 16,
     marginTop: 20,
     borderRadius: 14,
     padding: 20,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'transparent',
   },
   amountLabel: { fontSize: 14, fontWeight: '500', marginBottom: 10, fontFamily: 'Lexend_500Medium' },
   amountInput: {
@@ -853,9 +977,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginHorizontal: 20,
+    marginHorizontal: 16,
     marginTop: 15,
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 16,
     gap: 10,
   },
@@ -864,31 +988,31 @@ const styles = StyleSheet.create({
   // ── Mode Tabs ──
   modeTabs: {
     flexDirection: 'row',
-    marginHorizontal: 20,
+    marginHorizontal: 16,
     marginTop: 16,
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 4,
     gap: 4,
   },
   modeTab: {
     flex: 1,
+    flexDirection: 'row',
     paddingVertical: 10,
-    borderRadius: 10,
+    borderRadius: 12,
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
   },
   modeTabText: { fontSize: 13, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
 
   // ── Reward Selector ──
   rewardSelectorCard: {
-    marginHorizontal: 20,
+    marginHorizontal: 16,
     marginTop: 16,
     borderRadius: 14,
     padding: 22,
-    elevation: 2,
-    shadowColor: '#1F2937',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
+    borderWidth: 1,
+    borderColor: 'transparent',
   },
   rewardSelectorEmpty: {
     fontSize: 14,
@@ -900,7 +1024,7 @@ const styles = StyleSheet.create({
   // ── Actions ──
   actionsContainer: {
     flexDirection: 'row',
-    marginHorizontal: 20,
+    marginHorizontal: 16,
     marginTop: 15,
     marginBottom: 10,
     gap: 15,
@@ -909,20 +1033,97 @@ const styles = StyleSheet.create({
   cancelButton: {
     flex: 1,
     paddingVertical: 16,
-    borderRadius: 12,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1.5,
+    borderWidth: 1,
   },
   cancelButtonText: { fontSize: 16, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
   validateButton: {
     flex: 2,
     paddingVertical: 16,
-    borderRadius: 12,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
     gap: 8,
   },
   validateButtonText: { fontSize: 16, fontWeight: '700', color: '#fff', fontFamily: 'Lexend_700Bold' },
+
+  // ── LuckyWheel Banner ──
+  luckyWheelBanner: {
+    marginHorizontal: 16,
+    marginTop: 16,
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+  },
+  luckyWheelBannerRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  luckyWheelBannerTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    fontFamily: 'Lexend_700Bold',
+    marginBottom: 2,
+  },
+  luckyWheelBannerText: {
+    fontSize: 12,
+    fontFamily: 'Lexend_400Regular',
+    lineHeight: 17,
+  },
+
+  // ── Birthday Popup ──
+  birthdayOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 30,
+  },
+  birthdayCard: {
+    width: '100%',
+    borderRadius: 20,
+    padding: 28,
+    alignItems: 'center',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+  },
+  birthdayCakeContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  birthdayTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    fontFamily: 'Lexend_700Bold',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  birthdayMessage: {
+    fontSize: 15,
+    fontFamily: 'Lexend_400Regular',
+    lineHeight: 22,
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  birthdayButton: {
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  birthdayButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#fff',
+    fontFamily: 'Lexend_700Bold',
+  },
 });

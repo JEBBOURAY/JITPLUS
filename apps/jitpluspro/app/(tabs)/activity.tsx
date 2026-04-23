@@ -16,11 +16,13 @@ import {
   ArrowDownLeft,
   X,
   Filter,
+  RefreshCw,
+  Gift,
 } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getTransactionConfig } from '@/constants/transactions';
 import { useAuth } from '@/contexts/AuthContext';
-import { useTheme } from '@/contexts/ThemeContext';
+import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { ActivityListSkeleton } from '@/components/Skeleton';
 import { useTransactions } from '@/hooks/useQueryHooks';
@@ -32,9 +34,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusFade } from '@/hooks/useFocusFade';
 import { useExitOnBack } from '@/hooks/useExitOnBack';
 import { formatDateTime } from '@/utils/date';
+import { ms } from '@/utils/responsive';
 import type { Transaction } from '@/types';
 
-type FilterType = 'ALL' | 'EARN_POINTS' | 'REDEEM_REWARD' | 'ADJUST_POINTS' | 'LOYALTY_PROGRAM_CHANGE';
+type FilterType = 'ALL' | 'EARN_POINTS' | 'REDEEM_REWARD' | 'ADJUST_POINTS' | 'LOYALTY_PROGRAM_CHANGE' | 'LUCKY_WHEEL_WIN';
 
 const BANNER_DISMISSED_KEY = 'activity_banner_dismissed';
 
@@ -62,7 +65,7 @@ const ActivityBanner = React.memo(function ActivityBanner({
         <X size={16} color={theme.textMuted} strokeWidth={2} />
       </TouchableOpacity>
       <View style={bannerStyles.content}>
-        <Zap size={18} color={theme.primary} strokeWidth={1.8} />
+        <Zap size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
         <View style={bannerStyles.textWrap}>
           <Text style={[bannerStyles.title, { color: theme.text }]}>{t('activity.bannerTitle')}</Text>
           <Text style={[bannerStyles.desc, { color: theme.textMuted }]}>{t('activity.bannerDesc')}</Text>
@@ -89,6 +92,7 @@ const TransactionRow = React.memo(function TransactionRow({
   const isEarned = item.type === 'EARN_POINTS';
   const isCancelled = item.status === 'CANCELLED';
   const isProgramChange = item.type === 'LOYALTY_PROGRAM_CHANGE';
+  const isLuckyWheelWin = item.type === 'LUCKY_WHEEL_WIN';
   const { icon: IconComp, color } = getTransactionConfig(item.type, isCancelled, theme);
   const flowColor = isCancelled ? theme.danger : isEarned ? theme.primary : theme.accent;
   const flowBg = isCancelled
@@ -122,14 +126,23 @@ const TransactionRow = React.memo(function TransactionRow({
           {formatDateTime(item.createdAt, locale)}
         </Text>
         {isProgramChange && item.note && (
-          <Text style={[styles.txMeta, { color: theme.primary }]} numberOfLines={1}>
-            🔄 {item.note}
+          <View style={styles.inlineIconRow}>
+            <RefreshCw size={11} color={theme.primary} strokeWidth={2} />
+            <Text style={[styles.txMeta, { color: theme.primary, flex: 1 }]} numberOfLines={1}>
+              {item.note}
+            </Text>
+          </View>
+        )}
+        {isLuckyWheelWin && item.note && (
+          <Text style={[styles.txMeta, { color: theme.accent }]} numberOfLines={1}>
+            {item.note}
           </Text>
         )}
         {!isEarned && !isProgramChange && item.reward && (
           <View style={styles.rewardRow}>
-            <Text style={[styles.txMeta, { color: theme.primary }]} numberOfLines={1}>
-              🎁 {item.reward.titre}
+            <Gift size={11} color={theme.primary} strokeWidth={2} />
+            <Text style={[styles.txMeta, { color: theme.primary, flex: 1 }]} numberOfLines={1}>
+              {item.reward.titre}
             </Text>
             {isReward && item.giftStatus === 'FULFILLED' && (
               <View style={[styles.giftBadge, { backgroundColor: `${theme.accent}15`, borderColor: `${theme.accent}30` }]}>
@@ -147,7 +160,7 @@ const TransactionRow = React.memo(function TransactionRow({
       </View>
 
       {/* ── Flow amount ── */}
-      {!isProgramChange && (
+      {!isProgramChange && !isLuckyWheelWin && (
         <View style={styles.txRight}>
           {item.amount > 0 && (
             <Text style={[styles.txAmount, { color: theme.textMuted }, isCancelled && styles.cancelled]}>
@@ -259,6 +272,7 @@ export default function ActivityScreen() {
             { key: 'ALL' as FilterType, label: t('activity.filterAll') },
             { key: 'EARN_POINTS' as FilterType, label: t('activity.filterEarned') },
             { key: 'REDEEM_REWARD' as FilterType, label: t('activity.filterRedeemed') },
+            { key: 'LUCKY_WHEEL_WIN' as FilterType, label: t('activity.filterLuckyWheel') },
             { key: 'ADJUST_POINTS' as FilterType, label: t('activity.filterAdjust') },
             { key: 'LOYALTY_PROGRAM_CHANGE' as FilterType, label: t('activity.filterTeam') },
           ]).map(({ key, label }) => {
@@ -296,8 +310,8 @@ export default function ActivityScreen() {
         </View>
       ) : !activeFilter ? (
         <View style={styles.emptyContainer}>
-          <View style={[styles.emptyIllustration, { backgroundColor: theme.primaryBg }]}>
-            <Filter size={40} color={theme.primary} strokeWidth={1.2} />
+          <View style={[styles.emptyIllustration, { backgroundColor: `${palette.charbon}12` }]}>
+            <Filter size={ms(36)} color={palette.charbon} strokeWidth={1.5} />
           </View>
           <Text style={[styles.emptyTitle, { color: theme.text }]}>
             {t('activity.title')}
@@ -343,8 +357,8 @@ export default function ActivityScreen() {
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <View style={[styles.emptyIllustration, { backgroundColor: theme.primaryBg }]}>
-              <Zap size={44} color={theme.primary} strokeWidth={1.2} />
+            <View style={[styles.emptyIllustration, { backgroundColor: `${palette.charbon}12` }]}>
+              <Zap size={ms(36)} color={palette.charbon} strokeWidth={1.5} />
             </View>
             <Text style={[styles.emptyTitle, { color: theme.text }]}>
               {t('activity.noActivity')}
@@ -458,7 +472,8 @@ const styles = StyleSheet.create({
     fontFamily: 'Lexend_500Medium',
     letterSpacing: -0.1,
   },
-  rewardRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 },
+  rewardRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 3 },
+  inlineIconRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 3 },
   giftBadge: {
     paddingHorizontal: 7,
     paddingVertical: 2,
@@ -504,9 +519,9 @@ const styles = StyleSheet.create({
   /* Empty state */
   emptyContainer: { alignItems: 'center', paddingTop: 80 },
   emptyIllustration: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: ms(88),
+    height: ms(88),
+    borderRadius: ms(24),
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 24,

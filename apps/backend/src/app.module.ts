@@ -4,6 +4,7 @@ import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { CacheModule } from '@nestjs/cache-manager';
 import { ScheduleModule } from '@nestjs/schedule';
+import { JwtModule } from '@nestjs/jwt';
 import * as Joi from 'joi';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
@@ -14,14 +15,16 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { ClientAuthModule } from './client-auth/client-auth.module';
 import { HealthModule } from './health/health.module';
 import { MailModule } from './mail/mail.module';
-import { TwilioModule } from './twilio/twilio.module';
 import { StorageModule } from './storage/storage.module';
 import { AdminModule } from './admin/admin.module';
 import { GeocodeModule } from './geocode/geocode.module';
+import { LuckyWheelModule } from './lucky-wheel/lucky-wheel.module';
+import { DeeplinkModule } from './deeplink/deeplink.module';
 // GoogleWalletModule temporarily disabled for Play Store compliance
 // import { GoogleWalletModule } from './google-wallet/google-wallet.module';
 import { RequestLoggerMiddleware } from './common/middleware/request-logger.middleware';
 import { OtpCleanupService } from './common/tasks/otp-cleanup.service';
+import { AccountPurgeService } from './common/tasks/account-purge.service';
 import { MerchantReminderService } from './common/tasks/merchant-reminder.service';
 import { MerchantEngagementService } from './common/tasks/merchant-engagement.service';
 import { MerchantSmartCampaignService } from './common/tasks/merchant-smart-campaign.service';
@@ -35,6 +38,7 @@ import { UserThrottlerGuard } from './common/guards/user-throttler.guard';
 import { RepositoryModule } from './common/repositories';
 import { EventsModule } from './events';
 import { THROTTLE_TTL } from './common/constants';
+import { jwtModuleFactory } from './common/jwt/jwt-module.factory';
 
 @Module({
   imports: [
@@ -95,8 +99,11 @@ import { THROTTLE_TTL } from './common/constants';
     PrismaModule,
     RepositoryModule,
     EventsModule,
+    // Register a JwtModule so app-level scheduled services (campaign emails) can
+    // sign one-click unsubscribe tokens (RFC 8058). Uses the client JWT config
+    // so tokens are verifiable by the public unsubscribe controller.
+    JwtModule.registerAsync(jwtModuleFactory('jitplus-client', 'JWT_CLIENT_EXPIRATION', '2h')),
     MailModule,
-    TwilioModule,
     FirebaseModule,
     StorageModule,
     AuthModule,
@@ -107,11 +114,14 @@ import { THROTTLE_TTL } from './common/constants';
     HealthModule,
     AdminModule,
     GeocodeModule,
+    LuckyWheelModule,
+    DeeplinkModule,
     // GoogleWalletModule, // temporarily disabled for Play Store compliance
   ],
   providers: [
     { provide: APP_GUARD, useClass: UserThrottlerGuard },
     OtpCleanupService,
+    AccountPurgeService,
     MerchantReminderService,
     MerchantEngagementService,
     MerchantSmartCampaignService,

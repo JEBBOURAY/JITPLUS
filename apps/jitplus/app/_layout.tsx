@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Platform, View, Image, StyleSheet, ActivityIndicator } from 'react-native';
+import { Platform, View, Image, StyleSheet, ActivityIndicator, Linking, Text, TextInput } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
 import { DarkTheme, DefaultTheme, ThemeProvider as NavThemeProvider } from '@react-navigation/native';
 import { Lexend_400Regular, Lexend_500Medium, Lexend_600SemiBold, Lexend_700Bold } from '@expo-google-fonts/lexend';
+import { Cairo_400Regular, Cairo_500Medium, Cairo_600SemiBold, Cairo_700Bold } from '@expo-google-fonts/cairo';
 import * as SplashScreen from 'expo-splash-screen';
 import { QueryClient, QueryCache, MutationCache, onlineManager, useQueryClient } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
@@ -72,12 +73,15 @@ Sentry.init({
 // ── Global unhandled promise rejection handler ──────────────────
 // Catches fire-and-forget .then() without .catch() and logs to Sentry.
 if (typeof globalThis !== 'undefined') {
-  const originalHandler = (globalThis as any).onunhandledrejection;
-  (globalThis as any).onunhandledrejection = (event: any) => {
+  const g = globalThis as typeof globalThis & {
+    onunhandledrejection?: (event: { reason?: unknown }) => void;
+  };
+  const originalHandler = g.onunhandledrejection;
+  g.onunhandledrejection = (event: { reason?: unknown }) => {
     const error = event?.reason;
     if (!__DEV__ && error) {
       // Skip expected auth failures — already handled by onAuthFailure / onUnauthorized
-      const msg = error?.message ?? '';
+      const msg = error instanceof Error ? error.message : '';
       if (!/No refresh token|Session expired/i.test(msg)) {
         Sentry.captureException(error, { tags: { source: 'unhandled-promise' } });
       }
@@ -141,7 +145,12 @@ const queryClient = new QueryClient({
   }),
   defaultOptions: {
     queries: {
-      retry: 2,
+      retry: (failureCount, error) => {
+        const status = (error as { response?: { status?: number } })?.response?.status
+          ?? (error as { status?: number })?.status;
+        if (status && status >= 400 && status < 500) return false;
+        return failureCount < 2;
+      },
       retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 30_000),
       refetchOnWindowFocus: false,
       // Must be >= persister maxAge so the in-memory cache isn't garbage-
@@ -162,7 +171,17 @@ function RootLayoutNav() {
   const notificationListener = useRef<{ remove(): void } | null>(null);
   const responseListener = useRef<{ remove(): void } | null>(null);
   const { status: forceUpdateStatus, storeUrl: forceUpdateStoreUrl } = useForceUpdate();
-  const { locale } = useLanguage();
+  const { locale, isRTL } = useLanguage();
+
+  // ── Global font: use Cairo for Arabic, Lexend otherwise ──
+  useEffect(() => {
+    const fontFamily = locale === 'ar' ? 'Cairo_400Regular' : 'Lexend_400Regular';
+    const defaultStyle = { fontFamily };
+    (Text as any).defaultProps = (Text as any).defaultProps || {};
+    (Text as any).defaultProps.style = defaultStyle;
+    (TextInput as any).defaultProps = (TextInput as any).defaultProps || {};
+    (TextInput as any).defaultProps.style = defaultStyle;
+  }, [locale]);
 
   // Redirect to welcome screen whenever the user logs out (client becomes null)
   useEffect(() => {
@@ -174,7 +193,7 @@ function RootLayoutNav() {
   // Sync local language preference to backend once when client is authenticated
   useEffect(() => {
     if (client && locale) {
-      api.updateProfile({ language: locale }).catch(() => {});
+      api.updateProfile({ language: locale }).catch((e) => { if (__DEV__) console.warn('Failed to sync language', e); });
     }
   }, [client?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -194,6 +213,34 @@ function RootLayoutNav() {
   // Invalidate notification caches when app returns from background
   useAppForegroundRefresh();
 
+  // ── Deep link handler (shared merchant URLs + custom scheme) ──
+  useEffect(() => {
+    const CUID_RE = /^c[a-z0-9]{24}$/;
+
+    const handleUrl = (url: string) => {
+      try {
+        // Match both jitplus://merchant/:id and https://domain/m/:id
+        let merchantId: string | undefined;
+        const parsed = new URL(url);
+        if (parsed.protocol === 'jitplus:' && parsed.hostname === 'merchant') {
+          merchantId = parsed.pathname.replace(/^\//, '');
+        } else if (parsed.pathname.startsWith('/m/')) {
+          merchantId = parsed.pathname.slice(3);
+        }
+        if (merchantId && CUID_RE.test(merchantId)) {
+          router.push({ pathname: '/merchant/[id]', params: { id: merchantId } });
+        }
+      } catch { /* malformed URL — ignore */ }
+    };
+
+    // Handle URL that launched the app (cold start)
+    Linking.getInitialURL().then((url) => { if (url) handleUrl(url); });
+
+    // Handle URL while app is already running
+    const sub = Linking.addEventListener('url', ({ url }) => handleUrl(url));
+    return () => sub.remove();
+  }, [router]);
+
 
 
   useEffect(() => {
@@ -206,6 +253,9 @@ function RootLayoutNav() {
         const event = data?.event;
         const action = data?.action;
         const merchantId = data?.merchantId;
+
+        // SECURITY: Validate merchantId format (CUID) from FCM payload to prevent injection
+        const validMerchantId = merchantId && /^c[a-z0-9]{24}$/.test(merchantId) ? merchantId : undefined;
 
         // Handle action-based deep links from automated campaigns
         if (action) {
@@ -223,8 +273,8 @@ function RootLayoutNav() {
               router.push('/(tabs)');
               return;
             case 'open_card':
-              if (merchantId) {
-                router.push({ pathname: '/merchant/[id]', params: { id: merchantId } });
+              if (validMerchantId) {
+                router.push({ pathname: '/merchant/[id]', params: { id: validMerchantId } });
                 return;
               }
               router.push('/(tabs)');
@@ -232,6 +282,9 @@ function RootLayoutNav() {
             case 'open_notifications':
               router.push('/(tabs)/notifications');
               return;
+            default:
+              if (__DEV__) console.warn('Unknown FCM action:', action);
+              break;
           }
         }
 
@@ -240,8 +293,8 @@ function RootLayoutNav() {
           case 'points_updated':
           case 'reward_available':
           case 'reward_redeemed':
-            if (merchantId) {
-              router.push({ pathname: '/merchant/[id]', params: { id: merchantId } });
+            if (validMerchantId) {
+              router.push({ pathname: '/merchant/[id]', params: { id: validMerchantId } });
             } else {
               router.push('/(tabs)/notifications');
             }
@@ -296,11 +349,11 @@ function RootLayoutNav() {
     };
   }, [router, queryClient]);
 
-  const { isDark } = theme;
+  const isDark = theme.mode === 'dark';
 
   return (
     <NavThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
-      <View style={{ flex: 1, direction: 'ltr' }}>
+      <View style={{ flex: 1, direction: isRTL ? 'rtl' : 'ltr' }}>
       <OfflineBanner />
       {(forceUpdateStatus === 'update' || forceUpdateStatus === 'maintenance') && (
         <ForceUpdateModal status={forceUpdateStatus} storeUrl={forceUpdateStoreUrl} />
@@ -325,6 +378,8 @@ function RootLayoutNav() {
           <Stack.Screen name="change-password" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="referral" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="legal" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="scan-history" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="rewards-history" options={{ animation: 'slide_from_right' }} />
         </Stack>
       </ErrorBoundary>
       </View>
@@ -368,6 +423,10 @@ export default function RootLayout() {
     Lexend_500Medium,
     Lexend_600SemiBold,
     Lexend_700Bold,
+    Cairo_400Regular,
+    Cairo_500Medium,
+    Cairo_600SemiBold,
+    Cairo_700Bold,
     SpaceMono: require('@/assets/fonts/SpaceMono-Regular.ttf'),
   });
 
@@ -401,6 +460,7 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
+      <ErrorBoundary>
       <PersistQueryClientProvider
         client={queryClient}
         persistOptions={{
@@ -428,6 +488,7 @@ export default function RootLayout() {
           </ThemeProvider>
         </LanguageProvider>
       </PersistQueryClientProvider>
+      </ErrorBoundary>
     </SafeAreaProvider>
   );
 }

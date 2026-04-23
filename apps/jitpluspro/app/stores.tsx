@@ -50,7 +50,7 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Store as StoreType, MerchantCategory, CreateStorePayload } from '@/types';
 import MerchantCategoryIcon, { useCategoryMetadata } from '@/components/MerchantCategoryIcon';
-import { getCategoryLabel as getCategoryLabelFn, getCategoryOptions, CATEGORY_EMOJIS } from '@/constants/categories';
+import { getCategoryLabel as getCategoryLabelFn, getCategoryOptions } from '@/constants/categories';
 import { useStoresCRUD, MAX_STORES } from '@/hooks/useStoresCRUD';
 import { isValidEmail } from '@/utils/validation';
 import PremiumLockModal from '@/components/PremiumLockModal';
@@ -1129,7 +1129,6 @@ export default function StoresScreen() {
             <Text style={[styles.pickerTitle, { color: theme.text }]}>{t('stores.categoryLabel')}</Text>
             <ScrollView style={{ maxHeight: 350 }}>
               {getCategoryOptions().map((opt) => {
-                const emoji = CATEGORY_EMOJIS[opt.value] ?? 'ðŸ·ï¸';
                 return (
                   <TouchableOpacity
                     key={opt.value}
@@ -1140,11 +1139,7 @@ export default function StoresScreen() {
                     ]}
                     onPress={() => { setForm({ categorie: opt.value as MerchantCategory, showCategoryPicker: false }); }}
                   >
-                    {emoji ? (
-                      <Text style={{ fontSize: 22 }}>{emoji}</Text>
-                    ) : (
-                      <MerchantCategoryIcon category={opt.value} size={26} />
-                    )}
+                    <MerchantCategoryIcon category={opt.value} size={26} />
                     <Text style={[styles.pickerOptionText, { color: theme.text }]}>{opt.label}</Text>
                     {categorie === opt.value && <Check size={18} color={theme.primary} />}
                   </TouchableOpacity>

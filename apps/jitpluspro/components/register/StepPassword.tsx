@@ -26,7 +26,7 @@ function StepPasswordInner({
   showPassword, setShowPassword, passwordRef, confirmRef, isLoading,
 }: Props) {
   const pwValid = isValidPassword(password);
-  const strength = useMemo(() => getPasswordStrength(password, t), [password, t]);
+  const strength = useMemo(() => getPasswordStrength(password, t, 'passwordStrength.weak', 'passwordStrength.medium', 'passwordStrength.strong'), [password, t]);
   const passwordsMatch = password.length > 0 && confirmPassword.length > 0 && password === confirmPassword;
   const showMismatch = confirmPassword.length > 0 && password !== confirmPassword;
 

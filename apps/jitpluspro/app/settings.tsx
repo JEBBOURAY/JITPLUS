@@ -9,14 +9,14 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { Save, Gift, Check, Settings as SettingsIcon, ArrowLeft, Stamp, Star, AlertTriangle, ShieldCheck, ChevronDown, ChevronUp, Shield } from 'lucide-react-native';
-import { useGuardedCallback } from '@/hooks/useGuardedCallback';
+import { Save, Settings as SettingsIcon, ArrowLeft, Stamp, Star, AlertTriangle, ShieldCheck, ChevronDown, ChevronUp, Shield } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
-import { useTheme } from '@/contexts/ThemeContext';
+import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useRouter } from 'expo-router';
 import api from '@/services/api';
 import { getErrorMessage } from '@/utils/error';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { ms } from '@/utils/responsive';
 import PremiumLockCard from '@/components/PremiumLockCard';
 import PremiumLockModal from '@/components/PremiumLockModal';
 import { RewardManager } from '@/components/settings/RewardManager';
@@ -105,6 +105,12 @@ export default function SettingsScreen() {
   const [premiumModal, setPremiumModal] = useState<{ visible: boolean; titleKey: string; descKey: string }>({ visible: false, titleKey: '', descKey: '' });
   const [loyaltyExpanded, setLoyaltyExpanded] = useState(false);
   const [giftsExpanded, setGiftsExpanded] = useState(false);
+  const handleRewardsChange = useCallback((updatedRewards: Reward[]) => {
+    set({ rewards: updatedRewards });
+  }, [set]);
+  const handleToggleGifts = useCallback(() => {
+    setGiftsExpanded(v => !v);
+  }, []);
 
   useEffect(() => {
     if (!merchant && !authLoading) {
@@ -123,9 +129,53 @@ export default function SettingsScreen() {
   };
 
   // â”€â”€ Save all loyalty settings â”€â”€
-  const handleSave = useCallback(async () => {
+  const doSave = useCallback(async (forceCapClients: boolean) => {
     const rate = parseFloat(pointsRate);
     const conv = parseFloat(conversionRate);
+    const stamps = parseInt(stampsForReward, 10);
+    const loyaltyTypeChanged = loyaltyType !== (merchant?.loyaltyType || 'POINTS');
+    const x = parseFloat(conversionX) || 10;
+    const y = parseFloat(conversionY) || 1;
+    if (loyaltyType === 'POINTS' && (!Number.isFinite(rate) || rate <= 0)) {
+      Alert.alert(t('common.error'), t('settingsPage.conversionRateError'));
+      return;
+    }
+    if (loyaltyTypeChanged && (!Number.isFinite(x) || !Number.isFinite(y) || y <= 0)) {
+      Alert.alert(t('common.error'), t('settingsPage.conversionRateError'));
+      return;
+    }
+    const effectiveConvRate = loyaltyTypeChanged ? (y > 0 ? x / y : 1) : (conv || 10);
+
+    set({ saving: true });
+    try {
+      const payload: Record<string, unknown> = {
+        loyaltyType,
+        stampEarningMode,
+        pointsRate: rate || 10,
+        conversionRate: effectiveConvRate,
+        stampsForReward: stamps || 10,
+        accumulationLimit: hasAccumulationLimit ? (parseInt(accumulationLimit, 10) || null) : null,
+      };
+      if (forceCapClients) {
+        payload.forceCapClients = true;
+      }
+
+      const res = await api.patch('/merchant/loyalty-settings', payload);
+      updateMerchant(res.data);
+      if (res.data.conversionRate != null) {
+        set({ conversionRate: String(res.data.conversionRate) });
+      }
+      dispatch({ type: 'INCREMENT_RELOAD' });
+      Alert.alert(t('common.confirm'), t('settingsPage.saveSuccess'));
+    } catch (err: unknown) {
+      Alert.alert(t('common.error'), getErrorMessage(err, t('settingsPage.saveError')));
+    } finally {
+      set({ saving: false });
+    }
+  }, [loyaltyType, stampEarningMode, pointsRate, conversionRate, stampsForReward, conversionX, conversionY, hasAccumulationLimit, accumulationLimit, merchant, updateMerchant, t]);
+
+  const handleSave = useCallback(async () => {
+    const rate = parseFloat(pointsRate);
     const stamps = parseInt(stampsForReward, 10);
 
     if (loyaltyType === 'POINTS' && (isNaN(rate) || rate <= 0)) {
@@ -149,7 +199,7 @@ export default function SettingsScreen() {
     if (hasAccumulationLimit && !isNaN(limitVal) && rewards.length > 0) {
       const exceeding = rewards.filter((r) => r.cout > limitVal);
       if (exceeding.length > 0) {
-        const unit = isStamps ? t('common.stamps') : t('common.points');
+        const unit = loyaltyType === 'STAMPS' ? t('common.stamps') : t('common.points');
         const names = exceeding.map((r) => `${r.titre} (${r.cout} ${unit})`).join(', ');
         const proceed = await new Promise<boolean>((resolve) => {
           Alert.alert(
@@ -205,55 +255,18 @@ export default function SettingsScreen() {
     }
 
     doSave(false);
-  }, [pointsRate, conversionRate, stampsForReward, loyaltyType, hasAccumulationLimit, accumulationLimit, rewards, merchant, t]);
-
-  const doSave = useCallback(async (forceCapClients: boolean) => {
-    const rate = parseFloat(pointsRate);
-    const conv = parseFloat(conversionRate);
-    const stamps = parseInt(stampsForReward, 10);
-    // Compute actual conversionRate from X/Y ratio when switching
-    const loyaltyTypeChanged = loyaltyType !== (merchant?.loyaltyType || 'POINTS');
-    const x = parseFloat(conversionX) || 10;
-    const y = parseFloat(conversionY) || 1;
-    const effectiveConvRate = loyaltyTypeChanged ? (y > 0 ? x / y : 1) : (conv || 10);
-
-    set({ saving: true });
-    try {
-      const payload: Record<string, unknown> = {
-        loyaltyType,
-        stampEarningMode,
-        pointsRate: rate || 10,
-        conversionRate: effectiveConvRate,
-        stampsForReward: stamps || 10,
-        accumulationLimit: hasAccumulationLimit ? (parseInt(accumulationLimit, 10) || null) : null,
-      };
-      if (forceCapClients) {
-        payload.forceCapClients = true;
-      }
-
-      const res = await api.patch('/merchant/loyalty-settings', payload);
-      updateMerchant(res.data);
-      // Sync local state with server response to prevent stale values on next edit
-      if (res.data.conversionRate != null) {
-        set({ conversionRate: String(res.data.conversionRate) });
-      }
-      dispatch({ type: 'INCREMENT_RELOAD' });
-      Alert.alert(t('common.confirm'), t('settingsPage.saveSuccess'));
-    } catch (err: unknown) {
-      Alert.alert(t('common.error'), getErrorMessage(err, t('settingsPage.saveError')));
-    } finally {
-      set({ saving: false });
-    }
-  }, [loyaltyType, stampEarningMode, pointsRate, conversionRate, stampsForReward, conversionX, conversionY, hasAccumulationLimit, accumulationLimit, merchant, updateMerchant, t]);
+  }, [pointsRate, stampsForReward, loyaltyType, hasAccumulationLimit, accumulationLimit, rewards, merchant, t, doSave]);
 
   if (isTeamMember) {
     return (
       <View style={[styles.centered, { backgroundColor: theme.bg }]}>
-        <Shield size={48} color={theme.textMuted} strokeWidth={1.5} />
-        <Text style={{ color: theme.text, fontWeight: '600', fontSize: 16, marginTop: 16, fontFamily: 'Lexend_600SemiBold' }}>{t('common.ownerOnly')}</Text>
-        <Text style={{ color: theme.textMuted, textAlign: 'center', marginTop: 8, paddingHorizontal: 32, fontFamily: 'Lexend_400Regular' }}>{t('common.ownerOnlyMsg')}</Text>
-        <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 16, paddingHorizontal: 24, paddingVertical: 10, backgroundColor: theme.primary, borderRadius: 8 }}>
-          <Text style={{ color: '#fff', fontWeight: '600', fontFamily: 'Lexend_600SemiBold' }}>{t('common.back')}</Text>
+        <View style={styles.ownerOnlyIcon}>
+          <Shield size={ms(36)} color={palette.charbon} strokeWidth={1.5} />
+        </View>
+        <Text style={[styles.ownerOnlyTitle, { color: theme.text }]}>{t('common.ownerOnly')}</Text>
+        <Text style={[styles.ownerOnlyMsg, { color: theme.textMuted }]}>{t('common.ownerOnlyMsg')}</Text>
+        <TouchableOpacity onPress={() => router.back()} style={[styles.ownerOnlyBtn, { backgroundColor: theme.primary }]}>
+          <Text style={styles.ownerOnlyBtnText}>{t('common.back')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -305,9 +318,11 @@ export default function SettingsScreen() {
           onPress={() => setLoyaltyExpanded(v => !v)}
           activeOpacity={0.7}
         >
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
-            <SettingsIcon size={20} color={theme.primary} strokeWidth={1.5} />
-            <Text style={[styles.sectionTitle, { color: theme.text, marginTop: 0, marginBottom: 0, marginHorizontal: 0 }]}>{t('settingsPage.loyaltyMode')}</Text>
+          <View style={styles.sectionHeaderContent}>
+            <View style={styles.sectionHeaderIcon}>
+              <SettingsIcon size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
+            </View>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>{t('settingsPage.loyaltyMode')}</Text>
           </View>
           {loyaltyExpanded
             ? <ChevronUp size={20} color={theme.textMuted} />
@@ -463,9 +478,9 @@ export default function SettingsScreen() {
                               {r.titre}
                             </Text>
                             <Text style={[styles.rewardConversionValues, { color: theme.textMuted }]}>
-                              <Text style={{ textDecorationLine: 'line-through' }}>{r.cout} {oldUnit}</Text>
-                              {'  â†’  '}
-                              <Text style={{ color: theme.primary, fontWeight: '600' }}>{newCost} {newUnit}</Text>
+                              <Text style={styles.conversionOldCost}>{r.cout} {oldUnit}</Text>
+                              {'  ->  '}
+                              <Text style={[styles.conversionNewCost, { color: theme.primary }]}>{newCost} {newUnit}</Text>
                             </Text>
                           </View>
                         );
@@ -511,7 +526,30 @@ export default function SettingsScreen() {
             </View>
           )}
 
-          {/* â”€â”€ Points Preview -->\n          {!isStamps && (\n            <View style={[styles.stampPreview, { backgroundColor: theme.bg }]}>\n              <Text style={[styles.stampPreviewTitle, { color: theme.text }]}>\n                {t('settingsPage.pointsPreviewTitle')}\n              </Text>\n              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: theme.primary + '15', padding: 16, borderRadius: 16, width: '100%', gap: 16 }}>\n                <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: theme.primary, alignItems: 'center', justifyContent: 'center' }}>\n                  <Star size={24} color='#fff' fill='#fff' />\n                </View>\n                <View style={{ flex: 1 }}>\n                  <Text style={{ fontSize: 13, color: theme.textMuted, marginBottom: 4 }}>{t('settingsPage.simulatedClient')}</Text>\n                  <Text style={{ fontSize: 24, fontWeight: '800', color: theme.text }}>{pointsRate || 10} <Text style={{ fontSize: 14, fontWeight: '600', color: theme.textMuted }}>Pts</Text></Text>\n                </View>\n              </View>\n              <Text style={[styles.stampPreviewHint, { color: theme.textMuted, textAlign: 'center', marginTop: 16, lineHeight: 18 }]}>\n                {t('settingsPage.pointsPreviewHint', { count: pointsRate || 10 })}\n              </Text>\n            </View>\n          )}\n\n          {/* ── Stamps Mode Settings â”€â”€ */}
+          {/* Points preview */}
+          {!isStamps && (
+            <View style={[styles.stampPreview, { backgroundColor: theme.bg }]}>
+              <Text style={[styles.stampPreviewTitle, { color: theme.text }]}>
+                {t('settingsPage.pointsPreviewTitle')}
+              </Text>
+              <View style={[styles.pointsPreviewCard, { backgroundColor: theme.primary + '15' }]}>
+                <View style={[styles.pointsPreviewIcon, { backgroundColor: theme.primary }]}>
+                  <Star size={24} color="#fff" fill="#fff" />
+                </View>
+                <View style={styles.pointsPreviewBody}>
+                  <Text style={[styles.pointsPreviewClient, { color: theme.textMuted }]}>{t('settingsPage.simulatedClient')}</Text>
+                  <Text style={[styles.pointsPreviewValue, { color: theme.text }]}>
+                    {pointsRate || 10} <Text style={[styles.pointsPreviewUnit, { color: theme.textMuted }]}>Pts</Text>
+                  </Text>
+                </View>
+              </View>
+              <Text style={[styles.stampPreviewHint, styles.pointsPreviewHint, { color: theme.textMuted }]}>
+                {t('settingsPage.pointsPreviewHint', { count: pointsRate || 10 })}
+              </Text>
+            </View>
+          )}
+
+          {/* Stamps mode settings */}
           {isStamps && (
             <View>
               {/* â”€â”€ Stamp Earning Mode â”€â”€ */}
@@ -701,10 +739,10 @@ export default function SettingsScreen() {
           conversionY={conversionY}
           hasAccumulationLimit={hasAccumulationLimit}
           accumulationLimit={accumulationLimit}
-          onRewardsChange={(r) => set({ rewards: r })}
+          onRewardsChange={handleRewardsChange}
           reloadToken={rewardReloadToken}
           expanded={giftsExpanded}
-          onToggleExpanded={() => setGiftsExpanded(v => !v)}
+          onToggleExpanded={handleToggleGifts}
         />
 
       </ScrollView>
@@ -766,9 +804,6 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: '700',
-    marginHorizontal: 20,
-    marginTop: 24,
-    marginBottom: 16,
     fontFamily: 'Lexend_700Bold',
     letterSpacing: -0.3,
   },
@@ -848,6 +883,8 @@ const styles = StyleSheet.create({
   rewardConversionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 4 },
   rewardConversionName: { fontSize: 12, flex: 1, marginRight: 8, fontFamily: 'Lexend_400Regular' },
   rewardConversionValues: { fontSize: 12, fontFamily: 'Lexend_500Medium' },
+  conversionOldCost: { textDecorationLine: 'line-through' as const },
+  conversionNewCost: { fontWeight: '600' as const },
 
   // â”€â”€ Fields â”€â”€
   fieldGroup: { marginTop: 18 },
@@ -889,6 +926,44 @@ const styles = StyleSheet.create({
   },
   stampCheckmark: { color: '#fff', fontSize: 16, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
   stampPreviewHint: { fontSize: 12, marginTop: 12, fontFamily: 'Lexend_400Regular' },
+  pointsPreviewCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 16,
+    width: '100%',
+    gap: 16,
+  },
+  pointsPreviewIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pointsPreviewBody: {
+    flex: 1,
+  },
+  pointsPreviewClient: {
+    fontSize: 13,
+    marginBottom: 4,
+    fontFamily: 'Lexend_400Regular',
+  },
+  pointsPreviewValue: {
+    fontSize: 24,
+    fontWeight: '800',
+    fontFamily: 'Lexend_700Bold',
+  },
+  pointsPreviewUnit: {
+    fontSize: 14,
+    fontWeight: '600',
+    fontFamily: 'Lexend_600SemiBold',
+  },
+  pointsPreviewHint: {
+    textAlign: 'center',
+    marginTop: 16,
+    lineHeight: 18,
+  },
 
   // â”€â”€ Accumulation Limit â”€â”€
   limitToggle: {
@@ -914,4 +989,52 @@ const styles = StyleSheet.create({
   },
   saveBtnText: { fontSize: 15, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
 
+  // ── Owner-only guard ──
+  ownerOnlyIcon: {
+    width: ms(88),
+    height: ms(88),
+    borderRadius: ms(24),
+    backgroundColor: `${palette.charbon}12`,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  ownerOnlyTitle: {
+    fontWeight: '600' as const,
+    fontSize: 16,
+    marginTop: 16,
+    fontFamily: 'Lexend_600SemiBold',
+  },
+  ownerOnlyMsg: {
+    textAlign: 'center' as const,
+    marginTop: 8,
+    paddingHorizontal: 32,
+    fontFamily: 'Lexend_400Regular',
+  },
+  ownerOnlyBtn: {
+    marginTop: 16,
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  ownerOnlyBtnText: {
+    color: '#fff',
+    fontWeight: '600' as const,
+    fontFamily: 'Lexend_600SemiBold',
+  },
+
+  // ── Section header content ──
+  sectionHeaderContent: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 8,
+    flex: 1,
+  },
+  sectionHeaderIcon: {
+    width: ms(36),
+    height: ms(36),
+    borderRadius: ms(12),
+    backgroundColor: `${palette.charbon}12`,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
 });

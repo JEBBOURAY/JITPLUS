@@ -14,19 +14,19 @@ export default function NotFoundScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]}>
       <Text style={[styles.code, { color: theme.textMuted }]}>404</Text>
-      <Text style={[styles.title, { color: theme.text }]}>{t('errors.pageNotFound') ?? 'Page introuvable'}</Text>
+      <Text style={[styles.title, { color: theme.text }]}>{t('errors.pageNotFound')}</Text>
       <Text style={[styles.body, { color: theme.textSecondary }]}>
-        {t('errors.pageNotFoundBody') ?? "Cette page n'existe pas ou a été déplacée."}
+        {t('errors.pageNotFoundBody')}
       </Text>
       <TouchableOpacity
         style={[styles.button, { backgroundColor: theme.primary }]}
         onPress={() => router.replace('/(tabs)')}
         activeOpacity={0.8}
         accessibilityRole="button"
-        accessibilityLabel={t('common.home') ?? 'Accueil'}
+        accessibilityLabel={t('common.home')}
       >
         <Home size={18} color="#fff" strokeWidth={2} />
-        <Text style={styles.buttonText}>{t('common.home') ?? 'Accueil'}</Text>
+        <Text style={styles.buttonText}>{t('common.home')}</Text>
       </TouchableOpacity>
     </SafeAreaView>
   );

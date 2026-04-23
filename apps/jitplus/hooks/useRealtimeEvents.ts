@@ -166,7 +166,7 @@ export function handleFcmDataPayload(
 export function useAppForegroundRefresh() {
   const queryClient = useQueryClient();
   const appState = useRef(AppState.currentState);
-  const backgroundSince = useRef<number>(0);
+  const backgroundSince = useRef<number>(Date.now());
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState: AppStateStatus) => {

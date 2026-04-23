@@ -81,7 +81,7 @@ export class MerchantReferralService {
       referralCode,
       referredCount: merchant.referrals.length,
       referralMonthsEarned: merchant.referralMonthsEarned,
-      referrals: merchant.referrals.map((r) => ({
+      referrals: merchant.referrals.map((r: any) => ({
         id: r.id,
         nom: r.nom,
         categorie: r.categorie,

@@ -3,7 +3,8 @@ module.exports = ({ config }) => {
   // SECURITY: This key is bundled in the client. Restrict it in Google Cloud Console:
   //   - Application restriction: Android apps (SHA-1 + package) and iOS apps (bundle ID)
   //   - API restriction: Maps SDK for Android, Maps SDK for iOS, Geocoding API, Places API
-  const GOOGLE_MAPS_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || '';
+  const GOOGLE_MAPS_KEY_ANDROID = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_ANDROID || '';
+  const GOOGLE_MAPS_KEY_IOS = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_IOS || '';
   // Reversed client ID from Google Cloud Console → OAuth 2.0 → iOS client
   const IOS_GOOGLE_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || '';
   const PRIVACY_POLICY_URL =
@@ -34,6 +35,12 @@ module.exports = ({ config }) => {
     icon: './assets/images/icon-white.png',
     scheme: 'jitpluspro',
     userInterfaceStyle: 'automatic',
+    updates: {
+      url: 'https://u.expo.dev/35d9da23-1ebd-4c2e-9deb-dc659893a4da'
+    },
+    runtimeVersion: {
+      policy: 'appVersion'
+    },
     // Required by both stores — must be a publicly accessible URL
     privacyPolicyUrl: PRIVACY_POLICY_URL,
     splash: {
@@ -55,7 +62,7 @@ module.exports = ({ config }) => {
       // Firebase config for iOS — download from Firebase Console → Project Settings → iOS app
       googleServicesFile: './GoogleService-Info.plist',
       config: {
-        googleMapsApiKey: GOOGLE_MAPS_KEY,
+        googleMapsApiKey: GOOGLE_MAPS_KEY_IOS,
       },
       infoPlist: {
         // Belt-and-suspenders: explicit Info.plist entry mirrors usesNonExemptEncryption above
@@ -69,6 +76,8 @@ module.exports = ({ config }) => {
         // NSPhotoLibraryAddUsageDescription is intentionally omitted.
         NSPhotoLibraryUsageDescription:
           "JitPlus Pro a besoin d'accéder à vos photos pour choisir le logo et la couverture de votre commerce.",
+        NSUserTrackingUsageDescription:
+          'JitPlus Pro utilise Sentry pour collecter des donnees de diagnostic 100% anonymes afin d\'ameliorer la stabilite.',
         // Google Sign-In redirect — reversed iOS client ID
         ...(IOS_GOOGLE_CLIENT_ID
           ? { CFBundleURLTypes: [{ CFBundleURLSchemes: [IOS_GOOGLE_CLIENT_ID] }] }
@@ -83,7 +92,7 @@ module.exports = ({ config }) => {
       },
       config: {
         googleMaps: {
-          apiKey: GOOGLE_MAPS_KEY,
+          apiKey: GOOGLE_MAPS_KEY_ANDROID,
         },
       },
       // edgeToEdgeEnabled disabled: causes native crash on some Android 10/11 devices
@@ -168,7 +177,7 @@ module.exports = ({ config }) => {
       [
         'expo-notifications',
         {
-          icon: './assets/images/jitplusprologo.png',
+          icon: './assets/images/notification-icon.png',
           // color removed: setting it here duplicates notification_icon_color
           // with the one already in expo-notifications AAR resources, causing
           // a Gradle mergeReleaseResources conflict. Color is set at runtime
@@ -194,7 +203,8 @@ module.exports = ({ config }) => {
       }]] : []),
     ],
     extra: {
-      googleMapsApiKey: GOOGLE_MAPS_KEY,
+      googleMapsApiKeyAndroid: GOOGLE_MAPS_KEY_ANDROID,
+      googleMapsApiKeyIos: GOOGLE_MAPS_KEY_IOS,
       googleWebClientId,
       eas: {
         projectId: '35d9da23-1ebd-4c2e-9deb-dc659893a4da',

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, Inject, Logger } from '@nestjs/common';
+﻿import { Injectable, NotFoundException, BadRequestException, Inject, Logger } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Prisma, PayoutMethod, PayoutStatus } from '@prisma/client';
 import { RequestPayoutDto } from './dto';
@@ -78,7 +78,7 @@ export class ClientReferralService {
       },
     });
 
-    if (!client) throw new NotFoundException('Client non trouvé');
+    if (!client) throw new NotFoundException('error.referral.clientNotFound');
 
     let referralCode = client.referralCode;
 
@@ -115,12 +115,12 @@ export class ClientReferralService {
    */
   async validateCode(code: string): Promise<{ id: string; nom: string }> {
     if (!code || code.trim().length === 0) {
-      throw new NotFoundException('Code de parrainage requis');
+      throw new NotFoundException('error.referral.codeRequired');
     }
 
     const sanitized = code.trim().toUpperCase();
     if (sanitized.length !== REFERRAL_CODE_LENGTH || !/^[A-Z2-9]+$/.test(sanitized)) {
-      throw new NotFoundException('Code de parrainage client invalide');
+      throw new NotFoundException('error.referral.codeInvalid');
     }
 
     const client = await this.clientRepo.findUnique({
@@ -129,7 +129,7 @@ export class ClientReferralService {
     });
 
     if (!client) {
-      throw new NotFoundException('Code de parrainage client invalide');
+      throw new NotFoundException('error.referral.codeInvalid');
     }
 
     return { id: client.id, nom: [client.prenom, client.nom].filter(Boolean).join(' ') || 'Client' };
@@ -150,8 +150,8 @@ export class ClientReferralService {
         },
       });
       await this.invalidateCache(clientId);
-      this.logger.log(`Client referral created: client=${clientId} → merchant=${merchantId}`);
-    } catch (err) {
+      this.logger.log(`Client referral created: client=${clientId} â†’ merchant=${merchantId}`);
+    } catch (err: any) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         this.logger.warn(`Client referral already exists for merchant=${merchantId}, skipping`);
         return;
@@ -166,7 +166,7 @@ export class ClientReferralService {
    * Uses atomic updateMany + transaction to prevent double-crediting race conditions.
    */
   async creditClientForMerchant(merchantId: string): Promise<void> {
-    // Atomic guard: only update PENDING → VALIDATED (prevents double-credit)
+    // Atomic guard: only update PENDING â†’ VALIDATED (prevents double-credit)
     const { count } = await this.clientReferralRepo.updateMany({
       where: { merchantId, status: 'PENDING' },
       data: {
@@ -203,23 +203,39 @@ export class ClientReferralService {
 
   async requestPayout(clientId: string, dto: RequestPayoutDto) {
     if (dto.amount < 100) {
-      throw new BadRequestException('Le montant minimum est de 100 DH');
+      throw new BadRequestException('error.referral.minAmount');
     }
     return this.tx.run(async (prisma) => {
+      // 1. Anti-spam: check if a PENDING request already exists
+      const existingPending = await prisma.payoutRequest.findFirst({
+        where: { clientId, status: PayoutStatus.PENDING },
+      });
+      if (existingPending) {
+        throw new BadRequestException('Vous avez dÃ©jÃ  une demande de retrait en cours de traitement');
+      }
+
       const client = await prisma.client.findUnique({
         where: { id: clientId },
         select: { referralBalance: true },
       });
 
-      if (!client) throw new NotFoundException('Client non trouv\u00e9');
+      if (!client) throw new NotFoundException('error.referral.clientNotFound');
       if (client.referralBalance < dto.amount) {
-        throw new BadRequestException('Solde de parrainage insuffisant');
+        throw new BadRequestException('error.referral.balanceInsufficient');
       }
 
-      await prisma.client.update({
-        where: { id: clientId },
+      // 2. Atomic update to prevent race conditions (double-spend)
+      const updateResult = await prisma.client.updateMany({
+        where: { 
+          id: clientId,
+          referralBalance: { gte: dto.amount },
+        },
         data: { referralBalance: { decrement: dto.amount } },
       });
+
+      if (updateResult.count === 0) {
+        throw new BadRequestException('error.referral.balanceError');
+      }
 
       const request = await prisma.payoutRequest.create({
         data: {
@@ -264,4 +280,5 @@ export class ClientReferralService {
     return code;
   }
 }
+
 

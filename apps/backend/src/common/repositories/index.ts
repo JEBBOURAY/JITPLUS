@@ -19,6 +19,7 @@ export {
   CLIENT_REFERRAL_REPOSITORY,
   MERCHANT_NOTIFICATION_READ_REPOSITORY,
   PAYOUT_REQUEST_REPOSITORY,
+  CAMPAIGN_SENT_TRACKER_REPOSITORY,
   TRANSACTION_RUNNER,
   RAW_QUERY_RUNNER,
 } from './repository.tokens';
@@ -42,6 +43,7 @@ export type {
   IClientReferralRepository,
   IMerchantNotificationReadRepository,
   IPayoutRequestRepository,
+  ICampaignSentTrackerRepository,
 } from './repository.types';
 
 // Infrastructure

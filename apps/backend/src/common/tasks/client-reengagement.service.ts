@@ -4,9 +4,9 @@ import {
   CLIENT_REPOSITORY, type IClientRepository,
   LOYALTY_CARD_REPOSITORY, type ILoyaltyCardRepository,
   TRANSACTION_REPOSITORY, type ITransactionRepository,
+  CAMPAIGN_SENT_TRACKER_REPOSITORY, type ICampaignSentTrackerRepository,
 } from '../repositories';
 import { IPushProvider, PUSH_PROVIDER } from '../interfaces';
-import { DEFAULT_NOTIFICATION_LOGO } from '../constants';
 
 // ── Re-engagement messages ──────────────────────────────────────────────
 const MESSAGES = {
@@ -104,8 +104,31 @@ export class ClientReengagementService {
     @Inject(CLIENT_REPOSITORY) private readonly clientRepo: IClientRepository,
     @Inject(LOYALTY_CARD_REPOSITORY) private readonly loyaltyCardRepo: ILoyaltyCardRepository,
     @Inject(TRANSACTION_REPOSITORY) private readonly txRepo: ITransactionRepository,
+    @Inject(CAMPAIGN_SENT_TRACKER_REPOSITORY) private readonly campaignTrackerRepo: ICampaignSentTrackerRepository,
     @Inject(PUSH_PROVIDER) private readonly pushProvider: IPushProvider,
   ) {}
+
+  private async alreadySent(clientId: string, campaignId: string): Promise<boolean> {
+    try {
+      const row = await this.campaignTrackerRepo.findUnique({
+        where: { clientId_campaignId_channel: { clientId, campaignId, channel: 'PUSH' } },
+        select: { id: true },
+      });
+      return !!row;
+    } catch {
+      return false;
+    }
+  }
+
+  private async markSent(clientId: string, campaignId: string): Promise<void> {
+    try {
+      await this.campaignTrackerRepo.create({
+        data: { clientId, campaignId, channel: 'PUSH' },
+      });
+    } catch {
+      // race / unique violation — safe to ignore
+    }
+  }
 
   @Cron('0 12 * * *') // Daily at 12:00 PM UTC
   async sendReengagementPush(): Promise<void> {
@@ -135,7 +158,7 @@ export class ClientReengagementService {
         await this.clientRepo.updateMany({
           where: { id: { in: staleTokenIds } },
           data: { pushToken: null },
-        }).catch((e) => this.logger.warn(`Failed to clean stale tokens: ${e}`));
+        }).catch((e: unknown) => this.logger.warn(`Failed to clean stale tokens: ${e}`));
       }
 
       this.logger.log(
@@ -153,9 +176,10 @@ export class ClientReengagementService {
     staleTokenIds: string[],
   ): Promise<void> {
     // Clients signed up 3-30 days ago with push enabled
+    const thirtyDaysAgo = new Date(threeDaysAgo.getTime() - 27 * 86_400_000);
     const clients = await this.clientRepo.findMany({
       where: {
-        createdAt: { gte: new Date(threeDaysAgo.getTime() - 27 * 86_400_000), lte: threeDaysAgo },
+        createdAt: { gte: thirtyDaysAgo, lte: threeDaysAgo },
         deletedAt: null,
         notifPush: true,
         pushToken: { not: null },
@@ -167,20 +191,30 @@ export class ClientReengagementService {
     if (clients.length === 0) return;
 
     // Filter out clients who already have loyalty cards
-    const clientIds = clients.map((c) => c.id);
+    const clientIds = clients.map((c: any) => c.id);
     const clientsWithCards = await this.loyaltyCardRepo.findMany({
       where: { clientId: { in: clientIds }, deactivatedAt: null },
       select: { clientId: true },
       distinct: ['clientId'],
     });
     const engagedIds = new Set(clientsWithCards.map((c: { clientId: string }) => c.clientId));
-    const neverUsedClients = clients.filter((c) => !engagedIds.has(c.id));
+    const neverUsedClients = clients.filter((c: any) => !engagedIds.has(c.id));
 
     if (neverUsedClients.length === 0) return;
 
+    // Dedup: only ping each "never used" client once per week.
+    const weekKey = `w${Math.floor(Date.now() / (7 * 86_400_000))}`;
+    const campaignId = `reengagement_never_used_${weekKey}`;
+    const freshClients: typeof neverUsedClients = [];
+    for (const c of neverUsedClients) {
+      if (await this.alreadySent(c.id, campaignId)) continue;
+      freshClients.push(c);
+    }
+    if (freshClients.length === 0) return;
+
     // Group by language
     const byLang = new Map<Lang, string[]>();
-    for (const c of neverUsedClients) {
+    for (const c of freshClients) {
       const l = lang(c.language);
       if (!byLang.has(l)) byLang.set(l, []);
       byLang.get(l)!.push(c.pushToken!);
@@ -189,12 +223,12 @@ export class ClientReengagementService {
     for (const [l, tokens] of byLang) {
       const msg = getMsg('neverUsed', l);
       const result = await this.pushProvider.sendMulticast(
-        tokens, msg.title, msg.body, DEFAULT_NOTIFICATION_LOGO,
-        { event: 'reengagement', action: 'open_explore' },
+        tokens, msg.title, msg.body, undefined,
+        { event: 'reengagement', action: 'open_scan' },
       );
       if (result.invalidTokens.length > 0) {
         // Map invalid tokens back to client IDs
-        const tokenToId = new Map(neverUsedClients.map((c) => [c.pushToken!, c.id]));
+        const tokenToId = new Map<string, string>(freshClients.map((c: any) => [c.pushToken!, c.id]));
         for (const t of result.invalidTokens) {
           const id = tokenToId.get(t);
           if (id) staleTokenIds.push(id);
@@ -202,7 +236,12 @@ export class ClientReengagementService {
       }
     }
 
-    results.neverUsed = neverUsedClients.length;
+    // Mark all successfully-queued clients as sent (idempotent)
+    for (const c of freshClients) {
+      await this.markSent(c.id, campaignId);
+    }
+
+    results.neverUsed = freshClients.length;
   }
 
   private async processInactive(
@@ -263,12 +302,22 @@ export class ClientReengagementService {
 
         if (!msgKey || !resultKey) continue;
 
+        // Dedup: dedup key derived from the tier + lastTx date, so a client
+        // who resumes activity and goes inactive again will receive a new cycle.
+        const txKey = lastTx.createdAt.toISOString().slice(0, 10);
+        const campaignId = `reengagement_${resultKey}_${txKey}`;
+        if (await this.alreadySent(client.id, campaignId)) continue;
+
         const msg = getMsg(msgKey, l);
+        // Different actions per tier: 7d/14d push them back to their cards,
+        // 30d push them to the explorer so they can discover fresh merchants.
+        const action = resultKey === 'inactive30d' ? 'open_explore' : 'open_cards';
         const pushResult = await this.pushProvider.sendMulticast(
-          [client.pushToken], msg.title, msg.body, DEFAULT_NOTIFICATION_LOGO,
-          { event: 'reengagement', action: 'open_explore' },
+          [client.pushToken], msg.title, msg.body, undefined,
+          { event: 'reengagement', action },
         );
 
+        await this.markSent(client.id, campaignId);
         results[resultKey]++;
 
         if (pushResult.invalidTokens.length > 0) {

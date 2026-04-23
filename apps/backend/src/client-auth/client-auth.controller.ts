@@ -187,8 +187,25 @@ export class ClientController {
   ) {}
 
   @Get('stats')
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 30 } })
   async getProfileStats(@CurrentUser() user: JwtPayload) {
     return this.clientService.getProfileStats(user.userId);
+  }
+
+  @Get('rewards')
+  async getRewards(
+    @CurrentUser() user: JwtPayload,
+    @Query() { page, limit }: PaginationQueryDto,
+  ) {
+    return this.clientService.getRewardsHistory(user.userId, page, limit);
+  }
+
+  @Get('transactions')
+  async getTransactions(
+    @CurrentUser() user: JwtPayload,
+    @Query() { page, limit }: PaginationQueryDto,
+  ) {
+    return this.clientService.getTransactionsHistory(user.userId, page, limit);
   }
 
   @Get('points')
@@ -249,6 +266,11 @@ export class ClientController {
     return this.clientService.markAllAsRead(user.userId);
   }
 
+  @Patch('notifications/unsubscribe-email')
+  async unsubscribeEmail(@CurrentUser() user: JwtPayload) {
+    return this.clientService.unsubscribeEmail(user.userId);
+  }
+
   @Delete('notifications/all')
   async dismissAllNotifications(@CurrentUser() user: JwtPayload) {
     return this.clientService.dismissAllNotifications(user.userId);
@@ -278,6 +300,54 @@ export class ClientController {
   @Get('referral/payout')
   async getPayoutHistory(@CurrentUser() user: JwtPayload) {
     return this.clientReferralService.getPayoutHistory(user.userId);
+  }
+}
+
+/**
+ * Public controller for RFC 8058 One-Click Unsubscribe.
+ * NO JwtAuthGuard here — unsubscribe URLs are signed tokens that users reach
+ * from their email client (Gmail/Yahoo/Apple Mail) without being logged in.
+ * Required by Gmail & Yahoo bulk sender policy (Feb 2024) to avoid spam flags.
+ */
+@ApiTags('Public Unsubscribe')
+@Controller('public/unsubscribe')
+export class PublicUnsubscribeController {
+  constructor(
+    private readonly clientService: ClientService,
+    private readonly jwtService: JwtService,
+  ) {}
+
+  /** One-Click unsubscribe (POST for RFC 8058 compliance) */
+  @Post('email')
+  @HttpCode(HttpStatus.OK)
+  async unsubscribeEmailPost(@Query('t') token: string) {
+    return this.handle(token);
+  }
+
+  /** Fallback GET — so users can also click a plain link */
+  @Get('email')
+  async unsubscribeEmailGet(@Query('t') token: string) {
+    await this.handle(token);
+    // Return a tiny HTML page so the user sees confirmation in browser
+    return {
+      statusCode: 200,
+      message: 'Vous êtes désabonné des emails marketing JitPlus.',
+    };
+  }
+
+  private async handle(token: string): Promise<{ success: boolean }> {
+    if (!token) throw new Error('Missing token');
+    let payload: { clientId?: string; purpose?: string };
+    try {
+      payload = this.jwtService.verify(token);
+    } catch {
+      throw new Error('Invalid or expired unsubscribe token');
+    }
+    if (payload?.purpose !== 'unsubscribe_email' || !payload.clientId) {
+      throw new Error('Invalid unsubscribe token');
+    }
+    await this.clientService.unsubscribeEmail(payload.clientId);
+    return { success: true };
   }
 }
 

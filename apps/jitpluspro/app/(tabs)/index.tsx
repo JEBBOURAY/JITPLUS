@@ -16,13 +16,14 @@ import { useRouter } from 'expo-router';
 import { useFocusFade } from '@/hooks/useFocusFade';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '@/contexts/AuthContext';
-import { useTheme } from '@/contexts/ThemeContext';
+import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { ClientListSkeleton } from '@/components/Skeleton';
 import { useClients } from '@/hooks/useQueryHooks';
 import { useGuardedCallback } from '@/hooks/useGuardedCallback';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SEARCH_DEBOUNCE_MS } from '@/constants/app';
+import { ms } from '@/utils/responsive';
 import type { ClientListItem } from '@/types';
 
 const BANNER_DISMISSED_KEY = 'clients_banner_dismissed';
@@ -51,7 +52,7 @@ const ClientsBanner = React.memo(function ClientsBanner({
         <X size={16} color={theme.textMuted} strokeWidth={2} />
       </TouchableOpacity>
       <View style={bannerStyles.content}>
-        <Zap size={18} color={theme.primary} strokeWidth={1.8} />
+        <Zap size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
         <View style={bannerStyles.textWrap}>
           <Text style={[bannerStyles.title, { color: theme.text }]}>{t('clients.bannerTitle')}</Text>
           <Text style={[bannerStyles.desc, { color: theme.textMuted }]}>{t('clients.bannerDesc')}</Text>
@@ -122,11 +123,11 @@ function EmptyState({ search, theme, onScan }: { search: string; theme: ReturnTy
   const { t } = useLanguage();
   return (
     <View style={styles.emptyContainer}>
-      <View style={[styles.emptyIllustration, { backgroundColor: theme.primaryBg }]}>
+      <View style={[styles.emptyIllustration, { backgroundColor: `${palette.charbon}12` }]}>
         {search ? (
-          <Search size={44} color={theme.primary} strokeWidth={1.2} />
+          <Search size={ms(36)} color={palette.charbon} strokeWidth={1.5} />
         ) : (
-          <Users size={44} color={theme.primary} strokeWidth={1.2} />
+          <Users size={ms(36)} color={palette.charbon} strokeWidth={1.5} />
         )}
       </View>
       <Text style={[styles.emptyTitle, { color: theme.text }]}>
@@ -234,8 +235,8 @@ export default function ClientsScreen() {
         <ClientListSkeleton count={7} />
       ) : !showClients ? (
         <View style={styles.emptyContainer}>
-          <View style={[styles.emptyIllustration, { backgroundColor: theme.primaryBg }]}>
-            <Users size={40} color={theme.primary} strokeWidth={1.2} />
+          <View style={[styles.emptyIllustration, { backgroundColor: `${palette.charbon}12` }]}>
+            <Users size={ms(36)} color={palette.charbon} strokeWidth={1.5} />
           </View>
           <Text style={[styles.emptyTitle, { color: theme.text }]}>
             {t('clients.title')}
@@ -278,7 +279,7 @@ export default function ClientsScreen() {
           <View>
             {/* ── Search bar ── */}
             <View style={[styles.searchBar, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
-              <Search size={18} color={theme.primary} />
+              <Search size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
               <TextInput
                 ref={searchInputRef}
                 style={[styles.searchInput, { color: theme.text }]}
@@ -417,9 +418,9 @@ const styles = StyleSheet.create({
   /* Empty state */
   emptyContainer: { alignItems: 'center', paddingTop: 80 },
   emptyIllustration: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: ms(88),
+    height: ms(88),
+    borderRadius: ms(24),
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 24,

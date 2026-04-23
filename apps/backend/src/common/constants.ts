@@ -85,6 +85,8 @@ export const UNREAD_COUNT_CACHE_TTL = 30_000;
 export const ADMIN_STATS_CACHE_TTL = 2 * 60_000;
 /** Referral stats cache (5 min) */
 export const REFERRAL_STATS_CACHE_TTL = 5 * 60_000;
+/** Client profile stats (scans/rewards count) cache (30 s) */
+export const PROFILE_STATS_CACHE_TTL = 30_000;
 
 // ── Client refresh token ────────────────────────────────────
 /** Client refresh token lifetime in days */

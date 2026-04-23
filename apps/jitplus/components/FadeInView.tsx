@@ -1,5 +1,5 @@
-import { useEffect, useRef, useMemo } from 'react';
-import { Animated, ViewStyle } from 'react-native';
+import { useEffect, useRef, useMemo, useState } from 'react';
+import { Animated, ViewStyle, AccessibilityInfo } from 'react-native';
 import { hp } from '@/utils/responsive';
 
 interface FadeInViewProps {
@@ -19,10 +19,22 @@ export default function FadeInView({
   style,
   children,
 }: FadeInViewProps) {
+  const [reduceMotion, setReduceMotion] = useState(false);
   const opacity = useRef(new Animated.Value(0)).current;
   const translate = useRef(new Animated.Value(distance)).current;
 
   useEffect(() => {
+    AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
+    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
+    return () => sub.remove();
+  }, []);
+
+  useEffect(() => {
+    if (reduceMotion) {
+      opacity.setValue(1);
+      translate.setValue(0);
+      return;
+    }
     const animation = Animated.parallel([
       Animated.timing(opacity, {
         toValue: 1,

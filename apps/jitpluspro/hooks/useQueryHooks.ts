@@ -12,7 +12,8 @@ import type {
   PlanInfo,
   Merchant,
   Reward,
-  DashboardStats,
+  DashboardKpis,
+  RewardDistribution,
   TrendResponse,
   ClientDetail,
   CustomerStatus,
@@ -35,8 +36,9 @@ export const queryKeys = {
   rewards: ['rewards'] as const,
   plan: ['plan'] as const,
   referral: ['referral'] as const,
-  dashboardStats: (period: string) => ['dashboard-stats', period] as const,
+  dashboardKpis: ['dashboard-kpis'] as const,
   dashboardTrends: (period: string) => ['dashboard-trends', period] as const,
+  dashboardDistribution: ['dashboard-distribution'] as const,
   transactions: ['transactions'] as const,
   profile: ['profile'] as const,
   clientDetail: (id: string) => ['client-detail', id] as const,
@@ -49,6 +51,11 @@ export const queryKeys = {
   emailQuota: ['email-quota'] as const,
   pendingGifts: ['pending-gifts'] as const,
   teamMembers: ['team-members'] as const,
+  luckyWheelCampaigns: ['lucky-wheel-campaigns'] as const,
+  luckyWheelPendingPrizes: ['lucky-wheel-pending-prizes'] as const,
+  luckyWheelFulfilledPrizes: ['lucky-wheel-fulfilled-prizes'] as const,
+  luckyWheelCampaignStats: (id: string) => ['lucky-wheel-campaign-stats', id] as const,
+  luckyWheelActiveInfo: ['lucky-wheel-active-info'] as const,
 } as const;
 
 // ── Stale time constants (ms) ───────────────────────────────────
@@ -185,15 +192,14 @@ export function useApplyReferralMonths() {
 }
 
 // ── Dashboard ───────────────────────────────────────────────────
-export function useDashboardStats(period: string, enabled = true) {
-  return useQuery<DashboardStats>({
-    queryKey: queryKeys.dashboardStats(period),
+export function useDashboardKpis(enabled = true) {
+  return useQuery<DashboardKpis>({
+    queryKey: queryKeys.dashboardKpis,
     queryFn: async () => {
-      const res = await api.get(`/merchant/dashboard-stats?period=${period}`);
+      const res = await api.get('/merchant/dashboard-kpis');
       return res.data;
     },
     staleTime: STALE.LONG,
-    placeholderData: keepPreviousData,
     enabled,
   });
 }
@@ -207,6 +213,18 @@ export function useDashboardTrends(period: string, enabled = true) {
     },
     staleTime: STALE.LONG,
     placeholderData: keepPreviousData,
+    enabled,
+  });
+}
+
+export function useDashboardDistribution(enabled = true) {
+  return useQuery<RewardDistribution>({
+    queryKey: queryKeys.dashboardDistribution,
+    queryFn: async () => {
+      const res = await api.get('/merchant/dashboard-distribution');
+      return res.data;
+    },
+    staleTime: STALE.LONG,
     enabled,
   });
 }
@@ -606,5 +624,122 @@ export function useMarkSingleAdminNotifRead() {
       qc.invalidateQueries({ queryKey: queryKeys.adminNotifications });
       qc.invalidateQueries({ queryKey: queryKeys.adminNotifUnreadCount });
     },
+  });
+}
+
+// ── LuckyWheel ─────────────────────────────────────────────────────
+
+export function useLuckyWheelCampaigns() {
+  return useQuery<any[]>({
+    queryKey: queryKeys.luckyWheelCampaigns,
+    queryFn: async () => {
+      const res = await api.get('/lucky-wheel/merchant/campaigns');
+      return Array.isArray(res.data) ? res.data : [];
+    },
+    staleTime: STALE.MEDIUM,
+  });
+}
+
+export function useLuckyWheelCampaignStats(campaignId: string) {
+  return useQuery<any>({
+    queryKey: queryKeys.luckyWheelCampaignStats(campaignId),
+    queryFn: async () => {
+      const res = await api.get(`/lucky-wheel/merchant/campaigns/${campaignId}/stats`);
+      return res.data;
+    },
+    staleTime: STALE.SHORT,
+    enabled: !!campaignId,
+  });
+}
+
+export function useLuckyWheelPendingPrizes() {
+  return useQuery<any[]>({
+    queryKey: queryKeys.luckyWheelPendingPrizes,
+    queryFn: async () => {
+      const res = await api.get('/lucky-wheel/merchant/pending-prizes');
+      return Array.isArray(res.data) ? res.data : [];
+    },
+    staleTime: STALE.SHORT,
+  });
+}
+
+export function useLuckyWheelFulfilledPrizes() {
+  return useQuery<any[]>({
+    queryKey: queryKeys.luckyWheelFulfilledPrizes,
+    queryFn: async () => {
+      const res = await api.get('/lucky-wheel/merchant/fulfilled-prizes');
+      return Array.isArray(res.data) ? res.data : [];
+    },
+    staleTime: STALE.SHORT,
+  });
+}
+
+export function useCreateLuckyWheelCampaign() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: any) => {
+      const res = await api.post('/lucky-wheel/merchant/campaigns', payload);
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.luckyWheelCampaigns }),
+  });
+}
+
+export function useUpdateLuckyWheelStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: string }) => {
+      const res = await api.patch(`/lucky-wheel/merchant/campaigns/${id}/status`, { status });
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.luckyWheelCampaigns }),
+  });
+}
+
+export function useUpdateLuckyWheelCampaign() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...data }: { id: string; [key: string]: any }) => {
+      const res = await api.patch(`/lucky-wheel/merchant/campaigns/${id}`, data);
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.luckyWheelCampaigns }),
+  });
+}
+
+export function useDeleteLuckyWheelCampaign() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await api.delete(`/lucky-wheel/merchant/campaigns/${id}`);
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.luckyWheelCampaigns }),
+  });
+}
+
+export function useFulfilLuckyWheelPrize() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (drawId: string) => {
+      const res = await api.post('/lucky-wheel/merchant/fulfil', { drawId });
+      return res.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.luckyWheelPendingPrizes });
+      qc.invalidateQueries({ queryKey: queryKeys.luckyWheelFulfilledPrizes });
+      qc.invalidateQueries({ queryKey: queryKeys.luckyWheelCampaigns });
+    },
+  });
+}
+
+export function useLuckyWheelActiveInfo() {
+  return useQuery({
+    queryKey: queryKeys.luckyWheelActiveInfo,
+    queryFn: async () => {
+      const res = await api.get('/lucky-wheel/merchant/active-info');
+      return res.data as { hasActiveLuckyWheel: boolean; minSpendAmount: number; campaignName: string | null };
+    },
+    staleTime: STALE.SHORT,
   });
 }

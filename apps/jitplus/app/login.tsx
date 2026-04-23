@@ -23,6 +23,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
 import { isValidEmail } from '@/utils/validation';
+import { useAppFonts } from '@/utils/fonts';
 import { useGoogleAuth } from '@/hooks/useGoogleAuth';
 import { useAppleAuth } from '@/hooks/useAppleAuth';
 import { haptic } from '@/utils/haptics';
@@ -45,6 +46,7 @@ type LoginMethod = 'select' | 'email' | 'google';
 export default function LoginScreen() {
   const theme = useTheme();
   const { t } = useLanguage();
+  const fonts = useAppFonts();
   const { loginWithEmail, sendOtpEmail } = useAuth();
   const [method, setMethod] = useState<LoginMethod>('select');
   const [email, setEmail] = useState('');
@@ -116,8 +118,8 @@ export default function LoginScreen() {
       setError(t('login.invalidEmail'));
       return;
     }
-    if (!password || password.length < 8) {
-      setError(t('login.passwordTooShort'));
+    if (!password) {
+      setError(t('login.emptyPassword'));
       return;
     }
 
@@ -200,7 +202,7 @@ export default function LoginScreen() {
         accessibilityLabel={t('login.loginWithGoogle')}
       >
         <GoogleLogo size={ms(20)} />
-        <Text style={[styles.socialBtnText, { color: theme.text }]}>{t('login.loginWithGoogle')}</Text>
+        <Text style={[styles.socialBtnText, { color: theme.text, fontFamily: fonts.semibold }]}>{t('login.loginWithGoogle')}</Text>
       </TouchableOpacity>
 
       {/* Apple — iOS only */}
@@ -214,7 +216,7 @@ export default function LoginScreen() {
           accessibilityLabel={t('login.loginWithApple')}
         >
           <AppleLogo size={ms(20)} color="#fff" />
-          <Text style={[styles.socialBtnText, { color: '#fff' }]}>{t('login.loginWithApple')}</Text>
+          <Text style={[styles.socialBtnText, { color: '#fff', fontFamily: fonts.semibold }]}>{t('login.loginWithApple')}</Text>
         </TouchableOpacity>
       )}
 
@@ -291,7 +293,7 @@ export default function LoginScreen() {
         activeOpacity={0.7}
       >
         <Mail size={ms(20)} color="#fff" strokeWidth={2} />
-        <Text style={[styles.socialBtnText, { color: '#fff' }]}>{t('login.loginByEmail')}</Text>
+        <Text style={[styles.socialBtnText, { color: '#fff', fontFamily: fonts.semibold }]}>{t('login.loginByEmail')}</Text>
       </TouchableOpacity>
     </Animated.View>
   );
@@ -306,8 +308,8 @@ export default function LoginScreen() {
       </TouchableOpacity>
 
       <View style={{ marginBottom: hp(24) }}>
-        <Text style={[styles.registerTitle, { color: theme.text }]}>{t('login.emailLoginTitle')}</Text>
-        <Text style={[styles.registerSubtitle, { color: theme.inputPlaceholder }]}>
+        <Text style={[styles.registerTitle, { color: theme.text, fontFamily: fonts.bold }]}>{t('login.emailLoginTitle')}</Text>
+        <Text style={[styles.registerSubtitle, { color: theme.inputPlaceholder, fontFamily: fonts.regular }]}>
           {t('login.emailLoginSubtitle')}
         </Text>
       </View>
@@ -327,6 +329,11 @@ export default function LoginScreen() {
             onChangeText={(text) => { setEmail(text); setError(''); }}
             keyboardType="email-address"
             autoCapitalize="none"
+            autoCorrect={false}
+            textContentType="emailAddress"
+            autoComplete="email"
+            importantForAutofill="yes"
+            maxLength={254}
             autoFocus
           />
         </View>
@@ -335,10 +342,10 @@ export default function LoginScreen() {
       <View style={styles.inputContainer}>
         <View style={[styles.inputWrapper, {
           backgroundColor: theme.inputBg,
-          borderColor: error ? theme.danger : password.length >= 8 ? palette.violet : theme.inputBorder,
-          borderWidth: password.length >= 8 ? 2 : 1.5,
+          borderColor: error ? theme.danger : password.length > 0 ? palette.violet : theme.inputBorder,
+          borderWidth: password.length > 0 ? 2 : 1.5,
         }]}>
-          <Lock size={ms(18)} color={password.length >= 8 ? palette.violet : theme.inputPlaceholder} strokeWidth={2} />
+          <Lock size={ms(18)} color={password.length > 0 ? palette.violet : theme.inputPlaceholder} strokeWidth={2} />
           <TextInput
             style={[styles.emailInput, { color: theme.text }]}
             placeholder={t('login.password')}
@@ -347,6 +354,11 @@ export default function LoginScreen() {
             onChangeText={(text) => { setPassword(text); setError(''); }}
             secureTextEntry={!showPassword}
             autoCapitalize="none"
+            autoCorrect={false}
+            textContentType="password"
+            autoComplete="password"
+            importantForAutofill="yes"
+            maxLength={128}
           />
           <TouchableOpacity onPress={() => setShowPassword(!showPassword)} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={showPassword ? t('login.hidePassword') : t('login.showPassword')}>
             {showPassword ? (
@@ -379,12 +391,12 @@ export default function LoginScreen() {
         onPress={handleEmailContinue}
         disabled={isLoading}
         activeOpacity={0.85}
-        style={[styles.button, { backgroundColor: emailValid && password.length >= 8 ? palette.violet : '#D4D0E8' }]}
+        style={[styles.button, { backgroundColor: emailValid && password.length > 0 ? palette.violet : '#D4D0E8' }]}
       >
         {isLoading ? <ActivityIndicator color="#fff" /> : (
           <>
-            <Text style={[styles.buttonText, { opacity: emailValid && password.length >= 8 ? 1 : 0.5 }]}>{t('login.loginButton')}</Text>
-            <ArrowRight size={ms(18)} color={emailValid && password.length >= 8 ? '#fff' : 'rgba(255,255,255,0.5)'} />
+            <Text style={[styles.buttonText, { opacity: emailValid && password.length > 0 ? 1 : 0.5, fontFamily: fonts.semibold }]}>{t('login.loginButton')}</Text>
+            <ArrowRight size={ms(18)} color={emailValid && password.length > 0 ? '#fff' : 'rgba(255,255,255,0.5)'} />
           </>
         )}
       </TouchableOpacity>

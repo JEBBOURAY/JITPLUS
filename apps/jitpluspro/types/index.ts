@@ -120,19 +120,22 @@ export interface Reward {
   description?: string;
 }
 
-export type TransactionType = 'EARN_POINTS' | 'REDEEM_REWARD' | 'ADJUST_POINTS' | 'LOYALTY_PROGRAM_CHANGE';
+export type TransactionType = 'EARN_POINTS' | 'REDEEM_REWARD' | 'ADJUST_POINTS' | 'LOYALTY_PROGRAM_CHANGE' | 'LUCKY_WHEEL_WIN';
 export type GiftStatus = 'PENDING' | 'FULFILLED';
 
-export interface DashboardStats {
+export interface DashboardKpis {
   totalClients: number;
   totalPoints: number;
   totalRedeemedPoints: number;
   totalTransactions: number;
   totalRewardsGiven: number;
   profileViews: number;
-  rewardsDistribution: { rewardId: string | null; title: string; count: number }[];
   loyaltyType: 'POINTS' | 'STAMPS';
+  luckyWheelPlays: number;
+  luckyWheelWins: number;
 }
+
+export type RewardDistribution = { rewardId: string | null; title: string; count: number }[];
 
 export interface TrendPoint {
   bucket: string;
@@ -186,6 +189,7 @@ export interface CustomerStatus {
   rewardThreshold: number;
   loyaltyType?: 'POINTS' | 'STAMPS';
   stampsForReward?: number;
+  isBirthday?: boolean;
 }
 
 export interface Transaction {

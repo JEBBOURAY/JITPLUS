@@ -14,7 +14,7 @@ import { useNavigationContainerRef } from 'expo-router';
  * the initial tab screen render (expo-router renders tab children before
  * the NavigationContainer context is fully propagated).
  */
-export function useExitOnBack(enabled = true) {
+export function useExitOnBack(enabled = true, message = 'Press back again to exit') {
   const lastBackRef = useRef(0);
   const navRef = useNavigationContainerRef();
 
@@ -31,10 +31,10 @@ export function useExitOnBack(enabled = true) {
         return true;
       }
       lastBackRef.current = now;
-      ToastAndroid.show('Appuyez encore pour quitter', ToastAndroid.SHORT);
+      ToastAndroid.show(message, ToastAndroid.SHORT);
       return true; // prevent default (closing the app)
     });
 
     return () => sub.remove();
-  }, [enabled, navRef]);
+  }, [enabled, navRef, message]);
 }

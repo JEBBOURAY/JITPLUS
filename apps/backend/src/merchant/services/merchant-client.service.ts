@@ -167,7 +167,7 @@ export class MerchantClientService {
     const [client, loyaltyCardResult, merchant] = await Promise.all([
       this.clientRepo.findUnique({
         where: { id: clientId },
-        select: { id: true, nom: true, email: true, telephone: true, shareInfoMerchants: true },
+        select: { id: true, nom: true, email: true, telephone: true, shareInfoMerchants: true, dateNaissance: true },
       }),
       this.loyaltyCardRepo.findUnique({
         where: { clientId_merchantId: { clientId, merchantId } },
@@ -215,6 +215,15 @@ export class MerchantClientService {
     const rewardThreshold = computeRewardThreshold(merchant, pointsRules);
 
     const shared = client.shareInfoMerchants !== false;
+
+    // Check if today is the client's birthday (only reveal if they share info)
+    let isBirthday = false;
+    if (shared && client.dateNaissance) {
+      const today = new Date();
+      const bday = new Date(client.dateNaissance);
+      isBirthday = today.getMonth() === bday.getMonth() && today.getDate() === bday.getDate();
+    }
+
     return {
       id: client.id,
       nom: shared ? client.nom : maskName(client.nom),
@@ -225,6 +234,7 @@ export class MerchantClientService {
       rewardThreshold,
       loyaltyType: merchant?.loyaltyType || DEFAULT_LOYALTY_TYPE,
       stampsForReward: rewardThreshold,
+      isBirthday,
     };
   }
 

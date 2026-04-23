@@ -200,7 +200,7 @@ export default function ReferralScreen() {
           </View>
 
           {/* ── Stats banner ── */}
-          <View style={[styles.statsBanner, { backgroundColor: theme.primaryBg, borderColor: theme.primary + '30' }]}>
+          <View style={[styles.statsBanner, { backgroundColor: theme.primaryBg, borderColor: theme.borderLight }]}>
             <Users size={20} color={theme.primary} />
             <Text style={[styles.statsBannerText, { color: theme.primary }]}>
               {referredCountLabel()}
@@ -208,7 +208,7 @@ export default function ReferralScreen() {
           </View>
 
           {/* ── Reward card ── */}
-          <View style={[styles.rewardCard, { backgroundColor: theme.bgCard, borderColor: theme.accent + '40' }]}>
+          <View style={[styles.rewardCard, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
             <View style={styles.rewardHeader}>
               <View style={[styles.rewardIconWrap, { backgroundColor: theme.accent + '20' }]}>
                 <Zap size={20} color={theme.accent} />
@@ -219,7 +219,7 @@ export default function ReferralScreen() {
               {t('referral.rewardAutoDesc')}
             </Text>
             {(stats?.referralMonthsEarned ?? 0) > 0 && (
-              <View style={[styles.statsBanner, { backgroundColor: theme.accent + '15', borderColor: theme.accent + '40', marginTop: 4 }]}>
+              <View style={[styles.statsBanner, { backgroundColor: theme.accent + '15', borderColor: theme.borderLight, marginTop: 4 }]}>
                 <Star size={16} color={theme.accent} />
                 <Text style={[styles.statsBannerText, { color: theme.accent, fontSize: 13 }]}>
                   {stats?.referralMonthsEarned === 1
@@ -362,7 +362,7 @@ const styles = StyleSheet.create({
   retryBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10, marginTop: 4 },
   retryBtnText: { fontWeight: '600', fontSize: 14, fontFamily: 'Lexend_600SemiBold' },
 
-  scroll: { paddingHorizontal: 20, paddingTop: 20, gap: 16 },
+  scroll: { paddingHorizontal: 16, paddingTop: 20, gap: 16 },
 
   subtitle: {
     fontSize: 14,
@@ -374,7 +374,7 @@ const styles = StyleSheet.create({
 
   // Code card
   codeCard: {
-    borderRadius: 16,
+    borderRadius: 14,
     borderWidth: 1,
     padding: 24,
     alignItems: 'center',
@@ -419,14 +419,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     padding: 14,
-    borderRadius: 12,
+    borderRadius: 14,
     borderWidth: 1,
   },
   statsBannerText: { fontSize: 15, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
 
   // How it works
   howItWorksCard: {
-    borderRadius: 16,
+    borderRadius: 14,
     borderWidth: 1,
     padding: 20,
   },
@@ -482,7 +482,7 @@ const styles = StyleSheet.create({
 
   // Reward card
   rewardCard: {
-    borderRadius: 16,
+    borderRadius: 14,
     borderWidth: 1,
     padding: 18,
     gap: 10,
@@ -513,7 +513,7 @@ const styles = StyleSheet.create({
 
   // Empty
   emptyCard: {
-    borderRadius: 16,
+    borderRadius: 14,
     borderWidth: 1,
     padding: 32,
     alignItems: 'center',
@@ -524,7 +524,7 @@ const styles = StyleSheet.create({
 
   // List
   listCard: {
-    borderRadius: 16,
+    borderRadius: 14,
     borderWidth: 1,
     overflow: 'hidden',
   },

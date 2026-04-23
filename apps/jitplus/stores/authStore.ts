@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { Client } from '@/types';
 
-interface AuthState {
+export interface AuthState {
   // ── State ──
   client: Client | null;
   loading: boolean;
@@ -36,7 +36,31 @@ export const useAuthStore = create<AuthState>()((set) => ({
 
   setClient: (client) => set({ client, isGuest: false }),
   updateClient: (data) =>
-    set((s) => ({ client: s.client ? { ...s.client, ...data } : s.client })),
+    set((s) => {
+      if (!s.client) return { client: s.client };
+      // Shallow + one-level nested merge so updating one nested field
+      // (e.g. settings.foo) doesn't erase sibling fields.
+      const current = s.client as unknown as Record<string, unknown>;
+      const patch = data as unknown as Record<string, unknown>;
+      const merged: Record<string, unknown> = { ...current };
+      for (const key of Object.keys(patch)) {
+        const nextVal = patch[key];
+        const prevVal = current[key];
+        if (
+          nextVal &&
+          typeof nextVal === 'object' &&
+          !Array.isArray(nextVal) &&
+          prevVal &&
+          typeof prevVal === 'object' &&
+          !Array.isArray(prevVal)
+        ) {
+          merged[key] = { ...(prevVal as object), ...(nextVal as object) };
+        } else {
+          merged[key] = nextVal;
+        }
+      }
+      return { client: merged as unknown as Client };
+    }),
   setLoading: (loading) => set({ loading }),
   setNeedsPasswordSetup: (needsPasswordSetup) => set({ needsPasswordSetup }),
   setGuest: (isGuest) => set({ isGuest }),

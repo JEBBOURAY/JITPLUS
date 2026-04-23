@@ -13,7 +13,7 @@ import {
 } from '../common/repositories';
 import * as bcrypt from 'bcryptjs';
 import { buildPagination } from '../common/utils';
-import { MERCHANTS_LIST_CACHE_TTL, MERCHANT_DETAIL_CACHE_TTL, UNREAD_COUNT_CACHE_TTL } from '../common/constants';
+import { MERCHANTS_LIST_CACHE_TTL, MERCHANT_DETAIL_CACHE_TTL, PROFILE_STATS_CACHE_TTL, UNREAD_COUNT_CACHE_TTL } from '../common/constants';
 
 @Injectable()
 export class ClientService {
@@ -44,6 +44,8 @@ export class ClientService {
         telephoneVerified: true,
         countryCode: true,
         shareInfoMerchants: true,
+        notifPush: true,
+        notifEmail: true,
         notifWhatsapp: true,
         language: true,
         dateNaissance: true,
@@ -85,6 +87,8 @@ export class ClientService {
       telephone?: string;
       countryCode?: string;
       shareInfoMerchants?: boolean;
+      notifPush?: boolean;
+      notifEmail?: boolean;
       notifWhatsapp?: boolean;
       language?: string;
       dateNaissance?: string | null;
@@ -118,7 +122,7 @@ export class ClientService {
     const { dateNaissance: dateNaissanceStr, language, ...restUpdates } = updates;
     const data: {
       prenom?: string; nom?: string; email?: string; telephone?: string;
-      countryCode?: string; shareInfoMerchants?: boolean; notifWhatsapp?: boolean;
+      countryCode?: string; shareInfoMerchants?: boolean; notifPush?: boolean; notifEmail?: boolean; notifWhatsapp?: boolean;
       language?: string;
       dateNaissance?: Date | null;
       emailVerified?: boolean; telephoneVerified?: boolean;
@@ -157,6 +161,8 @@ export class ClientService {
         telephoneVerified: true,
         countryCode: true,
         shareInfoMerchants: true,
+        notifPush: true,
+        notifEmail: true,
         notifWhatsapp: true,
         language: true,
         dateNaissance: true,
@@ -274,15 +280,21 @@ export class ClientService {
   }
 
   async getProfileStats(clientId: string) {
+    const cacheKey = `profile-stats:${clientId}`;
+    const cached = await this.cache.get<{ totalScans: number; totalRewards: number }>(cacheKey);
+    if (cached) return cached;
+
     const [totalScans, totalRewards] = await Promise.all([
       this.transactionRepo.count({
         where: { clientId, type: 'EARN_POINTS', status: 'ACTIVE' },
       }),
       this.transactionRepo.count({
-        where: { clientId, type: 'REDEEM_REWARD', status: 'ACTIVE' },
+        where: { clientId, type: { in: ['REDEEM_REWARD', 'LUCKY_WHEEL_WIN'] }, status: 'ACTIVE' },
       }),
     ]);
-    return { totalScans, totalRewards };
+    const result = { totalScans, totalRewards };
+    await this.cache.set(cacheKey, result, PROFILE_STATS_CACHE_TTL);
+    return result;
   }
 
   async getPointsOverview(clientId: string, page: number = 1, limit: number = 50) {
@@ -304,7 +316,8 @@ export class ClientService {
               nom: true,
               categorie: true,
               loyaltyType: true,
-              stampsForReward: true,
+              pointsRate: true,
+                stampsForReward: true,
               conversionRate: true,
               latitude: true,
               longitude: true,
@@ -342,7 +355,8 @@ export class ClientService {
               nomBoutique: card.merchant.nom,
               categorie: card.merchant.categorie,
               loyaltyType: card.merchant.loyaltyType,
-              stampsForReward: card.merchant.stampsForReward,
+              pointsRate: card.merchant.pointsRate,
+                stampsForReward: card.merchant.stampsForReward,
               conversionRate: card.merchant.conversionRate,
               // null if the merchant has no rewards configured yet
               minRewardCost: card.merchant.rewards[0]?.cout ?? null,
@@ -352,6 +366,109 @@ export class ClientService {
             }
           : undefined,
       })),
+    };
+  }
+
+  async getRewardsHistory(clientId: string, page: number = 1, limit: number = 50) {
+    const skip = (page - 1) * limit;
+    const safeTake = Math.min(limit, 100);
+
+    const [transactions, total] = await Promise.all([
+      this.transactionRepo.findMany({
+        where: { 
+          clientId, 
+          type: { in: ['REDEEM_REWARD', 'LUCKY_WHEEL_WIN'] },
+          status: 'ACTIVE' 
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: safeTake,
+        select: {
+          id: true,
+          type: true,
+          status: true,
+          amount: true,
+          points: true,
+          loyaltyType: true,
+          createdAt: true,
+          merchant: {
+            select: {
+              id: true,
+              nom: true,
+              categorie: true,
+              logoUrl: true,
+            },
+          },
+          reward: {
+            select: {
+              id: true,
+              titre: true,
+            },
+          },
+        },
+      }),
+      this.transactionRepo.count({
+        where: { 
+          clientId, 
+          type: { in: ['REDEEM_REWARD', 'LUCKY_WHEEL_WIN'] },
+          status: 'ACTIVE' 
+        },
+      }),
+    ]);
+
+    return {
+      transactions,
+      meta: {
+        total,
+        page,
+        limit: safeTake,
+        totalPages: Math.ceil(total / safeTake),
+      },
+    };
+  }
+
+  async getTransactionsHistory(clientId: string, page: number = 1, limit: number = 50) {
+    const skip = (page - 1) * limit;
+    const safeTake = Math.min(limit, 100);
+
+    const [transactions, total] = await Promise.all([
+      this.transactionRepo.findMany({
+        where: { clientId },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: safeTake,
+        select: {
+          id: true,
+          type: true,
+          status: true,
+          amount: true,
+          points: true,
+          loyaltyType: true,
+          createdAt: true,
+          merchant: {
+            select: {
+              id: true,
+              nom: true,
+              categorie: true,
+              logoUrl: true,
+            },
+          },
+          reward: {
+            select: {
+              id: true,
+              titre: true,
+            },
+          },
+        },
+      }),
+      this.transactionRepo.count({
+        where: { clientId },
+      }),
+    ]);
+
+    return {
+      transactions,
+      pagination: buildPagination(total, page, safeTake),
     };
   }
 
@@ -376,7 +493,8 @@ export class ClientService {
           longitude: true,
           loyaltyType: true,
           conversionRate: true,
-          stampsForReward: true,
+          pointsRate: true,
+                stampsForReward: true,
           logoUrl: true,
           coverUrl: true,
           socialLinks: true,
@@ -398,6 +516,27 @@ export class ClientService {
           rewards: {
             select: { id: true, titre: true, cout: true, description: true },
             orderBy: { cout: 'asc' },
+          },
+          luckyWheelCampaigns: {
+            where: {
+              status: 'ACTIVE',
+              startsAt: { lte: new Date() },
+              endsAt: { gte: new Date() },
+            },
+            select: {
+              id: true,
+              name: true,
+              description: true,
+              endsAt: true,
+              minSpendAmount: true,
+              globalWinRate: true,
+              prizes: {
+                where: { remaining: { gt: 0 } },
+                select: { id: true, label: true, description: true, weight: true },
+                orderBy: { weight: 'desc' },
+              },
+            },
+            take: 1,
           },
           _count: { select: { loyaltyCards: true } },
         },
@@ -443,7 +582,8 @@ export class ClientService {
       longitude: m.longitude,
       loyaltyType: m.loyaltyType,
       conversionRate: m.conversionRate,
-      stampsForReward: m.stampsForReward,
+      pointsRate: m.pointsRate,
+        stampsForReward: m.stampsForReward,
       logoUrl: m.logoUrl ?? null,
       coverUrl: m.coverUrl ?? null,
       socialLinks: (m.socialLinks as Record<string, string> | null) ?? null,
@@ -459,6 +599,22 @@ export class ClientService {
         cout: r.cout,
         description: r.description ?? null,
       })),
+      activeLuckyWheel: m.luckyWheelCampaigns?.[0]
+        ? {
+            id: m.luckyWheelCampaigns[0].id,
+            name: m.luckyWheelCampaigns[0].name,
+            description: m.luckyWheelCampaigns[0].description ?? null,
+            endsAt: m.luckyWheelCampaigns[0].endsAt,
+            minSpendAmount: m.luckyWheelCampaigns[0].minSpendAmount,
+            globalWinRate: m.luckyWheelCampaigns[0].globalWinRate,
+            prizes: m.luckyWheelCampaigns[0].prizes.map((p: any) => ({
+              id: p.id,
+              label: p.label,
+              description: p.description ?? null,
+              weight: p.weight ?? 1,
+            })),
+          }
+        : null,
     };
   }
 
@@ -529,7 +685,8 @@ export class ClientService {
           longitude: true,
           loyaltyType: true,
           conversionRate: true,
-          stampsForReward: true,
+          pointsRate: true,
+                stampsForReward: true,
           logoUrl: true,
           stores: {
             where: { isActive: true },
@@ -577,6 +734,7 @@ export class ClientService {
         longitude: m.longitude,
         loyaltyType: m.loyaltyType,
         conversionRate: m.conversionRate,
+        pointsRate: m.pointsRate,
         stampsForReward: m.stampsForReward,
         logoUrl: m.logoUrl ?? null,
       };
@@ -791,6 +949,17 @@ export class ClientService {
 
     await this.cache.del(`client:unread:${clientId}`);
     return { success: true, count: notifIds.length };
+  }
+
+  /**
+   * Navigate to email preferences settings endpoint to unsubscribe from all marketing emails
+   */
+  async unsubscribeEmail(clientId: string) {
+    await this.clientRepo.update({
+      where: { id: clientId },
+      data: { notifEmail: false },
+    });
+    return { success: true, message: 'Désinscription des e-mails réussie' };
   }
 
   /**

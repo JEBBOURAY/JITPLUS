@@ -13,10 +13,10 @@ import {
 import { IEmailBlastProvider, EMAIL_BLAST_PROVIDER, IPushProvider, PUSH_PROVIDER, ISmsProvider, SMS_PROVIDER } from '../common/interfaces';
 import { EventsGateway } from '../events';
 import { EmailQuotaService } from './email-quota.service';
-import { WhatsappQuotaService } from '../merchant/services/whatsapp-quota.service';
 import { Notification } from '@prisma/client';
 import { SendNotificationDto } from './dto/send-notification.dto';
 import { SendEmailBlastDto } from './dto/send-email-blast.dto';
+import { buildWhatsAppBroadcastMessage } from './templates/whatsapp-templates';
 import { buildPagination, PaginationResult } from '../common/utils';
 import { DEFAULT_NOTIFICATION_LOGO, LOGO_CACHE_TTL, EMAIL_LOGO_JITPLUS_PRO } from '../common/constants';
 
@@ -35,7 +35,6 @@ export class NotificationsService {
     @Inject(EMAIL_BLAST_PROVIDER) private resendService: IEmailBlastProvider,
     @Inject(SMS_PROVIDER) private smsProvider: ISmsProvider,
     private emailQuotaService: EmailQuotaService,
-    private whatsappQuotaService: WhatsappQuotaService,
     private eventsGateway: EventsGateway,
     private config: ConfigService,
     @Inject(CACHE_MANAGER) private cache: Cache,
@@ -405,9 +404,6 @@ export class NotificationsService {
       return { recipientCount: 0, successCount: 0, failureCount: 0 };
     }
 
-    // 2. Check & increment WhatsApp quota (throws ForbiddenException if exceeded)
-    await this.whatsappQuotaService.checkAndIncrementQuota(merchantId, recipients.length);
-
     // 3. Send via Twilio WhatsApp (controlled concurrency to respect rate limits)
     let successCount = 0;
     let failureCount = 0;
@@ -419,7 +415,11 @@ export class NotificationsService {
       const results = await Promise.allSettled(
         batch.map(async (recipient) => {
           const clientName = recipient.prenom || 'cher client';
-          const formattedMessage = `*Message de ${merchant.nom}*\n\nBonjour ${clientName},\n\n${body}\n\n_Vous recevez ce message car vous êtes client de ${merchant.nom} via JitPlus._`;
+          const formattedMessage = buildWhatsAppBroadcastMessage({
+              merchantName: merchant.nom,
+              clientName,
+              body,
+            });
           return this.smsProvider.sendWhatsAppMessage(recipient.telephone, formattedMessage);
         }),
       );

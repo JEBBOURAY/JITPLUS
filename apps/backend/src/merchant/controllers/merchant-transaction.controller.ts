@@ -75,11 +75,11 @@ export class MerchantTransactionController {
     );
   }
 
-  @Get('dashboard-stats')
+  @Get('dashboard-kpis')
   @UseGuards(MerchantOwnerGuard, PremiumGuard)
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 15 } })
-  async getDashboardStats(@Query() { period }: DashboardQueryDto, @CurrentUser() user: JwtPayload) {
-    return this.dashboardService.getDashboardStats(user.userId, period!);
+  async getDashboardKpis(@CurrentUser() user: JwtPayload) {
+    return this.dashboardService.getKpis(user.userId);
   }
 
   @Get('dashboard-trends')
@@ -87,5 +87,12 @@ export class MerchantTransactionController {
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 15 } })
   async getDashboardTrends(@Query() { period }: DashboardQueryDto, @CurrentUser() user: JwtPayload) {
     return this.dashboardService.getDashboardTrends(user.userId, period!);
+  }
+
+  @Get('dashboard-distribution')
+  @UseGuards(MerchantOwnerGuard, PremiumGuard)
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 15 } })
+  async getDashboardDistribution(@CurrentUser() user: JwtPayload) {
+    return this.dashboardService.getRewardsDistribution(user.userId);
   }
 }

@@ -3,14 +3,10 @@
  * Uses @react-native-google-signin/google-signin (native SDK) for production builds.
  * In Expo Go the native module is unavailable — the hook degrades gracefully.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { router } from 'expo-router';
+import { useCallback } from 'react';
 import Constants from 'expo-constants';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '@/contexts/AuthContext';
-import { haptic } from '@/utils/haptics';
-import { isNoAccountError } from '@/utils/authErrors';
-import * as Haptics from 'expo-haptics';
+import { useAuthProvider } from './useAuthProvider';
 import i18n from '@/i18n';
 
 // Lazy-load the native SDK so Expo Go doesn't crash at module evaluation time.
@@ -48,32 +44,21 @@ interface UseGoogleAuthOptions {
 
 export function useGoogleAuth({ actionLabel, onCancel }: UseGoogleAuthOptions) {
   const { googleLogin } = useAuth();
-  const [isLoading, setIsLoading] = useState(false);
-  const [isSuccess, setIsSuccess] = useState(false);
-  const [error, setError] = useState('');
-  const [noAccount, setNoAccount] = useState(false);
-  const mountedRef = useRef(true);
-
-  useEffect(() => {
-    return () => { mountedRef.current = false; };
-  }, []);
+  const auth = useAuthProvider({ actionLabel, onCancel });
 
   /** Launch the Google prompt */
   const promptGoogle = useCallback(async () => {
-    setError('');
-    setIsSuccess(false);
-    setNoAccount(false);
-    setIsLoading(true);
+    auth.reset();
 
     if (!GoogleSignin || !isErrorWithCode || !statusCodes) {
-      setIsLoading(false);
-      setError('Google Sign-In n\'est pas disponible dans Expo Go. Utilisez un build de développement.');
+      auth.setLoading(false);
+      auth.handleError(null, 'googleAuth');
       return;
     }
 
     if (!WEB_CLIENT_ID) {
-      setIsLoading(false);
-      setError(i18n.t('googleAuth.notConfigured'));
+      auth.setLoading(false);
+      auth.handleError(null, 'googleAuth');
       return;
     }
 
@@ -82,15 +67,13 @@ export function useGoogleAuth({ actionLabel, onCancel }: UseGoogleAuthOptions) {
 
       // Sign out from the SDK first so Android always shows the account picker,
       // even if the user previously signed in with a Google account in this session.
-      // This does NOT revoke tokens or sign the user out of the app — it only
-      // clears the SDK's cached account selection so the system chooser appears.
       try { await GoogleSignin.signOut(); } catch { /* no-op when no account was cached */ }
 
       const response = await GoogleSignin.signIn();
 
       // V16 API: cancellation returns { type: 'cancelled' } instead of throwing
       if ('type' in response && response.type === 'cancelled') {
-        setIsLoading(false);
+        auth.setLoading(false);
         onCancel?.();
         return;
       }
@@ -98,55 +81,28 @@ export function useGoogleAuth({ actionLabel, onCancel }: UseGoogleAuthOptions) {
       const idToken = response.data?.idToken;
 
       if (!idToken) {
-        setIsLoading(false);
-        setError(i18n.t('googleAuth.noIdToken'));
-        // Don't call onCancel — keep user on Google screen so they can see the error
+        auth.setLoading(false);
+        auth.handleError(null, 'googleAuth');
         return;
       }
 
       const result = await googleLogin(idToken);
-
-      if (result.success) {
-        setIsLoading(false);
-        if (result.isNewUser) {
-          // New users: go to complete-profile immediately (no delay needed)
-          router.push('/complete-profile?isGoogleUser=1');
-        } else {
-          // Returning users: flash success state briefly before navigating
-          setIsSuccess(true);
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-          // Trigger the "Welcome back" banner on the Cards tab
-          await AsyncStorage.setItem('showWelcome', '1');
-          await new Promise((r) => setTimeout(r, 550));
-          if (mountedRef.current) router.replace('/(tabs)/qr');
-        }
-      } else {
-        setIsLoading(false);
-        if (result.rawError && isNoAccountError(result.rawError)) {
-          setNoAccount(true);
-          setError(i18n.t('googleAuth.noAccountFound'));
-        } else {
-          setError(result.error || i18n.t('googleAuth.error', { action: actionLabel }));
-        }
-        // Don't call onCancel — let user see the error and retry
-      }
+      auth.setLoading(false);
+      await auth.handleResult(result, 'googleAuth');
     } catch (err) {
-      setIsLoading(false);
+      auth.setLoading(false);
 
       if (isErrorWithCode && statusCodes && isErrorWithCode(err)) {
         if (
           err.code === statusCodes.SIGN_IN_CANCELLED ||
           err.code === statusCodes.IN_PROGRESS
         ) {
-          // User explicitly cancelled or another sign-in is in progress — go back
           onCancel?.();
           return;
         }
 
-        // DEVELOPER_ERROR (code 10) = SHA-1 fingerprint mismatch between
-        // signing key and Google Cloud Console, or wrong webClientId.
         if (err.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
-          setError(i18n.t('googleAuth.playServicesUnavailable'));
+          auth.handleError(err, 'googleAuth');
           return;
         }
       }
@@ -157,18 +113,21 @@ export function useGoogleAuth({ actionLabel, onCancel }: UseGoogleAuthOptions) {
       const userMessage = i18n.t('googleAuth.launchError', { action: actionLabel });
       if (__DEV__) {
         const detail = code ? `[${code}] ${nativeMsg}` : nativeMsg;
-        setError(`${userMessage}\n${detail}`);
+        auth.handleError(new Error(`${userMessage}\n${detail}`), 'googleAuth');
       } else {
-        setError(userMessage);
+        auth.handleError(err, 'googleAuth');
       }
-      // Don't call onCancel — let user see the error and retry
     }
-  }, [actionLabel, googleLogin, onCancel]);
+  }, [actionLabel, googleLogin, onCancel, auth]);
 
-  const dismissNoAccount = useCallback(() => {
-    setNoAccount(false);
-    setError('');
-  }, []);
-
-  return { isLoading, isSuccess, error, setError, setIsLoading, promptGoogle, noAccount, dismissNoAccount };
+  return {
+    isLoading: auth.isLoading,
+    isSuccess: auth.isSuccess,
+    error: auth.error,
+    setError: (e: string) => auth.handleError(new Error(e), 'googleAuth'),
+    setIsLoading: auth.setLoading,
+    promptGoogle,
+    noAccount: auth.noAccount,
+    dismissNoAccount: auth.dismissNoAccount,
+  };
 }

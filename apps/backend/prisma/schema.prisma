@@ -94,6 +94,9 @@ model Merchant {
   lastAdminNotifReadAt DateTime?                  @map("last_admin_notif_read_at")
   notificationReads    MerchantNotificationRead[]
 
+  // Lucky Wheel campaigns
+  luckyWheelCampaigns LuckyWheelCampaign[]
+
   @@index([isActive])
   @@index([deletedAt])
   // Discovery queries filter by category + city — composite index avoids full table scans
@@ -269,32 +272,32 @@ enum StampEarningMode {
 }
 
 model Client {
-  id                  String    @id @default(uuid())
-  prenom              String?   @db.VarChar(255)
-  nom                 String?   @db.VarChar(255)
-  email               String?   @unique @db.VarChar(255)
-  emailVerified       Boolean   @default(false) @map("email_verified")
-  password            String?   @db.VarChar(255)
-  telephone           String?   @unique @db.VarChar(20)
-  telephoneVerified   Boolean   @default(false) @map("telephone_verified")
-  googleId            String?   @unique @map("google_id") @db.VarChar(255)
-  appleId             String?   @unique @map("apple_id") @db.VarChar(255)
-  countryCode         String    @default("MA") @map("country_code") @db.VarChar(5)
-  pushToken           String?   @map("push_token") @db.VarChar(512)
-  refreshTokenHash    String?   @unique @map("refresh_token_hash")
+  id                    String    @id @default(uuid())
+  prenom                String?   @db.VarChar(255)
+  nom                   String?   @db.VarChar(255)
+  email                 String?   @unique @db.VarChar(255)
+  emailVerified         Boolean   @default(false) @map("email_verified")
+  password              String?   @db.VarChar(255)
+  telephone             String?   @unique @db.VarChar(20)
+  telephoneVerified     Boolean   @default(false) @map("telephone_verified")
+  googleId              String?   @unique @map("google_id") @db.VarChar(255)
+  appleId               String?   @unique @map("apple_id") @db.VarChar(255)
+  countryCode           String    @default("MA") @map("country_code") @db.VarChar(5)
+  pushToken             String?   @map("push_token") @db.VarChar(512)
+  refreshTokenHash      String?   @unique @map("refresh_token_hash")
   refreshTokenExpiresAt DateTime? @map("refresh_token_expires_at")
-  termsAccepted       Boolean   @default(false) @map("terms_accepted")
-  shareInfoMerchants  Boolean   @default(false) @map("share_info_merchants")
-  notifPush           Boolean   @default(true) @map("notif_push")
-  notifEmail          Boolean   @default(true) @map("notif_email")
-  notifWhatsapp       Boolean   @default(true) @map("notif_whatsapp")
-  language            String    @default("fr") @db.VarChar(5)
-  dateNaissance       DateTime? @map("date_naissance")
-  failedLoginAttempts Int       @default(0) @map("failed_login_attempts")
-  lockedUntil         DateTime? @map("locked_until")
-  createdAt           DateTime  @default(now()) @map("created_at")
-  updatedAt           DateTime  @updatedAt @map("updated_at")
-  deletedAt           DateTime? @map("deleted_at")
+  termsAccepted         Boolean   @default(false) @map("terms_accepted")
+  shareInfoMerchants    Boolean   @default(false) @map("share_info_merchants")
+  notifPush             Boolean   @default(true) @map("notif_push")
+  notifEmail            Boolean   @default(false) @map("notif_email")
+  notifWhatsapp         Boolean   @default(false) @map("notif_whatsapp")
+  language              String    @default("fr") @db.VarChar(5)
+  dateNaissance         DateTime? @map("date_naissance")
+  failedLoginAttempts   Int       @default(0) @map("failed_login_attempts")
+  lockedUntil           DateTime? @map("locked_until")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+  deletedAt             DateTime? @map("deleted_at")
 
   // ── Programme de parrainage client ──
   referralCode    String? @unique @map("referral_code")
@@ -307,6 +310,8 @@ model Client {
   clientReferrals      ClientReferral[]
   referredMerchants    Merchant[]                 @relation("ClientMerchantReferrals")
   payoutRequests       PayoutRequest[]
+  luckyWheelTickets    LuckyWheelTicket[]
+  campaignSentTrackers CampaignSentTracker[]
 
   @@index([nom])
   @@index([email])
@@ -376,10 +381,11 @@ model Transaction {
   fulfilledAt     DateTime?         @map("fulfilled_at")
   createdAt       DateTime          @default(now()) @map("created_at")
 
-  client     Client      @relation(fields: [clientId], references: [id], onDelete: Restrict)
-  merchant   Merchant    @relation(fields: [merchantId], references: [id], onDelete: Restrict)
-  reward     Reward?     @relation(fields: [rewardId], references: [id], onDelete: SetNull)
-  teamMember TeamMember? @relation(fields: [teamMemberId], references: [id], onDelete: SetNull)
+  client            Client             @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  merchant          Merchant           @relation(fields: [merchantId], references: [id], onDelete: Restrict)
+  reward            Reward?            @relation(fields: [rewardId], references: [id], onDelete: SetNull)
+  teamMember        TeamMember?        @relation(fields: [teamMemberId], references: [id], onDelete: SetNull)
+  luckyWheelTickets LuckyWheelTicket[]
 
   @@index([merchantId, status, createdAt])
   @@index([clientId, status, createdAt])
@@ -401,6 +407,7 @@ enum TransactionType {
   REDEEM_REWARD
   ADJUST_POINTS
   LOYALTY_PROGRAM_CHANGE
+  LUCKY_WHEEL_WIN
 }
 
 enum TransactionStatus {
@@ -517,6 +524,22 @@ model ClientNotificationStatus {
   @@map("client_notification_statuses")
 }
 
+/// Tracks emails/campaigns already sent to clients to prevent duplicates.
+model CampaignSentTracker {
+  id         String   @id @default(uuid())
+  clientId   String   @map("client_id")
+  campaignId String   @map("campaign_id") // ID of the specific email series/day
+  channel    String   @default("EMAIL") // EMAIL, WHATSAPP, PUSH
+  sentAt     DateTime @default(now()) @map("sent_at")
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, campaignId, channel])
+  @@index([clientId])
+  @@index([campaignId])
+  @@map("campaign_sent_trackers")
+}
+
 model DeviceSession {
   id              String   @id @default(uuid())
   merchantId      String   @map("merchant_id")
@@ -600,7 +623,7 @@ model PayoutRequest {
   amount          Float
   status          PayoutStatus @default(PENDING)
   method          PayoutMethod
-  accountDetails  Json?         @map("account_details")
+  accountDetails  Json?        @map("account_details")
   rejectionReason String?      @map("rejection_reason")
   approvedAt      DateTime?    @map("approved_at")
   rejectedAt      DateTime?    @map("rejected_at")
@@ -614,4 +637,131 @@ model PayoutRequest {
   @@index([status])
   @@index([status, createdAt(sort: Desc)])
   @@map("payout_requests")
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── Lucky Wheel (promotional prize wheel, free to play) ──────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// Status of a lucky-wheel campaign
+enum LuckyWheelCampaignStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  ENDED
+}
+
+/// Result of a single draw
+enum DrawResult {
+  WON
+  LOST
+}
+
+/// Status of a won prize (fulfilment lifecycle)
+enum PrizeFulfilmentStatus {
+  PENDING
+  CLAIMED
+  EXPIRED
+}
+
+/// A promotional prize-wheel campaign created by a merchant
+model LuckyWheelCampaign {
+  id                 String                   @id @default(uuid())
+  merchantId         String                   @map("merchant_id")
+  name               String                   @db.VarChar(255)
+  description        String?                  @db.VarChar(2000)
+  status             LuckyWheelCampaignStatus @default(DRAFT)
+  /// Overall probability of winning ANY prize (0.0–1.0). Remainder = "Pas de chance".
+  globalWinRate      Float                    @default(0.5) @map("global_win_rate")
+  startsAt           DateTime                 @map("starts_at")
+  endsAt             DateTime                 @map("ends_at")
+  /// Minimum points a client must spend (REDEEM_REWARD) to earn a ticket
+  ticketCostPoints   Int                      @default(0) @map("ticket_cost_points")
+  /// Or: earn a ticket on every N-th visit
+  ticketEveryNVisits Int?                     @map("ticket_every_n_visits")
+  /// Minimum purchase amount (in currency) required to earn a lucky-wheel ticket
+  minSpendAmount     Int                      @default(0) @map("min_spend_amount")
+  createdAt          DateTime                 @default(now()) @map("created_at")
+  updatedAt          DateTime                 @updatedAt @map("updated_at")
+
+  merchant Merchant           @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  prizes   LuckyWheelPrize[]
+  tickets  LuckyWheelTicket[]
+
+  @@index([merchantId, status])
+  @@index([status, startsAt, endsAt])
+  @@map("lucky_wheel_campaigns")
+}
+
+/// A prize tier within a campaign (weighted probability + stock management)
+model LuckyWheelPrize {
+  id               String   @id @default(uuid())
+  campaignId       String   @map("campaign_id")
+  label            String   @db.VarChar(255)
+  description      String?  @db.VarChar(1000)
+  /// Relative weight for the weighted-random algorithm (higher = more likely among prizes)
+  weight           Int      @default(1)
+  /// Total stock for this prize
+  totalStock       Int      @map("total_stock")
+  /// Remaining stock (decremented atomically on each win)
+  remaining        Int
+  /// How long the client has to claim the prize (hours). Null = no expiry.
+  claimWindowHours Int?     @map("claim_window_hours")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  campaign LuckyWheelCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  draws    LuckyWheelDraw[]
+
+  @@index([campaignId])
+  @@index([campaignId, remaining])
+  @@map("lucky_wheel_prizes")
+}
+
+/// A ticket earned by a client, linked to a real transaction
+model LuckyWheelTicket {
+  id            String   @id @default(uuid())
+  campaignId    String   @map("campaign_id")
+  clientId      String   @map("client_id")
+  /// The transaction that earned this ticket (unique per campaign)
+  transactionId String   @map("transaction_id")
+  used          Boolean  @default(false)
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  campaign    LuckyWheelCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  client      Client             @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  transaction Transaction        @relation(fields: [transactionId], references: [id], onDelete: Restrict)
+  draw        LuckyWheelDraw?
+
+  @@unique([transactionId, campaignId])
+  @@index([clientId, campaignId])
+  @@index([campaignId, used])
+  @@map("lucky_wheel_tickets")
+}
+
+/// A draw attempt — always server-generated, immutable
+model LuckyWheelDraw {
+  id          String                 @id @default(uuid())
+  ticketId    String                 @unique @map("ticket_id")
+  prizeId     String?                @map("prize_id")
+  result      DrawResult
+  /// Prize fulfilment status (only set when result = WON)
+  fulfilment  PrizeFulfilmentStatus?
+  /// Deadline for the client to claim the prize
+  claimBefore DateTime?              @map("claim_before")
+  /// Merchant confirms prize handed over
+  fulfilledAt DateTime?              @map("fulfilled_at")
+  /// Who confirmed fulfilment (merchant or team member ID)
+  fulfilledBy String?                @map("fulfilled_by")
+  /// Server-generated cryptographic nonce proving the draw was fair
+  serverSeed  String                 @map("server_seed") @db.VarChar(64)
+  createdAt   DateTime               @default(now()) @map("created_at")
+
+  ticket LuckyWheelTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  prize  LuckyWheelPrize? @relation(fields: [prizeId], references: [id], onDelete: SetNull)
+
+  @@index([prizeId])
+  @@index([fulfilment])
+  @@index([result, createdAt(sort: Desc)])
+  @@map("lucky_wheel_draws")
 }

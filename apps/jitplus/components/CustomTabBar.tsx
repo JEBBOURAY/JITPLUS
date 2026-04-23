@@ -138,7 +138,7 @@ export default React.memo(function CustomTabBar({ state, navigation }: BottomTab
                   <IconComponent
                     size={ms(21)}
                     color={isFocused ? palette.violet : theme.textMuted}
-                    strokeWidth={isFocused ? 2 : 1.5}
+                    strokeWidth={1.5}
                   />
                   {route.name === 'notifications' && unreadCount > 0 && (
                     <View style={styles.badge} accessibilityLabel={`${unreadCount} ${unreadCount > 1 ? 'notifications' : 'notification'}`}>

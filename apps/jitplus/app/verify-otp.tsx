@@ -38,7 +38,6 @@ export default function VerifyOtpScreen() {
   const { t } = useLanguage();
   const { telephone, isEmail, isRegister, isForgotPassword } = useLocalSearchParams<{ telephone: string; isEmail?: string; isRegister?: string; isForgotPassword?: string }>();
   const { verifyOtpEmail, sendOtpEmail } = useAuth();
-  const isEmailFlow = true;
   const isRegisterFlow = isRegister === '1';
   const isForgotPasswordFlow = isForgotPassword === '1';
   const [code, setCode] = useState('');

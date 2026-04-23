@@ -9,7 +9,7 @@ import Supercluster, { type AnyProps, type PointFeature } from 'supercluster';
 import type { Merchant } from '@/types';
 import { getDistanceKm } from '@/utils/distance';
 
-interface MerchantPointProps extends AnyProps {
+interface MerchantPointProps extends AnyProps, Merchant {
   cluster: false;
   merchantId: string;
   pointId: string;
@@ -154,7 +154,7 @@ export function useMapClustering(
         return {
           type: 'merchant' as const,
           id: props.pointId ?? props.merchantId,
-          merchant: props as unknown as Merchant,
+          merchant: props as Merchant,
           latitude: lat,
           longitude: lng,
         };

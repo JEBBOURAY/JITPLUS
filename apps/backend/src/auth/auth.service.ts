@@ -19,7 +19,7 @@ import { GoogleRegisterMerchantDto } from './dto/google-register-merchant.dto';
 import { AppleLoginMerchantDto } from './dto/apple-login-merchant.dto';
 import { AppleRegisterMerchantDto } from './dto/apple-register-merchant.dto';
 import { RegisterMerchantDto } from './dto/register-merchant.dto';
-import { BCRYPT_SALT_ROUNDS, USER_TYPE_MERCHANT, USER_TYPE_TEAM_MEMBER, DEFAULT_POINTS_RULES, OTP_MIN, OTP_MAX, OTP_EXPIRY_MS, OTP_COOLDOWN_MS, MAX_SESSIONS_PER_MERCHANT } from '../common/constants';
+import { BCRYPT_SALT_ROUNDS, USER_TYPE_MERCHANT, USER_TYPE_TEAM_MEMBER, DEFAULT_POINTS_RULES, OTP_MIN, OTP_MAX, OTP_EXPIRY_MS, OTP_COOLDOWN_MS, MAX_SESSIONS_PER_MERCHANT, MAX_OTP_ATTEMPTS } from '../common/constants';
 import { hashOtp, validateOtp, checkDailyOtpLimit } from '../common/utils/otp.helper';
 import { errMsg } from '../common/utils';
 import * as jwt from 'jsonwebtoken';
@@ -1384,6 +1384,14 @@ export class AuthService {
         where: { id: otpRecord.id },
         data: { attempts: { increment: 1 } },
       });
+      // Convert internal sentinel to user-facing message
+      if (error instanceof UnauthorizedException && (error as any).message === '__OTP_MISMATCH__') {
+        const remaining = MAX_OTP_ATTEMPTS - (otpRecord.attempts + 1);
+        if (remaining <= 0) {
+          throw new BadRequestException('Trop de tentatives. Veuillez redemander un code.');
+        }
+        throw new BadRequestException(`Code incorrect. ${remaining} tentative(s) restante(s).`);
+      }
       throw error;
     }
 

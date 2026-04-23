@@ -3,7 +3,8 @@ module.exports = ({ config }) => {
   // SECURITY: This key is bundled in the client. Restrict it in Google Cloud Console:
   //   - Application restriction: Android apps (SHA-1 + package) and iOS apps (bundle ID)
   //   - API restriction: Maps SDK for Android, Maps SDK for iOS only
-  const GOOGLE_MAPS_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || '';
+  const GOOGLE_MAPS_KEY_ANDROID = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_ANDROID || '';
+  const GOOGLE_MAPS_KEY_IOS = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_IOS || '';
   // Reversed client ID from Google Cloud Console → OAuth 2.0 → iOS client
   // e.g. "com.googleusercontent.apps.XXXXXXX-YYYYYYY"
   const IOS_GOOGLE_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || '';
@@ -36,6 +37,12 @@ module.exports = ({ config }) => {
     icon: './assets/images/icon-white.png',
     scheme: 'jitplus',
     userInterfaceStyle: 'automatic',
+    updates: {
+      url: 'https://u.expo.dev/cdecb51f-65ff-4e38-a180-bd20563d997c'
+    },
+    runtimeVersion: {
+      policy: 'appVersion'
+    },
     // Publicly accessible privacy policy URL — required by both stores
     privacyPolicyUrl: PRIVACY_POLICY_URL,
     splash: {
@@ -57,18 +64,23 @@ module.exports = ({ config }) => {
       // Required for push notifications to arrive in background
       backgroundModes: ['remote-notification'],
       config: {
-        googleMapsApiKey: GOOGLE_MAPS_KEY,
+        googleMapsApiKey: GOOGLE_MAPS_KEY_IOS,
       },
       infoPlist: {
         // Belt-and-suspenders: explicit Info.plist entry mirrors usesNonExemptEncryption above
         ITSAppUsesNonExemptEncryption: false,
         NSLocationWhenInUseUsageDescription:
           "Permettre à JitPlus d'accéder à votre position pour trouver les commerces autour de vous.",
+
         // Google Sign-In redirect — reversed iOS client ID
         ...(IOS_GOOGLE_CLIENT_ID
           ? { CFBundleURLTypes: [{ CFBundleURLSchemes: [IOS_GOOGLE_CLIENT_ID] }] }
           : {}),
       },
+      // Deep links: Universal Links for shared merchant URLs
+      associatedDomains: [
+        'applinks:jitplus-api-290470991104.europe-west9.run.app',
+      ],
     },
     android: {
       versionCode: 32,
@@ -86,7 +98,7 @@ module.exports = ({ config }) => {
       googleServicesFile: process.env.GOOGLE_SERVICES_JSON || './google-services.json',
       config: {
         googleMaps: {
-          apiKey: GOOGLE_MAPS_KEY,
+          apiKey: GOOGLE_MAPS_KEY_ANDROID,
         },
       },
       permissions: [
@@ -102,6 +114,21 @@ module.exports = ({ config }) => {
         'android.permission.READ_EXTERNAL_STORAGE',
         'android.permission.WRITE_EXTERNAL_STORAGE',
         'android.permission.SYSTEM_ALERT_WINDOW',
+      ],
+      // Deep links: open /m/:id merchant share URLs directly in the app
+      intentFilters: [
+        {
+          action: 'VIEW',
+          autoVerify: true,
+          data: [
+            {
+              scheme: 'https',
+              host: 'jitplus-api-290470991104.europe-west9.run.app',
+              pathPrefix: '/m/',
+            },
+          ],
+          category: ['BROWSABLE', 'DEFAULT'],
+        },
       ],
     },
     web: {
@@ -137,10 +164,12 @@ module.exports = ({ config }) => {
       './plugins/withNetworkSecurity',
       // Force Google Maps region to Morocco — ensures correct border rendering (Sahara)
       './plugins/withMoroccoRegion',
+      // Enable RTL support on Android — required for Arabic/Darija layout
+      './plugins/withSupportsRTL',
       [
         'expo-notifications',
         {
-          icon: './assets/images/jitpluslogo.png',
+          icon: './assets/images/notification-icon.png',
           // color removed: setting it here duplicates notification_icon_color
           // with the one already in expo-notifications AAR resources, causing
           // a Gradle mergeReleaseResources conflict. Color is set at runtime

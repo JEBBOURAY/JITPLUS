@@ -1,4 +1,4 @@
-﻿import React, { useState, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,16 +8,18 @@ import {
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
-import { Users, TrendingUp, Repeat, ArrowLeft, Eye, Gift, Shield } from 'lucide-react-native';
+import { Users, TrendingUp, Repeat, ArrowLeft, Eye, Gift, Shield, Dices, Trophy, ChevronDown, ChevronUp } from 'lucide-react-native';
 import PremiumLockCard from '@/components/PremiumLockCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
-import { useTheme } from '@/contexts/ThemeContext';
+import { useTheme, palette } from '@/contexts/ThemeContext';
+import type { ThemeColors } from '@/contexts/ThemeContext';
 import { useRouter } from 'expo-router';
+import { ms } from '@/utils/responsive';
 import { useLanguage } from '@/contexts/LanguageContext';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useDashboardStats, useDashboardTrends } from '@/hooks/useQueryHooks';
+import { useDashboardKpis, useDashboardTrends, useDashboardDistribution } from '@/hooks/useQueryHooks';
 import { useGuardedCallback } from '@/hooks/useGuardedCallback';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -28,15 +30,19 @@ interface TrendPoint {
   count: number;
 }
 
+const LOCALE_MAP = { ar: 'ar-MA', en: 'en-US', fr: 'fr-FR' } as const;
+const getLocaleTag = (locale: string) => LOCALE_MAP[locale as keyof typeof LOCALE_MAP] ?? 'fr-FR';
+
 const StatCard = React.memo(function StatCard({
-  icon, label, value, color,
+  icon, label, value, color, theme, locale,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string | number;
   color: string;
+  theme: ThemeColors;
+  locale: string;
 }) {
-  const theme = useTheme();
   return (
     <View
       style={[
@@ -44,7 +50,7 @@ const StatCard = React.memo(function StatCard({
         { borderLeftColor: color, backgroundColor: theme.bgCard, borderColor: theme.borderLight },
       ]}
     >
-      <View style={[styles.statIconContainer, { backgroundColor: color + '20' }]}>
+      <View style={[styles.statIconContainer, { backgroundColor: `${palette.charbon}12` }]}>
         {icon}
       </View>
       <View style={styles.statContent}>
@@ -62,7 +68,7 @@ const StatCard = React.memo(function StatCard({
           adjustsFontSizeToFit
           minimumFontScale={0.5}
         >
-          {typeof value === 'number' ? value.toLocaleString('fr-FR') : value}
+          {typeof value === 'number' ? value.toLocaleString(getLocaleTag(locale)) : value}
         </Text>
       </View>
     </View>
@@ -70,13 +76,13 @@ const StatCard = React.memo(function StatCard({
 });
 
 const TrendChart = React.memo(function TrendChart({
-  data, color, formatLabel,
+  data, color, formatLabel, theme,
 }: {
   data: TrendPoint[];
   color: string;
   formatLabel: (bucket: string) => string;
+  theme: ThemeColors;
 }) {
-  const theme = useTheme();
   const maxCount = Math.max(...(data ?? []).map((item) => item.count), 1);
   return (
     <View style={styles.trendChart}>
@@ -114,14 +120,15 @@ const TrendsSection = React.memo(function TrendsSection({
   loading,
   charts,
   formatLabel,
+  theme,
+  noDataLabel,
 }: {
   loading: boolean;
   charts: { key: string; title: string; color: string; data: TrendPoint[] }[];
   formatLabel: (bucket: string) => string;
+  theme: ThemeColors;
+  noDataLabel: string;
 }) {
-  const theme = useTheme();
-  const { t } = useLanguage();
-
   if (loading) {
     return (
       <View style={styles.trendEmpty}>
@@ -134,7 +141,7 @@ const TrendsSection = React.memo(function TrendsSection({
     return (
       <View style={styles.trendEmpty}>
         <Text style={[styles.trendEmptyText, { color: theme.textMuted }]}>
-          {t('dashboard.noData')}
+          {noDataLabel}
         </Text>
       </View>
     );
@@ -151,7 +158,7 @@ const TrendsSection = React.memo(function TrendsSection({
             <View style={[styles.trendColorDot, { backgroundColor: chart.color }]} />
             <Text style={[styles.trendCardTitle, { color: theme.text }]}>{chart.title}</Text>
           </View>
-          <TrendChart data={chart.data} color={chart.color} formatLabel={formatLabel} />
+          <TrendChart data={chart.data} color={chart.color} formatLabel={formatLabel} theme={theme} />
         </View>
       ))}
     </View>
@@ -159,18 +166,18 @@ const TrendsSection = React.memo(function TrendsSection({
 });
 
 const RewardDistributionSection = React.memo(function RewardDistributionSection({
-  distribution,
+  distribution, theme, noGiftsLabel, giftCountFn,
 }: {
   distribution: { rewardId: string | null; title: string; count: number }[];
+  theme: ThemeColors;
+  noGiftsLabel: string;
+  giftCountFn: (count: number) => string;
 }) {
-  const theme = useTheme();
-  const { t } = useLanguage();
-
   if (!distribution.length) {
     return (
       <View style={styles.distributionEmpty}>
         <Text style={[styles.distributionEmptyText, { color: theme.textMuted }]}>
-          {t('dashboard.noGifts')}
+          {noGiftsLabel}
         </Text>
       </View>
     );
@@ -178,9 +185,9 @@ const RewardDistributionSection = React.memo(function RewardDistributionSection(
 
   return (
     <View style={styles.distributionList}>
-      {distribution.map((reward) => (
+      {distribution.map((reward, index) => (
         <View
-          key={reward.rewardId || reward.title}
+          key={reward.rewardId ?? `dist-${index}`}
           style={[
             styles.distributionRow,
             { borderColor: theme.borderLight, backgroundColor: theme.bgCard },
@@ -190,7 +197,7 @@ const RewardDistributionSection = React.memo(function RewardDistributionSection(
             {reward.title}
           </Text>
           <Text style={[styles.distributionCount, { color: theme.textSecondary }]}>
-            {t('dashboard.giftCount', { count: reward.count })}
+            {giftCountFn(reward.count)}
           </Text>
         </View>
       ))}
@@ -209,6 +216,10 @@ export default function DashboardScreen() {
 
   const isPremium = merchant?.plan === 'PREMIUM';
 
+  // -- Section visibility (on-demand loading) --
+  const [showTrends, setShowTrends] = useState(false);
+  const [showDistribution, setShowDistribution] = useState(false);
+
   const [trendPeriod, setTrendPeriod] = useState<TrendPeriod>('day');
 
   const periodTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -217,35 +228,41 @@ export default function DashboardScreen() {
     periodTimerRef.current = setTimeout(() => setTrendPeriod(p), 300);
   }, []);
 
-  const {
-    data: stats,
-    isLoading: loadingStats,
-    isRefetching: refreshingStats,
-  } = useDashboardStats(trendPeriod);
+  // Cleanup debounce timer on unmount
+  useEffect(() => {
+    return () => clearTimeout(periodTimerRef.current);
+  }, []);
 
+  // -- 1. KPIs � always loaded (lightweight) --
+  const {
+    data: kpis,
+    isLoading: loadingKpis,
+    isRefetching: refreshingKpis,
+    isError: kpiError,
+  } = useDashboardKpis();
+
+  // -- 2. Trends � loaded only when section is expanded --
   const {
     data: trendResponse,
     isLoading: loadingTrends,
-    isRefetching: refreshingTrends,
-  } = useDashboardTrends(trendPeriod);
+  } = useDashboardTrends(trendPeriod, showTrends);
 
-  const trendData = useMemo(
-    () => trendResponse
-      ? { transactions: trendResponse.transactions, newClients: trendResponse.newClients, rewardsGiven: trendResponse.rewardsGiven }
-      : null,
-    [trendResponse],
-  );
-
-  const refreshing = refreshingStats || refreshingTrends;
+  // -- 3. Distribution � loaded only when section is expanded --
+  const {
+    data: distribution,
+    isLoading: loadingDistribution,
+  } = useDashboardDistribution(showDistribution);
 
   const onRefresh = useGuardedCallback(async () => {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['dashboard-stats', trendPeriod] }),
-      queryClient.invalidateQueries({ queryKey: ['dashboard-trends', trendPeriod] }),
-    ]);
-  }, [trendPeriod, queryClient]);
+    const promises = [
+      queryClient.invalidateQueries({ queryKey: ['dashboard-kpis'] }),
+    ];
+    if (showTrends) promises.push(queryClient.invalidateQueries({ queryKey: ['dashboard-trends', trendPeriod] }));
+    if (showDistribution) promises.push(queryClient.invalidateQueries({ queryKey: ['dashboard-distribution'] }));
+    await Promise.all(promises);
+  }, [trendPeriod, showTrends, showDistribution, queryClient]);
 
-  const unitLabel = stats?.loyaltyType === 'STAMPS' ? t('common.stamps') : t('common.points');
+  const unitLabel = kpis?.loyaltyType === 'STAMPS' ? t('common.stamps') : t('common.points');
 
   const formatTrendLabel = useCallback((bucket: string) => {
     const date = new Date(bucket);
@@ -254,47 +271,47 @@ export default function DashboardScreen() {
     const month = date.getMonth() + 1;
     const year = String(date.getFullYear()).slice(2);
 
-    if (trendPeriod === 'day') {
-      return `${day}/${month}`;
-    }
-    if (trendPeriod === 'week') {
+    if (trendPeriod === 'day' || trendPeriod === 'week') {
       return `${day}/${month}`;
     }
     if (trendPeriod === 'month') {
       return `${month}/${year}`;
     }
-    // year: show month name abbreviated using locale-aware formatter
-    return date.toLocaleDateString(locale === 'ar' ? 'ar-MA' : locale === 'en' ? 'en-US' : 'fr-FR', { month: 'short' });
+    return date.toLocaleDateString(getLocaleTag(locale), { month: 'short' });
   }, [trendPeriod, locale]);
 
   const primaryColor = theme.primary;
   const trendCharts = useMemo<{ key: string; title: string; color: string; data: TrendPoint[] }[]>(
-    () => trendData
+    () => trendResponse
       ? [
-          { key: 'transactions', title: t('dashboard.transactions'), color: primaryColor, data: trendData.transactions },
-          { key: 'newClients', title: t('dashboard.trendNewClients'), color: '#7C3AED', data: trendData.newClients },
-          { key: 'rewardsGiven', title: t('dashboard.trendGifts'), color: primaryColor, data: trendData.rewardsGiven },
+          { key: 'transactions', title: t('dashboard.transactions'), color: primaryColor, data: trendResponse.transactions },
+          { key: 'newClients', title: t('dashboard.trendNewClients'), color: '#7C3AED', data: trendResponse.newClients },
+          { key: 'rewardsGiven', title: t('dashboard.trendGifts'), color: primaryColor, data: trendResponse.rewardsGiven },
         ]
       : [],
-    [trendData, t, primaryColor],
+    [trendResponse, t, primaryColor],
   );
+
+  const giftCountFn = useCallback((count: number) => t('dashboard.giftCount', { count }), [t]);
 
   if (shouldWait) return null;
 
   if (isTeamMember) {
     return (
       <View style={[styles.loadingContainer, { backgroundColor: theme.bg }]}>
-        <Shield size={48} color={theme.textMuted} strokeWidth={1.5} />
-        <Text style={[styles.loadingText, { color: theme.text, fontWeight: '600', fontSize: 16, fontFamily: 'Lexend_600SemiBold' }]}>{t('common.ownerOnly')}</Text>
-        <Text style={[styles.loadingText, { color: theme.textMuted, fontFamily: 'Lexend_400Regular' }]}>{t('common.ownerOnlyMsg')}</Text>
-        <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 16, paddingHorizontal: 24, paddingVertical: 10, backgroundColor: theme.primary, borderRadius: 10 }}>
-          <Text style={{ color: '#fff', fontWeight: '600', fontFamily: 'Lexend_600SemiBold' }}>{t('common.back')}</Text>
+        <View style={styles.ownerOnlyIcon}>
+          <Shield size={ms(36)} color={palette.charbon} strokeWidth={1.5} />
+        </View>
+        <Text style={[styles.loadingText, styles.ownerOnlyTitle, { color: theme.text }]}>{t('common.ownerOnly')}</Text>
+        <Text style={[styles.loadingText, { color: theme.textMuted }]}>{t('common.ownerOnlyMsg')}</Text>
+        <TouchableOpacity onPress={() => router.back()} style={[styles.ownerOnlyBackBtn, { backgroundColor: theme.primary }]}>
+          <Text style={styles.ownerOnlyBackText}>{t('common.back')}</Text>
         </TouchableOpacity>
       </View>
     );
   }
 
-  if (loadingStats) {
+  if (loadingKpis) {
     return (
       <View style={[styles.loadingContainer, { backgroundColor: theme.bg }]}>
         <ActivityIndicator size="large" color={theme.primary} />
@@ -303,9 +320,20 @@ export default function DashboardScreen() {
     );
   }
 
+  if (kpiError) {
+    return (
+      <View style={[styles.loadingContainer, { backgroundColor: theme.bg }]}>
+        <Text style={[styles.loadingText, { color: theme.textMuted }]}>{t('common.error')}</Text>
+        <TouchableOpacity onPress={() => queryClient.invalidateQueries({ queryKey: ['dashboard-kpis'] })} style={[styles.ownerOnlyBackBtn, { backgroundColor: theme.primary, marginTop: 12 }]}>
+          <Text style={styles.ownerOnlyBackText}>{t('common.retry')}</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
-      {/* ── Simple header — matches activity style ── */}
+      {/* -- Simple header � matches activity style -- */}
       <View style={[styles.headerBar, { paddingTop: insets.top + 12 }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <ArrowLeft size={22} color={theme.text} />
@@ -315,104 +343,164 @@ export default function DashboardScreen() {
 
       <ScrollView
         contentContainerStyle={styles.statsContainer}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />}
+        refreshControl={<RefreshControl refreshing={refreshingKpis} onRefresh={onRefresh} tintColor={theme.primary} />}
       >
-        {/* ── Guide text ── */}
+        {/* -- Guide text -- */}
         <View style={[styles.guideContainer, { backgroundColor: theme.primaryBg || (theme.primary + '10'), borderLeftColor: theme.primary }]}>
           <Text style={[styles.guideText, { color: theme.textSecondary }]}>
             {t('dashboard.guideText')}
           </Text>
         </View>
 
-        {/* Period filter tabs */}
-        <View style={styles.periodHeader}>
-          <View style={styles.trendTabs}>
-            {([
-              { id: 'day', label: t('dashboard.periodDay') },
-              { id: 'week', label: t('dashboard.periodWeek') },
-              { id: 'month', label: t('dashboard.periodMonth') },
-              { id: 'year', label: t('dashboard.periodYear') },
-            ] as const).map((item) => {
-              const isActive = trendPeriod === item.id;
-              return (
-                <TouchableOpacity
-                  key={item.id}
-                  style={[
-                    styles.trendTab,
-                    {
-                      backgroundColor: isActive ? theme.primary : theme.bgCard,
-                      borderColor: isActive ? theme.primary : theme.borderLight,
-                    },
-                  ]}
-                  onPress={() => debouncedSetPeriod(item.id)}
-                  activeOpacity={0.8}
-                >
-                  <Text
-                    style={[
-                      styles.trendTabText,
-                      { color: isActive ? '#fff' : theme.textSecondary },
-                    ]}
-                  >
-                    {item.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </View>
-
+        {/* --- Section 1: KPIs (always loaded) --- */}
         <Text style={[styles.sectionTitle, { color: theme.text }]}>{t('dashboard.kpis')}</Text>
         <View style={styles.statsRow}>
           <StatCard
-            icon={<Users size={22} color={theme.primary} strokeWidth={1.5} />}
+            icon={<Users size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
             label={t('dashboard.volumeClients')}
-            value={stats?.totalClients || 0}
+            value={kpis?.totalClients || 0}
             color={theme.primary}
+            theme={theme}
+            locale={locale}
           />
           <StatCard
-            icon={<TrendingUp size={22} color={theme.primary} strokeWidth={1.5} />}
+            icon={<TrendingUp size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
             label={t('dashboard.loyaltyLabel', { unit: unitLabel })}
-            value={stats?.totalPoints || 0}
+            value={kpis?.totalPoints || 0}
             color={theme.primary}
+            theme={theme}
+            locale={locale}
           />
         </View>
-        <View style={[styles.statsRow, { marginTop: 15 }]}>
+        <View style={[styles.statsRow, styles.statsRowGap]}>
           <StatCard
-            icon={<TrendingUp size={22} color={theme.primary} strokeWidth={1.5} />}
+            icon={<TrendingUp size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
             label={t('dashboard.consumedLabel', { unit: unitLabel })}
-            value={stats?.totalRedeemedPoints || 0}
+            value={kpis?.totalRedeemedPoints || 0}
             color={theme.primary}
+            theme={theme}
+            locale={locale}
           />
           <StatCard
-            icon={<Repeat size={22} color={theme.primary} strokeWidth={1.5} />}
+            icon={<Repeat size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
             label={t('dashboard.transactions')}
-            value={stats?.totalTransactions || 0}
+            value={kpis?.totalTransactions || 0}
             color={theme.primary}
+            theme={theme}
+            locale={locale}
           />
         </View>
-        <View style={[styles.statsRow, { marginTop: 15 }]}>
+        <View style={[styles.statsRow, styles.statsRowGap]}>
           <StatCard
-            icon={<Eye size={22} color={theme.primary} strokeWidth={1.5} />}
+            icon={<Eye size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
             label={t('dashboard.profileViews')}
-            value={stats?.profileViews || 0}
+            value={kpis?.profileViews || 0}
             color={theme.primary}
+            theme={theme}
+            locale={locale}
           />
           <StatCard
-            icon={<Gift size={22} color={theme.primary} strokeWidth={1.5} />}
+            icon={<Gift size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
             label={t('dashboard.trendGifts')}
-            value={stats?.totalRewardsGiven || 0}
+            value={kpis?.totalRewardsGiven || 0}
             color={theme.primary}
+            theme={theme}
+            locale={locale}
+          />
+        </View>
+        <View style={[styles.statsRow, styles.statsRowGap]}>
+          <StatCard
+            icon={<Dices size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
+            label={t('dashboard.luckyWheelPlays')}
+            value={kpis?.luckyWheelPlays || 0}
+            color={theme.primary}
+            theme={theme}
+            locale={locale}
+          />
+          <StatCard
+            icon={<Trophy size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
+            label={t('dashboard.luckyWheelWins')}
+            value={kpis?.luckyWheelWins || 0}
+            color={theme.primary}
+            theme={theme}
+            locale={locale}
           />
         </View>
 
-        <Text style={[styles.sectionTitle, { color: theme.text, marginTop: 10 }]}>{t('dashboard.evolution')}</Text>
-        <TrendsSection loading={loadingTrends} charts={trendCharts} formatLabel={formatTrendLabel} />
+        {/* --- Section 2: Evolution (on-demand) --- */}
+        <TouchableOpacity
+          style={styles.sectionHeader}
+          onPress={() => setShowTrends((v) => !v)}
+          activeOpacity={0.7}
+        >
+          <Text style={[styles.sectionTitle, { color: theme.text, marginBottom: 0 }]}>{t('dashboard.evolution')}</Text>
+          {showTrends ? <ChevronUp size={20} color={theme.textSecondary} /> : <ChevronDown size={20} color={theme.textSecondary} />}
+        </TouchableOpacity>
 
-        <Text style={[styles.sectionTitle, { marginTop: 20, color: theme.text }]}>{t('dashboard.giftDistribution')}</Text>
-        <RewardDistributionSection distribution={stats?.rewardsDistribution ?? []} />
+        {showTrends && (
+          <View>
+            {/* Period filter tabs */}
+            <View style={styles.periodHeader}>
+              <View style={styles.trendTabs}>
+                {([
+                  { id: 'day', label: t('dashboard.periodDay') },
+                  { id: 'week', label: t('dashboard.periodWeek') },
+                  { id: 'month', label: t('dashboard.periodMonth') },
+                  { id: 'year', label: t('dashboard.periodYear') },
+                ] as const).map((item) => {
+                  const isActive = trendPeriod === item.id;
+                  return (
+                    <TouchableOpacity
+                      key={item.id}
+                      style={[
+                        styles.trendTab,
+                        {
+                          backgroundColor: isActive ? theme.primary : theme.bgCard,
+                          borderColor: isActive ? theme.primary : theme.borderLight,
+                        },
+                      ]}
+                      onPress={() => debouncedSetPeriod(item.id)}
+                      activeOpacity={0.8}
+                    >
+                      <Text
+                        style={[
+                          styles.trendTabText,
+                          { color: isActive ? '#fff' : theme.textSecondary },
+                        ]}
+                      >
+                        {item.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+            <TrendsSection loading={loadingTrends} charts={trendCharts} formatLabel={formatTrendLabel} theme={theme} noDataLabel={t('dashboard.noData')} />
+          </View>
+        )}
+
+        {/* --- Section 3: Gift Distribution (on-demand) --- */}
+        <TouchableOpacity
+          style={styles.sectionHeader}
+          onPress={() => setShowDistribution((v) => !v)}
+          activeOpacity={0.7}
+        >
+          <Text style={[styles.sectionTitle, { color: theme.text, marginBottom: 0 }]}>{t('dashboard.giftDistribution')}</Text>
+          {showDistribution ? <ChevronUp size={20} color={theme.textSecondary} /> : <ChevronDown size={20} color={theme.textSecondary} />}
+        </TouchableOpacity>
+
+        {showDistribution && (
+          loadingDistribution ? (
+            <View style={styles.trendEmpty}>
+              <ActivityIndicator size="small" color={theme.primary} />
+            </View>
+          ) : (
+            <RewardDistributionSection distribution={distribution ?? []} theme={theme} noGiftsLabel={t('dashboard.noGifts')} giftCountFn={giftCountFn} />
+          )
+        )}
       </ScrollView>
 
-      {/* â”€â”€ Premium lock overlay â”€â”€ */}
+      {/* ── Premium lock overlay ── */}
       {!isPremium && (
         <View style={styles.premiumOverlay}>
           <View style={styles.premiumCard}>
@@ -454,7 +542,7 @@ const styles = StyleSheet.create({
     fontFamily: 'Lexend_400Regular',
   },
 
-  // Header — simple bar (activity style)
+  // Header � simple bar (activity style)
   headerBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -479,9 +567,44 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     fontFamily: 'Lexend_700Bold',
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    marginTop: 20,
+    marginBottom: 12,
+  },
   statsRow: {
     flexDirection: 'row',
     gap: 15,
+  },
+  statsRowGap: {
+    marginTop: 15,
+  },
+  ownerOnlyIcon: {
+    width: ms(88),
+    height: ms(88),
+    borderRadius: ms(24),
+    backgroundColor: `${palette.charbon}12`,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  ownerOnlyTitle: {
+    fontWeight: '600',
+    fontSize: 16,
+    fontFamily: 'Lexend_600SemiBold',
+  },
+  ownerOnlyBackBtn: {
+    marginTop: 16,
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  ownerOnlyBackText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontFamily: 'Lexend_600SemiBold',
   },
   periodHeader: {
     flexDirection: 'row',
@@ -578,9 +701,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   statIconContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: ms(36),
+    height: ms(36),
+    borderRadius: ms(12),
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 10,
@@ -627,7 +750,7 @@ const styles = StyleSheet.create({
     paddingBottom: 30,
   },
 
-  // â”€â”€ Premium lock overlay â”€â”€
+  // ── Premium lock overlay ──
   premiumOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.55)',

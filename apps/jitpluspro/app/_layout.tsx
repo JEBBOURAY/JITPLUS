@@ -306,7 +306,7 @@ function RootLayoutNav() {
 }
 
 // Public routes that don't require authentication
-const PUBLIC_ROUTES = new Set(['welcome', 'login', 'register', 'verify-email']);
+const PUBLIC_ROUTES = new Set(['welcome', 'login', 'register', 'verify-email', 'forgot-password']);
 
 function ThemedNavigator() {
   const theme = useTheme();

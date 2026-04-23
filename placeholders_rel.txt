@@ -1,0 +1,118 @@
+﻿apps\jitplus\i18n\locales\ar.ts:712: luckyWheel: { title: "عجلة الحظ", subtitle: "جرب حظك", merchantLabel: "عند {merchant}", spin: "دوّر", lost: "خسرتي", errorDraw: "خطأ", spinning: "كادّور...", ticketsAvailable: "{count} تذاكر", noTickets: "سلاو التذاكر", noTicketsHint: "ارجع غدا", history: "السجل", noHistory: "ماكاين حتى سجل", claimed: "خديتيه", expired: "سلا الوقت", pending: "كتسنى", won: "ربحتي", claimBefore: "قبل {date}", resultWon: "ربحتي هدية!", resultWonDesc: "ربحتي {prize}", resultLost: "ماشي هاد المرة", resultLostDesc: "تقدر تعاود تجرب من بعد", close: "سد", winRate: "نسبة الربح {rate}%", ageRequired: "باش تلعب عجلة الحظ، زيد تاريخ ازديادك فبروفيلك.", ageRestricted: "عجلة الحظ مخصصة للمستخدمين اللي عندهم 18 عام فما فوق.", rulesLink: "القانون", rulesTitle: "قانون عجلة الحظ", rulesIntro: "عجلة الحظ هي لعبة ترويجية مجانية، بلا شرا ولا خلاص.", rulesEligibility: "• مخصصة للمستخدمين اللي عندهم 18 عام فما فوق وبروفيل كامل.", rulesTickets: "• التذاكر كتنالها مجانا عندما تشري أو تزور التجار الشركاء.", rulesFairness: "• السحب كيتم بخوارزمية آمنة، وكل نتيجة مسجلة بشكل ثابت باش نضمن الإنصاف.", rulesClaim: "• خاص المكاسب تاخدها قبل التاريخ المحدد، عند التاجر المنظم.", rulesNoRealMoney: "• ماكاين حتى معاملة مالية. المكاسب مقدمة من التجار الشركاء." }
+apps\jitplus\i18n\locales\en.ts:712: luckyWheel: { title: "Wheel of Fortune", subtitle: "Try your luck", merchantLabel: "At {merchant}", spin: "Spin", lost: "Lost", errorDraw: "Error", spinning: "Spinning...", ticketsAvailable: "{count} tickets", noTickets: "No tickets open", noTicketsHint: "Try again tomorrow", history: "History", noHistory: "No history", claimed: "Claimed", expired: "Expired", pending: "Pending", won: "Won", claimBefore: "Before {date}", resultWon: "Prize won!", resultWonDesc: "You won a {prize}", resultLost: "Not this time", resultLostDesc: "You can try again later", close: "Close", winRate: "{rate}% chance to win", ageRequired: "To play the Wheel of Fortune, please add your date of birth in your profile.", ageRestricted: "The Wheel of Fortune is reserved for users aged 18 and over.", rulesLink: "Rules", rulesTitle: "Wheel of Fortune Rules", rulesIntro: "The Wheel of Fortune is a free promotional game, no purchase or payment required.", rulesEligibility: "• Reserved for users aged 18 and over with a completed profile.", rulesTickets: "• Tickets are earned for free by making purchases or visits at partner merchants.", rulesFairness: "• Draws are performed by a cryptographically secure algorithm and each outcome is stored immutably to guarantee fairness.", rulesClaim: "• Prizes must be claimed before the deadline shown, directly with the organising merchant.", rulesNoRealMoney: "• No financial transaction is involved. Prizes are offered by partner merchants." }
+apps\jitplus\i18n\locales\fr.ts:708: luckyWheel: { title: "Roue de la chance", subtitle: "Tentez votre chance", merchantLabel: "Chez {merchant}", spin: "Tourner", lost: "Perdu", errorDraw: "Erreur", spinning: "En cours...", ticketsAvailable: "{count} tickets", noTickets: "Plus de tickets", noTicketsHint: "Revenez demain", history: "Historique", noHistory: "Aucun historique", claimed: "Récupéré", expired: "Expiré", pending: "En attente", won: "Gagné", claimBefore: "Avant le {date}", resultWon: "Cadeau remporté !", resultWonDesc: "Vous avez gagné un {prize}", resultLost: "Ce n'est pas pour cette fois", resultLostDesc: "Tentez votre chance à nouveau plus tard", close: "Fermer", winRate: "{rate}% de chances de gagner", ageRequired: "Pour participer à la Roue de la chance, renseignez votre date de naissance dans votre profil.", ageRestricted: "La Roue de la chance est réservée aux utilisateurs majeurs (18 ans et plus).", rulesLink: "Règlement", rulesTitle: "Règlement de la Roue de la chance", rulesIntro: "La Roue de la chance est un jeu promotionnel gratuit, sans achat ni paiement requis.", rulesEligibility: "• Réservée aux utilisateurs majeurs (18 ans et plus) avec un profil complet.", rulesTickets: "• Les tickets sont obtenus gratuitement en réalisant des achats ou des visites chez les commerçants partenaires.", rulesFairness: "• Le tirage est effectué par un algorithme cryptographiquement sécurisé, dont chaque résultat est consigné de façon immuable pour garantir l'équité.", rulesClaim: "• Les lots gagnés doivent être récupérés avant la date limite indiquée, auprès du commerçant organisateur.", rulesNoRealMoney: "• Aucune transaction financière n'est impliquée. Les lots sont offerts par les commerçants partenaires." }
+apps\admin\src\components\ConfirmModal.tsx:56: onClick={onCancel}
+apps\admin\src\components\ConfirmModal.tsx:68: <h3 style={{ margin: '0 0 8px', color: C.text, fontSize: 16, fontWeight: 700, letterSpacing: '-0.01em' }}>{title}</h3>
+apps\admin\src\components\ConfirmModal.tsx:69: <p style={{ margin: '0 0 20px', color: C.textMuted, fontSize: 13, lineHeight: 1.6 }}>{message}</p>
+apps\admin\src\components\ConfirmModal.tsx:77: value={reason}
+apps\admin\src\components\ConfirmModal.tsx:91: Tapez <strong style={{ color: C.text }}>{requireText}</strong> pour confirmer
+apps\admin\src\components\ConfirmModal.tsx:94: value={typed}
+apps\admin\src\components\ConfirmModal.tsx:102: <button onClick={onCancel} style={{ ...S.btnOutline(C.textMuted), borderColor: C.border, color: C.textMuted }}>Annuler</button>
+apps\admin\src\components\ConfirmModal.tsx:108: {confirmLabel}
+apps\admin\src\components\Layout.tsx:9: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+apps\admin\src\components\Layout.tsx:10: <path d={d} />
+apps\admin\src\components\Layout.tsx:201: key={to}
+apps\admin\src\components\Layout.tsx:202: to={to}
+apps\admin\src\components\Layout.tsx:233: onClick={handleLogout}
+apps\admin\src\components\Layout.tsx:283: {children}
+apps\admin\src\components\StatCard.tsx:33: {label}
+apps\admin\src\components\StatCard.tsx:35: <span style={{ fontSize: 28, fontWeight: 700, color: C.text, letterSpacing: '-0.02em', lineHeight: 1 }}>{value}</span>
+apps\admin\src\components\StatCard.tsx:36: {sub && <span style={{ fontSize: 12, color: C.textMuted, fontWeight: 400 }}>{sub}</span>}
+apps\admin\src\pages\AuditLogs.tsx:99: value={action}
+apps\admin\src\pages\AuditLogs.tsx:132: value={dateFrom}
+apps\admin\src\pages\AuditLogs.tsx:139: value={dateTo}
+apps\admin\src\pages\AuditLogs.tsx:160: <p style={{ color: C.red }}>{error}</p>
+apps\admin\src\pages\AuditLogs.tsx:167: key={h}
+apps\admin\src\pages\AuditLogs.tsx:170: {h}
+apps\admin\src\pages\AuditLogs.tsx:250: Page {page} / {pagination.totalPages}
+apps\admin\src\pages\ClientDetail.tsx:14: <span style={{ color: C.textMuted, fontSize: 13 }}>{label}</span>
+apps\admin\src\pages\ClientDetail.tsx:15: <span style={{ color: color ?? C.text, fontSize: 13, fontWeight: 500 }}>{value}</span>
+apps\admin\src\pages\ClientDetail.tsx:64: if (error) return <p style={{ color: C.red }}>{error}</p>;
+apps\admin\src\pages\ClientDetail.tsx:79: {toast}
+apps\admin\src\pages\ClientDetail.tsx:89: <h2 style={{ margin: 0, fontWeight: 700, letterSpacing: '-0.02em', fontSize: 22, color: C.text }}>{fullName}</h2>
+apps\admin\src\pages\ClientDetail.tsx:165: <th key={h} style={{ textAlign: 'left', padding: '8px 10px', color: C.textMuted, fontWeight: 600 }}>
+apps\admin\src\pages\ClientDetail.tsx:166: {h}
+apps\admin\src\pages\ClientDetail.tsx:210: disabled={actionLoading}
+apps\admin\src\pages\ClientDetail.tsx:218: disabled={actionLoading}
+apps\admin\src\pages\ClientDetail.tsx:226: disabled={actionLoading}
+apps\admin\src\pages\Clients.tsx:66: value={search}
+apps\admin\src\pages\Clients.tsx:91: <p style={{ color: C.red }}>{error}</p>
+apps\admin\src\pages\Clients.tsx:98: <th key={h} style={{ textAlign: 'left', padding: '8px 10px', color: C.textMuted, fontWeight: 600 }}>
+apps\admin\src\pages\Clients.tsx:99: {h}
+apps\admin\src\pages\Clients.tsx:166: Page {page} / {pagination.totalPages}
+apps\admin\src\pages\Login.tsx:115: key={e}
+apps\admin\src\pages\Login.tsx:155: <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+apps\admin\src\pages\Login.tsx:162: value={email}
+apps\admin\src\pages\Login.tsx:176: value={password}
+apps\admin\src\pages\Login.tsx:196: {error}
+apps\admin\src\pages\MerchantDetail.tsx:31: onClick={onClick}
+apps\admin\src\pages\MerchantDetail.tsx:32: disabled={disabled}
+apps\admin\src\pages\MerchantDetail.tsx:38: {label}
+apps\admin\src\pages\MerchantDetail.tsx:130: if (error) return <p style={{ color: C.red }}>{error}</p>;
+apps\admin\src\pages\MerchantDetail.tsx:155: {toast}
+apps\admin\src\pages\MerchantDetail.tsx:172: <PlanBadge plan={merchant.plan} isTrial={isTrial} isActive={merchant.isActive} />
+apps\admin\src\pages\MerchantDetail.tsx:191: {label}
+apps\admin\src\pages\MerchantDetail.tsx:289: <p style={{ margin: 0, color: C.red, fontSize: 13 }}>{historyError}</p>
+apps\admin\src\pages\MerchantDetail.tsx:327: disabled={actionLoading}
+apps\admin\src\pages\MerchantDetail.tsx:337: disabled={actionLoading}
+apps\admin\src\pages\MerchantDetail.tsx:353: disabled={actionLoading}
+apps\admin\src\pages\MerchantDetail.tsx:367: disabled={actionLoading}
+apps\admin\src\pages\MerchantDetail.tsx:377: disabled={actionLoading}
+apps\admin\src\pages\MerchantDetail.tsx:397: loading={actionLoading}
+apps\admin\src\pages\MerchantDetail.tsx:413: <span style={{ color: C.textMuted }}>{label}</span>
+apps\admin\src\pages\MerchantDetail.tsx:414: <span style={{ fontWeight: 600 }}>{value}</span>
+apps\admin\src\pages\Merchants.tsx:92: value={search}
+apps\admin\src\pages\Merchants.tsx:129: value={categorie}
+apps\admin\src\pages\Merchants.tsx:162: <p style={{ color: C.red }}>{error}</p>
+apps\admin\src\pages\Merchants.tsx:170: key={h}
+apps\admin\src\pages\Merchants.tsx:173: {h}
+apps\admin\src\pages\Merchants.tsx:234: Page {page} / {pagination.totalPages}
+apps\admin\src\pages\Notifications.tsx:89: value={search}
+apps\admin\src\pages\Notifications.tsx:100: {error && <p style={{ color: C.red }}>{error}</p>}
+apps\admin\src\pages\Notifications.tsx:107: <th style={th}>Commerçant</th>
+apps\admin\src\pages\Notifications.tsx:108: <th style={th}>Canal</th>
+apps\admin\src\pages\Notifications.tsx:109: <th style={th}>Titre</th>
+apps\admin\src\pages\Notifications.tsx:110: <th style={th}>Contenu</th>
+apps\admin\src\pages\Notifications.tsx:114: <th style={th}>Date</th>
+apps\admin\src\pages\Notifications.tsx:127: <td style={td}>
+apps\admin\src\pages\Notifications.tsx:142: <td style={td}>
+apps\admin\src\pages\Overview.tsx:34: <g key={t}>
+apps\admin\src\pages\Overview.tsx:35: <line x1={PAD.left} y1={y} x2={W - PAD.right} y2={y} stroke={C.border} strokeDasharray="4 4" />
+apps\admin\src\pages\Overview.tsx:37: {t}
+apps\admin\src\pages\Overview.tsx:50: <rect x={mX} y={PAD.top + chartH - mH} width={barW} height={mH} rx={3} fill={C.primary} opacity={0.85} />
+apps\admin\src\pages\Overview.tsx:51: <rect x={tX} y={PAD.top + chartH - tH} width={barW} height={tH} rx={3} fill={C.cyan} opacity={0.85} />
+apps\admin\src\pages\Overview.tsx:52: <text x={cx} y={H - 8} textAnchor="middle" fontSize={10} fill={C.textMuted} fontFamily="Inter, sans-serif">{d.label}</text>
+apps\admin\src\pages\Overview.tsx:68: <span style={{ fontSize: 12, color: C.textMuted, minWidth: 36, textAlign: 'right', fontWeight: 500 }}>{value}</span>
+apps\admin\src\pages\Overview.tsx:77: {children}
+apps\admin\src\pages\Overview.tsx:114: if (error) return <p style={{ color: C.red, fontSize: 13 }}>{error}</p>;
+apps\admin\src\pages\Overview.tsx:127: <p style={{ margin: '4px 0 0', fontSize: 13, color: C.textMuted, textTransform: 'capitalize' }}>{today}</p>
+apps\admin\src\pages\Overview.tsx:168: <BarChart data={trends} />
+apps\admin\src\pages\Overview.tsx:179: <ProgressBar value={transactions.earnPoints} max={txTotal} color={C.green} />
+apps\admin\src\pages\Overview.tsx:186: <ProgressBar value={transactions.redeemReward} max={txTotal} color={C.amber} />
+apps\admin\src\pages\Overview.tsx:193: <ProgressBar value={transactions.adjustPoints} max={txTotal} color={C.blue} />
+apps\admin\src\pages\Overview.tsx:280: <th key={h} style={{ textAlign: 'left', padding: '8px 12px', color: C.textMuted, fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>
+apps\admin\src\pages\Referrals.tsx:138: <div style={{ fontSize: 20, fontWeight: 700, color: C.text }}>{value}</div>
+apps\admin\src\pages\Referrals.tsx:139: <div style={{ fontSize: 11, color: C.textMuted }}>{label}</div>
+apps\admin\src\pages\Referrals.tsx:200: {error && <p style={{ color: C.red, fontSize: 13, marginBottom: 12 }}>{error}</p>}
+apps\admin\src\pages\Referrals.tsx:210: value={merchantSearch}
+apps\admin\src\pages\Referrals.tsx:226: <th key={h} style={{ padding: '8px 10px', fontSize: 11, fontWeight: 700, color: C.textMuted, textAlign: 'left' }}>{h}</th>
+apps\admin\src\pages\Referrals.tsx:296: key={f}
+apps\admin\src\pages\Referrals.tsx:311: value={clientSearch}
+apps\admin\src\pages\Referrals.tsx:328: <th key={h} style={{ padding: '8px 10px', fontSize: 11, fontWeight: 700, color: C.textMuted, textAlign: 'left' }}>{h}</th>
+apps\admin\src\pages\Referrals.tsx:404: key={f}
+apps\admin\src\pages\Referrals.tsx:420: value={payoutSearch}
+apps\admin\src\pages\Referrals.tsx:437: <th key={h} style={{ padding: '8px 10px', fontSize: 11, fontWeight: 700, color: C.textMuted, textAlign: 'left' }}>{h}</th>
+apps\admin\src\pages\Referrals.tsx:549: <th key={h} style={{ padding: '8px 10px', fontSize: 11, fontWeight: 700, color: C.textMuted, textAlign: 'left' }}>{h}</th>
+apps\admin\src\pages\SendNotification.tsx:198: value={merchantSearch}
+apps\admin\src\pages\SendNotification.tsx:272: value={title}
+apps\admin\src\pages\SendNotification.tsx:289: value={body}
+apps\admin\src\pages\SendNotification.tsx:395: onClick={handleSend}
+apps\admin\src\pages\SendNotification.tsx:446: <p style={{ marginTop: 12, color: C.red, fontSize: 13 }}>{error}</p>
+apps\admin\src\pages\SendNotification.tsx:481: Cette notification sera envoyée à <strong style={{ color: C.text }}>{audienceLabel}</strong> via{' '}
+apps\admin\src\pages\SendNotification.tsx:493: <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 4 }}>{title}</div>
+apps\admin\src\pages\SendNotification.tsx:508: onClick={doSend}
+apps\admin\src\pages\SendNotification.tsx:509: disabled={sending}
+apps\admin\src\App.tsx:40: return status === 'ok' ? <>{children}</> : <Navigate to="/login" replace />;
+packages\shared\src\createLanguageProvider.tsx:88: return <Context.Provider value={value}>{children}</Context.Provider>;
+packages\shared\src\createThemeProvider.tsx:72: return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
+packages\shared\src\OfflineBanner.tsx:21: <Text style={styles.text}>{text}</Text>

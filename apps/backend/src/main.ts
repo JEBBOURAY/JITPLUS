@@ -65,7 +65,11 @@ async function bootstrap() {
   app.setGlobalPrefix('api/v1', {
     exclude: [
       { path: 'health', method: RequestMethod.ALL },
+      { path: 'health/*path', method: RequestMethod.ALL },
       { path: 'uploads/*path', method: RequestMethod.ALL },
+      { path: 'm/:id', method: RequestMethod.GET },
+      { path: '.well-known/assetlinks.json', method: RequestMethod.GET },
+      { path: '.well-known/apple-app-site-association', method: RequestMethod.GET },
     ],
   });
 

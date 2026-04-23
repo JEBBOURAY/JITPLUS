@@ -86,7 +86,7 @@ function MapFallback({ style, markers, hasCoords }: FallbackProps) {
   return (
     <View style={[styles.fallback, style]}>
       <MapPin size={32} color={palette.violet} />
-      <Text style={styles.fallbackTitle}>🗺️ {t('safeMap.expoGoNotice')}</Text>
+      <Text style={styles.fallbackTitle}>{t('safeMap.expoGoNotice')}</Text>
       <Text style={styles.fallbackText}>
         {t('safeMap.expoGoHint')}
       </Text>

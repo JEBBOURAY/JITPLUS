@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo, memo } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView,
-  Platform, ActivityIndicator, Alert, ScrollView, Animated, Easing, Image,
+  Platform, ActivityIndicator, Alert, ScrollView, Animated, Image,
 } from 'react-native';
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -38,8 +38,6 @@ const ICON_18 = ms(18);
 const ICON_16 = ms(16);
 const ICON_14 = ms(14);
 
-const TOTAL_STEPS = 3;
-
 /* ── Sub-components ── */
 
 const StrengthBar = memo(function StrengthBar({ pct, color, label }: { pct: number; color: string; label: string }) {
@@ -63,7 +61,7 @@ const StepDot = memo(function StepDot({ index, current, theme }: { index: number
   );
 });
 
-const StepLine = memo(function StepLine({ filled, theme }: { filled: boolean; theme: any }) {
+const StepLine = memo(function StepLine({ filled, theme }: { filled: boolean; theme: { border: string } }) {
   return <View style={[s.stepLine, { backgroundColor: filled ? palette.violet : theme.border }]} />;
 });
 
@@ -332,8 +330,8 @@ export default function CompleteProfileScreen() {
                   </View>
 
                   {/* Privacy info */}
-                  <View style={[s.infoBox, { backgroundColor: `${palette.violet}08` }]}>
-                    <Info size={ICON_16} color={palette.violet} strokeWidth={2} />
+                  <View style={[s.infoBox, { backgroundColor: `${palette.gold}08` }]}>
+                    <Info size={ICON_16} color={palette.gold} strokeWidth={1.5} />
                     <Text style={[s.infoText, { color: theme.textMuted }]}>
                       {t('completeProfile.namePrivacyHint')}
                     </Text>
@@ -407,8 +405,8 @@ export default function CompleteProfileScreen() {
                         </View>
                       </View>
 
-                      <View style={[s.infoBox, { backgroundColor: `${palette.violet}08` }]}>
-                        <Shield size={ICON_16} color={palette.violet} strokeWidth={2} />
+                      <View style={[s.infoBox, { backgroundColor: `${palette.gold}08` }]}>
+                        <Shield size={ICON_16} color={palette.gold} strokeWidth={1.5} />
                         <Text style={[s.infoText, { color: theme.textMuted }]}>
                           {t('completeProfile.passwordHint')}
                         </Text>
@@ -461,7 +459,7 @@ export default function CompleteProfileScreen() {
 
                   {/* Birthday gift info */}
                   <View style={[s.birthdayCard, { backgroundColor: `${palette.gold}12`, borderColor: `${palette.gold}30` }]}>
-                    <Gift size={ICON_20} color={palette.gold} strokeWidth={2} />
+                    <Gift size={ICON_20} color={palette.gold} strokeWidth={1.5} />
                     <View style={{ flex: 1 }}>
                       <Text style={[s.birthdayTitle, { color: palette.gray900 }]}>
                         {t('completeProfile.birthdayGiftTitle')}
@@ -473,8 +471,8 @@ export default function CompleteProfileScreen() {
                   </View>
 
                   {/* Privacy reassurance */}
-                  <View style={[s.infoBox, { backgroundColor: `${palette.violet}08` }]}>
-                    <Lock size={ICON_16} color={palette.violet} strokeWidth={2} />
+                  <View style={[s.infoBox, { backgroundColor: `${palette.gold}08` }]}>
+                    <Lock size={ICON_16} color={palette.gold} strokeWidth={1.5} />
                     <Text style={[s.infoText, { color: theme.textMuted }]}>
                       {t('completeProfile.birthdayPrivacy')}
                     </Text>

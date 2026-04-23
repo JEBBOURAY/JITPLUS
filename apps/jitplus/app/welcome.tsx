@@ -17,6 +17,7 @@ import { useTheme, palette, brandGradient } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
+import { useAppFonts } from '@/utils/fonts';
 import BrandText from '@/components/BrandText';
 
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
@@ -38,6 +39,7 @@ export default function WelcomeScreen() {
   const theme = useTheme();
   const { t, locale, setLocale } = useLanguage();
   const { enterGuestMode } = useAuth();
+  const fonts = useAppFonts();
   const { width: screenWidth } = useWindowDimensions();
   const [activeIndex, setActiveIndex] = useState(0);
   const flatListRef = useRef<FlatList>(null);
@@ -51,35 +53,35 @@ export default function WelcomeScreen() {
   const slides = useMemo<Slide[]>(() => [
     {
       key: 'cards',
-      icon: <Ticket size={ms(56)} color={theme.text} strokeWidth={2} />,
+      icon: <Ticket size={ms(36)} color={palette.gold} strokeWidth={1.5} />,
       titleKey: 'welcome.featureCardsTitle',
       descKey: 'welcome.featureCardsDesc',
     },
     {
       key: 'discover',
-      icon: <MapPin size={ms(56)} color={theme.text} strokeWidth={2} />,
+      icon: <MapPin size={ms(36)} color={palette.gold} strokeWidth={1.5} />,
       titleKey: 'welcome.featureDiscoverTitle',
       descKey: 'welcome.featureDiscoverDesc',
     },
     {
       key: 'qr',
-      icon: <QrCode size={ms(56)} color={theme.text} strokeWidth={2} />,
+      icon: <QrCode size={ms(36)} color={palette.gold} strokeWidth={1.5} />,
       titleKey: 'welcome.featureQrTitle',
       descKey: 'welcome.featureQrDesc',
     },
     {
       key: 'notifications',
-      icon: <Bell size={ms(56)} color={theme.text} strokeWidth={2} />,
+      icon: <Bell size={ms(36)} color={palette.gold} strokeWidth={1.5} />,
       titleKey: 'welcome.featureNotifTitle',
       descKey: 'welcome.featureNotifDesc',
     },
     {
       key: 'rewards',
-      icon: <Gift size={ms(56)} color={theme.text} strokeWidth={2} />,
+      icon: <Gift size={ms(36)} color={palette.gold} strokeWidth={1.5} />,
       titleKey: 'welcome.featureRewardsTitle',
       descKey: 'welcome.featureRewardsDesc',
     },
-  ], [theme.text]);
+  ], []);
 
   const isLast = activeIndex === slides.length - 1;
 
@@ -109,13 +111,13 @@ export default function WelcomeScreen() {
       </View>
 
       {/* Icon */}
-      <View style={[styles.iconCircle, { backgroundColor: theme.accentBg }]}>
+      <View style={[styles.iconCircle, { backgroundColor: `${palette.gold}15` }]}>
         {item.icon}
       </View>
 
       {/* Text */}
-      <Text style={[styles.slideTitle, { color: theme.text }]}>{t(item.titleKey)}</Text>
-      <Text style={[styles.slideDesc, { color: theme.textSecondary }]}>{t(item.descKey)}</Text>
+      <Text style={[styles.slideTitle, { color: theme.text, fontFamily: fonts.semibold }]}>{t(item.titleKey)}</Text>
+      <Text style={[styles.slideDesc, { color: theme.textSecondary, fontFamily: fonts.regular }]}>{t(item.descKey)}</Text>
     </View>
   ), [theme, t, screenWidth]);
 
@@ -139,6 +141,9 @@ export default function WelcomeScreen() {
                   styles.langBtn,
                   active && { backgroundColor: `${palette.violet}15`, borderColor: palette.violet },
                 ]}
+                accessibilityRole="button"
+                accessibilityLabel={code.toUpperCase()}
+                accessibilityState={{ selected: active }}
               >
                 <Text style={styles.langFlag}>{flag}</Text>
               </TouchableOpacity>
@@ -176,19 +181,20 @@ export default function WelcomeScreen() {
                   width: i === activeIndex ? wp(24) : wp(8),
                 },
               ]}
+              accessibilityLabel={`${i + 1} / ${slides.length}`}
             />
           ))}
         </View>
 
         {/* Next / Start button */}
-        <TouchableOpacity activeOpacity={0.85} onPress={handleNext} style={styles.nextBtn}>
+        <TouchableOpacity activeOpacity={0.85} onPress={handleNext} style={styles.nextBtn} accessibilityRole="button" accessibilityLabel={isLast ? t('welcome.start') : t('welcome.next')}>
           <LinearGradient
             colors={[brandGradient[0], brandGradient[1]]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
             style={styles.gradientBtn}
           >
-            <Text style={styles.nextBtnText}>
+            <Text style={[styles.nextBtnText, { fontFamily: fonts.semibold }]}>
               {isLast ? t('welcome.start') : t('welcome.next')}
             </Text>
             <ArrowRight size={ms(20)} color="#FFFFFF" style={styles.nextBtnIcon} />
@@ -196,9 +202,9 @@ export default function WelcomeScreen() {
         </TouchableOpacity>
 
         {/* Guest explore link */}
-        <TouchableOpacity activeOpacity={0.7} onPress={handleExplore} style={styles.exploreBtn}>
+        <TouchableOpacity activeOpacity={0.7} onPress={handleExplore} style={styles.exploreBtn} accessibilityRole="button" accessibilityLabel={t('welcome.exploreGuest')}>
           <Eye size={ms(16)} color={theme.textSecondary} strokeWidth={2} style={{ marginRight: wp(6) }} />
-          <Text style={[styles.exploreBtnText, { color: theme.textSecondary }]}>
+          <Text style={[styles.exploreBtnText, { color: theme.textSecondary, fontFamily: fonts.medium }]}>
             {t('welcome.exploreGuest')}
           </Text>
         </TouchableOpacity>
@@ -223,9 +229,9 @@ const styles = StyleSheet.create({
     marginBottom: hp(32),
   },
   iconCircle: {
-    width: wp(110),
-    height: wp(110),
-    borderRadius: wp(55),
+    width: ms(88),
+    height: ms(88),
+    borderRadius: ms(24),
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: hp(28),

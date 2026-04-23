@@ -229,6 +229,11 @@ export default function RegisterScreen() {
                     onChangeText={(text) => { setEmail(text); setError(''); }}
                     keyboardType="email-address"
                     autoCapitalize="none"
+                    autoCorrect={false}
+                    textContentType="emailAddress"
+                    autoComplete="email"
+                    importantForAutofill="yes"
+                    maxLength={254}
                   />
                 </View>
               </View>
@@ -251,9 +256,16 @@ export default function RegisterScreen() {
                   {t('register.acceptTerms')}
                   <Text
                     style={{ color: theme.primary, textDecorationLine: 'underline' }}
-                    onPress={() => router.push('/legal')}
+                    onPress={() => router.push('/legal/terms')}
                   >
                     {t('register.termsLink')}
+                  </Text>
+                  {t('register.termsAnd')}
+                  <Text
+                    style={{ color: theme.primary, textDecorationLine: 'underline' }}
+                    onPress={() => router.push('/legal/privacy')}
+                  >
+                    {t('register.privacyLink')}
                   </Text>
                 </Text>
               </TouchableOpacity>
@@ -332,26 +344,6 @@ const styles = StyleSheet.create({
   emailInput: {
     flex: 1, fontSize: fontSize.md, fontWeight: '500', marginLeft: wp(10),
   },
-  phonePrefix: {
-    fontSize: fontSize.md, fontWeight: '600', marginLeft: wp(8),
-  },
-  phoneSeparator: {
-    width: 1, height: ms(24), backgroundColor: '#ddd', marginHorizontal: wp(8),
-  },
-
-  // Tab switcher
-  tabContainer: {
-    flexDirection: 'row', borderRadius: radius.lg, borderWidth: 1.5,
-    overflow: 'hidden', marginBottom: hp(16), height: hp(44),
-  },
-  tab: {
-    flex: 1, alignItems: 'center', justifyContent: 'center',
-  },
-  tabText: {
-    fontSize: fontSize.sm, fontWeight: '600',
-  },
-
-
 
   // Google button
   googleBtn: {

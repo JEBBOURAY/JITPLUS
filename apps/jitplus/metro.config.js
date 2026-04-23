@@ -15,6 +15,20 @@ config.watchFolders = [
   path.resolve(workspaceRoot, 'packages', 'shared'),
 ];
 
+// Exclude sibling apps and their build outputs from the file watcher.
+// Metro crawls workspaceRoot for node_modules resolution, and builds under
+// apps/backend/dist can be deleted/rebuilt by NestJS which causes ENOENT
+// watch crashes on Windows ("no such file or directory, watch ...dist/admin").
+// NOTE: we build the blockList regex manually instead of importing
+// `metro-config/private/defaults/exclusionList` because that subpath is
+// exposed as an ESM export in metro-config@0.83+ and fails to load on
+// Windows ("ERR_UNSUPPORTED_ESM_URL_SCHEME").
+config.resolver.blockList = [
+  /apps[\\/]backend[\\/].*/,
+  /apps[\\/]admin[\\/].*/,
+  /apps[\\/]jitpluspro[\\/].*/,
+];
+
 // Enable symlink resolution for pnpm on Windows (not needed on Linux/macOS
 // where pnpm creates real symlinks that Metro follows natively).
 if (process.platform === 'win32') {

@@ -155,7 +155,7 @@ export class MerchantEngagementService {
         await this.merchantRepo.updateMany({
           where: { id: { in: staleTokenIds } },
           data: { pushToken: null },
-        }).catch((e) => this.logger.warn(`Failed to clean stale tokens: ${e}`));
+        }).catch((e: unknown) => this.logger.warn(`Failed to clean stale tokens: ${e}`));
       }
 
       this.logger.log(

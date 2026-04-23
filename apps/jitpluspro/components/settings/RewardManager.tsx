@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -56,7 +56,7 @@ export function RewardManager({
   const [rewardDescription, setRewardDescription] = useState('');
   const [editingRewardId, setEditingRewardId] = useState<string | null>(null);
 
-  const loadRewards = async () => {
+  const loadRewards = useCallback(async () => {
     setLoadingRewards(true);
     try {
       const res = await api.get('/rewards');
@@ -67,9 +67,11 @@ export function RewardManager({
     } finally {
       setLoadingRewards(false);
     }
-  };
+  }, [onRewardsChange, t]);
 
-  useEffect(() => { loadRewards(); }, [reloadToken]);
+  useEffect(() => {
+    void loadRewards();
+  }, [loadRewards, reloadToken]);
 
   const doAddReward = async () => {
     const cost = parseInt(rewardCost, 10);
@@ -81,7 +83,7 @@ export function RewardManager({
         description: rewardDescription.trim() || undefined,
       });
       setRewardTitle(''); setRewardCost(''); setRewardDescription('');
-      loadRewards();
+      await loadRewards();
     } catch (err: unknown) {
       Alert.alert(t('common.error'), getErrorMessage(err, t('settingsPage.saveError')));
     } finally {
@@ -138,7 +140,7 @@ export function RewardManager({
       });
       setEditingRewardId(null);
       setRewardTitle(''); setRewardCost(''); setRewardDescription('');
-      loadRewards();
+      await loadRewards();
     } catch (err: unknown) {
       Alert.alert(t('common.error'), getErrorMessage(err, t('settingsPage.editRewardError')));
     } finally {
@@ -182,7 +184,7 @@ export function RewardManager({
         onPress: async () => {
           try {
             await api.delete(`/rewards/${rewardId}`);
-            loadRewards();
+            await loadRewards();
           } catch {
             Alert.alert(t('common.error'), t('settingsPage.deleteRewardError'));
           }
@@ -191,6 +193,28 @@ export function RewardManager({
     ]);
   };
 
+  const loyaltyTypeChanged = loyaltyType !== (merchant?.loyaltyType || 'POINTS');
+  const conversionRate = useMemo(() => {
+    const x = parseFloat(conversionX);
+    const y = parseFloat(conversionY);
+    if (!Number.isFinite(x) || !Number.isFinite(y) || x <= 0 || y <= 0) return null;
+    return x / y;
+  }, [conversionX, conversionY]);
+
+  const oldUnit = merchant?.loyaltyType === 'STAMPS' ? t('common.stamps') : t('common.points');
+  const newUnit = isStamps ? t('common.stamps') : t('common.points');
+  const convertedCosts = useMemo(() => {
+    const costs = new Map<string, number>();
+    if (!loyaltyTypeChanged || conversionRate == null) return costs;
+    rewards.forEach((reward) => {
+      const converted = loyaltyType === 'STAMPS'
+        ? Math.max(Math.floor(reward.cout / conversionRate), 1)
+        : Math.max(Math.round(reward.cout * conversionRate), 1);
+      costs.set(reward.id, converted);
+    });
+    return costs;
+  }, [rewards, loyaltyTypeChanged, conversionRate, loyaltyType]);
+
   return (
     <>
       <TouchableOpacity
@@ -198,9 +222,9 @@ export function RewardManager({
         onPress={onToggleExpanded}
         activeOpacity={0.7}
       >
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+        <View style={styles.sectionHeaderContent}>
           <Gift size={20} color={theme.primary} strokeWidth={1.5} />
-          <Text style={[styles.sectionTitle, { color: theme.text, marginTop: 0, marginBottom: 0, marginHorizontal: 0 }]}>{t('settingsPage.giftsSection')}</Text>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>{t('settingsPage.giftsSection')}</Text>
         </View>
         {expanded
           ? <ChevronUp size={20} color={theme.textMuted} />
@@ -242,7 +266,7 @@ export function RewardManager({
               placeholder={t('settingsPage.giftDesc')}
               placeholderTextColor={theme.textMuted}
             />
-            <View style={{ flexDirection: 'row', gap: 8 }}>
+            <View style={styles.formActions}>
               {editingRewardId && (
                 <TouchableOpacity
                   style={[styles.addRewardBtn, { backgroundColor: theme.border, flex: 1 }]}
@@ -291,31 +315,17 @@ export function RewardManager({
                   <Text style={[styles.rewardRowTitle, { color: theme.text }]}>
                     {reward.titre}
                   </Text>
-                  {(() => {
-                    const loyaltyTypeChanged = loyaltyType !== (merchant?.loyaltyType || 'POINTS');
-                    const x = parseFloat(conversionX) || 10;
-                    const y = parseFloat(conversionY) || 1;
-                    const rate = x / y;
-                    const oldUnit = merchant?.loyaltyType === 'STAMPS' ? t('common.stamps') : t('common.points');
-                    const newUnit = isStamps ? t('common.stamps') : t('common.points');
-                    if (loyaltyTypeChanged && rate > 0) {
-                      const newCost = loyaltyType === 'STAMPS'
-                        ? Math.max(Math.floor(reward.cout / rate), 1)
-                        : Math.max(Math.round(reward.cout * rate), 1);
-                      return (
-                        <Text style={[styles.rewardRowMeta, { color: theme.textSecondary }]}>
-                          <Text style={{ textDecorationLine: 'line-through', color: theme.textMuted }}>{reward.cout} {oldUnit}</Text>
-                          {'  →  '}
-                          <Text style={{ color: theme.primary, fontWeight: '600' }}>{newCost} {newUnit}</Text>
-                        </Text>
-                      );
-                    }
-                    return (
-                      <Text style={[styles.rewardRowMeta, { color: theme.textSecondary }]}>
-                        {reward.cout} {newUnit}
-                      </Text>
-                    );
-                  })()}
+                  {convertedCosts.has(reward.id) ? (
+                    <Text style={[styles.rewardRowMeta, { color: theme.textSecondary }]}>
+                      <Text style={[styles.rewardOldCost, { color: theme.textMuted }]}>{reward.cout} {oldUnit}</Text>
+                      {'  ->  '}
+                      <Text style={[styles.rewardNewCost, { color: theme.primary }]}>{convertedCosts.get(reward.id)} {newUnit}</Text>
+                    </Text>
+                  ) : (
+                    <Text style={[styles.rewardRowMeta, { color: theme.textSecondary }]}>
+                      {reward.cout} {newUnit}
+                    </Text>
+                  )}
                   {reward.description ? (
                     <Text style={[styles.rewardRowDesc, { color: theme.textMuted }]}>
                       {reward.description}
@@ -359,9 +369,13 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: '700',
-    marginHorizontal: 20,
-    marginTop: 24,
-    marginBottom: 16,
+    fontFamily: 'Lexend_700Bold',
+  },
+  sectionHeaderContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
   },
   card: {
     marginHorizontal: 16,
@@ -373,7 +387,7 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
   },
-  cardLabel: { fontSize: 14, marginBottom: 14, lineHeight: 20 },
+  cardLabel: { fontSize: 14, marginBottom: 14, lineHeight: 20, fontFamily: 'Lexend_400Regular' },
   rewardForm: { gap: 10, marginBottom: 12 },
   input: {
     flex: 1,
@@ -383,21 +397,25 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     fontSize: 15,
     fontWeight: '500',
+    fontFamily: 'Lexend_500Medium',
   },
   inputRow: { flexDirection: 'row', alignItems: 'center' },
-  inputSuffix: { marginLeft: 12, fontSize: 13, fontWeight: '500' },
+  inputSuffix: { marginLeft: 12, fontSize: 13, fontWeight: '500', fontFamily: 'Lexend_500Medium' },
+  formActions: { flexDirection: 'row', gap: 8 },
   addRewardBtn: { paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
-  addRewardBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  addRewardBtnText: { color: '#fff', fontSize: 14, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
   rewardEmpty: { borderWidth: 1, borderRadius: 12, padding: 14, alignItems: 'center' },
-  noRewardText: { fontSize: 14, textAlign: 'center' },
+  noRewardText: { fontSize: 14, textAlign: 'center', fontFamily: 'Lexend_400Regular' },
   rewardList: { gap: 8 },
   rewardRow: { borderWidth: 1, borderRadius: 12, padding: 12, flexDirection: 'row', gap: 12 },
   rewardRowInfo: { flex: 1 },
-  rewardRowTitle: { fontSize: 15, fontWeight: '700' },
-  rewardRowMeta: { fontSize: 13, fontWeight: '600', marginTop: 2 },
-  rewardRowDesc: { fontSize: 12, marginTop: 6 },
+  rewardRowTitle: { fontSize: 15, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
+  rewardRowMeta: { fontSize: 13, fontWeight: '600', marginTop: 2, fontFamily: 'Lexend_600SemiBold' },
+  rewardRowDesc: { fontSize: 12, marginTop: 6, fontFamily: 'Lexend_400Regular' },
+  rewardOldCost: { textDecorationLine: 'line-through', fontFamily: 'Lexend_400Regular' },
+  rewardNewCost: { fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
   rewardActions: { justifyContent: 'center', alignItems: 'flex-end', gap: 8 },
   rewardEditBtn: { padding: 6 },
   rewardDeleteBtn: { paddingHorizontal: 8, justifyContent: 'center' },
-  rewardDeleteText: { fontSize: 12, fontWeight: '700' },
+  rewardDeleteText: { fontSize: 12, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
 });

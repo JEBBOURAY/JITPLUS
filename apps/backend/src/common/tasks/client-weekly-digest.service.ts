@@ -4,9 +4,10 @@ import {
   CLIENT_REPOSITORY, type IClientRepository,
   LOYALTY_CARD_REPOSITORY, type ILoyaltyCardRepository,
   TRANSACTION_REPOSITORY, type ITransactionRepository,
+  MERCHANT_REPOSITORY, type IMerchantRepository,
+  CAMPAIGN_SENT_TRACKER_REPOSITORY, type ICampaignSentTrackerRepository,
 } from '../repositories';
 import { IPushProvider, PUSH_PROVIDER } from '../interfaces';
-import { DEFAULT_NOTIFICATION_LOGO } from '../constants';
 
 // ── Weekly digest & special campaign messages ───────────────────────────
 const MESSAGES = {
@@ -114,8 +115,32 @@ export class ClientWeeklyDigestService {
     @Inject(CLIENT_REPOSITORY) private readonly clientRepo: IClientRepository,
     @Inject(LOYALTY_CARD_REPOSITORY) private readonly loyaltyCardRepo: ILoyaltyCardRepository,
     @Inject(TRANSACTION_REPOSITORY) private readonly txRepo: ITransactionRepository,
+    @Inject(MERCHANT_REPOSITORY) private readonly merchantRepo: IMerchantRepository,
+    @Inject(CAMPAIGN_SENT_TRACKER_REPOSITORY) private readonly campaignTrackerRepo: ICampaignSentTrackerRepository,
     @Inject(PUSH_PROVIDER) private readonly pushProvider: IPushProvider,
   ) {}
+
+  private async alreadySent(clientId: string, campaignId: string): Promise<boolean> {
+    try {
+      const row = await this.campaignTrackerRepo.findUnique({
+        where: { clientId_campaignId_channel: { clientId, campaignId, channel: 'PUSH' } },
+        select: { id: true },
+      });
+      return !!row;
+    } catch {
+      return false;
+    }
+  }
+
+  private async markSent(clientId: string, campaignId: string): Promise<void> {
+    try {
+      await this.campaignTrackerRepo.create({
+        data: { clientId, campaignId, channel: 'PUSH' },
+      });
+    } catch {
+      // race / unique violation — safe to ignore
+    }
+  }
 
   // ── Sunday: Weekly digest for active users ──────────────────────────────
   @Cron('0 10 * * 0') // Sunday at 10:00 UTC
@@ -173,16 +198,23 @@ export class ClientWeeklyDigestService {
       }
 
       // Send personalized digest
-      for (const [, stats] of clientStats) {
+      const weekKey = `w${Math.floor(Date.now() / (7 * 86_400_000))}`;
+      const campaignId = `weekly_digest_push_${weekKey}`;
+      for (const [clientId, stats] of clientStats) {
+        // Skip clients whose weekly score is zero (e.g. only pending / refunded tx)
+        if (stats.totalPoints <= 0) continue;
+        if (await this.alreadySent(clientId, campaignId)) continue;
+
         const l = lang(stats.language);
         const msg = MESSAGES.weeklyDigest[l];
         await this.pushProvider.sendMulticast(
           [stats.token],
           msg.title,
           msg.body(stats.totalPoints, stats.merchants.size),
-          DEFAULT_NOTIFICATION_LOGO,
+          undefined,
           { event: 'weekly_digest', action: 'open_cards' },
         );
+        await this.markSent(clientId, campaignId);
         digestCount++;
       }
 
@@ -205,6 +237,7 @@ export class ClientWeeklyDigestService {
 
       // Target clients who signed up more than 2 days ago (not in welcome series)
       const twoDaysAgo = new Date(Date.now() - 2 * 86_400_000);
+      const campaignId = `feature_highlight_push_w${weekNumber}`;
       let pushCount = 0;
 
       // Batch by language
@@ -214,26 +247,33 @@ export class ClientWeeklyDigestService {
             deletedAt: null,
             notifPush: true,
             pushToken: { not: null },
-            language: l === 'fr' ? { in: ['fr', undefined as any] } : l,
+            language: l,
             createdAt: { lte: twoDaysAgo },
           },
-          select: { pushToken: true },
+          select: { id: true, pushToken: true },
           take: 5000,
         });
 
         if (clients.length === 0) continue;
 
-        const tokens = clients
-          .map((c) => c.pushToken)
-          .filter((t): t is string => !!t);
+        // Dedup: drop clients already pinged this week
+        const fresh: typeof clients = [];
+        for (const c of clients) {
+          if (!c.pushToken) continue;
+          if (await this.alreadySent(c.id, campaignId)) continue;
+          fresh.push(c);
+        }
+        if (fresh.length === 0) continue;
 
-        if (tokens.length === 0) continue;
-
+        const tokens = fresh.map((c: any) => c.pushToken).filter((t: any): t is string => !!t);
         const msg = MESSAGES[featureKey][l];
         await this.pushProvider.sendMulticast(
-          tokens, msg.title, msg.body, DEFAULT_NOTIFICATION_LOGO,
+          tokens, msg.title, msg.body, undefined,
           { event: 'feature_highlight', action: 'open_explore' },
         );
+        for (const c of fresh) {
+          await this.markSent(c.id, campaignId);
+        }
         pushCount += tokens.length;
       }
 
@@ -251,14 +291,22 @@ export class ClientWeeklyDigestService {
     try {
       const weekAgo = new Date(Date.now() - 7 * 86_400_000);
 
-      // Check if new merchants joined this week
-      const newMerchantCount = await (this.clientRepo as any).constructor?.count
-        ? 0
-        : 0; // We'll check via a different approach
+      // Check if new merchants actually joined this week
+      const newMerchantCount = await this.merchantRepo.count({
+        where: {
+          isActive: true,
+          deletedAt: null,
+          createdAt: { gte: weekAgo },
+        },
+      });
 
-      // Alternate between referral and new merchants announcements
+      // Alternate between referral and new merchants announcements.
+      // If we intended to show "new merchants" but none joined, fall back
+      // to the referral message so we don't send a misleading notification.
       const weekNumber = Math.floor(Date.now() / (7 * 86_400_000));
-      const campaignKey = weekNumber % 2 === 0 ? 'referralPush' : 'newMerchants';
+      const wantNewMerchants = weekNumber % 2 === 1 && newMerchantCount > 0;
+      const campaignKey = wantNewMerchants ? 'newMerchants' : 'referralPush';
+      const campaignId = `friday_${campaignKey}_w${weekNumber}`;
 
       let pushCount = 0;
 
@@ -268,27 +316,33 @@ export class ClientWeeklyDigestService {
             deletedAt: null,
             notifPush: true,
             pushToken: { not: null },
-            language: l === 'fr' ? { in: ['fr', undefined as any] } : l,
+            language: l,
           },
-          select: { pushToken: true },
+          select: { id: true, pushToken: true },
           take: 5000,
         });
 
         if (clients.length === 0) continue;
 
-        const tokens = clients
-          .map((c) => c.pushToken)
-          .filter((t): t is string => !!t);
+        const fresh: typeof clients = [];
+        for (const c of clients) {
+          if (!c.pushToken) continue;
+          if (await this.alreadySent(c.id, campaignId)) continue;
+          fresh.push(c);
+        }
+        if (fresh.length === 0) continue;
 
-        if (tokens.length === 0) continue;
-
+        const tokens = fresh.map((c: any) => c.pushToken).filter((t: any): t is string => !!t);
         const msg = MESSAGES[campaignKey][l];
         const action = campaignKey === 'referralPush' ? 'open_referral' : 'open_explore';
 
         await this.pushProvider.sendMulticast(
-          tokens, msg.title, msg.body, DEFAULT_NOTIFICATION_LOGO,
+          tokens, msg.title, msg.body, undefined,
           { event: 'friday_campaign', action },
         );
+        for (const c of fresh) {
+          await this.markSent(c.id, campaignId);
+        }
         pushCount += tokens.length;
       }
 

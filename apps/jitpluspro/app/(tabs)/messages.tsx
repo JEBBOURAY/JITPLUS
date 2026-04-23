@@ -55,11 +55,12 @@ const CHANNEL_COLORS = {
 } as const;
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
-import { useTheme } from '@/contexts/ThemeContext';
+import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { getErrorMessage } from '@/utils/error';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusFade } from '@/hooks/useFocusFade';
+import { ms } from '@/utils/responsive';
 import PremiumLockCard from '@/components/PremiumLockCard';
 import { useNotificationHistory, useWhatsappQuota, useEmailQuota, useSendPushNotification, useSendWhatsApp, useSendEmail } from '@/hooks/useQueryHooks';
 import type { NotificationRecord } from '@/hooks/useQueryHooks';
@@ -93,7 +94,7 @@ const MessagesBanner = React.memo(function MessagesBanner({
         <X size={16} color={theme.textMuted} strokeWidth={2} />
       </TouchableOpacity>
       <View style={bannerStyles.content}>
-        <Zap size={18} color={theme.primary} strokeWidth={1.8} />
+        <Zap size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
         <View style={bannerStyles.textWrap}>
           <Text style={[bannerStyles.title, { color: theme.text }]}>{t('messages.bannerTitle')}</Text>
           <Text style={[bannerStyles.desc, { color: theme.textMuted }]}>{t('messages.bannerDesc')}</Text>
@@ -167,8 +168,8 @@ const NotificationCard = memo(function NotificationCard({
       style={[styles.notifCard, { backgroundColor: theme.bgCard, borderColor: isExpanded ? theme.primary + '60' : theme.borderLight }]}
     >
       <View style={styles.notifHeader}>
-        <View style={[styles.notifIcon, { backgroundColor: channelColor + '18' }]}>
-          <ChannelIcon size={18} color={channelColor} />
+        <View style={[styles.notifIcon, { backgroundColor: `${palette.charbon}12` }]}>
+          <ChannelIcon size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
         </View>
         <View style={styles.notifMeta}>
           <View style={styles.notifBadgeRow}>
@@ -615,24 +616,6 @@ export default function MessagesScreen() {
                   {showCompose ? <ChevronUp size={14} color={theme.primary} /> : <ChevronDown size={14} color={theme.textMuted} />}
                 </TouchableOpacity>
 
-                <View
-                  style={[
-                    styles.composeToggle,
-                    { flex: 1, backgroundColor: theme.bgCard, borderColor: theme.borderLight, opacity: 0.6 },
-                  ]}
-                >
-                  <MessageCircle size={16} color={theme.textMuted} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.composeToggleText, { color: theme.textMuted }]} numberOfLines={1}>
-                      WhatsApp
-                    </Text>
-                    <Text style={{ fontSize: 9, color: theme.textMuted, fontStyle: 'italic' }} numberOfLines={1}>
-                      {t('messagesPage.comingSoon')}
-                    </Text>
-                  </View>
-                  <Clock size={12} color={theme.textMuted} />
-                </View>
-
                 <TouchableOpacity
                   onPress={() => { animateAccordion(); dispatch({ type: 'TOGGLE_SECTION', section: 'showEmail' }); }}
                   activeOpacity={0.8}
@@ -944,8 +927,8 @@ export default function MessagesScreen() {
 
               {!showHistory ? (
                 <View style={styles.showHistoryCta}>
-                  <View style={[styles.emptyIllustration, { backgroundColor: theme.primaryBg }]}>
-                    <Clock size={36} color={theme.primary} strokeWidth={1.2} />
+                  <View style={[styles.emptyIllustration, { backgroundColor: `${palette.charbon}12` }]}>
+                    <Clock size={ms(36)} color={palette.charbon} strokeWidth={1.5} />
                   </View>
                   <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
                     {t('messages.showHistoryHint')}
@@ -994,8 +977,8 @@ export default function MessagesScreen() {
               </View>
             ) : (
               <View style={styles.emptyContainer}>
-                <View style={[styles.emptyIllustration, { backgroundColor: theme.primary + '14' }]}>
-                  <Bell size={40} color={theme.primary} strokeWidth={1.5} />
+                <View style={[styles.emptyIllustration, { backgroundColor: `${palette.charbon}12` }]}>
+                  <Bell size={ms(36)} color={palette.charbon} strokeWidth={1.5} />
                 </View>
                 <Text style={[styles.emptyTitle, { color: theme.text }]}>{t('messages.noMessages')}</Text>
                 <Text style={[styles.emptyText, { color: theme.textMuted }]}>
@@ -1219,9 +1202,9 @@ const styles = StyleSheet.create({
   // Empty
   emptyContainer: { alignItems: 'center', paddingTop: 80 },
   emptyIllustration: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: ms(88),
+    height: ms(88),
+    borderRadius: ms(24),
     alignItems: 'center',
     justifyContent: 'center',
   },

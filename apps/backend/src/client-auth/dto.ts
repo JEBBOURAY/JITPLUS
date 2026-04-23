@@ -112,6 +112,14 @@ export class ClientUpdateProfileDto {
 
   @IsOptional()
   @IsBoolean()
+  notifPush?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  notifEmail?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
   notifWhatsapp?: boolean;
 
   @IsOptional()

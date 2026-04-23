@@ -66,7 +66,18 @@ export async function setupAndroidChannel() {
       vibrationPattern: [0, 250, 250, 250],
       lightColor: '#7C3AED',
       showBadge: true,
-      sound: null,
+      sound: 'default',
+    });
+
+    // Transactional channel for stamps, points, rewards, luckyWheel
+    await Notifications.setNotificationChannelAsync('jit-transactions', {
+      name: i18n.t('notifications.channelTransactions'),
+      description: i18n.t('notifications.channelTransactionsDesc'),
+      importance: Notifications.AndroidImportance.HIGH,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: '#7C3AED',
+      showBadge: true,
+      sound: 'default',
     });
 
     // Default channel for general/admin notifications
@@ -76,17 +87,17 @@ export async function setupAndroidChannel() {
       showBadge: true,
       vibrationPattern: [0, 200, 100, 200],
       lightColor: '#3B82F6',
-      sound: null,
+      sound: 'default',
     });
 
     // Login alert notifications (new device login)
     await Notifications.setNotificationChannelAsync('login-alerts', {
-      name: i18n.t('notifications.channelLoginAlerts', { defaultValue: 'Alertes de connexion' }),
+      name: i18n.t('notifications.channelLoginAlerts'),
       importance: Notifications.AndroidImportance.HIGH,
       showBadge: true,
       vibrationPattern: [0, 250, 250, 250],
       lightColor: '#EF4444',
-      sound: null,
+      sound: 'default',
     });
   }
 }

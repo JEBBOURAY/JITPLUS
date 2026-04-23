@@ -1,4 +1,4 @@
-import { Plus, Minus, X, RefreshCw, Pencil } from 'lucide-react-native';
+import { Plus, Minus, X, RefreshCw, Pencil, Trophy } from 'lucide-react-native';
 import type { LucideIcon } from 'lucide-react-native';
 import type { TransactionType } from '@/types';
 import type { ThemeColors } from '@/contexts/ThemeContext';
@@ -28,6 +28,11 @@ export const TRANSACTION_TYPE_CONFIG: Record<TransactionType, TransactionTypeCon
   LOYALTY_PROGRAM_CHANGE: {
     icon: RefreshCw,
     color: (theme) => theme.primary,
+    sign: '',
+  },
+  LUCKY_WHEEL_WIN: {
+    icon: Trophy,
+    color: (theme) => theme.accent,
     sign: '',
   },
 };

@@ -27,12 +27,15 @@ import {
   Circle,
   PlusCircle,
   MinusCircle,
+  RefreshCw,
+  FileText,
 } from 'lucide-react-native';
 import { getTransactionConfig } from '@/constants/transactions';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { useTheme, palette } from '@/contexts/ThemeContext';
+import { ms } from '@/utils/responsive';
 import { useLanguage } from '@/contexts/LanguageContext';
 import StampGrid from '@/components/StampGrid';
 import { formatDate, formatDateTime } from '@/utils/date';
@@ -74,18 +77,25 @@ const TransactionItem = React.memo(function TransactionItem({
                 : t('clientDetail.txRedeemed')}
         </Text>
         {isProgramChange && tx.note && (
-          <Text style={[styles.txNote, { color: theme.primary }]} numberOfLines={2}>
-            🔄 {tx.note}
-          </Text>
+          <View style={styles.txInlineRow}>
+            <RefreshCw size={10} color={theme.primary} strokeWidth={2} />
+            <Text style={[styles.txNote, { color: theme.primary, flex: 1 }]} numberOfLines={2}>
+              {tx.note}
+            </Text>
+          </View>
         )}
         {isAdjust && tx.note ? (
-          <Text style={[styles.txNote, { color: theme.textMuted }]} numberOfLines={2}>
-            📝 {tx.note}
-          </Text>
+          <View style={styles.txInlineRow}>
+            <FileText size={10} color={theme.textMuted} strokeWidth={2} />
+            <Text style={[styles.txNote, { color: theme.textMuted, flex: 1 }]} numberOfLines={2}>
+              {tx.note}
+            </Text>
+          </View>
         ) : null}
         {!isEarned && !isAdjust && !isProgramChange && tx.reward && (
           <View style={styles.txRewardRow}>
-            <Text style={[styles.txRewardName, { color: theme.primary }]}>🎁 {tx.reward.titre}</Text>
+            <Gift size={10} color={theme.primary} strokeWidth={2} />
+            <Text style={[styles.txRewardName, { color: theme.primary, flex: 1 }]}>{tx.reward.titre}</Text>
             {tx.type === 'REDEEM_REWARD' && !isCancelled && tx.giftStatus === 'FULFILLED' && (
               <View style={[styles.txGiftBadge, { backgroundColor: theme.accentBg }]}>
                 <Text style={[styles.txGiftBadgeText, { color: theme.accent }]}>{t('gift.fulfilled')}</Text>
@@ -279,8 +289,10 @@ export default function ClientDetailScreen() {
             </Text>
 
             {/* Points hero */}
-            <View style={[styles.pointsHero, { backgroundColor: theme.primaryBg }]}>
-              <Star size={18} color={theme.primary} strokeWidth={1.5} />
+            <View style={[styles.pointsHero, { backgroundColor: `${palette.charbon}12` }]}>
+              <View style={{ width: ms(36), height: ms(36), borderRadius: ms(12), backgroundColor: `${palette.charbon}12`, justifyContent: 'center', alignItems: 'center' }}>
+                <Star size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
+              </View>
               <Text style={[styles.pointsHeroValue, { color: theme.text }]}>{client.points}</Text>
               <Text style={[styles.pointsHeroLabel, { color: theme.textMuted }]}>{isStampsMode ? t('common.stamps') : t('common.points')}</Text>
             </View>
@@ -307,7 +319,9 @@ export default function ClientDetailScreen() {
         {/* ── Progress to reward ── */}
         <View style={[styles.card, { backgroundColor: theme.bgCard, borderColor: theme.borderLight, shadowColor: theme.shadowColor }]}>
           <View style={styles.cardHeader}>
-            <Gift size={18} color={theme.primary} />
+            <View style={{ width: ms(36), height: ms(36), borderRadius: ms(12), backgroundColor: `${palette.charbon}12`, justifyContent: 'center', alignItems: 'center' }}>
+              <Gift size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
+            </View>
             <Text style={[styles.cardTitle, { color: theme.text }]}>
               {isStampsMode ? t('clientDetail.loyaltyCard') : t('clientDetail.rewardProgress')}
             </Text>
@@ -339,36 +353,38 @@ export default function ClientDetailScreen() {
         {/* ── Contact info ── */}
         <View style={[styles.card, { backgroundColor: theme.bgCard, borderColor: theme.borderLight, shadowColor: theme.shadowColor }]}>
           <View style={styles.cardHeader}>
-            <Mail size={18} color={theme.primary} />
+            <View style={{ width: ms(36), height: ms(36), borderRadius: ms(12), backgroundColor: `${palette.charbon}12`, justifyContent: 'center', alignItems: 'center' }}>
+              <Mail size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
+            </View>
             <Text style={[styles.cardTitle, { color: theme.text }]}>{t('clientDetail.contact')}</Text>
           </View>
 
           {client.email ? (
             <View style={[styles.contactRow, { borderBottomColor: theme.borderLight }]}>
-              <Mail size={16} color={theme.textMuted} />
+              <Mail size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
               <Text style={[styles.contactText, { color: theme.textSecondary }]}>{client.email}</Text>
             </View>
           ) : (
             <View style={[styles.contactRow, { borderBottomColor: theme.borderLight }]}>
-              <Mail size={16} color={theme.textMuted} />
+              <Mail size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
               <Text style={[styles.contactText, { color: theme.textMuted, fontStyle: 'italic' }]}>{t('clientDetail.notShared')}</Text>
             </View>
           )}
 
           {phoneDisplay ? (
             <View style={[styles.contactRow, { borderBottomColor: theme.borderLight }]}>
-              <Phone size={16} color={theme.textMuted} />
+              <Phone size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
               <Text style={[styles.contactText, { color: theme.textSecondary }]}>{phoneDisplay}</Text>
             </View>
           ) : !client.telephone ? (
             <View style={[styles.contactRow, { borderBottomColor: theme.borderLight }]}>
-              <Phone size={16} color={theme.textMuted} />
+              <Phone size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
               <Text style={[styles.contactText, { color: theme.textMuted, fontStyle: 'italic' }]}>{t('clientDetail.notShared')}</Text>
             </View>
           ) : null}
 
           <View style={[styles.contactRow, { borderBottomColor: theme.borderLight }]}>
-            <Calendar size={16} color={theme.textMuted} />
+            <Calendar size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
             <Text style={[styles.contactText, { color: theme.textSecondary }]}>{t('clientDetail.memberSince', { date: formatDate(client.memberSince, locale) })}</Text>
           </View>
         </View>
@@ -401,7 +417,9 @@ export default function ClientDetailScreen() {
         {/* ── Transactions ── */}
         <View style={[styles.card, { backgroundColor: theme.bgCard, borderColor: theme.borderLight, shadowColor: theme.shadowColor }]}>
           <View style={styles.cardHeader}>
-            <Clock size={18} color={theme.primary} />
+            <View style={{ width: ms(36), height: ms(36), borderRadius: ms(12), backgroundColor: `${palette.charbon}12`, justifyContent: 'center', alignItems: 'center' }}>
+              <Clock size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
+            </View>
             <Text style={[styles.cardTitle, { color: theme.text }]}>{t('clientDetail.lastTransactions')}</Text>
             <Text style={[styles.cardCount, { color: theme.primary, backgroundColor: theme.primaryBg }]}>{client.transactions.length}</Text>
           </View>
@@ -643,7 +661,8 @@ const styles = StyleSheet.create({
   txInfo: { flex: 1 },
   txType: { fontSize: 14, fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
   txRewardName: { fontSize: 12, fontWeight: '600', marginTop: 1, fontFamily: 'Lexend_600SemiBold' },
-  txRewardRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  txRewardRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  txInlineRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 },
   txGiftBadge: { paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4 },
   txGiftBadgeText: { fontSize: 9, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
   txDate: { fontSize: 12, marginTop: 2, fontFamily: 'Lexend_400Regular' },

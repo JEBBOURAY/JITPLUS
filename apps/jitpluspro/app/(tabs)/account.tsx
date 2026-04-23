@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import {
   View,
   Text,
@@ -35,6 +35,7 @@ import {
   Globe,
   Check,
   X,
+  Ticket,
 } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import api from '@/services/api';
@@ -59,7 +60,7 @@ export default function AccountScreen() {
   const uploadLogoMutation = useUploadMerchantLogo();
   const deleteLogoMutation = useDeleteMerchantLogo();
 
-  // Collapsible section states — single state to avoid triple re-renders
+  // Collapsible section states � single state to avoid triple re-renders
   const [expandedSection, setExpandedSection] = useState<'store' | 'pref' | 'compte' | null>(null);
   const toggleSection = useCallback((section: 'store' | 'pref' | 'compte') => {
     setExpandedSection((prev) => (prev === section ? null : section));
@@ -126,11 +127,11 @@ export default function AccountScreen() {
   const referralCode = referralData?.referralCode ?? null;
 
   // Profile data is managed by React Query (useMerchantProfile, staleTime: 5min).
-  // No need to force-reload on every tab focus — pull-to-refresh or mutations handle invalidation.
+  // No need to force-reload on every tab focus � pull-to-refresh or mutations handle invalidation.
   const { label: categoryLabel } = useCategoryMetadata(merchant?.categorie);
   const [showLanguageModal, setShowLanguageModal] = useState(false);
 
-  // ── Profile name edit ──
+  // -- Profile name edit --
   const [showNameModal, setShowNameModal] = useState(false);
   const [profileName, setProfileName] = useState('');
   const [savingName, setSavingName] = useState(false);
@@ -256,7 +257,31 @@ export default function AccountScreen() {
                   subtitle={t('account.settingsSubtitle')}
                   onPress={() => router.push('/settings')}
                 />
-                {/* Dashboard â€” locked for FREE */}
+                {/* LuckyWheel � visible for all, actions restricted for team members inside the screen */}
+                <InfoRow
+                  icon={<Ticket size={ms(16)} color={isPremium ? palette.charbon : theme.textMuted} strokeWidth={1.5} />}
+                  label={t('luckyWheel.menuTitle')}
+                  subtitle={isPremium ? t('luckyWheel.menuSubtitle') : t('luckyWheel.menuLockedSubtitle')}
+                  iconBg={isPremium ? undefined : `${theme.textMuted}18`}
+                  right={
+                    !isPremium
+                      ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: ms(4) }}>
+                          <View style={{ backgroundColor: '#7C3AED18', borderRadius: ms(6), paddingHorizontal: ms(6), paddingVertical: ms(2) }}>
+                            <Text style={{ fontSize: FS.xs, color: '#7C3AED', fontWeight: '600' }}>{t('account.proBadge')}</Text>
+                          </View>
+                          <Lock size={ms(13)} color={theme.textMuted} strokeWidth={2} />
+                        </View>
+                      : undefined
+                  }
+                  onPress={() => {
+                    if (!isPremium) {
+                      setPremiumModal({ visible: true, titleKey: 'luckyWheel.menuLockedTitle', descKey: 'luckyWheel.menuLockedMsg' });
+                      return;
+                    }
+                    router.push('/lucky-wheel');
+                  }}
+                />
+                {/* Dashboard � locked for FREE */}
                 <InfoRow
                   icon={<BarChart3 size={ms(16)} color={isPremium ? palette.charbon : theme.textMuted} strokeWidth={1.5} />}
                   label={t('account.dashboard')}
@@ -280,7 +305,7 @@ export default function AccountScreen() {
                     router.push('/dashboard');
                   }}
                 />
-                {/* Team â€” visible for all, locked for FREE */}
+                {/* Team — visible for all, locked for FREE */}
                 <InfoRow
                   icon={<Users size={ms(16)} color={isPremium ? palette.charbon : theme.textMuted} strokeWidth={1.5} />}
                   label={t('account.team')}
@@ -314,6 +339,21 @@ export default function AccountScreen() {
                 />
               </View>
             )}
+          </FadeInView>
+        )}
+
+        {/* -- LuckyWheel for team members (separate section) -- */}
+        {isTeamMember && isPremium && (
+          <FadeInView delay={300}>
+            <View style={[styles.infoCard, { backgroundColor: theme.bgCard, marginTop: hp(8) }]}>
+              <InfoRow
+                icon={<Ticket size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
+                label={t('luckyWheel.menuTitle')}
+                subtitle={t('luckyWheel.menuSubtitle')}
+                onPress={() => router.push('/lucky-wheel')}
+                noBorder
+              />
+            </View>
           </FadeInView>
         )}
 
@@ -484,7 +524,7 @@ export default function AccountScreen() {
         descKey={premiumModal.descKey}
       />
 
-      {/* ── Edit Profile Name Modal ── */}
+      {/* -- Edit Profile Name Modal -- */}
       <Modal visible={showNameModal} transparent animationType="fade" onRequestClose={() => setShowNameModal(false)}>
         <View style={styles.nameModalOverlay}>
           <View style={[styles.nameModalCard, { backgroundColor: theme.bgCard }]}>

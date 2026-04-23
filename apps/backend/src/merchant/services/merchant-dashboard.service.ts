@@ -7,12 +7,12 @@ import {
   RAW_QUERY_RUNNER, type IRawQueryRunner,
 } from '../../common/repositories';
 import { MS_PER_DAY, DEFAULT_LOYALTY_TYPE } from '../../common/constants';
-import { buildDateFilter } from '../../common/utils';
 
 @Injectable()
 export class MerchantDashboardService {
-  private static readonly STATS_TTL = 5 * 60_000;  // 5 minutes (stats queries are expensive raw SQL)
-  private static readonly TRENDS_TTL = 10 * 60_000;  // 10 minutes (historical data, can be slightly stale)
+  private static readonly STATS_TTL = 5 * 60_000;
+  private static readonly TRENDS_TTL = 10 * 60_000;
+  private static readonly DISTRIBUTION_TTL = 5 * 60_000;
 
   constructor(
     @Inject(REWARD_REPOSITORY) private rewardRepo: IRewardRepository,
@@ -20,54 +20,71 @@ export class MerchantDashboardService {
     @Inject(CACHE_MANAGER) private cache: Cache,
   ) {}
 
-  async getDashboardStats(merchantId: string, period?: 'day' | 'week' | 'month' | 'year') {
-    const cacheKey = `dashboard:stats:${merchantId}:${period || 'all'}`;
+  // ── 1. KPIs — lightweight, no period filter ──────────────────
+  async getKpis(merchantId: string) {
+    const cacheKey = `dashboard:kpis:${merchantId}`;
     const cached = await this.cache.get(cacheKey);
     if (cached) return cached;
 
-    let dateFilter: { gte: Date } | undefined;
-    if (period) {
-      dateFilter = buildDateFilter(period);
-    }
-
-    const startDate = dateFilter ? dateFilter.gte : null;
-
-    // ── Single raw SQL instead of 9 ORM queries ──────────────────────────────
-    // Scans loyalty_cards, transactions, merchants, profile_views_log in one round-trip.
-    const [statsRow] = await this.rawQuery.queryRaw<{
+    const [row] = await this.rawQuery.queryRaw<{
       total_clients: number;
       total_points: number;
       total_redeemed_points: number;
       total_transactions: number;
-      unknown_redemptions: number;
       profile_views: number;
       loyalty_type: string;
-      all_profile_views: number;
+      total_rewards_given: number;
+      lucky_wheel_plays: number;
+      lucky_wheel_wins: number;
+      lucky_wheel_fulfilled: number;
     }>(Prisma.sql`
       SELECT
-        (SELECT COUNT(*)::int FROM loyalty_cards
-         WHERE merchant_id = ${merchantId}
-           AND (${startDate}::timestamp IS NULL OR created_at >= ${startDate})) AS total_clients,
-        (SELECT COALESCE(SUM(points), 0)::int FROM loyalty_cards
-         WHERE merchant_id = ${merchantId}
-           AND (${startDate}::timestamp IS NULL OR created_at >= ${startDate})) AS total_points,
+        (SELECT COUNT(*)::int FROM loyalty_cards WHERE merchant_id = ${merchantId}) AS total_clients,
+        (SELECT COALESCE(SUM(points), 0)::int FROM loyalty_cards WHERE merchant_id = ${merchantId}) AS total_points,
         (SELECT COALESCE(SUM(t.points), 0)::int FROM transactions t
-         WHERE t.merchant_id = ${merchantId} AND t.status = 'ACTIVE' AND t.type = 'REDEEM_REWARD'
-           AND (${startDate}::timestamp IS NULL OR t.created_at >= ${startDate})) AS total_redeemed_points,
+         WHERE t.merchant_id = ${merchantId} AND t.status = 'ACTIVE' AND t.type = 'REDEEM_REWARD') AS total_redeemed_points,
         (SELECT COUNT(*)::int FROM transactions t
-         WHERE t.merchant_id = ${merchantId} AND t.status = 'ACTIVE'
-           AND (${startDate}::timestamp IS NULL OR t.created_at >= ${startDate})) AS total_transactions,
-        (SELECT COUNT(*)::int FROM transactions t
-         WHERE t.merchant_id = ${merchantId} AND t.status = 'ACTIVE' AND t.type = 'REDEEM_REWARD' AND t.reward_id IS NULL
-           AND (${startDate}::timestamp IS NULL OR t.created_at >= ${startDate})) AS unknown_redemptions,
-        (SELECT COUNT(*)::int FROM profile_views_log
-         WHERE merchant_id = ${merchantId}
-           AND (${startDate}::timestamp IS NULL OR view_date >= ${startDate}::date)) AS profile_views,
+         WHERE t.merchant_id = ${merchantId} AND t.status = 'ACTIVE') AS total_transactions,
+        (SELECT profile_views FROM merchants WHERE id = ${merchantId}) AS profile_views,
         (SELECT loyalty_type FROM merchants WHERE id = ${merchantId}) AS loyalty_type,
-        (SELECT profile_views FROM merchants WHERE id = ${merchantId}) AS all_profile_views
+        (SELECT COUNT(*)::int FROM transactions t
+         WHERE t.merchant_id = ${merchantId} AND t.status = 'ACTIVE' AND t.type = 'REDEEM_REWARD') AS total_rewards_given,
+        (SELECT COUNT(*)::int FROM lucky_wheel_draws d
+         INNER JOIN lucky_wheel_tickets tk ON tk.id = d.ticket_id
+         INNER JOIN lucky_wheel_campaigns c ON c.id = tk.campaign_id
+         WHERE c.merchant_id = ${merchantId}) AS lucky_wheel_plays,
+        (SELECT COUNT(*)::int FROM lucky_wheel_draws d
+         INNER JOIN lucky_wheel_tickets tk ON tk.id = d.ticket_id
+         INNER JOIN lucky_wheel_campaigns c ON c.id = tk.campaign_id
+         WHERE c.merchant_id = ${merchantId} AND d.result = 'WON') AS lucky_wheel_wins,
+        (SELECT COUNT(*)::int FROM lucky_wheel_draws d
+         INNER JOIN lucky_wheel_tickets tk ON tk.id = d.ticket_id
+         INNER JOIN lucky_wheel_campaigns c ON c.id = tk.campaign_id
+         WHERE c.merchant_id = ${merchantId} AND d.fulfilment = 'CLAIMED') AS lucky_wheel_fulfilled
     `);
 
-    // Reward distribution still needs the reward list + grouped counts (2 queries, not 9)
+    const result = {
+      totalClients: row?.total_clients ?? 0,
+      totalPoints: row?.total_points ?? 0,
+      totalRedeemedPoints: row?.total_redeemed_points ?? 0,
+      totalTransactions: row?.total_transactions ?? 0,
+      totalRewardsGiven: (row?.total_rewards_given ?? 0) + (row?.lucky_wheel_fulfilled ?? 0),
+      profileViews: row?.profile_views ?? 0,
+      loyaltyType: row?.loyalty_type || DEFAULT_LOYALTY_TYPE,
+      luckyWheelPlays: row?.lucky_wheel_plays ?? 0,
+      luckyWheelWins: row?.lucky_wheel_wins ?? 0,
+    };
+
+    await this.cache.set(cacheKey, result, MerchantDashboardService.STATS_TTL);
+    return result;
+  }
+
+  // ── 2. Rewards Distribution — separate light query ─────────
+  async getRewardsDistribution(merchantId: string) {
+    const cacheKey = `dashboard:distribution:${merchantId}`;
+    const cached = await this.cache.get(cacheKey);
+    if (cached) return cached;
+
     const [rewards, rewardRedemptions] = await Promise.all([
       this.rewardRepo.findMany({
         where: { merchantId },
@@ -78,7 +95,6 @@ export class MerchantDashboardService {
         SELECT reward_id, COUNT(*)::int AS cnt
         FROM transactions
         WHERE merchant_id = ${merchantId} AND status = 'ACTIVE' AND type = 'REDEEM_REWARD' AND reward_id IS NOT NULL
-          AND (${startDate}::timestamp IS NULL OR created_at >= ${startDate})
         GROUP BY reward_id
       `),
     ]);
@@ -87,38 +103,39 @@ export class MerchantDashboardService {
       rewardRedemptions.map((r: any) => [r.reward_id as string, r.cnt ?? 0]),
     );
 
-    const rewardsDistribution: Array<{
-      rewardId: string | null;
-      title: string;
-      count: number;
-    }> = rewards.map((reward: any) => ({
-      rewardId: reward.id,
-      title: reward.titre,
-      count: rewardCounts.get(reward.id) || 0,
-    }));
+    const distribution: Array<{ rewardId: string | null; title: string; count: number }> =
+      rewards.map((reward: any) => ({
+        rewardId: reward.id,
+        title: reward.titre,
+        count: rewardCounts.get(reward.id) || 0,
+      }));
 
-    const unknownRedemptions = statsRow?.unknown_redemptions ?? 0;
+    // Count redemptions with no linked reward
+    const [unknownRow] = await this.rawQuery.queryRaw<{ cnt: number }>(Prisma.sql`
+      SELECT COUNT(*)::int AS cnt FROM transactions
+      WHERE merchant_id = ${merchantId} AND status = 'ACTIVE' AND type = 'REDEEM_REWARD' AND reward_id IS NULL
+    `);
+    const unknownRedemptions = unknownRow?.cnt ?? 0;
     if (unknownRedemptions > 0) {
-      rewardsDistribution.push({
-        rewardId: null,
-        title: 'Non attribue',
-        count: unknownRedemptions,
-      });
+      distribution.push({ rewardId: null, title: 'Non attribue', count: unknownRedemptions });
     }
 
-    const result = {
-      totalClients: statsRow?.total_clients ?? 0,
-      totalPoints: statsRow?.total_points ?? 0,
-      totalRedeemedPoints: statsRow?.total_redeemed_points ?? 0,
-      totalTransactions: statsRow?.total_transactions ?? 0,
-      totalRewardsGiven: Array.from(rewardCounts.values()).reduce((a: number, b: number) => a + b, 0) + unknownRedemptions,
-      profileViews: dateFilter ? (statsRow?.profile_views ?? 0) : (statsRow?.all_profile_views ?? 0),
-      rewardsDistribution,
-      loyaltyType: statsRow?.loyalty_type || DEFAULT_LOYALTY_TYPE,
-    };
+    // Include LuckyWheel fulfilled prizes in distribution
+    const luckyWheelPrizeRows = await this.rawQuery.queryRaw<{ prize_id: string; label: string; cnt: number }>(Prisma.sql`
+      SELECT p.id AS prize_id, p.label, COUNT(*)::int AS cnt
+      FROM lucky_wheel_draws d
+      INNER JOIN lucky_wheel_tickets tk ON tk.id = d.ticket_id
+      INNER JOIN lucky_wheel_campaigns c ON c.id = tk.campaign_id
+      INNER JOIN lucky_wheel_prizes p ON p.id = d.prize_id
+      WHERE c.merchant_id = ${merchantId} AND d.fulfilment = 'CLAIMED'
+      GROUP BY p.id, p.label
+    `);
+    for (const tp of luckyWheelPrizeRows) {
+      distribution.push({ rewardId: tp.prize_id, title: `�️ ${tp.label}`, count: tp.cnt ?? 0 });
+    }
 
-    await this.cache.set(cacheKey, result, MerchantDashboardService.STATS_TTL);
-    return result;
+    await this.cache.set(cacheKey, distribution, MerchantDashboardService.DISTRIBUTION_TTL);
+    return distribution;
   }
 
   async getDashboardTrends(
@@ -213,11 +230,13 @@ export class MerchantDashboardService {
         tx_count: number;
         new_clients: number;
         rewards_given: number;
+        lucky_wheel_fulfilled: number;
       }>(Prisma.sql`SELECT
          b.bucket,
          COALESCE(t.tx_count, 0)::int        AS tx_count,
          COALESCE(c.new_clients, 0)::int      AS new_clients,
-         COALESCE(t.rewards_given, 0)::int    AS rewards_given
+         COALESCE(t.rewards_given, 0)::int    AS rewards_given,
+         COALESCE(tf.lucky_wheel_fulfilled, 0)::int AS lucky_wheel_fulfilled
        FROM generate_series(
          date_trunc(${trunc}, ${startDate}::timestamp),
          date_trunc(${trunc}, now()),
@@ -237,11 +256,19 @@ export class MerchantDashboardService {
          WHERE merchant_id = ${merchantId} AND created_at >= ${startDate}
          GROUP BY 1
        ) c USING (bucket)
+       LEFT JOIN (
+         SELECT date_trunc(${trunc}, d.fulfilled_at) AS bucket, COUNT(*)::int AS lucky_wheel_fulfilled
+         FROM lucky_wheel_draws d
+         INNER JOIN lucky_wheel_tickets tk ON tk.id = d.ticket_id
+         INNER JOIN lucky_wheel_campaigns camp ON camp.id = tk.campaign_id
+         WHERE camp.merchant_id = ${merchantId} AND d.fulfilment = 'CLAIMED' AND d.fulfilled_at >= ${startDate}
+         GROUP BY 1
+       ) tf USING (bucket)
        ORDER BY b.bucket`);
 
     const transactionsRows = rows.map((r) => ({ bucket: r.bucket, count: r.tx_count }));
     const newClientsRows = rows.map((r) => ({ bucket: r.bucket, count: r.new_clients }));
-    const rewardsGivenRows = rows.map((r) => ({ bucket: r.bucket, count: r.rewards_given }));
+    const rewardsGivenRows = rows.map((r) => ({ bucket: r.bucket, count: r.rewards_given + r.lucky_wheel_fulfilled }));
 
     const buildCountSeries = (rows: Array<{ bucket: Date; count: number }>) => {
       const map = new Map(rows.map((r) => [toBucketKey(r.bucket), r.count || 0]));

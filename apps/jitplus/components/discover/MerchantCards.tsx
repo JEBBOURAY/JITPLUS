@@ -1,8 +1,7 @@
-import { memo, useState } from 'react';
+import { memo } from 'react';
 import {
-  View, Text, Pressable, TouchableOpacity, Image as RNImage,
+  View, Text, Pressable, TouchableOpacity,
 } from 'react-native';
-import { Image } from 'expo-image';
 import {
   MapPin, ChevronRight, Navigation, ExternalLink,
 } from 'lucide-react-native';
@@ -12,7 +11,6 @@ import { Merchant } from '@/types';
 import MerchantLogo from '@/components/MerchantLogo';
 import { wp, hp, ms, fontSize as FS } from '@/utils/responsive';
 import { formatDistance } from '@/utils/distance';
-import { resolveImageUrl } from '@/utils/imageUrl';
 import { discoverStyles as styles } from './discoverStyles';
 
 export const FallbackMerchantCard = memo(function FallbackMerchantCard({
@@ -23,15 +21,15 @@ export const FallbackMerchantCard = memo(function FallbackMerchantCard({
 }: {
   merchant: Merchant;
   distance: number | null;
-  onPress: () => void;
-  onNavigate: () => void;
+  onPress: (merchant: Merchant) => void;
+  onNavigate: (merchant: Merchant) => void;
 }) {
   const theme = useTheme();
   const { t } = useLanguage();
   return (
     <Pressable
       style={[styles.fallbackCard, { backgroundColor: theme.bgCard }]}
-      onPress={onPress}
+      onPress={() => onPress(merchant)}
     >
       <View style={[styles.fallbackAvatar, { backgroundColor: palette.violet + '15' }]}>
         <MerchantLogo logoUrl={merchant.logoUrl} style={styles.fallbackLogo} />
@@ -60,7 +58,7 @@ export const FallbackMerchantCard = memo(function FallbackMerchantCard({
       </View>
       <TouchableOpacity
         style={[styles.fallbackNavBtn, { backgroundColor: palette.violet }]}
-        activeOpacity={0.7} onPress={onNavigate}
+        activeOpacity={0.7} onPress={() => onNavigate(merchant)}
       >
         <ExternalLink size={ms(14)} color="#fff" strokeWidth={2} />
       </TouchableOpacity>
@@ -83,23 +81,12 @@ export const MerchantCallout = memo(function MerchantCallout({
 }) {
   const theme = useTheme();
   const { t } = useLanguage();
-  const [logoError, setLogoError] = useState(false);
   return (
     <View style={[styles.calloutWrapper, style]}>
       <Pressable style={[styles.calloutCard, { backgroundColor: theme.bgCard }]} onPress={onPress}>
         <View style={styles.calloutAccent} />
         <View style={[styles.calloutAvatar, { backgroundColor: palette.violet + '10' }]}>
-          {merchant.logoUrl && !logoError ? (
-            <Image
-              source={resolveImageUrl(merchant.logoUrl)}
-              style={styles.merchantLogo}
-              contentFit="cover"
-              cachePolicy="disk"
-              onError={() => setLogoError(true)}
-            />
-          ) : (
-            <RNImage source={require('@/assets/images/jitpluslogo.png')} style={styles.merchantLogo} resizeMode="contain" />
-          )}
+          <MerchantLogo logoUrl={merchant.logoUrl} style={styles.merchantLogo} merchantName={merchant.nomBoutique} />
         </View>
         <View style={styles.calloutInfo}>
           <Text style={[styles.calloutName, { color: theme.text }]} numberOfLines={1}>{merchant.storeName || merchant.nomBoutique}</Text>

@@ -22,6 +22,11 @@ import {
   CLIENT_REFERRAL_REPOSITORY,
   MERCHANT_NOTIFICATION_READ_REPOSITORY,
   PAYOUT_REQUEST_REPOSITORY,
+  LUCKY_WHEEL_CAMPAIGN_REPOSITORY,
+  LUCKY_WHEEL_PRIZE_REPOSITORY,
+  LUCKY_WHEEL_TICKET_REPOSITORY,
+  LUCKY_WHEEL_DRAW_REPOSITORY,
+  CAMPAIGN_SENT_TRACKER_REPOSITORY,
   TRANSACTION_RUNNER,
   RAW_QUERY_RUNNER,
 } from './repository.tokens';
@@ -46,6 +51,11 @@ const modelProviders = [
   { provide: CLIENT_REFERRAL_REPOSITORY, useFactory: (p: PrismaService) => p.clientReferral, inject: [PrismaService] },
   { provide: MERCHANT_NOTIFICATION_READ_REPOSITORY, useFactory: (p: PrismaService) => p.merchantNotificationRead, inject: [PrismaService] },
   { provide: PAYOUT_REQUEST_REPOSITORY, useFactory: (p: PrismaService) => p.payoutRequest, inject: [PrismaService] },
+  { provide: LUCKY_WHEEL_CAMPAIGN_REPOSITORY, useFactory: (p: PrismaService) => p.luckyWheelCampaign, inject: [PrismaService] },
+  { provide: LUCKY_WHEEL_PRIZE_REPOSITORY, useFactory: (p: PrismaService) => p.luckyWheelPrize, inject: [PrismaService] },
+  { provide: LUCKY_WHEEL_TICKET_REPOSITORY, useFactory: (p: PrismaService) => p.luckyWheelTicket, inject: [PrismaService] },
+  { provide: LUCKY_WHEEL_DRAW_REPOSITORY, useFactory: (p: PrismaService) => p.luckyWheelDraw, inject: [PrismaService] },
+  { provide: CAMPAIGN_SENT_TRACKER_REPOSITORY, useFactory: (p: PrismaService) => p.campaignSentTracker, inject: [PrismaService] },
 ];
 
 const infraProviders = [
@@ -64,6 +74,9 @@ const allTokens = [
   CLIENT_REFERRAL_REPOSITORY,
   MERCHANT_NOTIFICATION_READ_REPOSITORY,
   PAYOUT_REQUEST_REPOSITORY,
+  LUCKY_WHEEL_CAMPAIGN_REPOSITORY, LUCKY_WHEEL_PRIZE_REPOSITORY,
+  LUCKY_WHEEL_TICKET_REPOSITORY, LUCKY_WHEEL_DRAW_REPOSITORY,
+  CAMPAIGN_SENT_TRACKER_REPOSITORY,
   TRANSACTION_RUNNER, RAW_QUERY_RUNNER,
 ];
 

@@ -89,3 +89,20 @@ export function getStoreUrl(): string {
   }
   return `https://play.google.com/store/apps/details?id=${ANDROID_PACKAGE}`;
 }
+
+/** Returns the platform-appropriate native "write a review" deep link.
+ *  Prefers native store app (itms-apps:// / market://) over web URL for better UX.
+ *  Falls back to the web URL returned by getStoreUrl() if the native scheme is unavailable. */
+export function getReviewUrl(): string {
+  const { Platform } = require('react-native');
+  if (Platform.OS === 'ios' && IOS_APP_ID) {
+    return `itms-apps://apps.apple.com/app/id${IOS_APP_ID}?action=write-review`;
+  }
+  if (Platform.OS === 'android') {
+    return `market://details?id=${ANDROID_PACKAGE}`;
+  }
+  return getStoreUrl();
+}
+
+/** Unified support contact email — used across Profile & Referral screens. */
+export const SUPPORT_EMAIL = 'contact@jitplus.com';

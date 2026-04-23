@@ -1,4 +1,4 @@
-import { useEffect, useRef, useMemo } from 'react';
+import { memo, useEffect, useRef, useMemo } from 'react';
 import { Animated, DimensionValue, ViewStyle } from 'react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 
@@ -9,7 +9,7 @@ interface SkeletonProps {
   style?: ViewStyle;
 }
 
-export default function Skeleton({ width, height, borderRadius = 12, style }: SkeletonProps) {
+export default memo(function Skeleton({ width, height, borderRadius = 12, style }: SkeletonProps) {
   const theme = useTheme();
   const shimmer = useRef(new Animated.Value(0)).current;
 
@@ -33,6 +33,8 @@ export default function Skeleton({ width, height, borderRadius = 12, style }: Sk
 
   return (
     <Animated.View
+      accessibilityRole="progressbar"
+      accessibilityLabel="Loading"
       style={[
         {
           width,
@@ -45,4 +47,4 @@ export default function Skeleton({ width, height, borderRadius = 12, style }: Sk
       ]}
     />
   );
-}
+});

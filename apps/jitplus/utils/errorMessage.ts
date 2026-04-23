@@ -86,3 +86,13 @@ export function isNetworkError(error: unknown): boolean {
   }
   return false;
 }
+
+/**
+ * Check if the error is a 429 Too Many Requests (Rate Limit).
+ */
+export function isRateLimitError(error: unknown): boolean {
+  if (error instanceof AxiosError) {
+    return error.response?.status === 429;
+  }
+  return false;
+}

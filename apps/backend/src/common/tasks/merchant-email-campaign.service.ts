@@ -65,7 +65,7 @@ export class MerchantEmailCampaignService {
         });
         if (merchants.length === 0) break;
 
-        const merchantIds = merchants.map((m) => m.id);
+        const merchantIds = merchants.map((m: any) => m.id);
 
         // Weekly scans per merchant
         const weeklyTx = await this.txRepo.findMany({

@@ -16,7 +16,7 @@ jest.mock('@/contexts/LanguageContext', () => ({
   useLanguage: () => ({
     t: (key: string, opts?: Record<string, unknown>) => {
       if (key === 'stampGrid.count') return `${opts?.current}/${opts?.total}`;
-      if (key === 'stampGrid.rewardReady') return '🎁';
+      if (key === 'stampGrid.rewardReady') return 'Reward ready';
       return key;
     },
   }),
@@ -53,8 +53,8 @@ describe('StampGrid', () => {
     const { getByText } = render(
       <StampGrid current={10} total={10} />,
     );
-    // Label should contain the reward emoji (mocked as '🎁')
-    expect(getByText(/🎁/)).toBeTruthy();
+    // Label should contain the reward text
+    expect(getByText(/Reward ready/)).toBeTruthy();
   });
 
   it('shows count label by default', () => {

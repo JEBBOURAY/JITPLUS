@@ -17,7 +17,7 @@ export default memo(function BrandText({ size = 24 }: BrandTextProps) {
   const height = scaledSize * 1.4;
 
   return (
-    <View style={{ width, height, alignItems: 'center', justifyContent: 'center' }}>
+    <View style={{ width, height, alignItems: 'center', justifyContent: 'center' }} accessibilityLabel="JitPlus" accessibilityRole="image">
       <Svg width={width} height={height}>
         <Defs>
           <SvgGradient id="brand" x1="0%" y1="0%" x2="100%" y2="0%">

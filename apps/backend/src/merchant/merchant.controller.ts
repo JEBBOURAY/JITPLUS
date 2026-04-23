@@ -47,7 +47,6 @@ function detectMimeFromBuffer(buffer: Buffer): string | null {
 import {
   MerchantProfileService,
   MerchantClientService,
-  WhatsappQuotaService,
   MerchantPlanService,
   MerchantReferralService,
 } from './services';
@@ -63,7 +62,7 @@ export class MerchantController {
   constructor(
     private profileService: MerchantProfileService,
     private clientService: MerchantClientService,
-    private quotaService: WhatsappQuotaService,
+    
     private planService: MerchantPlanService,
     private referralService: MerchantReferralService,
     private notificationsService: NotificationsService,
@@ -292,33 +291,7 @@ export class MerchantController {
     return this.profileService.updateLoyaltySettings(user.userId, dto);
   }
 
-  @Get('whatsapp/quota')
-  @UseGuards(MerchantOwnerGuard, PremiumGuard)
-  async getWhatsappQuota(@CurrentUser() user: JwtPayload) {
-    const merchant = await this.quotaService.getQuota(user.userId);
-    return {
-      whatsappQuotaUsed: merchant.whatsappQuotaUsed,
-      whatsappQuotaMax: merchant.whatsappQuotaMax,
-      remaining: merchant.whatsappQuotaMax - merchant.whatsappQuotaUsed,
-    };
-  }
 
-  @Post('whatsapp/record-usage')
-  @UseGuards(MerchantOwnerGuard, PremiumGuard)
-  async recordWhatsappUsage(
-    @CurrentUser() user: JwtPayload,
-    @Body() dto: RecordWhatsappUsageDto,
-  ) {
-    const merchant = await this.quotaService.checkAndIncrementQuota(
-      user.userId,
-      dto.messagesSent,
-    );
-    return {
-      whatsappQuotaUsed: merchant.whatsappQuotaUsed,
-      whatsappQuotaMax: merchant.whatsappQuotaMax,
-      remaining: merchant.whatsappQuotaMax - merchant.whatsappQuotaUsed,
-    };
-  }
 
   // ── Plan info ─────────────────────────────────────────
   @Get('plan')

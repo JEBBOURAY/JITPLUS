@@ -95,13 +95,23 @@ export class MailService implements IMailProvider {
   /**
    * Send a raw HTML email — used by marketing blast SMTP fallback.
    * Throws on failure so the caller can track success/failure counts.
+   * @param unsubscribeUrl - Optional one-click unsubscribe URL (RFC 8058).
+   *   When provided, adds List-Unsubscribe and List-Unsubscribe-Post headers
+   *   required by Gmail/Yahoo bulk sender policy (Feb 2024).
    */
-  async sendRaw(to: string, subject: string, html: string): Promise<void> {
+  async sendRaw(to: string, subject: string, html: string, unsubscribeUrl?: string): Promise<void> {
     const from = this.fromAddress;
     if (!this.transporter) {
       throw new Error('SMTP not configured');
     }
-    await this.transporter.sendMail({ from, to, subject, html });
+    const safeSubject = escapeHtml(subject);
+    const safeHtml = this.sanitizeRawHtml(html);
+    const headers: Record<string, string> = {};
+    if (unsubscribeUrl) {
+      headers['List-Unsubscribe'] = `<${unsubscribeUrl}>`;
+      headers['List-Unsubscribe-Post'] = 'List-Unsubscribe=One-Click';
+    }
+    await this.transporter.sendMail({ from, to, subject: safeSubject, html: safeHtml, headers });
   }
 
   /**
@@ -119,5 +129,17 @@ export class MailService implements IMailProvider {
     } catch (error) {
       this.logger.error(`Failed to send ${tag} email to ${to}`, error);
     }
+  }
+
+  /**
+   * Best-effort sanitization for admin-provided HTML payloads.
+   * Removes script/style tags, inline event handlers, and javascript: URLs.
+   */
+  private sanitizeRawHtml(html: string): string {
+    return html
+      .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, '')
+      .replace(/\son[a-z]+\s*=\s*(['"]).*?\1/gi, '')
+      .replace(/javascript\s*:/gi, '');
   }
 }

@@ -202,7 +202,67 @@ export class MerchantTransactionService {
           data: { points: newPoints },
         });
 
-        return { transaction: newTransaction, newPoints, actualPointsAdded };
+        // ── Lucky wheel: auto-create ticket for eligible active campaigns ──
+        // Rules:
+        //   ticketCostPoints > 0  → ticket granted on REDEEM_REWARD when points spent >= threshold
+        //   ticketCostPoints == 0 → ticket granted on every EARN_POINTS (each visit)
+        //   ticketEveryNVisits    → only grant on every N-th qualifying transaction
+        let luckyWheelTicketsAwarded = 0;
+        if (type === 'EARN_POINTS' || type === 'REDEEM_REWARD') {
+          const activeCampaigns = await prisma.luckyWheelCampaign.findMany({
+            where: {
+              merchantId,
+              status: 'ACTIVE',
+              startsAt: { lte: new Date() },
+              endsAt: { gte: new Date() },
+            },
+            select: { id: true, ticketCostPoints: true, ticketEveryNVisits: true, minSpendAmount: true, startsAt: true },
+          });
+
+          const eligibleCampaignIds: string[] = [];
+          for (const c of activeCampaigns) {
+            // Check minimum purchase amount threshold
+            if (c.minSpendAmount > 0 && amount < c.minSpendAmount) continue;
+            // Determine if this transaction type qualifies
+            if (c.ticketCostPoints > 0) {
+              // Cost-based: only on REDEEM_REWARD with enough points spent
+              if (type !== 'REDEEM_REWARD' || points < c.ticketCostPoints) continue;
+            } else {
+              // Free: only on EARN_POINTS (each visit)
+              if (type !== 'EARN_POINTS') continue;
+            }
+            // Check every-N-visits rule
+            if (c.ticketEveryNVisits && c.ticketEveryNVisits > 1) {
+              // Count qualifying transactions (not tickets) to avoid deadlock:
+              // tickets are only created when the modulo passes, so counting
+              // tickets would keep the count at 0 forever.
+              const qualifyingTxCount = await prisma.transaction.count({
+                where: {
+                  clientId,
+                  merchantId,
+                  type: c.ticketCostPoints > 0 ? 'REDEEM_REWARD' : 'EARN_POINTS',
+                  createdAt: { gte: c.startsAt },
+                },
+              });
+              // qualifyingTxCount includes the current transaction (already created above)
+              if (qualifyingTxCount % c.ticketEveryNVisits !== 0) continue;
+            }
+            eligibleCampaignIds.push(c.id);
+          }
+
+          if (eligibleCampaignIds.length > 0) {
+            await prisma.luckyWheelTicket.createMany({
+              data: eligibleCampaignIds.map((cId) => ({
+                campaignId: cId,
+                clientId,
+                transactionId: newTransaction.id,
+              })),
+            });
+            luckyWheelTicketsAwarded = eligibleCampaignIds.length;
+          }
+        }
+
+        return { transaction: newTransaction, newPoints, actualPointsAdded, luckyWheelTicketsAwarded };
       }, {
         // RepeatableRead prevents lost-update race conditions on the loyalty card balance
         // while being significantly less contended than Serializable.
@@ -244,6 +304,18 @@ export class MerchantTransactionService {
       rewardId,
       rewardTitle,
     ).catch((err) => this.logger.warn(`Transaction notification failed: ${errMsg(err)}`));
+
+    // ── Lucky-wheel ticket notification ──
+    if (result.luckyWheelTicketsAwarded > 0) {
+      const t = getNotifTranslations(client.language);
+      this.notifications.sendToClient(
+        merchantId,
+        clientId,
+        t.luckyWheelTicketTitle(result.luckyWheelTicketsAwarded),
+        t.luckyWheelTicketBody(result.luckyWheelTicketsAwarded, merchant!.nom),
+        { event: 'lucky_wheel_ticket', merchantId, tickets: String(result.luckyWheelTicketsAwarded) },
+      ).catch((err) => this.logger.warn(`Lucky-wheel ticket notification failed: ${errMsg(err)}`));
+    }
 
     return result.transaction;
   }
