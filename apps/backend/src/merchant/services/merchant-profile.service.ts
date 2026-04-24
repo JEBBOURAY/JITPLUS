@@ -29,13 +29,14 @@ import { UpdateLoyaltySettingsDto } from '../dto/update-loyalty-settings.dto';
 import { AuditLogService, AuditAction, AuditTargetType } from '../../admin/audit-log.service';
 import * as bcrypt from 'bcryptjs';
 import * as jwt from 'jsonwebtoken';
-import { createPublicKey } from 'crypto';
+import { createPublicKey, randomUUID } from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
 import { BCRYPT_SALT_ROUNDS } from '../../common/constants';
 import { MERCHANT_PROFILE_SELECT, MerchantProfileData } from '../../common/prisma-selects';
 import { MERCHANT_PROFILE_CACHE_TTL } from '../../common/constants';
 import { stripUndefined } from '../../common/utils';
 import { getNotifTranslations } from '../../common/utils/notification-i18n';
+import { MailService } from '../../mail/mail.service';
 
 @Injectable()
 export class MerchantProfileService {
@@ -58,6 +59,7 @@ export class MerchantProfileService {
     private eventsGateway: EventsGateway,
     private configService: ConfigService,
     private auditLogService: AuditLogService,
+    private mailService: MailService,
   ) {
     this.googleClient = new OAuth2Client(this.configService.get<string>('GOOGLE_CLIENT_ID'));
   }
@@ -642,7 +644,13 @@ export class MerchantProfileService {
 
     // ── Atomic soft-delete inside a transaction ────────────────
     const now = new Date();
+    // Capture original identity BEFORE anonymisation — needed to send confirmation email.
+    const originalEmail = merchant.email;
+    const originalNom = merchant.nom;
+    const isEmailReal = !!originalEmail && !originalEmail.startsWith('deleted_') && originalEmail.includes('@');
 
+    // Hash a random password for deactivated team members (avoids empty-string hash rows)
+    const teamMemberPlaceholder = await bcrypt.hash(randomUUID(), BCRYPT_SALT_ROUNDS);
     await this.txRunner.run(async (tx) => {
       // 1. Soft-delete merchant: anonymise ALL PII so email/phone/social IDs can be reused
       await tx.merchant.update({
@@ -673,7 +681,7 @@ export class MerchantProfileService {
       // 2. Deactivate all team members + clear credentials
       await tx.teamMember.updateMany({
         where: { merchantId },
-        data: { isActive: false, password: '' },
+        data: { isActive: false, password: teamMemberPlaceholder },
       });
 
       // 3. Deactivate all stores so they disappear from search/discovery
@@ -723,6 +731,13 @@ export class MerchantProfileService {
       targetLabel: `${merchant.nom} (${merchant.email})`,
       metadata: { selfDelete: true },
     });
+
+    // Send confirmation email (best-effort, non-blocking) — GDPR Art. 17 + App Store 5.1.1(v)
+    if (isEmailReal) {
+      this.mailService
+        .sendAccountDeleted(originalEmail, originalNom || 'votre commerce')
+        .catch((err) => this.logger.warn(`Failed to send account-deleted email to ${originalEmail}: ${err?.message || err}`));
+    }
 
     return { message: `Le compte "${merchant.nom}" a été supprimé.` };
   }

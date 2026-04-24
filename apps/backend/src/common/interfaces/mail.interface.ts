@@ -24,4 +24,18 @@ export interface IMailProvider {
 
   /** Send a raw HTML email (used by marketing blast fallback) */
   sendRaw(to: string, subject: string, html: string, unsubscribeUrl?: string): Promise<void>;
+
+  /**
+   * Deliver a client-submitted content report to the moderation inbox.
+   * App Store 1.2 / Play UGC Policy require a reporting channel with
+   * timely action (within 24 h).
+   */
+  sendContentReport(params: {
+    merchantId: string;
+    merchantName: string;
+    reporterId: string;
+    reporterEmail: string;
+    reason: string;
+    details?: string;
+  }): Promise<void>;
 }

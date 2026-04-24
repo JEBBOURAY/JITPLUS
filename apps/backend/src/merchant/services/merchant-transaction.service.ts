@@ -17,7 +17,7 @@ import { AuditLogService, AuditAction, AuditTargetType } from '../../admin/audit
 import { NotificationsService } from '../../notifications/notifications.service';
 import { EventsGateway } from '../../events';
 import { MerchantPlanService } from './merchant-plan.service';
-import { DEFAULT_POINTS_RATE } from '../../common/constants';
+import { DEFAULT_POINTS_RATE, MAX_STAMPS_PER_TX, MAX_POINTS_PER_TX } from '../../common/constants';
 import { errMsg, maskName } from '../../common/utils';
 import { MERCHANT_LOYALTY_SELECT } from '../../common/prisma-selects';
 import { buildPagination } from '../../common/utils';
@@ -52,19 +52,35 @@ export class MerchantTransactionService {
     rewardId?: string,
     teamMemberId?: string,
     performedByName?: string,
+    idempotencyKey?: string,
   ) {
+    // Idempotency: if a key was supplied and a transaction with the same
+    // (merchantId, idempotencyKey) already exists, return it verbatim instead
+    // of creating a duplicate. Prevents double-credits on network retries.
+    if (idempotencyKey) {
+      const existing = await this.transactionRepoDelegate.findFirst({
+        where: { merchantId, idempotencyKey },
+      });
+      if (existing) return existing;
+    }
+
     const [client, merchant] = await Promise.all([
       this.clientRepo.findUnique({
         where: { id: clientId },
-        select: { id: true, language: true },
+        select: { id: true, language: true, deletedAt: true },
       }),
       this.merchantRepo.findUnique({
         where: { id: merchantId },
-        select: { nom: true, ...MERCHANT_LOYALTY_SELECT },
+        select: { nom: true, isActive: true, deletedAt: true, ...MERCHANT_LOYALTY_SELECT },
       }),
     ]);
-    if (!client) throw new NotFoundException('Client non trouvé');
-    if (!merchant) throw new NotFoundException('Commerce non trouvé');
+    if (!client || client.deletedAt) throw new NotFoundException('Client non trouvé');
+    if (!merchant || merchant.deletedAt || !merchant.isActive) throw new NotFoundException('Commerce non trouvé');
+
+    // Anti-fraud: force amount=0 on REDEEM_REWARD (client-provided amount must never inflate analytics / lucky-wheel)
+    if (type === 'REDEEM_REWARD') {
+      amount = 0;
+    }
 
     // Validate points
     if (type === 'EARN_POINTS') {
@@ -81,6 +97,12 @@ export class MerchantTransactionService {
           if (points !== expectedStamps) {
             throw new BadRequestException(
               `Nombre de tampons invalide. Attendu: ${expectedStamps}, reçu: ${points}`,
+            );
+          }
+          // Anti-fraud: hard cap on stamps per single transaction
+          if (points > MAX_STAMPS_PER_TX) {
+            throw new BadRequestException(
+              `Un maximum de ${MAX_STAMPS_PER_TX} tampons peut être attribué par transaction`,
             );
           }
         } else {
@@ -108,6 +130,12 @@ export class MerchantTransactionService {
             `Nombre de points invalide. Attendu: ${expectedPoints}, reçu: ${points}`,
           );
         }
+        // Anti-fraud: hard cap on points per single transaction
+        if (points > MAX_POINTS_PER_TX) {
+          throw new BadRequestException(
+            `Un maximum de ${MAX_POINTS_PER_TX} points peut être attribué par transaction`,
+          );
+        }
       }
     }
 
@@ -129,8 +157,25 @@ export class MerchantTransactionService {
       rewardTitle = reward.titre;
     }
 
-    const result = await withRetry(() =>
+    let result: {
+      transaction: any;
+      newPoints: number;
+      actualPointsAdded: number;
+      luckyWheelTicketsAwarded: number;
+      _replayed?: boolean;
+    };
+    try {
+      result = await withRetry(() =>
       this.txRunner.run(async (prisma) => {
+        // Re-check client/merchant state INSIDE the transaction to avoid TOCTOU
+        // (time-of-check vs time-of-use) on deletedAt / isActive.
+        const [clientTx, merchantTx] = await Promise.all([
+          prisma.client.findUnique({ where: { id: clientId }, select: { id: true, deletedAt: true } }),
+          prisma.merchant.findUnique({ where: { id: merchantId }, select: { id: true, isActive: true, deletedAt: true } }),
+        ]);
+        if (!clientTx || clientTx.deletedAt) throw new NotFoundException('Client non trouvé');
+        if (!merchantTx || merchantTx.deletedAt || !merchantTx.isActive) throw new NotFoundException('Commerce non trouvé');
+
         // Read (or create) the loyalty card INSIDE the transaction to prevent
         // race conditions where two concurrent requests read the same balance.
         let loyaltyCard = await prisma.loyaltyCard.findUnique({
@@ -193,6 +238,7 @@ export class MerchantTransactionService {
             loyaltyType: merchant.loyaltyType || 'POINTS',
             amount,
             points: type === 'EARN_POINTS' ? actualPointsAdded : points,
+            idempotencyKey: idempotencyKey || null,
             ...(type === 'REDEEM_REWARD' ? { giftStatus: 'FULFILLED', fulfilledAt: new Date() } : {}),
           },
         });
@@ -269,6 +315,40 @@ export class MerchantTransactionService {
         isolationLevel: 'RepeatableRead',
       }),
     );
+    } catch (err: any) {
+      // Race-condition idempotency: two concurrent requests with the same
+      // (merchantId, idempotencyKey) passed the pre-check and both tried to
+      // INSERT. The second hits the partial UNIQUE index (P2002). Resolve by
+      // returning the transaction that won the race (tagged as _replayed so
+      // downstream side-effects — WS/push notifications — are skipped).
+      if (idempotencyKey && err?.code === 'P2002') {
+        const existing = await this.transactionRepoDelegate.findFirst({
+          where: { merchantId, idempotencyKey },
+        });
+        if (existing) {
+          const currentCard = await this.loyaltyCardRepo.findUnique({
+            where: { clientId_merchantId: { clientId, merchantId } },
+            select: { points: true },
+          });
+          result = {
+            transaction: existing,
+            newPoints: currentCard?.points ?? 0,
+            actualPointsAdded: existing.points,
+            luckyWheelTicketsAwarded: 0,
+            _replayed: true,
+          };
+        } else {
+          throw err;
+        }
+      } else {
+        throw err;
+      }
+    }
+
+    // Idempotency replay: skip side-effects (WS, push) — the winning request already fired them.
+    if (result._replayed) {
+      return result.transaction;
+    }
 
     // ── Real-time: emit WebSocket events IMMEDIATELY (sub-100ms) ──
     this.eventsGateway.emitPointsUpdated(clientId, {

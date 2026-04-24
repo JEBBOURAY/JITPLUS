@@ -65,6 +65,10 @@ export default function AddressAutocomplete({
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const abortRef = useRef<AbortController | null>(null);
   const mountedRef = useRef(true);
+
+  // V4 UUID style pseudo-token for Google Places API Session Token (FinOps billing proxy)
+  const sessionTokenRef = useRef(Math.random().toString(36).substring(2, 15) + Date.now().toString(36));
+
   // Store geocode fallback results so we can retrieve coords on select
   const geoFallbackRef = useRef<Map<string, { lat: number; lng: number; address: string; city?: string; district?: string }>>(new Map());
 
@@ -88,6 +92,7 @@ export default function AddressAutocomplete({
         params.set('lat', String(userLocation.latitude));
         params.set('lng', String(userLocation.longitude));
       }
+      params.set('sessionToken', sessionTokenRef.current);
       const url = `${getServerBaseUrl()}/geocode/autocomplete?${params}`;
       const res = await fetch(url, { signal: controller.signal });
       const json = await res.json();
@@ -191,9 +196,12 @@ export default function AddressAutocomplete({
 
     setLoading(true);
     try {
-      const url = `${getServerBaseUrl()}/geocode/place-details?placeId=${encodeURIComponent(prediction.place_id)}`;
+      const url = `${getServerBaseUrl()}/geocode/place-details?placeId=${encodeURIComponent(prediction.place_id)}&sessionToken=${encodeURIComponent(sessionTokenRef.current)}`;
       const res = await fetch(url);
       const json = await res.json();
+
+      // Regenerate session token after finalizing the search flow (FinOps)
+      sessionTokenRef.current = Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
 
       if (!mountedRef.current) return;
 

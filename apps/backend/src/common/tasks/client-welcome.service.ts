@@ -3,7 +3,8 @@ import { Cron } from '@nestjs/schedule';
 import {
   CLIENT_REPOSITORY, type IClientRepository,
   LOYALTY_CARD_REPOSITORY, type ILoyaltyCardRepository,  CAMPAIGN_SENT_TRACKER_REPOSITORY, type ICampaignSentTrackerRepository,} from '../repositories';
-import { IPushProvider, PUSH_PROVIDER, PushMulticastResult } from '../interfaces';
+import { IPushProvider, PUSH_PROVIDER } from '../interfaces';
+import { isCronAllowed } from './cron-utils';
 
 // ── Welcome Series: 4-step onboarding over first 7 days ─────────────────────
 // Day 0 (signup): handled by auth controller (immediate welcome push)
@@ -22,7 +23,7 @@ const MESSAGES = {
       body: 'Dozens of businesses are waiting for you on JIT+. Explore and start earning loyalty points!',
     },
     ar: {
-      title: '🏪 اكتشف المحلات قريبين منك',
+      title: '🏪 اكتشف المحلات اللي قريبين منك',
       body: 'عشرات المحلات كيتسناوك فـ JIT+. تصفح وبدا جمع نقاط الولاء!',
     },
   },
@@ -36,7 +37,7 @@ const MESSAGES = {
       body: 'Visit a partner business and scan your QR code to earn your first points. It\'s free and fast!',
     },
     ar: {
-      title: '⭐ ربح النقاط الأولى ديالك!',
+      title: '⭐ اربح أول النقط ديالك!',
       body: 'زور محل شريك وسكاني الـ QR code ديالك باش تربح النقاط الأولى. مجاني وسريع!',
     },
   },
@@ -50,8 +51,8 @@ const MESSAGES = {
       body: 'Share JIT+ with your friends and earn bonuses for every signup. The more the merrier!',
     },
     ar: {
-      title: '🎁 عيّط لصحابك وربح المكافآت',
-      body: 'بارطاجي JIT+ مع صحابك وربح بونوص على كل واحد يتسجل. كلما زادو كلما ربحتي!',
+      title: '🎁 عيّط لصحابك واربح المكافآت',
+      body: 'بارطاجي JIT+ مع صحابك واربح بونوص على كل واحد يتسجل. كل ما كانوا كثر كل ما ربحتي!',
     },
   },
 } as const;
@@ -108,13 +109,15 @@ export class ClientWelcomeService {
     }
   }
 
-  @Cron('0 9 * * *') // Daily at 09:00 UTC
+  @Cron('0 9 * * *') // Daily at 09:00 UTC = 10:00 Maroc
   async sendWelcomeSeries(): Promise<void> {
+    if (!isCronAllowed(this.logger, 'ClientWelcome.sendWelcomeSeries')) return;
     this.logger.log('Starting client welcome series');
 
     try {
       const now = new Date();
       const results = { day1: 0, day3: 0, day7: 0 };
+      const staleTokens: string[] = [];
 
       // Process each welcome step
       for (const [step, daysAgo] of [['day1', 1], ['day3', 3], ['day7', 7]] as const) {
@@ -185,22 +188,39 @@ export class ClientWelcomeService {
 
         for (const [l, tokens] of byLang) {
           const msg = getMsg(step, l);
-          await this.pushProvider.sendMulticast(
-            tokens,
-            msg.title,
-            msg.body,
-            undefined,
-            { event: 'welcome_series', action: actionMap[step] },
-          );
+          try {
+            const result = await this.pushProvider.sendMulticast(
+              tokens,
+              msg.title,
+              msg.body,
+              undefined,
+              { event: 'welcome_series', action: actionMap[step] },
+            );
+            if (result?.invalidTokens?.length) {
+              staleTokens.push(...result.invalidTokens);
+            }
+          } catch (e) {
+            this.logger.warn(`Welcome multicast failed (${step}, ${l}): ${e}`);
+          }
         }
 
         for (const c of freshClients) {
           await this.markSent(c.id, campaignId);
         }
         results[step] = freshClients.length;
+      }
 
-        // Clean stale tokens
-        await this.cleanStaleTokens(freshClients.map((c: any) => c.pushToken!));
+      // Clean stale tokens captured during multicast sends.
+      if (staleTokens.length > 0) {
+        try {
+          await this.clientRepo.updateMany({
+            where: { pushToken: { in: staleTokens } },
+            data: { pushToken: null },
+          });
+          this.logger.log(`Cleaned ${staleTokens.length} stale push token(s)`);
+        } catch (e) {
+          this.logger.warn(`Failed to clean stale tokens: ${e}`);
+        }
       }
 
       this.logger.log(
@@ -209,10 +229,5 @@ export class ClientWelcomeService {
     } catch (error) {
       this.logger.error('Failed to send welcome series', error);
     }
-  }
-
-  private async cleanStaleTokens(tokens: string[]): Promise<void> {
-    // Push provider already handles token validation during sendMulticast
-    // Stale tokens are cleaned by the sendMulticast result
   }
 }

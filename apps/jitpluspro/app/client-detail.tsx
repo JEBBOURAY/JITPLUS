@@ -44,6 +44,17 @@ import { formatCurrency, DEFAULT_CURRENCY, getIntlLocale } from '@/config/curren
 import { useClientDetail, useAdjustPoints } from '@/hooks/useQueryHooks';
 import { isValidUUID } from '@/utils/validation';
 
+/** Removes emojis from text (with performance cache) */
+const emojiCache = new Map<string, string>();
+const stripEmojis = (str: string | null | undefined) => {
+  if (!str) return '';
+  if (emojiCache.has(str)) return emojiCache.get(str)!;
+  const stripped = str.replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, '').trim();
+  if (emojiCache.size > 500) emojiCache.clear();
+  emojiCache.set(str, stripped);
+  return stripped;
+};
+
 /* ── Memoized transaction row — avoids re-render of every row on parent updates ── */
 const TransactionItem = React.memo(function TransactionItem({
   tx,
@@ -58,6 +69,7 @@ const TransactionItem = React.memo(function TransactionItem({
   const isEarned = tx.type === 'EARN_POINTS';
   const isAdjust = tx.type === 'ADJUST_POINTS';
   const isProgramChange = tx.type === 'LOYALTY_PROGRAM_CHANGE';
+  const isLuckyWheelWin = tx.type === 'LUCKY_WHEEL_WIN';
   const isCancelled = tx.status === 'CANCELLED';
   const { icon: IconComp, color } = getTransactionConfig(tx.type, isCancelled, theme);
 
@@ -74,13 +86,15 @@ const TransactionItem = React.memo(function TransactionItem({
               ? t('clientDetail.txAdjustment')
               : isEarned
                 ? t('clientDetail.txEarned')
-                : t('clientDetail.txRedeemed')}
+                : isLuckyWheelWin
+                  ? t('common.luckyWheelWin', { defaultValue: 'Roue de la chance' })
+                  : t('clientDetail.txRedeemed')}
         </Text>
         {isProgramChange && tx.note && (
           <View style={styles.txInlineRow}>
             <RefreshCw size={10} color={theme.primary} strokeWidth={2} />
             <Text style={[styles.txNote, { color: theme.primary, flex: 1 }]} numberOfLines={2}>
-              {tx.note}
+              {stripEmojis(tx.note)}
             </Text>
           </View>
         )}
@@ -88,14 +102,22 @@ const TransactionItem = React.memo(function TransactionItem({
           <View style={styles.txInlineRow}>
             <FileText size={10} color={theme.textMuted} strokeWidth={2} />
             <Text style={[styles.txNote, { color: theme.textMuted, flex: 1 }]} numberOfLines={2}>
-              {tx.note}
+              {stripEmojis(tx.note)}
             </Text>
           </View>
         ) : null}
-        {!isEarned && !isAdjust && !isProgramChange && tx.reward && (
+        {isLuckyWheelWin && tx.note && (
+          <View style={styles.txInlineRow}>
+            <Star size={10} color={theme.accent} strokeWidth={2} />
+            <Text style={[styles.txNote, { color: theme.accent, flex: 1 }]} numberOfLines={2}>
+              {stripEmojis(tx.note)}
+            </Text>
+          </View>
+        )}
+        {!isEarned && !isAdjust && !isProgramChange && !isLuckyWheelWin && tx.reward && (
           <View style={styles.txRewardRow}>
             <Gift size={10} color={theme.primary} strokeWidth={2} />
-            <Text style={[styles.txRewardName, { color: theme.primary, flex: 1 }]}>{tx.reward.titre}</Text>
+            <Text style={[styles.txRewardName, { color: theme.primary, flex: 1 }]}>{stripEmojis(tx.reward.titre)}</Text>
             {tx.type === 'REDEEM_REWARD' && !isCancelled && tx.giftStatus === 'FULFILLED' && (
               <View style={[styles.txGiftBadge, { backgroundColor: theme.accentBg }]}>
                 <Text style={[styles.txGiftBadgeText, { color: theme.accent }]}>{t('gift.fulfilled')}</Text>
@@ -107,7 +129,7 @@ const TransactionItem = React.memo(function TransactionItem({
         <Text style={[styles.txDate, { color: theme.textMuted }]}>{formatDateTime(tx.createdAt, locale)}</Text>
         {isCancelled && <Text style={[styles.txCancelLabel, { color: theme.danger }]}>{t('clientDetail.txCancelled')}</Text>}
       </View>
-      {!isProgramChange && (
+      {!isProgramChange && !isLuckyWheelWin && (
         <View style={styles.txRight}>
           {tx.amount > 0 && (
             <Text style={[styles.txAmount, { color: theme.textSecondary }, isCancelled && styles.cancelled]}>

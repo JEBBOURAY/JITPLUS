@@ -56,6 +56,21 @@ const safeImpact = (style: Haptics.ImpactFeedbackStyle) => {
   Haptics.impactAsync(style).catch(() => {});
 };
 
+// ── Module constants ─────────────────────────────────────
+/** Cooldown between two identical scans (ms) */
+const SCAN_COOLDOWN_MS = 5_000;
+/** Max phone length accepted by the search */
+const MAX_PHONE_LENGTH = 15;
+/** Allow-list of hostnames accepted when the QR encodes an http(s) URL.
+ * Any other host is rejected to block QR-phishing. Lowercase compare. */
+const QR_ALLOWED_HOSTS = new Set<string>([
+  'jitplus.com',
+  'www.jitplus.com',
+  'jitplus.app',
+  'yams.app',
+  'www.yams.app',
+]);
+
 // ── Animated Search Bar ───────────────────────────────────
 const FloatingSearchBar = React.memo(function FloatingSearchBar({
   value,
@@ -295,7 +310,6 @@ export default function ScanQRScreen() {
 
   // Debounce: prevent re-scanning the same barcode data within a cooldown
   const lastScannedRef = useRef<{ data: string; ts: number } | null>(null);
-  const SCAN_COOLDOWN_MS = 5000;
   const navTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Navigation mutex: prevents QR scan and phone search from navigating simultaneously
   const isNavigatingRef = useRef(false);
@@ -441,12 +455,22 @@ export default function ScanQRScreen() {
       let clientId: string | undefined;
       if (data.startsWith('jitplus://client/')) {
         clientId = data.replace('jitplus://client/', '').trim();
-      } else if (data.startsWith('http')) {
+      } else if (data.startsWith('http://') || data.startsWith('https://')) {
+        // Restrict http(s) QR payloads to an allow-list of trusted hosts to block QR-phishing.
         try {
           const url = new URL(data);
+          if (!QR_ALLOWED_HOSTS.has(url.hostname.toLowerCase())) {
+            safeNotification(Haptics.NotificationFeedbackType.Error);
+            Alert.alert(
+              t('scan.qrInvalidTitle'),
+              t('scan.invalidQR'),
+              [{ text: 'OK', onPress: () => set({ isScanning: true }) }],
+            );
+            return;
+          }
           clientId = (url.searchParams.get('clientId') || url.pathname.split('/').pop() || '').trim();
         } catch {
-          // invalid URL — fall through
+          // invalid URL — fall through to UUID validation (which will reject)
         }
       } else if (data.includes('clientId=')) {
         const match = data.match(/clientId=([^&]+)/);
@@ -479,11 +503,10 @@ export default function ScanQRScreen() {
         Alert.alert(t('scan.clientInvalidTitle'), msg, [{ text: 'OK', onPress: () => set({ isScanning: true }) }]);
       }
     },
-    [isScanning, router, navigateToTransaction],
+    [isScanning, router, navigateToTransaction, set, t],
   );
 
   // ── Phone search handler ──
-  const MAX_PHONE_LENGTH = 15;
   const handlePhoneSearch = useCallback(async () => {
     if (phoneInput.length < 6 || isSearching || isNavigatingRef.current) return;
 

@@ -38,6 +38,15 @@ export const DEFAULT_STAMPS_FOR_REWARD = 10;
 /** Default points rate (points per dirham) */
 export const DEFAULT_POINTS_RATE = 10;
 
+/** Maximum stamps credited in a single EARN_POINTS transaction (anti-fraud cap) */
+export const MAX_STAMPS_PER_TX = 20;
+
+/** Maximum points credited in a single EARN_POINTS transaction (anti-fraud cap) */
+export const MAX_POINTS_PER_TX = 100_000;
+
+/** QR v2 token TTL in seconds (short-lived, replayable only within this window) */
+export const QR_TOKEN_TTL_SECONDS = 60;
+
 /** Max stores per merchant (by plan) */
 export const FREE_MAX_STORES = 1;
 export const PREMIUM_MAX_STORES = 10;

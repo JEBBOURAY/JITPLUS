@@ -7,8 +7,10 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
+  I18nManager,
 } from 'react-native';
-import { Users, TrendingUp, Repeat, ArrowLeft, Eye, Gift, Shield, Dices, Trophy, ChevronDown, ChevronUp } from 'lucide-react-native';
+import * as Haptics from 'expo-haptics';
+import { Users, TrendingUp, Repeat, ArrowLeft, Eye, Gift, Shield, Dices, Trophy, ChevronDown, ChevronUp, AlertCircle } from 'lucide-react-native';
 import PremiumLockCard from '@/components/PremiumLockCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
@@ -32,23 +34,30 @@ interface TrendPoint {
 
 const LOCALE_MAP = { ar: 'ar-MA', en: 'en-US', fr: 'fr-FR' } as const;
 const getLocaleTag = (locale: string) => LOCALE_MAP[locale as keyof typeof LOCALE_MAP] ?? 'fr-FR';
+const HIT_SLOP = { top: 10, bottom: 10, left: 10, right: 10 };
+const TREND_BAR_MAX_HEIGHT = 90;
+const TREND_BAR_MIN_HEIGHT = 8;
+const hapticLight = () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}); };
 
 const StatCard = React.memo(function StatCard({
-  icon, label, value, color, theme, locale,
+  icon, label, value, color, theme, localeTag,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string | number;
   color: string;
   theme: ThemeColors;
-  locale: string;
+  localeTag: string;
 }) {
+  const displayValue = typeof value === 'number' ? value.toLocaleString(localeTag) : value;
   return (
     <View
       style={[
         styles.statCard,
         { borderLeftColor: color, backgroundColor: theme.bgCard, borderColor: theme.borderLight },
       ]}
+      accessible
+      accessibilityLabel={`${label}: ${displayValue}`}
     >
       <View style={[styles.statIconContainer, { backgroundColor: `${palette.charbon}12` }]}>
         {icon}
@@ -59,6 +68,7 @@ const StatCard = React.memo(function StatCard({
           numberOfLines={2}
           adjustsFontSizeToFit
           minimumFontScale={0.7}
+          maxFontSizeMultiplier={1.4}
         >
           {label}
         </Text>
@@ -67,8 +77,9 @@ const StatCard = React.memo(function StatCard({
           numberOfLines={1}
           adjustsFontSizeToFit
           minimumFontScale={0.5}
+          maxFontSizeMultiplier={1.4}
         >
-          {typeof value === 'number' ? value.toLocaleString(getLocaleTag(locale)) : value}
+          {displayValue}
         </Text>
       </View>
     </View>
@@ -83,11 +94,11 @@ const TrendChart = React.memo(function TrendChart({
   formatLabel: (bucket: string) => string;
   theme: ThemeColors;
 }) {
-  const maxCount = Math.max(...(data ?? []).map((item) => item.count), 1);
+  const maxCount = (data ?? []).reduce((acc, item) => (item.count > acc ? item.count : acc), 1);
   return (
     <View style={styles.trendChart}>
       {(data ?? []).map((item) => {
-        const height = Math.max(8, Math.round((item.count / maxCount) * 90));
+        const height = Math.max(TREND_BAR_MIN_HEIGHT, Math.round((item.count / maxCount) * TREND_BAR_MAX_HEIGHT));
         return (
           <View key={item.bucket} style={styles.trendBarGroup}>
             <View style={styles.trendBarValueWrap}>
@@ -106,6 +117,7 @@ const TrendChart = React.memo(function TrendChart({
               numberOfLines={1}
               adjustsFontSizeToFit
               minimumFontScale={0.7}
+              maxFontSizeMultiplier={1.3}
             >
               {formatLabel(item.bucket)}
             </Text>
@@ -224,6 +236,7 @@ export default function DashboardScreen() {
 
   const periodTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const debouncedSetPeriod = useCallback((p: TrendPeriod) => {
+    hapticLight();
     clearTimeout(periodTimerRef.current);
     periodTimerRef.current = setTimeout(() => setTrendPeriod(p), 300);
   }, []);
@@ -233,7 +246,7 @@ export default function DashboardScreen() {
     return () => clearTimeout(periodTimerRef.current);
   }, []);
 
-  // -- 1. KPIs — always loaded (lightweight) --
+  // -- 1. KPIs ï¿½ always loaded (lightweight) --
   const {
     data: kpis,
     isLoading: loadingKpis,
@@ -241,19 +254,20 @@ export default function DashboardScreen() {
     isError: kpiError,
   } = useDashboardKpis();
 
-  // -- 2. Trends — loaded only when section is expanded --
+  // -- 2. Trends ï¿½ loaded only when section is expanded --
   const {
     data: trendResponse,
     isLoading: loadingTrends,
   } = useDashboardTrends(trendPeriod, showTrends);
 
-  // -- 3. Distribution — loaded only when section is expanded --
+  // -- 3. Distribution ï¿½ loaded only when section is expanded --
   const {
     data: distribution,
     isLoading: loadingDistribution,
   } = useDashboardDistribution(showDistribution);
 
   const onRefresh = useGuardedCallback(async () => {
+    hapticLight();
     const promises = [
       queryClient.invalidateQueries({ queryKey: ['dashboard-kpis'] }),
     ];
@@ -263,6 +277,18 @@ export default function DashboardScreen() {
   }, [trendPeriod, showTrends, showDistribution, queryClient]);
 
   const unitLabel = kpis?.loyaltyType === 'STAMPS' ? t('common.stamps') : t('common.points');
+  const localeTag = useMemo(() => getLocaleTag(locale), [locale]);
+
+  const kpiCards = useMemo(() => [
+    { key: 'clients', icon: Users, label: t('dashboard.volumeClients'), value: kpis?.totalClients ?? 0 },
+    { key: 'points', icon: TrendingUp, label: t('dashboard.loyaltyLabel', { unit: unitLabel }), value: kpis?.totalPoints ?? 0 },
+    { key: 'consumed', icon: TrendingUp, label: t('dashboard.consumedLabel', { unit: unitLabel }), value: kpis?.totalRedeemedPoints ?? 0 },
+    { key: 'transactions', icon: Repeat, label: t('dashboard.transactions'), value: kpis?.totalTransactions ?? 0 },
+    { key: 'views', icon: Eye, label: t('dashboard.profileViews'), value: kpis?.profileViews ?? 0 },
+    { key: 'gifts', icon: Gift, label: t('dashboard.trendGifts'), value: kpis?.totalRewardsGiven ?? 0 },
+    { key: 'wheelPlays', icon: Dices, label: t('dashboard.luckyWheelPlays'), value: kpis?.luckyWheelPlays ?? 0 },
+    { key: 'wheelWins', icon: Trophy, label: t('dashboard.luckyWheelWins'), value: kpis?.luckyWheelWins ?? 0 },
+  ], [kpis, t, unitLabel]);
 
   const formatTrendLabel = useCallback((bucket: string) => {
     const date = new Date(bucket);
@@ -302,10 +328,16 @@ export default function DashboardScreen() {
         <View style={styles.ownerOnlyIcon}>
           <Shield size={ms(36)} color={palette.charbon} strokeWidth={1.5} />
         </View>
-        <Text style={[styles.loadingText, styles.ownerOnlyTitle, { color: theme.text }]}>{t('common.ownerOnly')}</Text>
-        <Text style={[styles.loadingText, { color: theme.textMuted }]}>{t('common.ownerOnlyMsg')}</Text>
-        <TouchableOpacity onPress={() => router.back()} style={[styles.ownerOnlyBackBtn, { backgroundColor: theme.primary }]}>
-          <Text style={styles.ownerOnlyBackText}>{t('common.back')}</Text>
+        <Text style={[styles.loadingText, styles.ownerOnlyTitle, { color: theme.text }]} maxFontSizeMultiplier={1.4}>{t('common.ownerOnly')}</Text>
+        <Text style={[styles.loadingText, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>{t('common.ownerOnlyMsg')}</Text>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={[styles.ownerOnlyBackBtn, { backgroundColor: theme.primary }]}
+          hitSlop={HIT_SLOP}
+          accessibilityRole="button"
+          accessibilityLabel={t('common.back')}
+        >
+          <Text style={styles.ownerOnlyBackText} maxFontSizeMultiplier={1.3}>{t('common.back')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -315,17 +347,26 @@ export default function DashboardScreen() {
     return (
       <View style={[styles.loadingContainer, { backgroundColor: theme.bg }]}>
         <ActivityIndicator size="large" color={theme.primary} />
-        <Text style={[styles.loadingText, { color: theme.textMuted }]}>{t('common.loading')}</Text>
+        <Text style={[styles.loadingText, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>{t('common.loading')}</Text>
       </View>
     );
   }
 
   if (kpiError) {
     return (
-      <View style={[styles.loadingContainer, { backgroundColor: theme.bg }]}>
-        <Text style={[styles.loadingText, { color: theme.textMuted }]}>{t('common.error')}</Text>
-        <TouchableOpacity onPress={() => queryClient.invalidateQueries({ queryKey: ['dashboard-kpis'] })} style={[styles.ownerOnlyBackBtn, { backgroundColor: theme.primary, marginTop: 12 }]}>
-          <Text style={styles.ownerOnlyBackText}>{t('common.retry')}</Text>
+      <View style={[styles.loadingContainer, { backgroundColor: theme.bg, paddingHorizontal: 24 }]}>
+        <AlertCircle size={ms(40)} color={theme.textMuted} strokeWidth={1.5} />
+        <Text style={[styles.errorTitle, { color: theme.text }]} maxFontSizeMultiplier={1.4}>
+          {t('common.error')}
+        </Text>
+        <TouchableOpacity
+          onPress={() => { hapticLight(); queryClient.invalidateQueries({ queryKey: ['dashboard-kpis'] }); }}
+          style={[styles.ownerOnlyBackBtn, { backgroundColor: theme.primary, marginTop: 16 }]}
+          hitSlop={HIT_SLOP}
+          accessibilityRole="button"
+          accessibilityLabel={t('common.retry')}
+        >
+          <Text style={styles.ownerOnlyBackText} maxFontSizeMultiplier={1.3}>{t('common.retry')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -333,12 +374,28 @@ export default function DashboardScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
-      {/* -- Simple header — matches activity style -- */}
+      {/* -- Simple header -- */}
       <View style={[styles.headerBar, { paddingTop: insets.top + 12 }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <ArrowLeft size={22} color={theme.text} />
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.backBtn}
+          hitSlop={HIT_SLOP}
+          accessibilityRole="button"
+          accessibilityLabel={t('common.back')}
+        >
+          <ArrowLeft
+            size={22}
+            color={theme.text}
+            style={I18nManager.isRTL ? { transform: [{ scaleX: -1 }] } : undefined}
+          />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.text }]}>{t('dashboard.title')}</Text>
+        <Text
+          style={[styles.headerTitle, { color: theme.text }]}
+          accessibilityRole="header"
+          maxFontSizeMultiplier={1.4}
+        >
+          {t('dashboard.title')}
+        </Text>
       </View>
 
       <ScrollView
@@ -347,93 +404,51 @@ export default function DashboardScreen() {
       >
         {/* -- Guide text -- */}
         <View style={[styles.guideContainer, { backgroundColor: theme.primaryBg || (theme.primary + '10'), borderLeftColor: theme.primary }]}>
-          <Text style={[styles.guideText, { color: theme.textSecondary }]}>
+          <Text style={[styles.guideText, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.4}>
             {t('dashboard.guideText')}
           </Text>
         </View>
 
         {/* --- Section 1: KPIs (always loaded) --- */}
-        <Text style={[styles.sectionTitle, { color: theme.text }]}>{t('dashboard.kpis')}</Text>
-        <View style={styles.statsRow}>
-          <StatCard
-            icon={<Users size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
-            label={t('dashboard.volumeClients')}
-            value={kpis?.totalClients || 0}
-            color={theme.primary}
-            theme={theme}
-            locale={locale}
-          />
-          <StatCard
-            icon={<TrendingUp size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
-            label={t('dashboard.loyaltyLabel', { unit: unitLabel })}
-            value={kpis?.totalPoints || 0}
-            color={theme.primary}
-            theme={theme}
-            locale={locale}
-          />
-        </View>
-        <View style={[styles.statsRow, styles.statsRowGap]}>
-          <StatCard
-            icon={<TrendingUp size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
-            label={t('dashboard.consumedLabel', { unit: unitLabel })}
-            value={kpis?.totalRedeemedPoints || 0}
-            color={theme.primary}
-            theme={theme}
-            locale={locale}
-          />
-          <StatCard
-            icon={<Repeat size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
-            label={t('dashboard.transactions')}
-            value={kpis?.totalTransactions || 0}
-            color={theme.primary}
-            theme={theme}
-            locale={locale}
-          />
-        </View>
-        <View style={[styles.statsRow, styles.statsRowGap]}>
-          <StatCard
-            icon={<Eye size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
-            label={t('dashboard.profileViews')}
-            value={kpis?.profileViews || 0}
-            color={theme.primary}
-            theme={theme}
-            locale={locale}
-          />
-          <StatCard
-            icon={<Gift size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
-            label={t('dashboard.trendGifts')}
-            value={kpis?.totalRewardsGiven || 0}
-            color={theme.primary}
-            theme={theme}
-            locale={locale}
-          />
-        </View>
-        <View style={[styles.statsRow, styles.statsRowGap]}>
-          <StatCard
-            icon={<Dices size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
-            label={t('dashboard.luckyWheelPlays')}
-            value={kpis?.luckyWheelPlays || 0}
-            color={theme.primary}
-            theme={theme}
-            locale={locale}
-          />
-          <StatCard
-            icon={<Trophy size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
-            label={t('dashboard.luckyWheelWins')}
-            value={kpis?.luckyWheelWins || 0}
-            color={theme.primary}
-            theme={theme}
-            locale={locale}
-          />
-        </View>
+        <Text style={[styles.sectionTitle, { color: theme.text }]} accessibilityRole="header" maxFontSizeMultiplier={1.4}>
+          {t('dashboard.kpis')}
+        </Text>
+        {Array.from({ length: Math.ceil(kpiCards.length / 2) }).map((_, rowIdx) => {
+          const pair = kpiCards.slice(rowIdx * 2, rowIdx * 2 + 2);
+          return (
+            <View
+              key={`kpi-row-${rowIdx}`}
+              style={[styles.statsRow, rowIdx > 0 && styles.statsRowGap]}
+            >
+              {pair.map((card) => {
+                const Icon = card.icon;
+                return (
+                  <StatCard
+                    key={card.key}
+                    icon={<Icon size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
+                    label={card.label}
+                    value={card.value}
+                    color={theme.primary}
+                    theme={theme}
+                    localeTag={localeTag}
+                  />
+                );
+              })}
+            </View>
+          );
+        })}
 
         {/* --- Section 2: Evolution (on-demand) --- */}
         <TouchableOpacity
           style={styles.sectionHeader}
-          onPress={() => setShowTrends((v) => !v)}
+          onPress={() => { hapticLight(); setShowTrends((v) => !v); }}
           activeOpacity={0.7}
+          hitSlop={HIT_SLOP}
+          accessibilityRole="button"
+          accessibilityLabel={t('dashboard.evolution')}
+          accessibilityState={{ expanded: showTrends }}
         >
-          <Text style={[styles.sectionTitle, { color: theme.text, marginBottom: 0 }]}>{t('dashboard.evolution')}</Text>
+          <Text style={[styles.sectionTitle, { color: theme.text, marginBottom: 0 }]} maxFontSizeMultiplier={1.4}>{t('dashboard.evolution')}</Text>
           {showTrends ? <ChevronUp size={20} color={theme.textSecondary} /> : <ChevronDown size={20} color={theme.textSecondary} />}
         </TouchableOpacity>
 
@@ -461,12 +476,17 @@ export default function DashboardScreen() {
                       ]}
                       onPress={() => debouncedSetPeriod(item.id)}
                       activeOpacity={0.8}
+                      hitSlop={HIT_SLOP}
+                      accessibilityRole="button"
+                      accessibilityLabel={item.label}
+                      accessibilityState={{ selected: isActive }}
                     >
                       <Text
                         style={[
                           styles.trendTabText,
                           { color: isActive ? '#fff' : theme.textSecondary },
                         ]}
+                        maxFontSizeMultiplier={1.3}
                       >
                         {item.label}
                       </Text>
@@ -482,10 +502,14 @@ export default function DashboardScreen() {
         {/* --- Section 3: Gift Distribution (on-demand) --- */}
         <TouchableOpacity
           style={styles.sectionHeader}
-          onPress={() => setShowDistribution((v) => !v)}
+          onPress={() => { hapticLight(); setShowDistribution((v) => !v); }}
           activeOpacity={0.7}
+          hitSlop={HIT_SLOP}
+          accessibilityRole="button"
+          accessibilityLabel={t('dashboard.giftDistribution')}
+          accessibilityState={{ expanded: showDistribution }}
         >
-          <Text style={[styles.sectionTitle, { color: theme.text, marginBottom: 0 }]}>{t('dashboard.giftDistribution')}</Text>
+          <Text style={[styles.sectionTitle, { color: theme.text, marginBottom: 0 }]} maxFontSizeMultiplier={1.4}>{t('dashboard.giftDistribution')}</Text>
           {showDistribution ? <ChevronUp size={20} color={theme.textSecondary} /> : <ChevronDown size={20} color={theme.textSecondary} />}
         </TouchableOpacity>
 
@@ -541,8 +565,15 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Lexend_400Regular',
   },
+  errorTitle: {
+    marginTop: 12,
+    fontSize: 18,
+    fontWeight: '700',
+    fontFamily: 'Lexend_700Bold',
+    textAlign: 'center',
+  },
 
-  // Header — simple bar (activity style)
+  // Header ï¿½ simple bar (activity style)
   headerBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -732,15 +763,8 @@ const styles = StyleSheet.create({
     padding: 14,
     borderWidth: 1,
   },
-  distributionInfo: { marginBottom: 10 },
   distributionTitle: { fontSize: 14, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
   distributionCount: { fontSize: 12, marginTop: 4, fontFamily: 'Lexend_400Regular' },
-  distributionBarTrack: {
-    height: 8,
-    borderRadius: 6,
-    overflow: 'hidden',
-  },
-  distributionBarFill: { height: 8, borderRadius: 6 },
   distributionEmpty: {
     paddingVertical: 12,
   },

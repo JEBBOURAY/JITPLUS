@@ -49,7 +49,7 @@ export class GeocodeService {
     }
   }
 
-  async autocomplete(input: string, ville?: string, lat?: number, lng?: number): Promise<PlacePrediction[]> {
+  async autocomplete(input: string, ville?: string, lat?: number, lng?: number, sessionToken?: string): Promise<PlacePrediction[]> {
     if (!this.apiKey || input.trim().length < 2) return [];
 
     const cacheKey = `geo:ac:${input}:${ville || ''}:${lat ?? ''}:${lng ?? ''}`;
@@ -58,6 +58,10 @@ export class GeocodeService {
 
     const query = ville ? `${input}, ${ville}` : input;
     let url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(query)}&components=country:ma&language=fr&key=${this.apiKey}`;
+    
+    if (sessionToken) {
+      url += `&sessiontoken=${encodeURIComponent(sessionToken)}`;
+    }
 
     // Location bias: prioritize results near user (50km radius)
     if (lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng)) {
@@ -82,14 +86,17 @@ export class GeocodeService {
     return [];
   }
 
-  async placeDetails(placeId: string): Promise<PlaceDetailsResult | null> {
+  async placeDetails(placeId: string, sessionToken?: string): Promise<PlaceDetailsResult | null> {
     if (!this.apiKey || !placeId) return null;
 
     const cacheKey = `geo:pd:${placeId}`;
     const cached = await this.cache.get<PlaceDetailsResult>(cacheKey);
     if (cached) return cached;
 
-    const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(placeId)}&fields=geometry,formatted_address,address_components&language=fr&key=${this.apiKey}`;
+    let url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(placeId)}&fields=geometry,formatted_address,address_components&language=fr&key=${this.apiKey}`;
+    if (sessionToken) {
+      url += `&sessiontoken=${encodeURIComponent(sessionToken)}`;
+    }
 
     try {
       const res = await fetch(url);

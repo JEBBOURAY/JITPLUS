@@ -84,11 +84,12 @@ export function useAppleAuth({ onCancel }: UseAppleAuthOptions = {}) {
         }
         onCancelRef.current?.();
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       if (!mountedRef.current) return;
       setIsLoading(false);
 
-      if (e.code === 'ERR_REQUEST_CANCELED') {
+      const code = (e as { code?: string } | null)?.code;
+      if (code === 'ERR_REQUEST_CANCELED') {
         onCancelRef.current?.();
         return;
       }

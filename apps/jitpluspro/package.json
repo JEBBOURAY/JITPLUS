@@ -1,7 +1,7 @@
 {
   "name": "jitpluspro",
   "main": "expo-router/entry",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "expo": {
     "install": {
       "exclude": [
@@ -41,6 +41,7 @@
     "expo": "~54.0.33",
     "expo-apple-authentication": "^55.0.9",
     "expo-blur": "~15.0.8",
+    "expo-build-properties": "^55.0.13",
     "expo-camera": "~17.0.10",
     "expo-clipboard": "^55.0.9",
     "expo-constants": "~18.0.13",

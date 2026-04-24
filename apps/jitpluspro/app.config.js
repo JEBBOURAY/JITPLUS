@@ -30,7 +30,7 @@ module.exports = ({ config }) => {
     name: 'JitPlus Pro',
     slug: 'jitpluspro',
     description: 'Loyalty program management for local shops — scan QR codes, track customer visits, and set up stamp-based rewards.',
-    version: '1.4.0',
+    version: '1.4.1',
     orientation: 'portrait',
     icon: './assets/images/icon-white.png',
     scheme: 'jitpluspro',
@@ -52,7 +52,7 @@ module.exports = ({ config }) => {
       supportsTablet: false,
       bundleIdentifier: 'com.jitplus.pro',
       // Initial build number — EAS autoIncrement bumps this on every production build
-      buildNumber: '4',
+      buildNumber: '5',
       // Portrait-only app: disable iPad Split View / Slide Over to avoid orientation-support review issues
       requiresFullScreen: true,
       // Declares standard HTTPS encryption — waives export compliance questionnaire
@@ -76,8 +76,11 @@ module.exports = ({ config }) => {
         // NSPhotoLibraryAddUsageDescription is intentionally omitted.
         NSPhotoLibraryUsageDescription:
           "JitPlus Pro a besoin d'accéder à vos photos pour choisir le logo et la couverture de votre commerce.",
-        NSUserTrackingUsageDescription:
-          'JitPlus Pro utilise Sentry pour collecter des donnees de diagnostic 100% anonymes afin d\'ameliorer la stabilite.',
+        // NSUserTrackingUsageDescription intentionally NOT declared:
+        // the app does not call ATTrackingManager.requestTrackingAuthorization nor use IDFA.
+        // Sentry crash diagnostics are anonymous (no PII, attachScreenshot/ViewHierarchy disabled)
+        // and therefore do not qualify as “tracking” under Apple's definition. Declaring the key
+        // without actually prompting ATT is flagged during App Review.
         // Google Sign-In redirect — reversed iOS client ID
         ...(IOS_GOOGLE_CLIENT_ID
           ? { CFBundleURLTypes: [{ CFBundleURLSchemes: [IOS_GOOGLE_CLIENT_ID] }] }
@@ -85,7 +88,7 @@ module.exports = ({ config }) => {
       },
     },
     android: {
-      versionCode: 4,
+      versionCode: 5,
       adaptiveIcon: {
         foregroundImage: './assets/images/adaptive-icon-white.png',
         backgroundColor: '#FFFFFF',
@@ -132,6 +135,22 @@ module.exports = ({ config }) => {
       'expo-secure-store',
       '@react-native-google-signin/google-signin',
       'expo-apple-authentication',
+      // Explicit iOS / Android SDK targets — avoids surprises on Expo SDK bumps
+      // and satisfies Google Play's Aug 2025 requirement of targetSdkVersion 35.
+      [
+        'expo-build-properties',
+        {
+          ios: {
+            deploymentTarget: '15.1',
+          },
+          android: {
+            compileSdkVersion: 35,
+            targetSdkVersion: 35,
+            minSdkVersion: 24,
+            buildToolsVersion: '35.0.0',
+          },
+        },
+      ],
       [
         'expo-splash-screen',
         {
@@ -174,6 +193,8 @@ module.exports = ({ config }) => {
       // './plugins/withCertificatePinning',
       // Force Google Maps region to Morocco — ensures correct border rendering (Sahara)
       './plugins/withMoroccoRegion',
+      // Enable RTL support on Android — required for Arabic/Darija layout
+      './plugins/withSupportsRTL',
       [
         'expo-notifications',
         {

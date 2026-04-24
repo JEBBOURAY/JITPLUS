@@ -58,6 +58,8 @@ interface TxState {
   screenMode: 'earn' | 'redeem';
   stampAmount: string;
   stamps: number;
+  /** Authoritative amount credited by the backend (after accumulationLimit cap). */
+  actualCredited: number | null;
 }
 
 const initialTxState: TxState = {
@@ -70,6 +72,7 @@ const initialTxState: TxState = {
   screenMode: 'earn',
   stampAmount: '',
   stamps: 0,
+  actualCredited: null,
 };
 
 type TxAction =
@@ -94,7 +97,7 @@ export default function TransactionAmountScreen() {
   const insets = useSafeAreaInsets();
 
   const [state, dispatch] = useReducer(txReducer, initialTxState);
-  const { amount, loading, points, showSuccess, transactionType, selectedRewardId, screenMode, stampAmount, stamps } = state;
+  const { amount, loading, points, showSuccess, transactionType, selectedRewardId, screenMode, stampAmount, stamps, actualCredited } = state;
   const set = useCallback((payload: Partial<TxState>) => dispatch({ type: 'SET', payload }), []);
   const setSelectedRewardId = useCallback((id: string | null) => set({ selectedRewardId: id }), [set]);
   const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -238,14 +241,18 @@ export default function TransactionAmountScreen() {
           onPress: async () => {
             try {
               set({ loading: true });
-              await recordTransactionMutation.mutateAsync({
+              const tx = await recordTransactionMutation.mutateAsync({
                 clientId,
                 type: 'REDEEM_REWARD',
                 amount: 0,
                 points: selectedReward.cout,
                 rewardId: selectedRewardId,
               });
-              set({ transactionType: 'REDEEM_REWARD', showSuccess: true });
+              set({
+                transactionType: 'REDEEM_REWARD',
+                showSuccess: true,
+                actualCredited: typeof tx?.points === 'number' ? tx.points : null,
+              });
               successTimerRef.current = setTimeout(() => {
                 successTimerRef.current = null;
                 set({ showSuccess: false });
@@ -394,12 +401,13 @@ export default function TransactionAmountScreen() {
       set({ loading: true });
 
       // 1. Enregistrer l'acquisition des tampons
-      await recordTransactionMutation.mutateAsync({
+      const earnTx = await recordTransactionMutation.mutateAsync({
         clientId,
         type: 'EARN_POINTS',
         amount,
         points: earnedStamps,
       });
+      const actualEarned = typeof earnTx?.points === 'number' ? earnTx.points : earnedStamps;
 
       // 2. Si le seuil est atteint, créer automatiquement la transaction de remise du cadeau
       if (autoRedeem && selectedRewardId && selectedReward) {
@@ -410,9 +418,9 @@ export default function TransactionAmountScreen() {
           points: selectedReward.cout,
           rewardId: selectedRewardId,
         });
-        set({ transactionType: 'REDEEM_REWARD' });
+        set({ transactionType: 'REDEEM_REWARD', actualCredited: selectedReward.cout });
       } else {
-        set({ transactionType: 'EARN_POINTS' });
+        set({ transactionType: 'EARN_POINTS', actualCredited: actualEarned });
       }
 
       set({ showSuccess: true });
@@ -792,8 +800,8 @@ export default function TransactionAmountScreen() {
         t={t}
         transactionType={transactionType}
         isStampsMode={isStampsMode}
-        stamps={stamps}
-        points={points}
+        stamps={actualCredited ?? stamps}
+        points={actualCredited ?? points}
       />
 
       {/* ── Birthday Popup ── */}

@@ -54,6 +54,9 @@ model Merchant {
   onboardingCompleted Boolean   @default(false) @map("onboarding_completed")
   failedLoginAttempts Int       @default(0) @map("failed_login_attempts")
   lockedUntil         DateTime? @map("locked_until")
+  // ── Préférences notifications (crons marketing / opt-out RGPD) ──
+  notifPush           Boolean   @default(true) @map("notif_push")
+  notifEmail          Boolean   @default(true) @map("notif_email")
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
   deletedAt           DateTime? @map("deleted_at")
@@ -96,6 +99,12 @@ model Merchant {
 
   // Lucky Wheel campaigns
   luckyWheelCampaigns LuckyWheelCampaign[]
+
+  // Client-side blocks (App Store 1.2 compliance)
+  blockedByClients ClientMerchantBlock[]
+
+  // Campaign dedup tracker (marketing push/email crons)
+  campaignSentTrackers CampaignSentTracker[] @relation("MerchantCampaignSentTrackers")
 
   @@index([isActive])
   @@index([deletedAt])
@@ -312,6 +321,7 @@ model Client {
   payoutRequests       PayoutRequest[]
   luckyWheelTickets    LuckyWheelTicket[]
   campaignSentTrackers CampaignSentTracker[]
+  merchantBlocks       ClientMerchantBlock[]
 
   @@index([nom])
   @@index([email])
@@ -339,6 +349,20 @@ model Otp {
 
   @@index([expiresAt, createdAt(sort: Desc)])
   @@map("otps")
+}
+
+/// Single-use nonces for v2 QR tokens. A successful scan consumes the nonce so the
+/// same QR cannot be replayed. Expired rows are pruned opportunistically on insert
+/// and (optionally) by a periodic task.
+model QrNonce {
+  nonce     String   @id @db.VarChar(64)
+  clientId  String   @map("client_id")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([expiresAt])
+  @@index([clientId])
+  @@map("qr_nonces")
 }
 
 model LoyaltyCard {
@@ -379,6 +403,9 @@ model Transaction {
   status          TransactionStatus @default(ACTIVE)
   giftStatus      GiftStatus?       @map("gift_status")
   fulfilledAt     DateTime?         @map("fulfilled_at")
+  /// Optional client-supplied key (UUIDv4) that dedupes safe retries of POST /merchant/transactions.
+  /// Unique per merchant via a partial index (allows NULL for rows created without a key).
+  idempotencyKey  String?           @map("idempotency_key") @db.VarChar(64)
   createdAt       DateTime          @default(now()) @map("created_at")
 
   client            Client             @relation(fields: [clientId], references: [id], onDelete: Restrict)
@@ -399,6 +426,8 @@ model Transaction {
   @@index([merchantId, giftStatus, createdAt])
   // Dashboard + transaction history: merchant sorted by date
   @@index([merchantId, createdAt(sort: Desc)])
+  // Idempotency lookup — partial unique index added via raw SQL (see migration).
+  @@index([merchantId, idempotencyKey])
   @@map("transactions")
 }
 
@@ -524,19 +553,26 @@ model ClientNotificationStatus {
   @@map("client_notification_statuses")
 }
 
-/// Tracks emails/campaigns already sent to clients to prevent duplicates.
+/// Tracks emails/campaigns already sent to clients OR merchants to prevent duplicates.
+/// Exactly one of (clientId, merchantId) must be set — enforced in app layer.
 model CampaignSentTracker {
   id         String   @id @default(uuid())
-  clientId   String   @map("client_id")
+  clientId   String?  @map("client_id")
+  merchantId String?  @map("merchant_id")
   campaignId String   @map("campaign_id") // ID of the specific email series/day
   channel    String   @default("EMAIL") // EMAIL, WHATSAPP, PUSH
   sentAt     DateTime @default(now()) @map("sent_at")
 
-  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  client   Client?   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  merchant Merchant? @relation("MerchantCampaignSentTrackers", fields: [merchantId], references: [id], onDelete: Cascade)
 
   @@unique([clientId, campaignId, channel])
+  @@unique([merchantId, campaignId, channel])
   @@index([clientId])
+  @@index([merchantId])
   @@index([campaignId])
+  // Retention cleanup: purge old rows
+  @@index([sentAt])
   @@map("campaign_sent_trackers")
 }
 
@@ -764,4 +800,23 @@ model LuckyWheelDraw {
   @@index([fulfilment])
   @@index([result, createdAt(sort: Desc)])
   @@map("lucky_wheel_draws")
+}
+
+/// Client-initiated block of a merchant. App Store Guideline 1.2 requires apps
+/// with user-generated content to let end-users block abusive users. A blocked
+/// merchant is hidden from discovery (list + detail) and cannot appear in
+/// lucky-wheel / notifications for this client.
+model ClientMerchantBlock {
+  id         String   @id @default(uuid())
+  clientId   String   @map("client_id")
+  merchantId String   @map("merchant_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  client   Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, merchantId])
+  @@index([clientId])
+  @@index([merchantId])
+  @@map("client_merchant_blocks")
 }

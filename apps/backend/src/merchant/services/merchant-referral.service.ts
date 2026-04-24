@@ -60,7 +60,6 @@ export class MerchantReferralService {
             referralBonusCredited: true,
           },
           orderBy: { createdAt: 'desc' },
-          take: 50,
         },
       },
     });

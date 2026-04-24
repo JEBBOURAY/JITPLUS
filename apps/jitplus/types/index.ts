@@ -155,6 +155,8 @@ export interface NotificationsResponse {
 
 export interface QrTokenResponse {
   qr_token: string;
+  /** v2 only: unix seconds. Absent for legacy v1 permanent tokens. */
+  expiresAt?: number;
 }
 
 export interface ClientReferral {

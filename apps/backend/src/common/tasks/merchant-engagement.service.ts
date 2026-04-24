@@ -3,10 +3,18 @@ import { Cron } from '@nestjs/schedule';
 import {
   MERCHANT_REPOSITORY,
   TRANSACTION_REPOSITORY,
+  CAMPAIGN_SENT_TRACKER_REPOSITORY,
   type IMerchantRepository,
   type ITransactionRepository,
+  type ICampaignSentTrackerRepository,
 } from '../repositories';
 import { IPushProvider, PUSH_PROVIDER } from '../interfaces';
+import {
+  isCronEnabled,
+  dayTag,
+  merchantAlreadySent,
+  merchantMarkSent,
+} from './cron-utils';
 
 // ── Localized push messages ──
 const MESSAGES = {
@@ -20,7 +28,7 @@ const MESSAGES = {
       body: 'Scan your first client and start building loyalty. It\'s simple, fast, and your clients love it!',
     },
     ar: {
-      title: '🚀 لونصي برنامج الولاء ديالك!',
+      title: '🚀 بدا برنامج الولاء ديالك!',
       body: 'سكاني أول كليان ديالك وبدا فيداليزي. ساهل، سريع والكليان كيعجبهم!',
     },
   },
@@ -35,7 +43,7 @@ const MESSAGES = {
     },
     ar: {
       title: '📊 الكليان ديالك كيتسناوك!',
-      body: 'فاتو كثر من 5 أيام بلا سكان. كمل الإيقاع باش تفيداليزي الكليان وتزيد المبيعات!',
+      body: 'فاتو كثر من 5 أيام بلا سكان. كمل الإيقاع باش تفيّد الكليان وتزيد المبيعات!',
     },
   },
 } as const;
@@ -73,21 +81,27 @@ export class MerchantEngagementService {
   constructor(
     @Inject(MERCHANT_REPOSITORY) private readonly merchantRepo: IMerchantRepository,
     @Inject(TRANSACTION_REPOSITORY) private readonly txRepo: ITransactionRepository,
+    @Inject(CAMPAIGN_SENT_TRACKER_REPOSITORY) private readonly campaignTrackerRepo: ICampaignSentTrackerRepository,
     @Inject(PUSH_PROVIDER) private readonly pushProvider: IPushProvider,
   ) {}
 
-  @Cron('0 11 * * *') // Every day at 11:00 AM UTC
+  // 08:00 UTC = 09:00 Maroc (début de matinée, hors heures de prière).
+  // Évite 11:00 UTC (= midi Maroc = heure de déjeuner + prière Dohr proche).
+  @Cron('0 8 * * *')
   async sendEngagementReminders(): Promise<void> {
+    if (!isCronEnabled(this.logger, 'MerchantEngagement.sendEngagementReminders')) return;
     this.logger.log('Starting merchant engagement reminders');
 
     try {
-      // Fetch all active merchants who completed onboarding and have a push token
+      // Fetch all active merchants who completed onboarding, opted-in to push,
+      // and have a push token registered.
       const merchants = await this.merchantRepo.findMany({
         where: {
           isActive: true,
           deletedAt: null,
           pushToken: { not: null },
           onboardingCompleted: true,
+          notifPush: true,
         },
         select: {
           id: true,
@@ -103,50 +117,60 @@ export class MerchantEngagementService {
 
       const fiveDaysAgo = new Date();
       fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+      const today = dayTag();
+
+      // ── N+1 fix: single aggregated query for last-scan per merchant ──
+      // One groupBy replaces one findFirst per merchant (was N queries).
+      const merchantIds = merchants.map((m: { id: string }) => m.id);
+      const lastScans = await this.txRepo.groupBy({
+        by: ['merchantId'],
+        where: {
+          merchantId: { in: merchantIds },
+          type: 'EARN_POINTS',
+          status: 'ACTIVE',
+        },
+        _max: { createdAt: true },
+      });
+      const lastScanMap = new Map<string, Date | null>(
+        lastScans.map((r: { merchantId: string; _max: { createdAt: Date | null } }) => [r.merchantId, r._max.createdAt]),
+      );
 
       let neverScannedCount = 0;
       let inactiveCount = 0;
+      let skippedDup = 0;
       const staleTokenIds: string[] = [];
 
       for (const merchant of merchants) {
         if (!merchant.pushToken) continue;
 
-        // Find the most recent EARN_POINTS transaction for this merchant
-        const lastScan = await this.txRepo.findFirst({
-          where: {
-            merchantId: merchant.id,
-            type: 'EARN_POINTS',
-            status: 'ACTIVE',
-          },
-          orderBy: { createdAt: 'desc' },
-          select: { createdAt: true },
-        });
+        const lastScanAt = lastScanMap.get(merchant.id) ?? null;
+        let segment: 'neverScanned' | 'inactive' | null = null;
+        if (!lastScanAt) segment = 'neverScanned';
+        else if (lastScanAt < fiveDaysAgo) segment = 'inactive';
+        if (!segment) continue;
 
-        let result: { invalidToken: boolean } = { invalidToken: false };
-
-        if (!lastScan) {
-          // ── Segment 1: never scanned any client ──
-          const msg = getMsg('neverScanned', merchant.language);
-          result = await this.pushProvider.sendToMerchant(
-            merchant.pushToken,
-            msg.title,
-            msg.body,
-            { action: 'open_scan' },
-          );
-          neverScannedCount++;
-        } else if (lastScan.createdAt < fiveDaysAgo) {
-          // ── Segment 2: inactive for 5+ days ──
-          const msg = getMsg('inactive', merchant.language);
-          result = await this.pushProvider.sendToMerchant(
-            merchant.pushToken,
-            msg.title,
-            msg.body,
-            { action: 'open_scan' },
-          );
-          inactiveCount++;
+        const campaignId = `merchant_engagement_${segment}_${today}`;
+        if (await merchantAlreadySent(this.campaignTrackerRepo, merchant.id, campaignId, 'PUSH')) {
+          skippedDup++;
+          continue;
         }
 
-        if (result.invalidToken) staleTokenIds.push(merchant.id);
+        const msg = getMsg(segment, merchant.language);
+        const result = await this.pushProvider.sendToMerchant(
+          merchant.pushToken,
+          msg.title,
+          msg.body,
+          { action: 'open_scan' },
+        );
+
+        if (result.invalidToken) {
+          staleTokenIds.push(merchant.id);
+          continue;
+        }
+
+        await merchantMarkSent(this.campaignTrackerRepo, merchant.id, campaignId, 'PUSH');
+        if (segment === 'neverScanned') neverScannedCount++;
+        else inactiveCount++;
       }
 
       // Clean stale push tokens
@@ -159,7 +183,7 @@ export class MerchantEngagementService {
       }
 
       this.logger.log(
-        `Engagement reminders sent: ${neverScannedCount} never-scanned, ${inactiveCount} inactive 5d+ (${merchants.length} merchants checked)`,
+        `Engagement reminders: ${neverScannedCount} never-scanned, ${inactiveCount} inactive 5d+, ${skippedDup} dup-skipped (${merchants.length} eligible)`,
       );
     } catch (error) {
       this.logger.error('Failed to send engagement reminders', error);

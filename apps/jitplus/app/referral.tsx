@@ -29,6 +29,14 @@ import {
 } from '@/components/referral';
 import Skeleton from '@/components/Skeleton';
 
+// ── JitPlus Pro store URLs (the merchant app being referred) ──────────────
+const PRO_ANDROID_URL = 'https://play.google.com/store/apps/details?id=com.jitplus.pro';
+const PRO_IOS_APP_ID = process.env.EXPO_PUBLIC_PRO_IOS_APP_ID ?? '';
+const PRO_IOS_URL = PRO_IOS_APP_ID
+  ? `https://apps.apple.com/app/id${PRO_IOS_APP_ID}`
+  : 'https://apps.apple.com/search?term=jitplus+pro';
+const PRO_STORE_LINKS = `Android: ${PRO_ANDROID_URL}\niOS: ${PRO_IOS_URL}`;
+
 export default function ReferralScreen() {
   const theme = useTheme();
   const { t, locale } = useLanguage();
@@ -75,7 +83,9 @@ export default function ReferralScreen() {
   const handleShare = useCallback(async () => {
     if (!stats?.referralCode) return;
     try {
-      await Share.share({ message: t('referral.shareMessage', { code: stats.referralCode }) });
+      await Share.share({
+        message: t('referral.shareMessage', { code: stats.referralCode, links: PRO_STORE_LINKS }),
+      });
     } catch { /* ignore */ }
   }, [stats?.referralCode, t]);
 

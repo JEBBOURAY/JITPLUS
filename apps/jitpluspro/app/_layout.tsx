@@ -138,6 +138,37 @@ try {
     beforeSend(event) {
       const msg = event.exception?.values?.[0]?.value ?? '';
       if (/No refresh (token|credentials)|Session expired/i.test(msg)) return null;
+
+      // ── PII scrubber (CNDP Loi 09-08 + App Store 5.1.1) ──
+      // Strip emails, Moroccan phone numbers, bearer/JWT tokens from every field.
+      const scrub = (s: string): string =>
+        s
+          .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '[email]')
+          .replace(/(\+?212|0)[\s-]?[5-7](?:[\s-]?\d){8}/g, '[phone]')
+          .replace(/(?:Bearer\s+)?[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g, '[token]');
+
+      if (event.exception?.values) {
+        for (const v of event.exception.values) {
+          if (v.value) v.value = scrub(v.value);
+        }
+      }
+      if (event.message) event.message = scrub(event.message);
+      if (event.breadcrumbs) {
+        for (const b of event.breadcrumbs) {
+          if (typeof b.message === 'string') b.message = scrub(b.message);
+          if (b.data) {
+            for (const k of Object.keys(b.data)) {
+              const val = (b.data as Record<string, unknown>)[k];
+              if (typeof val === 'string') (b.data as Record<string, unknown>)[k] = scrub(val);
+            }
+          }
+        }
+      }
+      if (event.user) {
+        delete event.user.email;
+        delete event.user.username;
+        delete event.user.ip_address;
+      }
       return event;
     },
   });
@@ -145,6 +176,19 @@ try {
   // Sentry init can crash if native module is misconfigured — never block app launch
   logWarn('Sentry', 'init failed:', e);
 }
+
+// ── GDPR opt-out (honours SENTRY_OPT_OUT AsyncStorage flag) ─────
+// Sentry is configured as PII-free anonymous crash reporting (legitimate
+// interest under GDPR), but we still expose a way for users to opt out.
+// If the flag is set, we close the Sentry client so no events are sent.
+import AsyncStorageForConsent from '@react-native-async-storage/async-storage';
+AsyncStorageForConsent.getItem('sentry_opt_out')
+  .then((v) => {
+    if (v === 'true') {
+      try { Sentry?.close?.(); } catch {}
+    }
+  })
+  .catch(() => { /* ignore */ });
 // ── End Sentry init ────────────────────────────────
 
 // ── Global unhandled promise rejection handler ──────────────────
@@ -306,7 +350,7 @@ function RootLayoutNav() {
 }
 
 // Public routes that don't require authentication
-const PUBLIC_ROUTES = new Set(['welcome', 'login', 'register', 'verify-email', 'forgot-password']);
+const PUBLIC_ROUTES = new Set(['welcome', 'login', 'register', 'verify-email', 'forgot-password', 'legal']);
 
 function ThemedNavigator() {
   const theme = useTheme();

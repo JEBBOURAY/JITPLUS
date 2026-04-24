@@ -9,6 +9,8 @@ import {
   buildWelcomeClientEmail,
   buildWelcomeMerchantEmail,
   buildReferralBonusEmail,
+  buildAccountDeletedEmail,
+  buildClientAccountDeletedEmail,
 } from './email-templates';
 
 @Injectable()
@@ -90,6 +92,63 @@ export class MailService implements IMailProvider {
     const safeReferrerNom = escapeHtml(referrerNom);
     const html = buildReferralBonusEmail(referrerNom, newMerchantNom, newExpiry);
     await this.send(to, this.fromAddress, `🎁 ${safeNewMerchantNom} a rejoint JitPlus grâce à vous — 1 mois offert !`, html, 'referral-bonus');
+  }
+
+  /**
+   * Notify a merchant that their account has been permanently deleted.
+   * Sent AFTER successful deletion — best-effort (errors do not fail the flow).
+   * Required by GDPR Art. 17 + App Store 5.1.1(v) + Google Play Account Deletion Policy.
+   */
+  async sendAccountDeleted(to: string, nomBoutique: string): Promise<void> {
+    const html = buildAccountDeletedEmail(nomBoutique);
+    await this.send(to, this.fromAddress, 'Confirmation de suppression de votre compte JitPlus Pro', html, 'account-deleted');
+  }
+
+  /**
+   * Notify a client that their JitPlus account has been permanently deleted.
+   * Sent AFTER successful deletion — best-effort.
+   */
+  async sendClientAccountDeleted(to: string, prenom?: string): Promise<void> {
+    const html = buildClientAccountDeletedEmail(prenom);
+    await this.send(to, this.fromAddress, 'Confirmation de suppression de votre compte JitPlus', html, 'client-account-deleted');
+  }
+
+  /**
+   * Deliver a content report to the moderation inbox.
+   * Used by the client-facing "Signaler ce commerce" flow (App Store 1.2 /
+   * Play UGC Policy). The report is sent to the admin mailbox so moderation
+   * can act within 24 hours as required.
+   */
+  async sendContentReport(params: {
+    merchantId: string;
+    merchantName: string;
+    reporterId: string;
+    reporterEmail: string;
+    reason: string;
+    details?: string;
+  }): Promise<void> {
+    const to = this.configService.get<string>('MODERATION_EMAIL')?.trim()
+      || this.configService.get<string>('ADMIN_EMAIL')?.trim()
+      || 'contact@jitplus.com';
+    const safe = {
+      merchantId: escapeHtml(params.merchantId),
+      merchantName: escapeHtml(params.merchantName),
+      reporterId: escapeHtml(params.reporterId),
+      reporterEmail: escapeHtml(params.reporterEmail),
+      reason: escapeHtml(params.reason),
+      details: params.details ? escapeHtml(params.details) : '—',
+    };
+    const subject = `[Signalement] ${safe.merchantName} — ${safe.reason}`;
+    const html = `<!doctype html><html><body style="font-family:Arial,sans-serif;max-width:640px;margin:0 auto;padding:24px;color:#111">
+      <h2 style="color:#b91c1c;margin:0 0 16px">Nouveau signalement de commerce</h2>
+      <p><strong>Commerce :</strong> ${safe.merchantName} (<code>${safe.merchantId}</code>)</p>
+      <p><strong>Motif :</strong> ${safe.reason}</p>
+      <p><strong>Détails :</strong><br/>${safe.details}</p>
+      <hr/>
+      <p style="font-size:12px;color:#666"><strong>Reporter :</strong> ${safe.reporterEmail} (<code>${safe.reporterId}</code>)</p>
+      <p style="font-size:12px;color:#666">Action attendue sous 24 h — voir admin console.</p>
+    </body></html>`;
+    await this.send(to, this.fromAddress, subject, html, 'content-report');
   }
 
   /**

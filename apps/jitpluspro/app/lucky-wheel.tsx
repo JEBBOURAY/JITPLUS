@@ -12,6 +12,7 @@ import {
   Modal,
   KeyboardAvoidingView,
   Platform,
+  I18nManager,
 } from 'react-native';
 import {
   ArrowLeft,
@@ -199,6 +200,23 @@ const isValidDateStr = (s: string) => DATE_REGEX.test(s) && !isNaN(new Date(s).g
 const formatDate = (d: string) => new Date(d).toLocaleDateString();
 
 const TOTAL_STEPS = 3;
+
+// Semantic tone colors (used for status badges & action buttons)
+const TONE = {
+  success: '#16A34A',
+  warning: '#F59E0B',
+  danger: '#EF4444',
+} as const;
+const TONE_BG = {
+  success: `${TONE.success}18`,
+  warning: `${TONE.warning}18`,
+  danger: `${TONE.danger}18`,
+} as const;
+
+// Static preset values (no i18n) — kept at module scope to avoid recreating on every render.
+const DURATION_DAYS = [7, 30, 90] as const;
+const WIN_RATE_VALUES = ['25', '40', '50', '70'] as const;
+const MIN_SPEND_VALUES = ['0', '50', '100', '200'] as const;
 
 // ── Main Screen ──────────────────────────────────────────────
 
@@ -482,6 +500,8 @@ export default function LuckyWheelScreen() {
   }, [form, formSnapshot]);
 
   const closeCreateModal = useCallback(() => {
+    // Prevent dismissing modal while a create/update mutation is in flight to avoid state inconsistency.
+    if (createMutation.isPending || updateMutation.isPending) return;
     if (formIsDirty) {
       Alert.alert(t('luckyWheel.discardTitle'), t('luckyWheel.discardMessage'), [
         { text: t('common.cancel'), style: 'cancel' },
@@ -502,7 +522,7 @@ export default function LuckyWheelScreen() {
       dispatch({ type: 'RESET' });
       setStep(0);
     }
-  }, [formIsDirty, t]);
+  }, [formIsDirty, t, createMutation.isPending, updateMutation.isPending]);
 
   const durationDays = useMemo(() => {
     const diff = new Date(form.endsAt).getTime() - new Date(form.startsAt).getTime();
@@ -538,10 +558,27 @@ export default function LuckyWheelScreen() {
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
       {/* ── Header ── */}
       <View style={[styles.headerBar, { paddingTop: insets.top + 12 }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <ArrowLeft size={22} color={theme.text} />
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.backBtn}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          accessibilityRole="button"
+          accessibilityLabel={t('common.back')}
+        >
+          <ArrowLeft
+            size={22}
+            color={theme.text}
+            style={I18nManager.isRTL ? { transform: [{ scaleX: -1 }] } : undefined}
+          />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.text }]}>{t('luckyWheel.title')}</Text>
+        <Text
+          style={[styles.headerTitle, { color: theme.text }]}
+          numberOfLines={1}
+          maxFontSizeMultiplier={1.3}
+          accessibilityRole="header"
+        >
+          {t('luckyWheel.title')}
+        </Text>
       </View>
 
       <ScrollView
@@ -562,9 +599,11 @@ export default function LuckyWheelScreen() {
             onPress={openCreateModal}
             style={[styles.createBtn, { backgroundColor: theme.primary }]}
             activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel={t('luckyWheel.createBtn')}
           >
             <Plus size={18} color="#FFF" strokeWidth={2} />
-            <Text style={styles.createBtnText}>{t('luckyWheel.createBtn')}</Text>
+            <Text style={styles.createBtnText} maxFontSizeMultiplier={1.3}>{t('luckyWheel.createBtn')}</Text>
           </TouchableOpacity>
         )}
 
@@ -575,10 +614,16 @@ export default function LuckyWheelScreen() {
               style={styles.sectionHeader}
               onPress={() => setPendingExpanded(v => !v)}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={t('luckyWheel.pendingTitle')}
+              accessibilityState={{ expanded: pendingExpanded }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
               <View style={styles.sectionHeaderContent}>
-                <AlertTriangle size={20} color="#F59E0B" strokeWidth={1.5} />
-                <Text style={[styles.sectionTitle, { color: theme.text }]}>
+                <View style={styles.sectionHeaderIconWarning}>
+                  <AlertTriangle size={ms(16)} color="#F59E0B" strokeWidth={2} />
+                </View>
+                <Text style={[styles.sectionTitle, { color: theme.text }]} maxFontSizeMultiplier={1.3} accessibilityRole="header">
                   {t('luckyWheel.pendingTitle')} ({pendingPrizes.length})
                 </Text>
               </View>
@@ -592,12 +637,12 @@ export default function LuckyWheelScreen() {
                 {pendingPrizes.map((draw: PendingDrawData) => (
                   <View key={draw.id} style={styles.pendingRow}>
                     <View style={styles.flexOne}>
-                      <Text style={[styles.pendingPrize, { color: theme.text }]}>{draw.prize?.label}</Text>
-                      <Text style={[styles.pendingClient, { color: theme.textMuted }]}>
+                      <Text style={[styles.pendingPrize, { color: theme.text }]} maxFontSizeMultiplier={1.3}>{draw.prize?.label}</Text>
+                      <Text style={[styles.pendingClient, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>
                         {draw.ticket?.client?.prenom} {draw.ticket?.client?.nom}
                       </Text>
                       {draw.claimBefore && (
-                        <Text style={[styles.pendingExpiry, { color: '#F59E0B' }]}>
+                        <Text style={[styles.pendingExpiry, { color: TONE.warning }]} maxFontSizeMultiplier={1.4}>
                           {t('luckyWheel.claimExpires', { date: formatDate(draw.claimBefore) })}
                         </Text>
                       )}
@@ -607,11 +652,15 @@ export default function LuckyWheelScreen() {
                       style={[styles.fulfilBtn, { backgroundColor: theme.primary + '10' }]}
                       activeOpacity={0.7}
                       disabled={fulfillingDrawId === draw.id}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('luckyWheel.fulfilBtn')}
+                      accessibilityState={{ disabled: fulfillingDrawId === draw.id, busy: fulfillingDrawId === draw.id }}
                     >
                       {fulfillingDrawId === draw.id ? (
                         <ActivityIndicator size="small" color={theme.primary} />
                       ) : (
-                        <Check size={16} color="#16A34A" strokeWidth={2} />
+                        <Check size={16} color={TONE.success} strokeWidth={2} />
                       )}
                     </TouchableOpacity>
                   </View>
@@ -628,10 +677,16 @@ export default function LuckyWheelScreen() {
               style={styles.sectionHeader}
               onPress={() => setFulfilledExpanded(v => !v)}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={t('luckyWheel.fulfilledTitle')}
+              accessibilityState={{ expanded: fulfilledExpanded }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
               <View style={styles.sectionHeaderContent}>
-                <CheckCircle size={20} color="#16A34A" strokeWidth={1.5} />
-                <Text style={[styles.sectionTitle, { color: theme.text }]}>
+                <View style={styles.sectionHeaderIconSuccess}>
+                  <CheckCircle size={ms(16)} color="#16A34A" strokeWidth={2} />
+                </View>
+                <Text style={[styles.sectionTitle, { color: theme.text }]} maxFontSizeMultiplier={1.3} accessibilityRole="header">
                   {t('luckyWheel.fulfilledTitle')} ({fulfilledPrizes.length})
                 </Text>
               </View>
@@ -645,11 +700,11 @@ export default function LuckyWheelScreen() {
                 {fulfilledPrizes.slice(0, fulfilledLimit).map((draw: FulfilledDrawData) => (
                   <View key={draw.id} style={styles.pendingRow}>
                     <View style={styles.flexOne}>
-                      <Text style={[styles.pendingPrize, { color: theme.text }]}>{draw.prize?.label}</Text>
-                      <Text style={[styles.pendingClient, { color: theme.textMuted }]}>
+                      <Text style={[styles.pendingPrize, { color: theme.text }]} maxFontSizeMultiplier={1.3}>{draw.prize?.label}</Text>
+                      <Text style={[styles.pendingClient, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>
                         {draw.ticket?.client?.prenom} {draw.ticket?.client?.nom}
                       </Text>
-                      <Text style={[styles.pendingExpiry, { color: theme.textMuted }]}>
+                      <Text style={[styles.pendingExpiry, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>
                         {draw.fulfilledByName
                           ? t('luckyWheel.fulfilledByMember', { name: draw.fulfilledByName })
                           : t('luckyWheel.fulfilledByOwner')}
@@ -664,8 +719,11 @@ export default function LuckyWheelScreen() {
                     onPress={() => setFulfilledLimit(l => l + 20)}
                     style={styles.showMoreBtn}
                     activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('luckyWheel.fulfilledShowMore')}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
-                    <Text style={[styles.showMoreText, { color: theme.primary }]}>
+                    <Text style={[styles.showMoreText, { color: theme.primary }]} maxFontSizeMultiplier={1.3}>
                       {t('luckyWheel.fulfilledShowMore')} ({fulfilledPrizes.length - fulfilledLimit})
                     </Text>
                   </TouchableOpacity>
@@ -680,10 +738,16 @@ export default function LuckyWheelScreen() {
           style={styles.sectionHeader}
           onPress={() => setCampaignsExpanded(v => !v)}
           activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={t('luckyWheel.campaignsSection')}
+          accessibilityState={{ expanded: campaignsExpanded }}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
           <View style={styles.sectionHeaderContent}>
-            <Gift size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>
+            <View style={styles.sectionHeaderIcon}>
+              <Gift size={ms(16)} color={palette.violet} strokeWidth={2} />
+            </View>
+            <Text style={[styles.sectionTitle, { color: theme.text }]} maxFontSizeMultiplier={1.3} accessibilityRole="header">
               {t('luckyWheel.campaignsSection')} ({campaigns.length})
             </Text>
           </View>
@@ -697,10 +761,10 @@ export default function LuckyWheelScreen() {
             {campaigns.length === 0 && (
               <View style={styles.emptyState}>
                 <View style={styles.emptyIconWrap}>
-                  <Gift size={ms(36)} color={palette.charbon} strokeWidth={1.5} />
+                  <Gift size={ms(36)} color={palette.violet} strokeWidth={1.5} />
                 </View>
-                <Text style={[styles.emptyTitle, { color: theme.text }]}>{t('luckyWheel.noCampaigns')}</Text>
-                <Text style={[styles.emptyHint, { color: theme.textMuted }]}>{t('luckyWheel.noCampaignsHint')}</Text>
+                <Text style={[styles.emptyTitle, { color: theme.text }]} maxFontSizeMultiplier={1.3}>{t('luckyWheel.noCampaigns')}</Text>
+                <Text style={[styles.emptyHint, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>{t('luckyWheel.noCampaignsHint')}</Text>
               </View>
             )}
 
@@ -774,34 +838,43 @@ export default function LuckyWheelScreen() {
                         {canActivate && (
                           <TouchableOpacity
                             onPress={() => handleStatusChange(campaign.id, 'ACTIVE')}
-                            style={[styles.actionBtn, { backgroundColor: '#16A34A18' }]}
+                            style={[styles.actionBtn, { backgroundColor: TONE_BG.success }]}
                             activeOpacity={0.7}
                             disabled={statusMutation.isPending}
+                            accessibilityRole="button"
+                            accessibilityLabel={t('luckyWheel.activate')}
+                            accessibilityState={{ disabled: statusMutation.isPending, busy: statusMutation.isPending }}
                           >
-                            <Play size={14} color="#16A34A" strokeWidth={2} />
-                            <Text style={[styles.actionText, { color: '#16A34A' }]}>{t('luckyWheel.activate')}</Text>
+                            <Play size={14} color={TONE.success} strokeWidth={2} />
+                            <Text style={[styles.actionText, { color: TONE.success }]} maxFontSizeMultiplier={1.3}>{t('luckyWheel.activate')}</Text>
                           </TouchableOpacity>
                         )}
                         {canPause && (
                           <TouchableOpacity
                             onPress={() => handleStatusChange(campaign.id, 'PAUSED')}
-                            style={[styles.actionBtn, { backgroundColor: '#F59E0B18' }]}
+                            style={[styles.actionBtn, { backgroundColor: TONE_BG.warning }]}
                             activeOpacity={0.7}
                             disabled={statusMutation.isPending}
+                            accessibilityRole="button"
+                            accessibilityLabel={t('luckyWheel.pause')}
+                            accessibilityState={{ disabled: statusMutation.isPending, busy: statusMutation.isPending }}
                           >
-                            <Pause size={14} color="#F59E0B" strokeWidth={2} />
-                            <Text style={[styles.actionText, { color: '#F59E0B' }]}>{t('luckyWheel.pause')}</Text>
+                            <Pause size={14} color={TONE.warning} strokeWidth={2} />
+                            <Text style={[styles.actionText, { color: TONE.warning }]} maxFontSizeMultiplier={1.3}>{t('luckyWheel.pause')}</Text>
                           </TouchableOpacity>
                         )}
                         {canEnd && (
                           <TouchableOpacity
                             onPress={() => handleStatusChange(campaign.id, 'ENDED')}
-                            style={[styles.actionBtn, { backgroundColor: '#EF444418' }]}
+                            style={[styles.actionBtn, { backgroundColor: TONE_BG.danger }]}
                             activeOpacity={0.7}
                             disabled={statusMutation.isPending}
+                            accessibilityRole="button"
+                            accessibilityLabel={t('luckyWheel.end')}
+                            accessibilityState={{ disabled: statusMutation.isPending, busy: statusMutation.isPending }}
                           >
-                            <StopCircle size={14} color="#EF4444" strokeWidth={2} />
-                            <Text style={[styles.actionText, { color: '#EF4444' }]}>{t('luckyWheel.end')}</Text>
+                            <StopCircle size={14} color={TONE.danger} strokeWidth={2} />
+                            <Text style={[styles.actionText, { color: TONE.danger }]} maxFontSizeMultiplier={1.3}>{t('luckyWheel.end')}</Text>
                           </TouchableOpacity>
                         )}
                       </View>
@@ -815,13 +888,16 @@ export default function LuckyWheelScreen() {
                             style={[styles.actionBtn, { backgroundColor: theme.primary + '18' }]}
                             activeOpacity={0.7}
                             disabled={pushMutation.isPending}
+                            accessibilityRole="button"
+                            accessibilityLabel={t('luckyWheel.pushBtn')}
+                            accessibilityState={{ disabled: pushMutation.isPending, busy: pushMutation.isPending }}
                           >
                             {pushMutation.isPending ? (
                               <ActivityIndicator size="small" color={theme.primary} />
                             ) : (
                               <Send size={14} color={theme.primary} strokeWidth={2} />
                             )}
-                            <Text style={[styles.actionText, { color: theme.primary }]}>{t('luckyWheel.pushBtn')}</Text>
+                            <Text style={[styles.actionText, { color: theme.primary }]} maxFontSizeMultiplier={1.3}>{t('luckyWheel.pushBtn')}</Text>
                           </TouchableOpacity>
                         )}
                         {campaign.status !== 'ENDED' && (
@@ -829,24 +905,29 @@ export default function LuckyWheelScreen() {
                             onPress={() => handleEdit(campaign)}
                             style={[styles.actionBtn, { backgroundColor: theme.primary + '18' }]}
                             activeOpacity={0.7}
+                            accessibilityRole="button"
+                            accessibilityLabel={t('luckyWheel.editBtn')}
                           >
                             <Edit3 size={14} color={theme.primary} strokeWidth={2} />
-                            <Text style={[styles.actionText, { color: theme.primary }]}>{t('luckyWheel.editBtn')}</Text>
+                            <Text style={[styles.actionText, { color: theme.primary }]} maxFontSizeMultiplier={1.3}>{t('luckyWheel.editBtn')}</Text>
                           </TouchableOpacity>
                         )}
                         {campaign.status !== 'ACTIVE' && (
                           <TouchableOpacity
                             onPress={() => handleDelete(campaign)}
-                            style={[styles.actionBtn, { backgroundColor: '#EF444418' }]}
+                            style={[styles.actionBtn, { backgroundColor: TONE_BG.danger }]}
                             activeOpacity={0.7}
                             disabled={deleteMutation.isPending}
+                            accessibilityRole="button"
+                            accessibilityLabel={t('luckyWheel.deleteBtn')}
+                            accessibilityState={{ disabled: deleteMutation.isPending, busy: deleteMutation.isPending }}
                           >
                             {deleteMutation.isPending ? (
-                              <ActivityIndicator size="small" color="#EF4444" />
+                              <ActivityIndicator size="small" color={TONE.danger} />
                             ) : (
-                              <Trash2 size={14} color="#EF4444" strokeWidth={2} />
+                              <Trash2 size={14} color={TONE.danger} strokeWidth={2} />
                             )}
-                            <Text style={[styles.actionText, { color: '#EF4444' }]}>{t('luckyWheel.deleteBtn')}</Text>
+                            <Text style={[styles.actionText, { color: TONE.danger }]} maxFontSizeMultiplier={1.3}>{t('luckyWheel.deleteBtn')}</Text>
                           </TouchableOpacity>
                         )}
                       </View>
@@ -874,9 +955,18 @@ export default function LuckyWheelScreen() {
 
               {/* ── Modal Header with step indicator ── */}
               <View style={[styles.modalHeader, { borderBottomColor: theme.border }]}>
-                <TouchableOpacity onPress={() => { if (step > 0) goBack(); else closeCreateModal(); }}>
+                <TouchableOpacity
+                  onPress={() => { if (step > 0) goBack(); else closeCreateModal(); }}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={step > 0 ? t('common.back') : t('common.close')}
+                >
                   {step > 0
-                    ? <ArrowLeft size={22} color={theme.text} />
+                    ? <ArrowLeft
+                        size={22}
+                        color={theme.text}
+                        style={I18nManager.isRTL ? { transform: [{ scaleX: -1 }] } : undefined}
+                      />
                     : <X size={22} color={theme.text} />}
                 </TouchableOpacity>
                 <View style={styles.stepHeaderCenter}>
@@ -1236,8 +1326,15 @@ export default function LuckyWheelScreen() {
                             {t('luckyWheel.wizPrizeNum', { num: idx + 1 })}
                           </Text>
                           {form.prizes.length > 1 && (
-                            <TouchableOpacity onPress={() => dispatch({ type: 'REMOVE_PRIZE', index: idx })} activeOpacity={0.7} style={styles.prizeDeleteBtn}>
-                              <Trash2 size={15} color="#EF4444" strokeWidth={1.5} />
+                            <TouchableOpacity
+                              onPress={() => dispatch({ type: 'REMOVE_PRIZE', index: idx })}
+                              activeOpacity={0.7}
+                              style={styles.prizeDeleteBtn}
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                              accessibilityRole="button"
+                              accessibilityLabel={t('luckyWheel.wizPrizeNum', { num: idx + 1 })}
+                            >
+                              <Trash2 size={15} color={TONE.danger} strokeWidth={1.5} />
                             </TouchableOpacity>
                           )}
                         </View>
@@ -1481,12 +1578,12 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
-  // ── Header ──
+  // Header
   headerBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingBottom: 12,
+    paddingHorizontal: 20,
+    paddingBottom: 16,
     gap: 10,
   },
   backBtn: { marginRight: 2 },
@@ -1498,11 +1595,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
-  // ── Sections ──
+  // Sections
   guideContainer: {
-    marginHorizontal: 20,
-    marginTop: 16,
-    marginBottom: 4,
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 12,
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderRadius: 12,
@@ -1517,15 +1614,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginHorizontal: 20,
-    marginTop: 24,
-    marginBottom: 16,
+    marginHorizontal: 16,
+    marginTop: 20,
+    marginBottom: 12,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '800',
     fontFamily: 'Lexend_700Bold',
-    letterSpacing: -0.3,
+    letterSpacing: -0.2,
   },
   card: {
     marginHorizontal: 16,
@@ -1988,18 +2085,42 @@ const styles = StyleSheet.create({
     fontFamily: 'Lexend_700Bold',
   },
 
-  // ── Extracted from inline styles ──
+  // Extracted from inline styles
   sectionHeaderContent: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
-    gap: 8,
+    gap: 10,
     flex: 1,
+  },
+  sectionHeaderIcon: {
+    width: ms(32),
+    height: ms(32),
+    borderRadius: ms(10),
+    backgroundColor: `${palette.violet}18`,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  sectionHeaderIconWarning: {
+    width: ms(32),
+    height: ms(32),
+    borderRadius: ms(10),
+    backgroundColor: '#F59E0B22',
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  sectionHeaderIconSuccess: {
+    width: ms(32),
+    height: ms(32),
+    borderRadius: ms(10),
+    backgroundColor: '#16A34A22',
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
   },
   emptyIconWrap: {
     width: ms(88),
     height: ms(88),
     borderRadius: ms(24),
-    backgroundColor: `${palette.charbon}12`,
+    backgroundColor: `${palette.violet}18`,
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
   },

@@ -33,6 +33,26 @@ export function createMerchantMethods(http: AxiosInstance) {
       const { data } = await http.delete(`/client/merchants/${merchantId}/leave`);
       return data;
     },
+    async reportMerchant(
+      merchantId: string,
+      reason: 'inappropriate' | 'spam' | 'fraud' | 'closed' | 'wrong_info' | 'other',
+      details?: string,
+    ): Promise<{ success: boolean; message: string }> {
+      const { data } = await http.post(`/client/merchants/${merchantId}/report`, { reason, details });
+      return data;
+    },
+    async blockMerchant(merchantId: string): Promise<{ success: boolean }> {
+      const { data } = await http.post(`/client/merchants/${merchantId}/block`);
+      return data;
+    },
+    async unblockMerchant(merchantId: string): Promise<{ success: boolean }> {
+      const { data } = await http.delete(`/client/merchants/${merchantId}/block`);
+      return data;
+    },
+    async getBlockedMerchants(): Promise<Array<{ merchantId: string; blockedAt: string; id: string; nom: string; logoUrl: string | null; categorie: string }>> {
+      const { data } = await http.get('/client/blocked-merchants');
+      return Array.isArray(data) ? data : [];
+    },
     async getQrToken(): Promise<QrTokenResponse> {
       const { data } = await http.post('/client-auth/qr-token');
       return data;

@@ -8,7 +8,7 @@ import {
 } from '../common/repositories';
 import { randomInt, randomBytes, createHash, createHmac, randomUUID } from 'crypto';
 import * as bcrypt from 'bcryptjs';
-import { OTP_MIN, OTP_MAX, OTP_EXPIRY_MS, OTP_COOLDOWN_MS, MAX_OTP_ATTEMPTS, BCRYPT_SALT_ROUNDS, CLIENT_REFRESH_TOKEN_DAYS, MS_PER_DAY } from '../common/constants';
+import { OTP_MIN, OTP_MAX, OTP_EXPIRY_MS, OTP_COOLDOWN_MS, MAX_OTP_ATTEMPTS, BCRYPT_SALT_ROUNDS, CLIENT_REFRESH_TOKEN_DAYS, MS_PER_DAY, QR_TOKEN_TTL_SECONDS } from '../common/constants';
 import { errMsg } from '../common/utils';
 import { checkLockout, handleFailedLogin, resetLoginAttempts, LockoutDbOps } from '../common/utils/login-lockout.helper';
 import { CLIENT_AUTH_SELECT, CLIENT_LOGIN_SELECT } from '../common/prisma-selects';
@@ -953,11 +953,16 @@ export class ClientAuthService {
   }
   // Ã¢â€â‚¬Ã¢â€â‚¬ QR Token Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
   /**
-   * Permanent HMAC-signed QR token for merchant scanning.
-   * Format v1: "v1." + base64url(clientId) + "." + HMAC-SHA256(secret, "v1:" + clientId)
-   * Versioned so the secret can be rotated (add v2 with QR_HMAC_SECRET_V2).
+   * Short-lived HMAC-signed QR token for merchant scanning.
+   * Format v2: "v2." + base64url(clientId) + "." + exp + "." + nonce + "."
+   *            + HMAC-SHA256(secret, "v2:" + clientId + ":" + exp + ":" + nonce)
+   * - exp: unix seconds when the token becomes invalid (~60 s from now)
+   * - nonce: 16 random bytes (base64url) — single-use, enforced server-side
+   *
+   * Legacy format v1 ("v1." + base64url(clientId) + "." + HMAC-SHA256(secret, "v1:" + clientId))
+   * is still accepted by the verifier during the rollout window.
    */
-  async generateQrToken(clientId: string): Promise<{ qr_token: string }> {
+  async generateQrToken(clientId: string): Promise<{ qr_token: string; expiresAt: number }> {
     const client = await this.clientRepo.findUnique({ where: { id: clientId }, select: { id: true } });
     if (!client) {
       throw new BadRequestException('error.auth.clientNotFound');
@@ -965,10 +970,14 @@ export class ClientAuthService {
 
     const secret = this.configService.getOrThrow<string>('QR_HMAC_SECRET');
     const idPart = Buffer.from(client.id).toString('base64url');
-    const sig = createHmac('sha256', secret).update(`v1:${client.id}`).digest('base64url');
-    const qr_token = `v1.${idPart}.${sig}`;
+    const exp = Math.floor(Date.now() / 1000) + QR_TOKEN_TTL_SECONDS;
+    const nonce = randomBytes(16).toString('base64url');
+    const sig = createHmac('sha256', secret)
+      .update(`v2:${client.id}:${exp}:${nonce}`)
+      .digest('base64url');
+    const qr_token = `v2.${idPart}.${exp}.${nonce}.${sig}`;
 
-    return { qr_token };
+    return { qr_token, expiresAt: exp };
   }
   // â”€â”€ Change Contact OTP (profile update) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 

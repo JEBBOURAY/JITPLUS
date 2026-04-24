@@ -1,10 +1,11 @@
-import { IsBoolean, IsEmail, IsEnum, IsNumber, IsOptional, IsString, IsUrl, MaxLength, Min, Max, ValidateNested } from 'class-validator';
+import { IsBoolean, IsEmail, IsEnum, IsNumber, IsOptional, IsString, IsUrl, MaxLength, MinLength, Min, Max, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { MerchantCategory } from '@prisma/client';
 import { SocialLinksDto } from './social-links.dto';
 
 export class UpdateStoreDto {
   @IsString()
+  @MinLength(2, { message: 'Le nom du magasin doit contenir au moins 2 caractères' })
   @MaxLength(100)
   @IsOptional()
   nom?: string;

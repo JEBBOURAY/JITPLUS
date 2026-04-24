@@ -1,5 +1,5 @@
 import React from 'react';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View, type AccessibilityState, type AccessibilityRole } from 'react-native';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { ms, wp, hp, fontSize as FS } from '@/utils/responsive';
 
@@ -18,6 +18,10 @@ interface InfoRowProps {
   noBorder?: boolean;
   /** Icon background color override */
   iconBg?: string;
+  /** Accessibility state forwarded to the Pressable (e.g. { checked, expanded, disabled }) */
+  accessibilityState?: AccessibilityState;
+  /** Override the default accessibility role (defaults to 'button' when onPress is set) */
+  accessibilityRole?: AccessibilityRole;
 }
 
 export default React.memo(function InfoRow({
@@ -28,6 +32,8 @@ export default React.memo(function InfoRow({
   right,
   noBorder,
   iconBg,
+  accessibilityState,
+  accessibilityRole,
 }: InfoRowProps) {
   const theme = useTheme();
 
@@ -36,6 +42,8 @@ export default React.memo(function InfoRow({
       onPress={onPress}
       disabled={!onPress}
       android_ripple={onPress ? { color: `${palette.charbon}10` } : undefined}
+      accessibilityRole={accessibilityRole ?? (onPress ? 'button' : undefined)}
+      accessibilityState={accessibilityState}
       style={({ pressed }) => [
         styles.row,
         { borderBottomColor: theme.borderLight },

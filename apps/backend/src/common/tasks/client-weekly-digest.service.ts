@@ -8,6 +8,7 @@ import {
   CAMPAIGN_SENT_TRACKER_REPOSITORY, type ICampaignSentTrackerRepository,
 } from '../repositories';
 import { IPushProvider, PUSH_PROVIDER } from '../interfaces';
+import { isCronAllowed, weekIndexSinceReference, weekTag } from './cron-utils';
 
 // ── Weekly digest & special campaign messages ───────────────────────────
 const MESSAGES = {
@@ -36,11 +37,11 @@ const MESSAGES = {
       body: 'Invitez un ami commerçant sur JIT+. Quand il s\'abonne au Premium, vous recevez 25 DH de bonus !',
     },
     en: {
-      title: '💰 Refer & earn 25 MAD!',
-      body: 'Invite a merchant friend to JIT+. When they subscribe to Premium, you earn a 25 MAD bonus!',
+      title: '💰 Refer & earn 25 DH!',
+      body: 'Invite a merchant friend to JIT+. When they subscribe to Premium, you earn a 25 DH bonus!',
     },
     ar: {
-      title: '💰 باريني وربح 25 درهم!',
+      title: '💰 باريني واربح 25 درهم!',
       body: 'عيّط لصاحبك التاجر لـ JIT+. ملي يشترك فـ Premium، تربح 25 درهم بونوص!',
     },
   },
@@ -56,7 +57,7 @@ const MESSAGES = {
     },
     ar: {
       title: '🆕 محلات جديدة فـ JIT+!',
-      body: 'شركاء جداد دخلو لـ JIT+ هاد الأسبوع. تصفح وربح النقاط فبلايص أكثر!',
+      body: 'شركاء جداد دخلو لـ JIT+ هاد الأسبوع. تصفح واربح النقط فبلايص أكثر!',
     },
   },
   // Feature highlight: stamps
@@ -71,7 +72,7 @@ const MESSAGES = {
     },
     ar: {
       title: '📋 واش كنتي عارف؟',
-      body: 'شي محلات كيقدمو كارطات الطوابع. جمع الطوابع كلهم وربح مكافأة مجانية!',
+      body: 'شي محلات كيقدمو كارطات الطوابع. جمع الطوابع كلهم واربح مكافأة مجانية!',
     },
   },
   // Feature highlight: QR scanning
@@ -85,7 +86,7 @@ const MESSAGES = {
       body: 'With every purchase, scan the merchant\'s QR code to earn points automatically. Simple and fast!',
     },
     ar: {
-      title: '📱 سكاني = ربح!',
+      title: '📱 سكاني = اربح!',
       body: 'مع كل شراء، سكاني الـ QR code ديال التاجر باش تجمع النقاط أوتوماتيكيا. ساهل وسريع!',
     },
   },
@@ -143,14 +144,16 @@ export class ClientWeeklyDigestService {
   }
 
   // ── Sunday: Weekly digest for active users ──────────────────────────────
-  @Cron('0 10 * * 0') // Sunday at 10:00 UTC
+  @Cron('0 10 * * 0') // Sunday at 10:00 UTC = 11:00 Maroc
   async sendWeeklyDigest(): Promise<void> {
+    if (!isCronAllowed(this.logger, 'ClientWeeklyDigest.sendWeeklyDigest')) return;
     this.logger.log('Starting weekly digest push');
 
     try {
       const now = new Date();
       const weekAgo = new Date(now.getTime() - 7 * 86_400_000);
       let digestCount = 0;
+      const staleTokens: string[] = [];
 
       // Find clients who had transactions this week
       const recentClients = await this.txRepo.findMany({
@@ -207,38 +210,47 @@ export class ClientWeeklyDigestService {
 
         const l = lang(stats.language);
         const msg = MESSAGES.weeklyDigest[l];
-        await this.pushProvider.sendMulticast(
-          [stats.token],
-          msg.title,
-          msg.body(stats.totalPoints, stats.merchants.size),
-          undefined,
-          { event: 'weekly_digest', action: 'open_cards' },
-        );
+        try {
+          const r = await this.pushProvider.sendMulticast(
+            [stats.token],
+            msg.title,
+            msg.body(stats.totalPoints, stats.merchants.size),
+            undefined,
+            { event: 'weekly_digest', action: 'open_cards' },
+          );
+          if (r?.invalidTokens?.length) staleTokens.push(...r.invalidTokens);
+        } catch (e) {
+          this.logger.warn(`weekly digest push failed: ${e}`);
+        }
         await this.markSent(clientId, campaignId);
         digestCount++;
       }
 
       this.logger.log(`Weekly digest sent to ${digestCount} active clients`);
+      await this.cleanStaleTokens(staleTokens);
     } catch (error) {
       this.logger.error('Failed to send weekly digest', error);
     }
   }
 
   // ── Wednesday: Feature highlights & tips (rotating) ─────────────────────
-  @Cron('0 14 * * 3') // Wednesday at 14:00 UTC
+  @Cron('0 14 * * 3') // Wednesday at 14:00 UTC = 15:00 Maroc
   async sendFeatureHighlight(): Promise<void> {
+    if (!isCronAllowed(this.logger, 'ClientWeeklyDigest.sendFeatureHighlight')) return;
     this.logger.log('Starting feature highlight push');
 
     try {
-      // Rotate between features based on week number
-      const weekNumber = Math.floor(Date.now() / (7 * 86_400_000));
+      // Rotate between features based on deterministic reference-anchored index.
+      const weekNumber = weekIndexSinceReference();
+      const wtag = weekTag();
       const features = ['featureStamps', 'featureQR'] as const;
       const featureKey = features[weekNumber % features.length];
 
       // Target clients who signed up more than 2 days ago (not in welcome series)
       const twoDaysAgo = new Date(Date.now() - 2 * 86_400_000);
-      const campaignId = `feature_highlight_push_w${weekNumber}`;
+      const campaignId = `feature_highlight_push_${wtag}`;
       let pushCount = 0;
+      const staleTokens: string[] = [];
 
       // Batch by language
       for (const l of ['fr', 'en', 'ar'] as Lang[]) {
@@ -267,10 +279,15 @@ export class ClientWeeklyDigestService {
 
         const tokens = fresh.map((c: any) => c.pushToken).filter((t: any): t is string => !!t);
         const msg = MESSAGES[featureKey][l];
-        await this.pushProvider.sendMulticast(
-          tokens, msg.title, msg.body, undefined,
-          { event: 'feature_highlight', action: 'open_explore' },
-        );
+        try {
+          const r = await this.pushProvider.sendMulticast(
+            tokens, msg.title, msg.body, undefined,
+            { event: 'feature_highlight', action: 'open_explore' },
+          );
+          if (r?.invalidTokens?.length) staleTokens.push(...r.invalidTokens);
+        } catch (e) {
+          this.logger.warn(`feature highlight push failed (${l}): ${e}`);
+        }
         for (const c of fresh) {
           await this.markSent(c.id, campaignId);
         }
@@ -278,14 +295,18 @@ export class ClientWeeklyDigestService {
       }
 
       this.logger.log(`Feature highlight (${featureKey}) sent to ${pushCount} clients`);
+      await this.cleanStaleTokens(staleTokens);
     } catch (error) {
       this.logger.error('Failed to send feature highlight', error);
     }
   }
 
   // ── Friday: Referral push + new merchants ──────────────────────────────
-  @Cron('0 11 * * 5') // Friday at 11:00 UTC
+  // ⚠️ Vendredi 9 UTC = 10 Maroc — AVANT le Jumu'ah (11h30-14h). L'ancien 11 UTC
+  // tombait au début de la prière, ce qui était inapproprié pour le marché marocain.
+  @Cron('0 9 * * 5')
   async sendFridayCampaign(): Promise<void> {
+    if (!isCronAllowed(this.logger, 'ClientWeeklyDigest.sendFridayCampaign')) return;
     this.logger.log('Starting Friday campaign push');
 
     try {
@@ -303,12 +324,14 @@ export class ClientWeeklyDigestService {
       // Alternate between referral and new merchants announcements.
       // If we intended to show "new merchants" but none joined, fall back
       // to the referral message so we don't send a misleading notification.
-      const weekNumber = Math.floor(Date.now() / (7 * 86_400_000));
+      const weekNumber = weekIndexSinceReference();
+      const wtag = weekTag();
       const wantNewMerchants = weekNumber % 2 === 1 && newMerchantCount > 0;
       const campaignKey = wantNewMerchants ? 'newMerchants' : 'referralPush';
-      const campaignId = `friday_${campaignKey}_w${weekNumber}`;
+      const campaignId = `friday_${campaignKey}_${wtag}`;
 
       let pushCount = 0;
+      const staleTokens: string[] = [];
 
       for (const l of ['fr', 'en', 'ar'] as Lang[]) {
         const clients = await this.clientRepo.findMany({
@@ -336,10 +359,15 @@ export class ClientWeeklyDigestService {
         const msg = MESSAGES[campaignKey][l];
         const action = campaignKey === 'referralPush' ? 'open_referral' : 'open_explore';
 
-        await this.pushProvider.sendMulticast(
-          tokens, msg.title, msg.body, undefined,
-          { event: 'friday_campaign', action },
-        );
+        try {
+          const r = await this.pushProvider.sendMulticast(
+            tokens, msg.title, msg.body, undefined,
+            { event: 'friday_campaign', action },
+          );
+          if (r?.invalidTokens?.length) staleTokens.push(...r.invalidTokens);
+        } catch (e) {
+          this.logger.warn(`friday campaign push failed (${l}): ${e}`);
+        }
         for (const c of fresh) {
           await this.markSent(c.id, campaignId);
         }
@@ -347,8 +375,22 @@ export class ClientWeeklyDigestService {
       }
 
       this.logger.log(`Friday campaign (${campaignKey}) sent to ${pushCount} clients`);
+      await this.cleanStaleTokens(staleTokens);
     } catch (error) {
       this.logger.error('Failed to send Friday campaign', error);
+    }
+  }
+
+  private async cleanStaleTokens(tokens: string[]): Promise<void> {
+    if (!tokens.length) return;
+    try {
+      await this.clientRepo.updateMany({
+        where: { pushToken: { in: tokens } },
+        data: { pushToken: null },
+      });
+      this.logger.log(`Cleaned ${tokens.length} stale push token(s)`);
+    } catch (e) {
+      this.logger.warn(`Failed to clean stale tokens: ${e}`);
     }
   }
 }

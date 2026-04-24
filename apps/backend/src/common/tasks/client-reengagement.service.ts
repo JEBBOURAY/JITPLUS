@@ -7,6 +7,7 @@ import {
   CAMPAIGN_SENT_TRACKER_REPOSITORY, type ICampaignSentTrackerRepository,
 } from '../repositories';
 import { IPushProvider, PUSH_PROVIDER } from '../interfaces';
+import { isCronAllowed, weekTag } from './cron-utils';
 
 // ── Re-engagement messages ──────────────────────────────────────────────
 const MESSAGES = {
@@ -37,7 +38,7 @@ const MESSAGES = {
     },
     ar: {
       title: '🔥 ما تخسرش المزايا ديالك!',
-      body: 'النقاط والمكافآت ديالك مازال تما. رجع واستافد من مزايا الولاء!',
+      body: 'النقط والمكافآت ديالك مازال تما. رجع تمتع بمزايا الولاء!',
     },
   },
   // 30 days inactive: win-back
@@ -67,7 +68,7 @@ const MESSAGES = {
     },
     ar: {
       title: '🚀 بدا تربح المكافآت!',
-      body: 'مازال ما سكانيتي حتى محل. زور شريك JIT+ وربح النقاط بالمجان!',
+      body: 'مازال ما سكانيتي حتى محل. زور شريك JIT+ واربح النقط بالمجان!',
     },
   },
 } as const;
@@ -130,8 +131,9 @@ export class ClientReengagementService {
     }
   }
 
-  @Cron('0 12 * * *') // Daily at 12:00 PM UTC
+  @Cron('0 14 * * *') // Daily at 14:00 UTC = 15:00 Maroc (après Dohr)
   async sendReengagementPush(): Promise<void> {
+    if (!isCronAllowed(this.logger, 'ClientReengagement.sendReengagementPush')) return;
     this.logger.log('Starting client re-engagement push');
 
     try {
@@ -203,7 +205,7 @@ export class ClientReengagementService {
     if (neverUsedClients.length === 0) return;
 
     // Dedup: only ping each "never used" client once per week.
-    const weekKey = `w${Math.floor(Date.now() / (7 * 86_400_000))}`;
+    const weekKey = weekTag();
     const campaignId = `reengagement_never_used_${weekKey}`;
     const freshClients: typeof neverUsedClients = [];
     for (const c of neverUsedClients) {
@@ -222,17 +224,21 @@ export class ClientReengagementService {
 
     for (const [l, tokens] of byLang) {
       const msg = getMsg('neverUsed', l);
-      const result = await this.pushProvider.sendMulticast(
-        tokens, msg.title, msg.body, undefined,
-        { event: 'reengagement', action: 'open_scan' },
-      );
-      if (result.invalidTokens.length > 0) {
-        // Map invalid tokens back to client IDs
-        const tokenToId = new Map<string, string>(freshClients.map((c: any) => [c.pushToken!, c.id]));
-        for (const t of result.invalidTokens) {
-          const id = tokenToId.get(t);
-          if (id) staleTokenIds.push(id);
+      try {
+        const result = await this.pushProvider.sendMulticast(
+          tokens, msg.title, msg.body, undefined,
+          { event: 'reengagement', action: 'open_scan' },
+        );
+        if (result.invalidTokens.length > 0) {
+          // Map invalid tokens back to client IDs
+          const tokenToId = new Map<string, string>(freshClients.map((c: any) => [c.pushToken!, c.id]));
+          for (const t of result.invalidTokens) {
+            const id = tokenToId.get(t);
+            if (id) staleTokenIds.push(id);
+          }
         }
+      } catch (e) {
+        this.logger.warn(`neverUsed push failed (${l}): ${e}`);
       }
     }
 
@@ -312,16 +318,20 @@ export class ClientReengagementService {
         // Different actions per tier: 7d/14d push them back to their cards,
         // 30d push them to the explorer so they can discover fresh merchants.
         const action = resultKey === 'inactive30d' ? 'open_explore' : 'open_cards';
-        const pushResult = await this.pushProvider.sendMulticast(
-          [client.pushToken], msg.title, msg.body, undefined,
-          { event: 'reengagement', action },
-        );
+        try {
+          const pushResult = await this.pushProvider.sendMulticast(
+            [client.pushToken], msg.title, msg.body, undefined,
+            { event: 'reengagement', action },
+          );
 
-        await this.markSent(client.id, campaignId);
-        results[resultKey]++;
+          await this.markSent(client.id, campaignId);
+          results[resultKey]++;
 
-        if (pushResult.invalidTokens.length > 0) {
-          staleTokenIds.push(client.id);
+          if (pushResult.invalidTokens.length > 0) {
+            staleTokenIds.push(client.id);
+          }
+        } catch (e) {
+          this.logger.warn(`reengagement push failed for ${client.id}: ${e}`);
         }
       }
 

@@ -64,9 +64,55 @@ Sentry.init({
     // Suppress expected auth-failure errors that are already handled by the app
     const msg = event.exception?.values?.[0]?.value ?? '';
     if (/No refresh token|Session expired/i.test(msg)) return null;
+
+    // ── PII scrubber (CNDP Loi 09-08 + App Store 5.1.1) ──
+    // Strip emails, Moroccan phone numbers, bearer tokens from error messages,
+    // breadcrumb data and extras. Sentry is declared "anonymous crash diagnostics"
+    // in the privacy manifest — any PII leak would invalidate that claim.
+    const scrub = (s: string): string =>
+      s
+        .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '[email]')
+        .replace(/(\+?212|0)[\s-]?[5-7](?:[\s-]?\d){8}/g, '[phone]')
+        .replace(/(?:Bearer\s+)?[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g, '[token]');
+
+    if (event.exception?.values) {
+      for (const v of event.exception.values) {
+        if (v.value) v.value = scrub(v.value);
+      }
+    }
+    if (event.message) event.message = scrub(event.message);
+    if (event.breadcrumbs) {
+      for (const b of event.breadcrumbs) {
+        if (typeof b.message === 'string') b.message = scrub(b.message);
+        if (b.data) {
+          for (const k of Object.keys(b.data)) {
+            const val = (b.data as Record<string, unknown>)[k];
+            if (typeof val === 'string') (b.data as Record<string, unknown>)[k] = scrub(val);
+          }
+        }
+      }
+    }
+    // Never send user identifiers
+    if (event.user) {
+      delete event.user.email;
+      delete event.user.username;
+      delete event.user.ip_address;
+    }
     return event;
   },
 });
+
+// ── GDPR / CNDP opt-out (honours sentry_opt_out AsyncStorage flag) ─────
+// Sentry is declared as PII-free anonymous crash reporting, but users retain
+// the right to object to any processing under Loi 09-08 art. 9.
+import AsyncStorageForConsent from '@react-native-async-storage/async-storage';
+AsyncStorageForConsent.getItem('sentry_opt_out')
+  .then((v) => {
+    if (v === 'true') {
+      try { Sentry.close(); } catch { /* ignore */ }
+    }
+  })
+  .catch(() => { /* ignore */ });
 
 // ── End Sentry init ────────────────────────────────
 

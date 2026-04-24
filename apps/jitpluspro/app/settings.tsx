@@ -8,6 +8,9 @@ import {
   TextInput,
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
+  I18nManager,
 } from 'react-native';
 import { Save, Settings as SettingsIcon, ArrowLeft, Stamp, Star, AlertTriangle, ShieldCheck, ChevronDown, ChevronUp, Shield } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
@@ -18,7 +21,6 @@ import { getErrorMessage } from '@/utils/error';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { ms } from '@/utils/responsive';
 import PremiumLockCard from '@/components/PremiumLockCard';
-import PremiumLockModal from '@/components/PremiumLockModal';
 import { RewardManager } from '@/components/settings/RewardManager';
 import { DEFAULT_CURRENCY } from '@/config/currency';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -102,7 +104,6 @@ export default function SettingsScreen() {
   const { loyaltyType, stampEarningMode, pointsRate, conversionRate, stampsForReward, hasAccumulationLimit, accumulationLimit, saving, conversionX, conversionY, rewards, rewardReloadToken } = state;
   const set = useCallback((payload: Partial<SettingsState>) => dispatch({ type: 'SET', payload }), []);
 
-  const [premiumModal, setPremiumModal] = useState<{ visible: boolean; titleKey: string; descKey: string }>({ visible: false, titleKey: '', descKey: '' });
   const [loyaltyExpanded, setLoyaltyExpanded] = useState(false);
   const [giftsExpanded, setGiftsExpanded] = useState(false);
   const handleRewardsChange = useCallback((updatedRewards: Reward[]) => {
@@ -261,12 +262,17 @@ export default function SettingsScreen() {
     return (
       <View style={[styles.centered, { backgroundColor: theme.bg }]}>
         <View style={styles.ownerOnlyIcon}>
-          <Shield size={ms(36)} color={palette.charbon} strokeWidth={1.5} />
+          <Shield size={ms(36)} color={palette.violet} strokeWidth={1.5} />
         </View>
-        <Text style={[styles.ownerOnlyTitle, { color: theme.text }]}>{t('common.ownerOnly')}</Text>
-        <Text style={[styles.ownerOnlyMsg, { color: theme.textMuted }]}>{t('common.ownerOnlyMsg')}</Text>
-        <TouchableOpacity onPress={() => router.back()} style={[styles.ownerOnlyBtn, { backgroundColor: theme.primary }]}>
-          <Text style={styles.ownerOnlyBtnText}>{t('common.back')}</Text>
+        <Text style={[styles.ownerOnlyTitle, { color: theme.text }]} maxFontSizeMultiplier={1.3} accessibilityRole="header">{t('common.ownerOnly')}</Text>
+        <Text style={[styles.ownerOnlyMsg, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>{t('common.ownerOnlyMsg')}</Text>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={[styles.ownerOnlyBtn, { backgroundColor: theme.primary }]}
+          accessibilityRole="button"
+          accessibilityLabel={t('common.back')}
+        >
+          <Text style={styles.ownerOnlyBtnText} maxFontSizeMultiplier={1.3}>{t('common.back')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -295,19 +301,42 @@ export default function SettingsScreen() {
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
       {/* ── Simple header — matches activity style ── */}
       <View style={[styles.headerBar, { paddingTop: insets.top + 12 }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <ArrowLeft size={22} color={theme.text} />
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.backBtn}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          accessibilityRole="button"
+          accessibilityLabel={t('common.back')}
+        >
+          <ArrowLeft
+            size={22}
+            color={theme.text}
+            style={I18nManager.isRTL ? { transform: [{ scaleX: -1 }] } : undefined}
+          />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.text }]}>{t('settingsPage.title')}</Text>
+        <Text
+          style={[styles.headerTitle, { color: theme.text }]}
+          numberOfLines={1}
+          maxFontSizeMultiplier={1.3}
+          accessibilityRole="header"
+        >
+          {t('settingsPage.title')}
+        </Text>
       </View>
 
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + 60 : 0}
+      >
       <ScrollView
         contentContainerStyle={{ paddingBottom: 120 }}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
         {/* ── Guide text ── */}
         <View style={[styles.guideContainer, { backgroundColor: theme.primaryBg || (theme.primary + '10'), borderLeftColor: theme.primary }]}>
-          <Text style={[styles.guideText, { color: theme.textSecondary }]}>
+          <Text style={[styles.guideText, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.4}>
             {t('settingsPage.guideText')}
           </Text>
         </View>
@@ -317,12 +346,15 @@ export default function SettingsScreen() {
           style={styles.sectionHeader}
           onPress={() => setLoyaltyExpanded(v => !v)}
           activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={t('settingsPage.loyaltyMode')}
+          accessibilityState={{ expanded: loyaltyExpanded }}
         >
           <View style={styles.sectionHeaderContent}>
             <View style={styles.sectionHeaderIcon}>
-              <SettingsIcon size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
+              <SettingsIcon size={ms(16)} color={palette.violet} strokeWidth={2} />
             </View>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>{t('settingsPage.loyaltyMode')}</Text>
+            <Text style={[styles.sectionTitle, { color: theme.text }]} maxFontSizeMultiplier={1.3} accessibilityRole="header">{t('settingsPage.loyaltyMode')}</Text>
           </View>
           {loyaltyExpanded
             ? <ChevronUp size={20} color={theme.textMuted} />
@@ -334,7 +366,7 @@ export default function SettingsScreen() {
           {!isPremium ? (
             <PremiumLockCard titleKey="settingsPage.premiumLoyaltyTitle" descriptionKey="settingsPage.premiumLoyaltyDesc" />
           ) : (<>
-          <Text style={[styles.cardLabel, { color: theme.textSecondary }]}>
+          <Text style={[styles.cardLabel, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.4}>
             {t('settingsPage.loyaltyModeHint')}
           </Text>
 
@@ -347,6 +379,9 @@ export default function SettingsScreen() {
               ]}
               onPress={() => handleSwitchLoyaltyType('POINTS')}
               activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityState={{ selected: !isStamps }}
+              accessibilityLabel={t('settingsPage.modePoints')}
             >
               <Star
                 size={18}
@@ -359,6 +394,7 @@ export default function SettingsScreen() {
                   { color: !isStamps ? '#fff' : theme.textMuted },
                   !isStamps && styles.segmentTextActive,
                 ]}
+                maxFontSizeMultiplier={1.3}
               >
                 {t('settingsPage.modePoints')}
               </Text>
@@ -371,6 +407,9 @@ export default function SettingsScreen() {
               ]}
               onPress={() => handleSwitchLoyaltyType('STAMPS')}
               activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityState={{ selected: isStamps }}
+              accessibilityLabel={t('settingsPage.modeStamps')}
             >
               <Stamp
                 size={18}
@@ -383,6 +422,7 @@ export default function SettingsScreen() {
                   { color: isStamps ? '#fff' : theme.textMuted },
                   isStamps && styles.segmentTextActive,
                 ]}
+                maxFontSizeMultiplier={1.3}
               >
                 {t('settingsPage.modeStamps')}
               </Text>
@@ -396,17 +436,17 @@ export default function SettingsScreen() {
                 style={[styles.warningBanner, { backgroundColor: theme.warning + '18' }]}
               >
                 <AlertTriangle size={16} color={theme.warning} />
-                <Text style={[styles.warningText, { color: theme.warning }]}>
+                <Text style={[styles.warningText, { color: theme.warning }]} maxFontSizeMultiplier={1.4}>
                   {t('settingsPage.switchWarning')}
                 </Text>
               </View>
 
               {/* Conversion rule card */}
               <View style={[styles.conversionRuleCard, { backgroundColor: theme.bg, borderColor: theme.primary + '40' }]}>
-                <Text style={[styles.conversionRuleTitle, { color: theme.primary }]}>
+                <Text style={[styles.conversionRuleTitle, { color: theme.primary }]} maxFontSizeMultiplier={1.3}>
                   {t('settingsPage.conversionRuleTitle')}
                 </Text>
-                <Text style={[styles.conversionRuleHint, { color: theme.textMuted }]}>
+                <Text style={[styles.conversionRuleHint, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>
                   {loyaltyType === 'STAMPS'
                     ? t('settingsPage.conversionRuleHintToStamps')
                     : t('settingsPage.conversionRuleHintToPoints')}
@@ -419,11 +459,13 @@ export default function SettingsScreen() {
                     keyboardType="decimal-pad"
                     placeholder="10"
                     placeholderTextColor={theme.textMuted}
+                    maxLength={6}
+                    maxFontSizeMultiplier={1.3}
                   />
-                  <Text style={[styles.conversionRuleUnit, { color: theme.textSecondary }]}>
+                  <Text style={[styles.conversionRuleUnit, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.3}>
                     {loyaltyType === 'STAMPS' ? t('settingsPage.conversionRulePts') : t('settingsPage.conversionRuleTmps')}
                   </Text>
-                  <Text style={[styles.conversionRuleEquals, { color: theme.textMuted }]}>=</Text>
+                  <Text style={[styles.conversionRuleEquals, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>=</Text>
                   <TextInput
                     style={[styles.conversionRuleInput, { backgroundColor: theme.bgInput, color: theme.text, borderColor: theme.border }]}
                     value={conversionY}
@@ -431,8 +473,10 @@ export default function SettingsScreen() {
                     keyboardType="decimal-pad"
                     placeholder="1"
                     placeholderTextColor={theme.textMuted}
+                    maxLength={6}
+                    maxFontSizeMultiplier={1.3}
                   />
-                  <Text style={[styles.conversionRuleUnit, { color: theme.textSecondary }]}>
+                  <Text style={[styles.conversionRuleUnit, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.3}>
                     {loyaltyType === 'STAMPS' ? t('settingsPage.conversionRuleTmps') : t('settingsPage.conversionRulePts')}
                   </Text>
                 </View>
@@ -449,7 +493,7 @@ export default function SettingsScreen() {
                   const fromUnit = loyaltyType === 'STAMPS' ? t('settingsPage.conversionRulePts') : t('settingsPage.conversionRuleTmps');
                   const toUnit = loyaltyType === 'STAMPS' ? t('settingsPage.conversionRuleTmps') : t('settingsPage.conversionRulePts');
                   return (
-                    <Text style={[styles.conversionRulePreview, { color: theme.primary }]}>
+                    <Text style={[styles.conversionRulePreview, { color: theme.primary }]} maxFontSizeMultiplier={1.3}>
                       {t('settingsPage.conversionRulePreview', { inVal: exampleIn, fromUnit, outVal: exampleOut, toUnit })}
                     </Text>
                   );
@@ -465,7 +509,7 @@ export default function SettingsScreen() {
                   const newUnit = loyaltyType === 'STAMPS' ? t('settingsPage.conversionRuleTmps') : t('settingsPage.conversionRulePts');
                   return (
                     <View style={[styles.rewardConversionPreview, { borderTopColor: theme.border }]}>
-                      <Text style={[styles.rewardConversionTitle, { color: theme.text }]}>
+                      <Text style={[styles.rewardConversionTitle, { color: theme.text }]} maxFontSizeMultiplier={1.3}>
                         {t('settingsPage.rewardConversionTitle')}
                       </Text>
                       {rewards.map((r) => {
@@ -474,10 +518,10 @@ export default function SettingsScreen() {
                           : Math.max(Math.round(r.cout * rate), 1);
                         return (
                           <View key={r.id} style={styles.rewardConversionRow}>
-                            <Text style={[styles.rewardConversionName, { color: theme.textSecondary }]} numberOfLines={1}>
+                            <Text style={[styles.rewardConversionName, { color: theme.textSecondary }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>
                               {r.titre}
                             </Text>
-                            <Text style={[styles.rewardConversionValues, { color: theme.textMuted }]}>
+                            <Text style={[styles.rewardConversionValues, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>
                               <Text style={styles.conversionOldCost}>{r.cout} {oldUnit}</Text>
                               {'  ->  '}
                               <Text style={[styles.conversionNewCost, { color: theme.primary }]}>{newCost} {newUnit}</Text>
@@ -496,10 +540,10 @@ export default function SettingsScreen() {
           {!isStamps && (
             <View>
               <View style={styles.fieldGroup}>
-                <Text style={[styles.fieldLabel, { color: theme.text }]}>
+                <Text style={[styles.fieldLabel, { color: theme.text }]} maxFontSizeMultiplier={1.3}>
                   {t('settingsPage.conversionRate')}
                 </Text>
-                <Text style={[styles.fieldHint, { color: theme.textMuted }]}>
+                <Text style={[styles.fieldHint, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>
                   {t('settingsPage.conversionHint', { rate: pointsRate || '__', currency: DEFAULT_CURRENCY.symbol })}
                 </Text>
                 <View style={styles.inputRow}>
@@ -517,8 +561,10 @@ export default function SettingsScreen() {
                     keyboardType="numeric"
                     placeholder="10"
                     placeholderTextColor={theme.textMuted}
+                    maxLength={8}
+                    maxFontSizeMultiplier={1.3}
                   />
-                  <Text style={[styles.inputSuffix, { color: theme.textSecondary }]}>
+                  <Text style={[styles.inputSuffix, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.3}>
                     {t('settingsPage.pointsSuffix', { symbol: DEFAULT_CURRENCY.symbol })}
                   </Text>
                 </View>
@@ -529,7 +575,7 @@ export default function SettingsScreen() {
           {/* Points preview */}
           {!isStamps && (
             <View style={[styles.stampPreview, { backgroundColor: theme.bg }]}>
-              <Text style={[styles.stampPreviewTitle, { color: theme.text }]}>
+              <Text style={[styles.stampPreviewTitle, { color: theme.text }]} maxFontSizeMultiplier={1.3}>
                 {t('settingsPage.pointsPreviewTitle')}
               </Text>
               <View style={[styles.pointsPreviewCard, { backgroundColor: theme.primary + '15' }]}>
@@ -537,13 +583,13 @@ export default function SettingsScreen() {
                   <Star size={24} color="#fff" fill="#fff" />
                 </View>
                 <View style={styles.pointsPreviewBody}>
-                  <Text style={[styles.pointsPreviewClient, { color: theme.textMuted }]}>{t('settingsPage.simulatedClient')}</Text>
-                  <Text style={[styles.pointsPreviewValue, { color: theme.text }]}>
+                  <Text style={[styles.pointsPreviewClient, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>{t('settingsPage.simulatedClient')}</Text>
+                  <Text style={[styles.pointsPreviewValue, { color: theme.text }]} maxFontSizeMultiplier={1.3}>
                     {pointsRate || 10} <Text style={[styles.pointsPreviewUnit, { color: theme.textMuted }]}>Pts</Text>
                   </Text>
                 </View>
               </View>
-              <Text style={[styles.stampPreviewHint, styles.pointsPreviewHint, { color: theme.textMuted }]}>
+              <Text style={[styles.stampPreviewHint, styles.pointsPreviewHint, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>
                 {t('settingsPage.pointsPreviewHint', { count: pointsRate || 10 })}
               </Text>
             </View>
@@ -554,10 +600,10 @@ export default function SettingsScreen() {
             <View>
               {/* â”€â”€ Stamp Earning Mode â”€â”€ */}
               <View style={styles.fieldGroup}>
-                <Text style={[styles.fieldLabel, { color: theme.text }]}>
+                <Text style={[styles.fieldLabel, { color: theme.text }]} maxFontSizeMultiplier={1.3}>
                   {t('settingsPage.stampEarningMode')}
                 </Text>
-                <Text style={[styles.fieldHint, { color: theme.textMuted }]}>
+                <Text style={[styles.fieldHint, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>
                   {t('settingsPage.stampEarningModeHint')}
                 </Text>
                 <View style={[styles.segment, { backgroundColor: theme.bg, marginTop: 8 }]}>
@@ -568,6 +614,9 @@ export default function SettingsScreen() {
                     ]}
                     onPress={() => set({ stampEarningMode: 'PER_VISIT' })}
                     activeOpacity={0.8}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: stampEarningMode === 'PER_VISIT' }}
+                    accessibilityLabel={t('settingsPage.perVisit')}
                   >
                     <Text
                       style={[
@@ -575,6 +624,7 @@ export default function SettingsScreen() {
                         { color: stampEarningMode === 'PER_VISIT' ? '#fff' : theme.textMuted },
                         stampEarningMode === 'PER_VISIT' && styles.segmentTextActive,
                       ]}
+                      maxFontSizeMultiplier={1.3}
                     >
                       {t('settingsPage.perVisit')}
                     </Text>
@@ -586,6 +636,9 @@ export default function SettingsScreen() {
                     ]}
                     onPress={() => set({ stampEarningMode: 'PER_AMOUNT' })}
                     activeOpacity={0.8}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: stampEarningMode === 'PER_AMOUNT' }}
+                    accessibilityLabel={t('settingsPage.perAmount')}
                   >
                     <Text
                       style={[
@@ -593,6 +646,7 @@ export default function SettingsScreen() {
                         { color: stampEarningMode === 'PER_AMOUNT' ? '#fff' : theme.textMuted },
                         stampEarningMode === 'PER_AMOUNT' && styles.segmentTextActive,
                       ]}
+                      maxFontSizeMultiplier={1.3}
                     >
                       {t('settingsPage.perAmount')}
                     </Text>
@@ -603,10 +657,10 @@ export default function SettingsScreen() {
               {/* â”€â”€ Stamps conversion rate (only for PER_AMOUNT) â”€â”€ */}
               {stampEarningMode === 'PER_AMOUNT' && (
               <View style={styles.fieldGroup}>
-                <Text style={[styles.fieldLabel, { color: theme.text }]}>
+                <Text style={[styles.fieldLabel, { color: theme.text }]} maxFontSizeMultiplier={1.3}>
                   {t('settingsPage.stampsConversionRate')}
                 </Text>
-                <Text style={[styles.fieldHint, { color: theme.textMuted }]}>
+                <Text style={[styles.fieldHint, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>
                   {t('settingsPage.stampsConversionHint', { rate: pointsRate || '__', currency: DEFAULT_CURRENCY.symbol })}
                 </Text>
                 <View style={styles.inputRow}>
@@ -624,8 +678,10 @@ export default function SettingsScreen() {
                     keyboardType="numeric"
                     placeholder="10"
                     placeholderTextColor={theme.textMuted}
+                    maxLength={8}
+                    maxFontSizeMultiplier={1.3}
                   />
-                  <Text style={[styles.inputSuffix, { color: theme.textSecondary }]}>
+                  <Text style={[styles.inputSuffix, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.3}>
                     {t('settingsPage.stampRateSuffix', { symbol: DEFAULT_CURRENCY.symbol })}
                   </Text>
                 </View>
@@ -636,10 +692,10 @@ export default function SettingsScreen() {
 
           {/* â”€â”€ Accumulation Limit â”€â”€ */}
           <View style={styles.fieldGroup}>
-            <Text style={[styles.fieldLabel, { color: theme.text }]}>
+            <Text style={[styles.fieldLabel, { color: theme.text }]} maxFontSizeMultiplier={1.3}>
               {t('settingsPage.accumulationLimit')}
             </Text>
-            <Text style={[styles.fieldHint, { color: theme.textMuted }]}>
+            <Text style={[styles.fieldHint, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>
               {t('settingsPage.accumulationLimitHint', { unit: isStamps ? t('common.stamps') : t('common.points') })}
             </Text>
 
@@ -656,6 +712,9 @@ export default function SettingsScreen() {
                 if (hasAccumulationLimit) set({ accumulationLimit: '' });
               }}
               activeOpacity={0.8}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: hasAccumulationLimit }}
+              accessibilityLabel={t('settingsPage.accumulationLimit')}
             >
               <ShieldCheck
                 size={20}
@@ -667,6 +726,7 @@ export default function SettingsScreen() {
                   styles.limitToggleText,
                   { color: hasAccumulationLimit ? theme.primary : theme.textMuted },
                 ]}
+                maxFontSizeMultiplier={1.3}
               >
                 {hasAccumulationLimit
                   ? t('settingsPage.limitEnabled')
@@ -690,8 +750,10 @@ export default function SettingsScreen() {
                   keyboardType="numeric"
                   placeholder={t('settingsPage.limitPlaceholder')}
                   placeholderTextColor={theme.textMuted}
+                  maxLength={9}
+                  maxFontSizeMultiplier={1.3}
                 />
-                <Text style={[styles.inputSuffix, { color: theme.textSecondary }]}>
+                <Text style={[styles.inputSuffix, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.3}>
                   {isStamps ? t('common.stamps') : t('common.points')}
                 </Text>
               </View>
@@ -707,6 +769,9 @@ export default function SettingsScreen() {
             onPress={handleSave}
             disabled={saving || !hasChanges}
             activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel={t('settingsPage.saveBtn')}
+            accessibilityState={{ disabled: saving || !hasChanges, busy: saving }}
           >
             {saving ? (
               <ActivityIndicator size="small" color="#fff" />
@@ -718,6 +783,7 @@ export default function SettingsScreen() {
                     styles.saveBtnText,
                     { color: hasChanges ? '#fff' : theme.textMuted },
                   ]}
+                  maxFontSizeMultiplier={1.3}
                 >
                   {t('settingsPage.saveBtn')}
                 </Text>
@@ -746,12 +812,7 @@ export default function SettingsScreen() {
         />
 
       </ScrollView>
-      <PremiumLockModal
-        visible={premiumModal.visible}
-        onClose={() => setPremiumModal(prev => ({ ...prev, visible: false }))}
-        titleKey={premiumModal.titleKey}
-        descKey={premiumModal.descKey}
-      />
+      </KeyboardAvoidingView>
     </View>
   );
 }
@@ -760,12 +821,12 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
-  // ── Header — simple bar (activity style) ──
+  // Header — aligned with plan.tsx
   headerBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingBottom: 12,
+    paddingHorizontal: 20,
+    paddingBottom: 16,
     gap: 10,
   },
   backBtn: { marginRight: 2 },
@@ -778,11 +839,11 @@ const styles = StyleSheet.create({
   },
 
 
-  // ── Sections ──
+  // Sections
   guideContainer: {
-    marginHorizontal: 20,
-    marginTop: 16,
-    marginBottom: 4,
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 12,
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderRadius: 12,
@@ -797,15 +858,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     justifyContent: 'space-between' as const,
-    marginHorizontal: 20,
-    marginTop: 24,
-    marginBottom: 16,
+    marginHorizontal: 16,
+    marginTop: 20,
+    marginBottom: 12,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '800',
     fontFamily: 'Lexend_700Bold',
-    letterSpacing: -0.3,
+    letterSpacing: -0.2,
   },
   card: {
     marginHorizontal: 16,
@@ -989,12 +1050,12 @@ const styles = StyleSheet.create({
   },
   saveBtnText: { fontSize: 15, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
 
-  // ── Owner-only guard ──
+  // Owner-only guard
   ownerOnlyIcon: {
     width: ms(88),
     height: ms(88),
     borderRadius: ms(24),
-    backgroundColor: `${palette.charbon}12`,
+    backgroundColor: `${palette.violet}18`,
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
   },
@@ -1022,18 +1083,18 @@ const styles = StyleSheet.create({
     fontFamily: 'Lexend_600SemiBold',
   },
 
-  // ── Section header content ──
+  // Section header content
   sectionHeaderContent: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
-    gap: 8,
+    gap: 10,
     flex: 1,
   },
   sectionHeaderIcon: {
-    width: ms(36),
-    height: ms(36),
-    borderRadius: ms(12),
-    backgroundColor: `${palette.charbon}12`,
+    width: ms(32),
+    height: ms(32),
+    borderRadius: ms(10),
+    backgroundColor: `${palette.violet}18`,
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
   },

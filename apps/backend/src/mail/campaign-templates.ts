@@ -902,8 +902,225 @@ export function buildFeatureQREmail(prenom: string | undefined, lang: Lang = 'fr
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-//  MERCHANT CAMPAIGN EMAILS (JitPlus Pro branding)
+//  MERCHANT CAMPAIGN EMAILS (JitPlus Pro branding) — fr / en / ar (darija)
 // ═══════════════════════════════════════════════════════════════════════════════
+
+/** Localised strings used by merchant campaign emails. */
+const MERCHANT_EMAIL_STRINGS: Record<Lang, {
+  greet: (name: string) => string;
+  viewDashboard: string;
+  viewClients: string;
+  // Weekly digest
+  digestTitle: string;
+  digestPreheader: (name: string, scans: number, nc: number) => string;
+  digestIntro: (name: string) => string;
+  digestLabelScans: string;
+  digestLabelNew: string;
+  digestLabelTotal: string;
+  digestOutroPositive: string;
+  digestOutroZero: string;
+  digestUnsub: string;
+  digestSubject: (name: string, scans: number, nc: number) => string;
+  // Milestone
+  milestoneTitle: string;
+  milestonePreheader: (name: string, n: number) => string;
+  milestoneLoyalLabel: string;
+  milestoneBody: string;
+  milestoneSubject: (name: string, n: number) => string;
+  // Tip — notifications
+  tipNotifTitle: string;
+  tipNotifPreheader: string;
+  tipNotifIntro: string;
+  tipNotifItemPromo: string;
+  tipNotifItemNew: string;
+  tipNotifItemEvent: string;
+  tipNotifItemReminder: string;
+  tipNotifCta: string;
+  tipNotifSubject: string;
+  // Tip — rewards
+  tipRewTitle: string;
+  tipRewPreheader: string;
+  tipRewIntro: string;
+  tipRewCoffee: string;
+  tipRewDiscount: string;
+  tipRewGift: string;
+  tipRewVip: string;
+  tipRewOutro: string;
+  tipRewCta: string;
+  tipRewSubject: string;
+  // Upgrade
+  upgTitle: string;
+  upgPreheader: string;
+  upgIntro: string;
+  upgEmail: string;
+  upgWhatsapp: string;
+  upgAnalytics: string;
+  upgTeam: string;
+  upgUnlimited: string;
+  upgFreeBadgeHead: string;
+  upgFreeBadgeSub: string;
+  upgCta: string;
+  upgSubject: (name: string) => string;
+}> = {
+  fr: {
+    greet: (n) => `Bonjour <strong>${n}</strong>,`,
+    viewDashboard: 'Voir mon tableau de bord',
+    viewClients: 'Voir mes clients',
+    digestTitle: '📈 Votre semaine en chiffres',
+    digestPreheader: (n, s, nc) => `${n} cette semaine : ${s} scans, ${nc} nouveaux clients`,
+    digestIntro: (n) => `Bonjour <strong>${n}</strong>, voici le r&eacute;sum&eacute; de votre semaine :`,
+    digestLabelScans: 'scans',
+    digestLabelNew: 'nouveaux clients',
+    digestLabelTotal: 'clients total',
+    digestOutroPositive: 'Bravo, votre programme de fid&eacute;lit&eacute; fonctionne ! Continuez &agrave; scanner vos clients pour les fid&eacute;liser.',
+    digestOutroZero: 'Scannez vos clients cette semaine pour activer votre programme de fid&eacute;lit&eacute; et augmenter vos ventes !',
+    digestUnsub: 'Vous recevez cet e-mail car vous avez un compte JitPlus Pro. Pour ne plus recevoir ces r&eacute;sum&eacute;s, d&eacute;sactivez les notifications e-mail dans les param&egrave;tres.',
+    digestSubject: (n, s, nc) => `📈 ${n} — Votre semaine : ${s} scan(s), ${nc} nouveau(x) client(s)`,
+    milestoneTitle: '🎯 Nouveau cap atteint !',
+    milestonePreheader: (n, m) => `Félicitations ${n} ! Vous avez atteint ${m} clients fidèles.`,
+    milestoneLoyalLabel: 'clients fid&egrave;les',
+    milestoneBody: 'F&eacute;licitations ! Votre programme de fid&eacute;lit&eacute; porte ses fruits. Continuez &agrave; offrir des r&eacute;compenses attractives pour maintenir cet &eacute;lan ! 🚀',
+    milestoneSubject: (n, m) => `🎯 ${n} — ${m} clients fidèles atteints !`,
+    tipNotifTitle: '💡 Astuce : Notifications push',
+    tipNotifPreheader: 'Astuce : Envoyez des notifications push à tous vos clients en 1 clic !',
+    tipNotifIntro: 'Saviez-vous que vous pouvez envoyer des <strong>notifications push</strong> &agrave; tous vos clients en un seul clic ? C\'est l\'outil id&eacute;al pour :',
+    tipNotifItemPromo: '📢 Annoncer une <strong>promotion</strong>',
+    tipNotifItemNew: '🆕 Pr&eacute;senter un <strong>nouveau produit</strong>',
+    tipNotifItemEvent: '🎉 Inviter &agrave; un <strong>&eacute;v&eacute;nement</strong>',
+    tipNotifItemReminder: '⏰ Rappeler une <strong>offre limit&eacute;e</strong>',
+    tipNotifCta: 'Envoyer une notification',
+    tipNotifSubject: '💡 Envoyez des notifications push à vos clients',
+    tipRewTitle: '💡 Astuce : R&eacute;compenses personnalis&eacute;es',
+    tipRewPreheader: 'Astuce : Créez des récompenses attractives pour fidéliser vos clients !',
+    tipRewIntro: 'Les r&eacute;compenses sont le c&oelig;ur de votre programme de fid&eacute;lit&eacute;. Voici quelques id&eacute;es qui fonctionnent bien chez nos marchands :',
+    tipRewCoffee: '☕ <strong>Caf&eacute; gratuit</strong> &mdash; 100 points',
+    tipRewDiscount: '🏷️ <strong>Remise 10%</strong> &mdash; 200 points',
+    tipRewGift: '🎁 <strong>Cadeau surprise</strong> &mdash; 500 points',
+    tipRewVip: '⭐ <strong>Service VIP</strong> &mdash; 1000 points',
+    tipRewOutro: 'Cr&eacute;ez des r&eacute;compenses vari&eacute;es et accessibles pour encourager les visites r&eacute;p&eacute;t&eacute;es !',
+    tipRewCta: 'Gérer mes récompenses',
+    tipRewSubject: '💡 Personnalisez vos récompenses de fidélité',
+    upgTitle: '⚡ Passez au Premium !',
+    upgPreheader: 'Passez au Premium et débloquez emails, WhatsApp, analyses et plus — 30 jours gratuits !',
+    upgIntro: 'Votre programme de fid&eacute;lit&eacute; est lanc&eacute;, bravo ! Pour aller encore plus loin, d&eacute;couvrez tout ce que le <strong>plan Premium</strong> peut vous offrir :',
+    upgEmail: '📧 <strong>Campagnes e-mail</strong> &mdash; Envoyez des emails marketing &agrave; tous vos clients',
+    upgWhatsapp: '💬 <strong>WhatsApp Business</strong> &mdash; Atteignez vos clients directement',
+    upgAnalytics: '📊 <strong>Analyses d&eacute;taill&eacute;es</strong> &mdash; Comprenez vos tendances et performances',
+    upgTeam: '👥 <strong>&Eacute;quipe multi-employ&eacute;s</strong> &mdash; Ajoutez des membres pour scanner',
+    upgUnlimited: '🔓 <strong>R&eacute;compenses illimit&eacute;es</strong> &mdash; Cr&eacute;ez autant de r&eacute;compenses que vous voulez',
+    upgFreeBadgeHead: '🎁 Essayez 30 jours gratuits',
+    upgFreeBadgeSub: 'Aucune carte requise &mdash; annulez &agrave; tout moment',
+    upgCta: 'Essayer Premium gratuitement',
+    upgSubject: (n) => `⚡ ${n} — Passez au Premium, 30 jours offerts !`,
+  },
+  en: {
+    greet: (n) => `Hello <strong>${n}</strong>,`,
+    viewDashboard: 'Open my dashboard',
+    viewClients: 'View my clients',
+    digestTitle: '📈 Your week in numbers',
+    digestPreheader: (n, s, nc) => `${n} this week: ${s} scans, ${nc} new clients`,
+    digestIntro: (n) => `Hello <strong>${n}</strong>, here is your week at a glance:`,
+    digestLabelScans: 'scans',
+    digestLabelNew: 'new clients',
+    digestLabelTotal: 'total clients',
+    digestOutroPositive: 'Great job — your loyalty program is working! Keep scanning your clients to build long-term loyalty.',
+    digestOutroZero: 'Scan your clients this week to activate your loyalty program and grow your sales!',
+    digestUnsub: 'You are receiving this email because you have a JitPlus Pro account. To stop receiving these summaries, disable email notifications in settings.',
+    digestSubject: (n, s, nc) => `📈 ${n} — Your week: ${s} scan(s), ${nc} new client(s)`,
+    milestoneTitle: '🎯 New milestone reached!',
+    milestonePreheader: (n, m) => `Congrats ${n}! You reached ${m} loyal clients.`,
+    milestoneLoyalLabel: 'loyal clients',
+    milestoneBody: 'Congratulations! Your loyalty program is paying off. Keep offering attractive rewards to maintain the momentum! 🚀',
+    milestoneSubject: (n, m) => `🎯 ${n} — ${m} loyal clients reached!`,
+    tipNotifTitle: '💡 Tip: Push notifications',
+    tipNotifPreheader: 'Tip: Send push notifications to all your clients in one click!',
+    tipNotifIntro: 'Did you know you can send <strong>push notifications</strong> to all your clients in one click? It is the perfect tool to:',
+    tipNotifItemPromo: '📢 Announce a <strong>promotion</strong>',
+    tipNotifItemNew: '🆕 Showcase a <strong>new product</strong>',
+    tipNotifItemEvent: '🎉 Invite to an <strong>event</strong>',
+    tipNotifItemReminder: '⏰ Remind a <strong>limited-time offer</strong>',
+    tipNotifCta: 'Send a notification',
+    tipNotifSubject: '💡 Send push notifications to your clients',
+    tipRewTitle: '💡 Tip: Custom rewards',
+    tipRewPreheader: 'Tip: Create attractive rewards to keep your clients loyal!',
+    tipRewIntro: 'Rewards are the heart of your loyalty program. Here are a few ideas that work well for our merchants:',
+    tipRewCoffee: '☕ <strong>Free coffee</strong> &mdash; 100 points',
+    tipRewDiscount: '🏷️ <strong>10% off</strong> &mdash; 200 points',
+    tipRewGift: '🎁 <strong>Surprise gift</strong> &mdash; 500 points',
+    tipRewVip: '⭐ <strong>VIP service</strong> &mdash; 1000 points',
+    tipRewOutro: 'Create varied, reachable rewards to encourage repeat visits!',
+    tipRewCta: 'Manage my rewards',
+    tipRewSubject: '💡 Customise your loyalty rewards',
+    upgTitle: '⚡ Upgrade to Premium!',
+    upgPreheader: 'Upgrade to Premium and unlock emails, WhatsApp, analytics and more — 30 days free!',
+    upgIntro: 'Your loyalty program is up and running, well done! To go further, discover everything the <strong>Premium plan</strong> has to offer:',
+    upgEmail: '📧 <strong>Email campaigns</strong> &mdash; Send marketing emails to all your clients',
+    upgWhatsapp: '💬 <strong>WhatsApp Business</strong> &mdash; Reach your clients directly',
+    upgAnalytics: '📊 <strong>Detailed analytics</strong> &mdash; Understand your trends and performance',
+    upgTeam: '👥 <strong>Multi-staff team</strong> &mdash; Add members to scan clients',
+    upgUnlimited: '🔓 <strong>Unlimited rewards</strong> &mdash; Create as many rewards as you want',
+    upgFreeBadgeHead: '🎁 Try 30 days free',
+    upgFreeBadgeSub: 'No card required &mdash; cancel anytime',
+    upgCta: 'Try Premium free',
+    upgSubject: (n) => `⚡ ${n} — Go Premium, 30 days on us!`,
+  },
+  ar: {
+    greet: (n) => `السلام <strong>${n}</strong>،`,
+    viewDashboard: 'شوف الداشبورد ديالي',
+    viewClients: 'شوف الكليان ديالي',
+    digestTitle: '📈 الأسبوع ديالك بالأرقام',
+    digestPreheader: (n, s, nc) => `${n} هاد الأسبوع: ${s} سكان، ${nc} كليان جداد`,
+    digestIntro: (n) => `السلام <strong>${n}</strong>، هاهو الملخص ديال الأسبوع ديالك:`,
+    digestLabelScans: 'سكان',
+    digestLabelNew: 'كليان جداد',
+    digestLabelTotal: 'مجموع الكليان',
+    digestOutroPositive: 'برافو، برنامج الولاء ديالك كيخدم! كمل سكاني الكليان باش تفيداليزيهم.',
+    digestOutroZero: 'سكاني الكليان ديالك هاد الأسبوع باش تفعّل برنامج الولاء وتزيد المبيعات!',
+    digestUnsub: 'كتوصلك هاد الإيمايل حيت عندك حساب JitPlus Pro. باش ما تبقاش توصلك هاد الملخصات، دير ديزاكتيفي الإيمايلات من الإعدادات.',
+    digestSubject: (n, s, nc) => `📈 ${n} — الأسبوع ديالك: ${s} سكان، ${nc} كليان جديد`,
+    milestoneTitle: '🎯 هدف جديد تحقق!',
+    milestonePreheader: (n, m) => `مبروك ${n}! وصلتي لـ ${m} كليان وفي.`,
+    milestoneLoyalLabel: 'كليان أوفياء',
+    milestoneBody: 'مبروك! برنامج الولاء ديالك كيعطي النتائج. كمل عرض المكافآت المغرية باش تحافظ على هاد الوتيرة! 🚀',
+    milestoneSubject: (n, m) => `🎯 ${n} — وصلتي لـ ${m} كليان وفي!`,
+    tipNotifTitle: '💡 نصيحة: نوتيفيكاسيون',
+    tipNotifPreheader: 'نصيحة: صيفط نوتيفيكاسيون لكاع الكليان ديالك فكليك واحد!',
+    tipNotifIntro: 'واش كنتي عارف أنك تقدر تصيفط <strong>نوتيفيكاسيون</strong> لكاع الكليان ديالك فكليك واحد؟ هادي أداة مزيانة باش:',
+    tipNotifItemPromo: '📢 تعلن <strong>بروموسيون</strong>',
+    tipNotifItemNew: '🆕 تعرض <strong>منتج جديد</strong>',
+    tipNotifItemEvent: '🎉 تعرض <strong>إيفينمون</strong>',
+    tipNotifItemReminder: '⏰ تذكّر بـ <strong>عرض محدود</strong>',
+    tipNotifCta: 'صيفط نوتيفيكاسيون',
+    tipNotifSubject: '💡 صيفط نوتيفيكاسيون للكليان ديالك',
+    tipRewTitle: '💡 نصيحة: مكافآت مخصصة',
+    tipRewPreheader: 'نصيحة: صاوب مكافآت مغرية باش تفيداليزي الكليان!',
+    tipRewIntro: 'المكافآت هي قلب برنامج الولاء ديالك. هاهي بعض الأفكار اللي كتخدم مزيان عند التجار ديالنا:',
+    tipRewCoffee: '☕ <strong>قهوة مجانية</strong> &mdash; 100 نقطة',
+    tipRewDiscount: '🏷️ <strong>تخفيض 10%</strong> &mdash; 200 نقطة',
+    tipRewGift: '🎁 <strong>كادو مفاجأة</strong> &mdash; 500 نقطة',
+    tipRewVip: '⭐ <strong>خدمة VIP</strong> &mdash; 1000 نقطة',
+    tipRewOutro: 'صاوب مكافآت متنوعة وواصلة باش تشجع الزيارات المتكررة!',
+    tipRewCta: 'دبر المكافآت ديالي',
+    tipRewSubject: '💡 خصص المكافآت ديال الولاء',
+    upgTitle: '⚡ ترقّى لـ Premium!',
+    upgPreheader: 'ترقّى لـ Premium وحل الإيمايلات، واتساب، التحاليل والمزيد — 30 يوم مجانا!',
+    upgIntro: 'برنامج الولاء ديالك ماشي، برافو! باش تمشي أبعد، اكتشف كلشي اللي <strong>بلان Premium</strong> كيعطيك:',
+    upgEmail: '📧 <strong>حملات إيمايل</strong> &mdash; صيفط إيمايلات ماركتينغ لكاع الكليان',
+    upgWhatsapp: '💬 <strong>واتساب بيزنس</strong> &mdash; وصل للكليان مباشرة',
+    upgAnalytics: '📊 <strong>تحاليل مفصلة</strong> &mdash; افهم الاتجاهات والأداء ديالك',
+    upgTeam: '👥 <strong>فريق متعدد</strong> &mdash; زيد أعضاء للسكاني',
+    upgUnlimited: '🔓 <strong>مكافآت بلا ليميت</strong> &mdash; صاوب شحال ما بغيتي ديال المكافآت',
+    upgFreeBadgeHead: '🎁 جرب 30 يوم مجانا',
+    upgFreeBadgeSub: 'بلا كارت &mdash; تقدر تلغي فأي وقت',
+    upgCta: 'جرب Premium مجانا',
+    upgSubject: (n) => `⚡ ${n} — ترقّى لـ Premium، 30 يوم مجانا!`,
+  },
+};
+
+/** Re-exported so services can map lang → email subject without building HTML. */
+export function getMerchantEmailStrings(lang: Lang) {
+  return MERCHANT_EMAIL_STRINGS[lang];
+}
 
 // ── Weekly Performance Digest ────────────────────────────────────────────────
 
@@ -912,171 +1129,180 @@ export function buildMerchantWeeklyDigestEmail(
   weekScans: number,
   newClients: number,
   totalClients: number,
+  lang: Lang = 'fr',
 ): string {
   const brand = BRANDS.merchant;
   const safeName = escapeHtml(nomBoutique);
+  const t = MERCHANT_EMAIL_STRINGS[lang];
 
   return wrapCampaignEmail({
     brand,
-    preheader: `${nomBoutique} cette semaine : ${weekScans} scans, ${newClients} nouveaux clients`,
+    lang,
+    preheader: t.digestPreheader(nomBoutique, weekScans, newClients),
     content: `
-      <h2 style="color: #1E1B4B; font-size: 20px; margin: 0 0 12px;">📈 Votre semaine en chiffres</h2>
+      <h2 style="color: #1E1B4B; font-size: 20px; margin: 0 0 12px;">${t.digestTitle}</h2>
       <p style="color: #334155; font-size: 15px; line-height: 1.7; margin: 0 0 20px;">
-        Bonjour <strong>${safeName}</strong>, voici le r&eacute;sum&eacute; de votre semaine :
+        ${t.digestIntro(safeName)}
       </p>
       <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin-bottom: 20px;">
         <tr>
           <td style="width: 33%; padding: 12px 4px; background: ${brand.accentLight}; border-radius: 10px 0 0 10px; text-align: center;">
             <p style="color: ${brand.accent}; font-size: 24px; font-weight: 800; margin: 0;">${weekScans}</p>
-            <p style="color: ${brand.accentMuted}; font-size: 12px; margin: 4px 0 0;">scans</p>
+            <p style="color: ${brand.accentMuted}; font-size: 12px; margin: 4px 0 0;">${t.digestLabelScans}</p>
           </td>
           <td style="width: 33%; padding: 12px 4px; background: ${brand.accentLight}; text-align: center;">
             <p style="color: ${brand.accent}; font-size: 24px; font-weight: 800; margin: 0;">${newClients}</p>
-            <p style="color: ${brand.accentMuted}; font-size: 12px; margin: 4px 0 0;">nouveaux clients</p>
+            <p style="color: ${brand.accentMuted}; font-size: 12px; margin: 4px 0 0;">${t.digestLabelNew}</p>
           </td>
           <td style="width: 33%; padding: 12px 4px; background: ${brand.accentLight}; border-radius: 0 10px 10px 0; text-align: center;">
             <p style="color: ${brand.accent}; font-size: 24px; font-weight: 800; margin: 0;">${totalClients}</p>
-            <p style="color: ${brand.accentMuted}; font-size: 12px; margin: 4px 0 0;">clients total</p>
+            <p style="color: ${brand.accentMuted}; font-size: 12px; margin: 4px 0 0;">${t.digestLabelTotal}</p>
           </td>
         </tr>
       </table>
       <p style="color: #334155; font-size: 15px; line-height: 1.7; margin: 0;">
-        ${weekScans > 0
-          ? 'Bravo, votre programme de fid&eacute;lit&eacute; fonctionne ! Continuez &agrave; scanner vos clients pour les fid&eacute;liser.'
-          : 'Scannez vos clients cette semaine pour activer votre programme de fid&eacute;lit&eacute; et augmenter vos ventes !'}
+        ${weekScans > 0 ? t.digestOutroPositive : t.digestOutroZero}
       </p>`,
-    ctaText: 'Voir mon tableau de bord',
+    ctaText: t.viewDashboard,
     ctaUrl: 'https://jitplus.com/pro',
-    unsubscribeNote: 'Vous recevez cet e-mail car vous avez un compte JitPlus Pro. Pour ne plus recevoir ces r&eacute;sum&eacute;s, d&eacute;sactivez les notifications e-mail dans les param&egrave;tres.',
+    unsubscribeNote: t.digestUnsub,
   });
 }
 
 // ── Client Milestone ─────────────────────────────────────────────────────────
 
-export function buildMerchantMilestoneEmail(nomBoutique: string, milestone: number): string {
+export function buildMerchantMilestoneEmail(
+  nomBoutique: string,
+  milestone: number,
+  lang: Lang = 'fr',
+): string {
   const brand = BRANDS.merchant;
   const safeName = escapeHtml(nomBoutique);
+  const t = MERCHANT_EMAIL_STRINGS[lang];
 
   return wrapCampaignEmail({
     brand,
-    preheader: `Félicitations ${nomBoutique} ! Vous avez atteint ${milestone} clients fidèles.`,
+    lang,
+    preheader: t.milestonePreheader(nomBoutique, milestone),
     content: `
-      <h2 style="color: #1E1B4B; font-size: 20px; margin: 0 0 12px;">🎯 Nouveau cap atteint !</h2>
+      <h2 style="color: #1E1B4B; font-size: 20px; margin: 0 0 12px;">${t.milestoneTitle}</h2>
       <p style="color: #334155; font-size: 15px; line-height: 1.7; margin: 0 0 16px;">
-        Bonjour <strong>${safeName}</strong>,
+        ${t.greet(safeName)}
       </p>
       <div style="background: ${brand.accentLight}; border-radius: 10px; padding: 20px; text-align: center; margin-bottom: 16px;">
         <p style="color: ${brand.accent}; font-size: 36px; font-weight: 800; margin: 0;">🏆 ${milestone}</p>
-        <p style="color: ${brand.accentMuted}; font-size: 15px; margin: 8px 0 0;">clients fid&egrave;les</p>
+        <p style="color: ${brand.accentMuted}; font-size: 15px; margin: 8px 0 0;">${t.milestoneLoyalLabel}</p>
       </div>
       <p style="color: #334155; font-size: 15px; line-height: 1.7; margin: 0;">
-        F&eacute;licitations ! Votre programme de fid&eacute;lit&eacute; porte ses fruits. Continuez &agrave; offrir
-        des r&eacute;compenses attractives pour maintenir cet &eacute;lan ! 🚀
+        ${t.milestoneBody}
       </p>`,
-    ctaText: 'Voir mes clients',
+    ctaText: t.viewClients,
     ctaUrl: 'https://jitplus.com/pro',
   });
 }
 
 // ── Feature Tips ─────────────────────────────────────────────────────────────
 
-export function buildMerchantTipNotificationsEmail(nomBoutique: string): string {
+export function buildMerchantTipNotificationsEmail(nomBoutique: string, lang: Lang = 'fr'): string {
   const brand = BRANDS.merchant;
   const safeName = escapeHtml(nomBoutique);
+  const t = MERCHANT_EMAIL_STRINGS[lang];
 
   return wrapCampaignEmail({
     brand,
-    preheader: 'Astuce : Envoyez des notifications push à tous vos clients en 1 clic !',
+    lang,
+    preheader: t.tipNotifPreheader,
     content: `
-      <h2 style="color: #1E1B4B; font-size: 20px; margin: 0 0 12px;">💡 Astuce : Notifications push</h2>
+      <h2 style="color: #1E1B4B; font-size: 20px; margin: 0 0 12px;">${t.tipNotifTitle}</h2>
       <p style="color: #334155; font-size: 15px; line-height: 1.7; margin: 0 0 16px;">
-        Bonjour <strong>${safeName}</strong>,
+        ${t.greet(safeName)}
       </p>
       <p style="color: #334155; font-size: 15px; line-height: 1.7; margin: 0 0 16px;">
-        Saviez-vous que vous pouvez envoyer des <strong style="color: ${brand.accent};">notifications push</strong>
-        &agrave; tous vos clients en un seul clic ? C'est l'outil id&eacute;al pour :
+        ${t.tipNotifIntro}
       </p>
       <div style="background: ${brand.accentLight}; border-radius: 10px; padding: 16px; margin-bottom: 16px;">
         <table cellpadding="0" cellspacing="0" role="presentation" style="width: 100%;">
-          <tr><td style="padding: 6px 0;">📢 Annoncer une <strong>promotion</strong></td></tr>
-          <tr><td style="padding: 6px 0;">🆕 Pr&eacute;senter un <strong>nouveau produit</strong></td></tr>
-          <tr><td style="padding: 6px 0;">🎉 Inviter &agrave; un <strong>&eacute;v&eacute;nement</strong></td></tr>
-          <tr><td style="padding: 6px 0;">⏰ Rappeler une <strong>offre limit&eacute;e</strong></td></tr>
+          <tr><td style="padding: 6px 0;">${t.tipNotifItemPromo}</td></tr>
+          <tr><td style="padding: 6px 0;">${t.tipNotifItemNew}</td></tr>
+          <tr><td style="padding: 6px 0;">${t.tipNotifItemEvent}</td></tr>
+          <tr><td style="padding: 6px 0;">${t.tipNotifItemReminder}</td></tr>
         </table>
       </div>`,
-    ctaText: 'Envoyer une notification',
+    ctaText: t.tipNotifCta,
     ctaUrl: 'https://jitplus.com/pro',
   });
 }
 
-export function buildMerchantTipRewardsEmail(nomBoutique: string): string {
+export function buildMerchantTipRewardsEmail(nomBoutique: string, lang: Lang = 'fr'): string {
   const brand = BRANDS.merchant;
   const safeName = escapeHtml(nomBoutique);
+  const t = MERCHANT_EMAIL_STRINGS[lang];
 
   return wrapCampaignEmail({
     brand,
-    preheader: 'Astuce : Créez des récompenses attractives pour fidéliser vos clients !',
+    lang,
+    preheader: t.tipRewPreheader,
     content: `
-      <h2 style="color: #1E1B4B; font-size: 20px; margin: 0 0 12px;">💡 Astuce : R&eacute;compenses personnalis&eacute;es</h2>
+      <h2 style="color: #1E1B4B; font-size: 20px; margin: 0 0 12px;">${t.tipRewTitle}</h2>
       <p style="color: #334155; font-size: 15px; line-height: 1.7; margin: 0 0 16px;">
-        Bonjour <strong>${safeName}</strong>,
+        ${t.greet(safeName)}
       </p>
       <p style="color: #334155; font-size: 15px; line-height: 1.7; margin: 0 0 16px;">
-        Les r&eacute;compenses sont le c&oelig;ur de votre programme de fid&eacute;lit&eacute;. Voici quelques id&eacute;es
-        qui fonctionnent bien chez nos marchands :
+        ${t.tipRewIntro}
       </p>
       <div style="background: ${brand.accentLight}; border-radius: 10px; padding: 16px; margin-bottom: 16px;">
         <table cellpadding="0" cellspacing="0" role="presentation" style="width: 100%;">
-          <tr><td style="padding: 6px 0;">☕ <strong>Caf&eacute; gratuit</strong> &mdash; 100 points</td></tr>
-          <tr><td style="padding: 6px 0;">🏷️ <strong>Remise 10%</strong> &mdash; 200 points</td></tr>
-          <tr><td style="padding: 6px 0;">🎁 <strong>Cadeau surprise</strong> &mdash; 500 points</td></tr>
-          <tr><td style="padding: 6px 0;">⭐ <strong>Service VIP</strong> &mdash; 1000 points</td></tr>
+          <tr><td style="padding: 6px 0;">${t.tipRewCoffee}</td></tr>
+          <tr><td style="padding: 6px 0;">${t.tipRewDiscount}</td></tr>
+          <tr><td style="padding: 6px 0;">${t.tipRewGift}</td></tr>
+          <tr><td style="padding: 6px 0;">${t.tipRewVip}</td></tr>
         </table>
       </div>
       <p style="color: #334155; font-size: 15px; line-height: 1.7; margin: 0;">
-        Cr&eacute;ez des r&eacute;compenses vari&eacute;es et accessibles pour encourager les visites r&eacute;p&eacute;t&eacute;es !
+        ${t.tipRewOutro}
       </p>`,
-    ctaText: 'Gérer mes récompenses',
+    ctaText: t.tipRewCta,
     ctaUrl: 'https://jitplus.com/pro',
   });
 }
 
 // ── Upgrade Nudge ────────────────────────────────────────────────────────────
 
-export function buildMerchantUpgradeEmail(nomBoutique: string): string {
+export function buildMerchantUpgradeEmail(nomBoutique: string, lang: Lang = 'fr'): string {
   const brand = BRANDS.merchant;
   const safeName = escapeHtml(nomBoutique);
+  const t = MERCHANT_EMAIL_STRINGS[lang];
 
   return wrapCampaignEmail({
     brand,
-    preheader: 'Passez au Premium et débloquez emails, WhatsApp, analyses et plus — 30 jours gratuits !',
+    lang,
+    preheader: t.upgPreheader,
     content: `
-      <h2 style="color: #1E1B4B; font-size: 20px; margin: 0 0 12px;">⚡ Passez au Premium !</h2>
+      <h2 style="color: #1E1B4B; font-size: 20px; margin: 0 0 12px;">${t.upgTitle}</h2>
       <p style="color: #334155; font-size: 15px; line-height: 1.7; margin: 0 0 16px;">
-        Bonjour <strong>${safeName}</strong>,
+        ${t.greet(safeName)}
       </p>
       <p style="color: #334155; font-size: 15px; line-height: 1.7; margin: 0 0 16px;">
-        Votre programme de fid&eacute;lit&eacute; est lanc&eacute;, bravo ! Pour aller encore plus loin,
-        d&eacute;couvrez tout ce que le <strong style="color: ${brand.accent};">plan Premium</strong> peut vous offrir :
+        ${t.upgIntro}
       </p>
       <div style="background: ${brand.accentLight}; border-radius: 10px; padding: 16px; margin-bottom: 16px;">
         <table cellpadding="0" cellspacing="0" role="presentation" style="width: 100%;">
-          <tr><td style="padding: 8px 0;">📧 <strong>Campagnes e-mail</strong> &mdash; Envoyez des emails marketing &agrave; tous vos clients</td></tr>
-          <tr><td style="padding: 8px 0;">💬 <strong>WhatsApp Business</strong> &mdash; Atteignez vos clients directement</td></tr>
-          <tr><td style="padding: 8px 0;">📊 <strong>Analyses d&eacute;taill&eacute;es</strong> &mdash; Comprenez vos tendances et performances</td></tr>
-          <tr><td style="padding: 8px 0;">👥 <strong>&Eacute;quipe multi-employ&eacute;s</strong> &mdash; Ajoutez des membres pour scanner</td></tr>
-          <tr><td style="padding: 8px 0;">🔓 <strong>R&eacute;compenses illimit&eacute;es</strong> &mdash; Cr&eacute;ez autant de r&eacute;compenses que vous voulez</td></tr>
+          <tr><td style="padding: 8px 0;">${t.upgEmail}</td></tr>
+          <tr><td style="padding: 8px 0;">${t.upgWhatsapp}</td></tr>
+          <tr><td style="padding: 8px 0;">${t.upgAnalytics}</td></tr>
+          <tr><td style="padding: 8px 0;">${t.upgTeam}</td></tr>
+          <tr><td style="padding: 8px 0;">${t.upgUnlimited}</td></tr>
         </table>
       </div>
       <div style="background: #ECFDF5; border-radius: 10px; padding: 16px; text-align: center; margin-bottom: 16px;">
         <p style="color: #065F46; font-size: 16px; font-weight: 700; margin: 0;">
-          🎁 Essayez 30 jours gratuits
+          ${t.upgFreeBadgeHead}
         </p>
         <p style="color: #047857; font-size: 13px; margin: 6px 0 0;">
-          Aucune carte requise &mdash; annulez &agrave; tout moment
+          ${t.upgFreeBadgeSub}
         </p>
       </div>`,
-    ctaText: 'Essayer Premium gratuitement',
+    ctaText: t.upgCta,
     ctaUrl: 'https://jitplus.com/pro',
   });
 }

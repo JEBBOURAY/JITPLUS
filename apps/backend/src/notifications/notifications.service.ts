@@ -1,4 +1,4 @@
-import { Injectable, Logger, Inject } from '@nestjs/common';
+import { Injectable, Logger, Inject, BadRequestException } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
 import { ConfigService } from '@nestjs/config';
@@ -19,6 +19,7 @@ import { SendEmailBlastDto } from './dto/send-email-blast.dto';
 import { buildWhatsAppBroadcastMessage } from './templates/whatsapp-templates';
 import { buildPagination, PaginationResult } from '../common/utils';
 import { DEFAULT_NOTIFICATION_LOGO, LOGO_CACHE_TTL, EMAIL_LOGO_JITPLUS_PRO } from '../common/constants';
+import { detectProhibitedContent } from './content-filter';
 
 @Injectable()
 export class NotificationsService {
@@ -61,6 +62,10 @@ export class NotificationsService {
     failureCount: number;
     createdAt: Date;
   }> {
+
+    // Server-side content moderation (anti-phishing / anti-spam)
+    const violation = detectProhibitedContent(dto.title, dto.body);
+    if (violation) throw new BadRequestException(violation.message);
 
     // Collect ALL clients with a loyalty card + push info.
     // Single paginated query fetches both client IDs and push tokens,
@@ -270,6 +275,10 @@ export class NotificationsService {
     successCount: number;
     failureCount: number;
   }> {
+    // Server-side content moderation
+    const violation = detectProhibitedContent(dto.subject, dto.body);
+    if (violation) throw new BadRequestException(violation.message);
+
     // 1. Fetch merchant info
     const merchant = await this.merchantRepo.findUniqueOrThrow({
       where: { id: merchantId },
@@ -367,6 +376,10 @@ export class NotificationsService {
     successCount: number;
     failureCount: number;
   }> {
+    // Server-side content moderation
+    const violation = detectProhibitedContent(body);
+    if (violation) throw new BadRequestException(violation.message);
+
     // 1. Fetch merchant info
     const merchant = await this.merchantRepo.findUniqueOrThrow({
       where: { id: merchantId },
@@ -589,7 +602,7 @@ export class NotificationsService {
       await this.merchantRepo.updateMany({
         where: { pushToken: { in: invalidTokens } },
         data: { pushToken: null },
-      }).catch((e) => this.logger.warn(`Failed to clean stale merchant tokens: ${e}`));
+      }).catch((e: any) => this.logger.warn(`Failed to clean stale merchant tokens: ${e}`));
     }
 
     return { recipientCount: tokens.length, successCount: fcmSuccessCount, failureCount: fcmFailureCount };
@@ -705,7 +718,7 @@ export class NotificationsService {
       await this.clientRepo.updateMany({
         where: { pushToken: { in: invalidTokens } },
         data: { pushToken: null },
-      }).catch((e) => this.logger.warn(`Failed to clean stale client tokens: ${e}`));
+      }).catch((e: any) => this.logger.warn(`Failed to clean stale client tokens: ${e}`));
     }
 
     return { recipientCount: allClientIds.length, successCount: allClientIds.length, failureCount: fcmFailureCount };
@@ -789,7 +802,7 @@ export class NotificationsService {
       if (batch.length === 0) break;
       clients.push(
         ...batch.filter((c: any): c is { id: string; email: string; prenom: string | null } => !!c.email)
-          .map((c) => ({ email: c.email, prenom: c.prenom })),
+          .map((c: any) => ({ email: c.email, prenom: c.prenom })),
       );
       cursor = batch[batch.length - 1].id;
       if (batch.length < NotificationsService.CLIENT_BATCH_SIZE) break;

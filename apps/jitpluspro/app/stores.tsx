@@ -376,12 +376,26 @@ export default function StoresScreen() {
   const setForm = useCallback((payload: Partial<FormState>) => formDispatch({ type: 'SET', payload }), []);
 
   // Step navigation helpers
+  const isValidWebsite = useCallback((v: string): boolean => {
+    const s = v.trim();
+    if (!s) return true;
+    return /^https?:\/\/[^\s]+$/i.test(s);
+  }, []);
+
   const canGoNext = useMemo(() => {
-    if (step === 0) return nom.trim().length > 0;
-    if (step === 1) return true; // contact is optional
-    if (step === 2) return true; // social is optional
+    if (step === 0) return nom.trim().length >= 2;
+    if (step === 1) {
+      // Email optional but must be valid if provided
+      if (!isBranch && email.trim().length > 0 && !isValidEmail(email.trim())) return false;
+      return true;
+    }
+    if (step === 2) {
+      // Website optional but must be a valid http(s) URL if provided
+      if (!isBranch && !isValidWebsite(website)) return false;
+      return true;
+    }
     return true;
-  }, [step, nom]);
+  }, [step, nom, email, website, isBranch, isValidWebsite]);
 
   const goNext = useCallback(() => {
     if (step < 3) setForm({ step: (step + 1) as StepIndex });
@@ -394,27 +408,10 @@ export default function StoresScreen() {
   const mapRef = useRef<SafeMapViewRef>(null);
   const overviewMapRef = useRef<SafeMapViewRef>(null);
 
-  // User's live GPS position (fetched once, used as default map center)
+  // User's live GPS position (only populated after the user taps "Locate me"
+  // with prior prominent disclosure — never requested automatically at mount
+  // or on step transition, to comply with Google Play location policy).
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== 'granted') return;
-        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        setUserLocation({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
-      } catch { /* silently ignore */ }
-    })();
-  }, []);
-
-  // Auto-locate when entering step 2 with no coordinates yet
-  useEffect(() => {
-    if (step === 3 && latitude === null && longitude === null) {
-      handleUseMyLocation();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step]);
 
   // Default map center: store coords > user GPS > Casablanca fallback
   const defaultCenter = useMemo(() => ({
@@ -500,7 +497,7 @@ export default function StoresScreen() {
     setShowModal(true);
   };
 
-  // â”€â”€ Save â”€â”€
+  // ── Save ──
   const handleSave = async () => {
     const socialLinks = isBranch ? undefined : {
       instagram: instagram.trim().replace(/^@/, '').replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/.*$/, '') || undefined,
@@ -522,12 +519,92 @@ export default function StoresScreen() {
       categorie: categorie || undefined,
       ...(!isBranch && { socialLinks: hasSocial ? socialLinks : undefined }),
     };
-    const ok = await saveStore(payload as CreateStorePayload, editingStore?.id);
-    if (ok) setShowModal(false);
+
+    const doSave = async () => {
+      const ok = await saveStore(payload as CreateStorePayload, editingStore?.id);
+      if (ok) setShowModal(false);
+    };
+
+    // Apple Guideline 1.2: require an explicit no-tolerance acknowledgement
+    // before the merchant publishes UGC. Editing an existing store skips the
+    // prompt (already acknowledged at creation).
+    if (!editingStore) {
+      Alert.alert(
+        t('stores.termsTitle'),
+        t('stores.termsBody'),
+        [
+          { text: t('common.cancel'), style: 'cancel' },
+          { text: t('stores.termsAccept'), onPress: () => { void doSave(); } },
+        ],
+        { cancelable: true },
+      );
+      return;
+    }
+    await doSave();
   };
 
-  // â”€â”€ Delete â”€â”€
+  // ── Delete ──
   const handleDelete = (store: StoreType) => deleteStore(store);
+
+  // ── Toggle active (with confirmation when deactivating) ──
+  const handleToggleActive = useCallback((store: StoreType) => {
+    if (!store.isActive) {
+      // Activating: no confirmation needed
+      toggleActive(store);
+      return;
+    }
+    Alert.alert(
+      t('stores.toggleInactiveTitle'),
+      t('stores.toggleInactiveBody'),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('stores.toggleDeactivate'), style: 'destructive', onPress: () => toggleActive(store) },
+      ],
+    );
+  }, [toggleActive, t]);
+
+  // ── Dirty form detection for close confirmation ──
+  const isFormDirty = useCallback((): boolean => {
+    if (editingStore) {
+      // Edit mode: compare against the loaded store
+      return (
+        nom.trim() !== editingStore.nom ||
+        description.trim() !== (editingStore.description ?? '') ||
+        (categorie || '') !== (editingStore.categorie ?? '') ||
+        ville.trim() !== (editingStore.ville ?? '') ||
+        quartier.trim() !== (editingStore.quartier ?? '') ||
+        adresse.trim() !== (editingStore.adresse ?? '') ||
+        telephone.trim() !== (editingStore.telephone ?? '') ||
+        email.trim() !== (editingStore.email ?? '') ||
+        instagram.trim() !== (editingStore.socialLinks?.instagram ?? '') ||
+        tiktok.trim() !== (editingStore.socialLinks?.tiktok ?? '') ||
+        website.trim() !== (editingStore.socialLinks?.website ?? '') ||
+        (latitude ?? null) !== (editingStore.latitude ?? null) ||
+        (longitude ?? null) !== (editingStore.longitude ?? null)
+      );
+    }
+    // Create mode: any non-empty field is dirty
+    return Boolean(
+      nom.trim() || description.trim() || adresse.trim() || telephone.trim() ||
+      email.trim() || instagram.trim() || tiktok.trim() || website.trim() ||
+      latitude !== null || longitude !== null
+    );
+  }, [editingStore, nom, description, categorie, ville, quartier, adresse, telephone, email, instagram, tiktok, website, latitude, longitude]);
+
+  const tryCloseModal = useCallback(() => {
+    if (!isFormDirty()) {
+      setShowModal(false);
+      return;
+    }
+    Alert.alert(
+      t('stores.discardTitle'),
+      t('stores.discardBody'),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('stores.discardConfirm'), style: 'destructive', onPress: () => setShowModal(false) },
+      ],
+    );
+  }, [isFormDirty, t]);
 
   // â”€â”€ Geocoding helpers â”€â”€
   const reverseGeocodeAndLabel = async (lat: number, lng: number) => {
@@ -546,6 +623,22 @@ export default function StoresScreen() {
   };
 
   const handleUseMyLocation = async () => {
+    // ── Prominent disclosure (Google Play location policy) ──
+    // Must be shown BEFORE the first runtime permission request, explaining
+    // what data is accessed, how it is used and that it is foreground-only.
+    const proceed = await new Promise<boolean>((resolve) => {
+      Alert.alert(
+        t('stores.locationDisclosureTitle'),
+        t('stores.locationDisclosureBody'),
+        [
+          { text: t('common.cancel'), style: 'cancel', onPress: () => resolve(false) },
+          { text: t('stores.locationDisclosureAllow'), onPress: () => resolve(true) },
+        ],
+        { cancelable: true, onDismiss: () => resolve(false) },
+      );
+    });
+    if (!proceed) return;
+
     setForm({ locating: true });
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -689,7 +782,7 @@ export default function StoresScreen() {
               merchantCategorie={merchant?.categorie}
               isReference={index === 0}
               onEdit={openEdit}
-              onToggle={toggleActive}
+              onToggle={handleToggleActive}
               onDelete={handleDelete}
             />
           ))}
@@ -703,7 +796,7 @@ export default function StoresScreen() {
             <View style={[styles.modalContent, { backgroundColor: theme.bg, paddingTop: Math.max(insets.top, 16) }]}>
               {/* Modal header with step indicator */}
               <View style={[styles.modalHeader, { borderBottomColor: theme.border }]}>
-                <TouchableOpacity onPress={() => { if (step > 0) goBack(); else setShowModal(false); }}>
+                <TouchableOpacity onPress={() => { if (step > 0) goBack(); else tryCloseModal(); }}>
                   {step > 0 ? <ArrowLeft size={ms(22)} color={theme.text} /> : <X size={ms(22)} color={theme.text} />}
                 </TouchableOpacity>
                 <View style={styles.stepHeaderCenter}>
@@ -744,6 +837,11 @@ export default function StoresScreen() {
                 {/* Step 1: Informations */}
                 {step === 0 && (
                   <>
+                    <View style={[styles.ugcNotice, { backgroundColor: palette.violet + '10', borderColor: palette.violet + '30' }]}>
+                      <Text style={[styles.ugcNoticeText, { color: theme.textMuted }]}>
+                        {t('stores.ugcNotice')}
+                      </Text>
+                    </View>
                     <Text style={[styles.label, { color: theme.text }]}>{t('stores.nameLabel')} *</Text>
                     <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: nom.trim() ? theme.success : theme.border }]}>
                       <Store size={ms(18)} color={nom.trim() ? theme.success : theme.textMuted} />
@@ -959,7 +1057,7 @@ export default function StoresScreen() {
 
                         <View style={styles.fieldGroup}>
                           <Text style={[styles.label, { color: theme.text }]}>{t('stores.websiteLabel')}</Text>
-                          <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: website.trim() ? theme.success : theme.border }]}>
+                          <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: website.trim() ? (isValidWebsite(website) ? theme.success : theme.danger) : theme.border }]}>
                             <Globe size={ms(18)} color={website.trim() ? palette.violet : theme.textMuted} />
                             <TextInput
                               style={[styles.input, { color: theme.text }]}
@@ -972,6 +1070,9 @@ export default function StoresScreen() {
                               keyboardType="url"
                             />
                           </View>
+                          {website.trim().length > 0 && !isValidWebsite(website) && (
+                            <Text style={[styles.validationHint, { color: theme.danger }]}>{t('stores.invalidWebsite')}</Text>
+                          )}
                         </View>
                       </>
                     )}
@@ -1045,17 +1146,18 @@ export default function StoresScreen() {
                           reverseGeocodeAndLabel(coords.latitude, coords.longitude);
                         }}
                       >
-                        <Marker
-                          draggable
-                          coordinate={{ latitude: defaultCenter.latitude, longitude: defaultCenter.longitude }}
-                          opacity={latitude !== null && longitude !== null ? 1 : 0}
-                          pinColor={palette.violet}
-                          onDragEnd={(e: { nativeEvent: { coordinate: { latitude: number; longitude: number } } }) => {
-                            const c = e.nativeEvent.coordinate;
-                            setForm({ latitude: c.latitude, longitude: c.longitude });
-                            reverseGeocodeAndLabel(c.latitude, c.longitude);
-                          }}
-                        />
+                        {latitude !== null && longitude !== null && (
+                          <Marker
+                            draggable
+                            coordinate={{ latitude, longitude }}
+                            pinColor={palette.violet}
+                            onDragEnd={(e: { nativeEvent: { coordinate: { latitude: number; longitude: number } } }) => {
+                              const c = e.nativeEvent.coordinate;
+                              setForm({ latitude: c.latitude, longitude: c.longitude });
+                              reverseGeocodeAndLabel(c.latitude, c.longitude);
+                            }}
+                          />
+                        )}
                       </MapView>
                     </View>
 
@@ -1312,6 +1414,14 @@ const styles = StyleSheet.create({
   },
   modalTitle: { fontSize: 17, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
   formContent: { paddingHorizontal: 20, paddingTop: 16 },
+  ugcNotice: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 14,
+  },
+  ugcNoticeText: { fontSize: 12, lineHeight: 18 },
 
   // Form
   label: { fontSize: 13, fontWeight: '600', marginTop: 14, marginBottom: 6, fontFamily: 'Lexend_600SemiBold' },

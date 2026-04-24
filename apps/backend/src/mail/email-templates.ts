@@ -224,7 +224,81 @@ export function buildReferralBonusEmail(
   });
 }
 
-// ─── Email 5: Marketing Blast ────────────────────────────────────────────────
+// ─── Email 5: Account Deleted confirmation (GDPR Art. 17 / App Store 5.1.1(v)) ─
+
+export function buildClientAccountDeletedEmail(prenom?: string): string {
+  const brand = BRANDS.client;
+  const safeName = prenom ? escapeHtml(prenom) : null;
+  const deletedAt = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+
+  const content = `
+    <h2 style="color: #1E1B4B; font-size: 20px; margin: 0 0 12px;">Votre compte a &eacute;t&eacute; supprim&eacute;</h2>
+    <p style="color: ${brand.accent}; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">
+      Bonjour${safeName ? ' ' + safeName : ''},
+    </p>
+    <p style="color: #1E1B4B; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
+      Nous confirmons la suppression de votre compte JitPlus le ${deletedAt}.
+    </p>
+    <div style="background: ${brand.accentLight}; border-radius: 10px; padding: 16px; margin-bottom: 16px;">
+      <p style="color: ${brand.accent}; font-size: 13px; font-weight: 600; margin: 0 0 8px;">Ce qui a &eacute;t&eacute; supprim&eacute; ou anonymis&eacute; :</p>
+      <ul style="color: #1E1B4B; font-size: 13px; line-height: 1.7; padding-left: 18px; margin: 0;">
+        <li>Vos informations personnelles (nom, email, t&eacute;l&eacute;phone, date de naissance)</li>
+        <li>Vos identifiants et sessions de connexion</li>
+        <li>Votre historique de navigation et parrainages</li>
+        <li>Vos cartes de fid&eacute;lit&eacute; (d&eacute;sactiv&eacute;es)</li>
+      </ul>
+    </div>
+    <p style="color: ${brand.accentMuted}; font-size: 13px; line-height: 1.6; margin: 0 0 12px;">
+      Certaines donn&eacute;es de transactions sont conserv&eacute;es sous forme anonymis&eacute;e pour des obligations l&eacute;gales et comptables.
+    </p>
+    <p style="color: ${brand.accentMuted}; font-size: 13px; line-height: 1.6; margin: 0;">
+      Si vous n'&ecirc;tes pas &agrave; l'origine de cette demande, contactez-nous imm&eacute;diatement &agrave; <a href="mailto:support@jitplus.com" style="color: ${brand.accent};">support@jitplus.com</a>.
+    </p>`;
+
+  return wrapEmail({
+    brand,
+    preheader: `Confirmation de suppression de votre compte JitPlus`,
+    content,
+  });
+}
+
+export function buildAccountDeletedEmail(nomBoutique: string): string {
+  const brand = BRANDS.merchant;
+  const safeName = escapeHtml(nomBoutique);
+  const deletedAt = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+
+  const content = `
+    <h2 style="color: #1E1B4B; font-size: 20px; margin: 0 0 12px;">Votre compte a &eacute;t&eacute; supprim&eacute;</h2>
+    <p style="color: ${brand.accent}; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">
+      Bonjour,
+    </p>
+    <p style="color: #1E1B4B; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
+      Nous confirmons la suppression du compte JitPlus Pro associ&eacute; &agrave; <strong>${safeName}</strong> le ${deletedAt}.
+    </p>
+    <div style="background: ${brand.accentLight}; border-radius: 10px; padding: 16px; margin-bottom: 16px;">
+      <p style="color: ${brand.accent}; font-size: 13px; font-weight: 600; margin: 0 0 8px;">Ce qui a &eacute;t&eacute; supprim&eacute; ou anonymis&eacute; :</p>
+      <ul style="color: #1E1B4B; font-size: 13px; line-height: 1.7; padding-left: 18px; margin: 0;">
+        <li>Vos informations personnelles (nom, email, t&eacute;l&eacute;phone, adresse)</li>
+        <li>Vos identifiants et sessions de connexion</li>
+        <li>Vos logos, visuels et contenus publi&eacute;s</li>
+        <li>Vos cartes de fid&eacute;lit&eacute;, r&eacute;compenses et &eacute;quipe</li>
+      </ul>
+    </div>
+    <p style="color: ${brand.accentMuted}; font-size: 13px; line-height: 1.6; margin: 0 0 12px;">
+      Certaines donn&eacute;es de transactions sont conserv&eacute;es sous forme anonymis&eacute;e pour des obligations l&eacute;gales et comptables.
+    </p>
+    <p style="color: ${brand.accentMuted}; font-size: 13px; line-height: 1.6; margin: 0;">
+      Si vous n'&ecirc;tes pas &agrave; l'origine de cette demande, contactez-nous imm&eacute;diatement &agrave; <a href="mailto:support@jitplus.com" style="color: ${brand.accent};">support@jitplus.com</a>.
+    </p>`;
+
+  return wrapEmail({
+    brand,
+    preheader: `Confirmation de suppression du compte JitPlus Pro ${nomBoutique}`,
+    content,
+  });
+}
+
+// ─── Email 6: Marketing Blast ────────────────────────────────────────────────
 
 export function buildMarketingBlastEmail(
   rawClientName: string,

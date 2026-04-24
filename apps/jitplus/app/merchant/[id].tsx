@@ -7,7 +7,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 import { useLocalSearchParams, useRouter, Redirect } from 'expo-router';
-import { ArrowLeft, AlertCircle, Eye, Users, Send } from 'lucide-react-native';
+import { ArrowLeft, AlertCircle, Eye, Users, Send, Flag } from 'lucide-react-native';
 import { haptic } from '@/utils/haptics';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -116,6 +116,97 @@ export default function MerchantDetailScreen() {
     ]);
   }, [id, merchant, leaveLoading, queryClient, t]);
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Content reporting (App Store 1.2 / Play UGC compliance)
+  // ─────────────────────────────────────────────────────────────────────────
+  const reportingRef = useRef(false);
+  const submitReport = useCallback(async (
+    reason: 'inappropriate' | 'spam' | 'fraud' | 'closed' | 'wrong_info' | 'other',
+  ) => {
+    if (!id || reportingRef.current) return;
+    reportingRef.current = true;
+    try {
+      await api.reportMerchant(id, reason);
+      haptic();
+      Alert.alert(t('merchant.reportThanksTitle'), t('merchant.reportThanksBody'));
+    } catch (e) {
+      if (__DEV__) console.warn('Report merchant error:', e);
+      Alert.alert(t('common.error'), t('merchant.reportError'));
+    } finally {
+      reportingRef.current = false;
+    }
+  }, [id, t]);
+
+  const handleReportMerchant = useCallback(() => {
+    if (!id) return;
+    Alert.alert(
+      t('merchant.reportTitle'),
+      t('merchant.reportBody'),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('merchant.reportReasonInappropriate'), onPress: () => submitReport('inappropriate') },
+        { text: t('merchant.reportReasonSpam'), onPress: () => submitReport('spam') },
+        { text: t('merchant.reportReasonFraud'), onPress: () => submitReport('fraud') },
+        { text: t('merchant.reportReasonClosed'), onPress: () => submitReport('closed') },
+        { text: t('merchant.reportReasonWrongInfo'), onPress: () => submitReport('wrong_info') },
+        { text: t('merchant.reportReasonOther'), onPress: () => submitReport('other') },
+      ],
+      { cancelable: true },
+    );
+  }, [id, submitReport, t]);
+
+  // Block this merchant (Apple 1.2 requirement). Confirms then hides the
+  // merchant everywhere and navigates back.
+  const blockingRef = useRef(false);
+  const handleBlockMerchant = useCallback(() => {
+    if (!id || blockingRef.current) return;
+    Alert.alert(
+      t('merchant.blockTitle'),
+      t('merchant.blockBody'),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('merchant.blockConfirm'),
+          style: 'destructive',
+          onPress: async () => {
+            blockingRef.current = true;
+            try {
+              await api.blockMerchant(id);
+              haptic();
+              queryClient.invalidateQueries({ queryKey: ['merchants'] });
+              queryClient.invalidateQueries({ queryKey: ['merchant', id] });
+              Alert.alert(
+                t('merchant.blockedTitle'),
+                t('merchant.blockedBody'),
+                [{ text: t('common.ok'), onPress: () => router.back() }],
+              );
+            } catch (e) {
+              if (__DEV__) console.warn('Block merchant error:', e);
+              Alert.alert(t('common.error'), t('merchant.blockError'));
+            } finally {
+              blockingRef.current = false;
+            }
+          },
+        },
+      ],
+      { cancelable: true },
+    );
+  }, [id, queryClient, router, t]);
+
+  // Combined moderation action sheet: Report + Block.
+  const handleModerationSheet = useCallback(() => {
+    Alert.alert(
+      t('merchant.moderationTitle'),
+      t('merchant.moderationBody'),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('merchant.reportTitle'), onPress: () => handleReportMerchant() },
+        { text: t('merchant.blockTitle'), style: 'destructive', onPress: () => handleBlockMerchant() },
+      ],
+      { cancelable: true },
+    );
+  }, [handleReportMerchant, handleBlockMerchant, t]);
+
   if (!isAuthenticated) return <Redirect href="/welcome" />;
 
   if (loading) {
@@ -174,6 +265,15 @@ export default function MerchantDetailScreen() {
               } catch { /* user cancelled */ }
             }} style={[styles.floatingBtn, { backgroundColor: 'rgba(255,255,255,0.85)' }]} accessibilityRole="button" accessibilityLabel={t('merchant.shareApp')} hitSlop={8}>
               <Send size={18} color={palette.gray900} strokeWidth={2} />
+            </Pressable>
+            <Pressable
+              onPress={() => { haptic(); handleModerationSheet(); }}
+              style={[styles.floatingBtn, { backgroundColor: 'rgba(255,255,255,0.85)' }]}
+              accessibilityRole="button"
+              accessibilityLabel={t('merchant.moderationTitle')}
+              hitSlop={8}
+            >
+              <Flag size={18} color={palette.gray900} strokeWidth={2} />
             </Pressable>
           </SafeAreaView>
           <View style={styles.logoContainer}>

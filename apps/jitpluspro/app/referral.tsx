@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -11,7 +11,7 @@ import {
   Pressable,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ArrowLeft,
@@ -32,25 +32,15 @@ import {
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
-import api from '@/services/api';
+import { useReferral } from '@/hooks/useQueryHooks';
 import { formatDate } from '@/utils/date';
 
-// ── Types ──────────────────────────────────────────────────────────────────
-interface ReferredMerchant {
-  id: string;
-  nom: string;
-  categorie: string;
-  ville: string | null;
-  createdAt: string;
-  validated: boolean;
-}
-
-interface ReferralStats {
-  referralCode: string;
-  referredCount: number;
-  referralMonthsEarned: number;
-  referrals: ReferredMerchant[];
-}
+// ── Store URLs for JitPlus Pro (merchant app) ──────────────────────────────
+const PRO_ANDROID_URL = 'https://play.google.com/store/apps/details?id=com.jitplus.pro';
+const PRO_IOS_APP_ID = process.env.EXPO_PUBLIC_IOS_APP_ID ?? '';
+const PRO_IOS_URL = PRO_IOS_APP_ID
+  ? `https://apps.apple.com/app/id${PRO_IOS_APP_ID}`
+  : 'https://apps.apple.com/search?term=jitplus+pro';
 
 // ── Screen ─────────────────────────────────────────────────────────────────
 export default function ReferralScreen() {
@@ -59,34 +49,13 @@ export default function ReferralScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  const [stats, setStats] = useState<ReferralStats | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data: stats, isLoading: loading, isError, refetch } = useReferral();
   const [copied, setCopied] = useState(false);
-
-  const fetchStats = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const { data } = await api.get<ReferralStats>('/merchant/referral');
-      setStats(data);
-    } catch {
-      setError(t('referralScreen.loadError'));
-    } finally {
-      setLoading(false);
-    }
-  }, [t]);
-
-  useFocusEffect(
-    useCallback(() => {
-      fetchStats();
-    }, [fetchStats]),
-  );
 
   const copyTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(copyTimer.current), []);
 
-  const handleCopy = async () => {
+  const handleCopy = useCallback(async () => {
     if (!stats?.referralCode) return;
     try {
       await Clipboard.setStringAsync(stats.referralCode);
@@ -96,33 +65,40 @@ export default function ReferralScreen() {
     } catch {
       Alert.alert(t('common.error'), t('referralScreen.copyError'));
     }
-  };
+  }, [stats?.referralCode, t]);
 
-  const handleShare = async () => {
+  const handleShare = useCallback(async () => {
     if (!stats?.referralCode) return;
     try {
+      const links = `Android: ${PRO_ANDROID_URL}\niOS: ${PRO_IOS_URL}`;
       await Share.share({
-        message: t('referralScreen.shareMessage', { code: stats.referralCode }),
+        message: t('referralScreen.shareMessage', { code: stats.referralCode, links }),
         title: t('referral.shareCode'),
       });
     } catch {
       Alert.alert(t('common.error'), t('referralScreen.shareError'));
     }
-  };
+  }, [stats?.referralCode, t]);
 
-  const referredCountLabel = () => {
+  const referredCountLabel = useMemo(() => {
     if (!stats) return '';
     const c = stats.referredCount;
     if (c === 0) return t('referral.referredCount_zero');
     if (c === 1) return t('referral.referredCount_one', { count: 1 });
     return t('referral.referredCount_other', { count: c });
-  };
+  }, [stats, t]);
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
       {/* ── Simple header — matches activity style ── */}
       <View style={[styles.headerBar, { paddingTop: insets.top + 12 }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.7}>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.backBtn}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={t('common.back')}
+        >
           <ArrowLeft size={22} color={theme.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: theme.text }]}>{t('referral.title')}</Text>
@@ -133,18 +109,18 @@ export default function ReferralScreen() {
           <ActivityIndicator size="large" color={theme.primary} />
           <Text style={[styles.loadingText, { color: theme.textMuted }]}>{t('referral.loadingCode')}</Text>
         </View>
-      ) : error ? (
+      ) : isError || !stats ? (
         <View style={styles.center}>
-          <Text style={[styles.errorText, { color: theme.danger }]}>{error}</Text>
+          <Text style={[styles.errorText, { color: theme.danger }]}>{t('referralScreen.loadError')}</Text>
           <TouchableOpacity
             style={[styles.retryBtn, { backgroundColor: theme.primaryBg }]}
-            onPress={fetchStats}
+            onPress={() => refetch()}
             activeOpacity={0.7}
           >
             <Text style={[styles.retryBtnText, { color: theme.primary }]}>{t('common.retry')}</Text>
           </TouchableOpacity>
         </View>
-      ) : stats ? (
+      ) : (
         <ScrollView
           contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 24 }]}
           showsVerticalScrollIndicator={false}
@@ -160,7 +136,11 @@ export default function ReferralScreen() {
               <Gift size={24} color={theme.primary} />
             </View>
             <Text style={[styles.codeLabel, { color: theme.textMuted }]}>{t('referral.yourCode')}</Text>
-            <Text style={[styles.codeValue, { color: theme.primary }]} selectable>
+            <Text
+              style={[styles.codeValue, { color: theme.primary }]}
+              selectable
+              accessibilityLabel={`${t('referral.yourCode')}: ${stats.referralCode}`}
+            >
               {stats.referralCode}
             </Text>
 
@@ -171,6 +151,8 @@ export default function ReferralScreen() {
                   { backgroundColor: copied ? theme.success + '20' : theme.primaryBg },
                 ]}
                 onPress={handleCopy}
+                accessibilityRole="button"
+                accessibilityLabel={copied ? t('referral.codeCopied') : t('referral.copyCode')}
               >
                 {copied ? (
                   <Check size={18} color={theme.success} strokeWidth={2} />
@@ -190,6 +172,8 @@ export default function ReferralScreen() {
               <Pressable
                 style={[styles.codeActionBtn, { backgroundColor: theme.primary + '20' }]}
                 onPress={handleShare}
+                accessibilityRole="button"
+                accessibilityLabel={t('referral.shareCode')}
               >
                 <Share2 size={18} color={theme.primary} />
                 <Text style={[styles.codeActionText, { color: theme.primary }]}>
@@ -203,7 +187,7 @@ export default function ReferralScreen() {
           <View style={[styles.statsBanner, { backgroundColor: theme.primaryBg, borderColor: theme.borderLight }]}>
             <Users size={20} color={theme.primary} />
             <Text style={[styles.statsBannerText, { color: theme.primary }]}>
-              {referredCountLabel()}
+              {referredCountLabel}
             </Text>
           </View>
 
@@ -317,8 +301,20 @@ export default function ReferralScreen() {
               );
             })}
           </View>
+
+          {/* ── Program terms ── */}
+          <View style={styles.termsBlock}>
+            <Text style={[styles.termsNote, { color: theme.textMuted }]}>
+              {t('referral.termsNote')}
+            </Text>
+            <TouchableOpacity onPress={() => router.push('/legal')} activeOpacity={0.7}>
+              <Text style={[styles.termsLink, { color: theme.primary }]}>
+                {t('referral.termsLink')}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </ScrollView>
-      ) : null}
+      )}
     </View>
   );
 }
@@ -502,14 +498,6 @@ const styles = StyleSheet.create({
   },
   rewardTitle: { fontSize: 15, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
   rewardDesc: { fontSize: 14, lineHeight: 21, fontFamily: 'Lexend_400Regular' },
-  rewardHint: { fontSize: 12, lineHeight: 18, fontStyle: 'italic', fontFamily: 'Lexend_400Regular' },
-  applyBtn: {
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  applyBtnText: { color: '#fff', fontWeight: '700', fontSize: 14, fontFamily: 'Lexend_700Bold' },
 
   // Empty
   emptyCard: {
@@ -549,4 +537,25 @@ const styles = StyleSheet.create({
   merchantMeta: { flexDirection: 'row', alignItems: 'center', gap: 3, flexWrap: 'wrap' },
   merchantMetaText: { fontSize: 12, fontFamily: 'Lexend_400Regular' },
   divider: { height: 1, marginHorizontal: 14 },
+
+  // Program terms
+  termsBlock: {
+    paddingHorizontal: 8,
+    paddingTop: 4,
+    paddingBottom: 8,
+    gap: 8,
+    alignItems: 'center',
+  },
+  termsNote: {
+    fontSize: 11,
+    lineHeight: 16,
+    textAlign: 'center',
+    fontFamily: 'Lexend_400Regular',
+  },
+  termsLink: {
+    fontSize: 12,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
+    fontFamily: 'Lexend_600SemiBold',
+  },
 });

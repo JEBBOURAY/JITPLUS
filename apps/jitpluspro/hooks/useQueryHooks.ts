@@ -5,6 +5,7 @@ import {
   useQueryClient,
   keepPreviousData,
 } from '@tanstack/react-query';
+import * as Crypto from 'expo-crypto';
 import api from '@/services/api';
 import i18n from '@/i18n';
 import type {
@@ -275,7 +276,14 @@ export function useRecordTransaction() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (payload: RecordTransactionPayload) => {
-      const res = await api.post('/merchant/transactions', payload);
+      // Idempotency-Key: protects against double-submits (retry, double-tap,
+      // flaky network). Generated client-side per submission; the backend
+      // de-duplicates on (merchantId, idempotencyKey).
+      const idempotencyKey = payload.idempotencyKey ?? Crypto.randomUUID();
+      const { idempotencyKey: _omit, ...body } = payload;
+      const res = await api.post('/merchant/transactions', body, {
+        headers: { 'Idempotency-Key': idempotencyKey },
+      });
       return res.data;
     },
     onSuccess: (_data, variables) => {
@@ -285,6 +293,10 @@ export function useRecordTransaction() {
         qc.invalidateQueries({ queryKey: queryKeys.clientDetail(clientId) });
       }
       qc.invalidateQueries({ queryKey: queryKeys.transactions });
+      // Redemptions create a PENDING gift — refresh the pending-gifts badge/list immediately.
+      if (variables.type === 'REDEEM_REWARD') {
+        qc.invalidateQueries({ queryKey: queryKeys.pendingGifts });
+      }
     },
   });
 }
@@ -393,7 +405,6 @@ export function useEmailQuota(enabled = true) {
     enabled,
   });
 }
-
 // ── Pending Gifts ───────────────────────────────────────────────
 export function usePendingGifts(enabled = true) {
   return useQuery<PendingGift[]>({
@@ -421,18 +432,17 @@ export function useFulfillGift() {
   });
 }
 
+import {
+  ALLOWED_LOGO_MIMES,
+  MAX_LOGO_SIZE_BYTES,
+} from '@/constants/app';
+
 // ── Logo mutations ──────────────────────────────────────────────
-const ALLOWED_LOGO_MIMES = new Set([
-  'image/jpeg', 'image/png', 'image/webp', 'image/gif',
-]);
-
-const MAX_LOGO_SIZE = 5 * 1024 * 1024; // 5 MB
-
 export function useUploadMerchantLogo() {
   return useMutation({
     mutationFn: async (asset: { uri: string; mimeType?: string | null; merchantName?: string; fileSize?: number | null }) => {
       // Validate file size before uploading
-      if (asset.fileSize && asset.fileSize > MAX_LOGO_SIZE) {
+      if (asset.fileSize && asset.fileSize > MAX_LOGO_SIZE_BYTES) {
         throw new Error(i18n.t('upload.fileTooLarge'));
       }
       const ext = (asset.uri.split('.').pop() ?? 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';

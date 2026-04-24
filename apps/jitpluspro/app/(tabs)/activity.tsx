@@ -18,8 +18,11 @@ import {
   Filter,
   RefreshCw,
   Gift,
+  AlertCircle,
+  Aperture,
 } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Haptics from 'expo-haptics';
 import { getTransactionConfig } from '@/constants/transactions';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme, palette } from '@/contexts/ThemeContext';
@@ -36,10 +39,29 @@ import { useExitOnBack } from '@/hooks/useExitOnBack';
 import { formatDateTime } from '@/utils/date';
 import { ms } from '@/utils/responsive';
 import type { Transaction } from '@/types';
+import { ASYNC_STORAGE_KEYS } from '@/constants/app';
 
 type FilterType = 'ALL' | 'EARN_POINTS' | 'REDEEM_REWARD' | 'ADJUST_POINTS' | 'LOYALTY_PROGRAM_CHANGE' | 'LUCKY_WHEEL_WIN';
 
-const BANNER_DISMISSED_KEY = 'activity_banner_dismissed';
+const HIT_SLOP_LARGE = { top: 12, bottom: 12, left: 12, right: 12 };
+const safeImpact = (style: Haptics.ImpactFeedbackStyle) => {
+  Haptics.impactAsync(style).catch(() => {});
+};
+const safeSelection = () => {
+  Haptics.selectionAsync().catch(() => {});
+};
+
+/** Removes emojis from text to let the custom icons shine (with performance cache for 60fps scrolling) */
+const emojiCache = new Map<string, string>();
+const stripEmojis = (str: string | null | undefined) => {
+  if (!str) return '';
+  if (emojiCache.has(str)) return emojiCache.get(str)!;
+  const stripped = str.replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, '').trim();
+  // Prevent unbounded memory growth
+  if (emojiCache.size > 500) emojiCache.clear();
+  emojiCache.set(str, stripped);
+  return stripped;
+};
 
 /* ── Tip banner — dismissable with "don't show again" ── */
 const ActivityBanner = React.memo(function ActivityBanner({
@@ -61,18 +83,30 @@ const ActivityBanner = React.memo(function ActivityBanner({
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
-      <TouchableOpacity style={bannerStyles.closeBtn} onPress={onDismiss} hitSlop={8}>
+      <TouchableOpacity
+        style={bannerStyles.closeBtn}
+        onPress={onDismiss}
+        hitSlop={HIT_SLOP_LARGE}
+        accessibilityRole="button"
+        accessibilityLabel={t('common.close')}
+      >
         <X size={16} color={theme.textMuted} strokeWidth={2} />
       </TouchableOpacity>
       <View style={bannerStyles.content}>
         <Zap size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
         <View style={bannerStyles.textWrap}>
-          <Text style={[bannerStyles.title, { color: theme.text }]}>{t('activity.bannerTitle')}</Text>
-          <Text style={[bannerStyles.desc, { color: theme.textMuted }]}>{t('activity.bannerDesc')}</Text>
+          <Text style={[bannerStyles.title, { color: theme.text }]} maxFontSizeMultiplier={1.6}>{t('activity.bannerTitle')}</Text>
+          <Text style={[bannerStyles.desc, { color: theme.textMuted }]} maxFontSizeMultiplier={1.6}>{t('activity.bannerDesc')}</Text>
         </View>
       </View>
-      <TouchableOpacity onPress={onDismissForever} style={bannerStyles.hideBtn} hitSlop={4}>
-        <Text style={[bannerStyles.hideText, { color: theme.textMuted }]}>{t('activity.bannerHide')}</Text>
+      <TouchableOpacity
+        onPress={onDismissForever}
+        style={bannerStyles.hideBtn}
+        hitSlop={HIT_SLOP_LARGE}
+        accessibilityRole="button"
+        accessibilityLabel={t('activity.bannerHide')}
+      >
+        <Text style={[bannerStyles.hideText, { color: theme.textMuted }]} maxFontSizeMultiplier={1.6}>{t('activity.bannerHide')}</Text>
       </TouchableOpacity>
     </View>
   );
@@ -108,62 +142,87 @@ const TransactionRow = React.memo(function TransactionRow({
     : t('common.pointsAbbr');
 
   return (
-    <View style={[styles.txCard, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
+    <View
+      style={[styles.txCard, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}
+      accessible
+      accessibilityRole="summary"
+    >
       {/* ── Flow indicator bar ── */}
-      <View style={[styles.flowBar, { backgroundColor: flowColor }]} />
+      <View style={[styles.flowBar, { backgroundColor: flowColor }]} importantForAccessibility="no" />
 
-      {/* ── Icon ── */}
-      <View style={[styles.txIcon, { backgroundColor: color + '14' }]}>
-        <IconComp size={18} color={color} strokeWidth={1.8} />
-      </View>
+      {/* ── Personalized Icon ── */}
+      {(isReward || (isEarned && !isCancelled) || (isLuckyWheelWin && !isCancelled)) ? (
+        <View style={[styles.txIconShadowWrapper, isReward && styles.giftShadow]} importantForAccessibility="no">
+          <View style={[styles.txIcon, { overflow: 'hidden', borderWidth: 1, borderColor: `${color}40`, marginRight: 0 }]}>
+            <LinearGradient
+              colors={[color + '30', color + '05']}
+              style={StyleSheet.absoluteFill}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            />
+            <IconComp size={isReward ? 22 : 20} color={color} strokeWidth={isReward ? 2.5 : 2} />
+          </View>
+        </View>
+      ) : (
+        <View style={[styles.txIcon, { backgroundColor: color + '14', borderWidth: 1, borderColor: 'transparent' }]} importantForAccessibility="no">
+          <IconComp size={18} color={color} strokeWidth={1.8} />
+        </View>
+      )}
 
       {/* ── Info ── */}
       <View style={styles.txInfo}>
-        <Text style={[styles.txName, { color: theme.text }, isCancelled && styles.cancelled]} numberOfLines={1}>
+        <Text
+          style={[styles.txName, { color: theme.text }, isCancelled && styles.cancelled]}
+          numberOfLines={1}
+          maxFontSizeMultiplier={1.6}
+        >
           {[item.client?.prenom, item.client?.nom].filter(Boolean).join(' ') || '?'}
         </Text>
-        <Text style={[styles.txDate, { color: theme.textMuted }]}>
+        <Text style={[styles.txDate, { color: theme.textMuted }]} maxFontSizeMultiplier={1.6}>
           {formatDateTime(item.createdAt, locale)}
         </Text>
         {isProgramChange && item.note && (
           <View style={styles.inlineIconRow}>
             <RefreshCw size={11} color={theme.primary} strokeWidth={2} />
-            <Text style={[styles.txMeta, { color: theme.primary, flex: 1 }]} numberOfLines={1}>
-              {item.note}
+            <Text style={[styles.txMeta, { color: theme.primary, flex: 1 }]} numberOfLines={1} maxFontSizeMultiplier={1.6}>
+              {stripEmojis(item.note)}
             </Text>
           </View>
         )}
         {isLuckyWheelWin && item.note && (
-          <Text style={[styles.txMeta, { color: theme.accent }]} numberOfLines={1}>
-            {item.note}
-          </Text>
+          <View style={styles.rewardRow}>
+            <Aperture size={11} color={theme.accent} strokeWidth={2} />
+            <Text style={[styles.txMeta, { color: theme.accent, flex: 1 }]} numberOfLines={1} maxFontSizeMultiplier={1.6}>
+              {stripEmojis(item.note)}
+            </Text>
+          </View>
         )}
         {!isEarned && !isProgramChange && item.reward && (
           <View style={styles.rewardRow}>
-            <Gift size={11} color={theme.primary} strokeWidth={2} />
-            <Text style={[styles.txMeta, { color: theme.primary, flex: 1 }]} numberOfLines={1}>
-              {item.reward.titre}
+            <Gift size={13} color={theme.accent} strokeWidth={2.5} />
+            <Text style={[styles.txMeta, { color: theme.accent, flex: 1, fontWeight: '700' }]} numberOfLines={1} maxFontSizeMultiplier={1.6}>
+              {stripEmojis(item.reward.titre)}
             </Text>
             {isReward && item.giftStatus === 'FULFILLED' && (
               <View style={[styles.giftBadge, { backgroundColor: `${theme.accent}15`, borderColor: `${theme.accent}30` }]}>
-                <Text style={[styles.giftBadgeText, { color: theme.accent }]}>{t('gift.fulfilled')}</Text>
+                <Text style={[styles.giftBadgeText, { color: theme.accent }]} maxFontSizeMultiplier={1.4}>{t('gift.fulfilled')}</Text>
               </View>
             )}
           </View>
         )}
         {performerName && (
-          <Text style={[styles.txPerformer, { color: theme.textMuted }]} numberOfLines={1}>
+          <Text style={[styles.txPerformer, { color: theme.textMuted }]} numberOfLines={1} maxFontSizeMultiplier={1.6}>
             {t('activity.by', { name: performerName })}
           </Text>
         )}
-        {isCancelled && <Text style={styles.cancelLabel}>{t('activity.cancelled')}</Text>}
+        {isCancelled && <Text style={styles.cancelLabel} maxFontSizeMultiplier={1.4}>{t('activity.cancelled')}</Text>}
       </View>
 
       {/* ── Flow amount ── */}
       {!isProgramChange && !isLuckyWheelWin && (
         <View style={styles.txRight}>
           {item.amount > 0 && (
-            <Text style={[styles.txAmount, { color: theme.textMuted }, isCancelled && styles.cancelled]}>
+            <Text style={[styles.txAmount, { color: theme.textMuted }, isCancelled && styles.cancelled]} maxFontSizeMultiplier={1.4}>
               {formatCurrency(item.amount, DEFAULT_CURRENCY, getIntlLocale(locale))}
             </Text>
           )}
@@ -171,7 +230,7 @@ const TransactionRow = React.memo(function TransactionRow({
             {isEarned
               ? <ArrowUpRight size={11} color={flowColor} strokeWidth={2.5} />
               : <ArrowDownLeft size={11} color={flowColor} strokeWidth={2.5} />}
-            <Text style={[styles.flowPillText, { color: flowColor }, isCancelled && styles.cancelled]}>
+            <Text style={[styles.flowPillText, { color: flowColor }, isCancelled && styles.cancelled]} maxFontSizeMultiplier={1.4}>
               {isEarned ? '+' : '−'}{item.points} {pointsLabel}
             </Text>
           </View>
@@ -195,7 +254,7 @@ export default function ActivityScreen() {
   const [bannerVisible, setBannerVisible] = useState(false);
 
   useEffect(() => {
-    AsyncStorage.getItem(BANNER_DISMISSED_KEY).then((val) => {
+    AsyncStorage.getItem(ASYNC_STORAGE_KEYS.ACTIVITY_BANNER_DISMISSED).then((val) => {
       if (val !== 'true') setBannerVisible(true);
     });
   }, []);
@@ -206,13 +265,14 @@ export default function ActivityScreen() {
 
   const dismissBannerForever = useCallback(() => {
     setBannerVisible(false);
-    AsyncStorage.setItem(BANNER_DISMISSED_KEY, 'true');
+    AsyncStorage.setItem(ASYNC_STORAGE_KEYS.ACTIVITY_BANNER_DISMISSED, 'true');
   }, []);
 
   const {
     data,
     isLoading: loading,
     isRefetching: refreshing,
+    isError,
     hasNextPage: hasMore,
     isFetchingNextPage: loadingMore,
     fetchNextPage: loadMore,
@@ -251,7 +311,13 @@ export default function ActivityScreen() {
     <Animated.View style={[styles.container, { backgroundColor: theme.bg }, focusStyle]}>
       {/* ── Simple header ── */}
       <View style={[styles.headerBar, { paddingTop: insets.top + 12 }]}>
-        <Text style={[styles.headerTitle, { color: theme.text }]}>{t('activity.title')}</Text>
+        <Text
+          style={[styles.headerTitle, { color: theme.text }]}
+          maxFontSizeMultiplier={1.4}
+          accessibilityRole="header"
+        >
+          {t('activity.title')}
+        </Text>
       </View>
 
       {/* ── Dismissable tip banner ── */}
@@ -281,7 +347,14 @@ export default function ActivityScreen() {
               <TouchableOpacity
                 key={key}
                 activeOpacity={0.7}
-                onPress={() => setActiveFilter(isActive ? null : key)}
+                onPress={() => {
+                  safeSelection();
+                  setActiveFilter(isActive ? null : key);
+                }}
+                hitSlop={HIT_SLOP_LARGE}
+                accessibilityRole="button"
+                accessibilityLabel={label}
+                accessibilityState={{ selected: isActive }}
                 style={[
                   styles.filterPill,
                   {
@@ -295,6 +368,7 @@ export default function ActivityScreen() {
                     styles.filterPillText,
                     { color: isActive ? theme.primary : theme.textMuted },
                   ]}
+                  maxFontSizeMultiplier={1.4}
                 >
                   {label}
                 </Text>
@@ -304,7 +378,33 @@ export default function ActivityScreen() {
         </ScrollView>
       </View>
 
-      {showSkeleton ? (
+      {isError && activeFilter && !loading ? (
+        <View style={styles.emptyContainer}>
+          <View style={[styles.emptyIllustration, { backgroundColor: `${theme.danger}14` }]}>
+            <AlertCircle size={ms(36)} color={theme.danger} strokeWidth={1.5} />
+          </View>
+          <Text style={[styles.emptyTitle, { color: theme.text }]} maxFontSizeMultiplier={1.6}>
+            {t('common.errorTitle', { defaultValue: 'Erreur de chargement' })}
+          </Text>
+          <Text style={[styles.emptyText, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.6}>
+            {t('common.errorHint', { defaultValue: 'Vérifiez votre connexion et réessayez.' })}
+          </Text>
+          <TouchableOpacity
+            style={[styles.retryBtn, { backgroundColor: theme.primary }]}
+            onPress={() => {
+              safeImpact(Haptics.ImpactFeedbackStyle.Light);
+              refetch();
+            }}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={t('common.retry', { defaultValue: 'Réessayer' })}
+          >
+            <Text style={styles.retryBtnText} maxFontSizeMultiplier={1.4}>
+              {t('common.retry', { defaultValue: 'Réessayer' })}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      ) : showSkeleton ? (
         <View style={styles.list}>
           <ActivityListSkeleton count={6} />
         </View>
@@ -313,10 +413,10 @@ export default function ActivityScreen() {
           <View style={[styles.emptyIllustration, { backgroundColor: `${palette.charbon}12` }]}>
             <Filter size={ms(36)} color={palette.charbon} strokeWidth={1.5} />
           </View>
-          <Text style={[styles.emptyTitle, { color: theme.text }]}>
+          <Text style={[styles.emptyTitle, { color: theme.text }]} maxFontSizeMultiplier={1.6}>
             {t('activity.title')}
           </Text>
-          <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
+          <Text style={[styles.emptyText, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.6}>
             {t('activity.selectFilter')}
           </Text>
         </View>
@@ -343,13 +443,17 @@ export default function ActivityScreen() {
         }
         ListFooterComponent={
           loadingMore ? (
-            <View style={styles.footerLoader}>
+            <View
+              style={styles.footerLoader}
+              accessible
+              accessibilityLabel={t('common.loading', { defaultValue: 'Chargement' })}
+            >
               <ActivityIndicator size="small" color={theme.primary} />
             </View>
           ) : !hasMore && filteredTransactions.length > 0 ? (
             <View style={styles.footerEndWrap}>
               <View style={[styles.footerDivider, { backgroundColor: theme.border }]} />
-              <Text style={[styles.footerEnd, { color: theme.textMuted }]}>
+              <Text style={[styles.footerEnd, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>
                 {t('common.allDisplayed')}
               </Text>
             </View>
@@ -360,10 +464,10 @@ export default function ActivityScreen() {
             <View style={[styles.emptyIllustration, { backgroundColor: `${palette.charbon}12` }]}>
               <Zap size={ms(36)} color={palette.charbon} strokeWidth={1.5} />
             </View>
-            <Text style={[styles.emptyTitle, { color: theme.text }]}>
+            <Text style={[styles.emptyTitle, { color: theme.text }]} maxFontSizeMultiplier={1.6}>
               {t('activity.noActivity')}
             </Text>
-            <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
+            <Text style={[styles.emptyText, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.6}>
               {t('activity.noActivityHint')}
             </Text>
           </View>
@@ -438,12 +542,24 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   txIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    marginRight: 14,
+  },
+  txIconShadowWrapper: {
+    marginRight: 14,
+    borderRadius: 14,
+    backgroundColor: 'transparent',
+  },
+  giftShadow: {
+    shadowColor: '#8B5CF6',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 6,
   },
   txInfo: { flex: 1, marginRight: 8 },
   txName: {
@@ -552,6 +668,20 @@ const styles = StyleSheet.create({
     fontFamily: 'Lexend_400Regular',
     letterSpacing: 0.2,
     opacity: 0.5,
+  },
+
+  /* Retry button */
+  retryBtn: {
+    marginTop: 20,
+    paddingVertical: 14,
+    paddingHorizontal: 28,
+    borderRadius: 14,
+  },
+  retryBtnText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#fff',
+    fontFamily: 'Lexend_600SemiBold',
   },
 });
 

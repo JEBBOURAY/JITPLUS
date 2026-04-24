@@ -13,6 +13,7 @@ import { CreateStoreDto } from '../dto/create-store.dto';
 import { UpdateStoreDto } from '../dto/update-store.dto';
 import { Prisma, Store } from '@prisma/client';
 import { stripUndefined } from '../../common/utils';
+import { assertClean } from '../../common/utils/content-moderation';
 import { STORES_CACHE_TTL } from '../../common/constants';
 
 @Injectable()
@@ -61,6 +62,23 @@ export class MerchantStoreService {
   }
 
   async createStore(merchantId: string, dto: CreateStoreDto): Promise<Store> {
+    // ── UGC moderation (App Store 1.2 / Play UGC policy) ──
+    // Social handles and website are shown to end users in jitplus, so they
+    // must be filtered like every other merchant-visible string field.
+    assertClean({
+      nom: dto.nom,
+      description: dto.description,
+      adresse: dto.adresse,
+      quartier: dto.quartier,
+      ville: dto.ville,
+      'socialLinks.instagram': dto.socialLinks?.instagram,
+      'socialLinks.tiktok': dto.socialLinks?.tiktok,
+      'socialLinks.facebook': dto.socialLinks?.facebook,
+      'socialLinks.snapchat': dto.socialLinks?.snapchat,
+      'socialLinks.youtube': dto.socialLinks?.youtube,
+      'socialLinks.website': dto.socialLinks?.website,
+    });
+
     const maxStores = await this.planService.getMaxStores(merchantId);
     const count = await this.storeRepo.count({ where: { merchantId } });
     if (count >= maxStores) {
@@ -92,6 +110,23 @@ export class MerchantStoreService {
   }
 
   async updateStore(merchantId: string, storeId: string, dto: UpdateStoreDto): Promise<Store> {
+    // ── UGC moderation (App Store 1.2 / Play UGC policy) ──
+    // Social handles and website are shown to end users in jitplus, so they
+    // must be filtered like every other merchant-visible string field.
+    assertClean({
+      nom: dto.nom,
+      description: dto.description,
+      adresse: dto.adresse,
+      quartier: dto.quartier,
+      ville: dto.ville,
+      'socialLinks.instagram': dto.socialLinks?.instagram,
+      'socialLinks.tiktok': dto.socialLinks?.tiktok,
+      'socialLinks.facebook': dto.socialLinks?.facebook,
+      'socialLinks.snapchat': dto.socialLinks?.snapchat,
+      'socialLinks.youtube': dto.socialLinks?.youtube,
+      'socialLinks.website': dto.socialLinks?.website,
+    });
+
     const store = await this.storeRepo.findFirst({
       where: { id: storeId, merchantId },
       select: { id: true },
@@ -146,6 +181,14 @@ export class MerchantStoreService {
       where: { merchantId },
       orderBy: { createdAt: 'asc' },
     });
+
+    // A merchant must always keep at least one store — prevents orphan profiles
+    // and protects the merchant from accidentally wiping their loyalty programme.
+    if (allStores.length <= 1) {
+      throw new BadRequestException(
+        'Vous ne pouvez pas supprimer votre dernière boutique. Créez-en une autre avant ou contactez le support pour supprimer votre compte.',
+      );
+    }
 
     const isReferenceStore = allStores.length > 0 && allStores[0].id === storeId;
 

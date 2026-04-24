@@ -5,7 +5,7 @@ import { SocialLinksDto } from './social-links.dto';
 
 export class CreateStoreDto {
   @IsString()
-  @MinLength(1, { message: 'Le nom du magasin ne peut pas être vide' })
+  @MinLength(2, { message: 'Le nom du magasin doit contenir au moins 2 caractères' })
   @MaxLength(100)
   nom: string;
 

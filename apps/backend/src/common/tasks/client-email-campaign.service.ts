@@ -27,6 +27,7 @@ import {
   pickLang,
   type Lang,
 } from '../../mail/campaign-templates';
+import { isCronAllowed, weekIndexSinceReference, weekTag } from './cron-utils';
 
 // ─── Subject localization ────────────────────────────────────────────────────
 // Keep the subjects table here so `campaign-templates.ts` stays focused on HTML.
@@ -168,8 +169,9 @@ export class ClientEmailCampaignService {
   }
 
   // ── Welcome Series Email ────────────────────────────────────────────────
-  @Cron('30 9 * * *') // Daily at 09:30 UTC
+  @Cron('30 9 * * *') // Daily at 09:30 UTC = 10:30 Maroc
   async sendWelcomeSeriesEmail(): Promise<void> {
+    if (!isCronAllowed(this.logger, 'ClientEmailCampaign.sendWelcomeSeriesEmail')) return;
     this.logger.log('Starting client welcome series emails');
 
     try {
@@ -242,8 +244,9 @@ export class ClientEmailCampaignService {
   }
 
   // ── Re-engagement Emails ────────────────────────────────────────────────
-  @Cron('30 12 * * *') // Daily at 12:30 UTC
+  @Cron('30 14 * * *') // Daily at 14:30 UTC = 15:30 Maroc (après Dohr)
   async sendReengagementEmail(): Promise<void> {
+    if (!isCronAllowed(this.logger, 'ClientEmailCampaign.sendReengagementEmail')) return;
     this.logger.log('Starting client re-engagement emails');
 
     try {
@@ -338,8 +341,9 @@ export class ClientEmailCampaignService {
   }
 
   // ── Reward Reminder Emails ──────────────────────────────────────────────
-  @Cron('0 15 */2 * *') // Every 2 days at 15:00 UTC
+  @Cron('0 15 */2 * *') // Every 2 days at 15:00 UTC = 16:00 Maroc
   async sendRewardReminderEmail(): Promise<void> {
+    if (!isCronAllowed(this.logger, 'ClientEmailCampaign.sendRewardReminderEmail')) return;
     this.logger.log('Starting client reward reminder emails');
 
     try {
@@ -470,8 +474,9 @@ export class ClientEmailCampaignService {
   }
 
   // ── Weekly Digest Email ─────────────────────────────────────────────────
-  @Cron('30 10 * * 0') // Sunday at 10:30 UTC
+  @Cron('30 10 * * 0') // Sunday at 10:30 UTC = 11:30 Maroc
   async sendWeeklyDigestEmail(): Promise<void> {
+    if (!isCronAllowed(this.logger, 'ClientEmailCampaign.sendWeeklyDigestEmail')) return;
     this.logger.log('Starting client weekly digest emails');
 
     try {
@@ -556,12 +561,13 @@ export class ClientEmailCampaignService {
   }
 
   // ── Feature Highlight Email (Wednesday) ─────────────────────────────────
-  @Cron('30 14 * * 3') // Wednesday at 14:30 UTC
+  @Cron('30 14 * * 3') // Wednesday at 14:30 UTC = 15:30 Maroc
   async sendFeatureHighlightEmail(): Promise<void> {
+    if (!isCronAllowed(this.logger, 'ClientEmailCampaign.sendFeatureHighlightEmail')) return;
     this.logger.log('Starting feature highlight emails');
 
     try {
-      const weekNumber = Math.floor(Date.now() / (7 * 86_400_000));
+      const weekNumber = weekIndexSinceReference();
       const features = [buildFeatureStampsEmail, buildFeatureQREmail] as const;
       const buildEmail = features[weekNumber % features.length];
       const subjectKey: 'feature_stamps' | 'feature_qr' = weekNumber % 2 === 0 ? 'feature_stamps' : 'feature_qr';
@@ -611,13 +617,15 @@ export class ClientEmailCampaignService {
   }
 
   // ── Referral Campaign Email (Friday) ────────────────────────────────────
-  @Cron('30 11 * * 5') // Friday at 11:30 UTC
+  // ⚠️ Vendredi 9:30 UTC = 10:30 Maroc — AVANT le Jumu'ah (11h30-14h)
+  @Cron('30 9 * * 5')
   async sendReferralCampaignEmail(): Promise<void> {
+    if (!isCronAllowed(this.logger, 'ClientEmailCampaign.sendReferralCampaignEmail')) return;
     this.logger.log('Starting referral campaign emails');
 
     try {
       // Only send every other week to avoid spam
-      const weekNumber = Math.floor(Date.now() / (7 * 86_400_000));
+      const weekNumber = weekIndexSinceReference();
       if (weekNumber % 2 !== 0) {
         this.logger.log('Skipping referral email this week (bi-weekly cadence)');
         return;

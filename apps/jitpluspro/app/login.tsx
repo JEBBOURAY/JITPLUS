@@ -62,7 +62,8 @@ export default function LoginScreen() {
   }, []);
 
   const emailValid = useMemo(() => isValidEmail(email), [email]);
-  const canSubmit = emailValid && password.length >= MIN_PASSWORD_LENGTH;
+  const passwordValid = useMemo(() => password.length >= MIN_PASSWORD_LENGTH, [password]);
+  const canSubmit = emailValid && passwordValid;
 
   const handleLogin = useCallback(async () => {
     Keyboard.dismiss();
@@ -303,10 +304,10 @@ export default function LoginScreen() {
               <View style={styles.inputContainer}>
                 <View style={[styles.inputWrapper, {
                   backgroundColor: theme.inputBg,
-                  borderColor: error ? theme.danger : password.length >= MIN_PASSWORD_LENGTH ? palette.charbon : theme.inputBorder,
-                  borderWidth: password.length >= MIN_PASSWORD_LENGTH ? 2 : 1.5,
+                  borderColor: error ? theme.danger : passwordValid ? palette.charbon : theme.inputBorder,
+                  borderWidth: passwordValid ? 2 : 1.5,
                 }]}>
-                  <Lock size={ms(18)} color={password.length >= MIN_PASSWORD_LENGTH ? palette.charbon : theme.inputPlaceholder} strokeWidth={1.5} />
+                  <Lock size={ms(18)} color={passwordValid ? palette.charbon : theme.inputPlaceholder} strokeWidth={1.5} />
                   <TextInput
                     ref={passwordRef}
                     style={[styles.inputField, { color: theme.text }]}

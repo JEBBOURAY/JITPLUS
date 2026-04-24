@@ -17,6 +17,7 @@ import {
   Keyboard,
   ScrollView,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { timeAgo } from '@/utils/date';
 import { useGuardedCallback } from '@/hooks/useGuardedCallback';
 import {
@@ -35,8 +36,22 @@ import {
   Lightbulb,
   X,
   Zap,
+  Info,
 } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// ── Accessibility helpers ──
+const HIT_SLOP_LARGE = { top: 12, bottom: 12, left: 12, right: 12 };
+const HIT_SLOP_MED = { top: 8, bottom: 8, left: 8, right: 8 };
+const safeImpact = (style: Haptics.ImpactFeedbackStyle) => {
+  Haptics.impactAsync(style).catch(() => {});
+};
+const safeSelection = () => {
+  Haptics.selectionAsync().catch(() => {});
+};
+const safeNotification = (type: Haptics.NotificationFeedbackType) => {
+  Haptics.notificationAsync(type).catch(() => {});
+};
 
 // Enable LayoutAnimation on Android (old arch only — New Architecture supports it natively).
 // On New Architecture (Fabric), LayoutAnimation works out of the box.
@@ -53,6 +68,18 @@ const CHANNEL_COLORS = {
   WHATSAPP: '#25D366',
   EMAIL: '#EA4335',
 } as const;
+
+// ── Emoji stripping (DB-sourced text may contain emojis that conflict with custom icons) ──
+const emojiCache = new Map<string, string>();
+const stripEmojis = (str: string | null | undefined): string => {
+  if (!str) return '';
+  const cached = emojiCache.get(str);
+  if (cached !== undefined) return cached;
+  const stripped = str.replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, '').replace(/\s+/g, ' ').trim();
+  if (emojiCache.size > 500) emojiCache.clear();
+  emojiCache.set(str, stripped);
+  return stripped;
+};
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme, palette } from '@/contexts/ThemeContext';
@@ -62,7 +89,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusFade } from '@/hooks/useFocusFade';
 import { ms } from '@/utils/responsive';
 import PremiumLockCard from '@/components/PremiumLockCard';
-import { useNotificationHistory, useWhatsappQuota, useEmailQuota, useSendPushNotification, useSendWhatsApp, useSendEmail } from '@/hooks/useQueryHooks';
+import { useNotificationHistory, useEmailQuota, useSendPushNotification, useSendEmail } from '@/hooks/useQueryHooks';
 import type { NotificationRecord } from '@/hooks/useQueryHooks';
 
 // ── Cooldown duration after a successful send (ms) ──
@@ -90,33 +117,58 @@ const MessagesBanner = React.memo(function MessagesBanner({
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
-      <TouchableOpacity style={bannerStyles.closeBtn} onPress={onDismiss} hitSlop={8}>
+      <TouchableOpacity
+        style={bannerStyles.closeBtn}
+        onPress={onDismiss}
+        hitSlop={HIT_SLOP_LARGE}
+        accessibilityRole="button"
+        accessibilityLabel={t('common.close')}
+      >
         <X size={16} color={theme.textMuted} strokeWidth={2} />
       </TouchableOpacity>
       <View style={bannerStyles.content}>
         <Zap size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
         <View style={bannerStyles.textWrap}>
-          <Text style={[bannerStyles.title, { color: theme.text }]}>{t('messages.bannerTitle')}</Text>
-          <Text style={[bannerStyles.desc, { color: theme.textMuted }]}>{t('messages.bannerDesc')}</Text>
+          <Text style={[bannerStyles.title, { color: theme.text }]} maxFontSizeMultiplier={1.6}>{t('messages.bannerTitle')}</Text>
+          <Text style={[bannerStyles.desc, { color: theme.textMuted }]} maxFontSizeMultiplier={1.6}>{t('messages.bannerDesc')}</Text>
         </View>
       </View>
-      <TouchableOpacity onPress={onDismissForever} style={bannerStyles.hideBtn} hitSlop={4}>
-        <Text style={[bannerStyles.hideText, { color: theme.textMuted }]}>{t('messages.bannerHide')}</Text>
+      <TouchableOpacity
+        onPress={onDismissForever}
+        style={bannerStyles.hideBtn}
+        hitSlop={HIT_SLOP_MED}
+        accessibilityRole="button"
+        accessibilityLabel={t('messages.bannerHide')}
+      >
+        <Text style={[bannerStyles.hideText, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>{t('messages.bannerHide')}</Text>
       </TouchableOpacity>
     </View>
   );
 });
 
 /**
- * Handle 403 errors from notification endpoints.
- * Distinguishes premium plan issues from quota exhaustion.
+ * Handle 400/403/429 errors from notification endpoints.
+ * Distinguishes content violations, premium plan issues, rate limiting and quota exhaustion.
  */
 function handlePremiumError(
   err: unknown,
   t: (key: string, vars?: Record<string, unknown>) => string,
 ) {
   const axiosErr = err as { response?: { status?: number; data?: { message?: string } } };
-  if (axiosErr?.response?.status === 403) {
+  const status = axiosErr?.response?.status;
+  if (status === 400) {
+    // Server-side content filter rejection
+    Alert.alert(
+      t('messages.contentBlockedTitle'),
+      axiosErr?.response?.data?.message || t('messages.contentBlockedMsg'),
+    );
+    return;
+  }
+  if (status === 429) {
+    Alert.alert(t('common.error'), t('messages.rateLimited'));
+    return;
+  }
+  if (status === 403) {
     const msg = axiosErr?.response?.data?.message || '';
     const isPlanIssue = msg.includes('Premium') || msg.includes('essai');
     Alert.alert(
@@ -135,6 +187,20 @@ const animateAccordion = () =>
 // ── Char count color helper ──
 const charCountColor = (len: number, max: number, muted: string, warn: string, danger: string) =>
   len >= max ? danger : len >= max * 0.85 ? warn : muted;
+
+// ── Legal note shown below each Send button (CGU + CNDP transparency) ──
+const LegalNote = React.memo(function LegalNote() {
+  const theme = useTheme();
+  const { t } = useLanguage();
+  return (
+    <View style={styles.legalNoteRow} accessible accessibilityRole="text">
+      <Info size={12} color={theme.textMuted} strokeWidth={1.8} />
+      <Text style={[styles.legalNoteText, { color: theme.textMuted }]} maxFontSizeMultiplier={1.6}>
+        {t('messages.legalNote')}
+      </Text>
+    </View>
+  );
+});
 
 // ── Extracted memoized notification card ──
 const NotificationCard = memo(function NotificationCard({
@@ -160,59 +226,72 @@ const NotificationCard = memo(function NotificationCard({
       ? CHANNEL_COLORS.WHATSAPP
       : theme.primary;
   const ChannelIcon = channel === 'EMAIL' ? Mail : channel === 'WHATSAPP' ? MessageCircle : Send;
+  const cleanTitle = stripEmojis(item.title);
+  const cleanBody = stripEmojis(item.body);
 
   return (
     <TouchableOpacity
       activeOpacity={0.92}
-      onPress={() => { animateAccordion(); onToggle(item.id); }}
+      onPress={() => { animateAccordion(); safeSelection(); onToggle(item.id); }}
       style={[styles.notifCard, { backgroundColor: theme.bgCard, borderColor: isExpanded ? theme.primary + '60' : theme.borderLight }]}
+      accessibilityRole="button"
+      accessibilityState={{ expanded: isExpanded }}
+      accessibilityLabel={`${cleanTitle}. ${channelLabel}.`}
+      accessibilityHint={isExpanded ? t('common.collapse') : t('common.expand')}
     >
       <View style={styles.notifHeader}>
-        <View style={[styles.notifIcon, { backgroundColor: `${palette.charbon}12` }]}>
-          <ChannelIcon size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
+        <View style={[styles.notifIconWrap, { shadowColor: channelColor }]} importantForAccessibility="no">
+          <LinearGradient
+            colors={[channelColor + '30', channelColor + '08']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[styles.notifIcon, { borderColor: channelColor + '35' }]}
+          >
+            <ChannelIcon size={ms(18)} color={channelColor} strokeWidth={2} />
+          </LinearGradient>
         </View>
         <View style={styles.notifMeta}>
           <View style={styles.notifBadgeRow}>
             <View style={[styles.channelBadge, { backgroundColor: channelColor + '18', borderColor: channelColor + '40' }]}>
-              <Text style={[styles.channelBadgeText, { color: channelColor }]}>{channelLabel}</Text>
+              <Text style={[styles.channelBadgeText, { color: channelColor }]} maxFontSizeMultiplier={1.4}>{channelLabel}</Text>
             </View>
             {isExpanded
               ? <ChevronUp size={16} color={theme.textMuted} />
               : <ChevronDown size={16} color={theme.textMuted} />}
           </View>
-          <Text style={[styles.notifTitle, { color: theme.text }]} numberOfLines={isExpanded ? undefined : 2}>
-            {item.title}
+          <Text style={[styles.notifTitle, { color: theme.text }]} maxFontSizeMultiplier={1.6} numberOfLines={isExpanded ? undefined : 2}>
+            {cleanTitle}
           </Text>
           <View style={styles.notifTime}>
             <Clock size={11} color={theme.textMuted} />
-            <Text style={[styles.notifTimeText, { color: theme.textMuted }]}>
+            <Text style={[styles.notifTimeText, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>
               {timeAgo(item.createdAt, locale)}
             </Text>
           </View>
         </View>
       </View>
 
-      <Text style={[styles.notifBody, { color: theme.textSecondary, marginLeft: 48 }]} numberOfLines={isExpanded ? undefined : 2}>
-        {item.body}
+      <Text style={[styles.notifBody, { color: theme.textSecondary, marginLeft: 48 }]} maxFontSizeMultiplier={1.6} numberOfLines={isExpanded ? undefined : 2}>
+        {cleanBody}
       </Text>
 
       <View style={[styles.notifStats, { borderTopColor: theme.borderLight }]}>
         <View style={styles.stat}>
           <Users size={13} color={theme.textMuted} />
-          <Text style={[styles.statText, { color: theme.textMuted }]}>
+          <Text style={[styles.statText, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>
             {t('messages.statRecipients', { count: channel === 'PUSH' ? (item.receivedCount ?? item.recipientCount) : item.recipientCount })}
           </Text>
         </View>
         <View style={styles.stat}>
           <CheckCircle2 size={13} color={theme.success} />
-          <Text style={[styles.statText, { color: theme.success }]}>
+          <Text style={[styles.statText, { color: theme.success }]} maxFontSizeMultiplier={1.4}>
             {t('messages.statSent', { count: channel === 'PUSH' ? (item.successCount || item.receivedCount || item.recipientCount) : item.successCount })}
           </Text>
         </View>
         {channel === 'PUSH' && (
           <View style={styles.stat}>
             <Eye size={13} color={theme.primary} />
-            <Text style={[styles.statText, { color: theme.primary }]}>
+            <Text style={[styles.statText, { color: theme.primary }]} maxFontSizeMultiplier={1.4}>
               {t('messages.statRead', { count: item.readCount ?? 0 })}
             </Text>
           </View>
@@ -220,7 +299,7 @@ const NotificationCard = memo(function NotificationCard({
         {item.failureCount > 0 && (
           <View style={styles.stat}>
             <XCircle size={13} color={theme.danger} />
-            <Text style={[styles.statText, { color: theme.danger }]}>{item.failureCount}</Text>
+            <Text style={[styles.statText, { color: theme.danger }]} maxFontSizeMultiplier={1.4}>{item.failureCount}</Text>
           </View>
         )}
       </View>
@@ -236,13 +315,10 @@ interface MsgState {
   title: string;
   body: string;
   showCompose: boolean;
-  whatsappMessage: string;
-  showWhatsApp: boolean;
   emailSubject: string;
   emailBody: string;
   showEmail: boolean;
   pushCooldown: boolean;
-  whatsappCooldown: boolean;
   emailCooldown: boolean;
   expandedId: string | null;
   showHistory: boolean;
@@ -253,32 +329,29 @@ const initialMsgState: MsgState = {
   title: '',
   body: '',
   showCompose: false,
-  whatsappMessage: '',
-  showWhatsApp: false,
   emailSubject: '',
   emailBody: '',
   showEmail: false,
   pushCooldown: false,
-  whatsappCooldown: false,
   emailCooldown: false,
   expandedId: null,
   showHistory: false,
   historyFilter: 'ALL',
 };
 
-type SectionKey = 'showCompose' | 'showWhatsApp' | 'showEmail' | 'showHistory';
-type CooldownKey = 'pushCooldown' | 'whatsappCooldown' | 'emailCooldown';
+type SectionKey = 'showCompose' | 'showEmail' | 'showHistory';
+type CooldownKey = 'pushCooldown' | 'emailCooldown';
 
 type MsgAction =
   | { type: 'SET'; payload: Partial<MsgState> }
   | { type: 'TOGGLE_SECTION'; section: SectionKey }
   | { type: 'START_COOLDOWN'; key: CooldownKey }
   | { type: 'END_COOLDOWN'; key: CooldownKey }
-  | { type: 'RESET_FORM'; form: 'push' | 'whatsapp' | 'email' }
+  | { type: 'RESET_FORM'; form: 'push' | 'email' }
   | { type: 'TOGGLE_EXPANDED'; id: string }
   | { type: 'SET_HISTORY_FILTER'; filter: HistoryFilter };
 
-const allSections: SectionKey[] = ['showCompose', 'showWhatsApp', 'showEmail', 'showHistory'];
+const allSections: SectionKey[] = ['showCompose', 'showEmail', 'showHistory'];
 
 function msgReducer(state: MsgState, action: MsgAction): MsgState {
   switch (action.type) {
@@ -295,7 +368,6 @@ function msgReducer(state: MsgState, action: MsgAction): MsgState {
       return { ...state, [action.key]: false };
     case 'RESET_FORM':
       if (action.form === 'push') return { ...state, title: '', body: '' };
-      if (action.form === 'whatsapp') return { ...state, whatsappMessage: '' };
       return { ...state, emailSubject: '', emailBody: '' };
     case 'TOGGLE_EXPANDED':
       return { ...state, expandedId: state.expandedId === action.id ? null : action.id };
@@ -332,18 +404,16 @@ export default function MessagesScreen() {
   }, []);
 
   const [state, dispatch] = useReducer(msgReducer, initialMsgState);
-  const { title, body, showCompose, whatsappMessage, showWhatsApp, emailSubject, emailBody, showEmail, pushCooldown, whatsappCooldown, emailCooldown, expandedId, showHistory, historyFilter } = state;
+  const { title, body, showCompose, emailSubject, emailBody, showEmail, pushCooldown, emailCooldown, expandedId, showHistory, historyFilter } = state;
   const set = useCallback((payload: Partial<MsgState>) => dispatch({ type: 'SET', payload }), []);
 
   // ── React Query mutations ──
   const pushMutation = useSendPushNotification();
-  const whatsappMutation = useSendWhatsApp();
   const emailMutation = useSendEmail();
 
   // ── React Query hooks (disabled for team members — backend requires owner) ──
   // History is only fetched when the user opens the history section
   const { data: history = [], isLoading: loading, isRefetching: refreshing, refetch: refetchHistory } = useNotificationHistory(isOwner && showHistory);
-  const { data: whatsappQuota } = useWhatsappQuota(isOwner && isPremium && showWhatsApp);
   const { data: emailQuota } = useEmailQuota(isOwner && isPremium && showEmail);
 
   // ── Filtered history ──
@@ -356,8 +426,6 @@ export default function MessagesScreen() {
   }, [history, historyFilter]);
 
   const sendRipple = useRef(new Animated.Value(0)).current;
-  const titleInputRef = useRef<TextInput>(null);
-  const bodyInputRef = useRef<TextInput>(null);
   const [focusedField, setFocusedField] = useState<'title' | 'body' | null>(null);
 
   // Cooldown timer refs — cleaned up on unmount to prevent memory leaks
@@ -377,49 +445,10 @@ export default function MessagesScreen() {
   }, []);
 
   // ── Handle WhatsApp send ──
-  const handleSendWhatsApp = () => {
-    if (!whatsappMessage.trim()) {
-      Alert.alert(t('common.error'), t('messages.whatsappEmptyMsg'));
-      return;
-    }
-    Keyboard.dismiss();
-
-    Alert.alert(
-      t('messages.whatsappConfirmTitle'),
-      t('messages.whatsappConfirmBody', { message: whatsappMessage.trim() }),
-      [
-        { text: t('common.cancel'), style: 'cancel' },
-        {
-          text: t('messages.send'),
-          style: 'default',
-          onPress: async () => {
-            try {
-              const { recipientCount, successCount, failureCount } = await whatsappMutation.mutateAsync({
-                body: whatsappMessage.trim(),
-              });
-
-              Alert.alert(
-                t('messages.whatsappSuccessTitle'),
-                t('messages.whatsappSuccessBody', {
-                  success: successCount,
-                  total: recipientCount,
-                  failures: failureCount > 0 ? t('messages.whatsappFailureSuffix', { count: failureCount }) : '',
-                }),
-              );
-
-              dispatch({ type: 'RESET_FORM', form: 'whatsapp' });
-              startCooldown('whatsappCooldown');
-            } catch (err: unknown) {
-              handlePremiumError(err, t);
-            }
-          },
-        },
-      ],
-    );
-  };
+  // NOTE: WhatsApp broadcast UI is disabled (not yet approved). Intentionally removed.
 
   // ── Handle Email send ──
-  const handleSendEmail = () => {
+  const handleSendEmail = useCallback(() => {
     if (!emailSubject.trim() || !emailBody.trim()) {
       Alert.alert(t('messages.notifEmptyFieldsTitle'), t('messages.emailEmptyMsg'));
       return;
@@ -428,7 +457,9 @@ export default function MessagesScreen() {
 
     Alert.alert(
       t('messages.emailConfirmTitle'),
-      t('messages.emailConfirmBody', { subject: emailSubject.trim() }),
+      t('messages.emailConfirmBody', {
+        subject: emailSubject.trim(),
+      }),
       [
         { text: t('common.cancel'), style: 'cancel' },
         {
@@ -441,6 +472,7 @@ export default function MessagesScreen() {
                 body: emailBody.trim(),
               });
 
+              safeNotification(Haptics.NotificationFeedbackType.Success);
               Alert.alert(
                 t('messages.emailSuccessTitle'),
                 t('messages.emailSuccessBody', {
@@ -453,18 +485,19 @@ export default function MessagesScreen() {
               dispatch({ type: 'RESET_FORM', form: 'email' });
               startCooldown('emailCooldown');
             } catch (err: unknown) {
+              safeNotification(Haptics.NotificationFeedbackType.Error);
               handlePremiumError(err, t);
             }
           },
         },
       ],
     );
-  };
+  }, [emailSubject, emailBody, emailMutation, startCooldown, t]);
 
   const onRefresh = useGuardedCallback(async () => { await refetchHistory(); }, [refetchHistory]);
 
   // ── Send notification ──
-  const handleSend = () => {
+  const handleSend = useCallback(() => {
     if (!title.trim() || !body.trim()) {
       Alert.alert(t('messages.notifEmptyFieldsTitle'), t('messages.notifEmptyFields'));
       return;
@@ -473,7 +506,10 @@ export default function MessagesScreen() {
 
     Alert.alert(
       t('messages.notifConfirmTitle'),
-      t('messages.notifConfirmBody', { title: title.trim(), body: body.trim() }),
+      t('messages.notifConfirmBody', {
+        title: title.trim(),
+        body: body.trim(),
+      }),
       [
         { text: t('common.cancel'), style: 'cancel' },
         {
@@ -481,11 +517,12 @@ export default function MessagesScreen() {
           style: 'default',
           onPress: async () => {
             try {
-              const { recipientCount, successCount, failureCount } = await pushMutation.mutateAsync({
+              const { recipientCount } = await pushMutation.mutateAsync({
                 title: title.trim(),
                 body: body.trim(),
               });
 
+              safeNotification(Haptics.NotificationFeedbackType.Success);
               Alert.alert(
                 t('messages.pushSuccessTitle'),
                 t('messages.pushSuccessBody', { count: recipientCount }),
@@ -494,23 +531,24 @@ export default function MessagesScreen() {
               dispatch({ type: 'RESET_FORM', form: 'push' });
               startCooldown('pushCooldown');
             } catch (err: unknown) {
+              safeNotification(Haptics.NotificationFeedbackType.Error);
               handlePremiumError(err, t);
             }
           },
         },
       ],
     );
-  };
+  }, [title, body, pushMutation, startCooldown, t]);
 
-  const triggerSendRipple = () => {
+  const triggerSendRipple = useCallback(() => {
     sendRipple.setValue(0);
     Animated.timing(sendRipple, { toValue: 1, duration: 420, useNativeDriver: true }).start();
-  };
+  }, [sendRipple]);
 
-  const sendRippleStyle = {
+  const sendRippleStyle = useMemo(() => ({
     opacity: sendRipple.interpolate({ inputRange: [0, 1], outputRange: [0.35, 0] }),
     transform: [{ scale: sendRipple.interpolate({ inputRange: [0, 1], outputRange: [1, 2.6] }) }],
-  };
+  }), [sendRipple]);
 
   // focusStyle is provided by useFocusFade()
 
@@ -544,19 +582,19 @@ export default function MessagesScreen() {
     return (
       <Animated.View style={[styles.container, { backgroundColor: theme.bg }, focusStyle]}>
         <View style={[styles.headerBar, { paddingTop: insets.top + 12 }]}>
-          <Text style={[styles.headerTitle, { color: theme.text }]}>{t('messages.title')}</Text>
+          <Text style={[styles.headerTitle, { color: theme.text }]} maxFontSizeMultiplier={1.4} accessibilityRole="header">{t('messages.title')}</Text>
         </View>
         {bannerVisible && (
           <View style={{ paddingHorizontal: 16, paddingTop: 8 }}>
             <MessagesBanner onDismiss={dismissBanner} onDismissForever={dismissBannerForever} />
           </View>
         )}
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32 }}>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32 }} accessible accessibilityRole="alert">
           <Shield size={48} color={theme.textMuted} strokeWidth={1.5} />
-          <Text style={{ color: theme.text, fontSize: 18, fontWeight: '700', marginTop: 16, textAlign: 'center' }}>
+          <Text style={{ color: theme.text, fontSize: 18, fontWeight: '700', marginTop: 16, textAlign: 'center' }} maxFontSizeMultiplier={1.6}>
             {t('messages.ownerOnly')}
           </Text>
-          <Text style={{ color: theme.textMuted, fontSize: 14, marginTop: 8, textAlign: 'center', lineHeight: 20 }}>
+          <Text style={{ color: theme.textMuted, fontSize: 14, marginTop: 8, textAlign: 'center', lineHeight: 20 }} maxFontSizeMultiplier={1.6}>
             {t('messages.ownerOnlyMsg')}
           </Text>
         </View>
@@ -573,7 +611,7 @@ export default function MessagesScreen() {
       >
         {/* ── Simple header ── */}
         <View style={[styles.headerBar, { paddingTop: insets.top + 12 }]}>
-          <Text style={[styles.headerTitle, { color: theme.text }]}>{t('messages.title')}</Text>
+          <Text style={[styles.headerTitle, { color: theme.text }]} maxFontSizeMultiplier={1.4} accessibilityRole="header">{t('messages.title')}</Text>
         </View>
 
         {/* ── Dismissable tip banner ── */}
@@ -599,33 +637,41 @@ export default function MessagesScreen() {
           }
           ListHeaderComponent={
             <View>
-              {/* ── Channel Toggle Row (Notification / WhatsApp / E-mail) ── */}
+              {/* ── Channel Toggle Row (Notification / E-mail) ── */}
               <View style={styles.toggleRow}>
                 <TouchableOpacity
-                  onPress={() => { animateAccordion(); dispatch({ type: 'TOGGLE_SECTION', section: 'showCompose' }); }}
+                  onPress={() => { animateAccordion(); safeSelection(); dispatch({ type: 'TOGGLE_SECTION', section: 'showCompose' }); }}
                   activeOpacity={0.8}
                   style={[
                     styles.composeToggle,
                     { flex: 1, backgroundColor: showCompose ? theme.primary + '18' : theme.bgCard, borderColor: showCompose ? theme.primary : theme.borderLight },
                   ]}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('messages.channelNotif')}
+                  accessibilityState={{ expanded: showCompose }}
+                  hitSlop={HIT_SLOP_MED}
                 >
                   <Send size={16} color={theme.primary} />
-                  <Text style={[styles.composeToggleText, { color: showCompose ? theme.primary : theme.text }]} numberOfLines={1}>
+                  <Text style={[styles.composeToggleText, { color: showCompose ? theme.primary : theme.text }]} maxFontSizeMultiplier={1.4} numberOfLines={1}>
                     {t('messages.channelNotif')}
                   </Text>
                   {showCompose ? <ChevronUp size={14} color={theme.primary} /> : <ChevronDown size={14} color={theme.textMuted} />}
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  onPress={() => { animateAccordion(); dispatch({ type: 'TOGGLE_SECTION', section: 'showEmail' }); }}
+                  onPress={() => { animateAccordion(); safeSelection(); dispatch({ type: 'TOGGLE_SECTION', section: 'showEmail' }); }}
                   activeOpacity={0.8}
                   style={[
                     styles.composeToggle,
                     { flex: 1, backgroundColor: showEmail ? CHANNEL_COLORS.EMAIL + '18' : theme.bgCard, borderColor: showEmail ? CHANNEL_COLORS.EMAIL : theme.borderLight },
                   ]}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('messages.channelEmail')}
+                  accessibilityState={{ expanded: showEmail }}
+                  hitSlop={HIT_SLOP_MED}
                 >
                   <Mail size={16} color={CHANNEL_COLORS.EMAIL} />
-                  <Text style={[styles.composeToggleText, { color: showEmail ? CHANNEL_COLORS.EMAIL : theme.text }]} numberOfLines={1}>
+                  <Text style={[styles.composeToggleText, { color: showEmail ? CHANNEL_COLORS.EMAIL : theme.text }]} maxFontSizeMultiplier={1.4} numberOfLines={1}>
                     {t('messages.channelEmail')}
                   </Text>
                   {showEmail ? <ChevronUp size={14} color={CHANNEL_COLORS.EMAIL} /> : <ChevronDown size={14} color={theme.textMuted} />}
@@ -639,13 +685,13 @@ export default function MessagesScreen() {
                   {/* Tip */}
                   <View style={[styles.composeTip, { backgroundColor: theme.primary + '0D' }]}>
                     <Lightbulb size={14} color={theme.primary} />
-                    <Text style={[styles.composeTipText, { color: theme.textSecondary }]}>
+                    <Text style={[styles.composeTipText, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.6}>
                       {t('messages.composeTip')}
                     </Text>
                   </View>
 
                   {/* Title input */}
-                  <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>
+                  <Text style={[styles.fieldLabel, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.4} nativeID="push-title-label">
                     {t('messages.messageTitle')}
                   </Text>
                   <View
@@ -655,7 +701,6 @@ export default function MessagesScreen() {
                     ]}
                   >
                     <TextInput
-                      ref={titleInputRef}
                       style={[styles.input, { color: theme.text }]}
                       value={title}
                       onChangeText={(v) => set({ title: v })}
@@ -665,14 +710,21 @@ export default function MessagesScreen() {
                       returnKeyType="next"
                       onFocus={() => setFocusedField('title')}
                       onBlur={() => setFocusedField((f) => f === 'title' ? null : f)}
+                      accessibilityLabel={t('messages.messageTitle')}
+                      accessibilityLabelledBy="push-title-label"
+                      maxFontSizeMultiplier={1.4}
                     />
                   </View>
-                  <Text style={[styles.charCount, { color: charCountColor(title.length, 100, theme.textMuted, theme.warning ?? '#F59E0B', theme.danger) }]}>
+                  <Text
+                    style={[styles.charCount, { color: charCountColor(title.length, 100, theme.textMuted, theme.warning ?? '#F59E0B', theme.danger) }]}
+                    maxFontSizeMultiplier={1.6}
+                    accessibilityLiveRegion="polite"
+                  >
                     {title.length}/100
                   </Text>
 
                   {/* Body input */}
-                  <Text style={[styles.fieldLabel, { color: theme.textSecondary, marginTop: 12 }]}>
+                  <Text style={[styles.fieldLabel, { color: theme.textSecondary, marginTop: 12 }]} maxFontSizeMultiplier={1.4} nativeID="push-body-label">
                     {t('messages.messageBody')}
                   </Text>
                   <View
@@ -687,7 +739,6 @@ export default function MessagesScreen() {
                     ]}
                   >
                     <TextInput
-                      ref={bodyInputRef}
                       style={[
                         styles.input,
                         { color: theme.text, textAlignVertical: 'top', minHeight: 80 },
@@ -700,9 +751,16 @@ export default function MessagesScreen() {
                       maxLength={500}
                       onFocus={() => setFocusedField('body')}
                       onBlur={() => setFocusedField((f) => f === 'body' ? null : f)}
+                      accessibilityLabel={t('messages.messageBody')}
+                      accessibilityLabelledBy="push-body-label"
+                      maxFontSizeMultiplier={1.4}
                     />
                   </View>
-                  <Text style={[styles.charCount, { color: charCountColor(body.length, 500, theme.textMuted, theme.warning ?? '#F59E0B', theme.danger) }]}>
+                  <Text
+                    style={[styles.charCount, { color: charCountColor(body.length, 500, theme.textMuted, theme.warning ?? '#F59E0B', theme.danger) }]}
+                    maxFontSizeMultiplier={1.6}
+                    accessibilityLiveRegion="polite"
+                  >
                     {body.length}/500
                   </Text>
 
@@ -715,105 +773,27 @@ export default function MessagesScreen() {
                       },
                     ]}
                     onPress={() => {
+                      safeImpact(Haptics.ImpactFeedbackStyle.Medium);
                       triggerSendRipple();
                       handleSend();
                     }}
                     disabled={pushMutation.isPending || pushCooldown || !title.trim() || !body.trim()}
                     activeOpacity={0.85}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('messages.sendToAll')}
+                    accessibilityState={{ disabled: pushMutation.isPending || pushCooldown || !title.trim() || !body.trim(), busy: pushMutation.isPending }}
                   >
                     <Animated.View pointerEvents="none" style={[styles.sendRipple, sendRippleStyle]} />
                     {pushMutation.isPending ? (
-                      <ActivityIndicator size="small" color="#fff" />
+                      <ActivityIndicator size="small" color="#fff" accessibilityLabel={t('messages.sending')} />
                     ) : (
                       <>
                         <Send size={18} color="#fff" strokeWidth={1.5} />
-                        <Text style={styles.sendBtnText}>{t('messages.sendToAll')}</Text>
+                        <Text style={styles.sendBtnText} maxFontSizeMultiplier={1.4}>{t('messages.sendToAll')}</Text>
                       </>
                     )}
                   </TouchableOpacity>
-                </View>
-              )}
-
-              {false && showWhatsApp && (
-                <View
-                  style={[styles.composeCard, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}
-                >
-                  {!isPremium ? (
-                    <PremiumLockCard descriptionKey="messages.premiumWhatsappDesc" />
-                  ) : (<>
-                  <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>
-                    {t('messages.whatsappSection')}
-                  </Text>
-                  <View
-                    style={[
-                      styles.inputWrapper,
-                      {
-                        backgroundColor: theme.bgInput,
-                        borderColor: theme.border,
-                        minHeight: 100,
-                        alignItems: 'flex-start',
-                      },
-                    ]}
-                  >
-                    <TextInput
-                      style={[
-                        styles.input,
-                        { color: theme.text, textAlignVertical: 'top', minHeight: 80 },
-                      ]}
-                      value={whatsappMessage}
-                      onChangeText={(v) => set({ whatsappMessage: v })}
-                      placeholder={t('messages.whatsappPlaceholder')}
-                      placeholderTextColor={theme.textMuted}
-                      multiline
-                      maxLength={500}
-                    />
-                  </View>
-                  <Text style={[styles.charCount, { color: charCountColor(whatsappMessage.length, 500, theme.textMuted, theme.warning ?? '#F59E0B', theme.danger) }]}>
-                    {whatsappMessage.length}/500
-                  </Text>
-
-                  {(() => {
-                    if (!whatsappQuota) return null;
-                    const wq = whatsappQuota!;
-                    return (
-                      <Text style={[styles.charCount, {
-                        color: wq.used >= wq.max ? theme.danger : theme.textMuted,
-                        marginTop: 12,
-                        marginBottom: 16,
-                      }]}>
-                        {t('messages.whatsappQuota', { used: wq.used, max: wq.max })}
-                        {wq.used >= wq.max
-                          ? t('messages.quotaReached')
-                          : t('messages.quotaLeft', { remaining: wq.max - wq.used })}
-                      </Text>
-                    );
-                  })()}
-                  {!whatsappQuota && <View style={{ marginBottom: 16 }} />}
-
-                  {/* Send WhatsApp button */}
-                  {whatsappMutation.isPending ? (
-                    <View style={[styles.sendBtn, { backgroundColor: CHANNEL_COLORS.WHATSAPP, borderColor: '#128c1f' }]}>
-                      <ActivityIndicator size="small" color="#fff" />
-                      <Text style={styles.sendBtnText}>{t('messages.sending')}</Text>
-                    </View>
-                  ) : (
-                    <TouchableOpacity
-                      style={[
-                        styles.sendBtn,
-                        {
-                          backgroundColor: whatsappMessage.trim() ? CHANNEL_COLORS.WHATSAPP : theme.border,
-                          borderColor: whatsappMessage.trim() ? '#128c1f' : theme.border,
-                        },
-                      ]}
-                      onPress={handleSendWhatsApp}
-                      disabled={whatsappCooldown || !whatsappMessage.trim()}
-                      activeOpacity={0.85}
-                    >
-                      <MessageCircle size={18} color="#fff" strokeWidth={1.5} />
-                      <Text style={styles.sendBtnText}>{t('messages.sendWhatsApp')}</Text>
-                    </TouchableOpacity>
-                  )}
-                  </>)}
+                  <LegalNote />
                 </View>
               )}
 
@@ -825,7 +805,7 @@ export default function MessagesScreen() {
                   {!isPremium ? (
                     <PremiumLockCard descriptionKey="messages.premiumEmailDesc" />
                   ) : (<>
-                  <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>
+                  <Text style={[styles.fieldLabel, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.4} nativeID="email-subject-label">
                     {t('messages.emailSubject')}
                   </Text>
                   <View
@@ -842,13 +822,20 @@ export default function MessagesScreen() {
                       placeholderTextColor={theme.textMuted}
                       maxLength={150}
                       returnKeyType="next"
+                      accessibilityLabel={t('messages.emailSubject')}
+                      accessibilityLabelledBy="email-subject-label"
+                      maxFontSizeMultiplier={1.4}
                     />
                   </View>
-                  <Text style={[styles.charCount, { color: charCountColor(emailSubject.length, 150, theme.textMuted, theme.warning ?? '#F59E0B', theme.danger) }]}>
+                  <Text
+                    style={[styles.charCount, { color: charCountColor(emailSubject.length, 150, theme.textMuted, theme.warning ?? '#F59E0B', theme.danger) }]}
+                    maxFontSizeMultiplier={1.6}
+                    accessibilityLiveRegion="polite"
+                  >
                     {emailSubject.length}/150
                   </Text>
 
-                  <Text style={[styles.fieldLabel, { color: theme.textSecondary, marginTop: 12 }]}>
+                  <Text style={[styles.fieldLabel, { color: theme.textSecondary, marginTop: 12 }]} maxFontSizeMultiplier={1.4} nativeID="email-body-label">
                     {t('messages.emailBody')}
                   </Text>
                   <View
@@ -873,18 +860,29 @@ export default function MessagesScreen() {
                       placeholderTextColor={theme.textMuted}
                       multiline
                       maxLength={2000}
+                      accessibilityLabel={t('messages.emailBody')}
+                      accessibilityLabelledBy="email-body-label"
+                      maxFontSizeMultiplier={1.4}
                     />
                   </View>
-                  <Text style={[styles.charCount, { color: charCountColor(emailBody.length, 2000, theme.textMuted, theme.warning ?? '#F59E0B', theme.danger) }]}>
+                  <Text
+                    style={[styles.charCount, { color: charCountColor(emailBody.length, 2000, theme.textMuted, theme.warning ?? '#F59E0B', theme.danger) }]}
+                    maxFontSizeMultiplier={1.6}
+                    accessibilityLiveRegion="polite"
+                  >
                     {emailBody.length}/2000
                   </Text>
 
                   {emailQuota && (
-                    <Text style={[styles.charCount, {
-                      color: emailQuota.used >= emailQuota.max ? theme.danger : theme.textMuted,
-                      marginTop: 4,
-                      marginBottom: 16,
-                    }]}>
+                    <Text
+                      style={[styles.charCount, {
+                        color: emailQuota.used >= emailQuota.max ? theme.danger : theme.textMuted,
+                        marginTop: 4,
+                        marginBottom: 16,
+                      }]}
+                      maxFontSizeMultiplier={1.6}
+                      accessibilityLiveRegion="polite"
+                    >
                       {t('messages.emailQuota', { used: emailQuota.used, max: emailQuota.max })}
                       {emailQuota.used >= emailQuota.max
                         ? t('messages.quotaReached')
@@ -901,45 +899,52 @@ export default function MessagesScreen() {
                         borderColor: emailSubject.trim() && emailBody.trim() ? '#c5221f' : theme.border,
                       },
                     ]}
-                    onPress={handleSendEmail}
+                    onPress={() => { safeImpact(Haptics.ImpactFeedbackStyle.Medium); handleSendEmail(); }}
                     disabled={emailMutation.isPending || emailCooldown || !emailSubject.trim() || !emailBody.trim()}
                     activeOpacity={0.85}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('messages.sendEmail')}
+                    accessibilityState={{ disabled: emailMutation.isPending || emailCooldown || !emailSubject.trim() || !emailBody.trim(), busy: emailMutation.isPending }}
                   >
                     {emailMutation.isPending ? (
-                      <ActivityIndicator size="small" color="#fff" />
+                      <ActivityIndicator size="small" color="#fff" accessibilityLabel={t('messages.sending')} />
                     ) : (
                       <>
                         <Mail size={18} color="#fff" strokeWidth={1.5} />
-                        <Text style={styles.sendBtnText}>{t('messages.sendEmail')}</Text>
+                        <Text style={styles.sendBtnText} maxFontSizeMultiplier={1.4}>{t('messages.sendEmail')}</Text>
                       </>
                     )}
                   </TouchableOpacity>
+                  <LegalNote />
                   </>)}
                 </View>
               )}
 
               {/* ── History section ────────── */}
               <View style={styles.historyToggle}>
-                <Text style={[styles.sectionTitle, { color: theme.text, marginTop: 0, marginBottom: 0 }]}>
+                <Text style={[styles.sectionTitle, { color: theme.text, marginTop: 0, marginBottom: 0 }]} maxFontSizeMultiplier={1.4} accessibilityRole="header">
                   {t('messages.history')}
                 </Text>
               </View>
 
               {!showHistory ? (
                 <View style={styles.showHistoryCta}>
-                  <View style={[styles.emptyIllustration, { backgroundColor: `${palette.charbon}12` }]}>
+                  <View style={[styles.emptyIllustration, { backgroundColor: `${palette.charbon}12` }]} importantForAccessibility="no">
                     <Clock size={ms(36)} color={palette.charbon} strokeWidth={1.5} />
                   </View>
-                  <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
+                  <Text style={[styles.emptyText, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.6}>
                     {t('messages.showHistoryHint')}
                   </Text>
                   <TouchableOpacity
                     style={[styles.showHistoryBtn, { backgroundColor: theme.primary }]}
-                    onPress={() => dispatch({ type: 'SET', payload: { showHistory: true } })}
+                    onPress={() => { safeSelection(); dispatch({ type: 'SET', payload: { showHistory: true } }); }}
                     activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('messages.showHistory')}
+                    hitSlop={HIT_SLOP_MED}
                   >
                     <Bell size={18} color="#fff" strokeWidth={2} />
-                    <Text style={styles.showHistoryBtnText}>{t('messages.showHistory')}</Text>
+                    <Text style={styles.showHistoryBtnText} maxFontSizeMultiplier={1.4}>{t('messages.showHistory')}</Text>
                   </TouchableOpacity>
                 </View>
               ) : (
@@ -951,14 +956,18 @@ export default function MessagesScreen() {
                       return (
                         <TouchableOpacity
                           key={opt.key}
-                          onPress={() => dispatch({ type: 'SET_HISTORY_FILTER', filter: opt.key })}
+                          onPress={() => { safeSelection(); dispatch({ type: 'SET_HISTORY_FILTER', filter: opt.key }); }}
                           activeOpacity={0.7}
                           style={[
                             styles.filterPill,
                             { backgroundColor: active ? theme.primary : theme.bgCard, borderColor: active ? theme.primary : theme.borderLight },
                           ]}
+                          accessibilityRole="button"
+                          accessibilityLabel={opt.label}
+                          accessibilityState={{ selected: active }}
+                          hitSlop={HIT_SLOP_MED}
                         >
-                          <Text style={[styles.filterPillText, { color: active ? '#fff' : theme.text }]}>
+                          <Text style={[styles.filterPillText, { color: active ? '#fff' : theme.text }]} maxFontSizeMultiplier={1.4}>
                             {opt.label}
                           </Text>
                         </TouchableOpacity>
@@ -972,16 +981,16 @@ export default function MessagesScreen() {
           ListEmptyComponent={
             !showHistory ? null :
             loading ? (
-              <View style={styles.emptyContainer}>
+              <View style={styles.emptyContainer} accessible accessibilityRole="progressbar" accessibilityLabel={t('messages.loadingClients')}>
                 <ActivityIndicator size="large" color={theme.primary} />
               </View>
             ) : (
               <View style={styles.emptyContainer}>
-                <View style={[styles.emptyIllustration, { backgroundColor: `${palette.charbon}12` }]}>
+                <View style={[styles.emptyIllustration, { backgroundColor: `${palette.charbon}12` }]} importantForAccessibility="no">
                   <Bell size={ms(36)} color={palette.charbon} strokeWidth={1.5} />
                 </View>
-                <Text style={[styles.emptyTitle, { color: theme.text }]}>{t('messages.noMessages')}</Text>
-                <Text style={[styles.emptyText, { color: theme.textMuted }]}>
+                <Text style={[styles.emptyTitle, { color: theme.text }]} maxFontSizeMultiplier={1.6}>{t('messages.noMessages')}</Text>
+                <Text style={[styles.emptyText, { color: theme.textMuted }]} maxFontSizeMultiplier={1.6}>
                   {t('messages.noMessagesHint')}
                 </Text>
               </View>
@@ -990,8 +999,8 @@ export default function MessagesScreen() {
           ListFooterComponent={
             showHistory && filteredHistory.length > 0 ? (
               <View style={styles.footerEndWrap}>
-                <View style={[styles.footerDivider, { backgroundColor: theme.border }]} />
-                <Text style={[styles.footerEnd, { color: theme.textMuted }]}>{t('messages.allDisplayed')}</Text>
+                <View style={[styles.footerDivider, { backgroundColor: theme.border }]} importantForAccessibility="no" />
+                <Text style={[styles.footerEnd, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>{t('messages.allDisplayed')}</Text>
               </View>
             ) : null
           }
@@ -1096,6 +1105,20 @@ const styles = StyleSheet.create({
     borderRadius: 110,
     backgroundColor: 'rgba(255,255,255,0.25)',
   },
+  legalNoteRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    marginTop: 10,
+    paddingHorizontal: 4,
+  },
+  legalNoteText: {
+    flex: 1,
+    fontSize: 11,
+    lineHeight: 15,
+    fontFamily: 'Lexend_500Medium',
+    opacity: 0.85,
+  },
 
   // Section
   sectionTitle: {
@@ -1126,12 +1149,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 8,
   },
+  notifIconWrap: {
+    borderRadius: 12,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 5,
+    elevation: 3,
+  },
   notifIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
+    width: 38,
+    height: 38,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
   },
   notifMeta: { flex: 1, marginLeft: 12 },
   notifBadgeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 },

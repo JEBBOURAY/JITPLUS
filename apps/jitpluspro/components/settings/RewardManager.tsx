@@ -12,7 +12,8 @@ import { Pencil, ChevronDown, ChevronUp, Gift } from 'lucide-react-native';
 import api from '@/services/api';
 import { getErrorMessage } from '@/utils/error';
 import PremiumLockCard from '@/components/PremiumLockCard';
-import type { ThemeColors } from '@/contexts/ThemeContext';
+import { palette, type ThemeColors } from '@/contexts/ThemeContext';
+import { ms } from '@/utils/responsive';
 import type { Merchant } from '@/types';
 
 interface Reward {
@@ -221,17 +222,22 @@ export function RewardManager({
         style={styles.sectionHeader}
         onPress={onToggleExpanded}
         activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityLabel={t('settingsPage.giftsSection')}
+        accessibilityState={{ expanded }}
       >
         <View style={styles.sectionHeaderContent}>
-          <Gift size={20} color={theme.primary} strokeWidth={1.5} />
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>{t('settingsPage.giftsSection')}</Text>
+          <View style={styles.sectionHeaderIcon}>
+            <Gift size={ms(16)} color={palette.violet} strokeWidth={2} />
+          </View>
+          <Text style={[styles.sectionTitle, { color: theme.text }]} maxFontSizeMultiplier={1.3} accessibilityRole="header">{t('settingsPage.giftsSection')}</Text>
         </View>
         {expanded
           ? <ChevronUp size={20} color={theme.textMuted} />
           : <ChevronDown size={20} color={theme.textMuted} />}
       </TouchableOpacity>
       {expanded && <View style={[styles.card, { backgroundColor: theme.bgCard }]}>
-        <Text style={[styles.cardLabel, { color: theme.textSecondary }]}>
+        <Text style={[styles.cardLabel, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.4}>
           {t('settingsPage.giftsSectionHint')}
         </Text>
 
@@ -245,6 +251,8 @@ export function RewardManager({
               onChangeText={setRewardTitle}
               placeholder={t('settingsPage.giftName')}
               placeholderTextColor={theme.textMuted}
+              maxLength={80}
+              maxFontSizeMultiplier={1.3}
             />
             <View style={styles.inputRow}>
               <TextInput
@@ -254,8 +262,10 @@ export function RewardManager({
                 keyboardType="numeric"
                 placeholder={t('settingsPage.giftCost')}
                 placeholderTextColor={theme.textMuted}
+                maxLength={9}
+                maxFontSizeMultiplier={1.3}
               />
-              <Text style={[styles.inputSuffix, { color: theme.textSecondary }]}>
+              <Text style={[styles.inputSuffix, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.3}>
                 {isStamps ? t('common.stamps') : t('common.points')}
               </Text>
             </View>
@@ -265,6 +275,8 @@ export function RewardManager({
               onChangeText={setRewardDescription}
               placeholder={t('settingsPage.giftDesc')}
               placeholderTextColor={theme.textMuted}
+              maxLength={200}
+              maxFontSizeMultiplier={1.3}
             />
             <View style={styles.formActions}>
               {editingRewardId && (
@@ -272,8 +284,10 @@ export function RewardManager({
                   style={[styles.addRewardBtn, { backgroundColor: theme.border, flex: 1 }]}
                   onPress={handleCancelEdit}
                   activeOpacity={0.8}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('common.cancel')}
                 >
-                  <Text style={[styles.addRewardBtnText, { color: theme.text }]}>{t('common.cancel')}</Text>
+                  <Text style={[styles.addRewardBtnText, { color: theme.text }]} maxFontSizeMultiplier={1.3}>{t('common.cancel')}</Text>
                 </TouchableOpacity>
               )}
               <TouchableOpacity
@@ -281,11 +295,14 @@ export function RewardManager({
                 onPress={editingRewardId ? handleUpdateReward : handleAddReward}
                 disabled={savingReward}
                 activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel={editingRewardId ? t('settingsPage.saveGift') : t('settingsPage.addGift')}
+                accessibilityState={{ disabled: savingReward, busy: savingReward }}
               >
                 {savingReward ? (
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (
-                  <Text style={styles.addRewardBtnText}>
+                  <Text style={styles.addRewardBtnText} maxFontSizeMultiplier={1.3}>
                     {editingRewardId ? t('settingsPage.saveGift') : t('settingsPage.addGift')}
                   </Text>
                 )}
@@ -300,7 +317,7 @@ export function RewardManager({
           </View>
         ) : rewards.length === 0 ? (
           <View style={[styles.rewardEmpty, { borderColor: theme.border }]}>
-            <Text style={[styles.noRewardText, { color: theme.textMuted }]}>
+            <Text style={[styles.noRewardText, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>
               {t('settingsPage.noGiftsConfigured')}
             </Text>
           </View>
@@ -312,22 +329,22 @@ export function RewardManager({
                 style={[styles.rewardRow, { backgroundColor: theme.bg, borderColor: theme.border }]}
               >
                 <View style={styles.rewardRowInfo}>
-                  <Text style={[styles.rewardRowTitle, { color: theme.text }]}>
+                  <Text style={[styles.rewardRowTitle, { color: theme.text }]} maxFontSizeMultiplier={1.3} numberOfLines={2}>
                     {reward.titre}
                   </Text>
                   {convertedCosts.has(reward.id) ? (
-                    <Text style={[styles.rewardRowMeta, { color: theme.textSecondary }]}>
+                    <Text style={[styles.rewardRowMeta, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.3}>
                       <Text style={[styles.rewardOldCost, { color: theme.textMuted }]}>{reward.cout} {oldUnit}</Text>
                       {'  ->  '}
                       <Text style={[styles.rewardNewCost, { color: theme.primary }]}>{convertedCosts.get(reward.id)} {newUnit}</Text>
                     </Text>
                   ) : (
-                    <Text style={[styles.rewardRowMeta, { color: theme.textSecondary }]}>
+                    <Text style={[styles.rewardRowMeta, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.3}>
                       {reward.cout} {newUnit}
                     </Text>
                   )}
                   {reward.description ? (
-                    <Text style={[styles.rewardRowDesc, { color: theme.textMuted }]}>
+                    <Text style={[styles.rewardRowDesc, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4} numberOfLines={3}>
                       {reward.description}
                     </Text>
                   ) : null}
@@ -337,6 +354,9 @@ export function RewardManager({
                     style={styles.rewardEditBtn}
                     onPress={() => handleEditReward(reward)}
                     activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('settingsPage.saveGift')}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
                     <Pencil size={14} color={theme.primary} />
                   </TouchableOpacity>
@@ -344,8 +364,11 @@ export function RewardManager({
                     style={styles.rewardDeleteBtn}
                     onPress={() => handleDeleteReward(reward.id)}
                     activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('settingsPage.deleteGift')}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
-                    <Text style={[styles.rewardDeleteText, { color: theme.danger }]}>{t('settingsPage.deleteGift')}</Text>
+                    <Text style={[styles.rewardDeleteText, { color: theme.danger }]} maxFontSizeMultiplier={1.3}>{t('settingsPage.deleteGift')}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -362,30 +385,36 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginHorizontal: 20,
-    marginTop: 24,
-    marginBottom: 16,
+    marginHorizontal: 16,
+    marginTop: 20,
+    marginBottom: 12,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '800',
     fontFamily: 'Lexend_700Bold',
+    letterSpacing: -0.2,
   },
   sectionHeaderContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
     flex: 1,
+  },
+  sectionHeaderIcon: {
+    width: ms(32),
+    height: ms(32),
+    borderRadius: ms(10),
+    backgroundColor: `${palette.violet}18`,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   card: {
     marginHorizontal: 16,
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 16,
-    shadowColor: '#1F2937',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: 'transparent',
   },
   cardLabel: { fontSize: 14, marginBottom: 14, lineHeight: 20, fontFamily: 'Lexend_400Regular' },
   rewardForm: { gap: 10, marginBottom: 12 },

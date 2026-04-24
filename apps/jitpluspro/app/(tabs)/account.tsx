@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,11 @@ import {
   Linking,
   TextInput,
   Modal,
+  Switch,
+  Platform,
+  KeyboardAvoidingView,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { getErrorMessage } from '@/utils/error';
 import InfoRow from '@/components/InfoRow';
@@ -41,30 +45,29 @@ import { useAuth } from '@/contexts/AuthContext';
 import api from '@/services/api';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useRouter } from 'expo-router';
-import { useCategoryMetadata } from '@/components/MerchantCategoryIcon';
 import { useFocusFade } from '@/hooks/useFocusFade';
 import { useLanguage, LANGUAGES } from '@/contexts/LanguageContext';
 import Constants from 'expo-constants';
 import FadeInView from '@/components/FadeInView';
 import PremiumLockModal from '@/components/PremiumLockModal';
 import { wp, hp, ms, fontSize as FS, radius } from '@/utils/responsive';
-import { useState, useCallback } from 'react';
-import { ProfileCard, LogoEditModal, LanguageModal } from '@/components/account';
+import { ProfileCard, LogoEditModal, LanguageModal, ProLockBadge } from '@/components/account';
 
 export default function AccountScreen() {
   const { merchant, loading, signOut, isTeamMember, teamMember, updateMerchant } = useAuth();
   const theme = useTheme();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { focusStyle } = useFocusFade();
   const { locale, setLocale, t } = useLanguage();
   const uploadLogoMutation = useUploadMerchantLogo();
   const deleteLogoMutation = useDeleteMerchantLogo();
 
-  // Collapsible section states � single state to avoid triple re-renders
+  // Collapsible section states â€” single state to avoid triple re-renders
   const [expandedSection, setExpandedSection] = useState<'store' | 'pref' | 'compte' | null>(null);
-  const toggleSection = useCallback((section: 'store' | 'pref' | 'compte') => {
-    setExpandedSection((prev) => (prev === section ? null : section));
-  }, []);
+  const toggleStore = useCallback(() => setExpandedSection((p) => (p === 'store' ? null : 'store')), []);
+  const togglePref = useCallback(() => setExpandedSection((p) => (p === 'pref' ? null : 'pref')), []);
+  const toggleCompte = useCallback(() => setExpandedSection((p) => (p === 'compte' ? null : 'compte')), []);
   const storeExpanded = expandedSection === 'store';
   const prefExpanded = expandedSection === 'pref';
   const compteExpanded = expandedSection === 'compte';
@@ -114,22 +117,38 @@ export default function AccountScreen() {
     setShowLogoModal(true);
   }, [isPremium, isTeamMember, t]);
 
-  const handleDeleteLogo = useCallback(async () => {
+  const handleDeleteLogo = useCallback(() => {
     setShowLogoModal(false);
-    try {
-      await deleteLogoMutation.mutateAsync();
-      updateMerchant({ ...merchant!, logoUrl: undefined });
-    } catch (err) {
-      Alert.alert(t('common.error'), getErrorMessage(err, t('account.logoDeleteError')));
-    }
+    Alert.alert(
+      t('account.logoDeleteConfirmTitle'),
+      t('account.logoDeleteConfirmMsg'),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('account.deleteProfilePhoto'),
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteLogoMutation.mutateAsync();
+              updateMerchant({ ...merchant!, logoUrl: undefined });
+            } catch (err) {
+              Alert.alert(t('common.error'), getErrorMessage(err, t('account.logoDeleteError')));
+            }
+          },
+        },
+      ],
+    );
   }, [deleteLogoMutation, merchant, updateMerchant, t]);
   const { data: referralData } = useReferral(!isTeamMember);
   const referralCode = referralData?.referralCode ?? null;
 
   // Profile data is managed by React Query (useMerchantProfile, staleTime: 5min).
-  // No need to force-reload on every tab focus � pull-to-refresh or mutations handle invalidation.
-  const { label: categoryLabel } = useCategoryMetadata(merchant?.categorie);
+  // No need to force-reload on every tab focus â€” pull-to-refresh or mutations handle invalidation.
   const [showLanguageModal, setShowLanguageModal] = useState(false);
+  const openLanguageModal = useCallback(() => setShowLanguageModal(true), []);
+  const closeLanguageModal = useCallback(() => setShowLanguageModal(false), []);
+  const closeLogoModal = useCallback(() => setShowLogoModal(false), []);
+  const closePremiumModal = useCallback(() => setPremiumModal((prev) => ({ ...prev, visible: false })), []);
 
   // -- Profile name edit --
   const [showNameModal, setShowNameModal] = useState(false);
@@ -142,6 +161,8 @@ export default function AccountScreen() {
     setShowNameModal(true);
   }, [merchant?.nom, isTeamMember]);
 
+  const closeNameModal = useCallback(() => setShowNameModal(false), []);
+
   const handleSaveName = useCallback(async () => {
     const trimmed = profileName.trim();
     if (!trimmed || trimmed === merchant?.nom) { setShowNameModal(false); return; }
@@ -151,13 +172,13 @@ export default function AccountScreen() {
       updateMerchant({ ...merchant!, nom: trimmed });
       setShowNameModal(false);
     } catch (err) {
-      Alert.alert(t('common.error'), t('profileView.profileNameError'));
+      Alert.alert(t('common.error'), getErrorMessage(err, t('profileView.profileNameError')));
     } finally {
       setSavingName(false);
     }
   }, [profileName, merchant, updateMerchant, t]);
 
-  const handleSignOut = async () => {
+  const handleSignOut = useCallback(() => {
     Alert.alert(t('account.signOut'), t('account.signOutConfirm'), [
       { text: t('common.cancel'), style: 'cancel' },
       {
@@ -165,11 +186,92 @@ export default function AccountScreen() {
         style: 'destructive',
         onPress: async () => {
           await signOut();
-          router.replace('/login');
+          // TabLayout useEffect handles redirect to /welcome once merchant=null.
         },
       },
     ]);
-  };
+  }, [signOut, t]);
+
+  // -- Stable navigation callbacks (keeps InfoRow / ProfileCard memo stable) --
+  const goToStores = useCallback(() => router.push('/stores'), [router]);
+  const goToSettings = useCallback(() => router.push('/settings'), [router]);
+  const goToReferral = useCallback(() => router.push('/referral'), [router]);
+  const goToLegal = useCallback(() => router.push('/legal'), [router]);
+  const goToSecurity = useCallback(() => router.push('/security'), [router]);
+  const goToDevices = useCallback(() => router.push('/security?tab=devices'), [router]);
+  const goToDelete = useCallback(() => router.push('/security?tab=delete'), [router]);
+  const goToNotifications = useCallback(() => router.push('/admin-notifications'), [router]);
+
+  const goToLuckyWheel = useCallback(() => {
+    if (!isPremium) {
+      setPremiumModal({ visible: true, titleKey: 'luckyWheel.menuLockedTitle', descKey: 'luckyWheel.menuLockedMsg' });
+      return;
+    }
+    router.push('/lucky-wheel');
+  }, [isPremium, router]);
+
+  const goToDashboard = useCallback(() => {
+    if (!isPremium) {
+      setPremiumModal({ visible: true, titleKey: 'account.dashboardLockedTitle', descKey: 'account.dashboardLockedMsg' });
+      return;
+    }
+    router.push('/dashboard');
+  }, [isPremium, router]);
+
+  const goToTeam = useCallback(() => {
+    if (!isPremium) {
+      setPremiumModal({ visible: true, titleKey: 'account.teamLockedTitle', descKey: 'account.teamLockedMsg' });
+      return;
+    }
+    router.push('/team-management');
+  }, [isPremium, router]);
+
+  const openTeamLuckyWheel = useCallback(() => router.push('/lucky-wheel'), [router]);
+
+  const openSupport = useCallback(() => {
+    const phone = process.env.EXPO_PUBLIC_SUPPORT_WHATSAPP || '212675346486';
+    const email = process.env.EXPO_PUBLIC_SUPPORT_EMAIL || 'support@jitplus.ma';
+    const msg = t('account.contactSupportMsg');
+
+    const openWhatsApp = async () => {
+      const url = `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
+      try {
+        const can = await Linking.canOpenURL(url);
+        if (!can) throw new Error('unsupported');
+        await Linking.openURL(url);
+      } catch {
+        Alert.alert(t('common.error'), t('common.genericError'));
+      }
+    };
+
+    const openEmail = async () => {
+      const subject = encodeURIComponent('JitPlus Pro — Support');
+      const body = encodeURIComponent(msg);
+      const url = `mailto:${email}?subject=${subject}&body=${body}`;
+      try {
+        const can = await Linking.canOpenURL(url);
+        if (!can) throw new Error('unsupported');
+        await Linking.openURL(url);
+      } catch {
+        Alert.alert(t('common.error'), t('common.genericError'));
+      }
+    };
+
+    Alert.alert(
+      t('account.contactSupportTitle'),
+      t('account.contactSupportVia'),
+      [
+        { text: t('account.contactViaWhatsApp'), onPress: openWhatsApp },
+        { text: t('account.contactViaEmail'), onPress: openEmail },
+        { text: t('common.cancel'), style: 'cancel' },
+      ],
+    );
+  }, [t]);
+
+  const currentLanguageLabel = useMemo(
+    () => LANGUAGES.find((l) => l.code === locale)?.label ?? locale,
+    [locale],
+  );
 
   if (loading) {
     return (
@@ -185,7 +287,10 @@ export default function AccountScreen() {
     <Animated.View style={[styles.container, { backgroundColor: theme.bg }, focusStyle]}>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.contentContainer}
+        contentContainerStyle={[
+          styles.contentContainer,
+          { paddingTop: insets.top + hp(16), paddingBottom: hp(120) + insets.bottom },
+        ]}
       >
 
         {/* -- Profile Card ----------------------------- */}
@@ -198,10 +303,9 @@ export default function AccountScreen() {
             uploadIsPending={uploadLogoMutation.isPending}
             onLogoPress={handleLogoPress}
             referralCode={referralCode}
-            categoryLabel={categoryLabel}
             router={router}
             unreadCount={unreadCount}
-            onNotifPress={() => router.push('/admin-notifications')}
+            onNotifPress={goToNotifications}
             onEditName={!isTeamMember ? handleEditName : undefined}
           />
         </FadeInView>
@@ -229,9 +333,13 @@ export default function AccountScreen() {
         {!isTeamMember && (
           <FadeInView delay={300}>
             <TouchableOpacity
-              onPress={() => toggleSection('store')}
+              onPress={toggleStore}
               activeOpacity={0.7}
               style={styles.sectionHeaderRow}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel={t('account.myStore')}
+              accessibilityState={{ expanded: storeExpanded }}
             >
               <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>{t('account.myStore')}</Text>
               <ChevronDown
@@ -243,98 +351,47 @@ export default function AccountScreen() {
             </TouchableOpacity>
             {storeExpanded && (
               <View style={[styles.infoCard, { backgroundColor: theme.bgCard }]}>
-                {/* Manage Stores */}
                 <InfoRow
                   icon={<StoreIcon size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
                   label={t('account.manageStores')}
                   subtitle={t('account.manageStoresSubtitle')}
-                  onPress={() => router.push('/stores')}
+                  onPress={goToStores}
                 />
-                {/* Settings */}
                 <InfoRow
                   icon={<Settings size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
                   label={t('account.settingsTitle')}
                   subtitle={t('account.settingsSubtitle')}
-                  onPress={() => router.push('/settings')}
+                  onPress={goToSettings}
                 />
-                {/* LuckyWheel � visible for all, actions restricted for team members inside the screen */}
                 <InfoRow
                   icon={<Ticket size={ms(16)} color={isPremium ? palette.charbon : theme.textMuted} strokeWidth={1.5} />}
                   label={t('luckyWheel.menuTitle')}
                   subtitle={isPremium ? t('luckyWheel.menuSubtitle') : t('luckyWheel.menuLockedSubtitle')}
                   iconBg={isPremium ? undefined : `${theme.textMuted}18`}
-                  right={
-                    !isPremium
-                      ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: ms(4) }}>
-                          <View style={{ backgroundColor: '#7C3AED18', borderRadius: ms(6), paddingHorizontal: ms(6), paddingVertical: ms(2) }}>
-                            <Text style={{ fontSize: FS.xs, color: '#7C3AED', fontWeight: '600' }}>{t('account.proBadge')}</Text>
-                          </View>
-                          <Lock size={ms(13)} color={theme.textMuted} strokeWidth={2} />
-                        </View>
-                      : undefined
-                  }
-                  onPress={() => {
-                    if (!isPremium) {
-                      setPremiumModal({ visible: true, titleKey: 'luckyWheel.menuLockedTitle', descKey: 'luckyWheel.menuLockedMsg' });
-                      return;
-                    }
-                    router.push('/lucky-wheel');
-                  }}
+                  right={!isPremium ? <ProLockBadge /> : undefined}
+                  onPress={goToLuckyWheel}
                 />
-                {/* Dashboard � locked for FREE */}
                 <InfoRow
                   icon={<BarChart3 size={ms(16)} color={isPremium ? palette.charbon : theme.textMuted} strokeWidth={1.5} />}
                   label={t('account.dashboard')}
                   subtitle={isPremium ? t('account.dashboardSubtitle') : t('account.dashboardLockedSubtitle')}
                   iconBg={isPremium ? undefined : `${theme.textMuted}18`}
-                  right={
-                    !isPremium
-                      ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: ms(4) }}>
-                          <View style={{ backgroundColor: '#7C3AED18', borderRadius: ms(6), paddingHorizontal: ms(6), paddingVertical: ms(2) }}>
-                            <Text style={{ fontSize: FS.xs, color: '#7C3AED', fontWeight: '600' }}>{t('account.proBadge')}</Text>
-                          </View>
-                          <Lock size={ms(13)} color={theme.textMuted} strokeWidth={2} />
-                        </View>
-                      : undefined
-                  }
-                  onPress={() => {
-                    if (!isPremium) {
-                      setPremiumModal({ visible: true, titleKey: 'account.dashboardLockedTitle', descKey: 'account.dashboardLockedMsg' });
-                      return;
-                    }
-                    router.push('/dashboard');
-                  }}
+                  right={!isPremium ? <ProLockBadge /> : undefined}
+                  onPress={goToDashboard}
                 />
-                {/* Team — visible for all, locked for FREE */}
                 <InfoRow
                   icon={<Users size={ms(16)} color={isPremium ? palette.charbon : theme.textMuted} strokeWidth={1.5} />}
                   label={t('account.team')}
                   subtitle={isPremium ? t('account.teamSubtitle') : t('account.teamLockedSubtitle')}
                   iconBg={isPremium ? undefined : `${theme.textMuted}18`}
-                  right={
-                    !isPremium
-                      ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: ms(4) }}>
-                          <View style={{ backgroundColor: '#7C3AED18', borderRadius: ms(6), paddingHorizontal: ms(6), paddingVertical: ms(2) }}>
-                            <Text style={{ fontSize: FS.xs, color: '#7C3AED', fontWeight: '600' }}>{t('account.proBadge')}</Text>
-                          </View>
-                          <Lock size={ms(13)} color={theme.textMuted} strokeWidth={2} />
-                        </View>
-                      : undefined
-                  }
-                  onPress={() => {
-                    if (!isPremium) {
-                      setPremiumModal({ visible: true, titleKey: 'account.teamLockedTitle', descKey: 'account.teamLockedMsg' });
-                      return;
-                    }
-                    router.push('/team-management');
-                  }}
+                  right={!isPremium ? <ProLockBadge /> : undefined}
+                  onPress={goToTeam}
                 />
-                {/* Referral */}
                 <InfoRow
                   icon={<Gift size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
                   label={t('referral.menuTitle')}
                   subtitle={t('referral.menuSubtitle')}
-                  onPress={() => router.push('/referral')}
+                  onPress={goToReferral}
                   noBorder
                 />
               </View>
@@ -350,7 +407,7 @@ export default function AccountScreen() {
                 icon={<Ticket size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
                 label={t('luckyWheel.menuTitle')}
                 subtitle={t('luckyWheel.menuSubtitle')}
-                onPress={() => router.push('/lucky-wheel')}
+                onPress={openTeamLuckyWheel}
                 noBorder
               />
             </View>
@@ -360,9 +417,13 @@ export default function AccountScreen() {
         {/* -- Preferences Section ---------------------- */}
         <FadeInView delay={400}>
           <TouchableOpacity
-            onPress={() => toggleSection('pref')}
+            onPress={togglePref}
             activeOpacity={0.7}
             style={styles.sectionHeaderRow}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel={t('account.preferences')}
+            accessibilityState={{ expanded: prefExpanded }}
           >
             <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>{t('account.preferences')}</Text>
             <ChevronDown
@@ -374,29 +435,40 @@ export default function AccountScreen() {
           </TouchableOpacity>
           {prefExpanded && (
             <View style={[styles.infoCard, { backgroundColor: theme.bgCard }]}>
-              {/* Dark mode */}
               <InfoRow
                 icon={<Moon size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
                 label={t('account.darkMode')}
                 subtitle={theme.isDark ? t('account.darkModeOn') : t('account.darkModeOff')}
                 onPress={theme.toggleDarkMode}
                 iconBg={`${palette.charbon}15`}
+                accessibilityRole="switch"
+                accessibilityState={{ checked: theme.isDark }}
                 right={
-                  <View style={[styles.toggle, theme.isDark ? styles.toggleOn : { backgroundColor: theme.borderLight }]}>
-                    <View style={[styles.toggleKnob, theme.isDark && styles.toggleKnobOn]} />
-                  </View>
+                  <Switch
+                    value={theme.isDark}
+                    onValueChange={theme.toggleDarkMode}
+                    trackColor={{ false: theme.borderLight, true: palette.violet }}
+                    thumbColor={Platform.OS === 'android' ? '#fff' : undefined}
+                    ios_backgroundColor={theme.borderLight}
+                    accessibilityElementsHidden
+                    importantForAccessibility="no-hide-descendants"
+                  />
                 }
               />
-              {/* Language */}
               <InfoRow
                 icon={<Globe size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
                 label={t('account.language')}
                 subtitle={t('account.chooseLanguageDesc')}
-                onPress={() => setShowLanguageModal(true)}
+                onPress={openLanguageModal}
                 noBorder
+                iconBg={`${palette.charbon}15`}
                 right={
-                  <Text style={[styles.langBadge, { color: theme.primary, backgroundColor: `${theme.primary}15` }]}>
-                    {LANGUAGES.find(l => l.code === locale)?.label ?? locale}
+                  <Text
+                    style={[styles.langBadge, { color: theme.primary, backgroundColor: `${theme.primary}15` }]}
+                    numberOfLines={1}
+                    maxFontSizeMultiplier={1.2}
+                  >
+                    {currentLanguageLabel}
                   </Text>
                 }
               />
@@ -407,9 +479,13 @@ export default function AccountScreen() {
         {/* -- Compte Section ---------------------------- */}
         <FadeInView delay={500}>
           <TouchableOpacity
-            onPress={() => toggleSection('compte')}
+            onPress={toggleCompte}
             activeOpacity={0.7}
             style={styles.sectionHeaderRow}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel={t('account.security')}
+            accessibilityState={{ expanded: compteExpanded }}
           >
             <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>{t('account.security')}</Text>
             <ChevronDown
@@ -421,58 +497,47 @@ export default function AccountScreen() {
           </TouchableOpacity>
           {compteExpanded && (
             <View style={[styles.infoCard, { backgroundColor: theme.bgCard }]}>
-              {/* Legal */}
               <InfoRow
                 icon={<Shield size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
                 label={t('account.legalSection')}
                 subtitle={t('account.legalSubtitle')}
-                onPress={() => router.push('/legal')}
+                onPress={goToLegal}
               />
-              {/* Security / Password */}
               {!isTeamMember && (
                 <InfoRow
                   icon={<Lock size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
                   label={t('account.security')}
                   subtitle={t('account.securitySubtitle')}
-                  onPress={() => router.push('/security')}
+                  onPress={goToSecurity}
                   iconBg={`${palette.charbon}15`}
                 />
               )}
-              {/* Devices */}
               {!isTeamMember && (
                 <InfoRow
                   icon={<Smartphone size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
                   label={t('account.stores')}
                   subtitle={t('account.storesSubtitle')}
-                  onPress={() => router.push('/security?tab=devices')}
+                  onPress={goToDevices}
                 />
               )}
-              {/* Contact support */}
               <InfoRow
                 icon={<MessageCircle size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
                 label={t('account.contactSupport')}
-                onPress={() => {
-                  const phone = process.env.EXPO_PUBLIC_SUPPORT_WHATSAPP || '212675346486';
-                  const msg = encodeURIComponent(t('account.contactSupportMsg'));
-                  Linking.openURL(`https://wa.me/${phone}?text=${msg}`).catch(() => {
-                    Alert.alert(t('common.error'), t('common.genericError'));
-                  });
-                }}
+                onPress={openSupport}
                 iconBg={`${palette.charbon}15`}
               />
-              {/* Logout */}
               <InfoRow
                 icon={<LogOut size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
                 label={t('account.signOut')}
                 onPress={handleSignOut}
+                noBorder={isTeamMember}
               />
-              {/* Delete account */}
               {!isTeamMember && (
                 <InfoRow
                   icon={<Trash2 size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
                   label={t('account.deleteAccount')}
                   subtitle={t('account.deleteAccountMsg')}
-                  onPress={() => router.push('/security?tab=delete')}
+                  onPress={goToDelete}
                   noBorder
                   right={<AlertTriangle size={ms(14)} color={theme.danger} strokeWidth={1.5} />}
                 />
@@ -487,6 +552,8 @@ export default function AccountScreen() {
             source={require('@/assets/images/jitplusprologo.png')}
             style={styles.logoImage}
             resizeMode="contain"
+            accessibilityElementsHidden
+            importantForAccessibility="no"
           />
           <Text style={[styles.logoSubtext, { color: theme.textMuted }]}>
             JitPlus Pro
@@ -499,7 +566,7 @@ export default function AccountScreen() {
 
       <LogoEditModal
         visible={showLogoModal}
-        onClose={() => setShowLogoModal(false)}
+        onClose={closeLogoModal}
         theme={theme}
         t={t}
         merchant={merchant}
@@ -510,7 +577,7 @@ export default function AccountScreen() {
 
       <LanguageModal
         visible={showLanguageModal}
-        onClose={() => setShowLanguageModal(false)}
+        onClose={closeLanguageModal}
         theme={theme}
         t={t}
         locale={locale}
@@ -519,14 +586,23 @@ export default function AccountScreen() {
 
       <PremiumLockModal
         visible={premiumModal.visible}
-        onClose={() => setPremiumModal(prev => ({ ...prev, visible: false }))}
+        onClose={closePremiumModal}
         titleKey={premiumModal.titleKey}
         descKey={premiumModal.descKey}
       />
 
       {/* -- Edit Profile Name Modal -- */}
-      <Modal visible={showNameModal} transparent animationType="fade" onRequestClose={() => setShowNameModal(false)}>
-        <View style={styles.nameModalOverlay}>
+      <Modal
+        visible={showNameModal}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={closeNameModal}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.nameModalOverlay}
+        >
           <View style={[styles.nameModalCard, { backgroundColor: theme.bgCard }]}>
             <Text style={[styles.nameModalTitle, { color: theme.text }]}>{t('profileView.editProfileName')}</Text>
             <TextInput
@@ -539,19 +615,36 @@ export default function AccountScreen() {
               onSubmitEditing={handleSaveName}
               placeholder={t('profileView.editProfileName')}
               placeholderTextColor={theme.textMuted}
+              accessibilityLabel={t('profileView.editProfileName')}
+              autoCapitalize="words"
+              autoCorrect={false}
+              textContentType="organizationName"
+              maxFontSizeMultiplier={1.4}
             />
             <View style={styles.nameModalActions}>
-              <TouchableOpacity onPress={() => setShowNameModal(false)} style={[styles.nameModalBtn, { backgroundColor: theme.bgElevated }]}>
+              <TouchableOpacity
+                onPress={closeNameModal}
+                style={[styles.nameModalBtn, { backgroundColor: theme.bgElevated }]}
+                accessibilityRole="button"
+                accessibilityLabel={t('common.cancel')}
+              >
                 <X size={ms(16)} color={theme.textMuted} />
                 <Text style={[styles.nameModalBtnText, { color: theme.textMuted }]}>{t('common.cancel')}</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={handleSaveName} disabled={savingName || !profileName.trim()} style={[styles.nameModalBtn, { backgroundColor: palette.violet, opacity: profileName.trim() ? 1 : 0.5 }]}>
-                {savingName ? <ActivityIndicator size={14} color="#fff" /> : <Check size={ms(16)} color="#fff" />}
+              <TouchableOpacity
+                onPress={handleSaveName}
+                disabled={savingName || !profileName.trim()}
+                style={[styles.nameModalBtn, { backgroundColor: palette.violet, opacity: profileName.trim() ? 1 : 0.5 }]}
+                accessibilityRole="button"
+                accessibilityLabel={t('common.save')}
+                accessibilityState={{ disabled: savingName || !profileName.trim() }}
+              >
+                {savingName ? <ActivityIndicator size="small" color="#fff" /> : <Check size={ms(16)} color="#fff" />}
                 <Text style={[styles.nameModalBtnText, { color: '#fff' }]}>{t('common.save')}</Text>
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </Animated.View>
   );
@@ -566,8 +659,6 @@ const styles = StyleSheet.create({
   // Content
   contentContainer: {
     paddingHorizontal: wp(20),
-    paddingTop: hp(60),
-    paddingBottom: hp(120),
   },
 
   // Section
@@ -600,14 +691,6 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 2,
   },
-  infoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: wp(16),
-    paddingVertical: hp(14),
-    gap: wp(12),
-    borderBottomWidth: 0.5,
-  },
   infoIconBox: {
     width: ms(36),
     height: ms(36),
@@ -629,28 +712,6 @@ const styles = StyleSheet.create({
     marginBottom: hp(16),
     gap: wp(12),
   },
-
-  // Toggle
-  toggle: {
-    width: ms(48),
-    height: ms(28),
-    borderRadius: ms(14),
-    justifyContent: 'center',
-    paddingHorizontal: ms(3),
-  },
-  toggleOn: { backgroundColor: '#1F2937' },
-  toggleKnob: {
-    width: ms(22),
-    height: ms(22),
-    borderRadius: ms(11),
-    backgroundColor: '#fff',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  toggleKnobOn: { alignSelf: 'flex-end' as const },
 
   // Language badge
   langBadge: {

@@ -1,0 +1,10 @@
+import fr from './fr.ts';
+import en from './en.ts';
+import ar from './ar.ts';
+const flat=(o,p='')=>Object.entries(o).flatMap(([k,v])=>v&&typeof v==='object'&&!Array.isArray(v)?flat(v,p+k+'.'):[[p+k,v]]);
+const kf=flat(fr).map(x=>x[0]),ke=flat(en).map(x=>x[0]),ka=flat(ar).map(x=>x[0]);
+const d=(a,b)=>a.filter(x=>!b.includes(x));
+console.log('fr-en:',JSON.stringify(d(kf,ke)));
+console.log('en-fr:',JSON.stringify(d(ke,kf)));
+console.log('fr-ar:',JSON.stringify(d(kf,ka)));
+console.log('ar-fr:',JSON.stringify(d(ka,kf)));

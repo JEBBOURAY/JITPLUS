@@ -70,10 +70,11 @@ export function useAppleIdToken(onToken: (data: AppleTokenData) => void): UseApp
         givenName: credential.fullName?.givenName ?? undefined,
         familyName: credential.fullName?.familyName ?? undefined,
       });
-    } catch (e: any) {
+    } catch (e: unknown) {
       setIsLoading(false);
 
-      if (e.code === 'ERR_REQUEST_CANCELED') {
+      const code = (e as { code?: string } | null)?.code;
+      if (code === 'ERR_REQUEST_CANCELED') {
         return; // User cancelled — no error
       }
       setError(t('appleAuth.error'));

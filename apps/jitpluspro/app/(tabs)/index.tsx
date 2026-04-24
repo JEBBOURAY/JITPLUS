@@ -10,8 +10,9 @@ import {
   Animated,
   Platform,
 } from 'react-native';
-import { Users, Search, X, UserPlus, Zap } from 'lucide-react-native';
+import { Users, Search, X, UserPlus, Zap, AlertCircle } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { useFocusFade } from '@/hooks/useFocusFade';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -22,11 +23,17 @@ import { ClientListSkeleton } from '@/components/Skeleton';
 import { useClients } from '@/hooks/useQueryHooks';
 import { useGuardedCallback } from '@/hooks/useGuardedCallback';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { SEARCH_DEBOUNCE_MS } from '@/constants/app';
+import { SEARCH_DEBOUNCE_MS, ASYNC_STORAGE_KEYS } from '@/constants/app';
 import { ms } from '@/utils/responsive';
 import type { ClientListItem } from '@/types';
 
-const BANNER_DISMISSED_KEY = 'clients_banner_dismissed';
+const HIT_SLOP_LARGE = { top: 12, bottom: 12, left: 12, right: 12 };
+const safeImpact = (style: Haptics.ImpactFeedbackStyle) => {
+  Haptics.impactAsync(style).catch(() => {});
+};
+const safeSelection = () => {
+  Haptics.selectionAsync().catch(() => {});
+};
 
 /* ── Tip banner — dismissable with "don't show again" ── */
 const ClientsBanner = React.memo(function ClientsBanner({
@@ -48,18 +55,30 @@ const ClientsBanner = React.memo(function ClientsBanner({
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
-      <TouchableOpacity style={bannerStyles.closeBtn} onPress={onDismiss} hitSlop={8}>
+      <TouchableOpacity
+        style={bannerStyles.closeBtn}
+        onPress={onDismiss}
+        hitSlop={HIT_SLOP_LARGE}
+        accessibilityRole="button"
+        accessibilityLabel={t('common.close')}
+      >
         <X size={16} color={theme.textMuted} strokeWidth={2} />
       </TouchableOpacity>
       <View style={bannerStyles.content}>
         <Zap size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
         <View style={bannerStyles.textWrap}>
-          <Text style={[bannerStyles.title, { color: theme.text }]}>{t('clients.bannerTitle')}</Text>
-          <Text style={[bannerStyles.desc, { color: theme.textMuted }]}>{t('clients.bannerDesc')}</Text>
+          <Text style={[bannerStyles.title, { color: theme.text }]} maxFontSizeMultiplier={1.6}>{t('clients.bannerTitle')}</Text>
+          <Text style={[bannerStyles.desc, { color: theme.textMuted }]} maxFontSizeMultiplier={1.6}>{t('clients.bannerDesc')}</Text>
         </View>
       </View>
-      <TouchableOpacity onPress={onDismissForever} style={bannerStyles.hideBtn} hitSlop={4}>
-        <Text style={[bannerStyles.hideText, { color: theme.textMuted }]}>{t('clients.bannerHide')}</Text>
+      <TouchableOpacity
+        onPress={onDismissForever}
+        style={bannerStyles.hideBtn}
+        hitSlop={HIT_SLOP_LARGE}
+        accessibilityRole="button"
+        accessibilityLabel={t('clients.bannerHide')}
+      >
+        <Text style={[bannerStyles.hideText, { color: theme.textMuted }]} maxFontSizeMultiplier={1.6}>{t('clients.bannerHide')}</Text>
       </TouchableOpacity>
     </View>
   );
@@ -90,28 +109,42 @@ const ClientCard = React.memo(function ClientCard({
   const formattedPoints = item.points?.toLocaleString('fr-FR') ?? '0';
   const pillBg = isDark ? 'rgba(167,139,250,0.12)' : 'rgba(124,58,237,0.08)';
 
+  const pointsUnit = isStamps ? t('common.stampsAbbr') : t('common.pointsAbbr');
+  const a11yLabel = `${displayName}, ${formattedPoints} ${pointsUnit}`;
+
   return (
     <TouchableOpacity
       style={[styles.clientCard, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}
-      onPress={() => onOpenDetail(item.id)}
+      onPress={() => {
+        safeSelection();
+        onOpenDetail(item.id);
+      }}
       activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityLabel={a11yLabel}
+      accessibilityHint={t('clients.openDetailHint', { defaultValue: 'Voir les détails du client' })}
     >
       {/* Avatar */}
-      <View style={[styles.avatar, { backgroundColor: theme.primary + '14' }]}>
-        <Text style={[styles.avatarText, { color: theme.primary }]}>{initials}</Text>
+      <View style={[styles.avatar, { backgroundColor: theme.primary + '14' }]} importantForAccessibility="no">
+        <Text style={[styles.avatarText, { color: theme.primary }]} maxFontSizeMultiplier={1.4}>{initials}</Text>
       </View>
 
       {/* Nom */}
       <View style={styles.clientInfo}>
-        <Text style={[styles.clientName, { color: theme.text }]} numberOfLines={1}>
+        <Text style={[styles.clientName, { color: theme.text }]} numberOfLines={1} maxFontSizeMultiplier={1.6}>
           {displayName}
         </Text>
       </View>
 
       {/* Points pill */}
       <View style={[styles.pointsPill, { backgroundColor: pillBg }]}>
-        <Text style={[styles.pointsPillText, { color: theme.primary }]}>
-          {formattedPoints} {isStamps ? t('common.stampsAbbr') : t('common.pointsAbbr')}
+        <Text
+          style={[styles.pointsPillText, { color: theme.primary }]}
+          numberOfLines={1}
+          ellipsizeMode="tail"
+          maxFontSizeMultiplier={1.4}
+        >
+          {formattedPoints} {pointsUnit}
         </Text>
       </View>
     </TouchableOpacity>
@@ -130,18 +163,27 @@ function EmptyState({ search, theme, onScan }: { search: string; theme: ReturnTy
           <Users size={ms(36)} color={palette.charbon} strokeWidth={1.5} />
         )}
       </View>
-      <Text style={[styles.emptyTitle, { color: theme.text }]}>
+      <Text style={[styles.emptyTitle, { color: theme.text }]} maxFontSizeMultiplier={1.6}>
         {search ? t('clients.noResults') : t('clients.noClients')}
       </Text>
-      <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
+      <Text style={[styles.emptyText, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.6}>
         {search
           ? t('clients.noResultsFor', { query: search })
           : t('clients.noClientsHint')}
       </Text>
       {!search && (
-        <TouchableOpacity style={[styles.emptyCta, { backgroundColor: theme.primary }]} onPress={onScan} activeOpacity={0.7}>
+        <TouchableOpacity
+          style={[styles.emptyCta, { backgroundColor: theme.primary }]}
+          onPress={() => {
+            safeImpact(Haptics.ImpactFeedbackStyle.Light);
+            onScan();
+          }}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={t('clients.addClient')}
+        >
           <UserPlus size={18} color="#fff" />
-          <Text style={styles.emptyCtaText}>{t('clients.addClient')}</Text>
+          <Text style={styles.emptyCtaText} maxFontSizeMultiplier={1.4}>{t('clients.addClient')}</Text>
         </TouchableOpacity>
       )}
     </View>
@@ -164,7 +206,7 @@ export default function ClientsScreen() {
   const [bannerVisible, setBannerVisible] = useState(false);
 
   useEffect(() => {
-    AsyncStorage.getItem(BANNER_DISMISSED_KEY).then((val) => {
+    AsyncStorage.getItem(ASYNC_STORAGE_KEYS.CLIENTS_BANNER_DISMISSED).then((val) => {
       if (val !== 'true') setBannerVisible(true);
     });
   }, []);
@@ -175,7 +217,7 @@ export default function ClientsScreen() {
 
   const dismissBannerForever = useCallback(() => {
     setBannerVisible(false);
-    AsyncStorage.setItem(BANNER_DISMISSED_KEY, 'true');
+    AsyncStorage.setItem(ASYNC_STORAGE_KEYS.CLIENTS_BANNER_DISMISSED, 'true');
   }, []);
   const searchInputRef = useRef<TextInput>(null);
 
@@ -189,6 +231,7 @@ export default function ClientsScreen() {
     data: clients = [],
     isLoading: loading,
     isRefetching: refreshing,
+    isError,
     refetch,
   } = useClients(debouncedSearch, showClients);
 
@@ -221,7 +264,13 @@ export default function ClientsScreen() {
     <Animated.View style={[styles.container, { backgroundColor: theme.bg }, focusStyle]}>
       {/* ── Simple header ── */}
       <View style={[styles.headerBar, { paddingTop: insets.top + 12 }]}>
-        <Text style={[styles.headerTitle, { color: theme.text }]}>{t('clients.title')}</Text>
+        <Text
+          style={[styles.headerTitle, { color: theme.text }]}
+          maxFontSizeMultiplier={1.4}
+          accessibilityRole="header"
+        >
+          {t('clients.title')}
+        </Text>
       </View>
 
       {/* ── Dismissable tip banner ── */}
@@ -231,26 +280,57 @@ export default function ClientsScreen() {
         </View>
       )}
 
-      {showSkeleton ? (
+      {isError && showClients && !loading ? (
+        <View style={styles.emptyContainer}>
+          <View style={[styles.emptyIllustration, { backgroundColor: `${theme.danger}14` }]}>
+            <AlertCircle size={ms(36)} color={theme.danger} strokeWidth={1.5} />
+          </View>
+          <Text style={[styles.emptyTitle, { color: theme.text }]} maxFontSizeMultiplier={1.6}>
+            {t('common.errorTitle', { defaultValue: 'Erreur de chargement' })}
+          </Text>
+          <Text style={[styles.emptyText, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.6}>
+            {t('common.errorHint', { defaultValue: 'Vérifiez votre connexion et réessayez.' })}
+          </Text>
+          <TouchableOpacity
+            style={[styles.showClientsCta, { backgroundColor: theme.primary }]}
+            onPress={() => {
+              safeImpact(Haptics.ImpactFeedbackStyle.Light);
+              refetch();
+            }}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={t('common.retry', { defaultValue: 'Réessayer' })}
+          >
+            <Text style={styles.showClientsCtaText} maxFontSizeMultiplier={1.4}>
+              {t('common.retry', { defaultValue: 'Réessayer' })}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      ) : showSkeleton ? (
         <ClientListSkeleton count={7} />
       ) : !showClients ? (
         <View style={styles.emptyContainer}>
           <View style={[styles.emptyIllustration, { backgroundColor: `${palette.charbon}12` }]}>
             <Users size={ms(36)} color={palette.charbon} strokeWidth={1.5} />
           </View>
-          <Text style={[styles.emptyTitle, { color: theme.text }]}>
+          <Text style={[styles.emptyTitle, { color: theme.text }]} maxFontSizeMultiplier={1.6}>
             {t('clients.title')}
           </Text>
-          <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
+          <Text style={[styles.emptyText, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.6}>
             {t('clients.showClientsHint')}
           </Text>
           <TouchableOpacity
             style={[styles.showClientsCta, { backgroundColor: theme.primary }]}
-            onPress={() => setShowClients(true)}
+            onPress={() => {
+              safeImpact(Haptics.ImpactFeedbackStyle.Light);
+              setShowClients(true);
+            }}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={t('clients.showClients')}
           >
             <Users size={18} color="#fff" strokeWidth={2} />
-            <Text style={styles.showClientsCtaText}>{t('clients.showClients')}</Text>
+            <Text style={styles.showClientsCtaText} maxFontSizeMultiplier={1.4}>{t('clients.showClients')}</Text>
           </TouchableOpacity>
         </View>
       ) : (
@@ -291,9 +371,16 @@ export default function ClientsScreen() {
                 autoCorrect={false}
                 returnKeyType="search"
                 keyboardType="default"
+                accessibilityLabel={t('clients.searchPlaceholder')}
+                maxFontSizeMultiplier={1.6}
               />
               {search.length > 0 && (
-                <TouchableOpacity onPress={clearSearch} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <TouchableOpacity
+                  onPress={clearSearch}
+                  hitSlop={HIT_SLOP_LARGE}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('common.clear', { defaultValue: 'Effacer' })}
+                >
                   <X size={18} color={theme.textMuted} />
                 </TouchableOpacity>
               )}
@@ -301,7 +388,11 @@ export default function ClientsScreen() {
 
             {/* ── Result count ── */}
             {search.length > 0 && (
-              <Text style={[styles.resultCount, { color: theme.textMuted }]}>
+              <Text
+                style={[styles.resultCount, { color: theme.textMuted }]}
+                maxFontSizeMultiplier={1.6}
+                accessibilityLiveRegion="polite"
+              >
                 {t('clients.resultsCount', { count: clients.length })}
               </Text>
             )}
@@ -311,7 +402,7 @@ export default function ClientsScreen() {
           !search && clients.length > 0 ? (
             <View style={styles.footerEndWrap}>
               <View style={[styles.footerDivider, { backgroundColor: theme.border }]} />
-              <Text style={[styles.footerEnd, { color: theme.textMuted }]}>
+              <Text style={[styles.footerEnd, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>
                 {t('common.allDisplayed')}
               </Text>
             </View>

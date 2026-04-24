@@ -73,7 +73,6 @@ export class ClientReferralService {
             },
           },
           orderBy: { createdAt: 'desc' },
-          take: 50,
         },
       },
     });

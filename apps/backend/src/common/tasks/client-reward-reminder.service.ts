@@ -8,6 +8,7 @@ import {
   CAMPAIGN_SENT_TRACKER_REPOSITORY, type ICampaignSentTrackerRepository,
 } from '../repositories';
 import { IPushProvider, PUSH_PROVIDER } from '../interfaces';
+import { isCronAllowed } from './cron-utils';
 
 // ── Reward reminder messages ────────────────────────────────────────────
 const MESSAGES = {
@@ -128,9 +129,27 @@ export class ClientRewardReminderService {
     }
   }
 
-  @Cron('0 14 */2 * *') // Every 2 days at 14:00 UTC
+  @Cron('0 14 */2 * *') // Every 2 days at 14:00 UTC = 15:00 Maroc
   async sendRewardReminders(): Promise<void> {
+    if (!isCronAllowed(this.logger, 'ClientRewardReminder.sendRewardReminders')) return;
     this.logger.log('Starting client reward reminders');
+
+    const staleTokens: string[] = [];
+    const safeSend = async (
+      token: string,
+      title: string,
+      body: string,
+      data: Record<string, string>,
+    ): Promise<boolean> => {
+      try {
+        const result = await this.pushProvider.sendMulticast([token], title, body, undefined, data);
+        if (result?.invalidTokens?.length) staleTokens.push(...result.invalidTokens);
+        return (result?.successCount ?? 0) > 0;
+      } catch (e) {
+        this.logger.warn(`Push failed: ${e}`);
+        return false;
+      }
+    };
 
     try {
       let rewardAvailableCount = 0;
@@ -251,9 +270,10 @@ export class ClientRewardReminderService {
                 continue;
               }
               const msg = MESSAGES.rewardAvailable[l];
-              await this.pushProvider.sendMulticast(
-                [client.pushToken], msg.title, msg.body(merchantName, cheapest.titre),
-                undefined,
+              await safeSend(
+                client.pushToken,
+                msg.title,
+                msg.body(merchantName, cheapest.titre),
                 { event: 'reward_reminder', action: 'open_card', merchantId: card.merchantId },
               );
               await this.markSent(card.clientId, campaignId);
@@ -266,9 +286,10 @@ export class ClientRewardReminderService {
                 continue;
               }
               const msg = MESSAGES.stampsAlmost[l];
-              await this.pushProvider.sendMulticast(
-                [client.pushToken], msg.title, msg.body(merchantName, remaining),
-                undefined,
+              await safeSend(
+                client.pushToken,
+                msg.title,
+                msg.body(merchantName, remaining),
                 { event: 'reward_reminder', action: 'open_card', merchantId: card.merchantId },
               );
               await this.markSent(card.clientId, campaignId);
@@ -287,9 +308,10 @@ export class ClientRewardReminderService {
                 continue;
               }
               const msg = MESSAGES.rewardAvailable[l];
-              await this.pushProvider.sendMulticast(
-                [client.pushToken], msg.title, msg.body(merchantName, cheapest.titre),
-                undefined,
+              await safeSend(
+                client.pushToken,
+                msg.title,
+                msg.body(merchantName, cheapest.titre),
                 { event: 'reward_reminder', action: 'open_card', merchantId: card.merchantId },
               );
               await this.markSent(card.clientId, campaignId);
@@ -304,9 +326,10 @@ export class ClientRewardReminderService {
                 continue;
               }
               const msg = MESSAGES.almostThere[l];
-              await this.pushProvider.sendMulticast(
-                [client.pushToken], msg.title, msg.body(merchantName, remaining),
-                undefined,
+              await safeSend(
+                client.pushToken,
+                msg.title,
+                msg.body(merchantName, remaining),
                 { event: 'reward_reminder', action: 'open_card', merchantId: card.merchantId },
               );
               await this.markSent(card.clientId, campaignId);
@@ -323,6 +346,18 @@ export class ClientRewardReminderService {
       this.logger.log(
         `Reward reminders sent: ${rewardAvailableCount} available, ${almostCount} almost-there`,
       );
+
+      if (staleTokens.length > 0) {
+        try {
+          await this.clientRepo.updateMany({
+            where: { pushToken: { in: staleTokens } },
+            data: { pushToken: null },
+          });
+          this.logger.log(`Cleaned ${staleTokens.length} stale push token(s)`);
+        } catch (e) {
+          this.logger.warn(`Failed to clean stale tokens: ${e}`);
+        }
+      }
     } catch (error) {
       this.logger.error('Failed to send reward reminders', error);
     }

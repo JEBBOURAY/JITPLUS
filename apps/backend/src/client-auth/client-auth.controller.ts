@@ -24,7 +24,7 @@ import { ClientOnlyGuard } from '../common/guards/client-only.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtPayload } from '../common/interfaces/jwt-payload.interface';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
-import { SendOtpEmailDto, VerifyOtpEmailDto, CompleteProfileDto, ClientUpdateProfileDto, UpdatePushTokenDto, GoogleLoginDto, AppleLoginDto, LoginEmailDto, SetPasswordDto, RefreshTokenDto, ClientDeleteAccountDto, ClientChangePasswordDto, SendChangeContactOtpDto, VerifyChangeContactOtpDto, RequestPayoutDto } from './dto';
+import { SendOtpEmailDto, VerifyOtpEmailDto, CompleteProfileDto, ClientUpdateProfileDto, UpdatePushTokenDto, GoogleLoginDto, AppleLoginDto, LoginEmailDto, SetPasswordDto, RefreshTokenDto, ClientDeleteAccountDto, ClientChangePasswordDto, SendChangeContactOtpDto, VerifyChangeContactOtpDto, RequestPayoutDto, ReportMerchantDto } from './dto';
 
 @ApiTags('Client Auth')
 @Controller('client-auth')
@@ -132,6 +132,7 @@ export class ClientAuthController {
 
   @Post('delete-account')
   @UseGuards(AuthGuard('jwt'), ClientOnlyGuard)
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 3 } })
   async deleteAccount(@CurrentUser() user: JwtPayload, @Body() dto: ClientDeleteAccountDto) {
     return this.clientService.deleteAccount(user.userId, dto.password);
   }
@@ -219,8 +220,9 @@ export class ClientController {
   @Get('merchants')
   async getMerchants(
     @Query() { page, limit }: PaginationQueryDto,
+    @CurrentUser() user: JwtPayload,
   ) {
-    return this.clientService.getMerchants(page, limit);
+    return this.clientService.getMerchants(page, limit, user.userId);
   }
 
   @Get('merchants/:id')
@@ -238,6 +240,44 @@ export class ClientController {
   @HttpCode(HttpStatus.OK)
   async leaveMerchant(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
     return this.clientService.deactivateCard(user.userId, id);
+  }
+
+  /**
+   * Client-initiated content report (Apple 1.2 / Play UGC compliance).
+   * Rate-limited to prevent abuse — 5 reports per hour per client.
+   */
+  @Post('merchants/:id/report')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: 3_600_000, limit: 5 } })
+  async reportMerchant(
+    @Param('id') id: string,
+    @Body() dto: ReportMerchantDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.clientService.reportMerchant(user.userId, id, dto.reason, dto.details);
+  }
+
+  /**
+   * Block / unblock a merchant (Apple Guideline 1.2 UGC policy).
+   * A blocked merchant is hidden from all discovery surfaces for the
+   * blocking client.
+   */
+  @Post('merchants/:id/block')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
+  async blockMerchant(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    return this.clientService.blockMerchant(user.userId, id);
+  }
+
+  @Delete('merchants/:id/block')
+  @HttpCode(HttpStatus.OK)
+  async unblockMerchant(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    return this.clientService.unblockMerchant(user.userId, id);
+  }
+
+  @Get('blocked-merchants')
+  async getBlockedMerchants(@CurrentUser() user: JwtPayload) {
+    return this.clientService.getBlockedMerchants(user.userId);
   }
 
   @Get('notifications')

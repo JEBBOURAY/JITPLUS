@@ -1,7 +1,9 @@
 import React from 'react';
 import {
-  View, Text, StyleSheet, Modal, TouchableOpacity, Pressable, ActivityIndicator, Platform,
+  View, Text, StyleSheet, Modal, TouchableOpacity, Pressable, ActivityIndicator, Platform, I18nManager, Alert, InteractionManager,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Updates from 'expo-updates';
 import { Camera, Trash2, Globe, Check } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { palette, type ThemeColors } from '@/contexts/ThemeContext';
@@ -26,14 +28,18 @@ interface LogoModalProps {
 export function LogoEditModal({
   visible, onClose, theme, t, merchant, uploadIsPending, onPickPhoto, onDelete,
 }: LogoModalProps) {
+  const insets = useSafeAreaInsets();
   const initials = merchant?.nom
     ? merchant.nom.split(' ').map((w: string) => w.charAt(0)).join('').slice(0, 2).toUpperCase()
     : '?';
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
       <Pressable style={styles.bottomSheetOverlay} onPress={onClose}>
-        <Pressable style={[styles.logoModalSheet, { backgroundColor: theme.bgCard }]} onPress={() => {}}>
+        <Pressable
+          style={[styles.logoModalSheet, { backgroundColor: theme.bgCard, paddingBottom: Math.max(insets.bottom + hp(16), hp(36)) }]}
+          onPress={() => {}}
+        >
           <View style={[styles.sheetHandle, { backgroundColor: `${palette.charbon}20` }]} />
 
           <View style={styles.logoModalPreviewRow}>
@@ -70,9 +76,12 @@ export function LogoEditModal({
           <TouchableOpacity
             style={styles.logoModalBtn}
             activeOpacity={0.85}
+            accessibilityRole="button"
             onPress={() => {
               onClose();
-              setTimeout(onPickPhoto, 350);
+              InteractionManager.runAfterInteractions(() => {
+                onPickPhoto();
+              });
             }}
           >
             <LinearGradient
@@ -93,6 +102,8 @@ export function LogoEditModal({
               style={[styles.logoModalOutlineBtn, { borderColor: '#EF444435' }]}
               activeOpacity={0.8}
               onPress={onDelete}
+              accessibilityRole="button"
+              accessibilityLabel={t('account.deleteProfilePhoto')}
             >
               <Trash2 size={ms(16)} color="#EF4444" strokeWidth={1.5} />
               <Text style={[styles.logoModalOutlineBtnText, { color: '#EF4444' }]}>{t('account.deleteProfilePhoto')}</Text>
@@ -103,6 +114,8 @@ export function LogoEditModal({
             style={[styles.logoModalOutlineBtn, { borderColor: theme.borderLight }]}
             activeOpacity={0.7}
             onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel={t('common.cancel')}
           >
             <Text style={[styles.logoModalOutlineBtnText, { color: theme.textMuted }]}>{t('common.cancel')}</Text>
           </TouchableOpacity>
@@ -127,7 +140,7 @@ export function LanguageModal({
   visible, onClose, theme, t, locale, setLocale,
 }: LanguageModalProps) {
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
       <Pressable style={styles.modalOverlay} onPress={onClose}>
         <View style={[styles.langModalCard, { backgroundColor: theme.bgCard }]}>
           <View style={[styles.modalIconCircle, { backgroundColor: `${palette.charbon}12` }]}>
@@ -144,12 +157,43 @@ export function LanguageModal({
               <Pressable
                 key={lang.code}
                 onPress={async () => {
-                  if (lang.code !== locale) {
+                  if (lang.code === locale) { onClose(); return; }
+                  const wasRTL = I18nManager.isRTL;
+                  try {
                     await setLocale(lang.code);
+                  } catch {
+                    Alert.alert(t('common.error'), t('common.genericError'));
+                    onClose();
+                    return;
                   }
+                  const nowRTL = lang.code === 'ar';
                   onClose();
+                  if (wasRTL !== nowRTL) {
+                    if (!Updates.isEnabled) {
+                      // Dev / Expo Go: just inform user; no programmatic reload available.
+                      Alert.alert(t('account.restartTitle'), t('account.restartRequired'));
+                      return;
+                    }
+                    Alert.alert(
+                      t('account.restartTitle'),
+                      t('account.restartRequired'),
+                      [
+                        {
+                          text: t('common.confirm'),
+                          onPress: async () => {
+                            try { await Updates.reloadAsync(); } catch { /* ignore */ }
+                          },
+                        },
+                      ],
+                      { cancelable: false },
+                    );
+                  }
                 }}
                 android_ripple={{ color: `${palette.violet}10` }}
+                hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                accessibilityRole="button"
+                accessibilityLabel={lang.label}
+                accessibilityState={{ selected }}
                 style={({ pressed }) => [
                   styles.langOption,
                   { borderColor: selected ? theme.primary : theme.borderLight },
@@ -157,8 +201,8 @@ export function LanguageModal({
                   pressed && Platform.OS === 'ios' && { opacity: 0.7 },
                 ]}
               >
-                <Text style={styles.langFlag}>{lang.flag}</Text>
-                <Text style={[styles.langOptionText, { color: selected ? theme.primary : theme.text }]}>
+                <Text style={styles.langFlag} accessibilityElementsHidden importantForAccessibility="no">{lang.flag}</Text>
+                <Text style={[styles.langOptionText, { color: selected ? theme.primary : theme.text }]} numberOfLines={1} maxFontSizeMultiplier={1.4}>
                   {lang.label}
                 </Text>
                 {selected && (
@@ -187,7 +231,6 @@ const styles = StyleSheet.create({
     borderTopRightRadius: ms(24),
     paddingTop: hp(14),
     paddingHorizontal: ms(24),
-    paddingBottom: hp(36),
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -4 },

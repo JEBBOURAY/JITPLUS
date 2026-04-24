@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "JitPlus Backend API",
   "scripts": {
-    "postinstall": "prisma generate",
+    "postinstall": "pnpm exec prisma generate",
     "build": "nest build",
     "start": "nest start",
     "start:dev": "nest start --watch",
@@ -92,28 +92,5 @@
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
-  },
-  "pnpm": {
-    "overrides": {
-      "@tootallnate/once": "3.0.1",
-      "ajv": "8.18.0",
-      "cross-spawn": "7.0.6",
-      "diff": "8.0.3",
-      "fast-xml-parser": "5.5.8",
-      "flatted": "3.4.2",
-      "glob": "13.0.6",
-      "js-yaml": "4.1.1",
-      "lodash": "4.18.0",
-      "minimatch": "10.2.4",
-      "tar": "7.5.12",
-      "undici": "6.24.1"
-    },
-    "onlyBuiltDependencies": [
-      "@prisma/client",
-      "@prisma/engines",
-      "prisma",
-      "sharp",
-      "protobufjs"
-    ]
   }
 }

@@ -32,7 +32,7 @@ module.exports = ({ config }) => {
     name: 'JitPlus',
     slug: 'jitplus',
     description: 'Digital loyalty cards app — collect stamps and earn rewards at your favorite local shops.',
-    version: '1.3.6',
+    version: '1.3.7',
     orientation: 'portrait',
     icon: './assets/images/icon-white.png',
     scheme: 'jitplus',
@@ -40,9 +40,7 @@ module.exports = ({ config }) => {
     updates: {
       url: 'https://u.expo.dev/cdecb51f-65ff-4e38-a180-bd20563d997c'
     },
-    runtimeVersion: {
-      policy: 'appVersion'
-    },
+    runtimeVersion: '2.5.0',
     // Publicly accessible privacy policy URL — required by both stores
     privacyPolicyUrl: PRIVACY_POLICY_URL,
     splash: {
@@ -54,7 +52,7 @@ module.exports = ({ config }) => {
       supportsTablet: false,
       bundleIdentifier: 'com.jitplus.client',
       // Initial build number — EAS autoIncrement bumps this on every production build
-      buildNumber: '32',
+      buildNumber: '33',
       // Portrait-only app: disable iPad Split View / Slide Over to avoid orientation-support review issues
       requiresFullScreen: true,
       // Firebase config for iOS — download from Firebase Console
@@ -186,6 +184,8 @@ module.exports = ({ config }) => {
             "Permettre à JitPlus d'accéder à votre position pour trouver les commerces autour de vous.",
         },
       ],
+      // Note: expo-screen-capture is a runtime-only module (no config plugin).
+      // Screen capture protection is applied at runtime in app/(tabs)/qr.tsx.
       // Sentry — source map upload + native crash symbolication
       // Requires EAS Secrets: SENTRY_ORG, SENTRY_PROJECT, SENTRY_AUTH_TOKEN
       ...(process.env.SENTRY_AUTH_TOKEN ? [['@sentry/react-native/expo', {

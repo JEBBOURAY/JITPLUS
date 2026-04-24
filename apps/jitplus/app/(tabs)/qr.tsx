@@ -1,4 +1,4 @@
-import { useRef, useCallback, useState } from 'react';
+import { useRef, useCallback, useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, Platform, TouchableOpacity, Alert, ScrollView, Image,
   ActivityIndicator,
@@ -11,6 +11,9 @@ import * as Sharing from 'expo-sharing';
 import { useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
+import * as Brightness from 'expo-brightness';
+import * as ScreenCapture from 'expo-screen-capture';
+import { useKeepAwake } from 'expo-keep-awake';
 import { haptic, HapticStyle } from '@/utils/haptics';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -40,28 +43,38 @@ export default function QRScreen() {
   const { t } = useLanguage();
   const insets = useSafeAreaInsets();
 
+  // iOS HIG + Material: keep screen on while a scannable code is visible.
+  // Auto-released on unmount — no cleanup needed.
+  useKeepAwake('jitplus-qr');
+
   const qrViewRef = useRef<ViewShotType | null>(null);
   const [qrValue, setQrValue] = useState<string | null>(null);
   const [qrLoading, setQrLoading] = useState(true);
+  // v2 tokens expire (~60s). Null for v1 permanent tokens.
+  const [qrExpiresAt, setQrExpiresAt] = useState<number | null>(null);
+  const isFocusedRef = useRef(false);
 
   const [qrError, setQrError] = useState(false);
   const [showGuidBadge, setShowGuidBadge] = useState(false);
   const { data: pointsOverview } = usePointsOverview();
 
-  /** Fetch (or load cached) permanent QR token */
+  /** Fetch a fresh QR token.
+   *  - v2 tokens are short-lived (~60s) + single-use → never cached, refreshed periodically
+   *  - v1 legacy permanent tokens → cached in SecureStore for offline display
+   */
   const fetchQrToken = useCallback(async () => {
     if (!client?.id) return;
 
-    // Try cached token first (SecureStore — encrypted on-device)
+    // Try cached v1 token first (SecureStore — encrypted on-device)
     try {
       const cached = Platform.OS === 'web'
         ? null // Web has no SecureStore — always fetch fresh
         : await SecureStore.getItemAsync(QR_TOKEN_STORAGE_KEY);
-      // Accept only versioned tokens (v1.xxx); invalidate legacy unversioned cache
+      // Only accept legacy v1 tokens from cache (v2 are too short-lived to cache)
       if (cached && cached.startsWith('v1.')) {
         setQrValue(`jitplus://scan/${cached}`);
         setQrLoading(false);
-        return;
+        // Continue to fetch fresh in background (server may have upgraded to v2)
       }
     } catch { /* ignore cache miss */ }
 
@@ -73,11 +86,20 @@ export default function QRScreen() {
     }
     setQrError(false);
     try {
-      const { qr_token } = await api.getQrToken();
+      const resp = await api.getQrToken();
+      const qr_token = resp.qr_token;
+      const expiresAt = (resp as { expiresAt?: number }).expiresAt;
+      // Only persist v1 permanent tokens; v2 are too short-lived to cache.
       if (Platform.OS !== 'web') {
-        await SecureStore.setItemAsync(QR_TOKEN_STORAGE_KEY, qr_token);
+        if (qr_token.startsWith('v1.')) {
+          await SecureStore.setItemAsync(QR_TOKEN_STORAGE_KEY, qr_token);
+        } else {
+          // Drop any stale v1 cache once backend starts returning v2
+          await SecureStore.deleteItemAsync(QR_TOKEN_STORAGE_KEY).catch(() => {});
+        }
       }
       setQrValue(`jitplus://scan/${qr_token}`);
+      setQrExpiresAt(typeof expiresAt === 'number' ? expiresAt : null);
     } catch (e) {
       if (__DEV__) console.warn('QR token error:', e);
       setQrValue(null);
@@ -88,20 +110,54 @@ export default function QRScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client?.id]);
 
-  // Fetch QR token only once — subsequent focuses skip if already loaded.
-  // The token is permanent and cached in SecureStore, no need to re-fetch on every focus.
+  // Fetch QR token on focus. For v2 (short-lived), always refresh on focus.
+  // For v1 (legacy), re-use cached value.
   useFocusEffect(
     useCallback(() => {
-      if (!qrValue) {
-        fetchQrToken();
-      }
+      isFocusedRef.current = true;
+      fetchQrToken();
+
+      // ── Brightness boost ── maximize screen brightness for QR readability
+      // (HIG / Material best practice for scannable codes). Restore on blur.
+      let previousBrightness: number | null = null;
+      (async () => {
+        try {
+          previousBrightness = await Brightness.getBrightnessAsync();
+          await Brightness.setBrightnessAsync(1);
+        } catch { /* brightness unavailable — non-fatal */ }
+      })();
+
+      // ── Screen capture protection ── prevent screenshots/recordings of the
+      // QR token (anti-exfiltration). User can still share via the in-app
+      // button which generates a signed image deliberately.
+      ScreenCapture.preventScreenCaptureAsync('jitplus-qr').catch(() => {});
 
       // Show GUID badge only if new-user flag is set
       AsyncStorage.getItem('showGuidBadge').then((val) => {
         if (val === '1') setShowGuidBadge(true);
       });
-    }, [fetchQrToken, qrValue])
+
+      return () => {
+        isFocusedRef.current = false;
+        // Restore previous brightness on blur
+        if (previousBrightness != null) {
+          Brightness.setBrightnessAsync(previousBrightness).catch(() => {});
+        }
+        ScreenCapture.allowScreenCaptureAsync('jitplus-qr').catch(() => {});
+      };
+    }, [fetchQrToken])
   );
+
+  // Auto-refresh v2 tokens ~10s before expiry while the screen is focused.
+  useEffect(() => {
+    if (!qrExpiresAt) return; // v1 permanent token → no refresh needed
+    const now = Math.floor(Date.now() / 1000);
+    const refreshIn = Math.max(5, qrExpiresAt - now - 10); // never less than 5s
+    const timer = setTimeout(() => {
+      if (isFocusedRef.current) fetchQrToken();
+    }, refreshIn * 1000);
+    return () => clearTimeout(timer);
+  }, [qrExpiresAt, fetchQrToken]);
 
   const handleShareQR = useCallback(async () => {
     if (!ViewShot) {
@@ -152,7 +208,12 @@ export default function QRScreen() {
 
                 {/* QR container */}
                 <View style={styles.qrWrapper}>
-                  <View style={styles.qrInner}>
+                  <View
+                    style={styles.qrInner}
+                    accessible
+                    accessibilityRole="image"
+                    accessibilityLabel={t('qr.qrAccessibility')}
+                  >
                     {qrLoading ? (
                       <View style={styles.qrLoadingState}>
                         <ActivityIndicator size="large" color={palette.violet} />
@@ -177,6 +238,8 @@ export default function QRScreen() {
                           onPress={() => { setQrLoading(true); fetchQrToken(); }}
                           activeOpacity={0.7}
                           style={styles.retryBtn}
+                          accessibilityRole="button"
+                          accessibilityLabel={t('qr.retryAccessibility')}
                         >
                           <Text style={styles.retryBtnText}>{t('common.retry')}</Text>
                         </TouchableOpacity>
@@ -201,7 +264,9 @@ export default function QRScreen() {
                           setShowGuidBadge(false);
                           AsyncStorage.setItem('showGuidBadge', '0');
                         }}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
+                        accessibilityRole="button"
+                        accessibilityLabel={t('qr.closeIdBadge')}
                       >
                         <X size={ms(12)} color={theme.primary} strokeWidth={2} />
                       </TouchableOpacity>
@@ -219,28 +284,31 @@ export default function QRScreen() {
           })()}
         </FadeInView>
 
-        {/* Action buttons */}
-        <FadeInView delay={250}>
-          <View style={styles.actions}>
-            <TouchableOpacity
-              style={[styles.actionBtn, { backgroundColor: theme.bgCard }]}
-              onPress={handleShareQR}
-              activeOpacity={0.7}
-              accessibilityRole="button"
-              accessibilityLabel={t('qr.shareAccessibility')}
-            >
-              <View style={[styles.actionIconBg, { backgroundColor: theme.primaryBg }]}>
-                <Share2 size={ms(18)} color={theme.primary} strokeWidth={2} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.actionTitle, { color: theme.text }]}>{t('qr.shareTitle')}</Text>
-                <Text style={[styles.actionSub, { color: theme.textMuted }]}>{t('qr.shareSubtitle')}</Text>
-              </View>
-            </TouchableOpacity>
-
-
-          </View>
-        </FadeInView>
+        {/* Action buttons.
+            v2 tokens (qrExpiresAt != null) are short-lived + single-use, so
+            sharing a captured image yields an already-invalid QR. Hide the
+            share button in that case; keep it for legacy v1 permanent tokens. */}
+        {qrExpiresAt == null && (
+          <FadeInView delay={250}>
+            <View style={styles.actions}>
+              <TouchableOpacity
+                style={[styles.actionBtn, { backgroundColor: theme.bgCard }]}
+                onPress={handleShareQR}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={t('qr.shareAccessibility')}
+              >
+                <View style={[styles.actionIconBg, { backgroundColor: theme.primaryBg }]}>
+                  <Share2 size={ms(18)} color={theme.primary} strokeWidth={2} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.actionTitle, { color: theme.text }]}>{t('qr.shareTitle')}</Text>
+                  <Text style={[styles.actionSub, { color: theme.textMuted }]}>{t('qr.shareSubtitle')}</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+          </FadeInView>
+        )}
 
         <View style={{ height: hp(120) }} />
       </ScrollView>

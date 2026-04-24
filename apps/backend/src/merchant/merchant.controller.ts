@@ -9,6 +9,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { THROTTLE_TTL } from '../common/constants';
+import { PrismaService } from '../prisma/prisma.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { MerchantTypeGuard } from '../auth/guards/merchant-type.guard';
 import { MerchantOwnerGuard } from '../auth/guards/merchant-owner.guard';
@@ -69,6 +70,7 @@ export class MerchantController {
     private configService: ConfigService,
     @Inject(STORAGE_PROVIDER) private storageProvider: IStorageProvider,
     private imageOptimizer: ImageOptimizerService,
+    private prisma: PrismaService,
   ) {}
 
   // ── Verify QR token (scanned from client app) ─────────────
@@ -78,18 +80,81 @@ export class MerchantController {
     // Strip invisible control chars / BOM that QR scanners may inject
     const token = dto.token.replace(/[\x00-\x1f\x7f-\x9f\uFEFF]/g, '').trim();
 
-    // Determine version: "v1.{idB64}.{sig}" (versioned) vs "{idB64}.{sig}" (legacy)
+    const parts = token.split('.');
+    const secret = this.configService.getOrThrow<string>('QR_HMAC_SECRET');
+
+    // ── v2: short-lived single-use — "v2.{idB64}.{exp}.{nonce}.{sig}" ──
+    if (parts[0] === 'v2') {
+      if (parts.length !== 5) throw new BadRequestException('QR code invalide.');
+      const [, idB64, expStr, nonce, sig] = parts;
+      if (!idB64 || !expStr || !nonce || !sig) throw new BadRequestException('QR code invalide.');
+
+      let clientId: string;
+      try {
+        clientId = Buffer.from(idB64, 'base64url').toString();
+      } catch {
+        throw new BadRequestException('QR code invalide.');
+      }
+
+      const exp = Number(expStr);
+      if (!Number.isFinite(exp) || exp <= 0) {
+        throw new BadRequestException('QR code invalide.');
+      }
+      const now = Math.floor(Date.now() / 1000);
+      if (exp < now) {
+        this.logger.warn(`QR verify failed – v2 expired [clientId=${clientId}, lag=${now - exp}s]`);
+        throw new BadRequestException('QR code expiré. Demandez au client de rafraîchir.');
+      }
+
+      const expected = createHmac('sha256', secret)
+        .update(`v2:${clientId}:${exp}:${nonce}`)
+        .digest('base64url');
+      if (
+        sig.length !== expected.length ||
+        !timingSafeEqual(Buffer.from(sig), Buffer.from(expected))
+      ) {
+        this.logger.warn(`QR verify failed – v2 HMAC mismatch [clientId=${clientId}]`);
+        throw new BadRequestException('QR code invalide.');
+      }
+
+      // Single-use nonce: INSERT atomically. A second scan of the same QR collides
+      // on the primary key and is rejected as a replay.
+      try {
+        await this.prisma.qrNonce.create({
+          data: {
+            nonce,
+            clientId,
+            expiresAt: new Date(exp * 1000),
+          },
+        });
+      } catch (e: any) {
+        if (e?.code === 'P2002') {
+          this.logger.warn(`QR verify failed – v2 nonce replay [clientId=${clientId}]`);
+          throw new BadRequestException('QR code déjà utilisé. Demandez au client de rafraîchir.');
+        }
+        throw e;
+      }
+
+      // Opportunistic cleanup of expired nonces (~1% of inserts, best-effort).
+      if (Math.random() < 0.01) {
+        this.prisma.qrNonce
+          .deleteMany({ where: { expiresAt: { lt: new Date() } } })
+          .catch(() => {});
+      }
+
+      return this.clientService.verifyClient(clientId, user.userId, true);
+    }
+
+    // ── v1 / v0 legacy permanent tokens (kept during rollout) ──
     let version: string;
     let idB64: string;
     let sig: string;
 
-    if (token.startsWith('v1.')) {
+    if (parts[0] === 'v1') {
       version = 'v1';
-      const rest = token.substring(3);
-      const dotIdx = rest.indexOf('.');
-      if (dotIdx < 1) throw new BadRequestException('QR code invalide.');
-      idB64 = rest.substring(0, dotIdx);
-      sig = rest.substring(dotIdx + 1);
+      if (parts.length !== 3) throw new BadRequestException('QR code invalide.');
+      idB64 = parts[1];
+      sig = parts[2];
     } else {
       // Legacy unversioned format — backward compatible
       version = 'v0';
@@ -106,7 +171,6 @@ export class MerchantController {
       throw new BadRequestException('QR code invalide.');
     }
 
-    const secret = this.configService.getOrThrow<string>('QR_HMAC_SECRET');
     // v1 includes the version prefix in the HMAC input, v0 does not
     const hmacInput = version === 'v1' ? `v1:${clientId}` : clientId;
     const expected = createHmac('sha256', secret).update(hmacInput).digest('base64url');
@@ -120,13 +184,17 @@ export class MerchantController {
     }
 
     // Verify the client actually exists
-    return this.clientService.verifyClient(clientId, user.userId);
+    // allowFirstScan=true: HMAC signature already proved the client's consent.
+    return this.clientService.verifyClient(clientId, user.userId, true);
   }
 
   // ── Verify a legacy client UUID (prevents IDOR from unsigned QR codes) ──
   @Post('verify-client')
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 20 } })
   async verifyClient(@Body() dto: VerifyClientDto, @CurrentUser() user: JwtPayload) {
-    return this.clientService.verifyClient(dto.clientId, user.userId);
+    // Strict mode: require an existing loyalty card between this merchant and client
+    // to prevent silent enrollment from unsigned UUIDs (anti-fraud).
+    return this.clientService.verifyClient(dto.clientId, user.userId, false);
   }
 
   @Get('profile')
@@ -196,6 +264,7 @@ export class MerchantController {
 
   @Patch('password')
   @UseGuards(MerchantOwnerGuard)
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 5 } })
   async changePassword(@Body() dto: ChangePasswordDto, @CurrentUser() user: JwtPayload) {
     return this.profileService.changePassword(user.userId, dto, user.sessionId);
   }
@@ -208,25 +277,30 @@ export class MerchantController {
 
   @Get('devices')
   @UseGuards(MerchantOwnerGuard)
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 20 } })
   async getDevices(@CurrentUser() user: JwtPayload) {
     return this.profileService.getDeviceSessions(user.userId, user.sessionId);
   }
 
   @Post('devices')
   @UseGuards(MerchantOwnerGuard)
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 10 } })
   async registerDevice(@Body() dto: RegisterDeviceDto, @CurrentUser() user: JwtPayload, @Req() req: Request) {
     return this.profileService.upsertDeviceSession(user.userId, { ...dto, ipAddress: req.ip });
   }
 
   @Delete('devices/:id')
   @UseGuards(MerchantOwnerGuard)
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 10 } })
   async removeDevice(@Param('id') sessionId: string, @CurrentUser() user: JwtPayload) {
     return this.profileService.removeDeviceSession(sessionId, user.userId, user.sessionId);
   }
 
   // ── Delete Account (permanent, requires password or Google/Apple re-auth) ──────────
   @Post('delete-account')
-  @UseGuards(MerchantOwnerGuard)  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 3 } })  async deleteAccount(@Body() dto: DeleteAccountDto, @CurrentUser() user: JwtPayload) {
+  @UseGuards(MerchantOwnerGuard)
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 3 } })
+  async deleteAccount(@Body() dto: DeleteAccountDto, @CurrentUser() user: JwtPayload) {
     return this.profileService.deleteAccount(user.userId, dto.password, dto.idToken, dto.appleIdentityToken);
   }
 

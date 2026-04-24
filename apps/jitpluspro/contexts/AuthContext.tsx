@@ -153,8 +153,8 @@ interface AuthContextData {
   completeOnboarding: () => Promise<void>;
 }
 
-/** Business info needed for Google-based merchant registration */
-export interface GoogleRegisterData {
+/** Shared business/store fields collected during any registration flow (email, Google, Apple). */
+export interface BusinessProfileData {
   nomCommerce?: string;
   categorie?: string;
   ville?: string;
@@ -170,42 +170,17 @@ export interface GoogleRegisterData {
   instagram?: string;
   tiktok?: string;
 }
+
+/** Business info needed for Google-based merchant registration */
+export type GoogleRegisterData = BusinessProfileData;
 
 /** Business info needed for Apple-based merchant registration */
-export interface AppleRegisterData {
-  nomCommerce?: string;
-  categorie?: string;
-  ville?: string;
-  phoneNumber?: string;
-  quartier?: string;
-  adresse?: string;
-  latitude?: number;
-  longitude?: number;
-  termsAccepted?: boolean;
-  referralCode?: string;
-  description?: string;
-  storePhone?: string;
-  instagram?: string;
-  tiktok?: string;
-}
+export type AppleRegisterData = BusinessProfileData;
 
 /** Data for standard email/password registration */
-export interface RegisterData {
+export interface RegisterData extends BusinessProfileData {
   email: string;
   password: string;
-  nomCommerce?: string;
-  categorie?: string;
-  ville?: string;
-  quartier?: string;
-  adresse?: string;
-  latitude?: number;
-  longitude?: number;
-  termsAccepted?: boolean;
-  referralCode?: string;
-  description?: string;
-  storePhone?: string;
-  instagram?: string;
-  tiktok?: string;
 }
 
 const AuthContext = createContext<AuthContextData | null>(null);

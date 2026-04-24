@@ -88,19 +88,32 @@ export class MerchantClientService {
   /**
    * Verify that a client UUID exists and belongs to this merchant.
    * Prevents IDOR by confirming the client has a loyalty card with the merchant.
+   *
+   * @param allowFirstScan When true, accepts clients without an existing loyalty card
+   *   (used by the HMAC-signed QR path where the signature already proves the client's
+   *   consent to be scanned). When false (legacy unsigned UUID), requires an existing
+   *   loyalty card to block silent cross-merchant enrollment.
    */
-  async verifyClient(clientId: string, merchantId: string): Promise<{ clientId: string }> {
+  async verifyClient(
+    clientId: string,
+    merchantId: string,
+    allowFirstScan = false,
+  ): Promise<{ clientId: string }> {
     const loyaltyCard = await this.loyaltyCardRepo.findUnique({
       where: { clientId_merchantId: { clientId, merchantId } },
       select: { clientId: true },
     });
     if (!loyaltyCard) {
-      // Fallback: check if the client exists at all (for first-time scan)
+      if (!allowFirstScan) {
+        // Legacy unsigned path: refuse first-scan to prevent unsolicited enrollment.
+        throw new NotFoundException('Client non trouvé');
+      }
+      // Signed-QR path: confirm the client exists at all (deleted accounts rejected).
       const client = await this.clientRepo.findUnique({
         where: { id: clientId },
-        select: { id: true },
+        select: { id: true, deletedAt: true },
       });
-      if (!client) throw new NotFoundException('Client non trouvé');
+      if (!client || client.deletedAt) throw new NotFoundException('Client non trouvé');
     }
     return { clientId };
   }

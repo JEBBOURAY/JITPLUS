@@ -6,7 +6,20 @@ export const MIN_PASSWORD_LENGTH = 8;
 
 /** Search input debounce delay in milliseconds */
 export const SEARCH_DEBOUNCE_MS = 350;
+// AsyncStorage keys
+export const ASYNC_STORAGE_KEYS = {
+  ACTIVITY_BANNER_DISMISSED: 'activity_banner_dismissed',
+  CLIENTS_BANNER_DISMISSED: 'clients_banner_dismissed',
+  // When set to 'true', disables anonymous crash diagnostics (Sentry).
+  // Required so EU/GDPR users can opt out of diagnostic data collection,
+  // even though it contains no PII.
+  SENTRY_OPT_OUT: 'sentry_opt_out',
+};
 
+// Upload validation
+export const ALLOWED_LOGO_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+export const MAX_LOGO_SIZE_MB = 5;
+export const MAX_LOGO_SIZE_BYTES = MAX_LOGO_SIZE_MB * 1024 * 1024;
 /** QR scan area ratio relative to screen width */
 export const SCAN_AREA_RATIO = 0.68;
 

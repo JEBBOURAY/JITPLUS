@@ -16,6 +16,7 @@ export class GeocodeController {
     @Query('ville') ville?: string,
     @Query('lat') latStr?: string,
     @Query('lng') lngStr?: string,
+    @Query('sessionToken') sessionToken?: string,
   ) {
     if (!input || input.trim().length < 2) {
       return { predictions: [] };
@@ -27,17 +28,18 @@ export class GeocodeController {
       ville,
       Number.isFinite(lat) ? lat : undefined,
       Number.isFinite(lng) ? lng : undefined,
+      sessionToken,
     );
     return { predictions };
   }
 
   /** Google Place Details proxy — returns coordinates for a place_id */
   @Get('place-details')
-  async placeDetails(@Query('placeId') placeId?: string) {
+  async placeDetails(@Query('placeId') placeId?: string, @Query('sessionToken') sessionToken?: string) {
     if (!placeId) {
       throw new BadRequestException('placeId is required');
     }
-    const result = await this.geocodeService.placeDetails(placeId);
+    const result = await this.geocodeService.placeDetails(placeId, sessionToken);
     return { result };
   }
 

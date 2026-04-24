@@ -1,6 +1,7 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Pressable, Platform } from 'react-native';
-import { Camera, Lock, Crown, Zap, Calendar, AlertCircle, Gift, ChevronRight, Copy, Bell, Edit3 } from 'lucide-react-native';
+import React, { useCallback, useMemo, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Pressable, I18nManager } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
+import { Camera, Lock, Crown, Zap, Calendar, AlertCircle, Gift, ChevronRight, Copy, Check, Bell, Edit3 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import MerchantLogo from '@/components/MerchantLogo';
@@ -16,7 +17,6 @@ interface Props {
   uploadIsPending: boolean;
   onLogoPress: () => void;
   referralCode: string | null;
-  categoryLabel: string;
   router: Router;
   unreadCount?: number;
   onNotifPress?: () => void;
@@ -24,49 +24,76 @@ interface Props {
 }
 
 export default React.memo(function ProfileCard({
-  theme, t, locale, merchant, uploadIsPending, onLogoPress, referralCode, categoryLabel, router,
+  theme, t, locale, merchant, uploadIsPending, onLogoPress, referralCode, router,
   unreadCount = 0, onNotifPress, onEditName,
 }: Props) {
   const isPremium = merchant?.plan === 'PREMIUM';
   const isAdminPremium = merchant?.planActivatedByAdmin === true;
-  const planExpiresAt = (() => { if (!merchant?.planExpiresAt) return null; const d = new Date(merchant.planExpiresAt); return isNaN(d.getTime()) ? null : d; })();
-  const trialStartedAt = (() => { if (!merchant?.trialStartedAt) return null; const d = new Date(merchant.trialStartedAt); return isNaN(d.getTime()) ? null : d; })();
-  const isTrial = isPremium && !isAdminPremium && trialStartedAt !== null && planExpiresAt !== null;
+  const [codeCopied, setCodeCopied] = useState(false);
 
-  const getDaysRemaining = (): number | null => {
-    if (!planExpiresAt) return null;
-    const diff = planExpiresAt.getTime() - Date.now();
-    return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
-  };
-  const daysRemaining = getDaysRemaining();
+  const goToPlan = useCallback(() => router.push('/plan'), [router]);
+  const goToReferral = useCallback(() => router.push('/referral'), [router]);
+  const copyReferral = useCallback(async () => {
+    if (!referralCode) return;
+    try {
+      await Clipboard.setStringAsync(referralCode);
+      setCodeCopied(true);
+      setTimeout(() => setCodeCopied(false), 1500);
+    } catch {
+      // silent
+    }
+  }, [referralCode]);
 
-  const formatDate = (d: Date) =>
-    d.toLocaleDateString(
-      locale === 'ar' ? 'ar-MA' : locale === 'en' ? 'en-US' : 'fr-FR',
-      { day: '2-digit', month: 'long', year: 'numeric' },
-    );
+  const { planExpiresAt, daysRemaining, planUrgency, isTrial } = useMemo(() => {
+    const parseDate = (v: string | Date | null | undefined): Date | null => {
+      if (!v) return null;
+      const d = new Date(v);
+      return Number.isNaN(d.getTime()) ? null : d;
+    };
+    const pExp = parseDate(merchant?.planExpiresAt);
+    const tStart = parseDate(merchant?.trialStartedAt);
+    const days = pExp ? Math.max(0, Math.ceil((pExp.getTime() - Date.now()) / (1000 * 60 * 60 * 24))) : null;
+    const trial = isPremium && !isAdminPremium && tStart !== null && pExp !== null;
+    let urgency: 'expired' | 'urgent' | 'soon' | 'ok' | null = null;
+    if (isPremium) {
+      if (isAdminPremium && !pExp) urgency = null;
+      else if (days === 0) urgency = 'expired';
+      else if (days !== null && days <= 7) urgency = 'urgent';
+      else if (days !== null && days <= 30) urgency = 'soon';
+      else urgency = 'ok';
+    }
+    return { planExpiresAt: pExp, daysRemaining: days, planUrgency: urgency, isTrial: trial };
+  }, [merchant?.planExpiresAt, merchant?.trialStartedAt, isPremium, isAdminPremium]);
 
-  const planUrgency: 'expired' | 'urgent' | 'soon' | 'ok' | null =
-    !isPremium ? null
-    : (isAdminPremium && !planExpiresAt) ? null
-    : daysRemaining === 0 ? 'expired'
-    : daysRemaining !== null && daysRemaining <= 7 ? 'urgent'
-    : daysRemaining !== null && daysRemaining <= 30 ? 'soon'
-    : 'ok';
+  const formatDate = useMemo(() => {
+    const loc = locale === 'ar' ? 'ar-MA' : locale === 'en' ? 'en-US' : 'fr-FR';
+    return (d: Date) => d.toLocaleDateString(loc, { day: '2-digit', month: 'long', year: 'numeric' });
+  }, [locale]);
 
-  const initials = merchant?.nom
-    ? merchant.nom.split(' ').map((w: string) => w.charAt(0)).join('').slice(0, 2).toUpperCase()
-    : '?';
+  const initials = useMemo(
+    () => (merchant?.nom
+      ? merchant.nom.split(' ').map((w: string) => w.charAt(0)).join('').slice(0, 2).toUpperCase()
+      : '?'),
+    [merchant?.nom],
+  );
 
   return (
     <View style={[styles.profileCard, { backgroundColor: theme.bgCard }]}>
-      {/* -- Notification Bell (top-right) ---------- */}
+      {/* -- Notification Bell (top-right, flipped in RTL) ---------- */}
       {onNotifPress && (
-        <TouchableOpacity onPress={onNotifPress} activeOpacity={0.7} style={styles.notifBell}>
+        <TouchableOpacity
+          onPress={onNotifPress}
+          activeOpacity={0.7}
+          style={[styles.notifBell, I18nManager.isRTL ? styles.notifBellRtl : styles.notifBellLtr]}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel={t('account.notifications')}
+          accessibilityValue={unreadCount > 0 ? { text: String(unreadCount) } : undefined}
+        >
           <Bell size={ms(20)} color={theme.primary} strokeWidth={1.8} />
           {unreadCount > 0 && (
             <View style={styles.bellBadge}>
-              <Text style={styles.bellBadgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
+              <Text style={styles.bellBadgeText} maxFontSizeMultiplier={1.2}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
             </View>
           )}
         </TouchableOpacity>
@@ -74,7 +101,13 @@ export default React.memo(function ProfileCard({
 
       {/* -- Logo ---------------------------------- */}
       <View style={styles.profileCardAvatarRow}>
-        <TouchableOpacity onPress={onLogoPress} activeOpacity={0.85} style={styles.avatarRingWrapper}>
+        <TouchableOpacity
+          onPress={onLogoPress}
+          activeOpacity={0.85}
+          style={styles.avatarRingWrapper}
+          accessibilityRole="button"
+          accessibilityLabel={t('account.profilePhoto')}
+        >
           <LinearGradient
             colors={['#A78BFA', '#7C3AED', '#1F2937']}
             start={{ x: 0, y: 0 }}
@@ -111,9 +144,21 @@ export default React.memo(function ProfileCard({
           </LinearGradient>
         </TouchableOpacity>
         <View style={styles.profileNameRow}>
-          <Text style={[styles.profileName, { color: theme.text }]}>{merchant?.nom}</Text>
+          <Text
+            style={[styles.profileName, { color: theme.text }]}
+            numberOfLines={1}
+            ellipsizeMode="tail"
+            maxFontSizeMultiplier={1.4}
+          >
+            {merchant?.nom}
+          </Text>
           {onEditName && (
-            <TouchableOpacity onPress={onEditName} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <TouchableOpacity
+              onPress={onEditName}
+              hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
+              accessibilityRole="button"
+              accessibilityLabel={t('profileView.editProfileName')}
+            >
               <Edit3 size={ms(14)} color={theme.textMuted} strokeWidth={2} />
             </TouchableOpacity>
           )}
@@ -123,7 +168,9 @@ export default React.memo(function ProfileCard({
       {/* -- Plan Row ------------------------------ */}
       <TouchableOpacity
         activeOpacity={0.78}
-        onPress={() => router.push('/plan')}
+        onPress={goToPlan}
+        accessibilityRole="button"
+        accessibilityLabel={isPremium ? (isTrial ? t('account.planTrial') : 'Premium') : t('account.planFree')}
         style={[
           styles.planRow,
           isPremium
@@ -146,8 +193,10 @@ export default React.memo(function ProfileCard({
               {isPremium ? (isTrial ? t('account.planTrial') : 'Premium') : t('account.planFree')}
             </Text>
             <View style={[styles.planRowBadge, isPremium ? { backgroundColor: isTrial ? '#7C3AED' : '#065F46' } : { backgroundColor: `${theme.textMuted}20` }]}>
-              <Text style={[styles.planRowBadgeText, isPremium ? { color: '#fff' } : { color: theme.textMuted }]}>
-                {isPremium ? (isTrial ? t('account.planTrial').toUpperCase() : 'ACTIVE') : 'FREE'}
+              <Text style={[styles.planRowBadgeText, isPremium ? { color: '#fff' } : { color: theme.textMuted }]} maxFontSizeMultiplier={1.3} numberOfLines={1}>
+                {isPremium
+                  ? (isTrial ? t('account.planTrial').toUpperCase() : t('account.planActiveBadge'))
+                  : t('account.planFreeBadge')}
               </Text>
             </View>
           </View>
@@ -202,12 +251,14 @@ export default React.memo(function ProfileCard({
       {/* -- Referral Code ------------------------- */}
       {referralCode && (
         <Pressable
-          onPress={() => router.push('/referral')}
+          onPress={goToReferral}
           style={({ pressed }) => [
             styles.referralRow,
             { backgroundColor: `${palette.charbon}06`, borderColor: `${palette.charbon}18` },
             pressed && { opacity: 0.75 },
           ]}
+          accessibilityRole="button"
+          accessibilityLabel={t('account.referralActive')}
         >
           <LinearGradient
             colors={[`${palette.charbon}25`, `${palette.charbon}10`]}
@@ -216,19 +267,32 @@ export default React.memo(function ProfileCard({
             <Gift size={ms(16)} color={palette.charbon} strokeWidth={1.8} />
           </LinearGradient>
           <View style={styles.referralRowContent}>
-            <Text style={[styles.referralRowLabel, { color: theme.text }]}>
+            <Text style={[styles.referralRowLabel, { color: theme.text }]} numberOfLines={1}>
               {t('account.referralActive')}
             </Text>
-            <Text style={[styles.referralRowHint, { color: theme.textMuted }]}>
-              {t('account.referralInviteHint')}
+            <Text style={[styles.referralRowHint, { color: theme.textMuted }]} numberOfLines={2}>
+              {codeCopied ? t('referral.codeCopied') : t('account.referralInviteHint')}
             </Text>
           </View>
-          <View style={[styles.referralRowCode, { backgroundColor: `${palette.charbon}14` }]}>
-            <Text style={[styles.referralRowCodeText, { color: palette.charbon }]}>
+          <Pressable
+            onPress={copyReferral}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            style={({ pressed }) => [
+              styles.referralRowCode,
+              { backgroundColor: `${palette.charbon}14` },
+              pressed && { opacity: 0.7 },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel={t('referral.copyCode')}
+            accessibilityState={{ disabled: codeCopied }}
+          >
+            <Text style={[styles.referralRowCodeText, { color: palette.charbon }]} maxFontSizeMultiplier={1.2} numberOfLines={1}>
               {referralCode}
             </Text>
-            <Copy size={ms(12)} color={palette.charbon} strokeWidth={2} />
-          </View>
+            {codeCopied
+              ? <Check size={ms(12)} color={palette.charbon} strokeWidth={2.5} />
+              : <Copy size={ms(12)} color={palette.charbon} strokeWidth={2} />}
+          </Pressable>
         </Pressable>
       )}
     </View>
@@ -279,7 +343,7 @@ const styles = StyleSheet.create({
   avatarCameraBadge: {
     position: 'absolute',
     bottom: 2,
-    right: 2,
+    [I18nManager.isRTL ? 'left' : 'right']: 2,
     width: ms(24),
     height: ms(24),
     borderRadius: ms(12),
@@ -379,15 +443,16 @@ const styles = StyleSheet.create({
   notifBell: {
     position: 'absolute',
     top: hp(14),
-    right: wp(14),
     zIndex: 10,
-    width: ms(38),
-    height: ms(38),
-    borderRadius: ms(19),
+    width: ms(40),
+    height: ms(40),
+    borderRadius: ms(20),
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#7C3AED12',
   },
+  notifBellLtr: { right: wp(14) },
+  notifBellRtl: { left: wp(14) },
   bellBadge: {
     position: 'absolute',
     top: -2,

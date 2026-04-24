@@ -225,10 +225,20 @@ export interface PendingGift {
   reward: { id: string; titre: string; cout: number } | null;
 }
 
+export interface ReferredMerchant {
+  id: string;
+  nom: string;
+  categorie: string;
+  ville: string | null;
+  createdAt: string;
+  validated: boolean;
+}
+
 export interface ReferralStats {
   referralMonthsEarned: number;
   referralCode: string;
   referredCount: number;
+  referrals: ReferredMerchant[];
 }
 
 export interface ClientListItem {
@@ -282,4 +292,6 @@ export interface RecordTransactionPayload {
   points?: number;
   rewardId?: string;
   note?: string;
+  /** Optional: supply to override auto-generated Idempotency-Key (advanced). */
+  idempotencyKey?: string;
 }

@@ -229,3 +229,28 @@ export class RequestPayoutDto {
   accountDetails?: string;
 }
 
+/**
+ * Allowed report reasons — keep in sync with jitplus client i18n keys
+ * (report.reasonInappropriate / reasonSpam / …).
+ * Apple 1.2 requires a clear reporting categorization.
+ */
+export const REPORT_REASONS = [
+  'inappropriate',
+  'spam',
+  'fraud',
+  'closed',
+  'wrong_info',
+  'other',
+] as const;
+
+export class ReportMerchantDto {
+  @IsString()
+  @IsIn(REPORT_REASONS as unknown as string[], { message: 'Motif de signalement invalide' })
+  reason: (typeof REPORT_REASONS)[number];
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000, { message: 'Détails limités à 1000 caractères' })
+  details?: string;
+}
+

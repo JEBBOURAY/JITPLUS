@@ -14,6 +14,8 @@ import {
 import * as bcrypt from 'bcryptjs';
 import { buildPagination } from '../common/utils';
 import { MERCHANTS_LIST_CACHE_TTL, MERCHANT_DETAIL_CACHE_TTL, PROFILE_STATS_CACHE_TTL, UNREAD_COUNT_CACHE_TTL } from '../common/constants';
+import { MailService } from '../mail/mail.service';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class ClientService {
@@ -29,6 +31,8 @@ export class ClientService {
     @Inject(TRANSACTION_REPOSITORY) private transactionRepo: ITransactionRepository,
     @Inject(TRANSACTION_RUNNER) private txRunner: ITransactionRunner,
     @Inject(CACHE_MANAGER) private cache: Cache,
+    private mailService: MailService,
+    private prisma: PrismaService,
   ) {}
 
   async getProfile(clientId: string) {
@@ -175,7 +179,7 @@ export class ClientService {
   async deleteAccount(clientId: string, password?: string) {
     const client = await this.clientRepo.findUnique({
       where: { id: clientId },
-      select: { id: true, password: true, googleId: true, appleId: true },
+      select: { id: true, password: true, googleId: true, appleId: true, email: true, prenom: true },
     });
 
     if (!client) {
@@ -196,6 +200,11 @@ export class ClientService {
     }
     // Social-only users (Google/Apple, no password) are already authenticated
     // via their JWT — no additional re-auth needed.
+
+    // Capture original identity BEFORE anonymisation for confirmation email.
+    const originalEmail = client.email;
+    const originalPrenom = client.prenom;
+    const isEmailReal = !!originalEmail && originalEmail.includes('@');
 
     // Atomic soft-delete inside a transaction to ensure all related data
     // is cleaned up. Prevents orphaned records leaking to recreated accounts.
@@ -248,6 +257,13 @@ export class ClientService {
         where: { clientId },
       });
     });
+
+    // Best-effort confirmation email (GDPR Art. 17 / App Store 5.1.1(v) / Google Play)
+    if (isEmailReal) {
+      this.mailService
+        .sendClientAccountDeleted(originalEmail, originalPrenom || undefined)
+        .catch((err) => this.logger.warn(`Failed to send client account-deleted email to ${originalEmail}: ${err?.message || err}`));
+    }
 
     return { success: true, message: 'Compte supprimé avec succès' };
   }
@@ -317,7 +333,7 @@ export class ClientService {
               categorie: true,
               loyaltyType: true,
               pointsRate: true,
-                stampsForReward: true,
+              stampsForReward: true,
               conversionRate: true,
               latitude: true,
               longitude: true,
@@ -356,7 +372,7 @@ export class ClientService {
               categorie: card.merchant.categorie,
               loyaltyType: card.merchant.loyaltyType,
               pointsRate: card.merchant.pointsRate,
-                stampsForReward: card.merchant.stampsForReward,
+              stampsForReward: card.merchant.stampsForReward,
               conversionRate: card.merchant.conversionRate,
               // null if the merchant has no rewards configured yet
               minRewardCost: card.merchant.rewards[0]?.cout ?? null,
@@ -473,6 +489,13 @@ export class ClientService {
   }
 
   async getMerchantById(id: string, clientId: string) {
+    // Apple 1.2 — a blocked merchant must be invisible to the client.
+    const blocked = await this.prisma.clientMerchantBlock.findUnique({
+      where: { clientId_merchantId: { clientId, merchantId: id } },
+      select: { id: true },
+    });
+    if (blocked) throw new NotFoundException('Commerce introuvable');
+
     // Cache the merchant data (shared across all clients)
     const merchantCacheKey = `merchant:detail:${id}`;
     let m = await this.cache.get<any>(merchantCacheKey);
@@ -494,7 +517,7 @@ export class ClientService {
           loyaltyType: true,
           conversionRate: true,
           pointsRate: true,
-                stampsForReward: true,
+          stampsForReward: true,
           logoUrl: true,
           coverUrl: true,
           socialLinks: true,
@@ -583,7 +606,7 @@ export class ClientService {
       loyaltyType: m.loyaltyType,
       conversionRate: m.conversionRate,
       pointsRate: m.pointsRate,
-        stampsForReward: m.stampsForReward,
+      stampsForReward: m.stampsForReward,
       logoUrl: m.logoUrl ?? null,
       coverUrl: m.coverUrl ?? null,
       socialLinks: (m.socialLinks as Record<string, string> | null) ?? null,
@@ -660,63 +683,194 @@ export class ClientService {
     return { success: true };
   }
 
-  async getMerchants(page: number = 1, limit: number = 50) {
-    const cacheKey = `merchants:list:p${page}:l${limit}`;
-    const cached = await this.cache.get<ReturnType<typeof this.formatMerchantList>>(cacheKey);
-    if (cached) return cached;
-
-    const skip = (page - 1) * limit;
-    const [merchants, total] = await Promise.all([
-      this.merchantRepo.findMany({
-        where: {
-          isActive: true,
-          deletedAt: null,
-          stores: { some: { isActive: true } },
-        },
-        select: {
-          id: true,
-          nom: true,
-          categorie: true,
-          description: true,
-          ville: true,
-          quartier: true,
-          adresse: true,
-          latitude: true,
-          longitude: true,
-          loyaltyType: true,
-          conversionRate: true,
-          pointsRate: true,
-                stampsForReward: true,
-          logoUrl: true,
-          stores: {
-            where: { isActive: true },
-            select: {
-              id: true,
-              nom: true,
-              ville: true,
-              quartier: true,
-              adresse: true,
-              latitude: true,
-              longitude: true,
-            },
-          },
-        },
-        orderBy: { nom: 'asc' },
-        skip,
-        take: limit,
+  /**
+   * Client-initiated content report. Required by Apple App Review Guideline 1.2
+   * and Google Play User-Generated Content Policy. The report is delivered to
+   * the moderation inbox so admins can take action within 24 hours (ban merchant
+   * via the existing admin flow).
+   */
+  async reportMerchant(
+    clientId: string,
+    merchantId: string,
+    reason: string,
+    details?: string,
+  ): Promise<{ success: true; message: string }> {
+    const [merchant, reporter] = await Promise.all([
+      this.merchantRepo.findFirst({
+        where: { id: merchantId },
+        select: { id: true, nom: true },
       }),
-      this.merchantRepo.count({
-        where: {
-          isActive: true,
-          deletedAt: null,
-          stores: { some: { isActive: true } },
-        },
+      this.clientRepo.findUnique({
+        where: { id: clientId },
+        select: { id: true, email: true },
       }),
     ]);
+    if (!merchant) throw new NotFoundException('Commerce introuvable');
+    if (!reporter) throw new NotFoundException('Compte client introuvable');
 
-    const result = this.formatMerchantList(merchants, total, page, limit);
-    await this.cache.set(cacheKey, result, MERCHANTS_LIST_CACHE_TTL);
-    return result;
+    // Best-effort delivery — never block the user if SMTP is temporarily down.
+    try {
+      await this.mailService.sendContentReport({
+        merchantId: merchant.id,
+        merchantName: merchant.nom,
+        reporterId: reporter.id,
+        reporterEmail: reporter.email ?? 'unknown',
+        reason,
+        details,
+      });
+    } catch (err) {
+      // Swallowed: the client UI must still acknowledge the report so the
+      // user sees the action was recorded. The email failure is logged inside
+      // MailService.
+      void err;
+    }
+
+    return { success: true, message: 'Merci, votre signalement a été transmis.' };
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Client-side merchant blocking (Apple Guideline 1.2 UGC policy).
+  // Blocked merchants are removed from discovery lists and detail for the
+  // blocking client. The merchant-side data is untouched.
+  // ──────────────────────────────────────────────────────────────────────────
+
+  async blockMerchant(clientId: string, merchantId: string) {
+    const merchant = await this.merchantRepo.findFirst({
+      where: { id: merchantId },
+      select: { id: true },
+    });
+    if (!merchant) throw new NotFoundException('Commerce introuvable');
+
+    // Upsert-by-unique-constraint; idempotent.
+    await this.prisma.clientMerchantBlock.upsert({
+      where: { clientId_merchantId: { clientId, merchantId } },
+      update: {},
+      create: { clientId, merchantId },
+    });
+
+    // Best-effort: also leave the loyalty program so the merchant stops
+    // receiving this client in their analytics.
+    try {
+      const card = await this.loyaltyCardRepo.findUnique({
+        where: { clientId_merchantId: { clientId, merchantId } },
+        select: { id: true, deactivatedAt: true },
+      });
+      if (card && !card.deactivatedAt) {
+        await this.loyaltyCardRepo.update({
+          where: { id: card.id },
+          data: { deactivatedAt: new Date(), points: 0 },
+        });
+      }
+    } catch {
+      /* swallow — block succeeded, loyalty cleanup is best-effort */
+    }
+
+    // Invalidate list caches so the blocked merchant disappears immediately.
+    await this.cache.del(`merchant:detail:${merchantId}`);
+
+    return { success: true };
+  }
+
+  async unblockMerchant(clientId: string, merchantId: string) {
+    await this.prisma.clientMerchantBlock.deleteMany({
+      where: { clientId, merchantId },
+    });
+    return { success: true };
+  }
+
+  async getBlockedMerchants(clientId: string) {
+    const blocks = await this.prisma.clientMerchantBlock.findMany({
+      where: { clientId },
+      select: {
+        merchantId: true,
+        createdAt: true,
+        merchant: {
+          select: { id: true, nom: true, logoUrl: true, categorie: true },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    return blocks.map((b) => ({
+      merchantId: b.merchantId,
+      blockedAt: b.createdAt,
+      ...b.merchant,
+    }));
+  }
+
+  private async getBlockedMerchantIds(clientId: string): Promise<Set<string>> {
+    const rows = await this.prisma.clientMerchantBlock.findMany({
+      where: { clientId },
+      select: { merchantId: true },
+    });
+    return new Set(rows.map((r) => r.merchantId));
+  }
+
+  async getMerchants(page: number = 1, limit: number = 50, clientId?: string) {
+    const cacheKey = `merchants:list:p${page}:l${limit}`;
+    const cached = await this.cache.get<ReturnType<typeof this.formatMerchantList>>(cacheKey);
+    const baseResult = cached ?? await (async () => {
+      const skip = (page - 1) * limit;
+      const [merchants, total] = await Promise.all([
+        this.merchantRepo.findMany({
+          where: {
+            isActive: true,
+            deletedAt: null,
+            stores: { some: { isActive: true } },
+          },
+          select: {
+            id: true,
+            nom: true,
+            categorie: true,
+            description: true,
+            ville: true,
+            quartier: true,
+            adresse: true,
+            latitude: true,
+            longitude: true,
+            loyaltyType: true,
+            conversionRate: true,
+            pointsRate: true,
+            stampsForReward: true,
+            logoUrl: true,
+            stores: {
+              where: { isActive: true },
+              select: {
+                id: true,
+                nom: true,
+                ville: true,
+                quartier: true,
+                adresse: true,
+                latitude: true,
+                longitude: true,
+              },
+            },
+          },
+          orderBy: { nom: 'asc' },
+          skip,
+          take: limit,
+        }),
+        this.merchantRepo.count({
+          where: {
+            isActive: true,
+            deletedAt: null,
+            stores: { some: { isActive: true } },
+          },
+        }),
+      ]);
+
+      const result = this.formatMerchantList(merchants, total, page, limit);
+      await this.cache.set(cacheKey, result, MERCHANTS_LIST_CACHE_TTL);
+      return result;
+    })();
+
+    // Per-client filter for blocked merchants. Apple 1.2 requires blocked
+    // users to be invisible to the blocker. We filter after the shared cache
+    // to keep the hot path cheap for anonymous / non-blocking clients.
+    if (!clientId) return baseResult;
+    const blockedIds = await this.getBlockedMerchantIds(clientId);
+    if (blockedIds.size === 0) return baseResult;
+    const filtered = (baseResult as any).merchants.filter((m: any) => !blockedIds.has(m.id));
+    return { ...baseResult, merchants: filtered };
   }
 
   private formatMerchantList(merchants: any[], total: number, page: number, limit: number) {

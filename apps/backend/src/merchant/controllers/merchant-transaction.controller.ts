@@ -1,6 +1,6 @@
 import {
-  Controller, Get, Post, Patch, Body, Param, Query,
-  UseGuards,
+  Controller, Get, Post, Patch, Body, Param, Query, Headers,
+  UseGuards, BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
@@ -32,9 +32,29 @@ export class MerchantTransactionController {
   async createTransaction(
     @Body() dto: CreateTransactionDto,
     @CurrentUser() user: JwtPayload,
+    @Headers('idempotency-key') idempotencyKey?: string,
   ) {
     const { clientId, type, amount, points, rewardId } = dto;
-    return this.transactionService.createTransaction(clientId, user.userId, type, amount, points, rewardId, user.teamMemberId ?? undefined, user.teamMemberName ?? undefined);
+    // Normalize + validate idempotency key shape (printable ASCII, 1..64 chars).
+    let normalizedKey: string | undefined;
+    if (idempotencyKey && idempotencyKey.trim()) {
+      const trimmed = idempotencyKey.trim();
+      if (trimmed.length > 64 || !/^[A-Za-z0-9_\-]+$/.test(trimmed)) {
+        throw new BadRequestException('Idempotency-Key invalide (max 64 chars, [A-Za-z0-9_-]).');
+      }
+      normalizedKey = trimmed;
+    }
+    return this.transactionService.createTransaction(
+      clientId,
+      user.userId,
+      type,
+      amount,
+      points,
+      rewardId,
+      user.teamMemberId ?? undefined,
+      user.teamMemberName ?? undefined,
+      normalizedKey,
+    );
   }
 
   @Get('transactions')

@@ -12,7 +12,7 @@ interface Props {
 }
 
 const CLIENT_APP_ANDROID = 'https://play.google.com/store/apps/details?id=com.jitplus.app';
-const CLIENT_APP_IOS = 'https://apps.apple.com/app/jitplus/id6741187498';
+const CLIENT_APP_IOS = 'https://apps.apple.com/app/jitplus/id6762307929';
 
 export default function FirstScanGuide({ visible, onClose }: Props) {
   const theme = useTheme();

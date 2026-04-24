@@ -11,6 +11,7 @@ import {
   DimensionValue,
   KeyboardAvoidingView,
   Platform,
+  I18nManager,
 } from 'react-native';
 import { timeAgo } from '@/utils/date';
 import { logError } from '@/utils/devLogger';
@@ -39,7 +40,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useGoogleIdToken } from '@/hooks/useGoogleIdToken';
 import { useAppleIdToken } from '@/hooks/useAppleIdToken';
 
-// â”€â”€ PwdField (dÃ©fini HORS du composant pour Ã©viter le re-mount du TextInput) â”€â”€
+// ── PwdField (défini HORS du composant pour éviter le re-mount du TextInput) ──
 interface PwdFieldProps {
   label: string;
   value: string;
@@ -48,12 +49,23 @@ interface PwdFieldProps {
   setShow: (v: boolean) => void;
   placeholder: string;
   theme: ThemeColors;
+  /** iOS + Android autofill hint (newPassword / password) */
+  variant?: 'current' | 'new';
+  /** a11y label for the show/hide toggle */
+  showLabel?: string;
+  hideLabel?: string;
+  /** input ref helpers */
+  returnKeyType?: 'next' | 'done';
+  onSubmitEditing?: () => void;
 }
 
-function PwdField({ label, value, setValue, show, setShow, placeholder, theme }: PwdFieldProps) {
+function PwdField({
+  label, value, setValue, show, setShow, placeholder, theme,
+  variant = 'current', showLabel, hideLabel, returnKeyType, onSubmitEditing,
+}: PwdFieldProps) {
   return (
     <>
-      <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>{label}</Text>
+      <Text style={[styles.fieldLabel, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.4}>{label}</Text>
       <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.border }]}>
         <Lock size={17} color={theme.textMuted} />
         <TextInput
@@ -65,8 +77,22 @@ function PwdField({ label, value, setValue, show, setShow, placeholder, theme }:
           secureTextEntry={!show}
           autoCapitalize="none"
           autoCorrect={false}
+          autoComplete={variant === 'new' ? 'new-password' : 'current-password'}
+          textContentType={variant === 'new' ? 'newPassword' : 'password'}
+          passwordRules={variant === 'new' ? 'minlength: 8; required: upper; required: digit; required: special;' : undefined}
+          maxLength={128}
+          maxFontSizeMultiplier={1.4}
+          returnKeyType={returnKeyType}
+          onSubmitEditing={onSubmitEditing}
+          blurOnSubmit={returnKeyType === 'done'}
         />
-        <TouchableOpacity onPress={() => setShow(!show)} hitSlop={8}>
+        <TouchableOpacity
+          onPress={() => setShow(!show)}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          accessibilityRole="button"
+          accessibilityLabel={show ? (hideLabel ?? 'Hide password') : (showLabel ?? 'Show password')}
+          accessibilityState={{ checked: show }}
+        >
           {show ? <EyeOff size={18} color={theme.textMuted} /> : <Eye size={18} color={theme.textMuted} />}
         </TouchableOpacity>
       </View>
@@ -145,14 +171,14 @@ export default function SecurityScreen() {
     return { label: t('security.strengthStrong'), color: theme.success, width: '100%' as DimensionValue };
   }, [newPwd, theme, t]);
 
-  // â”€â”€ Load devices â”€â”€
+  // ── Load devices ──
   const loadDevices = useCallback(async () => {
     setLoadingDevices(true);
     try {
       const res = await api.get('/merchant/devices');
       setDevices(res.data ?? []);
     } catch (error) {
-      logError('Security', 'Échec du chargement des appareils:', error);
+      logError('Security', 'Failed to load devices:', error);
     } finally {
       setLoadingDevices(false);
     }
@@ -162,7 +188,7 @@ export default function SecurityScreen() {
     if (activeTab === 'devices') loadDevices();
   }, [activeTab, loadDevices]);
 
-  // â”€â”€ Change password â”€â”€
+  // ── Change password ──
   const executePasswordChange = useCallback(async (logoutOthers: boolean) => {
     setSaving(true);
     try {
@@ -175,12 +201,14 @@ export default function SecurityScreen() {
       setCurrentPwd('');
       setNewPwd('');
       setConfirmPwd('');
+      setShowCurrent(false);
+      setShowNew(false);
 
       const count = res.data?.devicesDisconnected || 0;
       if (logoutOthers && count > 0) {
-        Alert.alert(t('common.confirm'), t('security.changePwdSuccessLogout', { count }));
+        Alert.alert(t('common.success'), t('security.changePwdSuccessLogout', { count }));
       } else {
-        Alert.alert(t('common.confirm'), t('security.changePwdSuccess'));
+        Alert.alert(t('common.success'), t('security.changePwdSuccess'));
       }
 
       if (activeTab === 'devices') loadDevices();
@@ -247,16 +275,28 @@ export default function SecurityScreen() {
     );
   }, [t]);
 
+  const goBack = useCallback(() => router.back(), [router]);
+
   if (shouldWait) return null;
 
   if (isTeamMember) {
     return (
       <View style={[styles.container, { backgroundColor: theme.bg, justifyContent: 'center', alignItems: 'center', padding: 32 }]}>
         <ShieldCheck size={48} color={theme.textMuted} strokeWidth={1.5} />
-        <Text style={{ color: theme.text, fontWeight: '600', fontSize: 16, marginTop: 16, fontFamily: 'Lexend_600SemiBold' }}>{t('common.ownerOnly')}</Text>
-        <Text style={{ color: theme.textMuted, textAlign: 'center', marginTop: 8, fontFamily: 'Lexend_400Regular' }}>{t('common.ownerOnlyMsg')}</Text>
-        <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 16, paddingHorizontal: 24, paddingVertical: 10, backgroundColor: theme.primary, borderRadius: 10 }}>
-          <Text style={{ color: '#fff', fontWeight: '600', fontFamily: 'Lexend_600SemiBold' }}>{t('common.back')}</Text>
+        <Text
+          style={{ color: theme.text, fontWeight: '600', fontSize: 16, marginTop: 16, fontFamily: 'Lexend_600SemiBold', textAlign: 'center' }}
+          accessibilityRole="header"
+          maxFontSizeMultiplier={1.4}
+        >{t('common.ownerOnly')}</Text>
+        <Text style={{ color: theme.textMuted, textAlign: 'center', marginTop: 8, fontFamily: 'Lexend_400Regular' }} maxFontSizeMultiplier={1.4}>{t('common.ownerOnlyMsg')}</Text>
+        <TouchableOpacity
+          onPress={goBack}
+          style={{ marginTop: 16, paddingHorizontal: 24, paddingVertical: 10, backgroundColor: theme.primary, borderRadius: 10 }}
+          accessibilityRole="button"
+          accessibilityLabel={t('common.back')}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Text style={{ color: '#fff', fontWeight: '600', fontFamily: 'Lexend_600SemiBold' }} maxFontSizeMultiplier={1.3}>{t('common.back')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -277,21 +317,31 @@ export default function SecurityScreen() {
       {/* â”€â”€ Header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       {/* ── Simple header — matches activity style ── */}
       <View style={[styles.headerBar, { paddingTop: insets.top + 12 }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <ArrowLeft size={22} color={theme.text} />
+        <TouchableOpacity
+          onPress={goBack}
+          style={styles.backBtn}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          accessibilityRole="button"
+          accessibilityLabel={t('common.back')}
+        >
+          <ArrowLeft
+            size={22}
+            color={theme.text}
+            style={I18nManager.isRTL ? { transform: [{ scaleX: -1 }] } : undefined}
+          />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.text }]}>{t('security.title')}</Text>
+        <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1} maxFontSizeMultiplier={1.3} accessibilityRole="header">{t('security.title')}</Text>
       </View>
 
         {/* ── Guide text ── */}
         <View style={[styles.guideContainer, { backgroundColor: theme.primaryBg || (theme.primary + '10'), borderLeftColor: theme.primary }]}>
-          <Text style={[styles.guideText, { color: theme.textSecondary }]}>
+          <Text style={[styles.guideText, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.4}>
             {t('account.securityGuideText')}
           </Text>
         </View>
 
       {/* â”€â”€ Tab Switcher â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-      <View style={[styles.tabBar, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
+      <View style={[styles.tabBar, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]} accessibilityRole="tablist">
         {tabs.map((tab) => {
           const isActive = activeTab === tab.id;
           return (
@@ -300,9 +350,16 @@ export default function SecurityScreen() {
               style={[styles.tab, isActive && { backgroundColor: tab.id === 'delete' ? theme.danger : theme.primary }]}
               onPress={() => setActiveTab(tab.id)}
               activeOpacity={0.7}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: isActive }}
+              accessibilityLabel={tab.label}
             >
               {tab.icon}
-              <Text style={[styles.tabLabel, { color: isActive ? '#fff' : tab.id === 'delete' ? theme.danger : theme.textMuted }]}>
+              <Text
+                style={[styles.tabLabel, { color: isActive ? '#fff' : tab.id === 'delete' ? theme.danger : theme.textMuted }]}
+                numberOfLines={1}
+                maxFontSizeMultiplier={1.3}
+              >
                 {tab.label}
               </Text>
             </TouchableOpacity>
@@ -311,7 +368,7 @@ export default function SecurityScreen() {
       </View>
 
       <ScrollView
-        contentContainerStyle={{ paddingBottom: 100, paddingHorizontal: 16, paddingTop: 16 }}
+        contentContainerStyle={{ paddingBottom: 100 + insets.bottom, paddingHorizontal: 16, paddingTop: 16 }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
@@ -320,9 +377,9 @@ export default function SecurityScreen() {
             <View style={[styles.dangerZone, { backgroundColor: theme.danger + '08', borderColor: theme.danger + '25' }]}>
               <View style={styles.dangerHeader}>
                 <Trash2 size={20} color={theme.danger} />
-                <Text style={[styles.dangerTitle, { color: theme.danger }]}>{t('security.dangerZone')}</Text>
+                <Text style={[styles.dangerTitle, { color: theme.danger }]} accessibilityRole="header" maxFontSizeMultiplier={1.3}>{t('security.dangerZone')}</Text>
               </View>
-              <Text style={[styles.dangerText, { color: theme.textMuted }]}>
+              <Text style={[styles.dangerText, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>
                 {t('security.dangerText')}
               </Text>
 
@@ -333,9 +390,9 @@ export default function SecurityScreen() {
                     {t('security.deleteGooglePrompt')}
                   </Text>
                   {deleteGoogleToken ? (
-                    <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.danger }]}>
-                      <Check size={18} color={theme.danger} />
-                      <Text style={[styles.input, { color: theme.danger, fontWeight: '600' }]}>
+                    <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.danger }]} accessible accessibilityLabel={t('security.googleVerified')}>
+                      <Check size={18} color={theme.danger} accessibilityElementsHidden importantForAccessibility="no" />
+                      <Text style={[styles.input, { color: theme.danger, fontWeight: '600' }]} maxFontSizeMultiplier={1.4}>
                         {t('security.googleVerified')}
                       </Text>
                     </View>
@@ -345,18 +402,25 @@ export default function SecurityScreen() {
                       onPress={googleDelete.promptGoogle}
                       disabled={googleDelete.isLoading}
                       activeOpacity={0.7}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('security.deleteGoogleBtn')}
+                      accessibilityState={{ busy: googleDelete.isLoading, disabled: googleDelete.isLoading }}
                     >
                       {googleDelete.isLoading ? (
                         <ActivityIndicator size="small" color={theme.danger} />
                       ) : (
-                        <Text style={[styles.input, { color: theme.danger, fontWeight: '600', textAlign: 'center' }]}>
+                        <Text style={[styles.input, { color: theme.danger, fontWeight: '600', textAlign: 'center' }]} maxFontSizeMultiplier={1.4}>
                           {t('security.deleteGoogleBtn')}
                         </Text>
                       )}
                     </TouchableOpacity>
                   )}
                   {googleDelete.error ? (
-                    <Text style={{ color: theme.danger, fontSize: 12, marginTop: 4, fontFamily: 'Lexend_400Regular' }}>{googleDelete.error}</Text>
+                    <Text
+                      style={{ color: theme.danger, fontSize: 12, marginTop: 4, fontFamily: 'Lexend_400Regular' }}
+                      accessibilityLiveRegion="polite"
+                      accessibilityRole="alert"
+                    >{googleDelete.error}</Text>
                   ) : null}
                 </View>
               ) : isAppleAccount ? (
@@ -366,9 +430,9 @@ export default function SecurityScreen() {
                     {t('security.deleteApplePrompt')}
                   </Text>
                   {deleteAppleToken ? (
-                    <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.danger }]}>
-                      <Check size={18} color={theme.danger} />
-                      <Text style={[styles.input, { color: theme.danger, fontWeight: '600' }]}>
+                    <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.danger }]} accessible accessibilityLabel={t('security.appleVerified')}>
+                      <Check size={18} color={theme.danger} accessibilityElementsHidden importantForAccessibility="no" />
+                      <Text style={[styles.input, { color: theme.danger, fontWeight: '600' }]} maxFontSizeMultiplier={1.4}>
                         {t('security.appleVerified')}
                       </Text>
                     </View>
@@ -378,28 +442,35 @@ export default function SecurityScreen() {
                       onPress={appleDelete.promptApple}
                       disabled={appleDelete.isLoading}
                       activeOpacity={0.7}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('security.deleteAppleBtn')}
+                      accessibilityState={{ busy: appleDelete.isLoading, disabled: appleDelete.isLoading }}
                     >
                       {appleDelete.isLoading ? (
                         <ActivityIndicator size="small" color={theme.danger} />
                       ) : (
-                        <Text style={[styles.input, { color: theme.danger, fontWeight: '600', textAlign: 'center' }]}>
+                        <Text style={[styles.input, { color: theme.danger, fontWeight: '600', textAlign: 'center' }]} maxFontSizeMultiplier={1.4}>
                           {t('security.deleteAppleBtn')}
                         </Text>
                       )}
                     </TouchableOpacity>
                   ) : (
-                    <Text style={[styles.fieldLabel, { color: theme.textMuted, marginTop: 8 }]}>
+                    <Text style={[styles.fieldLabel, { color: theme.textMuted, marginTop: 8 }]} maxFontSizeMultiplier={1.4}>
                       {t('security.appleOnlyIos')}
                     </Text>
                   )}
                   {appleDelete.error ? (
-                    <Text style={{ color: theme.danger, fontSize: 12, marginTop: 4, fontFamily: 'Lexend_400Regular' }}>{appleDelete.error}</Text>
+                    <Text
+                      style={{ color: theme.danger, fontSize: 12, marginTop: 4, fontFamily: 'Lexend_400Regular' }}
+                      accessibilityLiveRegion="polite"
+                      accessibilityRole="alert"
+                    >{appleDelete.error}</Text>
                   ) : null}
                 </View>
               ) : (
                 /* -- Email account: enter password -- */
                 <View style={{ marginTop: 16 }}>
-                  <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>{t('security.currentPassword')}</Text>
+                  <Text style={[styles.fieldLabel, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.4}>{t('security.currentPassword')}</Text>
                   <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.border }]}>
                     <Lock size={17} color={theme.textMuted} />
                     <TextInput
@@ -411,8 +482,18 @@ export default function SecurityScreen() {
                       secureTextEntry={!showDeletePwd}
                       autoCapitalize="none"
                       autoCorrect={false}
+                      autoComplete="current-password"
+                      textContentType="password"
+                      maxLength={128}
+                      maxFontSizeMultiplier={1.4}
                     />
-                    <TouchableOpacity onPress={() => setShowDeletePwd(!showDeletePwd)} hitSlop={8}>
+                    <TouchableOpacity
+                      onPress={() => setShowDeletePwd(!showDeletePwd)}
+                      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                      accessibilityRole="button"
+                      accessibilityLabel={showDeletePwd ? t('security.hidePassword') : t('security.showPassword')}
+                      accessibilityState={{ checked: showDeletePwd }}
+                    >
                       {showDeletePwd ? <EyeOff size={18} color={theme.textMuted} /> : <Eye size={18} color={theme.textMuted} />}
                     </TouchableOpacity>
                   </View>
@@ -422,7 +503,12 @@ export default function SecurityScreen() {
                 <TouchableOpacity
                   style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8 }}
                   onPress={() => setDeleteConfirmed((v) => !v)}
+                  disabled={deleting}
                   activeOpacity={0.7}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: deleteConfirmed, disabled: deleting }}
+                  accessibilityLabel={t('security.deleteConfirmLabel')}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 >
                   <View style={[
                     { width: 22, height: 22, borderRadius: 4, borderWidth: 2, marginRight: 10, alignItems: 'center', justifyContent: 'center' },
@@ -441,13 +527,16 @@ export default function SecurityScreen() {
                   styles.deleteBtn,
                   {
                     backgroundColor:
-                      (isGoogleAccount ? !!deleteGoogleToken : isAppleAccount ? !!deleteAppleToken : deletePwd.length >= 6) && deleteConfirmed
+                      (isGoogleAccount ? !!deleteGoogleToken : isAppleAccount ? !!deleteAppleToken : isValidPassword(deletePwd)) && deleteConfirmed
                         ? theme.danger
                         : theme.border,
                   },
                 ]}
-                disabled={deleting || (isGoogleAccount ? !deleteGoogleToken : isAppleAccount ? !deleteAppleToken : deletePwd.length < 6) || !deleteConfirmed}
+                disabled={deleting || (isGoogleAccount ? !deleteGoogleToken : isAppleAccount ? !deleteAppleToken : !isValidPassword(deletePwd)) || !deleteConfirmed}
                 activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel={t('security.deleteForeverBtn')}
+                accessibilityState={{ disabled: deleting || (isGoogleAccount ? !deleteGoogleToken : isAppleAccount ? !deleteAppleToken : !isValidPassword(deletePwd)) || !deleteConfirmed }}
                 onPress={() => {
                   Alert.alert(
                     t('security.deleteFinalTitle'),
@@ -477,7 +566,8 @@ export default function SecurityScreen() {
                             Alert.alert(
                               t('security.deletedTitle'),
                               t('security.deletedSuccess'),
-                              [{ text: 'OK', onPress: () => signOut() }],
+                              [{ text: t('common.confirm'), onPress: () => signOut() }],
+                              { cancelable: false },
                             );
                           } catch (err: unknown) {
                             Alert.alert(t('common.error'), getErrorMessage(err, t('security.deleteAccountError')));
@@ -504,7 +594,7 @@ export default function SecurityScreen() {
         ) : activeTab === 'password' ? (
           <View key="password">
             {isSocialAccount ? (
-              <Text style={[styles.dangerText, { color: theme.textMuted, marginBottom: 12 }]}>
+              <Text style={[styles.dangerText, { color: theme.textMuted, marginBottom: 12 }]} maxFontSizeMultiplier={1.4}>
                 {t(isAppleAccount ? 'security.appleSetPasswordHint' : 'security.googleSetPasswordHint')}
               </Text>
             ) : (
@@ -516,6 +606,10 @@ export default function SecurityScreen() {
                 setShow={setShowCurrent}
                 placeholder={t('security.currentPwdPlaceholder')}
                 theme={theme}
+                variant="current"
+                showLabel={t('security.showPassword')}
+                hideLabel={t('security.hidePassword')}
+                returnKeyType="next"
               />
             )}
 
@@ -528,25 +622,33 @@ export default function SecurityScreen() {
                 setShow={setShowNew}
                 placeholder={t('security.newPwdPlaceholder')}
                 theme={theme}
+                variant="new"
+                showLabel={t('security.showPassword')}
+                hideLabel={t('security.hidePassword')}
+                returnKeyType="next"
               />
             </View>
 
             {/* Strength bar */}
             {newPwd.length > 0 && (
-              <View style={styles.strengthRow}>
+              <View
+                style={styles.strengthRow}
+                accessibilityRole="progressbar"
+                accessibilityLabel={t('security.strengthA11y', { level: strength.label })}
+              >
                 <View style={[styles.strengthBar, { backgroundColor: theme.border }]}>
                   <View
                     style={[styles.strengthFill, { backgroundColor: strength.color, width: strength.width }]}
                   />
                 </View>
-                <Text style={[styles.strengthLabel, { color: strength.color }]}>
+                <Text style={[styles.strengthLabel, { color: strength.color }]} maxFontSizeMultiplier={1.3}>
                   {strength.label}
                 </Text>
               </View>
             )}
 
             <View style={{ marginTop: 16 }}>
-              <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>
+              <Text style={[styles.fieldLabel, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.4}>
                 {t('security.confirmPassword')}
               </Text>
               <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.border }]}>
@@ -560,6 +662,12 @@ export default function SecurityScreen() {
                   secureTextEntry
                   autoCapitalize="none"
                   autoCorrect={false}
+                  autoComplete="new-password"
+                  textContentType="newPassword"
+                  maxLength={128}
+                  maxFontSizeMultiplier={1.4}
+                  returnKeyType="done"
+                  onSubmitEditing={handleChangePassword}
                 />
                 {confirmPwd.length > 0 && newPwd === confirmPwd && (
                   <Check size={18} color={theme.success} />
@@ -581,6 +689,9 @@ export default function SecurityScreen() {
               onPress={handleChangePassword}
               disabled={saving || (!isSocialAccount && !currentPwd) || !isValidPassword(newPwd) || newPwd !== confirmPwd}
               activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel={t('security.changePwdBtn')}
+              accessibilityState={{ disabled: saving || (!isSocialAccount && !currentPwd) || !isValidPassword(newPwd) || newPwd !== confirmPwd, busy: saving }}
             >
               {saving ? (
                 <ActivityIndicator size="small" color="#fff" />
@@ -601,10 +712,10 @@ export default function SecurityScreen() {
             ) : devices.length === 0 ? (
               <View style={styles.emptyDevices}>
                 <Smartphone size={48} color={theme.textMuted} strokeWidth={1.5} />
-                <Text style={[styles.emptyTitle, { color: theme.text }]}>
+                <Text style={[styles.emptyTitle, { color: theme.text }]} accessibilityRole="header" maxFontSizeMultiplier={1.4}>
                   {t('security.noDevices')}
                 </Text>
-                <Text style={[styles.emptyText, { color: theme.textMuted }]}>
+                <Text style={[styles.emptyText, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>
                   {t('security.noDevicesHint')}
                 </Text>
               </View>
@@ -632,26 +743,26 @@ export default function SecurityScreen() {
                     </View>
                     <View style={styles.deviceInfo}>
                       <View style={styles.deviceNameRow}>
-                        <Text style={[styles.deviceName, { color: theme.text }]}>
+                        <Text style={[styles.deviceName, { color: theme.text }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>
                           {device.deviceName}
                         </Text>
                         {device.isCurrentDevice && (
                           <View style={[styles.currentBadge, { backgroundColor: theme.success + '18' }]}>
-                            <Text style={[styles.currentBadgeText, { color: theme.success }]}>
+                            <Text style={[styles.currentBadgeText, { color: theme.success }]} numberOfLines={1} maxFontSizeMultiplier={1.2}>
                               {t('security.currentDevice')}
                             </Text>
                           </View>
                         )}
                       </View>
                       {device.deviceOS && (
-                        <Text style={[styles.deviceOS, { color: theme.textMuted }]}>
+                        <Text style={[styles.deviceOS, { color: theme.textMuted }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>
                           {device.deviceOS}
                         </Text>
                       )}
                       {device.userName && (
                         <View style={[styles.deviceMeta, { marginTop: 3 }]}>
                           <User size={11} color={device.userType === 'team_member' ? theme.warning : theme.primary} />
-                          <Text style={[styles.deviceMetaText, { color: device.userType === 'team_member' ? theme.warning : theme.primary, fontWeight: '600' }]}>
+                          <Text style={[styles.deviceMetaText, { color: device.userType === 'team_member' ? theme.warning : theme.primary, fontWeight: '600' }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>
                             {device.userName}
                           </Text>
                           <View style={[
@@ -661,7 +772,7 @@ export default function SecurityScreen() {
                             <Text style={[
                               styles.userTypeBadgeText,
                               { color: device.userType === 'team_member' ? theme.warning : theme.primary },
-                            ]}>
+                            ]} numberOfLines={1} maxFontSizeMultiplier={1.2}>
                               {device.userType === 'team_member' ? t('security.teamBadge') : t('security.ownerBadge')}
                             </Text>
                           </View>
@@ -669,13 +780,17 @@ export default function SecurityScreen() {
                       )}
                       <View style={styles.deviceMeta}>
                         <Clock size={11} color={theme.textMuted} />
-                        <Text style={[styles.deviceMetaText, { color: theme.textMuted }]}>
+                        <Text style={[styles.deviceMetaText, { color: theme.textMuted }]} numberOfLines={1}>
                           {timeAgo(device.lastActiveAt)}
                         </Text>
                         {device.ipAddress && (
                           <>
                             <Wifi size={11} color={theme.textMuted} style={{ marginLeft: 8 }} />
-                            <Text style={[styles.deviceMetaText, { color: theme.textMuted }]}>
+                            <Text
+                              style={[styles.deviceMetaText, { color: theme.textMuted }]}
+                              numberOfLines={1}
+                              accessibilityLabel={`IP ${device.ipAddress.split('.').join(' ')}`}
+                            >
                               {device.ipAddress}
                             </Text>
                           </>
@@ -687,6 +802,9 @@ export default function SecurityScreen() {
                       <TouchableOpacity
                         onPress={() => handleRemoveDevice(device)}
                         style={[styles.removeBtn, { backgroundColor: theme.danger + '12' }]}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        accessibilityRole="button"
+                        accessibilityLabel={t('security.removeDeviceA11y')}
                       >
                         <Trash2 size={16} color={theme.danger} />
                       </TouchableOpacity>
@@ -771,7 +889,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     gap: 10,
   },
-  input: { flex: 1, fontSize: 15, paddingVertical: 13, fontFamily: 'Lexend_500Medium' },
+  input: { flex: 1, fontSize: 15, paddingVertical: 13, fontFamily: 'Lexend_500Medium', textAlign: I18nManager.isRTL ? 'right' : 'left' },
 
   strengthRow: {
     flexDirection: 'row',
