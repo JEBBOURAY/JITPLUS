@@ -16,8 +16,9 @@ COPY apps/backend/package.json ./apps/backend/
 COPY apps/backend/prisma ./apps/backend/prisma/
 
 # Install ALL dependencies (including devDependencies for build)
+# Ignore scripts to prevent external failures on dependencies like missing python/node-gyp
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
-    pnpm install --frozen-lockfile --filter backend...
+    pnpm install --frozen-lockfile --filter backend... --ignore-scripts
 
 # Copy backend source code
 COPY apps/backend/ ./apps/backend/
@@ -43,9 +44,11 @@ RUN corepack enable && corepack prepare pnpm@10.29.3 --activate
 COPY apps/backend/package.json ./
 COPY apps/backend/prisma ./prisma/
 
-# Install ONLY production dependencies (standalone, flat node_modules — no workspace symlinks)
+# Install ONLY production dependencies (standalone, flat node_modules)
+# Disable automatic installation scripts to prevent unknown ones from failing,
+# and define only the ones we actually want.
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
-    pnpm install --prod --no-frozen-lockfile
+    pnpm install --prod --no-frozen-lockfile --ignore-scripts
 
 # Generate Prisma Client (needed for runtime engine binaries)
 RUN pnpm exec prisma generate --schema ./prisma/schema.prisma
