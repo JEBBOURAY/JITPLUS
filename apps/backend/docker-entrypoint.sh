@@ -16,6 +16,42 @@ else
     export DATABASE_URL="$DIRECT_DATABASE_URL"
   fi
 
+  # ── Auto-resolve failed migrations (P3009) ──────────────────────────────
+  # If a previous Cloud Run Job attempt left a migration in a "failed" state
+  # in _prisma_migrations, `migrate deploy` refuses to proceed. We detect
+  # those rows and mark them as rolled-back so the migration can be retried.
+  # The DDL in our migrations runs in a single transaction, so a failed run
+  # leaves no partial changes to revert in the app DB.
+  echo "[Entrypoint] Checking for previously failed migrations..."
+  FAILED_MIGRATIONS=$(node -e "
+    const{PrismaClient}=require('@prisma/client');
+    (async()=>{
+      const p=new PrismaClient();
+      try{
+        const rows=await p.\$queryRawUnsafe(
+          \"SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL\"
+        );
+        console.log(rows.map(r=>r.migration_name).join('\n'));
+      }catch(e){
+        // Table may not exist yet on a fresh DB — nothing to resolve.
+        if(!/does not exist/i.test(String(e))) throw e;
+      }finally{await p.\$disconnect();}
+    })();
+  " 2>/dev/null || true)
+
+  if [ -n "$FAILED_MIGRATIONS" ]; then
+    echo "[Entrypoint] Found failed migrations, resolving as rolled-back:"
+    echo "$FAILED_MIGRATIONS"
+    echo "$FAILED_MIGRATIONS" | while IFS= read -r mig; do
+      if [ -n "$mig" ]; then
+        echo "[Entrypoint]   → prisma migrate resolve --rolled-back $mig"
+        ./node_modules/.bin/prisma migrate resolve \
+          --schema ./prisma/schema.prisma \
+          --rolled-back "$mig" || true
+      fi
+    done
+  fi
+
   # Use the locally installed Prisma CLI (avoids npx downloading it)
   ./node_modules/.bin/prisma migrate deploy --schema ./prisma/schema.prisma
   echo "[Entrypoint] Migrations complete."
