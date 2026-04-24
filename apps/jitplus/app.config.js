@@ -140,6 +140,20 @@ module.exports = ({ config }) => {
       '@react-native-google-signin/google-signin',
       'expo-apple-authentication',
       [
+        'expo-build-properties',
+        {
+          ios: {
+            deploymentTarget: '15.1',
+          },
+          android: {
+            compileSdkVersion: 36,
+            targetSdkVersion: 35,
+            minSdkVersion: 24,
+            buildToolsVersion: '35.0.0',
+          },
+        },
+      ],
+      [
         'expo-splash-screen',
         {
           image: './assets/images/jitpluslogo.png',

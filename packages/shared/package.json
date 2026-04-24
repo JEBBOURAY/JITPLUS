@@ -9,16 +9,20 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@types/react": "~19.1.0",
-    "typescript": "^5.9.3"
+    "@types/react": "19.1.17",
+    "typescript": "^5.9.3",
+    "react": "19.1.0",
+    "react-native": "0.81.5",
+    "react-dom": "19.1.0",
+    "expo-router": "6.0.23"
   },
   "dependencies": {
-    "@react-native-async-storage/async-storage": "2.2.0",
     "@tanstack/query-async-storage-persister": "^5.90.24",
     "axios": "^1.13.6",
     "socket.io-client": "^4.8.3"
   },
   "peerDependencies": {
+    "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-community/netinfo": ">=11.0.0",
     "lucide-react-native": ">=0.300.0",
     "expo-router": ">=6.0.0",

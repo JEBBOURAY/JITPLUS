@@ -49,7 +49,7 @@ config.resolver.nodeModulesPaths = [...new Set(config.resolver.nodeModulesPaths)
 // 3. Follow pnpm symlinks/junctions on Windows only
 // (Linux/macOS uses real symlinks that Metro follows natively)
 if (process.platform === 'win32') {
-  config.resolver.unstable_enableSymlinks = true;
+  // config.resolver.unstable_enableSymlinks = true;
 }
 
 // 4. Force a single copy of packages that break when duplicated (context mismatch).
