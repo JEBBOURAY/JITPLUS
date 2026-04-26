@@ -952,7 +952,18 @@ export class ClientService {
     }));
 
     const where = {
-      OR: merchantFilters,
+      AND: [
+        { OR: merchantFilters },
+        // Either it's a broadcast (visible to every client of that merchant)
+        // or it's a personal notification explicitly addressed to this client
+        // via a ClientNotificationStatus row created at send time.
+        {
+          OR: [
+            { isBroadcast: true },
+            { clientStatuses: { some: { clientId } } },
+          ],
+        },
+      ],
       ...(dismissedIds.length > 0 ? { id: { notIn: dismissedIds } } : {}),
     };
 
@@ -1020,17 +1031,31 @@ export class ClientService {
       createdAt: { gte: card.createdAt },
     }));
 
+    // Personal notifications must only count for their recipient — match either
+    // a broadcast or a notification with an explicit ClientNotificationStatus row.
+    const visibilityFilter = {
+      AND: [
+        { OR: merchantFilters },
+        {
+          OR: [
+            { isBroadcast: true },
+            { clientStatuses: { some: { clientId } } },
+          ],
+        },
+      ],
+    };
+
     // Parallelize the two independent counts
     const [totalNotifs, readOrDismissedCount] = await Promise.all([
       // Total non-dismissed notifications (only since client joined)
       this.notificationRepo.count({
-        where: { OR: merchantFilters },
+        where: visibilityFilter,
       }),
       // Notifications the client has explicitly read or dismissed
       this.clientNotifStatusRepo.count({
         where: {
           clientId,
-          notification: { OR: merchantFilters },
+          notification: visibilityFilter,
           OR: [{ isRead: true }, { isDismissed: true }],
         },
       }),
@@ -1073,7 +1098,17 @@ export class ClientService {
 
     const notifIds = (
       await this.notificationRepo.findMany({
-        where: { OR: merchantFilters },
+        where: {
+          AND: [
+            { OR: merchantFilters },
+            {
+              OR: [
+                { isBroadcast: true },
+                { clientStatuses: { some: { clientId } } },
+              ],
+            },
+          ],
+        },
         select: { id: true },
       })
     ).map((n: any) => n.id);
@@ -1148,7 +1183,17 @@ export class ClientService {
 
     const notifIds = (
       await this.notificationRepo.findMany({
-        where: { OR: merchantFilters },
+        where: {
+          AND: [
+            { OR: merchantFilters },
+            {
+              OR: [
+                { isBroadcast: true },
+                { clientStatuses: { some: { clientId } } },
+              ],
+            },
+          ],
+        },
         select: { id: true },
       })
     ).map((n: any) => n.id);

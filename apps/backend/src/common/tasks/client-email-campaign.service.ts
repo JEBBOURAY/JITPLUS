@@ -81,7 +81,7 @@ const SUBJECTS = {
   feature_stamps: {
     fr: '📋 Le saviez-vous ? Les cartes de tampons JitPlus !',
     en: '📋 Did you know? JitPlus stamp cards!',
-    ar: '📋 واش كنتي تعرف؟ كارطات الطوابع ديال جيت بلوس!',
+    ar: '📋 واش كنتي تعرف؟ كارطات الطوابع ديال JitPlus!',
   },
   feature_qr: {
     fr: '📱 Scanner = Gagner ! Découvrez comment ça marche',

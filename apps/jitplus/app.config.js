@@ -3,8 +3,12 @@ module.exports = ({ config }) => {
   // SECURITY: This key is bundled in the client. Restrict it in Google Cloud Console:
   //   - Application restriction: Android apps (SHA-1 + package) and iOS apps (bundle ID)
   //   - API restriction: Maps SDK for Android, Maps SDK for iOS only
-  const GOOGLE_MAPS_KEY_ANDROID = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_ANDROID || '';
-  const GOOGLE_MAPS_KEY_IOS = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_IOS || '';
+  // Platform-specific keys take precedence; fall back to the shared key injected by EAS.
+  const GOOGLE_MAPS_KEY_SHARED = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || '';
+  const GOOGLE_MAPS_KEY_ANDROID =
+    process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_ANDROID || GOOGLE_MAPS_KEY_SHARED;
+  const GOOGLE_MAPS_KEY_IOS =
+    process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_IOS || GOOGLE_MAPS_KEY_SHARED;
   // Reversed client ID from Google Cloud Console → OAuth 2.0 → iOS client
   // e.g. "com.googleusercontent.apps.XXXXXXX-YYYYYYY"
   const IOS_GOOGLE_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || '';
@@ -32,7 +36,7 @@ module.exports = ({ config }) => {
     name: 'JitPlus',
     slug: 'jitplus',
     description: 'Digital loyalty cards app — collect stamps and earn rewards at your favorite local shops.',
-    version: '1.3.7',
+    version: '1.3.8',
     orientation: 'portrait',
     icon: './assets/images/icon-white.png',
     scheme: 'jitplus',
@@ -52,7 +56,7 @@ module.exports = ({ config }) => {
       supportsTablet: false,
       bundleIdentifier: 'com.jitplus.client',
       // Initial build number — EAS autoIncrement bumps this on every production build
-      buildNumber: '33',
+      buildNumber: '34',
       // Portrait-only app: disable iPad Split View / Slide Over to avoid orientation-support review issues
       requiresFullScreen: true,
       // Firebase config for iOS — download from Firebase Console
@@ -81,7 +85,7 @@ module.exports = ({ config }) => {
       ],
     },
     android: {
-      versionCode: 32,
+      versionCode: 33,
       icon: './assets/images/icon-white.png',
       adaptiveIcon: {
         foregroundImage: './assets/images/adaptive-icon-white.png',

@@ -230,7 +230,7 @@ export default function AccountScreen() {
 
   const openSupport = useCallback(() => {
     const phone = process.env.EXPO_PUBLIC_SUPPORT_WHATSAPP || '212675346486';
-    const email = process.env.EXPO_PUBLIC_SUPPORT_EMAIL || 'support@jitplus.ma';
+    const email = process.env.EXPO_PUBLIC_SUPPORT_EMAIL || 'contact@jitplus.com';
     const msg = t('account.contactSupportMsg');
 
     const openWhatsApp = async () => {

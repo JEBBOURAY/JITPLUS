@@ -3,8 +3,12 @@ module.exports = ({ config }) => {
   // SECURITY: This key is bundled in the client. Restrict it in Google Cloud Console:
   //   - Application restriction: Android apps (SHA-1 + package) and iOS apps (bundle ID)
   //   - API restriction: Maps SDK for Android, Maps SDK for iOS, Geocoding API, Places API
-  const GOOGLE_MAPS_KEY_ANDROID = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_ANDROID || '';
-  const GOOGLE_MAPS_KEY_IOS = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_IOS || '';
+  // Platform-specific keys take precedence; fall back to the shared key injected by EAS.
+  const GOOGLE_MAPS_KEY_SHARED = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || '';
+  const GOOGLE_MAPS_KEY_ANDROID =
+    process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_ANDROID || GOOGLE_MAPS_KEY_SHARED;
+  const GOOGLE_MAPS_KEY_IOS =
+    process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_IOS || GOOGLE_MAPS_KEY_SHARED;
   // Reversed client ID from Google Cloud Console → OAuth 2.0 → iOS client
   const IOS_GOOGLE_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || '';
   const PRIVACY_POLICY_URL =
@@ -30,7 +34,7 @@ module.exports = ({ config }) => {
     name: 'JitPlus Pro',
     slug: 'jitpluspro',
     description: 'Loyalty program management for local shops — scan QR codes, track customer visits, and set up stamp-based rewards.',
-    version: '1.4.1',
+    version: '1.4.2',
     orientation: 'portrait',
     icon: './assets/images/icon-white.png',
     scheme: 'jitpluspro',
@@ -52,7 +56,7 @@ module.exports = ({ config }) => {
       supportsTablet: false,
       bundleIdentifier: 'com.jitplus.pro',
       // Initial build number — EAS autoIncrement bumps this on every production build
-      buildNumber: '5',
+      buildNumber: '6',
       // Portrait-only app: disable iPad Split View / Slide Over to avoid orientation-support review issues
       requiresFullScreen: true,
       // Declares standard HTTPS encryption — waives export compliance questionnaire
@@ -86,9 +90,13 @@ module.exports = ({ config }) => {
           ? { CFBundleURLTypes: [{ CFBundleURLSchemes: [IOS_GOOGLE_CLIENT_ID] }] }
           : {}),
       },
+      // Deep links: Universal Links for shared merchant URLs
+      associatedDomains: [
+        'applinks:jitplus-api-290470991104.europe-west9.run.app',
+      ],
     },
     android: {
-      versionCode: 5,
+      versionCode: 6,
       adaptiveIcon: {
         foregroundImage: './assets/images/adaptive-icon-white.png',
         backgroundColor: '#FFFFFF',
@@ -114,6 +122,20 @@ module.exports = ({ config }) => {
         'VIBRATE',
         // Required for expo-image-picker on Android 13+ (replaces READ_EXTERNAL_STORAGE)
         'READ_MEDIA_IMAGES',
+      ],
+      intentFilters: [
+        {
+          action: 'VIEW',
+          autoVerify: true,
+          data: [
+            {
+              scheme: 'https',
+              host: 'jitplus-api-290470991104.europe-west9.run.app',
+              pathPrefix: '/pro/referral',
+            },
+          ],
+          category: ['BROWSABLE', 'DEFAULT'],
+        },
       ],
       // Block excessive auto-injected permissions that trigger Play Console warnings
       blockedPermissions: [

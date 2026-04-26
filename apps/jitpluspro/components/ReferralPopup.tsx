@@ -50,8 +50,15 @@ export default function ReferralPopup({ visible, onClose, referralCode }: Props)
 
   const handleShare = async () => {
     try {
+      const iosAppId = process.env.EXPO_PUBLIC_IOS_APP_ID ?? '';
+      const androidUrl = 'https://play.google.com/store/apps/details?id=com.jitplus.pro';
+      const iosUrl = iosAppId
+        ? `https://apps.apple.com/app/id${iosAppId}`
+        : 'https://apps.apple.com/search?term=jitplus+pro';
+      const webUrl = `https://jitplus-api-290470991104.europe-west9.run.app/pro/referral`;
+      const links = `Lien: ${webUrl}\nCode: ${referralCode}`;
       await Share.share({
-        message: t('referralScreen.shareMessage', { code: referralCode ?? '' }),
+        message: t('referralScreen.shareMessage', { code: referralCode ?? '', links }),
         title: 'JitPlus Pro',
       });
     } catch (err: any) {
