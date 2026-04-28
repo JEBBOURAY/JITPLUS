@@ -66,8 +66,8 @@ describe('TRANSACTION_TYPE_CONFIG', () => {
     expect(TRANSACTION_TYPE_CONFIG.REDEEM_REWARD.color(mockTheme)).toBe(mockTheme.accent);
   });
 
-  it('ADJUST_POINTS uses accent color', () => {
-    expect(TRANSACTION_TYPE_CONFIG.ADJUST_POINTS.color(mockTheme)).toBe(mockTheme.accent);
+  it('ADJUST_POINTS uses muted text color', () => {
+    expect(TRANSACTION_TYPE_CONFIG.ADJUST_POINTS.color(mockTheme)).toBe(mockTheme.textMuted);
   });
 });
 

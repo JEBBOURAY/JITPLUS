@@ -52,11 +52,11 @@ export function useAuthMethods(
     }
   }, []);
 
-  const appleLogin = useCallback(async (identityToken: string, givenName?: string, familyName?: string) => {
+  const appleLogin = useCallback(async (identityToken: string, givenName?: string, familyName?: string, rawNonce?: string) => {
     sessionVersionRef.current++;
     try {
       await api.setRememberMe(true);
-      const response = await api.appleLogin(identityToken, givenName, familyName);
+      const response = await api.appleLogin(identityToken, givenName, familyName, rawNonce);
       store.setClient(response.client);
       logInfo('Auth', 'Apple login réussi:', response.client?.prenom, '| nouveau:', response.isNewUser);
       return { success: true, isNewUser: response.isNewUser };

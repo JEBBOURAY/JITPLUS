@@ -119,12 +119,19 @@ export default function QRScreen() {
 
       // ── Brightness boost ── maximize screen brightness for QR readability
       // (HIG / Material best practice for scannable codes). Restore on blur.
-      let previousBrightness: number | null = null;
+      // We override the WINDOW brightness (not system), then release it on blur
+      // via useSystemBrightnessAsync so the OS auto-brightness takes over again.
+      // A keep-alive every 2s re-applies max brightness if Android resets it
+      // (some OEMs revert window brightness when a system dialog/notification
+      // briefly takes focus).
+      let brightnessKeepAlive: ReturnType<typeof setInterval> | null = null;
       (async () => {
         try {
-          previousBrightness = await Brightness.getBrightnessAsync();
           await Brightness.setBrightnessAsync(1);
-        } catch { /* brightness unavailable — non-fatal */ }
+        } catch { /* set unavailable — non-fatal */ }
+        brightnessKeepAlive = setInterval(() => {
+          Brightness.setBrightnessAsync(1).catch(() => {});
+        }, 2000);
       })();
 
       // ── Screen capture protection ── prevent screenshots/recordings of the
@@ -139,10 +146,13 @@ export default function QRScreen() {
 
       return () => {
         isFocusedRef.current = false;
-        // Restore previous brightness on blur
-        if (previousBrightness != null) {
-          Brightness.setBrightnessAsync(previousBrightness).catch(() => {});
-        }
+        // Stop the brightness keep-alive loop
+        if (brightnessKeepAlive) clearInterval(brightnessKeepAlive);
+        // Release the window brightness override → the OS auto-brightness /
+        // user-set system brightness immediately takes over again. This is
+        // more reliable than restoring a captured numeric value (which can
+        // fail to read on some Android OEMs).
+        Brightness.useSystemBrightnessAsync().catch(() => {});
         ScreenCapture.allowScreenCaptureAsync('jitplus-qr').catch(() => {});
       };
     }, [fetchQrToken])

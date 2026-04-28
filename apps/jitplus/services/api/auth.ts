@@ -18,8 +18,8 @@ export function createAuthMethods(http: AxiosInstance) {
       await persistTokens(data);
       return data;
     },
-    async appleLogin(identityToken: string, givenName?: string, familyName?: string): Promise<AuthResponse> {
-      const { data } = await http.post('/client-auth/apple-login', { identityToken, givenName, familyName });
+    async appleLogin(identityToken: string, givenName?: string, familyName?: string, rawNonce?: string): Promise<AuthResponse> {
+      const { data } = await http.post('/client-auth/apple-login', { identityToken, givenName, familyName, rawNonce });
       await persistTokens(data);
       return data;
     },

@@ -1020,8 +1020,9 @@ export class AuthService {
 
   /**
    * Verify an Apple identity token using Apple's JWKS (public keys).
+   * If `rawNonce` is provided, also verifies the JWT `nonce` claim equals sha256(rawNonce).
    */
-  private async verifyAppleToken(identityToken: string): Promise<{ sub: string; email?: string; email_verified?: string }> {
+  private async verifyAppleToken(identityToken: string, rawNonce?: string): Promise<{ sub: string; email?: string; email_verified?: string }> {
     const decoded = jwt.decode(identityToken, { complete: true });
     if (!decoded || typeof decoded === 'string' || !decoded.header.kid) {
       throw new UnauthorizedException('Token Apple invalide');
@@ -1049,7 +1050,18 @@ export class AuthService {
       algorithms: ['RS256'],
       issuer: 'https://appleid.apple.com',
       ...(appleBundleIds.length > 0 && { audience: appleBundleIds as [string, ...string[]] }),
-    }) as jwt.JwtPayload & { sub: string; email?: string; email_verified?: string };
+    }) as jwt.JwtPayload & { sub: string; email?: string; email_verified?: string; nonce?: string };
+
+    // If a raw nonce was provided, verify it matches the JWT nonce claim (replay-attack protection).
+    if (rawNonce) {
+      if (!payload.nonce) {
+        throw new UnauthorizedException('Token Apple invalide — nonce manquant');
+      }
+      const expectedNonce = createHash('sha256').update(rawNonce).digest('hex');
+      if (payload.nonce !== expectedNonce) {
+        throw new UnauthorizedException('Token Apple invalide — nonce incorrect');
+      }
+    }
 
     return payload;
   }
@@ -1250,7 +1262,7 @@ export class AuthService {
    */
   async appleLoginMerchant(dto: AppleLoginMerchantDto, ipAddress?: string): Promise<AuthResult> {
     try {
-      const payload = await this.verifyAppleToken(dto.identityToken);
+      const payload = await this.verifyAppleToken(dto.identityToken, dto.rawNonce);
       const { sub: appleId, email } = payload;
 
       if (!appleId) {

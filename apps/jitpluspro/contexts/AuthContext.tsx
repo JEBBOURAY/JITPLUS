@@ -144,7 +144,7 @@ interface AuthContextData {
   signIn: (credentials: LoginCredentials, rememberMe?: boolean) => Promise<void>;
   register: (data: RegisterData) => Promise<void>;
   googleLogin: (idToken: string) => Promise<{ success: boolean; error?: string; rawError?: unknown }>;
-  appleLogin: (identityToken: string, givenName?: string, familyName?: string) => Promise<{ success: boolean; error?: string; rawError?: unknown }>;
+  appleLogin: (identityToken: string, givenName?: string, familyName?: string, rawNonce?: string) => Promise<{ success: boolean; error?: string; rawError?: unknown }>;
   googleRegister: (idToken: string, businessData: GoogleRegisterData) => Promise<{ success: boolean; error?: string; rawError?: unknown }>;
   appleRegister: (identityToken: string, givenName: string | undefined, familyName: string | undefined, businessData: AppleRegisterData) => Promise<{ success: boolean; error?: string; rawError?: unknown }>;
   signOut: () => Promise<void>;
@@ -453,6 +453,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     identityToken: string,
     givenName?: string,
     familyName?: string,
+    rawNonce?: string,
   ): Promise<{ success: boolean; error?: string; rawError?: unknown }> => {
     try {
       logInfo('Auth', 'Apple login...');
@@ -462,6 +463,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         identityToken,
         givenName,
         familyName,
+        rawNonce,
         deviceName,
         deviceOS,
         deviceId,

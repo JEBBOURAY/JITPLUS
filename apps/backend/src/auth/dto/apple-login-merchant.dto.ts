@@ -29,4 +29,10 @@ export class AppleLoginMerchantDto {
   @IsOptional()
   @MaxLength(100)
   deviceId?: string;
+
+  /** Raw nonce used to derive the SHA-256 nonce sent to Apple. Used to verify the JWT `nonce` claim. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  rawNonce?: string;
 }
