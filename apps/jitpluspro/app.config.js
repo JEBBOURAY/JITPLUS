@@ -238,14 +238,17 @@ module.exports = ({ config }) => {
             "Permettre à JitPlus Pro d'accéder à votre position pour localiser votre commerce.",
         },
       ],
-      // Sentry — source map upload + native crash symbolication
-      // Requires EAS Secrets: SENTRY_ORG, SENTRY_PROJECT, SENTRY_AUTH_TOKEN
-      // Only register the plugin if SENTRY_AUTH_TOKEN is set — registering with
-      // placeholder values causes the native SDK to crash on Android launch.
-      ...(process.env.SENTRY_AUTH_TOKEN ? [['@sentry/react-native/expo', {
-        organization: process.env.SENTRY_ORG || '',
-        project: process.env.SENTRY_PROJECT || '',
-      }]] : []),
+      // Sentry — DISABLED at build time (auto dSYM/source-map upload).
+      // Native crash reporting via @sentry/react-native still works at runtime.
+      // The Xcode "Upload Debug Symbols to Sentry" script was failing on EAS iOS builders.
+      // Re-enable by setting SENTRY_ENABLE_BUILD_UPLOAD=true. Otherwise upload manually:
+      //   npx sentry-cli debug-files upload -o jitplus -p jitpluspro-mobile <path>
+      ...(process.env.SENTRY_AUTH_TOKEN && process.env.SENTRY_ENABLE_BUILD_UPLOAD === 'true'
+        ? [['@sentry/react-native/expo', {
+            organization: process.env.SENTRY_ORG || '',
+            project: process.env.SENTRY_PROJECT || '',
+          }]]
+        : []),
     ],
     extra: {
       googleMapsApiKeyAndroid: GOOGLE_MAPS_KEY_ANDROID,
