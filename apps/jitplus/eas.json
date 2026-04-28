@@ -30,9 +30,6 @@
     "production": {
       "autoIncrement": true,
       "channel": "production",
-      "ios": {
-        "image": "macos-sequoia-15.5-xcode-16.4"
-      },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://jitplus-api-290470991104.europe-west9.run.app",
         "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "$EXPO_PUBLIC_GOOGLE_MAPS_API_KEY",
