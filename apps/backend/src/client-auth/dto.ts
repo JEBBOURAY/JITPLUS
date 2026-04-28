@@ -45,6 +45,16 @@ export class AppleLoginDto {
   @IsString()
   @MaxLength(50)
   familyName?: string;
+
+  /**
+   * Raw nonce generated client-side before signInAsync.
+   * Backend verifies sha256(rawNonce) matches the `nonce` claim in the identity token
+   * to prevent replay attacks.
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  rawNonce?: string;
 }
 
 export class CompleteProfileDto {

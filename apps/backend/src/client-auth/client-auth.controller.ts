@@ -77,7 +77,7 @@ export class ClientAuthController {
   @Post('apple-login')
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 10 } })
   async appleLogin(@Body() dto: AppleLoginDto) {
-    return this.clientAuthService.appleLogin(dto.identityToken, dto.givenName, dto.familyName);
+    return this.clientAuthService.appleLogin(dto.identityToken, dto.givenName, dto.familyName, dto.rawNonce);
   }
 
   @Post('login-email')

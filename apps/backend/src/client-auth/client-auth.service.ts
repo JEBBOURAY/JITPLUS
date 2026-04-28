@@ -599,7 +599,7 @@ export class ClientAuthService {
    * Verify an Apple identity token using Apple's JWKS (public keys).
    * @returns Decoded JWT payload with sub, email, etc.
    */
-  private async verifyAppleToken(identityToken: string): Promise<{ sub: string; email?: string; email_verified?: string }> {
+  private async verifyAppleToken(identityToken: string, rawNonce?: string): Promise<{ sub: string; email?: string; email_verified?: string; nonce?: string }> {
     const decoded = jwt.decode(identityToken, { complete: true });
     if (!decoded || typeof decoded === 'string' || !decoded.header.kid) {
       throw new UnauthorizedException('error.auth.appleTokenInvalid');
@@ -628,7 +628,20 @@ export class ClientAuthService {
       algorithms: ['RS256'],
       issuer: 'https://appleid.apple.com',
       ...(appleBundleIds.length > 0 && { audience: appleBundleIds as [string, ...string[]] }),
-    }) as jwt.JwtPayload & { sub: string; email?: string; email_verified?: string };
+    }) as jwt.JwtPayload & { sub: string; email?: string; email_verified?: string; nonce?: string; nonce_supported?: boolean };
+
+    // Nonce validation — prevents replay attacks.
+    // The client generates a raw nonce, sends sha256(rawNonce) to Apple via signInAsync({nonce}),
+    // and forwards the raw nonce here. Apple embeds the (already-hashed) nonce in the JWT.
+    if (rawNonce) {
+      if (!payload.nonce) {
+        throw new UnauthorizedException('error.auth.appleNonceMissing');
+      }
+      const expected = createHash('sha256').update(rawNonce).digest('hex');
+      if (payload.nonce !== expected) {
+        throw new UnauthorizedException('error.auth.appleNonceMismatch');
+      }
+    }
 
     return payload;
   }
@@ -637,9 +650,9 @@ export class ClientAuthService {
    * Login with Apple identity token.
    * Verifies the token using Apple's JWKS endpoint.
    */
-  async appleLogin(identityToken: string, givenName?: string, familyName?: string): Promise<ClientAuthResponse> {
+  async appleLogin(identityToken: string, givenName?: string, familyName?: string, rawNonce?: string): Promise<ClientAuthResponse> {
     try {
-      const payload = await this.verifyAppleToken(identityToken);
+      const payload = await this.verifyAppleToken(identityToken, rawNonce);
       const { sub: appleId, email } = payload;
 
       if (!appleId) {
