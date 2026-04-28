@@ -217,6 +217,8 @@ module.exports = ({ config }) => {
       './plugins/withMoroccoRegion',
       // Enable RTL support on Android — required for Arabic/Darija layout
       './plugins/withSupportsRTL',
+      // Disable Swift 6 strict concurrency for all pods (Xcode 26 + expo-image@55.0.9 incompat)
+      './plugins/withDisableStrictConcurrency',
       [
         'expo-notifications',
         {
