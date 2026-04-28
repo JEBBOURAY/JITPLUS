@@ -193,6 +193,7 @@ export default function QRScreen() {
           {(() => {
             const qrCard = (
               <View style={[styles.qrCard, { backgroundColor: theme.bgCard }]}>
+
                 {/* Card header */}
                 <View style={styles.qrCardHeader}>
                   <Image

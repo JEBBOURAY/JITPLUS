@@ -8,7 +8,7 @@ import {
 } from '../common/repositories';
 import { randomInt, randomBytes, createHash, createHmac, randomUUID } from 'crypto';
 import * as bcrypt from 'bcryptjs';
-import { OTP_MIN, OTP_MAX, OTP_EXPIRY_MS, OTP_COOLDOWN_MS, MAX_OTP_ATTEMPTS, BCRYPT_SALT_ROUNDS, CLIENT_REFRESH_TOKEN_DAYS, MS_PER_DAY, QR_TOKEN_TTL_SECONDS } from '../common/constants';
+import { OTP_MIN, OTP_MAX, OTP_EXPIRY_MS, OTP_COOLDOWN_MS, MAX_OTP_ATTEMPTS, BCRYPT_SALT_ROUNDS, CLIENT_REFRESH_TOKEN_DAYS, MS_PER_DAY } from '../common/constants';
 import { errMsg } from '../common/utils';
 import { checkLockout, handleFailedLogin, resetLoginAttempts, LockoutDbOps } from '../common/utils/login-lockout.helper';
 import { CLIENT_AUTH_SELECT, CLIENT_LOGIN_SELECT } from '../common/prisma-selects';
@@ -953,16 +953,16 @@ export class ClientAuthService {
   }
   // Ã¢â€â‚¬Ã¢â€â‚¬ QR Token Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
   /**
-   * Short-lived HMAC-signed QR token for merchant scanning.
-   * Format v2: "v2." + base64url(clientId) + "." + exp + "." + nonce + "."
-   *            + HMAC-SHA256(secret, "v2:" + clientId + ":" + exp + ":" + nonce)
-   * - exp: unix seconds when the token becomes invalid (~60 s from now)
-   * - nonce: 16 random bytes (base64url) — single-use, enforced server-side
+   * HMAC-signed permanent QR token for merchant scanning.
    *
-   * Legacy format v1 ("v1." + base64url(clientId) + "." + HMAC-SHA256(secret, "v1:" + clientId))
-   * is still accepted by the verifier during the rollout window.
+   * Format v1: "v1." + base64url(clientId) + "." + HMAC-SHA256(secret, "v1:" + clientId)
+   *
+   * Product decision: the loyalty QR is bound to the client identity and must
+   * remain valid indefinitely (no rotation, no single-use). The verifier still
+   * accepts v0/v1/v2; v2 short-lived tokens are kept on the verifier side only
+   * for backward compatibility with already-installed app versions.
    */
-  async generateQrToken(clientId: string): Promise<{ qr_token: string; expiresAt: number }> {
+  async generateQrToken(clientId: string): Promise<{ qr_token: string; expiresAt: number | null }> {
     const client = await this.clientRepo.findUnique({ where: { id: clientId }, select: { id: true } });
     if (!client) {
       throw new BadRequestException('error.auth.clientNotFound');
@@ -970,14 +970,12 @@ export class ClientAuthService {
 
     const secret = this.configService.getOrThrow<string>('QR_HMAC_SECRET');
     const idPart = Buffer.from(client.id).toString('base64url');
-    const exp = Math.floor(Date.now() / 1000) + QR_TOKEN_TTL_SECONDS;
-    const nonce = randomBytes(16).toString('base64url');
     const sig = createHmac('sha256', secret)
-      .update(`v2:${client.id}:${exp}:${nonce}`)
+      .update(`v1:${client.id}`)
       .digest('base64url');
-    const qr_token = `v2.${idPart}.${exp}.${nonce}.${sig}`;
+    const qr_token = `v1.${idPart}.${sig}`;
 
-    return { qr_token, expiresAt: exp };
+    return { qr_token, expiresAt: null };
   }
   // â”€â”€ Change Contact OTP (profile update) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
