@@ -24,6 +24,9 @@ const SNIPPET = `
   ${MARKER}
   installer.pods_project.targets.each do |target|
     target.build_configurations.each do |config|
+      # Force Swift 5 language mode to disable Swift 6 data-race safety errors
+      # (expo-image@55.0.9 has non-Sendable static properties that fail in Swift 6 mode)
+      config.build_settings['SWIFT_VERSION'] = '5.0'
       config.build_settings['SWIFT_STRICT_CONCURRENCY'] = 'minimal'
       config.build_settings['SWIFT_UPCOMING_FEATURE_STRICT_CONCURRENCY'] = 'NO'
     end
