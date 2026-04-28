@@ -2,20 +2,56 @@ import { Logger } from '@nestjs/common';
 import type { ICampaignSentTrackerRepository } from '../repositories';
 
 // ── Cron enable/disable gate ─────────────────────────────────────────────
-// Scheduled marketing tasks (push + email) are **opt-in via env** to avoid
-// accidentally blasting real users in dev/preview/CI environments.
+// Scheduled marketing tasks (push + email) must NOT fire in dev/preview/CI
+// environments where they could blast real users. We use a sensible default:
 //
-// Set `ENABLE_CRONS=true` (typically only in production) to let @Cron
-// decorated methods actually do their work. Any other value (undefined,
-// 'false', 'no', '0', …) short-circuits the body with a single log line.
+//   - In production (NODE_ENV=production): crons run UNLESS explicitly
+//     disabled via ENABLE_CRONS=false. This preserves the historical
+//     behaviour and avoids silent "no notifications" outages when the env
+//     var is forgotten in a deploy config.
+//   - In any other environment: crons are OFF by default and must be
+//     explicitly enabled with ENABLE_CRONS=true.
+//
+// If a production deploy explicitly disables crons we ALSO surface a Sentry
+// warning — this is almost certainly a misconfiguration worth investigating.
 //
 // Usage (inside a @Cron method):
 //   if (!isCronEnabled(this.logger, 'MyCron.run')) return;
+let _warnedProdDisabled = false;
 export function isCronEnabled(logger: Logger, name: string): boolean {
   const raw = (process.env.ENABLE_CRONS ?? '').trim().toLowerCase();
-  const enabled = raw === 'true' || raw === '1' || raw === 'yes';
+  const isProd = (process.env.NODE_ENV ?? '').trim().toLowerCase() === 'production';
+
+  let enabled: boolean;
+  if (raw === 'true' || raw === '1' || raw === 'yes') {
+    enabled = true;
+  } else if (raw === 'false' || raw === '0' || raw === 'no') {
+    enabled = false;
+  } else {
+    // Unset / unknown value: ON in production, OFF elsewhere.
+    enabled = isProd;
+  }
+
   if (!enabled) {
-    logger.log(`[${name}] skipped — ENABLE_CRONS is not true`);
+    logger.log(`[${name}] skipped — crons disabled (ENABLE_CRONS=${raw || 'unset'}, NODE_ENV=${process.env.NODE_ENV || 'unset'})`);
+
+    // Surface a one-time Sentry warning when crons are explicitly disabled
+    // in production — almost always a deploy-config mistake.
+    if (isProd && !_warnedProdDisabled) {
+      _warnedProdDisabled = true;
+      logger.error(`Crons are DISABLED in production (ENABLE_CRONS=${raw}). Automated notifications will NOT be sent.`);
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const Sentry = require('@sentry/node');
+        Sentry.captureMessage?.('Crons disabled in production', {
+          level: 'warning',
+          tags: { source: 'cron-utils', env: 'production' },
+          extra: { ENABLE_CRONS: raw },
+        });
+      } catch {
+        // Sentry not installed — already logged.
+      }
+    }
   }
   return enabled;
 }
