@@ -18,17 +18,17 @@ const path = require('path');
 
 const MARKER = '# === withDisableStrictConcurrency ===';
 
-const HOOK = `
-${MARKER}
-post_install do |installer|
+// Snippet injected INSIDE the existing post_install hook (Expo generates one
+// already; CocoaPods doesn't allow multiple post_install blocks).
+const SNIPPET = `
+  ${MARKER}
   installer.pods_project.targets.each do |target|
     target.build_configurations.each do |config|
       config.build_settings['SWIFT_STRICT_CONCURRENCY'] = 'minimal'
       config.build_settings['SWIFT_UPCOMING_FEATURE_STRICT_CONCURRENCY'] = 'NO'
     end
   end
-end
-${MARKER}
+  # === end withDisableStrictConcurrency ===
 `;
 
 module.exports = function withDisableStrictConcurrency(config) {
@@ -43,7 +43,20 @@ module.exports = function withDisableStrictConcurrency(config) {
       if (contents.includes(MARKER)) {
         return cfg;
       }
-      contents = contents.trimEnd() + '\n' + HOOK + '\n';
+
+      const postInstallRegex = /post_install\s+do\s*\|installer\|/;
+      if (postInstallRegex.test(contents)) {
+        contents = contents.replace(
+          postInstallRegex,
+          (match) => match + SNIPPET
+        );
+      } else {
+        // Fallback (shouldn't happen with Expo template)
+        contents =
+          contents.trimEnd() +
+          `\npost_install do |installer|\n${SNIPPET}\nend\n`;
+      }
+
       fs.writeFileSync(podfilePath, contents);
       return cfg;
     },
