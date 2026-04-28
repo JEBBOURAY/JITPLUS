@@ -7,7 +7,7 @@ import { useCallback, useRef } from 'react';
  * Usage:
  *   const guardedRefresh = useGuardedCallback(async () => { await refetch(); });
  */
-export function useGuardedCallback<T extends (...args: unknown[]) => Promise<unknown>>(
+export function useGuardedCallback<T extends (...args: never[]) => Promise<unknown>>(
   fn: T,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _deps: React.DependencyList = [],
@@ -19,7 +19,7 @@ export function useGuardedCallback<T extends (...args: unknown[]) => Promise<unk
   // Stable callback — never changes identity, always calls latest fn
   // eslint-disable-next-line react-hooks/exhaustive-deps
   return useCallback(
-    (async (...args: unknown[]) => {
+    (async (...args: never[]) => {
       if (runningRef.current) return;
       runningRef.current = true;
       try {

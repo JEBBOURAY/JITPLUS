@@ -88,9 +88,9 @@
         "track": "production"
       },
       "ios": {
-        "appleId": "$APPLE_ID",
+        "appleId": "contact@jitplus.com",
         "ascAppId": "$ASC_APP_ID",
-        "appleTeamId": "$APPLE_TEAM_ID"
+        "appleTeamId": "53X2DQJH29"
       }
     }
   }
