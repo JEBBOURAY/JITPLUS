@@ -45,6 +45,7 @@ interface RegState {
   appleIdentityToken: string | null;
   appleGivenName: string | undefined;
   appleFamilyName: string | undefined;
+  appleRawNonce: string | null;
   email: string;
   password: string;
   confirmPassword: string;
@@ -82,6 +83,7 @@ const initialRegState: RegState = {
   appleIdentityToken: null,
   appleGivenName: undefined,
   appleFamilyName: undefined,
+  appleRawNonce: null,
   email: '',
   password: '',
   confirmPassword: '',
@@ -266,12 +268,15 @@ export default function RegisterScreen() {
   }, [step, set, animateStepTransition]);
   const google = useGoogleIdToken(handleGoogleToken);
 
-  // Apple ID token capture — same flow as Google (skip password)
-  const handleAppleToken = useCallback((data: { identityToken: string; givenName?: string; familyName?: string }) => {
+  // Apple ID token capture — same flow as Google (skip password).
+  // Note: Apple only returns fullName on the very first sign-in. On retry the fields
+  // come back undefined — we preserve the previously captured name to avoid losing it.
+  const handleAppleToken = useCallback((data: { identityToken: string; givenName?: string; familyName?: string; rawNonce: string }) => {
     set({
       appleIdentityToken: data.identityToken,
-      appleGivenName: data.givenName,
-      appleFamilyName: data.familyName,
+      ...(data.givenName !== undefined && { appleGivenName: data.givenName }),
+      ...(data.familyName !== undefined && { appleFamilyName: data.familyName }),
+      appleRawNonce: data.rawNonce,
       googleIdToken: null,
     });
     if (step === 0) {
@@ -319,6 +324,7 @@ export default function RegisterScreen() {
       referralCode: rc,
       googleIdToken: gToken, appleIdentityToken: aToken,
       appleGivenName: aGivenName, appleFamilyName: aFamilyName,
+      appleRawNonce: aRawNonce,
       email: em, password: pw,
     } = sRef.current;
 
@@ -382,7 +388,7 @@ export default function RegisterScreen() {
         const result = await appleRegister(aToken, aGivenName, aFamilyName, {
           ...storeData,
           termsAccepted,
-        });
+        }, aRawNonce ?? undefined);
         if (result.success) {
           router.replace('/(tabs)');
         } else {
@@ -562,7 +568,7 @@ export default function RegisterScreen() {
                   googleIdToken={googleIdToken}
                   setGoogleIdToken={(v) => set({ googleIdToken: v })}
                   appleIdentityToken={appleIdentityToken}
-                  setAppleIdentityToken={(v) => set({ appleIdentityToken: v, appleGivenName: undefined, appleFamilyName: undefined })}
+                  setAppleIdentityToken={(v) => set({ appleIdentityToken: v, appleGivenName: undefined, appleFamilyName: undefined, appleRawNonce: null })}
                   google={google}
                   apple={apple}
                   isLoading={isLoading}

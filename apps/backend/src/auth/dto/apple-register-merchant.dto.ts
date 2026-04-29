@@ -25,6 +25,12 @@ export class AppleRegisterMerchantDto {
   @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
   familyName?: string;
 
+  /** Raw nonce used to derive the SHA-256 nonce sent to Apple. Used to verify the JWT `nonce` claim (replay protection). */
+  @IsString()
+  @IsOptional()
+  @MaxLength(128)
+  rawNonce?: string;
+
   @IsString()
   @IsOptional()
   @MaxLength(100, { message: 'Le nom ne doit pas dépasser 100 caractères' })

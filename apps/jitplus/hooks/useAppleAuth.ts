@@ -8,7 +8,6 @@ import { Platform } from 'react-native';
 import * as Crypto from 'expo-crypto';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAuthProvider } from './useAuthProvider';
-import i18n from '@/i18n';
 
 // Lazy-load so Android/web doesn't crash
 let AppleAuthentication: typeof import('expo-apple-authentication') | null = null;
@@ -35,7 +34,6 @@ export function useAppleAuth({ actionLabel, onCancel }: UseAppleAuthOptions) {
     auth.reset();
 
     if (!AppleAuthentication || Platform.OS !== 'ios') {
-      auth.setLoading(false);
       auth.handleError(null, 'appleAuth');
       return;
     }
@@ -59,7 +57,6 @@ export function useAppleAuth({ actionLabel, onCancel }: UseAppleAuthOptions) {
       });
 
       if (!credential.identityToken) {
-        auth.setLoading(false);
         auth.handleError(null, 'appleAuth');
         return;
       }
@@ -80,8 +77,6 @@ export function useAppleAuth({ actionLabel, onCancel }: UseAppleAuthOptions) {
         return;
       }
       auth.handleError(e, 'appleAuth');
-    } finally {
-      if (auth.mountedRef.current) auth.setLoading(false);
     }
   }, [appleLogin, auth, onCancel]);
 

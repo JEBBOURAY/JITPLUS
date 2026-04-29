@@ -22,7 +22,7 @@ export type AdminEnv = 'dev' | 'prod';
 
 const ENV_URLS: Record<AdminEnv, string> = {
   dev: 'http://localhost:3000/api/v1',
-  prod: '/api/prod',  // proxied via Vite dev server → Cloud Run (avoids CORS)
+  prod: 'https://jitplus-api-290470991104.europe-west9.run.app/api/v1', // direct URL to Cloud Run
 };
 
 const STORAGE_KEY = 'admin_env';

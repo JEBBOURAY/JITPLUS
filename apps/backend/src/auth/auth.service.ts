@@ -1071,11 +1071,11 @@ export class AuthService {
    * Mirrors googleRegisterMerchant but uses Apple identity token.
    */
   async appleRegisterMerchant(dto: AppleRegisterMerchantDto): Promise<AuthResult> {
-    // 1. Verify the Apple token
+    // 1. Verify the Apple token (with nonce replay-attack protection when available)
     let appleId: string;
     let appleEmail: string;
     try {
-      const payload = await this.verifyAppleToken(dto.identityToken);
+      const payload = await this.verifyAppleToken(dto.identityToken, dto.rawNonce);
       appleId = payload.sub;
       appleEmail = payload.email?.toLowerCase() ?? '';
 
@@ -1288,6 +1288,14 @@ export class AuthService {
           if (!merchant.appleId) {
             throw new UnauthorizedException(
               'Un compte existe avec cet email. Connectez-vous avec votre mot de passe, puis liez votre compte Apple depuis les paramètres.',
+            );
+          }
+          // Strict check: the existing Apple ID linked to this merchant must match
+          // the one in the verified token. Prevents cross-account access if two
+          // Apple IDs ever share the same email.
+          if (merchant.appleId !== appleId) {
+            throw new UnauthorizedException(
+              'Identifiant Apple non reconnu pour ce compte.',
             );
           }
         }

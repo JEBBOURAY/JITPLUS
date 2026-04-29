@@ -85,7 +85,7 @@ module.exports = ({ config }) => {
       ],
     },
     android: {
-      versionCode: 40,
+      versionCode: 42,
       icon: './assets/images/icon-white.png',
       adaptiveIcon: {
         foregroundImage: './assets/images/adaptive-icon-white.png',

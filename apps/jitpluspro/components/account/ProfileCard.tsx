@@ -1,7 +1,7 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Pressable, I18nManager } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
-import { Camera, Lock, Crown, Zap, Calendar, AlertCircle, Gift, ChevronRight, Copy, Check, Bell, Edit3 } from 'lucide-react-native';
+import { Camera, Lock, Crown, Zap, Calendar, AlertCircle, Gift, ChevronRight, Copy, Check, Bell, Edit3, Send } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import MerchantLogo from '@/components/MerchantLogo';
@@ -21,11 +21,12 @@ interface Props {
   unreadCount?: number;
   onNotifPress?: () => void;
   onEditName?: () => void;
+  onSharePress?: () => void;
 }
 
 export default React.memo(function ProfileCard({
   theme, t, locale, merchant, uploadIsPending, onLogoPress, referralCode, router,
-  unreadCount = 0, onNotifPress, onEditName,
+  unreadCount = 0, onNotifPress, onEditName, onSharePress,
 }: Props) {
   const isPremium = merchant?.plan === 'PREMIUM';
   const isAdminPremium = merchant?.planActivatedByAdmin === true;
@@ -96,6 +97,20 @@ export default React.memo(function ProfileCard({
               <Text style={styles.bellBadgeText} maxFontSizeMultiplier={1.2}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
             </View>
           )}
+        </TouchableOpacity>
+      )}
+
+      {/* -- Share merchant card button (top, opposite side from bell) ---- */}
+      {onSharePress && (
+        <TouchableOpacity
+          onPress={onSharePress}
+          activeOpacity={0.7}
+          style={[styles.shareBtn, I18nManager.isRTL ? styles.shareBtnRtl : styles.shareBtnLtr]}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel={t('account.shareMerchant')}
+        >
+          <Send size={ms(20)} color={theme.primary} strokeWidth={1.8} />
         </TouchableOpacity>
       )}
 
@@ -453,6 +468,19 @@ const styles = StyleSheet.create({
   },
   notifBellLtr: { right: wp(14) },
   notifBellRtl: { left: wp(14) },
+  shareBtn: {
+    position: 'absolute',
+    top: hp(14),
+    zIndex: 10,
+    width: ms(40),
+    height: ms(40),
+    borderRadius: ms(20),
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#7C3AED12',
+  },
+  shareBtnLtr: { left: wp(14) },
+  shareBtnRtl: { right: wp(14) },
   bellBadge: {
     position: 'absolute',
     top: -2,

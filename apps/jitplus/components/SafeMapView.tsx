@@ -57,7 +57,10 @@ const SafeMapView = forwardRef<MapViewType, MapViewProps>((props, ref) => {
     );
   }
 
-  const providerProp = Platform.OS === 'android' && RN_PROVIDER_GOOGLE
+  // Force Google Maps on BOTH platforms so customMapStyle, tile rendering,
+  // POI styling and colors are identical on Android and iOS.
+  // Requires ios.config.googleMapsApiKey in app.config.js (already configured).
+  const providerProp = RN_PROVIDER_GOOGLE
     ? { provider: RN_PROVIDER_GOOGLE }
     : {};
   const configuredRenderer = (process.env.EXPO_PUBLIC_GOOGLE_MAPS_RENDERER ?? '').toUpperCase();
@@ -78,7 +81,7 @@ const SafeMapView = forwardRef<MapViewType, MapViewProps>((props, ref) => {
             ? NativeModules.SettingsManager?.settings?.AppleLocale ?? NativeModules.SettingsManager?.settings?.AppleLanguages?.[0]
             : NativeModules.I18nManager?.localeIdentifier;
           console.log(`[SafeMapView] ✓ Google Maps ready — device locale: ${locale}`);
-          console.log(`[SafeMapView] ✓ Provider: ${Platform.OS === 'android' ? 'PROVIDER_GOOGLE' : 'Apple Maps'}`);
+          console.log(`[SafeMapView] ✓ Provider: PROVIDER_GOOGLE (${Platform.OS})`);
           if (Platform.OS === 'android' && configuredRenderer) {
             console.log(`[SafeMapView] ✓ Android renderer: ${configuredRenderer}`);
           }

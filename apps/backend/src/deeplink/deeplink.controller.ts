@@ -25,8 +25,12 @@ const APP_STORE_PRO = IOS_PRO_APP_ID
   ? `https://apps.apple.com/app/id${IOS_PRO_APP_ID}`
   : 'https://apps.apple.com/search?term=jitplus+pro';
 
-/** CUID format: starts with 'c', 24 lowercase alphanumeric chars */
-const CUID_RE = /^c[a-z0-9]{24}$/;
+/**
+ * Merchant id format. Prisma `@default(uuid())` produces lowercase RFC 4122
+ * UUIDs (36 chars with dashes). We also accept legacy CUIDs (`c` + 24 chars)
+ * for any historic share links still in circulation.
+ */
+const MERCHANT_ID_RE = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|c[a-z0-9]{24})$/i;
 
 /**
  * Variant configuration: each app variant (client / pro) bundles the
@@ -175,7 +179,7 @@ export class DeeplinkController {
   @Get('m/:id')
   @Header('Cache-Control', 'no-store')
   handleMerchantLink(@Param('id') id: string, @Res() res: Response): void {
-    if (!CUID_RE.test(id)) {
+    if (!MERCHANT_ID_RE.test(id)) {
       res.status(400).send('Invalid link');
       return;
     }

@@ -504,6 +504,10 @@ export default {
     addProfilePhoto: 'Add a photo',
     deleteProfilePhoto: 'Delete photo',
 
+    // Share merchant card (opens client app via /m/:id)
+    shareMerchant: 'Share my store',
+    shareMerchantText: 'Discover %{name} on JitPlus!',
+
     deleteAccount: 'Delete account',
     deleteAccountConfirm: 'Delete account?',
     deleteAccountMsg: 'This action is irreversible. Your credentials will be deleted and personal data anonymised. Transaction history is kept in anonymised form for accounting purposes.',

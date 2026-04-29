@@ -525,6 +525,10 @@ export default {
     addProfilePhoto: 'Ajouter une photo',
     deleteProfilePhoto: 'Supprimer la photo',
 
+    // Share merchant card (opens client app via /m/:id)
+    shareMerchant: 'Partager mon commerce',
+    shareMerchantText: 'Découvrez %{name} sur JitPlus !',
+
     // Delete account
     deleteAccount: 'Supprimer le compte',
     deleteAccountConfirm: 'Supprimer le compte ?',

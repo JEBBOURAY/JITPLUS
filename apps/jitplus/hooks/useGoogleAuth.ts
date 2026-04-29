@@ -87,7 +87,6 @@ export function useGoogleAuth({ actionLabel, onCancel }: UseGoogleAuthOptions) {
       }
 
       const result = await googleLogin(idToken);
-      auth.setLoading(false);
       await auth.handleResult(result, 'googleAuth');
     } catch (err) {
       auth.setLoading(false);

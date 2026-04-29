@@ -261,22 +261,23 @@ function RootLayoutNav() {
 
   // ── Deep link handler (shared merchant URLs + custom scheme) ──
   useEffect(() => {
-    const CUID_RE = /^c[a-z0-9]{24}$/;
+    // Merchant ids are Prisma `@default(uuid())` (RFC 4122) — we also accept
+    // legacy CUIDs for backwards compatibility with old share links.
+    const MERCHANT_ID_RE = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|c[a-z0-9]{24})$/i;
+    // Match either jitplus://merchant/:id or https://<any-host>/m/:id.
+    // Stripping query/fragment up-front avoids edge cases with the URL polyfill
+    // on Hermes (custom schemes occasionally mis-parse hostnames on Android).
+    const SHARE_LINK_RE = /^(?:jitplus:\/\/merchant\/|https?:\/\/[^/]+\/m\/)([^/?#]+)/i;
 
     const handleUrl = (url: string) => {
-      try {
-        // Match both jitplus://merchant/:id and https://domain/m/:id
-        let merchantId: string | undefined;
-        const parsed = new URL(url);
-        if (parsed.protocol === 'jitplus:' && parsed.hostname === 'merchant') {
-          merchantId = parsed.pathname.replace(/^\//, '');
-        } else if (parsed.pathname.startsWith('/m/')) {
-          merchantId = parsed.pathname.slice(3);
-        }
-        if (merchantId && CUID_RE.test(merchantId)) {
-          router.push({ pathname: '/merchant/[id]', params: { id: merchantId } });
-        }
-      } catch { /* malformed URL — ignore */ }
+      const m = SHARE_LINK_RE.exec(url);
+      if (!m) return;
+      const merchantId = decodeURIComponent(m[1]).toLowerCase();
+      if (!MERCHANT_ID_RE.test(merchantId)) {
+        if (__DEV__) console.warn('Ignoring share link with invalid merchant id:', url);
+        return;
+      }
+      router.push({ pathname: '/merchant/[id]', params: { id: merchantId } });
     };
 
     // Handle URL that launched the app (cold start)

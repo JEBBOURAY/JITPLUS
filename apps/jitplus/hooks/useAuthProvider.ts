@@ -59,6 +59,8 @@ export function useAuthProvider({ actionLabel, onCancel }: AuthProviderOptions):
 
     if (result.success) {
       setIsSuccess(true);
+      // Keep the spinner active during the 600ms transition so the button cannot be re-tapped.
+      setIsLoading(true);
       haptic();
       if (result.isNewUser) {
         setTimeout(() => {
@@ -71,6 +73,7 @@ export function useAuthProvider({ actionLabel, onCancel }: AuthProviderOptions):
         }, 600);
       }
     } else {
+      setIsLoading(false);
       if (result.rawError && isNoAccountError(result.rawError)) {
         setNoAccount(true);
         setError(i18n.t(`${errorKey}.noAccountFound`));
@@ -82,6 +85,7 @@ export function useAuthProvider({ actionLabel, onCancel }: AuthProviderOptions):
 
   const handleError = useCallback((err: unknown, errorKey: string) => {
     if (!mountedRef.current) return;
+    setIsLoading(false);
     setError(i18n.t(`${errorKey}.error`, { action: actionLabel }));
   }, [actionLabel]);
 

@@ -1,0 +1,15 @@
+{
+  "projects": {
+    "default": "jitplus-97259"
+  },
+  "targets": {
+    "jitplus-97259": {
+      "hosting": {
+        "admin": [
+          "admin-jitplus-97259"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}

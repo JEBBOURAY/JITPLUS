@@ -170,10 +170,10 @@ const SafeMapView = forwardRef<SafeMapViewRef, SafeMapViewProps>((props, ref) =>
         : [];
   }, [allMarkerCoords, regionCoords]);
 
-  // Always use Google Maps provider on Android — Apple Maps is iOS-only.
-  // Previous code conditionally set provider based on Constants.expoConfig path
-  // which is often empty at runtime in production builds, causing maps to fail.
-  const providerProp = Platform.OS === 'android' ? { provider: RN_PROVIDER_GOOGLE } : {};
+  // Force Google Maps on BOTH platforms so customMapStyle, tile rendering,
+  // POI styling and colors are identical on Android and iOS.
+  // Requires ios.config.googleMapsApiKey in app.config.js (already configured).
+  const providerProp = RN_PROVIDER_GOOGLE ? { provider: RN_PROVIDER_GOOGLE } : {};
 
   if (RNMapView) {
     return (

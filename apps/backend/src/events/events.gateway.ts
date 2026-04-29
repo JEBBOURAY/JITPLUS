@@ -37,6 +37,10 @@ import {
         return cb(new Error('WebSocket CORS rejected: CORS_ORIGINS not configured'));
       }
       const allowed = corsOrigins.split(',').map((o) => o.trim());
+      // Forcer l'autorisation admin en prod
+      if (!allowed.includes('https://admin-jitplus-97259.web.app')) {
+        allowed.push('https://admin-jitplus-97259.web.app');
+      }
       if (allowed.includes(origin)) return cb(null, true);
       cb(new Error('WebSocket CORS rejected'));
     },

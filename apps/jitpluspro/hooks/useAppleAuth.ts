@@ -45,13 +45,15 @@ export function useAppleAuth({ onCancel }: UseAppleAuthOptions = {}) {
     setNoAccount(false);
     setIsLoading(true);
 
-    if (!AppleAuthentication || Platform.OS !== 'ios') {
-      setIsLoading(false);
-      setError(t('appleAuth.notAvailable'));
-      return;
-    }
+    // Tracks whether navigation will occur — keeps spinner visible during transition
+    let navigatingOnSuccess = false;
 
     try {
+      if (!AppleAuthentication || Platform.OS !== 'ios') {
+        setError(t('appleAuth.notAvailable'));
+        return;
+      }
+
       // Generate a cryptographically secure raw nonce, send sha256(rawNonce) to Apple,
       // and forward the raw nonce to the backend so it can verify the JWT `nonce` claim.
       // Prevents replay attacks (Apple security recommendation).
@@ -70,7 +72,6 @@ export function useAppleAuth({ onCancel }: UseAppleAuthOptions = {}) {
       });
 
       if (!credential.identityToken) {
-        setIsLoading(false);
         setError(t('appleAuth.noToken'));
         return;
       }
@@ -84,8 +85,8 @@ export function useAppleAuth({ onCancel }: UseAppleAuthOptions = {}) {
 
       if (!mountedRef.current) return;
 
-      setIsLoading(false);
       if (result.success) {
+        navigatingOnSuccess = true;
         router.replace('/(tabs)');
       } else {
         if (result.rawError && isNoAccountError(result.rawError)) {
@@ -98,7 +99,6 @@ export function useAppleAuth({ onCancel }: UseAppleAuthOptions = {}) {
       }
     } catch (e: unknown) {
       if (!mountedRef.current) return;
-      setIsLoading(false);
 
       const code = (e as { code?: string } | null)?.code;
       if (code === 'ERR_REQUEST_CANCELED') {
@@ -106,6 +106,11 @@ export function useAppleAuth({ onCancel }: UseAppleAuthOptions = {}) {
         return;
       }
       setError(t('appleAuth.error'));
+    } finally {
+      // Keep the spinner during navigation to avoid a brief re-enable flicker
+      if (mountedRef.current && !navigatingOnSuccess) {
+        setIsLoading(false);
+      }
     }
   }, [appleLogin, t]);
 

@@ -504,6 +504,10 @@ export default {
     addProfilePhoto: 'زيد تصويرة',
     deleteProfilePhoto: 'مسح التصويرة',
 
+    // Share merchant card (opens client app via /m/:id)
+    shareMerchant: 'بارطاجي المحل ديالي',
+    shareMerchantText: 'شوف %{name} على JitPlus !',
+
     deleteAccount: 'مسح الكونط',
     deleteAccountConfirm: 'مسح الكونط؟',
     deleteAccountMsg: 'هادشي مايمكنش ترجع فيه. غادي نمسحو بيانات الدخول ديالك ونخفيو الهوية ديال بياناتك. غادي نبقاو نحتافظو بسجل المعاملات بشكل مجهول لأسباب محاسبية.',

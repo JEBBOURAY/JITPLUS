@@ -91,6 +91,14 @@ async function bootstrap() {
   const allowedOrigins = corsOrigins
     ? corsOrigins.split(',').map((o) => o.trim()).filter(Boolean)
     : '*';
+
+  // Autoriser statiquement le dashboard Admin en PROD pour éviter l'erreur CORS
+  if (isProd && Array.isArray(allowedOrigins)) {
+    if (!allowedOrigins.includes('https://admin-jitplus-97259.web.app')) {
+      allowedOrigins.push('https://admin-jitplus-97259.web.app');
+    }
+  }
+
   app.enableCors({
     origin: allowedOrigins,
     credentials: allowedOrigins !== '*',

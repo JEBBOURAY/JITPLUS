@@ -15,6 +15,7 @@ import {
   Switch,
   Platform,
   KeyboardAvoidingView,
+  Share,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
@@ -43,6 +44,7 @@ import {
 } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import api from '@/services/api';
+import { getServerBaseUrl } from '@/services/api';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useRouter } from 'expo-router';
 import { useFocusFade } from '@/hooks/useFocusFade';
@@ -202,6 +204,20 @@ export default function AccountScreen() {
   const goToDelete = useCallback(() => router.push('/security?tab=delete'), [router]);
   const goToNotifications = useCallback(() => router.push('/admin-notifications'), [router]);
 
+  // Share the merchant's public JitPlus card (opens client app via /m/:id smart redirect).
+  const handleShareMerchant = useCallback(async () => {
+    if (!merchant?.id) return;
+    try {
+      const shareUrl = `${getServerBaseUrl()}/m/${merchant.id}`;
+      await Share.share({
+        message: `${t('account.shareMerchantText', { name: merchant.nom })}\n\n${shareUrl}`,
+        url: shareUrl, // iOS uses this when present
+      });
+    } catch (err) {
+      if (__DEV__) console.warn('Share failed', err);
+    }
+  }, [merchant?.id, merchant?.nom, t]);
+
   const goToLuckyWheel = useCallback(() => {
     if (!isPremium) {
       setPremiumModal({ visible: true, titleKey: 'luckyWheel.menuLockedTitle', descKey: 'luckyWheel.menuLockedMsg' });
@@ -307,6 +323,7 @@ export default function AccountScreen() {
             unreadCount={unreadCount}
             onNotifPress={goToNotifications}
             onEditName={!isTeamMember ? handleEditName : undefined}
+            onSharePress={handleShareMerchant}
           />
         </FadeInView>
 
