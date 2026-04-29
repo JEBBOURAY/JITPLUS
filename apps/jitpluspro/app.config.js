@@ -90,10 +90,13 @@ module.exports = ({ config }) => {
           ? { CFBundleURLTypes: [{ CFBundleURLSchemes: [IOS_GOOGLE_CLIENT_ID] }] }
           : {}),
       },
-      // Deep links: Universal Links for shared merchant URLs
-      associatedDomains: [
-        'applinks:jitplus-api-290470991104.europe-west9.run.app',
-      ],
+      // Deep links: Universal Links — DISABLED for v1.0
+      // To re-enable: add the "Associated Domains" capability to the App ID
+      // `com.jitplus.pro` in https://developer.apple.com/account/resources/identifiers/list,
+      // then run `eas credentials -p ios` and regenerate the provisioning profile.
+      // associatedDomains: [
+      //   'applinks:jitplus-api-290470991104.europe-west9.run.app',
+      // ],
     },
     android: {
       versionCode: 6,
