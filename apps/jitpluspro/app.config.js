@@ -34,7 +34,7 @@ module.exports = ({ config }) => {
     name: 'JitPlus Pro',
     slug: 'jitpluspro',
     description: 'Loyalty program management for local shops — scan QR codes, track customer visits, and set up stamp-based rewards.',
-    version: '1.4.3',
+    version: '1.4.4',
     orientation: 'portrait',
     icon: './assets/images/icon-white.png',
     scheme: 'jitpluspro',
@@ -56,7 +56,7 @@ module.exports = ({ config }) => {
       supportsTablet: false,
       bundleIdentifier: 'com.jitplus.pro',
       // Initial build number — EAS autoIncrement bumps this on every production build
-      buildNumber: '7',
+      buildNumber: '8',
       // Portrait-only app: disable iPad Split View / Slide Over to avoid orientation-support review issues
       requiresFullScreen: true,
       // Declares standard HTTPS encryption — waives export compliance questionnaire
@@ -99,7 +99,7 @@ module.exports = ({ config }) => {
       // ],
     },
     android: {
-      versionCode: 7,
+      versionCode: 8,
       adaptiveIcon: {
         foregroundImage: './assets/images/adaptive-icon-white.png',
         backgroundColor: '#FFFFFF',
@@ -123,8 +123,11 @@ module.exports = ({ config }) => {
         'POST_NOTIFICATIONS',
         // Required for vibration on notification arrival
         'VIBRATE',
-        // Required for expo-image-picker on Android 13+ (replaces READ_EXTERNAL_STORAGE)
-        'READ_MEDIA_IMAGES',
+        // READ_MEDIA_IMAGES intentionally NOT requested: expo-image-picker v17+
+        // falls back to the system Photo Picker (Android 13+, no permission
+        // needed) when the legacy permission isn't granted. This satisfies
+        // Google Play's "Photos and videos permission" policy for apps that
+        // only need occasional image selection (logo / cover upload).
       ],
       intentFilters: [
         {
@@ -146,6 +149,12 @@ module.exports = ({ config }) => {
         'android.permission.READ_EXTERNAL_STORAGE',
         'android.permission.WRITE_EXTERNAL_STORAGE',
         'android.permission.SYSTEM_ALERT_WINDOW',
+        // Force the system Photo Picker path — Play Policy compliance.
+        // READ_MEDIA_VISUAL_USER_SELECTED is intentionally NOT blocked: it's
+        // the granular Android 14+ replacement and is policy-compliant.
+        'android.permission.READ_MEDIA_IMAGES',
+        'android.permission.READ_MEDIA_VIDEO',
+        'android.permission.READ_MEDIA_AUDIO',
       ],
       package: 'com.jitplus.pro',
       googleServicesFile: process.env.GOOGLE_SERVICES_JSON || './google-services.json',
