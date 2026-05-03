@@ -187,9 +187,12 @@ module.exports = ({ config }) => {
       './plugins/withSupportsRTL',
       // Disable Swift 6 strict concurrency for all pods (Xcode 26 + expo-image@55.0.9 incompat)
       './plugins/withDisableStrictConcurrency',
-      // iOS Notification Service Extension — enables image attachments in push
-      // notifications on iOS (Android already shows them natively via FCM).
-      './plugins/withNotificationServiceExtension',
+      // iOS Notification Service Extension — temporarily disabled for v1.3.11.
+      // Xcode 16/26 reports "Unexpected duplicate tasks" during archive (likely
+      // duplicated Info.plist processing). Android already shows notification
+      // images natively; iOS will fall back to text-only push until the plugin
+      // is reworked (e.g. via @bacons/apple-targets or OneSignal NSE pattern).
+      // './plugins/withNotificationServiceExtension',
       [
         'expo-notifications',
         {
