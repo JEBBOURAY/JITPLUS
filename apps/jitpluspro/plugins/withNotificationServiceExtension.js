@@ -172,15 +172,37 @@ function withNSEXcodeTarget(config) {
     proj.addBuildPhase([], 'PBXResourcesBuildPhase', 'Resources', target.uuid);
     proj.addBuildPhase([], 'PBXFrameworksBuildPhase', 'Frameworks', target.uuid);
 
-    // Embed extension into the main app target
+    // Embed extension into the main app target.
+    //
+    // We do NOT pass `NotificationService.appex` as a filename to addBuildPhase:
+    // node-xcode would create a *new* orphan PBXFileReference (no parent group),
+    // which crashes CocoaPods post_install with:
+    //   "Consistency issue: no parent for object NotificationService.appex".
+    // Instead we reuse the productReference auto-created by addTarget — already
+    // attached to the Products group — and wire it up manually.
     const mainTargetUuid = proj.getFirstTarget().uuid;
-    proj.addBuildPhase(
-      [`${TARGET_NAME}.appex`],
+    const embedPhase = proj.addBuildPhase(
+      [],
       'PBXCopyFilesBuildPhase',
       'Embed App Extensions',
       mainTargetUuid,
       'app_extension',
     );
+
+    const productRef = target.pbxNativeTarget.productReference;
+    const buildFileUuid = proj.generateUuid();
+    proj.hash.project.objects['PBXBuildFile'][buildFileUuid] = {
+      isa: 'PBXBuildFile',
+      fileRef: productRef,
+      fileRef_comment: `${TARGET_NAME}.appex`,
+      settings: { ATTRIBUTES: ['RemoveHeadersOnCopy'] },
+    };
+    proj.hash.project.objects['PBXBuildFile'][`${buildFileUuid}_comment`] =
+      `${TARGET_NAME}.appex in Embed App Extensions`;
+    embedPhase.buildPhase.files.push({
+      value: buildFileUuid,
+      comment: `${TARGET_NAME}.appex in Embed App Extensions`,
+    });
 
     // Configure build settings for the NSE target
     const configs = proj.pbxXCBuildConfigurationSection();
