@@ -28,6 +28,7 @@ import { AccountPurgeService } from './common/tasks/account-purge.service';
 import { MerchantReminderService } from './common/tasks/merchant-reminder.service';
 import { MerchantEngagementService } from './common/tasks/merchant-engagement.service';
 import { MerchantSmartCampaignService } from './common/tasks/merchant-smart-campaign.service';
+import { MerchantLifecycleService } from './common/tasks/merchant-lifecycle.service';
 import { ClientWelcomeService } from './common/tasks/client-welcome.service';
 import { ClientReengagementService } from './common/tasks/client-reengagement.service';
 import { ClientRewardReminderService } from './common/tasks/client-reward-reminder.service';
@@ -125,6 +126,7 @@ import { jwtModuleFactory } from './common/jwt/jwt-module.factory';
     MerchantReminderService,
     MerchantEngagementService,
     MerchantSmartCampaignService,
+    MerchantLifecycleService,
     ClientWelcomeService,
     ClientReengagementService,
     ClientRewardReminderService,

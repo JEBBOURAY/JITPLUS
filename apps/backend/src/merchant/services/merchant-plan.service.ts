@@ -5,7 +5,8 @@ import {
   MERCHANT_REPOSITORY, type IMerchantRepository,
   LOYALTY_CARD_REPOSITORY, type ILoyaltyCardRepository,
 } from '../../common/repositories';
-import { IPushProvider, PUSH_PROVIDER } from '../../common/interfaces';
+import { IPushProvider, PUSH_PROVIDER, IMailProvider, MAIL_PROVIDER } from '../../common/interfaces';
+import { pickEmailLang } from '../../mail/transactional-i18n';
 import { ClientReferralService } from '../../client-auth/client-referral.service';
 import { MerchantReferralService } from './merchant-referral.service';
 import { MerchantPlan } from '@prisma/client';
@@ -88,6 +89,7 @@ export class MerchantPlanService {
     @Inject(LOYALTY_CARD_REPOSITORY) private readonly loyaltyCardRepo: ILoyaltyCardRepository,
     @Inject(CACHE_MANAGER) private readonly cache: Cache,
     @Inject(PUSH_PROVIDER) private readonly pushProvider: IPushProvider,
+    @Inject(MAIL_PROVIDER) private readonly mailProvider: IMailProvider,
     private readonly clientReferralService: ClientReferralService,
     private readonly merchantReferralService: MerchantReferralService,
   ) {}
@@ -275,7 +277,7 @@ export class MerchantPlanService {
         planExpiresAt: null,
         referralMonthsEarned: 0,
       },
-      select: { pushToken: true, language: true },
+      select: { pushToken: true, language: true, email: true },
     });
     await this.invalidatePlanCache(merchantId);
     this.logger.log(`Admin activated PREMIUM for merchant ${merchantId}`);
@@ -293,8 +295,13 @@ export class MerchantPlanService {
         merchant.pushToken,
         msg.title,
         msg.body,
-        { action: 'open_plan' },
+        { event: 'plan_activated', action: 'open_plan' },
       );
+    }
+    if (merchant?.email) {
+      this.mailProvider
+        .sendPlanActivated(merchant.email, null, pickEmailLang(merchant.language))
+        .catch((err) => this.logger.warn(`Plan-activated email failed: ${err?.message || err}`));
     }
   }
 
@@ -317,7 +324,7 @@ export class MerchantPlanService {
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + months * 30);
 
-    await this.merchantRepo.update({
+    const updated = await this.merchantRepo.update({
       where: { id: merchantId },
       data: {
         plan: 'PREMIUM',
@@ -325,12 +332,29 @@ export class MerchantPlanService {
         planExpiresAt: expiresAt,
         referralMonthsEarned: 0,
       },
+      select: { pushToken: true, language: true, email: true },
     });
     await this.invalidatePlanCache(merchantId);
     this.logger.log(`Applied ${months} referral months for merchant ${merchantId}, expires ${expiresAt.toISOString()}`);
 
     // Note: referral months are free — do NOT credit the referrer here.
     // Referrer bonus is only granted when the referred merchant pays for PREMIUM.
+
+    // ── Push notification: Premium activated via referral months ──
+    if (updated?.pushToken) {
+      const msg = PLAN_MESSAGES.activated[planLang(updated.language)];
+      await this.pushProvider.sendToMerchant(
+        updated.pushToken,
+        msg.title,
+        msg.body,
+        { event: 'plan_activated', action: 'open_plan' },
+      );
+    }
+    if (updated?.email) {
+      this.mailProvider
+        .sendPlanActivated(updated.email, expiresAt, pickEmailLang(updated.language))
+        .catch((err) => this.logger.warn(`Plan-activated email failed: ${err?.message || err}`));
+    }
 
     return { planExpiresAt: expiresAt, monthsApplied: months };
   }
@@ -346,20 +370,25 @@ export class MerchantPlanService {
         planActivatedByAdmin: false,
         planExpiresAt: null,
       },
-      select: { pushToken: true, language: true },
+      select: { pushToken: true, language: true, email: true },
     });
     await this.invalidatePlanCache(merchantId);
     this.logger.log(`Admin revoked PREMIUM for merchant ${merchantId}`);
 
-    // ── Push notification ────────────────────────────────────────────
+    // ── Push notification ────────────────────────────────────────
     if (merchant?.pushToken) {
       const msg = PLAN_MESSAGES.revoked[planLang(merchant.language)];
       await this.pushProvider.sendToMerchant(
         merchant.pushToken,
         msg.title,
         msg.body,
-        { action: 'open_plan' },
+        { event: 'plan_revoked', action: 'open_plan' },
       );
+    }
+    if (merchant?.email) {
+      this.mailProvider
+        .sendPlanRevoked(merchant.email, pickEmailLang(merchant.language))
+        .catch((err) => this.logger.warn(`Plan-revoked email failed: ${err?.message || err}`));
     }
   }
 
@@ -434,7 +463,11 @@ export class MerchantPlanService {
 
     if (Object.keys(data).length === 0) return;
 
-    await this.merchantRepo.update({ where: { id: merchantId }, data });
+    const merchant = await this.merchantRepo.update({
+      where: { id: merchantId },
+      data,
+      select: { pushToken: true, language: true, email: true },
+    });
     await this.invalidatePlanCache(merchantId);
     this.logger.log(`Admin manually set plan dates for merchant ${merchantId}: ${JSON.stringify(dto)}`);
 
@@ -444,6 +477,23 @@ export class MerchantPlanService {
         .catch((err) => this.logger.error(`Client referral credit failed for merchant ${merchantId}`, err?.stack));
       this.merchantReferralService.creditReferrerOnPayment(merchantId)
         .catch((err) => this.logger.error(`Merchant referral credit failed for merchant ${merchantId}`, err?.stack));
+
+      // ── Push notification: Premium activated by admin (with end date) ──
+      if (merchant?.pushToken) {
+        const msg = PLAN_MESSAGES.activated[planLang(merchant.language)];
+        await this.pushProvider.sendToMerchant(
+          merchant.pushToken,
+          msg.title,
+          msg.body,
+          { event: 'plan_activated', action: 'open_plan' },
+        );
+      }
+      if (merchant?.email) {
+        const expiresAt = (data.planExpiresAt as Date) || null;
+        this.mailProvider
+          .sendPlanActivated(merchant.email, expiresAt, pickEmailLang(merchant.language))
+          .catch((err) => this.logger.warn(`Plan-activated email failed: ${err?.message || err}`));
+      }
     }
   }
 }

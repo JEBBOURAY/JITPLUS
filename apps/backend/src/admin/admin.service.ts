@@ -20,6 +20,9 @@ import {
   RAW_QUERY_RUNNER, type IRawQueryRunner,
 } from '../common/repositories';
 import { checkLockout, handleFailedLogin, resetLoginAttempts, LockoutDbOps } from '../common/utils/login-lockout.helper';
+import { IMailProvider, MAIL_PROVIDER } from '../common/interfaces';
+import { pickEmailLang, EmailLang } from '../mail/transactional-i18n';
+import { formatPayoutAmount, formatPayoutMethod } from '../client-auth/client-referral.service';
 
 import { ADMIN_STATS_CACHE_TTL } from '../common/constants';
 
@@ -44,6 +47,7 @@ export class AdminAuthService {
     @Inject(TRANSACTION_RUNNER) private txRunner: ITransactionRunner,
     @Inject(RAW_QUERY_RUNNER) private rawQuery: IRawQueryRunner,
     @Inject(CACHE_MANAGER) private cache: Cache,
+    @Inject(MAIL_PROVIDER) private mailProvider: IMailProvider,
     private jwtService: JwtService,
   ) {}
 
@@ -1217,10 +1221,10 @@ export class AdminAuthService {
      * Note: If rejected, we must refund the client's balance.
      */
     async updatePayoutRequestStatus(id: string, status: PayoutStatus, adminId: string) {
-      return this.txRunner.run(async (prisma) => {
+      const result = await this.txRunner.run(async (prisma) => {
         const req = await prisma.payoutRequest.findUnique({ where: { id } });
         if (!req) throw new NotFoundException('Demande de paiement non trouvée');
-        if (req.status === status) return req;
+        if (req.status === status) return { updated: req, notify: false as const };
 
         const oldStatus = req.status;
 
@@ -1257,7 +1261,39 @@ export class AdminAuthService {
           },
         });
 
-        return updated;
+        // Fetch client contact info for email notification
+        const client = await prisma.client.findUnique({
+          where: { id: req.clientId },
+          select: { email: true, language: true },
+        });
+
+        return {
+          updated,
+          notify: true as const,
+          email: client?.email ?? null,
+          language: client?.language ?? null,
+        };
       });
+
+      // Send status email outside the transaction (best-effort)
+      if (result.notify && result.email) {
+        const lang = pickEmailLang(result.language);
+        const kind = status === PayoutStatus.APPROVED ? 'approved'
+          : status === PayoutStatus.PAID ? 'paid'
+          : status === PayoutStatus.REJECTED ? 'rejected'
+          : null;
+        if (kind) {
+          this.mailProvider.sendPayoutStatus(
+            result.email,
+            kind,
+            formatPayoutAmount(result.updated.amount, lang),
+            formatPayoutMethod(result.updated.method, lang),
+            result.updated.rejectionReason ?? null,
+            lang,
+          ).catch((err) => this.logger.warn(`Payout ${kind} email failed: ${err}`));
+        }
+      }
+
+      return result.updated;
     }
 }

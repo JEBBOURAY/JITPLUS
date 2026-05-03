@@ -36,7 +36,7 @@ module.exports = ({ config }) => {
     name: 'JitPlus',
     slug: 'jitplus',
     description: 'Digital loyalty cards app — collect stamps and earn rewards at your favorite local shops.',
-    version: '1.3.10',
+    version: '1.3.11',
     orientation: 'portrait',
     icon: './assets/images/icon-white.png',
     scheme: 'jitplus',
@@ -56,7 +56,7 @@ module.exports = ({ config }) => {
       supportsTablet: false,
       bundleIdentifier: 'com.jitplus.client',
       // Initial build number — EAS autoIncrement bumps this on every production build
-      buildNumber: '40',
+      buildNumber: '41',
       // Portrait-only app: disable iPad Split View / Slide Over to avoid orientation-support review issues
       requiresFullScreen: true,
       // Firebase config for iOS — download from Firebase Console
@@ -85,7 +85,7 @@ module.exports = ({ config }) => {
       ],
     },
     android: {
-      versionCode: 42,
+      versionCode: 43,
       icon: './assets/images/icon-white.png',
       adaptiveIcon: {
         foregroundImage: './assets/images/adaptive-icon-white.png',
@@ -187,6 +187,9 @@ module.exports = ({ config }) => {
       './plugins/withSupportsRTL',
       // Disable Swift 6 strict concurrency for all pods (Xcode 26 + expo-image@55.0.9 incompat)
       './plugins/withDisableStrictConcurrency',
+      // iOS Notification Service Extension — enables image attachments in push
+      // notifications on iOS (Android already shows them natively via FCM).
+      './plugins/withNotificationServiceExtension',
       [
         'expo-notifications',
         {

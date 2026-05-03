@@ -34,7 +34,7 @@ module.exports = ({ config }) => {
     name: 'JitPlus Pro',
     slug: 'jitpluspro',
     description: 'Loyalty program management for local shops — scan QR codes, track customer visits, and set up stamp-based rewards.',
-    version: '1.4.2',
+    version: '1.4.3',
     orientation: 'portrait',
     icon: './assets/images/icon-white.png',
     scheme: 'jitpluspro',
@@ -56,7 +56,7 @@ module.exports = ({ config }) => {
       supportsTablet: false,
       bundleIdentifier: 'com.jitplus.pro',
       // Initial build number — EAS autoIncrement bumps this on every production build
-      buildNumber: '6',
+      buildNumber: '7',
       // Portrait-only app: disable iPad Split View / Slide Over to avoid orientation-support review issues
       requiresFullScreen: true,
       // Declares standard HTTPS encryption — waives export compliance questionnaire
@@ -99,7 +99,7 @@ module.exports = ({ config }) => {
       // ],
     },
     android: {
-      versionCode: 6,
+      versionCode: 7,
       adaptiveIcon: {
         foregroundImage: './assets/images/adaptive-icon-white.png',
         backgroundColor: '#FFFFFF',
@@ -222,6 +222,9 @@ module.exports = ({ config }) => {
       './plugins/withSupportsRTL',
       // Disable Swift 6 strict concurrency for all pods (Xcode 26 + expo-image@55.0.9 incompat)
       './plugins/withDisableStrictConcurrency',
+      // iOS Notification Service Extension — enables image attachments in push
+      // notifications on iOS (Android already shows them natively via FCM).
+      './plugins/withNotificationServiceExtension',
       [
         'expo-notifications',
         {

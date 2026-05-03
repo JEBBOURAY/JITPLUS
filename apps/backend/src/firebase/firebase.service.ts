@@ -125,7 +125,21 @@ export class FirebaseService implements OnModuleInit, IPushProvider {
           },
         },
         apns: {
-          payload: { aps: { sound: 'default', badge: 1 } },
+          // iOS: high priority + alert push-type ensure consistent delivery
+          // and that the `data` payload is always passed to the app on tap,
+          // matching Android FCM behaviour. `mutable-content` lets a future
+          // Notification Service Extension enrich the payload (e.g. images).
+          headers: {
+            'apns-priority': '10',
+            'apns-push-type': 'alert',
+          },
+          payload: {
+            aps: {
+              sound: 'default',
+              badge: 1,
+              'mutable-content': 1,
+            },
+          },
           fcmOptions: imageUrl ? { imageUrl } : undefined,
         },
         ...(data ? { data } : {}),
@@ -203,7 +217,19 @@ export class FirebaseService implements OnModuleInit, IPushProvider {
           },
         },
         apns: {
-          payload: { aps: { sound: 'default', badge: 1 } },
+          // iOS: same headers as multicast — guarantees the data payload is
+          // delivered to the app on tap so deep-link navigation works.
+          headers: {
+            'apns-priority': '10',
+            'apns-push-type': 'alert',
+          },
+          payload: {
+            aps: {
+              sound: 'default',
+              badge: 1,
+              'mutable-content': 1,
+            },
+          },
         },
         ...(data ? { data } : {}),
       };

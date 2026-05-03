@@ -102,7 +102,12 @@ export class NotificationsService {
 
     const tokens = [...new Set(pushRecipients.map((r) => r.pushToken))];
     // Include data payload so client-side handleFcmDataPayload triggers cache invalidation
-    const fcmData: Record<string, string> = { event: 'notification_new', merchantId };
+    // and the deep-link router sends the user to the merchant card on tap.
+    const fcmData: Record<string, string> = {
+      event: 'notification_new',
+      action: 'open_card',
+      merchantId,
+    };
 
     this.logger.log(`Sending "${dto.title}" to ${tokens.length} device(s), ${allClientIds.length} total client(s) for merchant ${merchantId}`);
 
@@ -294,7 +299,7 @@ export class NotificationsService {
     });
 
     // 2. Collect all clients with email — cursor pagination to avoid OOM on large merchants
-    const recipients: { id: string; email: string; prenom: string | null }[] = [];
+    const recipients: { id: string; email: string; prenom: string | null; language: string }[] = [];
     let emailCursor: string | undefined;
 
     while (true) {
@@ -304,7 +309,7 @@ export class NotificationsService {
           email: { not: null },
           notifEmail: true, // Respect client opt-out preference
         },
-        select: { id: true, email: true, prenom: true },
+        select: { id: true, email: true, prenom: true, language: true },
         take: NotificationsService.CLIENT_BATCH_SIZE,
         ...(emailCursor ? { skip: 1, cursor: { id: emailCursor } } : {}),
         orderBy: { id: 'asc' },
@@ -313,7 +318,7 @@ export class NotificationsService {
       if (batch.length === 0) break;
 
       recipients.push(
-        ...batch.filter((c: any): c is { id: string; email: string; prenom: string | null } => !!c.email),
+        ...batch.filter((c: any): c is { id: string; email: string; prenom: string | null; language: string } => !!c.email),
       );
       emailCursor = batch[batch.length - 1].id;
 
@@ -331,7 +336,7 @@ export class NotificationsService {
     let result: { successCount: number; failureCount: number; total: number };
     try {
       result = await this.resendService.sendBlast(
-        recipients.map((r) => ({ email: r.email, prenom: r.prenom })),
+        recipients.map((r) => ({ email: r.email, prenom: r.prenom, lang: r.language })),
         dto.subject,
         dto.body,
         merchant,
@@ -574,6 +579,8 @@ export class NotificationsService {
     let invalidTokens: string[] = [];
 
     try {
+      // No `action` key here — admin broadcasts to merchants are routed by the
+      // `event: 'admin_broadcast'` handler in the JitPlus Pro app (→ /admin-notifications).
       const result = await this.pushProvider.sendMulticast(tokens, title, body, EMAIL_LOGO_JITPLUS_PRO, { event: 'admin_broadcast' }, 'jitpro-default');
       fcmSuccessCount = result.successCount;
       fcmFailureCount = result.failureCount;
@@ -648,7 +655,7 @@ export class NotificationsService {
 
     if (tokens.length > 0) {
       try {
-        const result = await this.pushProvider.sendMulticast(tokens, title, body, DEFAULT_NOTIFICATION_LOGO, { event: 'admin_broadcast' });
+        const result = await this.pushProvider.sendMulticast(tokens, title, body, DEFAULT_NOTIFICATION_LOGO, { event: 'admin_broadcast', action: 'open_notifications' });
         fcmSuccessCount = result.successCount;
         fcmFailureCount = result.failureCount;
         invalidTokens = result.invalidTokens;
@@ -730,19 +737,19 @@ export class NotificationsService {
     successCount: number;
     failureCount: number;
   }> {
-    const merchants: { email: string; nom: string }[] = [];
+    const merchants: { email: string; nom: string; language: string }[] = [];
     let cursor: string | undefined;
 
     while (true) {
       const batch = await this.merchantRepo.findMany({
         where: { isActive: true, deletedAt: null },
-        select: { id: true, email: true, nom: true },
+        select: { id: true, email: true, nom: true, language: true },
         take: NotificationsService.CLIENT_BATCH_SIZE,
         ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
         orderBy: { id: 'asc' },
       });
       if (batch.length === 0) break;
-      merchants.push(...batch.map((m: any) => ({ email: m.email, nom: m.nom })));
+      merchants.push(...batch.map((m: any) => ({ email: m.email, nom: m.nom, language: m.language })));
       cursor = batch[batch.length - 1].id;
       if (batch.length < NotificationsService.CLIENT_BATCH_SIZE) break;
     }
@@ -756,7 +763,7 @@ export class NotificationsService {
     let result: { successCount: number; failureCount: number; total: number };
     try {
       result = await this.resendService.sendBlast(
-        merchants.map((m) => ({ email: m.email, prenom: m.nom })),
+        merchants.map((m) => ({ email: m.email, prenom: m.nom, lang: m.language })),
         subject,
         body,
         { nom: 'JitPlus Admin' },
@@ -788,21 +795,21 @@ export class NotificationsService {
     successCount: number;
     failureCount: number;
   }> {
-    const clients: { email: string; prenom: string | null }[] = [];
+    const clients: { email: string; prenom: string | null; language: string }[] = [];
     let cursor: string | undefined;
 
     while (true) {
       const batch = await this.clientRepo.findMany({
         where: { email: { not: null }, notifEmail: true, deletedAt: null },
-        select: { id: true, email: true, prenom: true },
+        select: { id: true, email: true, prenom: true, language: true },
         take: NotificationsService.CLIENT_BATCH_SIZE,
         ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
         orderBy: { id: 'asc' },
       });
       if (batch.length === 0) break;
       clients.push(
-        ...batch.filter((c: any): c is { id: string; email: string; prenom: string | null } => !!c.email)
-          .map((c: any) => ({ email: c.email, prenom: c.prenom })),
+        ...batch.filter((c: any): c is { id: string; email: string; prenom: string | null; language: string } => !!c.email)
+          .map((c: any) => ({ email: c.email, prenom: c.prenom, language: c.language })),
       );
       cursor = batch[batch.length - 1].id;
       if (batch.length < NotificationsService.CLIENT_BATCH_SIZE) break;
@@ -817,7 +824,7 @@ export class NotificationsService {
     let result: { successCount: number; failureCount: number; total: number };
     try {
       result = await this.resendService.sendBlast(
-        clients,
+        clients.map((c) => ({ email: c.email, prenom: c.prenom, lang: c.language })),
         subject,
         body,
         { nom: 'JitPlus Admin' },

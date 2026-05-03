@@ -4,6 +4,7 @@ import { Cache } from 'cache-manager';
 import { randomInt } from 'crypto';
 import { MERCHANT_REPOSITORY, type IMerchantRepository } from '../../common/repositories';
 import { IMailProvider, MAIL_PROVIDER } from '../../common/interfaces';
+import { pickEmailLang } from '../../mail/transactional-i18n';
 import { errMsg } from '../../common/utils';
 
 import {
@@ -114,6 +115,7 @@ export class MerchantReferralService {
         plan: true,
         planExpiresAt: true,
         planActivatedByAdmin: true,
+        language: true,
       },
     });
 
@@ -129,7 +131,7 @@ export class MerchantReferralService {
       });
       await this.invalidateReferralCache(referrerId);
       this.logger.log(`Referral bonus: merchant ${referrerId} has permanent admin PREMIUM — recorded +1 month earned`);
-      this.mailProvider.sendReferralBonus(referrer.email, referrer.nom, newMerchantNom, null)
+      this.mailProvider.sendReferralBonus(referrer.email, referrer.nom, newMerchantNom, null, pickEmailLang(referrer.language))
         .catch((err) => this.logger.warn('Referral bonus email failed', errMsg(err)));
       return;
     }
@@ -149,7 +151,7 @@ export class MerchantReferralService {
       await this.cache.del(`plan:v1:${referrerId}`);
       await this.invalidateReferralCache(referrerId);
       this.logger.log(`Referral bonus: extended PREMIUM for merchant ${referrerId} until ${newExpiry.toISOString()}`);
-      this.mailProvider.sendReferralBonus(referrer.email, referrer.nom, newMerchantNom, newExpiry)
+      this.mailProvider.sendReferralBonus(referrer.email, referrer.nom, newMerchantNom, newExpiry, pickEmailLang(referrer.language))
         .catch((err) => this.logger.warn('Referral bonus email failed', errMsg(err)));
       return;
     }
@@ -169,7 +171,7 @@ export class MerchantReferralService {
     await this.cache.del(`plan:v1:${referrerId}`);
     await this.invalidateReferralCache(referrerId);
     this.logger.log(`Referral bonus: auto-activated PREMIUM for FREE merchant ${referrerId} until ${newExpiry.toISOString()}`);
-    this.mailProvider.sendReferralBonus(referrer.email, referrer.nom, newMerchantNom, newExpiry)
+    this.mailProvider.sendReferralBonus(referrer.email, referrer.nom, newMerchantNom, newExpiry, pickEmailLang(referrer.language))
       .catch((err) => this.logger.warn('Referral bonus email failed', errMsg(err)));
   }
 

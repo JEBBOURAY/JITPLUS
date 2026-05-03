@@ -11,6 +11,8 @@ import {
   TRANSACTION_RUNNER,
 } from '../common/repositories';
 import { ITransactionRunner } from '../common/repositories/transaction-runner';
+import { IMailProvider, MAIL_PROVIDER } from '../common/interfaces';
+import { pickEmailLang, EmailLang } from '../mail/transactional-i18n';
 import {
   REFERRAL_CODE_CHARS,
   REFERRAL_CODE_LENGTH,
@@ -44,6 +46,7 @@ export class ClientReferralService {
     @Inject(MERCHANT_REPOSITORY) private merchantRepo: IMerchantRepository,
     @Inject(TRANSACTION_RUNNER) private readonly tx: ITransactionRunner,
     @Inject(CACHE_MANAGER) private readonly cache: Cache,
+    @Inject(MAIL_PROVIDER) private readonly mailProvider: IMailProvider,
   ) {}
 
   /**
@@ -204,18 +207,18 @@ export class ClientReferralService {
     if (dto.amount < 100) {
       throw new BadRequestException('error.referral.minAmount');
     }
-    return this.tx.run(async (prisma) => {
+    const result = await this.tx.run(async (prisma) => {
       // 1. Anti-spam: check if a PENDING request already exists
       const existingPending = await prisma.payoutRequest.findFirst({
         where: { clientId, status: PayoutStatus.PENDING },
       });
       if (existingPending) {
-        throw new BadRequestException('Vous avez dÃ©jÃ  une demande de retrait en cours de traitement');
+        throw new BadRequestException('Vous avez dÃ©jÃ  une demande de retrait en cours de traitement');
       }
 
       const client = await prisma.client.findUnique({
         where: { id: clientId },
-        select: { referralBalance: true },
+        select: { referralBalance: true, email: true, language: true },
       });
 
       if (!client) throw new NotFoundException('error.referral.clientNotFound');
@@ -247,8 +250,23 @@ export class ClientReferralService {
       });
 
       await this.invalidateCache(clientId);
-      return request;
+      return { request, email: client.email, language: client.language };
     });
+
+    // Send confirmation email (best-effort, outside the tx)
+    if (result.email) {
+      const lang = pickEmailLang(result.language);
+      this.mailProvider.sendPayoutStatus(
+        result.email,
+        'pending',
+        formatPayoutAmount(result.request.amount, lang),
+        formatPayoutMethod(result.request.method, lang),
+        null,
+        lang,
+      ).catch((err) => this.logger.warn(`Payout pending email failed: ${err}`));
+    }
+
+    return result.request;
   }
 
   async getPayoutHistory(clientId: string) {
@@ -278,6 +296,26 @@ export class ClientReferralService {
     );
     return code;
   }
+}
+
+// ── Helpers (module-level, not class methods) ─────────────────────────────────
+
+export function formatPayoutAmount(amount: number, lang: EmailLang): string {
+  const fixed = Number(amount).toFixed(2);
+  // Currency suffix per language
+  if (lang === 'en') return `${fixed} MAD`;
+  if (lang === 'ar') return `${fixed} درهم`;
+  return `${fixed} DH`;
+}
+
+export function formatPayoutMethod(method: PayoutMethod | string, lang: EmailLang): string {
+  const m = String(method);
+  const map: Record<EmailLang, Record<string, string>> = {
+    fr: { BANK_TRANSFER: 'Virement bancaire', CASH: 'Espèces' },
+    en: { BANK_TRANSFER: 'Bank transfer', CASH: 'Cash' },
+    ar: { BANK_TRANSFER: 'تحويل بنكي', CASH: 'كاش' },
+  };
+  return map[lang][m] ?? m;
 }
 
 

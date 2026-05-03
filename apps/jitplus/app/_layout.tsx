@@ -294,15 +294,20 @@ function RootLayoutNav() {
     // Skip notification listeners in Expo Go (SDK 53+ removed push support)
     if (!Notifications || isExpoGo) return;
 
-    // Route notification tap to the correct screen based on event type
+    // Route notification tap to the correct screen based on event type.
+    // The same logic runs on Android (FCM data) and iOS (APNs `data` payload),
+    // ensuring uniform deep-link behaviour across both platforms.
     const navigateByAction = (data?: Record<string, string>) => {
       try {
         const event = data?.event;
         const action = data?.action;
         const merchantId = data?.merchantId;
 
-        // SECURITY: Validate merchantId format (CUID) from FCM payload to prevent injection
-        const validMerchantId = merchantId && /^c[a-z0-9]{24}$/.test(merchantId) ? merchantId : undefined;
+        // SECURITY: Validate merchantId format (UUID v4 OR legacy CUID) from FCM
+        // payload to prevent injection. Backend uses `@default(uuid())` since
+        // schema migration; older share links may still embed CUIDs.
+        const MERCHANT_ID_RE = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|c[a-z0-9]{24})$/i;
+        const validMerchantId = merchantId && MERCHANT_ID_RE.test(merchantId) ? merchantId : undefined;
 
         // Handle action-based deep links from automated campaigns
         if (action) {
@@ -324,10 +329,16 @@ function RootLayoutNav() {
                 router.push({ pathname: '/merchant/[id]', params: { id: validMerchantId } });
                 return;
               }
-              router.push('/(tabs)');
+              router.push('/(tabs)/notifications');
               return;
             case 'open_notifications':
               router.push('/(tabs)/notifications');
+              return;
+            case 'open_rewards_history':
+              router.push('/rewards-history');
+              return;
+            case 'open_scan_history':
+              router.push('/scan-history');
               return;
             default:
               if (__DEV__) console.warn('Unknown FCM action:', action);
@@ -335,18 +346,28 @@ function RootLayoutNav() {
           }
         }
 
-        // Handle event-based navigation (transactional notifications)
+        // Handle event-based navigation (transactional & broadcast notifications)
         switch (event) {
           case 'points_updated':
           case 'reward_available':
           case 'reward_redeemed':
+          case 'reward_reminder':
+          case 'notification_new':
             if (validMerchantId) {
               router.push({ pathname: '/merchant/[id]', params: { id: validMerchantId } });
             } else {
               router.push('/(tabs)/notifications');
             }
             break;
+          case 'admin_broadcast':
+          case 'weekly_digest':
+          case 'feature_highlight':
+          case 'reengagement':
+            router.push('/(tabs)/notifications');
+            break;
           default:
+            // Unknown payloads still land on the in-app feed rather than the
+            // generic home — the user can find the message there.
             router.push('/(tabs)/notifications');
             break;
         }

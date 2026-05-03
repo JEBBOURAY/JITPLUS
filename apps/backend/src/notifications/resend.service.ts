@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { Resend } from 'resend';
 import { IEmailBlastProvider, EmailBlastResult, MerchantBlastInfo, IMailProvider, MAIL_PROVIDER } from '../common/interfaces';
 import { buildMarketingBlastEmail } from '../mail/email-templates';
+import { pickEmailLang } from '../mail/transactional-i18n';
 
 @Injectable()
 export class ResendService implements IEmailBlastProvider {
@@ -30,7 +31,7 @@ export class ResendService implements IEmailBlastProvider {
    * Uses Resend Batch API for efficiency (up to 100 emails per batch call).
    */
   async sendBlast(
-    recipients: { email: string; prenom?: string | null }[],
+    recipients: { email: string; prenom?: string | null; lang?: string | null }[],
     subject: string,
     body: string,
     merchant: MerchantBlastInfo,
@@ -50,7 +51,7 @@ export class ResendService implements IEmailBlastProvider {
   }
 
   private async sendViaResend(
-    recipients: { email: string; prenom?: string | null }[],
+    recipients: { email: string; prenom?: string | null; lang?: string | null }[],
     subject: string,
     body: string,
     merchant: MerchantBlastInfo,
@@ -62,7 +63,7 @@ export class ResendService implements IEmailBlastProvider {
         from: this.fromAddress,
         to: [r.email],
         subject,
-        html: buildMarketingBlastEmail(r.prenom || 'cher client', body, merchant),
+        html: buildMarketingBlastEmail(r.prenom || 'cher client', body, merchant, pickEmailLang(r.lang)),
       };
     });
 
@@ -92,7 +93,7 @@ export class ResendService implements IEmailBlastProvider {
   }
 
   private async sendViaSmtp(
-    recipients: { email: string; prenom?: string | null }[],
+    recipients: { email: string; prenom?: string | null; lang?: string | null }[],
     subject: string,
     body: string,
     merchant: MerchantBlastInfo,
@@ -103,7 +104,7 @@ export class ResendService implements IEmailBlastProvider {
     let failureCount = 0;
 
     for (const r of recipients) {
-      const html = buildMarketingBlastEmail(r.prenom || 'cher client', body, merchant);
+      const html = buildMarketingBlastEmail(r.prenom || 'cher client', body, merchant, pickEmailLang(r.lang));
 
       try {
         await this.mailProvider.sendRaw(r.email, subject, html);

@@ -37,6 +37,7 @@ import { MERCHANT_PROFILE_CACHE_TTL } from '../../common/constants';
 import { stripUndefined } from '../../common/utils';
 import { getNotifTranslations } from '../../common/utils/notification-i18n';
 import { MailService } from '../../mail/mail.service';
+import { pickEmailLang } from '../../mail/transactional-i18n';
 
 @Injectable()
 export class MerchantProfileService {
@@ -602,7 +603,7 @@ export class MerchantProfileService {
   async deleteAccount(merchantId: string, password?: string, idToken?: string, appleIdentityToken?: string): Promise<{ message: string }> {
     const merchant = await this.merchantRepo.findUnique({
       where: { id: merchantId },
-      select: { id: true, password: true, nom: true, email: true, googleId: true, appleId: true },
+      select: { id: true, password: true, nom: true, email: true, googleId: true, appleId: true, language: true },
     });
     if (!merchant) throw new NotFoundException('Commerçant non trouvé');
 
@@ -647,6 +648,7 @@ export class MerchantProfileService {
     // Capture original identity BEFORE anonymisation — needed to send confirmation email.
     const originalEmail = merchant.email;
     const originalNom = merchant.nom;
+    const originalLanguage = merchant.language;
     const isEmailReal = !!originalEmail && !originalEmail.startsWith('deleted_') && originalEmail.includes('@');
 
     // Hash a random password for deactivated team members (avoids empty-string hash rows)
@@ -735,7 +737,7 @@ export class MerchantProfileService {
     // Send confirmation email (best-effort, non-blocking) — GDPR Art. 17 + App Store 5.1.1(v)
     if (isEmailReal) {
       this.mailService
-        .sendAccountDeleted(originalEmail, originalNom || 'votre commerce')
+        .sendAccountDeleted(originalEmail, originalNom || 'votre commerce', pickEmailLang(originalLanguage))
         .catch((err) => this.logger.warn(`Failed to send account-deleted email to ${originalEmail}: ${err?.message || err}`));
     }
 

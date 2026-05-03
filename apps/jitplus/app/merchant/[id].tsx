@@ -261,7 +261,10 @@ export default function MerchantDetailScreen() {
               haptic();
               try {
                 const shareUrl = `${getServerBaseUrl()}/m/${merchant.id}`;
-                await Share.share({ message: `${t('merchant.shareText', { name: merchant.nomBoutique })}\n\n${shareUrl}` });
+                await Share.share({
+                  message: `${t('merchant.shareText', { name: merchant.nomBoutique })}\n\n${shareUrl}`,
+                  url: shareUrl, // iOS uses this for the rich link preview
+                });
               } catch { /* user cancelled */ }
             }} style={[styles.floatingBtn, { backgroundColor: 'rgba(255,255,255,0.85)' }]} accessibilityRole="button" accessibilityLabel={t('merchant.shareApp')} hitSlop={8}>
               <Send size={18} color={palette.gray900} strokeWidth={2} />

@@ -1,5 +1,15 @@
 import { EMAIL_LOGO_JITPLUS, EMAIL_LOGO_JITPLUS_PRO } from '../common/constants';
 import { EmailSource, MerchantBlastInfo } from '../common/interfaces';
+import {
+  EmailLang, pickEmailLang, FOOTER_I18N, OTP_I18N, OtpPurpose,
+  WELCOME_CLIENT_I18N, WELCOME_MERCHANT_I18N, REFERRAL_I18N, ACCOUNT_DELETED_I18N,
+  LOGIN_ALERT_I18N, PLAN_EMAIL_I18N, PAYOUT_I18N, MARKETING_BLAST_I18N,
+  PRIVACY_URL_CLIENT, TERMS_URL_CLIENT, PRIVACY_URL_PRO, TERMS_URL_PRO,
+  CONTACT_EMAIL, SUPPORT_EMAIL, COMPANY_LEGAL,
+} from './transactional-i18n';
+
+export { pickEmailLang };
+export type { EmailLang, OtpPurpose };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -49,12 +59,37 @@ function wrapEmail(options: {
   preheader: string;
   content: string;
   extraFooter?: string;
+  lang?: EmailLang;
+  /** Whether to include the legal/privacy footer (default true). */
+  legalFooter?: boolean;
 }): string {
-  const { brand, preheader, content, extraFooter } = options;
+  const { brand, preheader, content, extraFooter, lang = 'fr', legalFooter = true } = options;
   const year = new Date().getFullYear();
+  const fi = FOOTER_I18N[lang];
+  const isPro = brand.name === 'JitPlus Pro';
+  const privacyUrl = isPro ? PRIVACY_URL_PRO : PRIVACY_URL_CLIENT;
+  const termsUrl = isPro ? TERMS_URL_PRO : TERMS_URL_CLIENT;
+  const dir = lang === 'ar' ? 'rtl' : 'ltr';
+
+  const legal = legalFooter ? `
+          <div style="margin-top: 16px; text-align: center;">
+            <p style="color: #94A3B8; font-size: 11px; line-height: 1.6; margin: 0 0 6px;">
+              ${escapeHtml(fi.reasonTransactional)} <strong>${brand.name}</strong>.
+            </p>
+            <p style="color: #94A3B8; font-size: 11px; margin: 0 0 6px;">
+              <a href="${privacyUrl}" style="color: ${brand.accentMuted}; text-decoration: underline;">${escapeHtml(fi.privacy)}</a>
+              &nbsp;·&nbsp;
+              <a href="${termsUrl}" style="color: ${brand.accentMuted}; text-decoration: underline;">${escapeHtml(fi.terms)}</a>
+              &nbsp;·&nbsp;
+              <a href="mailto:${SUPPORT_EMAIL}" style="color: ${brand.accentMuted}; text-decoration: underline;">${escapeHtml(fi.contact)}</a>
+            </p>
+            <p style="color: #B8C0CE; font-size: 11px; margin: 0;">
+              ${escapeHtml(COMPANY_LEGAL.name)} — ${escapeHtml(COMPANY_LEGAL.address)}
+            </p>
+          </div>` : '';
 
   return `<!DOCTYPE html>
-<html lang="fr" xmlns="http://www.w3.org/1999/xhtml">
+<html lang="${lang}" dir="${dir}" xmlns="http://www.w3.org/1999/xhtml">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -92,8 +127,9 @@ function wrapEmail(options: {
           <!-- ─── Footer ─── -->
           ${extraFooter ? `<div style="margin-top: 20px;">${extraFooter}</div>` : ''}
           <p style="text-align: center; color: #94A3B8; font-size: 12px; margin-top: 24px;">
-            &copy; ${year} ${brand.name} &mdash; Tous droits r&eacute;serv&eacute;s
+            ${escapeHtml(fi.rights(year, brand.name))}
           </p>
+          ${legal}
 
         </div>
 
@@ -106,81 +142,95 @@ function wrapEmail(options: {
 
 // ─── Email 1: OTP verification code ──────────────────────────────────────────
 
-export function buildOtpEmail(code: string, source: EmailSource = 'client'): string {
+export function buildOtpEmail(
+  code: string,
+  source: EmailSource = 'client',
+  lang: EmailLang = 'fr',
+  purpose: OtpPurpose = 'verification',
+): string {
   const brand = BRANDS[source];
+  const i = OTP_I18N[lang];
 
   const content = `
-    <p style="color: #1E1B4B; font-size: 16px; margin: 0 0 16px;">Votre code de v&eacute;rification :</p>
+    <p style="color: #1E1B4B; font-size: 16px; margin: 0 0 16px;">${escapeHtml(i.intro(purpose))}</p>
     <div style="background: ${brand.accentLight}; border-radius: 10px; padding: 16px; display: inline-block; text-align: center; width: 100%; box-sizing: border-box;">
       <span style="font-size: 32px; font-weight: 800; letter-spacing: 8px; color: ${brand.accent};">${escapeHtml(code)}</span>
     </div>
     <p style="color: ${brand.accentMuted}; font-size: 13px; margin-top: 16px;">
-      Ce code expire dans <strong>5 minutes</strong>.<br/>
-      Si vous n'avez pas demand&eacute; ce code, ignorez cet email.
+      ${i.expires}<br/>
+      ${escapeHtml(i.ignore)}
     </p>`;
 
   return wrapEmail({
     brand,
-    preheader: `${code} est votre code de vérification ${brand.name}`,
+    lang,
+    preheader: `${code} — ${brand.name}`,
     content,
   });
 }
 
-export function getOtpSubject(code: string, source: EmailSource = 'client'): string {
-  return `${code} — Votre code ${BRANDS[source].name}`;
+export function getOtpSubject(
+  code: string,
+  source: EmailSource = 'client',
+  lang: EmailLang = 'fr',
+  purpose: OtpPurpose = 'verification',
+): string {
+  return OTP_I18N[lang].subject(code, BRANDS[source].name, purpose);
 }
 
 // ─── Email 2: Welcome Client ─────────────────────────────────────────────────
 
-export function buildWelcomeClientEmail(prenom?: string): string {
+export function buildWelcomeClientEmail(prenom?: string, lang: EmailLang = 'fr'): string {
   const brand = BRANDS.client;
-  const name = escapeHtml(prenom || 'cher client');
+  const i = WELCOME_CLIENT_I18N[lang];
+  const fallback = lang === 'en' ? 'there' : (lang === 'ar' ? 'صاحبي' : 'cher client');
+  const name = escapeHtml(prenom || fallback);
+  const bullets = i.bullets.map((b) => `<li>${escapeHtml(b)}</li>`).join('');
 
   const content = `
-    <h2 style="color: #1E1B4B; font-size: 20px; margin: 0 0 12px;">Bienvenue ${name} ! 🎉</h2>
+    <h2 style="color: #1E1B4B; font-size: 20px; margin: 0 0 12px;">${escapeHtml(i.greeting(name))}</h2>
     <p style="color: ${brand.accent}; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">
-      Votre compte JitPlus a &eacute;t&eacute; cr&eacute;&eacute; avec succ&egrave;s. Vous pouvez d&eacute;sormais :
+      ${escapeHtml(i.intro)}
     </p>
     <ul style="color: #1E1B4B; font-size: 14px; line-height: 1.8; padding-left: 20px; margin: 0 0 16px;">
-      <li>Cumuler des points chez vos commer&ccedil;ants pr&eacute;f&eacute;r&eacute;s</li>
-      <li>Profiter de r&eacute;compenses exclusives</li>
-      <li>Scanner votre QR code en magasin</li>
+      ${bullets}
     </ul>
     <p style="color: ${brand.accentMuted}; font-size: 13px; margin: 0;">
-      Ouvrez l'application JitPlus et commencez &agrave; fid&eacute;liser d&egrave;s maintenant !
+      ${escapeHtml(i.cta)}
     </p>`;
 
   return wrapEmail({
     brand,
-    preheader: `Bienvenue sur JitPlus ${prenom || ''} ! Votre programme de fidélité vous attend.`,
+    lang,
+    preheader: i.preheader(prenom || ''),
     content,
   });
 }
 
 // ─── Email 3: Welcome Merchant ───────────────────────────────────────────────
 
-export function buildWelcomeMerchantEmail(nomBoutique: string): string {
+export function buildWelcomeMerchantEmail(nomBoutique: string, lang: EmailLang = 'fr'): string {
   const brand = BRANDS.merchant;
   const safeName = escapeHtml(nomBoutique);
+  const i = WELCOME_MERCHANT_I18N[lang];
+  const bullets = i.bullets.map((b) => `<li>${escapeHtml(b)}</li>`).join('');
 
   const content = `
-    <h2 style="color: #1E1B4B; font-size: 20px; margin: 0 0 12px;">Bienvenue sur JitPlus Pro ! 🚀</h2>
+    <h2 style="color: #1E1B4B; font-size: 20px; margin: 0 0 12px;">${escapeHtml(i.greeting)}</h2>
     <p style="color: ${brand.accent}; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">
-      Votre commerce <strong>${safeName}</strong> est maintenant enregistr&eacute; sur JitPlus.
+      ${i.intro(safeName)}
     </p>
     <ul style="color: #1E1B4B; font-size: 14px; line-height: 1.8; padding-left: 20px; margin: 0 0 16px;">
-      <li>Scannez les QR codes de vos clients pour leur attribuer des points</li>
-      <li>Cr&eacute;ez des r&eacute;compenses attractives</li>
-      <li>Suivez vos statistiques en temps r&eacute;el</li>
-      <li>G&eacute;rez votre &eacute;quipe facilement</li>
+      ${bullets}
     </ul>
     <p style="color: ${brand.accentMuted}; font-size: 13px; margin: 0;">
-      Connectez-vous &agrave; l'application JitPlus Pro pour commencer &agrave; fid&eacute;liser vos clients !
+      ${escapeHtml(i.cta)}
     </p>`;
 
   return wrapEmail({
     brand,
-    preheader: `${nomBoutique} est maintenant sur JitPlus Pro ! Commencez à fidéliser vos clients.`,
+    lang,
+    preheader: i.preheader(nomBoutique),
     content,
   });
 }
@@ -191,111 +241,287 @@ export function buildReferralBonusEmail(
   referrerNom: string,
   newMerchantNom: string,
   newExpiry: Date | null,
+  lang: EmailLang = 'fr',
 ): string {
   const brand = BRANDS.merchant;
+  const i = REFERRAL_I18N[lang];
   const safeReferrerNom = escapeHtml(referrerNom);
   const safeNewMerchantNom = escapeHtml(newMerchantNom);
+  const localeMap: Record<EmailLang, string> = { fr: 'fr-FR', en: 'en-US', ar: 'ar-MA' };
   const expiryStr = newExpiry
-    ? newExpiry.toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })
+    ? newExpiry.toLocaleDateString(localeMap[lang], { day: '2-digit', month: 'long', year: 'numeric' })
     : null;
 
   const content = `
-    <h2 style="color: #1E1B4B; font-size: 20px; margin: 0 0 12px;">🎁 Vous avez gagn&eacute; 1 mois offert !</h2>
+    <h2 style="color: #1E1B4B; font-size: 20px; margin: 0 0 12px;">${escapeHtml(i.heading)}</h2>
     <p style="color: ${brand.accent}; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">
-      Bonjour <strong>${safeReferrerNom}</strong>,
+      ${i.greeting(safeReferrerNom)}
     </p>
     <p style="color: #1E1B4B; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">
-      Le commerce <strong>${safeNewMerchantNom}</strong> vient de s'inscrire sur JitPlus Pro avec votre code de parrainage.
+      ${i.body(safeNewMerchantNom)}
     </p>
     <div style="background: ${brand.accentLight}; border-radius: 10px; padding: 16px; text-align: center; margin-bottom: 16px;">
       <p style="color: ${brand.accent}; font-size: 16px; font-weight: 700; margin: 0;">
-        +1 mois Premium offert
+        ${escapeHtml(i.bonus)}
       </p>
-      ${expiryStr ? `<p style="color: ${brand.accentMuted}; font-size: 13px; margin: 6px 0 0;">Votre abonnement Premium est valable jusqu'au <strong>${expiryStr}</strong>.</p>` : ''}
+      ${expiryStr ? `<p style="color: ${brand.accentMuted}; font-size: 13px; margin: 6px 0 0;">${i.expiryNote(escapeHtml(expiryStr))}</p>` : ''}
     </div>
     <p style="color: ${brand.accentMuted}; font-size: 13px; margin: 0;">
-      Continuez &agrave; partager votre code pour cumuler encore plus de mois gratuits !
+      ${escapeHtml(i.outro)}
     </p>`;
 
   return wrapEmail({
     brand,
-    preheader: `${newMerchantNom} a rejoint JitPlus Pro grâce à vous — 1 mois Premium offert !`,
+    lang,
+    preheader: i.preheader(newMerchantNom),
     content,
   });
 }
 
 // ─── Email 5: Account Deleted confirmation (GDPR Art. 17 / App Store 5.1.1(v)) ─
 
-export function buildClientAccountDeletedEmail(prenom?: string): string {
+export function buildClientAccountDeletedEmail(prenom?: string, lang: EmailLang = 'fr'): string {
   const brand = BRANDS.client;
+  const i = ACCOUNT_DELETED_I18N[lang];
   const safeName = prenom ? escapeHtml(prenom) : null;
-  const deletedAt = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+  const localeMap: Record<EmailLang, string> = { fr: 'fr-FR', en: 'en-US', ar: 'ar-MA' };
+  const deletedAt = new Date().toLocaleDateString(localeMap[lang], { day: '2-digit', month: 'long', year: 'numeric' });
+  const bullets = i.bulletsClient.map((b) => `<li>${escapeHtml(b)}</li>`).join('');
 
   const content = `
-    <h2 style="color: #1E1B4B; font-size: 20px; margin: 0 0 12px;">Votre compte a &eacute;t&eacute; supprim&eacute;</h2>
+    <h2 style="color: #1E1B4B; font-size: 20px; margin: 0 0 12px;">${escapeHtml(i.heading)}</h2>
     <p style="color: ${brand.accent}; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">
-      Bonjour${safeName ? ' ' + safeName : ''},
+      ${escapeHtml(i.greeting(safeName))}
     </p>
     <p style="color: #1E1B4B; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
-      Nous confirmons la suppression de votre compte JitPlus le ${deletedAt}.
+      ${i.bodyClient(deletedAt)}
     </p>
     <div style="background: ${brand.accentLight}; border-radius: 10px; padding: 16px; margin-bottom: 16px;">
-      <p style="color: ${brand.accent}; font-size: 13px; font-weight: 600; margin: 0 0 8px;">Ce qui a &eacute;t&eacute; supprim&eacute; ou anonymis&eacute; :</p>
+      <p style="color: ${brand.accent}; font-size: 13px; font-weight: 600; margin: 0 0 8px;">${escapeHtml(i.whatRemoved)}</p>
       <ul style="color: #1E1B4B; font-size: 13px; line-height: 1.7; padding-left: 18px; margin: 0;">
-        <li>Vos informations personnelles (nom, email, t&eacute;l&eacute;phone, date de naissance)</li>
-        <li>Vos identifiants et sessions de connexion</li>
-        <li>Votre historique de navigation et parrainages</li>
-        <li>Vos cartes de fid&eacute;lit&eacute; (d&eacute;sactiv&eacute;es)</li>
+        ${bullets}
       </ul>
     </div>
     <p style="color: ${brand.accentMuted}; font-size: 13px; line-height: 1.6; margin: 0 0 12px;">
-      Certaines donn&eacute;es de transactions sont conserv&eacute;es sous forme anonymis&eacute;e pour des obligations l&eacute;gales et comptables.
+      ${escapeHtml(i.retention)}
     </p>
     <p style="color: ${brand.accentMuted}; font-size: 13px; line-height: 1.6; margin: 0;">
-      Si vous n'&ecirc;tes pas &agrave; l'origine de cette demande, contactez-nous imm&eacute;diatement &agrave; <a href="mailto:support@jitplus.com" style="color: ${brand.accent};">support@jitplus.com</a>.
+      ${escapeHtml(i.notYouContact)} <a href="mailto:${SUPPORT_EMAIL}" style="color: ${brand.accent};">${SUPPORT_EMAIL}</a>
     </p>`;
 
   return wrapEmail({
     brand,
-    preheader: `Confirmation de suppression de votre compte JitPlus`,
+    lang,
+    preheader: i.preheaderClient,
     content,
   });
 }
 
-export function buildAccountDeletedEmail(nomBoutique: string): string {
+export function buildAccountDeletedEmail(nomBoutique: string, lang: EmailLang = 'fr'): string {
   const brand = BRANDS.merchant;
+  const i = ACCOUNT_DELETED_I18N[lang];
   const safeName = escapeHtml(nomBoutique);
-  const deletedAt = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+  const localeMap: Record<EmailLang, string> = { fr: 'fr-FR', en: 'en-US', ar: 'ar-MA' };
+  const deletedAt = new Date().toLocaleDateString(localeMap[lang], { day: '2-digit', month: 'long', year: 'numeric' });
+  const bullets = i.bulletsMerchant.map((b) => `<li>${escapeHtml(b)}</li>`).join('');
 
   const content = `
-    <h2 style="color: #1E1B4B; font-size: 20px; margin: 0 0 12px;">Votre compte a &eacute;t&eacute; supprim&eacute;</h2>
+    <h2 style="color: #1E1B4B; font-size: 20px; margin: 0 0 12px;">${escapeHtml(i.heading)}</h2>
     <p style="color: ${brand.accent}; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">
-      Bonjour,
+      ${escapeHtml(i.greeting(null))}
     </p>
     <p style="color: #1E1B4B; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
-      Nous confirmons la suppression du compte JitPlus Pro associ&eacute; &agrave; <strong>${safeName}</strong> le ${deletedAt}.
+      ${i.bodyMerchant(safeName, deletedAt)}
     </p>
     <div style="background: ${brand.accentLight}; border-radius: 10px; padding: 16px; margin-bottom: 16px;">
-      <p style="color: ${brand.accent}; font-size: 13px; font-weight: 600; margin: 0 0 8px;">Ce qui a &eacute;t&eacute; supprim&eacute; ou anonymis&eacute; :</p>
+      <p style="color: ${brand.accent}; font-size: 13px; font-weight: 600; margin: 0 0 8px;">${escapeHtml(i.whatRemoved)}</p>
       <ul style="color: #1E1B4B; font-size: 13px; line-height: 1.7; padding-left: 18px; margin: 0;">
-        <li>Vos informations personnelles (nom, email, t&eacute;l&eacute;phone, adresse)</li>
-        <li>Vos identifiants et sessions de connexion</li>
-        <li>Vos logos, visuels et contenus publi&eacute;s</li>
-        <li>Vos cartes de fid&eacute;lit&eacute;, r&eacute;compenses et &eacute;quipe</li>
+        ${bullets}
       </ul>
     </div>
     <p style="color: ${brand.accentMuted}; font-size: 13px; line-height: 1.6; margin: 0 0 12px;">
-      Certaines donn&eacute;es de transactions sont conserv&eacute;es sous forme anonymis&eacute;e pour des obligations l&eacute;gales et comptables.
+      ${escapeHtml(i.retention)}
     </p>
     <p style="color: ${brand.accentMuted}; font-size: 13px; line-height: 1.6; margin: 0;">
-      Si vous n'&ecirc;tes pas &agrave; l'origine de cette demande, contactez-nous imm&eacute;diatement &agrave; <a href="mailto:support@jitplus.com" style="color: ${brand.accent};">support@jitplus.com</a>.
+      ${escapeHtml(i.notYouContact)} <a href="mailto:${SUPPORT_EMAIL}" style="color: ${brand.accent};">${SUPPORT_EMAIL}</a>
     </p>`;
 
   return wrapEmail({
     brand,
-    preheader: `Confirmation de suppression du compte JitPlus Pro ${nomBoutique}`,
+    lang,
+    preheader: i.preheaderMerchant(nomBoutique),
     content,
   });
+}
+
+// ─── Email 7: Login alert (security) ─────────────────────────────────────────
+
+export function buildLoginAlertEmail(
+  who: string,
+  deviceName: string | null,
+  when: Date,
+  lang: EmailLang = 'fr',
+): string {
+  const brand = BRANDS.merchant;
+  const i = LOGIN_ALERT_I18N[lang];
+  const safeWho = escapeHtml(who);
+  const safeDevice = deviceName ? escapeHtml(deviceName) : null;
+  const localeMap: Record<EmailLang, string> = { fr: 'fr-FR', en: 'en-US', ar: 'ar-MA' };
+  const dt = when.toLocaleString(localeMap[lang], { dateStyle: 'medium', timeStyle: 'short' });
+  const bullets = i.bullets.map((b) => `<li>${escapeHtml(b)}</li>`).join('');
+
+  const content = `
+    <h2 style="color: #1E1B4B; font-size: 20px; margin: 0 0 12px;">${escapeHtml(i.heading)}</h2>
+    <p style="color: #1E1B4B; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">
+      ${i.body(safeWho, safeDevice, escapeHtml(dt))}
+    </p>
+    <div style="background: #FEF3C7; border-left: 4px solid #F59E0B; border-radius: 8px; padding: 14px; margin-bottom: 16px;">
+      <p style="color: #92400E; font-size: 13px; font-weight: 600; margin: 0 0 8px;">${escapeHtml(i.whatToDo)}</p>
+      <ul style="color: #92400E; font-size: 13px; line-height: 1.7; padding-left: 18px; margin: 0;">
+        ${bullets}
+      </ul>
+    </div>
+    <p style="color: ${brand.accentMuted}; font-size: 13px; margin: 0;">
+      ${escapeHtml(i.ignoreNote)}
+    </p>`;
+
+  return wrapEmail({
+    brand,
+    lang,
+    preheader: i.preheader(who),
+    content,
+  });
+}
+
+// ─── Email 8: Plan changes ───────────────────────────────────────────────────
+
+export function buildPlanActivatedEmail(
+  expiresAt: Date | null,
+  lang: EmailLang = 'fr',
+): string {
+  const brand = BRANDS.merchant;
+  const i = PLAN_EMAIL_I18N[lang];
+  const localeMap: Record<EmailLang, string> = { fr: 'fr-FR', en: 'en-US', ar: 'ar-MA' };
+  const expiryStr = expiresAt
+    ? expiresAt.toLocaleDateString(localeMap[lang], { day: '2-digit', month: 'long', year: 'numeric' })
+    : null;
+
+  const content = `
+    <h2 style="color: #1E1B4B; font-size: 20px; margin: 0 0 12px;">${escapeHtml(i.activatedHeading)}</h2>
+    <p style="color: #1E1B4B; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">
+      ${i.activatedBody(expiryStr ? escapeHtml(expiryStr) : null)}
+    </p>`;
+
+  return wrapEmail({
+    brand,
+    lang,
+    preheader: i.activatedSubject,
+    content,
+  });
+}
+
+export function buildPlanRevokedEmail(lang: EmailLang = 'fr'): string {
+  const brand = BRANDS.merchant;
+  const i = PLAN_EMAIL_I18N[lang];
+
+  const content = `
+    <h2 style="color: #1E1B4B; font-size: 20px; margin: 0 0 12px;">${escapeHtml(i.revokedHeading)}</h2>
+    <p style="color: #1E1B4B; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">
+      ${escapeHtml(i.revokedBody)}
+    </p>`;
+
+  return wrapEmail({
+    brand,
+    lang,
+    preheader: i.revokedSubject,
+    content,
+  });
+}
+
+export function buildPlanExpiringEmail(
+  daysLeft: number,
+  kind: 'trial' | 'premium',
+  lang: EmailLang = 'fr',
+): string {
+  const brand = BRANDS.merchant;
+  const i = PLAN_EMAIL_I18N[lang];
+
+  const content = `
+    <h2 style="color: #1E1B4B; font-size: 20px; margin: 0 0 12px;">${escapeHtml(i.expiringHeading(daysLeft))}</h2>
+    <p style="color: #1E1B4B; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">
+      ${i.expiringBody(daysLeft, kind)}
+    </p>`;
+
+  return wrapEmail({
+    brand,
+    lang,
+    preheader: i.expiringSubject(daysLeft),
+    content,
+  });
+}
+
+// ─── Email 9: Payout status ──────────────────────────────────────────────────
+
+export type PayoutStatusKind = 'pending' | 'approved' | 'paid' | 'rejected';
+
+export function buildPayoutStatusEmail(
+  status: PayoutStatusKind,
+  amountFormatted: string,
+  method: string,
+  rejectReason: string | null,
+  lang: EmailLang = 'fr',
+): { subject: string; html: string } {
+  const brand = BRANDS.client;
+  const i = PAYOUT_I18N[lang];
+  const safeAmount = escapeHtml(amountFormatted);
+  const safeMethod = escapeHtml(method);
+
+  let subject = '';
+  let heading = '';
+  let body = '';
+  let extraNote = '';
+
+  switch (status) {
+    case 'pending':
+      subject = i.pendingSubject;
+      heading = i.pendingHeading;
+      body = i.pendingBody(safeAmount, safeMethod);
+      extraNote = i.pendingNote;
+      break;
+    case 'approved':
+      subject = i.approvedSubject;
+      heading = i.approvedHeading;
+      body = i.approvedBody(safeAmount, safeMethod);
+      extraNote = i.approvedNote;
+      break;
+    case 'paid':
+      subject = i.paidSubject;
+      heading = i.paidHeading;
+      body = i.paidBody(safeAmount, safeMethod);
+      extraNote = '';
+      break;
+    case 'rejected':
+      subject = i.rejectedSubject;
+      heading = i.rejectedHeading;
+      body = i.rejectedBody(safeAmount, rejectReason ? escapeHtml(rejectReason) : null);
+      extraNote = i.rejectedContact;
+      break;
+  }
+
+  const content = `
+    <h2 style="color: #1E1B4B; font-size: 20px; margin: 0 0 12px;">${escapeHtml(heading)}</h2>
+    <p style="color: #1E1B4B; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">
+      ${body}
+    </p>
+    ${extraNote ? `<p style="color: ${brand.accentMuted}; font-size: 13px; margin: 0;">${escapeHtml(extraNote)}</p>` : ''}`;
+
+  const html = wrapEmail({
+    brand,
+    lang,
+    preheader: subject,
+    content,
+  });
+  return { subject, html };
 }
 
 // ─── Email 6: Marketing Blast ────────────────────────────────────────────────
@@ -304,9 +530,10 @@ export function buildMarketingBlastEmail(
   rawClientName: string,
   rawBody: string,
   merchant: MerchantBlastInfo,
+  lang: EmailLang = 'fr',
 ): string {
   const brand = BRANDS.client;
-  const clientName = escapeHtml(rawClientName);
+  const i = MARKETING_BLAST_I18N[lang];
   const formattedBody = escapeHtml(rawBody).replace(/\n/g, '<br/>');
   const safeName = escapeHtml(merchant.nom);
 
@@ -352,12 +579,12 @@ export function buildMarketingBlastEmail(
       <tr>
         <td style="padding: 12px 16px; background: ${brand.accentLight}; border-radius: 8px; border-left: 4px solid ${brand.accent};">
           <p style="color: ${brand.accent}; font-size: 14px; font-weight: 600; margin: 0;">
-            Un message de ${safeName}
+            ${escapeHtml(i.messageFrom(merchant.nom))}
           </p>
         </td>
       </tr>
     </table>
-    <p style="color: #1E1B4B; font-size: 16px; margin: 0 0 20px;">Bonjour ${clientName},</p>
+    <p style="color: #1E1B4B; font-size: 16px; margin: 0 0 20px;">${escapeHtml(i.greeting(rawClientName))}</p>
     <div style="color: #334155; font-size: 15px; line-height: 1.8; margin: 0;">
       ${formattedBody}
     </div>
@@ -365,13 +592,13 @@ export function buildMarketingBlastEmail(
 
   const extraFooter = `
     <p style="color: #94A3B8; font-size: 12px; line-height: 1.6; margin: 0 0 8px; text-align: center;">
-      Vous recevez cet e-mail car vous &ecirc;tes client de <strong>${safeName}</strong> via JitPlus.<br/>
-      Pour ne plus recevoir ces messages, d&eacute;sactivez les notifications e-mail dans les param&egrave;tres de l'application.
+      ${i.unsubscribeNote(safeName)}
     </p>`;
 
   return wrapEmail({
     brand,
-    preheader: `Message de ${merchant.nom} via JitPlus`,
+    lang,
+    preheader: i.preheader(merchant.nom),
     content,
     extraFooter,
   });

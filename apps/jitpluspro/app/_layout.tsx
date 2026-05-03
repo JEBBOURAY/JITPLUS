@@ -492,19 +492,44 @@ function ThemedNavigator() {
       }, 300);
     });
 
-    const navigateByAction = (action?: string) => {
+    // Route notification tap to the correct merchant-app screen.
+    // The router runs identically for FCM (Android) and APNs (iOS) payloads,
+    // ensuring uniform deep-link behaviour across both platforms.
+    const navigateByPayload = (data?: Record<string, unknown>) => {
       try {
-        switch (action) {
-          case 'open_referral':      router.push('/referral'); break;
-          case 'open_settings':      router.push('/settings'); break;
-          case 'open_logo':          router.push('/(tabs)/account'); break;
-          case 'open_scan':          router.push('/(tabs)/scan'); break;
-          case 'open_plan':          router.push('/(tabs)/account'); break;
-          case 'open_dashboard':     router.push('/(tabs)'); break;
-          case 'open_clients':       router.push('/(tabs)/activity'); break;
-          case 'open_notifications': router.push('/(tabs)/messages'); break;
-          default:                   router.push('/admin-notifications'); break;
+        const action = typeof data?.action === 'string' ? data.action : undefined;
+        const event = typeof data?.event === 'string' ? data.event : undefined;
+
+        // 1. Action-based deep links from scheduled campaigns / reminders
+        if (action) {
+          switch (action) {
+            case 'open_referral':            router.push('/referral'); return;
+            case 'open_settings':            router.push('/settings'); return;
+            case 'open_security':            router.push('/security'); return;
+            case 'open_logo':                router.push('/(tabs)/account'); return;
+            case 'open_scan':                router.push('/(tabs)/scan'); return;
+            case 'open_plan':                router.push('/(tabs)/account'); return;
+            case 'open_dashboard':           router.push('/(tabs)'); return;
+            case 'open_clients':             router.push('/(tabs)/activity'); return;
+            case 'open_messages':            router.push('/(tabs)/messages'); return;
+            case 'open_notifications':      // alias used by some campaigns
+            case 'open_admin_notifications': router.push('/admin-notifications'); return;
+            default:
+              logWarn('Notifications', 'Unknown FCM action:', action);
+              break;
+          }
         }
+
+        // 2. Event-based fallback (admin broadcasts, future server-side events)
+        switch (event) {
+          case 'admin_broadcast':
+            router.push('/admin-notifications');
+            return;
+        }
+
+        // 3. Default: open the in-app admin notifications feed so the user
+        // can still find the message — never the generic home tab.
+        router.push('/admin-notifications');
       } catch (e) { logWarn('Notifications', 'Navigation failed', e); }
     };
 
@@ -513,8 +538,7 @@ function ThemedNavigator() {
       Notifications!.setBadgeCountAsync(0).catch(() => {});
       queryClient.invalidateQueries({ queryKey: ['admin-notifications'] });
       queryClient.invalidateQueries({ queryKey: ['admin-notif-unread-count'] });
-      const action = response.notification.request.content.data?.action as string | undefined;
-      navigateByAction(action);
+      navigateByPayload(response.notification.request.content.data as Record<string, unknown> | undefined);
     });
 
     // Handle cold-start: app was killed, user tapped a notification to launch it
@@ -523,8 +547,7 @@ function ThemedNavigator() {
         logInfo('Notifications', 'Cold-start notification:', response.notification.request.content);
         queryClient.invalidateQueries({ queryKey: ['admin-notifications'] });
         queryClient.invalidateQueries({ queryKey: ['admin-notif-unread-count'] });
-        const action = response.notification.request.content.data?.action as string | undefined;
-        navigateByAction(action);
+        navigateByPayload(response.notification.request.content.data as Record<string, unknown> | undefined);
       }
     });
 

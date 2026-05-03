@@ -15,6 +15,7 @@ import * as bcrypt from 'bcryptjs';
 import { buildPagination } from '../common/utils';
 import { MERCHANTS_LIST_CACHE_TTL, MERCHANT_DETAIL_CACHE_TTL, PROFILE_STATS_CACHE_TTL, UNREAD_COUNT_CACHE_TTL } from '../common/constants';
 import { MailService } from '../mail/mail.service';
+import { pickEmailLang } from '../mail/transactional-i18n';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -179,7 +180,7 @@ export class ClientService {
   async deleteAccount(clientId: string, password?: string) {
     const client = await this.clientRepo.findUnique({
       where: { id: clientId },
-      select: { id: true, password: true, googleId: true, appleId: true, email: true, prenom: true },
+      select: { id: true, password: true, googleId: true, appleId: true, email: true, prenom: true, language: true },
     });
 
     if (!client) {
@@ -204,6 +205,7 @@ export class ClientService {
     // Capture original identity BEFORE anonymisation for confirmation email.
     const originalEmail = client.email;
     const originalPrenom = client.prenom;
+    const originalLanguage = client.language;
     const isEmailReal = !!originalEmail && originalEmail.includes('@');
 
     // Atomic soft-delete inside a transaction to ensure all related data
@@ -261,7 +263,7 @@ export class ClientService {
     // Best-effort confirmation email (GDPR Art. 17 / App Store 5.1.1(v) / Google Play)
     if (isEmailReal) {
       this.mailService
-        .sendClientAccountDeleted(originalEmail, originalPrenom || undefined)
+        .sendClientAccountDeleted(originalEmail, originalPrenom || undefined, pickEmailLang(originalLanguage))
         .catch((err) => this.logger.warn(`Failed to send client account-deleted email to ${originalEmail}: ${err?.message || err}`));
     }
 

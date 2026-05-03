@@ -21,7 +21,7 @@ export interface MerchantBlastInfo {
 
 export interface IEmailBlastProvider {
   sendBlast(
-    recipients: { email: string; prenom?: string | null }[],
+    recipients: { email: string; prenom?: string | null; lang?: string | null }[],
     subject: string,
     body: string,
     merchant: MerchantBlastInfo,

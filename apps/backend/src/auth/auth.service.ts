@@ -10,6 +10,7 @@ import {
   TRANSACTION_RUNNER, type ITransactionRunner,
 } from '../common/repositories';
 import { IPushProvider, PUSH_PROVIDER, IMailProvider, MAIL_PROVIDER } from '../common/interfaces';
+import { pickEmailLang } from '../mail/transactional-i18n';
 import { OAuth2Client } from 'google-auth-library';
 import * as bcrypt from 'bcryptjs';
 import { randomUUID, randomBytes, createHash, randomInt, createPublicKey } from 'crypto';
@@ -151,14 +152,16 @@ export class AuthService {
 
       // Enregistrer la session de l'appareil + générer le refresh token
       let merchantRefreshToken: string | undefined;
+      let merchantIsNewDevice = false;
       if (loginDto.deviceName) {
         merchantRefreshToken = randomBytes(40).toString('hex');
         const refreshHash = createHash('sha256').update(merchantRefreshToken).digest('hex');
-        await this.registerDeviceSession(merchant.id, sessionId, loginDto, ipAddress, 'merchant', merchant.email, merchant.nom, refreshHash);
+        const r = await this.registerDeviceSession(merchant.id, sessionId, loginDto, ipAddress, 'merchant', merchant.email, merchant.nom, refreshHash);
+        merchantIsNewDevice = r.isNewDevice;
       }
 
       // Notifier le propriétaire
-      this.sendLoginNotification(merchant.id, 'Propriétaire', loginDto.deviceName, merchant.pushToken, merchant.language)
+      this.sendLoginNotification(merchant.id, 'Propriétaire', loginDto.deviceName, merchant.pushToken, merchant.language, merchantIsNewDevice, merchant.email)
         .catch((err) => this.logger.warn('Push notification failed', errMsg(err)));
 
       return {
@@ -213,14 +216,16 @@ export class AuthService {
 
       // Enregistrer la session de l'appareil + générer le refresh token
       let tmRefreshToken: string | undefined;
+      let tmIsNewDevice = false;
       if (loginDto.deviceName) {
         tmRefreshToken = randomBytes(40).toString('hex');
         const refreshHash = createHash('sha256').update(tmRefreshToken).digest('hex');
-        await this.registerDeviceSession(ownerMerchant.id, sessionId, loginDto, ipAddress, 'team_member', teamMember.email, teamMember.nom, refreshHash);
+        const r = await this.registerDeviceSession(ownerMerchant.id, sessionId, loginDto, ipAddress, 'team_member', teamMember.email, teamMember.nom, refreshHash);
+        tmIsNewDevice = r.isNewDevice;
       }
 
       // Notifier le propriétaire qu'un membre d'équipe s'est connecté
-      this.sendLoginNotification(ownerMerchant.id, teamMember.nom, loginDto.deviceName, ownerMerchant.pushToken, ownerMerchant.language)
+      this.sendLoginNotification(ownerMerchant.id, teamMember.nom, loginDto.deviceName, ownerMerchant.pushToken, ownerMerchant.language, tmIsNewDevice, ownerMerchant.email)
         .catch((err) => this.logger.warn('Push notification failed', errMsg(err)));
 
       return {
@@ -253,7 +258,7 @@ export class AuthService {
     userEmail?: string,
     userName?: string,
     refreshTokenHash?: string,
-  ) {
+  ): Promise<{ isNewDevice: boolean }> {
     const sessionData = {
       tokenId: sessionId,
       deviceName: loginDto.deviceName!,
@@ -267,6 +272,7 @@ export class AuthService {
       ...(refreshTokenHash ? { refreshTokenHash } : {}),
     };
 
+    let isNewDevice = true;
     await this.txRunner.run(async (tx) => {
       // Single UPDATE: only flip currently-active devices (not all devices for merchant)
       await tx.deviceSession.updateMany({
@@ -282,6 +288,7 @@ export class AuthService {
         : null;
 
       if (existing) {
+        isNewDevice = false;
         await tx.deviceSession.update({
           where: { id: existing.id },
           data: sessionData,
@@ -307,10 +314,12 @@ export class AuthService {
         });
       }
     });
+
+    return { isNewDevice };
   }
 
   /**
-   * Envoyer une notification push au propriétaire pour signaler une connexion
+   * Envoyer une notification push (et email si nouveau device) au propriétaire pour signaler une connexion
    */
   private async sendLoginNotification(
     merchantId: string,
@@ -318,45 +327,65 @@ export class AuthService {
     deviceName?: string,
     pushToken?: string | null,
     language?: string | null,
+    isNewDevice: boolean = false,
+    ownerEmail?: string | null,
   ) {
     // Si pas de pushToken fourni, le chercher en base
     let token = pushToken;
     let lang = language;
-    if (!token) {
+    let email = ownerEmail;
+    if (!token || (isNewDevice && email === undefined)) {
       const merchant = await this.merchantRepo.findUnique({
         where: { id: merchantId },
-        select: { pushToken: true, language: true },
+        select: { pushToken: true, language: true, email: true },
       });
-      token = merchant?.pushToken;
-      lang = merchant?.language;
+      token = token ?? merchant?.pushToken;
+      lang = lang ?? merchant?.language;
+      email = email ?? merchant?.email;
     }
 
-    if (!token) return;
-
     const l = (lang === 'en' || lang === 'ar' ? lang : 'fr') as 'fr' | 'en' | 'ar';
-    const LOGIN_MESSAGES = {
-      fr: {
-        title: '🔐 Nouvelle connexion détectée',
-        withDevice: (w: string, d: string) => `${w} s'est connecté(e) sur ${d}. Si ce n'est pas vous, changez votre mot de passe.`,
-        noDevice: (w: string) => `${w} s'est connecté(e) à votre commerce. Si ce n'est pas vous, changez votre mot de passe.`,
-      },
-      en: {
-        title: '🔐 New login detected',
-        withDevice: (w: string, d: string) => `${w} logged in on ${d}. If this wasn't you, change your password.`,
-        noDevice: (w: string) => `${w} logged in to your business. If this wasn't you, change your password.`,
-      },
-      ar: {
-        title: '🔐 كونيكسيون جديدة',
-        withDevice: (w: string, d: string) => `${w} دخل(ات) من ${d}. إلا ماشي نتا، بدل الباسوورد ديالك.`,
-        noDevice: (w: string) => `${w} دخل(ات) للكومرس ديالك. إلا ماشي نتا، بدل الباسوورد ديالك.`,
-      },
-    };
 
-    const msg = LOGIN_MESSAGES[l];
-    const title = msg.title;
-    const body = deviceName ? msg.withDevice(who, deviceName) : msg.noDevice(who);
+    if (token) {
+      const LOGIN_MESSAGES = {
+        fr: {
+          title: '🔐 Nouvelle connexion détectée',
+          withDevice: (w: string, d: string) => `${w} s'est connecté(e) sur ${d}. Si ce n'est pas vous, changez votre mot de passe.`,
+          noDevice: (w: string) => `${w} s'est connecté(e) à votre commerce. Si ce n'est pas vous, changez votre mot de passe.`,
+        },
+        en: {
+          title: '🔐 New login detected',
+          withDevice: (w: string, d: string) => `${w} logged in on ${d}. If this wasn't you, change your password.`,
+          noDevice: (w: string) => `${w} logged in to your business. If this wasn't you, change your password.`,
+        },
+        ar: {
+          title: '🔐 كونيكسيون جديدة',
+          withDevice: (w: string, d: string) => `${w} دخل(ات) من ${d}. إلا ماشي نتا، بدل الباسوورد ديالك.`,
+          noDevice: (w: string) => `${w} دخل(ات) للكومرس ديالك. إلا ماشي نتا، بدل الباسوورد ديالك.`,
+        },
+      };
 
-    await this.pushProvider.sendMulticast([token], title, body, undefined, undefined, 'login-alerts');
+      const msg = LOGIN_MESSAGES[l];
+      const title = msg.title;
+      const body = deviceName ? msg.withDevice(who, deviceName) : msg.noDevice(who);
+
+      // Deep-link: tap → Sécurité (`/security`) so the merchant can immediately
+      // review active sessions and revoke a suspicious device.
+      await this.pushProvider.sendMulticast(
+        [token],
+        title,
+        body,
+        undefined,
+        { event: 'login_alert', action: 'open_security' },
+        'login-alerts',
+      );
+    }
+
+    // Send email only when a brand-new device signs in (avoid spamming on every login)
+    if (isNewDevice && email) {
+      this.mailProvider.sendLoginAlert(email, who, deviceName ?? null, new Date(), l)
+        .catch((err) => this.logger.warn('Login alert email failed', errMsg(err)));
+    }
   }
 
   /**
@@ -770,17 +799,19 @@ export class AuthService {
 
       // Register device session + refresh token
       let refreshToken: string | undefined;
+      let googleIsNewDevice = false;
       if (dto.deviceName) {
         refreshToken = randomBytes(40).toString('hex');
         const refreshHash = createHash('sha256').update(refreshToken).digest('hex');
-        await this.registerDeviceSession(
+        const r = await this.registerDeviceSession(
           merchant.id, sessionId, dto, ipAddress,
           'merchant', merchant.email, merchant.nom, refreshHash,
         );
+        googleIsNewDevice = r.isNewDevice;
       }
 
       // Notify owner
-      this.sendLoginNotification(merchant.id, 'Propriétaire (Google)', dto.deviceName, merchant.pushToken, merchant.language)
+      this.sendLoginNotification(merchant.id, 'Propriétaire (Google)', dto.deviceName, merchant.pushToken, merchant.language, googleIsNewDevice, merchant.email)
         .catch((err) => this.logger.warn('Push notification failed', errMsg(err)));
 
       return {
@@ -949,7 +980,7 @@ export class AuthService {
     }
 
     // Welcome email sent after Google registration (no OTP needed — email already verified)
-    this.mailProvider.sendWelcomeMerchant(merchant.email, merchant.nom)
+    this.mailProvider.sendWelcomeMerchant(merchant.email, merchant.nom, pickEmailLang(merchant.language))
       .catch((err) => this.logger.warn('Welcome email failed', errMsg(err)));
 
     // Merchant-to-merchant referral bonus is deferred until the referred merchant
@@ -1208,7 +1239,7 @@ export class AuthService {
     }
 
     // Welcome email (no OTP needed — email already verified by Apple)
-    this.mailProvider.sendWelcomeMerchant(merchant.email, merchant.nom)
+    this.mailProvider.sendWelcomeMerchant(merchant.email, merchant.nom, pickEmailLang(merchant.language))
       .catch((err) => this.logger.warn('Welcome email failed', errMsg(err)));
 
     // Create client referral record (fire-and-forget)
@@ -1326,16 +1357,18 @@ export class AuthService {
       };
 
       let refreshToken: string | undefined;
+      let appleIsNewDevice = false;
       if (dto.deviceName) {
         refreshToken = randomBytes(40).toString('hex');
         const refreshHash = createHash('sha256').update(refreshToken).digest('hex');
-        await this.registerDeviceSession(
+        const r = await this.registerDeviceSession(
           merchant.id, sessionId, dto, ipAddress,
           'merchant', merchant.email, merchant.nom, refreshHash,
         );
+        appleIsNewDevice = r.isNewDevice;
       }
 
-      this.sendLoginNotification(merchant.id, 'Propriétaire (Apple)', dto.deviceName, merchant.pushToken, merchant.language)
+      this.sendLoginNotification(merchant.id, 'Propriétaire (Apple)', dto.deviceName, merchant.pushToken, merchant.language, appleIsNewDevice, merchant.email)
         .catch((err) => this.logger.warn('Push notification failed', errMsg(err)));
 
       return {
@@ -1381,7 +1414,12 @@ export class AuthService {
     });
 
     try {
-      await this.mailProvider.sendOtpEmail(email, code, 'merchant');
+      const merchant = await this.merchantRepo.findUnique({
+        where: { email },
+        select: { language: true },
+      });
+      const lang = pickEmailLang(merchant?.language);
+      await this.mailProvider.sendOtpEmail(email, code, 'merchant', lang);
     } catch {
       this.logger.error(`OTP email delivery failed for ${email}`);
       throw new HttpException('Impossible d\'envoyer l\'email. Veuillez réessayer.', HttpStatus.SERVICE_UNAVAILABLE);
@@ -1451,20 +1489,22 @@ export class AuthService {
 
     // Atomically delete OTP and mark email as verified
     let merchantNom: string | null = null;
+    let merchantLang: string | null = null;
     await this.txRunner.run(async (tx) => {
       await tx.otp.delete({ where: { id: otpId } });
       const updated = await tx.merchant.update({
         where: { email: normalizedEmail },
         data: { emailVerified: true },
-        select: { nom: true },
+        select: { nom: true, language: true },
       });
       merchantNom = updated.nom;
+      merchantLang = updated.language;
     });
 
     this.logger.log(`Email verified for ${normalizedEmail}`);
 
     // Send welcome email now that OTP is validated
-    this.mailProvider.sendWelcomeMerchant(normalizedEmail, merchantNom ?? '')
+    this.mailProvider.sendWelcomeMerchant(normalizedEmail, merchantNom ?? '', pickEmailLang(merchantLang))
       .catch((err) => this.logger.warn('Welcome email failed', errMsg(err)));
 
     return { success: true, message: 'Email vérifié avec succès.' };

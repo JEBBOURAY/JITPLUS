@@ -14,6 +14,7 @@ import { checkLockout, handleFailedLogin, resetLoginAttempts, LockoutDbOps } fro
 import { CLIENT_AUTH_SELECT, CLIENT_LOGIN_SELECT } from '../common/prisma-selects';
 import { validateOtp, handleOtpMismatch, hashOtp, checkDailyOtpLimit, OtpDbOps, OtpRecord } from '../common/utils/otp.helper';
 import { IMailProvider, MAIL_PROVIDER, ISmsProvider, SMS_PROVIDER } from '../common/interfaces';
+import { pickEmailLang } from '../mail/transactional-i18n';
 import { OAuth2Client } from 'google-auth-library';
 import * as jwt from 'jsonwebtoken';
 import { createPublicKey } from 'crypto';
@@ -406,7 +407,12 @@ export class ClientAuthService {
 
     // Send OTP email â€” client-facing branding (JitPlus, not JitPlus Pro)
     try {
-      await this.mailProvider.sendOtpEmail(normalizedEmail, code, 'client');
+      const existingClient = await this.clientRepo.findUnique({
+        where: { email: normalizedEmail },
+        select: { language: true },
+      });
+      const lang = pickEmailLang(existingClient?.language);
+      await this.mailProvider.sendOtpEmail(normalizedEmail, code, 'client', lang);
     } catch {
       this.logger.error(`OTP email delivery failed for ${normalizedEmail}`);
       throw new HttpException('error.auth.emailFail', HttpStatus.SERVICE_UNAVAILABLE);
@@ -762,7 +768,8 @@ export class ClientAuthService {
         `Bienvenue ${name} sur JitPlus ! ðŸŽ‰ Vos cartes de fidÃ©litÃ©, partout avec vous.`,
       ).catch((err) => this.logger.warn('Welcome WhatsApp failed', errMsg(err)));
     } else if (client.email) {
-      this.mailProvider.sendWelcomeClient(client.email, client.prenom ?? undefined)
+      const langRow = await this.clientRepo.findUnique({ where: { id: client.id }, select: { language: true } });
+      this.mailProvider.sendWelcomeClient(client.email, client.prenom ?? undefined, pickEmailLang(langRow?.language))
         .catch((err) => this.logger.warn('Welcome email failed', errMsg(err)));
     }
 
@@ -1026,7 +1033,12 @@ export class ClientAuthService {
         this.logger.debug(`[DEV] OTP changement email ${normalizedEmail}: ${code}`);
       }
       try {
-        await this.mailProvider.sendOtpEmail(normalizedEmail, code, 'client');
+        const existingClient = await this.clientRepo.findUnique({
+          where: { email: normalizedEmail },
+          select: { language: true },
+        });
+        const lang = pickEmailLang(existingClient?.language);
+        await this.mailProvider.sendOtpEmail(normalizedEmail, code, 'client', lang);
       } catch {
         this.logger.error(`OTP email delivery failed for ${normalizedEmail}`);
         throw new HttpException('error.auth.emailFail', HttpStatus.SERVICE_UNAVAILABLE);
