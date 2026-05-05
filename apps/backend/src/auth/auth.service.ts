@@ -1420,9 +1420,9 @@ export class AuthService {
       });
       const lang = pickEmailLang(merchant?.language);
       await this.mailProvider.sendOtpEmail(email, code, 'merchant', lang);
-    } catch {
-      this.logger.error(`OTP email delivery failed for ${email}`);
-      throw new HttpException('Impossible d\'envoyer l\'email. Veuillez réessayer.', HttpStatus.SERVICE_UNAVAILABLE);
+    } catch (error) {
+      this.logger.error(`OTP email delivery failed for ${email}: ${error?.message}`, error?.stack);
+      throw new HttpException('Impossible d\'envoyer l\'email. Veuillez réessayer.', HttpStatus.SERVICE_UNAVAILABLE, { cause: error });
     }
     this.logger.log(`${logLabel} OTP sent to ${email}`);
   }

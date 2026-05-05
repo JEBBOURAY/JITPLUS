@@ -413,9 +413,9 @@ export class ClientAuthService {
       });
       const lang = pickEmailLang(existingClient?.language);
       await this.mailProvider.sendOtpEmail(normalizedEmail, code, 'client', lang);
-    } catch {
-      this.logger.error(`OTP email delivery failed for ${normalizedEmail}`);
-      throw new HttpException('error.auth.emailFail', HttpStatus.SERVICE_UNAVAILABLE);
+    } catch (error) {
+      this.logger.error(`OTP email delivery failed for ${normalizedEmail}: ${error?.message}`, error?.stack);
+      throw new HttpException('error.auth.emailFail', HttpStatus.SERVICE_UNAVAILABLE, { cause: error });
     }
 
     this.logger.log(`OTP envoyÃ© Ã  ${normalizedEmail}`);
@@ -1039,9 +1039,9 @@ export class ClientAuthService {
         });
         const lang = pickEmailLang(existingClient?.language);
         await this.mailProvider.sendOtpEmail(normalizedEmail, code, 'client', lang);
-      } catch {
-        this.logger.error(`OTP email delivery failed for ${normalizedEmail}`);
-        throw new HttpException('error.auth.emailFail', HttpStatus.SERVICE_UNAVAILABLE);
+      } catch (error) {
+        this.logger.error(`OTP email delivery failed for ${normalizedEmail}: ${error?.message}`, error?.stack);
+        throw new HttpException('error.auth.emailFail', HttpStatus.SERVICE_UNAVAILABLE, { cause: error });
       }
       return { success: true, message: 'Code envoyÃ© par email' };
     } else {
