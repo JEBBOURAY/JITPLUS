@@ -37,7 +37,7 @@ import {
 export class MailService implements IMailProvider {
   private readonly logger = new Logger(MailService.name);
   private transporter: nodemailer.Transporter;
-  private readonly fromAddress: string;
+  private readonly fromAddress: string | { name: string; address: string };
   private readonly replyToAddress: string;
 
   constructor(private configService: ConfigService) {
@@ -45,10 +45,28 @@ export class MailService implements IMailProvider {
     const port = parseInt(String(this.configService.get('SMTP_PORT', 587)), 10);
     const user = this.configService.get<string>('SMTP_USER')?.trim();
     const pass = this.configService.get<string>('SMTP_PASS')?.trim();
-    this.fromAddress = this.configService.get<string>('SMTP_FROM', 'JitPlus <contact@jitplus.com>')?.trim();
+
+    // From: accept either a full "Name <email@x>" string OR a bare email
+    // combined with SMTP_FROM_NAME. Using the address-object form lets
+    // Nodemailer encode the display name correctly (RFC 5322), which is more
+    // robust than passing a hand-built string through --set-env-vars where
+    // some characters (<, >, commas) can be mangled by the deploy tooling.
+    const rawFrom = this.configService.get<string>('SMTP_FROM', 'contact@jitplus.com')?.trim() || 'contact@jitplus.com';
+    const fromName = this.configService.get<string>('SMTP_FROM_NAME')?.trim();
+    const angleMatch = rawFrom.match(/^\s*(.*?)\s*<\s*([^>]+)\s*>\s*$/);
+    if (angleMatch) {
+      const name = angleMatch[1].replace(/^"|"$/g, '').trim();
+      const address = angleMatch[2].trim();
+      this.fromAddress = name ? { name, address } : address;
+    } else if (fromName) {
+      this.fromAddress = { name: fromName, address: rawFrom };
+    } else {
+      this.fromAddress = rawFrom;
+    }
+
     // Reply-To: where users replying to a transactional email actually land (support).
-    this.replyToAddress =
-      this.configService.get<string>('SMTP_REPLY_TO')?.trim() || this.fromAddress;
+    const replyTo = this.configService.get<string>('SMTP_REPLY_TO')?.trim();
+    this.replyToAddress = replyTo || (typeof this.fromAddress === 'string' ? this.fromAddress : this.fromAddress.address);
 
     if (host && user && pass) {
       this.transporter = nodemailer.createTransport({
@@ -57,7 +75,13 @@ export class MailService implements IMailProvider {
         secure: port === 465,
         auth: { user, pass },
       });
-      this.logger.log(`Mail transporter configured (${host}:${port})`);
+      this.logger.log(`Mail transporter configured (${host}:${port}) from=${JSON.stringify(this.fromAddress)}`);
+      // Best-effort verify so any auth/connectivity issue is logged at startup
+      // rather than only when the first user requests an OTP.
+      this.transporter.verify().then(
+        () => this.logger.log('SMTP transporter verified OK'),
+        (err) => this.logger.error(`SMTP transporter verify FAILED: ${err?.message}`, err?.stack),
+      );
     } else {
       this.logger.warn('SMTP not configured — emails will be logged to console only');
     }
@@ -292,7 +316,13 @@ export class MailService implements IMailProvider {
   /**
    * Internal send helper — handles missing SMTP gracefully
    */
-  private async send(to: string, from: string, subject: string, html: string, tag: string): Promise<void> {
+  private async send(
+    to: string,
+    from: string | { name: string; address: string },
+    subject: string,
+    html: string,
+    tag: string,
+  ): Promise<void> {
     if (!this.transporter) {
       this.logger.warn(`[NO SMTP] ${tag} email to ${to} not sent`);
       return;
