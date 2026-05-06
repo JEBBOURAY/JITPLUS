@@ -31,13 +31,26 @@ import * as bcrypt from 'bcryptjs';
 import * as jwt from 'jsonwebtoken';
 import { createPublicKey, randomUUID } from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
-import { BCRYPT_SALT_ROUNDS } from '../../common/constants';
+import { BCRYPT_SALT_ROUNDS, DEFAULT_REWARD_THRESHOLD, DEFAULT_STAMPS_FOR_REWARD } from '../../common/constants';
 import { MERCHANT_PROFILE_SELECT, MerchantProfileData } from '../../common/prisma-selects';
 import { MERCHANT_PROFILE_CACHE_TTL } from '../../common/constants';
+import { PointsRules } from '../interfaces/points-rules.interface';
 import { stripUndefined } from '../../common/utils';
 import { getNotifTranslations } from '../../common/utils/notification-i18n';
 import { MailService } from '../../mail/mail.service';
 import { pickEmailLang } from '../../mail/transactional-i18n';
+
+/** Summary of a loyalty-type conversion — embedded in the audit log for rollback / forensics. */
+interface ConversionSummary {
+  oldType: string;
+  newType: string;
+  pointsPerStamp: number;
+  cardsAffected: number;
+  totalBalanceBefore: number;
+  totalBalanceAfter: number;
+  rewardsBefore: { id: string; cout: number }[];
+  rewardsAfter: { id: string; cout: number }[];
+}
 
 @Injectable()
 export class MerchantProfileService {
@@ -280,7 +293,15 @@ export class MerchantProfileService {
   async updateLoyaltySettings(merchantId: string, dto: UpdateLoyaltySettingsDto): Promise<MerchantProfileData> {
     const merchant = await this.merchantRepo.findUnique({
       where: { id: merchantId },
-      select: { id: true, nom: true, loyaltyType: true, conversionRate: true },
+      select: {
+        id: true,
+        nom: true,
+        loyaltyType: true,
+        conversionRate: true,
+        stampsForReward: true,
+        pointsRules: true,
+        accumulationLimit: true,
+      },
     });
     if (!merchant) throw new NotFoundException('Commerce non trouvé');
 
@@ -299,14 +320,7 @@ export class MerchantProfileService {
 
     const oldType = merchant.loyaltyType;
     const newType = dto.loyaltyType ?? oldType;
-    const conversionRate = dto.conversionRate ?? merchant.conversionRate;
     const loyaltyTypeChanged = !!dto.loyaltyType && dto.loyaltyType !== oldType;
-
-    if (loyaltyTypeChanged) {
-      // Await so that reward costs & client balances are converted
-      // before the response triggers a frontend reload of rewards.
-      await this.recalculateBalances(merchantId, oldType, newType, conversionRate);
-    }
 
     // Auto-sync conversionRate with pointsRate when conversionRate is not explicitly provided.
     // This ensures the client app displays the correct earning rate (e.g. after onboarding).
@@ -319,11 +333,41 @@ export class MerchantProfileService {
     const { forceCapClients: _strip, ...dtoWithoutForce } = dto;
     const data: Record<string, unknown> = stripUndefined(dtoWithoutForce);
 
-    const updated = await this.merchantRepo.update({
-      where: { id: merchantId },
-      data,
-      select: MERCHANT_PROFILE_SELECT,
-    });
+    // Compute the value-equivalence ratio between the two systems.
+    // pointsPerStamp = rewardThreshold / stampsForReward (i.e. how many points 1 stamp is worth).
+    // This preserves the client's "progress to next reward" across the conversion.
+    const pointsRules = (merchant.pointsRules as PointsRules | null) ?? null;
+    const rewardThreshold = pointsRules?.rewardThreshold || DEFAULT_REWARD_THRESHOLD;
+    const stampsForReward = (dto.stampsForReward ?? merchant.stampsForReward) || DEFAULT_STAMPS_FOR_REWARD;
+    const pointsPerStamp = rewardThreshold / stampsForReward;
+    if (loyaltyTypeChanged && (!Number.isFinite(pointsPerStamp) || pointsPerStamp <= 0)) {
+      throw new BadRequestException(
+        'Conversion impossible : seuil de récompense ou nombre de tampons invalide',
+      );
+    }
+
+    // Atomic: convert balances + reward costs + apply merchant settings in a single DB transaction.
+    // Prevents desync if any step fails (e.g. type updated but balances stayed unconverted, or vice-versa).
+    let conversionSummary: ConversionSummary | null = null;
+    const updated = await this.txRunner.run(
+      async (tx) => {
+        if (loyaltyTypeChanged) {
+          conversionSummary = await this.recalculateBalancesTx(
+            tx,
+            merchantId,
+            oldType,
+            newType,
+            pointsPerStamp,
+            merchant.accumulationLimit ?? null,
+          );
+        }
+        return tx.merchant.update({
+          where: { id: merchantId },
+          data: data as any,
+          select: MERCHANT_PROFILE_SELECT,
+        }) as unknown as MerchantProfileData;
+      },
+    );
 
     if (loyaltyTypeChanged) {
       // Fire-and-forget: do not block the HTTP response
@@ -345,7 +389,7 @@ export class MerchantProfileService {
 
     // When stampsForReward changes (without a simultaneous type switch), sync all
     // reward costs so the redemption threshold stays consistent.
-    // Type-switch cases are already handled by recalculateBalances().
+    // Type-switch cases are already handled by recalculateBalancesTx().
     if (dto.stampsForReward !== undefined && !loyaltyTypeChanged && newType === 'STAMPS') {
       this.syncRewardCosts(merchantId, dto.stampsForReward)
         .catch((err) => this.logger.error(`syncRewardCosts failed: ${err}`));
@@ -367,6 +411,9 @@ export class MerchantProfileService {
         stampsForReward: dto.stampsForReward,
         accumulationLimit: dto.accumulationLimit,
         loyaltyTypeChanged,
+        // Conversion audit trail: enables rollback / post-mortem if a merchant
+        // disputes the resulting balances. Only populated on type switch.
+        ...(conversionSummary ? { conversion: conversionSummary } : {}),
       },
     });
 
@@ -557,45 +604,119 @@ export class MerchantProfileService {
     this.logger.log(`Synced reward costs to ${newCout} for merchant ${merchantId}`);
   }
 
-  private async recalculateBalances(
+  private async recalculateBalancesTx(
+    tx: import('../../common/repositories').TransactionClient,
     merchantId: string,
     oldType: string,
     newType: string,
-    conversionRate: number,
-  ) {
-    if (!conversionRate || conversionRate <= 0) {
-      throw new BadRequestException('Le taux de conversion doit être supérieur à zéro');
+    pointsPerStamp: number,
+    accumulationLimit: number | null,
+  ): Promise<ConversionSummary> {
+    if (!Number.isFinite(pointsPerStamp) || pointsPerStamp <= 0) {
+      throw new BadRequestException('Ratio de conversion invalide');
     }
+
+    // Concurrency guard: lock the merchant row so concurrent EARN_POINTS /
+    // REDEEM_REWARD transactions (which all start by reading the merchant) wait
+    // until the conversion commits. Prevents a client from earning points on
+    // the OLD scale that get persisted after the bulk UPDATE.
+    await tx.$executeRaw`SELECT id FROM merchants WHERE id = ${merchantId} FOR UPDATE`;
+
+    // Snapshot rewards BEFORE conversion (audit trail — enables rollback if needed).
+    const rewardsBefore = await tx.reward.findMany({
+      where: { merchantId },
+      select: { id: true, cout: true },
+    });
+
+    // Aggregate balances BEFORE — used as audit summary; per-card snapshots would
+    // be too heavy on large merchants (the per-card transaction is created later
+    // by notifyLoyaltyTypeChange).
+    const balancesBefore = await tx.loyaltyCard.aggregate({
+      where: { merchantId },
+      _count: { _all: true },
+      _sum: { points: true },
+    });
+
     if (oldType === 'POINTS' && newType === 'STAMPS') {
-      // Convert client balances: points → stamps
-      await this.rawQuery.executeRaw`
+      // POINTS → STAMPS : stamps = ROUND(points / pointsPerStamp)
+      // ROUND (vs FLOOR) preserves customer value symmetrically with the reverse path.
+      // CRITICAL: cast to numeric BEFORE the division — Postgres does integer division
+      // when both operands are int (e.g. 5/10 = 0, not 0.5), which would silently
+      // erase residual progress for clients whose balance is not a multiple of the ratio.
+      // Lower bound 0 ; we don't apply accumulationLimit here because stamps balances
+      // are typically much smaller than the points limit.
+      await tx.$executeRaw`
         UPDATE loyalty_cards
-        SET points = GREATEST(FLOOR(points / ${conversionRate}), 0),
+        SET points = GREATEST(ROUND(points::numeric / ${pointsPerStamp})::int, 0),
             updated_at = NOW()
         WHERE merchant_id = ${merchantId}`;
 
-      // Convert reward costs: points → stamps (minimum 1)
-      await this.rawQuery.executeRaw`
+      // Reward costs: same ratio, minimum 1 (a free reward at 0 stamps would be exploitable).
+      await tx.$executeRaw`
         UPDATE rewards
-        SET cout = GREATEST(FLOOR(cout / ${conversionRate}), 1),
+        SET cout = GREATEST(ROUND(cout::numeric / ${pointsPerStamp})::int, 1),
             updated_at = NOW()
         WHERE merchant_id = ${merchantId}`;
-
     } else if (oldType === 'STAMPS' && newType === 'POINTS') {
-      // Convert client balances: stamps → points
-      await this.rawQuery.executeRaw`
-        UPDATE loyalty_cards
-        SET points = ROUND(points * ${conversionRate}),
-            updated_at = NOW()
-        WHERE merchant_id = ${merchantId}`;
+      // STAMPS → POINTS : points = ROUND(stamps × pointsPerStamp)
+      // Multiplication is safe with int operands (no truncation). We still cast to
+      // numeric so a fractional pointsPerStamp would not silently floor.
+      // Cap by accumulationLimit if set, to honour the merchant's anti-abuse policy.
+      if (accumulationLimit && accumulationLimit > 0) {
+        await tx.$executeRaw`
+          UPDATE loyalty_cards
+          SET points = LEAST(GREATEST(ROUND(points::numeric * ${pointsPerStamp})::int, 0), ${accumulationLimit}),
+              updated_at = NOW()
+          WHERE merchant_id = ${merchantId}`;
+      } else {
+        await tx.$executeRaw`
+          UPDATE loyalty_cards
+          SET points = GREATEST(ROUND(points::numeric * ${pointsPerStamp})::int, 0),
+              updated_at = NOW()
+          WHERE merchant_id = ${merchantId}`;
+      }
 
-      // Convert reward costs: stamps → points (minimum 1)
-      await this.rawQuery.executeRaw`
+      await tx.$executeRaw`
         UPDATE rewards
-        SET cout = GREATEST(ROUND(cout * ${conversionRate}), 1),
+        SET cout = GREATEST(ROUND(cout::numeric * ${pointsPerStamp})::int, 1),
             updated_at = NOW()
         WHERE merchant_id = ${merchantId}`;
+    } else {
+      // Same-type or unsupported transition: nothing to convert.
+      return {
+        oldType,
+        newType,
+        pointsPerStamp,
+        cardsAffected: 0,
+        totalBalanceBefore: 0,
+        totalBalanceAfter: 0,
+        rewardsBefore: [],
+        rewardsAfter: [],
+      };
     }
+
+    // Snapshot AFTER — verifies the conversion landed in the expected range and
+    // gives admins the data to roll back via a UPDATE … VALUES (id, cout) script.
+    const rewardsAfter = await tx.reward.findMany({
+      where: { merchantId },
+      select: { id: true, cout: true },
+    });
+
+    const balancesAfter = await tx.loyaltyCard.aggregate({
+      where: { merchantId },
+      _sum: { points: true },
+    });
+
+    return {
+      oldType,
+      newType,
+      pointsPerStamp,
+      cardsAffected: balancesBefore._count?._all ?? 0,
+      totalBalanceBefore: balancesBefore._sum?.points ?? 0,
+      totalBalanceAfter: balancesAfter._sum?.points ?? 0,
+      rewardsBefore: rewardsBefore.map((r: { id: string; cout: number }) => ({ id: r.id, cout: r.cout })),
+      rewardsAfter: rewardsAfter.map((r: { id: string; cout: number }) => ({ id: r.id, cout: r.cout })),
+    };
   }
 
   // ── Delete Account (soft delete) ─────────────────────────────
