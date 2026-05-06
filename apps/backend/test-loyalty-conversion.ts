@@ -275,28 +275,47 @@ async function testRowLock(): Promise<void> {
 
 async function testRewardScale(): Promise<void> {
   // Bug fix verification: stampsForReward change in STAMPS mode (no type switch)
-  // must rescale rewards proportionally — NOT overwrite all to the same value.
+  // must rescale rewards AND client balances proportionally — NOT overwrite.
   const cases = [
     {
-      name: 'Reward scale: stampsForReward 10→15 in STAMPS mode (preserves tiers)',
+      name: 'Reward+balance scale: stampsForReward 10→15 (preserves % progress)',
       oldRef: 10,
       newRef: 15,
+      accumulationLimit: null as number | null,
       rewards: [5, 10, 20],
-      expected: [8, 15, 30], // 5*1.5=7.5→8, 10*1.5=15, 20*1.5=30
+      cards: [0, 5, 10, 7],
+      expectedRewards: [8, 15, 30], // 5*1.5=7.5→8, 10*1.5=15, 20*1.5=30
+      expectedCards: [0, 8, 15, 11], // 5/10=50% → 7.5/15→8/15≈53%; 7/10=70% → 10.5/15→11/15≈73%
     },
     {
-      name: 'Reward scale: stampsForReward 10→5 in STAMPS mode (compress tiers)',
+      name: 'Reward+balance scale: stampsForReward 10→5 (compress)',
       oldRef: 10,
       newRef: 5,
+      accumulationLimit: null,
       rewards: [5, 10, 20, 1],
-      expected: [3, 5, 10, 1], // 5*0.5=2.5→3 (half-away-from-zero), 1*0.5=0.5→1, floor 1
+      cards: [10, 5, 1, 0],
+      expectedRewards: [3, 5, 10, 1], // 5*0.5=2.5→3, 10*0.5=5, 20*0.5=10, 1*0.5=0.5→1
+      expectedCards: [5, 3, 1, 0], // 10*0.5=5, 5*0.5=2.5→3, 1*0.5=0.5→1, 0*0.5=0
     },
     {
-      name: 'Reward scale: same value is no-op',
+      name: 'Same value is no-op',
       oldRef: 10,
       newRef: 10,
+      accumulationLimit: null,
       rewards: [5, 10, 20],
-      expected: [5, 10, 20],
+      cards: [3, 7, 11],
+      expectedRewards: [5, 10, 20],
+      expectedCards: [3, 7, 11],
+    },
+    {
+      name: 'Balance scale up with accumulationLimit cap',
+      oldRef: 10,
+      newRef: 30,
+      accumulationLimit: 50,
+      rewards: [10],
+      cards: [20, 5, 0], // 20*3=60 capped to 50; 5*3=15; 0
+      expectedRewards: [30],
+      expectedCards: [50, 15, 0],
     },
   ];
 
@@ -314,6 +333,7 @@ async function testRewardScale(): Promise<void> {
           categorie: 'AUTRE',
           loyaltyType: 'STAMPS' as any,
           stampsForReward: c.oldRef,
+          accumulationLimit: c.accumulationLimit,
         },
       });
       const rewardIds: string[] = [];
@@ -324,6 +344,23 @@ async function testRewardScale(): Promise<void> {
         });
         rewardIds.push(rid);
       }
+      const cardIds: string[] = [];
+      for (const points of c.cards) {
+        const cid = randomUUID();
+        await tx.client.create({
+          data: {
+            id: cid,
+            email: `__sc_${cid.slice(0, 8)}@example.com`,
+            password,
+            nom: 'T',
+            prenom: 'C',
+          },
+        });
+        const card = await tx.loyaltyCard.create({
+          data: { id: randomUUID(), clientId: cid, merchantId, points },
+        });
+        cardIds.push(card.id);
+      }
 
       // Apply the EXACT SQL from scaleRewardCostsTx
       if (c.oldRef !== c.newRef) {
@@ -332,20 +369,50 @@ async function testRewardScale(): Promise<void> {
           SET cout = GREATEST(ROUND(cout::numeric * ${c.newRef} / ${c.oldRef})::int, 1),
               updated_at = NOW()
           WHERE merchant_id = ${merchantId}`;
+        if (c.accumulationLimit && c.accumulationLimit > 0) {
+          await tx.$executeRaw`
+            UPDATE loyalty_cards
+            SET points = LEAST(GREATEST(ROUND(points::numeric * ${c.newRef} / ${c.oldRef})::int, 0), ${c.accumulationLimit}),
+                updated_at = NOW()
+            WHERE merchant_id = ${merchantId}`;
+        } else {
+          await tx.$executeRaw`
+            UPDATE loyalty_cards
+            SET points = GREATEST(ROUND(points::numeric * ${c.newRef} / ${c.oldRef})::int, 0),
+                updated_at = NOW()
+            WHERE merchant_id = ${merchantId}`;
+        }
       }
 
-      const after = await tx.reward.findMany({
+      const afterRewards = await tx.reward.findMany({
         where: { merchantId },
         select: { id: true, cout: true },
       });
-      const m = new Map(after.map((r) => [r.id, r.cout]));
-      const actual = rewardIds.map((id) => m.get(id)!);
+      const rm = new Map(afterRewards.map((r) => [r.id, r.cout]));
+      const actualR = rewardIds.map((id) => rm.get(id)!);
 
-      if (JSON.stringify(actual) === JSON.stringify(c.expected)) {
-        console.log(`   ✓ rewards: ${JSON.stringify(actual)}`);
-        passed++;
+      const afterCards = await tx.loyaltyCard.findMany({
+        where: { merchantId },
+        select: { id: true, points: true },
+      });
+      const cm = new Map(afterCards.map((card) => [card.id, card.points]));
+      const actualC = cardIds.map((id) => cm.get(id)!);
+
+      let ok = true;
+      if (JSON.stringify(actualR) === JSON.stringify(c.expectedRewards)) {
+        console.log(`   ✓ rewards: ${JSON.stringify(actualR)}`);
       } else {
-        console.log(`   ❌ rewards: expected ${JSON.stringify(c.expected)}, got ${JSON.stringify(actual)}`);
+        ok = false;
+        console.log(`   ❌ rewards: expected ${JSON.stringify(c.expectedRewards)}, got ${JSON.stringify(actualR)}`);
+      }
+      if (JSON.stringify(actualC) === JSON.stringify(c.expectedCards)) {
+        console.log(`   ✓ cards:   ${JSON.stringify(actualC)}`);
+      } else {
+        ok = false;
+        console.log(`   ❌ cards:   expected ${JSON.stringify(c.expectedCards)}, got ${JSON.stringify(actualC)}`);
+      }
+      if (ok) passed++;
+      else {
         failed++;
         failures.push(c.name);
       }
@@ -370,7 +437,7 @@ async function testRewardScale(): Promise<void> {
   }
 
   console.log(`\n══════════════════════════════════════════`);
-  console.log(`  ${passed} passed, ${failed} failed (${CASES.length + 1 + 3} total)`);
+  console.log(`  ${passed} passed, ${failed} failed (${CASES.length + 1 + 4} total)`);
   if (failures.length) {
     console.log(`  Failures: ${failures.join(', ')}`);
     process.exit(1);

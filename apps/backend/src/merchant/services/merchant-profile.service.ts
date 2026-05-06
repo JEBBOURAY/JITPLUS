@@ -377,6 +377,7 @@ export class MerchantProfileService {
             merchantId,
             merchant.stampsForReward || DEFAULT_STAMPS_FOR_REWARD,
             dto.stampsForReward!,
+            merchant.accumulationLimit ?? null,
           );
         }
         return tx.merchant.update({
@@ -602,37 +603,66 @@ export class MerchantProfileService {
   }
 
   /**
-   * Rescale every reward `cout` proportionally when the merchant changes
-   * `stampsForReward` (in STAMPS mode, no type switch).
+   * Rescale every reward `cout` AND every client `loyalty_cards.points` (stamps)
+   * proportionally when the merchant changes `stampsForReward` (in STAMPS mode,
+   * no type switch).
    *
-   * new_cout = ROUND(cout * newRef / oldRef), floor 1.
+   * new_value = ROUND(value * newRef / oldRef).
+   *  - rewards: floor 1 (a free reward at 0 stamps would be exploitable).
+   *  - cards:   floor 0, capped by accumulationLimit when set.
    *
-   * Why proportional and not overwrite-to-newRef:
-   *   merchants typically configure multiple reward tiers (e.g. small=5, medium=10,
-   *   large=20 stamps). Overwriting all rewards to the same value destroys the
-   *   tiers and gives every reward the same price — a destructive bug.
-   *   Proportional scaling preserves each reward's relative position vs the new
-   *   "one full reward" threshold.
+   * Why client balances must scale too:
+   *   if a client had 5/10 stamps (50 % progress) and the merchant raises
+   *   stampsForReward to 15, leaving the balance at 5/15 silently demotes the
+   *   client's progress to 33 %. Symmetrically, lowering 10 → 5 with the
+   *   balance left untouched would over-credit them. Scaling preserves the
+   *   ratio "current / threshold" across the change.
    *
-   * Cast to ::numeric to avoid Postgres integer division (cout * newRef / oldRef
-   * would silently truncate when newRef < oldRef).
+   * Concurrency: SELECT … FOR UPDATE locks the merchant row so concurrent
+   * EARN_POINTS / REDEEM_REWARD wait until the rescale commits.
+   *
+   * Cast to ::numeric to avoid Postgres integer division.
    */
   private async scaleRewardCostsTx(
     tx: import('../../common/repositories').TransactionClient,
     merchantId: string,
     oldRef: number,
     newRef: number,
+    accumulationLimit: number | null,
   ): Promise<void> {
     if (!Number.isFinite(oldRef) || oldRef <= 0 || !Number.isFinite(newRef) || newRef <= 0) {
       throw new BadRequestException('Référence de tampons invalide pour le re-calcul des cadeaux');
     }
     if (oldRef === newRef) return;
+
+    // Concurrency guard — same as recalculateBalancesTx.
+    await tx.$executeRaw`SELECT id FROM merchants WHERE id = ${merchantId} FOR UPDATE`;
+
+    // 1. Rescale reward costs (preserve tiers; floor 1).
     await tx.$executeRaw`
       UPDATE rewards
       SET cout = GREATEST(ROUND(cout::numeric * ${newRef} / ${oldRef})::int, 1),
           updated_at = NOW()
       WHERE merchant_id = ${merchantId}`;
-    this.logger.log(`Scaled reward costs by ${newRef}/${oldRef} for merchant ${merchantId}`);
+
+    // 2. Rescale client balances (preserve % progress; cap when configured).
+    if (accumulationLimit && accumulationLimit > 0) {
+      await tx.$executeRaw`
+        UPDATE loyalty_cards
+        SET points = LEAST(GREATEST(ROUND(points::numeric * ${newRef} / ${oldRef})::int, 0), ${accumulationLimit}),
+            updated_at = NOW()
+        WHERE merchant_id = ${merchantId}`;
+    } else {
+      await tx.$executeRaw`
+        UPDATE loyalty_cards
+        SET points = GREATEST(ROUND(points::numeric * ${newRef} / ${oldRef})::int, 0),
+            updated_at = NOW()
+        WHERE merchant_id = ${merchantId}`;
+    }
+
+    this.logger.log(
+      `Scaled rewards + client balances by ${newRef}/${oldRef} for merchant ${merchantId}`,
+    );
   }
 
   private async recalculateBalancesTx(
