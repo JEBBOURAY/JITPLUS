@@ -273,10 +273,95 @@ async function testRowLock(): Promise<void> {
   }
 }
 
+async function testRewardScale(): Promise<void> {
+  // Bug fix verification: stampsForReward change in STAMPS mode (no type switch)
+  // must rescale rewards proportionally — NOT overwrite all to the same value.
+  const cases = [
+    {
+      name: 'Reward scale: stampsForReward 10→15 in STAMPS mode (preserves tiers)',
+      oldRef: 10,
+      newRef: 15,
+      rewards: [5, 10, 20],
+      expected: [8, 15, 30], // 5*1.5=7.5→8, 10*1.5=15, 20*1.5=30
+    },
+    {
+      name: 'Reward scale: stampsForReward 10→5 in STAMPS mode (compress tiers)',
+      oldRef: 10,
+      newRef: 5,
+      rewards: [5, 10, 20, 1],
+      expected: [3, 5, 10, 1], // 5*0.5=2.5→3 (half-away-from-zero), 1*0.5=0.5→1, floor 1
+    },
+    {
+      name: 'Reward scale: same value is no-op',
+      oldRef: 10,
+      newRef: 10,
+      rewards: [5, 10, 20],
+      expected: [5, 10, 20],
+    },
+  ];
+
+  for (const c of cases) {
+    console.log(`\n── ${c.name}`);
+    const merchantId = randomUUID();
+    await prisma.$transaction(async (tx) => {
+      const password = await bcrypt.hash('test', 4);
+      await tx.merchant.create({
+        data: {
+          id: merchantId,
+          nom: `__scale_${merchantId.slice(0, 8)}`,
+          email: `__scale_${merchantId.slice(0, 8)}@example.com`,
+          password,
+          categorie: 'AUTRE',
+          loyaltyType: 'STAMPS' as any,
+          stampsForReward: c.oldRef,
+        },
+      });
+      const rewardIds: string[] = [];
+      for (const cout of c.rewards) {
+        const rid = randomUUID();
+        await tx.reward.create({
+          data: { id: rid, merchantId, titre: 'Test', cout },
+        });
+        rewardIds.push(rid);
+      }
+
+      // Apply the EXACT SQL from scaleRewardCostsTx
+      if (c.oldRef !== c.newRef) {
+        await tx.$executeRaw`
+          UPDATE rewards
+          SET cout = GREATEST(ROUND(cout::numeric * ${c.newRef} / ${c.oldRef})::int, 1),
+              updated_at = NOW()
+          WHERE merchant_id = ${merchantId}`;
+      }
+
+      const after = await tx.reward.findMany({
+        where: { merchantId },
+        select: { id: true, cout: true },
+      });
+      const m = new Map(after.map((r) => [r.id, r.cout]));
+      const actual = rewardIds.map((id) => m.get(id)!);
+
+      if (JSON.stringify(actual) === JSON.stringify(c.expected)) {
+        console.log(`   ✓ rewards: ${JSON.stringify(actual)}`);
+        passed++;
+      } else {
+        console.log(`   ❌ rewards: expected ${JSON.stringify(c.expected)}, got ${JSON.stringify(actual)}`);
+        failed++;
+        failures.push(c.name);
+      }
+
+      throw new Error('__ROLLBACK__');
+    }).catch((e: Error) => {
+      if (e.message !== '__ROLLBACK__') throw e;
+    });
+  }
+}
+
 (async () => {
   try {
     for (const c of CASES) await runCase(c);
     await testRowLock();
+    await testRewardScale();
   } catch (e) {
     console.error('\n💥 Unexpected error:', e);
     process.exit(2);
@@ -285,7 +370,7 @@ async function testRowLock(): Promise<void> {
   }
 
   console.log(`\n══════════════════════════════════════════`);
-  console.log(`  ${passed} passed, ${failed} failed (${CASES.length + 1} total)`);
+  console.log(`  ${passed} passed, ${failed} failed (${CASES.length + 1 + 3} total)`);
   if (failures.length) {
     console.log(`  Failures: ${failures.join(', ')}`);
     process.exit(1);

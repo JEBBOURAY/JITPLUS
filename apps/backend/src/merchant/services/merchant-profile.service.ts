@@ -346,6 +346,17 @@ export class MerchantProfileService {
       );
     }
 
+    // Detect a stampsForReward change WITHOUT type switch in STAMPS mode:
+    // we must rescale existing reward costs proportionally so that the
+    // merchant's pricing tiers (e.g. small/medium/large) are preserved.
+    // Skipped if a type switch is happening — that path already converts cout
+    // via recalculateBalancesTx with the correct ratio.
+    const stampsForRewardChanged =
+      dto.stampsForReward !== undefined &&
+      dto.stampsForReward !== merchant.stampsForReward;
+    const shouldScaleRewardsForStamps =
+      stampsForRewardChanged && !loyaltyTypeChanged && newType === 'STAMPS';
+
     // Atomic: convert balances + reward costs + apply merchant settings in a single DB transaction.
     // Prevents desync if any step fails (e.g. type updated but balances stayed unconverted, or vice-versa).
     let conversionSummary: ConversionSummary | null = null;
@@ -359,6 +370,13 @@ export class MerchantProfileService {
             newType,
             pointsPerStamp,
             merchant.accumulationLimit ?? null,
+          );
+        } else if (shouldScaleRewardsForStamps) {
+          await this.scaleRewardCostsTx(
+            tx,
+            merchantId,
+            merchant.stampsForReward || DEFAULT_STAMPS_FOR_REWARD,
+            dto.stampsForReward!,
           );
         }
         return tx.merchant.update({
@@ -385,14 +403,6 @@ export class MerchantProfileService {
     if (forceCapClients && dto.accumulationLimit != null) {
       this.capAndNotifyClients(merchantId, merchant.nom, dto.accumulationLimit, newType)
         .catch((err) => this.logger.error(`capAndNotifyClients failed: ${err}`));
-    }
-
-    // When stampsForReward changes (without a simultaneous type switch), sync all
-    // reward costs so the redemption threshold stays consistent.
-    // Type-switch cases are already handled by recalculateBalancesTx().
-    if (dto.stampsForReward !== undefined && !loyaltyTypeChanged && newType === 'STAMPS') {
-      this.syncRewardCosts(merchantId, dto.stampsForReward)
-        .catch((err) => this.logger.error(`syncRewardCosts failed: ${err}`));
     }
 
     await Promise.all([
@@ -592,16 +602,37 @@ export class MerchantProfileService {
   }
 
   /**
-   * Update all rewards' cout to the new stampsForReward value.
-   * Called when the merchant changes stampsForReward without switching loyalty type.
+   * Rescale every reward `cout` proportionally when the merchant changes
+   * `stampsForReward` (in STAMPS mode, no type switch).
+   *
+   * new_cout = ROUND(cout * newRef / oldRef), floor 1.
+   *
+   * Why proportional and not overwrite-to-newRef:
+   *   merchants typically configure multiple reward tiers (e.g. small=5, medium=10,
+   *   large=20 stamps). Overwriting all rewards to the same value destroys the
+   *   tiers and gives every reward the same price — a destructive bug.
+   *   Proportional scaling preserves each reward's relative position vs the new
+   *   "one full reward" threshold.
+   *
+   * Cast to ::numeric to avoid Postgres integer division (cout * newRef / oldRef
+   * would silently truncate when newRef < oldRef).
    */
-  private async syncRewardCosts(merchantId: string, newCout: number): Promise<void> {
-    await this.rawQuery.executeRaw`
+  private async scaleRewardCostsTx(
+    tx: import('../../common/repositories').TransactionClient,
+    merchantId: string,
+    oldRef: number,
+    newRef: number,
+  ): Promise<void> {
+    if (!Number.isFinite(oldRef) || oldRef <= 0 || !Number.isFinite(newRef) || newRef <= 0) {
+      throw new BadRequestException('Référence de tampons invalide pour le re-calcul des cadeaux');
+    }
+    if (oldRef === newRef) return;
+    await tx.$executeRaw`
       UPDATE rewards
-      SET cout = ${newCout},
+      SET cout = GREATEST(ROUND(cout::numeric * ${newRef} / ${oldRef})::int, 1),
           updated_at = NOW()
       WHERE merchant_id = ${merchantId}`;
-    this.logger.log(`Synced reward costs to ${newCout} for merchant ${merchantId}`);
+    this.logger.log(`Scaled reward costs by ${newRef}/${oldRef} for merchant ${merchantId}`);
   }
 
   private async recalculateBalancesTx(
