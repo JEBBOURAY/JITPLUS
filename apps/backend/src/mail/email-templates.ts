@@ -541,10 +541,15 @@ export function buildMarketingBlastEmail(
   const addressParts = [merchant.adresse, merchant.quartier, merchant.ville].filter(Boolean);
   const addressLine = addressParts.length > 0 ? escapeHtml(addressParts.join(', ')) : null;
 
-  // Merchant info card (logo + name + contact details)
-  const merchantLogo = merchant.logoUrl
-    ? `<td style="vertical-align: top; padding-right: 14px;"><img src="${escapeHtml(merchant.logoUrl)}" alt="${safeName}" width="48" height="48" style="display: block; border-radius: 10px;" /></td>`
-    : '';
+  // Merchant info card (logo + name + contact details).
+  // Gmail flags marketing emails as suspicious when image hosts don't align with
+  // the sending domain. So we only embed the merchant logo if it's hosted on
+  // jitplus.com — otherwise we fall back to a colored initial-letter avatar.
+  const isOwnDomain = !!merchant.logoUrl && /^https?:\/\/(?:[\w-]+\.)*jitplus\.com\//i.test(merchant.logoUrl);
+  const merchantInitial = escapeHtml((merchant.nom?.trim().charAt(0) || 'J').toUpperCase());
+  const merchantLogo = isOwnDomain
+    ? `<td style="vertical-align: top; padding-right: 14px;"><img src="${escapeHtml(merchant.logoUrl!)}" alt="${safeName}" width="48" height="48" style="display: block; border-radius: 10px;" /></td>`
+    : `<td style="vertical-align: top; padding-right: 14px;"><div style="width: 48px; height: 48px; border-radius: 10px; background: ${brand.accent}; color: #FFFFFF; font-size: 20px; font-weight: 700; line-height: 48px; text-align: center; font-family: 'Segoe UI', Arial, sans-serif;">${merchantInitial}</div></td>`;
 
   const contactLines: string[] = [];
   if (addressLine) {
