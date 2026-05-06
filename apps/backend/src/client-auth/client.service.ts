@@ -13,7 +13,7 @@ import {
 } from '../common/repositories';
 import * as bcrypt from 'bcryptjs';
 import { buildPagination } from '../common/utils';
-import { MERCHANTS_LIST_CACHE_TTL, MERCHANT_DETAIL_CACHE_TTL, PROFILE_STATS_CACHE_TTL, UNREAD_COUNT_CACHE_TTL } from '../common/constants';
+import { MERCHANTS_LIST_CACHE_TTL, MERCHANT_DETAIL_CACHE_TTL, PROFILE_STATS_CACHE_TTL, UNREAD_COUNT_CACHE_TTL, EMAIL_LOGO_JITPLUS } from '../common/constants';
 import { MailService } from '../mail/mail.service';
 import { pickEmailLang } from '../mail/transactional-i18n';
 import { PrismaService } from '../prisma/prisma.service';
@@ -1002,7 +1002,7 @@ export class ClientService {
           type: 'promo' as const,
           merchantName: n.merchant?.nom ?? null,
           merchantCategory: n.merchant?.categorie ?? null,
-          merchantLogoUrl: n.merchant?.logoUrl || 'https://jitplus.com/jitpluslogo.png',
+          merchantLogoUrl: n.merchant?.logoUrl || EMAIL_LOGO_JITPLUS,
           isRead: status?.isRead ?? false,
           readAt: status?.readAt ?? null,
           createdAt: n.createdAt,

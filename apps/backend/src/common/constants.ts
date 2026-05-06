@@ -112,9 +112,18 @@ export const REFERRAL_BONUS_DAYS = 30;
 export const CLIENT_REFERRAL_BONUS_AMOUNT = 25;
 
 // ── Defaults ────────────────────────────────────────────────
-/** Logo URLs used in email templates and push notifications */
-export const EMAIL_LOGO_JITPLUS = 'https://jitplus.com/jitpluslogo.png';
-export const EMAIL_LOGO_JITPLUS_PRO = 'https://jitplus.com/jitplusprologo.png';
+/**
+ * Logo URLs used in email templates and push notifications.
+ *
+ * The `?v=` query string is a cache buster: Gmail/Outlook fetch images through
+ * their own proxy (e.g. googleusercontent.com) which aggressively caches
+ * responses for hours, even when the upstream Cache-Control header changes.
+ * If the upstream URL ever serves a wrong content-type (e.g. while site-web
+ * is being deployed and the SPA fallback returns HTML), bump this version to
+ * force the proxy to refetch.
+ */
+export const EMAIL_LOGO_JITPLUS = 'https://jitplus.com/jitpluslogo.png?v=2';
+export const EMAIL_LOGO_JITPLUS_PRO = 'https://jitplus.com/jitplusprologo.png?v=2';
 
 /** Default notification logo when merchant has no custom logo */
 export const DEFAULT_NOTIFICATION_LOGO = EMAIL_LOGO_JITPLUS;
