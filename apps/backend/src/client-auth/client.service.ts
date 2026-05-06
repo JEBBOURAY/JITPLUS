@@ -965,6 +965,17 @@ export class ClientService {
             { clientStatuses: { some: { clientId } } },
           ],
         },
+        // In-app notification feed only surfaces PUSH-channel broadcasts.
+        // Email/WhatsApp blasts are stored for the merchant's history but must
+        // NOT appear in the client's notifications page (the client already
+        // got them through the chosen channel — duplicating in-app is wrong).
+        // Legacy rows with channel=null are kept (they predate channel tagging).
+        {
+          OR: [
+            { channel: 'PUSH' },
+            { channel: null },
+          ],
+        },
       ],
       ...(dismissedIds.length > 0 ? { id: { notIn: dismissedIds } } : {}),
     };
@@ -1035,6 +1046,7 @@ export class ClientService {
 
     // Personal notifications must only count for their recipient — match either
     // a broadcast or a notification with an explicit ClientNotificationStatus row.
+    // Also exclude EMAIL/WHATSAPP-channel rows (those are merchant history only).
     const visibilityFilter = {
       AND: [
         { OR: merchantFilters },
@@ -1042,6 +1054,12 @@ export class ClientService {
           OR: [
             { isBroadcast: true },
             { clientStatuses: { some: { clientId } } },
+          ],
+        },
+        {
+          OR: [
+            { channel: 'PUSH' },
+            { channel: null },
           ],
         },
       ],
@@ -1107,6 +1125,12 @@ export class ClientService {
               OR: [
                 { isBroadcast: true },
                 { clientStatuses: { some: { clientId } } },
+              ],
+            },
+            {
+              OR: [
+                { channel: 'PUSH' },
+                { channel: null },
               ],
             },
           ],
@@ -1192,6 +1216,12 @@ export class ClientService {
               OR: [
                 { isBroadcast: true },
                 { clientStatuses: { some: { clientId } } },
+              ],
+            },
+            {
+              OR: [
+                { channel: 'PUSH' },
+                { channel: null },
               ],
             },
           ],
