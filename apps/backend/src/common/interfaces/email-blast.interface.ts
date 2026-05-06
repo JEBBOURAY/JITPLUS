@@ -21,7 +21,15 @@ export interface MerchantBlastInfo {
 
 export interface IEmailBlastProvider {
   sendBlast(
-    recipients: { email: string; prenom?: string | null; lang?: string | null }[],
+    recipients: {
+      email: string;
+      prenom?: string | null;
+      lang?: string | null;
+      /** Optional clientId — when provided, the provider can sign a per-recipient
+       *  RFC 8058 one-click List-Unsubscribe URL, which is required by Gmail/Yahoo
+       *  bulk-sender rules to avoid being marked as spam. */
+      clientId?: string;
+    }[],
     subject: string,
     body: string,
     merchant: MerchantBlastInfo,

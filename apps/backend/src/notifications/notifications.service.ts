@@ -336,7 +336,7 @@ export class NotificationsService {
     let result: { successCount: number; failureCount: number; total: number };
     try {
       result = await this.resendService.sendBlast(
-        recipients.map((r) => ({ email: r.email, prenom: r.prenom, lang: r.language })),
+        recipients.map((r) => ({ clientId: r.id, email: r.email, prenom: r.prenom, lang: r.language })),
         dto.subject,
         dto.body,
         merchant,
@@ -795,7 +795,7 @@ export class NotificationsService {
     successCount: number;
     failureCount: number;
   }> {
-    const clients: { email: string; prenom: string | null; language: string }[] = [];
+    const clients: { id: string; email: string; prenom: string | null; language: string }[] = [];
     let cursor: string | undefined;
 
     while (true) {
@@ -809,7 +809,7 @@ export class NotificationsService {
       if (batch.length === 0) break;
       clients.push(
         ...batch.filter((c: any): c is { id: string; email: string; prenom: string | null; language: string } => !!c.email)
-          .map((c: any) => ({ email: c.email, prenom: c.prenom, language: c.language })),
+          .map((c: any) => ({ id: c.id, email: c.email, prenom: c.prenom, language: c.language })),
       );
       cursor = batch[batch.length - 1].id;
       if (batch.length < NotificationsService.CLIENT_BATCH_SIZE) break;
@@ -824,7 +824,7 @@ export class NotificationsService {
     let result: { successCount: number; failureCount: number; total: number };
     try {
       result = await this.resendService.sendBlast(
-        clients.map((c) => ({ email: c.email, prenom: c.prenom, lang: c.language })),
+        clients.map((c) => ({ clientId: c.id, email: c.email, prenom: c.prenom, lang: c.language })),
         subject,
         body,
         { nom: 'JitPlus Admin' },
