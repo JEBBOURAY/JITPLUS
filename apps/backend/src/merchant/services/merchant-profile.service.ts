@@ -334,12 +334,32 @@ export class MerchantProfileService {
     const data: Record<string, unknown> = stripUndefined(dtoWithoutForce);
 
     // Compute the value-equivalence ratio between the two systems.
-    // pointsPerStamp = rewardThreshold / stampsForReward (i.e. how many points 1 stamp is worth).
-    // This preserves the client's "progress to next reward" across the conversion.
+    // pointsPerStamp = "how many points 1 stamp is worth".
+    //
+    // Source of truth on a type switch is the conversion rule the merchant
+    // typed in the form ("X fromUnit = Y toUnit"). The frontend sends that as
+    // dto.conversionRate = X/Y, but its meaning is asymmetric:
+    //   • newType=STAMPS (POINTS→STAMPS): from=Pts, to=Tmps → X/Y = pointsPerStamp.
+    //   • newType=POINTS (STAMPS→POINTS): from=Tmps, to=Pts → X/Y = 1/pointsPerStamp.
+    // We must invert in the second case, otherwise the on-disk balances are
+    // converted with the inverse ratio (the "x tmp = x pts" symptom).
+    //
+    // Outside a type switch (or when the user did not provide an explicit
+    // ratio), fall back to the historical rewardThreshold/stampsForReward
+    // ratio, which preserves the client's "progress to next reward".
     const pointsRules = (merchant.pointsRules as PointsRules | null) ?? null;
     const rewardThreshold = pointsRules?.rewardThreshold || DEFAULT_REWARD_THRESHOLD;
     const stampsForReward = (dto.stampsForReward ?? merchant.stampsForReward) || DEFAULT_STAMPS_FOR_REWARD;
-    const pointsPerStamp = rewardThreshold / stampsForReward;
+    const dtoConversionRate =
+      typeof dto.conversionRate === 'number' && Number.isFinite(dto.conversionRate) && dto.conversionRate > 0
+        ? dto.conversionRate
+        : null;
+    let pointsPerStamp: number;
+    if (loyaltyTypeChanged && dtoConversionRate !== null) {
+      pointsPerStamp = newType === 'STAMPS' ? dtoConversionRate : 1 / dtoConversionRate;
+    } else {
+      pointsPerStamp = rewardThreshold / stampsForReward;
+    }
     if (loyaltyTypeChanged && (!Number.isFinite(pointsPerStamp) || pointsPerStamp <= 0)) {
       throw new BadRequestException(
         'Conversion impossible : seuil de récompense ou nombre de tampons invalide',
