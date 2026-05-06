@@ -487,9 +487,12 @@ export default function SettingsScreen() {
                   if (x <= 0 || y <= 0) return null;
                   const rate = x / y;
                   const exampleIn = 100;
+                  // User typed "X fromUnit = Y toUnit" → 1 fromUnit = Y/X toUnit,
+                  // i.e. exampleIn fromUnit = exampleIn / rate toUnit. Symmetric for
+                  // both directions and matches the backend conversion exactly.
                   const exampleOut = loyaltyType === 'STAMPS'
                     ? Math.max(Math.floor(exampleIn / rate), 0)
-                    : Math.round(exampleIn * rate);
+                    : Math.round(exampleIn / rate);
                   const fromUnit = loyaltyType === 'STAMPS' ? t('settingsPage.conversionRulePts') : t('settingsPage.conversionRuleTmps');
                   const toUnit = loyaltyType === 'STAMPS' ? t('settingsPage.conversionRuleTmps') : t('settingsPage.conversionRulePts');
                   return (
@@ -513,9 +516,10 @@ export default function SettingsScreen() {
                         {t('settingsPage.rewardConversionTitle')}
                       </Text>
                       {rewards.map((r) => {
+                        // Same symmetric formula as the live preview above.
                         const newCost = loyaltyType === 'STAMPS'
                           ? Math.max(Math.floor(r.cout / rate), 1)
-                          : Math.max(Math.round(r.cout * rate), 1);
+                          : Math.max(Math.round(r.cout / rate), 1);
                         return (
                           <View key={r.id} style={styles.rewardConversionRow}>
                             <Text style={[styles.rewardConversionName, { color: theme.textSecondary }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>
