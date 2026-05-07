@@ -323,6 +323,7 @@ export class NotificationsService {
         ville: true,
         quartier: true,
         logoUrl: true,
+        socialLinks: true,
       },
     });
 

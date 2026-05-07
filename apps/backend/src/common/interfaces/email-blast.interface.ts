@@ -17,6 +17,7 @@ export interface MerchantBlastInfo {
   ville?: string | null;
   quartier?: string | null;
   logoUrl?: string | null;
+  socialLinks?: any;
 }
 
 export interface IEmailBlastProvider {

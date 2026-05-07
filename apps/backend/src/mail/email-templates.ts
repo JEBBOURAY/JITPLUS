@@ -563,6 +563,22 @@ export function buildMarketingBlastEmail(
     const safeEmail = escapeHtml(merchant.email);
     contactLines.push(`<tr><td style="padding: 2px 0;"><span style="color: #94A3B8; font-size: 13px;">&#9993;</span> <a href="mailto:${safeEmail}" style="color: ${brand.accent}; font-size: 13px; text-decoration: none;">${safeEmail}</a></td></tr>`);
   }
+  
+  if (merchant.socialLinks && typeof merchant.socialLinks === 'object' && !Array.isArray(merchant.socialLinks)) {
+    const socials = merchant.socialLinks as any;
+    if (socials.website) {
+      contactLines.push(`<tr><td style="padding: 2px 0;"><span style="color: #94A3B8; font-size: 13px;">&#127760;</span> <a href="${escapeHtml(socials.website)}" style="color: ${brand.accent}; font-size: 13px; text-decoration: none;" target="_blank">Site web</a></td></tr>`);
+    }
+    if (socials.instagram) {
+      contactLines.push(`<tr><td style="padding: 2px 0;"><span style="color: #94A3B8; font-size: 13px;">&#128247;</span> <a href="${escapeHtml(socials.instagram)}" style="color: ${brand.accent}; font-size: 13px; text-decoration: none;" target="_blank">Instagram</a></td></tr>`);
+    }
+    if (socials.facebook) {
+      contactLines.push(`<tr><td style="padding: 2px 0;"><span style="color: #94A3B8; font-size: 13px;">&#128101;</span> <a href="${escapeHtml(socials.facebook)}" style="color: ${brand.accent}; font-size: 13px; text-decoration: none;" target="_blank">Facebook</a></td></tr>`);
+    }
+    if (socials.tiktok) {
+      contactLines.push(`<tr><td style="padding: 2px 0;"><span style="color: #94A3B8; font-size: 13px;">&#127925;</span> <a href="${escapeHtml(socials.tiktok)}" style="color: ${brand.accent}; font-size: 13px; text-decoration: none;" target="_blank">TikTok</a></td></tr>`);
+    }
+  }
 
   const merchantCard = `
     <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin: 24px 0 0;">
