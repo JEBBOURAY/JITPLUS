@@ -70,7 +70,8 @@ export class NotificationsService {
     // Collect ALL clients with a loyalty card + push info.
     // Single paginated query fetches both client IDs and push tokens,
     // avoiding a duplicate second pass over the same data.
-    const logoUrl = await this.getMerchantLogoUrl(merchantId);
+    const mDetails = await this.getMerchantPushDetails(merchantId);
+    const logoUrl = mDetails?.logoUrl ?? null;
     const imageUrl = this.buildImageUrl(logoUrl);
 
     const allClientIds: string[] = [];
@@ -108,6 +109,20 @@ export class NotificationsService {
       action: 'open_card',
       merchantId,
     };
+
+    if (imageUrl) fcmData.merchantLogo = imageUrl;
+    if (mDetails?.email) fcmData.merchantEmail = mDetails.email;
+    if (mDetails?.adresse) fcmData.merchantAddress = mDetails.adresse;
+    
+    // Extract website explicitly as requested, while keeping the whole socials object
+    if (mDetails?.socialLinks) {
+      if (typeof mDetails.socialLinks === 'object' && !Array.isArray(mDetails.socialLinks) && mDetails.socialLinks !== null) {
+         if ((mDetails.socialLinks as any).website) {
+            fcmData.merchantWebsite = (mDetails.socialLinks as any).website as string;
+         }
+      }
+      fcmData.merchantSocials = JSON.stringify(mDetails.socialLinks);
+    }
 
     this.logger.log(`Sending "${dto.title}" to ${tokens.length} device(s), ${allClientIds.length} total client(s) for merchant ${merchantId}`);
 
@@ -193,20 +208,19 @@ export class NotificationsService {
   }
 
   /**
-   * Resolve merchant logoUrl with a 5-minute in-process cache.
+   * Resolve merchant details (logo, email, address, socials) with a 5-minute in-process cache.
    * Called on every transactional notification — avoids redundant DB hits.
    */
-  private async getMerchantLogoUrl(merchantId: string): Promise<string | null> {
-    const key = `merchant:logo:${merchantId}`;
-    const cached = await this.cache.get<string | null>(key);
+  private async getMerchantPushDetails(merchantId: string) {
+    const key = `merchant:push_details:${merchantId}`;
+    const cached = await this.cache.get<any>(key);
     if (cached !== undefined) return cached;
     const m = await this.merchantRepo.findUnique({
       where: { id: merchantId },
-      select: { logoUrl: true },
+      select: { logoUrl: true, email: true, adresse: true, socialLinks: true },
     });
-    const url = m?.logoUrl ?? null;
-    await this.cache.set(key, url, LOGO_CACHE_TTL);
-    return url;
+    await this.cache.set(key, m ?? null, LOGO_CACHE_TTL);
+    return m ?? null;
   }
 
   /**
@@ -221,22 +235,36 @@ export class NotificationsService {
     data?: Record<string, string>,
   ): Promise<void> {
     try {
-      // 1. Lookup client push preferences + merchant logo (logo cached 5 min)
-      const [client, logoUrl] = await Promise.all([
+      // 1. Lookup client push preferences + merchant details (cached 5 min)
+      const [client, mDetails] = await Promise.all([
         this.clientRepo.findUnique({
           where: { id: clientId },
           select: { pushToken: true, notifPush: true },
         }),
-        this.getMerchantLogoUrl(merchantId),
+        this.getMerchantPushDetails(merchantId),
       ]);
 
-      const imageUrl = this.buildImageUrl(logoUrl);
+      const imageUrl = this.buildImageUrl(mDetails?.logoUrl ?? null);
+
+      const fcmData = data || {};
+      if (imageUrl && !fcmData.merchantLogo) fcmData.merchantLogo = imageUrl;
+      if (mDetails?.email && !fcmData.merchantEmail) fcmData.merchantEmail = mDetails.email;
+      if (mDetails?.adresse && !fcmData.merchantAddress) fcmData.merchantAddress = mDetails.adresse;
+      
+      if (mDetails?.socialLinks && !fcmData.merchantSocials) {
+        if (typeof mDetails.socialLinks === 'object' && !Array.isArray(mDetails.socialLinks) && mDetails.socialLinks !== null) {
+           if ((mDetails.socialLinks as any).website && !fcmData.merchantWebsite) {
+              fcmData.merchantWebsite = (mDetails.socialLinks as any).website as string;
+           }
+        }
+        fcmData.merchantSocials = JSON.stringify(mDetails.socialLinks);
+      }
 
       // 2. Send FCM push if eligible
       let successCount = 0;
       let failureCount = 0;
       if (client?.pushToken && client.notifPush) {
-        const result = await this.pushProvider.sendMulticast([client.pushToken], title, body, imageUrl, data);
+        const result = await this.pushProvider.sendMulticast([client.pushToken], title, body, imageUrl, fcmData);
         successCount = result.successCount;
         failureCount = result.failureCount;
 
