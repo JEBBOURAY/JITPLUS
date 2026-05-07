@@ -383,6 +383,8 @@ export class MerchantProfileService {
     const updated = await this.txRunner.run(
       async (tx) => {
         if (loyaltyTypeChanged) {
+          // Prevent the unscaled UI payload from overwriting the scaled DB value
+          delete data.stampsForReward;
           conversionSummary = await this.recalculateBalancesTx(
             tx,
             merchantId,
@@ -738,6 +740,13 @@ export class MerchantProfileService {
         SET cout = GREATEST(ROUND(cout::numeric / ${pointsPerStamp})::int, 1),
             updated_at = NOW()
         WHERE merchant_id = ${merchantId}`;
+
+      // Merchant stampsForReward setting (legacy field, still used for defaults and profile display)
+      await tx.$executeRaw`
+        UPDATE merchants
+        SET stamps_for_reward = GREATEST(ROUND(stamps_for_reward::numeric / ${pointsPerStamp})::int, 1),
+            updated_at = NOW()
+        WHERE id = ${merchantId}`;
     } else if (oldType === 'STAMPS' && newType === 'POINTS') {
       // STAMPS → POINTS : points = ROUND(stamps × pointsPerStamp)
       // Multiplication is safe with int operands (no truncation). We still cast to
@@ -762,6 +771,12 @@ export class MerchantProfileService {
         SET cout = GREATEST(ROUND(cout::numeric * ${pointsPerStamp})::int, 1),
             updated_at = NOW()
         WHERE merchant_id = ${merchantId}`;
+
+      await tx.$executeRaw`
+        UPDATE merchants
+        SET stamps_for_reward = GREATEST(ROUND(stamps_for_reward::numeric * ${pointsPerStamp})::int, 1),
+            updated_at = NOW()
+        WHERE id = ${merchantId}`;
     } else {
       // Same-type or unsupported transition: nothing to convert.
       return {

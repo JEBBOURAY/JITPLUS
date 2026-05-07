@@ -72,6 +72,8 @@ function isServerOrNetworkError(error: unknown): boolean {
   return !status || status >= 500;
 }
 
+let hasHandledColdStart = false;
+
 const queryClient = new QueryClient({
   queryCache: new QueryCache({
     onError: (error, query) => {
@@ -542,14 +544,21 @@ function ThemedNavigator() {
     });
 
     // Handle cold-start: app was killed, user tapped a notification to launch it
-    Notifications.getLastNotificationResponseAsync().then((response) => {
-      if (response) {
-        logInfo('Notifications', 'Cold-start notification:', response.notification.request.content);
-        queryClient.invalidateQueries({ queryKey: ['admin-notifications'] });
-        queryClient.invalidateQueries({ queryKey: ['admin-notif-unread-count'] });
-        navigateByPayload(response.notification.request.content.data as Record<string, unknown> | undefined);
-      }
-    });
+    if (!hasHandledColdStart) {
+      hasHandledColdStart = true; // Mark handled immediately to prevent race conditions
+      Notifications.getLastNotificationResponseAsync().then((response) => {
+        if (response) {
+          logInfo('Notifications', 'Cold-start notification:', response.notification.request.content);
+          queryClient.invalidateQueries({ queryKey: ['admin-notifications'] });
+          queryClient.invalidateQueries({ queryKey: ['admin-notif-unread-count'] });
+          
+          // Add a small delay for Expo Router to be fully mounted on cold starts
+          setTimeout(() => {
+            navigateByPayload(response.notification.request.content.data as Record<string, unknown> | undefined);
+          }, 500);
+        }
+      });
+    }
 
     return () => {
       if (notifDebounceTimer) clearTimeout(notifDebounceTimer);

@@ -21,8 +21,6 @@ import {
   type AdminNotification,
 } from '@/hooks/useQueryHooks';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
 import { timeAgo } from '@/utils/date';
 import { wp, hp, ms, fontSize as FS, radius } from '@/utils/responsive';
 import { logWarn } from '@/utils/devLogger';
@@ -134,47 +132,29 @@ export default function AdminNotificationsScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
-      {/* Header */}
-      <View collapsable={false}>
-        <LinearGradient colors={brandGradient} style={styles.headerGradient}>
-          <BlurView
-            intensity={Platform.OS === 'ios' ? 40 : 20}
-            tint={theme.mode === 'dark' ? 'dark' : 'default'}
-            style={[styles.headerBlur, { paddingTop: insets.top + 12 }]}
+      {/* â”€â”€ Simple header â€” matches stores.tsx style â”€â”€ */}
+      <View style={[styles.headerBar, { paddingTop: insets.top + 12 }]}>
+        <TouchableOpacity onPress={() => router.back()} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} style={styles.backBtn}>
+          <ArrowLeft size={22} color={theme.text} />
+        </TouchableOpacity>
+        <Text style={[styles.headerTitle, { color: theme.text }]}>{t('account.notifications')}</Text>
+        {unreadCount > 0 && (
+          <View style={styles.headerBadge}>
+            <Text style={styles.headerBadgeText}>{unreadCount}</Text>
+          </View>
+        )}
+        <View style={{ flex: 1 }} />
+        {unreadCount > 0 && (
+          <TouchableOpacity
+            onPress={handleMarkAllRead}
+            disabled={markAllRead.isPending}
+            hitSlop={8}
+            activeOpacity={0.7}
+            style={[styles.markAllBtn, markAllRead.isPending && { opacity: 0.5 }, { backgroundColor: theme.primaryBg }]}
           >
-            <View style={styles.glassOverlay} />
-            <View style={styles.header}>
-              <TouchableOpacity onPress={() => router.back()} hitSlop={12} style={styles.backBtn}>
-                <ArrowLeft size={22} color="#fff" />
-              </TouchableOpacity>
-              <View style={styles.headerCenter}>
-                <Bell size={18} color="#fff" style={{ marginRight: 6 }} />
-                <Text style={styles.headerTitle}>{t('account.notifications')}</Text>
-                {unreadCount > 0 && (
-                  <View style={styles.headerBadge}>
-                    <Text style={styles.headerBadgeText}>{unreadCount}</Text>
-                  </View>
-                )}
-              </View>
-              <View style={{ flex: 1 }} />
-              {unreadCount > 0 && (
-                <TouchableOpacity
-                  onPress={handleMarkAllRead}
-                  disabled={markAllRead.isPending}
-                  hitSlop={8}
-                  activeOpacity={0.7}
-                  style={[styles.markAllBtn, markAllRead.isPending && { opacity: 0.5 }]}
-                >
-                  <CheckCheck size={ms(14)} color="#fff" strokeWidth={2} />
-                </TouchableOpacity>
-              )}
-            </View>
-          </BlurView>
-        </LinearGradient>
-        <LinearGradient
-          colors={['rgba(124,58,237,0.3)', 'transparent']}
-          style={styles.headerFade}
-        />
+            <CheckCheck size={ms(16)} color={theme.primary} strokeWidth={1.5} />
+          </TouchableOpacity>
+        )}
       </View>
 
       {isLoading ? (
@@ -214,31 +194,20 @@ export default function AdminNotificationsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  headerGradient: { overflow: 'hidden' },
-  headerBlur: { overflow: 'hidden' },
-  glassOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-  },
-  header: {
+  headerBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingBottom: hp(14),
-    paddingHorizontal: wp(16),
-  },
-  headerFade: { height: 4 },
-  backBtn: {
-    marginRight: wp(8),
-    padding: 4,
-  },
-  headerCenter: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingBottom: 12,
+    gap: 10,
   },
   headerTitle: {
-    color: '#fff',
-    fontSize: FS.lg,
+    fontSize: 28,
+    fontWeight: '700',
     fontFamily: 'Lexend_700Bold',
+  },
+  backBtn: {
+    marginRight: 2,
   },
   headerBadge: {
     marginLeft: wp(8),
@@ -257,10 +226,9 @@ const styles = StyleSheet.create({
     fontFamily: 'Lexend_700Bold',
   },
   markAllBtn: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: ms(16),
-    width: ms(32),
-    height: ms(32),
+    borderRadius: 8,
+    width: ms(36),
+    height: ms(36),
     alignItems: 'center',
     justifyContent: 'center',
   },

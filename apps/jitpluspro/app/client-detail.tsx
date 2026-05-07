@@ -234,7 +234,9 @@ export default function ClientDetailScreen() {
     );
   }, [adjustPoints, adjustMode, adjustNote, adjustMutation, id, client, isStampsMode, t]);
 
-  const stampsForReward = merchant?.stampsForReward || client?.stampsForReward || 10;
+  // Use the dynamically computed threshold from the backend (client.stampsForReward / client.rewardThreshold)
+  // rather than the merchant's static database field, as there might be custom rewards.
+  const stampsForReward = client?.stampsForReward || merchant?.stampsForReward || 10;
   const progressPct = useMemo(
     () => {
       if (!client) return 0;
