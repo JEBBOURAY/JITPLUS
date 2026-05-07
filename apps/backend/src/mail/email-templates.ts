@@ -567,16 +567,43 @@ export function buildMarketingBlastEmail(
   if (merchant.socialLinks && typeof merchant.socialLinks === 'object' && !Array.isArray(merchant.socialLinks)) {
     const socials = merchant.socialLinks as any;
     if (socials.website) {
-      contactLines.push(`<tr><td style="padding: 2px 0;"><span style="color: #94A3B8; font-size: 13px;">&#127760;</span> <a href="${escapeHtml(socials.website)}" style="color: ${brand.accent}; font-size: 13px; text-decoration: none;" target="_blank">Site web</a></td></tr>`);
+      let websiteStr: string;
+      if (typeof socials.website === 'object' && socials.website.url) {
+        websiteStr = socials.website.url;
+      } else {
+        websiteStr = socials.website as string;
+      }
+      contactLines.push(`<tr><td style="padding: 2px 0;"><span style="color: #94A3B8; font-size: 13px;">&#127760;</span> <a href="${escapeHtml(websiteStr.startsWith('http') ? websiteStr : 'https://' + websiteStr)}" style="color: ${brand.accent}; font-size: 13px; text-decoration: none;" target="_blank">Site web</a></td></tr>`);
     }
     if (socials.instagram) {
-      contactLines.push(`<tr><td style="padding: 2px 0;"><span style="color: #94A3B8; font-size: 13px;">&#128247;</span> <a href="${escapeHtml(socials.instagram)}" style="color: ${brand.accent}; font-size: 13px; text-decoration: none;" target="_blank">Instagram</a></td></tr>`);
+      let instaStr: string;
+      if (typeof socials.instagram === 'object' && socials.instagram.url) {
+         instaStr = socials.instagram.url;
+      } else {
+         instaStr = socials.instagram as string;
+      }
+      const instaUrl = instaStr.startsWith('http') ? instaStr : (instaStr.startsWith('@') ? `https://instagram.com/${instaStr.substring(1)}` : `https://instagram.com/${instaStr}`);
+      contactLines.push(`<tr><td style="padding: 2px 0;"><span style="color: #94A3B8; font-size: 13px;">&#128247;</span> <a href="${escapeHtml(instaUrl)}" style="color: ${brand.accent}; font-size: 13px; text-decoration: none;" target="_blank">Instagram</a></td></tr>`);
     }
     if (socials.facebook) {
-      contactLines.push(`<tr><td style="padding: 2px 0;"><span style="color: #94A3B8; font-size: 13px;">&#128101;</span> <a href="${escapeHtml(socials.facebook)}" style="color: ${brand.accent}; font-size: 13px; text-decoration: none;" target="_blank">Facebook</a></td></tr>`);
+      let fbStr: string;
+      if (typeof socials.facebook === 'object' && socials.facebook.url) {
+         fbStr = socials.facebook.url;
+      } else {
+         fbStr = socials.facebook as string;
+      }
+      const fbUrl = fbStr.startsWith('http') ? fbStr : `https://facebook.com/${fbStr}`;
+      contactLines.push(`<tr><td style="padding: 2px 0;"><span style="color: #94A3B8; font-size: 13px;">&#128101;</span> <a href="${escapeHtml(fbUrl)}" style="color: ${brand.accent}; font-size: 13px; text-decoration: none;" target="_blank">Facebook</a></td></tr>`);
     }
     if (socials.tiktok) {
-      contactLines.push(`<tr><td style="padding: 2px 0;"><span style="color: #94A3B8; font-size: 13px;">&#127925;</span> <a href="${escapeHtml(socials.tiktok)}" style="color: ${brand.accent}; font-size: 13px; text-decoration: none;" target="_blank">TikTok</a></td></tr>`);
+      let tiktokStr: string;
+      if (typeof socials.tiktok === 'object' && socials.tiktok.url) {
+         tiktokStr = socials.tiktok.url;
+      } else {
+         tiktokStr = socials.tiktok as string;
+      }
+      const tiktokUrl = tiktokStr.startsWith('http') ? tiktokStr : (tiktokStr.startsWith('@') ? `https://tiktok.com/${tiktokStr}` : `https://tiktok.com/@${tiktokStr}`);
+      contactLines.push(`<tr><td style="padding: 2px 0;"><span style="color: #94A3B8; font-size: 13px;">&#127925;</span> <a href="${escapeHtml(tiktokUrl)}" style="color: ${brand.accent}; font-size: 13px; text-decoration: none;" target="_blank">TikTok</a></td></tr>`);
     }
   }
 
