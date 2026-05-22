@@ -1,5 +1,5 @@
-export { MerchantCategory, type LoyaltyType, type MerchantPlan, type SocialLinks } from '@jitplus/shared';
-import type { MerchantCategory, LoyaltyType, MerchantPlan, SocialLinks } from '@jitplus/shared';
+export { MerchantCategory, MERCHANT_BADGE_CODES, type LoyaltyType, type MerchantPlan, type SocialLinks, type OpeningHours, type MerchantBadge } from '@jitplus/shared';
+import type { MerchantCategory, LoyaltyType, MerchantPlan, SocialLinks, OpeningHours } from '@jitplus/shared';
 
 export interface PlanLimits {
   maxClients: number;
@@ -29,7 +29,12 @@ export interface Merchant {
   nom: string;
   email: string;
   categorie: MerchantCategory;
+  secondaryCategories?: MerchantCategory[];
   description?: string;
+  tagline?: string | null;
+  badges?: string[];
+  gallery?: string[];
+  openingHours?: OpeningHours | null;
   ville?: string;
   quartier?: string;
   adresse?: string;
@@ -39,6 +44,8 @@ export interface Merchant {
   phoneNumber?: string;
   logoUrl?: string;
   coverUrl?: string;
+  themeColor?: string | null;
+  themeIcon?: string | null;
   socialLinks?: SocialLinks | null;
   googleId?: string | null;
   appleId?: string | null;
@@ -118,6 +125,7 @@ export interface Reward {
   titre: string;
   cout: number;
   description?: string;
+  imageUrl?: string | null;
 }
 
 export type TransactionType = 'EARN_POINTS' | 'REDEEM_REWARD' | 'ADJUST_POINTS' | 'LOYALTY_PROGRAM_CHANGE' | 'LUCKY_WHEEL_WIN';

@@ -4,6 +4,7 @@ import { Instagram, Music2, Mail, Globe } from 'lucide-react-native';
 import { palette } from '@/contexts/ThemeContext';
 import { haptic } from '@/utils/haptics';
 import { merchantStyles as styles } from './merchantStyles';
+import { getMerchantAccent } from '@/utils/merchantAccent';
 import type { Merchant } from '@/types';
 
 interface MerchantSocialLinksProps {
@@ -12,6 +13,7 @@ interface MerchantSocialLinksProps {
 }
 
 function MerchantSocialLinks({ merchant, t }: MerchantSocialLinksProps) {
+  const accent = getMerchantAccent(merchant.themeColor);
   const storeEmail = useMemo(() => merchant.stores?.find((s) => !!s.email)?.email, [merchant.stores]);
   const hasLinks = !!storeEmail || !!merchant.socialLinks?.instagram || !!merchant.socialLinks?.tiktok || !!merchant.socialLinks?.website;
   if (!hasLinks) return null;
@@ -82,10 +84,10 @@ function MerchantSocialLinks({ merchant, t }: MerchantSocialLinksProps) {
               Linking.openURL(parsed.href);
             } catch { /* invalid URL */ }
           }}
-          style={({ pressed }) => [styles.socialIconBtn, { backgroundColor: `${palette.violet}10`, opacity: pressed ? 0.7 : 1 }]}
+          style={({ pressed }) => [styles.socialIconBtn, { backgroundColor: `${accent}10`, opacity: pressed ? 0.7 : 1 }]}
           accessibilityRole="link" accessibilityLabel={t('merchant.website')}
         >
-          <Globe size={18} color={palette.violet} strokeWidth={2} />
+          <Globe size={18} color={accent} strokeWidth={2} />
         </Pressable>
       )}
     </View>

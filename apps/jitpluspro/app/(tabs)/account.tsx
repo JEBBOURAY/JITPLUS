@@ -21,7 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { getErrorMessage } from '@/utils/error';
 import InfoRow from '@/components/InfoRow';
-import { useReferral, useUploadMerchantLogo, useDeleteMerchantLogo, useAdminNotifUnreadCount } from '@/hooks/useQueryHooks';
+import { useReferral, useUploadMerchantLogo, useDeleteMerchantLogo, useAdminNotifUnreadCount, useUploadMerchantCover, useDeleteMerchantCover } from '@/hooks/useQueryHooks';
 import {
   LogOut,
   ChevronDown,
@@ -41,6 +41,7 @@ import {
   Check,
   X,
   Ticket,
+  Palette,
 } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import api from '@/services/api';
@@ -53,7 +54,7 @@ import Constants from 'expo-constants';
 import FadeInView from '@/components/FadeInView';
 import PremiumLockModal from '@/components/PremiumLockModal';
 import { wp, hp, ms, fontSize as FS, radius } from '@/utils/responsive';
-import { ProfileCard, LogoEditModal, LanguageModal, ProLockBadge } from '@/components/account';
+import { ProfileCard, LogoEditModal, CoverEditModal, LanguageModal, ProLockBadge } from '@/components/account';
 
 export default function AccountScreen() {
   const { merchant, loading, signOut, isTeamMember, teamMember, updateMerchant } = useAuth();
@@ -64,6 +65,8 @@ export default function AccountScreen() {
   const { locale, setLocale, t } = useLanguage();
   const uploadLogoMutation = useUploadMerchantLogo();
   const deleteLogoMutation = useDeleteMerchantLogo();
+  const uploadCoverMutation = useUploadMerchantCover();
+  const deleteCoverMutation = useDeleteMerchantCover();
 
   // Collapsible section states â€” single state to avoid triple re-renders
   const [expandedSection, setExpandedSection] = useState<'store' | 'pref' | 'compte' | null>(null);
@@ -74,6 +77,7 @@ export default function AccountScreen() {
   const prefExpanded = expandedSection === 'pref';
   const compteExpanded = expandedSection === 'compte';
   const [showLogoModal, setShowLogoModal] = useState(false);
+  const [showCoverModal, setShowCoverModal] = useState(false);
   const [premiumModal, setPremiumModal] = useState<{ visible: boolean; titleKey: string; descKey: string }>({
     visible: false,
     titleKey: '',
@@ -107,6 +111,29 @@ export default function AccountScreen() {
     }
   }, [uploadLogoMutation, merchant, updateMerchant, t]);
 
+  const pickAndUploadCover = useCallback(async () => {
+    if (uploadCoverMutation.isPending) return;
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [16, 9], // Cover images are usually wider
+        quality: 0.8,    // A bit more quality for covers
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+      const asset = result.assets[0];
+      const { url } = await uploadCoverMutation.mutateAsync({
+        uri: asset.uri,
+        mimeType: asset.mimeType,
+        merchantName: merchant?.nom,
+        fileSize: asset.fileSize,
+      });
+      updateMerchant({ ...merchant!, coverUrl: url });
+    } catch (err) {
+      Alert.alert(t('common.error'), getErrorMessage(err, t('account.coverUploadError')));
+    }
+  }, [uploadCoverMutation, merchant, updateMerchant, t]);
+
   const handleLogoPress = useCallback(() => {
     if (isTeamMember) {
       Alert.alert(t('account.logoOwnerOnly'), t('account.logoOwnerOnlyMsg'));
@@ -118,6 +145,14 @@ export default function AccountScreen() {
     }
     setShowLogoModal(true);
   }, [isPremium, isTeamMember, t]);
+
+  const handleCoverPress = useCallback(() => {
+    if (isTeamMember) {
+      Alert.alert(t('account.logoOwnerOnly'), t('account.logoOwnerOnlyMsg'));
+      return;
+    }
+    setShowCoverModal(true);
+  }, [isTeamMember, t]);
 
   const handleDeleteLogo = useCallback(() => {
     setShowLogoModal(false);
@@ -141,6 +176,29 @@ export default function AccountScreen() {
       ],
     );
   }, [deleteLogoMutation, merchant, updateMerchant, t]);
+
+  const handleDeleteCover = useCallback(() => {
+    setShowCoverModal(false);
+    Alert.alert(
+      t('account.coverDeleteConfirmTitle'),
+      t('account.coverDeleteConfirmMsg'),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('account.deleteCoverPhoto'),
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteCoverMutation.mutateAsync();
+              updateMerchant({ ...merchant!, coverUrl: undefined });
+            } catch (err) {
+              Alert.alert(t('common.error'), getErrorMessage(err, t('account.coverDeleteError')));
+            }
+          },
+        },
+      ],
+    );
+  }, [deleteCoverMutation, merchant, updateMerchant, t]);
   const { data: referralData } = useReferral(!isTeamMember);
   const referralCode = referralData?.referralCode ?? null;
 
@@ -150,6 +208,7 @@ export default function AccountScreen() {
   const openLanguageModal = useCallback(() => setShowLanguageModal(true), []);
   const closeLanguageModal = useCallback(() => setShowLanguageModal(false), []);
   const closeLogoModal = useCallback(() => setShowLogoModal(false), []);
+  const closeCoverModal = useCallback(() => setShowCoverModal(false), []);
   const closePremiumModal = useCallback(() => setPremiumModal((prev) => ({ ...prev, visible: false })), []);
 
   // -- Profile name edit --
@@ -197,6 +256,7 @@ export default function AccountScreen() {
   // -- Stable navigation callbacks (keeps InfoRow / ProfileCard memo stable) --
   const goToStores = useCallback(() => router.push('/stores'), [router]);
   const goToSettings = useCallback(() => router.push('/settings'), [router]);
+  const goToStorePreview = useCallback(() => router.push('/store-preview'), [router]);
   const goToReferral = useCallback(() => router.push('/referral'), [router]);
   const goToLegal = useCallback(() => router.push('/legal'), [router]);
   const goToSecurity = useCallback(() => router.push('/security'), [router]);
@@ -245,7 +305,7 @@ export default function AccountScreen() {
   const openTeamLuckyWheel = useCallback(() => router.push('/lucky-wheel'), [router]);
 
   const openSupport = useCallback(() => {
-    const phone = process.env.EXPO_PUBLIC_SUPPORT_WHATSAPP || '212675346486';
+    const phone = process.env.EXPO_PUBLIC_SUPPORT_WHATSAPP || '212755073325';
     const email = process.env.EXPO_PUBLIC_SUPPORT_EMAIL || 'contact@jitplus.com';
     const msg = t('account.contactSupportMsg');
 
@@ -317,7 +377,9 @@ export default function AccountScreen() {
             locale={locale}
             merchant={merchant}
             uploadIsPending={uploadLogoMutation.isPending}
+            coverUploadIsPending={uploadCoverMutation.isPending}
             onLogoPress={handleLogoPress}
+            onCoverPress={handleCoverPress}
             referralCode={referralCode}
             router={router}
             unreadCount={unreadCount}
@@ -379,6 +441,12 @@ export default function AccountScreen() {
                   label={t('account.settingsTitle')}
                   subtitle={t('account.settingsSubtitle')}
                   onPress={goToSettings}
+                />
+                <InfoRow
+                  icon={<Palette size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
+                  label={t('account.storePreviewTitle')}
+                  subtitle={t('account.storePreviewSubtitle')}
+                  onPress={goToStorePreview}
                 />
                 <InfoRow
                   icon={<Ticket size={ms(16)} color={isPremium ? palette.charbon : theme.textMuted} strokeWidth={1.5} />}
@@ -590,6 +658,17 @@ export default function AccountScreen() {
         uploadIsPending={uploadLogoMutation.isPending}
         onPickPhoto={pickAndUploadLogo}
         onDelete={handleDeleteLogo}
+      />
+
+      <CoverEditModal
+        visible={showCoverModal}
+        onClose={closeCoverModal}
+        theme={theme}
+        t={t}
+        merchant={merchant}
+        uploadIsPending={uploadCoverMutation.isPending}
+        onPickPhoto={pickAndUploadCover}
+        onDelete={handleDeleteCover}
       />
 
       <LanguageModal

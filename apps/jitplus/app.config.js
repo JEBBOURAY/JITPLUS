@@ -36,8 +36,8 @@ module.exports = ({ config }) => {
     name: 'JitPlus',
     slug: 'jitplus',
     description: 'Digital loyalty cards app — collect stamps and earn rewards at your favorite local shops.',
-    version: '1.3.11',
-    orientation: 'portrait',
+    version: '1.3.12',
+    orientation: 'default',
     icon: './assets/images/icon-white.png',
     scheme: 'jitplus',
     userInterfaceStyle: 'automatic',
@@ -56,7 +56,7 @@ module.exports = ({ config }) => {
       supportsTablet: false,
       bundleIdentifier: 'com.jitplus.client',
       // Initial build number — EAS autoIncrement bumps this on every production build
-      buildNumber: '41',
+      buildNumber: '42',
       // Portrait-only app: disable iPad Split View / Slide Over to avoid orientation-support review issues
       requiresFullScreen: true,
       // Firebase config for iOS — download from Firebase Console
@@ -85,15 +85,14 @@ module.exports = ({ config }) => {
       ],
     },
     android: {
-      versionCode: 44,
+      versionCode: 45,
       icon: './assets/images/icon-white.png',
       adaptiveIcon: {
         foregroundImage: './assets/images/adaptive-icon-white.png',
         backgroundColor: '#FFFFFF',
       },
-      // Disabled: causes native crash on some Android 10/11 devices before
-      // the JS bundle loads. Re-enable once targeting Android 15+ exclusively.
-      edgeToEdgeEnabled: false,
+      // Re-enabled for Android 15+ Edge-to-Edge compliance (targetSdkVersion 35)
+      edgeToEdgeEnabled: true,
       // Prevents unexpected back gesture from killing auth/OTP flows
       predictiveBackGestureEnabled: false,
       package: 'com.jitplus.client',

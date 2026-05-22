@@ -21,11 +21,14 @@ import { api } from '@/services/api';
 import { getServerBaseUrl } from '@/services/api';
 import { wp, hp, ms } from '@/utils/responsive';
 import { resolveImageUrl } from '@/utils/imageUrl';
+import { getMerchantAccent } from '@/utils/merchantAccent';
+import { getMerchantIconComponent } from '@/utils/merchantIcons';
 import * as Location from 'expo-location';
 import {
   merchantStyles as styles,
   MerchantSocialLinks, MerchantLoyaltyRewards,
   MerchantLuckyWheel, MerchantLocations, MerchantBottomBar,
+  MerchantBadges, MerchantOpeningHours, MerchantGallery,
 } from '@/components/merchant';
 
 export default function MerchantDetailScreen() {
@@ -242,6 +245,9 @@ export default function MerchantDetailScreen() {
     );
   }
 
+  const accent = getMerchantAccent(merchant.themeColor);
+  const ThemeIcon = getMerchantIconComponent(merchant.themeIcon);
+
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -250,7 +256,7 @@ export default function MerchantDetailScreen() {
           {merchant.coverUrl && !coverError ? (
             <Image source={resolveImageUrl(merchant.coverUrl)} style={styles.coverImage} contentFit="cover" cachePolicy="disk" recyclingKey={merchant.coverUrl} onError={() => setCoverError(true)} />
           ) : (
-            <LinearGradient colors={[`${palette.violet}18`, `${palette.violet}08`, theme.bg]} style={styles.coverImage} />
+            <LinearGradient colors={[`${accent}18`, `${accent}08`, theme.bg]} style={styles.coverImage} />
           )}
           <LinearGradient colors={['transparent', theme.bg]} style={styles.coverFade} />
           <SafeAreaView edges={['top']} style={styles.floatingHeader}>
@@ -283,8 +289,12 @@ export default function MerchantDetailScreen() {
             <View style={[styles.logoRing, { backgroundColor: theme.bg }]}>
               {merchant.logoUrl && !logoError ? (
                 <Image source={resolveImageUrl(merchant.logoUrl)} style={styles.logo} contentFit="cover" cachePolicy="disk" recyclingKey={merchant.logoUrl} onError={() => setLogoError(true)} />
+              ) : ThemeIcon ? (
+                <View style={[styles.emojiWrap, { backgroundColor: `${accent}15` }]}>
+                  <ThemeIcon size={ms(44)} color={accent} strokeWidth={1.75} />
+                </View>
               ) : (
-                <View style={[styles.emojiWrap, { backgroundColor: `${palette.violet}10` }]}>
+                <View style={[styles.emojiWrap, { backgroundColor: `${accent}10` }]}>
                   <Text style={styles.emoji}>{getCategoryEmoji(merchant.categorie)}</Text>
                 </View>
               )}
@@ -295,18 +305,28 @@ export default function MerchantDetailScreen() {
         {/* Identity */}
         <View style={styles.identitySection}>
           <Text style={[styles.merchantName, { color: theme.text }]} numberOfLines={2}>{merchant.nomBoutique}</Text>
-          <View style={[styles.categoryBadge, { backgroundColor: `${palette.violet}10` }]}>
-            <Text style={[styles.categoryText, { color: palette.violet }]} numberOfLines={1}>{getCategoryEmoji(merchant.categorie)} {merchant.categorie}</Text>
+          {!!merchant.tagline && (
+            <Text style={[styles.tagline, { color: theme.textMuted }]} numberOfLines={3}>{merchant.tagline}</Text>
+          )}
+          <View style={[styles.categoryBadge, { backgroundColor: `${accent}10` }]}>
+            {ThemeIcon ? (
+              <ThemeIcon size={14} color={accent} strokeWidth={2} />
+            ) : (
+              <Text style={[styles.categoryText, { color: accent }]}>{getCategoryEmoji(merchant.categorie)}</Text>
+            )}
+            <Text style={[styles.categoryText, { color: accent }]} numberOfLines={1}>
+              {[merchant.categorie, ...(merchant.secondaryCategories ?? [])].join(' · ')}
+            </Text>
           </View>
           <View style={styles.statsRow}>
             <View style={[styles.statChip, { backgroundColor: theme.bgCard }]}>
-              <Eye size={15} color={palette.violet} strokeWidth={2} />
+              <Eye size={15} color={accent} strokeWidth={2} />
               <Text style={[styles.statValue, { color: theme.text }]}>{(merchant.profileViews ?? 0).toLocaleString('fr-MA')}</Text>
               <Text style={[styles.statLabel, { color: theme.textMuted }]}>{t('merchant.views')}</Text>
             </View>
             <View style={styles.statDivider} />
             <View style={[styles.statChip, { backgroundColor: theme.bgCard }]}>
-              <Users size={15} color={palette.violet} strokeWidth={2} />
+              <Users size={15} color={accent} strokeWidth={2} />
               <Text style={[styles.statValue, { color: theme.text }]}>{(merchant.clientCount ?? 0).toLocaleString('fr-MA')}</Text>
               <Text style={[styles.statLabel, { color: theme.textMuted }]}>{t('merchant.clients')}</Text>
             </View>
@@ -317,12 +337,15 @@ export default function MerchantDetailScreen() {
 
         <View style={styles.contentArea}>
           {!!merchant.description && (
-            <LinearGradient colors={[theme.bgCard, `${palette.violet}10`, `${palette.violet}18`]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.descriptionCard, { backgroundColor: theme.bgCard }]}>
+            <LinearGradient colors={[theme.bgCard, `${accent}10`, `${accent}18`]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.descriptionCard, { backgroundColor: theme.bgCard }]}>
               <Text style={[styles.sectionTitle, { color: theme.text }]}>{t('merchant.aboutUs')}</Text>
               <Text style={[styles.descriptionText, { color: theme.textSecondary }]}>{merchant.description}</Text>
             </LinearGradient>
           )}
           {merchant.activeLuckyWheel && <MerchantLuckyWheel merchant={merchant} theme={theme} t={t} />}
+          <MerchantBadges merchant={merchant} theme={theme} t={t} />
+          <MerchantGallery merchant={merchant} theme={theme} t={t} />
+          <MerchantOpeningHours merchant={merchant} theme={theme} t={t} />
           <MerchantLoyaltyRewards merchant={merchant} justJoined={justJoined} theme={theme} t={t} />
           <MerchantLocations merchant={merchant} userLocation={userLocation} theme={theme} t={t} />
         </View>

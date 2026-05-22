@@ -17,6 +17,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useRouter } from 'expo-router';
 import api from '@/services/api';
+import { useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '@/hooks/useQueryHooks';
 import { getErrorMessage } from '@/utils/error';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { ms } from '@/utils/responsive';
@@ -99,6 +101,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { t } = useLanguage();
+  const qc = useQueryClient();
 
   const [state, dispatch] = useReducer(settingsReducer, initialSettingsState);
   const { loyaltyType, stampEarningMode, pointsRate, conversionRate, stampsForReward, hasAccumulationLimit, accumulationLimit, saving, conversionX, conversionY, rewards, rewardReloadToken } = state;
@@ -166,6 +169,14 @@ export default function SettingsScreen() {
       if (res.data.conversionRate != null) {
         set({ conversionRate: String(res.data.conversionRate) });
       }
+      // Backend may rescale reward.cout and balances on type/stamps switch.
+      // Refresh React Query caches so transaction-amount, FichePreviewModal,
+      // home tab, etc. show the new values instead of pre-switch stale data.
+      qc.invalidateQueries({ queryKey: queryKeys.rewards });
+      qc.invalidateQueries({ queryKey: queryKeys.profile });
+      qc.invalidateQueries({ queryKey: ['clients'] });
+      qc.invalidateQueries({ queryKey: ['client-status'] });
+      qc.invalidateQueries({ queryKey: ['client-detail'] });
       dispatch({ type: 'INCREMENT_RELOAD' });
       Alert.alert(t('common.confirm'), t('settingsPage.saveSuccess'));
     } catch (err: unknown) {
@@ -490,9 +501,8 @@ export default function SettingsScreen() {
                   // User typed "X fromUnit = Y toUnit" → 1 fromUnit = Y/X toUnit,
                   // i.e. exampleIn fromUnit = exampleIn / rate toUnit. Symmetric for
                   // both directions and matches the backend conversion exactly.
-                  const exampleOut = loyaltyType === 'STAMPS'
-                    ? Math.max(Math.floor(exampleIn / rate), 0)
-                    : Math.round(exampleIn / rate);
+                  // Backend uses ROUND in both directions — keep preview symmetric.
+                  const exampleOut = Math.round(exampleIn / rate);
                   const fromUnit = loyaltyType === 'STAMPS' ? t('settingsPage.conversionRulePts') : t('settingsPage.conversionRuleTmps');
                   const toUnit = loyaltyType === 'STAMPS' ? t('settingsPage.conversionRuleTmps') : t('settingsPage.conversionRulePts');
                   return (
@@ -517,9 +527,7 @@ export default function SettingsScreen() {
                       </Text>
                       {rewards.map((r) => {
                         // Same symmetric formula as the live preview above.
-                        const newCost = loyaltyType === 'STAMPS'
-                          ? Math.max(Math.floor(r.cout / rate), 1)
-                          : Math.max(Math.round(r.cout / rate), 1);
+                        const newCost = Math.max(Math.round(r.cout / rate), 1);
                         return (
                           <View key={r.id} style={styles.rewardConversionRow}>
                             <Text style={[styles.rewardConversionName, { color: theme.textSecondary }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>

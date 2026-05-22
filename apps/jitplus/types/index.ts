@@ -1,6 +1,7 @@
-import type { SocialLinks, LoyaltyType, Pagination } from '@jitplus/shared';
+import type { SocialLinks, LoyaltyType, Pagination, OpeningHours, MerchantBadge } from '@jitplus/shared';
 
-export type { SocialLinks, LoyaltyType, Pagination } from '@jitplus/shared';
+export type { SocialLinks, LoyaltyType, Pagination, OpeningHours, MerchantBadge } from '@jitplus/shared';
+export { MERCHANT_BADGE_CODES } from '@jitplus/shared';
 
 export interface Client {
   id: string;
@@ -28,6 +29,7 @@ export interface MerchantReward {
   titre: string;
   cout: number;
   description?: string | null;
+  imageUrl?: string | null;
 }
 
 export interface MerchantActiveLuckyWheel {
@@ -46,6 +48,11 @@ export interface Merchant {
   id: string;
   nomBoutique: string;
   categorie: string;
+  secondaryCategories?: string[];
+  tagline?: string | null;
+  badges?: string[];
+  gallery?: string[];
+  openingHours?: OpeningHours | null;
   adresse?: string;
   description?: string;
   ville?: string;
@@ -58,6 +65,8 @@ export interface Merchant {
   minRewardCost?: number | null;
   logoUrl?: string | null;
   coverUrl?: string | null;
+  themeColor?: string | null;
+  themeIcon?: string | null;
   socialLinks?: SocialLinks | null;
   profileViews?: number;
   clientCount?: number;

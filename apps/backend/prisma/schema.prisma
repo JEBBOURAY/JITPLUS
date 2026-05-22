@@ -23,7 +23,12 @@ model Merchant {
   language             String           @default("fr") @db.VarChar(5)
   termsAccepted        Boolean          @default(false) @map("terms_accepted")
   categorie            MerchantCategory
+  secondaryCategories  MerchantCategory[] @default([]) @map("secondary_categories")
   description          String?          @db.VarChar(1000)
+  tagline              String?          @db.VarChar(120)
+  badges               String[]         @default([])
+  gallery              String[]         @default([])
+  openingHours         Json?            @map("opening_hours")
   ville                String?          @db.VarChar(100)
   quartier             String?          @db.VarChar(100)
   adresse              String?          @db.VarChar(500)
@@ -33,6 +38,8 @@ model Merchant {
   phoneNumber          String?          @map("phone_number") @db.VarChar(20)
   logoUrl              String?          @map("logo_url")
   coverUrl             String?          @map("cover_url")
+  themeColor           String?          @map("theme_color") @db.VarChar(7) // hex color #RRGGBB
+  themeIcon            String?          @map("theme_icon") @db.VarChar(32) // lucide icon slug
   socialLinks          Json?            @map("social_links") // {instagram, facebook, tiktok, website, snapchat, youtube}
   profileViews         Int              @default(0) @map("profile_views")
   pointsRules          Json?            @map("points_rules")
@@ -181,6 +188,20 @@ enum MerchantCategory {
   BEAUTE
   SPORT
   SUPERMARCHE
+  BOUCHERIE
+  PATISSERIE
+  FASTFOOD
+  HAMMAM
+  ANIMALERIE
+  FLEURISTE
+  BIJOUTERIE
+  OPTIQUE
+  TELEPHONE
+  BRICOLAGE
+  AUTO
+  HOTEL
+  PARFUMERIE
+  TRAITEUR
   AUTRE
 }
 
@@ -479,6 +500,7 @@ model Reward {
   titre       String   @db.VarChar(255)
   cout        Int
   description String?  @db.VarChar(1000)
+  imageUrl    String?  @map("image_url") @db.VarChar(500)
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 

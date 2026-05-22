@@ -510,7 +510,12 @@ export class ClientService {
           nom: true,
           email: true,
           categorie: true,
+          secondaryCategories: true,
           description: true,
+          tagline: true,
+          badges: true,
+          gallery: true,
+          openingHours: true,
           ville: true,
           quartier: true,
           adresse: true,
@@ -522,6 +527,8 @@ export class ClientService {
           stampsForReward: true,
           logoUrl: true,
           coverUrl: true,
+          themeColor: true,
+          themeIcon: true,
           socialLinks: true,
           profileViews: true,
           stores: {
@@ -539,7 +546,7 @@ export class ClientService {
             },
           },
           rewards: {
-            select: { id: true, titre: true, cout: true, description: true },
+            select: { id: true, titre: true, cout: true, description: true, imageUrl: true },
             orderBy: { cout: 'asc' },
           },
           luckyWheelCampaigns: {
@@ -600,7 +607,12 @@ export class ClientService {
       id: m.id,
       nomBoutique: m.nom,
       categorie: m.categorie,
+      secondaryCategories: m.secondaryCategories ?? [],
       description: m.description,
+      tagline: m.tagline ?? null,
+      badges: m.badges ?? [],
+      gallery: m.gallery ?? [],
+      openingHours: (m.openingHours as Record<string, unknown> | null) ?? null,
       ville: m.ville,
       adresse: m.adresse || (m.quartier ? `${m.quartier}, ${m.ville}` : m.ville),
       latitude: m.latitude,
@@ -611,6 +623,8 @@ export class ClientService {
       stampsForReward: m.stampsForReward,
       logoUrl: m.logoUrl ?? null,
       coverUrl: m.coverUrl ?? null,
+      themeColor: m.themeColor ?? null,
+      themeIcon: m.themeIcon ?? null,
       socialLinks: (m.socialLinks as Record<string, string> | null) ?? null,
       profileViews: m.profileViews,
       clientCount: m._count.loyaltyCards,
@@ -623,6 +637,7 @@ export class ClientService {
         titre: r.titre,
         cout: r.cout,
         description: r.description ?? null,
+        imageUrl: r.imageUrl ?? null,
       })),
       activeLuckyWheel: m.luckyWheelCampaigns?.[0]
         ? {
@@ -823,6 +838,7 @@ export class ClientService {
             id: true,
             nom: true,
             categorie: true,
+            secondaryCategories: true,
             description: true,
             ville: true,
             quartier: true,
@@ -834,6 +850,11 @@ export class ClientService {
             pointsRate: true,
             stampsForReward: true,
             logoUrl: true,
+            coverUrl: true,
+            tagline: true,
+            badges: true,
+            themeColor: true,
+            themeIcon: true,
             stores: {
               where: { isActive: true },
               select: {
@@ -883,6 +904,7 @@ export class ClientService {
         id: m.id,
         nomBoutique: m.nom,
         categorie: m.categorie,
+        secondaryCategories: m.secondaryCategories ?? [],
         description: m.description,
         ville: m.ville,
         adresse: m.adresse || (m.quartier ? `${m.quartier}, ${m.ville}` : m.ville),
@@ -893,6 +915,11 @@ export class ClientService {
         pointsRate: m.pointsRate,
         stampsForReward: m.stampsForReward,
         logoUrl: m.logoUrl ?? null,
+        coverUrl: m.coverUrl ?? null,
+        tagline: m.tagline ?? null,
+        badges: m.badges ?? [],
+        themeColor: m.themeColor ?? null,
+        themeIcon: m.themeIcon ?? null,
       };
 
       // Always include the merchant as a primary entry

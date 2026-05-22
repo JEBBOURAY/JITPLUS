@@ -49,7 +49,7 @@ export const merchantStyles = StyleSheet.create({
   // Identity
   identitySection: { alignItems: 'center' as const, paddingHorizontal: wp(20), paddingBottom: hp(20) },
   merchantName: { fontSize: ms(26), fontWeight: '800' as const, letterSpacing: -0.5, maxWidth: '92%', marginBottom: hp(8), textAlign: 'center' as const },
-  categoryBadge: { paddingHorizontal: wp(14), paddingVertical: hp(5), borderRadius: ms(20), marginBottom: hp(14) },
+  categoryBadge: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: wp(6), paddingHorizontal: wp(14), paddingVertical: hp(5), borderRadius: ms(20), marginBottom: hp(14) },
   categoryText: { fontSize: ms(12), fontWeight: '600' as const },
   statsRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: wp(6) },
   statChip: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: wp(6), borderRadius: ms(12), paddingHorizontal: wp(14), paddingVertical: hp(8) },
@@ -70,6 +70,45 @@ export const merchantStyles = StyleSheet.create({
     }),
   },
   descriptionText: { fontSize: ms(14), lineHeight: ms(22), fontWeight: '400' as const },
+
+  // Tagline
+  tagline: { fontSize: ms(14), fontWeight: '500' as const, fontStyle: 'italic' as const, textAlign: 'center' as const, marginTop: hp(-4), marginBottom: hp(10), paddingHorizontal: wp(20), maxWidth: '92%' as const },
+
+  // Badges
+  badgesCard: {
+    borderRadius: ms(18), padding: wp(16),
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8 },
+      android: { elevation: 1 },
+    }),
+  },
+  badgesWrap: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: wp(8) },
+  badgePill: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: wp(6), paddingHorizontal: wp(12), paddingVertical: hp(6), borderRadius: ms(20), borderWidth: 1 },
+  badgePillText: { fontSize: ms(12), fontWeight: '600' as const },
+
+  // Opening hours
+  hoursCard: {
+    borderRadius: ms(18), padding: wp(16),
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8 },
+      android: { elevation: 1 },
+    }),
+  },
+  hoursHeader: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: wp(12), marginBottom: hp(10) },
+  hoursIconBadge: { width: ms(36), height: ms(36), borderRadius: ms(12), alignItems: 'center' as const, justifyContent: 'center' as const },
+  hoursStatus: { fontSize: ms(12), fontWeight: '700' as const, marginTop: hp(2) },
+  hoursList: { gap: hp(6) },
+  hoursRow: { flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const, paddingVertical: hp(4) },
+  hoursDay: { fontSize: ms(13) },
+  hoursValue: { fontSize: ms(13) },
+
+  // Gallery
+  galleryCard: { paddingHorizontal: 0 },
+  galleryScrollContent: { gap: wp(8), paddingVertical: hp(4) },
+  galleryThumbBtn: { borderRadius: ms(12), overflow: 'hidden' as const },
+  galleryThumb: { width: wp(140), height: wp(140), borderRadius: ms(12), backgroundColor: '#00000010' },
+  galleryModal: { flex: 1, backgroundColor: 'rgba(0,0,0,0.95)', justifyContent: 'center' as const },
+  galleryClose: { position: 'absolute' as const, top: hp(40), right: wp(16), zIndex: 10, width: ms(40), height: ms(40), borderRadius: ms(20), backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center' as const, justifyContent: 'center' as const },
 
   // Loyalty
   loyaltyRewardCard: {

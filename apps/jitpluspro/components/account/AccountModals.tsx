@@ -125,6 +125,79 @@ export function LogoEditModal({
   );
 }
 
+/* ── Cover Edit Bottom Sheet ── */
+
+export function CoverEditModal({
+  visible, onClose, theme, t, merchant, uploadIsPending, onPickPhoto, onDelete,
+}: LogoModalProps) {
+  const insets = useSafeAreaInsets();
+  
+  return (
+    <Modal visible={visible} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
+      <Pressable style={styles.bottomSheetOverlay} onPress={onClose}>
+        <Pressable
+          style={[styles.logoModalSheet, { backgroundColor: theme.bgCard, paddingBottom: Math.max(insets.bottom + hp(16), hp(36)) }]}
+          onPress={() => {}}
+        >
+          <View style={[styles.sheetHandle, { backgroundColor: `${palette.charbon}20` }]} />
+
+          <Text style={[styles.logoModalTitle, { color: theme.text, marginTop: hp(16) }]}>{t('account.coverPhoto')}</Text>
+          <Text style={[styles.logoModalSubtitle, { color: theme.textMuted }]}>
+            {merchant?.coverUrl ? t('account.coverPhotoEditHint') : t('account.coverPhotoAddHint')}
+          </Text>
+
+          <TouchableOpacity
+            style={styles.logoModalBtn}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            onPress={() => {
+              onClose();
+              InteractionManager.runAfterInteractions(() => {
+                onPickPhoto();
+              });
+            }}
+          >
+            <LinearGradient
+              colors={['#7C3AED', '#5B21B6']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.logoModalBtnGradient}
+            >
+              <Camera size={ms(18)} color="#fff" strokeWidth={2} />
+              <Text style={styles.logoModalBtnText}>
+                {merchant?.coverUrl ? t('account.changeCoverPhoto') : t('account.addCoverPhoto')}
+              </Text>
+            </LinearGradient>
+          </TouchableOpacity>
+
+          {!!merchant?.coverUrl && (
+            <TouchableOpacity
+              style={[styles.logoModalOutlineBtn, { borderColor: '#EF444435' }]}
+              activeOpacity={0.8}
+              onPress={onDelete}
+              accessibilityRole="button"
+              accessibilityLabel={t('account.deleteCoverPhoto')}
+            >
+              <Trash2 size={ms(16)} color="#EF4444" strokeWidth={1.5} />
+              <Text style={[styles.logoModalOutlineBtnText, { color: '#EF4444' }]}>{t('account.deleteCoverPhoto')}</Text>
+            </TouchableOpacity>
+          )}
+
+          <TouchableOpacity
+            style={[styles.logoModalOutlineBtn, { borderColor: theme.borderLight }]}
+            activeOpacity={0.7}
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel={t('common.cancel')}
+          >
+            <Text style={[styles.logoModalOutlineBtnText, { color: theme.textMuted }]}>{t('common.cancel')}</Text>
+          </TouchableOpacity>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
 /* ── Language Selector Modal ── */
 
 interface LanguageModalProps {

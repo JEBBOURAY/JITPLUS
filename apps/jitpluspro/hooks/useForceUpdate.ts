@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
-import api from '@/services/api';
+import axios from 'axios';
+import { getServerBaseUrl } from '@/services/api';
 
 // ── Semantic version helpers ──────────────────────────────────────────────────
 
@@ -78,12 +79,14 @@ export function useForceUpdate(): ForceUpdateState {
 
   const check = useCallback(async () => {
     try {
-      const response = await api.get<{
+      // /health is mounted OUTSIDE the global /api/v1 prefix on the backend,
+      // so we must call it via the bare server base URL (not the prefixed `api` client).
+      const response = await axios.get<{
         api_version: string;
         min_ios_version: string;
         min_android_version: string;
         maintenance: boolean;
-      }>('/health/version');
+      }>(`${getServerBaseUrl()}/health/version`);
 
       if (cancelledRef.current) return;
 

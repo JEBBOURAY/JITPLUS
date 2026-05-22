@@ -1,0 +1,1 @@
+ALTER TABLE "merchants" ADD COLUMN IF NOT EXISTS "theme_icon" VARCHAR(32);

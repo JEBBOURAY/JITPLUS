@@ -468,10 +468,128 @@ export function useUploadMerchantLogo() {
   });
 }
 
+export function useUploadMerchantCover() {
+  return useMutation({
+    mutationFn: async (asset: { uri: string; mimeType?: string | null; merchantName?: string; fileSize?: number | null }) => {
+      // Allow larger size for cover, e.g. 5MB, assuming MAX_LOGO_SIZE_BYTES is smaller
+      const maxCoverSize = 5 * 1024 * 1024;
+      if (asset.fileSize && asset.fileSize > maxCoverSize) {
+        throw new Error(i18n.t('upload.fileTooLarge'));
+      }
+      const ext = (asset.uri.split('.').pop() ?? 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+      const mime = asset.mimeType ?? `image/${ext}`;
+      if (!ALLOWED_LOGO_MIMES.has(mime)) {
+        throw new Error(i18n.t('upload.unsupportedFileType', { mime }));
+      }
+      const safeName = (asset.merchantName ?? 'commerce')
+        .toLowerCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 40);
+      const dateStr = new Date().toISOString().slice(0, 10);
+      const fileName = `cover_${safeName}_${dateStr}.${ext}`;
+      const formData = new FormData();
+      formData.append('file', { uri: asset.uri, name: fileName, type: mime } as any);
+      const res = await api.post('/merchant/upload-image?type=cover', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      return res.data as { url: string };
+    },
+  });
+}
+
+export function useDeleteMerchantCover() {
+  return useMutation({
+    mutationFn: async () => {
+      await api.patch('/merchant/profile', { coverUrl: null });
+    },
+  });
+}
+
+export function useUploadMerchantGalleryImage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (asset: { uri: string; mimeType?: string | null; merchantName?: string; fileSize?: number | null }) => {
+      const maxSize = 5 * 1024 * 1024;
+      if (asset.fileSize && asset.fileSize > maxSize) {
+        throw new Error(i18n.t('upload.fileTooLarge'));
+      }
+      const ext = (asset.uri.split('.').pop() ?? 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+      const mime = asset.mimeType ?? `image/${ext}`;
+      if (!ALLOWED_LOGO_MIMES.has(mime)) {
+        throw new Error(i18n.t('upload.unsupportedFileType', { mime }));
+      }
+      const safeName = (asset.merchantName ?? 'commerce')
+        .toLowerCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 40);
+      const dateStr = new Date().toISOString().slice(0, 10);
+      const rand = Math.random().toString(36).slice(2, 8);
+      const fileName = `gallery_${safeName}_${dateStr}_${rand}.${ext}`;
+      const formData = new FormData();
+      formData.append('file', { uri: asset.uri, name: fileName, type: mime } as any);
+      const res = await api.post('/merchant/upload-image?type=gallery', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      return res.data as { url: string; field: string; gallery: string[] };
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.profile });
+    },
+  });
+}
+
 export function useDeleteMerchantLogo() {
   return useMutation({
     mutationFn: async () => {
       await api.patch('/merchant/profile', { logoUrl: null });
+    },
+  });
+}
+
+// ── Reward image upload ────────────────────────────────────────
+export function useUploadRewardImage() {
+  return useMutation({
+    mutationFn: async (asset: { uri: string; mimeType?: string | null; fileSize?: number | null }) => {
+      const maxSize = 5 * 1024 * 1024;
+      if (asset.fileSize && asset.fileSize > maxSize) {
+        throw new Error(i18n.t('upload.fileTooLarge'));
+      }
+      const ext = (asset.uri.split('.').pop() ?? 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+      const mime = asset.mimeType ?? `image/${ext}`;
+      if (!ALLOWED_LOGO_MIMES.has(mime)) {
+        throw new Error(i18n.t('upload.unsupportedFileType', { mime }));
+      }
+      const fileName = `reward.${ext}`;
+      const formData = new FormData();
+      formData.append('file', { uri: asset.uri, name: fileName, type: mime } as any);
+      const res = await api.post('/merchant/upload-image?type=reward', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      return res.data as { url: string };
+    },
+  });
+}
+
+export function useUpdateMerchantTheme() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: {
+      themeColor?: string | null;
+      themeIcon?: string | null;
+      secondaryCategories?: string[];
+      tagline?: string | null;
+      badges?: string[];
+      gallery?: string[];
+      openingHours?: Record<string, unknown> | null;
+    }) => {
+      await api.patch('/merchant/profile', payload);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.profile });
     },
   });
 }

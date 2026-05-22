@@ -126,7 +126,7 @@ export class MerchantProfileService {
 
     const result = await this.merchantRepo.update({
       where: { id: merchantId },
-      data,
+      data: data as Prisma.MerchantUpdateInput,
       select: MERCHANT_PROFILE_SELECT,
     });
     await Promise.all([

@@ -1,7 +1,7 @@
 {
   "name": "jitplus",
   "main": "expo-router/entry",
-  "version": "1.3.10",
+  "version": "1.3.12",
   "expo": {
     "install": {
       "exclude": [
@@ -12,8 +12,10 @@
   },
   "scripts": {
     "eas-build-pre-install": "corepack enable",
-    "start": "cross-env EXPO_NO_DOCTOR=1 EXPO_OFFLINE=1 REACT_NATIVE_PACKAGER_HOSTNAME=192.168.1.116 expo start --host lan --port 8083 --go --clear",
-    "start:go": "cross-env EXPO_NO_DOCTOR=1 REACT_NATIVE_PACKAGER_HOSTNAME=192.168.1.116 expo start --host lan --port 8083 --go --clear",
+    "adb-reverse": "node ../../scripts/adb-reverse.js",
+    "prestart": "node ../../scripts/adb-reverse.js",
+    "start": "cross-env EXPO_NO_DOCTOR=1 EXPO_OFFLINE=1 expo start --host lan --port 8083 --go --clear",
+    "start:go": "cross-env EXPO_NO_DOCTOR=1 expo start --host lan --port 8083 --go --clear",
     "start:dev-client": "expo start --dev-client",
     "android": "expo run:android",
     "ios": "expo run:ios",

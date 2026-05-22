@@ -21,7 +21,7 @@ export default function ReferralContactCard({ isRTL, theme, t }: ReferralContact
       </Text>
       <View style={[styles.contactActions, isRTL && styles.codeActionsRTL]}>
         <Pressable onPress={() => {
-          const phone = process.env.EXPO_PUBLIC_SUPPORT_WHATSAPP || '212675346486';
+          const phone = process.env.EXPO_PUBLIC_SUPPORT_WHATSAPP || '212755073325';
           const msg = encodeURIComponent(t('referral.contactSupportWhatsApp'));
           Linking.openURL(`https://wa.me/${phone}?text=${msg}`).catch(() => {});
         }} style={({ pressed }) => [styles.contactBtn, { backgroundColor: '#25D36615' }, pressed && { opacity: 0.7 }]}>

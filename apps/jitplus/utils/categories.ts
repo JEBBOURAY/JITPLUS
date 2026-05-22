@@ -1,6 +1,8 @@
 import {
   Sparkles, Coffee, Utensils, Store, Croissant, Pill, BookOpen,
   Shirt, Cpu, Scissors, Heart, Dumbbell, ShoppingBag, MoreHorizontal,
+  Beef, Cake, Sandwich, Droplets, PawPrint, Flower2, Gem, Glasses,
+  Smartphone, Wrench, Car, BedDouble, SprayCan, ChefHat,
 } from 'lucide-react-native';
 import type { LucideIcon } from 'lucide-react-native';
 
@@ -20,6 +22,20 @@ export const CATEGORIES: { id: string; labelKey: string; icon: LucideIcon }[] = 
   { id: 'BEAUTE', labelKey: 'categories.BEAUTE', icon: Heart },
   { id: 'SPORT', labelKey: 'categories.SPORT', icon: Dumbbell },
   { id: 'SUPERMARCHE', labelKey: 'categories.SUPERMARCHE', icon: ShoppingBag },
+  { id: 'BOUCHERIE', labelKey: 'categories.BOUCHERIE', icon: Beef },
+  { id: 'PATISSERIE', labelKey: 'categories.PATISSERIE', icon: Cake },
+  { id: 'FASTFOOD', labelKey: 'categories.FASTFOOD', icon: Sandwich },
+  { id: 'HAMMAM', labelKey: 'categories.HAMMAM', icon: Droplets },
+  { id: 'ANIMALERIE', labelKey: 'categories.ANIMALERIE', icon: PawPrint },
+  { id: 'FLEURISTE', labelKey: 'categories.FLEURISTE', icon: Flower2 },
+  { id: 'BIJOUTERIE', labelKey: 'categories.BIJOUTERIE', icon: Gem },
+  { id: 'OPTIQUE', labelKey: 'categories.OPTIQUE', icon: Glasses },
+  { id: 'TELEPHONE', labelKey: 'categories.TELEPHONE', icon: Smartphone },
+  { id: 'BRICOLAGE', labelKey: 'categories.BRICOLAGE', icon: Wrench },
+  { id: 'AUTO', labelKey: 'categories.AUTO', icon: Car },
+  { id: 'HOTEL', labelKey: 'categories.HOTEL', icon: BedDouble },
+  { id: 'PARFUMERIE', labelKey: 'categories.PARFUMERIE', icon: SprayCan },
+  { id: 'TRAITEUR', labelKey: 'categories.TRAITEUR', icon: ChefHat },
   { id: 'AUTRE', labelKey: 'categories.AUTRE', icon: MoreHorizontal },
 ];
 
@@ -39,6 +55,20 @@ export const CATEGORY_EMOJI: Record<string, string> = {
   BEAUTE: '💄',
   SPORT: '⚽',
   SUPERMARCHE: '🏪',
+  BOUCHERIE: '🥩',
+  PATISSERIE: '🍰',
+  FASTFOOD: '🍔',
+  HAMMAM: '🧖',
+  ANIMALERIE: '🐾',
+  FLEURISTE: '💐',
+  BIJOUTERIE: '💍',
+  OPTIQUE: '👓',
+  TELEPHONE: '📱',
+  BRICOLAGE: '🔧',
+  AUTO: '🚗',
+  HOTEL: '🏨',
+  PARFUMERIE: '🌸',
+  TRAITEUR: '🍱',
   AUTRE: '🏷️',
 };
 

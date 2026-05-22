@@ -3,8 +3,10 @@ import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Pressable,
 import * as Clipboard from 'expo-clipboard';
 import { Camera, Lock, Crown, Zap, Calendar, AlertCircle, Gift, ChevronRight, Copy, Check, Bell, Edit3, Send } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Image as ExpoImage } from 'expo-image';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import MerchantLogo from '@/components/MerchantLogo';
+import { resolveImageUrl } from '@/utils/imageUrl';
 import { wp, hp, ms, fontSize as FS, radius } from '@/utils/responsive';
 import type { Router } from 'expo-router';
 import type { Merchant } from '@/types';
@@ -15,7 +17,9 @@ interface Props {
   locale: string;
   merchant: Merchant | null;
   uploadIsPending: boolean;
+  coverUploadIsPending?: boolean;
   onLogoPress: () => void;
+  onCoverPress?: () => void;
   referralCode: string | null;
   router: Router;
   unreadCount?: number;
@@ -25,7 +29,7 @@ interface Props {
 }
 
 export default React.memo(function ProfileCard({
-  theme, t, locale, merchant, uploadIsPending, onLogoPress, referralCode, router,
+  theme, t, locale, merchant, uploadIsPending, coverUploadIsPending = false, onLogoPress, onCoverPress, referralCode, router,
   unreadCount = 0, onNotifPress, onEditName, onSharePress,
 }: Props) {
   const isPremium = merchant?.plan === 'PREMIUM';
@@ -80,6 +84,45 @@ export default React.memo(function ProfileCard({
 
   return (
     <View style={[styles.profileCard, { backgroundColor: theme.bgCard }]}>
+      {/* -- Cover Banner -------------------------- */}
+      <TouchableOpacity 
+        activeOpacity={0.8}
+        onPress={onCoverPress}
+        disabled={!onCoverPress}
+        style={styles.coverBanner}
+        accessibilityRole="button"
+        accessibilityLabel={t('account.coverPhoto')}
+      >
+        {coverUploadIsPending ? (
+          <View style={[styles.coverFill, styles.coverUploadPending]}>
+            <ActivityIndicator size="small" color="#fff" />
+          </View>
+        ) : merchant?.coverUrl ? (
+          <ExpoImage
+            source={resolveImageUrl(merchant.coverUrl)}
+            style={styles.coverFill}
+            contentFit="cover"
+            cachePolicy="disk"
+            recyclingKey={merchant.coverUrl}
+            transition={200}
+          />
+        ) : (
+          <LinearGradient
+            colors={['#A78BFA', '#7C3AED', '#1F2937']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[styles.coverFill, styles.coverPlaceholder]}
+          >
+            <Camera size={ms(22)} color="#ffffffCC" strokeWidth={1.8} />
+          </LinearGradient>
+        )}
+        {!coverUploadIsPending && onCoverPress && (
+          <View style={styles.coverEditBadge}>
+            <Camera size={ms(12)} color="#fff" strokeWidth={2.5} />
+          </View>
+        )}
+      </TouchableOpacity>
+
       {/* -- Notification Bell (top-right, flipped in RTL) ---------- */}
       {onNotifPress && (
         <TouchableOpacity
@@ -158,26 +201,27 @@ export default React.memo(function ProfileCard({
             }
           </LinearGradient>
         </TouchableOpacity>
-        <View style={styles.profileNameRow}>
-          <Text
-            style={[styles.profileName, { color: theme.text }]}
-            numberOfLines={1}
-            ellipsizeMode="tail"
-            maxFontSizeMultiplier={1.4}
+      </View>
+
+      <View style={styles.profileNameRow}>
+        <Text
+          style={[styles.profileName, { color: theme.text }]}
+          numberOfLines={1}
+          ellipsizeMode="tail"
+          maxFontSizeMultiplier={1.4}
+        >
+          {merchant?.nom}
+        </Text>
+        {onEditName && (
+          <TouchableOpacity
+            onPress={onEditName}
+            hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
+            accessibilityRole="button"
+            accessibilityLabel={t('profileView.editProfileName')}
           >
-            {merchant?.nom}
-          </Text>
-          {onEditName && (
-            <TouchableOpacity
-              onPress={onEditName}
-              hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
-              accessibilityRole="button"
-              accessibilityLabel={t('profileView.editProfileName')}
-            >
-              <Edit3 size={ms(14)} color={theme.textMuted} strokeWidth={2} />
-            </TouchableOpacity>
-          )}
-        </View>
+            <Edit3 size={ms(14)} color={theme.textMuted} strokeWidth={2} />
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* -- Plan Row ------------------------------ */}
@@ -324,12 +368,51 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.12,
     shadowRadius: 16,
     elevation: 4,
+    overflow: 'hidden',
+  },
+  coverBanner: {
+    width: '100%',
+    height: hp(100),
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 1,
+    overflow: 'hidden',
+  },
+  coverFill: {
+    width: '100%',
+    height: '100%',
+  },
+  coverUploadPending: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#00000055',
+  },
+  coverPlaceholder: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  coverEditBadge: {
+    position: 'absolute',
+    bottom: ms(8),
+    right: ms(8),
+    width: ms(28),
+    height: ms(28),
+    borderRadius: ms(14),
+    backgroundColor: '#00000080',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#ffffff40',
+    zIndex: 3,
   },
   profileCardAvatarRow: {
     alignItems: 'center',
-    marginTop: hp(16),
+    marginTop: hp(45), // Shifted down so it overlaps the bottom half of the cover
     marginBottom: hp(2),
     gap: hp(8),
+    zIndex: 2,
   },
   avatarRingWrapper: { position: 'relative' },
   avatarRing: {
@@ -373,7 +456,7 @@ const styles = StyleSheet.create({
     zIndex: 5,
   },
   avatarText: { fontSize: FS.xl, fontWeight: '700', color: '#fff', letterSpacing: 1, fontFamily: 'Lexend_700Bold' },
-  profileNameRow: { flexDirection: 'row', alignItems: 'center', gap: wp(6) },
+  profileNameRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', alignSelf: 'center', gap: wp(6), paddingHorizontal: wp(14), marginTop: hp(6) },
   profileName: { fontSize: FS.lg, fontWeight: '700', letterSpacing: -0.3, textAlign: 'center', fontFamily: 'Lexend_700Bold' },
   planRow: {
     flexDirection: 'row',
@@ -464,7 +547,12 @@ const styles = StyleSheet.create({
     borderRadius: ms(20),
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#7C3AED12',
+    backgroundColor: '#ffffffEE', // make background solid to be visible over cover
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
   },
   notifBellLtr: { right: wp(14) },
   notifBellRtl: { left: wp(14) },
@@ -477,7 +565,12 @@ const styles = StyleSheet.create({
     borderRadius: ms(20),
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#7C3AED12',
+    backgroundColor: '#ffffffEE',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
   },
   shareBtnLtr: { left: wp(14) },
   shareBtnRtl: { right: wp(14) },

@@ -1,7 +1,7 @@
 {
   "name": "jitpluspro",
   "main": "expo-router/entry",
-  "version": "1.4.6",
+  "version": "1.4.7",
   "expo": {
     "install": {
       "exclude": [
@@ -12,6 +12,8 @@
   },
   "scripts": {
     "eas-build-pre-install": "corepack enable",
+    "adb-reverse": "node ../../scripts/adb-reverse.js",
+    "prestart": "node ../../scripts/adb-reverse.js",
     "start": "cross-env EXPO_NO_DOCTOR=1 EXPO_OFFLINE=1 expo start --host lan --port 8082 --go --clear",
     "start:dev-client": "cross-env EXPO_NO_DOCTOR=1 expo start --host lan --port 8082 --dev-client --clear",
     "start:go": "cross-env EXPO_NO_DOCTOR=1 expo start --host lan --port 8082 --go --clear",

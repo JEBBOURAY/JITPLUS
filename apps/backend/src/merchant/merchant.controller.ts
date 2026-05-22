@@ -33,7 +33,7 @@ import { ImageOptimizerService } from '../storage/image-optimizer.service';
 import { MerchantProfileData } from '../common/prisma-selects';
 
 const ALLOWED_MIMES = ['image/jpeg', 'image/png', 'image/webp'];
-const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2 MB
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB (sharp optimizes down to a small WebP)
 
 /** Detect MIME from magic bytes — supports JPEG, PNG, WebP only. */
 function detectMimeFromBuffer(buffer: Buffer): string | null {
@@ -243,8 +243,8 @@ export class MerchantController {
       throw new BadRequestException('Le contenu du fichier ne correspond pas à un format image autorisé (JPG, PNG, WebP).');
     }
 
-    // Logo upload is a Premium feature; covers are allowed on all plans.
-    if (query.type !== UploadType.COVER) {
+    // Logo upload is a Premium feature; covers and reward images are allowed on all plans.
+    if (query.type !== UploadType.COVER && query.type !== UploadType.REWARD) {
       const isPremium = await this.planService.isPremium(user.userId);
       if (!isPremium) {
         throw new BadRequestException(
@@ -253,9 +253,31 @@ export class MerchantController {
       }
     }
 
+    // Gallery: upload photo, append to merchant.gallery array (cap 5), return updated gallery.
+    if (query.type === UploadType.GALLERY) {
+      const optimized = await this.imageOptimizer.optimize(file, 'gallery');
+      const imageUrl = await this.storageProvider.uploadFile(optimized, 'gallery');
+      const current = await this.profileService.getProfile(user.userId);
+      const existing = Array.isArray(current.gallery) ? current.gallery : [];
+      if (existing.length >= 5) {
+        throw new BadRequestException('La galerie est limitée à 5 photos. Supprimez-en une avant d’ajouter.');
+      }
+      const next = [...existing, imageUrl];
+      await this.profileService.updateProfile(user.userId, { gallery: next } as Partial<Record<string, unknown>>);
+      return { url: imageUrl, field: 'gallery', gallery: next };
+    }
+
+    // Reward: just upload + return URL. The caller persists it via POST/PUT /rewards.
+    if (query.type === UploadType.REWARD) {
+      const optimized = await this.imageOptimizer.optimize(file, 'reward');
+      const imageUrl = await this.storageProvider.uploadFile(optimized, 'rewards');
+      return { url: imageUrl, field: 'imageUrl' };
+    }
+
     const profile = query.type === UploadType.COVER ? 'cover' : 'logo';
+    const folder = query.type === UploadType.COVER ? 'covers' : 'logos';
     const optimized = await this.imageOptimizer.optimize(file, profile);
-    const imageUrl = await this.storageProvider.uploadFile(optimized, 'logos');
+    const imageUrl = await this.storageProvider.uploadFile(optimized, folder);
     const field = query.type === UploadType.COVER ? 'coverUrl' : 'logoUrl';
 
     await this.profileService.updateProfile(user.userId, { [field]: imageUrl } as Partial<Record<string, string>>);

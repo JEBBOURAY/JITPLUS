@@ -34,8 +34,8 @@ module.exports = ({ config }) => {
     name: 'JitPlus Pro',
     slug: 'jitpluspro',
     description: 'Loyalty program management for local shops — scan QR codes, track customer visits, and set up stamp-based rewards.',
-    version: '1.4.6',
-    orientation: 'portrait',
+    version: '1.4.7',
+    orientation: 'default',
     icon: './assets/images/icon-white.png',
     scheme: 'jitpluspro',
     userInterfaceStyle: 'automatic',
@@ -56,7 +56,7 @@ module.exports = ({ config }) => {
       supportsTablet: false,
       bundleIdentifier: 'com.jitplus.pro',
       // Initial build number — EAS autoIncrement bumps this on every production build
-      buildNumber: '10',
+      buildNumber: '11',
       // Portrait-only app: disable iPad Split View / Slide Over to avoid orientation-support review issues
       requiresFullScreen: true,
       // Declares standard HTTPS encryption — waives export compliance questionnaire
@@ -99,7 +99,7 @@ module.exports = ({ config }) => {
       // ],
     },
     android: {
-      versionCode: 10,
+      versionCode: 11,
       adaptiveIcon: {
         foregroundImage: './assets/images/adaptive-icon-white.png',
         backgroundColor: '#FFFFFF',
@@ -109,10 +109,8 @@ module.exports = ({ config }) => {
           apiKey: GOOGLE_MAPS_KEY_ANDROID,
         },
       },
-      // edgeToEdgeEnabled disabled: causes native crash on some Android 10/11 devices
-      // before the JS bundle loads (no visible error message). Re-enable once
-      // targeting Android 15+ exclusively.
-      edgeToEdgeEnabled: false,
+      // Re-enabled for Android 15+ Edge-to-Edge compliance (targetSdkVersion 35)
+      edgeToEdgeEnabled: true,
       // Disabled: prevents accidental back gesture from killing auth/OTP/onboarding flows
       predictiveBackGestureEnabled: false,
       permissions: [

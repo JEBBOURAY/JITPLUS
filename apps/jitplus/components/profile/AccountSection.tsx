@@ -83,7 +83,7 @@ export default function AccountSection({
           {/* Contact support */}
           <Pressable
             onPress={async () => {
-              const phone = process.env.EXPO_PUBLIC_SUPPORT_WHATSAPP || '212675346486';
+              const phone = process.env.EXPO_PUBLIC_SUPPORT_WHATSAPP || '212755073325';
               // Check if we have a localized message, otherwise fallback to French or default
               const defaultMsg = "Bonjour, j'ai besoin d'aide avec l'app JitPlus";
               const rawT = t('profile.supportMessage');

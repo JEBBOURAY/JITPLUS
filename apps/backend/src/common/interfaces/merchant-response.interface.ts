@@ -8,6 +8,10 @@ export interface MerchantResponse {
   email: string;
   categorie: string;
   description: string | null;
+  tagline?: string | null;
+  badges?: string[];
+  gallery?: string[];
+  openingHours?: unknown;
   ville: string | null;
   quartier: string | null;
   adresse: string | null;

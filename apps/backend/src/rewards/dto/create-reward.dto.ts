@@ -1,4 +1,4 @@
-import { IsNumber, IsOptional, IsPositive, IsString, MinLength } from 'class-validator';
+import { IsNumber, IsOptional, IsPositive, IsString, Matches, MaxLength, MinLength } from 'class-validator';
 
 export class CreateRewardDto {
   @IsString()
@@ -12,4 +12,10 @@ export class CreateRewardDto {
   @IsString()
   @IsOptional()
   description?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(500)
+  @Matches(/^(https?:\/\/|\/uploads\/).+/i)
+  imageUrl?: string;
 }

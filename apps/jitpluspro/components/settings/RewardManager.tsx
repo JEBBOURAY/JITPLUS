@@ -7,13 +7,18 @@ import {
   TextInput,
   ActivityIndicator,
   Alert,
+  Image,
 } from 'react-native';
-import { Pencil, ChevronDown, ChevronUp, Gift } from 'lucide-react-native';
+import { Pencil, ChevronDown, ChevronUp, Gift, Camera, X } from 'lucide-react-native';
+import * as ImagePicker from 'expo-image-picker';
 import api from '@/services/api';
 import { getErrorMessage } from '@/utils/error';
 import PremiumLockCard from '@/components/PremiumLockCard';
 import { palette, type ThemeColors } from '@/contexts/ThemeContext';
 import { ms } from '@/utils/responsive';
+import { resolveImageUrl } from '@/utils/imageUrl';
+import { useUploadRewardImage, queryKeys } from '@/hooks/useQueryHooks';
+import { useQueryClient } from '@tanstack/react-query';
 import type { Merchant } from '@/types';
 
 interface Reward {
@@ -21,6 +26,7 @@ interface Reward {
   titre: string;
   cout: number;
   description?: string;
+  imageUrl?: string | null;
 }
 
 interface Props {
@@ -55,7 +61,10 @@ export function RewardManager({
   const [rewardTitle, setRewardTitle] = useState('');
   const [rewardCost, setRewardCost] = useState('');
   const [rewardDescription, setRewardDescription] = useState('');
+  const [rewardImageUrl, setRewardImageUrl] = useState<string | null>(null);
   const [editingRewardId, setEditingRewardId] = useState<string | null>(null);
+  const uploadRewardImage = useUploadRewardImage();
+  const qc = useQueryClient();
 
   const loadRewards = useCallback(async () => {
     setLoadingRewards(true);
@@ -74,6 +83,32 @@ export function RewardManager({
     void loadRewards();
   }, [loadRewards, reloadToken]);
 
+  const handlePickRewardImage = async () => {
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert(t('common.error'), t('upload.permissionDenied'));
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+      const asset = result.assets[0];
+      const data = await uploadRewardImage.mutateAsync({
+        uri: asset.uri,
+        mimeType: asset.mimeType,
+        fileSize: asset.fileSize ?? null,
+      });
+      setRewardImageUrl(data.url);
+    } catch (err: unknown) {
+      Alert.alert(t('common.error'), getErrorMessage(err, t('upload.uploadFailed')));
+    }
+  };
+
   const doAddReward = async () => {
     const cost = parseInt(rewardCost, 10);
     setSavingReward(true);
@@ -82,8 +117,10 @@ export function RewardManager({
         titre: rewardTitle.trim(),
         cout: cost,
         description: rewardDescription.trim() || undefined,
+        imageUrl: rewardImageUrl || undefined,
       });
-      setRewardTitle(''); setRewardCost(''); setRewardDescription('');
+      setRewardTitle(''); setRewardCost(''); setRewardDescription(''); setRewardImageUrl(null);
+      qc.invalidateQueries({ queryKey: queryKeys.rewards });
       await loadRewards();
     } catch (err: unknown) {
       Alert.alert(t('common.error'), getErrorMessage(err, t('settingsPage.saveError')));
@@ -123,11 +160,12 @@ export function RewardManager({
     setRewardTitle(reward.titre);
     setRewardCost(reward.cout.toString());
     setRewardDescription(reward.description || '');
+    setRewardImageUrl(reward.imageUrl || null);
   };
 
   const handleCancelEdit = () => {
     setEditingRewardId(null);
-    setRewardTitle(''); setRewardCost(''); setRewardDescription('');
+    setRewardTitle(''); setRewardCost(''); setRewardDescription(''); setRewardImageUrl(null);
   };
 
   const doUpdateReward = async () => {
@@ -138,9 +176,11 @@ export function RewardManager({
         titre: rewardTitle.trim(),
         cout: cost,
         description: rewardDescription.trim() || undefined,
+        imageUrl: rewardImageUrl,
       });
       setEditingRewardId(null);
-      setRewardTitle(''); setRewardCost(''); setRewardDescription('');
+      setRewardTitle(''); setRewardCost(''); setRewardDescription(''); setRewardImageUrl(null);
+      qc.invalidateQueries({ queryKey: queryKeys.rewards });
       await loadRewards();
     } catch (err: unknown) {
       Alert.alert(t('common.error'), getErrorMessage(err, t('settingsPage.editRewardError')));
@@ -185,6 +225,7 @@ export function RewardManager({
         onPress: async () => {
           try {
             await api.delete(`/rewards/${rewardId}`);
+            qc.invalidateQueries({ queryKey: queryKeys.rewards });
             await loadRewards();
           } catch {
             Alert.alert(t('common.error'), t('settingsPage.deleteRewardError'));
@@ -207,14 +248,15 @@ export function RewardManager({
   const convertedCosts = useMemo(() => {
     const costs = new Map<string, number>();
     if (!loyaltyTypeChanged || conversionRate == null) return costs;
+    // User typed "X fromUnit = Y toUnit" → conversionRate = X/Y.
+    // In both directions the new cost is ROUND(cout / rate), min 1.
+    // Must match backend recalculateBalancesTx() and settings.tsx preview.
     rewards.forEach((reward) => {
-      const converted = loyaltyType === 'STAMPS'
-        ? Math.max(Math.floor(reward.cout / conversionRate), 1)
-        : Math.max(Math.round(reward.cout * conversionRate), 1);
+      const converted = Math.max(Math.round(reward.cout / conversionRate), 1);
       costs.set(reward.id, converted);
     });
     return costs;
-  }, [rewards, loyaltyTypeChanged, conversionRate, loyaltyType]);
+  }, [rewards, loyaltyTypeChanged, conversionRate]);
 
   return (
     <>
@@ -245,6 +287,47 @@ export function RewardManager({
           <PremiumLockCard titleKey="settingsPage.premiumRewardTitle" descriptionKey="settingsPage.premiumRewardDesc" />
         ) : (
           <View style={styles.rewardForm}>
+            {/* Image picker for reward */}
+            <View style={styles.imagePickerRow}>
+              <TouchableOpacity
+                style={[styles.imagePickerThumb, { backgroundColor: theme.bgInput, borderColor: theme.border }]}
+                onPress={handlePickRewardImage}
+                disabled={uploadRewardImage.isPending}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={t('settingsPage.rewardImagePick')}
+              >
+                {uploadRewardImage.isPending ? (
+                  <ActivityIndicator size="small" color={theme.primary} />
+                ) : rewardImageUrl ? (
+                  <Image source={{ uri: resolveImageUrl(rewardImageUrl) as string }} style={styles.imagePickerImg} />
+                ) : (
+                  <Camera size={ms(22)} color={theme.textMuted} strokeWidth={1.8} />
+                )}
+              </TouchableOpacity>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.imagePickerLabel, { color: theme.text }]} maxFontSizeMultiplier={1.3}>
+                  {t('settingsPage.rewardImageLabel')}
+                </Text>
+                <Text style={[styles.imagePickerHint, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>
+                  {t('settingsPage.rewardImageHint')}
+                </Text>
+                {rewardImageUrl && (
+                  <TouchableOpacity
+                    onPress={() => setRewardImageUrl(null)}
+                    style={styles.imagePickerRemove}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('common.delete')}
+                  >
+                    <X size={12} color={theme.danger} strokeWidth={2} />
+                    <Text style={[styles.imagePickerRemoveText, { color: theme.danger }]} maxFontSizeMultiplier={1.3}>
+                      {t('common.delete')}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
             <TextInput
               style={[styles.input, { backgroundColor: theme.bgInput, color: theme.text, borderColor: theme.border }]}
               value={rewardTitle}
@@ -328,6 +411,16 @@ export function RewardManager({
                 key={reward.id}
                 style={[styles.rewardRow, { backgroundColor: theme.bg, borderColor: theme.border }]}
               >
+                {reward.imageUrl ? (
+                  <Image
+                    source={{ uri: resolveImageUrl(reward.imageUrl) as string }}
+                    style={styles.rewardRowThumb}
+                  />
+                ) : (
+                  <View style={[styles.rewardRowThumb, styles.rewardRowThumbFallback, { backgroundColor: theme.bgInput }]}>
+                    <Gift size={ms(22)} color={theme.primary} strokeWidth={1.6} />
+                  </View>
+                )}
                 <View style={styles.rewardRowInfo}>
                   <Text style={[styles.rewardRowTitle, { color: theme.text }]} maxFontSizeMultiplier={1.3} numberOfLines={2}>
                     {reward.titre}
@@ -418,6 +511,21 @@ const styles = StyleSheet.create({
   },
   cardLabel: { fontSize: 14, marginBottom: 14, lineHeight: 20, fontFamily: 'Lexend_400Regular' },
   rewardForm: { gap: 10, marginBottom: 12 },
+  imagePickerRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  imagePickerThumb: {
+    width: ms(64),
+    height: ms(64),
+    borderRadius: ms(12),
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  imagePickerImg: { width: '100%', height: '100%' },
+  imagePickerLabel: { fontSize: 14, fontFamily: 'Lexend_500Medium', marginBottom: 2 },
+  imagePickerHint: { fontSize: 12, fontFamily: 'Lexend_400Regular', lineHeight: 16 },
+  imagePickerRemove: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
+  imagePickerRemoveText: { fontSize: 12, fontFamily: 'Lexend_500Medium' },
   input: {
     flex: 1,
     borderWidth: 1,
@@ -437,6 +545,8 @@ const styles = StyleSheet.create({
   noRewardText: { fontSize: 14, textAlign: 'center', fontFamily: 'Lexend_400Regular' },
   rewardList: { gap: 8 },
   rewardRow: { borderWidth: 1, borderRadius: 12, padding: 12, flexDirection: 'row', gap: 12 },
+  rewardRowThumb: { width: ms(48), height: ms(48), borderRadius: ms(10), overflow: 'hidden' },
+  rewardRowThumbFallback: { alignItems: 'center', justifyContent: 'center' },
   rewardRowInfo: { flex: 1 },
   rewardRowTitle: { fontSize: 15, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
   rewardRowMeta: { fontSize: 13, fontWeight: '600', marginTop: 2, fontFamily: 'Lexend_600SemiBold' },

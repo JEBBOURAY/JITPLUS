@@ -1,4 +1,4 @@
-﻿{
+{
   "cli": {
     "version": ">= 12.0.0",
     "appVersionSource": "remote"
@@ -9,7 +9,7 @@
       "distribution": "internal",
       "env": {
         "EXPO_PUBLIC_API_URL": "http://localhost:3000",
-        "EXPO_PUBLIC_SUPPORT_WHATSAPP": "212675346486"
+        "EXPO_PUBLIC_SUPPORT_WHATSAPP": "212755073325"
       }
     },
     "preview": {
@@ -24,7 +24,7 @@
         "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "290470991104-5av1uiocig1l5k2rfq9ehb9ui5vb9oj9.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "$EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID",
         "EXPO_PUBLIC_SENTRY_DSN": "$EXPO_PUBLIC_SENTRY_DSN",
-        "EXPO_PUBLIC_SUPPORT_WHATSAPP": "212675346486"
+        "EXPO_PUBLIC_SUPPORT_WHATSAPP": "212755073325"
       }
     },
     "production": {
@@ -37,7 +37,7 @@
         "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "290470991104-5av1uiocig1l5k2rfq9ehb9ui5vb9oj9.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "$EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID",
         "EXPO_PUBLIC_SENTRY_DSN": "$EXPO_PUBLIC_SENTRY_DSN",
-        "EXPO_PUBLIC_SUPPORT_WHATSAPP": "212675346486",
+        "EXPO_PUBLIC_SUPPORT_WHATSAPP": "212755073325",
         "EXPO_PUBLIC_IOS_APP_ID": "$EXPO_PUBLIC_IOS_APP_ID",
         "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       }
@@ -54,7 +54,7 @@
         "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "290470991104-5av1uiocig1l5k2rfq9ehb9ui5vb9oj9.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "$EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID",
         "EXPO_PUBLIC_SENTRY_DSN": "$EXPO_PUBLIC_SENTRY_DSN",
-        "EXPO_PUBLIC_SUPPORT_WHATSAPP": "212675346486"
+        "EXPO_PUBLIC_SUPPORT_WHATSAPP": "212755073325"
       }
     }
   },

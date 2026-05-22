@@ -33,7 +33,7 @@ export class StorageService implements IStorageProvider {
     this.bucketName = this.configService.get<string>('GCP_STORAGE_BUCKET_NAME', '');
   }
 
-  private static readonly ALLOWED_FOLDERS = new Set(['logos', 'products', 'stores', 'covers']);
+  private static readonly ALLOWED_FOLDERS = new Set(['logos', 'products', 'stores', 'covers', 'gallery', 'rewards']);
 
   /**
    * Upload un fichier vers Google Cloud Storage

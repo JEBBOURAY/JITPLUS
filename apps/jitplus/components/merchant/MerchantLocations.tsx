@@ -7,6 +7,7 @@ import { haptic } from '@/utils/haptics';
 import { merchantStyles as styles } from './merchantStyles';
 import { getDistanceSafe, formatDistance } from '@/utils/distance';
 import { ms } from '@/utils/responsive';
+import { getMerchantAccent } from '@/utils/merchantAccent';
 import type { Merchant } from '@/types';
 import type { ThemeColors } from '@/contexts/ThemeContext';
 
@@ -19,10 +20,11 @@ interface MerchantLocationsProps {
 
 function MerchantLocations({ merchant, userLocation, theme, t }: MerchantLocationsProps) {
   if (!merchant.stores?.length) return null;
+  const accent = getMerchantAccent(merchant.themeColor);
 
   return (
     <LinearGradient
-      colors={[theme.bgCard, `${palette.violet}10`, `${palette.violet}18`]}
+      colors={[theme.bgCard, `${accent}10`, `${accent}18`]}
       start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
       style={[styles.otherLocationsCard, { backgroundColor: theme.bgCard }]}
     >
