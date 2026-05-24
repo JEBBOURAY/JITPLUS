@@ -380,17 +380,9 @@ function RootLayoutNav() {
     };
 
     // Listen for push token changes (FCM rotation) — re-register with backend
-    const tokenSub = Notifications.addPushTokenListener(async () => {
+    const tokenSub = Notifications.addPushTokenListener(({ data: newToken }) => {
       if (__DEV__) console.log('Push token rotated, re-registering');
-      try {
-        const projectId = Constants.expoConfig?.extra?.eas?.projectId;
-        if (projectId) {
-          const expoTokenData = await Notifications!.getExpoPushTokenAsync({ projectId });
-          await api.updatePushToken(String(expoTokenData.data));
-        }
-      } catch (e) {
-        if (__DEV__) console.warn('Failed to refresh Expo Push Token on rotation', e);
-      }
+      api.updatePushToken(newToken as string).catch(() => {});
     });
 
     // Reset iOS badge count on app open

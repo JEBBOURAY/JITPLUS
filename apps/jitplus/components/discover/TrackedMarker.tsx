@@ -1,9 +1,7 @@
 import React, { useState, useEffect, memo, type ComponentProps } from 'react';
 import { Marker } from '@/components/SafeMapView';
 
-// Augmenté à 800ms pour laisser le temps au moteur iOS Google Maps 
-// de bien "peindre" la vue avant de geler le rendu du marqueur.
-const TRACK_DELAY_MS = 800;
+const TRACK_DELAY_MS = 500;
 
 const TrackedMarker = memo(function TrackedMarker(
   props: ComponentProps<typeof Marker>,

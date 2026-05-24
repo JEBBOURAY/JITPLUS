@@ -2,17 +2,17 @@
  * MapMarker — simple square marker with JitPlus logo.
  */
 import { memo } from 'react';
-import { View, StyleSheet, Image } from 'react-native';
+import { View, StyleSheet } from 'react-native';
+import { Image } from 'expo-image';
 
 const SIZE = 30;
 const LOGO_SIZE = 20;
-const LOGO = require('@/assets/images/jitpluslogo_marker.png');
+const LOGO = require('@/assets/images/jitpluslogo.png');
 
 const MapMarker = memo(function MapMarker() {
   return (
-    <View collapsable={false} style={styles.root} accessibilityLabel="JitPlus" accessibilityRole="image">
-      {/* On utilise l'Image native de React Native car expo-image bogue souvent (marqueurs blancs) sur Google Maps iOS */}
-      <Image source={LOGO} style={styles.logo} resizeMode="contain" fadeDuration={0} />
+    <View collapsable={false} pointerEvents="none" style={styles.root} accessibilityLabel="JitPlus" accessibilityRole="image">
+      <Image source={LOGO} style={styles.logo} contentFit="contain" cachePolicy="memory-disk" />
     </View>
   );
 });
