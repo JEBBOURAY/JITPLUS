@@ -115,8 +115,10 @@ export class FirebaseService implements OnModuleInit, IPushProvider {
           body,
           sound: 'default',
           badge: 1,
+          priority: 'high',
           channelId: androidChannelId,
           mutableContent: true,
+          _displayInForeground: true,
           data: imageUrl ? { ...data, imageUrl } : data,
         }));
 
@@ -262,8 +264,10 @@ export class FirebaseService implements OnModuleInit, IPushProvider {
         body,
         sound: 'default',
         badge: 1,
+        priority: 'high',
         channelId: 'jitpro-default',
         mutableContent: true,
+        _displayInForeground: true,
         data,
       };
 
