@@ -106,16 +106,14 @@ const registerPushToken = async (promptIfNeeded = false) => {
       return;
     }
 
-    // Préférer le token natif (FCM Android / APNs iOS) — Firebase Admin SDK en a besoin
+    // We now use Expo Push Tokens to uniformize pushes
     let pushToken: string;
     try {
-      const nativeToken = await Notif.getDevicePushTokenAsync();
-      pushToken = nativeToken.data as string;
-      logInfo('Push', 'Native device token:', pushToken);
+      const expoToken = await Notif.getExpoPushTokenAsync({ projectId });
+      pushToken = String(expoToken.data);
+      logInfo('Push', 'Expo device token:', pushToken);
     } catch (e) {
-      // Native token unavailable — cannot register for push (Firebase Admin SDK
-      // only supports native FCM/APNs tokens, not Expo push tokens).
-      logWarn('Push', 'Native token unavailable, skipping push registration:', e);
+      logWarn('Push', 'Expo token unavailable, skipping push registration:', e);
       return;
     }
     logInfo('Push', 'Token:', pushToken);
