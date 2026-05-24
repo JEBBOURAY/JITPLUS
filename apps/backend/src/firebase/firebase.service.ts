@@ -135,6 +135,10 @@ export class FirebaseService implements OnModuleInit, IPushProvider {
           },
           payload: {
             aps: {
+              alert: {
+                title,
+                body,
+              },
               sound: 'default',
               badge: 1,
               'mutable-content': 1,
@@ -225,6 +229,10 @@ export class FirebaseService implements OnModuleInit, IPushProvider {
           },
           payload: {
             aps: {
+              alert: {
+                title,
+                body,
+              },
               sound: 'default',
               badge: 1,
               'mutable-content': 1,
