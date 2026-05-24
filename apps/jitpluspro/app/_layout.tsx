@@ -470,12 +470,19 @@ function ThemedNavigator() {
     // in utils/notifications.ts. Here we listen for received + tapped events.
 
     // Listen for push token changes (FCM rotation) — re-register with backend
-    const tokenSub = Notifications.addPushTokenListener(({ data: newToken }) => {
+    const tokenSub = Notifications.addPushTokenListener(async () => {
       logInfo('Notifications', 'Push token rotated, re-registering');
-      AsyncStorage.getItem('jitpluspro_language').then((lang) => {
-        api.patch('/merchant/push-token', { pushToken: newToken, language: lang || 'fr' })
-          .catch((e) => logWarn('Notifications', 'Token refresh sync failed', e));
-      });
+      try {
+        const projectId = Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
+        if (projectId) {
+          const expoTokenData = await Notifications!.getExpoPushTokenAsync({ projectId });
+          const expoToken = String(expoTokenData.data);
+          const lang = await AsyncStorage.getItem('jitpluspro_language');
+          await api.patch('/merchant/push-token', { pushToken: expoToken, language: lang || 'fr' });
+        }
+      } catch (e) {
+        logWarn('Notifications', 'Token refresh sync failed', e);
+      }
     });
 
     // Reset iOS badge when app is foregrounded

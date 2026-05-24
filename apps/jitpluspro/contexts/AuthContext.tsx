@@ -86,7 +86,15 @@ const registerPushToken = async (promptIfNeeded = false) => {
         logInfo('Push', 'Permission non accordée — attente action utilisateur');
         return;
       }
-      const { status } = await Notif.requestPermissionsAsync();
+      const { status } = await Notif.requestPermissionsAsync({
+        ios: {
+          allowAlert: true,
+          allowBadge: true,
+          allowSound: true,
+          allowAnnouncements: true,
+          allowProvisional: true, // Permission provisoire sur iOS
+        },
+      });
       finalStatus = status;
     }
 

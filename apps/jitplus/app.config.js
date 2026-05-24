@@ -36,7 +36,7 @@ module.exports = ({ config }) => {
     name: 'JitPlus',
     slug: 'jitplus',
     description: 'Digital loyalty cards app — collect stamps and earn rewards at your favorite local shops.',
-    version: '1.3.14',
+    version: '1.3.15',
     orientation: 'default',
     icon: './assets/images/icon-white.png',
     scheme: 'jitplus',
@@ -103,7 +103,7 @@ module.exports = ({ config }) => {
       ],
     },
     android: {
-      versionCode: 45,
+      versionCode: 46,
       icon: './assets/images/icon-white.png',
       adaptiveIcon: {
         foregroundImage: './assets/images/adaptive-icon-white.png',

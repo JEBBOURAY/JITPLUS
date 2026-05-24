@@ -107,12 +107,11 @@ const TOKEN_MAX_RETRIES = 3;
 const TOKEN_RETRY_DELAY_MS = 2_000;
 
 /**
- * Request notification permissions and return the native FCM/APNs device token.
+ * Request notification permissions and return the Expo Push Token.
  * Returns null if permissions are denied or device is not physical.
  *
- * IMPORTANT: Only native device tokens (FCM on Android, APNs on iOS) are returned.
- * Expo Push Tokens are NOT supported — the backend uses Firebase Admin SDK which
- * can only deliver to native tokens.
+ * NOTE: Provisional authorization is enabled for iOS (allows notifications
+ * in the Notification Center without a prompt).
  */
 export async function registerForPushNotifications(): Promise<string | null> {
   // Push notifications don't work in Expo Go (SDK 53+)
@@ -136,7 +135,15 @@ export async function registerForPushNotifications(): Promise<string | null> {
 
   // Request if not already granted
   if (existingStatus !== 'granted') {
-    const { status } = await Notifications.requestPermissionsAsync();
+    const { status } = await Notifications.requestPermissionsAsync({
+      ios: {
+        allowAlert: true,
+        allowBadge: true,
+        allowSound: true,
+        allowAnnouncements: true,
+        allowProvisional: true, // Permissions provisoire sur iOS
+      },
+    });
     finalStatus = status;
   }
 
@@ -165,8 +172,7 @@ export async function registerForPushNotifications(): Promise<string | null> {
     }
   }
 
-  // All retries exhausted — do NOT fall back to Expo push tokens.
-  // The backend uses Firebase Admin SDK which only accepts native tokens.
-  if (__DEV__) console.warn('[Push] Could not obtain native device push token after retries');
+  // All retries exhausted
+  if (__DEV__) console.warn('[Push] Could not obtain Expo push token after retries');
   return null;
 }

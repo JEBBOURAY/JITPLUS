@@ -34,7 +34,7 @@ module.exports = ({ config }) => {
     name: 'JitPlus Pro',
     slug: 'jitpluspro',
     description: 'Loyalty program management for local shops — scan QR codes, track customer visits, and set up stamp-based rewards.',
-    version: '1.4.7',
+    version: '1.4.8',
     orientation: 'default',
     icon: './assets/images/icon-white.png',
     scheme: 'jitpluspro',
@@ -99,7 +99,7 @@ module.exports = ({ config }) => {
       // ],
     },
     android: {
-      versionCode: 11,
+      versionCode: 12,
       adaptiveIcon: {
         foregroundImage: './assets/images/adaptive-icon-white.png',
         backgroundColor: '#FFFFFF',
