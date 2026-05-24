@@ -65,6 +65,11 @@ module.exports = ({ config }) => {
       usesNonExemptEncryption: false,
       // Required for push notifications to arrive in background
       backgroundModes: ['remote-notification'],
+      // APNs entitlement — without this, iOS silently drops pushes when app is
+      // backgrounded/killed. Use 'development' for preview EAS builds.
+      entitlements: {
+        'aps-environment': 'production',
+      },
       config: {
         googleMapsApiKey: GOOGLE_MAPS_KEY_IOS,
       },
@@ -73,6 +78,19 @@ module.exports = ({ config }) => {
         ITSAppUsesNonExemptEncryption: false,
         NSLocationWhenInUseUsageDescription:
           "Permettre à JitPlus d'accéder à votre position pour trouver les commerces autour de vous.",
+
+        // Required by iOS 9+ for Linking.canOpenURL on third-party app schemes.
+        // Without this, canOpenURL returns false and openURL throws.
+        LSApplicationQueriesSchemes: [
+          'instagram',
+          'whatsapp',
+          'tiktok',
+          'fb',
+          'fb-messenger',
+          'tel',
+          'mailto',
+          'sms',
+        ],
 
         // Google Sign-In redirect — reversed iOS client ID
         ...(IOS_GOOGLE_CLIENT_ID
@@ -174,6 +192,8 @@ module.exports = ({ config }) => {
       ],
       // iOS PrivacyInfo.xcprivacy — required since Apple review policy May 2024
       './plugins/withPrivacyManifest',
+      // Fixes Android 16 limitations on large screens for landscape resizing issues
+      './plugins/withAndroidLargeScreenSupport',
       // SSL Certificate Pinning — prevents MITM attacks
       // DISABLED: Enable after setting up custom domain (api.jitplus.ma) with managed SSL cert.
       // Cloud Run's *.a.run.app wildcard cert rotates too frequently for pinning.

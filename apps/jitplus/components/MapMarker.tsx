@@ -11,7 +11,7 @@ const LOGO = require('@/assets/images/jitpluslogo.png');
 
 const MapMarker = memo(function MapMarker() {
   return (
-    <View collapsable={false} style={styles.root} accessibilityLabel="JitPlus" accessibilityRole="image">
+    <View collapsable={false} pointerEvents="none" style={styles.root} accessibilityLabel="JitPlus" accessibilityRole="image">
       <Image source={LOGO} style={styles.logo} contentFit="contain" cachePolicy="memory-disk" />
     </View>
   );

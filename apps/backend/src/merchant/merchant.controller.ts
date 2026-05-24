@@ -211,6 +211,20 @@ export class MerchantController {
   @Patch('profile')
   @UseGuards(MerchantOwnerGuard)
   async updateProfile(@Body() dto: UpdateProfileDto, @CurrentUser() user: JwtPayload): Promise<MerchantProfileData> {
+    // If the gallery is being updated, we check if any image was removed so we can delete it from GCS.
+    if (dto.gallery) {
+      const current = await this.profileService.getProfile(user.userId);
+      const oldGallery = Array.isArray(current.gallery) ? current.gallery : [];
+      const newGallery = Array.isArray(dto.gallery) ? dto.gallery : [];
+      
+      const removedImages = oldGallery.filter(url => !newGallery.includes(url));
+      removedImages.forEach(url => {
+        if (typeof url === 'string') {
+          this.storageProvider.deleteFile(url).catch(() => {});
+        }
+      });
+    }
+
     return this.profileService.updateProfile(user.userId, dto);
   }
 
@@ -276,11 +290,21 @@ export class MerchantController {
 
     const profile = query.type === UploadType.COVER ? 'cover' : 'logo';
     const folder = query.type === UploadType.COVER ? 'covers' : 'logos';
+    
+    const current = await this.profileService.getProfile(user.userId);
+    const field = query.type === UploadType.COVER ? 'coverUrl' : 'logoUrl';
+    const oldUrl = current[field as keyof typeof current] as string | undefined | null;
+
     const optimized = await this.imageOptimizer.optimize(file, profile);
     const imageUrl = await this.storageProvider.uploadFile(optimized, folder);
-    const field = query.type === UploadType.COVER ? 'coverUrl' : 'logoUrl';
 
     await this.profileService.updateProfile(user.userId, { [field]: imageUrl } as Partial<Record<string, string>>);
+    
+    // Opportunistic cleanup of the old image if it was replaced
+    if (oldUrl) {
+      this.storageProvider.deleteFile(oldUrl).catch(() => {});
+    }
+
     return { url: imageUrl, field };
   }
 

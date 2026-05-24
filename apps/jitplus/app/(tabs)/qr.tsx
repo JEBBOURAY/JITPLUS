@@ -134,10 +134,12 @@ export default function QRScreen() {
         }, 2000);
       })();
 
-      // ── Screen capture protection ── prevent screenshots/recordings of the
-      // QR token (anti-exfiltration). User can still share via the in-app
-      // button which generates a signed image deliberately.
-      ScreenCapture.preventScreenCaptureAsync('jitplus-qr').catch(() => {});
+      // ── Screen capture protection ──
+      // Disabled: users explicitly want to be able to screenshot their QR
+      // (e.g. to keep it handy on the lock screen, share with family member).
+      // The QR token is short-lived and single-use (v2), so screenshotting it
+      // carries limited risk.
+      // ScreenCapture.preventScreenCaptureAsync('jitplus-qr').catch(() => {});
 
       // Show GUID badge only if new-user flag is set
       AsyncStorage.getItem('showGuidBadge').then((val) => {
@@ -153,6 +155,8 @@ export default function QRScreen() {
         // more reliable than restoring a captured numeric value (which can
         // fail to read on some Android OEMs).
         Brightness.useSystemBrightnessAsync().catch(() => {});
+        // Belt-and-suspenders: ensure any previously-set block is lifted
+        // (in case an older build had screenshot protection enabled).
         ScreenCapture.allowScreenCaptureAsync('jitplus-qr').catch(() => {});
       };
     }, [fetchQrToken])

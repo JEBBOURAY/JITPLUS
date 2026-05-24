@@ -175,7 +175,7 @@ export default function VerifyOtpScreen() {
         </TouchableOpacity>
 
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.keyboardView}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
         >
@@ -320,7 +320,7 @@ const styles = StyleSheet.create({
   codeBox: { borderRadius: radius.md, justifyContent: 'center', alignItems: 'center' },
   codeDigit: { fontSize: fontSize['2xl'], fontWeight: '700' },
   cursor: { position: 'absolute', bottom: hp(10), width: wp(18), height: 2.5, borderRadius: 2 },
-  hiddenInput: { position: 'absolute', opacity: 0, width: 1, height: 1 },
+  hiddenInput: { position: 'absolute', opacity: 0, width: '100%', height: '100%' },
 
 
 
