@@ -144,6 +144,7 @@ export function useAuthMethods(
       if (!token) return;
       const profile = await api.getProfile();
       store.setClient(profile);
+      await api.setCachedProfile(profile);
     } catch (error: unknown) {
       if (error instanceof Error && 'response' in error) {
         const axiosErr = error as import('axios').AxiosError;

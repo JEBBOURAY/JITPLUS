@@ -59,38 +59,60 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const loadStoredAuth = async () => {
       try {
         logInfo('Auth', 'Chargement de l\'authentification...');
-        const [storedNeedsPw, rememberMe, token] = await Promise.all([
+        const [storedNeedsPw, rememberMe, token, cachedProfile] = await Promise.all([
           api.getEmailOtpNewUser(), api.getRememberMe(), api.getStoredToken(),
+          api.getCachedProfile<Client>(),
         ]);
         if (cancelled || sessionVersionRef.current !== version) return;
         if (storedNeedsPw) store.setNeedsPasswordSetup(true);
 
         if (token && rememberMe) {
+          // Offline-first: hydrate from cached profile immediately so the user
+          // sees their account (and QR) even with no network. The fetch below
+          // will refresh it in the background.
+          if (cachedProfile?.id) {
+            store.setClient(cachedProfile);
+            logInfo('Auth', 'Profil restauré depuis le cache:', cachedProfile.prenom, cachedProfile.nom);
+          }
+
           // SECURITY: Pre-check JWT expiry to avoid unnecessary API calls with expired tokens.
           // If expired, the interceptor will attempt refresh automatically via getProfile().
           if (isTokenExpired(token)) {
             logInfo('Auth', 'Token expiré, tentative de rafraîchissement...');
           }
           logInfo('Auth', 'Token trouvé, restauration session...');
-          const profile = await api.getProfile();
-          if (cancelled || sessionVersionRef.current !== version) return;
-          if (profile?.id) {
-            store.setClient(profile);
-            logInfo('Auth', 'Profil restauré:', profile.prenom, profile.nom);
-          } else {
-            await api.clearAuth();
+          try {
+            const profile = await api.getProfile();
+            if (cancelled || sessionVersionRef.current !== version) return;
+            if (profile?.id) {
+              store.setClient(profile);
+              await api.setCachedProfile(profile);
+              logInfo('Auth', 'Profil restauré:', profile.prenom, profile.nom);
+            } else if (!cachedProfile?.id) {
+              await api.clearAuth();
+            }
+          } catch (fetchErr: unknown) {
+            // Only clear auth on explicit 401 (token actually invalid). Network
+            // errors / timeouts must NOT log the user out — they keep the
+            // cached profile so they can use the app (notably the QR) offline.
+            const status = (fetchErr as { response?: { status?: number } })?.response?.status;
+            if (status === 401) {
+              await api.clearAuth();
+              store.setClient(null);
+              logInfo('Auth', 'Session expirée (401), déconnexion');
+            } else if (!cachedProfile?.id) {
+              // No cache + network error: stay anonymous but keep token for next launch
+              logWarn('Auth', 'Profil indisponible (hors-ligne) et aucun cache');
+            } else {
+              logInfo('Auth', 'Profil indisponible (hors-ligne), utilisation du cache');
+            }
           }
         } else if (token) {
           await api.clearAuth();
         }
       } catch (error: unknown) {
         if (cancelled || sessionVersionRef.current !== version) return;
-        await api.clearAuth();
-        const isExpired401 =
-          error && typeof error === 'object' && 'response' in error &&
-          (error as { response?: { status?: number } }).response?.status === 401;
-        if (isExpired401) logInfo('Auth', 'Session expirée, retour à l\'écran de connexion');
-        else logWarn('Auth', 'Erreur restauration session:', error);
+        logWarn('Auth', 'Erreur restauration session:', error);
       } finally {
         if (!cancelled && sessionVersionRef.current === version) {
           logInfo('Auth', 'Chargement terminé');
@@ -102,6 +124,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     loadStoredAuth();
     return () => { cancelled = true; };
   }, []);
+
+  // ── Keep offline profile cache in sync with the store ──
+  // Writes the latest client snapshot to SecureStore whenever it changes so a
+  // subsequent cold-start (even without network) can hydrate the user instantly.
+  useEffect(() => {
+    if (store.client?.id) {
+      api.setCachedProfile(store.client).catch(() => { /* non-fatal */ });
+    }
+  }, [store.client]);
 
   // ── Push notifications ──
   usePushRegistration(store.client?.id);

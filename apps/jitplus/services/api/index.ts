@@ -6,6 +6,7 @@ import {
   getRefreshToken, setRefreshToken, removeRefreshToken,
   getStoredToken, clearAuth, setRememberMe, getRememberMe, clearRememberMe,
   setEmailOtpNewUser, getEmailOtpNewUser, clearEmailOtpNewUser,
+  setCachedProfile, getCachedProfile, clearCachedProfile,
 } from './storage';
 import { createAuthMethods } from './auth';
 import { createProfileMethods } from './profile';
@@ -76,6 +77,7 @@ export const api = {
   getStoredToken, clearAuth,
   setRememberMe, getRememberMe, clearRememberMe,
   setEmailOtpNewUser, getEmailOtpNewUser, clearEmailOtpNewUser,
+  setCachedProfile, getCachedProfile, clearCachedProfile,
 
   // Domain methods
   ...createAuthMethods(http),

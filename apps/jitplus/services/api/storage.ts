@@ -6,8 +6,7 @@ const IS_DEV = __DEV__;
 // ── Storage keys ──────────────────────────────────────────
 export const TOKEN_KEY = 'auth_token';
 export const REFRESH_TOKEN_KEY = 'refresh_token';
-export const QR_TOKEN_KEY = 'qr_permanent_token';
-const REMEMBER_ME_KEY = 'rememberMe';
+export const QR_TOKEN_KEY = 'qr_permanent_token';export const PROFILE_CACHE_KEY = 'client_profile_cache';const REMEMBER_ME_KEY = 'rememberMe';
 const EMAIL_OTP_NEW_USER_KEY = 'email_otp_new_user';
 
 // ── SecureStore wrapper (falls back to memory on web) ──
@@ -73,6 +72,7 @@ export async function clearAuth(): Promise<void> {
   await clearEmailOtpNewUser();
   await clearRememberMe();
   await removeStored(QR_TOKEN_KEY);
+  await removeStored(PROFILE_CACHE_KEY);
 }
 
 export async function setRememberMe(value: boolean): Promise<void> {
@@ -100,4 +100,21 @@ export async function getEmailOtpNewUser(): Promise<boolean> {
 
 export async function clearEmailOtpNewUser(): Promise<void> {
   await removeStored(EMAIL_OTP_NEW_USER_KEY);
+}
+
+// ── Offline profile cache ──────────────────────────────
+// Store the authenticated client profile so it can be restored on cold-start
+// even when the device is offline. SecureStore-backed so PII stays encrypted.
+export async function setCachedProfile(profile: unknown): Promise<void> {
+  try { await setStored(PROFILE_CACHE_KEY, JSON.stringify(profile)); } catch { /* non-fatal */ }
+}
+
+export async function getCachedProfile<T = unknown>(): Promise<T | null> {
+  const raw = await getStored(PROFILE_CACHE_KEY);
+  if (!raw) return null;
+  try { return JSON.parse(raw) as T; } catch { return null; }
+}
+
+export async function clearCachedProfile(): Promise<void> {
+  await removeStored(PROFILE_CACHE_KEY);
 }
