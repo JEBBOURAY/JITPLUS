@@ -202,13 +202,8 @@ const queryClient = new QueryClient({
       // Must be >= persister maxAge so the in-memory cache isn't garbage-
       // collected before the persister considers it valid.
       gcTime: CACHE_MAX_AGE,
-      // Default freshness window — without this every query is immediately
-      // stale and `refetchOnReconnect` triggers a thundering herd on app
-      // resume (NetInfo probe → setOnline → refetch ALL queries → 2s+ JS hang).
-      staleTime: 30_000,
-      // Refetch only queries that are actually stale on reconnect (default
-      // semantics of `true`). Combined with staleTime above this caps the
-      // resume cascade to queries older than 30s.
+      // Re-fetch stale queries after a network reconnection (e.g. offline → 4G).
+      // 'stale' avoids re-fetching all queries — only stale ones are refreshed.
       refetchOnReconnect: true,
     },
   },
