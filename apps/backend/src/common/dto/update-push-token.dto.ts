@@ -6,7 +6,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
  * Replaces two identical UpdatePushTokenDto definitions.
  */
 export class UpdatePushTokenDto {
-  @ApiProperty({ description: 'Firebase push notification token (empty string to clear on logout)' })
+  @ApiProperty({ description: 'Push notification token (ExponentPushToken[…] or raw FCM token; empty string to clear on logout)' })
   @IsString()
   pushToken: string;
 

@@ -275,14 +275,9 @@ export class ClientService {
     const tokenValue = pushToken || null;
 
     if (tokenValue) {
-      // Reject Expo push tokens — the backend uses Firebase Admin SDK which
-      // only accepts native FCM (Android) or APNs (iOS) device tokens.
-      if (tokenValue.startsWith('ExponentPushToken[') || tokenValue.startsWith('ExpoPushToken[')) {
-        this.logger.warn(`Rejected Expo push token for client ${clientId} — only native FCM/APNs tokens are accepted`);
-        return { success: false, reason: 'expo_token_not_supported' };
-      }
-
-      // Clear the same token from any other client to prevent duplicate notifications
+      // Clear the same token from any other client to prevent duplicate notifications.
+      // Accepts both ExponentPushToken[…] (routed via exp.host by FirebaseService)
+      // and raw FCM tokens (sent through firebase-admin).
       await this.clientRepo.updateMany({
         where: { pushToken: tokenValue, id: { not: clientId } },
         data: { pushToken: null },
