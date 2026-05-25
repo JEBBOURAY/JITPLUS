@@ -53,6 +53,7 @@ export default function QRScreen() {
   // v2 tokens expire (~60s). Null for v1 permanent tokens.
   const [qrExpiresAt, setQrExpiresAt] = useState<number | null>(null);
   const isFocusedRef = useRef(false);
+  const fetchingQrRef = useRef(false);
 
   const [qrError, setQrError] = useState(false);
   const [showGuidBadge, setShowGuidBadge] = useState(false);
@@ -64,6 +65,8 @@ export default function QRScreen() {
    */
   const fetchQrToken = useCallback(async () => {
     if (!client?.id) return;
+    if (fetchingQrRef.current) return; // Prevent concurrent fetches (focus + timer race)
+    fetchingQrRef.current = true;
 
     // Try cached v1 token first (SecureStore — encrypted on-device)
     try {
@@ -82,6 +85,7 @@ export default function QRScreen() {
     const netState = await NetInfo.fetch();
     if (!netState.isConnected) {
       if (!qrValue) { setQrError(true); setQrLoading(false); }
+      fetchingQrRef.current = false;
       return;
     }
     setQrError(false);
@@ -106,6 +110,7 @@ export default function QRScreen() {
       setQrError(true);
     } finally {
       setQrLoading(false);
+      fetchingQrRef.current = false;
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client?.id]);
