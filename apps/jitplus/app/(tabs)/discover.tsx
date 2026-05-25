@@ -125,7 +125,7 @@ export default function DiscoverScreen() {
             data={sortedMappableMerchants} keyExtractor={fallbackKeyExtractor} renderItem={renderFallbackItem}
             contentContainerStyle={[styles.fallbackList, { paddingTop: fallbackTopPadding, paddingBottom: fallbackBottomPadding }]}
             showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" onScrollBeginDrag={Keyboard.dismiss}
-            removeClippedSubviews={Platform.OS !== 'web'} maxToRenderPerBatch={10} windowSize={5} initialNumToRender={8}
+            removeClippedSubviews={Platform.OS === 'android'} maxToRenderPerBatch={10} windowSize={5} initialNumToRender={8}
             ListEmptyComponent={!isLoading ? (
               <View style={styles.emptyState}>
                 <View style={{ width: ms(88), height: ms(88), borderRadius: ms(24), backgroundColor: `${palette.gold}15`, alignItems: 'center', justifyContent: 'center', marginBottom: hp(16) }}>

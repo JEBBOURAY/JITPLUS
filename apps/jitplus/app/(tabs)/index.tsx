@@ -1,7 +1,7 @@
 import React, { useCallback, useMemo } from 'react';
 import {
   View, Text, FlatList, RefreshControl, StyleSheet, Animated,
-  TouchableOpacity, ScrollView, TextInput, Keyboard, Pressable, I18nManager,
+  TouchableOpacity, ScrollView, TextInput, Keyboard, Pressable, I18nManager, Platform,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';

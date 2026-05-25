@@ -207,7 +207,7 @@ export default function NotificationsScreen() {
       {isLoading ? loadingSkeleton : (
         <FlatList
           data={notifications} renderItem={renderNotif} keyExtractor={keyExtractor}
-          style={styles.scroll} removeClippedSubviews={Platform.OS !== 'web'}
+          style={styles.scroll} removeClippedSubviews={Platform.OS === 'android'}
           maxToRenderPerBatch={10} windowSize={7} initialNumToRender={10}
           contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + hp(12) }, notifications.length === 0 && styles.scrollContentEmpty]}
           showsVerticalScrollIndicator={false}
