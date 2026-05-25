@@ -86,7 +86,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (cancelled || sessionVersionRef.current !== version) return;
             if (profile?.id) {
               store.setClient(profile);
-              await api.setCachedProfile(profile);
               logInfo('Auth', 'Profil restauré:', profile.prenom, profile.nom);
             } else if (!cachedProfile?.id) {
               await api.clearAuth();
@@ -128,10 +127,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // ── Keep offline profile cache in sync with the store ──
   // Writes the latest client snapshot to SecureStore whenever it changes so a
   // subsequent cold-start (even without network) can hydrate the user instantly.
+  // Debounced + content-deduped: SecureStore writes hit the iOS Keychain which
+  // is slow, so we coalesce rapid updates (polling, WS, profile patches) and
+  // skip writes when the serialized snapshot hasn't actually changed.
+  const lastCachedSnapshotRef = useRef<string | null>(null);
   useEffect(() => {
-    if (store.client?.id) {
+    if (!store.client?.id) return;
+    const snapshot = JSON.stringify(store.client);
+    if (snapshot === lastCachedSnapshotRef.current) return;
+    const handle = setTimeout(() => {
+      lastCachedSnapshotRef.current = snapshot;
       api.setCachedProfile(store.client).catch(() => { /* non-fatal */ });
-    }
+    }, 1500);
+    return () => clearTimeout(handle);
   }, [store.client]);
 
   // ── Push notifications ──
