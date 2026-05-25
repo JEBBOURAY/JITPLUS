@@ -551,6 +551,10 @@ export default function RootLayout() {
               !['profile', 'auth', 'token', 'otp', 'password'].includes(
                 String(query.queryKey[0] ?? '').toLowerCase(),
               ),
+            // Never persist mutations: their mutationFn cannot be serialized,
+            // so resuming them on next launch throws "No mutationFn found"
+            // (Sentry JITPLUS-MOBILE-6, source: react-query-mutation).
+            shouldDehydrateMutation: () => false,
           },
         }}
       >
