@@ -50,8 +50,8 @@ Sentry.init({
       ? Constants.expoConfig?.ios?.buildNumber ?? '0'
       : Constants.expoConfig?.android?.versionCode ?? '0'
   ),
-  tracesSampleRate: 0.05,
-  maxBreadcrumbs: 20,
+  tracesSampleRate: 0.02,
+  maxBreadcrumbs: 10,
   attachScreenshot: false, // Disabled: screenshots can capture PII (names, cards, balances)
   attachViewHierarchy: false,
   ignoreErrors: [

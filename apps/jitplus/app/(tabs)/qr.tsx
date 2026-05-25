@@ -121,18 +121,23 @@ export default function QRScreen() {
       // (HIG / Material best practice for scannable codes). Restore on blur.
       // We override the WINDOW brightness (not system), then release it on blur
       // via useSystemBrightnessAsync so the OS auto-brightness takes over again.
-      // A keep-alive every 2s re-applies max brightness if Android resets it
-      // (some OEMs revert window brightness when a system dialog/notification
-      // briefly takes focus).
+      // A keep-alive re-applies max brightness if Android resets it (some OEMs
+      // revert window brightness when a system dialog/notification briefly takes
+      // focus). Throttled to every 8s with a concurrency guard to keep the JS↔native
+      // bridge idle and avoid frame drops while the user views the QR.
       let brightnessKeepAlive: ReturnType<typeof setInterval> | null = null;
-      (async () => {
+      let brightnessApplying = false;
+      const applyBrightness = async () => {
+        if (brightnessApplying) return;
+        brightnessApplying = true;
         try {
-          await Brightness.setBrightnessAsync(1);
-        } catch { /* set unavailable — non-fatal */ }
-        brightnessKeepAlive = setInterval(() => {
-          Brightness.setBrightnessAsync(1).catch(() => {});
-        }, 2000);
-      })();
+          const current = await Brightness.getBrightnessAsync().catch(() => 0);
+          if (current < 0.98) await Brightness.setBrightnessAsync(1);
+        } catch { /* non-fatal */ }
+        finally { brightnessApplying = false; }
+      };
+      applyBrightness();
+      brightnessKeepAlive = setInterval(applyBrightness, 8000);
 
       // ── Screen capture protection ── prevent screenshots/recordings of the
       // QR token (anti-exfiltration). User can still share via the in-app

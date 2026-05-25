@@ -110,8 +110,8 @@ export function useHomeData(client: { prenom?: string | null } | null) {
 
   // ── Predictive search suggestions ──
   const searchSuggestions = useMemo(() => {
-    if (!searchQuery || searchQuery.length < 1) return [];
-    const q = searchQuery.toLowerCase();
+    if (!debouncedSearch || debouncedSearch.length < 1) return [];
+    const q = debouncedSearch.toLowerCase();
     const rawCards = pointsData?.cards ?? [];
     const seen = new Set<string>();
     return rawCards
@@ -125,7 +125,7 @@ export function useHomeData(client: { prenom?: string | null } | null) {
       })
       .slice(0, 5)
       .map((c) => ({ id: c.merchantId, name: c.merchant!.nomBoutique, category: c.merchant?.categorie }));
-  }, [searchQuery, pointsData?.cards]);
+  }, [debouncedSearch, pointsData?.cards]);
 
   // ── Filter cards ──
   const filteredCards = useMemo(() => {
