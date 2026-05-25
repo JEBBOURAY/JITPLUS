@@ -327,7 +327,7 @@ export default function HomeScreen() {
             animated: true,
           });
         }}
-        removeClippedSubviews
+        removeClippedSubviews={Platform.OS === 'android'}
         maxToRenderPerBatch={10}
         windowSize={7}
         initialNumToRender={8}

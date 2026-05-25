@@ -71,7 +71,6 @@ function MerchantLoyaltyRewards({ merchant, justJoined, theme, t }: MerchantLoya
             showsHorizontalScrollIndicator={false}
             style={styles.rewardsScroll}
             contentContainerStyle={styles.rewardsScrollContent}
-            removeClippedSubviews={true}
           >
             {rewardsList.map((reward) => (
               <View key={reward.id} style={[styles.rewardCard, { backgroundColor: `${accent}08`, borderColor: `${accent}20` }]}>

@@ -128,7 +128,7 @@ function CountryCodePicker({ selected, onSelect, accentColor = palette.violet }:
               initialNumToRender={10}
               maxToRenderPerBatch={10}
               windowSize={10}
-              removeClippedSubviews={true}
+              removeClippedSubviews={Platform.OS === 'android'}
               ListEmptyComponent={
                 <Text style={[styles.emptyText, { color: theme.inputPlaceholder }]}>{t('countryPicker.noResults')}</Text>
               }
