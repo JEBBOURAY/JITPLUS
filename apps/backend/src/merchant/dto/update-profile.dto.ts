@@ -90,6 +90,21 @@ export class UpdateProfileDto {
   @IsOptional()
   themeIcon?: string;
 
+  @IsString()
+  @Matches(/^(https?:\/\/|\/uploads\/).+/i, { message: 'URL du fond de carte invalide' })
+  @IsOptional()
+  cardBackgroundUrl?: string | null;
+
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Couleur de fond de carte invalide (#RRGGBB)' })
+  @IsOptional()
+  cardBackgroundColor?: string | null;
+
+  @IsString()
+  @IsIn(['LIGHT', 'DARK'], { message: 'Couleur du texte invalide (LIGHT ou DARK)' })
+  @IsOptional()
+  cardTextColor?: string | null;
+
   @IsArray()
   @ArrayMaxSize(3, { message: 'Maximum 3 catégories secondaires' })
   @IsEnum(MerchantCategory, { each: true, message: 'Catégorie secondaire invalide' })

@@ -574,6 +574,45 @@ export function useUploadRewardImage() {
   });
 }
 
+export function useUploadMerchantCardBackground() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (asset: { uri: string; mimeType?: string | null; fileSize?: number | null }) => {
+      const maxSize = 5 * 1024 * 1024;
+      if (asset.fileSize && asset.fileSize > maxSize) {
+        throw new Error(i18n.t('upload.fileTooLarge'));
+      }
+      const ext = (asset.uri.split('.').pop() ?? 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+      const mime = asset.mimeType ?? `image/${ext}`;
+      if (!ALLOWED_LOGO_MIMES.has(mime)) {
+        throw new Error(i18n.t('upload.unsupportedFileType', { mime }));
+      }
+      const fileName = `cardbg_${Date.now()}.${ext}`;
+      const formData = new FormData();
+      formData.append('file', { uri: asset.uri, name: fileName, type: mime } as any);
+      const res = await api.post('/merchant/upload-image?type=cardBackground', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      return res.data as { url: string };
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.profile });
+    },
+  });
+}
+
+export function useDeleteMerchantCardBackground() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      await api.delete('/merchant/card-background');
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.profile });
+    },
+  });
+}
+
 export function useUpdateMerchantTheme() {
   const qc = useQueryClient();
   return useMutation({
@@ -585,6 +624,9 @@ export function useUpdateMerchantTheme() {
       badges?: string[];
       gallery?: string[];
       openingHours?: Record<string, unknown> | null;
+      cardBackgroundUrl?: string | null;
+      cardBackgroundColor?: string | null;
+      cardTextColor?: 'LIGHT' | 'DARK' | null;
     }) => {
       await api.patch('/merchant/profile', payload);
     },

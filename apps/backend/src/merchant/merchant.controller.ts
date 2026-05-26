@@ -288,6 +288,19 @@ export class MerchantController {
       return { url: imageUrl, field: 'imageUrl' };
     }
 
+    // Card background: upload, replace any previous, persist on merchant.
+    if (query.type === UploadType.CARD_BACKGROUND) {
+      const current = await this.profileService.getProfile(user.userId);
+      const oldUrl = (current as any).cardBackgroundUrl as string | null | undefined;
+      const optimized = await this.imageOptimizer.optimize(file, 'cardBg');
+      const imageUrl = await this.storageProvider.uploadFile(optimized, 'card-backgrounds');
+      await this.profileService.updateProfile(user.userId, { cardBackgroundUrl: imageUrl } as Partial<Record<string, unknown>>);
+      if (oldUrl) {
+        this.storageProvider.deleteFile(oldUrl).catch(() => {});
+      }
+      return { url: imageUrl, field: 'cardBackgroundUrl' };
+    }
+
     const profile = query.type === UploadType.COVER ? 'cover' : 'logo';
     const folder = query.type === UploadType.COVER ? 'covers' : 'logos';
     
@@ -306,6 +319,17 @@ export class MerchantController {
     }
 
     return { url: imageUrl, field };
+  }
+
+  @Delete('card-background')
+  @UseGuards(MerchantOwnerGuard)
+  async deleteCardBackground(@CurrentUser() user: JwtPayload) {
+    const current = await this.profileService.getProfile(user.userId);
+    const oldUrl = (current as any).cardBackgroundUrl as string | null | undefined;
+    if (!oldUrl) return { ok: true };
+    await this.profileService.updateProfile(user.userId, { cardBackgroundUrl: null } as Partial<Record<string, unknown>>);
+    this.storageProvider.deleteFile(oldUrl).catch(() => {});
+    return { ok: true };
   }
 
   @Patch('password')

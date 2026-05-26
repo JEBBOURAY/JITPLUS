@@ -1,12 +1,17 @@
 import React, { useState, useEffect, memo, type ComponentProps } from 'react';
+import { Platform } from 'react-native';
 import { Marker } from '@/components/SafeMapView';
 
-// iOS Google Maps captures the marker's React view into a bitmap. If
-// tracksViewChanges starts false, the snapshot is taken before the child
-// (MapMarker / ClusterMarker) is laid out → empty/0-sized icon → marker is
-// invisible AND not tappable on iOS. Start true on both platforms, then
-// disable tracking after the first render so we keep good perf.
-const TRACK_DELAY_MS = 500;
+// iOS Google Maps snapshots the marker's React view into a bitmap. Once
+// tracksViewChanges flips to false, both rendering AND hit-testing are frozen
+// against that bitmap, so the inner child MUST be fully laid out + drawn
+// before we disable tracking — otherwise the marker is invisible /
+// un-tappable. Children (MapMarker / ClusterMarker) are synchronous
+// (RN <Image> with a bundled require, or a plain <Text>), so a small delay
+// is enough. iOS gets a slightly longer window for extra safety; Android
+// hosts the native view directly (no bitmap), but we still disable tracking
+// for perf during pan/zoom.
+const TRACK_DELAY_MS = Platform.OS === 'ios' ? 700 : 500;
 
 const TrackedMarker = memo(function TrackedMarker(
   props: ComponentProps<typeof Marker>,

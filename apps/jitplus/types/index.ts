@@ -67,6 +67,9 @@ export interface Merchant {
   coverUrl?: string | null;
   themeColor?: string | null;
   themeIcon?: string | null;
+  cardBackgroundUrl?: string | null;
+  cardBackgroundColor?: string | null;
+  cardTextColor?: 'LIGHT' | 'DARK' | null;
   socialLinks?: SocialLinks | null;
   profileViews?: number;
   clientCount?: number;

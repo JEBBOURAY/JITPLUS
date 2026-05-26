@@ -335,6 +335,10 @@ export class ClientService {
               latitude: true,
               longitude: true,
               logoUrl: true,
+              themeColor: true,
+              cardBackgroundUrl: true,
+              cardBackgroundColor: true,
+              cardTextColor: true,
               // Fetch the cheapest reward so the client can show a progress bar
               rewards: {
                 select: { cout: true },
@@ -376,6 +380,10 @@ export class ClientService {
               latitude: card.merchant.latitude,
               longitude: card.merchant.longitude,
               logoUrl: card.merchant.logoUrl ?? null,
+              themeColor: card.merchant.themeColor ?? null,
+              cardBackgroundUrl: card.merchant.cardBackgroundUrl ?? null,
+              cardBackgroundColor: card.merchant.cardBackgroundColor ?? null,
+              cardTextColor: card.merchant.cardTextColor ?? null,
             }
           : undefined,
       })),
@@ -524,6 +532,9 @@ export class ClientService {
           coverUrl: true,
           themeColor: true,
           themeIcon: true,
+          cardBackgroundUrl: true,
+          cardBackgroundColor: true,
+          cardTextColor: true,
           socialLinks: true,
           profileViews: true,
           stores: {
@@ -620,6 +631,9 @@ export class ClientService {
       coverUrl: m.coverUrl ?? null,
       themeColor: m.themeColor ?? null,
       themeIcon: m.themeIcon ?? null,
+      cardBackgroundUrl: m.cardBackgroundUrl ?? null,
+      cardBackgroundColor: m.cardBackgroundColor ?? null,
+      cardTextColor: m.cardTextColor ?? null,
       socialLinks: (m.socialLinks as Record<string, string> | null) ?? null,
       profileViews: m.profileViews,
       clientCount: m._count.loyaltyCards,
@@ -850,6 +864,9 @@ export class ClientService {
             badges: true,
             themeColor: true,
             themeIcon: true,
+            cardBackgroundUrl: true,
+            cardBackgroundColor: true,
+            cardTextColor: true,
             stores: {
               where: { isActive: true },
               select: {
@@ -915,6 +932,9 @@ export class ClientService {
         badges: m.badges ?? [],
         themeColor: m.themeColor ?? null,
         themeIcon: m.themeIcon ?? null,
+        cardBackgroundUrl: m.cardBackgroundUrl ?? null,
+        cardBackgroundColor: m.cardBackgroundColor ?? null,
+        cardTextColor: m.cardTextColor ?? null,
       };
 
       // Always include the merchant as a primary entry

@@ -133,13 +133,56 @@ const CardItem = React.memo(function CardItem({
     }
   }, [locale]);
 
+  // Card customization (merchant-controlled). Defaults preserve previous look.
+  const cardBgUrl = card.merchant?.cardBackgroundUrl ?? null;
+  const cardBgColorRaw = card.merchant?.cardBackgroundColor ?? null;
+  const cardBgColor = cardBgColorRaw && /^#[0-9A-Fa-f]{6}$/.test(cardBgColorRaw) ? cardBgColorRaw : null;
+  const hasCardBg = !!cardBgUrl || !!cardBgColor;
+  const cardTextMode = card.merchant?.cardTextColor === 'DARK' ? 'DARK' : 'LIGHT';
+  const accentColor = useMemo(() => {
+    const c = card.merchant?.themeColor;
+    return c && /^#[0-9A-Fa-f]{6}$/.test(c) ? c : palette.violet;
+  }, [card.merchant?.themeColor]);
+  const accentColorDark = useMemo(() => {
+    // Darken accent for gradient end-stop. Fallback to violetDark for default.
+    if (accentColor === palette.violet) return palette.violetDark;
+    return accentColor;
+  }, [accentColor]);
+  const cardTextColors = useMemo(() => {
+    if (!hasCardBg) {
+      return { primary: theme.text, secondary: theme.textMuted };
+    }
+    return cardTextMode === 'DARK'
+      ? { primary: '#111827', secondary: '#374151' }
+      : { primary: '#F9FAFB', secondary: '#E5E7EB' };
+  }, [hasCardBg, cardTextMode, theme.text, theme.textMuted]);
+  const overlayColor = hasCardBg
+    ? cardTextMode === 'DARK'
+      ? 'rgba(255,255,255,0.22)'
+      : 'rgba(0,0,0,0.28)'
+    : 'transparent';
+
   return (
     <GlassCard onPress={handlePress}>
       <View
-        style={[styles.cardItem, { backgroundColor: theme.bgCard }]}
+        style={[styles.cardItem, { backgroundColor: cardBgColor ?? theme.bgCard }]}
         accessibilityRole="button"
         accessibilityLabel={t('home.cardAccessibility', { name: card.merchant?.nomBoutique || t('common.shop') })}
       >
+        {cardBgUrl ? (
+          <>
+            <Image
+              source={resolveImageUrl(cardBgUrl)}
+              style={StyleSheet.absoluteFillObject as any}
+              contentFit="cover"
+              cachePolicy="memory-disk"
+              recyclingKey={cardBgUrl}
+            />
+            <View pointerEvents="none" style={[StyleSheet.absoluteFillObject as any, { backgroundColor: overlayColor }]} />
+          </>
+        ) : cardBgColor ? (
+          <View pointerEvents="none" style={[StyleSheet.absoluteFillObject as any, { backgroundColor: overlayColor }]} />
+        ) : null}
         {rewardReady && (
           <Animated.View
             pointerEvents="none"
@@ -147,7 +190,7 @@ const CardItem = React.memo(function CardItem({
           />
         )}
         <LinearGradient
-          colors={[palette.violetDark, palette.violet]}
+          colors={[accentColorDark, accentColor]}
           start={{ x: 0, y: 0 }}
           end={{ x: 0, y: 1 }}
           style={styles.accentBar}
@@ -171,7 +214,7 @@ const CardItem = React.memo(function CardItem({
         <View style={styles.cardInfo}>
           {/* Name row */}
           <View style={styles.cardNameRow}>
-            <Text style={[styles.cardName, { color: theme.text }]} numberOfLines={1}>
+            <Text style={[styles.cardName, { color: cardTextColors.primary }]} numberOfLines={1}>
               {isMerchantUnavailable
                 ? t('home.unavailableMerchantName')
                 : (() => {
@@ -182,7 +225,7 @@ const CardItem = React.memo(function CardItem({
                     return (
                       <>
                         {name.slice(0, idx)}
-                        <Text style={{ color: palette.violet, fontWeight: '800' }}>
+                        <Text style={{ color: accentColor, fontWeight: '800' }}>
                           {name.slice(idx, idx + searchHighlight.length)}
                         </Text>
                         {name.slice(idx + searchHighlight.length)}
@@ -260,7 +303,7 @@ const CardItem = React.memo(function CardItem({
                   </Text>
                 </Animated.View>
               ) : (
-                <Text style={[styles.stampsMeta, { color: theme.textMuted }]}>
+                <Text style={[styles.stampsMeta, { color: cardTextColors.secondary }]}>
                   {t('home.stampsEarned', { earned: stampsEarned, total: goal })}
                 </Text>
               )}
@@ -270,7 +313,7 @@ const CardItem = React.memo(function CardItem({
               <View style={styles.pointsTopRow}>
                 <View style={styles.pointsValueRow}>
                   <Coins size={ms(12)} color={palette.gold} strokeWidth={1.5} />
-                  <Text style={[styles.pointsValue, { color: palette.violet }]}>
+                  <Text style={[styles.pointsValue, { color: cardBgUrl ? cardTextColors.primary : accentColor }]}>
                     {t('merchant.yourPoints', { count: formatNumber(balance) })}
                   </Text>
                 </View>
@@ -282,7 +325,7 @@ const CardItem = React.memo(function CardItem({
                     </Text>
                   </Animated.View>
                 ) : (
-                  <Text style={[styles.pointsPct, { color: theme.textMuted }]}>{pointsPct}%</Text>
+                  <Text style={[styles.pointsPct, { color: cardTextColors.secondary }]}>{pointsPct}%</Text>
                 )}
               </View>
 
@@ -292,7 +335,7 @@ const CardItem = React.memo(function CardItem({
                     styles.pointsBarFill,
                     {
                       transform: [{ scaleX: progressAnim }],
-                      backgroundColor: pointsComplete ? palette.emerald : palette.violet,
+                      backgroundColor: pointsComplete ? palette.emerald : accentColor,
                     },
                     PROGRESS_BAR_ORIGIN,
                   ]}
@@ -300,7 +343,7 @@ const CardItem = React.memo(function CardItem({
               </View>
 
               {!pointsComplete && (
-                <Text style={[styles.pointsTargetLabel, { color: theme.textMuted }]} numberOfLines={1}>
+                <Text style={[styles.pointsTargetLabel, { color: cardTextColors.secondary }]} numberOfLines={1}>
                   {minRewardCost
                     ? t('home.pointsProgress', {
                         current: formatNumber(balance),
@@ -311,12 +354,12 @@ const CardItem = React.memo(function CardItem({
               )}
             </>
           )}
-          <Text style={[styles.lastScanText, { color: theme.textMuted }]}>
+          <Text style={[styles.lastScanText, { color: cardTextColors.secondary }]}>
             {t('home.lastScan')} {lastScanLabel}
           </Text>
         </View>
 
-        {!isMerchantUnavailable && <ChevronRight size={ms(18)} color={theme.textMuted} strokeWidth={2} />}
+        {!isMerchantUnavailable && <ChevronRight size={ms(18)} color={cardBgUrl ? cardTextColors.secondary : theme.textMuted} strokeWidth={2} />}
       </View>
     </GlassCard>
   );

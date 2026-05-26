@@ -15,13 +15,13 @@ import {
 } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ArrowLeft, Save, Check, Eye, Users, Gift, Coins, Stamp, Palette as PaletteIcon, Shapes, X as XIcon, Tags, Sparkles, Award, Clock, Plus, Trash2, ImagePlus, ChevronLeft, ChevronRight, Star } from 'lucide-react-native';
+import { ArrowLeft, Save, Check, Eye, Users, Gift, Coins, Stamp, Palette as PaletteIcon, Shapes, X as XIcon, Tags, Sparkles, Award, Clock, Plus, Trash2, ImagePlus, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Star } from 'lucide-react-native';
 import { useRouter, useNavigation } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { useUpdateMerchantTheme, useUploadMerchantGalleryImage } from '@/hooks/useQueryHooks';
+import { useUpdateMerchantTheme, useUploadMerchantGalleryImage, useUploadMerchantCardBackground, useDeleteMerchantCardBackground } from '@/hooks/useQueryHooks';
 import { resolveImageUrl } from '@/utils/imageUrl';
 import { getErrorMessage } from '@/utils/error';
 import { ms, wp, hp } from '@/utils/responsive';
@@ -48,16 +48,18 @@ const GALLERY_GAP = 10;
 const GALLERY_TILE_SIZE = Math.floor((Dimensions.get('window').width - 32 - (GALLERY_COLS - 1) * GALLERY_GAP) / GALLERY_COLS);
 const GALLERY_MAX = 5;
 
-const PRESET_COLORS: string[] = [
-  '#7C3AED', // violet (default)
-  '#2563EB', // blue
-  '#0EA5E9', // sky
-  '#10B981', // emerald
-  '#F59E0B', // amber
-  '#EF4444', // red
-  '#EC4899', // pink
-  '#111827', // dark
+const PRESET_COLORS: { hex: string; nameKey: string }[] = [
+  { hex: '#7C3AED', nameKey: 'colorViolet' },
+  { hex: '#2563EB', nameKey: 'colorBlue' },
+  { hex: '#0EA5E9', nameKey: 'colorSky' },
+  { hex: '#10B981', nameKey: 'colorEmerald' },
+  { hex: '#F59E0B', nameKey: 'colorAmber' },
+  { hex: '#EF4444', nameKey: 'colorRed' },
+  { hex: '#EC4899', nameKey: 'colorPink' },
+  { hex: '#111827', nameKey: 'colorDark' },
 ];
+
+const CARD_BG_MAX_BYTES = 5 * 1024 * 1024;
 
 function normalizeColor(input?: string | null): string {
   if (!input) return DEFAULT_COLOR;
@@ -104,6 +106,8 @@ export default function StorePreviewScreen() {
   const insets = useSafeAreaInsets();
   const updateTheme = useUpdateMerchantTheme();
   const uploadGalleryImage = useUploadMerchantGalleryImage();
+  const uploadCardBackground = useUploadMerchantCardBackground();
+  const deleteCardBackground = useDeleteMerchantCardBackground();
 
   const isPremium = merchant?.plan === 'PREMIUM';
   const initial = normalizeColor(merchant?.themeColor);
@@ -125,7 +129,18 @@ export default function StorePreviewScreen() {
   const [selectedBadges, setSelectedBadges] = useState<MerchantBadge[]>(initialBadges);
   const initialHours = useMemo(() => normalizeHours(merchant?.openingHours ?? null), [merchant?.openingHours]);
   const [hours, setHours] = useState<OpeningHours>(initialHours);
+  const initialCardBg: string | null = typeof merchant?.cardBackgroundUrl === 'string' ? merchant.cardBackgroundUrl : null;
+  const initialCardBgColor: string | null = (typeof merchant?.cardBackgroundColor === 'string' && HEX_RE.test(merchant.cardBackgroundColor)) ? merchant.cardBackgroundColor : null;
+  const initialCardTextColor: 'LIGHT' | 'DARK' = merchant?.cardTextColor === 'DARK' ? 'DARK' : 'LIGHT';
+  const [cardBgUrl, setCardBgUrl] = useState<string | null>(initialCardBg);
+  const [cardBgColor, setCardBgColor] = useState<string | null>(initialCardBgColor);
+  const [cardTextColor, setCardTextColor] = useState<'LIGHT' | 'DARK'>(initialCardTextColor);
   const [previewVisible, setPreviewVisible] = useState(false);
+  const [openSection, setOpenSection] = useState<'fiche' | 'card'>('fiche');
+  const toggleSection = useCallback((s: 'fiche' | 'card') => {
+    haptic();
+    setOpenSection((prev) => (prev === s ? prev : s));
+  }, []);
 
   const accent = useMemo(() => normalizeColor(selected), [selected]);
   const SelectedIconCmp = selectedIcon ? MERCHANT_ICON_MAP[selectedIcon] : null;
@@ -140,6 +155,9 @@ export default function StorePreviewScreen() {
   const hoursSerialized = useMemo(() => JSON.stringify(hours), [hours]);
   const initialHoursSerialized = useMemo(() => JSON.stringify(initialHours), [initialHours]);
   const hoursChanged = hoursSerialized !== initialHoursSerialized;
+  const cardBgChanged = (cardBgUrl ?? null) !== (initialCardBg ?? null);
+  const cardBgColorChanged = (cardBgColor ?? null) !== (initialCardBgColor ?? null);
+  const cardTextColorChanged = cardTextColor !== initialCardTextColor;
   const hasChanges = useMemo(
     () =>
       accent.toLowerCase() !== initial.toLowerCase() ||
@@ -147,8 +165,11 @@ export default function StorePreviewScreen() {
       secondaryChanged ||
       badgesChanged ||
       taglineChanged ||
-      hoursChanged,
-    [accent, initial, selectedIcon, initialIcon, secondaryChanged, badgesChanged, taglineChanged, hoursChanged],
+      hoursChanged ||
+      cardBgChanged ||
+      cardBgColorChanged ||
+      cardTextColorChanged,
+    [accent, initial, selectedIcon, initialIcon, secondaryChanged, badgesChanged, taglineChanged, hoursChanged, cardBgChanged, cardBgColorChanged, cardTextColorChanged],
   );
 
   // Resync local state when the underlying merchant identity changes
@@ -161,6 +182,9 @@ export default function StorePreviewScreen() {
     setTaglineInput(initialTagline);
     setSelectedBadges(initialBadges);
     setHours(initialHours);
+    setCardBgUrl(initialCardBg);
+    setCardBgColor(initialCardBgColor);
+    setCardTextColor(initialCardTextColor);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [merchantId]);
 
@@ -321,6 +345,76 @@ export default function StorePreviewScreen() {
     moveGalleryImage(idx, 0);
   }, [moveGalleryImage]);
 
+  const pickAndUploadCardBackground = useCallback(async () => {
+    if (uploadCardBackground.isPending) return;
+    if (!isPremium) {
+      Alert.alert(t('storePreview.cardDesignTitle'), t('storePreview.cardBackgroundProOnly'));
+      return;
+    }
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsMultipleSelection: false,
+        allowsEditing: true,
+        aspect: [3, 2],
+        quality: 0.9,
+      });
+      if (result.canceled || !result.assets?.length) return;
+      const asset = result.assets[0];
+      if (typeof asset.fileSize === 'number' && asset.fileSize > CARD_BG_MAX_BYTES) {
+        Alert.alert(t('storePreview.cardDesignTitle'), t('storePreview.cardBackgroundTooLarge'));
+        return;
+      }
+      const uploaded = await uploadCardBackground.mutateAsync({
+        uri: asset.uri,
+        mimeType: asset.mimeType,
+        fileSize: asset.fileSize,
+      });
+      setCardBgUrl(uploaded.url);
+      await loadProfile();
+      haptic();
+    } catch (err) {
+      Alert.alert(t('common.error'), getErrorMessage(err));
+    }
+  }, [uploadCardBackground, isPremium, loadProfile, t]);
+
+  const removeCardBackground = useCallback(() => {
+    if (!cardBgUrl) return;
+    Alert.alert(
+      t('storePreview.cardBackgroundRemoveTitle'),
+      t('storePreview.cardBackgroundRemoveMsg'),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('common.delete'),
+          style: 'destructive',
+          onPress: async () => {
+            const prev = cardBgUrl;
+            setCardBgUrl(null);
+            try {
+              await deleteCardBackground.mutateAsync();
+              await loadProfile();
+              haptic();
+            } catch (err) {
+              setCardBgUrl(prev);
+              Alert.alert(t('common.error'), getErrorMessage(err));
+            }
+          },
+        },
+      ],
+    );
+  }, [cardBgUrl, deleteCardBackground, loadProfile, t]);
+
+  const handleCardTextColorChange = useCallback((mode: 'LIGHT' | 'DARK') => {
+    haptic();
+    setCardTextColor(mode);
+  }, []);
+
+  const handleCardBgColorChange = useCallback((color: string | null) => {
+    haptic();
+    setCardBgColor(color);
+  }, []);
+
   const toggleBadge = useCallback((code: MerchantBadge) => {
     haptic();
     setSelectedBadges((prev) => {
@@ -369,6 +463,9 @@ export default function StorePreviewScreen() {
         tagline: taglineTrimmed.length ? taglineTrimmed : null,
         badges: selectedBadges,
         openingHours: hoursHasAny(hours) ? hours : null,
+        cardBackgroundUrl: cardBgUrl,
+        cardBackgroundColor: cardBgColor,
+        cardTextColor: cardTextColor,
       });
       await loadProfile();
       haptic();
@@ -376,36 +473,7 @@ export default function StorePreviewScreen() {
     } catch (err) {
       Alert.alert(t('common.error'), getErrorMessage(err));
     }
-  }, [accent, selectedIcon, selectedSecondary, taglineTrimmed, selectedBadges, hours, hasChanges, updateTheme, loadProfile, t]);
-
-  const handleReset = useCallback(async () => {
-    Alert.alert(
-      t('storePreview.resetTitle'),
-      t('storePreview.resetMsg'),
-      [
-        { text: t('common.cancel'), style: 'cancel' },
-        {
-          text: t('storePreview.resetConfirm'),
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await updateTheme.mutateAsync({ themeColor: null, themeIcon: null, secondaryCategories: [], tagline: null, badges: [], openingHours: null });
-              await loadProfile();
-              setSelected(DEFAULT_COLOR);
-              setSelectedIcon(null);
-              setSelectedSecondary([]);
-              setTaglineInput('');
-              setSelectedBadges([]);
-              setHours(emptyHours());
-              haptic();
-            } catch (err) {
-              Alert.alert(t('common.error'), getErrorMessage(err));
-            }
-          },
-        },
-      ],
-    );
-  }, [updateTheme, loadProfile, t]);
+  }, [accent, selectedIcon, selectedSecondary, taglineTrimmed, selectedBadges, hours, cardBgUrl, cardBgColor, cardTextColor, hasChanges, updateTheme, loadProfile, t]);
 
   if (!merchant) {
     return (
@@ -459,6 +527,25 @@ export default function StorePreviewScreen() {
       >
         <Text style={[styles.intro, { color: theme.textSecondary }]}>{t('storePreview.intro')}</Text>
 
+        {/* ── GROUP 1: Fiche commerce ── */}
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => toggleSection('fiche')}
+          style={[styles.groupBanner, { backgroundColor: `${accent}1A`, borderColor: `${accent}40` }]}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: openSection === 'fiche' }}
+        >
+          <View style={[styles.groupBannerStripe, { backgroundColor: accent }]} />
+          <View style={styles.groupBannerContent}>
+            <Text style={[styles.groupBannerTitle, { color: theme.text }]}>{t('storePreview.group1Title')}</Text>
+            <Text style={[styles.groupBannerSubtitle, { color: theme.textMuted }]}>{t('storePreview.group1Subtitle')}</Text>
+          </View>
+          {openSection === 'fiche'
+            ? <ChevronUp size={ms(18)} color={accent} strokeWidth={2} />
+            : <ChevronDown size={ms(18)} color={accent} strokeWidth={2} />}
+        </TouchableOpacity>
+
+        {openSection === 'fiche' && (<>
         {/* ── Live preview (mini client card) ── */}
         <View style={[styles.previewCard, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
           <View style={styles.previewCover}>
@@ -538,19 +625,19 @@ export default function StorePreviewScreen() {
         </View>
 
         <View style={styles.swatchGrid}>
-          {PRESET_COLORS.map((color) => {
-            const isActive = color.toLowerCase() === accent.toLowerCase();
+          {PRESET_COLORS.map(({ hex }) => {
+            const isActive = hex.toLowerCase() === accent.toLowerCase();
             return (
               <TouchableOpacity
-                key={color}
-                onPress={() => handlePresetPress(color)}
+                key={hex}
+                onPress={() => handlePresetPress(hex)}
                 activeOpacity={0.85}
                 style={[
                   styles.swatch,
-                  { backgroundColor: color, borderColor: isActive ? theme.text : 'transparent' },
+                  { backgroundColor: hex, borderColor: isActive ? theme.text : 'transparent' },
                 ]}
                 accessibilityRole="button"
-                accessibilityLabel={color}
+                accessibilityLabel={hex}
                 accessibilityState={{ selected: isActive }}
               >
                 {isActive && <Check size={18} color="#FFFFFF" strokeWidth={3} />}
@@ -896,15 +983,271 @@ export default function StorePreviewScreen() {
             </TouchableOpacity>
           )}
         </View>
+        </>)}
 
-        {/* ── Reset button ── */}
+        {/* ── GROUP 2: Carte de fidélité ── */}
         <TouchableOpacity
-          onPress={handleReset}
-          style={[styles.resetBtn, { borderColor: theme.borderLight }]}
-          disabled={updateTheme.isPending}
+          activeOpacity={0.85}
+          onPress={() => toggleSection('card')}
+          style={[styles.groupBanner, { backgroundColor: `${accent}1A`, borderColor: `${accent}40` }]}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: openSection === 'card' }}
         >
-          <Text style={[styles.resetText, { color: theme.textMuted }]}>{t('storePreview.reset')}</Text>
+          <View style={[styles.groupBannerStripe, { backgroundColor: accent }]} />
+          <View style={styles.groupBannerContent}>
+            <Text style={[styles.groupBannerTitle, { color: theme.text }]}>{t('storePreview.group2Title')}</Text>
+            <Text style={[styles.groupBannerSubtitle, { color: theme.textMuted }]}>{t('storePreview.group2Subtitle')}</Text>
+          </View>
+          {openSection === 'card'
+            ? <ChevronUp size={ms(18)} color={accent} strokeWidth={2} />
+            : <ChevronDown size={ms(18)} color={accent} strokeWidth={2} />}
         </TouchableOpacity>
+
+        {openSection === 'card' && (<>
+        {/* Live mini-preview of the loyalty card — matches client CardItem layout */}
+        {(() => {
+          const hasBg = !!cardBgUrl || !!cardBgColor;
+          const overlayColor = hasBg
+            ? (cardTextColor === 'DARK' ? 'rgba(255,255,255,0.22)' : 'rgba(0,0,0,0.28)')
+            : 'transparent';
+          const textPrimary = hasBg
+            ? (cardTextColor === 'DARK' ? '#111827' : '#F9FAFB')
+            : theme.text;
+          const textSecondary = hasBg
+            ? (cardTextColor === 'DARK' ? '#374151' : '#E5E7EB')
+            : theme.textMuted;
+          const accentDark = accent === palette.violet ? palette.violetDark : accent;
+          const isStamps = merchant?.loyaltyType === 'STAMPS';
+          const sampleGoal = 10;
+          const sampleEarned = 3;
+          const samplePct = 35;
+          const categoryEmoji = merchant?.categorie ? (CATEGORY_EMOJIS[merchant.categorie] ?? '🏷️') : '🏷️';
+          return (
+            <View style={[styles.cardPreviewItem, { backgroundColor: cardBgColor ?? theme.bgCard }]}>
+              {cardBgUrl ? (
+                <>
+                  <ExpoImage
+                    source={resolveImageUrl(cardBgUrl)}
+                    style={StyleSheet.absoluteFillObject as any}
+                    contentFit="cover"
+                    cachePolicy="memory-disk"
+                  />
+                  <View pointerEvents="none" style={[StyleSheet.absoluteFillObject as any, { backgroundColor: overlayColor }]} />
+                </>
+              ) : cardBgColor ? (
+                <View pointerEvents="none" style={[StyleSheet.absoluteFillObject as any, { backgroundColor: overlayColor }]} />
+              ) : null}
+              <LinearGradient
+                colors={[accentDark, accent]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 0, y: 1 }}
+                style={styles.cardPreviewAccentBar}
+              />
+              <View style={[styles.cardPreviewIcon, { backgroundColor: theme.primaryBg }]}>
+                {merchant?.logoUrl ? (
+                  <ExpoImage
+                    source={resolveImageUrl(merchant.logoUrl)}
+                    style={styles.cardPreviewLogo}
+                    contentFit="cover"
+                    cachePolicy="disk"
+                  />
+                ) : (
+                  <Text style={styles.cardPreviewEmoji}>{categoryEmoji}</Text>
+                )}
+              </View>
+              <View style={styles.cardPreviewInfo}>
+                <View style={styles.cardPreviewNameRow}>
+                  <Text style={[styles.cardPreviewName, { color: textPrimary }]} numberOfLines={1}>
+                    {merchant?.nomBoutique || merchant?.nom || 'Commerce'}
+                  </Text>
+                </View>
+                {isStamps ? (
+                  <View style={styles.cardPreviewStampsGrid}>
+                    {Array.from({ length: sampleGoal }, (_, i) => {
+                      const filled = i < sampleEarned;
+                      if (merchant?.logoUrl) {
+                        return (
+                          <View
+                            key={`stamp-${i}`}
+                            style={[
+                              styles.cardPreviewStampDot,
+                              filled
+                                ? { borderColor: palette.violet, backgroundColor: theme.bgElevated }
+                                : { borderColor: theme.borderLight, backgroundColor: theme.bgCard },
+                            ]}
+                          >
+                            <ExpoImage
+                              source={resolveImageUrl(merchant.logoUrl)}
+                              style={{ width: '100%', height: '100%', borderRadius: ms(13), opacity: filled ? 1 : 0.18 }}
+                              contentFit="cover"
+                              cachePolicy="disk"
+                            />
+                          </View>
+                        );
+                      }
+                      return (
+                        <View
+                          key={`stamp-${i}`}
+                          style={[
+                            styles.cardPreviewStampDot,
+                            filled
+                              ? { backgroundColor: palette.violet, borderColor: palette.violet }
+                              : { backgroundColor: 'transparent', borderColor: theme.borderLight },
+                          ]}
+                        >
+                          {filled && <Text style={styles.cardPreviewStampCheck}>✓</Text>}
+                        </View>
+                      );
+                    })}
+                  </View>
+                ) : (
+                  <>
+                    <View style={styles.cardPreviewPointsRow}>
+                      <View style={styles.cardPreviewPointsLeft}>
+                        <Coins size={ms(12)} color={palette.gold} strokeWidth={1.5} />
+                        <Text style={[styles.cardPreviewPointsValue, { color: hasBg ? textPrimary : accent }]}>120 pts</Text>
+                      </View>
+                      <Text style={[styles.cardPreviewPct, { color: textSecondary }]}>{samplePct}%</Text>
+                    </View>
+                    <View style={[styles.cardPreviewBar, { backgroundColor: hasBg ? 'rgba(255,255,255,0.25)' : theme.borderLight }]}>
+                      <View style={[styles.cardPreviewBarFill, { width: `${samplePct}%`, backgroundColor: accent }]} />
+                    </View>
+                  </>
+                )}
+                <Text style={[styles.cardPreviewLastScan, { color: textSecondary }]} numberOfLines={1}>
+                  {t('storePreview.cardDesignPreviewSub')}
+                </Text>
+              </View>
+              <ChevronRight size={ms(18)} color={textSecondary} strokeWidth={2} />
+            </View>
+          );
+        })()}
+
+        {/* Background picker */}
+        <View style={styles.cardBgRow}>
+          <TouchableOpacity
+            onPress={pickAndUploadCardBackground}
+            disabled={uploadCardBackground.isPending}
+            style={[styles.cardBgPickBtn, { borderColor: accent, backgroundColor: `${accent}10` }]}
+            accessibilityRole="button"
+            accessibilityLabel={cardBgUrl ? t('storePreview.cardBackgroundReplace') : t('storePreview.cardBackgroundAdd')}
+          >
+            {uploadCardBackground.isPending ? (
+              <ActivityIndicator size="small" color={accent} />
+            ) : (
+              <>
+                <View style={[styles.cardBgPickIconCircle, { backgroundColor: accent }]}>
+                  <ImagePlus size={ms(16)} color="#fff" strokeWidth={2.5} />
+                </View>
+                <Text style={[styles.cardBgPickText, { color: accent }]} numberOfLines={1}>
+                  {cardBgUrl ? t('storePreview.cardBackgroundReplace') : t('storePreview.cardBackgroundAdd')}
+                </Text>
+              </>
+            )}
+          </TouchableOpacity>
+          {cardBgUrl ? (
+            <TouchableOpacity
+              onPress={removeCardBackground}
+              disabled={uploadCardBackground.isPending}
+              style={[styles.cardBgRemoveBtn, { borderColor: theme.borderLight }]}
+              accessibilityRole="button"
+              accessibilityLabel={t('storePreview.cardBackgroundRemove')}
+            >
+              <Trash2 size={ms(14)} color="#ef4444" strokeWidth={2} />
+              <Text style={[styles.cardBgRemoveText, { color: '#ef4444' }]}>{t('storePreview.cardBackgroundRemove')}</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+
+        {/* Solid background color presets (used when no image is set) */}
+        <Text style={[styles.cardBgSubLabel, { color: theme.text }]}>{t('storePreview.cardColorTitle')}</Text>
+        <Text style={[styles.helperText, { color: theme.textMuted, marginBottom: 8 }]}>
+          {t('storePreview.cardColorHint')}
+        </Text>
+        <View style={styles.cardColorRow}>
+          <TouchableOpacity
+            onPress={() => handleCardBgColorChange(null)}
+            disabled={!!cardBgUrl}
+            style={[
+              styles.cardColorSwatch,
+              {
+                borderColor: cardBgColor === null ? accent : theme.borderLight,
+                backgroundColor: theme.bgCard,
+                opacity: cardBgUrl ? 0.4 : 1,
+              },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel={t('storePreview.cardColorNone')}
+            accessibilityState={{ selected: cardBgColor === null }}
+          >
+            <XIcon size={ms(16)} color={theme.textMuted} strokeWidth={2} />
+          </TouchableOpacity>
+          {PRESET_COLORS.map(({ hex, nameKey }) => {
+            const active = cardBgColor?.toLowerCase() === hex.toLowerCase();
+            const name = t(`storePreview.${nameKey}`);
+            return (
+              <TouchableOpacity
+                key={hex}
+                onPress={() => handleCardBgColorChange(hex)}
+                disabled={!!cardBgUrl}
+                style={[
+                  styles.cardColorSwatch,
+                  {
+                    borderColor: active ? accent : 'transparent',
+                    backgroundColor: hex,
+                    opacity: cardBgUrl ? 0.4 : 1,
+                  },
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel={name}
+                accessibilityState={{ selected: active }}
+              >
+                {active ? <Check size={ms(14)} color="#fff" strokeWidth={3} /> : null}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {/* Text color toggle */}
+        <Text style={[styles.cardBgSubLabel, { color: theme.text }]}>{t('storePreview.cardTextColorTitle')}</Text>
+        <Text style={[styles.helperText, { color: theme.textMuted, marginBottom: 8 }]}>
+          {t('storePreview.cardTextColorHint')}
+        </Text>
+        <View style={styles.cardTextColorRow}>
+          {(['LIGHT', 'DARK'] as const).map((mode) => {
+            const active = cardTextColor === mode;
+            return (
+              <TouchableOpacity
+                key={mode}
+                onPress={() => handleCardTextColorChange(mode)}
+                style={[
+                  styles.cardTextColorPill,
+                  {
+                    borderColor: active ? accent : theme.borderLight,
+                    backgroundColor: active ? `${accent}15` : theme.bgCard,
+                  },
+                ]}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+              >
+                <View
+                  style={[
+                    styles.cardTextColorSwatch,
+                    {
+                      backgroundColor: mode === 'LIGHT' ? '#F9FAFB' : '#111827',
+                      borderColor: theme.borderLight,
+                    },
+                  ]}
+                />
+                <Text style={[styles.cardTextColorLabel, { color: active ? accent : theme.text }]}>
+                  {mode === 'LIGHT' ? t('storePreview.cardTextColorLight') : t('storePreview.cardTextColorDark')}
+                </Text>
+                {active ? <Check size={ms(14)} color={accent} strokeWidth={2.5} /> : null}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+        </>)}
       </ScrollView>
       </KeyboardAvoidingView>
 
@@ -1296,4 +1639,178 @@ const styles = StyleSheet.create({
     borderRadius: 14,
   },
   saveBtnText: { fontSize: ms(15), fontWeight: '700' },
+  // ── Card design (mirrors apps/jitplus CardItem styles 1:1) ──
+  cardPreviewItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: wp(16),
+    padding: wp(14),
+    paddingLeft: wp(10),
+    marginBottom: 12,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 3,
+  },
+  cardPreviewAccentBar: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: ms(4),
+    borderTopLeftRadius: wp(16),
+    borderBottomLeftRadius: wp(16),
+  },
+  cardPreviewIcon: {
+    width: ms(50),
+    height: ms(50),
+    borderRadius: ms(14),
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: wp(4),
+    marginRight: wp(14),
+    overflow: 'hidden',
+  },
+  cardPreviewLogo: { width: ms(50), height: ms(50), borderRadius: ms(14) },
+  cardPreviewEmoji: { fontSize: ms(22) },
+  cardPreviewInfo: { flex: 1 },
+  cardPreviewNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: hp(4),
+  },
+  cardPreviewName: { fontSize: ms(15), fontWeight: '700', letterSpacing: -0.2, flex: 1 },
+  cardPreviewStampsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: wp(4),
+    marginTop: hp(4),
+    marginBottom: hp(4),
+  },
+  cardPreviewStampDot: {
+    width: ms(26),
+    height: ms(26),
+    borderRadius: ms(13),
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  cardPreviewStampCheck: { color: '#fff', fontSize: ms(12), fontWeight: '700' },
+  cardPreviewPointsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: hp(4),
+    marginBottom: hp(5),
+  },
+  cardPreviewPointsLeft: { flexDirection: 'row', alignItems: 'center', gap: wp(4) },
+  cardPreviewPointsValue: { fontSize: ms(13), fontWeight: '700' },
+  cardPreviewPct: { fontSize: ms(11), fontWeight: '600' },
+  cardPreviewBar: { height: ms(7), borderRadius: ms(4), overflow: 'hidden', marginBottom: hp(4) },
+  cardPreviewBarFill: { height: '100%', borderRadius: ms(4) },
+  cardPreviewLastScan: { fontSize: ms(11), fontWeight: '500', marginTop: hp(3), opacity: 0.75 },
+  cardBgRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 14,
+    flexWrap: 'wrap',
+  },
+  cardColorRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 14,
+    flexWrap: 'wrap',
+  },
+  groupBanner: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 12,
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    marginTop: 20,
+    marginBottom: 12,
+  },
+  groupBannerStripe: {
+    width: 4,
+    borderRadius: 2,
+  },
+  groupBannerContent: {
+    flex: 1,
+    gap: 4,
+    justifyContent: 'center',
+  },
+  groupBannerTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
+  groupBannerSubtitle: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  cardColorSwatch: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cardBgPickBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+  },
+  cardBgPickIconCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cardBgPickText: { fontSize: ms(13), fontWeight: '700' },
+  cardBgRemoveBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  cardBgRemoveText: { fontSize: ms(12), fontWeight: '700' },
+  cardBgSubLabel: { fontSize: ms(13), fontWeight: '700', marginBottom: 4 },
+  cardTextColorRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 6,
+  },
+  cardTextColorPill: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1.5,
+  },
+  cardTextColorSwatch: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  cardTextColorLabel: { flex: 1, fontSize: ms(13), fontWeight: '700' },
 });

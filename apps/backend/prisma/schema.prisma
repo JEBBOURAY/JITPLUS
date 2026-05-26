@@ -40,6 +40,9 @@ model Merchant {
   coverUrl             String?          @map("cover_url")
   themeColor           String?          @map("theme_color") @db.VarChar(7) // hex color #RRGGBB
   themeIcon            String?          @map("theme_icon") @db.VarChar(32) // lucide icon slug
+  cardBackgroundUrl    String?          @map("card_background_url") // optional image bg for loyalty card
+  cardBackgroundColor  String?          @map("card_background_color") @db.VarChar(7) // optional solid hex bg #RRGGBB
+  cardTextColor        String?          @map("card_text_color") @db.VarChar(5) // 'LIGHT' or 'DARK'
   socialLinks          Json?            @map("social_links") // {instagram, facebook, tiktok, website, snapchat, youtube}
   profileViews         Int              @default(0) @map("profile_views")
   pointsRules          Json?            @map("points_rules")
