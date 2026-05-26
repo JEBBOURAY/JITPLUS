@@ -60,6 +60,7 @@ const PRESET_COLORS: { hex: string; nameKey: string }[] = [
 ];
 
 const CARD_BG_MAX_BYTES = 5 * 1024 * 1024;
+const STAMP_INDICES = Object.freeze([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
 
 function normalizeColor(input?: string | null): string {
   if (!input) return DEFAULT_COLOR;
@@ -414,6 +415,130 @@ export default function StorePreviewScreen() {
     haptic();
     setCardBgColor(color);
   }, []);
+
+  // Memoized live mini-preview of the loyalty card. Heavy (up to 10 ExpoImage
+  // stamps + LinearGradient). Re-renders only when card-related props change —
+  // not on every tagline keystroke or unrelated state update.
+  const cardLivePreview = useMemo(() => {
+    const hasBg = !!cardBgUrl || !!cardBgColor;
+    const overlayColor = hasBg
+      ? (cardTextColor === 'DARK' ? 'rgba(255,255,255,0.22)' : 'rgba(0,0,0,0.28)')
+      : 'transparent';
+    const textPrimary = hasBg
+      ? (cardTextColor === 'DARK' ? '#111827' : '#F9FAFB')
+      : theme.text;
+    const textSecondary = hasBg
+      ? (cardTextColor === 'DARK' ? '#374151' : '#E5E7EB')
+      : theme.textMuted;
+    const accentDark = accent === palette.violet ? palette.violetDark : accent;
+    const isStamps = merchant?.loyaltyType === 'STAMPS';
+    const sampleGoal = 10;
+    const sampleEarned = 3;
+    const samplePct = 35;
+    const categoryEmoji = merchant?.categorie ? (CATEGORY_EMOJIS[merchant.categorie] ?? '🏷️') : '🏷️';
+    const logoUrl = merchant?.logoUrl;
+    const logoSource = logoUrl ? resolveImageUrl(logoUrl) : null;
+    const bgSource = cardBgUrl ? resolveImageUrl(cardBgUrl) : null;
+    return (
+      <View style={[styles.cardPreviewItem, { backgroundColor: cardBgColor ?? theme.bgCard }]}>
+        {bgSource ? (
+          <>
+            <ExpoImage
+              source={bgSource}
+              style={StyleSheet.absoluteFillObject as any}
+              contentFit="cover"
+              cachePolicy="memory-disk"
+            />
+            <View pointerEvents="none" style={[StyleSheet.absoluteFillObject as any, { backgroundColor: overlayColor }]} />
+          </>
+        ) : cardBgColor ? (
+          <View pointerEvents="none" style={[StyleSheet.absoluteFillObject as any, { backgroundColor: overlayColor }]} />
+        ) : null}
+        <LinearGradient
+          colors={[accentDark, accent]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0, y: 1 }}
+          style={styles.cardPreviewAccentBar}
+        />
+        <View style={[styles.cardPreviewIcon, { backgroundColor: theme.primaryBg }]}>
+          {logoSource ? (
+            <ExpoImage
+              source={logoSource}
+              style={styles.cardPreviewLogo}
+              contentFit="cover"
+              cachePolicy="disk"
+            />
+          ) : (
+            <Text style={styles.cardPreviewEmoji}>{categoryEmoji}</Text>
+          )}
+        </View>
+        <View style={styles.cardPreviewInfo}>
+          <View style={styles.cardPreviewNameRow}>
+            <Text style={[styles.cardPreviewName, { color: textPrimary }]} numberOfLines={1}>
+              {merchant?.nomBoutique || merchant?.nom || 'Commerce'}
+            </Text>
+          </View>
+          {isStamps ? (
+            <View style={styles.cardPreviewStampsGrid}>
+              {STAMP_INDICES.map((i) => {
+                const filled = i < sampleEarned;
+                if (logoSource) {
+                  return (
+                    <View
+                      key={`stamp-${i}`}
+                      style={[
+                        styles.cardPreviewStampDot,
+                        filled
+                          ? { borderColor: palette.violet, backgroundColor: theme.bgElevated }
+                          : { borderColor: theme.borderLight, backgroundColor: theme.bgCard },
+                      ]}
+                    >
+                      <ExpoImage
+                        source={logoSource}
+                        style={{ width: '100%', height: '100%', borderRadius: ms(13), opacity: filled ? 1 : 0.18 }}
+                        contentFit="cover"
+                        cachePolicy="disk"
+                      />
+                    </View>
+                  );
+                }
+                return (
+                  <View
+                    key={`stamp-${i}`}
+                    style={[
+                      styles.cardPreviewStampDot,
+                      filled
+                        ? { backgroundColor: palette.violet, borderColor: palette.violet }
+                        : { backgroundColor: 'transparent', borderColor: theme.borderLight },
+                    ]}
+                  >
+                    {filled && <Text style={styles.cardPreviewStampCheck}>✓</Text>}
+                  </View>
+                );
+              })}
+            </View>
+          ) : (
+            <>
+              <View style={styles.cardPreviewPointsRow}>
+                <View style={styles.cardPreviewPointsLeft}>
+                  <Coins size={ms(12)} color={palette.gold} strokeWidth={1.5} />
+                  <Text style={[styles.cardPreviewPointsValue, { color: hasBg ? textPrimary : accent }]}>120 pts</Text>
+                </View>
+                <Text style={[styles.cardPreviewPct, { color: textSecondary }]}>{samplePct}%</Text>
+              </View>
+              <View style={[styles.cardPreviewBar, { backgroundColor: hasBg ? 'rgba(255,255,255,0.25)' : theme.borderLight }]}>
+                <View style={[styles.cardPreviewBarFill, { width: `${samplePct}%`, backgroundColor: accent }]} />
+              </View>
+            </>
+          )}
+          <Text style={[styles.cardPreviewLastScan, { color: textSecondary }]} numberOfLines={1}>
+            {t('storePreview.cardDesignPreviewSub')}
+          </Text>
+        </View>
+        <ChevronRight size={ms(18)} color={textSecondary} strokeWidth={2} />
+      </View>
+    );
+  }, [cardBgUrl, cardBgColor, cardTextColor, accent, merchant?.loyaltyType, merchant?.logoUrl, merchant?.nomBoutique, merchant?.nom, merchant?.categorie, theme.text, theme.textMuted, theme.bgCard, theme.bgElevated, theme.borderLight, theme.primaryBg, t]);
 
   const toggleBadge = useCallback((code: MerchantBadge) => {
     haptic();
@@ -1005,123 +1130,7 @@ export default function StorePreviewScreen() {
 
         {openSection === 'card' && (<>
         {/* Live mini-preview of the loyalty card — matches client CardItem layout */}
-        {(() => {
-          const hasBg = !!cardBgUrl || !!cardBgColor;
-          const overlayColor = hasBg
-            ? (cardTextColor === 'DARK' ? 'rgba(255,255,255,0.22)' : 'rgba(0,0,0,0.28)')
-            : 'transparent';
-          const textPrimary = hasBg
-            ? (cardTextColor === 'DARK' ? '#111827' : '#F9FAFB')
-            : theme.text;
-          const textSecondary = hasBg
-            ? (cardTextColor === 'DARK' ? '#374151' : '#E5E7EB')
-            : theme.textMuted;
-          const accentDark = accent === palette.violet ? palette.violetDark : accent;
-          const isStamps = merchant?.loyaltyType === 'STAMPS';
-          const sampleGoal = 10;
-          const sampleEarned = 3;
-          const samplePct = 35;
-          const categoryEmoji = merchant?.categorie ? (CATEGORY_EMOJIS[merchant.categorie] ?? '🏷️') : '🏷️';
-          return (
-            <View style={[styles.cardPreviewItem, { backgroundColor: cardBgColor ?? theme.bgCard }]}>
-              {cardBgUrl ? (
-                <>
-                  <ExpoImage
-                    source={resolveImageUrl(cardBgUrl)}
-                    style={StyleSheet.absoluteFillObject as any}
-                    contentFit="cover"
-                    cachePolicy="memory-disk"
-                  />
-                  <View pointerEvents="none" style={[StyleSheet.absoluteFillObject as any, { backgroundColor: overlayColor }]} />
-                </>
-              ) : cardBgColor ? (
-                <View pointerEvents="none" style={[StyleSheet.absoluteFillObject as any, { backgroundColor: overlayColor }]} />
-              ) : null}
-              <LinearGradient
-                colors={[accentDark, accent]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 0, y: 1 }}
-                style={styles.cardPreviewAccentBar}
-              />
-              <View style={[styles.cardPreviewIcon, { backgroundColor: theme.primaryBg }]}>
-                {merchant?.logoUrl ? (
-                  <ExpoImage
-                    source={resolveImageUrl(merchant.logoUrl)}
-                    style={styles.cardPreviewLogo}
-                    contentFit="cover"
-                    cachePolicy="disk"
-                  />
-                ) : (
-                  <Text style={styles.cardPreviewEmoji}>{categoryEmoji}</Text>
-                )}
-              </View>
-              <View style={styles.cardPreviewInfo}>
-                <View style={styles.cardPreviewNameRow}>
-                  <Text style={[styles.cardPreviewName, { color: textPrimary }]} numberOfLines={1}>
-                    {merchant?.nomBoutique || merchant?.nom || 'Commerce'}
-                  </Text>
-                </View>
-                {isStamps ? (
-                  <View style={styles.cardPreviewStampsGrid}>
-                    {Array.from({ length: sampleGoal }, (_, i) => {
-                      const filled = i < sampleEarned;
-                      if (merchant?.logoUrl) {
-                        return (
-                          <View
-                            key={`stamp-${i}`}
-                            style={[
-                              styles.cardPreviewStampDot,
-                              filled
-                                ? { borderColor: palette.violet, backgroundColor: theme.bgElevated }
-                                : { borderColor: theme.borderLight, backgroundColor: theme.bgCard },
-                            ]}
-                          >
-                            <ExpoImage
-                              source={resolveImageUrl(merchant.logoUrl)}
-                              style={{ width: '100%', height: '100%', borderRadius: ms(13), opacity: filled ? 1 : 0.18 }}
-                              contentFit="cover"
-                              cachePolicy="disk"
-                            />
-                          </View>
-                        );
-                      }
-                      return (
-                        <View
-                          key={`stamp-${i}`}
-                          style={[
-                            styles.cardPreviewStampDot,
-                            filled
-                              ? { backgroundColor: palette.violet, borderColor: palette.violet }
-                              : { backgroundColor: 'transparent', borderColor: theme.borderLight },
-                          ]}
-                        >
-                          {filled && <Text style={styles.cardPreviewStampCheck}>✓</Text>}
-                        </View>
-                      );
-                    })}
-                  </View>
-                ) : (
-                  <>
-                    <View style={styles.cardPreviewPointsRow}>
-                      <View style={styles.cardPreviewPointsLeft}>
-                        <Coins size={ms(12)} color={palette.gold} strokeWidth={1.5} />
-                        <Text style={[styles.cardPreviewPointsValue, { color: hasBg ? textPrimary : accent }]}>120 pts</Text>
-                      </View>
-                      <Text style={[styles.cardPreviewPct, { color: textSecondary }]}>{samplePct}%</Text>
-                    </View>
-                    <View style={[styles.cardPreviewBar, { backgroundColor: hasBg ? 'rgba(255,255,255,0.25)' : theme.borderLight }]}>
-                      <View style={[styles.cardPreviewBarFill, { width: `${samplePct}%`, backgroundColor: accent }]} />
-                    </View>
-                  </>
-                )}
-                <Text style={[styles.cardPreviewLastScan, { color: textSecondary }]} numberOfLines={1}>
-                  {t('storePreview.cardDesignPreviewSub')}
-                </Text>
-              </View>
-              <ChevronRight size={ms(18)} color={textSecondary} strokeWidth={2} />
-            </View>
-          );
-        })()}
+        {cardLivePreview}
 
         {/* Background picker */}
         <View style={styles.cardBgRow}>

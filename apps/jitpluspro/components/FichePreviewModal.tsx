@@ -93,12 +93,12 @@ interface Props {
 
 const SCREEN_W = Dimensions.get('window').width;
 
-export default function FichePreviewModal({
-  visible, onClose, merchant, draft, theme, t, getCategoryLabel,
-}: Props) {
+function FichePreviewModalInner({
+  onClose, merchant, draft, theme, t, getCategoryLabel,
+}: Omit<Props, 'visible'>) {
   const insets = useSafeAreaInsets();
   const [galleryIdx, setGalleryIdx] = useState<number | null>(null);
-  const { data: rewardsData } = useRewards(visible);
+  const { data: rewardsData } = useRewards(true);
 
   const accent = draft.accent || palette.violet;
   const IconCmp = draft.iconSlug ? MERCHANT_ICON_MAP[draft.iconSlug] : null;
@@ -170,7 +170,7 @@ export default function FichePreviewModal({
 
   return (
     <Modal
-      visible={visible}
+      visible={true}
       animationType="slide"
       presentationStyle="fullScreen"
       onRequestClose={onClose}
@@ -648,6 +648,11 @@ export default function FichePreviewModal({
       </View>
     </Modal>
   );
+}
+
+export default function FichePreviewModal(props: Props) {
+  if (!props.visible) return null;
+  return <FichePreviewModalInner {...props} />;
 }
 
 // ─── Styles (identiques à apps/jitplus/components/merchant/merchantStyles.ts) ─
