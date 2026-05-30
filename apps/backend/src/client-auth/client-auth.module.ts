@@ -5,6 +5,7 @@ import { ClientAuthController, ClientController, PublicUnsubscribeController } f
 import { ClientAuthService } from './client-auth.service';
 import { ClientService } from './client.service';
 import { MerchantPlanModule } from '../merchant/merchant-plan.module';
+import { MerchantModule } from '../merchant/merchant.module';
 import { jwtModuleFactory } from '../common/jwt/jwt-module.factory';
 import { SMS_PROVIDER } from '../common/interfaces';
 import { NoopSmsProvider } from '../common/providers/noop-sms.provider';
@@ -14,6 +15,7 @@ import { NoopSmsProvider } from '../common/providers/noop-sms.provider';
     PassportModule,
     JwtModule.registerAsync(jwtModuleFactory('jitplus-client', 'JWT_CLIENT_EXPIRATION', '2h')),
     MerchantPlanModule,
+    MerchantModule,
   ],
   controllers: [ClientAuthController, ClientController, PublicUnsubscribeController],
   providers: [

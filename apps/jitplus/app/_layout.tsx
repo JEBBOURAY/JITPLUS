@@ -236,6 +236,20 @@ function RootLayoutNav() {
     }
   }, [client, router]);
 
+  // After authentication, if a Quick-Add claim token was stashed (because the
+  // user landed on /claim while logged-out), route back to /claim to consume it.
+  useEffect(() => {
+    if (!client) return;
+    (async () => {
+      try {
+        const pending = await SecureStore.getItemAsync('pendingClaimToken');
+        if (pending && /^[A-Za-z0-9_-]{16,64}$/.test(pending)) {
+          router.replace({ pathname: '/claim', params: { token: pending } });
+        }
+      } catch {/* ignore */}
+    })();
+  }, [client?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Sync local language preference to backend once when client is authenticated
   useEffect(() => {
     if (client && locale) {
@@ -268,8 +282,27 @@ function RootLayoutNav() {
     // Stripping query/fragment up-front avoids edge cases with the URL polyfill
     // on Hermes (custom schemes occasionally mis-parse hostnames on Android).
     const SHARE_LINK_RE = /^(?:jitplus:\/\/merchant\/|https?:\/\/[^/]+\/m\/)([^/?#]+)/i;
+    // Claim links (Quick-Add WhatsApp magic link). Either custom scheme
+    // jitplus://claim?token=... or https://<host>/d/claim?token=...
+    const CLAIM_LINK_RE = /^(?:jitplus:\/\/claim|https?:\/\/[^/]+\/d\/claim)(?:\?(.*))?$/i;
+    const CLAIM_TOKEN_RE = /^[A-Za-z0-9_-]{16,64}$/;
 
     const handleUrl = (url: string) => {
+      // 1. Claim link?
+      const c = CLAIM_LINK_RE.exec(url);
+      if (c) {
+        const query = c[1] || '';
+        const tokenMatch = /(?:^|&)token=([^&]+)/i.exec(query);
+        const token = tokenMatch ? decodeURIComponent(tokenMatch[1]) : '';
+        if (!CLAIM_TOKEN_RE.test(token)) {
+          if (__DEV__) console.warn('Ignoring claim link with invalid token shape');
+          return;
+        }
+        router.push({ pathname: '/claim', params: { token } });
+        return;
+      }
+
+      // 2. Share link?
       const m = SHARE_LINK_RE.exec(url);
       if (!m) return;
       const merchantId = decodeURIComponent(m[1]).toLowerCase();

@@ -17,6 +17,7 @@ import { MERCHANTS_LIST_CACHE_TTL, MERCHANT_DETAIL_CACHE_TTL, PROFILE_STATS_CACH
 import { MailService } from '../mail/mail.service';
 import { pickEmailLang } from '../mail/transactional-i18n';
 import { PrismaService } from '../prisma/prisma.service';
+import { ClientClaimService } from '../merchant/services/client-claim.service';
 
 @Injectable()
 export class ClientService {
@@ -34,6 +35,7 @@ export class ClientService {
     @Inject(CACHE_MANAGER) private cache: Cache,
     private mailService: MailService,
     private prisma: PrismaService,
+    private clientClaimService: ClientClaimService,
   ) {}
 
   async getProfile(clientId: string) {
@@ -118,6 +120,11 @@ export class ClientService {
         where: { telephone: normalizedPhone, deletedAt: null },
       });
       if (existing && existing.id !== clientId) {
+        if ((existing as any).isAnonymous) {
+          throw new ConflictException(
+            await this.clientClaimService.buildAnonymousPhoneConflictPayload(existing.id),
+          );
+        }
         throw new ConflictException('Ce numéro de téléphone est déjà utilisé par un autre compte.');
       }
       updates.telephone = normalizedPhone;

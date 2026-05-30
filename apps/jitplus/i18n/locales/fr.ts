@@ -23,6 +23,21 @@ export default {
     pressBackToExit: 'Appuyez à nouveau pour quitter',
   },
 
+  // ── Claim (WhatsApp magic link from merchant) ──
+  claim: {
+    title: 'Récupérer mes points',
+    loading: 'Activation de votre lien…',
+    successTitle: 'Points récupérés !',
+    successBody: 'Vos points chez %{merchant} ont été ajoutés à votre compte.',
+    successCta: 'Voir ma carte',
+    errorExpired: 'Ce lien a expiré. Demandez à votre commerçant de vous en envoyer un nouveau.',
+    errorInvalid: 'Ce lien n’est pas valide.',
+    errorAlreadyUsed: 'Ce lien a été utilisé par un autre compte.',
+    loginPromptTitle: 'Connectez-vous pour récupérer vos points',
+    loginPromptBody: 'Créez votre compte ou connectez-vous, et vos points seront automatiquement ajoutés.',
+    loginPromptCta: 'Continuer',
+  },
+
   // ── Login ──
   login: {
     tagline: 'la carte JitPlus wakha tansaha machi mochkil',

@@ -546,12 +546,25 @@ export default function ScanQRScreen() {
         // Multiple matches → show picker for disambiguation
         set({ matchedClients: clients });
       } else {
-        // No match
+        // No match — propose Quick-Add (anonymous client + WhatsApp claim link)
         safeNotification(Haptics.NotificationFeedbackType.Error);
         Alert.alert(
           t('scan.clientNotFoundTitle'),
           t('scan.noClientForPhone', { phone: normalizedPhone }),
-          [{ text: 'OK' }],
+          [
+            { text: t('common.cancel'), style: 'cancel' },
+            {
+              text: t('quickAdd.cta'),
+              onPress: () => {
+                if (navTimeoutRef.current) clearTimeout(navTimeoutRef.current);
+                isNavigatingRef.current = true;
+                router.push({
+                  pathname: '/quick-add',
+                  params: { telephone: normalizedPhone },
+                });
+              },
+            },
+          ],
         );
       }
     } catch (err) {
@@ -766,7 +779,7 @@ export default function ScanQRScreen() {
             getItemLayout={(_, index) => ({ length: 64, offset: 64 * index, index })}
             maxToRenderPerBatch={10}
             windowSize={5}
-            removeClippedSubviews
+            removeClippedSubviews={Platform.OS === 'android'}
             renderItem={renderMatchedClient}
           />
         </View>

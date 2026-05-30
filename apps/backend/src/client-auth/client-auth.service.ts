@@ -18,6 +18,7 @@ import { pickEmailLang } from '../mail/transactional-i18n';
 import { OAuth2Client } from 'google-auth-library';
 import * as jwt from 'jsonwebtoken';
 import { createPublicKey } from 'crypto';
+import { ClientClaimService } from '../merchant/services/client-claim.service';
 
 /** Shape returned by buildAuthResponse â€” access + refresh tokens + client data. */
 export interface ClientAuthResponse {
@@ -63,6 +64,7 @@ export class ClientAuthService {
     private configService: ConfigService,
     @Inject(MAIL_PROVIDER) private mailProvider: IMailProvider,
     @Inject(SMS_PROVIDER) private smsProvider: ISmsProvider,
+    private clientClaimService: ClientClaimService,
   ) {
     this.googleClient = new OAuth2Client();
   }
@@ -745,7 +747,12 @@ export class ClientAuthService {
       // Check uniqueness among active accounts only
       const existing = await this.clientRepo.findFirst({ where: { telephone: normalizedPhone, deletedAt: null } });
       if (existing && existing.id !== clientId) {
-        throw new ConflictException('Ce numÃ©ro de tÃ©lÃ©phone est dÃ©jÃ  associÃ© Ã  un autre compte');
+        if ((existing as any).isAnonymous) {
+          throw new ConflictException(
+            await this.clientClaimService.buildAnonymousPhoneConflictPayload(existing.id),
+          );
+        }
+        throw new ConflictException('Ce numéro de téléphone est déjà associé à un autre compte');
       }
 
       data.telephone = normalizedPhone;
@@ -1051,9 +1058,14 @@ export class ClientAuthService {
       if (!this.isValidPhone(normalizedPhone)) {
         throw new BadRequestException('error.auth.phoneInvalidFormat');
       }
-      const existing = await this.clientRepo.findUnique({ where: { telephone: normalizedPhone }, select: { id: true } });
+      const existing = await this.clientRepo.findUnique({ where: { telephone: normalizedPhone }, select: { id: true, isAnonymous: true } });
       if (existing && existing.id !== clientId) {
-        throw new ConflictException('Ce numÃ©ro de tÃ©lÃ©phone est dÃ©jÃ  utilisÃ© par un autre compte.');
+        if ((existing as any).isAnonymous) {
+          throw new ConflictException(
+            await this.clientClaimService.buildAnonymousPhoneConflictPayload(existing.id),
+          );
+        }
+        throw new ConflictException('Ce numéro de téléphone est déjà utilisé par un autre compte.');
       }
       checkDailyOtpLimit(normalizedPhone);
       const existingOtp = await this.otpRepo.findUnique({ where: { telephone: normalizedPhone } });

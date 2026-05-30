@@ -23,6 +23,20 @@ export default {
     pressBackToExit: 'Press back again to exit',
   },
 
+  claim: {
+    title: 'Claim my points',
+    loading: 'Activating your link…',
+    successTitle: 'Points claimed!',
+    successBody: 'Your points at %{merchant} have been added to your account.',
+    successCta: 'View my card',
+    errorExpired: 'This link has expired. Ask your merchant to send a new one.',
+    errorInvalid: 'This link is not valid.',
+    errorAlreadyUsed: 'This link was already used by another account.',
+    loginPromptTitle: 'Sign in to claim your points',
+    loginPromptBody: 'Create your account or sign in, and your points will be added automatically.',
+    loginPromptCta: 'Continue',
+  },
+
   // ── Login ──
   login: {
     tagline: 'la carte JitPlus wakha tansaha machi mochkil',

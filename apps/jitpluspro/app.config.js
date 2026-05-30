@@ -34,8 +34,8 @@ module.exports = ({ config }) => {
     name: 'JitPlus Pro',
     slug: 'jitpluspro',
     description: 'Loyalty program management for local shops — scan QR codes, track customer visits, and set up stamp-based rewards.',
-    version: '1.4.9',
-    orientation: 'default',
+    version: '1.5.3',
+    orientation: 'portrait',
     icon: './assets/images/icon-white.png',
     scheme: 'jitpluspro',
     userInterfaceStyle: 'automatic',
@@ -56,7 +56,7 @@ module.exports = ({ config }) => {
       supportsTablet: false,
       bundleIdentifier: 'com.jitplus.pro',
       // Initial build number — EAS autoIncrement bumps this on every production build
-      buildNumber: '12',
+      buildNumber: '16',
       // Portrait-only app: disable iPad Split View / Slide Over to avoid orientation-support review issues
       requiresFullScreen: true,
       // Declares standard HTTPS encryption — waives export compliance questionnaire
@@ -99,7 +99,7 @@ module.exports = ({ config }) => {
       // ],
     },
     android: {
-      versionCode: 13,
+      versionCode: 17,
       adaptiveIcon: {
         foregroundImage: './assets/images/adaptive-icon-white.png',
         backgroundColor: '#FFFFFF',

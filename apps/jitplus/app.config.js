@@ -36,7 +36,7 @@ module.exports = ({ config }) => {
     name: 'JitPlus',
     slug: 'jitplus',
     description: 'Digital loyalty cards app — collect stamps and earn rewards at your favorite local shops.',
-    version: '1.3.23',
+    version: '1.3.24',
     orientation: 'portrait',
     icon: './assets/images/icon-white.png',
     scheme: 'jitplus',
@@ -56,7 +56,7 @@ module.exports = ({ config }) => {
       supportsTablet: false,
       bundleIdentifier: 'com.jitplus.client',
       // Initial build number — EAS autoIncrement bumps this on every production build
-      buildNumber: '45',
+      buildNumber: '46',
       // Portrait-only app: disable iPad Split View / Slide Over to avoid orientation-support review issues
       requiresFullScreen: true,
       // Firebase config for iOS — download from Firebase Console
@@ -79,13 +79,15 @@ module.exports = ({ config }) => {
           ? { CFBundleURLTypes: [{ CFBundleURLSchemes: [IOS_GOOGLE_CLIENT_ID] }] }
           : {}),
       },
-      // Deep links: Universal Links for shared merchant URLs
+      // Deep links: Universal Links for shared merchant URLs (backend) and
+      // marketing-domain links such as /d/claim?token=... (jitplus.com).
       associatedDomains: [
         'applinks:jitplus-api-290470991104.europe-west9.run.app',
+        'applinks:jitplus.com',
       ],
     },
     android: {
-      versionCode: 54,
+      versionCode: 55,
       icon: './assets/images/icon-white.png',
       adaptiveIcon: {
         foregroundImage: './assets/images/adaptive-icon-white.png',
@@ -129,6 +131,20 @@ module.exports = ({ config }) => {
               scheme: 'https',
               host: 'jitplus-api-290470991104.europe-west9.run.app',
               pathPrefix: '/m/',
+            },
+          ],
+          category: ['BROWSABLE', 'DEFAULT'],
+        },
+        // Quick-Add WhatsApp claim link — opens /claim screen directly when
+        // the user taps the magic link sent by the merchant.
+        {
+          action: 'VIEW',
+          autoVerify: true,
+          data: [
+            {
+              scheme: 'https',
+              host: 'jitplus.com',
+              pathPrefix: '/d/claim',
             },
           ],
           category: ['BROWSABLE', 'DEFAULT'],

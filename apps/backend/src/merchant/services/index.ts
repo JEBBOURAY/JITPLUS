@@ -6,3 +6,4 @@ export { MerchantTeamService } from './merchant-team.service';
 export { MerchantStoreService } from './merchant-store.service';
 export { MerchantPlanService } from './merchant-plan.service';
 export { MerchantReferralService } from './merchant-referral.service';
+export { ClientClaimService } from './client-claim.service';

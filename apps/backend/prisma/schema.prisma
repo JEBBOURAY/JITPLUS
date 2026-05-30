@@ -13,51 +13,51 @@ datasource db {
 }
 
 model Merchant {
-  id                   String           @id @default(uuid())
-  nom                  String           @db.VarChar(255)
-  email                String           @unique @db.VarChar(255)
-  password             String           @db.VarChar(255)
-  googleId             String?          @unique @map("google_id") @db.VarChar(255)
-  appleId              String?          @unique @map("apple_id") @db.VarChar(255)
-  pushToken            String?          @map("push_token") @db.VarChar(512)
-  language             String           @default("fr") @db.VarChar(5)
-  termsAccepted        Boolean          @default(false) @map("terms_accepted")
+  id                   String             @id @default(uuid())
+  nom                  String             @db.VarChar(255)
+  email                String             @unique @db.VarChar(255)
+  password             String             @db.VarChar(255)
+  googleId             String?            @unique @map("google_id") @db.VarChar(255)
+  appleId              String?            @unique @map("apple_id") @db.VarChar(255)
+  pushToken            String?            @map("push_token") @db.VarChar(512)
+  language             String             @default("fr") @db.VarChar(5)
+  termsAccepted        Boolean            @default(false) @map("terms_accepted")
   categorie            MerchantCategory
   secondaryCategories  MerchantCategory[] @default([]) @map("secondary_categories")
-  description          String?          @db.VarChar(1000)
-  tagline              String?          @db.VarChar(120)
-  badges               String[]         @default([])
-  gallery              String[]         @default([])
-  openingHours         Json?            @map("opening_hours")
-  ville                String?          @db.VarChar(100)
-  quartier             String?          @db.VarChar(100)
-  adresse              String?          @db.VarChar(500)
+  description          String?            @db.VarChar(1000)
+  tagline              String?            @db.VarChar(120)
+  badges               String[]           @default([])
+  gallery              String[]           @default([])
+  openingHours         Json?              @map("opening_hours")
+  ville                String?            @db.VarChar(100)
+  quartier             String?            @db.VarChar(100)
+  adresse              String?            @db.VarChar(500)
   latitude             Float?
   longitude            Float?
-  countryCode          String           @default("MA") @map("country_code") @db.VarChar(5)
-  phoneNumber          String?          @map("phone_number") @db.VarChar(20)
-  logoUrl              String?          @map("logo_url")
-  coverUrl             String?          @map("cover_url")
-  themeColor           String?          @map("theme_color") @db.VarChar(7) // hex color #RRGGBB
-  themeIcon            String?          @map("theme_icon") @db.VarChar(32) // lucide icon slug
-  cardBackgroundUrl    String?          @map("card_background_url") // optional image bg for loyalty card
-  cardBackgroundColor  String?          @map("card_background_color") @db.VarChar(7) // optional solid hex bg #RRGGBB
-  cardTextColor        String?          @map("card_text_color") @db.VarChar(5) // 'LIGHT' or 'DARK'
-  socialLinks          Json?            @map("social_links") // {instagram, facebook, tiktok, website, snapchat, youtube}
-  profileViews         Int              @default(0) @map("profile_views")
-  pointsRules          Json?            @map("points_rules")
-  pointsRate           Float            @default(10) @map("points_rate")
-  loyaltyType          LoyaltyType      @default(POINTS) @map("loyalty_type")
-  conversionRate       Float            @default(10) @map("conversion_rate")
-  stampsForReward      Int              @default(10) @map("stamps_for_reward")
-  stampEarningMode     StampEarningMode @default(PER_VISIT) @map("stamp_earning_mode")
-  accumulationLimit    Int?             @map("accumulation_limit")
-  activeRewardId       String?          @map("active_reward_id")
+  countryCode          String             @default("MA") @map("country_code") @db.VarChar(5)
+  phoneNumber          String?            @map("phone_number") @db.VarChar(20)
+  logoUrl              String?            @map("logo_url")
+  coverUrl             String?            @map("cover_url")
+  themeColor           String?            @map("theme_color") @db.VarChar(7) // hex color #RRGGBB
+  themeIcon            String?            @map("theme_icon") @db.VarChar(32) // lucide icon slug
+  cardBackgroundUrl    String?            @map("card_background_url") // optional image bg for loyalty card
+  cardBackgroundColor  String?            @map("card_background_color") @db.VarChar(7) // optional solid hex bg #RRGGBB
+  cardTextColor        String?            @map("card_text_color") @db.VarChar(5) // 'LIGHT' or 'DARK'
+  socialLinks          Json?              @map("social_links") // {instagram, facebook, tiktok, website, snapchat, youtube}
+  profileViews         Int                @default(0) @map("profile_views")
+  pointsRules          Json?              @map("points_rules")
+  pointsRate           Float              @default(10) @map("points_rate")
+  loyaltyType          LoyaltyType        @default(POINTS) @map("loyalty_type")
+  conversionRate       Float              @default(10) @map("conversion_rate")
+  stampsForReward      Int                @default(10) @map("stamps_for_reward")
+  stampEarningMode     StampEarningMode   @default(PER_VISIT) @map("stamp_earning_mode")
+  accumulationLimit    Int?               @map("accumulation_limit")
+  activeRewardId       String?            @map("active_reward_id")
   // Plan Freemium — les nouveaux marchands démarrent en FREE (le flow d'inscription attribue un essai PREMIUM via getTrialData())
-  plan                 MerchantPlan     @default(FREE)
-  planExpiresAt        DateTime?        @map("plan_expires_at")
-  planActivatedByAdmin Boolean          @default(false) @map("plan_activated_by_admin")
-  trialStartedAt       DateTime?        @map("trial_started_at")
+  plan                 MerchantPlan       @default(FREE)
+  planExpiresAt        DateTime?          @map("plan_expires_at")
+  planActivatedByAdmin Boolean            @default(false) @map("plan_activated_by_admin")
+  trialStartedAt       DateTime?          @map("trial_started_at")
 
   isActive            Boolean   @default(true) @map("is_active")
   emailVerified       Boolean   @default(false) @map("email_verified")
@@ -115,6 +115,9 @@ model Merchant {
 
   // Campaign dedup tracker (marketing push/email crons)
   campaignSentTrackers CampaignSentTracker[] @relation("MerchantCampaignSentTrackers")
+
+  // Quick-add anonymous client claim links (WhatsApp friction-zero onboarding)
+  clientClaims ClientClaim[]
 
   @@index([isActive])
   @@index([deletedAt])
@@ -328,6 +331,10 @@ model Client {
   dateNaissance         DateTime? @map("date_naissance")
   failedLoginAttempts   Int       @default(0) @map("failed_login_attempts")
   lockedUntil           DateTime? @map("locked_until")
+  // Marker for "ghost" accounts created by a merchant on behalf of a
+  // walk-in client (Quick-Add via WhatsApp). Becomes false after the
+  // client claims their loyalty history through the deep link.
+  isAnonymous           Boolean   @default(false) @map("is_anonymous")
   createdAt             DateTime  @default(now()) @map("created_at")
   updatedAt             DateTime  @updatedAt @map("updated_at")
   deletedAt             DateTime? @map("deleted_at")
@@ -346,6 +353,7 @@ model Client {
   luckyWheelTickets    LuckyWheelTicket[]
   campaignSentTrackers CampaignSentTracker[]
   merchantBlocks       ClientMerchantBlock[]
+  clientClaims         ClientClaim[]
 
   @@index([nom])
   @@index([email])
@@ -387,6 +395,30 @@ model QrNonce {
   @@index([expiresAt])
   @@index([clientId])
   @@map("qr_nonces")
+}
+
+/// Magic-link claim tokens created when a merchant adds points for a walk-in
+/// client (Quick-Add via WhatsApp). The raw token never hits the DB — only its
+/// SHA-256 digest. On claim, the anonymous Client's loyalty data is merged
+/// into the real registered Client and this row is marked consumed.
+model ClientClaim {
+  id            String    @id @default(uuid())
+  tokenHash     String    @unique @map("token_hash") @db.VarChar(64)
+  clientId      String    @map("client_id")
+  merchantId    String    @map("merchant_id")
+  createdByName String?   @map("created_by_name") @db.VarChar(255)
+  expiresAt     DateTime  @map("expires_at")
+  consumedAt    DateTime? @map("consumed_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  client   Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@index([merchantId])
+  @@index([expiresAt])
+  @@index([clientId, consumedAt])
+  @@map("client_claims")
 }
 
 model LoyaltyCard {

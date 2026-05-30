@@ -340,7 +340,7 @@ export default function ClientsScreen() {
         renderItem={renderClient}
         keyExtractor={keyExtractor}
         contentContainerStyle={styles.list}
-        removeClippedSubviews={Platform.OS !== 'web'}
+        removeClippedSubviews={Platform.OS === 'android'}
         maxToRenderPerBatch={10}
         windowSize={7}
         initialNumToRender={10}

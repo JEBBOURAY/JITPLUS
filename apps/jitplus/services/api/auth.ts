@@ -59,5 +59,19 @@ export function createAuthMethods(http: AxiosInstance) {
       const { data } = await http.patch('/client-auth/push-token', { pushToken });
       return data;
     },
+    /**
+     * Consume a Quick-Add claim token (WhatsApp magic link). Merges the
+     * anonymous client created by the merchant into the authenticated client
+     * account (transactions, loyalty cards, lucky-wheel tickets).
+     */
+    async consumeClaim(token: string): Promise<{
+      success: true;
+      alreadyConsumed: boolean;
+      mergedCards: number;
+      merchant: { id: string; nom: string | null };
+    }> {
+      const { data } = await http.post('/client-auth/claim', { token });
+      return data;
+    },
   };
 }

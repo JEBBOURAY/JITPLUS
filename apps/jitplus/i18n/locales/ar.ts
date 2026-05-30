@@ -23,6 +23,20 @@ export default {
     pressBackToExit: 'زيد ضغط باش تخرج',
   },
 
+  claim: {
+    title: 'استرجاع النقط',
+    loading: 'جاري تفعيل الرابط…',
+    successTitle: 'تم استرجاع النقط!',
+    successBody: 'تمت إضافة نقطك عند %{merchant} إلى حسابك.',
+    successCta: 'عرض بطاقتي',
+    errorExpired: 'انتهت صلاحية هذا الرابط. اطلب من التاجر إرسال رابط جديد.',
+    errorInvalid: 'هذا الرابط غير صالح.',
+    errorAlreadyUsed: 'تم استخدام هذا الرابط في حساب آخر.',
+    loginPromptTitle: 'سجل الدخول لاسترجاع نقطك',
+    loginPromptBody: 'أنشئ حسابا أو سجل الدخول، وستتم إضافة نقطك تلقائيا.',
+    loginPromptCta: 'متابعة',
+  },
+
   // ── Login ──
   login: {
     tagline: 'كرطة JitPlus واخا تنساها ماشي مشكيل',

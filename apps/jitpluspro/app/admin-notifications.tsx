@@ -183,7 +183,7 @@ export default function AdminNotificationsScreen() {
             <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={theme.primary} />
           }
           showsVerticalScrollIndicator={false}
-          removeClippedSubviews={Platform.OS !== 'web'}
+          removeClippedSubviews={Platform.OS === 'android'}
           maxToRenderPerBatch={10}
           windowSize={7}
         />

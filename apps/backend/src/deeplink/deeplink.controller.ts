@@ -225,6 +225,27 @@ export class DeeplinkController {
   }
 
   /**
+   * Quick-Add claim link — opens the client app on the /claim screen with
+   * the magic-link token in tow. Token format is enforced (base64url, 16–64
+   * chars) before being embedded into the smart-redirect HTML to neutralise
+   * any URL-injection / XSS attempts.
+   */
+  @Get('d/claim')
+  @Header('Cache-Control', 'no-store')
+  handleClaimLink(
+    @Query('token') token: string | undefined,
+    @Res() res: Response,
+  ): void {
+    if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{16,64}$/.test(token)) {
+      res.status(400).send('Invalid link');
+      return;
+    }
+    res
+      .type('html')
+      .send(renderSmartRedirect(VARIANT_CLIENT, `claim?token=${encodeURIComponent(token)}`));
+  }
+
+  /**
    * Android App Links verification file.
    * Google's crawler fetches this to verify each app variant owns the domain.
    */
@@ -278,7 +299,7 @@ export class DeeplinkController {
         details: [
           {
             appID: `${IOS_TEAM_ID}.${IOS_BUNDLE_ID}`,
-            paths: ['/m/*', '/referral', '/app'],
+            paths: ['/m/*', '/referral', '/app', '/d/claim'],
           },
           {
             appID: `${IOS_TEAM_ID}.${IOS_PRO_BUNDLE_ID}`,

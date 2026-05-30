@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  TextInput,
   Alert,
   ActivityIndicator,
   I18nManager,
@@ -15,7 +14,7 @@ import {
 } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ArrowLeft, Save, Check, Eye, Users, Gift, Coins, Stamp, Palette as PaletteIcon, Shapes, X as XIcon, Tags, Sparkles, Award, Clock, Plus, Trash2, ImagePlus, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Star } from 'lucide-react-native';
+import { ArrowLeft, Save, Eye, Users, Gift, Coins, Stamp, Palette as PaletteIcon, Shapes, Tags, Sparkles, Award, Clock, ImagePlus, ChevronRight, ChevronDown, ChevronUp, Trash2 } from 'lucide-react-native';
 import { useRouter, useNavigation } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
@@ -25,12 +24,23 @@ import { useUpdateMerchantTheme, useUploadMerchantGalleryImage, useUploadMerchan
 import { resolveImageUrl } from '@/utils/imageUrl';
 import { getErrorMessage } from '@/utils/error';
 import { ms, wp, hp } from '@/utils/responsive';
-import { MERCHANT_ICON_MAP, MERCHANT_ICON_SLUGS, getMerchantIconComponent } from '@/utils/merchantIcons';
+import { MERCHANT_ICON_MAP } from '@/utils/merchantIcons';
 import { MerchantCategory, MERCHANT_BADGE_CODES, type MerchantBadge, type OpeningHours } from '@/types';
-import { getCategoryLabel, getCategoryOptions, CATEGORY_EMOJIS } from '@/constants/categories';
+import { getCategoryLabel, CATEGORY_EMOJIS } from '@/constants/categories';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import FichePreviewModal from '@/components/FichePreviewModal';
+import {
+  PresetSwatches,
+  IconGrid,
+  SecondaryChips,
+  BadgesChips,
+  TaglineInput,
+  HoursEditor,
+  GalleryGrid,
+  CardColorRow,
+  CardTextColorToggle,
+} from '@/components/store-preview/Sections';
 
 const haptic = () => {
   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -563,6 +573,15 @@ export default function StorePreviewScreen() {
     setSelected(color);
   }, []);
 
+  const handleSelectIcon = useCallback((slug: string | null) => {
+    haptic();
+    setSelectedIcon(slug);
+  }, []);
+
+  const handleTaglineCommit = useCallback((value: string) => {
+    setTaglineInput(value);
+  }, []);
+
   const handleSave = useCallback(async () => {
     if (!hasChanges) return;
     // Validate hours format
@@ -749,27 +768,12 @@ export default function StorePreviewScreen() {
           <Text style={[styles.sectionTitle, { color: theme.text }]}>{t('storePreview.choosePresets')}</Text>
         </View>
 
-        <View style={styles.swatchGrid}>
-          {PRESET_COLORS.map(({ hex }) => {
-            const isActive = hex.toLowerCase() === accent.toLowerCase();
-            return (
-              <TouchableOpacity
-                key={hex}
-                onPress={() => handlePresetPress(hex)}
-                activeOpacity={0.85}
-                style={[
-                  styles.swatch,
-                  { backgroundColor: hex, borderColor: isActive ? theme.text : 'transparent' },
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel={hex}
-                accessibilityState={{ selected: isActive }}
-              >
-                {isActive && <Check size={18} color="#FFFFFF" strokeWidth={3} />}
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+        <PresetSwatches
+          presets={PRESET_COLORS}
+          selected={accent}
+          textColor={theme.text}
+          onPick={handlePresetPress}
+        />
 
         {/* ── Icon picker ── */}
         <View style={styles.sectionHeaderRow}>
@@ -778,45 +782,16 @@ export default function StorePreviewScreen() {
         </View>
         <Text style={[styles.helperText, { color: theme.textMuted, marginBottom: 10 }]}>{t('storePreview.iconHint')}</Text>
 
-        <View style={styles.iconGrid}>
-          <TouchableOpacity
-            onPress={() => { haptic(); setSelectedIcon(null); }}
-            activeOpacity={0.85}
-            style={[
-              styles.iconTile,
-              { backgroundColor: theme.bgCard, borderColor: !selectedIcon ? accent : theme.borderLight },
-            ]}
-            accessibilityRole="button"
-            accessibilityLabel={t('storePreview.noIcon')}
-            accessibilityState={{ selected: !selectedIcon }}
-          >
-            <XIcon size={ms(18)} color={theme.textMuted} strokeWidth={1.75} />
-          </TouchableOpacity>
-
-          {MERCHANT_ICON_SLUGS.map((slug) => {
-            const Cmp = MERCHANT_ICON_MAP[slug];
-            const isActive = selectedIcon === slug;
-            return (
-              <TouchableOpacity
-                key={slug}
-                onPress={() => { haptic(); setSelectedIcon(slug); }}
-                activeOpacity={0.85}
-                style={[
-                  styles.iconTile,
-                  {
-                    backgroundColor: isActive ? `${accent}15` : theme.bgCard,
-                    borderColor: isActive ? accent : theme.borderLight,
-                  },
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel={slug}
-                accessibilityState={{ selected: isActive }}
-              >
-                <Cmp size={ms(18)} color={isActive ? accent : theme.text} strokeWidth={1.75} />
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+        <IconGrid
+          selectedIcon={selectedIcon}
+          accent={accent}
+          bgCard={theme.bgCard}
+          borderLight={theme.borderLight}
+          textColor={theme.text}
+          textMuted={theme.textMuted}
+          noIconLabel={t('storePreview.noIcon')}
+          onSelect={handleSelectIcon}
+        />
 
         {/* ── Secondary categories ── */}
         <View style={styles.sectionHeaderRow}>
@@ -827,39 +802,15 @@ export default function StorePreviewScreen() {
           {t('storePreview.secondaryCategoriesHint', { max: 3 })}
         </Text>
 
-        <View style={styles.categoryChipsRow}>
-          {getCategoryOptions()
-            .filter((opt) => opt.value !== merchant.categorie)
-            .map((opt) => {
-              const isActive = selectedSecondary.includes(opt.value);
-              const disabled = !isActive && selectedSecondary.length >= 3;
-              return (
-                <TouchableOpacity
-                  key={opt.value}
-                  onPress={() => toggleSecondary(opt.value)}
-                  disabled={disabled}
-                  activeOpacity={0.85}
-                  style={[
-                    styles.categoryChip,
-                    {
-                      backgroundColor: isActive ? `${accent}15` : theme.bgCard,
-                      borderColor: isActive ? accent : theme.borderLight,
-                      opacity: disabled ? 0.4 : 1,
-                    },
-                  ]}
-                  accessibilityRole="button"
-                  accessibilityLabel={opt.label}
-                  accessibilityState={{ selected: isActive }}
-                >
-                  <Text style={{ fontSize: ms(13) }}>{CATEGORY_EMOJIS[opt.value] ?? '🏷️'}</Text>
-                  <Text style={[styles.categoryChipText, { color: isActive ? accent : theme.text }]} numberOfLines={1}>
-                    {opt.label}
-                  </Text>
-                  {isActive && <Check size={ms(13)} color={accent} strokeWidth={2.5} />}
-                </TouchableOpacity>
-              );
-            })}
-        </View>
+        <SecondaryChips
+          primaryCategory={merchant.categorie}
+          selected={selectedSecondary}
+          accent={accent}
+          bgCard={theme.bgCard}
+          borderLight={theme.borderLight}
+          textColor={theme.text}
+          onToggle={toggleSecondary}
+        />
 
         {/* ── Tagline (slogan court) ── */}
         <View style={styles.sectionHeaderRow}>
@@ -869,21 +820,17 @@ export default function StorePreviewScreen() {
         <Text style={[styles.helperText, { color: theme.textMuted, marginBottom: 10 }]}>
           {t('storePreview.taglineHint')}
         </Text>
-        <View style={[styles.taglineWrap, { borderColor: theme.borderLight, backgroundColor: theme.bgCard }]}>
-          <TextInput
-            value={taglineInput}
-            onChangeText={(v) => setTaglineInput(v.slice(0, 120))}
-            placeholder={t('storePreview.taglinePlaceholder')}
-            placeholderTextColor={theme.textMuted}
-            maxLength={120}
-            multiline
-            style={[styles.taglineInput, { color: theme.text }]}
-            accessibilityLabel={t('storePreview.taglineTitle')}
-          />
-          <Text style={[styles.taglineCounter, { color: theme.textMuted }]}>
-            {taglineInput.length}/120
-          </Text>
-        </View>
+        <TaglineInput
+          initialValue={taglineInput}
+          placeholder={t('storePreview.taglinePlaceholder')}
+          accessibilityLabel={t('storePreview.taglineTitle')}
+          textColor={theme.text}
+          textMuted={theme.textMuted}
+          borderLight={theme.borderLight}
+          bgCard={theme.bgCard}
+          max={120}
+          onCommit={handleTaglineCommit}
+        />
 
         {/* ── Badges ── */}
         <View style={styles.sectionHeaderRow}>
@@ -893,36 +840,15 @@ export default function StorePreviewScreen() {
         <Text style={[styles.helperText, { color: theme.textMuted, marginBottom: 10 }]}>
           {t('storePreview.badgesHint', { max: 8 })}
         </Text>
-        <View style={styles.categoryChipsRow}>
-          {MERCHANT_BADGE_CODES.map((code) => {
-            const isActive = selectedBadges.includes(code);
-            const disabled = !isActive && selectedBadges.length >= 8;
-            return (
-              <TouchableOpacity
-                key={code}
-                onPress={() => toggleBadge(code)}
-                disabled={disabled}
-                activeOpacity={0.85}
-                style={[
-                  styles.categoryChip,
-                  {
-                    backgroundColor: isActive ? `${accent}15` : theme.bgCard,
-                    borderColor: isActive ? accent : theme.borderLight,
-                    opacity: disabled ? 0.4 : 1,
-                  },
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel={t(`storePreview.badges.${code}` as never)}
-                accessibilityState={{ selected: isActive }}
-              >
-                <Text style={[styles.categoryChipText, { color: isActive ? accent : theme.text }]} numberOfLines={1}>
-                  {t(`storePreview.badges.${code}` as never)}
-                </Text>
-                {isActive && <Check size={ms(13)} color={accent} strokeWidth={2.5} />}
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+        <BadgesChips
+          selected={selectedBadges}
+          accent={accent}
+          bgCard={theme.bgCard}
+          borderLight={theme.borderLight}
+          textColor={theme.text}
+          t={t}
+          onToggle={toggleBadge}
+        />
 
         {/* ── Opening Hours ── */}
         <View style={styles.sectionHeaderRow}>
@@ -932,69 +858,20 @@ export default function StorePreviewScreen() {
         <Text style={[styles.helperText, { color: theme.textMuted, marginBottom: 10 }]}>
           {t('storePreview.hoursHint')}
         </Text>
-        <View style={[styles.hoursContainer, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
-          {WEEK_DAYS.map((day, idx) => {
-            const dayData = hours[day];
-            const isClosed = !!dayData?.closed;
-            const slots = dayData?.slots ?? [];
-            return (
-              <View key={day} style={[styles.hoursDayBlock, idx > 0 && { borderTopWidth: 1, borderTopColor: theme.borderLight }]}>
-                <View style={styles.hoursDayHeader}>
-                  <Text style={[styles.hoursDayLabel, { color: theme.text }]}>{t(`storePreview.days.${day}` as never)}</Text>
-                  <TouchableOpacity
-                    onPress={() => setDayClosed(day, !isClosed)}
-                    style={[styles.hoursToggle, { backgroundColor: isClosed ? '#ef444415' : `${accent}15`, borderColor: isClosed ? '#ef4444' : accent }]}
-                    accessibilityRole="switch"
-                    accessibilityState={{ checked: !isClosed }}
-                  >
-                    <Text style={[styles.hoursToggleText, { color: isClosed ? '#ef4444' : accent }]}>
-                      {isClosed ? t('storePreview.hoursClosed') : t('storePreview.hoursOpen')}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-                {!isClosed && (
-                  <View style={styles.hoursSlots}>
-                    {slots.map((slot, sIdx) => (
-                      <View key={sIdx} style={styles.hoursSlotRow}>
-                        <TextInput
-                          value={slot.open}
-                          onChangeText={(v) => updateSlot(day, sIdx, 'open', autoFormatTime(v))}
-                          placeholder="09:00"
-                          placeholderTextColor={theme.textMuted}
-                          maxLength={5}
-                          keyboardType="numbers-and-punctuation"
-                          style={[styles.hoursTimeInput, { color: theme.text, borderColor: theme.borderLight, backgroundColor: theme.bg }]}
-                        />
-                        <Text style={[styles.hoursTimeSep, { color: theme.textMuted }]}>–</Text>
-                        <TextInput
-                          value={slot.close}
-                          onChangeText={(v) => updateSlot(day, sIdx, 'close', autoFormatTime(v))}
-                          placeholder="18:00"
-                          placeholderTextColor={theme.textMuted}
-                          maxLength={5}
-                          keyboardType="numbers-and-punctuation"
-                          style={[styles.hoursTimeInput, { color: theme.text, borderColor: theme.borderLight, backgroundColor: theme.bg }]}
-                        />
-                        <TouchableOpacity onPress={() => removeSlot(day, sIdx)} style={styles.hoursSlotRemove} hitSlop={8}>
-                          <Trash2 size={ms(16)} color="#ef4444" strokeWidth={2} />
-                        </TouchableOpacity>
-                      </View>
-                    ))}
-                    {slots.length < 3 && (
-                      <TouchableOpacity
-                        onPress={() => addSlot(day)}
-                        style={[styles.hoursAddBtn, { borderColor: accent }]}
-                      >
-                        <Plus size={ms(14)} color={accent} strokeWidth={2} />
-                        <Text style={[styles.hoursAddText, { color: accent }]}>{t('storePreview.hoursAddSlot')}</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                )}
-              </View>
-            );
-          })}
-        </View>
+        <HoursEditor
+          hours={hours}
+          accent={accent}
+          bg={theme.bg}
+          bgCard={theme.bgCard}
+          borderLight={theme.borderLight}
+          textColor={theme.text}
+          textMuted={theme.textMuted}
+          t={t}
+          onToggleClosed={setDayClosed}
+          onAddSlot={addSlot}
+          onRemoveSlot={removeSlot}
+          onUpdateSlot={updateSlot}
+        />
 
         {/* ── Gallery ── */}
         <View style={styles.sectionHeaderRow}>
@@ -1009,105 +886,25 @@ export default function StorePreviewScreen() {
         <Text style={[styles.helperText, { color: theme.textMuted, marginBottom: 10 }]}>
           {t('storePreview.galleryHint')}
         </Text>
-        <View style={styles.galleryGrid}>
-          {galleryDraft.map((url, idx) => {
-            const isBusy = galleryBusyUrl === url;
-            const isCover = idx === 0;
-            return (
-              <View key={`${url}_${idx}`} style={[styles.galleryThumbWrap, { borderColor: isCover ? accent : theme.borderLight, backgroundColor: theme.bgCard, borderWidth: isCover ? 2 : StyleSheet.hairlineWidth }]}>
-                <ExpoImage source={resolveImageUrl(url)} style={styles.galleryThumb} contentFit="cover" />
-
-                {/* Position pill */}
-                <View style={styles.galleryPosPill}>
-                  <Text style={styles.galleryPosText}>{idx + 1}</Text>
-                </View>
-
-                {/* Cover badge */}
-                {isCover && (
-                  <View style={[styles.galleryCoverBadge, { backgroundColor: accent }]}>
-                    <Star size={ms(10)} color="#fff" strokeWidth={2.5} fill="#fff" />
-                    <Text style={styles.galleryCoverText} numberOfLines={1}>{t('storePreview.galleryCover')}</Text>
-                  </View>
-                )}
-
-                {/* Remove button */}
-                <TouchableOpacity
-                  onPress={() => handleDeleteGalleryImage(url)}
-                  disabled={isBusy || updateTheme.isPending}
-                  style={styles.galleryRemoveBtn}
-                  hitSlop={8}
-                  accessibilityRole="button"
-                  accessibilityLabel={t('storePreview.galleryDeleteTitle')}
-                >
-                  <XIcon size={ms(14)} color="#fff" strokeWidth={2.5} />
-                </TouchableOpacity>
-
-                {/* Bottom controls: set-as-cover + reorder */}
-                <View style={styles.galleryOrderRow}>
-                  {!isCover ? (
-                    <TouchableOpacity
-                      onPress={() => setAsCoverPhoto(idx)}
-                      disabled={updateTheme.isPending}
-                      style={styles.galleryOrderBtn}
-                      hitSlop={6}
-                      accessibilityRole="button"
-                      accessibilityLabel={t('storePreview.gallerySetCover')}
-                    >
-                      <Star size={ms(12)} color="#fff" strokeWidth={2.5} />
-                    </TouchableOpacity>
-                  ) : <View style={{ width: 24 }} />}
-                  <View style={{ flexDirection: 'row', gap: 4 }}>
-                    <TouchableOpacity
-                      onPress={() => moveGalleryImage(idx, idx - 1)}
-                      disabled={idx === 0 || updateTheme.isPending}
-                      style={[styles.galleryOrderBtn, idx === 0 && { opacity: 0.3 }]}
-                      hitSlop={6}
-                    >
-                      <ChevronLeft size={ms(14)} color="#fff" strokeWidth={2.5} />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => moveGalleryImage(idx, idx + 1)}
-                      disabled={idx === galleryDraft.length - 1 || updateTheme.isPending}
-                      style={[styles.galleryOrderBtn, idx === galleryDraft.length - 1 && { opacity: 0.3 }]}
-                      hitSlop={6}
-                    >
-                      <ChevronRight size={ms(14)} color="#fff" strokeWidth={2.5} />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                {/* Busy overlay */}
-                {isBusy && (
-                  <View style={styles.galleryBusyOverlay}>
-                    <ActivityIndicator size="small" color="#fff" />
-                  </View>
-                )}
-              </View>
-            );
-          })}
-          {galleryDraft.length < GALLERY_MAX && (
-            <TouchableOpacity
-              onPress={pickAndUploadGalleryImages}
-              disabled={uploadGalleryImage.isPending}
-              style={[styles.galleryAddBtn, { borderColor: accent, backgroundColor: `${accent}10` }]}
-              accessibilityRole="button"
-              accessibilityLabel={t('storePreview.galleryAddPhoto')}
-            >
-              {uploadGalleryImage.isPending ? (
-                <ActivityIndicator size="small" color={accent} />
-              ) : (
-                <>
-                  <View style={[styles.galleryAddIconCircle, { backgroundColor: accent }]}>
-                    <Plus size={ms(18)} color="#fff" strokeWidth={2.5} />
-                  </View>
-                  <Text style={[styles.galleryAddText, { color: accent }]} numberOfLines={2}>
-                    {t('storePreview.galleryAddPhoto')}
-                  </Text>
-                </>
-              )}
-            </TouchableOpacity>
-          )}
-        </View>
+        <GalleryGrid
+          items={galleryDraft}
+          max={GALLERY_MAX}
+          tileSize={GALLERY_TILE_SIZE}
+          busyUrl={galleryBusyUrl}
+          isUploading={uploadGalleryImage.isPending}
+          isMutationPending={updateTheme.isPending}
+          accent={accent}
+          bgCard={theme.bgCard}
+          borderLight={theme.borderLight}
+          galleryCoverLabel={t('storePreview.galleryCover')}
+          galleryAddLabel={t('storePreview.galleryAddPhoto')}
+          galleryDeleteLabel={t('storePreview.galleryDeleteTitle')}
+          gallerySetCoverLabel={t('storePreview.gallerySetCover')}
+          onAddPhotos={pickAndUploadGalleryImages}
+          onRemove={handleDeleteGalleryImage}
+          onSetCover={setAsCoverPhoto}
+          onMove={moveGalleryImage}
+        />
         </>)}
 
         {/* ── GROUP 2: Carte de fidélité ── */}
@@ -1173,89 +970,34 @@ export default function StorePreviewScreen() {
         <Text style={[styles.helperText, { color: theme.textMuted, marginBottom: 8 }]}>
           {t('storePreview.cardColorHint')}
         </Text>
-        <View style={styles.cardColorRow}>
-          <TouchableOpacity
-            onPress={() => handleCardBgColorChange(null)}
-            disabled={!!cardBgUrl}
-            style={[
-              styles.cardColorSwatch,
-              {
-                borderColor: cardBgColor === null ? accent : theme.borderLight,
-                backgroundColor: theme.bgCard,
-                opacity: cardBgUrl ? 0.4 : 1,
-              },
-            ]}
-            accessibilityRole="button"
-            accessibilityLabel={t('storePreview.cardColorNone')}
-            accessibilityState={{ selected: cardBgColor === null }}
-          >
-            <XIcon size={ms(16)} color={theme.textMuted} strokeWidth={2} />
-          </TouchableOpacity>
-          {PRESET_COLORS.map(({ hex, nameKey }) => {
-            const active = cardBgColor?.toLowerCase() === hex.toLowerCase();
-            const name = t(`storePreview.${nameKey}`);
-            return (
-              <TouchableOpacity
-                key={hex}
-                onPress={() => handleCardBgColorChange(hex)}
-                disabled={!!cardBgUrl}
-                style={[
-                  styles.cardColorSwatch,
-                  {
-                    borderColor: active ? accent : 'transparent',
-                    backgroundColor: hex,
-                    opacity: cardBgUrl ? 0.4 : 1,
-                  },
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel={name}
-                accessibilityState={{ selected: active }}
-              >
-                {active ? <Check size={ms(14)} color="#fff" strokeWidth={3} /> : null}
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+        <CardColorRow
+          presets={PRESET_COLORS}
+          selected={cardBgColor}
+          disabled={!!cardBgUrl}
+          accent={accent}
+          bgCard={theme.bgCard}
+          borderLight={theme.borderLight}
+          textMuted={theme.textMuted}
+          noneLabel={t('storePreview.cardColorNone')}
+          t={t}
+          onPick={handleCardBgColorChange}
+        />
 
         {/* Text color toggle */}
         <Text style={[styles.cardBgSubLabel, { color: theme.text }]}>{t('storePreview.cardTextColorTitle')}</Text>
         <Text style={[styles.helperText, { color: theme.textMuted, marginBottom: 8 }]}>
           {t('storePreview.cardTextColorHint')}
         </Text>
-        <View style={styles.cardTextColorRow}>
-          {(['LIGHT', 'DARK'] as const).map((mode) => {
-            const active = cardTextColor === mode;
-            return (
-              <TouchableOpacity
-                key={mode}
-                onPress={() => handleCardTextColorChange(mode)}
-                style={[
-                  styles.cardTextColorPill,
-                  {
-                    borderColor: active ? accent : theme.borderLight,
-                    backgroundColor: active ? `${accent}15` : theme.bgCard,
-                  },
-                ]}
-                accessibilityRole="button"
-                accessibilityState={{ selected: active }}
-              >
-                <View
-                  style={[
-                    styles.cardTextColorSwatch,
-                    {
-                      backgroundColor: mode === 'LIGHT' ? '#F9FAFB' : '#111827',
-                      borderColor: theme.borderLight,
-                    },
-                  ]}
-                />
-                <Text style={[styles.cardTextColorLabel, { color: active ? accent : theme.text }]}>
-                  {mode === 'LIGHT' ? t('storePreview.cardTextColorLight') : t('storePreview.cardTextColorDark')}
-                </Text>
-                {active ? <Check size={ms(14)} color={accent} strokeWidth={2.5} /> : null}
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+        <CardTextColorToggle
+          selected={cardTextColor}
+          accent={accent}
+          bgCard={theme.bgCard}
+          borderLight={theme.borderLight}
+          textColor={theme.text}
+          lightLabel={t('storePreview.cardTextColorLight')}
+          darkLabel={t('storePreview.cardTextColorDark')}
+          onChange={handleCardTextColorChange}
+        />
         </>)}
       </ScrollView>
       </KeyboardAvoidingView>

@@ -347,6 +347,33 @@ export default {
     guideGotIt: 'J\'ai compris',
   },
 
+  // ── Quick-Add (WhatsApp friction-zero onboarding) ──
+  quickAdd: {
+    title: 'Ajouter via WhatsApp',
+    cta: 'Ajouter sans l\'app',
+    subtitle: 'Le client n\'a pas l\'app ? Créditez ses points et envoyez-lui le lien magique par WhatsApp — sans aucun coût.',
+    phoneLabel: 'Numéro de téléphone',
+    nameLabel: 'Prénom (facultatif)',
+    namePlaceholder: 'Pour personnaliser le message',
+    amountLabel: 'Montant de l\'achat',
+    amountPlaceholder: '0,00',
+    pointsPreview: '%{count} points seront crédités',
+    stampsPreview: '%{count} tampons seront crédités',
+    submit: 'Créditer & envoyer WhatsApp',
+    submitting: 'Création en cours…',
+    successTitle: 'Points crédités !',
+    successBody: 'Ouverture de WhatsApp pour partager le lien magique avec le client.',
+    waMessage: 'Bonjour%{name} 👋 Vous venez de gagner %{points} %{unit} chez %{merchant} ! 🎁 Récupérez-les en téléchargeant l\'application JitPlus : %{url}',
+    waMessageHello: ' %{name}',
+    waNotInstalled: 'WhatsApp ne semble pas installé. Le lien magique a été créé — vous pouvez le partager autrement :',
+    copyLink: 'Copier le lien',
+    linkCopied: 'Lien copié dans le presse-papier',
+    phoneInvalid: 'Numéro de téléphone invalide',
+    amountInvalid: 'Montant invalide',
+    alreadyRegistered: 'Ce numéro est déjà inscrit. Demandez à ce client de scanner son QR code.',
+    done: 'Terminé',
+  },
+
   // ── Account ──
   account: {
     guideText: 'Gérez les aspects liés à votre compte, de votre abonnement à la sécurité de vos données.',

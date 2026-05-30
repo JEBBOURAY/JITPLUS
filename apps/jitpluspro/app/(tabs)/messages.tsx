@@ -627,7 +627,7 @@ export default function MessagesScreen() {
           renderItem={renderNotification}
           contentContainerStyle={{ paddingBottom: 120, paddingHorizontal: 16 }}
           showsVerticalScrollIndicator={false}
-          removeClippedSubviews={Platform.OS !== 'web'}
+          removeClippedSubviews={Platform.OS === 'android'}
           maxToRenderPerBatch={8}
           windowSize={5}
           initialNumToRender={8}

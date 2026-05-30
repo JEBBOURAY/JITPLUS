@@ -25,6 +25,8 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtPayload } from '../common/interfaces/jwt-payload.interface';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import { SendOtpEmailDto, VerifyOtpEmailDto, CompleteProfileDto, ClientUpdateProfileDto, UpdatePushTokenDto, GoogleLoginDto, AppleLoginDto, LoginEmailDto, SetPasswordDto, RefreshTokenDto, ClientDeleteAccountDto, ClientChangePasswordDto, SendChangeContactOtpDto, VerifyChangeContactOtpDto, RequestPayoutDto, ReportMerchantDto } from './dto';
+import { ConsumeClaimDto } from '../merchant/dto/quick-add.dto';
+import { ClientClaimService } from '../merchant/services/client-claim.service';
 
 @ApiTags('Client Auth')
 @Controller('client-auth')
@@ -33,6 +35,7 @@ export class ClientAuthController {
     private readonly clientAuthService: ClientAuthService,
     private readonly clientService: ClientService,
     private readonly jwtService: JwtService,
+    private readonly clientClaimService: ClientClaimService,
   ) {}
 
   @Post('refresh')
@@ -155,6 +158,18 @@ export class ClientAuthController {
   @UseGuards(AuthGuard('jwt'), ClientOnlyGuard)
   async generateQrToken(@CurrentUser() user: JwtPayload) {
     return this.clientAuthService.generateQrToken(user.userId);
+  }
+
+  /**
+   * Consume a Quick-Add claim token: merges loyalty history from the
+   * anonymous account (created by the merchant via WhatsApp link) into
+   * the authenticated real client account.
+   */
+  @Post('claim')
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 10 } })
+  @UseGuards(AuthGuard('jwt'), ClientOnlyGuard)
+  async consumeClaim(@CurrentUser() user: JwtPayload, @Body() dto: ConsumeClaimDto) {
+    return this.clientClaimService.consumeClaim(user.userId, dto.token);
   }
 
   /**

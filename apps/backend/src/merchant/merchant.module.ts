@@ -4,6 +4,7 @@ import {
   MerchantTeamController,
   MerchantStoreController,
   MerchantTransactionController,
+  MerchantQuickAddController,
 } from './controllers';
 import {
   MerchantProfileService,
@@ -12,6 +13,7 @@ import {
   MerchantDashboardService,
   MerchantTeamService,
   MerchantStoreService,
+  ClientClaimService,
 } from './services';
 import { AuditLogService } from '../admin/audit-log.service';
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -29,6 +31,7 @@ import { EventsModule } from '../events/events.module';
     MerchantTeamController,
     MerchantStoreController,
     MerchantTransactionController,
+    MerchantQuickAddController,
   ],
   providers: [
     MerchantProfileService,
@@ -37,8 +40,9 @@ import { EventsModule } from '../events/events.module';
     MerchantDashboardService,
     MerchantTeamService,
     MerchantStoreService,
+    ClientClaimService,
     AuditLogService,
   ],
-  exports: [MerchantProfileService, MerchantPlanModule],
+  exports: [MerchantProfileService, MerchantPlanModule, ClientClaimService],
 })
 export class MerchantModule {}
