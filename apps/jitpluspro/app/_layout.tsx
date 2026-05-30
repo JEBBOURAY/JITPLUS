@@ -234,6 +234,11 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { Image as ImageIcon, Award, Settings as SettingsIcon } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+// Module-level dedup state for `/merchant/push-token` PATCH — see
+// `addPushTokenListener` callback below.
+let _lastSentToken: string | null = null;
+let _lastSentAt = 0;
+
 export {
   // Catch any errors thrown by the Layout component.
   ErrorBoundary,
@@ -477,6 +482,14 @@ function ThemedNavigator() {
         if (projectId) {
           const expoTokenData = await Notifications!.getExpoPushTokenAsync({ projectId });
           const expoToken = String(expoTokenData.data);
+          // Dedup: on Android, `getExpoPushTokenAsync` can re-fire this very
+          // listener (FCM internal refresh) → infinite PATCH loop that hits
+          // the throttler (429). Skip if same token or if last PATCH < 10s.
+          const now = Date.now();
+          if (expoToken === _lastSentToken) return;
+          if (now - _lastSentAt < 10_000) return;
+          _lastSentToken = expoToken;
+          _lastSentAt = now;
           const lang = await AsyncStorage.getItem('jitpluspro_language');
           await api.patch('/merchant/push-token', { pushToken: expoToken, language: lang || 'fr' });
         }

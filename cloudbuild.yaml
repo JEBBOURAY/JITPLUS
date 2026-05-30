@@ -131,7 +131,9 @@ steps:
       - --platform=managed
       - --allow-unauthenticated
       - --port=3000
-      - --min-instances=0
+      # Keep at least 2 warm instances so app-resume (socket reconnect + parallel
+      # React Query refetches) never hits a cold start (NestJS+Prisma boot ~5-15s).
+      - --min-instances=2
       - --max-instances=10
       - --concurrency=80
       - --memory=512Mi

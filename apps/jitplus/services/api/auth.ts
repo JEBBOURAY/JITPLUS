@@ -2,6 +2,10 @@ import { AxiosInstance } from 'axios';
 import { AuthResponse, Client, CompleteProfileResponse, OtpResponse } from '@/types';
 import { persistTokens } from './storage';
 
+// Module-level dedup state for push-token PATCHes. See `updatePushToken` below.
+let _lastPushToken: string | null = null;
+let _lastPushTokenAt = 0;
+
 export function createAuthMethods(http: AxiosInstance) {
   return {
     async sendOtpEmail(email: string, isRegister = false): Promise<OtpResponse> {
@@ -56,6 +60,20 @@ export function createAuthMethods(http: AxiosInstance) {
       await http.post('/client-auth/logout');
     },
     async updatePushToken(pushToken: string): Promise<{ success: boolean }> {
+      // Dedup: Android Notifications.addPushTokenListener can re-fire when
+      // getExpoPushTokenAsync runs inside the callback, causing a runaway
+      // loop that spams /push-token and triggers backend throttling (429).
+      // Skip if same token was just sent (any time) or if a different one
+      // was sent in the last 10s (collapse burst on app resume / re-renders).
+      const now = Date.now();
+      if (pushToken && pushToken === _lastPushToken) {
+        return { success: true };
+      }
+      if (now - _lastPushTokenAt < 10_000) {
+        return { success: true };
+      }
+      _lastPushToken = pushToken;
+      _lastPushTokenAt = now;
       const { data } = await http.patch('/client-auth/push-token', { pushToken });
       return data;
     },
