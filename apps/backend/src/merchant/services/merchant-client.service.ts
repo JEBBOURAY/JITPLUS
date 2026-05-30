@@ -262,7 +262,7 @@ export class MerchantClientService {
     const [client, loyaltyCard, transactions, merchant] = await Promise.all([
       this.clientRepo.findUnique({
         where: { id: clientId },
-        select: { id: true, nom: true, email: true, telephone: true, shareInfoMerchants: true, termsAccepted: true, createdAt: true },
+        select: { id: true, prenom: true, nom: true, email: true, telephone: true, shareInfoMerchants: true, termsAccepted: true, isAnonymous: true, createdAt: true },
       }),
       this.loyaltyCardRepo.findUnique({
         where: { clientId_merchantId: { clientId, merchantId } },
@@ -289,12 +289,18 @@ export class MerchantClientService {
     const rewardThreshold = computeRewardThreshold(merchant, pointsRules);
 
     const shared = client.shareInfoMerchants !== false;
+    // Anonymous clients were created by the merchant via Quick-Add — the merchant
+    // already typed the phone themselves, so phone/prenom stay visible regardless
+    // of shareInfoMerchants. This lets the "Renvoyer le lien WhatsApp" button work.
+    const isAnon = (client as { isAnonymous?: boolean }).isAnonymous === true;
 
     return {
       id: client.id,
+      prenom: isAnon ? (client as { prenom?: string | null }).prenom ?? null : null,
       nom: shared ? client.nom : maskName(client.nom),
       email: shared ? client.email : null,
-      telephone: shared ? client.telephone : null,
+      telephone: shared || isAnon ? client.telephone : null,
+      isAnonymous: isAnon,
       points: loyaltyCard?.points ?? 0,
       rewardThreshold,
       hasReward: (loyaltyCard?.points ?? 0) >= rewardThreshold,

@@ -12,6 +12,7 @@ import { createHash, randomBytes } from 'crypto';
 import {
   CLIENT_REPOSITORY, type IClientRepository,
   MERCHANT_REPOSITORY, type IMerchantRepository,
+  LOYALTY_CARD_REPOSITORY, type ILoyaltyCardRepository,
   TRANSACTION_RUNNER, type ITransactionRunner,
 } from '../../common/repositories';
 import { MerchantTransactionService } from './merchant-transaction.service';
@@ -48,6 +49,7 @@ export class ClientClaimService {
   constructor(
     @Inject(CLIENT_REPOSITORY) private clientRepo: IClientRepository,
     @Inject(MERCHANT_REPOSITORY) private merchantRepo: IMerchantRepository,
+    @Inject(LOYALTY_CARD_REPOSITORY) private loyaltyCardRepo: ILoyaltyCardRepository,
     @Inject(TRANSACTION_RUNNER) private txRunner: ITransactionRunner,
     private transactionService: MerchantTransactionService,
   ) {}
@@ -186,6 +188,58 @@ export class ClientClaimService {
         id: clientId,
         telephone,
         isAnonymous: true,
+      },
+    };
+  }
+
+  /**
+   * Re-issue a Quick-Add claim link for an existing anonymous client without
+   * crediting any transaction. Used when the merchant lost the original
+   * WhatsApp link or the customer never received it. The new token replaces
+   * the previous un-consumed claim for this (merchant, client) pair.
+   *
+   * Authorization: the merchant must already have a loyalty card with the
+   * client (same IDOR check as `getClientDetail`) — proves they originated
+   * the Quick-Add and prevents arbitrary merchants from harvesting links.
+   */
+  async reshareClaim(merchantId: string, clientId: string) {
+    // 1. IDOR — only merchants with an active loyalty card can reshare.
+    const card = await this.loyaltyCardRepo.findUnique({
+      where: { clientId_merchantId: { clientId, merchantId } },
+      select: { id: true, deactivatedAt: true },
+    });
+    if (!card || card.deactivatedAt) throw new NotFoundException('Client non trouvé');
+
+    // 2. Client must still be anonymous (claim is meaningless once consumed).
+    const client = await this.clientRepo.findUnique({
+      where: { id: clientId },
+      select: { id: true, isAnonymous: true, deletedAt: true, telephone: true, prenom: true },
+    });
+    if (!client || client.deletedAt) throw new NotFoundException('Client non trouvé');
+    if (!client.isAnonymous) {
+      throw new ConflictException('Ce client est déjà inscrit — le lien n\'est plus nécessaire.');
+    }
+
+    // 3. Mint a fresh token, replace the previous un-consumed claim (if any).
+    const rawToken = randomBytes(CLAIM_TOKEN_BYTES).toString('base64url');
+    const tokenHash = this.sha256Hex(rawToken);
+    const expiresAt = new Date(Date.now() + CLAIM_TOKEN_TTL_MS);
+
+    await this.txRunner.run(async (tx) => {
+      await tx.clientClaim.deleteMany({
+        where: { clientId, merchantId, consumedAt: null },
+      });
+      await tx.clientClaim.create({
+        data: { tokenHash, clientId, merchantId, expiresAt },
+      });
+    }, { isolationLevel: 'Serializable' });
+
+    return {
+      claim: { url: this.buildClaimUrl(rawToken), expiresAt },
+      client: {
+        id: client.id,
+        telephone: client.telephone,
+        prenom: client.prenom,
       },
     };
   }

@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Headers,
+  Param,
   Post,
   UseGuards,
 } from '@nestjs/common';
@@ -62,5 +63,22 @@ export class MerchantQuickAddController {
       performedByName: user.teamMemberName ?? undefined,
       idempotencyKey: normalizedKey,
     });
+  }
+
+  /**
+   * Re-issue a WhatsApp claim link for an anonymous client without
+   * crediting a new transaction. Stricter throttle to limit abuse.
+   */
+  @Post('clients/:clientId/reshare-claim')
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 10 } })
+  async reshareClaim(
+    @Param('clientId') clientId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!UUID_RE.test(clientId)) {
+      throw new BadRequestException('Identifiant client invalide');
+    }
+    return this.claimService.reshareClaim(user.userId, clientId);
   }
 }
