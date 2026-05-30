@@ -131,6 +131,12 @@ model Merchant {
   // Admin list filtering: plan + active + date sort
   @@index([plan, isActive, createdAt(sort: Desc)])
   @@index([appleId])
+  // Referral analytics: count + list merchants referred by another merchant
+  @@index([referredById])
+  // Merchant-lifecycle cron: scan PREMIUM merchants with expiring plan (partial index added via raw SQL in migration)
+  @@index([plan, planExpiresAt])
+  // Trial reminders cron: scan merchants on trial sorted by start date (partial index added via raw SQL in migration)
+  @@index([trialStartedAt])
   @@map("merchants")
 }
 
@@ -436,6 +442,8 @@ model LoyaltyCard {
   @@unique([clientId, merchantId])
   @@index([merchantId])
   @@index([clientId])
+  // Client-side wallet view: list active cards for a client (filter deactivatedAt IS NULL)
+  @@index([clientId, deactivatedAt])
   @@index([merchantId, createdAt])
   // Accumulation cap queries: fetch cards over limit for a merchant
   @@index([merchantId, points])
@@ -475,6 +483,8 @@ model Transaction {
   @@index([clientId, merchantId])
   @@index([merchantId, type, status, createdAt])
   @@index([rewardId])
+  // Activity feed per team member ("who scanned what")
+  @@index([teamMemberId, createdAt(sort: Desc)])
   // Admin dashboard: count by type, filter status+date
   @@index([type])
   @@index([status, createdAt(sort: Desc)])
@@ -655,6 +665,8 @@ model DeviceSession {
   @@index([merchantId])
   @@index([merchantId, deviceId])
   @@index([merchantId, deviceName])
+  // Active sessions list: "ORDER BY lastActiveAt DESC" per merchant
+  @@index([merchantId, lastActiveAt(sort: Desc)])
   @@map("device_sessions")
 }
 
@@ -729,6 +741,8 @@ model PayoutRequest {
   @@index([clientId])
   @@index([status])
   @@index([status, createdAt(sort: Desc)])
+  // Client payout history filtered by status (most recent first)
+  @@index([clientId, status, createdAt(sort: Desc)])
   @@map("payout_requests")
 }
 
