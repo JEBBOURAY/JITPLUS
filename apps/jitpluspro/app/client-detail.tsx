@@ -32,7 +32,7 @@ import {
 } from 'lucide-react-native';
 import { getTransactionConfig } from '@/constants/transactions';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuthStore } from '@/stores/authStore';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { ms } from '@/utils/responsive';
@@ -152,7 +152,7 @@ export default function ClientDetailScreen() {
   const shouldWait = useRequireAuth();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { merchant } = useAuth();
+  const merchant = useAuthStore((s) => s.merchant);
   const theme = useTheme();
   const insets = useSafeAreaInsets();
 

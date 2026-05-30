@@ -16,7 +16,7 @@ import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { useFocusFade } from '@/hooks/useFocusFade';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuthStore } from '@/stores/authStore';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { ClientListSkeleton } from '@/components/Skeleton';
@@ -192,7 +192,7 @@ function EmptyState({ search, theme, onScan }: { search: string; theme: ReturnTy
 
 // ── Écran Clients ──────────────────────────────────────────
 export default function ClientsScreen() {
-  const { merchant } = useAuth();
+  const merchant = useAuthStore((s) => s.merchant);
   const theme = useTheme();
   const router = useRouter();
   const { t } = useLanguage();

@@ -21,7 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowLeft, Phone, User, MessageCircle, CheckCircle, Copy, ShoppingBag } from 'lucide-react-native';
 
 import api from '@/services/api';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuthStore } from '@/stores/authStore';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
@@ -45,7 +45,7 @@ export default function QuickAddScreen() {
   const insets = useSafeAreaInsets();
   const theme = useTheme();
   const { t } = useLanguage();
-  const { merchant } = useAuth();
+  const merchant = useAuthStore((s) => s.merchant);
   const params = useLocalSearchParams<{ telephone?: string; localPhone?: string; countryCode?: string; prenom?: string }>();
 
   // ── Form state ──

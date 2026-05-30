@@ -24,7 +24,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { getTransactionConfig } from '@/constants/transactions';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuthStore } from '@/stores/authStore';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { ActivityListSkeleton } from '@/components/Skeleton';
@@ -241,7 +241,7 @@ const TransactionRow = React.memo(function TransactionRow({
 });
 
 export default function ActivityScreen() {
-  const { merchant } = useAuth();
+  const merchant = useAuthStore((s) => s.merchant);
   const theme = useTheme();
   const { t, locale } = useLanguage();
   const { focusStyle } = useFocusFade();

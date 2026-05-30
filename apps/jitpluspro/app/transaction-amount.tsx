@@ -31,7 +31,7 @@ import {
 
 // lottie-react-native is NOT available in Expo Go SDK 51+
 
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuthStore } from '@/stores/authStore';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { ms } from '@/utils/responsive';
@@ -92,7 +92,7 @@ export default function TransactionAmountScreen() {
   const shouldWait = useRequireAuth();
   const router = useRouter();
   const { clientId } = useLocalSearchParams<{ clientId: string }>();
-  const { merchant } = useAuth();
+  const merchant = useAuthStore((s) => s.merchant);
   const theme = useTheme();
   const insets = useSafeAreaInsets();
 

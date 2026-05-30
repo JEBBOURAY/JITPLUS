@@ -45,7 +45,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuthStore } from '@/stores/authStore';
 import { getErrorMessage } from '@/utils/error';
 import {
   useLuckyWheelCampaigns,
@@ -222,7 +222,7 @@ const MIN_SPEND_VALUES = ['0', '50', '100', '200'] as const;
 
 export default function LuckyWheelScreen() {
   useRequireAuth();
-  const { isTeamMember } = useAuth();
+  const isTeamMember = useAuthStore((s) => s.isTeamMember);
   const theme = useTheme();
   const { t } = useLanguage();
   const router = useRouter();

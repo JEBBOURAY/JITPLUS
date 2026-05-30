@@ -5,6 +5,8 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { ActivityIndicator, View } from 'react-native';
 import CustomTabBar from '@/components/CustomTabBar';
 
+const renderTabBar = (props: any) => <CustomTabBar {...props} />;
+
 // Module-level flag — survives component remounts (resets only on full app restart)
 let _initialScanOpened = false;
 
@@ -60,7 +62,7 @@ export default function TabLayout() {
   return (
     <Tabs
       initialRouteName="scan"
-      tabBar={(props) => <CustomTabBar {...(props as any)} />}
+      tabBar={renderTabBar}
       screenOptions={{
         headerShown: false,
         animation: 'fade',

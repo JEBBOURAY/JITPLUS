@@ -35,7 +35,7 @@ import {
   Crown,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuthStore } from '@/stores/authStore';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -725,7 +725,7 @@ function FieldError({ theme, message }: { theme: ReturnType<typeof useTheme>; me
 export default function TeamManagementScreen() {
   const shouldWait = useRequireAuth();
   const theme = useTheme();
-  const { isTeamMember } = useAuth();
+  const isTeamMember = useAuthStore((s) => s.isTeamMember);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { t } = useLanguage();
