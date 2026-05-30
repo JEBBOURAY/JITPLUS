@@ -349,6 +349,7 @@ export default {
     successTitle: 'Points credited!',
     successBody: 'Opening WhatsApp to share the magic link with the client.',
     waMessage: 'Hi%{name} 👋 You just earned %{points} %{unit} at %{merchant}! 🎁 Claim them by downloading the JitPlus app: %{url}',
+    reshareWaMessage: 'Hi%{name} 👋 Here is your link to claim your loyalty points at %{merchant} 🎁 Download the JitPlus app: %{url}',
     waMessageHello: ' %{name}',
     waNotInstalled: 'WhatsApp does not appear to be installed. The magic link was created — you can share it another way:',
     copyLink: 'Copy link',
@@ -1110,6 +1111,12 @@ export default {
     adjustResultAdd: 'added',
     adjustResultRemove: 'removed',
     adjustDefaultError: 'Error during adjustment',
+    // Quick-Add reshare
+    anonymousBadge: 'Anonymous client — not registered yet',
+    reshareBtn: 'Resend WhatsApp link',
+    reshareSending: 'Generating link…',
+    reshareError: 'Unable to generate a new link',
+    reshareAlreadyRegistered: 'This client is now registered — the link is no longer needed.',
   },
 
   // ── Register extra ──

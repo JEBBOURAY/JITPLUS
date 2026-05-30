@@ -13,6 +13,7 @@ import {
   Alert,
   KeyboardAvoidingView,
   RefreshControl,
+  Linking,
 } from 'react-native';
 import {
   ArrowLeft,
@@ -29,6 +30,7 @@ import {
   MinusCircle,
   RefreshCw,
   FileText,
+  MessageCircle,
 } from 'lucide-react-native';
 import { getTransactionConfig } from '@/constants/transactions';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -43,6 +45,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatCurrency, DEFAULT_CURRENCY, getIntlLocale } from '@/config/currency';
 import { useClientDetail, useAdjustPoints } from '@/hooks/useQueryHooks';
 import { isValidUUID } from '@/utils/validation';
+import api from '@/services/api';
+import { getErrorMessage } from '@/utils/error';
 
 /** Removes emojis from text (with performance cache) */
 const emojiCache = new Map<string, string>();
@@ -234,6 +238,52 @@ export default function ClientDetailScreen() {
     );
   }, [adjustPoints, adjustMode, adjustNote, adjustMutation, id, client, isStampsMode, t]);
 
+  // ── Reshare WhatsApp claim link (anonymous Quick-Add clients only) ──
+  const [resharing, setResharing] = useState(false);
+  const handleReshareClaim = useCallback(async () => {
+    if (!client?.id || !client.isAnonymous || resharing) return;
+    setResharing(true);
+    try {
+      const res = await api.post(`/merchant/clients/${client.id}/reshare-claim`);
+      const data = res.data as {
+        claim: { url: string; expiresAt: string };
+        client: { telephone: string | null; prenom: string | null };
+      };
+      const phoneDigits = (data.client.telephone || '').replace(/[^\d]/g, '');
+      const namePart = data.client.prenom?.trim()
+        ? t('quickAdd.waMessageHello', { name: data.client.prenom.trim() })
+        : '';
+      const message = t('quickAdd.reshareWaMessage', {
+        name: namePart,
+        merchant: merchant?.nom ?? 'JitPlus',
+        url: data.claim.url,
+      });
+      const waUrl = phoneDigits
+        ? `https://wa.me/${phoneDigits}?text=${encodeURIComponent(message)}`
+        : `whatsapp://send?text=${encodeURIComponent(message)}`;
+      try {
+        const can = await Linking.canOpenURL(waUrl);
+        if (can) {
+          await Linking.openURL(waUrl);
+        } else {
+          // Fallback: copy the link so the merchant can paste it manually
+          Alert.alert(t('quickAdd.waNotInstalled'), data.claim.url);
+        }
+      } catch {
+        Alert.alert(t('quickAdd.waNotInstalled'), data.claim.url);
+      }
+    } catch (err: any) {
+      const status = err?.response?.status;
+      if (status === 409) {
+        Alert.alert(t('common.error'), t('clientDetail.reshareAlreadyRegistered'));
+      } else {
+        Alert.alert(t('common.error'), getErrorMessage(err, t('clientDetail.reshareError')));
+      }
+    } finally {
+      setResharing(false);
+    }
+  }, [client?.id, client?.isAnonymous, resharing, merchant?.nom, t]);
+
   // Use the dynamically computed threshold from the backend (client.stampsForReward / client.rewardThreshold)
   // rather than the merchant's static database field, as there might be custom rewards.
   const stampsForReward = client?.stampsForReward || merchant?.stampsForReward || 10;
@@ -340,6 +390,30 @@ export default function ClientDetailScreen() {
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* ── Anonymous client: reshare WhatsApp claim link ── */}
+        {client.isAnonymous && (
+          <View style={[styles.card, { backgroundColor: theme.bgCard, borderColor: theme.borderLight, shadowColor: theme.shadowColor }]}>
+            <Text style={[styles.anonBadgeText, { color: theme.textMuted }]}>
+              {t('clientDetail.anonymousBadge')}
+            </Text>
+            <TouchableOpacity
+              style={[styles.reshareBtn, { backgroundColor: '#25D366', opacity: resharing ? 0.6 : 1 }]}
+              onPress={handleReshareClaim}
+              disabled={resharing}
+              accessibilityRole="button"
+            >
+              {resharing ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <MessageCircle size={18} color="#fff" />
+              )}
+              <Text style={styles.reshareBtnText}>
+                {resharing ? t('clientDetail.reshareSending') : t('clientDetail.reshareBtn')}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
         {/* ── Progress to reward ── */}
         <View style={[styles.card, { backgroundColor: theme.bgCard, borderColor: theme.borderLight, shadowColor: theme.shadowColor }]}>
           <View style={styles.cardHeader}>
@@ -713,6 +787,23 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   adjustBtnText: { color: '#fff', fontSize: 14, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
+
+  // ── Reshare WhatsApp claim link (anonymous Quick-Add) ──
+  anonBadgeText: {
+    fontSize: 13,
+    fontFamily: 'Lexend_500Medium',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  reshareBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 12,
+    gap: 8,
+  },
+  reshareBtnText: { color: '#fff', fontSize: 15, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
 
   // ── Modal ──
   modalOverlay: {

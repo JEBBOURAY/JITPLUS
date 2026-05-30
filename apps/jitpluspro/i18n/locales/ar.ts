@@ -349,6 +349,7 @@ export default {
     successTitle: 'تم إضافة النقط!',
     successBody: 'جاري فتح واتساب لمشاركة الرابط مع الزبون.',
     waMessage: 'السلام%{name} 👋 ربحتي %{points} %{unit} عند %{merchant}! 🎁 حملي تطبيق JitPlus لاسترجاعها: %{url}',
+    reshareWaMessage: 'السلام%{name} 👋 هاهو رابطك باش تسترجع نقاطك عند %{merchant} 🎁 حمل تطبيق JitPlus : %{url}',
     waMessageHello: ' %{name}',
     waNotInstalled: 'يبدو أن واتساب غير مثبت. تم إنشاء الرابط — يمكنك مشاركته بطريقة أخرى:',
     copyLink: 'نسخ الرابط',
@@ -1111,6 +1112,12 @@ export default {
     adjustResultAdd: 'زيد',
     adjustResultRemove: 'مسح',
     adjustDefaultError: 'مشكيل فوقت البدل',
+    // Quick-Add reshare
+    anonymousBadge: 'كليان مجهول — مازال ما تسجل',
+    reshareBtn: 'صيفط لرابط ديال واتساب',
+    reshareSending: 'كنجنيريو الرابط…',
+    reshareError: 'ما قدرناش نجنيريو رابط جديد',
+    reshareAlreadyRegistered: 'هاد الكليان داز وتسجل — الرابط ما بقاش ضروري.',
   },
 
   // ── Register extra ──

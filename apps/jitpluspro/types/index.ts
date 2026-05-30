@@ -180,6 +180,7 @@ export interface ClientDetail {
   nom: string;
   email: string;
   telephone?: string | null;
+  isAnonymous?: boolean;
   points: number;
   rewardThreshold: number;
   hasReward: boolean;

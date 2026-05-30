@@ -364,6 +364,7 @@ export default {
     successTitle: 'Points crédités !',
     successBody: 'Ouverture de WhatsApp pour partager le lien magique avec le client.',
     waMessage: 'Bonjour%{name} 👋 Vous venez de gagner %{points} %{unit} chez %{merchant} ! 🎁 Récupérez-les en téléchargeant l\'application JitPlus : %{url}',
+    reshareWaMessage: 'Bonjour%{name} 👋 Voici votre lien pour récupérer vos points chez %{merchant} 🎁 Téléchargez l\'application JitPlus : %{url}',
     waMessageHello: ' %{name}',
     waNotInstalled: 'WhatsApp ne semble pas installé. Le lien magique a été créé — vous pouvez le partager autrement :',
     copyLink: 'Copier le lien',
@@ -1138,6 +1139,12 @@ export default {
     adjustResultAdd: 'ajoutés',
     adjustResultRemove: 'retirés',
     adjustDefaultError: 'Erreur lors de l\'ajustement',
+    // Quick-Add reshare
+    anonymousBadge: 'Client anonyme — pas encore inscrit',
+    reshareBtn: 'Renvoyer le lien WhatsApp',
+    reshareSending: 'Génération du lien…',
+    reshareError: 'Impossible de générer un nouveau lien',
+    reshareAlreadyRegistered: 'Ce client s\'est déjà inscrit — le lien n\'est plus nécessaire.',
   },
 
   // ── Register extra ──

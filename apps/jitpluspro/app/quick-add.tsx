@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,8 @@ import {
   Platform,
   Linking,
   Modal,
+  Keyboard,
+  ToastAndroid,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -78,6 +80,10 @@ export default function QuickAddScreen() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<QuickAddResult | null>(null);
   const [showFallback, setShowFallback] = useState(false);
+  const [copyConfirm, setCopyConfirm] = useState(false);
+  // Re-entrancy guards to prevent double WhatsApp intents and stacked copy alerts.
+  const sharingRef = useRef(false);
+  const copyingRef = useRef(false);
 
   const isStampsMode = merchant?.loyaltyType === 'STAMPS';
   const isPerVisit = isStampsMode && (merchant?.stampEarningMode || 'PER_VISIT') === 'PER_VISIT';
@@ -111,6 +117,9 @@ export default function QuickAddScreen() {
 
   const handleSubmit = useCallback(async () => {
     if (!canSubmit) return;
+    // Dismiss keyboard first — keeping it open while a Modal animates in and a
+    // Linking.openURL fires causes jank/freeze on low-end Android.
+    Keyboard.dismiss();
     const country = COUNTRIES[countryIndex];
     const normalizedPhone = normalizePhone(phone, country.dial);
     if (!normalizedPhone || normalizedPhone.length > MAX_PHONE_LEN + 4) {
@@ -140,8 +149,10 @@ export default function QuickAddScreen() {
       );
       const data: QuickAddResult = res.data;
       setResult(data);
-      // Try to open WhatsApp right away
-      void shareViaWhatsApp(data);
+      // Let the success Modal finish its fade-in before launching the WhatsApp
+      // intent — otherwise the simultaneous animation + native intent freezes
+      // the UI on some Android devices.
+      setTimeout(() => { void shareViaWhatsApp(data); }, 350);
     } catch (err: any) {
       const status = err?.response?.status;
       if (status === 409) {
@@ -172,6 +183,8 @@ export default function QuickAddScreen() {
 
   const shareViaWhatsApp = useCallback(
     async (data: QuickAddResult) => {
+      if (sharingRef.current) return; // dedupe double-tap / auto+manual collision
+      sharingRef.current = true;
       const message = buildWaMessage(data);
       // wa.me opens WhatsApp on both Android & iOS (Universal Link). The phone
       // number must be digits only, country code included.
@@ -186,15 +199,29 @@ export default function QuickAddScreen() {
         await Linking.openURL(waUrl);
       } catch {
         setShowFallback(true);
+      } finally {
+        // Release after a beat so a rapid second tap is still deduped.
+        setTimeout(() => { sharingRef.current = false; }, 1200);
       }
     },
     [buildWaMessage],
   );
 
   const handleCopyLink = useCallback(async () => {
-    if (!result) return;
-    await Clipboard.setStringAsync(result.claim.url);
-    Alert.alert(t('quickAdd.linkCopied'));
+    if (!result || copyingRef.current) return;
+    copyingRef.current = true;
+    try {
+      await Clipboard.setStringAsync(result.claim.url);
+      if (Platform.OS === 'android') {
+        ToastAndroid.show(t('quickAdd.linkCopied'), ToastAndroid.SHORT);
+      } else {
+        // Inline transient confirmation instead of stacking Alert dialogs.
+        setCopyConfirm(true);
+        setTimeout(() => setCopyConfirm(false), 1500);
+      }
+    } finally {
+      setTimeout(() => { copyingRef.current = false; }, 400);
+    }
   }, [result, t]);
 
   const handleDone = useCallback(() => {
@@ -346,10 +373,21 @@ export default function QuickAddScreen() {
                   style={[styles.modalBtnSecondary, { borderColor: theme.border }]}
                   onPress={handleCopyLink}
                 >
-                  <Copy size={16} color={theme.text} />
-                  <Text style={[styles.modalBtnSecondaryText, { color: theme.text }]}>
-                    {t('quickAdd.copyLink')}
-                  </Text>
+                  {copyConfirm ? (
+                    <>
+                      <CheckCircle size={16} color={theme.primary} />
+                      <Text style={[styles.modalBtnSecondaryText, { color: theme.primary }]}>
+                        {t('quickAdd.linkCopied')}
+                      </Text>
+                    </>
+                  ) : (
+                    <>
+                      <Copy size={16} color={theme.text} />
+                      <Text style={[styles.modalBtnSecondaryText, { color: theme.text }]}>
+                        {t('quickAdd.copyLink')}
+                      </Text>
+                    </>
+                  )}
                 </TouchableOpacity>
               )}
               {result && showFallback && (
