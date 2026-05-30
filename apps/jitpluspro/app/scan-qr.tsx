@@ -70,6 +70,9 @@ const QR_ALLOWED_HOSTS = new Set<string>([
   'yams.app',
   'www.yams.app',
 ]);
+/** Stable barcode-scanner settings (kept module-level so the CameraView prop
+ * identity never changes — avoids re-configuring the native scanner). */
+const BARCODE_SCANNER_SETTINGS = { barcodeTypes: ['qr'] as const };
 
 // ── Animated Search Bar ───────────────────────────────────
 const FloatingSearchBar = React.memo(function FloatingSearchBar({
@@ -391,7 +394,10 @@ export default function ScanQRScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      dispatch({ type: 'RESET_SCAN' });
+      // Defensive reset: in addition to flipping the scanner back on, clear
+      // any stale picker / detection state in case the user returns via the
+      // OS back gesture (which may not always trigger the modal's close).
+      dispatch({ type: 'SET', payload: { isScanning: true, detected: null, matchedClients: [] } });
       isNavigatingRef.current = false;
       return () => {};
     }, [])
@@ -505,6 +511,10 @@ export default function ScanQRScreen() {
     },
     [isScanning, router, navigateToTransaction, set, t],
   );
+
+  // Gate the scanner handler at the prop level so CameraView sees a stable
+  // identity (or `undefined` while paused) without recomputing the callback.
+  const scannerHandler = isScanning ? handleBarCodeScanned : undefined;
 
   // ── Phone search handler ──
   const handlePhoneSearch = useCallback(async () => {
@@ -645,14 +655,17 @@ export default function ScanQRScreen() {
         style={StyleSheet.absoluteFill}
         facing="back"
         enableTorch={isFlashOn}
-        barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-        onBarcodeScanned={isScanning ? handleBarCodeScanned : undefined}
+        barcodeScannerSettings={BARCODE_SCANNER_SETTINGS}
+        onBarcodeScanned={scannerHandler}
         onMountError={(error) => {
           logError('CameraView', 'Mount error:', error);
           Alert.alert(
             t('scan.cameraErrorTitle'),
             t('scan.cameraErrorMsg'),
-            [{ text: 'OK' }],
+            [
+              { text: t('common.back'), onPress: handleClose, style: 'cancel' },
+              { text: t('common.retry'), onPress: () => router.replace('/scan-qr') },
+            ],
           );
         }}
       />
