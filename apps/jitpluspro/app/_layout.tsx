@@ -592,6 +592,9 @@ function ThemedNavigator() {
               contentStyle: { backgroundColor: theme.bg },
               animation: 'slide_from_right',
               gestureEnabled: true,
+              // Freeze inactive screens so background screens stop re-rendering
+              // on every auth/merchant update (avoids progressive UI slowdown).
+              freezeOnBlur: true,
             }}
           >
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
