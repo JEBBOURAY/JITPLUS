@@ -19,6 +19,13 @@ export const queryKeys = {
   transactionsHistory: ['transactions-history'] as const,
 } as const;
 
+// Single-pass invalidation predicate for both notification-related caches —
+// avoids triggering two separate refetch cycles.
+const isNotificationsQuery = (q: { queryKey: readonly unknown[] }) => {
+  const k = q.queryKey[0];
+  return k === 'notifications' || k === 'notifications-unread-count';
+};
+
 // ── Points / loyalty cards ──
 
 export function usePointsOverview(enabled = true) {
@@ -131,8 +138,8 @@ export function useMarkNotificationAsRead() {
       if (context?.prev) queryClient.setQueryData(queryKeys.unreadCount, context.prev);
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
-      queryClient.invalidateQueries({ queryKey: queryKeys.unreadCount });
+      // Single predicate invalidates both notification queries in one cycle.
+      queryClient.invalidateQueries({ predicate: isNotificationsQuery });
     },
   });
 }
@@ -151,8 +158,7 @@ export function useMarkAllNotificationsAsRead() {
       if (context?.prev) queryClient.setQueryData(queryKeys.unreadCount, context.prev);
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
-      queryClient.invalidateQueries({ queryKey: queryKeys.unreadCount });
+      queryClient.invalidateQueries({ predicate: isNotificationsQuery });
     },
   });
 }
@@ -162,8 +168,7 @@ export function useDismissNotification() {
   return useMutation({
     mutationFn: (notificationId: string) => api.dismissNotification(notificationId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
-      queryClient.invalidateQueries({ queryKey: queryKeys.unreadCount });
+      queryClient.invalidateQueries({ predicate: isNotificationsQuery });
     },
   });
 }
@@ -173,8 +178,7 @@ export function useDismissAllNotifications() {
   return useMutation({
     mutationFn: () => api.dismissAllNotifications(),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
-      queryClient.invalidateQueries({ queryKey: queryKeys.unreadCount });
+      queryClient.invalidateQueries({ predicate: isNotificationsQuery });
     },
   });
 }

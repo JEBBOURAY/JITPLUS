@@ -76,8 +76,12 @@ export default function MerchantDetailScreen() {
       setJustJoined(true);
       setJustLeft(false);
       haptic();
-      queryClient.invalidateQueries({ queryKey: ['merchant', id] });
-      queryClient.invalidateQueries({ queryKey: ['points'] });
+      queryClient.invalidateQueries({
+        predicate: (q) => {
+          const k0 = q.queryKey[0];
+          return k0 === 'points' || (k0 === 'merchant' && q.queryKey[1] === id);
+        },
+      });
     } catch (e) {
       if (__DEV__) console.warn('Join merchant error:', e);
       Alert.alert(t('common.error'), t('merchant.joinError'));
@@ -105,8 +109,12 @@ export default function MerchantDetailScreen() {
             setJustLeft(true);
             setJustJoined(false);
             haptic();
-            queryClient.invalidateQueries({ queryKey: ['merchant', id] });
-            queryClient.invalidateQueries({ queryKey: ['points'] });
+            queryClient.invalidateQueries({
+              predicate: (q) => {
+                const k0 = q.queryKey[0];
+                return k0 === 'points' || (k0 === 'merchant' && q.queryKey[1] === id);
+              },
+            });
           } catch (e) {
             if (__DEV__) console.warn('Leave merchant error:', e);
             Alert.alert(t('common.error'), t('merchant.leaveError'));
@@ -176,8 +184,12 @@ export default function MerchantDetailScreen() {
             try {
               await api.blockMerchant(id);
               haptic();
-              queryClient.invalidateQueries({ queryKey: ['merchants'] });
-              queryClient.invalidateQueries({ queryKey: ['merchant', id] });
+              queryClient.invalidateQueries({
+                predicate: (q) => {
+                  const k0 = q.queryKey[0];
+                  return k0 === 'merchants' || (k0 === 'merchant' && q.queryKey[1] === id);
+                },
+              });
               Alert.alert(
                 t('merchant.blockedTitle'),
                 t('merchant.blockedBody'),

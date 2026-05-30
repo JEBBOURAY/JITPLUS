@@ -488,6 +488,7 @@ function RootLayoutNav() {
             contentStyle: { backgroundColor: theme.bg },
             animation: 'slide_from_right',
             gestureEnabled: true,
+            freezeOnBlur: true,
           }}
         >
           <Stack.Screen name="(tabs)" />

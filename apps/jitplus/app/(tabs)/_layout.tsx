@@ -1,14 +1,25 @@
 import { Tabs, Redirect } from 'expo-router';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuthStore } from '@/stores/authStore';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import CustomTabBar from '@/components/CustomTabBar';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 
+// Module-level stable ref so TabLayout re-renders don't recreate the prop
+// (which would force the entire bottom navigator to remount).
+const renderTabBar = (props: any) => <CustomTabBar {...props} />;
+
 export default function TabLayout() {
   const theme = useTheme();
   const { t } = useLanguage();
-  const { client, isLoading, isAuthenticated, isProfileComplete, needsPasswordSetup, isGuest } = useAuth();
+  // Direct Zustand selectors instead of useAuth() to avoid re-rendering the
+  // entire tab navigator when unrelated auth fields change.
+  const client = useAuthStore((s) => s.client);
+  const isLoading = useAuthStore((s) => s.loading);
+  const isGuest = useAuthStore((s) => s.isGuest);
+  const needsPasswordSetup = useAuthStore((s) => s.needsPasswordSetup);
+  const isAuthenticated = !!client;
+  const isProfileComplete = !!client?.nom && !!client?.prenom && client?.termsAccepted !== false;
 
   if (isLoading) {
     return (
@@ -31,7 +42,7 @@ export default function TabLayout() {
 
   return (
     <Tabs
-      tabBar={(props) => <CustomTabBar {...(props as any)} />}
+      tabBar={renderTabBar}
       screenOptions={{
         headerShown: false,
         lazy: true,
