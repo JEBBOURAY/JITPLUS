@@ -568,9 +568,16 @@ export default function ScanQRScreen() {
               onPress: () => {
                 if (navTimeoutRef.current) clearTimeout(navTimeoutRef.current);
                 isNavigatingRef.current = true;
+                // Pass the raw digits the merchant typed + the country code so
+                // the quick-add form can display the number unchanged (avoids
+                // a brittle regex strip that can clip 1-4 digits depending on
+                // the dial length).
                 router.push({
                   pathname: '/quick-add',
-                  params: { telephone: normalizedPhone },
+                  params: {
+                    localPhone: phoneInput.replace(/[^\d]/g, ''),
+                    countryCode: COUNTRIES[countryIndex].code,
+                  },
                 });
               },
             },

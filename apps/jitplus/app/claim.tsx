@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, BackHandler } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -32,6 +32,11 @@ export default function ClaimScreen() {
 
   const token = typeof params.token === 'string' ? params.token : '';
   const tokenValid = TOKEN_RE.test(token);
+  // Guards against duplicate consume calls. Without this, an unrelated client
+  // reference change (e.g. Zustand store re-emit after a profile refetch) would
+  // re-run the consume effect, hit the backend a second time and fall into the
+  // "already used" branch — misleading the user.
+  const consumedRef = useRef<string | null>(null);
 
   // Disable hardware back during consumption to avoid leaving mid-merge.
   useEffect(() => {
@@ -44,6 +49,8 @@ export default function ClaimScreen() {
       setScreen({ kind: 'error', messageKey: 'errorInvalid' });
       return;
     }
+    if (consumedRef.current === token) return;
+    consumedRef.current = token;
     setScreen({ kind: 'loading' });
     try {
       const result = await api.consumeClaim(token);
@@ -55,6 +62,9 @@ export default function ClaimScreen() {
       if (status === 410) setScreen({ kind: 'error', messageKey: 'errorExpired' });
       else if (status === 403) setScreen({ kind: 'error', messageKey: 'errorAlreadyUsed' });
       else setScreen({ kind: 'error', messageKey: 'errorInvalid' });
+      // Allow a retry only on transient failures (not on the canonical
+      // "already used" / "expired" terminal states).
+      if (status !== 403 && status !== 410) consumedRef.current = null;
     }
   }, [token, tokenValid]);
 
@@ -72,7 +82,9 @@ export default function ClaimScreen() {
       return;
     }
     void consume();
-  }, [client, consume, token, tokenValid]);
+    // Depend on client?.id (not the whole object) so unrelated store mutations
+    // don't re-trigger the consume effect.
+  }, [client?.id, consume, token, tokenValid]);
 
   const goHome = useCallback(() => {
     router.replace('/(tabs)');

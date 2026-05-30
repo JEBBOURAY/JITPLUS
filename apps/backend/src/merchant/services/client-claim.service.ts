@@ -235,7 +235,7 @@ export class ClientClaimService {
       const anonymousId = found.clientId;
       const anonymous = await tx.client.findUnique({
         where: { id: anonymousId },
-        select: { id: true, isAnonymous: true, deletedAt: true },
+        select: { id: true, isAnonymous: true, deletedAt: true, telephone: true, countryCode: true },
       });
       if (!anonymous || anonymous.deletedAt) {
         throw new NotFoundException('Compte introuvable');
@@ -306,6 +306,26 @@ export class ClientClaimService {
           isAnonymous: false,
         },
       });
+
+      // 5) Inherit the anon's phone on the real account when it has none
+      //    (e.g. user registered via Google/Apple/email without a phone).
+      //    Done AFTER the anon's phone is nulled so the unique constraint
+      //    doesn't collide.
+      if (anonymous.telephone) {
+        const real = await tx.client.findUnique({
+          where: { id: realClientId },
+          select: { telephone: true, countryCode: true },
+        });
+        if (real && !real.telephone) {
+          await tx.client.update({
+            where: { id: realClientId },
+            data: {
+              telephone: anonymous.telephone,
+              countryCode: real.countryCode || anonymous.countryCode || 'MA',
+            },
+          });
+        }
+      }
 
       return { claim: found, alreadyConsumed: false, anonymousClient: { id: anonymousId }, mergedCards };
     }, { isolationLevel: 'Serializable' });

@@ -46,15 +46,33 @@ export default function QuickAddScreen() {
   const theme = useTheme();
   const { t } = useLanguage();
   const { merchant } = useAuth();
-  const params = useLocalSearchParams<{ telephone?: string; prenom?: string }>();
+  const params = useLocalSearchParams<{ telephone?: string; localPhone?: string; countryCode?: string; prenom?: string }>();
 
   // ── Form state ──
   const [countryIndex, setCountryIndex] = useState<number>(() => {
-    const idx = COUNTRIES.findIndex((c) => c.code === (merchant?.countryCode ?? 'MA'));
+    // Priority: countryCode passed by scan-qr (preserves user choice) > merchant default
+    const preferredCode = params.countryCode ?? merchant?.countryCode ?? 'MA';
+    const idx = COUNTRIES.findIndex((c) => c.code === preferredCode);
     return idx >= 0 ? idx : 0;
   });
   const [showCountryPicker, setShowCountryPicker] = useState(false);
-  const [phone, setPhone] = useState<string>(() => params.telephone?.replace(/^\+?\d{1,4}/, '') ?? '');
+  // Phone state: prefer the raw `localPhone` digits the merchant typed on the
+  // scan page (lossless). Fall back to the legacy `telephone` param by stripping
+  // a best-guess dial code only when no localPhone is available.
+  const [phone, setPhone] = useState<string>(() => {
+    if (params.localPhone) return params.localPhone.replace(/[^\d]/g, '').slice(0, MAX_PHONE_LEN);
+    if (params.telephone) {
+      const t = params.telephone.replace(/^\+/, '');
+      const dial = (params.countryCode
+        ? COUNTRIES.find((c) => c.code === params.countryCode)?.dial
+        : merchant?.countryCode
+          ? COUNTRIES.find((c) => c.code === merchant.countryCode)?.dial
+          : null) ?? '';
+      const dialDigits = dial.replace(/[^\d]/g, '');
+      return (dialDigits && t.startsWith(dialDigits) ? t.slice(dialDigits.length) : t).slice(0, MAX_PHONE_LEN);
+    }
+    return '';
+  });
   const [prenom, setPrenom] = useState<string>(params.prenom ?? '');
   const [amount, setAmount] = useState<string>('');
   const [loading, setLoading] = useState(false);
