@@ -18,6 +18,7 @@ import { MailService } from '../mail/mail.service';
 import { pickEmailLang } from '../mail/transactional-i18n';
 import { PrismaService } from '../prisma/prisma.service';
 import { ClientClaimService } from '../merchant/services/client-claim.service';
+import { withRetry } from '../common/utils/retry-transaction.helper';
 
 @Injectable()
 export class ClientService {
@@ -101,87 +102,92 @@ export class ClientService {
       dateNaissance?: string | null;
     },
   ) {
-    // Vérifier l'unicité de l'email s'il est modifié
-    if (updates.email) {
-      const normalizedEmail = updates.email.trim().toLowerCase();
-      const existing = await this.clientRepo.findFirst({
-        where: { email: normalizedEmail, deletedAt: null },
-      });
-      if (existing && existing.id !== clientId) {
-        throw new ConflictException('Cette adresse email est déjà utilisée par un autre compte.');
-      }
-      updates.email = normalizedEmail;
-    }
+    // Normalise inputs once outside the transaction.
+    if (updates.email) updates.email = updates.email.trim().toLowerCase();
+    if (updates.telephone) updates.telephone = updates.telephone.trim();
 
-    // Vérifier l'unicité du téléphone s'il est modifié (comptes actifs uniquement)
-    if (updates.telephone) {
-      const normalizedPhone = updates.telephone.trim();
-      const existing = await this.clientRepo.findFirst({
-        where: { telephone: normalizedPhone, deletedAt: null },
-      });
-      if (existing && existing.id !== clientId) {
-        if ((existing as any).isAnonymous) {
-          throw new ConflictException(
-            await this.clientClaimService.buildAnonymousPhoneConflictPayload(existing.id),
-          );
-        }
-        throw new ConflictException('Ce numéro de téléphone est déjà utilisé par un autre compte.');
-      }
-      updates.telephone = normalizedPhone;
-    }
-
-    // Convert dateNaissance ISO string → Date, or null to clear
     const { dateNaissance: dateNaissanceStr, language, ...restUpdates } = updates;
-    const data: {
+    const baseData: {
       prenom?: string; nom?: string; email?: string; telephone?: string;
       countryCode?: string; shareInfoMerchants?: boolean; notifPush?: boolean; notifEmail?: boolean; notifWhatsapp?: boolean;
       language?: string;
       dateNaissance?: Date | null;
       emailVerified?: boolean; telephoneVerified?: boolean;
     } = { ...restUpdates };
-    if (language) {
-      data.language = language;
-    }
+    if (language) baseData.language = language;
     if ('dateNaissance' in updates) {
-      data.dateNaissance = dateNaissanceStr ? new Date(dateNaissanceStr) : null;
+      baseData.dateNaissance = dateNaissanceStr ? new Date(dateNaissanceStr) : null;
     }
 
-    // Reset verification when contact info changes
-    if (updates.email) {
-      const current = await this.clientRepo.findUnique({ where: { id: clientId }, select: { email: true } });
-      if (current && current.email !== updates.email) {
-        data.emailVerified = false;
-      }
-    }
-    if (updates.telephone) {
-      const current = await this.clientRepo.findUnique({ where: { id: clientId }, select: { telephone: true } });
-      if (current && current.telephone !== updates.telephone) {
-        data.telephoneVerified = false;
-      }
-    }
+    // Wrap uniqueness checks + update in a single Serializable transaction so
+    // two concurrent profile edits cannot both pass the "email is free" check
+    // and then collide on the unique constraint (P2002 500 to the second user).
+    return withRetry(() =>
+      this.txRunner.run(async (tx) => {
+        if (updates.email) {
+          const existing = await tx.client.findFirst({
+            where: { email: updates.email, deletedAt: null },
+            select: { id: true },
+          });
+          if (existing && existing.id !== clientId) {
+            throw new ConflictException('Cette adresse email est déjà utilisée par un autre compte.');
+          }
+        }
 
-    return this.clientRepo.update({
-      where: { id: clientId },
-      data,
-      select: {
-        id: true,
-        prenom: true,
-        nom: true,
-        email: true,
-        emailVerified: true,
-        telephone: true,
-        telephoneVerified: true,
-        countryCode: true,
-        shareInfoMerchants: true,
-        notifPush: true,
-        notifEmail: true,
-        notifWhatsapp: true,
-        language: true,
-        dateNaissance: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
+        if (updates.telephone) {
+          const existing = await tx.client.findFirst({
+            where: { telephone: updates.telephone, deletedAt: null },
+            select: { id: true, isAnonymous: true },
+          });
+          if (existing && existing.id !== clientId) {
+            if ((existing as any).isAnonymous) {
+              throw new ConflictException(
+                await this.clientClaimService.buildAnonymousPhoneConflictPayload(existing.id),
+              );
+            }
+            throw new ConflictException('Ce numéro de téléphone est déjà utilisé par un autre compte.');
+          }
+        }
+
+        // Reset verification flags when contact info actually changes.
+        const data = { ...baseData };
+        if (updates.email || updates.telephone) {
+          const current = await tx.client.findUnique({
+            where: { id: clientId },
+            select: { email: true, telephone: true },
+          });
+          if (updates.email && current && current.email !== updates.email) {
+            data.emailVerified = false;
+          }
+          if (updates.telephone && current && current.telephone !== updates.telephone) {
+            data.telephoneVerified = false;
+          }
+        }
+
+        return tx.client.update({
+          where: { id: clientId },
+          data,
+          select: {
+            id: true,
+            prenom: true,
+            nom: true,
+            email: true,
+            emailVerified: true,
+            telephone: true,
+            telephoneVerified: true,
+            countryCode: true,
+            shareInfoMerchants: true,
+            notifPush: true,
+            notifEmail: true,
+            notifWhatsapp: true,
+            language: true,
+            dateNaissance: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        });
+      }, { isolationLevel: 'Serializable' }),
+    );
   }
 
   async deleteAccount(clientId: string, password?: string) {

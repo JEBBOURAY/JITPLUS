@@ -168,34 +168,39 @@ export class ClientReferralService {
    * Uses atomic updateMany + transaction to prevent double-crediting race conditions.
    */
   async creditClientForMerchant(merchantId: string): Promise<void> {
-    // Atomic guard: only update PENDING â†’ VALIDATED (prevents double-credit)
-    const { count } = await this.clientReferralRepo.updateMany({
-      where: { merchantId, status: 'PENDING' },
-      data: {
-        status: 'VALIDATED',
-        amount: CLIENT_REFERRAL_BONUS_AMOUNT,
-        validatedAt: new Date(),
-      },
+    // All three steps (atomic status flip, lookup, balance credit) run inside
+    // a single transaction so a crash between steps cannot leave a VALIDATED
+    // referral with no credit (or vice-versa).
+    const creditedClientId = await this.tx.run(async (txc) => {
+      const { count } = await txc.clientReferral.updateMany({
+        where: { merchantId, status: 'PENDING' },
+        data: {
+          status: 'VALIDATED',
+          amount: CLIENT_REFERRAL_BONUS_AMOUNT,
+          validatedAt: new Date(),
+        },
+      });
+      if (count === 0) return null;
+
+      const referral = await txc.clientReferral.findUnique({
+        where: { merchantId },
+        select: { clientId: true },
+      });
+      if (!referral) return null;
+
+      await txc.client.update({
+        where: { id: referral.clientId },
+        data: {
+          referralBalance: { increment: CLIENT_REFERRAL_BONUS_AMOUNT },
+        },
+      });
+
+      return referral.clientId;
     });
 
-    if (count === 0) return; // no pending referral or already validated
+    if (!creditedClientId) return;
 
-    // Fetch the clientId to credit (needed after atomic update)
-    const referral = await this.clientReferralRepo.findUnique({
-      where: { merchantId },
-      select: { clientId: true },
-    });
-
-    if (!referral) return;
-
-    await this.clientRepo.update({
-      where: { id: referral.clientId },
-      data: {
-        referralBalance: { increment: CLIENT_REFERRAL_BONUS_AMOUNT },
-      },
-    });
-
-    await this.invalidateCache(referral.clientId);
+    await this.invalidateCache(creditedClientId);
 
     this.logger.log(
       `Client ${referral.clientId} credited ${CLIENT_REFERRAL_BONUS_AMOUNT} DH for merchant ${merchantId} going PREMIUM`,

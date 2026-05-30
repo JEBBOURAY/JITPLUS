@@ -940,6 +940,7 @@ export class AdminAuthService {
         telephone: null,
         password: null,
         googleId: null,
+        appleId: null,
         pushToken: null,
         nom: null,
         prenom: null,

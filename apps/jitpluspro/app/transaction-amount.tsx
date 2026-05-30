@@ -154,19 +154,24 @@ export default function TransactionAmountScreen() {
   const stampsForReward = targetReward?.cout || 10;
   const { t, locale } = useLanguage();
 
+  // Extract scalar fields so the effects below only re-run when the relevant
+  // numeric value changes, not whenever an unrelated merchant store mutation
+  // (push-token refresh, language sync, profile refetch) swaps the reference.
+  const merchantPointsRate = merchant?.pointsRate ?? null;
+
   const calculatePoints = useCallback(() => {
     const amountNum = parseFloat(amount) || 0;
-    if (amountNum === 0 || !merchant) {
+    if (amountNum === 0 || merchantPointsRate == null) {
       set({ points: 0 });
       return;
     }
-    const pointsRate = merchant.pointsRate || 10;
+    const pointsRate = merchantPointsRate || 10;
     if (!Number.isFinite(pointsRate) || pointsRate <= 0) {
       set({ points: 0 });
       return;
     }
     set({ points: Math.floor(amountNum / pointsRate) });
-  }, [amount, merchant]);
+  }, [amount, merchantPointsRate]);
 
   useEffect(() => {
     if (!isStampsMode) calculatePoints();
@@ -179,18 +184,18 @@ export default function TransactionAmountScreen() {
         return;
       }
       const amountNum = parseFloat(stampAmount) || 0;
-      if (amountNum === 0 || !merchant) {
+      if (amountNum === 0 || merchantPointsRate == null) {
         set({ stamps: 0 });
         return;
       }
-      const rate = merchant.pointsRate || 10;
+      const rate = merchantPointsRate || 10;
       if (!Number.isFinite(rate) || rate <= 0) {
         set({ stamps: 0 });
         return;
       }
       set({ stamps: Math.floor(amountNum / rate) });
     }
-  }, [stampAmount, merchant, isStampsMode, isPerVisit]);
+  }, [stampAmount, merchantPointsRate, isStampsMode, isPerVisit]);
 
   // ── Amount input handler (Points mode) ──
   const handleAmountChange = useCallback((text: string) => {

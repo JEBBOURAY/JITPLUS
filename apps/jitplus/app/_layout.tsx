@@ -287,7 +287,20 @@ function RootLayoutNav() {
     const CLAIM_LINK_RE = /^(?:jitplus:\/\/claim|https?:\/\/[^/]+\/d\/claim)(?:\?(.*))?$/i;
     const CLAIM_TOKEN_RE = /^[A-Za-z0-9_-]{16,64}$/;
 
+    // Dedup guard: on cold start with a deep link, both `getInitialURL()` and
+    // `addEventListener('url')` can fire for the same URL on iOS / some Android
+    // OEM launchers. Without this, the claim/share handler would push the same
+    // route twice and re-trigger the same backend call (e.g. POST /claim).
+    let lastUrl: string | null = null;
+    let lastUrlAt = 0;
+    const DEDUP_WINDOW_MS = 1500;
+
     const handleUrl = (url: string) => {
+      const now = Date.now();
+      if (url === lastUrl && now - lastUrlAt < DEDUP_WINDOW_MS) return;
+      lastUrl = url;
+      lastUrlAt = now;
+
       // 1. Claim link?
       const c = CLAIM_LINK_RE.exec(url);
       if (c) {
