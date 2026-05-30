@@ -174,10 +174,14 @@ const FloatingSearchBar = React.memo(function FloatingSearchBar({
 });
 
 // ── Animated Scan Line ────────────────────────────────────
-const ScanLine = React.memo(function ScanLine({ scanSize }: { scanSize: number }) {
+const ScanLine = React.memo(function ScanLine({ scanSize, active }: { scanSize: number; active: boolean }) {
   const translateY = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    if (!active) {
+      translateY.setValue(0);
+      return;
+    }
     const anim = Animated.loop(
       Animated.sequence([
         Animated.timing(translateY, {
@@ -194,7 +198,7 @@ const ScanLine = React.memo(function ScanLine({ scanSize }: { scanSize: number }
     );
     anim.start();
     return () => anim.stop();
-  }, []);
+  }, [active, scanSize]);
 
   const lineStyle = {
     transform: [{ translateY }],
@@ -399,7 +403,12 @@ export default function ScanQRScreen() {
       // OS back gesture (which may not always trigger the modal's close).
       dispatch({ type: 'SET', payload: { isScanning: true, detected: null, matchedClients: [] } });
       isNavigatingRef.current = false;
-      return () => {};
+      // Pause camera + scan-line animation when navigating away (saves CPU/battery
+      // and prevents the native camera pipeline from blocking the JS thread when
+      // the user returns from a backgrounded share flow like WhatsApp).
+      return () => {
+        dispatch({ type: 'SET', payload: { isScanning: false } });
+      };
     }, [])
   );
 
@@ -661,6 +670,7 @@ export default function ScanQRScreen() {
       <CameraView
         style={StyleSheet.absoluteFill}
         facing="back"
+        active={isScanning}
         enableTorch={isFlashOn}
         barcodeScannerSettings={BARCODE_SCANNER_SETTINGS}
         onBarcodeScanned={scannerHandler}
@@ -691,7 +701,7 @@ export default function ScanQRScreen() {
             <ViewfinderCorner position="tr" />
             <ViewfinderCorner position="bl" />
             <ViewfinderCorner position="br" />
-            <ScanLine scanSize={SCAN_SIZE} />
+            <ScanLine scanSize={SCAN_SIZE} active={isScanning} />
             {detected && <DetectedOverlay message={detected} />}
           </Animated.View>
           <View style={styles.overlaySide} />
