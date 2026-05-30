@@ -203,7 +203,7 @@ export class ClientReferralService {
     await this.invalidateCache(creditedClientId);
 
     this.logger.log(
-      `Client ${referral.clientId} credited ${CLIENT_REFERRAL_BONUS_AMOUNT} DH for merchant ${merchantId} going PREMIUM`,
+      `Client ${creditedClientId} credited ${CLIENT_REFERRAL_BONUS_AMOUNT} DH for merchant ${merchantId} going PREMIUM`,
     );
   }
 
