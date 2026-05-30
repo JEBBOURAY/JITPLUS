@@ -455,12 +455,23 @@ export class NotificationsService {
     let successCount = 0;
     let failureCount = 0;
 
+    // E.164 check: country code (1-3 digits, leading non-zero) + 4-14 digits.
+    // Twilio silently rejects malformed numbers, so we count them as failures
+    // up front instead of pretending the broadcast succeeded.
+    const E164_RE = /^\+[1-9]\d{6,14}$/;
+
     // Process in batches of 5 to balance speed vs Twilio rate limits
     const WA_CONCURRENCY = 5;
     for (let i = 0; i < recipients.length; i += WA_CONCURRENCY) {
       const batch = recipients.slice(i, i + WA_CONCURRENCY);
       const results = await Promise.allSettled(
         batch.map(async (recipient) => {
+          if (!E164_RE.test(recipient.telephone)) {
+            this.logger.warn(
+              `Skipping WhatsApp recipient ${recipient.id}: phone not E.164 (${recipient.telephone})`,
+            );
+            return false;
+          }
           const clientName = recipient.prenom || 'cher client';
           const formattedMessage = buildWhatsAppBroadcastMessage({
               merchantName: merchant.nom,

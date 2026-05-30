@@ -67,7 +67,7 @@ export class RegisterMerchantDto {
 
   @IsString()
   @IsOptional()
-  @Matches(/^\+?[0-9]{7,15}$/, { message: 'Numéro de téléphone invalide' })
+  @Matches(/^\+?[0-9]{8,15}$/, { message: 'Numéro de téléphone invalide' })
   @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
   phoneNumber?: string;
 
