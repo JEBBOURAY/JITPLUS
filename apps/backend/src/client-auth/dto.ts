@@ -107,7 +107,9 @@ export class ClientUpdateProfileDto {
 
   @IsOptional()
   @IsString()
-  @Matches(/^[0-9+\s\-()]{10,15}$/, { message: 'Numéro de téléphone invalide' })
+  // Aligned with QuickAddTransactionDto so formats valid on signup are also
+  // valid on profile edit. Lookahead requires at least 6 actual digits.
+  @Matches(/^(?=(?:[^\d]*\d){6,})[+\d\s().-]{6,25}$/, { message: 'Numéro de téléphone invalide' })
   telephone?: string;
 
   @IsOptional()

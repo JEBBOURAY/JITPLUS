@@ -21,7 +21,9 @@ export class QuickAddTransactionDto {
   /** Local or E.164 phone. Backend normalises to E.164 using countryCode. */
   @IsString()
   @Length(6, 25)
-  @Matches(/^[+\d\s().-]+$/, { message: 'Format de téléphone invalide' })
+  // Lookahead enforces at least 6 actual digits so '+++---' or '(   )' can't
+  // pass even though they fit the length/character class.
+  @Matches(/^(?=(?:[^\d]*\d){6,})[+\d\s().-]+$/, { message: 'Format de téléphone invalide' })
   telephone: string;
 
   /** ISO-3166-1 alpha-2 country code. Defaults to MA on the backend. */

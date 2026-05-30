@@ -97,13 +97,21 @@ export function useProfileEditing(
     setEditEmail(client?.email || '');
     const rawPhone = client?.telephone || '';
     if (rawPhone.startsWith('+')) {
-      const match = COUNTRY_CODES.find((c) => rawPhone.startsWith(c.dial));
+      // Longest-dial-first match so '+1' (US) doesn't shadow '+12' / '+123'
+      // dial codes when both are present in COUNTRY_CODES.
+      const match = [...COUNTRY_CODES]
+        .sort((a, b) => b.dial.length - a.dial.length)
+        .find((c) => rawPhone.startsWith(c.dial));
       if (match) {
         setEditPhoneCountry(match);
         setEditPhoneLocal(rawPhone.slice(match.dial.length));
       } else {
+        // Unknown dial code — preserve the full +XXX number in the local
+        // field. The save path detects a leading '+' and sends as-is
+        // instead of concatenating country.dial again (would corrupt to
+        // e.g. '+212+33...').
         setEditPhoneCountry(DEFAULT_COUNTRY);
-        setEditPhoneLocal(rawPhone.replace(/[^0-9]/g, ''));
+        setEditPhoneLocal(rawPhone);
       }
     } else {
       setEditPhoneCountry(DEFAULT_COUNTRY);
@@ -208,7 +216,12 @@ export function useProfileEditing(
         prenom: editPrenom.trim(),
         nom: editNom.trim(),
         ...(emailTrimmed ? { email: emailTrimmed } : {}),
-        ...(phoneTrimmed ? { telephone: `${editPhoneCountry.dial}${phoneTrimmed}` } : {}),
+        // If the local field already carries a leading '+' (unknown dial code
+        // preserved by startEditing), send it as-is. Otherwise prepend the
+        // selected country dial.
+        ...(phoneTrimmed
+          ? { telephone: phoneTrimmed.startsWith('+') ? phoneTrimmed : `${editPhoneCountry.dial}${phoneTrimmed}` }
+          : {}),
         ...(dateNaissancePayload !== undefined ? { dateNaissance: dateNaissancePayload } : {}),
       });
       await refreshProfile?.();
