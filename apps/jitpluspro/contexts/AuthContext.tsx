@@ -129,8 +129,8 @@ const registerPushToken = async (promptIfNeeded = false) => {
     // Read the stored app language to sync with backend
     const language = await AsyncStorage.getItem('jitpluspro_language') || 'fr';
 
-    // Envoyer au backend
-    await api.patch('/merchant/push-token', { pushToken, language });
+    // Envoyer au backend (deduped — see services/merchantPushToken.ts)
+    await sendMerchantPushToken(api, pushToken, language);
     logInfo('Push', 'Token enregistré sur le backend');
   } catch (error) {
     logWarn('Push', 'Erreur enregistrement token:', error);
