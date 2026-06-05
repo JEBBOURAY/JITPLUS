@@ -368,7 +368,7 @@ export default function StorePreviewScreen() {
         allowsMultipleSelection: false,
         allowsEditing: true,
         aspect: [3, 2],
-        quality: 0.9,
+        quality: 0.7,
       });
       if (result.canceled || !result.assets?.length) return;
       const asset = result.assets[0];

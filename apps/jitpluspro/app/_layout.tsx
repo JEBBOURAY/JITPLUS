@@ -18,6 +18,7 @@ import * as SecureStore from 'expo-secure-store';
 import Constants from 'expo-constants';
 import { useRealtimeSocket } from '@jitplus/shared/src/useRealtimeSocket';
 import { useRealtimeEvents } from '@/hooks/useRealtimeEvents';
+import { useAppForegroundRefresh } from '@/hooks/useAppForegroundRefresh';
 import api, { getServerBaseUrl } from '@/services/api';
 import { logError, logWarn, logInfo } from '@/utils/devLogger';
 
@@ -100,6 +101,11 @@ const queryClient = new QueryClient({
       // before the persister considers it valid.
       gcTime: CACHE_MAX_AGE,
       refetchOnReconnect: true,
+      // Disabled to prevent a "refetch storm" on app resume — 15 persisted
+      // queries firing in parallel was blocking the JS thread for several
+      // seconds. A targeted post-resume refresh is done by
+      // useAppForegroundRefresh (admin-notif badge + transactions only).
+      refetchOnWindowFocus: false,
     },
   },
 });
@@ -329,6 +335,12 @@ const splashStyles = StyleSheet.create({
   },
 });
 
+// Memoized to avoid the StatusBar native module being called on every parent
+// re-render (logcat showed 102 "Ignored status bar change" warnings per 3 min).
+const StatusBarMemo = React.memo(function StatusBarMemo({ isDark }: { isDark: boolean }) {
+  return <StatusBar style={isDark ? 'light' : 'dark'} translucent backgroundColor="transparent" />;
+});
+
 function RootLayoutNav() {
   return (
     <SafeAreaProvider>
@@ -458,6 +470,7 @@ function ThemedNavigator() {
     enabled: !!merchant,
   });
   useRealtimeEvents(socket);
+  useAppForegroundRefresh();
 
   // ── Android notification channels + FCM listeners ─────────
   useEffect(() => {
@@ -585,7 +598,7 @@ function ThemedNavigator() {
       {(status === 'update' || status === 'maintenance') && (
         <ForceUpdateModal status={status} storeUrl={storeUrl} />
       )}
-      <StatusBar style={isDark ? 'light' : 'dark'} translucent backgroundColor="transparent" />
+      <StatusBarMemo isDark={isDark} />
       <Stack
             screenOptions={{
               headerShown: false,

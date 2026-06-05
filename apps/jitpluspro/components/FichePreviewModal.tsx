@@ -638,6 +638,8 @@ function FichePreviewModalInner({
                       source={resolveImageUrl(url)}
                       style={{ width: SCREEN_W, height: '80%' }}
                       contentFit="contain"
+                      cachePolicy="disk"
+                      recyclingKey={url}
                     />
                   </View>
                 ))}

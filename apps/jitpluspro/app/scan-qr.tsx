@@ -14,6 +14,7 @@ import {
   ViewStyle,
   useWindowDimensions,
   Animated,
+  AppState,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { logError } from '@/utils/devLogger';
@@ -411,6 +412,16 @@ export default function ScanQRScreen() {
       };
     }, [])
   );
+
+  // Pause CameraView while the app is backgrounded. Without this, Camera2 holds
+  // onto session state, then triggers a 5s reconfigure on resume that blocks
+  // the JS thread (root cause of the post-background freeze).
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (s) => {
+      dispatch({ type: 'SET', payload: { isScanning: s === 'active' } });
+    });
+    return () => sub.remove();
+  }, []);
 
   // ── Navigate to transaction after resolving clientId ──
   const navigateToTransaction = useCallback((clientId: string) => {

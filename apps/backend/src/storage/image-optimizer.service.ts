@@ -10,7 +10,7 @@ interface ImageProfile {
 const PROFILES: Record<string, ImageProfile> = {
   logo: { maxWidth: 512, maxHeight: 512, quality: 80 },
   cover: { maxWidth: 1200, maxHeight: 600, quality: 80 },
-  cardBg: { maxWidth: 1200, maxHeight: 800, quality: 82 },
+  cardBg: { maxWidth: 800, maxHeight: 500, quality: 78 },
   gallery: { maxWidth: 1200, maxHeight: 1200, quality: 82 },
   reward: { maxWidth: 600, maxHeight: 600, quality: 80 },
   default: { maxWidth: 1024, maxHeight: 1024, quality: 80 },
