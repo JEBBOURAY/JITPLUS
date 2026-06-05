@@ -133,7 +133,13 @@ try {
         : Constants.expoConfig?.android?.versionCode ?? '0'
     ),
     tracesSampleRate: 0.05,
-    maxBreadcrumbs: 50,
+    maxBreadcrumbs: 30,
+    // Disabled to reduce JNI global-ref pressure on Android (AddGlobalRef abort)
+    enableAutoPerformanceTracing: false,
+    enableNativeFramesTracking: false,
+    enableAppStartTracking: false,
+    enableUserInteractionTracing: false,
+    enableStallTracking: false,
     attachScreenshot: false, // Disabled: screenshots can capture PII (names, cards, balances)
     attachViewHierarchy: false, // Disabled: view hierarchy can leak PII
     ignoreErrors: [

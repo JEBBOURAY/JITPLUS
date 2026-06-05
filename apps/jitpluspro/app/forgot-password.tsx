@@ -59,8 +59,10 @@ export default function ForgotPasswordScreen() {
 
   // Auto-focus OTP input when step changes
   useEffect(() => {
-    if (step === 'otp') setTimeout(() => otpInputRef.current?.focus(), 300);
-    if (step === 'password') setTimeout(() => passwordInputRef.current?.focus(), 300);
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    if (step === 'otp') timers.push(setTimeout(() => otpInputRef.current?.focus(), 300));
+    if (step === 'password') timers.push(setTimeout(() => passwordInputRef.current?.focus(), 300));
+    return () => { for (const t of timers) clearTimeout(t); };
   }, [step]);
 
   const emailValid = isValidEmail(email);
