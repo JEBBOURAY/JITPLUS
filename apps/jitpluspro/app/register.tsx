@@ -233,6 +233,15 @@ export default function RegisterScreen() {
   // Google/Apple users skip password step → 3 effective steps (account, store, social)
   const isSocialAuth = !!googleIdToken || !!appleIdentityToken;
   const effectiveTotal = isSocialAuth ? 3 : TOTAL_STEPS;
+  // Defensive clamp: if isSocialAuth flips (Google clicked after advancing in
+  // email flow), step can exceed stepTitles.length-1 → crash on stepTitles[step].title.
+  const safeStep = Math.min(Math.max(step, 0), effectiveTotal - 1);
+
+  // Resync internal state if it got out of range (e.g. after a Google token
+  // arrived while user was already past step 0 in the email flow).
+  useEffect(() => {
+    if (step !== safeStep) dispatch({ type: 'SET', payload: { step: safeStep } });
+  }, [step, safeStep]);
 
   // ── Entrance animations ──
   const headerAnim = useRef(new Animated.Value(0)).current;
@@ -539,16 +548,17 @@ export default function RegisterScreen() {
               {/* Step indicator */}
               <StepIndicator current={step} total={effectiveTotal} theme={theme} labels={stepShortLabels} />
 
-              {/* Step title */}
+              {/* Step title — clamp step to valid range to avoid crash when
+                  isSocialAuth flips mid-flow (stepTitles shrinks 4 -> 3). */}
               <View style={styles.stepHeader}>
                 <Text style={[styles.stepLabel, { color: palette.charbon }]}>
-                  {t('registerExtra.stepLabel', { current: step + 1, total: effectiveTotal })}
+                  {t('registerExtra.stepLabel', { current: safeStep + 1, total: effectiveTotal })}
                 </Text>
                 <Text style={[styles.title, { color: theme.text }]}>
-                  {stepTitles[step].title}
+                  {stepTitles[safeStep]?.title ?? ''}
                 </Text>
                 <Text style={[styles.subtitle, { color: theme.textMuted }]}>
-                  {stepTitles[step].sub}
+                  {stepTitles[safeStep]?.sub ?? ''}
                 </Text>
               </View>
             </Animated.View>
