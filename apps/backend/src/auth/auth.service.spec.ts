@@ -10,6 +10,7 @@ import { MerchantReferralService } from '../merchant/services/merchant-referral.
 import { ClientReferralService } from '../client-auth/client-referral.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { UnauthorizedException, ConflictException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import {
   MERCHANT_REPOSITORY,
   TEAM_MEMBER_REPOSITORY,
@@ -294,8 +295,15 @@ describe('AuthService', () => {
   // ── register ───────────────────────────────────────────────────────────────
 
   describe('register()', () => {
-    it('throws ConflictException if email already exists', async () => {
-      mockPrismaService.merchant.findUnique.mockResolvedValueOnce({ id: 'existing-id' });
+    it('throws ConflictException when the DB raises P2002 on email uniqueness', async () => {
+      // Uniqueness is now enforced solely by the DB unique constraint (P2002 catch);
+      // there is no pre-check findUnique, which would create a TOCTOU window under
+      // concurrent submits.
+      const p2002 = new Prisma.PrismaClientKnownRequestError(
+        'Unique constraint failed on the fields: (`email`)',
+        { code: 'P2002', clientVersion: 'test' } as any,
+      );
+      mockPrismaService.merchant.create.mockRejectedValueOnce(p2002);
 
       await expect(
         service.register({

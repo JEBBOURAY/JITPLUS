@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, ConflictException, BadRequestException, HttpException, HttpStatus, Logger, Inject } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ConflictException, BadRequestException, HttpException, HttpStatus, Logger, Inject, OnApplicationBootstrap } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { JwtService } from '@nestjs/jwt';
@@ -45,7 +45,7 @@ export interface AuthResult {
 }
 
 @Injectable()
-export class AuthService {
+export class AuthService implements OnApplicationBootstrap {
   private readonly logger = new Logger(AuthService.name);
 
   /**
@@ -56,8 +56,22 @@ export class AuthService {
    */
   private static readonly DUMMY_HASH = bcrypt.hashSync('dummy-password-never-used', 12);
 
+  /**
+   * Bcrypt hash of a random secret never exposed — used as password placeholder
+   * for OAuth-only accounts (Google/Apple). bcrypt.compare against it always
+   * returns false (no plaintext can produce it), preventing password login on
+   * social accounts while keeping the password column non-null. Computed once
+   * at boot instead of per-registration (saves ~300ms per OAuth signup).
+   */
+  private static readonly OAUTH_PLACEHOLDER_HASH = bcrypt.hashSync(
+    randomBytes(32).toString('hex'),
+    BCRYPT_SALT_ROUNDS,
+  );
+
   private readonly googleClient: OAuth2Client;
   private appleJwksCache: { keys: any[]; fetchedAt: number } | null = null;
+  /** Singleflight guard: dedupe concurrent JWKS fetches on cold start. */
+  private appleJwksPromise: Promise<any[]> | null = null;
 
   constructor(
     @Inject(MERCHANT_REPOSITORY) private merchantRepo: IMerchantRepository,
@@ -75,6 +89,16 @@ export class AuthService {
     private configService: ConfigService,
   ) {
     this.googleClient = new OAuth2Client(this.configService.get<string>('GOOGLE_CLIENT_ID'));
+  }
+
+  /**
+   * Pre-warm Apple JWKS at boot so the first /apple-register/login request
+   * doesn't pay the cold-cache fetch latency (avoids tail-latency spikes).
+   */
+  onApplicationBootstrap(): void {
+    this.getApplePublicKeys().catch((err) =>
+      this.logger.warn('Apple JWKS pre-warm failed (non-fatal)', errMsg(err)),
+    );
   }
 
   /** Lockout DB ops for Merchant model */
@@ -258,6 +282,8 @@ export class AuthService {
     userEmail?: string,
     userName?: string,
     refreshTokenHash?: string,
+    /** When true (e.g. at first registration), skips the deactivate/evict bookkeeping. */
+    skipDeactivateOthers = false,
   ): Promise<{ isNewDevice: boolean }> {
     const sessionData = {
       tokenId: sessionId,
@@ -271,6 +297,14 @@ export class AuthService {
       lastActiveAt: new Date(),
       ...(refreshTokenHash ? { refreshTokenHash } : {}),
     };
+
+    // Fast path: brand-new merchant has no prior sessions — single INSERT, no tx.
+    if (skipDeactivateOthers) {
+      await this.deviceSessionRepo.create({
+        data: { merchantId, deviceId: loginDto.deviceId, ...sessionData },
+      });
+      return { isNewDevice: true };
+    }
 
     let isNewDevice = true;
     await this.txRunner.run(async (tx) => {
@@ -552,14 +586,9 @@ export class AuthService {
   }
 
   async register(registerDto: RegisterMerchantDto): Promise<AuthResult> {
-    const existingMerchant = await this.merchantRepo.findUnique({
-      where: { email: registerDto.email },
-      select: { id: true },
-    });
-
-    if (existingMerchant) {
-      throw new ConflictException('Un compte commerçant avec cet email existe déjà');
-    }
+    // Email uniqueness is enforced by the DB UNIQUE constraint — a pre-check
+    // findUnique here would only add a DB round-trip (and create a TOCTOU window
+    // under concurrent submits). We catch P2002 below as the single source of truth.
 
     const hashedPassword = await bcrypt.hash(registerDto.password, BCRYPT_SALT_ROUNDS);
     const trialData = this.planService.getTrialData();
@@ -658,18 +687,27 @@ export class AuthService {
 
     // Welcome email is deferred until email verification (OTP validated)
 
-    // Send verification email (fire-and-forget)
-    this.sendVerificationEmail(merchant.email)
-      .catch((err) => this.logger.warn('Verification email failed', errMsg(err)));
+    // Send verification email (fire-and-forget, scheduled OUT of the request critical path).
+    // setImmediate ensures the HTTP response is flushed before SMTP work starts.
+    // Capture the email synchronously — avoid retaining a closure on the merchant object.
+    const verificationEmail = merchant.email;
+    setImmediate(() => {
+      this.sendVerificationEmail(verificationEmail)
+        .catch((err) => this.logger.warn('Verification email failed', errMsg(err)));
+    });
 
     // Merchant-to-merchant referral bonus is deferred until the referred merchant
     // subscribes to paid PREMIUM (handled automatically in adminActivatePremium,
     // upgrade-request approval, adminSetPlanDates, and applyEarnedReferralMonths).
 
-    // Create client referral record (fire-and-forget)
+    // Create client referral record (fire-and-forget, off the critical path)
     if (referredByClientId) {
-      this.clientReferralService.createReferral(referredByClientId, merchant.id)
-        .catch((err) => this.logger.warn('Client referral creation failed', errMsg(err)));
+      const newMerchantId = merchant.id;
+      const clientReferrerId = referredByClientId;
+      setImmediate(() => {
+        this.clientReferralService.createReferral(clientReferrerId, newMerchantId)
+          .catch((err) => this.logger.warn('Client referral creation failed', errMsg(err)));
+      });
     }
 
     const sessionId = randomUUID();
@@ -689,6 +727,7 @@ export class AuthService {
       await this.registerDeviceSession(
         merchant.id, sessionId, registerDto as any, undefined,
         'merchant', merchant.email, nom, refreshHash,
+        /* skipDeactivateOthers */ true,
       );
     } else {
       await this.deviceSessionRepo.create({
@@ -915,8 +954,9 @@ export class AuthService {
 
     let merchant;
     try {
-      // Google-only account: set a random password hash (cannot be used for login)
-      const dummyPasswordHash = await bcrypt.hash(randomBytes(32).toString('hex'), BCRYPT_SALT_ROUNDS);
+      // Google-only account: use the constant placeholder hash (computed once at boot)
+      // so we don't pay a ~300ms bcrypt.hash on every OAuth signup.
+      const dummyPasswordHash = AuthService.OAUTH_PLACEHOLDER_HASH;
 
       merchant = await this.merchantRepo.create({
         data: {
@@ -979,18 +1019,29 @@ export class AuthService {
       throw error;
     }
 
-    // Welcome email sent after Google registration (no OTP needed — email already verified)
-    this.mailProvider.sendWelcomeMerchant(merchant.email, merchant.nom, pickEmailLang(merchant.language))
-      .catch((err) => this.logger.warn('Welcome email failed', errMsg(err)));
+    // Welcome email sent after Google registration (no OTP needed — email already verified).
+    // Deferred via setImmediate so the HTTP response is flushed before SMTP work starts.
+    // Capture fields synchronously — avoid retaining a closure on the full merchant object.
+    const welcomeEmail = merchant.email;
+    const welcomeNom = merchant.nom;
+    const welcomeLang = merchant.language;
+    setImmediate(() => {
+      this.mailProvider.sendWelcomeMerchant(welcomeEmail, welcomeNom, pickEmailLang(welcomeLang))
+        .catch((err) => this.logger.warn('Welcome email failed', errMsg(err)));
+    });
 
     // Merchant-to-merchant referral bonus is deferred until the referred merchant
     // subscribes to paid PREMIUM (handled automatically in adminActivatePremium,
     // upgrade-request approval, adminSetPlanDates, and applyEarnedReferralMonths).
 
-    // Create client referral record (fire-and-forget)
+    // Create client referral record (fire-and-forget, off the critical path)
     if (referredByClientId) {
-      this.clientReferralService.createReferral(referredByClientId, merchant.id)
-        .catch((err) => this.logger.warn('Client referral creation failed', errMsg(err)));
+      const newMerchantId = merchant.id;
+      const clientReferrerId = referredByClientId;
+      setImmediate(() => {
+        this.clientReferralService.createReferral(clientReferrerId, newMerchantId)
+          .catch((err) => this.logger.warn('Client referral creation failed', errMsg(err)));
+      });
     }
 
     const sessionId = randomUUID();
@@ -1010,6 +1061,7 @@ export class AuthService {
       await this.registerDeviceSession(
         merchant.id, sessionId, dto, undefined,
         'merchant', merchant.email, merchant.nom, refreshHash,
+        /* skipDeactivateOthers */ true,
       );
     } else {
       await this.deviceSessionRepo.create({
@@ -1035,18 +1087,32 @@ export class AuthService {
   // ── Apple Login (Merchant) ─────────────────────────────────
 
   /**
-   * Fetch Apple's JWKS public keys (cached for 24 hours).
+   * Fetch Apple's JWKS public keys (cached 24h, with a 3s timeout and singleflight
+   * deduplication so concurrent cold-start requests share a single network call).
    */
   private async getApplePublicKeys(): Promise<any[]> {
     const now = Date.now();
     if (this.appleJwksCache && now - this.appleJwksCache.fetchedAt < 86_400_000) {
       return this.appleJwksCache.keys;
     }
-    const res = await fetch('https://appleid.apple.com/auth/keys');
-    if (!res.ok) throw new Error('Failed to fetch Apple JWKS');
-    const { keys } = await res.json();
-    this.appleJwksCache = { keys, fetchedAt: now };
-    return keys;
+    if (this.appleJwksPromise) {
+      return this.appleJwksPromise;
+    }
+    this.appleJwksPromise = (async () => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 3_000);
+      try {
+        const res = await fetch('https://appleid.apple.com/auth/keys', { signal: controller.signal });
+        if (!res.ok) throw new Error('Failed to fetch Apple JWKS');
+        const { keys } = await res.json();
+        this.appleJwksCache = { keys, fetchedAt: Date.now() };
+        return keys;
+      } finally {
+        clearTimeout(timer);
+        this.appleJwksPromise = null;
+      }
+    })();
+    return this.appleJwksPromise;
   }
 
   /**
@@ -1174,8 +1240,9 @@ export class AuthService {
 
     let merchant;
     try {
-      // Apple-only account: set a random password hash (cannot be used for login)
-      const dummyPasswordHash = await bcrypt.hash(randomBytes(32).toString('hex'), BCRYPT_SALT_ROUNDS);
+      // Apple-only account: use the constant placeholder hash (computed once at boot)
+      // so we don't pay a ~300ms bcrypt.hash on every OAuth signup.
+      const dummyPasswordHash = AuthService.OAUTH_PLACEHOLDER_HASH;
 
       merchant = await this.merchantRepo.create({
         data: {
@@ -1238,14 +1305,25 @@ export class AuthService {
       throw error;
     }
 
-    // Welcome email (no OTP needed — email already verified by Apple)
-    this.mailProvider.sendWelcomeMerchant(merchant.email, merchant.nom, pickEmailLang(merchant.language))
-      .catch((err) => this.logger.warn('Welcome email failed', errMsg(err)));
+    // Welcome email (no OTP needed — email already verified by Apple).
+    // Deferred via setImmediate so the HTTP response is flushed before SMTP work starts.
+    // Capture fields synchronously — avoid retaining a closure on the full merchant object.
+    const welcomeEmail = merchant.email;
+    const welcomeNom = merchant.nom;
+    const welcomeLang = merchant.language;
+    setImmediate(() => {
+      this.mailProvider.sendWelcomeMerchant(welcomeEmail, welcomeNom, pickEmailLang(welcomeLang))
+        .catch((err) => this.logger.warn('Welcome email failed', errMsg(err)));
+    });
 
-    // Create client referral record (fire-and-forget)
+    // Create client referral record (fire-and-forget, off the critical path)
     if (referredByClientId) {
-      this.clientReferralService.createReferral(referredByClientId, merchant.id)
-        .catch((err) => this.logger.warn('Client referral creation failed', errMsg(err)));
+      const newMerchantId = merchant.id;
+      const clientReferrerId = referredByClientId;
+      setImmediate(() => {
+        this.clientReferralService.createReferral(clientReferrerId, newMerchantId)
+          .catch((err) => this.logger.warn('Client referral creation failed', errMsg(err)));
+      });
     }
 
     const sessionId = randomUUID();
@@ -1265,6 +1343,7 @@ export class AuthService {
       await this.registerDeviceSession(
         merchant.id, sessionId, dto, undefined,
         'merchant', merchant.email, merchant.nom, refreshHash,
+        /* skipDeactivateOthers */ true,
       );
     } else {
       await this.deviceSessionRepo.create({

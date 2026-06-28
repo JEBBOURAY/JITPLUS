@@ -213,6 +213,11 @@ export default function RegisterScreen() {
   const sRef = useRef(s);
   sRef.current = s;
 
+  // Hard re-entrancy guard for the final submit. `isLoading` covers the UI state
+  // but there is a 1-frame window between a rapid double-tap and the dispatch
+  // landing — this ref blocks the second call synchronously.
+  const submittingRef = useRef(false);
+
   const set = useCallback((patch: Partial<RegState>) => {
     dispatch({ type: 'SET', payload: patch });
     setStepError('');
@@ -325,6 +330,9 @@ export default function RegisterScreen() {
 
   // ── Register ──
   const handleRegister = useCallback(async () => {
+    // Re-entrancy guard — short-circuit duplicate submissions (double-tap, rapid Enter, etc.)
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     // Read the LATEST state from the ref to avoid stale closures
     const {
       nomCommerce: nc, categorie: cat, ville: v, quartier: q,
@@ -361,6 +369,7 @@ export default function RegisterScreen() {
     if (gToken) {
       if (!nc.trim()) {
         Alert.alert(t('common.error'), t('registerExtra.fillAllFields'));
+        submittingRef.current = false;
         return;
       }
       dispatch({ type: 'SET_LOADING', loading: true });
@@ -383,6 +392,7 @@ export default function RegisterScreen() {
         );
       } finally {
         dispatch({ type: 'SET_LOADING', loading: false });
+        submittingRef.current = false;
       }
       return;
     }
@@ -390,6 +400,7 @@ export default function RegisterScreen() {
     if (aToken) {
       if (!nc.trim()) {
         Alert.alert(t('common.error'), t('registerExtra.fillAllFields'));
+        submittingRef.current = false;
         return;
       }
       dispatch({ type: 'SET_LOADING', loading: true });
@@ -412,12 +423,14 @@ export default function RegisterScreen() {
         );
       } finally {
         dispatch({ type: 'SET_LOADING', loading: false });
+        submittingRef.current = false;
       }
       return;
     }
 
     if (!em || !pw || !nc.trim()) {
       Alert.alert(t('common.error'), t('registerExtra.fillAllFields'));
+      submittingRef.current = false;
       return;
     }
     dispatch({ type: 'SET_LOADING', loading: true });
@@ -441,6 +454,7 @@ export default function RegisterScreen() {
       );
     } finally {
       dispatch({ type: 'SET_LOADING', loading: false });
+      submittingRef.current = false;
     }
   }, [googleRegister, appleRegister, authRegister, router, t]);
 

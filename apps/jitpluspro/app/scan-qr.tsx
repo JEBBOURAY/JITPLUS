@@ -18,7 +18,7 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { logError } from '@/utils/devLogger';
-import { CameraView, useCameraPermissions } from 'expo-camera';
+import { CameraView, useCameraPermissions, type BarcodeSettings } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import {
   Search,
@@ -73,7 +73,7 @@ const QR_ALLOWED_HOSTS = new Set<string>([
 ]);
 /** Stable barcode-scanner settings (kept module-level so the CameraView prop
  * identity never changes — avoids re-configuring the native scanner). */
-const BARCODE_SCANNER_SETTINGS = { barcodeTypes: ['qr'] as const };
+const BARCODE_SCANNER_SETTINGS: BarcodeSettings = { barcodeTypes: ['qr'] };
 
 // ── Animated Search Bar ───────────────────────────────────
 const FloatingSearchBar = React.memo(function FloatingSearchBar({
@@ -397,31 +397,45 @@ export default function ScanQRScreen() {
     </TouchableOpacity>
   ), [router, theme]);
 
+  // cameraMounted gates the CameraView's actual mount in the tree. We must
+  // fully unmount (not just `active={false}`) to release the Camera2 session;
+  // otherwise Android logs `Camera2CameraImpl: Unable to configure camera ...
+  // TimeoutException` while the app is backgrounded.
+  // Derived from BOTH focus and AppState through a single source-of-truth
+  // setter to avoid double mount/unmount when focus and AppState fire in the
+  // same frame (cost ~1–2 s on Android Camera2 reconfiguration).
+  const [cameraMounted, setCameraMounted] = useState(false);
+  const appStateRef = useRef(AppState.currentState);
+  const isFocusedRef = useRef(false);
+
+  const syncCameraMount = useCallback(() => {
+    const next = isFocusedRef.current && appStateRef.current === 'active';
+    setCameraMounted((prev) => (prev === next ? prev : next));
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
-      // Defensive reset: in addition to flipping the scanner back on, clear
-      // any stale picker / detection state in case the user returns via the
-      // OS back gesture (which may not always trigger the modal's close).
-      dispatch({ type: 'SET', payload: { isScanning: true, detected: null, matchedClients: [] } });
+      isFocusedRef.current = true;
       isNavigatingRef.current = false;
-      // Pause camera + scan-line animation when navigating away (saves CPU/battery
-      // and prevents the native camera pipeline from blocking the JS thread when
-      // the user returns from a backgrounded share flow like WhatsApp).
+      dispatch({ type: 'SET', payload: { isScanning: true, detected: null, matchedClients: [] } });
+      syncCameraMount();
       return () => {
+        isFocusedRef.current = false;
         dispatch({ type: 'SET', payload: { isScanning: false } });
+        syncCameraMount();
       };
-    }, [])
+    }, [syncCameraMount])
   );
 
-  // Pause CameraView while the app is backgrounded. Without this, Camera2 holds
-  // onto session state, then triggers a 5s reconfigure on resume that blocks
-  // the JS thread (root cause of the post-background freeze).
   useEffect(() => {
     const sub = AppState.addEventListener('change', (s) => {
-      dispatch({ type: 'SET', payload: { isScanning: s === 'active' } });
+      if (appStateRef.current === s) return;
+      appStateRef.current = s;
+      dispatch({ type: 'SET', payload: { isScanning: s === 'active' && isFocusedRef.current } });
+      syncCameraMount();
     });
     return () => sub.remove();
-  }, []);
+  }, [syncCameraMount]);
 
   // ── Navigate to transaction after resolving clientId ──
   const navigateToTransaction = useCallback((clientId: string) => {
@@ -677,26 +691,28 @@ export default function ScanQRScreen() {
     <View style={styles.container}>
       <StatusBar style="light" translucent />
 
-      {/* ── Camera ── */}
-      <CameraView
-        style={StyleSheet.absoluteFill}
-        facing="back"
-        active={isScanning}
-        enableTorch={isFlashOn}
-        barcodeScannerSettings={BARCODE_SCANNER_SETTINGS}
-        onBarcodeScanned={scannerHandler}
-        onMountError={(error) => {
-          logError('CameraView', 'Mount error:', error);
-          Alert.alert(
-            t('scan.cameraErrorTitle'),
-            t('scan.cameraErrorMsg'),
-            [
-              { text: t('common.back'), onPress: handleClose, style: 'cancel' },
-              { text: t('common.retry'), onPress: () => router.replace('/scan-qr') },
-            ],
-          );
-        }}
-      />
+      {/* ── Camera (conditionally mounted to release Camera2 on blur/background) ── */}
+      {cameraMounted && (
+        <CameraView
+          style={StyleSheet.absoluteFill}
+          facing="back"
+          active={isScanning}
+          enableTorch={isFlashOn}
+          barcodeScannerSettings={BARCODE_SCANNER_SETTINGS}
+          onBarcodeScanned={scannerHandler}
+          onMountError={(error) => {
+            logError('CameraView', 'Mount error:', error);
+            Alert.alert(
+              t('scan.cameraErrorTitle'),
+              t('scan.cameraErrorMsg'),
+              [
+                { text: t('common.back'), onPress: handleClose, style: 'cancel' },
+                { text: t('common.retry'), onPress: () => router.replace('/scan-qr') },
+              ],
+            );
+          }}
+        />
+      )}
 
       {/* ── Dark overlay with cutout ── */}
       <View style={StyleSheet.absoluteFill} pointerEvents="box-none">

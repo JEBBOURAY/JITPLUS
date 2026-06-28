@@ -198,6 +198,15 @@ export default function ClientDetailScreen() {
     ? (merchant?.loyaltyType === 'STAMPS' || client.loyaltyType === 'STAMPS')
     : false;
 
+  // Cap the rendered transactions to avoid mounting hundreds of rows inside a
+  // ScrollView (no virtualization). Backend returns the most recent first.
+  const MAX_VISIBLE_TX = 50;
+  const visibleTransactions = useMemo(
+    () => (client?.transactions ?? []).slice(0, MAX_VISIBLE_TX),
+    [client?.transactions],
+  );
+  const hiddenTxCount = Math.max(0, (client?.transactions?.length ?? 0) - MAX_VISIBLE_TX);
+
   const handleAdjustPoints = useCallback(async () => {
     const pts = parseInt(adjustPoints, 10);
     if (!pts || pts <= 0) {
@@ -525,9 +534,16 @@ export default function ClientDetailScreen() {
           {client.transactions.length === 0 ? (
             <Text style={[styles.noTx, { color: theme.textMuted }]}>{t('clientDetail.noTransactions')}</Text>
           ) : (
-            client.transactions.map((tx) => (
-              <TransactionItem key={tx.id} tx={tx} isStampsMode={isStampsMode} />
-            ))
+            <>
+              {visibleTransactions.map((tx) => (
+                <TransactionItem key={tx.id} tx={tx} isStampsMode={isStampsMode} />
+              ))}
+              {hiddenTxCount > 0 && (
+                <Text style={[styles.noTx, { color: theme.textMuted, paddingVertical: 12 }]}>
+                  + {hiddenTxCount} {t('common.older', { defaultValue: 'plus anciennes' })}
+                </Text>
+              )}
+            </>
           )}
         </View>
       </ScrollView>

@@ -70,18 +70,26 @@ const CHANNEL_COLORS = {
 } as const;
 
 // ── Emoji stripping (DB-sourced text may contain emojis that conflict with custom icons) ──
+const EMOJI_CACHE_LIMIT = 500;
 const emojiCache = new Map<string, string>();
 const stripEmojis = (str: string | null | undefined): string => {
   if (!str) return '';
   const cached = emojiCache.get(str);
-  if (cached !== undefined) return cached;
+  if (cached !== undefined) {
+    emojiCache.delete(str);
+    emojiCache.set(str, cached);
+    return cached;
+  }
   const stripped = str.replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, '').replace(/\s+/g, ' ').trim();
-  if (emojiCache.size > 500) emojiCache.clear();
+  if (emojiCache.size >= EMOJI_CACHE_LIMIT) {
+    const oldest = emojiCache.keys().next().value;
+    if (oldest !== undefined) emojiCache.delete(oldest);
+  }
   emojiCache.set(str, stripped);
   return stripped;
 };
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuthState } from '@/contexts/AuthContext';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { getErrorMessage } from '@/utils/error';
@@ -377,7 +385,7 @@ function msgReducer(state: MsgState, action: MsgAction): MsgState {
 }
 
 export default function MessagesScreen() {
-  const { merchant, isTeamMember } = useAuth();
+  const { merchant, isTeamMember } = useAuthState();
   const isPremium = merchant?.plan === 'PREMIUM';
   const isOwner = !isTeamMember;
   const theme = useTheme();

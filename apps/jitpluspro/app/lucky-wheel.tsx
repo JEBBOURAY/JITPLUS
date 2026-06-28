@@ -544,6 +544,34 @@ export default function LuckyWheelScreen() {
     dispatch({ type: 'SET_FIELD', field: 'endsAt', value: new Date(startMs + days * 86400000).toISOString().slice(0, 10) });
   }, [editingCampaign, form.startsAt]);
 
+  // Memoize chip option arrays so they aren't re-allocated on every render.
+  const winRateOptions = useMemo(() => ([
+    { val: '25', label: '25%', desc: t('luckyWheel.wizRate25') },
+    { val: '40', label: '40%', desc: t('luckyWheel.wizRate40') },
+    { val: '50', label: '50%', desc: t('luckyWheel.wizRate50') },
+    { val: '70', label: '70%', desc: t('luckyWheel.wizRate70') },
+  ] as const), [t]);
+
+  const durationOptions = useMemo(() => ([
+    { label: t('luckyWheel.dur7'), days: 7 },
+    { label: t('luckyWheel.dur30'), days: 30 },
+    { label: t('luckyWheel.dur90'), days: 90 },
+  ] as const), [t]);
+
+  const minSpendOptions = useMemo(() => ([
+    { label: t('luckyWheel.minSpendNone'), val: '0' },
+    { label: '50 MAD', val: '50' },
+    { label: '100 MAD', val: '100' },
+    { label: '200 MAD', val: '200' },
+  ] as const), [t]);
+
+  const claimWindowOptions = useMemo(() => ([
+    { label: '24h', val: '24' },
+    { label: '48h', val: '48' },
+    { label: '72h', val: '72' },
+    { label: t('luckyWheel.claim1Week'), val: '168' },
+  ] as const), [t]);
+
   // ── Render ─────────────────────────────────────────────────
 
   if (isLoading) {
@@ -1110,12 +1138,7 @@ export default function LuckyWheelScreen() {
 
                     {/* Win Rate Selector */}
                     <View style={styles.chipRow}>
-                      {[
-                        { val: '25', label: '25%', desc: t('luckyWheel.wizRate25') },
-                        { val: '40', label: '40%', desc: t('luckyWheel.wizRate40') },
-                        { val: '50', label: '50%', desc: t('luckyWheel.wizRate50') },
-                        { val: '70', label: '70%', desc: t('luckyWheel.wizRate70') },
-                      ].map(({ val, label, desc }) => {
+                      {winRateOptions.map(({ val, label, desc }) => {
                         const selected = form.globalWinRate === val;
                         return (
                           <TouchableOpacity
@@ -1168,11 +1191,7 @@ export default function LuckyWheelScreen() {
                     </View>
 
                     <View style={styles.durationChipRow}>
-                      {[
-                        { label: t('luckyWheel.dur7'), days: 7 },
-                        { label: t('luckyWheel.dur30'), days: 30 },
-                        { label: t('luckyWheel.dur90'), days: 90 },
-                      ].map(({ label, days }) => {
+                      {durationOptions.map(({ label, days }) => {
                         const isActive = durationDays === days;
                         return (
                           <TouchableOpacity
@@ -1250,12 +1269,7 @@ export default function LuckyWheelScreen() {
 
                     {/* Min spend presets */}
                     <View style={styles.durationChipRow}>
-                      {[
-                        { label: t('luckyWheel.minSpendNone'), val: '0' },
-                        { label: '50 MAD', val: '50' },
-                        { label: '100 MAD', val: '100' },
-                        { label: '200 MAD', val: '200' },
-                      ].map(({ label, val }) => {
+                      {minSpendOptions.map(({ label, val }) => {
                         const isActive = form.minSpendAmount === val;
                         return (
                           <TouchableOpacity
@@ -1428,12 +1442,7 @@ export default function LuckyWheelScreen() {
 
                           {/* Claim window presets */}
                           <View style={[styles.durationChipRow, { marginBottom: 8 }]}>
-                            {[
-                              { label: '24h', val: '24' },
-                              { label: '48h', val: '48' },
-                              { label: '72h', val: '72' },
-                              { label: t('luckyWheel.claim1Week'), val: '168' },
-                            ].map(({ label, val }) => {
+                            {claimWindowOptions.map(({ label, val }) => {
                               const isActive = prize.claimWindowHours === val;
                               return (
                                 <TouchableOpacity

@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -28,6 +28,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { getErrorMessage } from '@/utils/error';
+import { logPerf } from '@jitplus/shared/src/devLogger';
 import { normalizePhone } from '@/utils/normalizePhone';
 import { COUNTRIES } from '@/constants/Countries';
 import CountryPickerModal from '@/components/CountryPickerModal';
@@ -84,6 +85,21 @@ export default function QuickAddScreen() {
   // Re-entrancy guards to prevent double WhatsApp intents and stacked copy alerts.
   const sharingRef = useRef(false);
   const copyingRef = useRef(false);
+  // Pre-warmed `canOpenURL('https://wa.me/...')` result. On Android the OS only
+  // checks the URL scheme/host, not the path, so the result is constant per
+  // install. Caching it removes ~50-200ms from the share critical path.
+  const canOpenWaRef = useRef<boolean | null>(null);
+  // Holds the Quick-Add result whose WhatsApp share is pending the Modal fade-in.
+  // Used by the Modal `onShow` callback to fire `shareViaWhatsApp` exactly when
+  // the animation completes, replacing the previous arbitrary 350ms setTimeout.
+  const pendingShareRef = useRef<QuickAddResult | null>(null);
+
+  useEffect(() => {
+    // Pre-warm canOpenURL so the share critical path doesn't pay its cost.
+    Linking.canOpenURL('https://wa.me/00000000')
+      .then((can) => { canOpenWaRef.current = can; })
+      .catch(() => { canOpenWaRef.current = false; });
+  }, []);
 
   const isStampsMode = merchant?.loyaltyType === 'STAMPS';
   const isPerVisit = isStampsMode && (merchant?.stampEarningMode || 'PER_VISIT') === 'PER_VISIT';
@@ -133,8 +149,11 @@ export default function QuickAddScreen() {
     }
 
     setLoading(true);
+    const tSubmit = Date.now();
+    logPerf('QuickAdd', 'submit:start');
     try {
       const idempotencyKey = Crypto.randomUUID();
+      const tApi = Date.now();
       const res = await api.post(
         '/merchant/clients/quick-add',
         {
@@ -147,12 +166,13 @@ export default function QuickAddScreen() {
         },
         { headers: { 'Idempotency-Key': idempotencyKey } },
       );
+      logPerf('QuickAdd', `submit:api-done ${Date.now() - tApi}ms`);
       const data: QuickAddResult = res.data;
+      // Defer share until Modal `onShow` fires (end of fade-in animation).
+      // This replaces a 350ms setTimeout that used to add fixed latency.
+      pendingShareRef.current = data;
       setResult(data);
-      // Let the success Modal finish its fade-in before launching the WhatsApp
-      // intent — otherwise the simultaneous animation + native intent freezes
-      // the UI on some Android devices.
-      setTimeout(() => { void shareViaWhatsApp(data); }, 350);
+      logPerf('QuickAdd', `submit:modal-set ${Date.now() - tSubmit}ms`);
     } catch (err: any) {
       const status = err?.response?.status;
       if (status === 409) {
@@ -185,18 +205,30 @@ export default function QuickAddScreen() {
     async (data: QuickAddResult) => {
       if (sharingRef.current) return; // dedupe double-tap / auto+manual collision
       sharingRef.current = true;
+      const tShare = Date.now();
+      logPerf('QuickAdd', 'share:start');
       const message = buildWaMessage(data);
       // wa.me opens WhatsApp on both Android & iOS (Universal Link). The phone
       // number must be digits only, country code included.
       const waPhone = data.client.telephone.replace(/[^\d]/g, '');
       const waUrl = `https://wa.me/${waPhone}?text=${encodeURIComponent(message)}`;
       try {
-        const can = await Linking.canOpenURL(waUrl);
+        let can = canOpenWaRef.current;
+        if (can === null) {
+          const tCan = Date.now();
+          can = await Linking.canOpenURL(waUrl);
+          canOpenWaRef.current = can;
+          logPerf('QuickAdd', `share:canOpenURL ${Date.now() - tCan}ms can=${can}`);
+        } else {
+          logPerf('QuickAdd', `share:canOpenURL cached=${can}`);
+        }
         if (!can) {
           setShowFallback(true);
           return;
         }
+        const tOpen = Date.now();
         await Linking.openURL(waUrl);
+        logPerf('QuickAdd', `share:openURL ${Date.now() - tOpen}ms total=${Date.now() - tShare}ms`);
       } catch {
         setShowFallback(true);
       } finally {
@@ -252,7 +284,7 @@ export default function QuickAddScreen() {
 
           {/* Phone */}
           <Text style={[styles.label, { color: theme.text }]}>{t('quickAdd.phoneLabel')}</Text>
-          <View style={[styles.phoneRow, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+          <View style={[styles.phoneRow, { backgroundColor: theme.bgElevated, borderColor: theme.border }]}>
             <TouchableOpacity
               style={[styles.countryBtn, { borderRightColor: theme.border }]}
               onPress={() => setShowCountryPicker(true)}
@@ -276,7 +308,7 @@ export default function QuickAddScreen() {
 
           {/* Prenom */}
           <Text style={[styles.label, { color: theme.text }]}>{t('quickAdd.nameLabel')}</Text>
-          <View style={[styles.row, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+          <View style={[styles.row, { backgroundColor: theme.bgElevated, borderColor: theme.border }]}>
             <User size={18} color={theme.textMuted} />
             <TextInput
               style={[styles.input, { color: theme.text }]}
@@ -294,7 +326,7 @@ export default function QuickAddScreen() {
           {!isPerVisit && (
             <>
               <Text style={[styles.label, { color: theme.text }]}>{t('quickAdd.amountLabel')}</Text>
-              <View style={[styles.row, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+              <View style={[styles.row, { backgroundColor: theme.bgElevated, borderColor: theme.border }]}>
                 <ShoppingBag size={18} color={theme.textMuted} />
                 <TextInput
                   style={[styles.input, { color: theme.text, fontSize: 20, fontWeight: '600' }]}
@@ -357,9 +389,21 @@ export default function QuickAddScreen() {
       />
 
       {/* Success modal (with manual fallback if WhatsApp not installed) */}
-      <Modal visible={!!result} transparent animationType="fade" onRequestClose={handleDone}>
+      <Modal
+        visible={!!result}
+        transparent
+        animationType="fade"
+        onRequestClose={handleDone}
+        onShow={() => {
+          const pending = pendingShareRef.current;
+          if (pending) {
+            pendingShareRef.current = null;
+            void shareViaWhatsApp(pending);
+          }
+        }}
+      >
         <View style={styles.modalBackdrop}>
-          <View style={[styles.modalCard, { backgroundColor: theme.surface }]}>
+          <View style={[styles.modalCard, { backgroundColor: theme.bgCard }]}>
             <CheckCircle size={48} color={theme.primary} />
             <Text style={[styles.modalTitle, { color: theme.text }]}>
               {t('quickAdd.successTitle')}

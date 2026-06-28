@@ -7,7 +7,7 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { Platform, View, Image, StyleSheet, ActivityIndicator } from 'react-native';
+import { Platform, View, Image, StyleSheet, ActivityIndicator, InteractionManager, AppState } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ms } from '@/utils/responsive';
 import { QueryClient, QueryCache, MutationCache, onlineManager, useQueryClient } from '@tanstack/react-query';
@@ -49,20 +49,23 @@ onlineManager.setEventListener((setOnline) => {
 });
 
 // ── Persist options (module-level to avoid re-creating on every render) ─────
+// Keep the persisted surface SMALL — large lists (transactions, clients,
+// notification history) used to bloat the payload to several MB and block the
+// JS thread 500ms–2s on cold-start / OS kill during rehydration. SWR refetches
+// them quickly anyway. The `buster` invalidates the on-disk cache when the
+// app version changes (e.g. after a schema change).
+const PERSISTED_KEYS = new Set([
+  'plan', 'referral', 'stores', 'rewards',
+  'dashboard-kpis',
+]);
 const persistOptions = {
   persister: asyncStoragePersister,
   maxAge: CACHE_MAX_AGE,
+  buster: Constants.expoConfig?.version ?? 'v1',
   dehydrateOptions: {
     shouldDehydrateQuery: (query: { state: { status: string }; queryKey: readonly unknown[] }) =>
       query.state.status === 'success' &&
-      [
-        'stores', 'rewards', 'plan', 'referral',
-        'dashboard-stats', 'dashboard-trends',
-        'transactions', 'clients',
-        'notification-history', 'admin-notifications',
-        'admin-notif-unread-count', 'whatsapp-quota', 'email-quota',
-        'pending-gifts', 'team-members',
-      ].includes(String(query.queryKey[0] ?? '').toLowerCase()),
+      PERSISTED_KEYS.has(String(query.queryKey[0] ?? '').toLowerCase()),
   },
 };
 
@@ -392,6 +395,19 @@ function ThemedNavigator() {
       router.replace('/welcome');
     }
   }, [loading, merchant, segments, router]);
+
+  // Warm heavy native modules in background so the FIRST navigation that
+  // needs them is instant. Cold-parse of expo-camera (~200ms) is otherwise
+  // paid by the user the first time they tap "Scanner".
+  const didPreloadRef = useRef(false);
+  useEffect(() => {
+    if (loading || !merchant || didPreloadRef.current) return;
+    didPreloadRef.current = true;
+    InteractionManager.runAfterInteractions(() => {
+      try { require('expo-camera'); } catch {}
+      try { require('expo-image-picker'); } catch {}
+    });
+  }, [loading, merchant]);
   const notificationListener = useRef<{ remove(): void } | null>(null);
   const responseListener = useRef<{ remove(): void } | null>(null);
 
@@ -412,6 +428,9 @@ function ThemedNavigator() {
       if (ts && Date.now() - Number(ts) < threeDays) return;
       if (cancelled) return;
       referralTimer.current = setTimeout(() => {
+        // Don't pop a modal over a backgrounded app — the resume frame is
+        // already busy and the popup would race with screen restoration.
+        if (AppState.currentState !== 'active') return;
         setShowReferral(true);
       }, 4000);
     })();
@@ -457,6 +476,7 @@ function ThemedNavigator() {
     if (!hasMerchant || isTeamMember || !onboardingDone || !hasSetupIssues) return;
 
     setupTimer.current = setTimeout(() => {
+      if (AppState.currentState !== 'active') return;
       setShowSetupReminder(true);
     }, 6000);
 
@@ -489,22 +509,27 @@ function ThemedNavigator() {
     // Show notifications in foreground is handled by setNotificationHandler
     // in utils/notifications.ts. Here we listen for received + tapped events.
 
-    // Listen for push token changes (FCM rotation) — re-register with backend
-    const tokenSub = Notifications.addPushTokenListener(async () => {
+    // Listen for push token changes (FCM rotation) — re-register with backend.
+    // We defer the work to runAfterInteractions because Android sometimes
+    // delivers the token rotation event on resume, when the JS thread is
+    // already busy with screen rendering.
+    const tokenSub = Notifications.addPushTokenListener(() => {
       logInfo('Notifications', 'Push token rotated, re-registering');
-      try {
-        const projectId = Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
-        if (projectId) {
-          const expoTokenData = await Notifications!.getExpoPushTokenAsync({ projectId });
-          const expoToken = String(expoTokenData.data);
-          const lang = await AsyncStorage.getItem('jitpluspro_language');
-          // Deduped — the helper drops duplicate / burst PATCHes that Android
-          // FCM rotation can otherwise trigger in a tight loop.
-          await sendMerchantPushToken(api, expoToken, lang || 'fr');
+      InteractionManager.runAfterInteractions(async () => {
+        try {
+          const projectId = Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
+          if (projectId) {
+            const expoTokenData = await Notifications!.getExpoPushTokenAsync({ projectId });
+            const expoToken = String(expoTokenData.data);
+            const lang = await AsyncStorage.getItem('jitpluspro_language');
+            // Deduped — the helper drops duplicate / burst PATCHes that Android
+            // FCM rotation can otherwise trigger in a tight loop.
+            await sendMerchantPushToken(api, expoToken, lang || 'fr');
+          }
+        } catch (e) {
+          logWarn('Notifications', 'Token refresh sync failed', e);
         }
-      } catch (e) {
-        logWarn('Notifications', 'Token refresh sync failed', e);
-      }
+      });
     });
 
     // Reset iOS badge when app is foregrounded
@@ -611,9 +636,10 @@ function ThemedNavigator() {
               contentStyle: { backgroundColor: theme.bg },
               animation: 'slide_from_right',
               gestureEnabled: true,
-              // Freeze inactive screens so background screens stop re-rendering
-              // on every auth/merchant update (avoids progressive UI slowdown).
-              freezeOnBlur: true,
+              // freezeOnBlur retiré : cause un crash "wrong thread" dans
+              // react-native-screens@4.16 quand un écran gelé est retiré du Stack
+              // (Screen.startRemovalTransition sur le thread mqt_v_js au lieu du main).
+              // Conservé uniquement sur les Tabs où les écrans ne sont pas "removed".
             }}
           >
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />

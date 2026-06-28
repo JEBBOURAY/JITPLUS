@@ -34,7 +34,7 @@ module.exports = ({ config }) => {
     name: 'JitPlus Pro',
     slug: 'jitpluspro',
     description: 'Loyalty program management for local shops — scan QR codes, track customer visits, and set up stamp-based rewards.',
-    version: '1.5.8',
+    version: '1.5.9',
     orientation: 'portrait',
     icon: './assets/images/icon-white.png',
     scheme: 'jitpluspro',
@@ -227,6 +227,9 @@ module.exports = ({ config }) => {
       './plugins/withMoroccoRegion',
       // Enable RTL support on Android — required for Arabic/Darija layout
       './plugins/withSupportsRTL',
+      // Force modular headers for GoogleUtilities/RecaptchaInterop so Swift pod
+      // AppCheckCore (pulled in by GoogleSignIn 9) can import them.
+      './plugins/withGoogleModularHeaders',
       // Disable Swift 6 strict concurrency for all pods (Xcode 26 + expo-image@55.0.9 incompat)
       './plugins/withDisableStrictConcurrency',
       // iOS Notification Service Extension — temporarily disabled for v1.4.3.

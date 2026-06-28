@@ -33,6 +33,15 @@ export function logInfo(tag: string, message: string, ...data: unknown[]): void 
 }
 
 /**
+ * Performance marker — logs in BOTH dev and production builds.
+ * Use sparingly for live perf analysis via `adb logcat` on production APKs.
+ * Output goes to logcat as `ReactNativeJS` with the tag prefix.
+ */
+export function logPerf(tag: string, message: string, ...data: unknown[]): void {
+  console.log(`[PERF][${tag}]`, message, ...data);
+}
+
+/**
  * Log a warning (dev only).
  */
 export function logWarn(tag: string, message: string, ...data: unknown[]): void {

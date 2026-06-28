@@ -6,7 +6,9 @@ import * as Device from 'expo-device';
 import * as Crypto from 'expo-crypto';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useQueryClient } from '@tanstack/react-query';
-import api, { onUnauthorized } from '@/services/api';
+import { useShallow } from 'zustand/react/shallow';
+import api, { onUnauthorized, resetApiTokenCache } from '@/services/api';
+import { sendMerchantPushToken } from '@/services/merchantPushToken';
 import { getErrorMessage } from '@/utils/error';
 import { logInfo, logWarn, logError } from '@/utils/devLogger';
 import i18n from '@/i18n';
@@ -91,7 +93,6 @@ const registerPushToken = async (promptIfNeeded = false) => {
           allowAlert: true,
           allowBadge: true,
           allowSound: true,
-          allowAnnouncements: true,
           allowProvisional: true, // Permission provisoire sur iOS
         },
       });
@@ -159,6 +160,27 @@ interface AuthContextData {
   completeOnboarding: () => Promise<void>;
 }
 
+/** Actions-only slice — stable across re-renders. */
+type AuthActions = Pick<
+  AuthContextData,
+  | 'signIn'
+  | 'register'
+  | 'googleLogin'
+  | 'appleLogin'
+  | 'googleRegister'
+  | 'appleRegister'
+  | 'signOut'
+  | 'loadProfile'
+  | 'updateMerchant'
+  | 'completeOnboarding'
+>;
+
+/** State-only slice — read directly from Zustand. */
+type AuthStateSlice = Pick<
+  AuthContextData,
+  'merchant' | 'token' | 'loading' | 'isTeamMember' | 'teamMember' | 'onboardingCompleted'
+>;
+
 /** Shared business/store fields collected during any registration flow (email, Google, Apple). */
 export interface BusinessProfileData {
   nomCommerce?: string;
@@ -190,6 +212,7 @@ export interface RegisterData extends BusinessProfileData {
 }
 
 const AuthContext = createContext<AuthContextData | null>(null);
+const AuthActionsContext = createContext<AuthActions | null>(null);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const queryClient = useQueryClient();
@@ -203,6 +226,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       api.patch('/merchant/push-token', { pushToken: '' }).catch(() => {});
       // Fire-and-forget — don't block local cleanup on server response
       api.post('/auth/logout').catch(() => {});
+      resetApiTokenCache();
       await Promise.allSettled([
         SecureStore.deleteItemAsync('accessToken'),
         SecureStore.deleteItemAsync('refreshToken'),
@@ -300,6 +324,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             return;
           }
         } else if (storedToken) {
+          resetApiTokenCache();
           await Promise.allSettled([
             SecureStore.deleteItemAsync('accessToken'),
             SecureStore.deleteItemAsync('refreshToken'),
@@ -344,6 +369,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     // Always store tokens in SecureStore so the API interceptor can attach them.
     // The rememberMe flag only controls whether the session persists across app restarts
     // (checked in loadStoredAuth on launch).
+    resetApiTokenCache();
     await SecureStore.setItemAsync('accessToken', access_token);
     if (refresh_token) await SecureStore.setItemAsync('refreshToken', refresh_token);
     if (session_id) await SecureStore.setItemAsync('sessionId', session_id);
@@ -576,18 +602,35 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     completeOnboarding,
   }), [merchant, token, loading, isTeamMember, teamMember, onboardingCompleted, signIn, register, googleLogin, appleLogin, googleRegister, appleRegister, signOut, loadProfile, updateMerchant, completeOnboarding]);
 
+  // Actions-only value: stable identity across state changes. Consumers using
+  // useAuthActions() never re-render on auth state mutations.
+  const actionsValue = useMemo<AuthActions>(() => ({
+    signIn,
+    register,
+    googleLogin,
+    appleLogin,
+    googleRegister,
+    appleRegister,
+    signOut,
+    loadProfile,
+    updateMerchant,
+    completeOnboarding,
+  }), [signIn, register, googleLogin, appleLogin, googleRegister, appleRegister, signOut, loadProfile, updateMerchant, completeOnboarding]);
+
   return (
-    <AuthContext.Provider value={contextValue}>
-      {children}
-    </AuthContext.Provider>
+    <AuthActionsContext.Provider value={actionsValue}>
+      <AuthContext.Provider value={contextValue}>
+        {children}
+      </AuthContext.Provider>
+    </AuthActionsContext.Provider>
   );
 };
 
 /**
  * Legacy hook — returns the full auth context (causes re-render on ANY auth change).
- * For new code, prefer selective Zustand subscriptions:
- *   import { useAuthStore } from '@/stores/authStore';
- *   const merchant = useAuthStore((s) => s.merchant);
+ * For new code, prefer the granular hooks:
+ *   const { merchant, loading } = useAuthState();   // subscribes to selected state slice
+ *   const { signOut } = useAuthActions();           // stable identity, never re-renders
  */
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -596,3 +639,23 @@ export const useAuth = () => {
   }
   return context;
 };
+
+/** Stable actions handle. Never re-renders the caller on state changes. */
+export const useAuthActions = (): AuthActions => {
+  const ctx = useContext(AuthActionsContext);
+  if (!ctx) throw new Error('useAuthActions doit être utilisé dans un AuthProvider');
+  return ctx;
+};
+
+/** Selective state subscription via Zustand shallow compare. */
+export const useAuthState = (): AuthStateSlice =>
+  useAuthStore(
+    useShallow((s) => ({
+      merchant: s.merchant,
+      token: s.token,
+      loading: s.loading,
+      isTeamMember: s.isTeamMember,
+      teamMember: s.teamMember,
+      onboardingCompleted: s.onboardingCompleted,
+    })),
+  );

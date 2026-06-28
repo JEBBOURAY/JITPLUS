@@ -28,7 +28,7 @@ import { MERCHANT_ICON_MAP } from '@/utils/merchantIcons';
 import { MerchantCategory, MERCHANT_BADGE_CODES, type MerchantBadge, type OpeningHours } from '@/types';
 import { getCategoryLabel, CATEGORY_EMOJIS } from '@/constants/categories';
 import * as Haptics from 'expo-haptics';
-import * as ImagePicker from 'expo-image-picker';
+// expo-image-picker is lazy-loaded inside the gallery / card-background pickers.
 import FichePreviewModal from '@/components/FichePreviewModal';
 import {
   PresetSwatches,
@@ -276,6 +276,7 @@ export default function StorePreviewScreen() {
     }
     try {
       const remaining = GALLERY_MAX - galleryDraft.length;
+      const ImagePicker = await import('expo-image-picker');
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsMultipleSelection: true,
@@ -363,6 +364,7 @@ export default function StorePreviewScreen() {
       return;
     }
     try {
+      const ImagePicker = await import('expo-image-picker');
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsMultipleSelection: false,
@@ -485,7 +487,7 @@ export default function StorePreviewScreen() {
         <View style={styles.cardPreviewInfo}>
           <View style={styles.cardPreviewNameRow}>
             <Text style={[styles.cardPreviewName, { color: textPrimary }]} numberOfLines={1}>
-              {merchant?.nomBoutique || merchant?.nom || 'Commerce'}
+              {merchant?.nom || 'Commerce'}
             </Text>
           </View>
           {isStamps ? (
@@ -548,7 +550,7 @@ export default function StorePreviewScreen() {
         <ChevronRight size={ms(18)} color={textSecondary} strokeWidth={2} />
       </View>
     );
-  }, [cardBgUrl, cardBgColor, cardTextColor, accent, merchant?.loyaltyType, merchant?.logoUrl, merchant?.nomBoutique, merchant?.nom, merchant?.categorie, theme.text, theme.textMuted, theme.bgCard, theme.bgElevated, theme.borderLight, theme.primaryBg, t]);
+  }, [cardBgUrl, cardBgColor, cardTextColor, accent, merchant?.loyaltyType, merchant?.logoUrl, merchant?.nom, merchant?.categorie, theme.text, theme.textMuted, theme.bgCard, theme.bgElevated, theme.borderLight, theme.primaryBg, t]);
 
   const toggleBadge = useCallback((code: MerchantBadge) => {
     haptic();

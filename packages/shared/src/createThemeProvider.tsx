@@ -41,8 +41,12 @@ export function createThemeProvider<T extends { mode: 'light' | 'dark' }>(
     );
 
     useEffect(() => {
+      // Only listen to system appearance changes when the user has NOT forced
+      // a specific theme. Subscribing unconditionally wakes the JS thread on
+      // every system-level appearance event (Android dims/wallpaper changes).
+      if (themeMode !== 'system') return;
       return config.appearance.subscribe(setSystemColorScheme);
-    }, []);
+    }, [themeMode]);
 
     useEffect(() => {
       config.storage.getItem(config.storageKey).then((val) => {

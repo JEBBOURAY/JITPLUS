@@ -10,7 +10,7 @@ import {
   Image,
 } from 'react-native';
 import { Pencil, ChevronDown, ChevronUp, Gift, Camera, X } from 'lucide-react-native';
-import * as ImagePicker from 'expo-image-picker';
+// expo-image-picker is lazy-loaded inside the reward image picker handler.
 import api from '@/services/api';
 import { getErrorMessage } from '@/utils/error';
 import PremiumLockCard from '@/components/PremiumLockCard';
@@ -85,6 +85,7 @@ export function RewardManager({
 
   const handlePickRewardImage = async () => {
     try {
+      const ImagePicker = await import('expo-image-picker');
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!perm.granted) {
         Alert.alert(t('common.error'), t('upload.permissionDenied'));

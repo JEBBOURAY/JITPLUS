@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Platform } from 'react-native';
+import { Platform, InteractionManager } from 'react-native';
 import Constants from 'expo-constants';
 import axios from 'axios';
 import { getServerBaseUrl } from '@/services/api';
@@ -76,8 +76,15 @@ export function useForceUpdate(): ForceUpdateState {
   const [status, setStatus] = useState<ForceUpdateStatus>('checking');
   const storeUrl = useMemo(() => getStoreUrl(), []);
   const cancelledRef = useRef(false);
+  const lastCheckAtRef = useRef(0);
 
   const check = useCallback(async () => {
+    // Throttle: avoid burst-calling /health/version when interval + foreground
+    // refresh both fire in the same window.
+    const now = Date.now();
+    if (now - lastCheckAtRef.current < 60 * 1000) return;
+    lastCheckAtRef.current = now;
+
     try {
       // /health is mounted OUTSIDE the global /api/v1 prefix on the backend,
       // so we must call it via the bare server base URL (not the prefixed `api` client).
@@ -114,11 +121,16 @@ export function useForceUpdate(): ForceUpdateState {
 
   useEffect(() => {
     cancelledRef.current = false;
-    check();
+    // Defer the initial check to after the first frame: we don't want to
+    // compete with navigation/list mounts on cold start.
+    const handle = InteractionManager.runAfterInteractions(() => {
+      check();
+    });
 
     const interval = setInterval(check, RECHECK_INTERVAL_MS);
     return () => {
       cancelledRef.current = true;
+      handle?.cancel?.();
       clearInterval(interval);
     };
   }, [check]);

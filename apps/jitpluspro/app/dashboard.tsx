@@ -290,6 +290,15 @@ export default function DashboardScreen() {
     { key: 'wheelWins', icon: Trophy, label: t('dashboard.luckyWheelWins'), value: kpis?.luckyWheelWins ?? 0 },
   ], [kpis, t, unitLabel]);
 
+  // Precompute KPI row pairs so the JSX doesn't re-slice on every re-render.
+  const kpiRows = useMemo(() => {
+    const rows: (typeof kpiCards)[] = [];
+    for (let i = 0; i < kpiCards.length; i += 2) {
+      rows.push(kpiCards.slice(i, i + 2));
+    }
+    return rows;
+  }, [kpiCards]);
+
   const formatTrendLabel = useCallback((bucket: string) => {
     const date = new Date(bucket);
     if (isNaN(date.getTime())) return bucket;
@@ -305,6 +314,13 @@ export default function DashboardScreen() {
     }
     return date.toLocaleDateString(getLocaleTag(locale), { month: 'short' });
   }, [trendPeriod, locale]);
+
+  const periodOptions = useMemo(() => ([
+    { id: 'day', label: t('dashboard.periodDay') },
+    { id: 'week', label: t('dashboard.periodWeek') },
+    { id: 'month', label: t('dashboard.periodMonth') },
+    { id: 'year', label: t('dashboard.periodYear') },
+  ] as const), [t]);
 
   const primaryColor = theme.primary;
   const trendCharts = useMemo<{ key: string; title: string; color: string; data: TrendPoint[] }[]>(
@@ -413,30 +429,27 @@ export default function DashboardScreen() {
         <Text style={[styles.sectionTitle, { color: theme.text }]} accessibilityRole="header" maxFontSizeMultiplier={1.4}>
           {t('dashboard.kpis')}
         </Text>
-        {Array.from({ length: Math.ceil(kpiCards.length / 2) }).map((_, rowIdx) => {
-          const pair = kpiCards.slice(rowIdx * 2, rowIdx * 2 + 2);
-          return (
-            <View
-              key={`kpi-row-${rowIdx}`}
-              style={[styles.statsRow, rowIdx > 0 && styles.statsRowGap]}
-            >
-              {pair.map((card) => {
-                const Icon = card.icon;
-                return (
-                  <StatCard
-                    key={card.key}
-                    icon={<Icon size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
-                    label={card.label}
-                    value={card.value}
-                    color={theme.primary}
-                    theme={theme}
-                    localeTag={localeTag}
-                  />
-                );
-              })}
-            </View>
-          );
-        })}
+        {kpiRows.map((pair, rowIdx) => (
+          <View
+            key={`kpi-row-${rowIdx}`}
+            style={[styles.statsRow, rowIdx > 0 && styles.statsRowGap]}
+          >
+            {pair.map((card) => {
+              const Icon = card.icon;
+              return (
+                <StatCard
+                  key={card.key}
+                  icon={<Icon size={ms(16)} color={palette.charbon} strokeWidth={1.5} />}
+                  label={card.label}
+                  value={card.value}
+                  color={theme.primary}
+                  theme={theme}
+                  localeTag={localeTag}
+                />
+              );
+            })}
+          </View>
+        ))}
 
         {/* --- Section 2: Evolution (on-demand) --- */}
         <TouchableOpacity
@@ -457,12 +470,7 @@ export default function DashboardScreen() {
             {/* Period filter tabs */}
             <View style={styles.periodHeader}>
               <View style={styles.trendTabs}>
-                {([
-                  { id: 'day', label: t('dashboard.periodDay') },
-                  { id: 'week', label: t('dashboard.periodWeek') },
-                  { id: 'month', label: t('dashboard.periodMonth') },
-                  { id: 'year', label: t('dashboard.periodYear') },
-                ] as const).map((item) => {
+                {periodOptions.map((item) => {
                   const isActive = trendPeriod === item.id;
                   return (
                     <TouchableOpacity

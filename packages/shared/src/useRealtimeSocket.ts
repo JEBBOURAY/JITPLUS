@@ -174,8 +174,15 @@ export function useRealtimeSocket(config: RealtimeSocketConfig): Socket | null {
   // Reconnect when app returns from background
   useEffect(() => {
     const handleAppState = (nextState: AppStateStatus) => {
-      if (nextState === 'active' && enabled && !socketRef.current?.connected) {
+      if (nextState !== 'active' || !enabled) return;
+      const s = socketRef.current;
+      // socket.io already reconnects on its own; only intervene if it has
+      // truly given up (or there's no socket yet). Rebuilding on every
+      // foreground caused duplicate handshakes and JS thread pressure.
+      if (!s) {
         connect();
+      } else if (!s.connected && !s.active) {
+        s.connect();
       }
     };
 

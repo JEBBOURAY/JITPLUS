@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Animated } from 'react-native';
 import { useIsFocused } from '@react-navigation/native';
 
@@ -19,17 +19,22 @@ export function useFocusFade() {
     }).start();
   }, [isFocused, progress]);
 
-  const focusStyle = {
-    opacity: progress,
-    transform: [
-      {
-        scale: progress.interpolate({
-          inputRange: [0, 1],
-          outputRange: [0.98, 1],
-        }),
-      },
-    ],
-  };
+  // Memoize so the style object reference is stable across renders;
+  // otherwise every parent re-render forces RN to diff a fresh style.
+  const focusStyle = useMemo(
+    () => ({
+      opacity: progress,
+      transform: [
+        {
+          scale: progress.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0.98, 1],
+          }),
+        },
+      ],
+    }),
+    [progress],
+  );
 
   return { isFocused, focusStyle };
 }

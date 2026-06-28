@@ -51,14 +51,25 @@ const safeSelection = () => {
   Haptics.selectionAsync().catch(() => {});
 };
 
-/** Removes emojis from text to let the custom icons shine (with performance cache for 60fps scrolling) */
+/** Removes emojis from text to let the custom icons shine (with bounded LRU cache for 60fps scrolling) */
+const EMOJI_CACHE_LIMIT = 500;
 const emojiCache = new Map<string, string>();
 const stripEmojis = (str: string | null | undefined) => {
   if (!str) return '';
-  if (emojiCache.has(str)) return emojiCache.get(str)!;
+  const hit = emojiCache.get(str);
+  if (hit !== undefined) {
+    // LRU bump: re-insert to mark as most-recently used.
+    emojiCache.delete(str);
+    emojiCache.set(str, hit);
+    return hit;
+  }
   const stripped = str.replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, '').trim();
-  // Prevent unbounded memory growth
-  if (emojiCache.size > 500) emojiCache.clear();
+  if (emojiCache.size >= EMOJI_CACHE_LIMIT) {
+    // Evict oldest single entry instead of clearing the whole cache, which
+    // produced a recurring cache-miss storm during long scrolls.
+    const oldest = emojiCache.keys().next().value;
+    if (oldest !== undefined) emojiCache.delete(oldest);
+  }
   emojiCache.set(str, stripped);
   return stripped;
 };
@@ -240,6 +251,71 @@ const TransactionRow = React.memo(function TransactionRow({
   );
 });
 
+// Filter keys are stable across re-renders; only the labels depend on locale.
+const FILTER_KEYS: ReadonlyArray<{ key: FilterType; labelKey: string }> = [
+  { key: 'ALL', labelKey: 'activity.filterAll' },
+  { key: 'EARN_POINTS', labelKey: 'activity.filterEarned' },
+  { key: 'REDEEM_REWARD', labelKey: 'activity.filterRedeemed' },
+  { key: 'LUCKY_WHEEL_WIN', labelKey: 'activity.filterLuckyWheel' },
+  { key: 'ADJUST_POINTS', labelKey: 'activity.filterAdjust' },
+  { key: 'LOYALTY_PROGRAM_CHANGE', labelKey: 'activity.filterTeam' },
+];
+
+interface FilterPillsProps {
+  activeFilter: FilterType | null;
+  onChange: (next: FilterType | null) => void;
+  theme: ReturnType<typeof useTheme>;
+  t: (key: string) => string;
+}
+
+const FilterPills = React.memo(function FilterPills({ activeFilter, onChange, theme, t }: FilterPillsProps) {
+  return (
+    <View style={styles.filterWrapper}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.filterRow}
+      >
+        {FILTER_KEYS.map(({ key, labelKey }) => {
+          const isActive = activeFilter === key;
+          const label = t(labelKey);
+          return (
+            <TouchableOpacity
+              key={key}
+              activeOpacity={0.7}
+              onPress={() => {
+                safeSelection();
+                onChange(isActive ? null : key);
+              }}
+              hitSlop={HIT_SLOP_LARGE}
+              accessibilityRole="button"
+              accessibilityLabel={label}
+              accessibilityState={{ selected: isActive }}
+              style={[
+                styles.filterPill,
+                {
+                  backgroundColor: isActive ? theme.primary + '18' : theme.bgCard,
+                  borderColor: isActive ? theme.primary : theme.borderLight,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.filterPillText,
+                  { color: isActive ? theme.primary : theme.textMuted },
+                ]}
+                maxFontSizeMultiplier={1.4}
+              >
+                {label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+});
+
 export default function ActivityScreen() {
   const merchant = useAuthStore((s) => s.merchant);
   const theme = useTheme();
@@ -328,55 +404,12 @@ export default function ActivityScreen() {
       )}
 
       {/* ── Filter pills ── */}
-      <View style={styles.filterWrapper}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filterRow}
-        >
-          {([
-            { key: 'ALL' as FilterType, label: t('activity.filterAll') },
-            { key: 'EARN_POINTS' as FilterType, label: t('activity.filterEarned') },
-            { key: 'REDEEM_REWARD' as FilterType, label: t('activity.filterRedeemed') },
-            { key: 'LUCKY_WHEEL_WIN' as FilterType, label: t('activity.filterLuckyWheel') },
-            { key: 'ADJUST_POINTS' as FilterType, label: t('activity.filterAdjust') },
-            { key: 'LOYALTY_PROGRAM_CHANGE' as FilterType, label: t('activity.filterTeam') },
-          ]).map(({ key, label }) => {
-            const isActive = activeFilter === key;
-            return (
-              <TouchableOpacity
-                key={key}
-                activeOpacity={0.7}
-                onPress={() => {
-                  safeSelection();
-                  setActiveFilter(isActive ? null : key);
-                }}
-                hitSlop={HIT_SLOP_LARGE}
-                accessibilityRole="button"
-                accessibilityLabel={label}
-                accessibilityState={{ selected: isActive }}
-                style={[
-                  styles.filterPill,
-                  {
-                    backgroundColor: isActive ? theme.primary + '18' : theme.bgCard,
-                    borderColor: isActive ? theme.primary : theme.borderLight,
-                  },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.filterPillText,
-                    { color: isActive ? theme.primary : theme.textMuted },
-                  ]}
-                  maxFontSizeMultiplier={1.4}
-                >
-                  {label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      </View>
+      <FilterPills
+        activeFilter={activeFilter}
+        onChange={setActiveFilter}
+        theme={theme}
+        t={t}
+      />
 
       {isError && activeFilter && !loading ? (
         <View style={styles.emptyContainer}>

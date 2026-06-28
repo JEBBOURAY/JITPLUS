@@ -18,7 +18,9 @@ import {
   Share,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as ImagePicker from 'expo-image-picker';
+// expo-image-picker is lazy-loaded inside the picker handlers below — its
+// native module weighs ~800KB and is only needed if the user taps the
+// logo/cover edit buttons.
 import { getErrorMessage } from '@/utils/error';
 import InfoRow from '@/components/InfoRow';
 import { useReferral, useUploadMerchantLogo, useDeleteMerchantLogo, useAdminNotifUnreadCount, useUploadMerchantCover, useDeleteMerchantCover } from '@/hooks/useQueryHooks';
@@ -43,7 +45,7 @@ import {
   Ticket,
   Palette,
 } from 'lucide-react-native';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuthState, useAuthActions } from '@/contexts/AuthContext';
 import api from '@/services/api';
 import { getServerBaseUrl } from '@/services/api';
 import { useTheme, palette } from '@/contexts/ThemeContext';
@@ -57,7 +59,8 @@ import { wp, hp, ms, fontSize as FS, radius } from '@/utils/responsive';
 import { ProfileCard, LogoEditModal, CoverEditModal, LanguageModal, ProLockBadge } from '@/components/account';
 
 export default function AccountScreen() {
-  const { merchant, loading, signOut, isTeamMember, teamMember, updateMerchant } = useAuth();
+  const { merchant, loading, isTeamMember, teamMember } = useAuthState();
+  const { signOut, updateMerchant } = useAuthActions();
   const theme = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -92,6 +95,7 @@ export default function AccountScreen() {
   const pickAndUploadLogo = useCallback(async () => {
     if (uploadLogoMutation.isPending) return;
     try {
+      const ImagePicker = await import('expo-image-picker');
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsEditing: true,
@@ -114,6 +118,7 @@ export default function AccountScreen() {
   const pickAndUploadCover = useCallback(async () => {
     if (uploadCoverMutation.isPending) return;
     try {
+      const ImagePicker = await import('expo-image-picker');
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsEditing: true,

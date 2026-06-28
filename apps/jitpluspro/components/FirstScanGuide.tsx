@@ -20,6 +20,7 @@ export default function FirstScanGuide({ visible, onClose }: Props) {
 
   const slideAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const pulseLoop = useRef<Animated.CompositeAnimation | null>(null);
 
   useEffect(() => {
     if (visible) {
@@ -31,15 +32,19 @@ export default function FirstScanGuide({ visible, onClose }: Props) {
         useNativeDriver: true,
       }).start();
 
-      Animated.loop(
+      pulseLoop.current = Animated.loop(
         Animated.sequence([
           Animated.timing(pulseAnim, { toValue: 1.05, duration: 1200, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
           Animated.timing(pulseAnim, { toValue: 1, duration: 1200, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
         ]),
-      ).start();
+      );
+      pulseLoop.current.start();
     } else {
       Animated.timing(slideAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start();
     }
+    return () => {
+      pulseLoop.current?.stop();
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 

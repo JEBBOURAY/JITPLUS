@@ -152,7 +152,7 @@ const ClientCard = React.memo(function ClientCard({
 });
 
 // ── Empty State ────────────────────────────────────
-function EmptyState({ search, theme, onScan }: { search: string; theme: ReturnType<typeof useTheme>; onScan: () => void }) {
+const EmptyState = React.memo(function EmptyState({ search, theme, onScan }: { search: string; theme: ReturnType<typeof useTheme>; onScan: () => void }) {
   const { t } = useLanguage();
   return (
     <View style={styles.emptyContainer}>
@@ -188,7 +188,7 @@ function EmptyState({ search, theme, onScan }: { search: string; theme: ReturnTy
       )}
     </View>
   );
-}
+});
 
 // ── Écran Clients ──────────────────────────────────────────
 export default function ClientsScreen() {
@@ -247,6 +247,8 @@ export default function ClientsScreen() {
   const openDetail = useCallback((clientId: string) => {
     router.push({ pathname: '/client-detail', params: { id: clientId } });
   }, [router]);
+
+  const goToScan = useCallback(() => router.push('/scan-qr'), [router]);
 
   const isStamps = merchant?.loyaltyType === 'STAMPS';
 
@@ -408,7 +410,7 @@ export default function ClientsScreen() {
             </View>
           ) : null
         }
-        ListEmptyComponent={<EmptyState search={search} theme={theme} onScan={() => router.push('/scan-qr')} />}
+        ListEmptyComponent={<EmptyState search={search} theme={theme} onScan={goToScan} />}
       />
       )}
     </Animated.View>

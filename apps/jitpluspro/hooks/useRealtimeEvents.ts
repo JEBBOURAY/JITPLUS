@@ -25,7 +25,9 @@ export function useRealtimeEvents(socket: Socket | null) {
     if (!socket) return;
 
     // Debounce transactions list invalidation — batch rapid-fire RT events
-    // (e.g. 10 scans in 5 seconds) into a single refetch.
+    // (e.g. 10 scans in 5 seconds) into a single refetch. 500ms is short
+    // enough that the merchant sees activity feel "live" while still
+    // collapsing bursts.
     let txDebounceTimer: ReturnType<typeof setTimeout> | null = null;
     const debouncedInvalidateTx = () => {
       if (txDebounceTimer) clearTimeout(txDebounceTimer);
@@ -33,7 +35,7 @@ export function useRealtimeEvents(socket: Socket | null) {
         queryClient.invalidateQueries({ queryKey: queryKeys.transactions });
         queryClient.invalidateQueries({ queryKey: ['dashboard-stats'], refetchType: 'none' });
         queryClient.invalidateQueries({ queryKey: ['dashboard-trends'], refetchType: 'none' });
-      }, 2_000);
+      }, 500);
     };
 
     // ── Transaction recorded (by any team member / device) ───

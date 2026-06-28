@@ -25,6 +25,31 @@ export const onUnauthorized = (listener: AuthEventListener) => {
 
 export const getServerBaseUrl = (): string => resolveServerBaseUrl(ENV_URL, IS_DEV);
 
+// Memory cache for accessToken: SecureStore reads hit Android Keystore which
+// can take 10–30 ms each. The interceptor calls getToken() on EVERY request,
+// so without a cache we eat that latency on every API call.
+let cachedToken: string | null = null;
+let cachedTokenLoaded = false;
+
+const getCachedToken = async (): Promise<string | null> => {
+  if (!cachedTokenLoaded) {
+    cachedToken = await SecureStore.getItemAsync('accessToken');
+    cachedTokenLoaded = true;
+  }
+  return cachedToken;
+};
+
+const setCachedToken = async (token: string): Promise<void> => {
+  cachedToken = token;
+  cachedTokenLoaded = true;
+  await SecureStore.setItemAsync('accessToken', token);
+};
+
+const clearCachedToken = (): void => {
+  cachedToken = null;
+  cachedTokenLoaded = true;
+};
+
 const AUTH_ROUTES = [
   '/auth/login',
   '/auth/register',
@@ -43,8 +68,8 @@ const api = createApiClient({
   envUrl: ENV_URL,
   isDev: IS_DEV,
   timeout: API_TIMEOUT_MS,
-  getToken: () => SecureStore.getItemAsync('accessToken'),
-  setToken: (token) => SecureStore.setItemAsync('accessToken', token),
+  getToken: getCachedToken,
+  setToken: setCachedToken,
   refreshToken: async () => {
     const refreshToken = await SecureStore.getItemAsync('refreshToken');
     const sessionId = await SecureStore.getItemAsync('sessionId');
@@ -64,6 +89,7 @@ const api = createApiClient({
     return data.access_token;
   },
   onAuthFailure: () => {
+    clearCachedToken();
     SecureStore.deleteItemAsync('accessToken').catch(() => {});
     SecureStore.deleteItemAsync('refreshToken').catch(() => {});
     SecureStore.deleteItemAsync('sessionId').catch(() => {});
@@ -71,6 +97,12 @@ const api = createApiClient({
   },
   authRoutes: AUTH_ROUTES,
 });
+
+// Exposed so AuthContext / login flows that write directly to SecureStore
+// can also invalidate the in-memory cache.
+export const resetApiTokenCache = (): void => {
+  clearCachedToken();
+};
 
 // ── Dev-mode request/response logging ──
 if (IS_DEV) {
