@@ -249,6 +249,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { Image as ImageIcon, Award, Settings as SettingsIcon } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { sendMerchantPushToken } from '@/services/merchantPushToken';
+import MetaAdsManager from '@/services/metaAdsManager';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -291,6 +292,8 @@ export default function RootLayout() {
     const timer = setTimeout(() => setFontTimeout(true), 5000);
     return () => clearTimeout(timer);
   }, []);
+
+  useEffect(() => { void MetaAdsManager.initialize(); }, []);
 
   if (!loaded && !fontTimeout && !error) {
     return null;

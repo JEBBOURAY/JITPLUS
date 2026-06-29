@@ -11,6 +11,9 @@ module.exports = ({ config }) => {
     process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_IOS || GOOGLE_MAPS_KEY_SHARED;
   // Reversed client ID from Google Cloud Console → OAuth 2.0 → iOS client
   const IOS_GOOGLE_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || '';
+  const META_APP_ID = process.env.EXPO_PUBLIC_META_APP_ID || '2706696686345947';
+  const META_CLIENT_TOKEN = process.env.EXPO_PUBLIC_META_CLIENT_TOKEN || '';
+  const META_DISPLAY_NAME = process.env.EXPO_PUBLIC_META_DISPLAY_NAME || 'JitPlus Pro';
   const PRIVACY_POLICY_URL =
     process.env.EXPO_PUBLIC_PRIVACY_URL ||
     'https://jitplus.com/privacy';
@@ -34,7 +37,7 @@ module.exports = ({ config }) => {
     name: 'JitPlus Pro',
     slug: 'jitpluspro',
     description: 'Loyalty program management for local shops — scan QR codes, track customer visits, and set up stamp-based rewards.',
-    version: '1.5.9',
+    version: '1.5.10',
     orientation: 'portrait',
     icon: './assets/images/icon-white.png',
     scheme: 'jitpluspro',
@@ -56,7 +59,7 @@ module.exports = ({ config }) => {
       supportsTablet: false,
       bundleIdentifier: 'com.jitplus.pro',
       // Initial build number — EAS autoIncrement bumps this on every production build
-      buildNumber: '21',
+      buildNumber: '22',
       // Portrait-only app: disable iPad Split View / Slide Over to avoid orientation-support review issues
       requiresFullScreen: true,
       // Declares standard HTTPS encryption — waives export compliance questionnaire
@@ -80,11 +83,15 @@ module.exports = ({ config }) => {
         // NSPhotoLibraryAddUsageDescription is intentionally omitted.
         NSPhotoLibraryUsageDescription:
           "JitPlus Pro a besoin d'accéder à vos photos pour choisir le logo et la couverture de votre commerce.",
-        // NSUserTrackingUsageDescription intentionally NOT declared:
-        // the app does not call ATTrackingManager.requestTrackingAuthorization nor use IDFA.
-        // Sentry crash diagnostics are anonymous (no PII, attachScreenshot/ViewHierarchy disabled)
-        // and therefore do not qualify as “tracking” under Apple's definition. Declaring the key
-        // without actually prompting ATT is flagged during App Review.
+        FacebookAppID: META_APP_ID,
+        FacebookClientToken: META_CLIENT_TOKEN,
+        FacebookDisplayName: META_DISPLAY_NAME,
+        NSUserTrackingUsageDescription:
+          'Cette autorisation permet a JitPlus Pro de mesurer les performances des campagnes publicitaires et d ameliorer l acquisition de clients.',
+        SKAdNetworkItems: [
+          { SKAdNetworkIdentifier: 'v9wttpbfk9.skadnetwork' },
+          { SKAdNetworkIdentifier: 'n38lu8286q.skadnetwork' },
+        ],
         // Google Sign-In redirect — reversed iOS client ID
         ...(IOS_GOOGLE_CLIENT_ID
           ? { CFBundleURLTypes: [{ CFBundleURLSchemes: [IOS_GOOGLE_CLIENT_ID] }] }
@@ -99,7 +106,7 @@ module.exports = ({ config }) => {
       // ],
     },
     android: {
-      versionCode: 22,
+      versionCode: 23,
       adaptiveIcon: {
         foregroundImage: './assets/images/adaptive-icon-white.png',
         backgroundColor: '#FFFFFF',
