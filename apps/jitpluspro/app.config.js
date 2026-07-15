@@ -59,7 +59,7 @@ module.exports = ({ config }) => {
       supportsTablet: false,
       bundleIdentifier: 'com.jitplus.pro',
       // Initial build number — EAS autoIncrement bumps this on every production build
-      buildNumber: '24',
+      buildNumber: '25',
       // Portrait-only app: disable iPad Split View / Slide Over to avoid orientation-support review issues
       requiresFullScreen: true,
       // Declares standard HTTPS encryption — waives export compliance questionnaire
@@ -106,7 +106,7 @@ module.exports = ({ config }) => {
       // ],
     },
     android: {
-      versionCode: 25,
+      versionCode: 26,
       adaptiveIcon: {
         foregroundImage: './assets/images/adaptive-icon-white.png',
         backgroundColor: '#FFFFFF',
