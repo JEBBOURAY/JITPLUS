@@ -33,7 +33,7 @@ export default function ProfileScreen() {
     if (!merchant && !loading) {
       router.replace('/login');
     }
-  }, [merchant, loading]);
+  }, [merchant, loading, router]);
 
   const handleSignOut = async () => {
     await signOut();

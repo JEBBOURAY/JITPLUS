@@ -1622,6 +1622,8 @@ export default {
     HOTEL: 'فندق',
     PARFUMERIE: 'عطور',
     TRAITEUR: 'تريتور',
+    LOCATION_VOITURE: 'كراء السيارات',
+    SALLE_JEU: 'قاعة الألعاب',
     AUTRE: 'أخرى',
   },
 
@@ -1653,6 +1655,8 @@ export default {
     HOTEL: 'إقامة',
     PARFUMERIE: 'عطور وتجميل',
     TRAITEUR: 'تريتور وحفلات',
+    LOCATION_VOITURE: 'كراء السيارات',
+    SALLE_JEU: 'قاعة الألعاب وغيمينغ',
     AUTRE: 'تجارة أخرى',
   },
 

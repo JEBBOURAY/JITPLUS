@@ -36,7 +36,7 @@ module.exports = ({ config }) => {
     name: 'JitPlus',
     slug: 'jitplus',
     description: 'Digital loyalty cards app — collect stamps and earn rewards at your favorite local shops.',
-    version: '1.3.29',
+    version: '1.3.31',
     orientation: 'portrait',
     icon: './assets/images/icon-white.png',
     scheme: 'jitplus',
@@ -56,7 +56,7 @@ module.exports = ({ config }) => {
       supportsTablet: false,
       bundleIdentifier: 'com.jitplus.client',
       // Initial build number — EAS autoIncrement bumps this on every production build
-      buildNumber: '51',
+      buildNumber: '52',
       // Portrait-only app: disable iPad Split View / Slide Over to avoid orientation-support review issues
       requiresFullScreen: true,
       // Firebase config for iOS — download from Firebase Console
@@ -73,6 +73,7 @@ module.exports = ({ config }) => {
         ITSAppUsesNonExemptEncryption: false,
         NSLocationWhenInUseUsageDescription:
           "Permettre à JitPlus d'accéder à votre position pour trouver les commerces autour de vous.",
+        LSApplicationQueriesSchemes: ['instagram', 'whatsapp', 'fb'],
 
         // Google Sign-In redirect — reversed iOS client ID
         ...(IOS_GOOGLE_CLIENT_ID
@@ -87,7 +88,7 @@ module.exports = ({ config }) => {
       ],
     },
     android: {
-      versionCode: 60,
+      versionCode: 61,
       icon: './assets/images/icon-white.png',
       adaptiveIcon: {
         foregroundImage: './assets/images/adaptive-icon-white.png',
@@ -200,6 +201,9 @@ module.exports = ({ config }) => {
       './plugins/withMoroccoRegion',
       // Enable RTL support on Android — required for Arabic/Darija layout
       './plugins/withSupportsRTL',
+      // Force modular headers for GoogleUtilities/RecaptchaInterop so Swift pod
+      // AppCheckCore (pulled in by GoogleSignIn 9) can import them.
+      './plugins/withGoogleModularHeaders',
       // Disable Swift 6 strict concurrency for all pods (Xcode 26 + expo-image@55.0.9 incompat)
       './plugins/withDisableStrictConcurrency',
       // iOS Notification Service Extension — temporarily disabled for v1.3.11.
@@ -226,6 +230,22 @@ module.exports = ({ config }) => {
           // WhenInUse only — the app never requests background/always location
           locationWhenInUsePermission:
             "Permettre à JitPlus d'accéder à votre position pour trouver les commerces autour de vous.",
+        },
+      ],
+      [
+        // Save-to-gallery for the loyalty QR card (app/(tabs)/qr.tsx).
+        // We only WRITE (add) images — the app never reads the photo library.
+        // The Android read/write storage permissions this plugin injects are
+        // stripped via `android.blockedPermissions` above (Play Console clean);
+        // saving works on Android 10+ via scoped storage (MediaStore).
+        'expo-media-library',
+        {
+          photosPermission:
+            "Permettre à JitPlus d'enregistrer l'image de votre carte de fidélité dans vos photos.",
+          savePhotosPermission:
+            "Permettre à JitPlus d'enregistrer l'image de votre carte de fidélité dans vos photos.",
+          isAccessMediaLocationEnabled: false,
+          preventAutomaticLimitedAccessAlert: true,
         },
       ],
       // Note: expo-screen-capture is a runtime-only module (no config plugin).

@@ -42,12 +42,6 @@ const TabButton = React.memo(function TabButton({
   const theme = useTheme();
   const { t } = useLanguage();
 
-  if (!ICONS[route.name]) return null;
-
-  const IconComponent = ICONS[route.name];
-  const label = t(TAB_KEYS[route.name] ?? route.name);
-  const isScan = route.name === 'scan';
-
   const onPress = useCallback(() => {
     const event = navigation.emit({
       type: 'tabPress',
@@ -58,6 +52,12 @@ const TabButton = React.memo(function TabButton({
       navigation.navigate(route.name);
     }
   }, [navigation, route.key, route.name, isFocused]);
+
+  if (!ICONS[route.name]) return null;
+
+  const IconComponent = ICONS[route.name];
+  const label = t(TAB_KEYS[route.name] ?? route.name);
+  const isScan = route.name === 'scan';
 
   if (isScan) {
     return (

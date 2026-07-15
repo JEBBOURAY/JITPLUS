@@ -22,6 +22,33 @@ import { useAppForegroundRefresh } from '@/hooks/useAppForegroundRefresh';
 import api, { getServerBaseUrl } from '@/services/api';
 import { logError, logWarn, logInfo } from '@/utils/devLogger';
 
+// ── GDPR opt-out (honours SENTRY_OPT_OUT AsyncStorage flag) ─────
+// Sentry is configured as PII-free anonymous crash reporting (legitimate
+// interest under GDPR), but we still expose a way for users to opt out.
+// If the flag is set, we close the Sentry client so no events are sent.
+import AsyncStorageForConsent from '@react-native-async-storage/async-storage';
+
+// RTL/LTR direction is applied live via the `direction` style prop
+// in ThemedNavigator. I18nManager.forceRTL() persists the setting for
+// cold starts. No restart alert is needed.
+
+import { AuthProvider, useAuth } from '@/contexts/AuthContext';
+import { ThemeProvider, useTheme } from '@/contexts/ThemeContext';
+import { LanguageProvider } from '@/contexts/LanguageContext';
+import { Notifications, isExpoGo, setupAndroidChannels } from '@/utils/notifications';
+import AppErrorBoundary from '@/components/ErrorBoundary';
+import OfflineBanner from '@/components/OfflineBanner';
+import ForceUpdateModal from '@/components/ForceUpdateModal';
+import { useForceUpdate } from '@/hooks/useForceUpdate';
+import ReferralPopup from '@/components/ReferralPopup';
+import SetupReminderPopup, { type SetupIssue } from '@/components/SetupReminderPopup';
+import { useReferral, useRewards } from '@/hooks/useQueryHooks';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { Image as ImageIcon, Award, Settings as SettingsIcon } from 'lucide-react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { sendMerchantPushToken } from '@/services/merchantPushToken';
+import MetaAdsManager from '@/services/metaAdsManager';
+
 // ── Lazy-load Sentry to prevent native module crash on Android ──
 // The native @sentry/react-native module can crash during require() if the DSN
 // is missing or the native SDK is misconfigured. Lazy-loading ensures the app
@@ -193,12 +220,6 @@ try {
   // Sentry init can crash if native module is misconfigured — never block app launch
   logWarn('Sentry', 'init failed:', e);
 }
-
-// ── GDPR opt-out (honours SENTRY_OPT_OUT AsyncStorage flag) ─────
-// Sentry is configured as PII-free anonymous crash reporting (legitimate
-// interest under GDPR), but we still expose a way for users to opt out.
-// If the flag is set, we close the Sentry client so no events are sent.
-import AsyncStorageForConsent from '@react-native-async-storage/async-storage';
 AsyncStorageForConsent.getItem('sentry_opt_out')
   .then((v) => {
     if (v === 'true') {
@@ -229,27 +250,6 @@ if (typeof globalThis !== 'undefined') {
 if (!__DEV__ && !process.env.EXPO_PUBLIC_API_URL) {
   captureException(new Error('EXPO_PUBLIC_API_URL is missing in production'));
 }
-
-// RTL/LTR direction is applied live via the `direction` style prop
-// in ThemedNavigator. I18nManager.forceRTL() persists the setting for
-// cold starts. No restart alert is needed.
-
-import { AuthProvider, useAuth } from '@/contexts/AuthContext';
-import { ThemeProvider, useTheme } from '@/contexts/ThemeContext';
-import { LanguageProvider } from '@/contexts/LanguageContext';
-import { Notifications, isExpoGo, setupAndroidChannels } from '@/utils/notifications';
-import AppErrorBoundary from '@/components/ErrorBoundary';
-import OfflineBanner from '@/components/OfflineBanner';
-import ForceUpdateModal from '@/components/ForceUpdateModal';
-import { useForceUpdate } from '@/hooks/useForceUpdate';
-import ReferralPopup from '@/components/ReferralPopup';
-import SetupReminderPopup, { type SetupIssue } from '@/components/SetupReminderPopup';
-import { useReferral, useRewards } from '@/hooks/useQueryHooks';
-import { useLanguage } from '@/contexts/LanguageContext';
-import { Image as ImageIcon, Award, Settings as SettingsIcon } from 'lucide-react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { sendMerchantPushToken } from '@/services/merchantPushToken';
-import MetaAdsManager from '@/services/metaAdsManager';
 
 export {
   // Catch any errors thrown by the Layout component.

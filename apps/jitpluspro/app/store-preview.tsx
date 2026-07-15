@@ -124,15 +124,23 @@ export default function StorePreviewScreen() {
   const initial = normalizeColor(merchant?.themeColor);
   const initialIcon: string | null = merchant?.themeIcon && MERCHANT_ICON_MAP[merchant.themeIcon] ? merchant.themeIcon : null;
   const primaryCategory = merchant?.categorie;
-  const initialSecondary: MerchantCategory[] = Array.isArray(merchant?.secondaryCategories)
-    ? (merchant!.secondaryCategories as MerchantCategory[]).filter((c) => c !== primaryCategory)
-    : [];
+  const initialSecondary: MerchantCategory[] = useMemo(
+    () =>
+      Array.isArray(merchant?.secondaryCategories)
+        ? (merchant?.secondaryCategories as MerchantCategory[]).filter((c) => c !== primaryCategory)
+        : [],
+    [merchant?.secondaryCategories, primaryCategory],
+  );
   const initialTagline: string = typeof merchant?.tagline === 'string' ? merchant.tagline : '';
-  const initialBadges: MerchantBadge[] = Array.isArray(merchant?.badges)
-    ? (merchant!.badges as string[]).filter((b): b is MerchantBadge =>
-        (MERCHANT_BADGE_CODES as readonly string[]).includes(b),
-      )
-    : [];
+  const initialBadges: MerchantBadge[] = useMemo(
+    () =>
+      Array.isArray(merchant?.badges)
+        ? (merchant?.badges as string[]).filter((b): b is MerchantBadge =>
+            (MERCHANT_BADGE_CODES as readonly string[]).includes(b),
+          )
+        : [],
+    [merchant?.badges],
+  );
   const [selected, setSelected] = useState<string>(initial);
   const [selectedIcon, setSelectedIcon] = useState<string | null>(initialIcon);
   const [selectedSecondary, setSelectedSecondary] = useState<MerchantCategory[]>(initialSecondary);
@@ -258,7 +266,7 @@ export default function StorePreviewScreen() {
   const [galleryBusyUrl, setGalleryBusyUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    const server = Array.isArray(merchant?.gallery) ? (merchant!.gallery as string[]) : [];
+    const server = Array.isArray(merchant?.gallery) ? (merchant?.gallery as string[]) : [];
     setGalleryDraft(server);
   }, [merchant?.gallery]);
 

@@ -94,18 +94,14 @@ export default function AccountSection({
               const waMeUrl = `https://wa.me/${phone}?text=${msg}`;
               
               try {
-                const canOpen = await Linking.canOpenURL(whatsappUrl);
-                if (canOpen) {
-                  await Linking.openURL(whatsappUrl);
-                } else {
-                  // Fallback to wa.me if native intent fails
-                  await Linking.openURL(waMeUrl);
-                }
+                await Linking.openURL(whatsappUrl);
               } catch (e) {
-                // If everything fails, try email
-                Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=Support&body=${msg}`).catch(() => {
-                  Alert.alert(t('common.error'), t('profile.supportError'));
-                });
+                // Fallback to wa.me, then email as last resort.
+                Linking.openURL(waMeUrl)
+                  .catch(() => Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=Support&body=${msg}`))
+                  .catch(() => {
+                    Alert.alert(t('common.error'), t('profile.supportError'));
+                  });
               }
             }}
             android_ripple={{ color: `${palette.gold}10` }}

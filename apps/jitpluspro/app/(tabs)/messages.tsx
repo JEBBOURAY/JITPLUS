@@ -39,6 +39,17 @@ import {
   Info,
 } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAuthState } from '@/contexts/AuthContext';
+import { useTheme, palette } from '@/contexts/ThemeContext';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { getErrorMessage } from '@/utils/error';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useFocusFade } from '@/hooks/useFocusFade';
+import { ms } from '@/utils/responsive';
+import PremiumLockCard from '@/components/PremiumLockCard';
+import { useNotificationHistory, useEmailQuota, useSendPushNotification, useSendEmail } from '@/hooks/useQueryHooks';
+import type { NotificationRecord } from '@/hooks/useQueryHooks';
 
 // ── Accessibility helpers ──
 const HIT_SLOP_LARGE = { top: 12, bottom: 12, left: 12, right: 12 };
@@ -88,17 +99,6 @@ const stripEmojis = (str: string | null | undefined): string => {
   emojiCache.set(str, stripped);
   return stripped;
 };
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useAuthState } from '@/contexts/AuthContext';
-import { useTheme, palette } from '@/contexts/ThemeContext';
-import { useLanguage } from '@/contexts/LanguageContext';
-import { getErrorMessage } from '@/utils/error';
-import { LinearGradient } from 'expo-linear-gradient';
-import { useFocusFade } from '@/hooks/useFocusFade';
-import { ms } from '@/utils/responsive';
-import PremiumLockCard from '@/components/PremiumLockCard';
-import { useNotificationHistory, useEmailQuota, useSendPushNotification, useSendEmail } from '@/hooks/useQueryHooks';
-import type { NotificationRecord } from '@/hooks/useQueryHooks';
 
 // ── Cooldown duration after a successful send (ms) ──
 const SEND_COOLDOWN_MS = 30_000;
@@ -162,13 +162,13 @@ function handlePremiumError(
   err: unknown,
   t: (key: string, vars?: Record<string, unknown>) => string,
 ) {
-  const axiosErr = err as { response?: { status?: number; data?: { message?: string } } };
+  const axiosErr = err as { response?: { status?: number; data?: { message?: string | string[] } } };
   const status = axiosErr?.response?.status;
   if (status === 400) {
     // Server-side content filter rejection
     Alert.alert(
       t('messages.contentBlockedTitle'),
-      axiosErr?.response?.data?.message || t('messages.contentBlockedMsg'),
+      getErrorMessage(err, t('messages.contentBlockedMsg')),
     );
     return;
   }
@@ -177,7 +177,8 @@ function handlePremiumError(
     return;
   }
   if (status === 403) {
-    const msg = axiosErr?.response?.data?.message || '';
+    const rawMsg = axiosErr?.response?.data?.message;
+    const msg = Array.isArray(rawMsg) ? rawMsg.join(' ') : (rawMsg ?? '');
     const isPlanIssue = msg.includes('Premium') || msg.includes('essai');
     Alert.alert(
       isPlanIssue ? t('messages.premiumOnly') : t('messages.quotaReached'),

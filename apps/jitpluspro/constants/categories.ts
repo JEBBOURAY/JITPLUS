@@ -31,6 +31,8 @@ export const CATEGORY_EMOJIS: Record<MerchantCategory, string> = {
   HOTEL:        '🏨',
   PARFUMERIE:   '🌸',
   TRAITEUR:     '🍱',
+  LOCATION_VOITURE: '🚙',
+  SALLE_JEU:    '🎮',
   AUTRE:        '🏷️',
 };
 

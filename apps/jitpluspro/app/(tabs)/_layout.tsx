@@ -47,7 +47,7 @@ export default function TabLayout() {
       _initialScanOpened = true;
       router.push('/scan-qr');
     }
-  }, [loading, isAuthenticated, needsEmailVerification, onboardingCompleted, isTeamMember]);
+  }, [loading, isAuthenticated, needsEmailVerification, onboardingCompleted, isTeamMember, merchantEmail, router]);
 
   if (loading) {
     return (

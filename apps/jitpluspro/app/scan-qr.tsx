@@ -199,7 +199,7 @@ const ScanLine = React.memo(function ScanLine({ scanSize, active }: { scanSize: 
     );
     anim.start();
     return () => anim.stop();
-  }, [active, scanSize]);
+  }, [active, scanSize, translateY]);
 
   const lineStyle = {
     transform: [{ translateY }],
@@ -362,7 +362,7 @@ export default function ScanQRScreen() {
     );
     anim.start();
     return () => anim.stop();
-  }, [isScanning]);
+  }, [isScanning, pulseScale]);
 
   const pulseStyle = useMemo(() => ({
     transform: [{ scale: pulseScale }],
@@ -373,7 +373,7 @@ export default function ScanQRScreen() {
     if (permission && !permission.granted && permission.canAskAgain) {
       requestPermission();
     }
-  }, [permission]);
+  }, [permission, requestPermission]);
 
   const renderMatchedClient = useCallback(({ item }: { item: MatchedClient }) => (
     <TouchableOpacity
@@ -395,7 +395,7 @@ export default function ScanQRScreen() {
       </View>
       <ArrowRight size={18} color={theme.primary} />
     </TouchableOpacity>
-  ), [router, theme]);
+  ), [router, theme, set]);
 
   // cameraMounted gates the CameraView's actual mount in the tree. We must
   // fully unmount (not just `active={false}`) to release the Camera2 session;
@@ -543,7 +543,7 @@ export default function ScanQRScreen() {
         Alert.alert(t('scan.clientInvalidTitle'), msg, [{ text: 'OK', onPress: () => set({ isScanning: true }) }]);
       }
     },
-    [isScanning, router, navigateToTransaction, set, t],
+    [isScanning, navigateToTransaction, set, t],
   );
 
   // Gate the scanner handler at the prop level so CameraView sees a stable

@@ -118,7 +118,7 @@ export default function AddressAutocomplete({
           geoFallbackRef.current.clear();
           const geoPredictions: PlacePrediction[] = geoJson.results
             .slice(0, 5)
-            .map((r: { formatted_address?: string; place_id?: string; geometry?: { location: { lat: number; lng: number } }; address_components?: Array<{ long_name: string; types: string[] }> }, i: number) => {
+            .map((r: { formatted_address?: string; place_id?: string; geometry?: { location: { lat: number; lng: number } }; address_components?: { long_name: string; types: string[] }[] }, i: number) => {
               const pid = r.place_id || `geo_${i}`;
               const getComp = (type: string) =>
                 r.address_components?.find((c) => c.types.includes(type))?.long_name;

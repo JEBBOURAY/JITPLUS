@@ -31,6 +31,8 @@ export enum MerchantCategory {
   HOTEL = 'HOTEL',
   PARFUMERIE = 'PARFUMERIE',
   TRAITEUR = 'TRAITEUR',
+  LOCATION_VOITURE = 'LOCATION_VOITURE',
+  SALLE_JEU = 'SALLE_JEU',
   AUTRE = 'AUTRE',
 }
 

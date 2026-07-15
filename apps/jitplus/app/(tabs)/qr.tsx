@@ -1,13 +1,14 @@
 import { useRef, useCallback, useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, Platform, TouchableOpacity, Alert, ScrollView, Image,
-  ActivityIndicator,
+  ActivityIndicator, Modal,
 } from 'react-native';
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import QRCode from 'react-native-qrcode-svg';
-import { Share2, X } from 'lucide-react-native';
+import { Share2, X, Download } from 'lucide-react-native';
 import * as Sharing from 'expo-sharing';
+import * as MediaLibrary from 'expo-media-library';
 import { useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
@@ -57,6 +58,7 @@ export default function QRScreen() {
 
   const [qrError, setQrError] = useState(false);
   const [showGuidBadge, setShowGuidBadge] = useState(false);
+  const [showActionMenu, setShowActionMenu] = useState(false);
   const { data: pointsOverview } = usePointsOverview();
 
   /** Fetch a fresh QR token.
@@ -179,15 +181,29 @@ export default function QRScreen() {
     return () => clearTimeout(timer);
   }, [qrExpiresAt, fetchQrToken]);
 
-  const handleShareQR = useCallback(async () => {
+  /** Capture the loyalty card as a PNG tmpfile via ViewShot. Returns null on failure. */
+  const captureCard = useCallback(async (): Promise<string | null> => {
     if (!ViewShot) {
       Alert.alert(t('common.error'), t('qr.sharingUnavailableMsg'));
-      return;
+      return null;
     }
-    haptic(HapticStyle.Medium);
     try {
       const uri = await qrViewRef.current?.capture?.();
-      if (!uri) { Alert.alert(t('common.error'), t('qr.captureError')); return; }
+      if (!uri) { Alert.alert(t('common.error'), t('qr.captureError')); return null; }
+      return uri;
+    } catch (error) {
+      if (__DEV__) console.error('Capture error:', error);
+      Alert.alert(t('common.error'), t('qr.captureError'));
+      return null;
+    }
+  }, [t]);
+
+  const handleShareQR = useCallback(async () => {
+    setShowActionMenu(false);
+    haptic(HapticStyle.Medium);
+    const uri = await captureCard();
+    if (!uri) return;
+    try {
       const isAvailable = await Sharing.isAvailableAsync();
       if (!isAvailable) { Alert.alert(t('qr.sharingUnavailable'), t('qr.sharingUnavailableMsg')); return; }
       await Sharing.shareAsync(uri, { mimeType: 'image/png', dialogTitle: t('qr.shareDialogTitle'), UTI: 'public.png' });
@@ -195,7 +211,29 @@ export default function QRScreen() {
       if (__DEV__) console.error('Share error:', error);
       Alert.alert(t('common.error'), t('qr.shareError'));
     }
-  }, [t]);
+  }, [captureCard, t]);
+
+  /** Save the captured loyalty card to the device photo gallery (Android + iOS).
+   *  Uses add-only (writeOnly) permission — the app never reads the library. */
+  const handleSaveToGallery = useCallback(async () => {
+    setShowActionMenu(false);
+    haptic(HapticStyle.Medium);
+    const uri = await captureCard();
+    if (!uri) return;
+    try {
+      const perm = await MediaLibrary.requestPermissionsAsync(true);
+      if (!perm.granted) {
+        Alert.alert(t('qr.permissionDeniedTitle'), t('qr.permissionDeniedMsg'));
+        return;
+      }
+      await MediaLibrary.saveToLibraryAsync(uri);
+      haptic(HapticStyle.Medium);
+      Alert.alert(t('qr.savedTitle'), t('qr.savedMsg'));
+    } catch (error) {
+      if (__DEV__) console.error('Save to gallery error:', error);
+      Alert.alert(t('common.error'), t('qr.saveError'));
+    }
+  }, [captureCard, t]);
 
   if (isGuest) return <GuestGuard />;
 
@@ -314,17 +352,17 @@ export default function QRScreen() {
             <View style={styles.actions}>
               <TouchableOpacity
                 style={[styles.actionBtn, { backgroundColor: theme.bgCard }]}
-                onPress={handleShareQR}
+                onPress={() => { haptic(HapticStyle.Light); setShowActionMenu(true); }}
                 activeOpacity={0.7}
                 accessibilityRole="button"
-                accessibilityLabel={t('qr.shareAccessibility')}
+                accessibilityLabel={t('qr.actionsAccessibility')}
               >
                 <View style={[styles.actionIconBg, { backgroundColor: theme.primaryBg }]}>
                   <Share2 size={ms(18)} color={theme.primary} strokeWidth={2} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.actionTitle, { color: theme.text }]}>{t('qr.shareTitle')}</Text>
-                  <Text style={[styles.actionSub, { color: theme.textMuted }]}>{t('qr.shareSubtitle')}</Text>
+                  <Text style={[styles.actionTitle, { color: theme.text }]}>{t('qr.actionsTitle')}</Text>
+                  <Text style={[styles.actionSub, { color: theme.textMuted }]}>{t('qr.actionsSubtitle')}</Text>
                 </View>
               </TouchableOpacity>
             </View>
@@ -333,6 +371,59 @@ export default function QRScreen() {
 
         <View style={{ height: hp(120) }} />
       </ScrollView>
+
+      {/* Action menu — Share + Save to gallery (bottom sheet) */}
+      <Modal
+        visible={showActionMenu}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowActionMenu(false)}
+      >
+        <TouchableOpacity
+          style={styles.menuOverlay}
+          activeOpacity={1}
+          onPress={() => setShowActionMenu(false)}
+        >
+          <TouchableOpacity
+            activeOpacity={1}
+            style={[styles.menuSheet, { backgroundColor: theme.bgCard, paddingBottom: insets.bottom + hp(16) }]}
+          >
+            <View style={[styles.menuHandle, { backgroundColor: theme.border }]} />
+
+            <TouchableOpacity
+              style={styles.menuRow}
+              onPress={handleShareQR}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={t('qr.shareAccessibility')}
+            >
+              <View style={[styles.actionIconBg, { backgroundColor: theme.primaryBg }]}>
+                <Share2 size={ms(18)} color={theme.primary} strokeWidth={2} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.actionTitle, { color: theme.text }]}>{t('qr.shareTitle')}</Text>
+                <Text style={[styles.actionSub, { color: theme.textMuted }]}>{t('qr.shareSubtitle')}</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.menuRow}
+              onPress={handleSaveToGallery}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={t('qr.saveAccessibility')}
+            >
+              <View style={[styles.actionIconBg, { backgroundColor: theme.primaryBg }]}>
+                <Download size={ms(18)} color={theme.primary} strokeWidth={2} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.actionTitle, { color: theme.text }]}>{t('qr.saveTitle')}</Text>
+                <Text style={[styles.actionSub, { color: theme.textMuted }]}>{t('qr.saveSubtitle')}</Text>
+              </View>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -394,4 +485,21 @@ const styles = StyleSheet.create({
   },
   actionTitle: { fontSize: fontSize.md, fontWeight: '600' },
   actionSub: { fontSize: fontSize.xs, marginTop: hp(2) },
+
+  // Action menu (bottom sheet)
+  menuOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end',
+  },
+  menuSheet: {
+    borderTopLeftRadius: radius['2xl'], borderTopRightRadius: radius['2xl'],
+    paddingHorizontal: wp(20), paddingTop: hp(12), gap: hp(10),
+  },
+  menuHandle: {
+    width: wp(40), height: hp(4), borderRadius: radius.full,
+    alignSelf: 'center', marginBottom: hp(12),
+  },
+  menuRow: {
+    flexDirection: 'row', alignItems: 'center', gap: wp(14),
+    paddingVertical: hp(12),
+  },
 });

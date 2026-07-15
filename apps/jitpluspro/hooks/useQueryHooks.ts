@@ -28,6 +28,11 @@ import type {
   TeamMember,
 } from '@/types';
 
+import {
+  ALLOWED_LOGO_MIMES,
+  MAX_LOGO_SIZE_BYTES,
+} from '@/constants/app';
+
 // Re-export types for backward compatibility
 export type { NotificationRecord, Reward, ClientListItem, Transaction, TransactionsPage } from '@/types';
 
@@ -431,11 +436,6 @@ export function useFulfillGift() {
     },
   });
 }
-
-import {
-  ALLOWED_LOGO_MIMES,
-  MAX_LOGO_SIZE_BYTES,
-} from '@/constants/app';
 
 // ── Logo mutations ──────────────────────────────────────────────
 export function useUploadMerchantLogo() {

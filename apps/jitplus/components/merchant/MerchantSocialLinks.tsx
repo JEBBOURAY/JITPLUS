@@ -29,8 +29,11 @@ function MerchantSocialLinks({ merchant, t }: MerchantSocialLinksProps) {
             if (!username) return;
             const appUrl = `instagram://user?username=${encodeURIComponent(username)}`;
             const webUrl = `https://www.instagram.com/${encodeURIComponent(username)}`;
-            const canOpen = await Linking.canOpenURL(appUrl);
-            Linking.openURL(canOpen ? appUrl : webUrl);
+            try {
+              await Linking.openURL(appUrl);
+            } catch {
+              Linking.openURL(webUrl).catch(() => {});
+            }
           }}
           style={({ pressed }) => [styles.socialIconBtn, { backgroundColor: '#E1306C12', opacity: pressed ? 0.7 : 1 }]}
           accessibilityRole="button" accessibilityLabel={t('merchant.openInstagram')}

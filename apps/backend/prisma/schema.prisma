@@ -214,6 +214,8 @@ enum MerchantCategory {
   HOTEL
   PARFUMERIE
   TRAITEUR
+  LOCATION_VOITURE
+  SALLE_JEU
   AUTRE
 }
 

@@ -1657,6 +1657,8 @@ export default {
     HOTEL: 'Hôtel',
     PARFUMERIE: 'Parfumerie',
     TRAITEUR: 'Traiteur',
+    LOCATION_VOITURE: 'Location de voiture',
+    SALLE_JEU: 'Salle de jeu',
     AUTRE: 'Autre',
   },
 
@@ -1688,6 +1690,8 @@ export default {
     HOTEL: 'Hébergement',
     PARFUMERIE: 'Parfums & cosmétiques',
     TRAITEUR: 'Traiteur & événementiel',
+    LOCATION_VOITURE: 'Location de voitures',
+    SALLE_JEU: 'Salle de jeu & gaming',
     AUTRE: 'Autres commerces',
   },
 

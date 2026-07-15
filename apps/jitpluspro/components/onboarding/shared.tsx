@@ -32,6 +32,7 @@ export function StepSlide({
       tension: 80,
       friction: 14,
     }).start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- slide animation intentionally triggers only on visibility change
   }, [visible]);
 
   if (!visible) return null;

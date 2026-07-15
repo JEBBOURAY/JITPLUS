@@ -456,6 +456,7 @@ export default function RegisterScreen() {
       dispatch({ type: 'SET_LOADING', loading: false });
       submittingRef.current = false;
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally keyed on auth methods; state values read at call time
   }, [googleRegister, appleRegister, authRegister, router, t]);
 
   const handleNext = useCallback(async () => {
@@ -487,6 +488,7 @@ export default function RegisterScreen() {
     } else {
       if (canProceed) handleRegister();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- appleIdentityToken read at call time; deps kept minimal to avoid re-creating handler mid-flow
   }, [step, effectiveTotal, canProceed, animateStepTransition, googleIdToken, email, t, handleRegister]);
 
   const handleBack = useCallback(() => {

@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback, useReducer } from 'react';
+import React, { useState, useEffect, useCallback, useReducer } from 'react';
 import {
   View,
   Text,
@@ -122,7 +122,7 @@ export default function SettingsScreen() {
     } else if (merchant) {
       dispatch({ type: 'LOAD_FROM_MERCHANT', merchant });
     }
-  }, [merchant, authLoading]);
+  }, [merchant, authLoading, router]);
 
 
   // â”€â”€ Switch loyalty type with confirmation â”€â”€
@@ -184,7 +184,7 @@ export default function SettingsScreen() {
     } finally {
       set({ saving: false });
     }
-  }, [loyaltyType, stampEarningMode, pointsRate, conversionRate, stampsForReward, conversionX, conversionY, hasAccumulationLimit, accumulationLimit, merchant, updateMerchant, t]);
+  }, [loyaltyType, stampEarningMode, pointsRate, conversionRate, stampsForReward, conversionX, conversionY, hasAccumulationLimit, accumulationLimit, merchant, updateMerchant, t, qc, set]);
 
   const handleSave = useCallback(async () => {
     const rate = parseFloat(pointsRate);
@@ -267,7 +267,7 @@ export default function SettingsScreen() {
     }
 
     doSave(false);
-  }, [pointsRate, stampsForReward, loyaltyType, hasAccumulationLimit, accumulationLimit, rewards, merchant, t, doSave]);
+  }, [pointsRate, stampsForReward, loyaltyType, hasAccumulationLimit, accumulationLimit, rewards, merchant, t, doSave, set]);
 
   if (isTeamMember) {
     return (

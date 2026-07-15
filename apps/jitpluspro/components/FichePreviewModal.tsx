@@ -36,7 +36,7 @@ const BADGE_ICONS: Record<string, React.ComponentType<any>> = {
   PETS_OK: Dog, KID_FRIENDLY: Baby, RESERVATION: CalendarCheck,
 };
 
-const WEEK_DAYS: Array<'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun'> =
+const WEEK_DAYS: ('mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun')[] =
   ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 
 const EMERALD = '#10b981';

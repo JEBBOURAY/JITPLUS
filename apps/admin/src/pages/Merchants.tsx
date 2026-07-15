@@ -49,6 +49,8 @@ const CATEGORIES = [
   { value: 'HOTEL', label: 'Hotel' },
   { value: 'PARFUMERIE', label: 'Parfumerie' },
   { value: 'TRAITEUR', label: 'Traiteur' },
+  { value: 'LOCATION_VOITURE', label: 'Location de voiture' },
+  { value: 'SALLE_JEU', label: 'Salle de jeu' },
   { value: 'AUTRE', label: 'Autre' },
 ];
 

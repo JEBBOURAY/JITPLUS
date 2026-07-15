@@ -48,6 +48,9 @@ import { isValidUUID } from '@/utils/validation';
 import api from '@/services/api';
 import { getErrorMessage } from '@/utils/error';
 
+// Type import for transactions
+import type { ClientDetailTransaction } from '@/types';
+
 /** Removes emojis from text (with performance cache) */
 const emojiCache = new Map<string, string>();
 const stripEmojis = (str: string | null | undefined) => {
@@ -149,9 +152,6 @@ const TransactionItem = React.memo(function TransactionItem({
   );
 });
 
-// Type import for transactions
-import type { ClientDetailTransaction } from '@/types';
-
 export default function ClientDetailScreen() {
   const shouldWait = useRequireAuth();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -238,7 +238,7 @@ export default function ClientDetailScreen() {
               const result = adjustMode === 'add' ? t('clientDetail.adjustResultAdd') : t('clientDetail.adjustResultRemove');
               Alert.alert(t('common.confirm'), t('clientDetail.adjustSuccessMsg', { pts, unit, result }));
             } catch (err: unknown) {
-              const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || t('clientDetail.adjustDefaultError');
+              const msg = getErrorMessage(err, t('clientDetail.adjustDefaultError'));
               Alert.alert(t('common.error'), msg);
             }
           },

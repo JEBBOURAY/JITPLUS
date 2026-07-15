@@ -1,5 +1,5 @@
-export { MerchantCategory, MERCHANT_BADGE_CODES, type LoyaltyType, type MerchantPlan, type SocialLinks, type OpeningHours, type MerchantBadge } from '@jitplus/shared';
 import type { MerchantCategory, LoyaltyType, MerchantPlan, SocialLinks, OpeningHours } from '@jitplus/shared';
+export { MerchantCategory, MERCHANT_BADGE_CODES, type LoyaltyType, type MerchantPlan, type SocialLinks, type OpeningHours, type MerchantBadge } from '@jitplus/shared';
 
 export interface PlanLimits {
   maxClients: number;

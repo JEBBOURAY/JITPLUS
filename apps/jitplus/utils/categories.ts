@@ -2,7 +2,7 @@ import {
   Sparkles, Coffee, Utensils, Store, Croissant, Pill, BookOpen,
   Shirt, Cpu, Scissors, Heart, Dumbbell, ShoppingBag, MoreHorizontal,
   Beef, Cake, Sandwich, Droplets, PawPrint, Flower2, Gem, Glasses,
-  Smartphone, Wrench, Car, BedDouble, SprayCan, ChefHat,
+  Smartphone, Wrench, Car, BedDouble, SprayCan, ChefHat, CarFront, Gamepad2,
 } from 'lucide-react-native';
 import type { LucideIcon } from 'lucide-react-native';
 
@@ -36,6 +36,8 @@ export const CATEGORIES: { id: string; labelKey: string; icon: LucideIcon }[] = 
   { id: 'HOTEL', labelKey: 'categories.HOTEL', icon: BedDouble },
   { id: 'PARFUMERIE', labelKey: 'categories.PARFUMERIE', icon: SprayCan },
   { id: 'TRAITEUR', labelKey: 'categories.TRAITEUR', icon: ChefHat },
+  { id: 'LOCATION_VOITURE', labelKey: 'categories.LOCATION_VOITURE', icon: CarFront },
+  { id: 'SALLE_JEU', labelKey: 'categories.SALLE_JEU', icon: Gamepad2 },
   { id: 'AUTRE', labelKey: 'categories.AUTRE', icon: MoreHorizontal },
 ];
 
@@ -69,6 +71,8 @@ export const CATEGORY_EMOJI: Record<string, string> = {
   HOTEL: '🏨',
   PARFUMERIE: '🌸',
   TRAITEUR: '🍱',
+  LOCATION_VOITURE: '🚙',
+  SALLE_JEU: '🎮',
   AUTRE: '🏷️',
 };
 

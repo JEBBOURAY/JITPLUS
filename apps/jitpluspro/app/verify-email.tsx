@@ -59,7 +59,7 @@ export default function VerifyEmailScreen() {
     ]);
     anim.start();
     return () => anim.stop();
-  }, []);
+  }, [iconAnim, cardAnim]);
 
   // If already verified (e.g. came back after verifying), skip this screen
   useEffect(() => {

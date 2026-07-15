@@ -1621,6 +1621,8 @@ export default {
     HOTEL: 'Hotel',
     PARFUMERIE: 'Perfumery',
     TRAITEUR: 'Caterer',
+    LOCATION_VOITURE: 'Car rental',
+    SALLE_JEU: 'Gaming zone',
     AUTRE: 'Other',
   },
 
@@ -1652,6 +1654,8 @@ export default {
     HOTEL: 'Accommodation',
     PARFUMERIE: 'Perfumes & cosmetics',
     TRAITEUR: 'Catering & events',
+    LOCATION_VOITURE: 'Car rental',
+    SALLE_JEU: 'Gaming zone & arcade',
     AUTRE: 'Other shops',
   },
 

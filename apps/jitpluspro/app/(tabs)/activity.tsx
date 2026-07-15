@@ -252,7 +252,7 @@ const TransactionRow = React.memo(function TransactionRow({
 });
 
 // Filter keys are stable across re-renders; only the labels depend on locale.
-const FILTER_KEYS: ReadonlyArray<{ key: FilterType; labelKey: string }> = [
+const FILTER_KEYS: readonly { key: FilterType; labelKey: string }[] = [
   { key: 'ALL', labelKey: 'activity.filterAll' },
   { key: 'EARN_POINTS', labelKey: 'activity.filterEarned' },
   { key: 'REDEEM_REWARD', labelKey: 'activity.filterRedeemed' },

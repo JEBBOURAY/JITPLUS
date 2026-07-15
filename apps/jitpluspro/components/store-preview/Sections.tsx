@@ -64,7 +64,7 @@ type T = (key: string, opts?: any) => string;
 // Preset color swatches
 // ──────────────────────────────────────────────────────────────
 export interface PresetSwatchesProps {
-  presets: ReadonlyArray<{ hex: string; nameKey: string }>;
+  presets: readonly { hex: string; nameKey: string }[];
   selected: string;
   textColor: string;
   onPick: (hex: string) => void;
@@ -759,7 +759,7 @@ const GalleryThumb = memo(function GalleryThumb({
 // Card background color row (used in group 2)
 // ──────────────────────────────────────────────────────────────
 export interface CardColorRowProps {
-  presets: ReadonlyArray<{ hex: string; nameKey: string }>;
+  presets: readonly { hex: string; nameKey: string }[];
   selected: string | null;
   disabled: boolean;
   accent: string;

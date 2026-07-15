@@ -23,6 +23,8 @@ import {
   Smartphone,
   Wrench,
   Car,
+  CarFront,
+  Gamepad2,
   BedDouble,
   SprayCan,
   ChefHat,
@@ -67,6 +69,8 @@ const categoryIconMap: Record<MerchantCategory, LucideIcon> = {
   [MerchantCategory.HOTEL]: BedDouble,
   [MerchantCategory.PARFUMERIE]: SprayCan,
   [MerchantCategory.TRAITEUR]: ChefHat,
+  [MerchantCategory.LOCATION_VOITURE]: CarFront,
+  [MerchantCategory.SALLE_JEU]: Gamepad2,
   [MerchantCategory.AUTRE]: Store,
 };
 

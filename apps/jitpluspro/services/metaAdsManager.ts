@@ -1,4 +1,4 @@
-import { Platform } from 'react-native';
+import { AppState, NativeModules, Platform } from 'react-native';
 
 type TrackingStatus = 'unavailable' | 'denied' | 'authorized' | 'restricted' | 'not-determined' | 'granted';
 
@@ -7,9 +7,18 @@ class MetaAdsManager {
 
   static async initialize(): Promise<void> {
     if (MetaAdsManager.initialized) return;
+    if (Platform.OS !== 'ios') return;
+
     MetaAdsManager.initialized = true;
 
-    if (Platform.OS !== 'ios') return;
+    // Avoid adding extra work on the iOS launch critical path.
+    setTimeout(() => {
+      void MetaAdsManager.initializeInternal();
+    }, 1500);
+  }
+
+  private static async initializeInternal(): Promise<void> {
+    if (AppState.currentState !== 'active') return;
 
     try {
       const trackingStatus = await MetaAdsManager.requestTrackingPermission();
@@ -22,7 +31,14 @@ class MetaAdsManager {
       Settings.setAdvertiserIDCollectionEnabled?.(isTrackingGranted);
 
       // Triggers the standard app activation event expected by Meta campaigns.
-      AppEventsLogger.logEvent('fb_mobile_activate_app');
+      // `activateApp` exists at runtime on older SDK bridges but is missing from
+      // the current type definitions — narrow via an optional-method cast.
+      const logger = AppEventsLogger as typeof AppEventsLogger & { activateApp?: () => void };
+      if (typeof logger.activateApp === 'function') {
+        logger.activateApp();
+      } else {
+        AppEventsLogger.logEvent('fb_mobile_activate_app');
+      }
     } catch {
       // Never block app startup if Meta/ATT modules are unavailable.
     }
@@ -30,6 +46,9 @@ class MetaAdsManager {
 
   private static async requestTrackingPermission(): Promise<TrackingStatus> {
     try {
+      // OTA updates can run on older binaries that don't embed this native module yet.
+      if (!NativeModules?.ExpoTrackingTransparency) return 'unavailable';
+
       const { requestTrackingPermissionsAsync } = await import('expo-tracking-transparency');
       const result = await requestTrackingPermissionsAsync();
       return result.status as TrackingStatus;

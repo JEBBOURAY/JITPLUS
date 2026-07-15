@@ -144,6 +144,7 @@ export default function TransactionAmountScreen() {
         { text: 'OK', onPress: () => router.back() },
       ]);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- t is declared below and captured lazily; guard only depends on clientId/router
   }, [clientId, router]);
 
   // ── Stamps mode ──
@@ -171,7 +172,7 @@ export default function TransactionAmountScreen() {
       return;
     }
     set({ points: Math.floor(amountNum / pointsRate) });
-  }, [amount, merchantPointsRate]);
+  }, [amount, merchantPointsRate, set]);
 
   useEffect(() => {
     if (!isStampsMode) calculatePoints();
@@ -195,7 +196,7 @@ export default function TransactionAmountScreen() {
       }
       set({ stamps: Math.floor(amountNum / rate) });
     }
-  }, [stampAmount, merchantPointsRate, isStampsMode, isPerVisit]);
+  }, [stampAmount, merchantPointsRate, isStampsMode, isPerVisit, set]);
 
   // ── Amount input handler (Points mode) ──
   const handleAmountChange = useCallback((text: string) => {
@@ -328,11 +329,12 @@ export default function TransactionAmountScreen() {
         { text: t('transaction.validate'), onPress: () => processEarnWithAutoRedeem(amountNum, points, willRedeem) },
       ],
     );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- processEarnWithAutoRedeem is a stable local handler invoked at confirm time
   }, [checkAccumulationLimit, amount, points, selectedRewardId, selectedReward, customerStatus?.points, locale, t]);
 
   // ── EARN: Stamps Mode ──
   const handleEarnStamps = useCallback(() => {
-    let earnedStamps = isPerVisit ? 1 : stamps;
+    const earnedStamps = isPerVisit ? 1 : stamps;
     const actualStamps = checkAccumulationLimit(earnedStamps);
     if (actualStamps === false) return;
 
@@ -394,6 +396,7 @@ export default function TransactionAmountScreen() {
         },
       ],
     );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- processEarnWithAutoRedeem is a stable local handler invoked at confirm time
   }, [checkAccumulationLimit, isPerVisit, customerStatus?.points, stampsForReward, selectedReward, stampAmount, stamps, luckyWheelAmount, locale, t]);
 
   // ── Earn stamps + auto-redeem if threshold is reached ──
