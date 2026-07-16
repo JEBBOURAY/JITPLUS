@@ -126,6 +126,8 @@ module.exports = ({ config }) => {
         'ACCESS_COARSE_LOCATION',
         // Required for push notifications on Android 13+
         'POST_NOTIFICATIONS',
+        // Required for Meta Ads SDK tracking attribution on Android 13+
+        'com.google.android.gms.permission.AD_ID',
         // Required for vibration on notification arrival
         'VIBRATE',
         // READ_MEDIA_IMAGES intentionally NOT requested: expo-image-picker v17+
