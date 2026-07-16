@@ -262,6 +262,8 @@ export default {
     savedTitle: 'Saved',
     savedMsg: 'Your card has been saved to the gallery.',
     saveError: 'Unable to save the image',
+    saveUnavailable: 'Save unavailable',
+    saveUnavailableMsg: 'Saving to the gallery requires the latest app version. Please update from the store.',
     permissionDeniedTitle: 'Permission required',
     permissionDeniedMsg: 'Allow photo access to save the image to your gallery.',
     captureError: 'Unable to capture the QR code',

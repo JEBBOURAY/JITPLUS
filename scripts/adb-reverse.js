@@ -11,6 +11,12 @@ const os = require('os');
 const fs = require('fs');
 
 const BACKEND_PORT = process.env.BACKEND_PORT || '3000';
+// Extra ports (e.g. Metro dev server) passed as CLI args or via METRO_PORT env.
+// Reversing the Metro port lets a USB device reach the bundler on localhost.
+const EXTRA_PORTS = [...process.argv.slice(2), process.env.METRO_PORT]
+  .filter(Boolean)
+  .map((p) => String(p).trim())
+  .filter((p) => /^\d+$/.test(p));
 
 function resolveAdb() {
   // 1. adb on PATH
@@ -52,8 +58,11 @@ try {
     console.log('[adb-reverse] No USB device connected, skipping.');
     process.exit(0);
   }
-  execSync(`"${adb}" reverse tcp:${BACKEND_PORT} tcp:${BACKEND_PORT}`, { stdio: 'inherit' });
-  console.log(`[adb-reverse] tcp:${BACKEND_PORT} -> localhost:${BACKEND_PORT} OK`);
+  const ports = [BACKEND_PORT, ...EXTRA_PORTS];
+  for (const port of ports) {
+    execSync(`"${adb}" reverse tcp:${port} tcp:${port}`, { stdio: 'inherit' });
+    console.log(`[adb-reverse] tcp:${port} -> localhost:${port} OK`);
+  }
 } catch (e) {
   console.log('[adb-reverse] Failed (non-fatal):', e.message);
 }

@@ -263,6 +263,8 @@ export default {
     savedTitle: 'Enregistré',
     savedMsg: 'Votre carte a été enregistrée dans la galerie.',
     saveError: 'Impossible d’enregistrer l’image',
+    saveUnavailable: 'Enregistrement indisponible',
+    saveUnavailableMsg: 'L’enregistrement dans la galerie nécessite la dernière version de l’application. Veuillez la mettre à jour.',
     permissionDeniedTitle: 'Autorisation requise',
     permissionDeniedMsg: 'Autorisez l’accès aux photos pour enregistrer l’image dans votre galerie.',
     captureError: 'Impossible de capturer le QR code',

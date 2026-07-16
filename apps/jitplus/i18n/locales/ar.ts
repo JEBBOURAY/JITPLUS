@@ -262,6 +262,8 @@ export default {
     savedTitle: 'تسجل',
     savedMsg: 'الكرطة ديالك تسجلات فالگاليري.',
     saveError: 'ماقدرناش نسجلو الصورة',
+    saveUnavailable: 'الحفظ ماكاينش',
+    saveUnavailableMsg: 'باش تسجل الصورة فالگاليري خاصك آخر نسخة ديال الأبليكاسيون. عفاك حينها.',
     permissionDeniedTitle: 'خاص الإذن',
     permissionDeniedMsg: 'سمح بالوصول للصور باش تسجل الصورة فالگاليري ديالك.',
     captureError: 'ماقدرناش نلقطو كود QR',

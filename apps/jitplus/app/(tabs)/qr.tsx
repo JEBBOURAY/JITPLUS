@@ -8,7 +8,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import QRCode from 'react-native-qrcode-svg';
 import { Share2, X, Download } from 'lucide-react-native';
 import * as Sharing from 'expo-sharing';
-import * as MediaLibrary from 'expo-media-library';
 import { useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
@@ -33,6 +32,20 @@ try {
   ViewShot = require('react-native-view-shot').default as typeof ViewShotType;
 } catch {
   // Not available in Expo Go — share QR will be disabled
+}
+
+// expo-media-library is a NATIVE module. It must be loaded lazily: an eager
+// top-level `import` runs requireNativeModule() at module-eval time, which THROWS
+// on binaries that don't contain the native code (e.g. an OTA/EAS update shipped
+// to an older build). That throw makes the whole route module fail to load, so
+// expo-router receives `undefined` from loadRoute() and crashes in fromImport
+// with "Cannot read property 'ErrorBoundary' of undefined". Loading it in a
+// try/catch keeps the QR screen working; save-to-gallery just degrades gracefully.
+let MediaLibrary: typeof import('expo-media-library') | null = null;
+try {
+  MediaLibrary = require('expo-media-library');
+} catch {
+  // Native module not present in this binary — save-to-gallery will be disabled
 }
 
 const QR_SIZE = Math.min(SCREEN.width - wp(100), wp(280));
@@ -218,6 +231,10 @@ export default function QRScreen() {
   const handleSaveToGallery = useCallback(async () => {
     setShowActionMenu(false);
     haptic(HapticStyle.Medium);
+    if (!MediaLibrary) {
+      Alert.alert(t('qr.saveUnavailable'), t('qr.saveUnavailableMsg'));
+      return;
+    }
     const uri = await captureCard();
     if (!uri) return;
     try {
