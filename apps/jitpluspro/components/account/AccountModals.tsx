@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import {
   View, Text, StyleSheet, Modal, TouchableOpacity, Pressable, ActivityIndicator, Platform, I18nManager, Alert, InteractionManager,
 } from 'react-native';
@@ -29,12 +29,31 @@ export function LogoEditModal({
   visible, onClose, theme, t, merchant, uploadIsPending, onPickPhoto, onDelete,
 }: LogoModalProps) {
   const insets = useSafeAreaInsets();
+  // iOS refuses to present the image picker while a RN Modal is still dismissing.
+  // We flag the intent, close the modal, then launch the picker from onDismiss
+  // (fires only after the native dismissal completes).
+  const pendingPickRef = useRef(false);
+  const handlePickPress = () => {
+    if (Platform.OS === 'ios') {
+      pendingPickRef.current = true;
+      onClose();
+    } else {
+      onClose();
+      InteractionManager.runAfterInteractions(() => onPickPhoto());
+    }
+  };
+  const handleDismiss = () => {
+    if (pendingPickRef.current) {
+      pendingPickRef.current = false;
+      onPickPhoto();
+    }
+  };
   const initials = merchant?.nom
     ? merchant.nom.split(' ').map((w: string) => w.charAt(0)).join('').slice(0, 2).toUpperCase()
     : '?';
 
   return (
-    <Modal visible={visible} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose} onDismiss={handleDismiss}>
       <Pressable style={styles.bottomSheetOverlay} onPress={onClose}>
         <Pressable
           style={[styles.logoModalSheet, { backgroundColor: theme.bgCard, paddingBottom: Math.max(insets.bottom + hp(16), hp(36)) }]}
@@ -77,12 +96,7 @@ export function LogoEditModal({
             style={styles.logoModalBtn}
             activeOpacity={0.85}
             accessibilityRole="button"
-            onPress={() => {
-              onClose();
-              InteractionManager.runAfterInteractions(() => {
-                onPickPhoto();
-              });
-            }}
+            onPress={handlePickPress}
           >
             <LinearGradient
               colors={['#7C3AED', '#5B21B6']}
@@ -131,9 +145,26 @@ export function CoverEditModal({
   visible, onClose, theme, t, merchant, uploadIsPending, onPickPhoto, onDelete,
 }: LogoModalProps) {
   const insets = useSafeAreaInsets();
-  
+  // Same iOS constraint as the logo modal: defer picker launch to onDismiss.
+  const pendingPickRef = useRef(false);
+  const handlePickPress = () => {
+    if (Platform.OS === 'ios') {
+      pendingPickRef.current = true;
+      onClose();
+    } else {
+      onClose();
+      InteractionManager.runAfterInteractions(() => onPickPhoto());
+    }
+  };
+  const handleDismiss = () => {
+    if (pendingPickRef.current) {
+      pendingPickRef.current = false;
+      onPickPhoto();
+    }
+  };
+
   return (
-    <Modal visible={visible} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose} onDismiss={handleDismiss}>
       <Pressable style={styles.bottomSheetOverlay} onPress={onClose}>
         <Pressable
           style={[styles.logoModalSheet, { backgroundColor: theme.bgCard, paddingBottom: Math.max(insets.bottom + hp(16), hp(36)) }]}
@@ -150,12 +181,7 @@ export function CoverEditModal({
             style={styles.logoModalBtn}
             activeOpacity={0.85}
             accessibilityRole="button"
-            onPress={() => {
-              onClose();
-              InteractionManager.runAfterInteractions(() => {
-                onPickPhoto();
-              });
-            }}
+            onPress={handlePickPress}
           >
             <LinearGradient
               colors={['#7C3AED', '#5B21B6']}
