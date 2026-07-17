@@ -502,8 +502,9 @@ export function useUploadMerchantLogo() {
 export function useUploadMerchantCover() {
   return useMutation({
     mutationFn: async (asset: { uri: string; mimeType?: string | null; merchantName?: string; fileSize?: number | null }) => {
-      // Allow larger size for cover, e.g. 5MB, assuming MAX_LOGO_SIZE_BYTES is smaller
-      const maxCoverSize = 5 * 1024 * 1024;
+      // Match the backend ceiling (10MB) — sharp optimizes down afterwards.
+      // A tighter client limit would reject legitimate iPhone photos (often > 5MB).
+      const maxCoverSize = 10 * 1024 * 1024;
       if (asset.fileSize && asset.fileSize > maxCoverSize) {
         throw new Error(i18n.t('upload.fileTooLarge'));
       }
