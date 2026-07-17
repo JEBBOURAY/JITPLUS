@@ -79,6 +79,38 @@ const GC = {
   SHORT: 10 * 60 * 1000,      // 10min — per-client detail, transactions
 } as const;
 
+function normalizeUploadMimeAndExt(uri: string, mimeType?: string | null): { mime: string; ext: string } {
+  const rawExt = (uri.split('.').pop() ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const normalizedInputMime = (mimeType ?? '').toLowerCase();
+
+  const extToMime: Record<string, string> = {
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    png: 'image/png',
+    webp: 'image/webp',
+  };
+  const allowedMimes = new Set(Object.values(extToMime));
+
+  const inferredMime = rawExt ? extToMime[rawExt] : undefined;
+
+  let mime = normalizedInputMime || inferredMime || 'image/jpeg';
+  if (mime === 'image/jpg') mime = 'image/jpeg';
+
+  // iOS can report original HEIC MIME even when picker returns a compatible JPG file.
+  // If inferred MIME from file extension is supported, prefer it.
+  if (!allowedMimes.has(mime) && inferredMime && allowedMimes.has(inferredMime)) {
+    mime = inferredMime;
+  }
+
+  let ext = rawExt;
+  if (!ext) {
+    ext = mime.startsWith('image/') ? mime.slice(6) : 'jpg';
+  }
+  if (ext === 'jpeg') ext = 'jpg';
+
+  return { mime, ext: ext || 'jpg' };
+}
+
 // ── Stores ──────────────────────────────────────────────────────
 export function useStores(enabled = true) {
   return useQuery<Store[]>({
@@ -445,8 +477,7 @@ export function useUploadMerchantLogo() {
       if (asset.fileSize && asset.fileSize > MAX_LOGO_SIZE_BYTES) {
         throw new Error(i18n.t('upload.fileTooLarge'));
       }
-      const ext = (asset.uri.split('.').pop() ?? 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
-      const mime = asset.mimeType ?? `image/${ext}`;
+      const { ext, mime } = normalizeUploadMimeAndExt(asset.uri, asset.mimeType);
       if (!ALLOWED_LOGO_MIMES.has(mime)) {
         throw new Error(i18n.t('upload.unsupportedFileType', { mime }));
       }
@@ -476,8 +507,7 @@ export function useUploadMerchantCover() {
       if (asset.fileSize && asset.fileSize > maxCoverSize) {
         throw new Error(i18n.t('upload.fileTooLarge'));
       }
-      const ext = (asset.uri.split('.').pop() ?? 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
-      const mime = asset.mimeType ?? `image/${ext}`;
+      const { ext, mime } = normalizeUploadMimeAndExt(asset.uri, asset.mimeType);
       if (!ALLOWED_LOGO_MIMES.has(mime)) {
         throw new Error(i18n.t('upload.unsupportedFileType', { mime }));
       }
@@ -515,8 +545,7 @@ export function useUploadMerchantGalleryImage() {
       if (asset.fileSize && asset.fileSize > maxSize) {
         throw new Error(i18n.t('upload.fileTooLarge'));
       }
-      const ext = (asset.uri.split('.').pop() ?? 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
-      const mime = asset.mimeType ?? `image/${ext}`;
+      const { ext, mime } = normalizeUploadMimeAndExt(asset.uri, asset.mimeType);
       if (!ALLOWED_LOGO_MIMES.has(mime)) {
         throw new Error(i18n.t('upload.unsupportedFileType', { mime }));
       }
@@ -558,8 +587,7 @@ export function useUploadRewardImage() {
       if (asset.fileSize && asset.fileSize > maxSize) {
         throw new Error(i18n.t('upload.fileTooLarge'));
       }
-      const ext = (asset.uri.split('.').pop() ?? 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
-      const mime = asset.mimeType ?? `image/${ext}`;
+      const { ext, mime } = normalizeUploadMimeAndExt(asset.uri, asset.mimeType);
       if (!ALLOWED_LOGO_MIMES.has(mime)) {
         throw new Error(i18n.t('upload.unsupportedFileType', { mime }));
       }
@@ -582,8 +610,7 @@ export function useUploadMerchantCardBackground() {
       if (asset.fileSize && asset.fileSize > maxSize) {
         throw new Error(i18n.t('upload.fileTooLarge'));
       }
-      const ext = (asset.uri.split('.').pop() ?? 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
-      const mime = asset.mimeType ?? `image/${ext}`;
+      const { ext, mime } = normalizeUploadMimeAndExt(asset.uri, asset.mimeType);
       if (!ALLOWED_LOGO_MIMES.has(mime)) {
         throw new Error(i18n.t('upload.unsupportedFileType', { mime }));
       }

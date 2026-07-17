@@ -285,11 +285,14 @@ export default function StorePreviewScreen() {
     try {
       const remaining = GALLERY_MAX - galleryDraft.length;
       const ImagePicker = await import('expo-image-picker');
+      const preferredMode =
+        (ImagePicker as any).UIImagePickerPreferredAssetRepresentationMode?.Compatible ?? 'compatible';
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsMultipleSelection: true,
         selectionLimit: remaining,
         quality: 0.8,
+        preferredAssetRepresentationMode: preferredMode,
       });
       if (result.canceled || !result.assets?.length) return;
       const assets = result.assets.slice(0, remaining);
@@ -373,12 +376,15 @@ export default function StorePreviewScreen() {
     }
     try {
       const ImagePicker = await import('expo-image-picker');
+      const preferredMode =
+        (ImagePicker as any).UIImagePickerPreferredAssetRepresentationMode?.Compatible ?? 'compatible';
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsMultipleSelection: false,
         allowsEditing: true,
         aspect: [3, 2],
         quality: 0.7,
+        preferredAssetRepresentationMode: preferredMode,
       });
       if (result.canceled || !result.assets?.length) return;
       const asset = result.assets[0];

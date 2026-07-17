@@ -91,11 +91,14 @@ export function RewardManager({
         Alert.alert(t('common.error'), t('upload.permissionDenied'));
         return;
       }
+      const preferredMode =
+        (ImagePicker as any).UIImagePickerPreferredAssetRepresentationMode?.Compatible ?? 'compatible';
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.8,
+        preferredAssetRepresentationMode: preferredMode,
       });
       if (result.canceled || !result.assets?.[0]) return;
       const asset = result.assets[0];

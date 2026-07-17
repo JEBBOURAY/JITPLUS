@@ -94,11 +94,14 @@ export default function OnboardingScreen() {
   const pickAndUploadLogo = useCallback(async () => {
     try {
       const ImagePicker = await import('expo-image-picker');
+      const preferredMode =
+        (ImagePicker as any).UIImagePickerPreferredAssetRepresentationMode?.Compatible ?? 'compatible';
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.8,
+        preferredAssetRepresentationMode: preferredMode,
       });
 
       if (result.canceled || !result.assets?.[0]) return;
@@ -106,12 +109,28 @@ export default function OnboardingScreen() {
 
       const asset = result.assets[0];
       const formData = new FormData();
-      const rawExt = (asset.uri.split('.').pop() ?? 'jpg').toLowerCase();
-      const ext = ['jpg', 'jpeg', 'png', 'webp', 'heic'].includes(rawExt) ? rawExt : 'jpg';
+      const rawExt = (asset.uri.split('.').pop() ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const normalizedInputMime = (asset.mimeType ?? '').toLowerCase();
+      const extToMime: Record<string, string> = {
+        jpg: 'image/jpeg',
+        jpeg: 'image/jpeg',
+        png: 'image/png',
+        webp: 'image/webp',
+      };
+      const allowedMimes = new Set(Object.values(extToMime));
+      const inferredMime = rawExt ? extToMime[rawExt] : undefined;
+      let mime = normalizedInputMime === 'image/jpg'
+        ? 'image/jpeg'
+        : (normalizedInputMime || inferredMime || 'image/jpeg');
+      if (!allowedMimes.has(mime) && inferredMime && allowedMimes.has(inferredMime)) {
+        mime = inferredMime;
+      }
+      let ext = rawExt || (mime.startsWith('image/') ? mime.slice(6) : 'jpg');
+      if (ext === 'jpeg') ext = 'jpg';
       formData.append('file', {
         uri: asset.uri,
         name: `logo.${ext}`,
-        type: asset.mimeType ?? `image/${ext}`,
+        type: mime,
       } as any);
 
       const res = await api.post('/merchant/upload-image?type=logo', formData, {

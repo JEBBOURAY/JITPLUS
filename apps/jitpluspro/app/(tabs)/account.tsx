@@ -96,11 +96,14 @@ export default function AccountScreen() {
     if (uploadLogoMutation.isPending) return;
     try {
       const ImagePicker = await import('expo-image-picker');
+      const preferredMode =
+        (ImagePicker as any).UIImagePickerPreferredAssetRepresentationMode?.Compatible ?? 'compatible';
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.7,
+        preferredAssetRepresentationMode: preferredMode,
       });
       if (result.canceled || !result.assets?.[0]) return;
       const asset = result.assets[0];
@@ -119,11 +122,14 @@ export default function AccountScreen() {
     if (uploadCoverMutation.isPending) return;
     try {
       const ImagePicker = await import('expo-image-picker');
+      const preferredMode =
+        (ImagePicker as any).UIImagePickerPreferredAssetRepresentationMode?.Compatible ?? 'compatible';
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [16, 9], // Cover images are usually wider
         quality: 0.8,    // A bit more quality for covers
+        preferredAssetRepresentationMode: preferredMode,
       });
       if (result.canceled || !result.assets?.[0]) return;
       const asset = result.assets[0];

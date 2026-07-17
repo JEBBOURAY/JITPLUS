@@ -21,12 +21,14 @@ class MetaAdsManager {
     if (AppState.currentState !== 'active') return;
 
     try {
-      const trackingStatus = await MetaAdsManager.requestTrackingPermission();
-      const isTrackingGranted = trackingStatus === 'granted' || trackingStatus === 'authorized';
-
+      // IMPORTANT: Android relies on native manifest/plugin initialization.
+      // Importing the JS SDK too early on Android can touch FBAccessToken before
+      // native init and crash. Keep JS-side activation iOS-only.
       const { Settings, AppEventsLogger } = await import('react-native-fbsdk-next');
 
       Settings.initializeSDK();
+      const trackingStatus = await MetaAdsManager.requestTrackingPermission();
+      const isTrackingGranted = trackingStatus === 'granted' || trackingStatus === 'authorized';
       Settings.setAdvertiserTrackingEnabled?.(isTrackingGranted);
       Settings.setAdvertiserIDCollectionEnabled?.(isTrackingGranted);
 
