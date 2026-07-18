@@ -25,6 +25,9 @@ export const onUnauthorized = (listener: AuthEventListener) => {
 
 export const getServerBaseUrl = (): string => resolveServerBaseUrl(ENV_URL, IS_DEV);
 
+/** API base URL (with path prefix) — for native uploads that bypass axios. */
+export const getApiBaseUrl = (): string => resolveApiUrl(ENV_URL, IS_DEV);
+
 // Memory cache for accessToken: SecureStore reads hit Android Keystore which
 // can take 10–30 ms each. The interceptor calls getToken() on EVERY request,
 // so without a cache we eat that latency on every API call.
@@ -38,6 +41,9 @@ const getCachedToken = async (): Promise<string | null> => {
   }
   return cachedToken;
 };
+
+/** Current access token — for native uploads (expo-file-system) that bypass axios interceptors. */
+export const getAccessToken = getCachedToken;
 
 const setCachedToken = async (token: string): Promise<void> => {
   cachedToken = token;

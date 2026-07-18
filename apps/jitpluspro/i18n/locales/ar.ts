@@ -70,8 +70,10 @@ export default {
 
   // ── Upload ──
   upload: {
-    fileTooLarge: 'الملف كبير بزاف (الماكسيموم 5 ميغا).',
+    fileTooLarge: 'الملف كبير بزاف (الماكسيموم 10 ميغا).',
     unsupportedFileType: 'نوع ديال الملف ماشي مدعوم: %{mime}.',
+    fileNotFound: 'الصورة ما لقيناهاش. عفاك عاود اختارها.',
+    uploadFailed: 'ماقدرناش نصيفطو الصورة. شوف الأنترنيت وعاود.',
   },
 
   login: {

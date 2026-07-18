@@ -6,7 +6,8 @@ import {
   keepPreviousData,
 } from '@tanstack/react-query';
 import * as Crypto from 'expo-crypto';
-import api from '@/services/api';
+import * as FileSystem from 'expo-file-system/legacy';
+import api, { getApiBaseUrl, getAccessToken } from '@/services/api';
 import i18n from '@/i18n';
 import type {
   Store,
@@ -109,6 +110,100 @@ function normalizeUploadMimeAndExt(uri: string, mimeType?: string | null): { mim
   if (ext === 'jpeg') ext = 'jpg';
 
   return { mime, ext: ext || 'jpg' };
+}
+
+/**
+ * Robust image upload via expo-file-system's NATIVE multipart upload (URLSession on iOS).
+ *
+ * Why not axios? React Native's XHR layer streams `file://` bodies through the JS
+ * bridge and fails intermittently on iOS ("Network Error"), and the global axios
+ * timeout kills slow photo uploads on cellular. `uploadAsync` streams natively
+ * from disk with a proper multipart boundary — reliable on both platforms.
+ *
+ * Guarantees:
+ *  1. Pre-flight: file exists + real on-disk size validated (iOS often omits
+ *     `asset.fileSize`, so the picker value cannot be trusted).
+ *  2. Auth: Bearer token attached; on 401 the token is refreshed (via an axios
+ *     call that triggers the refresh interceptor) and the upload retried once.
+ *  3. Transient network failures: one automatic retry with a short backoff.
+ *  4. Errors: precise, localized messages (client validation / server message /
+ *     network) — never a silent failure.
+ */
+async function uploadImageNative(opts: {
+  uri: string;
+  endpoint: string; // e.g. '/merchant/upload-image?type=logo'
+  mime: string;
+  maxBytes?: number;
+}): Promise<Record<string, unknown> & { url: string }> {
+  const { uri, endpoint, mime, maxBytes = MAX_LOGO_SIZE_BYTES } = opts;
+
+  // 1 ── Pre-flight validation on the REAL file
+  const info = await FileSystem.getInfoAsync(uri);
+  if (!info.exists) {
+    throw new Error(i18n.t('upload.fileNotFound'));
+  }
+  const realSize = 'size' in info ? (info.size as number) : 0;
+  if (realSize > maxBytes) {
+    throw new Error(i18n.t('upload.fileTooLarge'));
+  }
+
+  const url = `${getApiBaseUrl()}${endpoint}`;
+
+  const doUpload = async (): Promise<FileSystem.FileSystemUploadResult> => {
+    const token = await getAccessToken();
+    return FileSystem.uploadAsync(url, uri, {
+      httpMethod: 'POST',
+      uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+      fieldName: 'file',
+      mimeType: mime,
+      headers: {
+        Accept: 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
+  };
+
+  // 2 ── Upload with one retry on transient network failure
+  let result: FileSystem.FileSystemUploadResult;
+  try {
+    result = await doUpload();
+  } catch {
+    await new Promise((r) => setTimeout(r, 800));
+    try {
+      result = await doUpload();
+    } catch {
+      throw new Error(i18n.t('upload.uploadFailed'));
+    }
+  }
+
+  // 3 ── Expired token: refresh through the axios interceptor, retry once
+  if (result.status === 401) {
+    try {
+      await api.get('/merchant/profile'); // interceptor refreshes + caches a new token
+      result = await doUpload();
+    } catch {
+      // fall through — handled below with the server's message
+    }
+  }
+
+  // 4 ── Precise error mapping
+  if (result.status < 200 || result.status >= 300) {
+    let serverMessage: string | undefined;
+    try {
+      const parsed = JSON.parse(result.body ?? '');
+      const msg = parsed?.message;
+      serverMessage = Array.isArray(msg) ? String(msg[0]) : msg ? String(msg) : undefined;
+    } catch {
+      // non-JSON body (proxy/HTML error page) — use generic message
+    }
+    throw new Error(serverMessage || i18n.t('upload.uploadFailed'));
+  }
+
+  try {
+    return JSON.parse(result.body) as Record<string, unknown> & { url: string };
+  } catch {
+    throw new Error(i18n.t('errors.unexpectedError'));
+  }
 }
 
 // ── Stores ──────────────────────────────────────────────────────
@@ -531,9 +626,14 @@ export function useUploadMerchantCover() {
 }
 
 export function useDeleteMerchantCover() {
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: async () => {
+      // Backend clears the DB reference AND deletes the stored file (orphan cleanup)
       await api.patch('/merchant/profile', { coverUrl: null });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.profile });
     },
   });
 }
@@ -573,9 +673,14 @@ export function useUploadMerchantGalleryImage() {
 }
 
 export function useDeleteMerchantLogo() {
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: async () => {
+      // Backend clears the DB reference AND deletes the stored file (orphan cleanup)
       await api.patch('/merchant/profile', { logoUrl: null });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.profile });
     },
   });
 }

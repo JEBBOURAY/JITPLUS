@@ -211,18 +211,33 @@ export class MerchantController {
   @Patch('profile')
   @UseGuards(MerchantOwnerGuard)
   async updateProfile(@Body() dto: UpdateProfileDto, @CurrentUser() user: JwtPayload): Promise<MerchantProfileData> {
-    // If the gallery is being updated, we check if any image was removed so we can delete it from GCS.
-    if (dto.gallery) {
+    // Orphan-file cleanup: whenever gallery/logo/cover references are removed or
+    // replaced, delete the previously stored files so no orphans accumulate.
+    const logoProvided = dto.logoUrl !== undefined;
+    const coverProvided = dto.coverUrl !== undefined;
+    if (dto.gallery || logoProvided || coverProvided) {
       const current = await this.profileService.getProfile(user.userId);
-      const oldGallery = Array.isArray(current.gallery) ? current.gallery : [];
-      const newGallery = Array.isArray(dto.gallery) ? dto.gallery : [];
-      
-      const removedImages = oldGallery.filter(url => !newGallery.includes(url));
-      removedImages.forEach(url => {
-        if (typeof url === 'string') {
-          this.storageProvider.deleteFile(url).catch(() => {});
-        }
-      });
+
+      if (dto.gallery) {
+        const oldGallery = Array.isArray(current.gallery) ? current.gallery : [];
+        const newGallery = Array.isArray(dto.gallery) ? dto.gallery : [];
+
+        const removedImages = oldGallery.filter(url => !newGallery.includes(url));
+        removedImages.forEach(url => {
+          if (typeof url === 'string') {
+            this.storageProvider.deleteFile(url).catch(() => {});
+          }
+        });
+      }
+
+      // Logo removed (null) or replaced → delete the old stored file
+      if (logoProvided && current.logoUrl && current.logoUrl !== dto.logoUrl) {
+        this.storageProvider.deleteFile(current.logoUrl).catch(() => {});
+      }
+      // Cover removed (null) or replaced → delete the old stored file
+      if (coverProvided && current.coverUrl && current.coverUrl !== dto.coverUrl) {
+        this.storageProvider.deleteFile(current.coverUrl).catch(() => {});
+      }
     }
 
     return this.profileService.updateProfile(user.userId, dto);

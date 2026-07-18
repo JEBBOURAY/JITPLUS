@@ -70,8 +70,10 @@ export default {
 
   // ── Upload ──
   upload: {
-    fileTooLarge: 'File is too large (max 5 MB).',
+    fileTooLarge: 'File is too large (max 10 MB).',
     unsupportedFileType: 'Unsupported file type: %{mime}.',
+    fileNotFound: 'Photo not found. Please select it again.',
+    uploadFailed: 'Upload failed. Check your connection and try again.',
   },
 
   login: {

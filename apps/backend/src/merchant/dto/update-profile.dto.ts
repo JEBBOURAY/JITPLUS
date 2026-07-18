@@ -77,7 +77,12 @@ export class UpdateProfileDto {
 
   @IsUrl({}, { message: 'URL du logo invalide' })
   @IsOptional()
-  logoUrl?: string;
+  logoUrl?: string | null;
+
+  @IsString()
+  @Matches(/^(https?:\/\/|\/uploads\/).+/i, { message: 'URL de couverture invalide' })
+  @IsOptional()
+  coverUrl?: string | null;
 
   @IsString()
   @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Couleur hex invalide (#RRGGBB attendu)' })

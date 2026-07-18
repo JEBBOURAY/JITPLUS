@@ -75,8 +75,10 @@ export default {
 
   // ── Upload ──
   upload: {
-    fileTooLarge: 'Le fichier est trop volumineux (max 5 Mo).',
+    fileTooLarge: 'Le fichier est trop volumineux (max 10 Mo).',
     unsupportedFileType: 'Type de fichier non supporté : %{mime}.',
+    fileNotFound: 'Photo introuvable. Veuillez la sélectionner à nouveau.',
+    uploadFailed: "L'envoi a échoué. Vérifiez votre connexion et réessayez.",
   },
 
   // ── Login ──

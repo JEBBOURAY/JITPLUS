@@ -18,7 +18,7 @@ export const ASYNC_STORAGE_KEYS = {
 
 // Upload validation
 export const ALLOWED_LOGO_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp']);
-export const MAX_LOGO_SIZE_MB = 5;
+export const MAX_LOGO_SIZE_MB = 10; // aligned with backend MAX_FILE_SIZE (sharp optimizes server-side)
 export const MAX_LOGO_SIZE_BYTES = MAX_LOGO_SIZE_MB * 1024 * 1024;
 /** QR scan area ratio relative to screen width */
 export const SCAN_AREA_RATIO = 0.68;
