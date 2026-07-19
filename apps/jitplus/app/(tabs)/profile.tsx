@@ -46,9 +46,9 @@ export default function ProfileScreen() {
   const [compteExpanded, setCompteExpanded] = useState(false);
 
   // Preferences
-  const [shareInfoMerchants, setShareInfoMerchants] = useState(client?.shareInfoMerchants ?? false);
+  const [shareInfoMerchants, setShareInfoMerchants] = useState(client?.shareInfoMerchants ?? true);
   const [notifPush, setNotifPush] = useState(client?.notifPush ?? true);
-  const [notifEmail, setNotifEmail] = useState(client?.notifEmail ?? false);
+  const [notifEmail, setNotifEmail] = useState(client?.notifEmail ?? true);
   const [isSavingPref, setIsSavingPref] = useState<string | null>(null);
   const [showLanguageModal, setShowLanguageModal] = useState(false);
 
@@ -57,9 +57,9 @@ export default function ProfileScreen() {
   useFocusEffect(useCallback(() => {
     if (!client) refreshProfile?.().finally(() => setIsLoading(false));
     if (client) {
-      setShareInfoMerchants(client.shareInfoMerchants ?? false);
+      setShareInfoMerchants(client.shareInfoMerchants ?? true);
       setNotifPush(client.notifPush ?? true);
-      setNotifEmail(client.notifEmail ?? false);
+      setNotifEmail(client.notifEmail ?? true);
     }
     setIsLoadingStats(true);
     api.getProfileStats()
