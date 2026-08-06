@@ -171,18 +171,28 @@ export function useRealtimeSocket(config: RealtimeSocketConfig): Socket | null {
     };
   }, [enabled, connect]);
 
-  // Reconnect when app returns from background
+  // Disconnect in background, reconnect on foreground.
+  // COST: a live WebSocket keeps a Cloud Run request (and its billed CPU) open.
+  // Closing the socket when the app is backgrounded frees the connection slot
+  // immediately so instances can scale down. Real-time delivery while
+  // backgrounded is handled by FCM data pushes instead.
   useEffect(() => {
     const handleAppState = (nextState: AppStateStatus) => {
-      if (nextState !== 'active' || !enabled) return;
-      const s = socketRef.current;
-      // socket.io already reconnects on its own; only intervene if it has
-      // truly given up (or there's no socket yet). Rebuilding on every
-      // foreground caused duplicate handshakes and JS thread pressure.
-      if (!s) {
-        connect();
-      } else if (!s.connected && !s.active) {
-        s.connect();
+      if (nextState === 'active') {
+        if (!enabled) return;
+        const s = socketRef.current;
+        if (!s) {
+          connect();
+        } else if (!s.connected && !s.active) {
+          s.connect();
+        }
+      } else {
+        // Going to background/inactive → close the socket to release the
+        // server-side connection (and its Cloud Run billing) right away.
+        const s = socketRef.current;
+        if (s && (s.connected || s.active)) {
+          s.disconnect();
+        }
       }
     };
 

@@ -33,8 +33,9 @@ import { ClientWelcomeService } from './common/tasks/client-welcome.service';
 import { ClientReengagementService } from './common/tasks/client-reengagement.service';
 import { ClientRewardReminderService } from './common/tasks/client-reward-reminder.service';
 import { ClientWeeklyDigestService } from './common/tasks/client-weekly-digest.service';
-import { ClientEmailCampaignService } from './common/tasks/client-email-campaign.service';
-import { MerchantEmailCampaignService } from './common/tasks/merchant-email-campaign.service';
+// Email campaign crons disabled to reduce cost (Cloud Run compute + email volume).
+// import { ClientEmailCampaignService } from './common/tasks/client-email-campaign.service';
+// import { MerchantEmailCampaignService } from './common/tasks/merchant-email-campaign.service';
 import { UserThrottlerGuard } from './common/guards/user-throttler.guard';
 import { RepositoryModule } from './common/repositories';
 import { EventsModule } from './events';
@@ -131,8 +132,9 @@ import { jwtModuleFactory } from './common/jwt/jwt-module.factory';
     ClientReengagementService,
     ClientRewardReminderService,
     ClientWeeklyDigestService,
-    ClientEmailCampaignService,
-    MerchantEmailCampaignService,
+    // Email campaign crons disabled to reduce cost:
+    // ClientEmailCampaignService,
+    // MerchantEmailCampaignService,
   ],
 })
 export class AppModule implements NestModule {

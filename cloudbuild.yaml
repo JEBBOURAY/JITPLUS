@@ -133,7 +133,9 @@ steps:
       - --port=3000
       - --min-instances=0
       - --max-instances=10
-      - --concurrency=80
+      # WebSocket connections are idle 99% of the time; pack many per instance
+      # so far fewer instances are needed (major Cloud Run cost saver).
+      - --concurrency=400
       - --memory=512Mi
       - --cpu=1
       - --cpu-boost
