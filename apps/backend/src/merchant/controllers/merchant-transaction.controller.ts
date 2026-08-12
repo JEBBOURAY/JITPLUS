@@ -95,6 +95,13 @@ export class MerchantTransactionController {
     );
   }
 
+  // ── Accueil KPI (all plans, team-accessible) ──
+  @Get('home-stats')
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 30 } })
+  async getHomeStats(@CurrentUser() user: JwtPayload) {
+    return this.dashboardService.getHomeStats(user.userId);
+  }
+
   @Get('dashboard-kpis')
   @UseGuards(MerchantOwnerGuard, PremiumGuard)
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 15 } })

@@ -9,11 +9,12 @@ import { useIsFocused } from '@react-navigation/native';
  */
 export function useFocusFade() {
   const isFocused = useIsFocused();
-  const progress = useRef(new Animated.Value(0)).current;
+  const progress = useRef(new Animated.Value(isFocused ? 1 : 0)).current;
 
   useEffect(() => {
+    const target = isFocused ? 1 : 0;
     Animated.timing(progress, {
-      toValue: isFocused ? 1 : 0,
+      toValue: target,
       duration: 220,
       useNativeDriver: true,
     }).start();
@@ -23,12 +24,17 @@ export function useFocusFade() {
   // otherwise every parent re-render forces RN to diff a fresh style.
   const focusStyle = useMemo(
     () => ({
-      opacity: progress,
+      // Never fade to 0: with tab freeze/transition edge-cases, a stale 0-opacity
+      // state can look like a white screen. Keep a high baseline opacity instead.
+      opacity: progress.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0.96, 1],
+      }),
       transform: [
         {
           scale: progress.interpolate({
             inputRange: [0, 1],
-            outputRange: [0.98, 1],
+            outputRange: [0.995, 1],
           }),
         },
       ],

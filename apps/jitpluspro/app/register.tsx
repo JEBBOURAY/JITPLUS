@@ -1,4 +1,4 @@
-import React, { useReducer, useRef, useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useRef, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -12,14 +12,20 @@ import {
   Platform,
   ScrollView,
   Animated,
+  LayoutAnimation,
+  UIManager,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
-  ChevronRight,
   Check,
   ArrowLeft,
   ArrowRight,
   LogIn,
+  Store,
+  Mail,
+  Gift,
+  ChevronDown,
+  ShieldCheck,
 } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme, palette } from '@/contexts/ThemeContext';
@@ -31,175 +37,23 @@ import { isValidEmail } from '@/utils/validation';
 import { getErrorMessage } from '@/utils/error';
 import { useGoogleIdToken } from '@/hooks/useGoogleIdToken';
 import { useAppleIdToken } from '@/hooks/useAppleIdToken';
-import { StepAccount } from '@/components/register/StepAccount';
 import { StepPassword } from '@/components/register/StepPassword';
-import { StepStoreConfig } from '@/components/register/StepStoreConfig';
-import { StepSocialInfo } from '@/components/register/StepSocialInfo';
+import { AppleLogo } from '@/components/AppleLogo';
 import BrandName from '@/components/BrandName';
 import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
 
-// ── Register form state ─────────────────────────────────────────
-interface RegState {
-  step: number;
-  googleIdToken: string | null;
-  appleIdentityToken: string | null;
-  appleGivenName: string | undefined;
-  appleFamilyName: string | undefined;
-  appleRawNonce: string | null;
-  email: string;
-  password: string;
-  confirmPassword: string;
-  showPassword: boolean;
-  // Store config
-  nomCommerce: string;
-  categorie: string;
-  ville: string;
-  quartier: string;
-  adresse: string;
-  latitude: number | null;
-  longitude: number | null;
-  // Social info (step 4)
-  instagram: string;
-  tiktok: string;
-  website: string;
-  storePhone: string;
-  description: string;
-  // Referral
-  referralCode: string;
-  // Terms
-  termsAccepted: boolean;
-  isLoading: boolean;
+// Enable LayoutAnimation on Android (referral collapsible)
+if (
+  Platform.OS === 'android' &&
+  UIManager.setLayoutAnimationEnabledExperimental &&
+  typeof (global as Record<string, unknown>).nativeFabricUIManager === 'undefined'
+) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-type RegAction =
-  | { type: 'SET'; payload: Partial<RegState> }
-  | { type: 'NEXT_STEP' }
-  | { type: 'PREV_STEP' }
-  | { type: 'SET_LOADING'; loading: boolean };
+const STORE_NAME_MAX = 100;
 
-const initialRegState: RegState = {
-  step: 0,
-  googleIdToken: null,
-  appleIdentityToken: null,
-  appleGivenName: undefined,
-  appleFamilyName: undefined,
-  appleRawNonce: null,
-  email: '',
-  password: '',
-  confirmPassword: '',
-  showPassword: false,
-  nomCommerce: '',
-  categorie: '',
-  ville: '',
-  quartier: '',
-  adresse: '',
-  latitude: null,
-  longitude: null,
-  instagram: '',
-  tiktok: '',
-  website: '',
-  storePhone: '',
-  description: '',
-  referralCode: '',
-  termsAccepted: false,
-  isLoading: false,
-};
-
-function regReducer(state: RegState, action: RegAction): RegState {
-  switch (action.type) {
-    case 'SET':
-      return { ...state, ...action.payload };
-    case 'NEXT_STEP':
-      return { ...state, step: state.step + 1 };
-    case 'PREV_STEP':
-      return { ...state, step: state.step - 1 };
-    case 'SET_LOADING':
-      return { ...state, isLoading: action.loading };
-    default:
-      return state;
-  }
-}
-
-const TOTAL_STEPS = 4;
-
-// ── Premium step indicator ──────────────────────────────────────
-function StepIndicator({
-  current,
-  total,
-  theme: th,
-  labels,
-}: {
-  current: number;
-  total: number;
-  theme: ReturnType<typeof useTheme>;
-  labels: string[];
-}) {
-  return (
-    <View style={si.wrap}>
-      <View style={si.row}>
-        {Array.from({ length: total }, (_, i) => {
-          const done = i < current;
-          const active = i === current;
-          return (
-            <React.Fragment key={i}>
-              {i > 0 && (
-                <View style={si.lineWrap}>
-                  <View style={[si.line, { backgroundColor: done ? palette.charbon : `${palette.charbon}20` }]} />
-                </View>
-              )}
-              <View style={si.stepCol}>
-                <View
-                  style={[
-                    si.circle,
-                    {
-                      backgroundColor: done || active ? palette.charbon : 'transparent',
-                      borderColor: done || active ? palette.charbon : `${palette.charbon}30`,
-                    },
-                  ]}
-                >
-                  {done ? (
-                    <Check size={ms(14)} color="#fff" strokeWidth={2.5} />
-                  ) : (
-                    <Text style={[si.num, { color: active ? '#fff' : `${palette.charbon}40` }]}>{i + 1}</Text>
-                  )}
-                </View>
-                <Text
-                  style={[
-                    si.label,
-                    {
-                      color: done || active ? palette.charbon : th.textMuted,
-                      fontWeight: done || active ? '700' : '500',
-                    },
-                  ]}
-                >
-                  {labels[i]}
-                </Text>
-              </View>
-            </React.Fragment>
-          );
-        })}
-      </View>
-    </View>
-  );
-}
-
-const si = StyleSheet.create({
-  wrap: { marginBottom: hp(8) },
-  row: { flexDirection: 'row', alignItems: 'flex-start' },
-  stepCol: { alignItems: 'center', minWidth: ms(48) },
-  circle: {
-    width: ms(28),
-    height: ms(28),
-    borderRadius: ms(14),
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  lineWrap: { flex: 1, justifyContent: 'center', height: ms(28) },
-  line: { height: ms(2), borderRadius: ms(1) },
-  num: { fontSize: ms(12), fontWeight: '700', fontFamily: 'Lexend_700Bold' },
-  label: { fontSize: fontSize.xs, marginTop: hp(2), fontFamily: 'Lexend_500Medium' },
-});
+type ReferralStatus = 'idle' | 'checking' | 'valid' | 'invalid';
 
 // ── Main ────────────────────────────────────────────────────────
 export default function RegisterScreen() {
@@ -208,45 +62,62 @@ export default function RegisterScreen() {
   const { googleRegister, appleRegister, register: authRegister } = useAuth();
   const { t } = useLanguage();
 
-  const [s, dispatch] = useReducer(regReducer, initialRegState);
-  // Keep a ref to always read the latest state (avoids stale closures in async handlers)
-  const sRef = useRef(s);
-  sRef.current = s;
+  // ── Form state ──
+  const [googleIdToken, setGoogleIdToken] = useState<string | null>(null);
+  const [appleIdentityToken, setAppleIdentityToken] = useState<string | null>(null);
+  const [appleGivenName, setAppleGivenName] = useState<string | undefined>(undefined);
+  const [appleFamilyName, setAppleFamilyName] = useState<string | undefined>(undefined);
+  const [appleRawNonce, setAppleRawNonce] = useState<string | null>(null);
 
-  // Hard re-entrancy guard for the final submit. `isLoading` covers the UI state
-  // but there is a 1-frame window between a rapid double-tap and the dispatch
-  // landing — this ref blocks the second call synchronously.
-  const submittingRef = useRef(false);
+  const [nomCommerce, setNomCommerce] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
-  const set = useCallback((patch: Partial<RegState>) => {
-    dispatch({ type: 'SET', payload: patch });
-    setStepError('');
-  }, []);
+  const [referralOpen, setReferralOpen] = useState(false);
+  const [referralCode, setReferralCode] = useState('');
+  const [referralStatus, setReferralStatus] = useState<ReferralStatus>('idle');
+  const [referralName, setReferralName] = useState('');
 
-  const {
-    step, googleIdToken, appleIdentityToken, appleGivenName, appleFamilyName,
-    email, password, confirmPassword, showPassword,
-    nomCommerce, categorie, ville, quartier, adresse, latitude, longitude,
-    instagram, tiktok, website, storePhone, description,
-    referralCode, termsAccepted,
-    isLoading,
-  } = s;
-
-  const scrollRef = useRef<ScrollView>(null);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [stepError, setStepError] = useState('');
+  const [emailChecking, setEmailChecking] = useState(false);
 
-  // Google/Apple users skip password step → 3 effective steps (account, store, social)
   const isSocialAuth = !!googleIdToken || !!appleIdentityToken;
-  const effectiveTotal = isSocialAuth ? 3 : TOTAL_STEPS;
-  // Defensive clamp: if isSocialAuth flips (Google clicked after advancing in
-  // email flow), step can exceed stepTitles.length-1 → crash on stepTitles[step].title.
-  const safeStep = Math.min(Math.max(step, 0), effectiveTotal - 1);
 
-  // Resync internal state if it got out of range (e.g. after a Google token
-  // arrived while user was already past step 0 in the email flow).
-  useEffect(() => {
-    if (step !== safeStep) dispatch({ type: 'SET', payload: { step: safeStep } });
-  }, [step, safeStep]);
+  // Hard re-entrancy guard for submit (double-tap safety).
+  const submittingRef = useRef(false);
+  const isMountedRef = useRef(true);
+  const referralRequestIdRef = useRef(0);
+
+  // ── Refs ──
+  const emailRef = useRef<TextInput>(null);
+  const passwordRef = useRef<TextInput>(null);
+  const confirmRef = useRef<TextInput>(null);
+  const referralDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Social token capture ──
+  const handleGoogleToken = useCallback((idToken: string) => {
+    setStepError('');
+    setGoogleIdToken(idToken);
+    setAppleIdentityToken(null);
+  }, []);
+  const google = useGoogleIdToken(handleGoogleToken);
+
+  const handleAppleToken = useCallback(
+    (data: { identityToken: string; givenName?: string; familyName?: string; rawNonce: string }) => {
+      setStepError('');
+      setAppleIdentityToken(data.identityToken);
+      if (data.givenName !== undefined) setAppleGivenName(data.givenName);
+      if (data.familyName !== undefined) setAppleFamilyName(data.familyName);
+      setAppleRawNonce(data.rawNonce);
+      setGoogleIdToken(null);
+    },
+    [],
+  );
+  const apple = useAppleIdToken(handleAppleToken);
 
   // ── Entrance animations ──
   const headerAnim = useRef(new Animated.Value(0)).current;
@@ -261,265 +132,186 @@ export default function RegisterScreen() {
     ]);
     anim.start();
     return () => anim.stop();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Step transition animation
-  const stepAnim = useRef(new Animated.Value(1)).current;
-  const animateStepTransition = useCallback(() => {
-    stepAnim.setValue(0);
-    Animated.spring(stepAnim, { toValue: 1, useNativeDriver: true, speed: 14, bounciness: 4 }).start();
-    scrollRef.current?.scrollTo({ y: 0, animated: true });
-  }, [stepAnim]);
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      if (referralDebounceRef.current) clearTimeout(referralDebounceRef.current);
+      referralRequestIdRef.current += 1;
+    };
+  }, []);
 
-  // Google ID token capture — goes straight to step 1 (store config)
-  const handleGoogleToken = useCallback((idToken: string) => {
-    set({ googleIdToken: idToken, appleIdentityToken: null });
-    if (step === 0) {
-      dispatch({ type: 'NEXT_STEP' });
-      animateStepTransition();
+  // ── Referral live validation (debounced) ──
+  const checkReferralCode = useCallback((code: string) => {
+    if (referralDebounceRef.current) clearTimeout(referralDebounceRef.current);
+    const trimmed = code.trim().toUpperCase();
+    const requestId = referralRequestIdRef.current + 1;
+    referralRequestIdRef.current = requestId;
+    if (!trimmed || trimmed.length < 4) {
+      setReferralStatus('idle');
+      setReferralName('');
+      return;
     }
-  }, [step, set, animateStepTransition]);
-  const google = useGoogleIdToken(handleGoogleToken);
+    setReferralStatus('checking');
+    referralDebounceRef.current = setTimeout(async () => {
+      try {
+        const { data: result } = await api.get(`/auth/referral/check/${encodeURIComponent(trimmed)}`);
+        if (!isMountedRef.current || referralRequestIdRef.current !== requestId) return;
+        setReferralStatus('valid');
+        setReferralName(result.nom || result.name || '');
+      } catch {
+        if (!isMountedRef.current || referralRequestIdRef.current !== requestId) return;
+        setReferralStatus('invalid');
+        setReferralName('');
+      }
+    }, 600);
+  }, []);
 
-  // Apple ID token capture — same flow as Google (skip password).
-  // Note: Apple only returns fullName on the very first sign-in. On retry the fields
-  // come back undefined — we preserve the previously captured name to avoid losing it.
-  const handleAppleToken = useCallback((data: { identityToken: string; givenName?: string; familyName?: string; rawNonce: string }) => {
-    set({
-      appleIdentityToken: data.identityToken,
-      ...(data.givenName !== undefined && { appleGivenName: data.givenName }),
-      ...(data.familyName !== undefined && { appleFamilyName: data.familyName }),
-      appleRawNonce: data.rawNonce,
-      googleIdToken: null,
-    });
-    if (step === 0) {
-      dispatch({ type: 'NEXT_STEP' });
-      animateStepTransition();
-    }
-  }, [step, set, animateStepTransition]);
-  const apple = useAppleIdToken(handleAppleToken);
+  const handleReferralChange = useCallback(
+    (v: string) => {
+      setReferralCode(v);
+      checkReferralCode(v);
+    },
+    [checkReferralCode],
+  );
 
-  // Refs
-  const emailRef = useRef<TextInput>(null);
-  const passwordRef = useRef<TextInput>(null);
-  const confirmRef = useRef<TextInput>(null);
+  const toggleReferral = useCallback(() => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setReferralOpen((o) => !o);
+  }, []);
 
-  // ── Validation per step ──
-  const canProceed = useMemo(() => {
-    if (step === 0) {
-      if (isSocialAuth) return true;
-      return isValidEmail(email);
+  // ── Email uniqueness check (on blur) ──
+  const handleEmailBlur = useCallback(async () => {
+    const trimmed = email.trim().toLowerCase();
+    if (!trimmed || !isValidEmail(trimmed)) return;
+    setEmailChecking(true);
+    try {
+      const { data } = await api.post('/auth/check-email', { email: trimmed });
+      if (data.exists) {
+        setStepError(t('registerExtra.emailAlreadyUsed'));
+      } else if (stepError === t('registerExtra.emailAlreadyUsed')) {
+        setStepError('');
+      }
+    } catch {
+      // Silent — final check happens server-side on submit.
+    } finally {
+      setEmailChecking(false);
     }
-    if (step === 1) {
-      // Google/Apple users see store config at step 1
-      if (isSocialAuth) return !!nomCommerce.trim();
-      // Standard users see password at step 1
-      return isValidPassword(password) && password === confirmPassword;
-    }
-    if (step === 2) {
-      // Google/Apple users see social info at step 2 — terms must be accepted
-      if (isSocialAuth) return termsAccepted;
-      // Standard users see store config at step 2
-      return !!nomCommerce.trim();
-    }
-    // Step 3 (standard only): social info — terms must be accepted
-    if (step === 3) return termsAccepted;
-    return false;
-  }, [step, isSocialAuth, email, password, confirmPassword, nomCommerce, termsAccepted]);
+  }, [email, stepError, t]);
+
+  // ── Validation ──
+  const storeNameValid = nomCommerce.trim().length > 0;
+  const emailValid = isValidEmail(email);
+  const passwordOk = isValidPassword(password) && password === confirmPassword;
+
+  const canSubmit = useMemo(() => {
+    if (!storeNameValid || !termsAccepted) return false;
+    if (isSocialAuth) return true;
+    return emailValid && passwordOk;
+  }, [storeNameValid, termsAccepted, isSocialAuth, emailValid, passwordOk]);
 
   // ── Register ──
   const handleRegister = useCallback(async () => {
-    // Re-entrancy guard — short-circuit duplicate submissions (double-tap, rapid Enter, etc.)
     if (submittingRef.current) return;
+    if (!canSubmit) return;
     submittingRef.current = true;
-    // Read the LATEST state from the ref to avoid stale closures
-    const {
-      nomCommerce: nc, categorie: cat, ville: v, quartier: q,
-      adresse: addr, latitude: lat, longitude: lng,
-      instagram: ig, tiktok: tk, website: ws, storePhone: sp, description: desc,
-      referralCode: rc,
-      googleIdToken: gToken, appleIdentityToken: aToken,
-      appleGivenName: aGivenName, appleFamilyName: aFamilyName,
-      appleRawNonce: aRawNonce,
-      email: em, password: pw,
-    } = sRef.current;
+    setStepError('');
 
-    // Clean social handles: strip @ prefix and full URLs
-    const cleanIg = ig.trim().replace(/^@/, '').replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/.*$/, '');
-    const cleanTk = tk.trim().replace(/^@/, '').replace(/^https?:\/\/(www\.)?tiktok\.com\/@?/, '').replace(/\/.*$/, '');
-    const cleanWs = ws.trim();
-
+    const trimmedReferral = referralCode.trim();
     const storeData = {
-      nomCommerce: nc.trim(),
-      ...(cat && { categorie: cat }),
-      ...(v.trim() && { ville: v.trim() }),
-      ...(q.trim() && { quartier: q.trim() }),
-      ...(addr.trim() && { adresse: addr.trim() }),
-      ...(lat !== null && { latitude: lat }),
-      ...(lng !== null && { longitude: lng }),
-      ...(desc.trim() && { description: desc.trim() }),
-      ...(sp.trim() && { storePhone: sp.trim() }),
-      ...(cleanIg && { instagram: cleanIg }),
-      ...(cleanTk && { tiktok: cleanTk }),
-      ...(cleanWs && { website: cleanWs }),
-      ...(rc.trim() && { referralCode: rc.trim() }),
+      nomCommerce: nomCommerce.trim(),
+      ...(trimmedReferral && { referralCode: trimmedReferral }),
     };
 
-    if (gToken) {
-      if (!nc.trim()) {
-        Alert.alert(t('common.error'), t('registerExtra.fillAllFields'));
-        submittingRef.current = false;
-        return;
-      }
-      dispatch({ type: 'SET_LOADING', loading: true });
-      try {
-        const result = await googleRegister(gToken, {
-          ...storeData,
-          termsAccepted,
-        });
-        if (result.success) {
-          router.replace('/(tabs)');
-        } else {
-          Alert.alert(t('registerExtra.registrationError'), result.error || t('registerExtra.registrationErrorMsg'));
-        }
-      } catch (error: unknown) {
-        const ax = error as { isAxiosError?: boolean; code?: string; response?: any };
-        const isNetwork = ax?.isAxiosError && (ax?.code === 'ECONNABORTED' || ax?.code === 'ERR_NETWORK' || !ax?.response);
-        Alert.alert(
-          isNetwork ? t('common.networkError') : t('registerExtra.registrationError'),
-          isNetwork ? t('common.networkErrorMsg') : getErrorMessage(error, t('registerExtra.registrationErrorMsg')),
-        );
-      } finally {
-        dispatch({ type: 'SET_LOADING', loading: false });
-        submittingRef.current = false;
-      }
-      return;
-    }
-
-    if (aToken) {
-      if (!nc.trim()) {
-        Alert.alert(t('common.error'), t('registerExtra.fillAllFields'));
-        submittingRef.current = false;
-        return;
-      }
-      dispatch({ type: 'SET_LOADING', loading: true });
-      try {
-        const result = await appleRegister(aToken, aGivenName, aFamilyName, {
-          ...storeData,
-          termsAccepted,
-        }, aRawNonce ?? undefined);
-        if (result.success) {
-          router.replace('/(tabs)');
-        } else {
-          Alert.alert(t('registerExtra.registrationError'), result.error || t('registerExtra.registrationErrorMsg'));
-        }
-      } catch (error: unknown) {
-        const ax = error as { isAxiosError?: boolean; code?: string; response?: any };
-        const isNetwork = ax?.isAxiosError && (ax?.code === 'ECONNABORTED' || ax?.code === 'ERR_NETWORK' || !ax?.response);
-        Alert.alert(
-          isNetwork ? t('common.networkError') : t('registerExtra.registrationError'),
-          isNetwork ? t('common.networkErrorMsg') : getErrorMessage(error, t('registerExtra.registrationErrorMsg')),
-        );
-      } finally {
-        dispatch({ type: 'SET_LOADING', loading: false });
-        submittingRef.current = false;
-      }
-      return;
-    }
-
-    if (!em || !pw || !nc.trim()) {
-      Alert.alert(t('common.error'), t('registerExtra.fillAllFields'));
-      submittingRef.current = false;
-      return;
-    }
-    dispatch({ type: 'SET_LOADING', loading: true });
+    setIsLoading(true);
     try {
+      if (googleIdToken) {
+        const result = await googleRegister(googleIdToken, { ...storeData, termsAccepted });
+        if (result.success) {
+          router.replace('/(tabs)/activity');
+        } else {
+          Alert.alert(
+            t('registerExtra.registrationError'),
+            result.error || t('registerExtra.registrationErrorMsg'),
+          );
+        }
+        return;
+      }
+
+      if (appleIdentityToken) {
+        const result = await appleRegister(
+          appleIdentityToken,
+          appleGivenName,
+          appleFamilyName,
+          { ...storeData, termsAccepted },
+          appleRawNonce ?? undefined,
+        );
+        if (result.success) {
+          router.replace('/(tabs)/activity');
+        } else {
+          Alert.alert(
+            t('registerExtra.registrationError'),
+            result.error || t('registerExtra.registrationErrorMsg'),
+          );
+        }
+        return;
+      }
+
+      // Email flow — continue to email verification right after signup.
       await authRegister({
-        email: em.trim().toLowerCase(),
-        password: pw,
+        email: email.trim().toLowerCase(),
+        password,
         ...storeData,
         termsAccepted,
       });
       router.replace({
         pathname: '/verify-email',
-        params: { email: em.trim().toLowerCase(), fromRegister: '1' },
-      });
+        params: { email: email.trim().toLowerCase(), fromRegister: '1' },
+      } as never);
     } catch (error: unknown) {
-      const ax = error as { isAxiosError?: boolean; code?: string; response?: any };
-      const isNetwork = ax?.isAxiosError && (ax?.code === 'ECONNABORTED' || ax?.code === 'ERR_NETWORK' || !ax?.response);
+      const ax = error as { isAxiosError?: boolean; code?: string; response?: unknown };
+      const isNetwork =
+        ax?.isAxiosError && (ax?.code === 'ECONNABORTED' || ax?.code === 'ERR_NETWORK' || !ax?.response);
       Alert.alert(
         isNetwork ? t('common.networkError') : t('registerExtra.registrationError'),
         isNetwork ? t('common.networkErrorMsg') : getErrorMessage(error, t('registerExtra.registrationErrorMsg')),
       );
     } finally {
-      dispatch({ type: 'SET_LOADING', loading: false });
+      setIsLoading(false);
       submittingRef.current = false;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally keyed on auth methods; state values read at call time
-  }, [googleRegister, appleRegister, authRegister, router, t]);
+  }, [
+    canSubmit,
+    referralCode,
+    nomCommerce,
+    googleIdToken,
+    appleIdentityToken,
+    appleGivenName,
+    appleFamilyName,
+    appleRawNonce,
+    email,
+    password,
+    termsAccepted,
+    googleRegister,
+    appleRegister,
+    authRegister,
+    router,
+    t,
+  ]);
 
-  const handleNext = useCallback(async () => {
-    setStepError('');
+  const resetSocial = useCallback(() => {
+    setGoogleIdToken(null);
+    setAppleIdentityToken(null);
+    setAppleGivenName(undefined);
+    setAppleFamilyName(undefined);
+    setAppleRawNonce(null);
+  }, []);
 
-    // Step 0: check email uniqueness (skip for Google/Apple)
-    if (step === 0 && !googleIdToken && !appleIdentityToken) {
-      if (!canProceed) return;
-      dispatch({ type: 'SET_LOADING', loading: true });
-      try {
-        const { data } = await api.post('/auth/check-email', { email: email.trim().toLowerCase() });
-        if (data.exists) {
-          setStepError(t('registerExtra.emailAlreadyUsed'));
-          return;
-        }
-      } catch (err: unknown) {
-        const ax = err as { isAxiosError?: boolean; code?: string; response?: any };
-        const isNetwork = ax?.isAxiosError && (ax?.code === 'ECONNABORTED' || ax?.code === 'ERR_NETWORK' || !ax?.response);
-        setStepError(isNetwork ? t('common.networkErrorMsg') : t('registerExtra.checkEmailError'));
-        return;
-      } finally {
-        dispatch({ type: 'SET_LOADING', loading: false });
-      }
-    }
+  const handleBack = useCallback(() => router.back(), [router]);
 
-    if (step < effectiveTotal - 1) {
-      dispatch({ type: 'NEXT_STEP' });
-      animateStepTransition();
-    } else {
-      if (canProceed) handleRegister();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- appleIdentityToken read at call time; deps kept minimal to avoid re-creating handler mid-flow
-  }, [step, effectiveTotal, canProceed, animateStepTransition, googleIdToken, email, t, handleRegister]);
-
-  const handleBack = useCallback(() => {
-    if (step > 0) {
-      dispatch({ type: 'PREV_STEP' });
-      animateStepTransition();
-    } else {
-      router.back();
-    }
-  }, [step, animateStepTransition, router]);
-
-  const stepTitles = useMemo(() => {
-    if (isSocialAuth) {
-      return [
-        { title: t('registerExtra.step0'), sub: t('registerExtra.sub0') },
-        { title: t('registerExtra.step2Store'), sub: t('registerExtra.sub2Store') },
-        { title: t('registerExtra.stepSocial'), sub: t('registerExtra.subSocial') },
-      ];
-    }
-    return [
-      { title: t('registerExtra.step0'), sub: t('registerExtra.sub0') },
-      { title: t('registerExtra.step2'), sub: t('registerExtra.sub2') },
-      { title: t('registerExtra.step2Store'), sub: t('registerExtra.sub2Store') },
-      { title: t('registerExtra.stepSocial'), sub: t('registerExtra.subSocial') },
-    ];
-  }, [t, isSocialAuth]);
-
-  const stepShortLabels = useMemo(() => isSocialAuth
-    ? [t('registerExtra.stepShort0'), t('registerExtra.stepShort2Store'), t('registerExtra.stepShortSocial')]
-    : [t('registerExtra.stepShort0'), t('registerExtra.stepShort2'), t('registerExtra.stepShort2Store'), t('registerExtra.stepShortSocial')],
-  [t, isSocialAuth]);
+  const socialProvider = googleIdToken ? 'google' : appleIdentityToken ? 'apple' : null;
 
   return (
     <View style={[styles.gradient, { backgroundColor: theme.bg }]}>
@@ -530,173 +322,392 @@ export default function RegisterScreen() {
           keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
         >
           <ScrollView
-            ref={scrollRef}
             contentContainerStyle={styles.scrollContent}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
             {/* ── Header ── */}
-            <Animated.View style={{
-              opacity: headerAnim,
-              transform: [{ translateY: headerAnim.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }],
-            }}>
-              {/* Back */}
+            <Animated.View
+              style={{
+                opacity: headerAnim,
+                transform: [{ translateY: headerAnim.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }],
+              }}
+            >
               <TouchableOpacity
                 style={[styles.backBtn, { backgroundColor: `${theme.text}08` }]}
                 onPress={handleBack}
                 activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={t('common.back')}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
                 <ArrowLeft size={ms(20)} color={theme.text} strokeWidth={1.5} />
               </TouchableOpacity>
 
-              {/* Brand (step 0) */}
-              {step === 0 && (
-                <View style={styles.brandHeader}>
-                  <Image
-                    source={require('@/assets/images/jitplusprologo.png')}
-                    style={styles.logoImage}
-                    resizeMode="contain"
-                  />
-                  <BrandName fontSize={24} />
+              <View style={styles.brandHeader}>
+                <Image
+                  source={require('@/assets/images/jitplusprologo.png')}
+                  style={styles.logoImage}
+                  resizeMode="contain"
+                />
+                <BrandName fontSize={24} />
+              </View>
+
+              <View style={styles.titleWrap}>
+                <Text style={[styles.title, { color: theme.text }]}>{t('register.title')}</Text>
+                <Text style={[styles.subtitle, { color: theme.textMuted }]}>{t('register.subtitle')}</Text>
+                <View style={[styles.trialBadge, { backgroundColor: `${palette.violet}10`, borderColor: `${palette.violet}30` }]}>
+                  <Gift size={ms(15)} color={palette.violet} />
+                  <Text style={[styles.trialBadgeText, { color: palette.violet }]}>{t('registerExtra.trialBadge')}</Text>
+                </View>
+              </View>
+            </Animated.View>
+
+            {/* ── Body ── */}
+            <Animated.View
+              style={[
+                styles.body,
+                {
+                  opacity: cardAnim,
+                  transform: [{ translateY: cardAnim.interpolate({ inputRange: [0, 1], outputRange: [24, 0] }) }],
+                },
+              ]}
+            >
+              {/* Social sign-up buttons (email flow, before a provider is linked) */}
+              {!isSocialAuth && (
+                <>
+                  <TouchableOpacity
+                    style={[styles.socialBtn, { backgroundColor: theme.bgCard, borderColor: theme.border }]}
+                    onPress={google.promptGoogle}
+                    disabled={google.isLoading || isLoading}
+                    activeOpacity={0.8}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('registerExtra.signUpWithGoogle')}
+                  >
+                    {google.isLoading ? (
+                      <ActivityIndicator color={palette.charbon} size="small" />
+                    ) : (
+                      <>
+                        <View style={styles.googleIconWrap}>
+                          <Text style={styles.googleG}>G</Text>
+                        </View>
+                        <Text style={[styles.socialBtnText, { color: theme.text }]}>
+                          {t('registerExtra.signUpWithGoogle')}
+                        </Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                  {!!google.error && (
+                    <Text style={[styles.errorHint, { color: theme.danger }]}>{google.error}</Text>
+                  )}
+
+                  {apple?.isAvailable && (
+                    <TouchableOpacity
+                      style={[styles.socialBtn, { backgroundColor: '#000', borderColor: '#000', marginTop: hp(8) }]}
+                      onPress={apple.promptApple}
+                      disabled={apple.isLoading || isLoading}
+                      activeOpacity={0.8}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('registerExtra.signUpWithApple')}
+                    >
+                      {apple.isLoading ? (
+                        <ActivityIndicator color="#fff" size="small" />
+                      ) : (
+                        <>
+                          <AppleLogo size={ms(20)} color="#fff" />
+                          <Text style={[styles.socialBtnText, { color: '#fff' }]}>
+                            {t('registerExtra.signUpWithApple')}
+                          </Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  )}
+                  {!!apple?.error && (
+                    <Text style={[styles.errorHint, { color: theme.danger }]}>{apple.error}</Text>
+                  )}
+
+                  <View style={styles.separator}>
+                    <View style={[styles.separatorLine, { backgroundColor: theme.border }]} />
+                    <Text style={[styles.separatorText, { color: theme.textMuted }]}>{t('login.orDivider')}</Text>
+                    <View style={[styles.separatorLine, { backgroundColor: theme.border }]} />
+                  </View>
+                </>
+              )}
+
+              {/* Linked account card (social flow) */}
+              {isSocialAuth && (
+                <View
+                  style={[
+                    styles.linkedCard,
+                    { backgroundColor: `${theme.success}10`, borderColor: `${theme.success}30` },
+                  ]}
+                >
+                  <View style={styles.linkedAvatar}>
+                    {socialProvider === 'apple' ? (
+                      <AppleLogo size={ms(18)} color="#fff" />
+                    ) : (
+                      <Text style={styles.googleG}>G</Text>
+                    )}
+                  </View>
+                  <View style={styles.flex1}>
+                    <Text style={[styles.linkedTitle, { color: theme.text }]}>
+                      {socialProvider === 'apple'
+                        ? t('registerExtra.appleLinked')
+                        : t('registerExtra.googleLinked')}
+                    </Text>
+                    <Text style={[styles.linkedSub, { color: theme.success }]}>
+                      {t('registerExtra.noEmailVerifNeeded')}
+                    </Text>
+                  </View>
+                  <View style={styles.linkedCheck}>
+                    <Check size={ms(16)} color={theme.success} strokeWidth={2.5} />
+                  </View>
+                  <TouchableOpacity onPress={resetSocial} activeOpacity={0.7} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Text style={[styles.linkedReset, { color: theme.textMuted }]}>
+                      {socialProvider === 'apple'
+                        ? t('registerExtra.appleChange')
+                        : t('registerExtra.googleChange')}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               )}
 
-              {/* Step indicator */}
-              <StepIndicator current={step} total={effectiveTotal} theme={theme} labels={stepShortLabels} />
-
-              {/* Step title — clamp step to valid range to avoid crash when
-                  isSocialAuth flips mid-flow (stepTitles shrinks 4 -> 3). */}
-              <View style={styles.stepHeader}>
-                <Text style={[styles.stepLabel, { color: palette.charbon }]}>
-                  {t('registerExtra.stepLabel', { current: safeStep + 1, total: effectiveTotal })}
-                </Text>
-                <Text style={[styles.title, { color: theme.text }]}>
-                  {stepTitles[safeStep]?.title ?? ''}
-                </Text>
-                <Text style={[styles.subtitle, { color: theme.textMuted }]}>
-                  {stepTitles[safeStep]?.sub ?? ''}
-                </Text>
+              {/* Store name (required, always) */}
+              <View style={styles.field}>
+                <Text style={[styles.label, { color: theme.text }]}>{t('register.nameLabel')} *</Text>
+                <View
+                  style={[
+                    styles.inputRow,
+                    {
+                      backgroundColor: theme.bgInput,
+                      borderColor: storeNameValid ? palette.charbon : theme.border,
+                      borderWidth: storeNameValid ? 2 : 1.5,
+                    },
+                  ]}
+                >
+                  <Store size={ms(18)} color={storeNameValid ? palette.charbon : theme.textMuted} />
+                  <TextInput
+                    style={[styles.input, { color: theme.text }]}
+                    value={nomCommerce}
+                    onChangeText={setNomCommerce}
+                    placeholder={t('register.namePlaceholder')}
+                    placeholderTextColor={theme.textMuted}
+                    maxLength={STORE_NAME_MAX}
+                    editable={!isLoading}
+                    autoFocus={isSocialAuth}
+                    returnKeyType={isSocialAuth ? 'done' : 'next'}
+                    onSubmitEditing={() => !isSocialAuth && emailRef.current?.focus()}
+                  />
+                  {storeNameValid && <Check size={ms(16)} color={palette.charbon} strokeWidth={2.5} />}
+                </View>
               </View>
-            </Animated.View>
 
-            {/* ── Step content ── */}
-            <Animated.View style={[styles.stepContent, {
-              opacity: stepAnim,
-              transform: [{ translateY: stepAnim.interpolate({ inputRange: [0, 1], outputRange: [24, 0] }) }],
-            }]}>
-              {step === 0 && (
-                <StepAccount
-                  theme={theme}
-                  t={t}
-                  email={email}
-                  setEmail={(v) => set({ email: v })}
-                  emailRef={emailRef}
-                  googleIdToken={googleIdToken}
-                  setGoogleIdToken={(v) => set({ googleIdToken: v })}
-                  appleIdentityToken={appleIdentityToken}
-                  setAppleIdentityToken={(v) => set({ appleIdentityToken: v, appleGivenName: undefined, appleFamilyName: undefined, appleRawNonce: null })}
-                  google={google}
-                  apple={apple}
-                  isLoading={isLoading}
-                />
+              {/* Email + password (email flow only) */}
+              {!isSocialAuth && (
+                <>
+                  <View style={styles.field}>
+                    <Text style={[styles.label, { color: theme.text }]}>{t('register.emailLabel')} *</Text>
+                    <View
+                      style={[
+                        styles.inputRow,
+                        {
+                          backgroundColor: theme.bgInput,
+                          borderColor: email && emailValid ? palette.charbon : email && !emailValid ? theme.danger : theme.border,
+                          borderWidth: email && emailValid ? 2 : 1.5,
+                        },
+                      ]}
+                    >
+                      <Mail size={ms(18)} color={emailValid ? palette.charbon : theme.textMuted} />
+                      <TextInput
+                        ref={emailRef}
+                        style={[styles.input, { color: theme.text }]}
+                        value={email}
+                        onChangeText={setEmail}
+                        onBlur={handleEmailBlur}
+                        placeholder={t('register.emailPlaceholder')}
+                        placeholderTextColor={theme.textMuted}
+                        autoCapitalize="none"
+                        keyboardType="email-address"
+                        autoComplete="email"
+                        editable={!isLoading}
+                        returnKeyType="next"
+                        onSubmitEditing={() => passwordRef.current?.focus()}
+                      />
+                      {emailChecking ? (
+                        <ActivityIndicator size="small" color={palette.charbon} />
+                      ) : (
+                        emailValid && <Check size={ms(16)} color={palette.charbon} strokeWidth={2.5} />
+                      )}
+                    </View>
+                    {email.length > 3 && !emailValid && (
+                      <Text style={[styles.errorHint, { color: theme.danger }]}>{t('login.invalidEmail')}</Text>
+                    )}
+                  </View>
+
+                  <StepPassword
+                    theme={theme}
+                    t={t}
+                    password={password}
+                    setPassword={setPassword}
+                    confirmPassword={confirmPassword}
+                    setConfirmPassword={setConfirmPassword}
+                    showPassword={showPassword}
+                    setShowPassword={setShowPassword}
+                    passwordRef={passwordRef}
+                    confirmRef={confirmRef}
+                    isLoading={isLoading}
+                  />
+                </>
               )}
 
-              {step === 1 && !isSocialAuth && (
-                <StepPassword
-                  theme={theme}
-                  t={t}
-                  password={password}
-                  setPassword={(v) => set({ password: v })}
-                  confirmPassword={confirmPassword}
-                  setConfirmPassword={(v) => set({ confirmPassword: v })}
-                  showPassword={showPassword}
-                  setShowPassword={(v) => set({ showPassword: v })}
-                  passwordRef={passwordRef}
-                  confirmRef={confirmRef}
-                  isLoading={isLoading}
+              {/* Collapsible referral code */}
+              <TouchableOpacity
+                style={styles.referralToggle}
+                onPress={toggleReferral}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityState={{ expanded: referralOpen }}
+              >
+                <Gift size={ms(16)} color={theme.textSecondary} />
+                <Text style={[styles.referralToggleText, { color: theme.textSecondary }]}>
+                  {t('registerExtra.referralToggle')}
+                </Text>
+                <ChevronDown
+                  size={ms(18)}
+                  color={theme.textMuted}
+                  style={{ transform: [{ rotate: referralOpen ? '180deg' : '0deg' }] }}
                 />
+              </TouchableOpacity>
+
+              {referralOpen && (
+                <View style={styles.field}>
+                  <View
+                    style={[
+                      styles.inputRow,
+                      {
+                        backgroundColor: theme.bgInput,
+                        borderColor:
+                          referralStatus === 'valid'
+                            ? theme.success
+                            : referralStatus === 'invalid'
+                            ? theme.danger
+                            : referralCode.trim()
+                            ? palette.charbon
+                            : theme.border,
+                        borderWidth: referralCode.trim() ? 2 : 1.5,
+                      },
+                    ]}
+                  >
+                    <Gift
+                      size={ms(18)}
+                      color={
+                        referralStatus === 'valid'
+                          ? theme.success
+                          : referralStatus === 'invalid'
+                          ? theme.danger
+                          : referralCode.trim()
+                          ? palette.charbon
+                          : theme.textMuted
+                      }
+                    />
+                    <TextInput
+                      style={[styles.input, { color: theme.text }]}
+                      value={referralCode}
+                      onChangeText={handleReferralChange}
+                      placeholder={t('referral.referralCodePlaceholder')}
+                      placeholderTextColor={theme.textMuted}
+                      autoCapitalize="characters"
+                      autoCorrect={false}
+                      maxLength={20}
+                      editable={!isLoading}
+                    />
+                    {referralStatus === 'checking' && <ActivityIndicator size="small" color={palette.charbon} />}
+                  </View>
+                  {referralStatus === 'valid' && (
+                    <Text style={[styles.referralFeedback, { color: theme.success }]}>
+                      {t('referral.referralCodeValid', { nom: referralName })}
+                    </Text>
+                  )}
+                  {referralStatus === 'invalid' && (
+                    <Text style={[styles.referralFeedback, { color: theme.danger }]}>
+                      {t('referral.referralCodeInvalid')}
+                    </Text>
+                  )}
+                </View>
               )}
 
-              {((step === 1 && isSocialAuth) || (step === 2 && !isSocialAuth)) && (
-                <StepStoreConfig
-                  theme={theme}
-                  t={t}
-                  store={{ nomCommerce, categorie: categorie as any, ville, quartier, adresse, latitude, longitude }}
-                  setStore={(patch) => set(patch as Partial<RegState>)}
-                />
-              )}
-
-              {((step === 2 && isSocialAuth) || (step === 3 && !isSocialAuth)) && (
-                <StepSocialInfo
-                  theme={theme}
-                  t={t}
-                  data={{ instagram, tiktok, website, storePhone, description, referralCode }}
-                  setData={(patch) => set(patch as Partial<RegState>)}
-                />
-              )}
-            </Animated.View>
-
-            {/* ── Step error ── */}
-            {!!stepError && (
-              <View style={[styles.stepErrorBanner, { backgroundColor: `${theme.danger}12`, borderColor: `${theme.danger}30` }]}>
-                <Text style={[styles.stepErrorText, { color: theme.danger }]}>{stepError}</Text>
-              </View>
-            )}
-
-            {/* ── Terms checkbox (last step) ── */}
-            {((step === 2 && isSocialAuth) || (step === 3 && !isSocialAuth)) && (
+              {/* Terms */}
               <TouchableOpacity
                 style={styles.termsRow}
-                onPress={() => set({ termsAccepted: !termsAccepted })}
+                onPress={() => setTermsAccepted((v) => !v)}
                 activeOpacity={0.7}
                 accessibilityRole="checkbox"
                 accessibilityState={{ checked: termsAccepted }}
               >
-                <View style={[styles.checkbox, { borderColor: termsAccepted ? theme.primary : theme.border, backgroundColor: termsAccepted ? theme.primary : 'transparent' }]}>
+                <View
+                  style={[
+                    styles.checkbox,
+                    {
+                      borderColor: termsAccepted ? theme.primary : theme.border,
+                      backgroundColor: termsAccepted ? theme.primary : 'transparent',
+                    },
+                  ]}
+                >
                   {termsAccepted && <Check size={ms(14)} color="#fff" strokeWidth={2.5} />}
                 </View>
                 <Text style={[styles.termsText, { color: theme.textSecondary }]}>
                   {t('registerExtra.termsText')}{' '}
                   <Text style={{ color: theme.primary, fontWeight: '600' }} onPress={() => router.push('/legal')}>
-                    {t('registerExtra.termsLink') || t('legal.terms')}
+                    {t('registerExtra.termsLink')}
                   </Text>
                 </Text>
               </TouchableOpacity>
+            </Animated.View>
+
+            {/* ── Step error ── */}
+            {!!stepError && (
+              <View
+                style={[
+                  styles.stepErrorBanner,
+                  { backgroundColor: `${theme.danger}12`, borderColor: `${theme.danger}30` },
+                ]}
+              >
+                <Text style={[styles.stepErrorText, { color: theme.danger }]}>{stepError}</Text>
+              </View>
             )}
 
-            {/* ── Action button ── */}
+            {/* ── Submit ── */}
             <Animated.View style={[styles.actions, { opacity: footerAnim }]}>
+              {isSocialAuth && (
+                <View style={styles.noVerifRow}>
+                  <ShieldCheck size={ms(15)} color={theme.success} />
+                  <Text style={[styles.noVerifText, { color: theme.textMuted }]}>
+                    {t('registerExtra.noEmailVerifNeeded')}
+                  </Text>
+                </View>
+              )}
               <TouchableOpacity
-                style={[
-                  styles.mainBtn,
-                  { backgroundColor: canProceed ? palette.charbon : `${palette.charbon}30` },
-                ]}
-                onPress={handleNext}
-                disabled={!canProceed || isLoading}
+                style={[styles.mainBtn, { backgroundColor: canSubmit ? palette.charbon : `${palette.charbon}30` }]}
+                onPress={handleRegister}
+                disabled={!canSubmit || isLoading}
                 activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel={t('registerExtra.finishBtn')}
               >
                 {isLoading ? (
                   <ActivityIndicator color="#fff" />
-                ) : step < effectiveTotal - 1 ? (
-                  <>
-                    <Text style={[styles.mainBtnText, { opacity: canProceed ? 1 : 0.5 }]}>
-                      {t('registerExtra.nextBtn')}
-                    </Text>
-                    <ChevronRight size={ms(18)} color={canProceed ? '#fff' : 'rgba(255,255,255,0.5)'} strokeWidth={1.5} />
-                  </>
                 ) : (
                   <>
-                    <Text style={[styles.mainBtnText, { opacity: canProceed ? 1 : 0.5 }]}>
+                    <Text style={[styles.mainBtnText, { opacity: canSubmit ? 1 : 0.5 }]}>
                       {t('registerExtra.finishBtn')}
                     </Text>
-                    <Check size={ms(18)} color={canProceed ? '#fff' : 'rgba(255,255,255,0.5)'} strokeWidth={1.5} />
+                    <Check size={ms(18)} color={canSubmit ? '#fff' : 'rgba(255,255,255,0.5)'} strokeWidth={1.5} />
                   </>
                 )}
               </TouchableOpacity>
             </Animated.View>
 
-            {/* ── Already have account (step 0 only) ── */}
-            {step === 0 && (
+            {/* ── Already have account ── */}
             <Animated.View style={[styles.footer, { opacity: footerAnim }]}>
               <TouchableOpacity
                 onPress={() => router.push('/login')}
@@ -710,17 +721,13 @@ export default function RegisterScreen() {
                   <Text style={[styles.loginPromptTitle, { color: theme.text }]}>
                     {t('register.alreadyAccount')}
                   </Text>
-                  <Text style={[styles.loginPromptSub, { color: palette.charbon }]}>
-                    {t('register.loginLink')}
-                  </Text>
+                  <Text style={[styles.loginPromptSub, { color: palette.charbon }]}>{t('register.loginLink')}</Text>
                 </View>
                 <ArrowRight size={ms(16)} color={palette.charbon} strokeWidth={2} />
               </TouchableOpacity>
             </Animated.View>
-            )}
           </ScrollView>
         </KeyboardAvoidingView>
-
       </SafeAreaView>
     </View>
   );
@@ -729,7 +736,7 @@ export default function RegisterScreen() {
 // ── Styles ──────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   gradient: { flex: 1 },
-  flex1: { flex: 1 } as const,
+  flex1: { flex: 1 },
   safeArea: { flex: 1 },
   scrollContent: {
     flexGrow: 1,
@@ -738,7 +745,6 @@ const styles = StyleSheet.create({
     paddingBottom: hp(6),
   },
 
-  // Back
   backBtn: {
     width: ms(32),
     height: ms(32),
@@ -748,45 +754,133 @@ const styles = StyleSheet.create({
     marginBottom: hp(2),
   },
 
-  // Brand
   brandHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: ms(8),
     marginBottom: hp(10),
   },
-  logoImage: {
-    width: ms(36),
-    height: ms(36),
-    borderRadius: ms(10),
-  },
+  logoImage: { width: ms(36), height: ms(36), borderRadius: ms(10) },
 
-  // Step header
-  stepHeader: { marginBottom: hp(4) },
-  stepLabel: {
-    fontSize: fontSize.xs,
-    fontWeight: '700',
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-    marginBottom: hp(2),
-    fontFamily: 'Lexend_700Bold',
-  },
+  titleWrap: { marginBottom: hp(6) },
   title: {
-    fontSize: ms(20),
+    fontSize: ms(24),
     fontWeight: '800',
     letterSpacing: -0.5,
     marginBottom: hp(1),
     fontFamily: 'Lexend_700Bold',
   },
-  subtitle: {
+  subtitle: { fontSize: fontSize.sm, lineHeight: ms(20), fontWeight: '500', fontFamily: 'Lexend_500Medium' },
+  trialBadge: {
+    marginTop: hp(10),
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    paddingHorizontal: wp(10),
+    paddingVertical: hp(7),
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp(6),
+    alignSelf: 'flex-start',
+  },
+  trialBadgeText: {
     fontSize: fontSize.xs,
-    lineHeight: ms(18),
-    fontWeight: '500',
-    fontFamily: 'Lexend_500Medium',
+    fontFamily: 'Lexend_700Bold',
   },
 
-  // Step content
-  stepContent: { marginBottom: hp(2) },
+  body: { marginBottom: hp(2) },
+
+  // Social buttons
+  socialBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderRadius: radius.lg,
+    height: hp(50),
+    gap: wp(10),
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 2, shadowOffset: { width: 0, height: 1 } },
+      android: { elevation: 1 },
+    }),
+  },
+  socialBtnText: { fontSize: fontSize.md, fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
+  googleIconWrap: {
+    width: ms(26),
+    height: ms(26),
+    borderRadius: ms(13),
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  googleG: { fontSize: ms(15), fontWeight: '700', color: '#4285F4' },
+
+  separator: { flexDirection: 'row', alignItems: 'center', marginVertical: hp(14) },
+  separatorLine: { flex: 1, height: 1 },
+  separatorText: { marginHorizontal: wp(14), fontSize: fontSize.xs, fontWeight: '600' },
+
+  // Linked account card
+  linkedCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp(10),
+    padding: wp(12),
+    borderRadius: radius.lg,
+    borderWidth: 1.5,
+    marginBottom: hp(18),
+  },
+  linkedAvatar: {
+    width: ms(36),
+    height: ms(36),
+    borderRadius: ms(18),
+    backgroundColor: palette.charbon,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  linkedTitle: { fontSize: fontSize.sm, fontWeight: '700', fontFamily: 'Lexend_600SemiBold' },
+  linkedSub: { fontSize: fontSize.xs, fontWeight: '500', marginTop: 2 },
+  linkedCheck: { marginRight: wp(4) },
+  linkedReset: { fontSize: fontSize.xs, fontWeight: '600', textDecorationLine: 'underline' },
+
+  // Fields
+  field: { marginBottom: hp(18) },
+  label: { fontSize: fontSize.sm, fontWeight: '700', marginBottom: hp(8), letterSpacing: 0.2, fontFamily: 'Lexend_600SemiBold' },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderRadius: radius.lg,
+    paddingHorizontal: wp(14),
+    height: hp(52),
+    gap: wp(10),
+  },
+  input: { flex: 1, fontSize: fontSize.md, fontWeight: '500' },
+  errorHint: { fontSize: fontSize.xs, marginTop: hp(6), lineHeight: ms(16) },
+
+  // Referral
+  referralToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp(8),
+    paddingVertical: hp(10),
+    marginBottom: hp(4),
+  },
+  referralToggleText: { flex: 1, fontSize: fontSize.sm, fontWeight: '600', fontFamily: 'Lexend_500Medium' },
+  referralFeedback: { fontSize: fontSize.xs, marginTop: hp(6), fontWeight: '500' },
+
+  // Terms
+  termsRow: { flexDirection: 'row', alignItems: 'center', marginTop: hp(1.5), marginBottom: hp(1), paddingHorizontal: wp(1) },
+  checkbox: {
+    width: ms(22),
+    height: ms(22),
+    borderRadius: 6,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: ms(10),
+  },
+  termsText: { flex: 1, fontSize: fontSize.sm, lineHeight: ms(20), fontFamily: 'Lexend_400Regular' },
 
   // Step error
   stepErrorBanner: {
@@ -798,13 +892,10 @@ const styles = StyleSheet.create({
   },
   stepErrorText: { fontSize: fontSize.sm, fontWeight: '600', textAlign: 'center', fontFamily: 'Lexend_600SemiBold' },
 
-  // Terms checkbox
-  termsRow: { flexDirection: 'row', alignItems: 'center', marginTop: hp(1.5), marginBottom: hp(1), paddingHorizontal: wp(1) },
-  checkbox: { width: ms(22), height: ms(22), borderRadius: 6, borderWidth: 2, alignItems: 'center', justifyContent: 'center', marginRight: ms(10) },
-  termsText: { flex: 1, fontSize: fontSize.sm, lineHeight: ms(20), fontFamily: 'Lexend_400Regular' },
-
   // Actions
   actions: { marginTop: hp(2), marginBottom: hp(4) },
+  noVerifRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: wp(6), marginBottom: hp(10) },
+  noVerifText: { fontSize: fontSize.xs, fontWeight: '500', fontFamily: 'Lexend_500Medium' },
   mainBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -813,12 +904,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     gap: wp(8),
     ...Platform.select({
-      ios: {
-        shadowColor: '#1F2937',
-        shadowOffset: { width: 0, height: 3 },
-        shadowOpacity: 0.15,
-        shadowRadius: 6,
-      },
+      ios: { shadowColor: '#1F2937', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.15, shadowRadius: 6 },
       android: { elevation: 4 },
     }),
   },

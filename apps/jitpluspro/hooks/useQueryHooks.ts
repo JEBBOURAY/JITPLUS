@@ -47,6 +47,7 @@ export const queryKeys = {
   dashboardTrends: (period: string) => ['dashboard-trends', period] as const,
   dashboardDistribution: ['dashboard-distribution'] as const,
   transactions: ['transactions'] as const,
+  homeStats: ['home-stats'] as const,
   profile: ['profile'] as const,
   clientDetail: (id: string) => ['client-detail', id] as const,
   clientStatus: (id: string) => ['client-status', id] as const,
@@ -434,6 +435,26 @@ export function useRecordTransaction() {
 }
 
 // ── Transactions (infinite scroll) ──────────────────────────────
+export interface HomeStats {
+  today: { points: number; clients: number };
+  yesterday: { points: number };
+  month: { total: number; daily: number[] };
+}
+
+/** Aggregated Accueil KPI + month scans — computed server-side over ALL rows
+ * (not just the first transactions page). All plans, team-accessible. */
+export function useHomeStats(enabled = true) {
+  return useQuery<HomeStats>({
+    queryKey: queryKeys.homeStats,
+    queryFn: async () => {
+      const res = await api.get('/merchant/home-stats');
+      return res.data;
+    },
+    staleTime: STALE.SHORT,
+    enabled,
+  });
+}
+
 export function useTransactions(enabled = true) {
   return useInfiniteQuery<TransactionsPage>({
     queryKey: queryKeys.transactions,

@@ -32,7 +32,7 @@ import { IStorageProvider, STORAGE_PROVIDER } from '../common/interfaces';
 import { ImageOptimizerService } from '../storage/image-optimizer.service';
 import { MerchantProfileData } from '../common/prisma-selects';
 
-const ALLOWED_MIMES = ['image/jpeg', 'image/png', 'image/webp'];
+const ALLOWED_MIMES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB (sharp optimizes down to a small WebP)
 
 /** Detect MIME from magic bytes — supports JPEG, PNG, WebP only. */
@@ -42,6 +42,10 @@ function detectMimeFromBuffer(buffer: Buffer): string | null {
   if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) return 'image/png';
   if (buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46 &&
       buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50) return 'image/webp';
+  if (buffer[4] === 0x66 && buffer[5] === 0x74 && buffer[6] === 0x79 && buffer[7] === 0x70) {
+    const brand = buffer.subarray(8, 12).toString('ascii').toLowerCase();
+    if (['heic', 'heix', 'hevc', 'hevx', 'mif1', 'msf1'].includes(brand)) return 'image/heic';
+  }
   return null;
 }
 
@@ -266,7 +270,8 @@ export class MerchantController {
   ) {
     if (!file) throw new BadRequestException('Aucun fichier envoyé');
 
-    // Validate magic bytes — MIME from Content-Type header is client-controlled
+    // Validate magic bytes — MIME from Content-Type header is client-controlled.
+    // HEIC/HEIF are accepted here and transcoded by sharp to WebP later.
     const detectedMime = detectMimeFromBuffer(file.buffer);
     if (!detectedMime || !ALLOWED_MIMES.includes(detectedMime)) {
       throw new BadRequestException('Le contenu du fichier ne correspond pas à un format image autorisé (JPG, PNG, WebP).');

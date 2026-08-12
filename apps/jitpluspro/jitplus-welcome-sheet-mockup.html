@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>JitPlus Pro — Affiche de bienvenue (mockup)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --violet:#7C3AED; --violet-light:#8B5CF6; --charbon:#1F2937;
+    --grad-brand: linear-gradient(135deg,#7C3AED,#1F2937);
+    --grad-header: linear-gradient(160deg,#5B21B6,#7C3AED 55%,#1F2937);
+    --bg:#FFFFFF; --input-bg:#F1F5F9; --borderLight:#ECEEF2;
+    --text:#0F172A; --text-secondary:#334155; --text-muted:#64748B;
+    --success:#10B981; --gold:#FCD34D;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{
+    font-family:'Lexend', sans-serif; background:#EAEAF0;
+    display:flex; align-items:flex-start; justify-content:center;
+    padding:40px 16px; min-height:100vh;
+  }
+  .note{max-width:390px; margin:0 auto 14px; font-size:12px; color:#64748B; text-align:center;}
+  .wrap{display:flex; flex-direction:column; align-items:center;}
+  .state-switch{display:flex; gap:8px; margin-bottom:16px;}
+  .state-btn{
+    font-family:'Lexend', sans-serif; font-size:12px; font-weight:600;
+    padding:9px 16px; border-radius:20px; border:1.5px solid #d8dbe3;
+    background:#fff; color:var(--text-secondary); cursor:pointer;
+  }
+  .state-btn.active{border-color:var(--violet); background:var(--violet); color:#fff;}
+
+  .phone{
+    width:390px; height:844px; background:var(--bg);
+    border-radius:44px;
+    box-shadow:0 30px 60px -20px rgba(31,41,55,.45), 0 0 0 10px #111318;
+    overflow:hidden; position:relative; display:flex; flex-direction:column;
+  }
+  .notch{position:absolute; top:0; left:50%; transform:translateX(-50%); width:120px; height:28px; background:#111318; border-radius:0 0 18px 18px; z-index:30;}
+
+  /* Accueil en fond, légèrement assombri */
+  .accueil-bg{
+    position:absolute; inset:0;
+    background:var(--grad-header);
+  }
+  .accueil-content-fake{
+    position:absolute; top:118px; left:18px; right:18px;
+    color:rgba(255,255,255,.5);
+  }
+  .accueil-dim{
+    position:absolute; inset:0; background:rgba(11,15,20,.45); z-index:5;
+    opacity:0; transition:opacity .3s ease;
+  }
+  .accueil-dim.show{opacity:1;}
+
+  /* Bottom sheet — PAS plein écran */
+  .welcome-sheet{
+    position:absolute; left:18px; right:18px; top:50%; z-index:10;
+    background:#fff; border-radius:24px;
+    max-height:76%;
+    transform:translateY(-50%) scale(.92);
+    opacity:0;
+    transition:transform .32s cubic-bezier(.16,.8,.24,1), opacity .28s ease;
+    display:flex; flex-direction:column;
+    box-shadow:0 30px 60px -16px rgba(0,0,0,.35), 0 0 0 6px rgba(255,255,255,.5);
+    overflow:hidden;
+  }
+  .welcome-sheet.show{transform:translateY(-50%) scale(1); opacity:1;}
+  .welcome-sheet::before{
+    content:""; position:absolute; inset:0; z-index:0; pointer-events:none;
+    background-image: radial-gradient(rgba(124,58,237,.12) 1px, transparent 1px);
+    background-size:14px 14px;
+    -webkit-mask-image: radial-gradient(ellipse 100% 60% at 50% 0%, #000 0%, transparent 75%);
+            mask-image: radial-gradient(ellipse 100% 60% at 50% 0%, #000 0%, transparent 75%);
+  }
+  .welcome-sheet::after{
+    content:""; position:absolute; top:-60px; right:-50px; z-index:0; pointer-events:none;
+    width:170px; height:170px; border-radius:50%;
+    background:radial-gradient(circle, rgba(252,211,77,.35), transparent 70%);
+    filter:blur(10px);
+  }
+  .welcome-sheet > *{position:relative; z-index:1;}
+
+  .sheet-handle{display:none;}
+
+  .eyebrow-tag{
+    display:inline-flex; align-items:center; gap:5px;
+    background:linear-gradient(135deg, rgba(124,58,237,.1), rgba(252,211,77,.14));
+    color:var(--violet); font-size:9.5px; font-weight:800; letter-spacing:.4px; text-transform:uppercase;
+    padding:4px 10px; border-radius:20px; margin:12px 18px 0;
+  }
+
+  .sheet-top{display:flex; align-items:flex-start; justify-content:space-between; padding:8px 18px 4px;}
+  .sheet-title-block{flex:1;}
+  .sheet-title{font-size:16.5px; font-weight:800; color:var(--text); letter-spacing:-0.3px;}
+  .sheet-sub{font-size:11.5px; color:var(--text-muted); margin-top:3px; line-height:1.4;}
+  .sheet-close{
+    width:30px; height:30px; border-radius:50%; background:var(--input-bg); color:var(--text-secondary);
+    display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-left:12px; cursor:pointer;
+  }
+
+  .tab-row{display:flex; gap:8px; padding:10px 18px 4px;}
+  .tab-btn{
+    flex:1; display:flex; align-items:center; justify-content:center; gap:6px;
+    text-align:center; padding:9px 0; border-radius:12px;
+    font-size:12px; font-weight:700; cursor:pointer;
+    background:var(--input-bg); color:var(--text-secondary);
+    transition:background .2s ease, color .2s ease;
+  }
+  .tab-btn.active{background:var(--grad-brand); color:#fff; box-shadow:0 6px 16px -6px rgba(124,58,237,.5);}
+
+  .sheet-body{flex:1; overflow-y:auto; padding:10px 18px 4px;}
+  .slide{display:none;}
+  .slide.show{display:block; animation:fadeIn .25s ease;}
+  @keyframes fadeIn{from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);}}
+
+  /* Lockup logo produit (JitPlus / JitPlus Pro) */
+  .product-lockup-wrap{
+    display:flex; flex-direction:column; align-items:center;
+    margin-bottom:8px;
+  }
+  .product-lockup{
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    margin-bottom:4px;
+  }
+  .product-mark{
+    width:32px; height:32px; flex-shrink:0;
+  }
+  .product-mark img{width:100%; height:100%; object-fit:contain;}
+  .product-wordmark{font-size:15px; font-weight:800; color:var(--text); letter-spacing:-0.3px;}
+  .product-wordmark .pro-tag{
+    font-size:9px; font-weight:800; color:#fff; background:var(--grad-brand);
+    padding:2px 6px; border-radius:6px; margin-left:5px; vertical-align:2px; letter-spacing:.3px;
+  }
+  .product-caption{
+    font-size:9.5px; font-weight:600; color:var(--text-muted); text-align:center;
+  }
+  .product-caption b{color:var(--violet);}
+
+  .diagram-label{
+    display:flex; align-items:center; justify-content:center; gap:7px;
+    margin-bottom:14px;
+  }
+  .diagram-label-line{flex:1; height:1px; background:var(--borderLight);}
+  .diagram-label-text{
+    font-size:9.5px; font-weight:700; letter-spacing:.8px; text-transform:uppercase;
+    color:var(--text-muted); white-space:nowrap;
+  }
+
+  /* ===== ROADMAP — chemin sinueux, nœuds alternés gauche/droite ===== */
+  .roadmap{position:relative; width:300px; height:400px; margin:0 auto;}
+  .roadmap-svg{position:absolute; inset:0; overflow:visible;}
+  .roadmap-path{
+    fill:none; stroke-width:3; stroke-linecap:round; stroke-dasharray:1 11;
+    stroke-dashoffset:1000; animation: pathDraw 1.3s ease-out forwards; animation-delay:.1s;
+  }
+  @keyframes pathDraw{ to{ stroke-dashoffset:0; } }
+
+  .rm-node{
+    position:absolute; width:46px; height:46px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    box-shadow:0 6px 14px -4px rgba(0,0,0,.3), 0 0 0 4px #fff;
+    opacity:0; transform:scale(.4);
+    animation: nodePop .45s cubic-bezier(.34,1.4,.4,1) forwards;
+  }
+  @keyframes nodePop{
+    0%{opacity:0; transform:scale(.4);}
+    100%{opacity:1; transform:scale(1);}
+  }
+  .rm-badge{
+    position:absolute; top:-3px; right:-3px;
+    width:16px; height:16px; border-radius:50%; background:#fff;
+    border:1.5px solid; display:flex; align-items:center; justify-content:center;
+    font-size:8px; font-weight:800;
+  }
+  .rm-label{
+    position:absolute; width:200px; height:46px; display:flex; align-items:center;
+    font-size:11.5px; font-weight:700; color:var(--text); line-height:1.3;
+    opacity:0; animation: labelFade .4s ease forwards;
+  }
+  .rm-label b{color:var(--violet);}
+  @keyframes labelFade{ from{opacity:0; transform:translateX(-4px);} to{opacity:1; transform:translateX(0);} }
+  .rm-label.left{left:91px; text-align:left; justify-content:flex-start;}
+  .rm-label.right{right:91px; text-align:right; justify-content:flex-end;}
+
+  .sheet-footer{
+    padding:10px 20px 18px; border-top:1px solid var(--borderLight);
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+  }
+  .dont-show-row{
+    display:flex; align-items:center; gap:8px; cursor:pointer;
+  }
+  .mini-toggle{
+    width:34px; height:20px; border-radius:20px; background:var(--input-bg);
+    position:relative; flex-shrink:0; transition:background .2s ease;
+  }
+  .mini-toggle.checked{background:var(--grad-brand);}
+  .mini-toggle-dot{
+    width:16px; height:16px; border-radius:50%; background:#fff;
+    position:absolute; top:2px; left:2px; box-shadow:0 1px 3px rgba(0,0,0,.2);
+    transition:transform .2s ease;
+  }
+  .mini-toggle.checked .mini-toggle-dot{transform:translateX(14px);}
+  .dont-show-label{font-size:11px; color:var(--text-secondary); font-weight:500; line-height:1.3; max-width:90px;}
+  .primary-btn{
+    background:var(--grad-brand); color:#fff; font-weight:700; font-size:13px;
+    padding:13px 18px; border-radius:14px; text-align:center; white-space:nowrap;
+    box-shadow:0 10px 22px -8px rgba(124,58,237,.5);
+    flex-shrink:0;
+  }
+
+  .dots-pagination{display:flex; justify-content:center; gap:6px; padding:2px 0 8px;}
+  .page-dot{width:6px; height:6px; border-radius:3px; background:var(--borderLight);}
+  .page-dot.active{width:16px; background:var(--violet);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="note">Affiche de bienvenue — carte centrée façon photo, avec ombre et léger scale à l'ouverture</div>
+
+  <div class="state-switch">
+    <button class="state-btn active" onclick="reopen()">↻ Rejouer l'apparition</button>
+    <button class="state-btn" onclick="closeSheet()">Fermer</button>
+  </div>
+
+  <div class="phone">
+    <div class="notch"></div>
+    <div class="accueil-bg">
+      <div class="accueil-content-fake">
+        <div style="font-size:12px; margin-bottom:8px;">Bonjour 👋</div>
+        <div style="font-size:18px; font-weight:700; color:#fff; margin-bottom:20px;">Jitplus</div>
+        <div style="font-size:11px;">Points distribués aujourd'hui</div>
+        <div style="font-size:32px; font-weight:700; color:#fff; margin-top:4px;">1 240 ⭐</div>
+      </div>
+    </div>
+
+    <div class="accueil-dim show" id="dim"></div>
+
+    <div class="welcome-sheet show" id="sheet">
+      <div class="sheet-handle"></div>
+
+      <div class="sheet-top">
+        <div class="sheet-title-block">
+          <div class="sheet-title">Bienvenue sur JitPlus Pro 👋</div>
+          <div class="sheet-sub">Découvrez comment ça marche, pour vous et pour vos clients.</div>
+        </div>
+        <div class="sheet-close" onclick="closeSheet()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </div>
+      </div>
+
+      <div class="eyebrow-tag">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+        Guide rapide · 30 secondes
+      </div>
+
+      <div class="tab-row">
+        <div class="tab-btn active" id="tabMerchant" onclick="setTab('merchant')">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-9M14 17H5M17 3l4 4-4 4M7 21l-4-4 4-4"/></svg>
+          Pour vous
+        </div>
+        <div class="tab-btn" id="tabClient" onclick="setTab('client')">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          Pour vos clients
+        </div>
+      </div>
+
+      <div class="sheet-body">
+        <!-- Slide commerçant -->
+        <div class="slide show" id="slideMerchant">
+          <div class="product-lockup-wrap">
+            <div class="product-lockup">
+              <div class="product-mark"><img src="jitplus-icon.png" alt="JitPlus"></div>
+              <div class="product-wordmark">JitPlus<span class="pro-tag">PRO</span></div>
+            </div>
+            <div class="product-caption">Votre outil de gestion, réservé aux commerçants</div>
+          </div>
+
+          <div class="roadmap" style="height:300px;">
+            <svg class="roadmap-svg" width="280" height="300" viewBox="0 0 280 300">
+              <defs>
+                <linearGradient id="pathGradMerchant" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#8B5CF6"/>
+                  <stop offset="40%" stop-color="#7C3AED"/>
+                  <stop offset="70%" stop-color="#5B21B6"/>
+                  <stop offset="100%" stop-color="#FCD34D"/>
+                </linearGradient>
+              </defs>
+              <path class="roadmap-path" d="M58,36 C58,73 242,73 242,110 C242,147 58,147 58,184 C58,221 242,221 242,258" stroke="url(#pathGradMerchant)"/>
+            </svg>
+
+            <div class="rm-node" style="left:35px; top:13px; background:linear-gradient(135deg,#8B5CF6,#7C3AED); animation-delay:.12s;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+              <div class="rm-badge" style="border-color:#8B5CF6; color:#8B5CF6;">1</div>
+            </div>
+            <div class="rm-label left" style="top:13px; animation-delay:.24s;"><span>Vous configurez votre programme de fidélité</span></div>
+
+            <div class="rm-node" style="left:219px; top:87px; background:linear-gradient(135deg,#7C3AED,#5B21B6); animation-delay:.32s;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+              <div class="rm-badge" style="border-color:#7C3AED; color:#7C3AED;">2</div>
+            </div>
+            <div class="rm-label right" style="top:87px; animation-delay:.44s;"><span>Vous scannez vos clients en caisse</span></div>
+
+            <div class="rm-node" style="left:35px; top:161px; background:linear-gradient(135deg,#5B21B6,#1F2937); animation-delay:.52s;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>
+              <div class="rm-badge" style="border-color:#5B21B6; color:#5B21B6;">3</div>
+            </div>
+            <div class="rm-label left" style="top:161px; animation-delay:.64s;"><span>Vous envoyez des push marketing</span></div>
+
+            <div class="rm-node" style="left:219px; top:235px; background:linear-gradient(135deg,#FCD34D,#F59E0B); animation-delay:.72s;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1F2937" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+              <div class="rm-badge" style="border-color:#F59E0B; color:#F59E0B;">4</div>
+            </div>
+            <div class="rm-label right" style="top:235px; animation-delay:.84s;"><span>Vous suivez vos résultats</span></div>
+          </div>
+        </div>
+
+        <!-- Slide client -->
+        <div class="slide" id="slideClient">
+          <div class="product-lockup-wrap">
+            <div class="product-lockup">
+              <div class="product-mark"><img src="jitplus-icon.png" alt="JitPlus"></div>
+              <div class="product-wordmark">JitPlus</div>
+            </div>
+            <div class="product-caption">L'app pour <b>vos clients</b> — différente de JitPlus Pro</div>
+          </div>
+
+          <div class="roadmap" style="height:300px;">
+            <svg class="roadmap-svg" width="280" height="300" viewBox="0 0 280 300">
+              <defs>
+                <linearGradient id="pathGradClient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#A78BFA"/>
+                  <stop offset="40%" stop-color="#7C3AED"/>
+                  <stop offset="70%" stop-color="#5B21B6"/>
+                  <stop offset="100%" stop-color="#FCD34D"/>
+                </linearGradient>
+              </defs>
+              <path class="roadmap-path" d="M58,36 C58,73 242,73 242,110 C242,147 58,147 58,184 C58,221 242,221 242,258" stroke="url(#pathGradClient)"/>
+            </svg>
+
+            <div class="rm-node" style="left:35px; top:13px; background:linear-gradient(135deg,#A78BFA,#8B5CF6); animation-delay:.12s;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+              <div class="rm-badge" style="border-color:#A78BFA; color:#A78BFA;">1</div>
+            </div>
+            <div class="rm-label left" style="top:13px; animation-delay:.24s;"><span>Il télécharge <b>JitPlus</b> (pas Pro) et crée son compte</span></div>
+
+            <div class="rm-node" style="left:219px; top:87px; background:linear-gradient(135deg,#8B5CF6,#7C3AED); animation-delay:.32s;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 12h8M12 8v8"/></svg>
+              <div class="rm-badge" style="border-color:#8B5CF6; color:#8B5CF6;">2</div>
+            </div>
+            <div class="rm-label right" style="top:87px; animation-delay:.44s;"><span>Il présente son QR code chez vous</span></div>
+
+            <div class="rm-node" style="left:35px; top:161px; background:linear-gradient(135deg,#7C3AED,#5B21B6); animation-delay:.52s;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.4 7.4H22l-6 4.6 2.3 7-6.3-4.6L5.7 21l2.3-7-6-4.6h7.6z"/></svg>
+              <div class="rm-badge" style="border-color:#7C3AED; color:#7C3AED;">3</div>
+            </div>
+            <div class="rm-label left" style="top:161px; animation-delay:.64s;"><span>Il cumule et échange ses points</span></div>
+
+            <div class="rm-node" style="left:219px; top:235px; background:linear-gradient(135deg,#FCD34D,#F59E0B); animation-delay:.72s;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1F2937" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+              <div class="rm-badge" style="border-color:#F59E0B; color:#F59E0B;">4</div>
+            </div>
+            <div class="rm-label right" style="top:235px; animation-delay:.84s;"><span>Il reçoit vos notifications (app + e-mail)</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="dots-pagination">
+        <div class="page-dot active" id="dotMerchant"></div>
+        <div class="page-dot" id="dotClient"></div>
+      </div>
+
+      <div class="sheet-footer">
+        <div class="dont-show-row" onclick="toggleDontShow()">
+          <div class="mini-toggle" id="dontShowBox"><div class="mini-toggle-dot"></div></div>
+          <div class="dont-show-label">Ne plus afficher</div>
+        </div>
+        <div class="primary-btn" onclick="closeSheet()">Compris</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout" style="max-width:390px; margin-top:22px; background:#111318; color:#e5e7eb; border-radius:14px; padding:16px 18px; font-size:12.5px; line-height:1.7;">
+    <b style="color:#fff;">Optimisé pour tenir sur un seul écran :</b><br>
+    • <b>Distinction JitPlus / JitPlus Pro renforcée</b> : une légende apparaît sous chaque logo ("Votre outil de gestion, réservé aux commerçants" côté Pro ; "L'app pour vos clients — différente de JitPlus Pro" côté client). La première étape du parcours client précise explicitement "JitPlus (pas Pro)" en violet, pour éviter toute confusion sur quelle app télécharger.<br>
+    • <b>Espacements resserrés partout ailleurs</b> pour compenser l'espace pris par ces légendes (logo réduit à 32px, marges du tag d'accroche, des onglets et du footer diminuées) — tout reste bien sur un seul écran, sans réintroduire de scroll.<br>
+    • <b>Notifications marketing repositionnées en dernière étape</b> du parcours client — nouvel ordre : télécharger + créer un compte → présenter le QR → cumuler et échanger ses points → recevoir vos notifications (app + e-mail).<br>
+    • <b>Parcours client fusionné</b> de 6 à 4 étapes : "télécharger" + "créer un compte" regroupés en une seule étape (actions rapides et consécutives), "gagner des points" + "échanger contre un cadeau" regroupés en "cumule et échange ses points" (un seul cycle logique). Les deux parcours ("Pour vous" et "Pour vos clients") ont maintenant exactement <b>4 étapes chacun</b> — symétrie visuelle en plus d'un gain de place.<br>
+    • <b>Espacement vertical resserré</b> (74px entre étapes au lieu de 80px, icônes légèrement réduites) — le schéma tient désormais entièrement dans la hauteur visible de la carte, sans scroll interne à faire pour voir la dernière étape.<br><br>
+    <i>(rejouez l'apparition et changez d'onglet — plus besoin de scroller)</i>
+  </div>
+</div>
+
+<script>
+  function setTab(tab){
+    document.getElementById('tabMerchant').classList.toggle('active', tab==='merchant');
+    document.getElementById('tabClient').classList.toggle('active', tab==='client');
+    document.getElementById('slideMerchant').classList.toggle('show', tab==='merchant');
+    document.getElementById('slideClient').classList.toggle('show', tab==='client');
+    document.getElementById('dotMerchant').classList.toggle('active', tab==='merchant');
+    document.getElementById('dotClient').classList.toggle('active', tab==='client');
+  }
+  function toggleDontShow(){
+    document.getElementById('dontShowBox').classList.toggle('checked');
+  }
+  function closeSheet(){
+    document.getElementById('sheet').classList.remove('show');
+    document.getElementById('dim').classList.remove('show');
+  }
+  function reopen(){
+    document.getElementById('sheet').classList.add('show');
+    document.getElementById('dim').classList.add('show');
+  }
+</script>
+</body>
+</html>

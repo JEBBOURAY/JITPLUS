@@ -218,6 +218,451 @@ const DURATION_DAYS = [7, 30, 90] as const;
 const WIN_RATE_VALUES = ['25', '40', '50', '70'] as const;
 const MIN_SPEND_VALUES = ['0', '50', '100', '200'] as const;
 
+const PendingPrizeRow = React.memo(function PendingPrizeRow({
+  draw,
+  isFulfilling,
+  onFulfill,
+  theme,
+  t,
+  tone,
+}: {
+  draw: PendingDrawData;
+  isFulfilling: boolean;
+  onFulfill: (drawId: string, prizeLabel: string) => void;
+  theme: ReturnType<typeof useTheme>;
+  t: (key: string, params?: Record<string, unknown>) => string;
+  tone: { success: string; warning: string; danger: string };
+}) {
+  return (
+    <View style={styles.pendingRow}>
+      <View style={styles.flexOne}>
+        <Text style={[styles.pendingPrize, { color: theme.text }]} maxFontSizeMultiplier={1.3}>{draw.prize?.label}</Text>
+        <Text style={[styles.pendingClient, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>
+          {draw.ticket?.client?.prenom} {draw.ticket?.client?.nom}
+        </Text>
+        {draw.claimBefore && (
+          <Text style={[styles.pendingExpiry, { color: tone.warning }]} maxFontSizeMultiplier={1.4}>
+            {t('luckyWheel.claimExpires', { date: formatDate(draw.claimBefore) })}
+          </Text>
+        )}
+      </View>
+      <TouchableOpacity
+        onPress={() => onFulfill(draw.id, draw.prize?.label ?? '')}
+        style={[styles.fulfilBtn, { backgroundColor: theme.primary + '10' }]}
+        activeOpacity={0.7}
+        disabled={isFulfilling}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        accessibilityRole="button"
+        accessibilityLabel={t('luckyWheel.fulfilBtn')}
+        accessibilityState={{ disabled: isFulfilling, busy: isFulfilling }}
+      >
+        {isFulfilling ? (
+          <ActivityIndicator size="small" color={theme.primary} />
+        ) : (
+          <Check size={16} color={tone.success} strokeWidth={2} />
+        )}
+      </TouchableOpacity>
+    </View>
+  );
+});
+
+const FulfilledPrizeRow = React.memo(function FulfilledPrizeRow({
+  draw,
+  theme,
+  t,
+}: {
+  draw: FulfilledDrawData;
+  theme: ReturnType<typeof useTheme>;
+  t: (key: string, params?: Record<string, unknown>) => string;
+}) {
+  return (
+    <View style={styles.pendingRow}>
+      <View style={styles.flexOne}>
+        <Text style={[styles.pendingPrize, { color: theme.text }]} maxFontSizeMultiplier={1.3}>{draw.prize?.label}</Text>
+        <Text style={[styles.pendingClient, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>
+          {draw.ticket?.client?.prenom} {draw.ticket?.client?.nom}
+        </Text>
+        <Text style={[styles.pendingExpiry, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>
+          {draw.fulfilledByName
+            ? t('luckyWheel.fulfilledByMember', { name: draw.fulfilledByName })
+            : t('luckyWheel.fulfilledByOwner')}
+          {' · '}
+          {formatDate(draw.fulfilledAt)}
+        </Text>
+      </View>
+    </View>
+  );
+});
+
+const CampaignCard = React.memo(function CampaignCard({
+  campaign,
+  isExpanded,
+  isTeamMember,
+  theme,
+  statusLabel,
+  formatDate,
+  onToggle,
+  onStatusChange,
+  onPush,
+  onEdit,
+  onDelete,
+  statusMutation,
+  pushMutation,
+  deleteMutation,
+  t,
+}: {
+  campaign: LuckyWheelCampaignData;
+  isExpanded: boolean;
+  isTeamMember: boolean;
+  theme: ReturnType<typeof useTheme>;
+  statusLabel: (status: string) => string;
+  formatDate: (d: string) => string;
+  onToggle: (id: string) => void;
+  onStatusChange: (id: string, status: string) => void;
+  onPush: (campaign: LuckyWheelCampaignData) => void;
+  onEdit: (campaign: LuckyWheelCampaignData) => void;
+  onDelete: (campaign: LuckyWheelCampaignData) => void;
+  statusMutation: { isPending: boolean };
+  pushMutation: { isPending: boolean };
+  deleteMutation: { isPending: boolean };
+  t: (key: string, params?: Record<string, unknown>) => string;
+}) {
+  const canActivate = campaign.status === 'DRAFT' || campaign.status === 'PAUSED';
+  const canPause = campaign.status === 'ACTIVE';
+  const canEnd = campaign.status !== 'ENDED';
+
+  return (
+    <View style={[styles.card, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
+      <TouchableOpacity
+        onPress={() => onToggle(campaign.id)}
+        activeOpacity={0.7}
+        style={styles.campaignHeader}
+      >
+        <View style={styles.flexOne}>
+          <Text style={[styles.campaignName, { color: theme.text }]}>{campaign.name}</Text>
+          <Text style={[styles.campaignDates, { color: theme.textMuted }]}>
+            {formatDate(campaign.startsAt)} — {formatDate(campaign.endsAt)}
+          </Text>
+        </View>
+        <View style={[styles.statusBadge, { backgroundColor: `${STATUS_COLORS[campaign.status] ?? '#78716C'}18` }]}>
+          <Text style={[styles.statusText, { color: STATUS_COLORS[campaign.status] ?? '#78716C' }]}>
+            {statusLabel(campaign.status)}
+          </Text>
+        </View>
+        {isExpanded
+          ? <ChevronUp size={16} color={theme.textMuted} style={{ marginLeft: 8 }} />
+          : <ChevronDown size={16} color={theme.textMuted} style={{ marginLeft: 8 }} />}
+      </TouchableOpacity>
+
+      {isExpanded && (
+        <View style={styles.campaignBody}>
+          {campaign.description ? (
+            <Text style={[styles.campaignDesc, { color: theme.textMuted }]}>{campaign.description}</Text>
+          ) : null}
+
+          <View style={styles.statsRow}>
+            <View style={[styles.statPill, { backgroundColor: theme.primary + '08' }]}>
+              <Target size={12} color={theme.primary} />
+              <View style={styles.statPillContent}>
+                <Text style={[styles.statValue, { color: theme.text }]}>{Math.round(campaign.globalWinRate * 100)}%</Text>
+                <Text style={[styles.statLabel, { color: theme.textMuted }]}>{t('luckyWheel.winRateLabel')}</Text>
+              </View>
+            </View>
+            <View style={[styles.statPill, { backgroundColor: theme.primary + '08' }]}>
+              <Ticket size={12} color={theme.primary} />
+              <View style={styles.statPillContent}>
+                <Text style={[styles.statValue, { color: theme.text }]}>{campaign._count?.tickets ?? 0}</Text>
+                <Text style={[styles.statLabel, { color: theme.textMuted }]}>{t('luckyWheel.ticketsUsed')}</Text>
+              </View>
+            </View>
+          </View>
+
+          <Text style={[styles.prizesSectionTitle, { color: theme.text }]}>{t('luckyWheel.prizesTitle')}</Text>
+          {campaign.prizes?.map((prize: LuckyWheelPrizeData) => (
+            <View key={prize.id} style={[styles.prizeRow, { borderColor: theme.borderLight }]}>
+              <Package size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
+              <View style={styles.prizeItemContent}>
+                <Text style={[styles.prizeName, { color: theme.text }]}>{prize.label}</Text>
+                <Text style={[styles.prizeStock, { color: theme.textMuted }]}>
+                  {t('luckyWheel.prizeRemaining', { remaining: prize.remaining, total: prize.totalStock })}
+                </Text>
+              </View>
+            </View>
+          ))}
+
+          {!isTeamMember && (
+            <View style={styles.actionRow}>
+              {canActivate && (
+                <TouchableOpacity
+                  onPress={() => onStatusChange(campaign.id, 'ACTIVE')}
+                  style={[styles.actionBtn, { backgroundColor: TONE_BG.success }]}
+                  activeOpacity={0.7}
+                  disabled={statusMutation.isPending}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('luckyWheel.activate')}
+                  accessibilityState={{ disabled: statusMutation.isPending, busy: statusMutation.isPending }}
+                >
+                  <Play size={14} color={TONE.success} strokeWidth={2} />
+                  <Text style={[styles.actionText, { color: TONE.success }]} maxFontSizeMultiplier={1.3}>{t('luckyWheel.activate')}</Text>
+                </TouchableOpacity>
+              )}
+              {canPause && (
+                <TouchableOpacity
+                  onPress={() => onStatusChange(campaign.id, 'PAUSED')}
+                  style={[styles.actionBtn, { backgroundColor: TONE_BG.warning }]}
+                  activeOpacity={0.7}
+                  disabled={statusMutation.isPending}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('luckyWheel.pause')}
+                  accessibilityState={{ disabled: statusMutation.isPending, busy: statusMutation.isPending }}
+                >
+                  <Pause size={14} color={TONE.warning} strokeWidth={2} />
+                  <Text style={[styles.actionText, { color: TONE.warning }]} maxFontSizeMultiplier={1.3}>{t('luckyWheel.pause')}</Text>
+                </TouchableOpacity>
+              )}
+              {canEnd && (
+                <TouchableOpacity
+                  onPress={() => onStatusChange(campaign.id, 'ENDED')}
+                  style={[styles.actionBtn, { backgroundColor: TONE_BG.danger }]}
+                  activeOpacity={0.7}
+                  disabled={statusMutation.isPending}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('luckyWheel.end')}
+                  accessibilityState={{ disabled: statusMutation.isPending, busy: statusMutation.isPending }}
+                >
+                  <StopCircle size={14} color={TONE.danger} strokeWidth={2} />
+                  <Text style={[styles.actionText, { color: TONE.danger }]} maxFontSizeMultiplier={1.3}>{t('luckyWheel.end')}</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+
+          {!isTeamMember && (
+            <View style={[styles.actionRow, { marginTop: 6 }]}>
+              {campaign.status === 'ACTIVE' && (
+                <TouchableOpacity
+                  onPress={() => onPush(campaign)}
+                  style={[styles.actionBtn, { backgroundColor: theme.primary + '18' }]}
+                  activeOpacity={0.7}
+                  disabled={pushMutation.isPending}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('luckyWheel.pushBtn')}
+                  accessibilityState={{ disabled: pushMutation.isPending, busy: pushMutation.isPending }}
+                >
+                  {pushMutation.isPending ? (
+                    <ActivityIndicator size="small" color={theme.primary} />
+                  ) : (
+                    <Send size={14} color={theme.primary} strokeWidth={2} />
+                  )}
+                  <Text style={[styles.actionText, { color: theme.primary }]} maxFontSizeMultiplier={1.3}>{t('luckyWheel.pushBtn')}</Text>
+                </TouchableOpacity>
+              )}
+              {campaign.status !== 'ENDED' && (
+                <TouchableOpacity
+                  onPress={() => onEdit(campaign)}
+                  style={[styles.actionBtn, { backgroundColor: theme.primary + '18' }]}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('luckyWheel.editBtn')}
+                >
+                  <Edit3 size={14} color={theme.primary} strokeWidth={2} />
+                  <Text style={[styles.actionText, { color: theme.primary }]} maxFontSizeMultiplier={1.3}>{t('luckyWheel.editBtn')}</Text>
+                </TouchableOpacity>
+              )}
+              {campaign.status !== 'ACTIVE' && (
+                <TouchableOpacity
+                  onPress={() => onDelete(campaign)}
+                  style={[styles.actionBtn, { backgroundColor: TONE_BG.danger }]}
+                  activeOpacity={0.7}
+                  disabled={deleteMutation.isPending}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('luckyWheel.deleteBtn')}
+                  accessibilityState={{ disabled: deleteMutation.isPending, busy: deleteMutation.isPending }}
+                >
+                  {deleteMutation.isPending ? (
+                    <ActivityIndicator size="small" color={TONE.danger} />
+                  ) : (
+                    <Trash2 size={14} color={TONE.danger} strokeWidth={2} />
+                  )}
+                  <Text style={[styles.actionText, { color: TONE.danger }]} maxFontSizeMultiplier={1.3}>{t('luckyWheel.deleteBtn')}</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+        </View>
+      )}
+    </View>
+  );
+});
+
+const PrizeCardItem = React.memo(function PrizeCardItem({
+  prize,
+  index,
+  theme,
+  t,
+  totalWeight,
+  onRemovePrize,
+  onPrizeFieldChange,
+  canRemove,
+  claimWindowOptions,
+}: {
+  prize: PrizeForm;
+  index: number;
+  theme: ReturnType<typeof useTheme>;
+  t: (key: string, params?: Record<string, unknown>) => string;
+  totalWeight: number;
+  onRemovePrize: (index: number) => void;
+  onPrizeFieldChange: (index: number, field: keyof PrizeForm, value: string) => void;
+  canRemove: boolean;
+  claimWindowOptions: ReadonlyArray<{ label: string; val: string }>;
+}) {
+  const pct = Math.round(((parseInt(prize.weight, 10) || 1) / totalWeight) * 100);
+  const stock = parseInt(prize.totalStock, 10) || 0;
+
+  return (
+    <View style={[styles.prizeCard, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
+      <View style={styles.prizeCardHeader}>
+        <View style={[styles.prizeNum, { backgroundColor: theme.primary + '14' }]}>
+          <Text style={[styles.prizeNumText, { color: theme.primary }]}>{index + 1}</Text>
+        </View>
+        <Text style={[styles.prizeCardTitle, { color: theme.text }]}>
+          {t('luckyWheel.wizPrizeNum', { num: index + 1 })}
+        </Text>
+        {canRemove && (
+          <TouchableOpacity
+            onPress={() => onRemovePrize(index)}
+            activeOpacity={0.7}
+            style={styles.prizeDeleteBtn}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel={t('luckyWheel.wizPrizeNum', { num: index + 1 })}
+          >
+            <Trash2 size={15} color={TONE.danger} strokeWidth={1.5} />
+          </TouchableOpacity>
+        )}
+      </View>
+
+      <Text style={[styles.miniLabel, { color: theme.textMuted }]}>
+        {t('luckyWheel.prizeLabel')} <Text style={{ color: theme.primary }}>*</Text>
+      </Text>
+      <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: prize.label.trim() ? theme.primary : theme.border }]}>
+        <Gift size={16} color={prize.label.trim() ? theme.primary : theme.textMuted} strokeWidth={1.5} />
+        <TextInput
+          style={[styles.wizInput, { color: theme.text }]}
+          value={prize.label}
+          onChangeText={(v) => onPrizeFieldChange(index, 'label', v)}
+          placeholder={t('luckyWheel.prizePlaceholder')}
+          placeholderTextColor={theme.textMuted}
+          maxLength={255}
+        />
+        {prize.label.trim().length > 0 && <Check size={14} color={theme.primary} strokeWidth={2.5} />}
+      </View>
+
+      <Text style={[styles.miniLabel, { color: theme.textMuted, marginTop: 12 }]}>
+        {t('luckyWheel.prizeDescLabel')}
+      </Text>
+      <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.border }]}>
+        <TextInput
+          style={[styles.wizInput, { color: theme.text }]}
+          value={prize.description}
+          onChangeText={(v) => onPrizeFieldChange(index, 'description', v)}
+          placeholder={t('luckyWheel.prizeDescPlaceholder')}
+          placeholderTextColor={theme.textMuted}
+          maxLength={1000}
+        />
+      </View>
+
+      <View style={styles.prizeMetaRow}>
+        <View style={styles.flexOne}>
+          <Text style={[styles.miniLabel, { color: theme.textMuted }]}>{t('luckyWheel.prizeStockLabel')}</Text>
+          <Text style={[styles.miniHint, { color: theme.textMuted }]}>{t('luckyWheel.prizeStockHint')}</Text>
+          <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.border }]}>
+            <Package size={14} color={theme.textMuted} strokeWidth={1.5} />
+            <TextInput
+              style={[styles.wizInput, { color: theme.text, textAlign: 'center' }]}
+              value={prize.totalStock}
+              onChangeText={(v) => onPrizeFieldChange(index, 'totalStock', v.replace(/[^0-9]/g, ''))}
+              keyboardType="number-pad"
+            />
+          </View>
+          <Text style={[styles.fieldExamples, { color: theme.textMuted }]}> 
+            {t('luckyWheel.prizeStockTip')}
+          </Text>
+        </View>
+        <View style={styles.metaSpacer} />
+        <View style={styles.flexOne}>
+          <Text style={[styles.miniLabel, { color: theme.textMuted }]}>{t('luckyWheel.prizeWeightLabel')}</Text>
+          <Text style={[styles.miniHint, { color: theme.textMuted }]}>{t('luckyWheel.prizeWeightHint')}</Text>
+          <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.border }]}>
+            <Target size={14} color={theme.textMuted} strokeWidth={1.5} />
+            <TextInput
+              style={[styles.wizInput, { color: theme.text, textAlign: 'center' }]}
+              value={prize.weight}
+              onChangeText={(v) => onPrizeFieldChange(index, 'weight', v.replace(/[^0-9]/g, ''))}
+              keyboardType="number-pad"
+            />
+          </View>
+          <Text style={[styles.fieldExamples, { color: theme.textMuted }]}> 
+            {t('luckyWheel.prizeWeightTip')}
+          </Text>
+        </View>
+      </View>
+
+      {totalWeight > 1 && (
+        <View style={[styles.prizeChanceRow, { backgroundColor: theme.primary + '08' }]}>
+          <Target size={13} color={theme.primary} strokeWidth={1.5} />
+          <Text style={[styles.prizeChanceText, { color: theme.primary }]}> 
+            {t('luckyWheel.prizeChance', { pct: String(pct) })}
+          </Text>
+          <View style={styles.prizeChanceBarBg}>
+            <View style={[styles.prizeChanceBarFill, { width: `${pct}%`, backgroundColor: theme.primary }]} />
+          </View>
+        </View>
+      )}
+
+      <View style={{ marginTop: 12 }}>
+        <Text style={[styles.miniLabel, { color: theme.textMuted }]}>{t('luckyWheel.prizeClaimLabel')}</Text>
+        <Text style={[styles.miniHint, { color: theme.textMuted }]}>{t('luckyWheel.prizeClaimHint')}</Text>
+        <View style={[styles.durationChipRow, { marginBottom: 8 }]}> 
+          {claimWindowOptions.map(({ label, val }) => {
+            const isActive = prize.claimWindowHours === val;
+            return (
+              <TouchableOpacity
+                key={val}
+                onPress={() => onPrizeFieldChange(index, 'claimWindowHours', val)}
+                activeOpacity={0.7}
+                style={[
+                  styles.claimChip,
+                  { borderColor: isActive ? theme.primary : theme.borderLight,
+                    backgroundColor: isActive ? theme.primary : theme.bgCard },
+                ]}
+              >
+                <Text style={[styles.claimChipText, { color: isActive ? '#fff' : theme.text }]}>{label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.border }]}>
+          <Clock size={14} color={theme.textMuted} strokeWidth={1.5} />
+          <TextInput
+            style={[styles.wizInput, { color: theme.text }]}
+            value={prize.claimWindowHours}
+            onChangeText={(v) => onPrizeFieldChange(index, 'claimWindowHours', v.replace(/[^0-9]/g, ''))}
+            keyboardType="number-pad"
+            placeholder="72"
+            placeholderTextColor={theme.textMuted}
+          />
+          <Text style={[styles.unitLabel, { color: theme.textMuted }]}>h</Text>
+        </View>
+        <Text style={[styles.fieldExamples, { color: theme.textMuted }]}> 
+          {t('luckyWheel.prizeClaimTip')}
+        </Text>
+      </View>
+    </View>
+  );
+});
+
 // ── Main Screen ──────────────────────────────────────────────
 
 export default function LuckyWheelScreen() {
@@ -270,6 +715,22 @@ export default function LuckyWheelScreen() {
   const goBack = useCallback(() => {
     if (step > 0) setStep(s => s - 1);
   }, [step]);
+
+  const handleFormFieldChange = useCallback((field: keyof FormState, value: string) => {
+    dispatch({ type: 'SET_FIELD', field, value });
+  }, []);
+
+  const handlePrizeFieldChange = useCallback((index: number, field: keyof PrizeForm, value: string) => {
+    dispatch({ type: 'SET_PRIZE_FIELD', index, field, value });
+  }, []);
+
+  const handleAddPrize = useCallback(() => {
+    dispatch({ type: 'ADD_PRIZE' });
+  }, []);
+
+  const handleRemovePrize = useCallback((index: number) => {
+    dispatch({ type: 'REMOVE_PRIZE', index });
+  }, []);
 
   const statusLabel = useCallback((status: string) => {
     const map: Record<string, string> = {
@@ -572,6 +1033,285 @@ export default function LuckyWheelScreen() {
     { label: t('luckyWheel.claim1Week'), val: '168' },
   ] as const), [t]);
 
+  type LuckyWheelContentProps = {
+    theme: ReturnType<typeof useTheme>;
+    insets: ReturnType<typeof useSafeAreaInsets>;
+    router: ReturnType<typeof useRouter>;
+    t: (key: string, params?: Record<string, unknown>) => string;
+    isTeamMember: boolean;
+    campaigns: LuckyWheelCampaignData[];
+    pendingPrizes: PendingDrawData[];
+    fulfilledPrizes: FulfilledDrawData[];
+    campaignsExpanded: boolean;
+    pendingExpanded: boolean;
+    fulfilledExpanded: boolean;
+    expandedCampaign: string | null;
+    fulfillingDrawId: string | null;
+    fulfilledLimit: number;
+    setCampaignsExpanded: React.Dispatch<React.SetStateAction<boolean>>;
+    setPendingExpanded: React.Dispatch<React.SetStateAction<boolean>>;
+    setFulfilledExpanded: React.Dispatch<React.SetStateAction<boolean>>;
+    setExpandedCampaign: React.Dispatch<React.SetStateAction<string | null>>;
+    setFulfilledLimit: React.Dispatch<React.SetStateAction<number>>;
+    statusLabel: (status: string) => string;
+    formatDate: (d: string) => string;
+    onOpenCreateModal: () => void;
+    onStatusChange: (id: string, status: string) => void;
+    onPush: (campaign: LuckyWheelCampaignData) => void;
+    onEdit: (campaign: LuckyWheelCampaignData) => void;
+    onDelete: (campaign: LuckyWheelCampaignData) => void;
+    onFulfill: (drawId: string, prizeLabel: string) => void;
+    statusMutation: { isPending: boolean };
+    pushMutation: { isPending: boolean };
+    deleteMutation: { isPending: boolean };
+  };
+
+  const LuckyWheelContent = React.memo(function LuckyWheelContent({
+    theme,
+    insets,
+    router,
+    t,
+    isTeamMember,
+    campaigns,
+    pendingPrizes,
+    fulfilledPrizes,
+    campaignsExpanded,
+    pendingExpanded,
+    fulfilledExpanded,
+    expandedCampaign,
+    fulfillingDrawId,
+    fulfilledLimit,
+    setCampaignsExpanded,
+    setPendingExpanded,
+    setFulfilledExpanded,
+    setExpandedCampaign,
+    setFulfilledLimit,
+    statusLabel,
+    formatDate,
+    onOpenCreateModal,
+    onStatusChange,
+    onPush,
+    onEdit,
+    onDelete,
+    onFulfill,
+    statusMutation,
+    pushMutation,
+    deleteMutation,
+  }: LuckyWheelContentProps) {
+    return (
+      <View style={[styles.container, { backgroundColor: theme.bg }]}>
+        <View style={[styles.headerBar, { paddingTop: insets.top + 12 }]}> 
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={styles.backBtn}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            accessibilityRole="button"
+            accessibilityLabel={t('common.back')}
+          >
+            <ArrowLeft size={24} color={theme.text} style={I18nManager.isRTL ? { transform: [{ scaleX: -1 }] } : undefined} />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: theme.text }]} maxFontSizeMultiplier={1.2}>
+            {t('luckyWheel.title')}
+          </Text>
+          <TouchableOpacity
+            onPress={onOpenCreateModal}
+            style={[styles.headerAction, { backgroundColor: theme.primary + '12' }]}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel={t('luckyWheel.createBtn')}
+          >
+            <Plus size={20} color={theme.primary} strokeWidth={2.4} />
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => refetch()} tintColor={theme.primary} colors={[theme.primary]} />}
+        >
+          <View style={styles.guideContainer}>
+            <View style={[styles.guideCard, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}> 
+              <View style={styles.guideHeaderRow}>
+                <View style={[styles.guideIcon, { backgroundColor: theme.primary + '14' }]}> 
+                  <Gift size={ms(18)} color={theme.primary} strokeWidth={1.8} />
+                </View>
+                <View style={styles.flexOne}>
+                  <Text style={[styles.guideTitle, { color: theme.text }]} maxFontSizeMultiplier={1.3}>
+                    {t('luckyWheel.heroTitle')}
+                  </Text>
+                  <Text style={[styles.guideText, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>
+                    {t('luckyWheel.heroSubtitle')}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+
+          {/* ── Section: Pending Prizes ── */}
+          <TouchableOpacity
+            style={styles.sectionHeader}
+            onPress={() => setPendingExpanded(v => !v)}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={t('luckyWheel.pendingSection')}
+            accessibilityState={{ expanded: pendingExpanded }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <View style={styles.sectionHeaderContent}>
+              <View style={styles.sectionHeaderIcon}>
+                <Clock size={ms(16)} color={palette.violet} strokeWidth={2} />
+              </View>
+              <Text style={[styles.sectionTitle, { color: theme.text }]} maxFontSizeMultiplier={1.3} accessibilityRole="header">
+                {t('luckyWheel.pendingSection')} ({pendingPrizes.length})
+              </Text>
+            </View>
+            {pendingExpanded
+              ? <ChevronUp size={20} color={theme.textMuted} />
+              : <ChevronDown size={20} color={theme.textMuted} />}
+          </TouchableOpacity>
+
+          {pendingExpanded && (
+            <>
+              {pendingPrizes.length === 0 && (
+                <View style={styles.emptyState}>
+                  <View style={styles.emptyIconWrap}>
+                    <CheckCircle size={ms(36)} color={palette.violet} strokeWidth={1.5} />
+                  </View>
+                  <Text style={[styles.emptyTitle, { color: theme.text }]} maxFontSizeMultiplier={1.3}>{t('luckyWheel.noPendingPrizes')}</Text>
+                  <Text style={[styles.emptyHint, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>{t('luckyWheel.noPendingPrizesHint')}</Text>
+                </View>
+              )}
+              {pendingPrizes.map((draw: PendingDrawData) => (
+                <PendingPrizeRow
+                  key={draw.id}
+                  draw={draw}
+                  isFulfilling={fulfillingDrawId === draw.id}
+                  onFulfill={onFulfill}
+                  theme={theme}
+                  t={t}
+                  tone={TONE}
+                />
+              ))}
+            </>
+          )}
+
+          {/* ── Section: Fulfilled Prizes ── */}
+          <TouchableOpacity
+            style={styles.sectionHeader}
+            onPress={() => setFulfilledExpanded(v => !v)}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={t('luckyWheel.fulfilledSection')}
+            accessibilityState={{ expanded: fulfilledExpanded }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <View style={styles.sectionHeaderContent}>
+              <View style={styles.sectionHeaderIcon}>
+                <CheckCircle size={ms(16)} color={palette.violet} strokeWidth={2} />
+              </View>
+              <Text style={[styles.sectionTitle, { color: theme.text }]} maxFontSizeMultiplier={1.3} accessibilityRole="header">
+                {t('luckyWheel.fulfilledSection')} ({fulfilledPrizes.length})
+              </Text>
+            </View>
+            {fulfilledExpanded
+              ? <ChevronUp size={20} color={theme.textMuted} />
+              : <ChevronDown size={20} color={theme.textMuted} />}
+          </TouchableOpacity>
+
+          {fulfilledExpanded && (
+            <>
+              {fulfilledPrizes.length === 0 && (
+                <View style={styles.emptyState}>
+                  <View style={styles.emptyIconWrap}>
+                    <CheckCircle size={ms(36)} color={palette.violet} strokeWidth={1.5} />
+                  </View>
+                  <Text style={[styles.emptyTitle, { color: theme.text }]} maxFontSizeMultiplier={1.3}>{t('luckyWheel.noFulfilledPrizes')}</Text>
+                  <Text style={[styles.emptyHint, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>{t('luckyWheel.noFulfilledPrizesHint')}</Text>
+                </View>
+              )}
+              {fulfilledPrizes.slice(0, fulfilledLimit).map((draw: FulfilledDrawData) => (
+                <FulfilledPrizeRow key={draw.id} draw={draw} theme={theme} t={t} />
+              ))}
+              {fulfilledPrizes.length > fulfilledLimit && (
+                <TouchableOpacity
+                  onPress={() => setFulfilledLimit(v => v + 10)}
+                  style={[styles.showMoreBtn, { backgroundColor: theme.primary + '10' }]}
+                  activeOpacity={0.8}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('common.showMore')}
+                >
+                  <Text style={[styles.showMoreText, { color: theme.primary }]}>{t('common.showMore')}</Text>
+                </TouchableOpacity>
+              )}
+            </>
+          )}
+
+          {/* ── Section: Campaigns ── */}
+          <TouchableOpacity
+            style={styles.sectionHeader}
+            onPress={() => setCampaignsExpanded(v => !v)}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={t('luckyWheel.campaignsSection')}
+            accessibilityState={{ expanded: campaignsExpanded }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <View style={styles.sectionHeaderContent}>
+              <View style={styles.sectionHeaderIcon}>
+                <Gift size={ms(16)} color={palette.violet} strokeWidth={2} />
+              </View>
+              <Text style={[styles.sectionTitle, { color: theme.text }]} maxFontSizeMultiplier={1.3} accessibilityRole="header">
+                {t('luckyWheel.campaignsSection')} ({campaigns.length})
+              </Text>
+            </View>
+            {campaignsExpanded
+              ? <ChevronUp size={20} color={theme.textMuted} />
+              : <ChevronDown size={20} color={theme.textMuted} />}
+          </TouchableOpacity>
+
+          {campaignsExpanded && (
+            <>
+              {campaigns.length === 0 && (
+                <View style={styles.emptyState}>
+                  <View style={styles.emptyIconWrap}>
+                    <Gift size={ms(36)} color={palette.violet} strokeWidth={1.5} />
+                  </View>
+                  <Text style={[styles.emptyTitle, { color: theme.text }]} maxFontSizeMultiplier={1.3}>{t('luckyWheel.noCampaigns')}</Text>
+                  <Text style={[styles.emptyHint, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>{t('luckyWheel.noCampaignsHint')}</Text>
+                </View>
+              )}
+
+              {campaigns.map((campaign: LuckyWheelCampaignData) => {
+                const isExpanded = expandedCampaign === campaign.id;
+                return (
+                  <CampaignCard
+                    key={campaign.id}
+                    campaign={campaign}
+                    isExpanded={isExpanded}
+                    isTeamMember={isTeamMember}
+                    theme={theme}
+                    statusLabel={statusLabel}
+                    formatDate={formatDate}
+                    onToggle={(id) => setExpandedCampaign(isExpanded ? null : id)}
+                    onStatusChange={onStatusChange}
+                    onPush={onPush}
+                    onEdit={onEdit}
+                    onDelete={onDelete}
+                    statusMutation={statusMutation}
+                    pushMutation={pushMutation}
+                    deleteMutation={deleteMutation}
+                    t={t}
+                  />
+                );
+              })}
+            </>
+          )}
+        </ScrollView>
+      </View>
+    );
+  });
+
   // ── Render ─────────────────────────────────────────────────
 
   if (isLoading) {
@@ -583,7 +1323,42 @@ export default function LuckyWheelScreen() {
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.bg }]}>
+    <LuckyWheelContent
+      theme={theme}
+      insets={insets}
+      router={router}
+      t={t}
+      isTeamMember={isTeamMember}
+      campaigns={campaigns}
+      pendingPrizes={pendingPrizes}
+      fulfilledPrizes={fulfilledPrizes}
+      campaignsExpanded={campaignsExpanded}
+      pendingExpanded={pendingExpanded}
+      fulfilledExpanded={fulfilledExpanded}
+      expandedCampaign={expandedCampaign}
+      fulfillingDrawId={fulfillingDrawId}
+      fulfilledLimit={fulfilledLimit}
+      setCampaignsExpanded={setCampaignsExpanded}
+      setPendingExpanded={setPendingExpanded}
+      setFulfilledExpanded={setFulfilledExpanded}
+      setExpandedCampaign={setExpandedCampaign}
+      setFulfilledLimit={setFulfilledLimit}
+      statusLabel={statusLabel}
+      formatDate={formatDate}
+      onOpenCreateModal={openCreateModal}
+      onStatusChange={handleStatusChange}
+      onPush={handlePush}
+      onEdit={handleEdit}
+      onDelete={handleDelete}
+      onFulfill={handleFulfil}
+      statusMutation={statusMutation}
+      pushMutation={pushMutation}
+      deleteMutation={deleteMutation}
+    />
+  );
+
+  return (
+    <View style={[styles.container, { backgroundColor: theme.bg }]}> 
       {/* ── Header ── */}
       <View style={[styles.headerBar, { paddingTop: insets.top + 12 }]}>
         <TouchableOpacity
@@ -663,35 +1438,15 @@ export default function LuckyWheelScreen() {
             {pendingExpanded && (
               <View style={[styles.card, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
                 {pendingPrizes.map((draw: PendingDrawData) => (
-                  <View key={draw.id} style={styles.pendingRow}>
-                    <View style={styles.flexOne}>
-                      <Text style={[styles.pendingPrize, { color: theme.text }]} maxFontSizeMultiplier={1.3}>{draw.prize?.label}</Text>
-                      <Text style={[styles.pendingClient, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>
-                        {draw.ticket?.client?.prenom} {draw.ticket?.client?.nom}
-                      </Text>
-                      {draw.claimBefore && (
-                        <Text style={[styles.pendingExpiry, { color: TONE.warning }]} maxFontSizeMultiplier={1.4}>
-                          {t('luckyWheel.claimExpires', { date: formatDate(draw.claimBefore) })}
-                        </Text>
-                      )}
-                    </View>
-                    <TouchableOpacity
-                      onPress={() => handleFulfil(draw.id, draw.prize?.label ?? '')}
-                      style={[styles.fulfilBtn, { backgroundColor: theme.primary + '10' }]}
-                      activeOpacity={0.7}
-                      disabled={fulfillingDrawId === draw.id}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      accessibilityRole="button"
-                      accessibilityLabel={t('luckyWheel.fulfilBtn')}
-                      accessibilityState={{ disabled: fulfillingDrawId === draw.id, busy: fulfillingDrawId === draw.id }}
-                    >
-                      {fulfillingDrawId === draw.id ? (
-                        <ActivityIndicator size="small" color={theme.primary} />
-                      ) : (
-                        <Check size={16} color={TONE.success} strokeWidth={2} />
-                      )}
-                    </TouchableOpacity>
-                  </View>
+                  <PendingPrizeRow
+                    key={draw.id}
+                    draw={draw}
+                    isFulfilling={fulfillingDrawId === draw.id}
+                    onFulfill={handleFulfil}
+                    theme={theme}
+                    t={t}
+                    tone={TONE}
+                  />
                 ))}
               </View>
             )}
@@ -726,21 +1481,7 @@ export default function LuckyWheelScreen() {
             {fulfilledExpanded && (
               <View style={[styles.card, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
                 {fulfilledPrizes.slice(0, fulfilledLimit).map((draw: FulfilledDrawData) => (
-                  <View key={draw.id} style={styles.pendingRow}>
-                    <View style={styles.flexOne}>
-                      <Text style={[styles.pendingPrize, { color: theme.text }]} maxFontSizeMultiplier={1.3}>{draw.prize?.label}</Text>
-                      <Text style={[styles.pendingClient, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>
-                        {draw.ticket?.client?.prenom} {draw.ticket?.client?.nom}
-                      </Text>
-                      <Text style={[styles.pendingExpiry, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>
-                        {draw.fulfilledByName
-                          ? t('luckyWheel.fulfilledByMember', { name: draw.fulfilledByName })
-                          : t('luckyWheel.fulfilledByOwner')}
-                        {' · '}
-                        {formatDate(draw.fulfilledAt)}
-                      </Text>
-                    </View>
-                  </View>
+                  <FulfilledPrizeRow key={draw.id} draw={draw} theme={theme} t={t} />
                 ))}
                 {fulfilledPrizes.length > fulfilledLimit && (
                   <TouchableOpacity
@@ -798,171 +1539,25 @@ export default function LuckyWheelScreen() {
 
             {campaigns.map((campaign: LuckyWheelCampaignData) => {
               const isExpanded = expandedCampaign === campaign.id;
-              const canActivate = campaign.status === 'DRAFT' || campaign.status === 'PAUSED';
-              const canPause = campaign.status === 'ACTIVE';
-              const canEnd = campaign.status !== 'ENDED';
-
               return (
-                <View key={campaign.id} style={[styles.card, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
-                  <TouchableOpacity
-                    onPress={() => setExpandedCampaign(isExpanded ? null : campaign.id)}
-                    activeOpacity={0.7}
-                    style={styles.campaignHeader}
-                  >
-                    <View style={styles.flexOne}>
-                      <Text style={[styles.campaignName, { color: theme.text }]}>{campaign.name}</Text>
-                      <Text style={[styles.campaignDates, { color: theme.textMuted }]}>
-                        {formatDate(campaign.startsAt)} — {formatDate(campaign.endsAt)}
-                      </Text>
-                    </View>
-                    <View style={[styles.statusBadge, { backgroundColor: `${STATUS_COLORS[campaign.status] ?? '#78716C'}18` }]}>
-                      <Text style={[styles.statusText, { color: STATUS_COLORS[campaign.status] ?? '#78716C' }]}>
-                        {statusLabel(campaign.status)}
-                      </Text>
-                    </View>
-                    {isExpanded
-                      ? <ChevronUp size={16} color={theme.textMuted} style={{ marginLeft: 8 }} />
-                      : <ChevronDown size={16} color={theme.textMuted} style={{ marginLeft: 8 }} />}
-                  </TouchableOpacity>
-
-                  {isExpanded && (
-                    <View style={styles.campaignBody}>
-                      {campaign.description ? (
-                        <Text style={[styles.campaignDesc, { color: theme.textMuted }]}>{campaign.description}</Text>
-                      ) : null}
-
-                      <View style={styles.statsRow}>
-                        <View style={[styles.statPill, { backgroundColor: theme.primary + '08' }]}>
-                          <Target size={12} color={theme.primary} />
-                          <View style={styles.statPillContent}>
-                            <Text style={[styles.statValue, { color: theme.text }]}>{Math.round(campaign.globalWinRate * 100)}%</Text>
-                            <Text style={[styles.statLabel, { color: theme.textMuted }]}>{t('luckyWheel.winRateLabel')}</Text>
-                          </View>
-                        </View>
-                        <View style={[styles.statPill, { backgroundColor: theme.primary + '08' }]}>
-                          <Ticket size={12} color={theme.primary} />
-                          <View style={styles.statPillContent}>
-                            <Text style={[styles.statValue, { color: theme.text }]}>{campaign._count?.tickets ?? 0}</Text>
-                            <Text style={[styles.statLabel, { color: theme.textMuted }]}>{t('luckyWheel.ticketsUsed')}</Text>
-                          </View>
-                        </View>
-                      </View>
-
-                      <Text style={[styles.prizesSectionTitle, { color: theme.text }]}>{t('luckyWheel.prizesTitle')}</Text>
-                      {campaign.prizes?.map((prize: LuckyWheelPrizeData) => (
-                        <View key={prize.id} style={[styles.prizeRow, { borderColor: theme.borderLight }]}>
-                          <Package size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
-                          <View style={styles.prizeItemContent}>
-                            <Text style={[styles.prizeName, { color: theme.text }]}>{prize.label}</Text>
-                            <Text style={[styles.prizeStock, { color: theme.textMuted }]}>
-                              {t('luckyWheel.prizeRemaining', { remaining: prize.remaining, total: prize.totalStock })}
-                            </Text>
-                          </View>
-                        </View>
-                      ))}
-
-                      {!isTeamMember && (
-                      <View style={styles.actionRow}>
-                        {canActivate && (
-                          <TouchableOpacity
-                            onPress={() => handleStatusChange(campaign.id, 'ACTIVE')}
-                            style={[styles.actionBtn, { backgroundColor: TONE_BG.success }]}
-                            activeOpacity={0.7}
-                            disabled={statusMutation.isPending}
-                            accessibilityRole="button"
-                            accessibilityLabel={t('luckyWheel.activate')}
-                            accessibilityState={{ disabled: statusMutation.isPending, busy: statusMutation.isPending }}
-                          >
-                            <Play size={14} color={TONE.success} strokeWidth={2} />
-                            <Text style={[styles.actionText, { color: TONE.success }]} maxFontSizeMultiplier={1.3}>{t('luckyWheel.activate')}</Text>
-                          </TouchableOpacity>
-                        )}
-                        {canPause && (
-                          <TouchableOpacity
-                            onPress={() => handleStatusChange(campaign.id, 'PAUSED')}
-                            style={[styles.actionBtn, { backgroundColor: TONE_BG.warning }]}
-                            activeOpacity={0.7}
-                            disabled={statusMutation.isPending}
-                            accessibilityRole="button"
-                            accessibilityLabel={t('luckyWheel.pause')}
-                            accessibilityState={{ disabled: statusMutation.isPending, busy: statusMutation.isPending }}
-                          >
-                            <Pause size={14} color={TONE.warning} strokeWidth={2} />
-                            <Text style={[styles.actionText, { color: TONE.warning }]} maxFontSizeMultiplier={1.3}>{t('luckyWheel.pause')}</Text>
-                          </TouchableOpacity>
-                        )}
-                        {canEnd && (
-                          <TouchableOpacity
-                            onPress={() => handleStatusChange(campaign.id, 'ENDED')}
-                            style={[styles.actionBtn, { backgroundColor: TONE_BG.danger }]}
-                            activeOpacity={0.7}
-                            disabled={statusMutation.isPending}
-                            accessibilityRole="button"
-                            accessibilityLabel={t('luckyWheel.end')}
-                            accessibilityState={{ disabled: statusMutation.isPending, busy: statusMutation.isPending }}
-                          >
-                            <StopCircle size={14} color={TONE.danger} strokeWidth={2} />
-                            <Text style={[styles.actionText, { color: TONE.danger }]} maxFontSizeMultiplier={1.3}>{t('luckyWheel.end')}</Text>
-                          </TouchableOpacity>
-                        )}
-                      </View>
-                      )}
-
-                      {!isTeamMember && (
-                      <View style={[styles.actionRow, { marginTop: 6 }]}>
-                        {campaign.status === 'ACTIVE' && (
-                          <TouchableOpacity
-                            onPress={() => handlePush(campaign)}
-                            style={[styles.actionBtn, { backgroundColor: theme.primary + '18' }]}
-                            activeOpacity={0.7}
-                            disabled={pushMutation.isPending}
-                            accessibilityRole="button"
-                            accessibilityLabel={t('luckyWheel.pushBtn')}
-                            accessibilityState={{ disabled: pushMutation.isPending, busy: pushMutation.isPending }}
-                          >
-                            {pushMutation.isPending ? (
-                              <ActivityIndicator size="small" color={theme.primary} />
-                            ) : (
-                              <Send size={14} color={theme.primary} strokeWidth={2} />
-                            )}
-                            <Text style={[styles.actionText, { color: theme.primary }]} maxFontSizeMultiplier={1.3}>{t('luckyWheel.pushBtn')}</Text>
-                          </TouchableOpacity>
-                        )}
-                        {campaign.status !== 'ENDED' && (
-                          <TouchableOpacity
-                            onPress={() => handleEdit(campaign)}
-                            style={[styles.actionBtn, { backgroundColor: theme.primary + '18' }]}
-                            activeOpacity={0.7}
-                            accessibilityRole="button"
-                            accessibilityLabel={t('luckyWheel.editBtn')}
-                          >
-                            <Edit3 size={14} color={theme.primary} strokeWidth={2} />
-                            <Text style={[styles.actionText, { color: theme.primary }]} maxFontSizeMultiplier={1.3}>{t('luckyWheel.editBtn')}</Text>
-                          </TouchableOpacity>
-                        )}
-                        {campaign.status !== 'ACTIVE' && (
-                          <TouchableOpacity
-                            onPress={() => handleDelete(campaign)}
-                            style={[styles.actionBtn, { backgroundColor: TONE_BG.danger }]}
-                            activeOpacity={0.7}
-                            disabled={deleteMutation.isPending}
-                            accessibilityRole="button"
-                            accessibilityLabel={t('luckyWheel.deleteBtn')}
-                            accessibilityState={{ disabled: deleteMutation.isPending, busy: deleteMutation.isPending }}
-                          >
-                            {deleteMutation.isPending ? (
-                              <ActivityIndicator size="small" color={TONE.danger} />
-                            ) : (
-                              <Trash2 size={14} color={TONE.danger} strokeWidth={2} />
-                            )}
-                            <Text style={[styles.actionText, { color: TONE.danger }]} maxFontSizeMultiplier={1.3}>{t('luckyWheel.deleteBtn')}</Text>
-                          </TouchableOpacity>
-                        )}
-                      </View>
-                      )}
-                    </View>
-                  )}
-                </View>
+                <CampaignCard
+                  key={campaign.id}
+                  campaign={campaign}
+                  isExpanded={isExpanded}
+                  isTeamMember={isTeamMember}
+                  theme={theme}
+                  statusLabel={statusLabel}
+                  formatDate={formatDate}
+                  onToggle={(id) => setExpandedCampaign(isExpanded ? null : id)}
+                  onStatusChange={handleStatusChange}
+                  onPush={handlePush}
+                  onEdit={handleEdit}
+                  onDelete={handleDelete}
+                  statusMutation={statusMutation}
+                  pushMutation={pushMutation}
+                  deleteMutation={deleteMutation}
+                  t={t}
+                />
               );
             })}
           </>
@@ -1051,7 +1646,7 @@ export default function LuckyWheelScreen() {
                       <TextInput
                         style={[styles.wizInput, { color: theme.text }]}
                         value={form.name}
-                        onChangeText={(v) => dispatch({ type: 'SET_FIELD', field: 'name', value: v })}
+                        onChangeText={(v) => handleFormFieldChange('name', v)}
                         placeholder={t('luckyWheel.namePlaceholder')}
                         placeholderTextColor={theme.textMuted}
                         maxLength={255}
@@ -1074,7 +1669,7 @@ export default function LuckyWheelScreen() {
                       <TextInput
                         style={[styles.wizInput, styles.wizInputMulti, { color: theme.text }]}
                         value={form.description}
-                        onChangeText={(v) => dispatch({ type: 'SET_FIELD', field: 'description', value: v })}
+                        onChangeText={(v) => handleFormFieldChange('description', v)}
                         placeholder={t('luckyWheel.descPlaceholder')}
                         placeholderTextColor={theme.textMuted}
                         multiline
@@ -1143,7 +1738,7 @@ export default function LuckyWheelScreen() {
                         return (
                           <TouchableOpacity
                             key={val}
-                            onPress={() => dispatch({ type: 'SET_FIELD', field: 'globalWinRate', value: val })}
+                            onPress={() => handleFormFieldChange('globalWinRate', val)}
                             activeOpacity={0.7}
                             style={[
                               styles.rateChip,
@@ -1165,7 +1760,7 @@ export default function LuckyWheelScreen() {
                         <TextInput
                           style={[styles.customRateText, { color: theme.text }]}
                           value={form.globalWinRate}
-                          onChangeText={(v) => dispatch({ type: 'SET_FIELD', field: 'globalWinRate', value: v.replace(/[^0-9]/g, '') })}
+                          onChangeText={(v) => handleFormFieldChange('globalWinRate', v.replace(/[^0-9]/g, ''))}
                           keyboardType="number-pad"
                           maxLength={3}
                         />
@@ -1220,7 +1815,7 @@ export default function LuckyWheelScreen() {
                           <TextInput
                             style={[styles.wizInput, { color: theme.text }]}
                             value={form.startsAt}
-                            onChangeText={(v) => dispatch({ type: 'SET_FIELD', field: 'startsAt', value: v })}
+                            onChangeText={(v) => handleFormFieldChange('startsAt', v)}
                             placeholder="YYYY-MM-DD"
                             placeholderTextColor={theme.textMuted}
                             maxLength={10}
@@ -1238,7 +1833,7 @@ export default function LuckyWheelScreen() {
                           <TextInput
                             style={[styles.wizInput, { color: theme.text }]}
                             value={form.endsAt}
-                            onChangeText={(v) => dispatch({ type: 'SET_FIELD', field: 'endsAt', value: v })}
+                            onChangeText={(v) => handleFormFieldChange('endsAt', v)}
                             placeholder="YYYY-MM-DD"
                             placeholderTextColor={theme.textMuted}
                             maxLength={10}
@@ -1274,7 +1869,7 @@ export default function LuckyWheelScreen() {
                         return (
                           <TouchableOpacity
                             key={val}
-                            onPress={() => dispatch({ type: 'SET_FIELD', field: 'minSpendAmount', value: val })}
+                            onPress={() => handleFormFieldChange('minSpendAmount', val)}
                             activeOpacity={0.7}
                             style={[
                               styles.durChip,
@@ -1296,7 +1891,7 @@ export default function LuckyWheelScreen() {
                         <TextInput
                           style={[styles.customRateText, { color: theme.text }]}
                           value={form.minSpendAmount}
-                          onChangeText={(v) => dispatch({ type: 'SET_FIELD', field: 'minSpendAmount', value: v.replace(/[^0-9]/g, '') })}
+                          onChangeText={(v) => handleFormFieldChange('minSpendAmount', v.replace(/[^0-9]/g, ''))}
                           keyboardType="number-pad"
                           maxLength={6}
                         />
@@ -1330,159 +1925,23 @@ export default function LuckyWheelScreen() {
 
                     {/* Prize Cards */}
                     {form.prizes.map((prize, idx) => (
-                      <View key={prize.id} style={[styles.prizeCard, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
-                        {/* Prize header */}
-                        <View style={styles.prizeCardHeader}>
-                          <View style={[styles.prizeNum, { backgroundColor: theme.primary + '14' }]}>
-                            <Text style={[styles.prizeNumText, { color: theme.primary }]}>{idx + 1}</Text>
-                          </View>
-                          <Text style={[styles.prizeCardTitle, { color: theme.text }]}>
-                            {t('luckyWheel.wizPrizeNum', { num: idx + 1 })}
-                          </Text>
-                          {form.prizes.length > 1 && (
-                            <TouchableOpacity
-                              onPress={() => dispatch({ type: 'REMOVE_PRIZE', index: idx })}
-                              activeOpacity={0.7}
-                              style={styles.prizeDeleteBtn}
-                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                              accessibilityRole="button"
-                              accessibilityLabel={t('luckyWheel.wizPrizeNum', { num: idx + 1 })}
-                            >
-                              <Trash2 size={15} color={TONE.danger} strokeWidth={1.5} />
-                            </TouchableOpacity>
-                          )}
-                        </View>
-
-                        {/* Prize name */}
-                        <Text style={[styles.miniLabel, { color: theme.textMuted }]}>
-                          {t('luckyWheel.prizeLabel')} <Text style={{ color: theme.primary }}>*</Text>
-                        </Text>
-                        <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: prize.label.trim() ? theme.primary : theme.border }]}>
-                          <Gift size={16} color={prize.label.trim() ? theme.primary : theme.textMuted} strokeWidth={1.5} />
-                          <TextInput
-                            style={[styles.wizInput, { color: theme.text }]}
-                            value={prize.label}
-                            onChangeText={(v) => dispatch({ type: 'SET_PRIZE_FIELD', index: idx, field: 'label', value: v })}
-                            placeholder={t('luckyWheel.prizePlaceholder')}
-                            placeholderTextColor={theme.textMuted}
-                            maxLength={255}
-                          />
-                          {prize.label.trim().length > 0 && <Check size={14} color={theme.primary} strokeWidth={2.5} />}
-                        </View>
-
-                        {/* Prize description */}
-                        <Text style={[styles.miniLabel, { color: theme.textMuted, marginTop: 12 }]}>
-                          {t('luckyWheel.prizeDescLabel')}
-                        </Text>
-                        <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.border }]}>
-                          <TextInput
-                            style={[styles.wizInput, { color: theme.text }]}
-                            value={prize.description}
-                            onChangeText={(v) => dispatch({ type: 'SET_PRIZE_FIELD', index: idx, field: 'description', value: v })}
-                            placeholder={t('luckyWheel.prizeDescPlaceholder')}
-                            placeholderTextColor={theme.textMuted}
-                            maxLength={1000}
-                          />
-                        </View>
-
-                        {/* Stock + Weight + Claim in a row */}
-                        <View style={styles.prizeMetaRow}>
-                          <View style={styles.flexOne}>
-                            <Text style={[styles.miniLabel, { color: theme.textMuted }]}>{t('luckyWheel.prizeStockLabel')}</Text>
-                            <Text style={[styles.miniHint, { color: theme.textMuted }]}>{t('luckyWheel.prizeStockHint')}</Text>
-                            <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.border }]}>
-                              <Package size={14} color={theme.textMuted} strokeWidth={1.5} />
-                              <TextInput
-                                style={[styles.wizInput, { color: theme.text, textAlign: 'center' }]}
-                                value={prize.totalStock}
-                                onChangeText={(v) => dispatch({ type: 'SET_PRIZE_FIELD', index: idx, field: 'totalStock', value: v.replace(/[^0-9]/g, '') })}
-                                keyboardType="number-pad"
-                              />
-                            </View>
-                            <Text style={[styles.fieldExamples, { color: theme.textMuted }]}>
-                              {t('luckyWheel.prizeStockTip')}
-                            </Text>
-                          </View>
-                          <View style={styles.metaSpacer} />
-                          <View style={styles.flexOne}>
-                            <Text style={[styles.miniLabel, { color: theme.textMuted }]}>{t('luckyWheel.prizeWeightLabel')}</Text>
-                            <Text style={[styles.miniHint, { color: theme.textMuted }]}>{t('luckyWheel.prizeWeightHint')}</Text>
-                            <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.border }]}>
-                              <Target size={14} color={theme.textMuted} strokeWidth={1.5} />
-                              <TextInput
-                                style={[styles.wizInput, { color: theme.text, textAlign: 'center' }]}
-                                value={prize.weight}
-                                onChangeText={(v) => dispatch({ type: 'SET_PRIZE_FIELD', index: idx, field: 'weight', value: v.replace(/[^0-9]/g, '') })}
-                                keyboardType="number-pad"
-                              />
-                            </View>
-                            <Text style={[styles.fieldExamples, { color: theme.textMuted }]}>
-                              {t('luckyWheel.prizeWeightTip')}
-                            </Text>
-                          </View>
-                        </View>
-
-                        {/* Prize probability indicator */}
-                        {form.prizes.length > 1 && (
-                          <View style={[styles.prizeChanceRow, { backgroundColor: theme.primary + '08' }]}>
-                            <Target size={13} color={theme.primary} strokeWidth={1.5} />
-                            <Text style={[styles.prizeChanceText, { color: theme.primary }]}>
-                              {t('luckyWheel.prizeChance', { pct: String(Math.round(((parseInt(prize.weight, 10) || 1) / totalWeight) * 100)) })}
-                            </Text>
-                            <View style={styles.prizeChanceBarBg}>
-                              <View style={[styles.prizeChanceBarFill, { width: `${Math.round(((parseInt(prize.weight, 10) || 1) / totalWeight) * 100)}%`, backgroundColor: theme.primary }]} />
-                            </View>
-                          </View>
-                        )}
-
-                        {/* Claim Window */}
-                        <View style={{ marginTop: 12 }}>
-                          <Text style={[styles.miniLabel, { color: theme.textMuted }]}>{t('luckyWheel.prizeClaimLabel')}</Text>
-                          <Text style={[styles.miniHint, { color: theme.textMuted }]}>{t('luckyWheel.prizeClaimHint')}</Text>
-
-                          {/* Claim window presets */}
-                          <View style={[styles.durationChipRow, { marginBottom: 8 }]}>
-                            {claimWindowOptions.map(({ label, val }) => {
-                              const isActive = prize.claimWindowHours === val;
-                              return (
-                                <TouchableOpacity
-                                  key={val}
-                                  onPress={() => dispatch({ type: 'SET_PRIZE_FIELD', index: idx, field: 'claimWindowHours', value: val })}
-                                  activeOpacity={0.7}
-                                  style={[
-                                    styles.claimChip,
-                                    { borderColor: isActive ? theme.primary : theme.borderLight,
-                                      backgroundColor: isActive ? theme.primary : theme.bgCard },
-                                  ]}
-                                >
-                                  <Text style={[styles.claimChipText, { color: isActive ? '#fff' : theme.text }]}>{label}</Text>
-                                </TouchableOpacity>
-                              );
-                            })}
-                          </View>
-
-                          <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.border }]}>
-                            <Clock size={14} color={theme.textMuted} strokeWidth={1.5} />
-                            <TextInput
-                              style={[styles.wizInput, { color: theme.text }]}
-                              value={prize.claimWindowHours}
-                              onChangeText={(v) => dispatch({ type: 'SET_PRIZE_FIELD', index: idx, field: 'claimWindowHours', value: v.replace(/[^0-9]/g, '') })}
-                              keyboardType="number-pad"
-                              placeholder="72"
-                              placeholderTextColor={theme.textMuted}
-                            />
-                            <Text style={[styles.unitLabel, { color: theme.textMuted }]}>h</Text>
-                          </View>
-                          <Text style={[styles.fieldExamples, { color: theme.textMuted }]}>
-                            {t('luckyWheel.prizeClaimTip')}
-                          </Text>
-                        </View>
-                      </View>
+                      <PrizeCardItem
+                        key={prize.id}
+                        prize={prize}
+                        index={idx}
+                        theme={theme}
+                        t={t}
+                        totalWeight={totalWeight}
+                        onRemovePrize={handleRemovePrize}
+                        onPrizeFieldChange={handlePrizeFieldChange}
+                        canRemove={form.prizes.length > 1}
+                        claimWindowOptions={claimWindowOptions}
+                      />
                     ))}
 
                     {/* Add prize */}
                     <TouchableOpacity
-                      onPress={() => dispatch({ type: 'ADD_PRIZE' })}
+                      onPress={handleAddPrize}
                       style={[styles.addPrizeBtn, { borderColor: theme.primary + '40' }]}
                       activeOpacity={0.7}
                     >
@@ -1595,6 +2054,19 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
     gap: 10,
   },
+  headerAction: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 120,
+  },
   backBtn: { marginRight: 2 },
   headerTitle: {
     fontSize: 28,
@@ -1613,6 +2085,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderRadius: 12,
     borderLeftWidth: 3,
+  },
+  guideCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 12,
+  },
+  guideHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  guideIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  guideTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    fontFamily: 'Lexend_600SemiBold',
   },
   guideText: {
     fontSize: 14,

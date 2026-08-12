@@ -44,6 +44,14 @@ export interface AuthResult {
   teamMember?: { id: string; nom: string; email: string; role: string };
 }
 
+/** Email/password registration result before OTP verification. */
+export interface PendingRegistrationResult {
+  merchant: MerchantResponse;
+  userType: string;
+  requiresEmailVerification: true;
+  verificationSent: boolean;
+}
+
 @Injectable()
 export class AuthService implements OnApplicationBootstrap {
   private readonly logger = new Logger(AuthService.name);
@@ -585,7 +593,7 @@ export class AuthService implements OnApplicationBootstrap {
     return { exists: !!merchant };
   }
 
-  async register(registerDto: RegisterMerchantDto): Promise<AuthResult> {
+  async register(registerDto: RegisterMerchantDto): Promise<PendingRegistrationResult> {
     // Email uniqueness is enforced by the DB UNIQUE constraint — a pre-check
     // findUnique here would only add a DB round-trip (and create a TOCTOU window
     // under concurrent submits). We catch P2002 below as the single source of truth.
@@ -710,43 +718,11 @@ export class AuthService implements OnApplicationBootstrap {
       });
     }
 
-    const sessionId = randomUUID();
-    const payload = {
-      sub: merchant.id,
-      email: merchant.email,
-      type: USER_TYPE_MERCHANT,
-      role: 'owner',
-      jti: sessionId,
-    };
-
-    // Create device session + optional refresh token
-    let refreshToken: string | undefined;
-    if (registerDto.deviceName) {
-      refreshToken = randomBytes(40).toString('hex');
-      const refreshHash = createHash('sha256').update(refreshToken).digest('hex');
-      await this.registerDeviceSession(
-        merchant.id, sessionId, registerDto as any, undefined,
-        'merchant', merchant.email, nom, refreshHash,
-        /* skipDeactivateOthers */ true,
-      );
-    } else {
-      await this.deviceSessionRepo.create({
-        data: {
-          merchantId: merchant.id,
-          tokenId: sessionId,
-          deviceName: 'register',
-          isCurrentDevice: true,
-          lastActiveAt: new Date(),
-        },
-      });
-    }
-
     return {
-      access_token: this.jwtService.sign(payload),
-      ...(refreshToken && { refresh_token: refreshToken }),
-      session_id: sessionId,
       merchant,
       userType: USER_TYPE_MERCHANT,
+      requiresEmailVerification: true,
+      verificationSent: true,
     };
   }
 

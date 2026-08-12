@@ -320,7 +320,9 @@ export class MerchantProfileService {
 
     const oldType = merchant.loyaltyType;
     const newType = dto.loyaltyType ?? oldType;
-    const loyaltyTypeChanged = !!dto.loyaltyType && dto.loyaltyType !== oldType;
+    // A first-time selection (no previous program) is NOT a conversion — there
+    // are no existing balances to rescale, we just persist the chosen type.
+    const loyaltyTypeChanged = !!dto.loyaltyType && !!oldType && dto.loyaltyType !== oldType;
 
     // Auto-sync conversionRate with pointsRate when conversionRate is not explicitly provided.
     // This ensures the client app displays the correct earning rate (e.g. after onboarding).
@@ -388,8 +390,8 @@ export class MerchantProfileService {
           conversionSummary = await this.recalculateBalancesTx(
             tx,
             merchantId,
-            oldType,
-            newType,
+            oldType!,
+            newType!,
             pointsPerStamp,
             merchant.accumulationLimit ?? null,
           );
@@ -424,7 +426,7 @@ export class MerchantProfileService {
 
     // Cap existing clients' balances and notify them if the merchant confirmed
     if (forceCapClients && dto.accumulationLimit != null) {
-      this.capAndNotifyClients(merchantId, merchant.nom, dto.accumulationLimit, newType)
+      this.capAndNotifyClients(merchantId, merchant.nom, dto.accumulationLimit, (newType ?? oldType) as string)
         .catch((err) => this.logger.error(`capAndNotifyClients failed: ${err}`));
     }
 

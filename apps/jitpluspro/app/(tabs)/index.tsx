@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useDeferredValue } from 'react';
 import {
   View,
   Text,
@@ -10,21 +10,23 @@ import {
   Animated,
   Platform,
 } from 'react-native';
-import { Users, Search, X, UserPlus, Zap, AlertCircle } from 'lucide-react-native';
+import { Users, Search, X, UserPlus, Star, Stamp, AlertCircle } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { useFocusFade } from '@/hooks/useFocusFade';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useAuthStore } from '@/stores/authStore';
+import { useScanGuard } from '@/hooks/useScanGuard';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { ClientListSkeleton } from '@/components/Skeleton';
+import TipBanner from '@/components/TipBanner';
 import { useClients } from '@/hooks/useQueryHooks';
 import { useGuardedCallback } from '@/hooks/useGuardedCallback';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SEARCH_DEBOUNCE_MS, ASYNC_STORAGE_KEYS } from '@/constants/app';
 import { ms } from '@/utils/responsive';
+import { timeAgo } from '@/utils/date';
 import type { ClientListItem } from '@/types';
 
 const HIT_SLOP_LARGE = { top: 12, bottom: 12, left: 12, right: 12 };
@@ -35,54 +37,18 @@ const safeSelection = () => {
   Haptics.selectionAsync().catch(() => {});
 };
 
-/* ── Tip banner — dismissable with "don't show again" ── */
-const ClientsBanner = React.memo(function ClientsBanner({
-  onDismiss,
-  onDismissForever,
-}: {
-  onDismiss: () => void;
-  onDismissForever: () => void;
-}) {
-  const theme = useTheme();
-  const { t } = useLanguage();
-  const isDark = theme.mode === 'dark';
-
-  return (
-    <View style={[bannerStyles.wrapper, { backgroundColor: isDark ? 'rgba(124,58,237,0.12)' : 'rgba(124,58,237,0.06)', borderColor: isDark ? 'rgba(124,58,237,0.25)' : 'rgba(124,58,237,0.15)' }]}>
-      <LinearGradient
-        colors={['rgba(124,58,237,0.08)', 'transparent']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={StyleSheet.absoluteFill}
-      />
-      <TouchableOpacity
-        style={bannerStyles.closeBtn}
-        onPress={onDismiss}
-        hitSlop={HIT_SLOP_LARGE}
-        accessibilityRole="button"
-        accessibilityLabel={t('common.close')}
-      >
-        <X size={16} color={theme.textMuted} strokeWidth={2} />
-      </TouchableOpacity>
-      <View style={bannerStyles.content}>
-        <Zap size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
-        <View style={bannerStyles.textWrap}>
-          <Text style={[bannerStyles.title, { color: theme.text }]} maxFontSizeMultiplier={1.6}>{t('clients.bannerTitle')}</Text>
-          <Text style={[bannerStyles.desc, { color: theme.textMuted }]} maxFontSizeMultiplier={1.6}>{t('clients.bannerDesc')}</Text>
-        </View>
-      </View>
-      <TouchableOpacity
-        onPress={onDismissForever}
-        style={bannerStyles.hideBtn}
-        hitSlop={HIT_SLOP_LARGE}
-        accessibilityRole="button"
-        accessibilityLabel={t('clients.bannerHide')}
-      >
-        <Text style={[bannerStyles.hideText, { color: theme.textMuted }]} maxFontSizeMultiplier={1.6}>{t('clients.bannerHide')}</Text>
-      </TouchableOpacity>
-    </View>
-  );
-});
+/* ── Balance pill variants — differentiated by loyalty type (color + icon) so
+   colour-blind users can tell points vs stamps apart without relying on hue alone ── */
+const PILL_VARIANTS = {
+  points: {
+    light: { bg: 'rgba(124,58,237,0.09)', fg: '#7C3AED' },
+    dark: { bg: 'rgba(167,139,250,0.15)', fg: '#C4B5FD' },
+  },
+  stamps: {
+    light: { bg: 'rgba(245,158,11,0.10)', fg: '#B45309' },
+    dark: { bg: 'rgba(245,158,11,0.18)', fg: '#FBBF24' },
+  },
+} as const;
 
 // ── Carte client ────────────────────────────────────
 const ClientCard = React.memo(function ClientCard({
@@ -95,7 +61,7 @@ const ClientCard = React.memo(function ClientCard({
   isStamps?: boolean;
 }) {
   const theme = useTheme();
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
   const isDark = theme.mode === 'dark';
 
   // Full display name: "Prénom Nom"
@@ -107,10 +73,18 @@ const ClientCard = React.memo(function ClientCard({
   const initials = (firstInitial + lastInitial).toUpperCase() || '?';
 
   const formattedPoints = item.points?.toLocaleString('fr-FR') ?? '0';
-  const pillBg = isDark ? 'rgba(167,139,250,0.12)' : 'rgba(124,58,237,0.08)';
 
+  // Balance pill differentiated by loyalty type (colour + distinct icon)
+  const variant = (isStamps ? PILL_VARIANTS.stamps : PILL_VARIANTS.points)[isDark ? 'dark' : 'light'];
+  const PillIcon = isStamps ? Stamp : Star;
   const pointsUnit = isStamps ? t('common.stampsAbbr') : t('common.pointsAbbr');
-  const a11yLabel = `${displayName}, ${formattedPoints} ${pointsUnit}`;
+
+  // "Last visit" subtext
+  const lastVisitLabel = item.lastVisit
+    ? t('clients.lastVisit', { time: timeAgo(item.lastVisit, locale) })
+    : t('clients.neverVisited');
+
+  const a11yLabel = `${displayName}, ${formattedPoints} ${pointsUnit}, ${lastVisitLabel}`;
 
   return (
     <TouchableOpacity
@@ -129,17 +103,21 @@ const ClientCard = React.memo(function ClientCard({
         <Text style={[styles.avatarText, { color: theme.primary }]} maxFontSizeMultiplier={1.4}>{initials}</Text>
       </View>
 
-      {/* Nom */}
+      {/* Nom + dernière visite */}
       <View style={styles.clientInfo}>
         <Text style={[styles.clientName, { color: theme.text }]} numberOfLines={1} maxFontSizeMultiplier={1.6}>
           {displayName}
         </Text>
+        <Text style={[styles.clientMeta, { color: theme.textMuted }]} numberOfLines={1} maxFontSizeMultiplier={1.4}>
+          {lastVisitLabel}
+        </Text>
       </View>
 
-      {/* Points pill */}
-      <View style={[styles.pointsPill, { backgroundColor: pillBg }]}>
+      {/* Balance pill (points = star/violet, stamps = stamp/amber) */}
+      <View style={[styles.pointsPill, { backgroundColor: variant.bg }]} importantForAccessibility="no-hide-descendants">
+        <PillIcon size={ms(13)} color={variant.fg} strokeWidth={2.2} />
         <Text
-          style={[styles.pointsPillText, { color: theme.primary }]}
+          style={[styles.pointsPillText, { color: variant.fg }]}
           numberOfLines={1}
           ellipsizeMode="tail"
           maxFontSizeMultiplier={1.4}
@@ -196,9 +174,11 @@ export default function ClientsScreen() {
   const theme = useTheme();
   const router = useRouter();
   const { t } = useLanguage();
+  const { openScanner } = useScanGuard();
   const { focusStyle } = useFocusFade();
   const insets = useSafeAreaInsets();
   const [search, setSearch] = useState('');
+  const deferredSearch = useDeferredValue(search);
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [showClients, setShowClients] = useState(false);
 
@@ -223,9 +203,9 @@ export default function ClientsScreen() {
 
   // Debounce search input
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(search), SEARCH_DEBOUNCE_MS);
+    const timer = setTimeout(() => setDebouncedSearch(deferredSearch), SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [search]);
+  }, [deferredSearch]);
 
   const {
     data: clients = [],
@@ -248,7 +228,7 @@ export default function ClientsScreen() {
     router.push({ pathname: '/client-detail', params: { id: clientId } });
   }, [router]);
 
-  const goToScan = useCallback(() => router.push('/scan-qr'), [router]);
+  const goToScan = useCallback(() => openScanner(), [openScanner]);
 
   const isStamps = merchant?.loyaltyType === 'STAMPS';
 
@@ -261,6 +241,12 @@ export default function ClientsScreen() {
   const ItemSeparator = useCallback(() => <View style={styles.separator} />, []);
 
   const showSkeleton = loading && clients.length === 0 && !search;
+
+  const getItemLayout = useCallback((_: unknown, index: number) => {
+    const itemHeight = 72;
+    const separatorHeight = 8;
+    return { length: itemHeight + separatorHeight, offset: (itemHeight + separatorHeight) * index, index };
+  }, []);
 
   return (
     <Animated.View style={[styles.container, { backgroundColor: theme.bg }, focusStyle]}>
@@ -275,10 +261,16 @@ export default function ClientsScreen() {
         </Text>
       </View>
 
-      {/* ── Dismissable tip banner ── */}
+      {/* ── Dismissable tip banner (shared with the Accueil screen) ── */}
       {bannerVisible && (
         <View style={{ paddingHorizontal: 16, paddingTop: 8 }}>
-          <ClientsBanner onDismiss={dismissBanner} onDismissForever={dismissBannerForever} />
+          <TipBanner
+            title={t('clients.bannerTitle')}
+            description={t('clients.bannerDesc')}
+            hideLabel={t('clients.bannerHide')}
+            onDismiss={dismissBanner}
+            onDismissForever={dismissBannerForever}
+          />
         </View>
       )}
 
@@ -336,82 +328,87 @@ export default function ClientsScreen() {
           </TouchableOpacity>
         </View>
       ) : (
-      /* ── List ── */
-      <FlatList
-        data={clients}
-        renderItem={renderClient}
-        keyExtractor={keyExtractor}
-        contentContainerStyle={styles.list}
-        removeClippedSubviews={Platform.OS === 'android'}
-        maxToRenderPerBatch={10}
-        windowSize={7}
-        initialNumToRender={10}
-        updateCellsBatchingPeriod={50}
-        ItemSeparatorComponent={ItemSeparator}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            colors={[theme.primary]}
-            tintColor={theme.primary}
-          />
-        }
-        showsVerticalScrollIndicator={false}
-        ListHeaderComponent={
-          <View>
-            {/* ── Search bar ── */}
-            <View style={[styles.searchBar, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
-              <Search size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
-              <TextInput
-                ref={searchInputRef}
-                style={[styles.searchInput, { color: theme.text }]}
-                placeholder={t('clients.searchPlaceholder')}
-                placeholderTextColor={theme.textMuted}
-                value={search}
-                onChangeText={setSearch}
-                autoCapitalize="none"
-                autoCorrect={false}
-                returnKeyType="search"
-                keyboardType="default"
-                accessibilityLabel={t('clients.searchPlaceholder')}
-                maxFontSizeMultiplier={1.6}
-              />
-              {search.length > 0 && (
-                <TouchableOpacity
-                  onPress={clearSearch}
-                  hitSlop={HIT_SLOP_LARGE}
-                  accessibilityRole="button"
-                  accessibilityLabel={t('common.clear', { defaultValue: 'Effacer' })}
-                >
-                  <X size={18} color={theme.textMuted} />
-                </TouchableOpacity>
-              )}
-            </View>
-
-            {/* ── Result count ── */}
+      /* ── List with sticky search ── */
+      <View style={styles.listWrap}>
+        {/* ── Sticky search bar — stays visible while the client list scrolls ── */}
+        <View style={styles.searchContainer}>
+          <View style={[styles.searchBar, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
+            <Search size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
+            <TextInput
+              ref={searchInputRef}
+              style={[styles.searchInput, { color: theme.text }]}
+              placeholder={t('clients.searchPlaceholder')}
+              placeholderTextColor={theme.textMuted}
+              value={search}
+              onChangeText={setSearch}
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="search"
+              keyboardType="default"
+              accessibilityLabel={t('clients.searchPlaceholder')}
+              maxFontSizeMultiplier={1.6}
+            />
             {search.length > 0 && (
-              <Text
-                style={[styles.resultCount, { color: theme.textMuted }]}
-                maxFontSizeMultiplier={1.6}
-                accessibilityLiveRegion="polite"
+              <TouchableOpacity
+                onPress={clearSearch}
+                hitSlop={HIT_SLOP_LARGE}
+                style={styles.clearBtn}
+                accessibilityRole="button"
+                accessibilityLabel={t('common.clear', { defaultValue: 'Effacer' })}
               >
-                {t('clients.resultsCount', { count: clients.length })}
-              </Text>
+                <X size={18} color={theme.textMuted} />
+              </TouchableOpacity>
             )}
           </View>
-        }
-        ListFooterComponent={
-          !search && clients.length > 0 ? (
-            <View style={styles.footerEndWrap}>
-              <View style={[styles.footerDivider, { backgroundColor: theme.border }]} />
-              <Text style={[styles.footerEnd, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>
-                {t('common.allDisplayed')}
-              </Text>
-            </View>
-          ) : null
-        }
-        ListEmptyComponent={<EmptyState search={search} theme={theme} onScan={goToScan} />}
-      />
+
+          {/* ── Result count ── */}
+          {search.length > 0 && (
+            <Text
+              style={[styles.resultCount, { color: theme.textMuted }]}
+              maxFontSizeMultiplier={1.6}
+              accessibilityLiveRegion="polite"
+            >
+              {t('clients.resultsCount', { count: clients.length })}
+            </Text>
+          )}
+        </View>
+
+        <FlatList
+          data={clients}
+          renderItem={renderClient}
+          keyExtractor={keyExtractor}
+          contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 116 }]}
+          removeClippedSubviews={Platform.OS === 'android'}
+          maxToRenderPerBatch={8}
+          windowSize={7}
+          initialNumToRender={10}
+          updateCellsBatchingPeriod={50}
+          getItemLayout={getItemLayout}
+          ItemSeparatorComponent={ItemSeparator}
+          keyboardDismissMode="on-drag"
+          keyboardShouldPersistTaps="handled"
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={[theme.primary]}
+              tintColor={theme.primary}
+            />
+          }
+          showsVerticalScrollIndicator={false}
+          ListFooterComponent={
+            !search && clients.length > 0 ? (
+              <View style={styles.footerEndWrap}>
+                <View style={[styles.footerDivider, { backgroundColor: theme.border }]} />
+                <Text style={[styles.footerEnd, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>
+                  {t('common.allDisplayed')}
+                </Text>
+              </View>
+            ) : null
+          }
+          ListEmptyComponent={<EmptyState search={search} theme={theme} onScan={goToScan} />}
+        />
+      </View>
       )}
     </Animated.View>
   );
@@ -420,6 +417,20 @@ export default function ClientsScreen() {
 // ── Styles ──────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: { flex: 1 },
+
+  /* List wrapper — holds the sticky search + the scrolling FlatList */
+  listWrap: { flex: 1 },
+  searchContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 4,
+  },
+  clearBtn: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
   /* Header bar — simple title + refresh */
   headerBar: {
@@ -461,7 +472,7 @@ const styles = StyleSheet.create({
   },
 
   /* List */
-  list: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 120 },
+  list: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 120 },
   separator: { height: 8 },
 
   /* Client card — matching activity txCard */
@@ -494,9 +505,17 @@ const styles = StyleSheet.create({
     fontFamily: 'Lexend_600SemiBold',
     letterSpacing: -0.2,
   },
+  clientMeta: {
+    fontSize: 12,
+    marginTop: 2,
+    fontWeight: '500',
+    fontFamily: 'Lexend_500Medium',
+    letterSpacing: 0.1,
+  },
   pointsPill: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 4,
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 20,
@@ -572,59 +591,5 @@ const styles = StyleSheet.create({
     fontFamily: 'Lexend_400Regular',
     letterSpacing: 0.2,
     opacity: 0.5,
-  },
-});
-
-const bannerStyles = StyleSheet.create({
-  wrapper: {
-    borderRadius: 14,
-    borderWidth: 1,
-    padding: 14,
-    overflow: 'hidden',
-  },
-  closeBtn: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-    zIndex: 1,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  content: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-    paddingRight: 24,
-  },
-  textWrap: {
-    flex: 1,
-  },
-  title: {
-    fontSize: 14,
-    fontWeight: '600',
-    fontFamily: 'Lexend_600SemiBold',
-    letterSpacing: -0.2,
-  },
-  desc: {
-    fontSize: 12,
-    fontFamily: 'Lexend_400Regular',
-    lineHeight: 18,
-    marginTop: 3,
-    letterSpacing: 0.1,
-  },
-  hideBtn: {
-    alignSelf: 'flex-end',
-    marginTop: 8,
-    paddingVertical: 4,
-    paddingHorizontal: 2,
-  },
-  hideText: {
-    fontSize: 11,
-    fontFamily: 'Lexend_500Medium',
-    textDecorationLine: 'underline',
-    letterSpacing: 0.1,
   },
 });

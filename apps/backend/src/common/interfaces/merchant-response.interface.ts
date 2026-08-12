@@ -21,7 +21,7 @@ export interface MerchantResponse {
   coverUrl: string | null;
   pointsRules: unknown;
   pointsRate: number;
-  loyaltyType: string;
+  loyaltyType: string | null;
   conversionRate: number;
   stampsForReward: number;
   activeRewardId: string | null;

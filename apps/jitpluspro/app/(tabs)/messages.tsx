@@ -1,16 +1,14 @@
-import React, { useState, useRef, useCallback, useEffect, memo, useReducer, useMemo } from 'react';
+import React, { useState, useRef, useCallback, useEffect, memo, useReducer } from 'react';
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  FlatList,
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
-  RefreshControl,
   Animated,
   LayoutAnimation,
   UIManager,
@@ -18,26 +16,20 @@ import {
   ScrollView,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { timeAgo } from '@/utils/date';
-import { useGuardedCallback } from '@/hooks/useGuardedCallback';
 import {
   Send,
-  Bell,
-  CheckCircle2,
-  XCircle,
-  Users,
   Clock,
-  ChevronDown,
-  ChevronUp,
-  MessageCircle,
-  Eye,
   Mail,
   Shield,
   Lightbulb,
   X,
   Zap,
   Info,
+  Lock,
+  Crown,
+  Image as ImageIcon,
 } from 'lucide-react-native';
+import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthState } from '@/contexts/AuthContext';
@@ -47,9 +39,9 @@ import { getErrorMessage } from '@/utils/error';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusFade } from '@/hooks/useFocusFade';
 import { ms } from '@/utils/responsive';
-import PremiumLockCard from '@/components/PremiumLockCard';
-import { useNotificationHistory, useEmailQuota, useSendPushNotification, useSendEmail } from '@/hooks/useQueryHooks';
-import type { NotificationRecord } from '@/hooks/useQueryHooks';
+import { useEmailQuota, useSendPushNotification, useSendEmail } from '@/hooks/useQueryHooks';
+import { ReminderBanner } from '@/components/ReminderBanner';
+import { ASYNC_STORAGE_KEYS } from '@/constants/app';
 
 // ── Accessibility helpers ──
 const HIT_SLOP_LARGE = { top: 12, bottom: 12, left: 12, right: 12 };
@@ -76,29 +68,12 @@ if (
 
 // ── Channel color constants ──
 const CHANNEL_COLORS = {
-  WHATSAPP: '#25D366',
+  NOTIF: '#7C3AED',
   EMAIL: '#EA4335',
 } as const;
-
-// ── Emoji stripping (DB-sourced text may contain emojis that conflict with custom icons) ──
-const EMOJI_CACHE_LIMIT = 500;
-const emojiCache = new Map<string, string>();
-const stripEmojis = (str: string | null | undefined): string => {
-  if (!str) return '';
-  const cached = emojiCache.get(str);
-  if (cached !== undefined) {
-    emojiCache.delete(str);
-    emojiCache.set(str, cached);
-    return cached;
-  }
-  const stripped = str.replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, '').replace(/\s+/g, ' ').trim();
-  if (emojiCache.size >= EMOJI_CACHE_LIMIT) {
-    const oldest = emojiCache.keys().next().value;
-    if (oldest !== undefined) emojiCache.delete(oldest);
-  }
-  emojiCache.set(str, stripped);
-  return stripped;
-};
+// Darker shades used for send-button gradients / borders
+const NOTIF_COLOR_DARK = '#6D28D9';
+const EMAIL_COLOR_DARK = '#C5221F';
 
 // ── Cooldown duration after a successful send (ms) ──
 const SEND_COOLDOWN_MS = 30_000;
@@ -211,177 +186,197 @@ const LegalNote = React.memo(function LegalNote() {
   );
 });
 
-// ── Extracted memoized notification card ──
-const NotificationCard = memo(function NotificationCard({
-  item,
-  isExpanded,
-  onToggle,
-}: {
-  item: NotificationRecord;
-  isExpanded: boolean;
-  onToggle: (id: string) => void;
-}) {
+// ── Indeterminate progress bar (shown while a campaign is being sent) ──
+const IndeterminateBar = memo(function IndeterminateBar({ color }: { color: string }) {
   const theme = useTheme();
-  const { t, locale } = useLanguage();
-  const channel = item.channel ?? 'PUSH';
-  const channelLabel = channel === 'EMAIL'
-    ? t('messages.channelEmail')
-    : channel === 'WHATSAPP'
-      ? t('messages.channelWhatsapp')
-      : t('messages.channelNotif');
-  const channelColor = channel === 'EMAIL'
-    ? CHANNEL_COLORS.EMAIL
-    : channel === 'WHATSAPP'
-      ? CHANNEL_COLORS.WHATSAPP
-      : theme.primary;
-  const ChannelIcon = channel === 'EMAIL' ? Mail : channel === 'WHATSAPP' ? MessageCircle : Send;
-  const cleanTitle = stripEmojis(item.title);
-  const cleanBody = stripEmojis(item.body);
-
+  const x = useRef(new Animated.Value(0)).current;
+  const [w, setW] = useState(0);
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.timing(x, { toValue: 1, duration: 900, useNativeDriver: true }),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [x]);
   return (
-    <TouchableOpacity
-      activeOpacity={0.92}
-      onPress={() => { animateAccordion(); safeSelection(); onToggle(item.id); }}
-      style={[styles.notifCard, { backgroundColor: theme.bgCard, borderColor: isExpanded ? theme.primary + '60' : theme.borderLight }]}
-      accessibilityRole="button"
-      accessibilityState={{ expanded: isExpanded }}
-      accessibilityLabel={`${cleanTitle}. ${channelLabel}.`}
-      accessibilityHint={isExpanded ? t('common.collapse') : t('common.expand')}
+    <View
+      style={[styles.progressTrack, { backgroundColor: theme.border }]}
+      onLayout={(e) => setW(e.nativeEvent.layout.width)}
+      importantForAccessibility="no"
     >
-      <View style={styles.notifHeader}>
-        <View style={[styles.notifIconWrap, { shadowColor: channelColor }]} importantForAccessibility="no">
-          <LinearGradient
-            colors={[channelColor + '30', channelColor + '08']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={[styles.notifIcon, { borderColor: channelColor + '35' }]}
-          >
-            <ChannelIcon size={ms(18)} color={channelColor} strokeWidth={2} />
-          </LinearGradient>
-        </View>
-        <View style={styles.notifMeta}>
-          <View style={styles.notifBadgeRow}>
-            <View style={[styles.channelBadge, { backgroundColor: channelColor + '18', borderColor: channelColor + '40' }]}>
-              <Text style={[styles.channelBadgeText, { color: channelColor }]} maxFontSizeMultiplier={1.4}>{channelLabel}</Text>
-            </View>
-            {isExpanded
-              ? <ChevronUp size={16} color={theme.textMuted} />
-              : <ChevronDown size={16} color={theme.textMuted} />}
-          </View>
-          <Text style={[styles.notifTitle, { color: theme.text }]} maxFontSizeMultiplier={1.6} numberOfLines={isExpanded ? undefined : 2}>
-            {cleanTitle}
-          </Text>
-          <View style={styles.notifTime}>
-            <Clock size={11} color={theme.textMuted} />
-            <Text style={[styles.notifTimeText, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>
-              {timeAgo(item.createdAt, locale)}
-            </Text>
-          </View>
-        </View>
-      </View>
-
-      <Text style={[styles.notifBody, { color: theme.textSecondary, marginLeft: 48 }]} maxFontSizeMultiplier={1.6} numberOfLines={isExpanded ? undefined : 2}>
-        {cleanBody}
-      </Text>
-
-      <View style={[styles.notifStats, { borderTopColor: theme.borderLight }]}>
-        <View style={styles.stat}>
-          <Users size={13} color={theme.textMuted} />
-          <Text style={[styles.statText, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>
-            {t('messages.statRecipients', { count: channel === 'PUSH' ? (item.receivedCount ?? item.recipientCount) : item.recipientCount })}
-          </Text>
-        </View>
-        <View style={styles.stat}>
-          <CheckCircle2 size={13} color={theme.success} />
-          <Text style={[styles.statText, { color: theme.success }]} maxFontSizeMultiplier={1.4}>
-            {t('messages.statSent', { count: channel === 'PUSH' ? (item.successCount || item.receivedCount || item.recipientCount) : item.successCount })}
-          </Text>
-        </View>
-        {channel === 'PUSH' && (
-          <View style={styles.stat}>
-            <Eye size={13} color={theme.primary} />
-            <Text style={[styles.statText, { color: theme.primary }]} maxFontSizeMultiplier={1.4}>
-              {t('messages.statRead', { count: item.readCount ?? 0 })}
-            </Text>
-          </View>
-        )}
-        {item.failureCount > 0 && (
-          <View style={styles.stat}>
-            <XCircle size={13} color={theme.danger} />
-            <Text style={[styles.statText, { color: theme.danger }]} maxFontSizeMultiplier={1.4}>{item.failureCount}</Text>
-          </View>
-        )}
-      </View>
-    </TouchableOpacity>
+      <Animated.View
+        style={[
+          styles.progressIndet,
+          { backgroundColor: color, transform: [{ translateX: x.interpolate({ inputRange: [0, 1], outputRange: [-w * 0.4, w] }) }] },
+        ]}
+      />
+    </View>
   );
 });
 
-// ── History channel filter ──
-type HistoryFilter = 'ALL' | 'PUSH' | 'EMAIL' | 'WHATSAPP';
+// ── Send button with 3 states: normal / sending / cooldown ──
+const SendButton = memo(function SendButton({
+  channelColor,
+  channelColorDark,
+  label,
+  Icon,
+  canSend,
+  isSending,
+  cooldownRemaining,
+  onPress,
+}: {
+  channelColor: string;
+  channelColorDark: string;
+  label: string;
+  Icon: React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
+  canSend: boolean;
+  isSending: boolean;
+  cooldownRemaining: number;
+  onPress: () => void;
+}) {
+  const theme = useTheme();
+  const { t } = useLanguage();
+  const cooling = cooldownRemaining > 0;
+  const disabled = !canSend || isSending || cooling;
+  const totalSec = SEND_COOLDOWN_MS / 1000;
+  const coolFraction = cooling ? Math.min(1, Math.max(0, (totalSec - cooldownRemaining) / totalSec)) : 0;
+  return (
+    <View>
+      <TouchableOpacity
+        onPress={onPress}
+        disabled={disabled}
+        activeOpacity={0.85}
+        accessibilityRole="button"
+        accessibilityLabel={cooling ? t('messages.cooldownWait', { s: cooldownRemaining }) : label}
+        accessibilityState={{ disabled, busy: isSending }}
+      >
+        {cooling ? (
+          <View style={[styles.sendBtn, { backgroundColor: theme.border, borderColor: theme.border }]}>
+            <ActivityIndicator size="small" color={theme.textMuted} />
+            <Text style={[styles.sendBtnText, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>
+              {t('messages.cooldownWait', { s: cooldownRemaining })}
+            </Text>
+          </View>
+        ) : isSending ? (
+          <View style={[styles.sendBtn, { backgroundColor: channelColor, borderColor: channelColorDark }]}>
+            <ActivityIndicator size="small" color="#fff" />
+            <Text style={styles.sendBtnText} maxFontSizeMultiplier={1.4}>{t('messages.sendingShort')}</Text>
+          </View>
+        ) : canSend ? (
+          <LinearGradient
+            colors={[channelColor, channelColorDark]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={[styles.sendBtn, { borderColor: channelColorDark }]}
+          >
+            <Icon size={18} color="#fff" strokeWidth={2} />
+            <Text style={styles.sendBtnText} maxFontSizeMultiplier={1.4}>{label}</Text>
+          </LinearGradient>
+        ) : (
+          <View style={[styles.sendBtn, { backgroundColor: theme.border, borderColor: theme.border }]}>
+            <Icon size={18} color={theme.textMuted} strokeWidth={2} />
+            <Text style={[styles.sendBtnText, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>{label}</Text>
+          </View>
+        )}
+      </TouchableOpacity>
+      {isSending && <IndeterminateBar color={channelColor} />}
+      {cooling && (
+        <View style={[styles.progressTrack, { backgroundColor: theme.border }]} importantForAccessibility="no">
+          <View style={[styles.progressFill, { backgroundColor: theme.textMuted, width: `${Math.round(coolFraction * 100)}%` }]} />
+        </View>
+      )}
+    </View>
+  );
+});
+
+// ── Per-channel Premium lock card (E-mail reserved for Pro plan) ──
+const EmailLockCard = memo(function EmailLockCard({ onUpgrade }: { onUpgrade: () => void }) {
+  const { t } = useLanguage();
+  return (
+    <View style={styles.lockWrapper}>
+      <LinearGradient
+        colors={['#0f031e', '#1a0533']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.lockCard}
+      >
+        <LinearGradient
+          colors={[palette.gold, '#F59E0B']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.lockIconBg}
+        >
+          <Crown size={26} color="#1a0533" strokeWidth={2} />
+        </LinearGradient>
+        <Text style={styles.lockTitle} maxFontSizeMultiplier={1.4}>{t('messages.emailLockedTitle')}</Text>
+        <Text style={styles.lockDesc} maxFontSizeMultiplier={1.6}>{t('messages.emailLockedDesc')}</Text>
+        <TouchableOpacity
+          onPress={onUpgrade}
+          activeOpacity={0.85}
+          style={styles.lockCtaWrap}
+          accessibilityRole="button"
+          accessibilityLabel={t('messages.upgradeToPro')}
+        >
+          <LinearGradient
+            colors={[palette.gold, '#F59E0B']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.lockCta}
+          >
+            <Crown size={16} color="#1a0533" strokeWidth={2.2} />
+            <Text style={styles.lockCtaText} maxFontSizeMultiplier={1.3}>{t('messages.upgradeToPro')}</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+      </LinearGradient>
+    </View>
+  );
+});
 
 // ── Messages reducer ──
+type ActiveChannel = 'NOTIF' | 'EMAIL';
+
 interface MsgState {
   title: string;
   body: string;
-  showCompose: boolean;
   emailSubject: string;
   emailBody: string;
-  showEmail: boolean;
-  pushCooldown: boolean;
-  emailCooldown: boolean;
-  expandedId: string | null;
-  showHistory: boolean;
-  historyFilter: HistoryFilter;
+  activeChannel: ActiveChannel;
+  pushCooldownUntil: number | null;
+  emailCooldownUntil: number | null;
 }
 
 const initialMsgState: MsgState = {
   title: '',
   body: '',
-  showCompose: false,
   emailSubject: '',
   emailBody: '',
-  showEmail: false,
-  pushCooldown: false,
-  emailCooldown: false,
-  expandedId: null,
-  showHistory: false,
-  historyFilter: 'ALL',
+  activeChannel: 'NOTIF',
+  pushCooldownUntil: null,
+  emailCooldownUntil: null,
 };
 
-type SectionKey = 'showCompose' | 'showEmail' | 'showHistory';
-type CooldownKey = 'pushCooldown' | 'emailCooldown';
+type CooldownKey = 'pushCooldownUntil' | 'emailCooldownUntil';
 
 type MsgAction =
   | { type: 'SET'; payload: Partial<MsgState> }
-  | { type: 'TOGGLE_SECTION'; section: SectionKey }
-  | { type: 'START_COOLDOWN'; key: CooldownKey }
+  | { type: 'SET_CHANNEL'; channel: ActiveChannel }
+  | { type: 'START_COOLDOWN'; key: CooldownKey; until: number }
   | { type: 'END_COOLDOWN'; key: CooldownKey }
-  | { type: 'RESET_FORM'; form: 'push' | 'email' }
-  | { type: 'TOGGLE_EXPANDED'; id: string }
-  | { type: 'SET_HISTORY_FILTER'; filter: HistoryFilter };
-
-const allSections: SectionKey[] = ['showCompose', 'showEmail', 'showHistory'];
+  | { type: 'RESET_FORM'; form: 'push' | 'email' };
 
 function msgReducer(state: MsgState, action: MsgAction): MsgState {
   switch (action.type) {
     case 'SET':
       return { ...state, ...action.payload };
-    case 'TOGGLE_SECTION': {
-      const next = !state[action.section];
-      const closed = Object.fromEntries(allSections.map(k => [k, false]));
-      return { ...state, ...closed, [action.section]: next };
-    }
+    case 'SET_CHANNEL':
+      return { ...state, activeChannel: action.channel };
     case 'START_COOLDOWN':
-      return { ...state, [action.key]: true };
+      return { ...state, [action.key]: action.until };
     case 'END_COOLDOWN':
-      return { ...state, [action.key]: false };
+      return { ...state, [action.key]: null };
     case 'RESET_FORM':
       if (action.form === 'push') return { ...state, title: '', body: '' };
       return { ...state, emailSubject: '', emailBody: '' };
-    case 'TOGGLE_EXPANDED':
-      return { ...state, expandedId: state.expandedId === action.id ? null : action.id };
-    case 'SET_HISTORY_FILTER':
-      return { ...state, historyFilter: action.filter };
   }
 }
 
@@ -413,28 +408,18 @@ export default function MessagesScreen() {
   }, []);
 
   const [state, dispatch] = useReducer(msgReducer, initialMsgState);
-  const { title, body, showCompose, emailSubject, emailBody, showEmail, pushCooldown, emailCooldown, expandedId, showHistory, historyFilter } = state;
+  const { title, body, emailSubject, emailBody, activeChannel, pushCooldownUntil, emailCooldownUntil } = state;
   const set = useCallback((payload: Partial<MsgState>) => dispatch({ type: 'SET', payload }), []);
+  const router = useRouter();
+  const goToPlan = useCallback(() => { safeSelection(); router.push('/plan'); }, [router]);
 
   // ── React Query mutations ──
   const pushMutation = useSendPushNotification();
   const emailMutation = useSendEmail();
 
   // ── React Query hooks (disabled for team members — backend requires owner) ──
-  // History is only fetched when the user opens the history section
-  const { data: history = [], isLoading: loading, isRefetching: refreshing, refetch: refetchHistory } = useNotificationHistory(isOwner && showHistory);
-  const { data: emailQuota } = useEmailQuota(isOwner && isPremium && showEmail);
+  const { data: emailQuota } = useEmailQuota(isOwner && isPremium && activeChannel === 'EMAIL');
 
-  // ── Filtered history ──
-  const filteredHistory = useMemo(() => {
-    if (historyFilter === 'ALL') return history;
-    return history.filter((n) => {
-      const ch = n.channel ?? 'PUSH';
-      return ch === historyFilter;
-    });
-  }, [history, historyFilter]);
-
-  const sendRipple = useRef(new Animated.Value(0)).current;
   const [focusedField, setFocusedField] = useState<'title' | 'body' | null>(null);
 
   // Cooldown timer refs — cleaned up on unmount to prevent memory leaks
@@ -445,13 +430,23 @@ export default function MessagesScreen() {
     };
   }, []);
   const startCooldown = useCallback((key: CooldownKey) => {
-    dispatch({ type: 'START_COOLDOWN', key });
+    dispatch({ type: 'START_COOLDOWN', key, until: Date.now() + SEND_COOLDOWN_MS });
     const timer = setTimeout(() => {
       dispatch({ type: 'END_COOLDOWN', key });
       cooldownTimers.current = cooldownTimers.current.filter((t) => t !== timer);
     }, SEND_COOLDOWN_MS);
     cooldownTimers.current.push(timer);
   }, []);
+
+  // ── Live countdown while a cooldown is active (re-enables the button automatically) ──
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    if (pushCooldownUntil == null && emailCooldownUntil == null) return;
+    const id = setInterval(() => setNowTick(Date.now()), 500);
+    return () => clearInterval(id);
+  }, [pushCooldownUntil, emailCooldownUntil]);
+  const pushRemaining = pushCooldownUntil ? Math.max(0, Math.ceil((pushCooldownUntil - nowTick) / 1000)) : 0;
+  const emailRemaining = emailCooldownUntil ? Math.max(0, Math.ceil((emailCooldownUntil - nowTick) / 1000)) : 0;
 
   // ── Handle WhatsApp send ──
   // NOTE: WhatsApp broadcast UI is disabled (not yet approved). Intentionally removed.
@@ -492,7 +487,7 @@ export default function MessagesScreen() {
               );
 
               dispatch({ type: 'RESET_FORM', form: 'email' });
-              startCooldown('emailCooldown');
+              startCooldown('emailCooldownUntil');
             } catch (err: unknown) {
               safeNotification(Haptics.NotificationFeedbackType.Error);
               handlePremiumError(err, t);
@@ -502,8 +497,6 @@ export default function MessagesScreen() {
       ],
     );
   }, [emailSubject, emailBody, emailMutation, startCooldown, t]);
-
-  const onRefresh = useGuardedCallback(async () => { await refetchHistory(); }, [refetchHistory]);
 
   // ── Send notification ──
   const handleSend = useCallback(() => {
@@ -538,7 +531,7 @@ export default function MessagesScreen() {
               );
 
               dispatch({ type: 'RESET_FORM', form: 'push' });
-              startCooldown('pushCooldown');
+              startCooldown('pushCooldownUntil');
             } catch (err: unknown) {
               safeNotification(Haptics.NotificationFeedbackType.Error);
               handlePremiumError(err, t);
@@ -549,42 +542,7 @@ export default function MessagesScreen() {
     );
   }, [title, body, pushMutation, startCooldown, t]);
 
-  const triggerSendRipple = useCallback(() => {
-    sendRipple.setValue(0);
-    Animated.timing(sendRipple, { toValue: 1, duration: 420, useNativeDriver: true }).start();
-  }, [sendRipple]);
-
-  const sendRippleStyle = useMemo(() => ({
-    opacity: sendRipple.interpolate({ inputRange: [0, 1], outputRange: [0.35, 0] }),
-    transform: [{ scale: sendRipple.interpolate({ inputRange: [0, 1], outputRange: [1, 2.6] }) }],
-  }), [sendRipple]);
-
   // focusStyle is provided by useFocusFade()
-
-  // ── Toggle expanded card ──
-  const toggleExpanded = useCallback((id: string) => {
-    dispatch({ type: 'TOGGLE_EXPANDED', id });
-  }, []);
-
-  // ── Render notification card (delegates to memoized component) ──
-  const renderNotification = useCallback(({ item }: { item: NotificationRecord }) => (
-    <NotificationCard
-      item={item}
-      isExpanded={expandedId === item.id}
-      onToggle={toggleExpanded}
-    />
-  ), [expandedId, toggleExpanded]);
-
-  const keyExtractor = useCallback((item: NotificationRecord) => item.id, []);
-
-  const ItemSeparator = useCallback(() => <View style={styles.separator} />, []);
-
-  // ── Filter pills config ──
-  const filterOptions: { key: HistoryFilter; label: string }[] = useMemo(() => [
-    { key: 'ALL', label: t('messages.filterAll') },
-    { key: 'PUSH', label: t('messages.filterPush') },
-    { key: 'EMAIL', label: t('messages.filterEmail') },
-  ], [t]);
 
   // focusStyle is provided by useFocusFade()
   if (isTeamMember) {
@@ -621,6 +579,34 @@ export default function MessagesScreen() {
         {/* ── Simple header ── */}
         <View style={[styles.headerBar, { paddingTop: insets.top + 12 }]}>
           <Text style={[styles.headerTitle, { color: theme.text }]} maxFontSizeMultiplier={1.4} accessibilityRole="header">{t('messages.title')}</Text>
+          <TouchableOpacity
+            onPress={() => {
+              safeSelection();
+              router.push('/messages-history');
+            }}
+            activeOpacity={0.8}
+            style={[
+              styles.historyHeaderBtn,
+              {
+                backgroundColor: theme.bgCard,
+                borderColor: theme.borderLight,
+              },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel={t('messages.showHistory')}
+            accessibilityHint={t('messages.showHistoryHint')}
+          >
+            <Clock size={14} color={theme.textMuted} strokeWidth={2} />
+            <Text
+              style={[
+                styles.historyHeaderBtnText,
+                { color: theme.textMuted },
+              ]}
+              maxFontSizeMultiplier={1.3}
+            >
+              {t('messages.showHistory')}
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {/* ── Dismissable tip banner ── */}
@@ -630,64 +616,63 @@ export default function MessagesScreen() {
           </View>
         )}
 
-        <FlatList
-          data={showHistory ? filteredHistory : []}
-          keyExtractor={keyExtractor}
-          renderItem={renderNotification}
-          contentContainerStyle={{ paddingBottom: 120, paddingHorizontal: 16 }}
+        <ScrollView
+          contentContainerStyle={{ paddingBottom: insets.bottom + 116, paddingHorizontal: 16 }}
           showsVerticalScrollIndicator={false}
-          removeClippedSubviews={Platform.OS === 'android'}
-          maxToRenderPerBatch={8}
-          windowSize={5}
-          initialNumToRender={8}
-          ItemSeparatorComponent={ItemSeparator}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />
-          }
-          ListHeaderComponent={
-            <View>
-              {/* ── Channel Toggle Row (Notification / E-mail) ── */}
-              <View style={styles.toggleRow}>
+          keyboardShouldPersistTaps="handled"
+        >
+          {!isTeamMember && (
+            <ReminderBanner
+              visible={!merchant?.logoUrl}
+              Icon={ImageIcon}
+              title={t('reminders.logoTitle')}
+              message={t('reminders.logoMessage')}
+              actionLabel={t('reminders.logoAction')}
+              onPress={() => router.push('/profile')}
+              storageKey={ASYNC_STORAGE_KEYS.MESSAGES_LOGO_BANNER_DISMISSED}
+            />
+          )}
+              {/* ── Channel segmented control (Notif / E-mail) ── */}
+              <View style={styles.segmentRow}>
                 <TouchableOpacity
-                  onPress={() => { animateAccordion(); safeSelection(); dispatch({ type: 'TOGGLE_SECTION', section: 'showCompose' }); }}
-                  activeOpacity={0.8}
+                  onPress={() => { animateAccordion(); safeSelection(); dispatch({ type: 'SET_CHANNEL', channel: 'NOTIF' }); }}
+                  activeOpacity={0.85}
                   style={[
-                    styles.composeToggle,
-                    { flex: 1, backgroundColor: showCompose ? theme.primary + '18' : theme.bgCard, borderColor: showCompose ? theme.primary : theme.borderLight },
+                    styles.segmentTab,
+                    { backgroundColor: activeChannel === 'NOTIF' ? CHANNEL_COLORS.NOTIF + '18' : theme.bgCard, borderColor: activeChannel === 'NOTIF' ? CHANNEL_COLORS.NOTIF : theme.borderLight },
                   ]}
                   accessibilityRole="button"
                   accessibilityLabel={t('messages.channelNotif')}
-                  accessibilityState={{ expanded: showCompose }}
+                  accessibilityState={{ selected: activeChannel === 'NOTIF' }}
                   hitSlop={HIT_SLOP_MED}
                 >
-                  <Send size={16} color={theme.primary} />
-                  <Text style={[styles.composeToggleText, { color: showCompose ? theme.primary : theme.text }]} maxFontSizeMultiplier={1.4} numberOfLines={1}>
+                  <Send size={16} color={activeChannel === 'NOTIF' ? CHANNEL_COLORS.NOTIF : theme.textMuted} />
+                  <Text style={[styles.segmentText, { color: activeChannel === 'NOTIF' ? CHANNEL_COLORS.NOTIF : theme.text }]} maxFontSizeMultiplier={1.4} numberOfLines={1}>
                     {t('messages.channelNotif')}
                   </Text>
-                  {showCompose ? <ChevronUp size={14} color={theme.primary} /> : <ChevronDown size={14} color={theme.textMuted} />}
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  onPress={() => { animateAccordion(); safeSelection(); dispatch({ type: 'TOGGLE_SECTION', section: 'showEmail' }); }}
-                  activeOpacity={0.8}
+                  onPress={() => { animateAccordion(); safeSelection(); dispatch({ type: 'SET_CHANNEL', channel: 'EMAIL' }); }}
+                  activeOpacity={0.85}
                   style={[
-                    styles.composeToggle,
-                    { flex: 1, backgroundColor: showEmail ? CHANNEL_COLORS.EMAIL + '18' : theme.bgCard, borderColor: showEmail ? CHANNEL_COLORS.EMAIL : theme.borderLight },
+                    styles.segmentTab,
+                    { backgroundColor: activeChannel === 'EMAIL' ? CHANNEL_COLORS.EMAIL + '18' : theme.bgCard, borderColor: activeChannel === 'EMAIL' ? CHANNEL_COLORS.EMAIL : theme.borderLight },
                   ]}
                   accessibilityRole="button"
-                  accessibilityLabel={t('messages.channelEmail')}
-                  accessibilityState={{ expanded: showEmail }}
+                  accessibilityLabel={`${t('messages.channelEmail')}${!isPremium ? ` — ${t('messages.premiumOnly')}` : ''}`}
+                  accessibilityState={{ selected: activeChannel === 'EMAIL' }}
                   hitSlop={HIT_SLOP_MED}
                 >
-                  <Mail size={16} color={CHANNEL_COLORS.EMAIL} />
-                  <Text style={[styles.composeToggleText, { color: showEmail ? CHANNEL_COLORS.EMAIL : theme.text }]} maxFontSizeMultiplier={1.4} numberOfLines={1}>
+                  <Mail size={16} color={activeChannel === 'EMAIL' ? CHANNEL_COLORS.EMAIL : theme.textMuted} />
+                  <Text style={[styles.segmentText, { color: activeChannel === 'EMAIL' ? CHANNEL_COLORS.EMAIL : theme.text }]} maxFontSizeMultiplier={1.4} numberOfLines={1}>
                     {t('messages.channelEmail')}
                   </Text>
-                  {showEmail ? <ChevronUp size={14} color={CHANNEL_COLORS.EMAIL} /> : <ChevronDown size={14} color={theme.textMuted} />}
+                  {!isPremium && <Lock size={13} color={activeChannel === 'EMAIL' ? CHANNEL_COLORS.EMAIL : theme.textMuted} strokeWidth={2.2} />}
                 </TouchableOpacity>
               </View>
 
-              {showCompose && (
+              {activeChannel === 'NOTIF' && (
                 <View
                   style={[styles.composeCard, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}
                 >
@@ -773,47 +758,32 @@ export default function MessagesScreen() {
                     {body.length}/500
                   </Text>
 
-                  <TouchableOpacity
-                    style={[
-                      styles.sendBtn,
-                      {
-                        backgroundColor: title.trim() && body.trim() ? theme.primary : theme.border,
-                        borderColor: title.trim() && body.trim() ? theme.primaryLight : theme.border,
-                      },
-                    ]}
+                  <SendButton
+                    channelColor={CHANNEL_COLORS.NOTIF}
+                    channelColorDark={NOTIF_COLOR_DARK}
+                    label={t('messages.sendToAll')}
+                    Icon={Send}
+                    canSend={!!title.trim() && !!body.trim()}
+                    isSending={pushMutation.isPending}
+                    cooldownRemaining={pushRemaining}
                     onPress={() => {
                       safeImpact(Haptics.ImpactFeedbackStyle.Medium);
-                      triggerSendRipple();
                       handleSend();
                     }}
-                    disabled={pushMutation.isPending || pushCooldown || !title.trim() || !body.trim()}
-                    activeOpacity={0.85}
-                    accessibilityRole="button"
-                    accessibilityLabel={t('messages.sendToAll')}
-                    accessibilityState={{ disabled: pushMutation.isPending || pushCooldown || !title.trim() || !body.trim(), busy: pushMutation.isPending }}
-                  >
-                    <Animated.View pointerEvents="none" style={[styles.sendRipple, sendRippleStyle]} />
-                    {pushMutation.isPending ? (
-                      <ActivityIndicator size="small" color="#fff" accessibilityLabel={t('messages.sending')} />
-                    ) : (
-                      <>
-                        <Send size={18} color="#fff" strokeWidth={1.5} />
-                        <Text style={styles.sendBtnText} maxFontSizeMultiplier={1.4}>{t('messages.sendToAll')}</Text>
-                      </>
-                    )}
-                  </TouchableOpacity>
+                  />
                   <LegalNote />
                 </View>
               )}
 
               {/* ── Email Compose Card ─────────────── */}
-              {showEmail && (
+              {activeChannel === 'EMAIL' && (
+                !isPremium ? (
+                  <EmailLockCard onUpgrade={goToPlan} />
+                ) : (
                 <View
                   style={[styles.composeCard, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}
                 >
-                  {!isPremium ? (
-                    <PremiumLockCard descriptionKey="messages.premiumEmailDesc" />
-                  ) : (<>
+                  <>
                   <Text style={[styles.fieldLabel, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.4} nativeID="email-subject-label">
                     {t('messages.emailSubject')}
                   </Text>
@@ -900,120 +870,22 @@ export default function MessagesScreen() {
                   )}
                   {!emailQuota && <View style={{ marginBottom: 16 }} />}
 
-                  <TouchableOpacity
-                    style={[
-                      styles.sendBtn,
-                      {
-                        backgroundColor: emailSubject.trim() && emailBody.trim() ? CHANNEL_COLORS.EMAIL : theme.border,
-                        borderColor: emailSubject.trim() && emailBody.trim() ? '#c5221f' : theme.border,
-                      },
-                    ]}
+                  <SendButton
+                    channelColor={CHANNEL_COLORS.EMAIL}
+                    channelColorDark={EMAIL_COLOR_DARK}
+                    label={t('messages.sendEmail')}
+                    Icon={Mail}
+                    canSend={!!emailSubject.trim() && !!emailBody.trim()}
+                    isSending={emailMutation.isPending}
+                    cooldownRemaining={emailRemaining}
                     onPress={() => { safeImpact(Haptics.ImpactFeedbackStyle.Medium); handleSendEmail(); }}
-                    disabled={emailMutation.isPending || emailCooldown || !emailSubject.trim() || !emailBody.trim()}
-                    activeOpacity={0.85}
-                    accessibilityRole="button"
-                    accessibilityLabel={t('messages.sendEmail')}
-                    accessibilityState={{ disabled: emailMutation.isPending || emailCooldown || !emailSubject.trim() || !emailBody.trim(), busy: emailMutation.isPending }}
-                  >
-                    {emailMutation.isPending ? (
-                      <ActivityIndicator size="small" color="#fff" accessibilityLabel={t('messages.sending')} />
-                    ) : (
-                      <>
-                        <Mail size={18} color="#fff" strokeWidth={1.5} />
-                        <Text style={styles.sendBtnText} maxFontSizeMultiplier={1.4}>{t('messages.sendEmail')}</Text>
-                      </>
-                    )}
-                  </TouchableOpacity>
+                  />
                   <LegalNote />
-                  </>)}
+                  </>
                 </View>
+                )
               )}
-
-              {/* ── History section ────────── */}
-              <View style={styles.historyToggle}>
-                <Text style={[styles.sectionTitle, { color: theme.text, marginTop: 0, marginBottom: 0 }]} maxFontSizeMultiplier={1.4} accessibilityRole="header">
-                  {t('messages.history')}
-                </Text>
-              </View>
-
-              {!showHistory ? (
-                <View style={styles.showHistoryCta}>
-                  <View style={[styles.emptyIllustration, { backgroundColor: `${palette.charbon}12` }]} importantForAccessibility="no">
-                    <Clock size={ms(36)} color={palette.charbon} strokeWidth={1.5} />
-                  </View>
-                  <Text style={[styles.emptyText, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.6}>
-                    {t('messages.showHistoryHint')}
-                  </Text>
-                  <TouchableOpacity
-                    style={[styles.showHistoryBtn, { backgroundColor: theme.primary }]}
-                    onPress={() => { safeSelection(); dispatch({ type: 'SET', payload: { showHistory: true } }); }}
-                    activeOpacity={0.7}
-                    accessibilityRole="button"
-                    accessibilityLabel={t('messages.showHistory')}
-                    hitSlop={HIT_SLOP_MED}
-                  >
-                    <Bell size={18} color="#fff" strokeWidth={2} />
-                    <Text style={styles.showHistoryBtnText} maxFontSizeMultiplier={1.4}>{t('messages.showHistory')}</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                /* ── Filter pills ── */
-                <View style={{ paddingTop: 4, paddingBottom: 8 }}>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
-                    {filterOptions.map((opt) => {
-                      const active = historyFilter === opt.key;
-                      return (
-                        <TouchableOpacity
-                          key={opt.key}
-                          onPress={() => { safeSelection(); dispatch({ type: 'SET_HISTORY_FILTER', filter: opt.key }); }}
-                          activeOpacity={0.7}
-                          style={[
-                            styles.filterPill,
-                            { backgroundColor: active ? theme.primary : theme.bgCard, borderColor: active ? theme.primary : theme.borderLight },
-                          ]}
-                          accessibilityRole="button"
-                          accessibilityLabel={opt.label}
-                          accessibilityState={{ selected: active }}
-                          hitSlop={HIT_SLOP_MED}
-                        >
-                          <Text style={[styles.filterPillText, { color: active ? '#fff' : theme.text }]} maxFontSizeMultiplier={1.4}>
-                            {opt.label}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </ScrollView>
-                </View>
-              )}
-            </View>
-          }
-          ListEmptyComponent={
-            !showHistory ? null :
-            loading ? (
-              <View style={styles.emptyContainer} accessible accessibilityRole="progressbar" accessibilityLabel={t('messages.loadingClients')}>
-                <ActivityIndicator size="large" color={theme.primary} />
-              </View>
-            ) : (
-              <View style={styles.emptyContainer}>
-                <View style={[styles.emptyIllustration, { backgroundColor: `${palette.charbon}12` }]} importantForAccessibility="no">
-                  <Bell size={ms(36)} color={palette.charbon} strokeWidth={1.5} />
-                </View>
-                <Text style={[styles.emptyTitle, { color: theme.text }]} maxFontSizeMultiplier={1.6}>{t('messages.noMessages')}</Text>
-                <Text style={[styles.emptyText, { color: theme.textMuted }]} maxFontSizeMultiplier={1.6}>
-                  {t('messages.noMessagesHint')}
-                </Text>
-              </View>
-            )
-          }
-          ListFooterComponent={
-            showHistory && filteredHistory.length > 0 ? (
-              <View style={styles.footerEndWrap}>
-                <View style={[styles.footerDivider, { backgroundColor: theme.border }]} importantForAccessibility="no" />
-                <Text style={[styles.footerEnd, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>{t('messages.allDisplayed')}</Text>
-              </View>
-            ) : null
-          }
-        />
+        </ScrollView>
       </KeyboardAvoidingView>
     </Animated.View>
   );
@@ -1037,31 +909,103 @@ const styles = StyleSheet.create({
     fontFamily: 'Lexend_700Bold',
     letterSpacing: -0.5,
   },
-
-
-  // Toggle row
-  toggleRow: {
-    flexDirection: 'row',
-    gap: 6,
-    marginTop: 16,
-  },
-
-  // Compose toggle
-  composeToggle: {
+  historyHeaderBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 6,
-    paddingVertical: 12,
-    borderRadius: 14,
-    gap: 4,
-    elevation: 2,
-    shadowColor: '#1F2937',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
+    gap: 6,
     borderWidth: 1,
+    borderRadius: 999,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    minHeight: 34,
   },
-  composeToggleText: { flex: 1, fontSize: 11, fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
+  historyHeaderBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    fontFamily: 'Lexend_600SemiBold',
+  },
+
+  // Channel segmented control
+  segmentRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 16,
+  },
+  segmentTab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    minHeight: 48,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderRadius: 14,
+    borderWidth: 1.5,
+  },
+  segmentText: { fontSize: 14, fontWeight: '700', fontFamily: 'Lexend_600SemiBold' },
+
+  // Send button progress bars
+  progressTrack: {
+    height: 3,
+    borderRadius: 2,
+    marginTop: 8,
+    overflow: 'hidden',
+  },
+  progressFill: { height: 3, borderRadius: 2 },
+  progressIndet: { width: '40%', height: 3, borderRadius: 2 },
+
+  // E-mail premium lock card
+  lockWrapper: {
+    marginTop: 8,
+    borderRadius: 18,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(252,211,77,0.25)',
+  },
+  lockCard: {
+    alignItems: 'center',
+    paddingVertical: 28,
+    paddingHorizontal: 22,
+    gap: 12,
+  },
+  lockIconBg: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lockTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#fff',
+    textAlign: 'center',
+    fontFamily: 'Lexend_700Bold',
+  },
+  lockDesc: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: 'rgba(255,255,255,0.72)',
+    textAlign: 'center',
+    paddingHorizontal: 6,
+    fontFamily: 'Lexend_500Medium',
+  },
+  lockCtaWrap: {
+    marginTop: 6,
+    borderRadius: 14,
+    overflow: 'hidden',
+    minHeight: 48,
+  },
+  lockCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+  },
+  lockCtaText: { fontSize: 15, fontWeight: '800', color: '#1a0533', fontFamily: 'Lexend_700Bold' },
 
   // Compose card
   composeCard: {
@@ -1107,13 +1051,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   sendBtnText: { color: '#fff', fontSize: 15, fontWeight: '700', fontFamily: 'Lexend_600SemiBold' },
-  sendRipple: {
-    position: 'absolute',
-    width: 220,
-    height: 220,
-    borderRadius: 110,
-    backgroundColor: 'rgba(255,255,255,0.25)',
-  },
   legalNoteRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -1128,141 +1065,6 @@ const styles = StyleSheet.create({
     fontFamily: 'Lexend_500Medium',
     opacity: 0.85,
   },
-
-  // Section
-  sectionTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    marginTop: 28,
-    marginBottom: 12,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    opacity: 0.7,
-    fontFamily: 'Lexend_600SemiBold',
-  },
-
-  // Notification card
-  notifCard: {
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 0,
-    elevation: 3,
-    shadowColor: '#1F2937',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    borderWidth: 1,
-  },
-  notifHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  notifIconWrap: {
-    borderRadius: 12,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.18,
-    shadowRadius: 5,
-    elevation: 3,
-  },
-  notifIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-  },
-  notifMeta: { flex: 1, marginLeft: 12 },
-  notifBadgeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 },
-  notifTitle: { fontSize: 15, fontWeight: '700', fontFamily: 'Lexend_600SemiBold', marginTop: 4 },
-  notifTime: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
-  notifTimeText: { fontSize: 11, fontFamily: 'Lexend_500Medium' },
-  historyToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 28,
-    marginBottom: 12,
-  },
-
-  // Show history CTA
-  showHistoryCta: {
-    alignItems: 'center',
-    paddingTop: 20,
-    paddingBottom: 12,
-  },
-  showHistoryBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginTop: 16,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 14,
-  },
-  showHistoryBtnText: { fontSize: 15, fontWeight: '700', color: '#fff', fontFamily: 'Lexend_600SemiBold' },
-
-  // Filter pills
-  filterRow: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingHorizontal: 2,
-  },
-  filterPill: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-  },
-  filterPillText: {
-    fontSize: 13,
-    fontWeight: '600',
-    fontFamily: 'Lexend_600SemiBold',
-  },
-  channelBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 14,
-    borderWidth: 1,
-    alignSelf: 'flex-start',
-  },
-  channelBadgeText: { fontSize: 10, fontFamily: 'Lexend_600SemiBold' },
-  notifBody: { fontSize: 14, lineHeight: 20, marginBottom: 10, fontFamily: 'Lexend_500Medium', flexShrink: 1 },
-  notifStats: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-    paddingTop: 10,
-    borderTopWidth: 1,
-  },
-  stat: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  statText: { fontSize: 12, fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
-
-  // Empty
-  emptyContainer: { alignItems: 'center', paddingTop: 80 },
-  emptyIllustration: {
-    width: ms(88),
-    height: ms(88),
-    borderRadius: ms(24),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emptyTitle: { fontSize: 18, fontWeight: '700', marginTop: 16, fontFamily: 'Lexend_600SemiBold' },
-  emptyText: {
-    fontSize: 13,
-    textAlign: 'center',
-    marginTop: 8,
-    paddingHorizontal: 40,
-    lineHeight: 20,
-    fontFamily: 'Lexend_500Medium',
-  },
-
-  // Separator & footer
-  separator: { height: 8 },
-  footerEndWrap: { alignItems: 'center', paddingVertical: 24 },
-  footerDivider: { width: 48, height: 3, borderRadius: 2, marginBottom: 10, opacity: 0.3 },
-  footerEnd: { fontSize: 12, fontFamily: 'Lexend_500Medium', opacity: 0.5 },
 });
 
 const bannerStyles = StyleSheet.create({

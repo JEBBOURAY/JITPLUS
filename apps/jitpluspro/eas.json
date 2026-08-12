@@ -57,7 +57,12 @@
         "EXPO_PUBLIC_DATA_RIGHTS_URL": "https://jitplus.com/legal",
         "EXPO_PUBLIC_IOS_APP_ID": "$EXPO_PUBLIC_IOS_APP_ID",
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "$EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID",
-        "EXPO_PUBLIC_SENTRY_DSN_PRO": "$EXPO_PUBLIC_SENTRY_DSN_PRO"
+        "EXPO_PUBLIC_SENTRY_DSN_PRO": "$EXPO_PUBLIC_SENTRY_DSN_PRO",
+        "SENTRY_ENABLE_BUILD_UPLOAD": "false",
+        "SENTRY_AUTH_TOKEN": "$SENTRY_AUTH_TOKEN",
+        "SENTRY_ORG": "jitplus",
+        "SENTRY_PROJECT": "jitpluspro-mobile",
+        "SENTRY_URL": "https://de.sentry.io/"
       }
     },
     "production-apk": {

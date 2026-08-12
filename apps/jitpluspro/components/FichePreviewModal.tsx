@@ -89,12 +89,15 @@ interface Props {
   theme: Theme;
   t: (key: string, opts?: any) => string;
   getCategoryLabel: (c: string) => string;
+  /** When true, renders the preview content inline (no Modal wrapper) so it can
+   *  live inside the store-preview screen behind an Édition/Aperçu toggle. */
+  inline?: boolean;
 }
 
 const SCREEN_W = Dimensions.get('window').width;
 
 function FichePreviewModalInner({
-  onClose, merchant, draft, theme, t, getCategoryLabel,
+  onClose, merchant, draft, theme, t, getCategoryLabel, inline = false,
 }: Omit<Props, 'visible'>) {
   const insets = useSafeAreaInsets();
   const [galleryIdx, setGalleryIdx] = useState<number | null>(null);
@@ -168,15 +171,7 @@ function FichePreviewModalInner({
     ? t('storePreview.stampCard')
     : t('storePreview.pointsAccumulation');
 
-  return (
-    <Modal
-      visible={true}
-      animationType="slide"
-      presentationStyle="fullScreen"
-      onRequestClose={onClose}
-      statusBarTranslucent
-    >
-      <StatusBar barStyle="light-content" />
+  const body = (
       <View style={[s.root, { backgroundColor: theme.bg }]}>
         <ScrollView
           contentContainerStyle={s.scrollContent}
@@ -648,6 +643,20 @@ function FichePreviewModalInner({
           </Modal>
         )}
       </View>
+  );
+
+  if (inline) return body;
+
+  return (
+    <Modal
+      visible={true}
+      animationType="slide"
+      presentationStyle="fullScreen"
+      onRequestClose={onClose}
+      statusBarTranslucent
+    >
+      <StatusBar barStyle="light-content" />
+      {body}
     </Modal>
   );
 }

@@ -12,6 +12,7 @@ import {
   Modal,
   FlatList,
   ViewStyle,
+  I18nManager,
   useWindowDimensions,
   Animated,
   AppState,
@@ -19,19 +20,19 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { logError } from '@/utils/devLogger';
 import { CameraView, useCameraPermissions, type BarcodeSettings } from 'expo-camera';
+import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import {
   Search,
   X,
   Zap,
-  ZapOff,
   ArrowRight,
   Camera,
-  Phone,
   ChevronDown,
   AlertCircle,
   ArrowLeft,
   Check,
+  Info,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -43,9 +44,9 @@ import { isValidUUID } from '@/utils/validation';
 import { SCAN_AREA_RATIO, NAVIGATION_DELAY_MS } from '@/constants/app';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useAuthStore } from '@/stores/authStore';
 
 import { COUNTRIES } from '@/constants/Countries';
-import CountryPickerModal from '@/components/CountryPickerModal';
 import FirstScanGuide from '@/components/FirstScanGuide';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -236,18 +237,112 @@ const ViewfinderCorner = React.memo(function ViewfinderCorner({ position }: { po
 });
 
 // ── Detection Feedback Overlay ────────────────────────────
-const DetectedOverlay = React.memo(function DetectedOverlay({ message }: { message: string }) {
+type ScanOverlayState = {
+  phase: 'idle' | 'detected' | 'verifying' | 'found' | 'error';
+  message: string | null;
+  name?: string | null;
+};
+
+const DetectedOverlay = React.memo(function DetectedOverlay({ overlayState, onRetry }: { overlayState: ScanOverlayState; onRetry?: () => void }) {
+  const { t } = useLanguage();
+
+  if (overlayState.phase === 'idle') return null;
+
+  const isError = overlayState.phase === 'error';
+  const isSuccess = overlayState.phase === 'found';
+
   return (
-    <View
-      style={styles.detectedOverlay}
-    >
-      <View style={styles.detectedBadge}>
+    <View style={styles.detectedOverlay} pointerEvents="box-none">
+      <View style={[styles.detectedCard, isError ? styles.detectedCardError : isSuccess ? styles.detectedCardSuccess : styles.detectedCardNeutral]}>
         <View style={styles.detectedRow}>
-          <Check size={16} color="#0F0D1A" strokeWidth={3} />
-          <Text style={styles.detectedText}>{message}</Text>
+          {overlayState.phase === 'verifying' ? (
+            <ActivityIndicator size="small" color={isError ? '#fff' : '#7C3AED'} />
+          ) : isError ? (
+            <AlertCircle size={18} color="#fff" strokeWidth={2.2} />
+          ) : (
+            <Check size={18} color={isSuccess ? '#ffffff' : '#7C3AED'} strokeWidth={2.6} />
+          )}
+          <View style={styles.detectedTextWrap}>
+            <Text style={[styles.detectedText, isError && styles.detectedTextError]}>{overlayState.message}</Text>
+            {isError && onRetry ? (
+              <TouchableOpacity style={styles.detectedRetryBtn} onPress={onRetry} activeOpacity={0.8}>
+                <Text style={styles.detectedRetryText}>{t('common.retry')}</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
         </View>
       </View>
     </View>
+  );
+});
+
+// Versioned key: bump the suffix to re-show the banner after copy/design changes.
+const HOW_IT_WORKS_STORAGE_KEY = '@jitpluspro_scan_how_it_works_v2';
+
+const HowItWorksBanner = React.memo(function HowItWorksBanner({
+  visible,
+  onDismiss,
+  theme,
+  t,
+  isRTL,
+  insetTop,
+}: {
+  visible: boolean;
+  onDismiss: () => void;
+  theme: ReturnType<typeof useTheme>;
+  t: (key: string, params?: Record<string, unknown>) => string;
+  isRTL: boolean;
+  insetTop: number;
+}) {
+  const [shouldRender, setShouldRender] = useState(visible);
+  const collapse = useRef(new Animated.Value(visible ? 1 : 0)).current;
+
+  useEffect(() => {
+    if (visible) {
+      setShouldRender(true);
+      Animated.timing(collapse, { toValue: 1, duration: 220, useNativeDriver: false }).start();
+      return;
+    }
+    Animated.timing(collapse, { toValue: 0, duration: 220, useNativeDriver: false }).start(({ finished }) => {
+      if (finished) setShouldRender(false);
+    });
+  }, [collapse, visible]);
+
+  if (!shouldRender) return null;
+
+  const animatedStyle = {
+    opacity: collapse,
+    maxHeight: collapse.interpolate({ inputRange: [0, 1], outputRange: [0, 140] }),
+    transform: [{ translateY: collapse.interpolate({ inputRange: [0, 1], outputRange: [-10, 0] }) }],
+  };
+
+  return (
+    <Animated.View
+      style={[styles.infoBanner, { top: insetTop + 76 }, animatedStyle, isRTL && styles.infoBannerRTL]}
+    >
+      <BlurView
+        intensity={18}
+        tint="dark"
+        experimentalBlurMethod="dimezisBlurView"
+        style={StyleSheet.absoluteFill}
+      />
+      <View style={styles.infoBannerTint} />
+      <View style={[styles.infoBannerIcon, { backgroundColor: `${theme.primary}20` }]}>
+        <Info size={16} color={theme.primary} strokeWidth={2.2} />
+      </View>
+      <View style={styles.infoBannerBody}>
+        <Text style={[styles.infoBannerTitle, { color: theme.text }]}>{t('scan.howItWorksTitle')}</Text>
+        <Text style={[styles.infoBannerText, { color: theme.textMuted }]}>{t('scan.howItWorksBody')}</Text>
+      </View>
+      <TouchableOpacity
+        style={styles.infoBannerClose}
+        onPress={onDismiss}
+        activeOpacity={0.8}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      >
+        <X size={16} color={theme.textMuted} strokeWidth={2.2} />
+      </TouchableOpacity>
+    </Animated.View>
   );
 });
 
@@ -260,9 +355,7 @@ interface ScanState {
   isSearching: boolean;
   isFlashOn: boolean;
   isScanning: boolean;
-  detected: string | null;
   countryIndex: number;
-  showCountryPicker: boolean;
   matchedClients: MatchedClient[];
 }
 
@@ -272,18 +365,14 @@ const initialScanState: ScanState = {
   isSearching: false,
   isFlashOn: false,
   isScanning: true,
-  detected: null,
   countryIndex: 0,
-  showCountryPicker: false,
   matchedClients: [],
 };
 
 type ScanAction =
   | { type: 'SET'; payload: Partial<ScanState> }
   | { type: 'TOGGLE_FLASH' }
-  | { type: 'RESET_SCAN' }
-  | { type: 'OPEN_COUNTRY_PICKER' }
-  | { type: 'SELECT_COUNTRY'; index: number };
+  | { type: 'RESET_SCAN' };
 
 function scanReducer(state: ScanState, action: ScanAction): ScanState {
   switch (action.type) {
@@ -292,13 +381,121 @@ function scanReducer(state: ScanState, action: ScanAction): ScanState {
     case 'TOGGLE_FLASH':
       return { ...state, isFlashOn: !state.isFlashOn };
     case 'RESET_SCAN':
-      return { ...state, isScanning: true, detected: null };
-    case 'OPEN_COUNTRY_PICKER':
-      return { ...state, showCountryPicker: true };
-    case 'SELECT_COUNTRY':
-      return { ...state, countryIndex: action.index, showCountryPicker: false };
+      return { ...state, isScanning: true };
   }
 }
+
+// ── Memoized UI blocks ───────────────────────────────────
+const CameraOverlay = React.memo(function CameraOverlay({
+  screenHeight,
+  scanSize,
+  pulseStyle,
+  overlayState,
+  isScanning,
+  onRetry,
+}: {
+  screenHeight: number;
+  scanSize: number;
+  pulseStyle: Record<string, unknown>;
+  overlayState: ScanOverlayState;
+  isScanning: boolean;
+  onRetry?: () => void;
+}) {
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+      <View style={[styles.overlayTop, { height: Math.max((screenHeight - scanSize) / 2 - 40, 100) }]} />
+      <View style={[styles.overlayMiddle, { height: scanSize }]}> 
+        <View style={styles.overlaySide} />
+        <Animated.View style={[styles.scanArea, { width: scanSize, height: scanSize }, pulseStyle]}>
+          <ViewfinderCorner position="tl" />
+          <ViewfinderCorner position="tr" />
+          <ViewfinderCorner position="bl" />
+          <ViewfinderCorner position="br" />
+          <ScanLine scanSize={scanSize} active={isScanning} />
+          {overlayState.phase !== 'idle' ? <DetectedOverlay overlayState={overlayState} onRetry={onRetry} /> : null}
+        </Animated.View>
+        <View style={styles.overlaySide} />
+      </View>
+      <View style={styles.overlayBottom} />
+    </View>
+  );
+});
+
+const BottomControls = React.memo(function BottomControls({
+  insetBottom,
+  isFlashOn,
+  onToggleFlash,
+  onClose,
+  theme,
+  t,
+}: {
+  insetBottom: number;
+  isFlashOn: boolean;
+  onToggleFlash: () => void;
+  onClose: () => void;
+  theme: ReturnType<typeof useTheme>;
+  t: (key: string, params?: Record<string, unknown>) => string;
+}) {
+  return (
+    <Animated.View
+      style={[styles.bottomControls, { paddingBottom: Math.max(insetBottom, 26) }]}
+      pointerEvents="box-none"
+    >
+      <View style={styles.actionsRow}>
+        <TouchableOpacity
+          style={styles.actionBtn}
+          onPress={onToggleFlash}
+          activeOpacity={0.7}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityState={{ selected: isFlashOn }}
+          accessibilityLabel={isFlashOn ? t('scan.flashDeactivate') : t('scan.flashActivate')}
+        >
+          {isFlashOn ? (
+            <View style={[styles.actionCircle, styles.actionCircleActive]}>
+              <Zap size={22} color="#1F2937" strokeWidth={2.2} fill="#1F2937" />
+            </View>
+          ) : (
+            <View style={styles.actionCircle}>
+              <BlurView
+                intensity={18}
+                tint="dark"
+                experimentalBlurMethod="dimezisBlurView"
+                style={StyleSheet.absoluteFill}
+              />
+              <View style={styles.actionCircleTint} />
+              <Zap size={22} color="#FFFFFF" strokeWidth={2} />
+            </View>
+          )}
+          <Text style={[styles.actionBtnLabel, isFlashOn && styles.actionBtnLabelActive]}>
+            {t('scan.flash')}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.actionBtn}
+          onPress={onClose}
+          activeOpacity={0.7}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel={t('common.close')}
+        >
+          <View style={styles.actionCircle}>
+            <BlurView
+              intensity={18}
+              tint="dark"
+              experimentalBlurMethod="dimezisBlurView"
+              style={StyleSheet.absoluteFill}
+            />
+            <View style={styles.actionCircleTint} />
+            <X size={22} color="#FFFFFF" strokeWidth={2} />
+          </View>
+          <Text style={styles.actionBtnLabel}>{t('common.close')}</Text>
+        </TouchableOpacity>
+      </View>
+    </Animated.View>
+  );
+});
 
 // ── Main Screen ───────────────────────────────────────────
 export default function ScanQRScreen() {
@@ -307,23 +504,29 @@ export default function ScanQRScreen() {
   const inputRef = useRef<TextInput | null>(null);
   const { t } = useLanguage();
   const theme = useTheme();
+  const loyaltyType = useAuthStore((s) => s.merchant?.loyaltyType);
   const [permission, requestPermission] = useCameraPermissions();
   const { width: SCREEN_W, height: SCREEN_H } = useWindowDimensions();
   const SCAN_SIZE = SCREEN_W * SCAN_AREA_RATIO;
+  const isRTL = I18nManager.isRTL;
 
   // State
   const [scan, dispatch] = useReducer(scanReducer, initialScanState);
-  const { phoneInput, isSearchFocused, isSearching, isFlashOn, isScanning, detected, countryIndex, showCountryPicker, matchedClients } = scan;
+  const { phoneInput, isSearchFocused, isSearching, isFlashOn, isScanning, countryIndex, matchedClients } = scan;
   const set = useCallback((payload: Partial<ScanState>) => dispatch({ type: 'SET', payload }), []);
 
   // Debounce: prevent re-scanning the same barcode data within a cooldown
   const lastScannedRef = useRef<{ data: string; ts: number } | null>(null);
   const navTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const overlayTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Navigation mutex: prevents QR scan and phone search from navigating simultaneously
   const isNavigatingRef = useRef(false);
 
   // ── First-scan guide popup ──
   const [showGuide, setShowGuide] = useState(false);
+  const [showHowItWorks, setShowHowItWorks] = useState(false);
+  const [showCountrySheet, setShowCountrySheet] = useState(false);
+  const [overlayState, setOverlayState] = useState<ScanOverlayState>({ phase: 'idle', message: null });
 
   useEffect(() => {
     (async () => {
@@ -339,34 +542,67 @@ export default function ScanQRScreen() {
     AsyncStorage.setItem('@jitpluspro_first_scan_guide', '1').catch(() => {});
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const dismissed = await AsyncStorage.getItem(HOW_IT_WORKS_STORAGE_KEY);
+        if (!cancelled) setShowHowItWorks(dismissed !== 'dismissed');
+      } catch (e) {
+        logError('scan-how-it-works', 'load', e);
+        if (!cancelled) setShowHowItWorks(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const dismissHowItWorks = useCallback(() => {
+    setShowHowItWorks(false);
+    AsyncStorage.setItem(HOW_IT_WORKS_STORAGE_KEY, 'dismissed').catch(() => {});
+  }, []);
+
+  const resetScanUi = useCallback(() => {
+    setOverlayState({ phase: 'idle', message: null });
+  }, []);
+
   // Cleanup navigation timeouts on unmount
   useEffect(() => {
     return () => {
       if (navTimeoutRef.current) clearTimeout(navTimeoutRef.current);
+      if (overlayTimeoutRef.current) clearTimeout(overlayTimeoutRef.current);
     };
   }, []);
 
   // Animations — only run when actively scanning to save CPU/battery
   const pulseScale = useRef(new Animated.Value(1)).current;
+  const pulseOpacity = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     if (!isScanning) {
       pulseScale.setValue(1);
+      pulseOpacity.setValue(1);
       return;
     }
     const anim = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseScale, { toValue: 1.08, duration: 1200, useNativeDriver: true }),
-        Animated.timing(pulseScale, { toValue: 1, duration: 1200, useNativeDriver: true }),
+      Animated.parallel([
+        Animated.sequence([
+          Animated.timing(pulseScale, { toValue: 1.01, duration: 1800, useNativeDriver: true }),
+          Animated.timing(pulseScale, { toValue: 1, duration: 1800, useNativeDriver: true }),
+        ]),
+        Animated.sequence([
+          Animated.timing(pulseOpacity, { toValue: 0.95, duration: 1800, useNativeDriver: true }),
+          Animated.timing(pulseOpacity, { toValue: 1, duration: 1800, useNativeDriver: true }),
+        ]),
       ]),
     );
     anim.start();
     return () => anim.stop();
-  }, [isScanning, pulseScale]);
+  }, [isScanning, pulseOpacity, pulseScale]);
 
   const pulseStyle = useMemo(() => ({
     transform: [{ scale: pulseScale }],
-  }), [pulseScale]);
+    opacity: pulseOpacity,
+  }), [pulseOpacity, pulseScale]);
 
   // ── Permission request ──
   useEffect(() => {
@@ -386,6 +622,7 @@ export default function ScanQRScreen() {
         });
       }}
       activeOpacity={0.6}
+      delayPressIn={0}
     >
       <View style={styles.flexMain}>
         <Text style={[styles.cpCountryName, { color: theme.text }]}>{item.nom}</Text>
@@ -409,22 +646,23 @@ export default function ScanQRScreen() {
   const isFocusedRef = useRef(false);
 
   const syncCameraMount = useCallback(() => {
-    const next = isFocusedRef.current && appStateRef.current === 'active';
+    const next = isFocusedRef.current && appStateRef.current === 'active' && !!loyaltyType;
     setCameraMounted((prev) => (prev === next ? prev : next));
-  }, []);
+  }, [loyaltyType]);
 
   useFocusEffect(
     useCallback(() => {
       isFocusedRef.current = true;
       isNavigatingRef.current = false;
-      dispatch({ type: 'SET', payload: { isScanning: true, detected: null, matchedClients: [] } });
+      resetScanUi();
+      dispatch({ type: 'SET', payload: { isScanning: true, matchedClients: [] } });
       syncCameraMount();
       return () => {
         isFocusedRef.current = false;
         dispatch({ type: 'SET', payload: { isScanning: false } });
         syncCameraMount();
       };
-    }, [syncCameraMount])
+    }, [resetScanUi, syncCameraMount])
   );
 
   useEffect(() => {
@@ -437,11 +675,33 @@ export default function ScanQRScreen() {
     return () => sub.remove();
   }, [syncCameraMount]);
 
+  // ── Loyalty program guard ──
+  // A merchant must pick a loyalty program (points/stamps) before scanning:
+  // POST /merchant/verify-qr cannot resolve without it. If none is set we never
+  // mount the camera (see syncCameraMount) and redirect immediately to the
+  // loyalty settings, which surfaces a clear warning banner.
+  const loyaltyPromptRef = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (loyaltyType) {
+        loyaltyPromptRef.current = false;
+        return;
+      }
+      if (loyaltyPromptRef.current) return;
+      loyaltyPromptRef.current = true;
+      router.replace({ pathname: '/settings', params: { loyaltySetup: '1' } });
+    }, [loyaltyType, router])
+  );
+
   // ── Navigate to transaction after resolving clientId ──
-  const navigateToTransaction = useCallback((clientId: string) => {
+  const navigateToTransaction = useCallback((clientId: string, clientName?: string) => {
     if (isNavigatingRef.current) return;
     isNavigatingRef.current = true;
-    set({ detected: t('scan.qrDetected') });
+    setOverlayState({
+      phase: 'found',
+      message: clientName ? t('scan.clientFound', { name: clientName }) : t('scan.clientFoundFallback'),
+      name: clientName ?? null,
+    });
     if (navTimeoutRef.current) clearTimeout(navTimeoutRef.current);
     navTimeoutRef.current = setTimeout(() => {
       navTimeoutRef.current = null;
@@ -450,7 +710,7 @@ export default function ScanQRScreen() {
         params: { clientId },
       });
     }, NAVIGATION_DELAY_MS);
-  }, [router, set, t]);
+  }, [router, t]);
 
   // ── QR Code handler ──
   const handleBarCodeScanned = useCallback(
@@ -465,6 +725,11 @@ export default function ScanQRScreen() {
       lastScannedRef.current = { data, ts: now };
 
       set({ isScanning: false });
+      setOverlayState({ phase: 'detected', message: t('scan.qrDetected') });
+      if (overlayTimeoutRef.current) clearTimeout(overlayTimeoutRef.current);
+      overlayTimeoutRef.current = setTimeout(() => {
+        setOverlayState({ phase: 'verifying', message: t('scan.verifying') });
+      }, 1100);
 
       // Haptic feedback
       safeNotification(Haptics.NotificationFeedbackType.Success);
@@ -473,20 +738,21 @@ export default function ScanQRScreen() {
       if (data.startsWith('jitplus://scan/')) {
         const token = data.replace('jitplus://scan/', '').trim();
         if (!token) {
+          if (overlayTimeoutRef.current) clearTimeout(overlayTimeoutRef.current);
+          setOverlayState({ phase: 'error', message: t('scan.tokenMissing') });
           safeNotification(Haptics.NotificationFeedbackType.Error);
-          Alert.alert(t('scan.qrInvalidTitle'), t('scan.tokenMissing'), [{ text: 'OK', onPress: () => set({ isScanning: true }) }]);
           return;
         }
         try {
-          set({ detected: t('scan.verifying') });
           const res = await api.post('/merchant/verify-qr', { token });
           const clientId = res.data?.clientId;
+          const clientName = res.data?.client?.nom ? [res.data.client.prenom, res.data.client.nom].filter(Boolean).join(' ') : undefined;
           if (!clientId) throw new Error('no clientId');
-          navigateToTransaction(clientId);
+          navigateToTransaction(clientId, clientName);
         } catch (err: unknown) {
+          if (overlayTimeoutRef.current) clearTimeout(overlayTimeoutRef.current);
+          setOverlayState({ phase: 'error', message: getErrorMessage(err, t('scan.qrExpiredFallback')) });
           safeNotification(Haptics.NotificationFeedbackType.Error);
-          const msg = getErrorMessage(err, t('scan.qrExpiredFallback'));
-          Alert.alert(t('scan.qrInvalidTitle'), msg, [{ text: 'OK', onPress: () => set({ isScanning: true }) }]);
         }
         return;
       }
@@ -500,12 +766,9 @@ export default function ScanQRScreen() {
         try {
           const url = new URL(data);
           if (!QR_ALLOWED_HOSTS.has(url.hostname.toLowerCase())) {
+            if (overlayTimeoutRef.current) clearTimeout(overlayTimeoutRef.current);
+            setOverlayState({ phase: 'error', message: t('scan.invalidQR') });
             safeNotification(Haptics.NotificationFeedbackType.Error);
-            Alert.alert(
-              t('scan.qrInvalidTitle'),
-              t('scan.invalidQR'),
-              [{ text: 'OK', onPress: () => set({ isScanning: true }) }],
-            );
             return;
           }
           clientId = (url.searchParams.get('clientId') || url.pathname.split('/').pop() || '').trim();
@@ -521,26 +784,23 @@ export default function ScanQRScreen() {
 
       // Validate that extracted value is a proper UUID
       if (!clientId || !isValidUUID(clientId)) {
+        if (overlayTimeoutRef.current) clearTimeout(overlayTimeoutRef.current);
+        setOverlayState({ phase: 'error', message: t('scan.invalidQR') });
         safeNotification(Haptics.NotificationFeedbackType.Error);
-        Alert.alert(
-          t('scan.qrInvalidTitle'),
-          t('scan.invalidQR'),
-          [{ text: 'OK', onPress: () => set({ isScanning: true }) }],
-        );
         return;
       }
 
       // Verify legacy clientId server-side to prevent IDOR
       try {
-        set({ detected: t('scan.verifying') });
         const res = await api.post('/merchant/verify-client', { clientId });
         const verifiedClientId = res.data?.clientId;
+        const clientName = res.data?.client?.nom ? [res.data.client.prenom, res.data.client.nom].filter(Boolean).join(' ') : undefined;
         if (!verifiedClientId) throw new Error('Client not verified');
-        navigateToTransaction(verifiedClientId);
+        navigateToTransaction(verifiedClientId, clientName);
       } catch (err: unknown) {
+        if (overlayTimeoutRef.current) clearTimeout(overlayTimeoutRef.current);
+        setOverlayState({ phase: 'error', message: getErrorMessage(err, t('scan.clientNotFoundFallback')) });
         safeNotification(Haptics.NotificationFeedbackType.Error);
-        const msg = getErrorMessage(err, t('scan.clientNotFoundFallback'));
-        Alert.alert(t('scan.clientInvalidTitle'), msg, [{ text: 'OK', onPress: () => set({ isScanning: true }) }]);
       }
     },
     [isScanning, navigateToTransaction, set, t],
@@ -576,7 +836,6 @@ export default function ScanQRScreen() {
 
       if (clients.length === 1) {
         // Exactly one match → go to transaction
-        set({ detected: t('scan.clientFound', { name: [clients[0].prenom, clients[0].nom].filter(Boolean).join(' ') }) });
         if (navTimeoutRef.current) clearTimeout(navTimeoutRef.current);
         isNavigatingRef.current = true;
         navTimeoutRef.current = setTimeout(() => {
@@ -602,10 +861,6 @@ export default function ScanQRScreen() {
               onPress: () => {
                 if (navTimeoutRef.current) clearTimeout(navTimeoutRef.current);
                 isNavigatingRef.current = true;
-                // Pass the raw digits the merchant typed + the country code so
-                // the quick-add form can display the number unchanged (avoids
-                // a brittle regex strip that can clip 1-4 digits depending on
-                // the dial length).
                 router.push({
                   pathname: '/quick-add',
                   params: {
@@ -635,6 +890,11 @@ export default function ScanQRScreen() {
       router.replace('/(tabs)');
     }
   }, [router]);
+
+  const handleRetryScan = useCallback(() => {
+    setOverlayState({ phase: 'idle', message: null });
+    set({ isScanning: true });
+  }, [set]);
 
   // ── Permission states ──
   if (!permission) {
@@ -715,28 +975,23 @@ export default function ScanQRScreen() {
       )}
 
       {/* ── Dark overlay with cutout ── */}
-      <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-        {/* Top overlay */}
-        <View style={[styles.overlayTop, { height: Math.max((SCREEN_H - SCAN_SIZE) / 2 - 40, 100) }]} />
+      <CameraOverlay
+        screenHeight={SCREEN_H}
+        scanSize={SCAN_SIZE}
+        pulseStyle={pulseStyle}
+        overlayState={overlayState}
+        isScanning={isScanning}
+        onRetry={handleRetryScan}
+      />
 
-        {/* Middle row */}
-        <View style={[styles.overlayMiddle, { height: SCAN_SIZE }]}>
-          <View style={styles.overlaySide} />
-          {/* Scan area (transparent cutout) */}
-          <Animated.View style={[styles.scanArea, { width: SCAN_SIZE, height: SCAN_SIZE }, pulseStyle]}>
-            <ViewfinderCorner position="tl" />
-            <ViewfinderCorner position="tr" />
-            <ViewfinderCorner position="bl" />
-            <ViewfinderCorner position="br" />
-            <ScanLine scanSize={SCAN_SIZE} active={isScanning} />
-            {detected && <DetectedOverlay message={detected} />}
-          </Animated.View>
-          <View style={styles.overlaySide} />
-        </View>
-
-        {/* Bottom overlay */}
-        <View style={styles.overlayBottom} />
-      </View>
+      <HowItWorksBanner
+        visible={showHowItWorks}
+        onDismiss={dismissHowItWorks}
+        theme={theme}
+        t={t}
+        isRTL={isRTL}
+        insetTop={insets.top}
+      />
 
       {/* ── Floating search bar ── */}
       <FloatingSearchBar
@@ -750,66 +1005,21 @@ export default function ScanQRScreen() {
         inputRef={inputRef}
         insetTop={insets.top}
         countryIndex={countryIndex}
-        onToggleCountry={() => dispatch({ type: 'OPEN_COUNTRY_PICKER' })}
+        onToggleCountry={() => setShowCountrySheet(true)}
       />
 
       {/* ── Bottom controls ── */}
-      <Animated.View
-        style={[styles.bottomControls, { paddingBottom: Math.max(insets.bottom, 20) + 12 }]}
-      >
-        {/* Hint text */}
-        <Text style={styles.hintText}>{t('scan.instruction')}</Text>
-
-        {/* Action buttons row */}
-        <View style={styles.actionsRow}>
-          {/* Flash */}
-          <TouchableOpacity
-            style={[styles.actionBtn, isFlashOn && styles.actionBtnActive]}
-            onPress={() => {
-              safeImpact(Haptics.ImpactFeedbackStyle.Light);
-              dispatch({ type: 'TOGGLE_FLASH' });
-            }}
-            activeOpacity={0.7}
-          >
-            {isFlashOn ? (
-              <Zap size={22} color="#A78BFA" strokeWidth={2} fill="#A78BFA" />
-            ) : (
-              <ZapOff size={22} color="rgba(255,255,255,0.8)" strokeWidth={2} />
-            )}
-            <Text
-              style={[
-                styles.actionBtnLabel,
-                isFlashOn && { color: '#A78BFA' },
-              ]}
-            >
-              {t('scan.flash')}
-            </Text>
-          </TouchableOpacity>
-
-          {/* Manual entry shortcut */}
-          <TouchableOpacity
-            style={styles.actionBtn}
-            onPress={() => {
-              safeImpact(Haptics.ImpactFeedbackStyle.Light);
-              inputRef.current?.focus();
-            }}
-            activeOpacity={0.7}
-          >
-            <Phone size={22} color="rgba(255,255,255,0.8)" strokeWidth={2} />
-            <Text style={styles.actionBtnLabel}>{t('scan.manual')}</Text>
-          </TouchableOpacity>
-
-          {/* Close */}
-          <TouchableOpacity
-            style={styles.actionBtn}
-            onPress={handleClose}
-            activeOpacity={0.7}
-          >
-            <ChevronDown size={22} color="rgba(255,255,255,0.8)" strokeWidth={2} />
-            <Text style={styles.actionBtnLabel}>{t('common.close')}</Text>
-          </TouchableOpacity>
-        </View>
-      </Animated.View>
+      <BottomControls
+        insetBottom={insets.bottom}
+        isFlashOn={isFlashOn}
+        onToggleFlash={() => {
+          safeImpact(Haptics.ImpactFeedbackStyle.Light);
+          dispatch({ type: 'TOGGLE_FLASH' });
+        }}
+        onClose={handleClose}
+        theme={theme}
+        t={t}
+      />
 
       {/* ── Client Picker Modal (multiple matches) ─── */}
       <Modal
@@ -842,14 +1052,33 @@ export default function ScanQRScreen() {
         </View>
       </Modal>
 
-      {/* ── Country Picker Modal ─── */}
-      <CountryPickerModal
-        visible={showCountryPicker}
-        selectedCode={COUNTRIES[countryIndex]?.code ?? ''}
-        onSelect={(index) => dispatch({ type: 'SELECT_COUNTRY', index })}
-        onClose={() => set({ showCountryPicker: false })}
-        topInset={insets.top}
-      />
+      <Modal visible={showCountrySheet} animationType="slide" transparent>
+        <TouchableOpacity style={styles.sheetOverlay} activeOpacity={1} onPress={() => setShowCountrySheet(false)}>
+          <View style={[styles.sheetCard, { backgroundColor: theme.bgCard, maxHeight: SCREEN_H * 0.7 }]}> 
+            <View style={[styles.sheetHandle, { backgroundColor: `${theme.textMuted}30` }]} />
+            <Text style={[styles.sheetTitle, { color: theme.text }]}>{t('scan.countryPickerTitle')}</Text>
+            <FlatList
+              data={COUNTRIES}
+              keyExtractor={(item) => item.code}
+              contentContainerStyle={styles.countryList}
+              renderItem={({ item, index }) => (
+                <TouchableOpacity
+                  style={[styles.countryRow, countryIndex === index && { backgroundColor: `${theme.primary}16` }]}
+                  onPress={() => {
+                    set({ countryIndex: index });
+                    setShowCountrySheet(false);
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.countryRowFlag}>{item.flag}</Text>
+                  <Text style={[styles.countryRowText, { color: theme.text }]}>{item.name} · {item.dial}</Text>
+                  {countryIndex === index ? <Check size={18} color={theme.primary} strokeWidth={2.5} /> : null}
+                </TouchableOpacity>
+              )}
+            />
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       {/* ── First scan guide ─── */}
       <FirstScanGuide visible={showGuide} onClose={dismissGuide} />
@@ -990,12 +1219,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(34,211,238,0.12)',
     borderRadius: 4,
   },
-  detectedBadge: {
-    backgroundColor: 'rgba(34,211,238,0.9)',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 16,
-  },
   detectedRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1017,41 +1240,46 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 16,
   },
-  hintText: {
-    color: 'rgba(255,255,255,0.7)',
-    fontSize: 14,
-    textAlign: 'center',
-    fontWeight: '500',
-    lineHeight: 20,
-    marginBottom: 20,
-    fontFamily: 'Lexend_500Medium',
-  },
   actionsRow: {
     flexDirection: 'row',
-    justifyContent: 'space-evenly',
-    alignItems: 'center',
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+    gap: 48,
   },
   actionBtn: {
     alignItems: 'center',
-    justifyContent: 'center',
-    width: 72,
-    height: 72,
-    borderRadius: 24,
-    backgroundColor: 'rgba(26,23,38,0.55)',
-    borderWidth: 1,
-    borderColor: 'rgba(139,92,246,0.18)',
-    gap: 6,
+    justifyContent: 'flex-start',
+    gap: 7,
+    minWidth: 64,
+    minHeight: 44,
+    paddingHorizontal: 4,
   },
-  actionBtnActive: {
-    backgroundColor: 'rgba(34,211,238,0.16)',
+  actionCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(34,211,238,0.35)',
+    borderColor: 'rgba(255,255,255,0.28)',
+  },
+  actionCircleTint: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+  },
+  actionCircleActive: {
+    backgroundColor: '#FCD34D',
+    borderColor: '#FCD34D',
   },
   actionBtnLabel: {
-    color: 'rgba(255,255,255,0.7)',
-    fontSize: 11,
-    fontWeight: '600',
-    fontFamily: 'Lexend_600SemiBold',
+    color: '#FFFFFF',
+    fontSize: 11.5,
+    fontWeight: '700',
+    fontFamily: 'Lexend_700Bold',
+  },
+  actionBtnLabelActive: {
+    color: '#FCD34D',
   },
 
   // ── Permission screen ──
@@ -1060,6 +1288,135 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 32,
+  },
+
+  // ── Scan feedback / sheet UI ──
+  detectedCard: {
+    alignSelf: 'center',
+    minWidth: 220,
+    maxWidth: '84%',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+  },
+  detectedCardNeutral: {
+    backgroundColor: 'rgba(255,255,255,0.95)',
+  },
+  detectedCardSuccess: {
+    backgroundColor: 'rgba(34,197,94,0.95)',
+  },
+  detectedCardError: {
+    backgroundColor: 'rgba(239,68,68,0.95)',
+  },
+  detectedTextWrap: {
+    flex: 1,
+    marginLeft: 8,
+  },
+  detectedTextError: {
+    color: '#fff',
+  },
+  detectedRetryBtn: {
+    marginTop: 6,
+    alignSelf: 'flex-start',
+    paddingVertical: 4,
+  },
+  detectedRetryText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
+    fontFamily: 'Lexend_600SemiBold',
+  },
+  infoBanner: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    zIndex: 90,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    borderRadius: 16,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: 'rgba(124,58,237,0.16)',
+    overflow: 'hidden',
+  },
+  infoBannerRTL: {
+    flexDirection: 'row-reverse',
+  },
+  infoBannerTint: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(124,58,237,0.16)',
+  },
+  infoBannerIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  infoBannerBody: {
+    flex: 1,
+    marginHorizontal: 10,
+  },
+  infoBannerTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    fontFamily: 'Lexend_600SemiBold',
+  },
+  infoBannerText: {
+    fontSize: 12.5,
+    lineHeight: 18,
+    marginTop: 4,
+    fontFamily: 'Lexend_400Regular',
+  },
+  infoBannerClose: {
+    padding: 2,
+  },
+  sheetOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  sheetCard: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 24,
+  },
+  sheetHandle: {
+    width: 44,
+    height: 5,
+    borderRadius: 999,
+    alignSelf: 'center',
+    marginBottom: 14,
+  },
+  sheetTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    fontFamily: 'Lexend_700Bold',
+    marginBottom: 6,
+  },
+  countryList: {
+    paddingBottom: 4,
+  },
+  countryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    borderRadius: 12,
+  },
+  countryRowFlag: {
+    fontSize: 18,
+    marginRight: 10,
+  },
+  countryRowText: {
+    flex: 1,
+    fontSize: 14,
+    fontFamily: 'Lexend_400Regular',
   },
   permissionContent: {
     alignItems: 'center',
@@ -1137,23 +1494,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
   },
   cpTitle: { flex: 1, fontSize: 22, fontWeight: '700', marginLeft: 12, fontFamily: 'Lexend_700Bold', letterSpacing: -0.3 },
-  cpSearchRow: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.1)',
-  },
-  cpSearchBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
-    backgroundColor: '#231F33',
-    paddingHorizontal: 12,
-    gap: 8,
-  },
-  cpSearchInput: { flex: 1, fontSize: 15, paddingVertical: 10, color: '#fff', fontFamily: 'Lexend_400Regular' },
   cpRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1161,15 +1501,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  cpFlag: { fontSize: 24, marginRight: 12 },
   cpCountryName: { fontSize: 15, fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
-  cpDial: { fontSize: 14, fontWeight: '600', color: 'rgba(255,255,255,0.5)', fontFamily: 'Lexend_600SemiBold' },
   flexMain: { flex: 1 },
   clientSubtitle: { fontSize: 12, marginTop: 3, fontFamily: 'Lexend_400Regular' },
-  checkIcon: { marginLeft: 8 },
   iconPadding: { padding: 4 },
   spacerWidth32: { width: 32 },
   selectClientText: { fontSize: 13, paddingHorizontal: 24, paddingVertical: 12, fontFamily: 'Lexend_400Regular' },
-  emptyContainer: { padding: 32, alignItems: 'center' },
-  emptyText: { color: 'rgba(255,255,255,0.5)', fontSize: 14, fontFamily: 'Lexend_400Regular' },
 });

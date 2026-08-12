@@ -277,6 +277,12 @@ export default function SecurityScreen() {
 
   const goBack = useCallback(() => router.back(), [router]);
 
+  const tabs = useMemo<{ id: TabId; label: string; icon: React.ReactNode }[]>(() => [
+    { id: 'password', label: t('security.tabPassword'), icon: <Lock size={15} color={activeTab === 'password' ? '#fff' : theme.textMuted} /> },
+    { id: 'devices', label: t('security.tabDevices'), icon: <Smartphone size={15} color={activeTab === 'devices' ? '#fff' : theme.textMuted} /> },
+    { id: 'delete', label: t('security.tabDelete'), icon: <Trash2 size={15} color={activeTab === 'delete' ? '#fff' : theme.danger} /> },
+  ], [activeTab, theme.danger, theme.textMuted, t]);
+
   if (shouldWait) return null;
 
   if (isTeamMember) {
@@ -301,12 +307,6 @@ export default function SecurityScreen() {
       </View>
     );
   }
-
-  const tabs: { id: TabId; label: string; icon: React.ReactNode }[] = [
-    { id: 'password', label: t('security.tabPassword'), icon: <Lock size={15} color={activeTab === 'password' ? '#fff' : theme.textMuted} /> },
-    { id: 'devices', label: t('security.tabDevices'), icon: <Smartphone size={15} color={activeTab === 'devices' ? '#fff' : theme.textMuted} /> },
-    { id: 'delete', label: t('security.tabDelete'), icon: <Trash2 size={15} color={activeTab === 'delete' ? '#fff' : theme.danger} /> },
-  ];
 
   return (
     <KeyboardAvoidingView
@@ -368,7 +368,8 @@ export default function SecurityScreen() {
       </View>
 
       <ScrollView
-        contentContainerStyle={{ paddingBottom: 100 + insets.bottom, paddingHorizontal: 16, paddingTop: 16 }}
+        style={{ backgroundColor: theme.bg }}
+        contentContainerStyle={{ backgroundColor: theme.bg, paddingBottom: 100 + insets.bottom, paddingHorizontal: 16, paddingTop: 16 }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >

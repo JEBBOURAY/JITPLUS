@@ -7,9 +7,8 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { Platform, View, Image, StyleSheet, ActivityIndicator, InteractionManager, AppState } from 'react-native';
+import { Platform, View, InteractionManager } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { ms } from '@/utils/responsive';
 import { QueryClient, QueryCache, MutationCache, onlineManager, useQueryClient } from '@tanstack/react-query';
 import NetInfo from '@react-native-community/netinfo';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
@@ -40,14 +39,10 @@ import AppErrorBoundary from '@/components/ErrorBoundary';
 import OfflineBanner from '@/components/OfflineBanner';
 import ForceUpdateModal from '@/components/ForceUpdateModal';
 import { useForceUpdate } from '@/hooks/useForceUpdate';
-import ReferralPopup from '@/components/ReferralPopup';
-import SetupReminderPopup, { type SetupIssue } from '@/components/SetupReminderPopup';
-import { useReferral, useRewards } from '@/hooks/useQueryHooks';
-import { useLanguage } from '@/contexts/LanguageContext';
-import { Image as ImageIcon, Award, Settings as SettingsIcon } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { sendMerchantPushToken } from '@/services/merchantPushToken';
 import MetaAdsManager from '@/services/metaAdsManager';
+import SplashAnimated from '@/components/SplashAnimated';
 
 // ── Lazy-load Sentry to prevent native module crash on Android ──
 // The native @sentry/react-native module can crash during require() if the DSN
@@ -293,7 +288,12 @@ export default function RootLayout() {
     return () => clearTimeout(timer);
   }, []);
 
-  useEffect(() => { void MetaAdsManager.initialize(); }, []);
+  useEffect(() => {
+    const handle = InteractionManager.runAfterInteractions(() => {
+      void MetaAdsManager.initialize();
+    });
+    return () => handle?.cancel?.();
+  }, []);
 
   if (!loaded && !fontTimeout && !error) {
     return null;
@@ -303,49 +303,21 @@ export default function RootLayout() {
 }
 
 /**
- * SplashGate — waits for AuthProvider to finish loading before
- * hiding the splash screen. Shows a branded loading screen.
+ * SplashGate — shows the custom animated splash (SplashAnimated) until its
+ * sequence finishes AND AuthProvider has resolved (whichever is later), then
+ * reveals the real app. The native Expo splash is hidden by SplashAnimated
+ * itself, right on its own mount — not before.
  */
 function SplashGate({ children }: { children: React.ReactNode }) {
   const { loading } = useAuth();
+  const [showApp, setShowApp] = useState(false);
 
-  useEffect(() => {
-    if (!loading) {
-      SplashScreen.hideAsync();
-    }
-  }, [loading]);
-
-  if (loading) {
-    return (
-      <View style={splashStyles.container}>
-        <Image
-          source={require('@/assets/images/jitplusprologo.png')}
-          style={splashStyles.logo}
-          resizeMode="contain"
-        />
-        <ActivityIndicator size="small" color="#7C3AED" style={splashStyles.spinner} />
-      </View>
-    );
+  if (!showApp) {
+    return <SplashAnimated ready={!loading} onFinish={() => setShowApp(true)} />;
   }
 
   return <>{children}</>;
 }
-
-const splashStyles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#1F2937',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  logo: {
-    width: 180,
-    height: 180,
-  },
-  spinner: {
-    marginTop: 24,
-  },
-});
 
 // Memoized to avoid the StatusBar native module being called on every parent
 // re-render (logcat showed 102 "Ignored status bar change" warnings per 3 min).
@@ -377,7 +349,7 @@ function RootLayoutNav() {
 }
 
 // Public routes that don't require authentication
-const PUBLIC_ROUTES = new Set(['welcome', 'login', 'register', 'verify-email', 'forgot-password', 'legal']);
+const PUBLIC_ROUTES = new Set(['login', 'register', 'verify-email', 'forgot-password', 'legal']);
 
 function ThemedNavigator() {
   const theme = useTheme();
@@ -388,14 +360,35 @@ function ThemedNavigator() {
   const segments = useSegments();
   const queryClient = useQueryClient();
 
-  // SECURITY: Redirect unauthenticated deep links to welcome.
+  // Navigation theme aligned with OUR design tokens. The stock DefaultTheme /
+  // DarkTheme use colors.background = rgb(242,242,242) / near-black, which do
+  // NOT match theme.bg (#FFFFFF / #0B0F14). react-native-screens paints each
+  // native screen with colors.background, so on a theme swap the mismatched
+  // native background flashes (white when leaving dark mode). Matching it to
+  // theme.bg removes the flash entirely.
+  const navTheme = useMemo(() => {
+    const base = isDark ? DarkTheme : DefaultTheme;
+    return {
+      ...base,
+      colors: {
+        ...base.colors,
+        background: theme.bg,
+        card: theme.bgCard ?? theme.bg,
+        text: theme.text,
+        border: theme.border,
+        primary: theme.primary,
+      },
+    };
+  }, [isDark, theme.bg, theme.bgCard, theme.text, theme.border, theme.primary]);
+
+  // SECURITY: Redirect unauthenticated deep links to login.
   // Without this, a deep link to e.g. jitpluspro://security could
   // render a protected screen without auth.
   useEffect(() => {
     if (loading) return;
     const firstSegment = segments[0] ?? '';
     if (!merchant && !PUBLIC_ROUTES.has(firstSegment)) {
-      router.replace('/welcome');
+      router.replace('/login');
     }
   }, [loading, merchant, segments, router]);
 
@@ -414,83 +407,7 @@ function ThemedNavigator() {
   const notificationListener = useRef<{ remove(): void } | null>(null);
   const responseListener = useRef<{ remove(): void } | null>(null);
 
-  // ── Referral popup (global — above all screens) ──
-  const { data: referralData } = useReferral(!isTeamMember && !!merchant);
-  const referralCode = referralData?.referralCode ?? null;
-  const [showReferral, setShowReferral] = useState(false);
-  const referralTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasMerchant = !!merchant;
-
-  useEffect(() => {
-    if (!hasMerchant || isTeamMember) return;
-
-    let cancelled = false;
-    (async () => {
-      const ts = await AsyncStorage.getItem('@jitpluspro_referral_popup_ts').catch(() => null);
-      const threeDays = 3 * 24 * 60 * 60 * 1000;
-      if (ts && Date.now() - Number(ts) < threeDays) return;
-      if (cancelled) return;
-      referralTimer.current = setTimeout(() => {
-        // Don't pop a modal over a backgrounded app — the resume frame is
-        // already busy and the popup would race with screen restoration.
-        if (AppState.currentState !== 'active') return;
-        setShowReferral(true);
-      }, 4000);
-    })();
-
-    return () => {
-      cancelled = true;
-      if (referralTimer.current) clearTimeout(referralTimer.current);
-    };
-  }, [hasMerchant, isTeamMember]);
-
-  const dismissReferral = useCallback(async () => {
-    setShowReferral(false);
-    try {
-      await AsyncStorage.setItem('@jitpluspro_referral_popup_ts', String(Date.now()));
-    } catch {}
-  }, []);
-
-  // ── Setup reminder popup (global — above all screens) ──
-  const { t } = useLanguage();
-  const { data: rewardsData } = useRewards(!isTeamMember && !!merchant && !!merchant.onboardingCompleted);
-  const [showSetupReminder, setShowSetupReminder] = useState(false);
-  const setupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const setupIssues = useMemo<SetupIssue[]>(() => {
-    if (!merchant || !merchant.onboardingCompleted) return [];
-    const items: SetupIssue[] = [];
-    if (!merchant.logoUrl) {
-      items.push({ key: 'logo', icon: <ImageIcon size={ms(16)} color="#F59E0B" strokeWidth={2} />, label: t('setupReminder.noLogo') });
-    }
-    if (!merchant.loyaltyType) {
-      items.push({ key: 'loyalty', icon: <SettingsIcon size={ms(16)} color="#F59E0B" strokeWidth={2} />, label: t('setupReminder.noLoyalty') });
-    }
-    if (!rewardsData || rewardsData.length === 0) {
-      items.push({ key: 'rewards', icon: <Award size={ms(16)} color="#F59E0B" strokeWidth={2} />, label: t('setupReminder.noRewards') });
-    }
-    return items;
-  }, [merchant, rewardsData, t]);
-
-  const hasSetupIssues = setupIssues.length > 0;
-  const onboardingDone = !!merchant?.onboardingCompleted;
-
-  useEffect(() => {
-    if (!hasMerchant || isTeamMember || !onboardingDone || !hasSetupIssues) return;
-
-    setupTimer.current = setTimeout(() => {
-      if (AppState.currentState !== 'active') return;
-      setShowSetupReminder(true);
-    }, 6000);
-
-    return () => {
-      if (setupTimer.current) clearTimeout(setupTimer.current);
-    };
-  }, [hasMerchant, isTeamMember, onboardingDone, hasSetupIssues]);
-
-  const dismissSetupReminder = useCallback(() => {
-    setShowSetupReminder(false);
-  }, []);
 
   // ── Real-time WebSocket connection ────────────────────────
   const socket = useRealtimeSocket({
@@ -567,7 +484,7 @@ function ThemedNavigator() {
             case 'open_security':            router.push('/security'); return;
             case 'open_logo':                router.push('/(tabs)/account'); return;
             case 'open_scan':                router.push('/(tabs)/scan'); return;
-            case 'open_plan':                router.push('/(tabs)/account'); return;
+            case 'open_plan':                router.push('/plan'); return;
             case 'open_dashboard':           router.push('/(tabs)'); return;
             case 'open_clients':             router.push('/(tabs)/activity'); return;
             case 'open_messages':            router.push('/(tabs)/messages'); return;
@@ -626,8 +543,11 @@ function ThemedNavigator() {
   }, [router, queryClient]);
 
   return (
-    <NavThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
-      <View style={{ flex: 1, direction: 'ltr' }}>
+    <NavThemeProvider value={navTheme}>
+      {/* backgroundColor MUST be set here: this persistent root View never
+          remounts on theme change, so it covers the white native window
+          background and prevents a white flash during the theme swap frame. */}
+      <View style={{ flex: 1, direction: 'ltr', backgroundColor: theme.bg }}>
       <OfflineBanner />
       {(status === 'update' || status === 'maintenance') && (
         <ForceUpdateModal status={status} storeUrl={storeUrl} />
@@ -646,7 +566,6 @@ function ThemedNavigator() {
             }}
           >
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="welcome" options={{ headerShown: false, animation: 'fade' }} />
             <Stack.Screen name="login" options={{ headerShown: false, animation: 'fade' }} />
             <Stack.Screen name="register" options={{ headerShown: false, animation: 'slide_from_bottom' }} />
             <Stack.Screen name="verify-email" options={{ headerShown: false, animation: 'slide_from_bottom' }} />
@@ -678,13 +597,8 @@ function ThemedNavigator() {
             <Stack.Screen name="stores" options={{ headerShown: false }} />
             <Stack.Screen name="referral" options={{ headerShown: false }} />
             <Stack.Screen name="admin-notifications" options={{ headerShown: false }} />
-            <Stack.Screen
-              name="onboarding"
-              options={{ headerShown: false, animation: 'fade', gestureEnabled: false }}
-            />
+            <Stack.Screen name="transactions" options={{ headerShown: false, animation: 'slide_from_right' }} />
           </Stack>
-      <ReferralPopup visible={showReferral} onClose={dismissReferral} referralCode={referralCode} />
-      <SetupReminderPopup visible={showSetupReminder && !showReferral} onClose={dismissSetupReminder} issues={setupIssues} />
       </View>
         </NavThemeProvider>
       );

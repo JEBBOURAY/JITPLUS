@@ -79,6 +79,66 @@ export class MerchantDashboardService {
     return result;
   }
 
+  // ── Accueil home stats — today/yesterday points + current-month daily scans.
+  // All plans, team-accessible, uncached (kept live: refetched on WS scan events). ──
+  async getHomeStats(merchantId: string) {
+    // Day/month boundaries in Morocco time (UTC+1, no DST) so "today" matches the
+    // merchant's local day regardless of the server timezone (cf. cron-utils).
+    const OFFSET_MS = 3_600_000;
+    const local = new Date(Date.now() + OFFSET_MS); // UTC fields now read as Morocco-local
+    const y = local.getUTCFullYear();
+    const mo = local.getUTCMonth();
+    const day = local.getUTCDate();
+    const startToday = new Date(Date.UTC(y, mo, day) - OFFSET_MS);
+    const startYesterday = new Date(startToday.getTime() - MS_PER_DAY);
+    const startMonth = new Date(Date.UTC(y, mo, 1) - OFFSET_MS);
+    const startNextMonth = new Date(Date.UTC(y, mo + 1, 1) - OFFSET_MS);
+    const daysInMonth = new Date(Date.UTC(y, mo + 1, 0)).getUTCDate();
+
+    const [agg] = await this.rawQuery.queryRaw<{
+      today_points: number;
+      today_clients: number;
+      yesterday_points: number;
+    }>(Prisma.sql`
+      SELECT
+        COALESCE(SUM(points) FILTER (WHERE created_at >= ${startToday}), 0)::int AS today_points,
+        COUNT(DISTINCT client_id) FILTER (WHERE created_at >= ${startToday})::int AS today_clients,
+        COALESCE(SUM(points) FILTER (WHERE created_at >= ${startYesterday} AND created_at < ${startToday}), 0)::int AS yesterday_points
+      FROM transactions
+      WHERE merchant_id = ${merchantId}
+        AND status = 'ACTIVE'
+        AND type = 'EARN_POINTS'
+        AND created_at >= ${startYesterday}
+    `);
+
+    const dailyRows = await this.rawQuery.queryRaw<{ day: number; cnt: number }>(Prisma.sql`
+      SELECT EXTRACT(DAY FROM (created_at + interval '1 hour'))::int AS day, COUNT(*)::int AS cnt
+      FROM transactions
+      WHERE merchant_id = ${merchantId}
+        AND status = 'ACTIVE'
+        AND type = 'EARN_POINTS'
+        AND created_at >= ${startMonth}
+        AND created_at < ${startNextMonth}
+      GROUP BY 1
+    `);
+
+    const daily = new Array<number>(daysInMonth).fill(0);
+    let monthTotal = 0;
+    for (const r of dailyRows) {
+      const idx = (r.day ?? 0) - 1;
+      if (idx >= 0 && idx < daysInMonth) {
+        daily[idx] = r.cnt ?? 0;
+        monthTotal += r.cnt ?? 0;
+      }
+    }
+
+    return {
+      today: { points: agg?.today_points ?? 0, clients: agg?.today_clients ?? 0 },
+      yesterday: { points: agg?.yesterday_points ?? 0 },
+      month: { total: monthTotal, daily },
+    };
+  }
+
   // ── 2. Rewards Distribution — separate light query ─────────
   async getRewardsDistribution(merchantId: string) {
     const cacheKey = `dashboard:distribution:${merchantId}`;

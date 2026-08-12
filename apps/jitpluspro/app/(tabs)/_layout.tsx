@@ -1,53 +1,47 @@
-import React, { useEffect } from 'react';
-import { Tabs, useRouter } from 'expo-router';
+import React, { useEffect, useRef } from 'react';
+import { Tabs, useRouter, useSegments } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { ActivityIndicator, View } from 'react-native';
 import CustomTabBar from '@/components/CustomTabBar';
+import { GuidedTourProvider } from '@/components/GuidedTour';
+import { canScan } from '@/hooks/useScanGuard';
 
 const renderTabBar = (props: any) => <CustomTabBar {...props} />;
 
-// Module-level flag — survives component remounts (resets only on full app restart)
-let _initialScanOpened = false;
-
 export default function TabLayout() {
-  const { merchant, loading, onboardingCompleted, isTeamMember } = useAuth();
+  const { merchant, loading } = useAuth();
   const theme = useTheme();
   const router = useRouter();
+  const segments = useSegments();
+  const didEnforceHomeRef = useRef(false);
 
-  // Derive stable booleans so the effect doesn't re-fire when merchant
-  // properties update (e.g. loyaltyType change during onboarding).
   const isAuthenticated = !!merchant;
-  const needsEmailVerification = isAuthenticated && !merchant.emailVerified && !merchant.googleId;
-  const merchantEmail = merchant?.email;
 
-  // Single redirect chain — priority: auth → email verification → onboarding
+  // Auth is the ONLY blocking gate. Email verification and business setup are
+  // handled non-blockingly via the Accueil checklist — never a forced tunnel.
+  // The app lands directly on the "Accueil" tab after login/registration.
   useEffect(() => {
     if (loading) return;
     if (!isAuthenticated) {
-      router.replace('/welcome');
-      _initialScanOpened = false;
-      return;
+      router.replace('/login');
     }
-    if (needsEmailVerification) {
-      router.replace({
-        pathname: '/verify-email',
-        params: { email: merchantEmail! },
-      });
-      _initialScanOpened = false;
-      return;
+  }, [loading, isAuthenticated, router]);
+
+  // Ensure cold start lands on Accueil (not Clients/index) when opening tabs root.
+  // Do not override explicit deep links like /(tabs)/messages or /(tabs)/scan.
+  useEffect(() => {
+    if (loading || !isAuthenticated || didEnforceHomeRef.current) return;
+
+    const inTabsGroup = segments[0] === '(tabs)';
+    const activeTab = segments.at(1);
+    const shouldRedirectToHome = inTabsGroup && (!activeTab || activeTab === 'index');
+
+    if (shouldRedirectToHome) {
+      didEnforceHomeRef.current = true;
+      router.replace('/(tabs)/activity');
     }
-    if (!onboardingCompleted && !isTeamMember) {
-      router.replace('/onboarding');
-      _initialScanOpened = false;
-      return;
-    }
-    // All checks passed — open scanner on first load
-    if (!_initialScanOpened) {
-      _initialScanOpened = true;
-      router.push('/scan-qr');
-    }
-  }, [loading, isAuthenticated, needsEmailVerification, onboardingCompleted, isTeamMember, merchantEmail, router]);
+  }, [loading, isAuthenticated, segments, router]);
 
   if (loading) {
     return (
@@ -60,32 +54,46 @@ export default function TabLayout() {
   if (!merchant) return null;
 
   return (
-    <Tabs
-      initialRouteName="scan"
-      tabBar={renderTabBar}
-      screenOptions={{
-        headerShown: false,
-        animation: 'fade',
-        lazy: true,
-        freezeOnBlur: true,
-      }}
-    >
-      {/* ── 5 visible tabs: Activité · Clients · Scan · Messages · Compte ── */}
-      <Tabs.Screen name="activity" options={{ title: 'Activité' }} />
-      <Tabs.Screen name="index" options={{ title: 'Clients' }} />
-      <Tabs.Screen
-        name="scan"
-        options={{ title: 'Scan' }}
-        listeners={() => ({
-          tabPress: (e) => {
-            e.preventDefault();
-            router.push('/scan-qr');
-          },
-        })}
-      />
-      <Tabs.Screen name="messages" options={{ title: 'Messages' }} />
-      <Tabs.Screen name="account" options={{ title: 'Compte' }} />
+    <GuidedTourProvider>
+      <Tabs
+        initialRouteName="activity"
+        tabBar={renderTabBar}
+        screenOptions={{
+          headerShown: false,
+          animation: 'fade',
+          lazy: true,
+          freezeOnBlur: true,
+          // Scene background = our token so tab screens never flash the stock
+          // navigation background (white/grey) during a theme swap.
+          sceneStyle: { backgroundColor: theme.bg },
+        }}
+      >
+        {/* ── 5 visible tabs: Accueil · Clients · Scan · Messages · Support ── */}
+        <Tabs.Screen name="activity" options={{ title: 'Accueil' }} />
+        <Tabs.Screen name="index" options={{ title: 'Clients' }} />
+        <Tabs.Screen
+          name="scan"
+          options={{ title: 'Scan' }}
+          listeners={() => ({
+            tabPress: (e) => {
+              e.preventDefault();
+              // Hard dependency: no scanning without a loyalty program. Route to
+              // the loyalty setup (with warning banner) instead of the camera.
+              if (canScan(merchant)) {
+                router.push('/scan-qr');
+              } else {
+                router.push({ pathname: '/settings', params: { loyaltySetup: '1' } });
+              }
+            },
+          })}
+        />
+        <Tabs.Screen name="messages" options={{ title: 'Messages' }} />
+        <Tabs.Screen name="support" options={{ title: 'Support' }} />
 
-    </Tabs>
+        {/* ── Hidden route: Compte is reachable only via the avatar on Accueil ── */}
+        <Tabs.Screen name="account" options={{ href: null }} />
+
+      </Tabs>
+    </GuidedTourProvider>
   );
 }

@@ -64,7 +64,7 @@ export default function VerifyEmailScreen() {
   // If already verified (e.g. came back after verifying), skip this screen
   useEffect(() => {
     if (isLoggedIn && merchant?.emailVerified) {
-      router.replace('/(tabs)');
+      router.replace('/(tabs)/activity');
     }
   }, [isLoggedIn, merchant?.emailVerified, router]);
 
@@ -129,7 +129,7 @@ export default function VerifyEmailScreen() {
       });
       if (isLoggedIn) {
         updateMerchant({ emailVerified: true });
-        router.replace('/(tabs)');
+        router.replace('/(tabs)/activity');
       } else {
         Alert.alert(
           t('verifyEmail.successTitle'),

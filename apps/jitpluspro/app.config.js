@@ -37,7 +37,7 @@ module.exports = ({ config }) => {
     name: 'JitPlus Pro',
     slug: 'jitpluspro',
     description: 'Loyalty program management for local shops — scan QR codes, track customer visits, and set up stamp-based rewards.',
-    version: '1.5.18',
+    version: '1.5.19',
     orientation: 'portrait',
     icon: './assets/images/icon-white.png',
     scheme: 'jitpluspro',
@@ -59,7 +59,7 @@ module.exports = ({ config }) => {
       supportsTablet: false,
       bundleIdentifier: 'com.jitplus.pro',
       // Initial build number — EAS autoIncrement bumps this on every production build
-      buildNumber: '31',
+      buildNumber: '32',
       // Portrait-only app: disable iPad Split View / Slide Over to avoid orientation-support review issues
       requiresFullScreen: true,
       // Declares standard HTTPS encryption — waives export compliance questionnaire
@@ -106,7 +106,7 @@ module.exports = ({ config }) => {
       // ],
     },
     android: {
-      versionCode: 33,
+      versionCode: 34,
       adaptiveIcon: {
         foregroundImage: './assets/images/adaptive-icon-white.png',
         backgroundColor: '#FFFFFF',
@@ -189,7 +189,7 @@ module.exports = ({ config }) => {
       '@react-native-google-signin/google-signin',
       'expo-apple-authentication',
       // Explicit iOS / Android SDK targets — avoids surprises on Expo SDK bumps
-      // and satisfies Google Play's Aug 2025 requirement of targetSdkVersion 35.
+      // and satisfies Google Play's Android 16 requirement for targetSdkVersion 36.
       [
         'expo-build-properties',
         {
@@ -198,7 +198,7 @@ module.exports = ({ config }) => {
           },
           android: {
             compileSdkVersion: 36,
-            targetSdkVersion: 35,
+            targetSdkVersion: 36,
             minSdkVersion: 24,
             buildToolsVersion: '35.0.0',
           },
@@ -278,15 +278,20 @@ module.exports = ({ config }) => {
             "Permettre à JitPlus Pro d'accéder à votre position pour localiser votre commerce.",
         },
       ],
-      // Sentry — DISABLED at build time (auto dSYM/source-map upload).
-      // Native crash reporting via @sentry/react-native still works at runtime.
-      // The Xcode "Upload Debug Symbols to Sentry" script was failing on EAS iOS builders.
-      // Re-enable by setting SENTRY_ENABLE_BUILD_UPLOAD=true. Otherwise upload manually:
-      //   npx sentry-cli debug-files upload -o jitplus -p jitpluspro-mobile <path>
+      // Sentry — build-time dSYM/Hermes/source-map upload so App Hangs & crashes
+      // are SYMBOLICATED. Gated so a missing auth token never breaks the build.
+      // DSN is in the EU region (ingest.de.sentry.io) → sentry-cli MUST target
+      // https://de.sentry.io/ (via SENTRY_URL) or uploads silently 401/404.
+      // Requires EAS secret SENTRY_AUTH_TOKEN + env SENTRY_ORG/SENTRY_PROJECT/
+      // SENTRY_URL/SENTRY_ENABLE_BUILD_UPLOAD=true (see eas.json production).
+      // Manual upload for an already-shipped build:
+      //   npx sentry-cli --url https://de.sentry.io/ debug-files upload \
+      //     -o jitplus -p jitpluspro-mobile <path-to-dSYMs-and-Frameworks>
       ...(process.env.SENTRY_AUTH_TOKEN && process.env.SENTRY_ENABLE_BUILD_UPLOAD === 'true'
         ? [['@sentry/react-native/expo', {
             organization: process.env.SENTRY_ORG || '',
             project: process.env.SENTRY_PROJECT || '',
+            url: process.env.SENTRY_URL || 'https://de.sentry.io/',
           }]]
         : []),
     ],

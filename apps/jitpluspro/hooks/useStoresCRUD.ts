@@ -85,6 +85,18 @@ export function useStoresCRUD() {
     );
   };
 
+  // Delete without the native Alert — used when the caller drives its own
+  // confirmation UI (custom modal). Returns whether the deletion succeeded.
+  const deleteStoreDirect = async (store: StoreType): Promise<boolean> => {
+    try {
+      await deleteMutation.mutateAsync(store.id);
+      return true;
+    } catch {
+      Alert.alert(t('common.error'), t('storesCrud.deleteError'));
+      return false;
+    }
+  };
+
   // ── Toggle active ──
   const toggleActive = async (store: StoreType) => {
     try {
@@ -105,6 +117,7 @@ export function useStoresCRUD() {
     alertMaxStores,
     saveStore,
     deleteStore,
+    deleteStoreDirect,
     toggleActive,
   };
 }

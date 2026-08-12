@@ -45,9 +45,6 @@ export function useGoogleAuth({ onCancel }: UseGoogleAuthOptions = {}) {
     try {
       await GoogleSignin.hasPlayServices();
 
-      // Clear cached account selection so the system chooser always appears
-      try { await GoogleSignin.signOut(); } catch { /* no-op */ }
-
       const response = await GoogleSignin.signIn();
 
       // V16 API: cancellation returns { type: 'cancelled' }
@@ -71,7 +68,7 @@ export function useGoogleAuth({ onCancel }: UseGoogleAuthOptions = {}) {
 
       setIsLoading(false);
       if (result.success) {
-        router.replace('/(tabs)');
+        router.replace('/(tabs)/activity');
       } else {
         if (result.rawError && isNoAccountError(result.rawError)) {
           setNoAccount(true);

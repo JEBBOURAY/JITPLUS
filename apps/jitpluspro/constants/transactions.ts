@@ -1,4 +1,4 @@
-import { Plus, Minus, X, RefreshCw, Pencil, Trophy, Gift, Star, Settings2, Sparkles, Aperture, Coins } from 'lucide-react-native';
+import { X, RefreshCw, Gift, SlidersHorizontal, TrendingUp, Disc3 } from 'lucide-react-native';
 import type { LucideIcon } from 'lucide-react-native';
 import type { TransactionType } from '@/types';
 import type { ThemeColors } from '@/contexts/ThemeContext';
@@ -11,7 +11,7 @@ interface TransactionTypeConfig {
 
 export const TRANSACTION_TYPE_CONFIG: Record<TransactionType, TransactionTypeConfig> = {
   EARN_POINTS: {
-    icon: Coins,
+    icon: TrendingUp,
     color: (theme) => theme.primary,
     sign: '+',
   },
@@ -21,7 +21,7 @@ export const TRANSACTION_TYPE_CONFIG: Record<TransactionType, TransactionTypeCon
     sign: '-',
   },
   ADJUST_POINTS: {
-    icon: Settings2,
+    icon: SlidersHorizontal,
     color: (theme) => theme.textMuted,
     sign: '',
   },
@@ -31,7 +31,7 @@ export const TRANSACTION_TYPE_CONFIG: Record<TransactionType, TransactionTypeCon
     sign: '',
   },
   LUCKY_WHEEL_WIN: {
-    icon: Aperture,
+    icon: Disc3,
     color: (theme) => theme.accent,
     sign: '',
   },

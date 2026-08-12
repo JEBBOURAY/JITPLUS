@@ -3,355 +3,184 @@ import {
   View,
   Text,
   StyleSheet,
-  FlatList,
+  ScrollView,
   RefreshControl,
   TouchableOpacity,
-  Platform,
-  ActivityIndicator,
-  ScrollView,
+  Animated,
 } from 'react-native';
 import {
   Zap,
-  ArrowUpRight,
-  ArrowDownLeft,
-  X,
-  Filter,
-  RefreshCw,
-  Gift,
   AlertCircle,
-  Aperture,
+  BarChart3,
+  Bell,
+  TrendingUp,
+  TrendingDown,
+  Coins,
+  Star,
+  Stamp,
+  Crown,
+  ChevronRight,
+  Eye,
+  Store,
+  CreditCard,
+  Ticket,
+  Users,
+  Clock,
+  X,
 } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
-import { getTransactionConfig } from '@/constants/transactions';
+import { useRouter } from 'expo-router';
 import { useAuthStore } from '@/stores/authStore';
-import { useTheme, palette } from '@/contexts/ThemeContext';
+import { useTheme, palette, brandGradientFull } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { ActivityListSkeleton } from '@/components/Skeleton';
-import { useTransactions } from '@/hooks/useQueryHooks';
+import { useTransactions, useAdminNotifUnreadCount, useHomeStats } from '@/hooks/useQueryHooks';
 import { useGuardedCallback } from '@/hooks/useGuardedCallback';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Animated } from 'react-native';
-import { formatCurrency, DEFAULT_CURRENCY, getIntlLocale } from '@/config/currency';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusFade } from '@/hooks/useFocusFade';
+import MerchantLogo from '@/components/MerchantLogo';
+import PremiumLockModal from '@/components/PremiumLockModal';
+import { SetupChecklist } from '@/components/SetupChecklist';
+import TipsCarousel from '@/components/TipsCarousel';
+import QuickActionsRow, { type QuickAction } from '@/components/QuickActionsRow';
+import MonthOverviewCard from '@/components/MonthOverviewCard';
+import RecentActivityCard from '@/components/RecentActivityCard';
+import KpiCounter from '@/components/KpiCounter';
+import { useTourTarget } from '@/components/GuidedTour';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';import { useFocusFade } from '@/hooks/useFocusFade';
 import { useExitOnBack } from '@/hooks/useExitOnBack';
-import { formatDateTime } from '@/utils/date';
+import { pokeInteraction } from '@/utils/interaction';
 import { ms } from '@/utils/responsive';
-import type { Transaction } from '@/types';
 import { ASYNC_STORAGE_KEYS } from '@/constants/app';
-
-type FilterType = 'ALL' | 'EARN_POINTS' | 'REDEEM_REWARD' | 'ADJUST_POINTS' | 'LOYALTY_PROGRAM_CHANGE' | 'LUCKY_WHEEL_WIN';
+import type { Transaction } from '@/types';
 
 const HIT_SLOP_LARGE = { top: 12, bottom: 12, left: 12, right: 12 };
+// Height of the floating top-bar content (below the status bar). The hero
+// gradient is padded by this amount so its content clears the floating icons.
+const TOP_BAR_HEIGHT = 56;
+// Stable empty reference so MonthOverviewCard doesn't re-render before stats load.
+const EMPTY_DAILY: number[] = [];
 const safeImpact = (style: Haptics.ImpactFeedbackStyle) => {
   Haptics.impactAsync(style).catch(() => {});
 };
-const safeSelection = () => {
-  Haptics.selectionAsync().catch(() => {});
-};
 
-/** Removes emojis from text to let the custom icons shine (with bounded LRU cache for 60fps scrolling) */
-const EMOJI_CACHE_LIMIT = 500;
-const emojiCache = new Map<string, string>();
-const stripEmojis = (str: string | null | undefined) => {
-  if (!str) return '';
-  const hit = emojiCache.get(str);
-  if (hit !== undefined) {
-    // LRU bump: re-insert to mark as most-recently used.
-    emojiCache.delete(str);
-    emojiCache.set(str, hit);
-    return hit;
-  }
-  const stripped = str.replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, '').trim();
-  if (emojiCache.size >= EMOJI_CACHE_LIMIT) {
-    // Evict oldest single entry instead of clearing the whole cache, which
-    // produced a recurring cache-miss storm during long scrolls.
-    const oldest = emojiCache.keys().next().value;
-    if (oldest !== undefined) emojiCache.delete(oldest);
-  }
-  emojiCache.set(str, stripped);
-  return stripped;
-};
-
-/* ── Tip banner — dismissable with "don't show again" ── */
-const ActivityBanner = React.memo(function ActivityBanner({
-  onDismiss,
-  onDismissForever,
-}: {
-  onDismiss: () => void;
-  onDismissForever: () => void;
-}) {
-  const theme = useTheme();
+/* ── Discrete Free → Pro teaser (only shown on the Free plan) ── */
+const ProUpgradeBanner = React.memo(function ProUpgradeBanner({ onPress }: { onPress: () => void }) {
   const { t } = useLanguage();
-  const isDark = theme.mode === 'dark';
-
   return (
-    <View style={[bannerStyles.wrapper, { backgroundColor: isDark ? 'rgba(124,58,237,0.12)' : 'rgba(124,58,237,0.06)', borderColor: isDark ? 'rgba(124,58,237,0.25)' : 'rgba(124,58,237,0.15)' }]}>
-      <LinearGradient
-        colors={['rgba(124,58,237,0.08)', 'transparent']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={StyleSheet.absoluteFill}
-      />
-      <TouchableOpacity
-        style={bannerStyles.closeBtn}
-        onPress={onDismiss}
-        hitSlop={HIT_SLOP_LARGE}
-        accessibilityRole="button"
-        accessibilityLabel={t('common.close')}
-      >
-        <X size={16} color={theme.textMuted} strokeWidth={2} />
-      </TouchableOpacity>
-      <View style={bannerStyles.content}>
-        <Zap size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
-        <View style={bannerStyles.textWrap}>
-          <Text style={[bannerStyles.title, { color: theme.text }]} maxFontSizeMultiplier={1.6}>{t('activity.bannerTitle')}</Text>
-          <Text style={[bannerStyles.desc, { color: theme.textMuted }]} maxFontSizeMultiplier={1.6}>{t('activity.bannerDesc')}</Text>
-        </View>
-      </View>
-      <TouchableOpacity
-        onPress={onDismissForever}
-        style={bannerStyles.hideBtn}
-        hitSlop={HIT_SLOP_LARGE}
-        accessibilityRole="button"
-        accessibilityLabel={t('activity.bannerHide')}
-      >
-        <Text style={[bannerStyles.hideText, { color: theme.textMuted }]} maxFontSizeMultiplier={1.6}>{t('activity.bannerHide')}</Text>
-      </TouchableOpacity>
-    </View>
-  );
-});
-
-/* ── Memoized row — avoids re-render of every row on list updates ── */
-const TransactionRow = React.memo(function TransactionRow({
-  item,
-  merchantLoyaltyType,
-}: {
-  item: Transaction;
-  merchantLoyaltyType?: string | null;
-}) {
-  const theme = useTheme();
-  const { t, locale } = useLanguage();
-  const isDark = theme.mode === 'dark';
-  const isEarned = item.type === 'EARN_POINTS';
-  const isCancelled = item.status === 'CANCELLED';
-  const isProgramChange = item.type === 'LOYALTY_PROGRAM_CHANGE';
-  const isLuckyWheelWin = item.type === 'LUCKY_WHEEL_WIN';
-  const { icon: IconComp, color } = getTransactionConfig(item.type, isCancelled, theme);
-  const flowColor = isCancelled ? theme.danger : isEarned ? theme.primary : theme.accent;
-  const flowBg = isCancelled
-    ? `${theme.danger}14`
-    : isEarned
-      ? (isDark ? 'rgba(167,139,250,0.12)' : 'rgba(124,58,237,0.08)')
-      : (isDark ? 'rgba(156,163,175,0.12)' : 'rgba(31,41,55,0.06)');
-  const performerName = item.performedByName || item.teamMember?.nom || null;
-  const isReward = item.type === 'REDEEM_REWARD' && !isCancelled;
-
-  const pointsLabel = (item.loyaltyType ?? merchantLoyaltyType) === 'STAMPS'
-    ? t('common.stampsAbbr')
-    : t('common.pointsAbbr');
-
-  return (
-    <View
-      style={[styles.txCard, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}
-      accessible
-      accessibilityRole="summary"
+    <TouchableOpacity
+      style={proStyles.wrapper}
+      onPress={onPress}
+      activeOpacity={0.85}
+      accessibilityRole="button"
+      accessibilityLabel={`${t('home.proTeaserTitle')} · ${t('home.proTeaserCta')}`}
     >
-      {/* ── Flow indicator bar ── */}
-      <View style={[styles.flowBar, { backgroundColor: flowColor }]} importantForAccessibility="no" />
-
-      {/* ── Personalized Icon ── */}
-      {(isReward || (isEarned && !isCancelled) || (isLuckyWheelWin && !isCancelled)) ? (
-        <View style={[styles.txIconShadowWrapper, isReward && styles.giftShadow]} importantForAccessibility="no">
-          <View style={[styles.txIcon, { overflow: 'hidden', borderWidth: 1, borderColor: `${color}40`, marginRight: 0 }]}>
-            <LinearGradient
-              colors={[color + '30', color + '05']}
-              style={StyleSheet.absoluteFill}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            />
-            <IconComp size={isReward ? 22 : 20} color={color} strokeWidth={isReward ? 2.5 : 2} />
-          </View>
-        </View>
-      ) : (
-        <View style={[styles.txIcon, { backgroundColor: color + '14', borderWidth: 1, borderColor: 'transparent' }]} importantForAccessibility="no">
-          <IconComp size={18} color={color} strokeWidth={1.8} />
-        </View>
-      )}
-
-      {/* ── Info ── */}
-      <View style={styles.txInfo}>
-        <Text
-          style={[styles.txName, { color: theme.text }, isCancelled && styles.cancelled]}
-          numberOfLines={1}
-          maxFontSizeMultiplier={1.6}
-        >
-          {[item.client?.prenom, item.client?.nom].filter(Boolean).join(' ') || '?'}
-        </Text>
-        <Text style={[styles.txDate, { color: theme.textMuted }]} maxFontSizeMultiplier={1.6}>
-          {formatDateTime(item.createdAt, locale)}
-        </Text>
-        {isProgramChange && item.note && (
-          <View style={styles.inlineIconRow}>
-            <RefreshCw size={11} color={theme.primary} strokeWidth={2} />
-            <Text style={[styles.txMeta, { color: theme.primary, flex: 1 }]} numberOfLines={1} maxFontSizeMultiplier={1.6}>
-              {stripEmojis(item.note)}
-            </Text>
-          </View>
-        )}
-        {isLuckyWheelWin && item.note && (
-          <View style={styles.rewardRow}>
-            <Aperture size={11} color={theme.accent} strokeWidth={2} />
-            <Text style={[styles.txMeta, { color: theme.accent, flex: 1 }]} numberOfLines={1} maxFontSizeMultiplier={1.6}>
-              {stripEmojis(item.note)}
-            </Text>
-          </View>
-        )}
-        {!isEarned && !isProgramChange && item.reward && (
-          <View style={styles.rewardRow}>
-            <Gift size={13} color={theme.accent} strokeWidth={2.5} />
-            <Text style={[styles.txMeta, { color: theme.accent, flex: 1, fontWeight: '700' }]} numberOfLines={1} maxFontSizeMultiplier={1.6}>
-              {stripEmojis(item.reward.titre)}
-            </Text>
-            {isReward && item.giftStatus === 'FULFILLED' && (
-              <View style={[styles.giftBadge, { backgroundColor: `${theme.accent}15`, borderColor: `${theme.accent}30` }]}>
-                <Text style={[styles.giftBadgeText, { color: theme.accent }]} maxFontSizeMultiplier={1.4}>{t('gift.fulfilled')}</Text>
-              </View>
-            )}
-          </View>
-        )}
-        {performerName && (
-          <Text style={[styles.txPerformer, { color: theme.textMuted }]} numberOfLines={1} maxFontSizeMultiplier={1.6}>
-            {t('activity.by', { name: performerName })}
-          </Text>
-        )}
-        {isCancelled && <Text style={styles.cancelLabel} maxFontSizeMultiplier={1.4}>{t('activity.cancelled')}</Text>}
-      </View>
-
-      {/* ── Flow amount ── */}
-      {!isProgramChange && !isLuckyWheelWin && (
-        <View style={styles.txRight}>
-          {item.amount > 0 && (
-            <Text style={[styles.txAmount, { color: theme.textMuted }, isCancelled && styles.cancelled]} maxFontSizeMultiplier={1.4}>
-              {formatCurrency(item.amount, DEFAULT_CURRENCY, getIntlLocale(locale))}
-            </Text>
-          )}
-          <View style={[styles.flowPill, { backgroundColor: flowBg }]}>
-            {isEarned
-              ? <ArrowUpRight size={11} color={flowColor} strokeWidth={2.5} />
-              : <ArrowDownLeft size={11} color={flowColor} strokeWidth={2.5} />}
-            <Text style={[styles.flowPillText, { color: flowColor }, isCancelled && styles.cancelled]} maxFontSizeMultiplier={1.4}>
-              {isEarned ? '+' : '−'}{item.points} {pointsLabel}
-            </Text>
-          </View>
-        </View>
-      )}
-    </View>
-  );
-});
-
-// Filter keys are stable across re-renders; only the labels depend on locale.
-const FILTER_KEYS: readonly { key: FilterType; labelKey: string }[] = [
-  { key: 'ALL', labelKey: 'activity.filterAll' },
-  { key: 'EARN_POINTS', labelKey: 'activity.filterEarned' },
-  { key: 'REDEEM_REWARD', labelKey: 'activity.filterRedeemed' },
-  { key: 'LUCKY_WHEEL_WIN', labelKey: 'activity.filterLuckyWheel' },
-  { key: 'ADJUST_POINTS', labelKey: 'activity.filterAdjust' },
-  { key: 'LOYALTY_PROGRAM_CHANGE', labelKey: 'activity.filterTeam' },
-];
-
-interface FilterPillsProps {
-  activeFilter: FilterType | null;
-  onChange: (next: FilterType | null) => void;
-  theme: ReturnType<typeof useTheme>;
-  t: (key: string) => string;
-}
-
-const FilterPills = React.memo(function FilterPills({ activeFilter, onChange, theme, t }: FilterPillsProps) {
-  return (
-    <View style={styles.filterWrapper}>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.filterRow}
+      <LinearGradient
+        colors={['#0f031e', '#1a0533']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={proStyles.gradient}
       >
-        {FILTER_KEYS.map(({ key, labelKey }) => {
-          const isActive = activeFilter === key;
-          const label = t(labelKey);
-          return (
-            <TouchableOpacity
-              key={key}
-              activeOpacity={0.7}
-              onPress={() => {
-                safeSelection();
-                onChange(isActive ? null : key);
-              }}
-              hitSlop={HIT_SLOP_LARGE}
-              accessibilityRole="button"
-              accessibilityLabel={label}
-              accessibilityState={{ selected: isActive }}
-              style={[
-                styles.filterPill,
-                {
-                  backgroundColor: isActive ? theme.primary + '18' : theme.bgCard,
-                  borderColor: isActive ? theme.primary : theme.borderLight,
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.filterPillText,
-                  { color: isActive ? theme.primary : theme.textMuted },
-                ]}
-                maxFontSizeMultiplier={1.4}
-              >
-                {label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
-    </View>
+        <View style={proStyles.iconWrap}>
+          <Crown size={15} color={palette.gold} strokeWidth={2} />
+        </View>
+        <View style={proStyles.textWrap}>
+          <Text style={proStyles.title} numberOfLines={1} maxFontSizeMultiplier={1.3}>
+            {t('home.proTeaserTitle')}
+          </Text>
+          <Text style={proStyles.desc} numberOfLines={1} maxFontSizeMultiplier={1.3}>
+            {t('home.proTeaserDesc')}
+          </Text>
+        </View>
+        <Text style={proStyles.cta} numberOfLines={1} maxFontSizeMultiplier={1.2}>
+          {t('home.proTeaserCta')}
+        </Text>
+        <ChevronRight size={16} color={palette.gold} strokeWidth={2} />
+      </LinearGradient>
+    </TouchableOpacity>
   );
 });
 
-export default function ActivityScreen() {
+/* ── Premium trial-end reminder (Accueil) — shown at J-7…J-1 before the trial
+   flips back to Free. Distinct from the config checklist and the Free→Pro
+   teaser; dismissable for the day but reappears the next day (P6). ── */
+const TrialEndBanner = React.memo(function TrialEndBanner({
+  daysRemaining, onPress, onDismiss,
+}: { daysRemaining: number; onPress: () => void; onDismiss: () => void }) {
+  const { t } = useLanguage();
+  const urgent = daysRemaining <= 1;
+  const title = urgent
+    ? t('home.trialEndTomorrowTitle')
+    : t('home.trialEndTitle', { days: daysRemaining });
+  const desc = urgent ? t('home.trialEndUrgentDesc') : t('home.trialEndDesc');
+  return (
+    <TouchableOpacity
+      style={proStyles.wrapper}
+      onPress={onPress}
+      activeOpacity={0.85}
+      accessibilityRole="button"
+      accessibilityLabel={`${title} · ${t('home.trialEndCta')}`}
+    >
+      <LinearGradient
+        colors={['#0f031e', '#1a0533']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={proStyles.gradient}
+      >
+        <View style={proStyles.iconWrap}>
+          <Clock size={15} color={palette.gold} strokeWidth={2} />
+        </View>
+        <View style={proStyles.textWrap}>
+          <Text style={proStyles.title} numberOfLines={1} maxFontSizeMultiplier={1.3}>
+            {title}
+          </Text>
+          <Text style={proStyles.desc} numberOfLines={1} maxFontSizeMultiplier={1.3}>
+            {desc}
+          </Text>
+        </View>
+        <Text style={proStyles.cta} numberOfLines={1} maxFontSizeMultiplier={1.2}>
+          {t('home.trialEndCta')}
+        </Text>
+        <TouchableOpacity
+          onPress={onDismiss}
+          hitSlop={HIT_SLOP_LARGE}
+          accessibilityRole="button"
+          accessibilityLabel={t('common.close')}
+          style={proStyles.dismissBtn}
+        >
+          <X size={15} color="rgba(255,255,255,0.55)" strokeWidth={2} />
+        </TouchableOpacity>
+      </LinearGradient>
+    </TouchableOpacity>
+  );
+});
+
+export default function HomeScreen() {
   const merchant = useAuthStore((s) => s.merchant);
   const theme = useTheme();
-  const { t, locale } = useLanguage();
+  const router = useRouter();
+  const { t } = useLanguage();
   const { focusStyle } = useFocusFade();
   const insets = useSafeAreaInsets();
+  const { data: unreadData } = useAdminNotifUnreadCount();
+  const unreadCount = unreadData?.count ?? 0;
 
   // Android: "press back again to exit" on the home tab
   useExitOnBack();
 
-  // ── Banner dismiss state ──
-  const [bannerVisible, setBannerVisible] = useState(false);
-
-  useEffect(() => {
-    AsyncStorage.getItem(ASYNC_STORAGE_KEYS.ACTIVITY_BANNER_DISMISSED).then((val) => {
-      if (val !== 'true') setBannerVisible(true);
-    });
-  }, []);
-
-  const dismissBanner = useCallback(() => {
-    setBannerVisible(false);
-  }, []);
-
-  const dismissBannerForever = useCallback(() => {
-    setBannerVisible(false);
-    AsyncStorage.setItem(ASYNC_STORAGE_KEYS.ACTIVITY_BANNER_DISMISSED, 'true');
-  }, []);
+  // ── Premium gate for the dashboard shortcut (mirrors the Compte screen) ──
+  const [premiumModal, setPremiumModal] = useState<{ visible: boolean; titleKey: string; descKey: string }>({
+    visible: false,
+    titleKey: '',
+    descKey: '',
+  });
+  const closePremiumModal = useCallback(() => setPremiumModal((prev) => ({ ...prev, visible: false })), []);
 
   const {
     data,
     isLoading: loading,
     isRefetching: refreshing,
     isError,
-    hasNextPage: hasMore,
-    isFetchingNextPage: loadingMore,
-    fetchNextPage: loadMore,
     refetch,
   } = useTransactions();
 
@@ -360,153 +189,326 @@ export default function ActivityScreen() {
     [data],
   );
 
-  // ── Filter state ──
-  const [activeFilter, setActiveFilter] = useState<FilterType | null>(null);
+  // ── Aggregated KPI + month scans — computed server-side over ALL rows (not
+  // just the first transactions page), so today's total, the "vs hier" delta and
+  // the month chart stay correct for high-volume merchants. Live via WS events. ──
+  const { data: homeStats, isLoading: statsLoading, refetch: refetchStats } = useHomeStats();
+  const isStamps = merchant?.loyaltyType === 'STAMPS';
+  const { kpiValue, deltaPct, deltaSign, deltaPositive, clientsToday } = useMemo(() => {
+    const today = homeStats?.today.points ?? 0;
+    const yesterday = homeStats?.yesterday.points ?? 0;
+    const rawDelta = yesterday > 0 ? Math.round(((today - yesterday) / yesterday) * 100) : today > 0 ? 100 : 0;
+    return {
+      kpiValue: today,
+      deltaPct: Math.abs(rawDelta),
+      deltaSign: rawDelta >= 0 ? '+' : '−',
+      deltaPositive: rawDelta >= 0,
+      clientsToday: homeStats?.today.clients ?? 0,
+    };
+  }, [homeStats]);
 
-  const filteredTransactions = useMemo<Transaction[]>(() => {
-    if (!activeFilter) return [];
-    if (activeFilter === 'ALL') return transactions;
-    return transactions.filter((tx) => tx.type === activeFilter);
-  }, [transactions, activeFilter]);
+  const monthDaily = homeStats?.month.daily ?? EMPTY_DAILY;
+
+  // ── Recent activity: the 5 most recent transactions for the grouped card. ──
+  const recentTransactions = useMemo<Transaction[]>(() => transactions.slice(0, 5), [transactions]);
 
   const onRefresh = useGuardedCallback(async () => {
-    await refetch();
-  }, [refetch]);
+    await Promise.all([refetch(), refetchStats()]);
+  }, [refetch, refetchStats]);
 
-  const renderTx = useCallback(({ item }: { item: Transaction }) => (
-    <TransactionRow item={item} merchantLoyaltyType={merchant?.loyaltyType} />
-  ), [merchant?.loyaltyType]);
+  // ── Navigation shortcuts (Compte via avatar · Dashboard · Notifications) ──
+  const avatarTourRef = useTourTarget('avatar');
+  const dashboardTourRef = useTourTarget('dashboard');
+  const goToAccount = useCallback(() => router.push('/account'), [router]);
+  const goToStorePreview = useCallback(() => router.push('/store-preview?mode=edit&view=preview&autoPreview=1' as never), [router]);
+  const goToDashboard = useCallback(() => {
+    // Same premium gating as Compte → Mon commerce → Dashboard
+    if (merchant?.plan !== 'PREMIUM') {
+      setPremiumModal({ visible: true, titleKey: 'account.dashboardLockedTitle', descKey: 'account.dashboardLockedMsg' });
+      return;
+    }
+    router.push('/dashboard');
+  }, [merchant?.plan, router]);
+  const goToNotifications = useCallback(() => router.push('/admin-notifications'), [router]);
+  const goToPlan = useCallback(() => router.push('/plan'), [router]);
+  const goToTransactions = useCallback(() => router.push('/transactions'), [router]);
 
-  const keyExtractor = useCallback((item: Transaction) => item.id, []);
+  // ── Header quick actions (store management) ──
+  const quickActions = useMemo<QuickAction[]>(
+    () => [
+      { key: 'stores', label: t('home.qaStores'), Icon: Store, route: '/stores', tourKey: 'stores' },
+      { key: 'loyalty', label: t('home.qaLoyalty'), Icon: Coins, route: '/settings', tourKey: 'loyalty' },
+      { key: 'storecard', label: t('home.qaStoreCard'), Icon: CreditCard, route: '/store-preview?mode=edit&view=preview', tourKey: 'storecard' },
+      { key: 'team', label: t('home.qaTeam'), Icon: Users, route: '/team-management', premium: true, tourKey: 'team' },
+      { key: 'wheel', label: t('home.qaWheel'), Icon: Ticket, route: '/lucky-wheel', premium: true, tourKey: 'wheel' },
+    ],
+    [t],
+  );
 
-  const ItemSeparator = useCallback(() => <View style={styles.separator} />, []);
+  // Discrete upgrade teaser only for merchants still on the Free plan.
+  const isFreePlan = merchant?.plan === 'FREE';
+
+  // ── Premium trial-end reminder (J-7…J-1) ──────────────────────────────
+  // Mirrors the trial detection used on the Compte subscription card:
+  // a real trial is PREMIUM, not admin-activated, with both dates present.
+  const trialDaysLeft = useMemo(() => {
+    if (merchant?.plan !== 'PREMIUM' || merchant?.planActivatedByAdmin) return null;
+    if (!merchant?.planExpiresAt || !merchant?.trialStartedAt) return null;
+    const exp = new Date(merchant.planExpiresAt);
+    if (Number.isNaN(exp.getTime())) return null;
+    return Math.max(0, Math.ceil((exp.getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+  }, [merchant?.plan, merchant?.planActivatedByAdmin, merchant?.planExpiresAt, merchant?.trialStartedAt]);
+
+  // Today as YYYY-MM-DD (local) — used to reset the dismissal every new day.
+  const todayKey = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }, []);
+  const [trialBannerDismissedDay, setTrialBannerDismissedDay] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    AsyncStorage.getItem(ASYNC_STORAGE_KEYS.TRIAL_END_BANNER_DISMISSED_DAY)
+      .then((v) => { if (active) setTrialBannerDismissedDay(v); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
+  const dismissTrialBanner = useCallback(() => {
+    setTrialBannerDismissedDay(todayKey);
+    AsyncStorage.setItem(ASYNC_STORAGE_KEYS.TRIAL_END_BANNER_DISMISSED_DAY, todayKey).catch(() => {});
+  }, [todayKey]);
+  const showTrialBanner =
+    trialDaysLeft != null && trialDaysLeft >= 1 && trialDaysLeft <= 7 && trialBannerDismissedDay !== todayKey;
+
+  const initials = useMemo(() => {
+    const parts = (merchant?.nom ?? '').trim().split(/\s+/).filter(Boolean).slice(0, 2);
+    return parts.map((w) => w.charAt(0)).join('').toUpperCase() || '?';
+  }, [merchant?.nom]);
 
   const showSkeleton = loading && transactions.length === 0;
 
   return (
     <Animated.View style={[styles.container, { backgroundColor: theme.bg }, focusStyle]}>
-      {/* ── Simple header ── */}
-      <View style={[styles.headerBar, { paddingTop: insets.top + 12 }]}>
-        <Text
-          style={[styles.headerTitle, { color: theme.text }]}
-          maxFontSizeMultiplier={1.4}
-          accessibilityRole="header"
-        >
-          {t('activity.title')}
-        </Text>
-      </View>
-
-      {/* ── Dismissable tip banner ── */}
-      {bannerVisible && (
-        <View style={{ paddingHorizontal: 16, paddingTop: 8 }}>
-          <ActivityBanner onDismiss={dismissBanner} onDismissForever={dismissBannerForever} />
-        </View>
-      )}
-
-      {/* ── Filter pills ── */}
-      <FilterPills
-        activeFilter={activeFilter}
-        onChange={setActiveFilter}
-        theme={theme}
-        t={t}
-      />
-
-      {isError && activeFilter && !loading ? (
-        <View style={styles.emptyContainer}>
-          <View style={[styles.emptyIllustration, { backgroundColor: `${theme.danger}14` }]}>
-            <AlertCircle size={ms(36)} color={theme.danger} strokeWidth={1.5} />
-          </View>
-          <Text style={[styles.emptyTitle, { color: theme.text }]} maxFontSizeMultiplier={1.6}>
-            {t('common.errorTitle', { defaultValue: 'Erreur de chargement' })}
-          </Text>
-          <Text style={[styles.emptyText, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.6}>
-            {t('common.errorHint', { defaultValue: 'Vérifiez votre connexion et réessayez.' })}
-          </Text>
-          <TouchableOpacity
-            style={[styles.retryBtn, { backgroundColor: theme.primary }]}
-            onPress={() => {
-              safeImpact(Haptics.ImpactFeedbackStyle.Light);
-              refetch();
-            }}
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel={t('common.retry', { defaultValue: 'Réessayer' })}
-          >
-            <Text style={styles.retryBtnText} maxFontSizeMultiplier={1.4}>
-              {t('common.retry', { defaultValue: 'Réessayer' })}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      ) : showSkeleton ? (
-        <View style={styles.list}>
-          <ActivityListSkeleton count={6} />
-        </View>
-      ) : !activeFilter ? (
-        <View style={styles.emptyContainer}>
-          <View style={[styles.emptyIllustration, { backgroundColor: `${palette.charbon}12` }]}>
-            <Filter size={ms(36)} color={palette.charbon} strokeWidth={1.5} />
-          </View>
-          <Text style={[styles.emptyTitle, { color: theme.text }]} maxFontSizeMultiplier={1.6}>
-            {t('activity.title')}
-          </Text>
-          <Text style={[styles.emptyText, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.6}>
-            {t('activity.selectFilter')}
-          </Text>
-        </View>
-      ) : (
-      <FlatList
-        data={filteredTransactions}
-        renderItem={renderTx}
-        keyExtractor={keyExtractor}
-        contentContainerStyle={styles.list}
-        removeClippedSubviews={Platform.OS === 'android'}
-        maxToRenderPerBatch={10}
-        windowSize={7}
-        initialNumToRender={10}
-        onEndReached={() => { if (hasMore) loadMore(); }}
-        onEndReachedThreshold={0.3}
-        ItemSeparatorComponent={ItemSeparator}
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 116 }}
+        onScrollBeginDrag={pokeInteraction}
+        onTouchStart={pokeInteraction}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
             colors={[theme.primary]}
             tintColor={theme.primary}
+            progressViewOffset={insets.top + TOP_BAR_HEIGHT}
           />
         }
-        ListFooterComponent={
-          loadingMore ? (
-            <View
-              style={styles.footerLoader}
-              accessible
-              accessibilityLabel={t('common.loading', { defaultValue: 'Chargement' })}
-            >
-              <ActivityIndicator size="small" color={theme.primary} />
-            </View>
-          ) : !hasMore && filteredTransactions.length > 0 ? (
-            <View style={styles.footerEndWrap}>
-              <View style={[styles.footerDivider, { backgroundColor: theme.border }]} />
-              <Text style={[styles.footerEnd, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>
-                {t('common.allDisplayed')}
-              </Text>
-            </View>
-          ) : null
-        }
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <View style={[styles.emptyIllustration, { backgroundColor: `${palette.charbon}12` }]}>
-              <Zap size={ms(36)} color={palette.charbon} strokeWidth={1.5} />
-            </View>
-            <Text style={[styles.emptyTitle, { color: theme.text }]} maxFontSizeMultiplier={1.6}>
-              {t('activity.noActivity')}
-            </Text>
-            <Text style={[styles.emptyText, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.6}>
-              {t('activity.noActivityHint')}
+      >
+        {/* ── Hero (scrolls) — one continuous brand gradient reaching the top of
+            the screen, behind the floating top bar (no visible seam) ── */}
+        <LinearGradient
+          colors={brandGradientFull}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[styles.heroGradient, { paddingTop: insets.top + TOP_BAR_HEIGHT + 8 }]}
+        >
+          <View style={styles.kpiBlock}>
+          <View style={styles.kpiLabelRow}>
+            <Coins size={13} color="rgba(255,255,255,0.72)" strokeWidth={2} />
+            <Text style={styles.kpiLabel} maxFontSizeMultiplier={1.4}>
+              {isStamps ? t('home.kpiStamps') : t('home.kpiPoints')}
             </Text>
           </View>
-        }
+          <View style={styles.kpiValueRow}>
+            <KpiCounter value={kpiValue} ready={!statsLoading} style={styles.kpiValue} />
+            {isStamps ? (
+              <Stamp size={26} color={palette.gold} strokeWidth={2.2} />
+            ) : (
+              <Star size={26} color={palette.gold} fill={palette.gold} strokeWidth={0} />
+            )}
+          </View>
+          <View style={styles.kpiSubRow}>
+            {deltaPositive ? (
+              <TrendingUp size={13} color={palette.gold} strokeWidth={2.2} />
+            ) : (
+              <TrendingDown size={13} color={palette.gold} strokeWidth={2.2} />
+            )}
+            <Text style={styles.kpiSub} maxFontSizeMultiplier={1.4}>
+              {t('home.vsYesterday', { sign: deltaSign, percent: deltaPct })} · {t('home.clientsScanned', { count: clientsToday })}
+            </Text>
+          </View>
+        </View>
+
+        <MonthOverviewCard daily={monthDaily} />
+
+        <QuickActionsRow items={quickActions} />
+        </LinearGradient>
+
+        {/* ── Content (scrolls with the hero) ── */}
+        <View style={styles.content}>
+          {/* Setup checklist — auto-hides at 100% */}
+          <SetupChecklist />
+
+          {/* Tips carousel — usage guide & why-loyalty */}
+          <TipsCarousel />
+
+          {showTrialBanner && trialDaysLeft != null && (
+            <View style={{ paddingTop: 12 }}>
+              <TrialEndBanner
+                daysRemaining={trialDaysLeft}
+                onPress={goToPlan}
+                onDismiss={dismissTrialBanner}
+              />
+            </View>
+          )}
+
+          {isFreePlan && (
+            <View style={{ paddingTop: 12 }}>
+              <ProUpgradeBanner onPress={goToPlan} />
+            </View>
+          )}
+
+          <Text style={[styles.sectionTitle, { color: theme.text }]} maxFontSizeMultiplier={1.4}>
+            {t('home.recentActivity')}
+          </Text>
+
+          {isError && transactions.length === 0 && !loading ? (
+            <View style={styles.emptyInline}>
+              <View style={[styles.emptyIllustration, { backgroundColor: `${theme.danger}14` }]}>
+                <AlertCircle size={ms(36)} color={theme.danger} strokeWidth={1.5} />
+              </View>
+              <Text style={[styles.emptyTitle, { color: theme.text }]} maxFontSizeMultiplier={1.6}>
+                {t('common.errorTitle', { defaultValue: 'Erreur de chargement' })}
+              </Text>
+              <Text style={[styles.emptyText, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.6}>
+                {t('common.errorHint', { defaultValue: 'Vérifiez votre connexion et réessayez.' })}
+              </Text>
+              <TouchableOpacity
+                style={[styles.retryBtn, { backgroundColor: theme.primary }]}
+                onPress={() => {
+                  safeImpact(Haptics.ImpactFeedbackStyle.Light);
+                  refetch();
+                }}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={t('common.retry', { defaultValue: 'Réessayer' })}
+              >
+                <Text style={styles.retryBtnText} maxFontSizeMultiplier={1.4}>
+                  {t('common.retry', { defaultValue: 'Réessayer' })}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : showSkeleton ? (
+            <ActivityListSkeleton count={6} />
+          ) : recentTransactions.length > 0 ? (
+            <RecentActivityCard
+              transactions={recentTransactions}
+              merchantLoyaltyType={merchant?.loyaltyType}
+              onViewAll={goToTransactions}
+            />
+          ) : (
+            <View style={styles.emptyInline}>
+              <View style={[styles.emptyIllustration, { backgroundColor: `${palette.charbon}12` }]}>
+                <Zap size={ms(36)} color={palette.charbon} strokeWidth={1.5} />
+              </View>
+              <Text style={[styles.emptyTitle, { color: theme.text }]} maxFontSizeMultiplier={1.6}>
+                {t('activity.noActivity')}
+              </Text>
+              <Text style={[styles.emptyText, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.6}>
+                {t('activity.noActivityHint')}
+              </Text>
+            </View>
+          )}
+        </View>
+      </ScrollView>
+
+      {/* ── Floating top bar — overlaid on the hero gradient and PERMANENTLY
+          transparent (no scroll-driven background). Design trade-off: once the
+          white content scrolls up behind it, the white greeting text may lose
+          contrast — this is a deliberate, validated choice. If readability
+          becomes an issue in real use, add a subtle text shadow rather than
+          reintroducing a bar background. Icon circles keep their own individual
+          translucent fill (rgba(255,255,255,.14)). ── */}
+      <View style={[styles.floatingTopBar, { paddingTop: insets.top }]} pointerEvents="box-none">
+        <View style={styles.headerTop}>
+          <TouchableOpacity
+            style={styles.profile}
+            onPress={goToAccount}
+            activeOpacity={0.8}
+            hitSlop={HIT_SLOP_LARGE}
+            accessibilityRole="button"
+            accessibilityLabel={t('home.openAccount')}
+            accessibilityValue={unreadCount > 0 ? { text: String(unreadCount) } : undefined}
+          >
+            <View ref={avatarTourRef} collapsable={false} style={styles.avatarWrap}>
+              <View style={styles.avatar}>
+                {merchant?.logoUrl ? (
+                  <MerchantLogo logoUrl={merchant.logoUrl} style={styles.avatarImg} />
+                ) : (
+                  <Text style={styles.avatarInitials} maxFontSizeMultiplier={1.2}>{initials}</Text>
+                )}
+              </View>
+              {unreadCount > 0 && (
+                <View style={styles.avatarBadge} importantForAccessibility="no">
+                  <Text style={styles.avatarBadgeText} maxFontSizeMultiplier={1.2}>
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </Text>
+                </View>
+              )}
+            </View>
+            <View style={styles.greeting}>
+              <Text style={styles.greetingHi} numberOfLines={1} maxFontSizeMultiplier={1.4}>
+                {t('home.greeting')}
+              </Text>
+              <Text style={styles.greetingShop} numberOfLines={1} maxFontSizeMultiplier={1.3}>
+                {merchant?.nom ?? ''}
+              </Text>
+            </View>
+          </TouchableOpacity>
+
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              style={styles.iconBtn}
+              onPress={goToStorePreview}
+              activeOpacity={0.8}
+              hitSlop={HIT_SLOP_LARGE}
+              accessibilityRole="button"
+              accessibilityLabel={t('home.previewStore')}
+            >
+              <Eye size={18} color="#fff" strokeWidth={1.8} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              ref={dashboardTourRef}
+              style={styles.iconBtn}
+              onPress={goToDashboard}
+              activeOpacity={0.8}
+              hitSlop={HIT_SLOP_LARGE}
+              accessibilityRole="button"
+              accessibilityLabel={t('home.openDashboard')}
+            >
+              <BarChart3 size={18} color="#fff" strokeWidth={1.8} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.iconBtn}
+              onPress={goToNotifications}
+              activeOpacity={0.8}
+              hitSlop={HIT_SLOP_LARGE}
+              accessibilityRole="button"
+              accessibilityLabel={t('home.openNotifications')}
+            >
+              <Bell size={17} color="#fff" strokeWidth={1.8} />
+              {unreadCount > 0 && <View style={[styles.iconBtnDot, { borderColor: palette.violetDeep }]} />}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+
+      {/* ── Premium gate for the dashboard shortcut (same as the Compte screen) ── */}
+      <PremiumLockModal
+        visible={premiumModal.visible}
+        onClose={closePremiumModal}
+        titleKey={premiumModal.titleKey}
+        descKey={premiumModal.descKey}
       />
-      )}
     </Animated.View>
   );
 }
@@ -515,158 +517,186 @@ export default function ActivityScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
 
-  /* Header bar — simple title + refresh */
-  headerBar: {
+  /* Scrollable content below the header */
+  content: { paddingHorizontal: 16, paddingTop: 14 },
+  emptyInline: { alignItems: 'center', paddingTop: 48 },
+
+  /* Brand-gradient hero (scrolls) */
+  heroGradient: {
+    paddingHorizontal: 18,
+    paddingBottom: 22,
+    borderBottomLeftRadius: 26,
+    borderBottomRightRadius: 26,
+  },
+  /* Floating top bar (absolute overlay, transparent at rest) */
+  floatingTopBar: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 30,
+    elevation: 30,
+    paddingHorizontal: 18,
+    overflow: 'hidden',
+  },
+  headerTop: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 24,
-    paddingBottom: 12,
+    paddingBottom: 10,
   },
-  headerTitle: {
-    fontSize: 28,
-    fontWeight: '700',
-    fontFamily: 'Lexend_700Bold',
-    letterSpacing: -0.5,
-  },
-
-  /* Filter pills */
-  filterWrapper: {
-    paddingBottom: 8,
-    paddingTop: 4,
-  },
-  filterRow: {
+  profile: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 16,
+    gap: 10,
+    flexShrink: 1,
   },
-  filterPill: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 14,
-    borderWidth: 1,
-  },
-  filterPillText: {
-    fontSize: 13,
-    fontWeight: '600',
-    fontFamily: 'Lexend_600SemiBold',
-  },
-
-  /* List */
-  list: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 120 },
-  separator: { height: 8 },
-
-  /* Transaction card */
-  txCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 14,
-    paddingLeft: 0,
-    borderRadius: 14,
-    borderWidth: 1,
-    overflow: 'hidden',
-  },
-  flowBar: {
-    width: 3,
-    borderRadius: 2,
-    alignSelf: 'stretch',
-    marginRight: 12,
-  },
-  txIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
+  avatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: palette.violetLight,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 14,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.5)',
+    overflow: 'hidden',
   },
-  txIconShadowWrapper: {
-    marginRight: 14,
-    borderRadius: 14,
-    backgroundColor: 'transparent',
+  avatarWrap: { position: 'relative' },
+  avatarBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    backgroundColor: '#EF4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: palette.violetDeep,
   },
-  giftShadow: {
-    shadowColor: '#8B5CF6',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    elevation: 6,
+  avatarBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '700',
+    fontFamily: 'Lexend_700Bold',
   },
-  txInfo: { flex: 1, marginRight: 8 },
-  txName: {
+  avatarImg: { width: '100%', height: '100%' },
+  avatarInitials: {
     fontSize: 15,
-    fontWeight: '600',
-    fontFamily: 'Lexend_600SemiBold',
-    letterSpacing: -0.2,
+    fontWeight: '700',
+    color: '#fff',
+    fontFamily: 'Lexend_700Bold',
   },
-  txDate: {
-    fontSize: 11,
-    marginTop: 3,
-    fontFamily: 'Lexend_400Regular',
-    letterSpacing: 0.1,
-  },
-  txPerformer: {
-    fontSize: 10,
-    marginTop: 3,
-    fontStyle: 'italic',
-    fontFamily: 'Lexend_400Regular',
-    letterSpacing: 0.1,
-  },
-  txMeta: {
-    fontSize: 11,
-    marginTop: 3,
-    fontWeight: '500',
+  greeting: { flexShrink: 1 },
+  greetingHi: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.75)',
     fontFamily: 'Lexend_500Medium',
-    letterSpacing: -0.1,
+    textShadowColor: 'rgba(0,0,0,0.18)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
-  rewardRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 3 },
-  inlineIconRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 3 },
-  giftBadge: {
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 6,
-    borderWidth: 1,
-  },
-  giftBadgeText: { fontSize: 9, fontWeight: '700', fontFamily: 'Lexend_600SemiBold' },
-  cancelLabel: {
-    fontSize: 10,
-    color: '#ef4444',
-    fontWeight: '600',
-    marginTop: 3,
-    fontFamily: 'Lexend_500Medium',
-    letterSpacing: -0.1,
-  },
-  cancelled: { textDecorationLine: 'line-through', opacity: 0.45 },
-
-  /* Right side — flow pill */
-  txRight: { alignItems: 'flex-end', minWidth: 88 },
-  txAmount: {
-    fontSize: 11,
-    fontWeight: '500',
-    fontFamily: 'Lexend_400Regular',
+  greetingShop: {
+    fontSize: 15,
+    color: '#fff',
+    fontWeight: '700',
+    fontFamily: 'Lexend_700Bold',
     letterSpacing: -0.2,
-    textAlign: 'right',
-    marginBottom: 4,
+    textShadowColor: 'rgba(0,0,0,0.20)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
-  flowPill: {
+  headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 20,
+    gap: 10,
   },
-  flowPillText: {
+  iconBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconBtnDot: {
+    position: 'absolute',
+    top: -3,
+    right: -3,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#EF4444',
+    borderWidth: 2,
+  },
+
+  /* KPI block */
+  kpiBlock: {
+    alignItems: 'center',
+    paddingTop: 4,
+  },
+  kpiLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  kpiLabel: {
+    fontSize: 12.5,
+    color: 'rgba(255,255,255,0.72)',
+    fontFamily: 'Lexend_500Medium',
+    textShadowColor: 'rgba(0,0,0,0.18)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  kpiValueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 6,
+  },
+  kpiValue: {
+    fontSize: 38,
+    fontWeight: '700',
+    color: '#fff',
+    fontFamily: 'Lexend_700Bold',
+    letterSpacing: -1,
+    textShadowColor: 'rgba(0,0,0,0.22)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  kpiSubRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 6,
+  },
+  kpiSub: {
     fontSize: 13,
+    fontWeight: '600',
+    color: palette.gold,
+    fontFamily: 'Lexend_600SemiBold',
+    textShadowColor: 'rgba(0,0,0,0.18)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+
+  /* Section title */
+  sectionTitle: {
+    fontSize: 16,
     fontWeight: '700',
     fontFamily: 'Lexend_700Bold',
     letterSpacing: -0.3,
+    marginTop: 16,
+    marginBottom: 10,
   },
 
   /* Empty state */
-  emptyContainer: { alignItems: 'center', paddingTop: 80 },
   emptyIllustration: {
     width: ms(88),
     height: ms(88),
@@ -691,18 +721,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.1,
   },
 
-  /* Footer */
-  footerLoader: { alignItems: 'center', paddingVertical: 24 },
-  footerEndWrap: { alignItems: 'center', paddingVertical: 20 },
-  footerDivider: { width: 40, height: 1, marginBottom: 12, borderRadius: 1, opacity: 0.4 },
-  footerEnd: {
-    textAlign: 'center',
-    fontSize: 12,
-    fontFamily: 'Lexend_400Regular',
-    letterSpacing: 0.2,
-    opacity: 0.5,
-  },
-
   /* Retry button */
   retryBtn: {
     marginTop: 20,
@@ -718,57 +736,53 @@ const styles = StyleSheet.create({
   },
 });
 
-/* ── Banner styles ── */
-const bannerStyles = StyleSheet.create({
+/* ── Pro upgrade teaser styles ── */
+const proStyles = StyleSheet.create({
   wrapper: {
-    borderRadius: 14,
-    borderWidth: 1,
-    padding: 14,
+    borderRadius: 12,
     overflow: 'hidden',
   },
-  closeBtn: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-    zIndex: 1,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+  gradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    gap: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(252,211,77,0.28)',
+    borderRadius: 12,
+  },
+  iconWrap: {
+    width: 26,
+    height: 26,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: 'rgba(252,211,77,0.14)',
   },
-  content: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-    paddingRight: 24,
-  },
-  textWrap: {
-    flex: 1,
-  },
+  textWrap: { flex: 1 },
   title: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 13,
+    color: '#fff',
     fontFamily: 'Lexend_600SemiBold',
     letterSpacing: -0.2,
   },
   desc: {
-    fontSize: 12,
-    fontFamily: 'Lexend_400Regular',
-    lineHeight: 18,
-    marginTop: 3,
-    letterSpacing: 0.1,
-  },
-  hideBtn: {
-    alignSelf: 'flex-end',
-    marginTop: 8,
-    paddingVertical: 4,
-    paddingHorizontal: 2,
-  },
-  hideText: {
     fontSize: 11,
-    fontFamily: 'Lexend_500Medium',
-    textDecorationLine: 'underline',
-    letterSpacing: 0.1,
+    color: 'rgba(255,255,255,0.62)',
+    fontFamily: 'Lexend_400Regular',
+    marginTop: 1,
+  },
+  cta: {
+    fontSize: 12,
+    color: palette.gold,
+    fontFamily: 'Lexend_600SemiBold',
+  },
+  dismissBtn: {
+    width: 22,
+    height: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
+

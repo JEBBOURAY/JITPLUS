@@ -1,3 +1,4 @@
-export { default as ProfileCard } from './ProfileCard';
-export { default as ProLockBadge } from './ProLockBadge';
-export { LogoEditModal, CoverEditModal, LanguageModal } from './AccountModals';
+export { default as CoverHeader } from './CoverHeader';
+export { default as TrialCard } from './TrialCard';
+export { default as ReferralInlineRow } from './ReferralInlineRow';
+export { LogoEditModal, CoverEditModal } from './AccountModals';

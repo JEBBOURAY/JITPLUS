@@ -24,7 +24,6 @@ import {
   MapPin,
   Phone,
   Mail,
-  X,
   Check,
   ToggleLeft,
   ToggleRight,
@@ -36,6 +35,7 @@ import {
   FileText,
   Instagram,
   Globe,
+  AlertTriangle,
 } from 'lucide-react-native';
 import PhoneInput from '@/components/PhoneInput';
 import MapView, { Marker, SafeMapViewRef } from '@/components/SafeMapView';
@@ -46,7 +46,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Store as StoreType, MerchantCategory, CreateStorePayload } from '@/types';
 import MerchantCategoryIcon, { useCategoryMetadata } from '@/components/MerchantCategoryIcon';
@@ -158,10 +158,11 @@ const markerStyles = StyleSheet.create({
 });
 
 /** Extracted as a proper React.memo component â€” theme consumed internally */
-const StoreCard = React.memo(function StoreCard({ store, merchantCategorie, isReference, onEdit, onToggle, onDelete }: {
+const StoreCard = React.memo(function StoreCard({ store, merchantCategorie, isReference, onActivate, onEdit, onToggle, onDelete }: {
   store: StoreType;
   merchantCategorie?: MerchantCategory;
   isReference?: boolean;
+  onActivate: (s: StoreType) => void;
   onEdit: (s: StoreType) => void;
   onToggle: (s: StoreType) => void;
   onDelete: (s: StoreType) => void;
@@ -177,57 +178,69 @@ const StoreCard = React.memo(function StoreCard({ store, merchantCategorie, isRe
       <View style={[styles.cardAccent, { backgroundColor: store.isActive ? palette.violet : theme.textMuted }]} />
 
       <View style={styles.cardBody}>
-        {/* Top row: avatar + info + status */}
-        <View style={styles.cardTopRow}>
-          <View style={[styles.cardAvatar, { backgroundColor: palette.violet + '10' }]}>
-            <MerchantCategoryIcon category={cat} size={ms(28)} />
-          </View>
-          <View style={styles.cardInfo}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: ms(6) }}>
-              <Text style={[styles.cardName, { color: theme.text, flex: 1 }]} numberOfLines={1}>{store.nom}</Text>
-              {isReference && (
-                <View style={[styles.referenceBadge, { backgroundColor: palette.violet + '14' }]}>
-                  <Shield size={ms(10)} color={palette.violet} strokeWidth={2} />
-                  <Text style={[styles.referenceBadgeText, { color: palette.violet }]}>{t('stores.referenceLabel')}</Text>
+        <TouchableOpacity
+          activeOpacity={0.85}
+          style={styles.cardMainPressArea}
+          onPress={() => onActivate(store)}
+          accessibilityRole="button"
+          accessibilityLabel={store.isActive ? t('stores.active') : t('stores.inactive')}
+        >
+          {/* Top row: avatar + info + status */}
+          <View style={styles.cardTopRow}>
+            <View style={[styles.cardAvatar, { backgroundColor: palette.violet + '10' }]}>
+              <MerchantCategoryIcon category={cat} size={ms(28)} />
+            </View>
+            <View style={styles.cardInfo}>
+              <Text style={[styles.cardName, { color: theme.text }]} numberOfLines={1}>{store.nom}</Text>
+              {/* Meta row: category (most subdued) + reference (discreet secondary) */}
+              <View style={styles.cardMetaRow}>
+                <View style={[styles.cardCatBadge, { backgroundColor: theme.bgInput }]}>
+                  <Tag size={ms(9)} color={theme.textMuted} strokeWidth={2} />
+                  <Text style={[styles.cardCatText, { color: theme.textMuted }]}>{catLabel}</Text>
                 </View>
-              )}
+                {isReference && (
+                  <View style={[styles.referenceBadge, { backgroundColor: theme.bgInput }]}>
+                    <Shield size={ms(9)} color={theme.textSecondary} strokeWidth={2} />
+                    <Text style={[styles.referenceBadgeText, { color: theme.textSecondary }]}>{t('stores.referenceLabel')}</Text>
+                  </View>
+                )}
+              </View>
             </View>
-            <View style={[styles.cardCatBadge, { backgroundColor: palette.violet + '12' }]}>
-              <Text style={[styles.cardCatText, { color: palette.violet }]}>{catLabel}</Text>
+            {/* Operational state — most prominent */}
+            <View style={[styles.statusBadge, { backgroundColor: store.isActive ? palette.violet : `${theme.danger}14` }]}>
+              <View style={[styles.statusDot, { backgroundColor: store.isActive ? '#fff' : theme.danger }]} />
+              <Text style={{ fontSize: ms(10.5), fontWeight: '800', color: store.isActive ? '#fff' : theme.danger }}>
+                {store.isActive ? t('stores.active') : t('stores.inactive')}
+              </Text>
             </View>
           </View>
-          <View style={[styles.statusBadge, { backgroundColor: store.isActive ? palette.violet + '14' : `${theme.danger}14` }]}>
-            <Text style={{ fontSize: ms(10), fontWeight: '700', color: store.isActive ? palette.violet : theme.danger }}>
-              {store.isActive ? t('stores.active') : t('stores.inactive')}
-            </Text>
-          </View>
-        </View>
 
-        {/* Details */}
-        {store.adresse ? (
-          <View style={styles.cardDetail}>
-            <MapPin size={ms(12)} color={theme.textMuted} strokeWidth={1.5} />
-            <Text style={[styles.cardDetailText, { color: theme.textMuted }]} numberOfLines={1}>
-              {[store.adresse, store.quartier, store.ville].filter(Boolean).join(', ')}
-            </Text>
-          </View>
-        ) : null}
+          {/* Details */}
+          {store.adresse ? (
+            <View style={styles.cardDetail}>
+              <MapPin size={ms(12)} color={theme.textMuted} strokeWidth={1.5} />
+              <Text style={[styles.cardDetailText, { color: theme.textMuted }]} numberOfLines={1}>
+                {[store.adresse, store.quartier, store.ville].filter(Boolean).join(', ')}
+              </Text>
+            </View>
+          ) : null}
 
-        {store.telephone ? (
-          <View style={styles.cardDetail}>
-            <Phone size={ms(12)} color={theme.textMuted} strokeWidth={1.5} />
-            <Text style={[styles.cardDetailText, { color: theme.textMuted }]}>{store.telephone}</Text>
-          </View>
-        ) : null}
+          {store.telephone ? (
+            <View style={styles.cardDetail}>
+              <Phone size={ms(12)} color={theme.textMuted} strokeWidth={1.5} />
+              <Text style={[styles.cardDetailText, { color: theme.textMuted }]}>{store.telephone}</Text>
+            </View>
+          ) : null}
 
-        {store.email ? (
-          <View style={styles.cardDetail}>
-            <Mail size={ms(12)} color={theme.textMuted} strokeWidth={1.5} />
-            <Text style={[styles.cardDetailText, { color: theme.textMuted }]}>{store.email}</Text>
-          </View>
-        ) : null}
+          {store.email ? (
+            <View style={styles.cardDetail}>
+              <Mail size={ms(12)} color={theme.textMuted} strokeWidth={1.5} />
+              <Text style={[styles.cardDetailText, { color: theme.textMuted }]}>{store.email}</Text>
+            </View>
+          ) : null}
+        </TouchableOpacity>
 
-        {/* Actions */}
+        {/* Actions — neutral (edit / toggle) */}
         <View style={styles.cardActions}>
           <TouchableOpacity style={[styles.actionBtn, { backgroundColor: palette.violet + '10' }]} onPress={() => onEdit(store)}>
             <Edit3 size={ms(14)} color={palette.violet} strokeWidth={1.5} />
@@ -242,12 +255,19 @@ const StoreCard = React.memo(function StoreCard({ store, merchantCategorie, isRe
               {store.isActive ? t('stores.active') : t('stores.inactive')}
             </Text>
           </TouchableOpacity>
-
-          <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#fef2f2' }]} onPress={() => onDelete(store)}>
-            <Trash2 size={ms(14)} color="#dc2626" strokeWidth={1.5} />
-            <Text style={[styles.actionBtnText, { color: '#dc2626' }]}>{t('stores.deleteBtn')}</Text>
-          </TouchableOpacity>
         </View>
+
+        {/* Destructive action — separated from neutral actions (P7) */}
+        <View style={[styles.cardDeleteDivider, { backgroundColor: theme.border }]} />
+        <TouchableOpacity
+          style={styles.cardDeleteBtn}
+          onPress={() => onDelete(store)}
+          accessibilityRole="button"
+          accessibilityLabel={t('stores.deleteBtn')}
+        >
+          <Trash2 size={ms(13)} color={theme.textMuted} strokeWidth={1.5} />
+          <Text style={[styles.cardDeleteText, { color: theme.textMuted }]}>{t('stores.deleteBtn')}</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -337,6 +357,7 @@ export default function StoresScreen() {
   const shouldWait = useRequireAuth();
   const theme = useTheme();
   const { merchant, isTeamMember } = useAuth();
+  const params = useLocalSearchParams<{ toast?: string }>();
 
   const isPremium = merchant?.plan === 'PREMIUM';
   const FREE_MAX_STORES = 1;
@@ -350,13 +371,21 @@ export default function StoresScreen() {
 
   const {
     stores, loading, refreshing, saving, onRefresh,
-    alertMaxStores, saveStore, deleteStore, toggleActive,
+    alertMaxStores, saveStore, deleteStoreDirect, toggleActive,
   } = useStoresCRUD();
 
   const { t } = useLanguage();
 
   const [showModal, setShowModal] = useState(false);
   const [editingStore, setEditingStore] = useState<StoreType | null>(null);
+  // Custom delete confirmation (P7): replaces the native Alert with an explicit
+  // two-step flow and a hard block on removing the last/reference store.
+  const [deleteTarget, setDeleteTarget] = useState<StoreType | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  // Content rules are shown on demand (P5) instead of a permanent banner.
+  const [showContentRules, setShowContentRules] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Reference store = oldest store (first in list, sorted by createdAt asc) ──
   const referenceStore = useMemo(() => stores.length > 0 ? stores[0] : null, [stores]);
@@ -473,7 +502,17 @@ export default function StoresScreen() {
 
   // â”€â”€ Reset form â”€â”€
   const resetForm = () => {
-    formDispatch({ type: 'RESET', defaults: { categorie: merchant?.categorie ?? '', ville: merchant?.ville ?? '' } });
+    // P3 — 2nd+ store prefill: inherit the category from the reference store
+    // (editable). Name and location are never prefilled (autofocus stays on the
+    // name); social/email/description are inherited & locked in branch mode.
+    const isNewBranch = stores.length > 0;
+    formDispatch({
+      type: 'RESET',
+      defaults: {
+        categorie: (isNewBranch ? referenceStore?.categorie : merchant?.categorie) ?? merchant?.categorie ?? '',
+        ville: isNewBranch ? '' : (merchant?.ville ?? ''),
+      },
+    });
     setEditingStore(null);
   };
 
@@ -487,14 +526,11 @@ export default function StoresScreen() {
       }
       return;
     }
-    resetForm();
-    setShowModal(true);
+    router.push({ pathname: '/store-preview', params: { mode: 'create' } });
   };
 
   const openEdit = (store: StoreType) => {
-    setEditingStore(store);
-    formDispatch({ type: 'LOAD_STORE', store });
-    setShowModal(true);
+    router.push({ pathname: '/store-preview', params: { mode: 'edit', storeId: store.id } });
   };
 
   // ── Save ──
@@ -544,13 +580,42 @@ export default function StoresScreen() {
   };
 
   // ── Delete ──
-  const handleDelete = (store: StoreType) => deleteStore(store);
+  const handleDelete = (store: StoreType) => setDeleteTarget(store);
+
+  const showToast = useCallback((message: string) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToastMessage(message);
+    toastTimerRef.current = setTimeout(() => setToastMessage(null), 1700);
+  }, []);
+
+  useEffect(() => {
+    if (params.toast === 'created') {
+      showToast(t('stores.createdToast'));
+      router.replace('/stores');
+    } else if (params.toast === 'saved') {
+      showToast(t('stores.savedToast'));
+      router.replace('/stores');
+    }
+  }, [params.toast, router, showToast, t]);
+
+  // The reference store is the first one; it is also the last store when there
+  // is only one. Removing the only store would leave the merchant unable to
+  // operate, so it is blocked outright.
+  const isOnlyStore = stores.length <= 1;
+
+  const confirmDelete = useCallback(async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    const ok = await deleteStoreDirect(deleteTarget);
+    setDeleting(false);
+    if (ok) setDeleteTarget(null);
+  }, [deleteTarget, deleteStoreDirect]);
 
   // ── Toggle active (with confirmation when deactivating) ──
-  const handleToggleActive = useCallback((store: StoreType) => {
+  const handleToggleActive = useCallback(async (store: StoreType) => {
     if (!store.isActive) {
-      // Activating: no confirmation needed
-      toggleActive(store);
+      await toggleActive(store);
+      showToast(t('stores.activeUpdatedToast'));
       return;
     }
     Alert.alert(
@@ -558,10 +623,10 @@ export default function StoresScreen() {
       t('stores.toggleInactiveBody'),
       [
         { text: t('common.cancel'), style: 'cancel' },
-        { text: t('stores.toggleDeactivate'), style: 'destructive', onPress: () => toggleActive(store) },
+        { text: t('stores.toggleDeactivate'), style: 'destructive', onPress: async () => { await toggleActive(store); showToast(t('stores.activeUpdatedToast')); } },
       ],
     );
-  }, [toggleActive, t]);
+  }, [showToast, toggleActive, t]);
 
   // ── Dirty form detection for close confirmation ──
   const isFormDirty = useCallback((): boolean => {
@@ -781,6 +846,7 @@ export default function StoresScreen() {
               store={store}
               merchantCategorie={merchant?.categorie}
               isReference={index === 0}
+              onActivate={handleToggleActive}
               onEdit={openEdit}
               onToggle={handleToggleActive}
               onDelete={handleDelete}
@@ -789,6 +855,15 @@ export default function StoresScreen() {
         </ScrollView>
       )}
 
+      {toastMessage ? (
+        <View style={styles.toastWrap} pointerEvents="none">
+          <View style={[styles.toast, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
+            <Check size={14} color={palette.violet} strokeWidth={2.5} />
+            <Text style={[styles.toastText, { color: theme.text }]}>{toastMessage}</Text>
+          </View>
+        </View>
+      ) : null}
+
       {/* â”€â”€ Create / Edit Modal â”€â”€ */}
       <Modal visible={showModal} animationType="slide" transparent>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20} style={{ flex: 1 }}>
@@ -796,8 +871,16 @@ export default function StoresScreen() {
             <View style={[styles.modalContent, { backgroundColor: theme.bg, paddingTop: Math.max(insets.top, 16) }]}>
               {/* Modal header with step indicator */}
               <View style={[styles.modalHeader, { borderBottomColor: theme.border }]}>
-                <TouchableOpacity onPress={() => { if (step > 0) goBack(); else tryCloseModal(); }}>
-                  {step > 0 ? <ArrowLeft size={ms(22)} color={theme.text} /> : <X size={ms(22)} color={theme.text} />}
+                {/* P4 — unified tunnel nav: always a back arrow (one step back, or
+                    exit from the first step). Full exit lives in the explicit
+                    "Annuler" affordance on the right (confirms when dirty). */}
+                <TouchableOpacity
+                  onPress={() => { if (step > 0) goBack(); else tryCloseModal(); }}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('common.back')}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <ArrowLeft size={ms(22)} color={theme.text} />
                 </TouchableOpacity>
                 <View style={styles.stepHeaderCenter}>
                   <Text style={[styles.modalTitle, { color: theme.text }]}>
@@ -807,7 +890,14 @@ export default function StoresScreen() {
                     {t('stores.stepOf', { current: step + 1, total: TOTAL_STEPS })}
                   </Text>
                 </View>
-                <View style={{ width: ms(22) }} />
+                <TouchableOpacity
+                  onPress={tryCloseModal}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('common.cancel')}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Text style={[styles.cancelHeaderBtn, { color: theme.textMuted }]}>{t('common.cancel')}</Text>
+                </TouchableOpacity>
               </View>
 
               {/* Progress bar */}
@@ -824,9 +914,16 @@ export default function StoresScreen() {
                   {step === 3 && <MapPin size={ms(18)} color={palette.violet} strokeWidth={1.5} />}
                 </View>
                 <View style={{ flex: 1, marginLeft: wp(12) }}>
-                  <Text style={[styles.stepTitleText, { color: theme.text }]}>
-                    {step === 0 ? t('stores.sectionInfo') : step === 1 ? t('stores.sectionContact') : step === 2 ? t('stores.sectionSocial') : t('stores.sectionLocation')}
-                  </Text>
+                  <View style={styles.stepTitleInline}>
+                    <Text style={[styles.stepTitleText, { color: theme.text }]}>
+                      {step === 0 ? t('stores.sectionInfo') : step === 1 ? t('stores.sectionContact') : step === 2 ? t('stores.sectionSocial') : t('stores.sectionLocation')}
+                    </Text>
+                    {(step === 1 || step === 2) && (
+                      <View style={[styles.optionalPill, { backgroundColor: theme.bgInput }]}>
+                        <Text style={[styles.optionalPillText, { color: theme.textMuted }]}>{t('stores.optionalBadge')}</Text>
+                      </View>
+                    )}
+                  </View>
                   <Text style={[styles.stepDesc, { color: theme.textMuted }]}>
                     {step === 0 ? t('stores.stepInfoDesc') : step === 1 ? t('stores.stepContactDesc') : step === 2 ? t('stores.stepSocialDesc') : t('stores.stepLocationDesc')}
                   </Text>
@@ -837,11 +934,6 @@ export default function StoresScreen() {
                 {/* Step 1: Informations */}
                 {step === 0 && (
                   <>
-                    <View style={[styles.ugcNotice, { backgroundColor: palette.violet + '10', borderColor: palette.violet + '30' }]}>
-                      <Text style={[styles.ugcNoticeText, { color: theme.textMuted }]}>
-                        {t('stores.ugcNotice')}
-                      </Text>
-                    </View>
                     <Text style={[styles.label, { color: theme.text }]}>{t('stores.nameLabel')} *</Text>
                     <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: nom.trim() ? theme.success : theme.border }]}>
                       <Store size={ms(18)} color={nom.trim() ? theme.success : theme.textMuted} />
@@ -909,6 +1001,17 @@ export default function StoresScreen() {
                         </Text>
                       </>
                     )}
+
+                    {/* Discreet content-rules link (P5) — replaces the permanent UGC block */}
+                    <TouchableOpacity
+                      style={styles.contentRulesLink}
+                      onPress={() => setShowContentRules(true)}
+                      accessibilityRole="button"
+                    >
+                      <Text style={[styles.contentRulesLinkText, { color: palette.violet }]}>
+                        {t('stores.contentRulesLink')}
+                      </Text>
+                    </TouchableOpacity>
                   </>
                 )}
 
@@ -965,10 +1068,6 @@ export default function StoresScreen() {
                         )}
                       </>
                     )}
-
-                    <View style={[styles.stepOptionalBadge, { backgroundColor: palette.violet + '10' }]}>
-                      <Text style={[styles.stepOptionalText, { color: palette.violet }]}>{t('stores.contactOptional')}</Text>
-                    </View>
                   </>
                 )}
 
@@ -1076,10 +1175,6 @@ export default function StoresScreen() {
                         </View>
                       </>
                     )}
-
-                    <View style={[styles.stepOptionalBadge, { backgroundColor: palette.violet + '10' }]}>
-                      <Text style={[styles.stepOptionalText, { color: palette.violet }]}>{t('stores.socialOptional')}</Text>
-                    </View>
                   </>
                 )}
 
@@ -1252,6 +1347,98 @@ export default function StoresScreen() {
         </TouchableOpacity>
       </Modal>
 
+      {/* ── Delete confirmation (P7): explicit two-step flow + hard block on last store ── */}
+      <Modal
+        visible={!!deleteTarget}
+        animationType="fade"
+        transparent
+        statusBarTranslucent
+        onRequestClose={() => { if (!deleting) setDeleteTarget(null); }}
+      >
+        <View style={styles.deleteOverlay}>
+          <View style={[styles.deleteSheet, { backgroundColor: theme.bgCard }]}>
+            <View style={[styles.deleteIconWrap, { backgroundColor: theme.danger + '14' }]}>
+              {isOnlyStore
+                ? <Shield size={ms(26)} color={theme.danger} strokeWidth={2} />
+                : <AlertTriangle size={ms(26)} color={theme.danger} strokeWidth={2} />}
+            </View>
+            <Text style={[styles.deleteSheetTitle, { color: theme.text }]}>
+              {isOnlyStore ? t('stores.deleteBlockedTitle') : t('stores.deleteConfirmTitle')}
+            </Text>
+            <Text style={[styles.deleteSheetBody, { color: theme.textSecondary }]}>
+              {isOnlyStore
+                ? t('stores.deleteBlockedMsg')
+                : t('stores.deleteConfirmMsg', { name: deleteTarget?.nom ?? '' })}
+            </Text>
+            {!isOnlyStore && deleteTarget && stores[0]?.id === deleteTarget.id && (
+              <Text style={[styles.deleteRefWarning, { color: theme.warning }]}>
+                {t('stores.deleteReferenceWarning')}
+              </Text>
+            )}
+
+            {isOnlyStore ? (
+              <TouchableOpacity
+                style={[styles.deleteBtnPrimary, { backgroundColor: theme.primary }]}
+                onPress={() => setDeleteTarget(null)}
+              >
+                <Text style={styles.deleteBtnPrimaryText}>{t('stores.deleteGotIt')}</Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.deleteSheetActions}>
+                <TouchableOpacity
+                  style={[styles.deleteBtnGhost, { backgroundColor: theme.bgInput }]}
+                  onPress={() => setDeleteTarget(null)}
+                  disabled={deleting}
+                >
+                  <Text style={[styles.deleteBtnGhostText, { color: theme.text }]}>{t('common.cancel')}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.deleteBtnDanger, { backgroundColor: theme.danger, opacity: deleting ? 0.6 : 1 }]}
+                  onPress={confirmDelete}
+                  disabled={deleting}
+                >
+                  {deleting
+                    ? <ActivityIndicator size="small" color="#fff" />
+                    : <Trash2 size={ms(15)} color="#fff" strokeWidth={2} />}
+                  <Text style={styles.deleteBtnDangerText}>{t('common.delete')}</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── Content rules (P5): full legal text on demand ── */}
+      <Modal
+        visible={showContentRules}
+        animationType="fade"
+        transparent
+        statusBarTranslucent
+        onRequestClose={() => setShowContentRules(false)}
+      >
+        <View style={styles.deleteOverlay}>
+          <View style={[styles.deleteSheet, { backgroundColor: theme.bgCard, alignItems: 'stretch' }]}>
+            <View style={styles.contentRulesHeader}>
+              <View style={[styles.deleteIconWrap, { backgroundColor: palette.violet + '14', marginBottom: 0, width: ms(42), height: ms(42), borderRadius: ms(21) }]}>
+                <Shield size={ms(20)} color={palette.violet} strokeWidth={2} />
+              </View>
+              <Text style={[styles.deleteSheetTitle, { color: theme.text, flex: 1, textAlign: 'left', marginLeft: ms(12) }]}>
+                {t('stores.contentRulesTitle')}
+              </Text>
+            </View>
+            <Text style={[styles.contentRulesBody, { color: theme.textSecondary }]}>
+              {t('stores.ugcNotice')}
+            </Text>
+            <TouchableOpacity
+              style={[styles.deleteBtnPrimary, { backgroundColor: theme.primary }]}
+              onPress={() => setShowContentRules(false)}
+            >
+              <Text style={styles.deleteBtnPrimaryText}>{t('stores.deleteGotIt')}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       <PremiumLockModal
         visible={premiumModal.visible}
         onClose={() => setPremiumModal(p => ({ ...p, visible: false }))}
@@ -1354,6 +1541,9 @@ const styles = StyleSheet.create({
     paddingLeft: wp(18),
     paddingRight: wp(14),
   },
+  cardMainPressArea: {
+    flex: 1,
+  },
   cardTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1370,18 +1560,48 @@ const styles = StyleSheet.create({
     marginLeft: wp(12),
   },
   cardName: { fontSize: FS.lg, fontWeight: '700', letterSpacing: -0.3, fontFamily: 'Lexend_700Bold' },
+  cardMetaRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: ms(6), marginTop: ms(5) },
   cardCatBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: ms(3),
     alignSelf: 'flex-start',
-    paddingHorizontal: ms(8),
-    paddingVertical: ms(2),
-    borderRadius: ms(8),
-    marginTop: ms(4),
+    paddingHorizontal: ms(7),
+    paddingVertical: ms(3),
+    borderRadius: ms(7),
   },
-  cardCatText: { fontSize: ms(11), fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
-  statusBadge: { paddingHorizontal: ms(8), paddingVertical: ms(3), borderRadius: ms(8) },
+  cardCatText: { fontSize: ms(10), fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: ms(5),
+    paddingHorizontal: ms(9),
+    paddingVertical: ms(4),
+    borderRadius: ms(9),
+  },
+  statusDot: { width: ms(6), height: ms(6), borderRadius: ms(3) },
   cardDetail: { flexDirection: 'row', alignItems: 'center', gap: ms(6), marginTop: ms(6) },
   cardDetailText: { fontSize: ms(12), flex: 1, fontFamily: 'Lexend_400Regular' },
   cardActions: { flexDirection: 'row', gap: ms(8), marginTop: ms(14) },
+  toastWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: ms(24),
+    alignItems: 'center',
+    zIndex: 999,
+  },
+  toast: {
+    paddingHorizontal: ms(14),
+    paddingVertical: ms(10),
+    borderRadius: ms(999),
+    borderWidth: 1,
+  },
+  toastText: {
+    fontSize: ms(12),
+    fontWeight: '600',
+    fontFamily: 'Lexend_600SemiBold',
+  },
   actionBtn: {
     flex: 1,
     flexDirection: 'row',
@@ -1392,6 +1612,45 @@ const styles = StyleSheet.create({
     gap: ms(4),
   },
   actionBtnText: { fontSize: ms(11), fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
+  // Separated destructive action (P7)
+  cardDeleteDivider: { height: StyleSheet.hairlineWidth, marginTop: ms(12), marginBottom: ms(2) },
+  cardDeleteBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: ms(6),
+    paddingVertical: ms(8),
+  },
+  cardDeleteText: { fontSize: ms(11.5), fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
+  // Delete confirmation sheet (P7)
+  deleteOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', paddingHorizontal: ms(28) },
+  deleteSheet: { borderRadius: ms(20), padding: ms(22), alignItems: 'center' },
+  deleteIconWrap: {
+    width: ms(56),
+    height: ms(56),
+    borderRadius: ms(28),
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: ms(14),
+  },
+  deleteSheetTitle: { fontSize: ms(17), fontWeight: '700', textAlign: 'center', fontFamily: 'Lexend_700Bold', letterSpacing: -0.3 },
+  deleteSheetBody: { fontSize: ms(13.5), lineHeight: ms(20), textAlign: 'center', marginTop: ms(8), fontFamily: 'Lexend_400Regular' },
+  deleteRefWarning: { fontSize: ms(12), lineHeight: ms(17), textAlign: 'center', marginTop: ms(10), fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
+  deleteSheetActions: { flexDirection: 'row', gap: ms(10), marginTop: ms(20), alignSelf: 'stretch' },
+  deleteBtnGhost: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: ms(13), borderRadius: ms(13) },
+  deleteBtnGhostText: { fontSize: ms(14), fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
+  deleteBtnDanger: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: ms(7), paddingVertical: ms(13), borderRadius: ms(13) },
+  deleteBtnDangerText: { fontSize: ms(14), fontWeight: '700', color: '#fff', fontFamily: 'Lexend_700Bold' },
+  deleteBtnPrimary: { alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center', paddingVertical: ms(13), borderRadius: ms(13), marginTop: ms(20) },
+  deleteBtnPrimaryText: { fontSize: ms(14), fontWeight: '700', color: '#fff', fontFamily: 'Lexend_700Bold' },
+  // Optional badge + content-rules link (P5)
+  stepTitleInline: { flexDirection: 'row', alignItems: 'center', gap: ms(8), flexWrap: 'wrap' },
+  optionalPill: { paddingHorizontal: ms(7), paddingVertical: ms(2), borderRadius: ms(6) },
+  optionalPillText: { fontSize: ms(9), fontWeight: '700', letterSpacing: 0.3, fontFamily: 'Lexend_700Bold' },
+  contentRulesLink: { alignSelf: 'flex-start', marginTop: ms(16), paddingVertical: ms(4) },
+  contentRulesLinkText: { fontSize: ms(11), fontWeight: '700', fontFamily: 'Lexend_700Bold' },
+  contentRulesHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: ms(14) },
+  contentRulesBody: { fontSize: ms(13), lineHeight: ms(20), fontFamily: 'Lexend_400Regular' },
 
   // Modal
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
@@ -1413,6 +1672,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
   },
   modalTitle: { fontSize: 17, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
+  cancelHeaderBtn: { fontSize: ms(13), fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
   formContent: { paddingHorizontal: 20, paddingTop: 16 },
   ugcNotice: {
     borderWidth: 1,

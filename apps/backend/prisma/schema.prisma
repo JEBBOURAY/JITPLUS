@@ -47,7 +47,7 @@ model Merchant {
   profileViews         Int                @default(0) @map("profile_views")
   pointsRules          Json?              @map("points_rules")
   pointsRate           Float              @default(10) @map("points_rate")
-  loyaltyType          LoyaltyType        @default(POINTS) @map("loyalty_type")
+  loyaltyType          LoyaltyType?       @map("loyalty_type")
   conversionRate       Float              @default(10) @map("conversion_rate")
   stampsForReward      Int                @default(10) @map("stamps_for_reward")
   stampEarningMode     StampEarningMode   @default(PER_VISIT) @map("stamp_earning_mode")

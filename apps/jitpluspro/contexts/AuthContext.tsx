@@ -211,6 +211,13 @@ export interface RegisterData extends BusinessProfileData {
   password: string;
 }
 
+interface RegisterResponse {
+  merchant: Merchant;
+  userType: 'merchant';
+  requiresEmailVerification: true;
+  verificationSent: boolean;
+}
+
 const AuthContext = createContext<AuthContextData | null>(null);
 const AuthActionsContext = createContext<AuthActions | null>(null);
 
@@ -437,27 +444,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const register = useCallback(async (data: RegisterData) => {
     try {
       logInfo('Auth', 'Inscription...');
-      const { deviceName, deviceOS } = getDeviceInfo();
-      const deviceId = await getOrCreateDeviceId();
-      const response = await api.post<AuthResponse>('/auth/register', {
-        ...data,
-        deviceName,
-        deviceOS,
-        deviceId,
-      });
+      const response = await api.post<RegisterResponse>('/auth/register', data);
 
       if (!response.data?.merchant) {
         throw new Error(i18n.t('auth.invalidServerResponse'));
       }
 
       logInfo('Auth', 'Inscription réussie:', response.data.merchant.nom);
-
-      await handleAuthSuccess(response.data, { rememberMe: true });
     } catch (error: unknown) {
       logError('Auth', 'Erreur inscription:', error);
       throw error;
     }
-  }, [handleAuthSuccess]);
+  }, []);
 
   const googleLogin = useCallback(async (idToken: string): Promise<{ success: boolean; error?: string; rawError?: unknown }> => {
     try {

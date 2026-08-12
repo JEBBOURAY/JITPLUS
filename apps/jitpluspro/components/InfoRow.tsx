@@ -18,6 +18,8 @@ interface InfoRowProps {
   noBorder?: boolean;
   /** Icon background color override */
   iconBg?: string;
+  /** Optional label color override (e.g. danger red for destructive rows) */
+  labelColor?: string;
   /** Accessibility state forwarded to the Pressable (e.g. { checked, expanded, disabled }) */
   accessibilityState?: AccessibilityState;
   /** Override the default accessibility role (defaults to 'button' when onPress is set) */
@@ -32,6 +34,7 @@ export default React.memo(function InfoRow({
   right,
   noBorder,
   iconBg,
+  labelColor,
   accessibilityState,
   accessibilityRole,
 }: InfoRowProps) {
@@ -55,7 +58,7 @@ export default React.memo(function InfoRow({
         {icon}
       </View>
       <View style={styles.content}>
-        <Text style={[styles.value, { color: theme.text }]}>{label}</Text>
+        <Text style={[styles.value, { color: labelColor ?? theme.text }]}>{label}</Text>
         {subtitle ? (
           <Text style={[styles.label, { color: theme.textMuted }]}>{subtitle}</Text>
         ) : null}
@@ -71,6 +74,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: wp(16),
     paddingVertical: hp(14),
+    minHeight: ms(44),
     gap: wp(12),
     borderBottomWidth: 0.5,
   },

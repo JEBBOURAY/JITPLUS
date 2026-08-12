@@ -1,21 +1,21 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { QrCode } from 'lucide-react-native';
-import { useRouter } from 'expo-router';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { ms } from '@/utils/responsive';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useScanGuard } from '@/hooks/useScanGuard';
 
 /**
  * Fallback — in practice the tabPress listener intercepts and
  * opens the full-screen scanner via /scan-qr.
  */
 export default function ScanScreen() {
-  const router = useRouter();
   const theme = useTheme();
   const { t } = useLanguage();
   const insets = useSafeAreaInsets();
+  const { openScanner } = useScanGuard();
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
@@ -34,7 +34,7 @@ export default function ScanScreen() {
           </Text>
           <TouchableOpacity
             style={[styles.button, { backgroundColor: theme.primary }]}
-            onPress={() => router.push('/scan-qr')}
+            onPress={openScanner}
             activeOpacity={0.8}
           >
             <QrCode size={20} color="#fff" strokeWidth={2} />

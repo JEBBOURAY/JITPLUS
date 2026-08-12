@@ -25,11 +25,17 @@ export interface ThemeProviderConfig<T extends { mode: 'light' | 'dark' }> {
 export function createThemeProvider<T extends { mode: 'light' | 'dark' }>(
   config: ThemeProviderConfig<T>,
 ) {
-  type ContextValue = T & { toggleDarkMode: () => void; isDark: boolean; themeMode: ThemeMode };
+  type ContextValue = T & {
+    toggleDarkMode: () => void;
+    setDarkMode: (enabled: boolean) => void;
+    isDark: boolean;
+    themeMode: ThemeMode;
+  };
 
   const ThemeContext = createContext<ContextValue>({
     ...config.lightTheme,
     toggleDarkMode: () => {},
+    setDarkMode: () => {},
     isDark: false,
     themeMode: 'system',
   });
@@ -66,12 +72,22 @@ export function createThemeProvider<T extends { mode: 'light' | 'dark' }>(
       });
     }, []);
 
+    // Binary setter for a plain on/off switch: always resolves to an explicit
+    // 'light' or 'dark' (never 'system'), so a single tap flips the theme
+    // deterministically regardless of the previous mode.
+    const setDarkMode = useCallback((enabled: boolean) => {
+      const next: ThemeMode = enabled ? 'dark' : 'light';
+      config.storage.setItem(config.storageKey, next).catch(() => {});
+      setThemeMode(next);
+    }, []);
+
     const value = useMemo<ContextValue>(() => ({
       ...(isDark ? config.darkTheme : config.lightTheme),
       toggleDarkMode,
+      setDarkMode,
       isDark,
       themeMode,
-    }), [isDark, toggleDarkMode, themeMode]);
+    }), [isDark, toggleDarkMode, setDarkMode, themeMode]);
 
     return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
   };

@@ -41,9 +41,6 @@ export function useGoogleIdToken(onToken: (idToken: string) => void): UseGoogleI
     try {
       await GoogleSignin.hasPlayServices();
 
-      // Clear cached account selection so the system chooser always appears
-      try { await GoogleSignin.signOut(); } catch { /* no-op */ }
-
       const response = await GoogleSignin.signIn();
 
       // V16 API: cancellation returns { type: 'cancelled' }

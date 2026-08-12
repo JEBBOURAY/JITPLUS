@@ -26,12 +26,12 @@ export default React.memo(function PremiumLockCard({ descriptionKey, titleKey }:
         {/* Crown icon with glow */}
         <View style={styles.iconWrap}>
           <LinearGradient
-            colors={[palette.violetDark, palette.violet]}
+            colors={[palette.gold, '#F59E0B']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.iconBg}
           >
-            <Crown size={26} color={palette.gold} strokeWidth={1.8} />
+            <Crown size={26} color={palette.premiumBg} strokeWidth={2} />
           </LinearGradient>
         </View>
 

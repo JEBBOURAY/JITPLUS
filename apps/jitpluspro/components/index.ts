@@ -12,3 +12,4 @@ export { default as SafeMapView, PROVIDER_GOOGLE, MAPS_AVAILABLE } from './SafeM
 export type { SafeMapViewRef } from './SafeMapView';
 export { default as ShimmerBlock, ClientCardSkeleton, ClientListSkeleton, ActivityCardSkeleton, ActivityListSkeleton } from './Skeleton';
 export { default as StampGrid } from './StampGrid';
+export { default as TipBanner } from './TipBanner';

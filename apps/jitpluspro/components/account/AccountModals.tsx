@@ -1,14 +1,12 @@
 import React, { useRef } from 'react';
 import {
-  View, Text, StyleSheet, Modal, TouchableOpacity, Pressable, ActivityIndicator, Platform, I18nManager, Alert, InteractionManager,
+  View, Text, StyleSheet, Modal, TouchableOpacity, Pressable, ActivityIndicator, Platform, InteractionManager,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as Updates from 'expo-updates';
-import { Camera, Trash2, Globe, Check } from 'lucide-react-native';
+import { Camera, Trash2 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { palette, type ThemeColors } from '@/contexts/ThemeContext';
 import MerchantLogo from '@/components/MerchantLogo';
-import { LANGUAGES, type AppLocale } from '@/contexts/LanguageContext';
 import { wp, hp, ms, fontSize as FS, radius } from '@/utils/responsive';
 import type { Merchant } from '@/types';
 
@@ -224,100 +222,6 @@ export function CoverEditModal({
   );
 }
 
-/* ── Language Selector Modal ── */
-
-interface LanguageModalProps {
-  visible: boolean;
-  onClose: () => void;
-  theme: ThemeColors;
-  t: (key: string, opts?: Record<string, unknown>) => string;
-  locale: string;
-  setLocale: (locale: AppLocale) => Promise<void>;
-}
-
-export function LanguageModal({
-  visible, onClose, theme, t, locale, setLocale,
-}: LanguageModalProps) {
-  return (
-    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
-      <Pressable style={styles.modalOverlay} onPress={onClose}>
-        <View style={[styles.langModalCard, { backgroundColor: theme.bgCard }]}>
-          <View style={[styles.modalIconCircle, { backgroundColor: `${palette.charbon}12` }]}>
-            <Globe size={ms(28)} color={palette.charbon} strokeWidth={1.5} />
-          </View>
-          <Text style={[styles.langModalTitle, { color: theme.text }]}>{t('account.chooseLanguage')}</Text>
-          <Text style={[styles.langModalDesc, { color: theme.textMuted }]}>
-            {t('account.chooseLanguageDesc')}
-          </Text>
-
-          {LANGUAGES.map((lang) => {
-            const selected = locale === lang.code;
-            return (
-              <Pressable
-                key={lang.code}
-                onPress={async () => {
-                  if (lang.code === locale) { onClose(); return; }
-                  const wasRTL = I18nManager.isRTL;
-                  try {
-                    await setLocale(lang.code);
-                  } catch {
-                    Alert.alert(t('common.error'), t('common.genericError'));
-                    onClose();
-                    return;
-                  }
-                  const nowRTL = lang.code === 'ar';
-                  onClose();
-                  if (wasRTL !== nowRTL) {
-                    if (!Updates.isEnabled) {
-                      // Dev / Expo Go: just inform user; no programmatic reload available.
-                      Alert.alert(t('account.restartTitle'), t('account.restartRequired'));
-                      return;
-                    }
-                    Alert.alert(
-                      t('account.restartTitle'),
-                      t('account.restartRequired'),
-                      [
-                        {
-                          text: t('common.confirm'),
-                          onPress: async () => {
-                            try { await Updates.reloadAsync(); } catch { /* ignore */ }
-                          },
-                        },
-                      ],
-                      { cancelable: false },
-                    );
-                  }
-                }}
-                android_ripple={{ color: `${palette.violet}10` }}
-                hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-                accessibilityRole="button"
-                accessibilityLabel={lang.label}
-                accessibilityState={{ selected }}
-                style={({ pressed }) => [
-                  styles.langOption,
-                  { borderColor: selected ? theme.primary : theme.borderLight },
-                  selected && { backgroundColor: `${theme.primary}08` },
-                  pressed && Platform.OS === 'ios' && { opacity: 0.7 },
-                ]}
-              >
-                <Text style={styles.langFlag} accessibilityElementsHidden importantForAccessibility="no">{lang.flag}</Text>
-                <Text style={[styles.langOptionText, { color: selected ? theme.primary : theme.text }]} numberOfLines={1} maxFontSizeMultiplier={1.4}>
-                  {lang.label}
-                </Text>
-                {selected && (
-                  <View style={[styles.langCheck, { backgroundColor: theme.primary }]}>
-                    <Check size={ms(12)} color="#fff" strokeWidth={3} />
-                  </View>
-                )}
-              </Pressable>
-            );
-          })}
-        </View>
-      </Pressable>
-    </Modal>
-  );
-}
-
 const styles = StyleSheet.create({
   // Logo bottom sheet
   bottomSheetOverlay: {
@@ -409,54 +313,5 @@ const styles = StyleSheet.create({
   logoModalOutlineBtnText: {
     fontSize: FS.md,
     fontWeight: '600',
-  },
-
-  // Language modal
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: ms(24),
-  },
-  modalIconCircle: {
-    width: ms(56),
-    height: ms(56),
-    borderRadius: ms(28),
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: hp(12),
-  },
-  langModalCard: {
-    width: '100%',
-    borderRadius: ms(20),
-    padding: ms(24),
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.10,
-    shadowRadius: 16,
-    elevation: 6,
-  },
-  langModalTitle: { fontSize: ms(18), fontWeight: '700', marginBottom: hp(8) },
-  langModalDesc: { fontSize: ms(13), textAlign: 'center', marginBottom: hp(16) },
-  langOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    width: '100%',
-    padding: ms(14),
-    borderRadius: ms(14),
-    borderWidth: 1.5,
-    marginBottom: hp(10),
-    gap: ms(12),
-  },
-  langFlag: { fontSize: ms(22) },
-  langOptionText: { flex: 1, fontSize: FS.md, fontWeight: '600' },
-  langCheck: {
-    width: ms(22),
-    height: ms(22),
-    borderRadius: ms(11),
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 });

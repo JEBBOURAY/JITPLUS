@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ConflictException,
   Logger,
   Inject,
 } from '@nestjs/common';
@@ -76,6 +77,16 @@ export class MerchantTransactionService {
     ]);
     if (!client || client.deletedAt) throw new NotFoundException('Client non trouvé');
     if (!merchant || merchant.deletedAt || !merchant.isActive) throw new NotFoundException('Commerce non trouvé');
+
+    // The merchant must have explicitly chosen a loyalty program before any
+    // transaction can be recorded. New accounts start with loyaltyType = null
+    // (no default). The app catches this code and redirects to loyalty settings.
+    if (!merchant.loyaltyType) {
+      throw new ConflictException({
+        message: 'Choisissez d\'abord votre programme de fidélité.',
+        code: 'LOYALTY_NOT_CONFIGURED',
+      });
+    }
 
     // Anti-fraud: force amount=0 on REDEEM_REWARD (client-provided amount must never inflate analytics / lucky-wheel)
     if (type === 'REDEEM_REWARD') {

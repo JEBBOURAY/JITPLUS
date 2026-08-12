@@ -62,8 +62,18 @@ export function useRealtimeSocket(config: RealtimeSocketConfig): Socket | null {
 
       authFailures.current = 0;
 
+      const allowPollingFallback =
+        __DEV__ ||
+        process.env.EXPO_PUBLIC_WS_ALLOW_POLLING === 'true';
+      const transports: Array<'websocket' | 'polling'> = allowPollingFallback
+        ? ['polling', 'websocket']
+        : ['websocket'];
+
       const newSocket = io(serverUrl, {
-        transports: ['websocket'],
+        // Polling multiplies HTTP requests on Cloud Run and can increase costs
+        // with many connected users. In production we default to websocket-only
+        // and keep polling as an opt-in fallback via EXPO_PUBLIC_WS_ALLOW_POLLING=true.
+        transports,
         auth: { token },
         reconnection: true,
         reconnectionAttempts: 10,
@@ -125,8 +135,21 @@ export function useRealtimeSocket(config: RealtimeSocketConfig): Socket | null {
           connectErrorCountRef.current += 1;
           const attempts = connectErrorCountRef.current;
           const now = Date.now();
-          const message = err.message || 'unknown error';
-          const sig = `${attempts}:${message}`;
+          const transport = newSocket.io.engine?.transport?.name ?? 'unknown';
+          const details = err as Error & {
+            description?: unknown;
+            context?: unknown;
+            type?: string;
+          };
+          const message = details.message || 'unknown error';
+          const description = details.description
+            ? typeof details.description === 'string'
+              ? details.description
+              : JSON.stringify(details.description)
+            : '';
+          const type = details.type ? ` [${details.type}]` : '';
+          const extra = description ? ` | ${description}` : '';
+          const sig = `${attempts}:${transport}:${message}:${description}`;
 
           // Deduplicate exact duplicate lines emitted almost simultaneously.
           if (sig === lastDevWsErrorSig && now - lastDevWsErrorAt < 1500) return;
@@ -135,7 +158,7 @@ export function useRealtimeSocket(config: RealtimeSocketConfig): Socket | null {
 
           // Avoid flooding Metro logs when backend/ws endpoint is unreachable.
           if (attempts <= 3 || now - lastConnectErrorLogAtRef.current > 30000) {
-            console.log(`[WS] Error (${attempts}):`, message);
+            console.log(`[WS] Error (${attempts}) [${transport}]${type}:`, `${message}${extra}`);
             lastConnectErrorLogAtRef.current = now;
           } else if (attempts === 4) {
             console.log('[WS] Repeated connection errors suppressed for 30s');

@@ -87,7 +87,7 @@ export function useAppleAuth({ onCancel }: UseAppleAuthOptions = {}) {
 
       if (result.success) {
         navigatingOnSuccess = true;
-        router.replace('/(tabs)');
+        router.replace('/(tabs)/activity');
       } else {
         if (result.rawError && isNoAccountError(result.rawError)) {
           setNoAccount(true);
