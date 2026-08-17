@@ -46,9 +46,9 @@ import {
     },
     credentials: true,
   },
-  // Allow both transports: Cloud Run requires --session-affinity for pure WS,
-  // and polling provides a robust fallback when WS handshake fails.
-  transports: ['websocket', 'polling'],
+  // HTTP polling creates recurring Cloud Run requests; production clients use
+  // WebSocket-only and Cloud Run session affinity supports the handshake.
+  transports: ['websocket'],
   pingInterval: 25_000,
   pingTimeout: 20_000,
 })
