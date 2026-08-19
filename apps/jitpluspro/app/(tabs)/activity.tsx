@@ -48,6 +48,7 @@ import RecentActivityCard from '@/components/RecentActivityCard';
 import KpiCounter from '@/components/KpiCounter';
 import { useTourTarget } from '@/components/GuidedTour';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';import { useFocusFade } from '@/hooks/useFocusFade';
+import WelcomeGuideCard from '@/components/WelcomeGuideCard';
 import { useExitOnBack } from '@/hooks/useExitOnBack';
 import { pokeInteraction } from '@/utils/interaction';
 import { ms } from '@/utils/responsive';
@@ -420,6 +421,8 @@ export default function HomeScreen() {
           )}
         </View>
       </ScrollView>
+
+      <WelcomeGuideCard />
 
       {/* ── Floating top bar — overlaid on the hero gradient and PERMANENTLY
           transparent (no scroll-driven background). Design trade-off: once the

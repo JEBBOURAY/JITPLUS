@@ -69,6 +69,7 @@ export interface Merchant {
   isActive?: boolean;
   emailVerified?: boolean;
   onboardingCompleted?: boolean;
+  welcomeGuideVisible?: boolean;
   termsAccepted?: boolean;
   createdAt?: string;
   stores?: Store[];

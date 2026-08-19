@@ -62,6 +62,7 @@ model Merchant {
   isActive            Boolean   @default(true) @map("is_active")
   emailVerified       Boolean   @default(false) @map("email_verified")
   onboardingCompleted Boolean   @default(false) @map("onboarding_completed")
+  welcomeGuideVisible Boolean   @default(false) @map("welcome_guide_visible")
   failedLoginAttempts Int       @default(0) @map("failed_login_attempts")
   lockedUntil         DateTime? @map("locked_until")
   // ── Préférences notifications (crons marketing / opt-out RGPD) ──

@@ -34,6 +34,9 @@ import {
   MAX_LOGO_SIZE_BYTES,
 } from '@/constants/app';
 
+// Backend ceiling for image uploads (sharp optimizes down afterwards).
+const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
+
 // Re-export types for backward compatibility
 export type { NotificationRecord, Reward, ClientListItem, Transaction, TransactionsPage } from '@/types';
 
@@ -589,28 +592,19 @@ export function useFulfillGift() {
 export function useUploadMerchantLogo() {
   return useMutation({
     mutationFn: async (asset: { uri: string; mimeType?: string | null; merchantName?: string; fileSize?: number | null }) => {
-      // Validate file size before uploading
-      if (asset.fileSize && asset.fileSize > MAX_LOGO_SIZE_BYTES) {
-        throw new Error(i18n.t('upload.fileTooLarge'));
-      }
-      const { ext, mime } = normalizeUploadMimeAndExt(asset.uri, asset.mimeType);
+      const { mime } = normalizeUploadMimeAndExt(asset.uri, asset.mimeType);
       if (!ALLOWED_LOGO_MIMES.has(mime)) {
         throw new Error(i18n.t('upload.unsupportedFileType', { mime }));
       }
-      const safeName = (asset.merchantName ?? 'commerce')
-        .toLowerCase()
-        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '')
-        .slice(0, 40);
-      const dateStr = new Date().toISOString().slice(0, 10);
-      const fileName = `logo_${safeName}_${dateStr}.${ext}`;
-      const formData = new FormData();
-      formData.append('file', { uri: asset.uri, name: fileName, type: mime } as any);
-      const res = await api.post('/merchant/upload-image?type=logo', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+      // Native URLSession multipart upload — reliable on iOS where axios streams
+      // file:// bodies through the RN bridge and fails intermittently.
+      const res = await uploadImageNative({
+        uri: asset.uri,
+        endpoint: '/merchant/upload-image?type=logo',
+        mime,
+        maxBytes: MAX_LOGO_SIZE_BYTES,
       });
-      return res.data as { url: string };
+      return res as { url: string };
     },
   });
 }
@@ -618,30 +612,19 @@ export function useUploadMerchantLogo() {
 export function useUploadMerchantCover() {
   return useMutation({
     mutationFn: async (asset: { uri: string; mimeType?: string | null; merchantName?: string; fileSize?: number | null }) => {
-      // Match the backend ceiling (10MB) — sharp optimizes down afterwards.
-      // A tighter client limit would reject legitimate iPhone photos (often > 5MB).
-      const maxCoverSize = 10 * 1024 * 1024;
-      if (asset.fileSize && asset.fileSize > maxCoverSize) {
-        throw new Error(i18n.t('upload.fileTooLarge'));
-      }
-      const { ext, mime } = normalizeUploadMimeAndExt(asset.uri, asset.mimeType);
+      const { mime } = normalizeUploadMimeAndExt(asset.uri, asset.mimeType);
       if (!ALLOWED_LOGO_MIMES.has(mime)) {
         throw new Error(i18n.t('upload.unsupportedFileType', { mime }));
       }
-      const safeName = (asset.merchantName ?? 'commerce')
-        .toLowerCase()
-        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '')
-        .slice(0, 40);
-      const dateStr = new Date().toISOString().slice(0, 10);
-      const fileName = `cover_${safeName}_${dateStr}.${ext}`;
-      const formData = new FormData();
-      formData.append('file', { uri: asset.uri, name: fileName, type: mime } as any);
-      const res = await api.post('/merchant/upload-image?type=cover', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+      // Covers are full-frame (16:9) iPhone photos, often > 5MB — native upload
+      // avoids the iOS axios file:// bridge failures on larger files.
+      const res = await uploadImageNative({
+        uri: asset.uri,
+        endpoint: '/merchant/upload-image?type=cover',
+        mime,
+        maxBytes: MAX_UPLOAD_SIZE_BYTES,
       });
-      return res.data as { url: string };
+      return res as { url: string };
     },
   });
 }
@@ -663,29 +646,21 @@ export function useUploadMerchantGalleryImage() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (asset: { uri: string; mimeType?: string | null; merchantName?: string; fileSize?: number | null }) => {
-      const maxSize = 5 * 1024 * 1024;
-      if (asset.fileSize && asset.fileSize > maxSize) {
-        throw new Error(i18n.t('upload.fileTooLarge'));
-      }
-      const { ext, mime } = normalizeUploadMimeAndExt(asset.uri, asset.mimeType);
+      const { mime } = normalizeUploadMimeAndExt(asset.uri, asset.mimeType);
       if (!ALLOWED_LOGO_MIMES.has(mime)) {
         throw new Error(i18n.t('upload.unsupportedFileType', { mime }));
       }
-      const safeName = (asset.merchantName ?? 'commerce')
-        .toLowerCase()
-        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '')
-        .slice(0, 40);
-      const dateStr = new Date().toISOString().slice(0, 10);
-      const rand = Math.random().toString(36).slice(2, 8);
-      const fileName = `gallery_${safeName}_${dateStr}_${rand}.${ext}`;
-      const formData = new FormData();
-      formData.append('file', { uri: asset.uri, name: fileName, type: mime } as any);
-      const res = await api.post('/merchant/upload-image?type=gallery', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+      // Gallery photos are picked at full resolution (multi-select, no crop), so they
+      // are far larger than the cropped logo/cover. Axios streams file:// bodies through
+      // the RN bridge and fails intermittently on iOS for large files — use the native
+      // URLSession multipart uploader instead (reliable on both platforms).
+      const res = await uploadImageNative({
+        uri: asset.uri,
+        endpoint: '/merchant/upload-image?type=gallery',
+        mime,
+        maxBytes: MAX_UPLOAD_SIZE_BYTES,
       });
-      return res.data as { url: string; field: string; gallery: string[] };
+      return res as { url: string; field: string; gallery: string[] };
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.profile });
@@ -710,21 +685,17 @@ export function useDeleteMerchantLogo() {
 export function useUploadRewardImage() {
   return useMutation({
     mutationFn: async (asset: { uri: string; mimeType?: string | null; fileSize?: number | null }) => {
-      const maxSize = 5 * 1024 * 1024;
-      if (asset.fileSize && asset.fileSize > maxSize) {
-        throw new Error(i18n.t('upload.fileTooLarge'));
-      }
-      const { ext, mime } = normalizeUploadMimeAndExt(asset.uri, asset.mimeType);
+      const { mime } = normalizeUploadMimeAndExt(asset.uri, asset.mimeType);
       if (!ALLOWED_LOGO_MIMES.has(mime)) {
         throw new Error(i18n.t('upload.unsupportedFileType', { mime }));
       }
-      const fileName = `reward.${ext}`;
-      const formData = new FormData();
-      formData.append('file', { uri: asset.uri, name: fileName, type: mime } as any);
-      const res = await api.post('/merchant/upload-image?type=reward', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+      const res = await uploadImageNative({
+        uri: asset.uri,
+        endpoint: '/merchant/upload-image?type=reward',
+        mime,
+        maxBytes: MAX_UPLOAD_SIZE_BYTES,
       });
-      return res.data as { url: string };
+      return res as { url: string };
     },
   });
 }
@@ -733,21 +704,17 @@ export function useUploadMerchantCardBackground() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (asset: { uri: string; mimeType?: string | null; fileSize?: number | null }) => {
-      const maxSize = 5 * 1024 * 1024;
-      if (asset.fileSize && asset.fileSize > maxSize) {
-        throw new Error(i18n.t('upload.fileTooLarge'));
-      }
-      const { ext, mime } = normalizeUploadMimeAndExt(asset.uri, asset.mimeType);
+      const { mime } = normalizeUploadMimeAndExt(asset.uri, asset.mimeType);
       if (!ALLOWED_LOGO_MIMES.has(mime)) {
         throw new Error(i18n.t('upload.unsupportedFileType', { mime }));
       }
-      const fileName = `cardbg_${Date.now()}.${ext}`;
-      const formData = new FormData();
-      formData.append('file', { uri: asset.uri, name: fileName, type: mime } as any);
-      const res = await api.post('/merchant/upload-image?type=cardBackground', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+      const res = await uploadImageNative({
+        uri: asset.uri,
+        endpoint: '/merchant/upload-image?type=cardBackground',
+        mime,
+        maxBytes: MAX_UPLOAD_SIZE_BYTES,
       });
-      return res.data as { url: string };
+      return res as { url: string };
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.profile });

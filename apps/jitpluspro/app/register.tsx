@@ -14,23 +14,32 @@ import {
   Animated,
   LayoutAnimation,
   UIManager,
+  Modal,
+  Pressable,
+  Keyboard,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   Check,
   ArrowLeft,
   ArrowRight,
   LogIn,
   Store,
+  Phone,
   Mail,
   Gift,
   ChevronDown,
   ShieldCheck,
+  MapPin,
+  Navigation,
+  Tag,
 } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { ASYNC_STORAGE_KEYS } from '@/constants/app';
 import api from '@/services/api';
 import { isValidPassword } from '@/utils/passwordStrength';
 import { isValidEmail } from '@/utils/validation';
@@ -40,6 +49,12 @@ import { useAppleIdToken } from '@/hooks/useAppleIdToken';
 import { StepPassword } from '@/components/register/StepPassword';
 import { AppleLogo } from '@/components/AppleLogo';
 import BrandName from '@/components/BrandName';
+import MerchantCategoryIcon from '@/components/MerchantCategoryIcon';
+import SafeMapView, { Marker, type SafeMapViewRef } from '@/components/SafeMapView';
+import { reverseGeocodeAsync } from '@/utils/geocodeCache';
+import { getCategoryOptions, getCategoryLabel } from '@/constants/categories';
+import type { MerchantCategory } from '@/types';
+import * as Location from 'expo-location';
 import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
 
 // Enable LayoutAnimation on Android (referral collapsible)
@@ -59,7 +74,7 @@ type ReferralStatus = 'idle' | 'checking' | 'valid' | 'invalid';
 export default function RegisterScreen() {
   const router = useRouter();
   const theme = useTheme();
-  const { googleRegister, appleRegister, register: authRegister } = useAuth();
+  const { googleRegister, appleRegister, register: authRegister, signIn } = useAuth();
   const { t } = useLanguage();
 
   // ── Form state ──
@@ -70,10 +85,21 @@ export default function RegisterScreen() {
   const [appleRawNonce, setAppleRawNonce] = useState<string | null>(null);
 
   const [nomCommerce, setNomCommerce] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('+212');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+
+  // Business category + location (same UX as store management)
+  const [categorie, setCategorie] = useState<MerchantCategory | ''>('');
+  const [showCategoryPicker, setShowCategoryPicker] = useState(false);
+  const [ville, setVille] = useState('');
+  const [quartier, setQuartier] = useState('');
+  const [adresse, setAdresse] = useState('');
+  const [latitude, setLatitude] = useState<number | null>(null);
+  const [longitude, setLongitude] = useState<number | null>(null);
+  const [locating, setLocating] = useState(false);
 
   const [referralOpen, setReferralOpen] = useState(false);
   const [referralCode, setReferralCode] = useState('');
@@ -84,6 +110,7 @@ export default function RegisterScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [stepError, setStepError] = useState('');
   const [emailChecking, setEmailChecking] = useState(false);
+  const [phoneChecking, setPhoneChecking] = useState(false);
 
   const isSocialAuth = !!googleIdToken || !!appleIdentityToken;
 
@@ -97,6 +124,8 @@ export default function RegisterScreen() {
   const passwordRef = useRef<TextInput>(null);
   const confirmRef = useRef<TextInput>(null);
   const referralDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mapRef = useRef<SafeMapViewRef>(null);
+  const userLocationRef = useRef<{ latitude: number; longitude: number } | null>(null);
 
   // ── Social token capture ──
   const handleGoogleToken = useCallback((idToken: string) => {
@@ -202,26 +231,150 @@ export default function RegisterScreen() {
   }, [email, stepError, t]);
 
   // ── Validation ──
+  const normalizedPhone = useMemo(() => {
+    const raw = phoneNumber.trim();
+    if (!raw) return '';
+
+    const compact = raw.replace(/\s+/g, '');
+
+    // Keep explicit international format as entered by user.
+    if (compact.startsWith('+')) {
+      const digits = compact.slice(1).replace(/\D/g, '');
+      return digits ? `+${digits}` : '';
+    }
+
+    const digits = compact.replace(/\D/g, '');
+    if (!digits) return '';
+
+    // Morocco is the default country when no '+' prefix is provided.
+    if (digits.startsWith('0')) return `+212${digits.slice(1)}`;
+    if (digits.startsWith('212')) return `+${digits}`;
+    return `+212${digits}`;
+  }, [phoneNumber]);
+  const phoneValid = useMemo(() => /^\+?[0-9]{8,15}$/.test(normalizedPhone), [normalizedPhone]);
   const storeNameValid = nomCommerce.trim().length > 0;
   const emailValid = isValidEmail(email);
   const passwordOk = isValidPassword(password) && password === confirmPassword;
 
+  // ── Phone uniqueness check (on blur) ──
+  const handlePhoneBlur = useCallback(async () => {
+    if (normalizedPhone && phoneNumber.trim() !== normalizedPhone) {
+      setPhoneNumber(normalizedPhone);
+    }
+    if (!phoneValid) return;
+    setPhoneChecking(true);
+    try {
+      const { data } = await api.post('/auth/check-phone', { phoneNumber: normalizedPhone });
+      if (data.exists) {
+        setStepError(t('registerExtra.phoneAlreadyUsed'));
+      } else if (stepError === t('registerExtra.phoneAlreadyUsed')) {
+        setStepError('');
+      }
+    } catch {
+      // Silent — final check happens server-side on submit.
+    } finally {
+      setPhoneChecking(false);
+    }
+  }, [normalizedPhone, phoneNumber, phoneValid, stepError, t]);
+
   const canSubmit = useMemo(() => {
-    if (!storeNameValid || !termsAccepted) return false;
+    if (!storeNameValid || !termsAccepted || !phoneValid) return false;
     if (isSocialAuth) return true;
     return emailValid && passwordOk;
-  }, [storeNameValid, termsAccepted, isSocialAuth, emailValid, passwordOk]);
+  }, [storeNameValid, termsAccepted, phoneValid, isSocialAuth, emailValid, passwordOk]);
+
+  const resetChecklistStateForNewAccount = useCallback(async () => {
+    await AsyncStorage.multiRemove([
+      ASYNC_STORAGE_KEYS.CHECKLIST_DISMISSED,
+      ASYNC_STORAGE_KEYS.CHECKLIST_LOYALTY_CONFIRMED,
+      ASYNC_STORAGE_KEYS.CHECKLIST_SCANNED,
+      ASYNC_STORAGE_KEYS.CHECKLIST_COLLAPSED,
+      ASYNC_STORAGE_KEYS.CHECKLIST_HIDDEN,
+      ASYNC_STORAGE_KEYS.CHECKLIST_HIDE_NOTICE_SEEN,
+    ]).catch(() => {});
+  }, []);
+
+  // ── Category + location (mirrors the store management screen) ──
+  const handleCategoryPick = useCallback((value: MerchantCategory) => {
+    setCategorie(value);
+    setShowCategoryPicker(false);
+  }, []);
+
+  const reverseGeocodeAndLabel = useCallback(async (lat: number, lng: number) => {
+    try {
+      const results = await reverseGeocodeAsync({ latitude: lat, longitude: lng });
+      if (results.length > 0) {
+        const g = results[0];
+        const parts = [g.street, g.name, g.district, g.subregion].filter(Boolean);
+        if (parts.length) setAdresse(parts.join(', '));
+        if (g.city) setVille(g.city);
+        if (g.district) setQuartier(g.district);
+      }
+    } catch {
+      // ignore reverse geocode failures
+    }
+  }, []);
+
+  const handleUseMyLocation = useCallback(async () => {
+    Keyboard.dismiss();
+    const proceed = await new Promise<boolean>((resolve) => {
+      Alert.alert(
+        t('stores.locationDisclosureTitle'),
+        t('stores.locationDisclosureBody'),
+        [
+          { text: t('common.cancel'), style: 'cancel', onPress: () => resolve(false) },
+          { text: t('stores.locationDisclosureAllow'), onPress: () => resolve(true) },
+        ],
+        { cancelable: true, onDismiss: () => resolve(false) },
+      );
+    });
+    if (!proceed) return;
+
+    setLocating(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(t('stores.permissionDenied'), t('stores.enableLocation'));
+        return;
+      }
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const { latitude: lat, longitude: lng } = loc.coords;
+      userLocationRef.current = { latitude: lat, longitude: lng };
+      setLatitude(lat);
+      setLongitude(lng);
+      mapRef.current?.animateToRegion({ latitude: lat, longitude: lng, latitudeDelta: 0.045, longitudeDelta: 0.045 });
+      await reverseGeocodeAndLabel(lat, lng);
+    } catch {
+      Alert.alert(t('common.error'), t('stores.locationError'));
+    } finally {
+      setLocating(false);
+    }
+  }, [reverseGeocodeAndLabel, t]);
+
+  const defaultRegion = useMemo(() => ({
+    latitude: latitude ?? userLocationRef.current?.latitude ?? 33.5731,
+    longitude: longitude ?? userLocationRef.current?.longitude ?? -7.5898,
+    latitudeDelta: 0.045,
+    longitudeDelta: 0.045,
+  }), [latitude, longitude]);
 
   // ── Register ──
   const handleRegister = useCallback(async () => {
     if (submittingRef.current) return;
     if (!canSubmit) return;
+    Keyboard.dismiss();
     submittingRef.current = true;
     setStepError('');
 
     const trimmedReferral = referralCode.trim();
     const storeData = {
       nomCommerce: nomCommerce.trim(),
+      phoneNumber: normalizedPhone,
+      ...(categorie && { categorie }),
+      ...(ville.trim() && { ville: ville.trim() }),
+      ...(quartier.trim() && { quartier: quartier.trim() }),
+      ...(adresse.trim() && { adresse: adresse.trim() }),
+      ...(latitude != null && longitude != null && { latitude, longitude }),
       ...(trimmedReferral && { referralCode: trimmedReferral }),
     };
 
@@ -230,6 +383,7 @@ export default function RegisterScreen() {
       if (googleIdToken) {
         const result = await googleRegister(googleIdToken, { ...storeData, termsAccepted });
         if (result.success) {
+          await resetChecklistStateForNewAccount();
           router.replace('/(tabs)/activity');
         } else {
           Alert.alert(
@@ -249,6 +403,7 @@ export default function RegisterScreen() {
           appleRawNonce ?? undefined,
         );
         if (result.success) {
+          await resetChecklistStateForNewAccount();
           router.replace('/(tabs)/activity');
         } else {
           Alert.alert(
@@ -259,17 +414,32 @@ export default function RegisterScreen() {
         return;
       }
 
-      // Email flow — continue to email verification right after signup.
+      // Email flow — create the account (pre-verified), then auto-login.
       await authRegister({
         email: email.trim().toLowerCase(),
         password,
         ...storeData,
         termsAccepted,
       });
-      router.replace({
-        pathname: '/verify-email',
-        params: { email: email.trim().toLowerCase(), fromRegister: '1' },
-      } as never);
+      // The account exists from here on. A later sign-in failure must NOT surface
+      // as "registration failed" (the user would retry and hit a 409 on the now
+      // existing email). Retry the auto-login once, then fall back to the login
+      // screen so the user is never stuck.
+      await resetChecklistStateForNewAccount();
+      const creds = { email: email.trim().toLowerCase(), password };
+      try {
+        await signIn(creds, true);
+        router.replace('/(tabs)/activity');
+      } catch {
+        try {
+          await signIn(creds, true);
+          router.replace('/(tabs)/activity');
+        } catch {
+          Alert.alert(t('registerExtra.welcomeTitle'), t('registerExtra.welcomeMsg', { nom: nomCommerce.trim() }));
+          router.replace('/login');
+        }
+      }
+      return;
     } catch (error: unknown) {
       const ax = error as { isAxiosError?: boolean; code?: string; response?: unknown };
       const isNetwork =
@@ -286,6 +456,13 @@ export default function RegisterScreen() {
     canSubmit,
     referralCode,
     nomCommerce,
+    normalizedPhone,
+    categorie,
+    ville,
+    quartier,
+    adresse,
+    latitude,
+    longitude,
     googleIdToken,
     appleIdentityToken,
     appleGivenName,
@@ -297,6 +474,8 @@ export default function RegisterScreen() {
     googleRegister,
     appleRegister,
     authRegister,
+    signIn,
+    resetChecklistStateForNewAccount,
     router,
     t,
   ]);
@@ -502,6 +681,76 @@ export default function RegisterScreen() {
                 </View>
               </View>
 
+              {/* Business category */}
+              <View style={styles.field}>
+                <Text style={[styles.label, { color: theme.text }]}>{t('register.categoryLabel')}</Text>
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => { Keyboard.dismiss(); setShowCategoryPicker(true); }}
+                  disabled={isLoading}
+                  style={[
+                    styles.inputRow,
+                    {
+                      backgroundColor: theme.bgInput,
+                      borderColor: categorie ? palette.charbon : theme.border,
+                      borderWidth: categorie ? 2 : 1.5,
+                    },
+                  ]}
+                  accessibilityRole="button"
+                >
+                  {categorie ? (
+                    <MerchantCategoryIcon category={categorie} size={ms(20)} />
+                  ) : (
+                    <Tag size={ms(18)} color={theme.textMuted} />
+                  )}
+                  <Text
+                    style={[styles.input, { color: categorie ? theme.text : theme.textMuted }]}
+                    numberOfLines={1}
+                  >
+                    {categorie ? getCategoryLabel(categorie) : t('register.categoryPlaceholder')}
+                  </Text>
+                  <ChevronDown size={ms(18)} color={theme.textMuted} />
+                </TouchableOpacity>
+              </View>
+
+              {/* Phone number (required, always) */}
+              <View style={styles.field}>
+                <Text style={[styles.label, { color: theme.text }]}>{t('registerExtra.phoneLabel')} *</Text>
+                <View
+                  style={[
+                    styles.inputRow,
+                    {
+                      backgroundColor: theme.bgInput,
+                      borderColor: phoneNumber && phoneValid ? palette.charbon : phoneNumber && !phoneValid ? theme.danger : theme.border,
+                      borderWidth: phoneNumber && phoneValid ? 2 : 1.5,
+                    },
+                  ]}
+                >
+                  <Phone size={ms(18)} color={phoneValid ? palette.charbon : theme.textMuted} />
+                  <TextInput
+                    style={[styles.input, { color: theme.text }]}
+                    value={phoneNumber}
+                    onChangeText={setPhoneNumber}
+                    onBlur={handlePhoneBlur}
+                    placeholder={t('registerExtra.phonePlaceholder')}
+                    placeholderTextColor={theme.textMuted}
+                    keyboardType="phone-pad"
+                    autoComplete="tel"
+                    editable={!isLoading}
+                    returnKeyType={isSocialAuth ? 'done' : 'next'}
+                    onSubmitEditing={() => !isSocialAuth && emailRef.current?.focus()}
+                  />
+                  {phoneChecking ? (
+                    <ActivityIndicator size="small" color={palette.charbon} />
+                  ) : (
+                    phoneValid && <Check size={ms(16)} color={palette.charbon} strokeWidth={2.5} />
+                  )}
+                </View>
+                {phoneNumber.length > 0 && !phoneValid && (
+                  <Text style={[styles.errorHint, { color: theme.danger }]}>{t('registerExtra.invalidPhoneNumber')}</Text>
+                )}
+              </View>
+
               {/* Email + password (email flow only) */}
               {!isSocialAuth && (
                 <>
@@ -559,6 +808,72 @@ export default function RegisterScreen() {
                   />
                 </>
               )}
+
+              {/* Location (locate me / point on the map) */}
+              <View style={styles.field}>
+                <View style={styles.locationLabelRow}>
+                  <MapPin size={ms(15)} color={theme.text} strokeWidth={2} />
+                  <Text style={[styles.label, { color: theme.text, marginBottom: 0 }]}>{t('registerExtra.mapTitle')}</Text>
+                </View>
+                <TouchableOpacity
+                  onPress={handleUseMyLocation}
+                  disabled={isLoading || locating}
+                  activeOpacity={0.8}
+                  style={[styles.locateBtn, { backgroundColor: `${palette.charbon}0D`, borderColor: `${palette.charbon}28` }]}
+                  accessibilityRole="button"
+                >
+                  {locating ? (
+                    <ActivityIndicator size="small" color={palette.charbon} />
+                  ) : (
+                    <Navigation size={ms(16)} color={palette.charbon} strokeWidth={2} />
+                  )}
+                  <Text style={[styles.locateBtnText, { color: palette.charbon }]}>{t('registerExtra.locateMe')}</Text>
+                </TouchableOpacity>
+
+                <View style={styles.mapWrapper}>
+                  <SafeMapView
+                    ref={mapRef}
+                    style={styles.map}
+                    initialRegion={defaultRegion}
+                    onPress={(event) => {
+                      const { latitude: lat, longitude: lng } = event.nativeEvent.coordinate;
+                      setLatitude(lat);
+                      setLongitude(lng);
+                      void reverseGeocodeAndLabel(lat, lng);
+                    }}
+                    showsUserLocation={false}
+                    zoomEnabled
+                    scrollEnabled
+                    pitchEnabled={false}
+                    rotateEnabled={false}
+                    showsPointsOfInterest={false}
+                    showsBuildings={false}
+                  >
+                    {latitude != null && longitude != null ? (
+                      <Marker
+                        draggable
+                        coordinate={{ latitude, longitude }}
+                        pinColor={palette.violet}
+                        onDragEnd={(event: { nativeEvent: { coordinate: { latitude: number; longitude: number } } }) => {
+                          const { latitude: lat, longitude: lng } = event.nativeEvent.coordinate;
+                          setLatitude(lat);
+                          setLongitude(lng);
+                          void reverseGeocodeAndLabel(lat, lng);
+                        }}
+                      />
+                    ) : null}
+                  </SafeMapView>
+                </View>
+                <Text style={[styles.mapHint, { color: theme.textMuted }]}>{t('registerExtra.mapHint')}</Text>
+                {latitude != null && longitude != null ? (
+                  <View style={[styles.gpsIndicator, { backgroundColor: `${palette.charbon}0D` }]}>
+                    <Check size={ms(14)} color={palette.charbon} strokeWidth={2.5} />
+                    <Text style={[styles.gpsIndicatorText, { color: palette.charbon }]} numberOfLines={1}>
+                      {adresse || `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
 
               {/* Collapsible referral code */}
               <TouchableOpacity
@@ -729,6 +1044,42 @@ export default function RegisterScreen() {
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
+
+      <Modal
+        visible={showCategoryPicker}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => setShowCategoryPicker(false)}
+      >
+        <Pressable style={styles.pickerOverlay} onPress={() => setShowCategoryPicker(false)}>
+          <Pressable style={[styles.pickerSheet, { backgroundColor: theme.bgCard }]} onPress={() => {}}>
+            <Text style={[styles.pickerTitle, { color: theme.text }]}>{t('register.categoryLabel')}</Text>
+            <ScrollView style={{ maxHeight: hp(360) }}>
+              {getCategoryOptions().map((option) => {
+                const selected = categorie === option.value;
+                return (
+                  <TouchableOpacity
+                    key={option.value}
+                    onPress={() => handleCategoryPick(option.value)}
+                    style={[styles.categoryRow, selected && { backgroundColor: `${palette.violet}10` }]}
+                  >
+                    <MerchantCategoryIcon category={option.value} size={ms(20)} />
+                    <Text style={[styles.categoryRowText, { color: theme.text }]}>{option.label}</Text>
+                    {selected ? <Check size={ms(16)} color={palette.violet} strokeWidth={2.5} /> : null}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            <TouchableOpacity
+              onPress={() => setShowCategoryPicker(false)}
+              style={[styles.closePickerBtn, { backgroundColor: theme.bgElevated }]}
+            >
+              <Text style={{ color: theme.textMuted, fontFamily: 'Lexend_600SemiBold' }}>{t('common.close')}</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -857,6 +1208,47 @@ const styles = StyleSheet.create({
   },
   input: { flex: 1, fontSize: fontSize.md, fontWeight: '500' },
   errorHint: { fontSize: fontSize.xs, marginTop: hp(6), lineHeight: ms(16) },
+
+  // Location (locate me + map)
+  locationLabelRow: { flexDirection: 'row', alignItems: 'center', gap: wp(6), marginBottom: hp(8) },
+  locateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: wp(8),
+    paddingVertical: hp(12),
+    borderRadius: radius.lg,
+    borderWidth: 1.2,
+  },
+  locateBtnText: { fontSize: fontSize.sm, fontFamily: 'Lexend_700Bold', fontWeight: '700' },
+  mapWrapper: {
+    marginTop: hp(12),
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+    height: hp(200),
+    borderWidth: 1.2,
+    borderColor: 'rgba(124,58,237,0.20)',
+  },
+  map: { flex: 1 },
+  mapHint: { marginTop: hp(8), fontSize: ms(11.5), fontFamily: 'Lexend_400Regular' },
+  gpsIndicator: {
+    marginTop: hp(10),
+    borderRadius: radius.md,
+    paddingHorizontal: wp(10),
+    paddingVertical: hp(8),
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp(8),
+  },
+  gpsIndicatorText: { flex: 1, fontSize: ms(11.5), fontFamily: 'Lexend_600SemiBold', fontWeight: '600' },
+
+  // Category picker
+  pickerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', padding: wp(18) },
+  pickerSheet: { borderRadius: radius.xl, padding: wp(16), maxHeight: hp(560) },
+  pickerTitle: { fontSize: ms(16), fontFamily: 'Lexend_700Bold', fontWeight: '700', marginBottom: hp(10) },
+  categoryRow: { flexDirection: 'row', alignItems: 'center', gap: wp(10), paddingVertical: hp(12), paddingHorizontal: wp(12), borderRadius: radius.md },
+  categoryRowText: { flex: 1, fontSize: ms(14), fontFamily: 'Lexend_500Medium', fontWeight: '500' },
+  closePickerBtn: { marginTop: hp(12), alignItems: 'center', justifyContent: 'center', paddingVertical: hp(12), borderRadius: radius.md },
 
   // Referral
   referralToggle: {

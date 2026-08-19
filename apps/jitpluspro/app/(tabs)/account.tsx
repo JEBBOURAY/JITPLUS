@@ -702,8 +702,9 @@ export default function AccountScreen() {
       [ASYNC_STORAGE_KEYS.CHECKLIST_HIDE_NOTICE_SEEN, 'false'],
     ]).catch(() => {});
     setChecklistHidden(false);
-    if (router.canGoBack()) router.back();
-    else router.replace('/(tabs)/activity');
+    // Always land on Accueil (matches the "sur l'Accueil" promise in the subtitle copy) —
+    // router.back() is unreliable here since it depends on how the user reached Compte.
+    router.replace('/(tabs)/activity');
   }, [router]);
 
   // -- Stable navigation callbacks (keeps InfoRow / ProfileCard memo stable) --

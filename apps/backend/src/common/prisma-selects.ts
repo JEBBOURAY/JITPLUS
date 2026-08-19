@@ -42,6 +42,7 @@ export const MERCHANT_PROFILE_SELECT = {
   isActive: true,
   emailVerified: true,
   onboardingCompleted: true,
+  welcomeGuideVisible: true,
   termsAccepted: true,
   deletedAt: true,
   googleId: true,

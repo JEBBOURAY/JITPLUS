@@ -14,6 +14,7 @@ import { logInfo, logWarn, logError } from '@/utils/devLogger';
 import i18n from '@/i18n';
 import { Merchant, LoginCredentials, AuthResponse, TeamMember } from '@/types';
 import { useAuthStore } from '@/stores/authStore';
+import { ASYNC_STORAGE_KEYS } from '@/constants/app';
 
 // ── Lazy-load expo-notifications ──
 // Le require('expo-notifications') déclenche un side-effect (DevicePushTokenAutoRegistration)
@@ -241,9 +242,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         SecureStore.deleteItemAsync('rememberMe'),
         SecureStore.deleteItemAsync('userType'),
         SecureStore.deleteItemAsync('teamMember'),
+        SecureStore.deleteItemAsync('onboardingCompleted'),
       ]);
       queryClientRef.current.clear();
       await AsyncStorage.removeItem('jitpluspro-query-cache').catch(() => {});
+      // Checklist display prefs are device-local — clear them so a different account
+      // signing in on this device doesn't inherit a previous merchant's hidden/dismissed state.
+      await AsyncStorage.multiRemove([
+        ASYNC_STORAGE_KEYS.CHECKLIST_DISMISSED,
+        ASYNC_STORAGE_KEYS.CHECKLIST_LOYALTY_CONFIRMED,
+        ASYNC_STORAGE_KEYS.CHECKLIST_SCANNED,
+        ASYNC_STORAGE_KEYS.CHECKLIST_COLLAPSED,
+        ASYNC_STORAGE_KEYS.CHECKLIST_HIDDEN,
+        ASYNC_STORAGE_KEYS.CHECKLIST_HIDE_NOTICE_SEEN,
+      ]).catch(() => {});
       useAuthStore.getState().reset();
       useAuthStore.getState().setLoading(false);
     } catch (error) {
@@ -315,6 +327,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             if (profile?.onboardingCompleted) {
               useAuthStore.getState().setOnboardingCompleted(true);
               await SecureStore.setItemAsync('onboardingCompleted', 'true');
+            } else {
+              useAuthStore.getState().setOnboardingCompleted(false);
+              await SecureStore.deleteItemAsync('onboardingCompleted');
             }
             registerPushToken(true).catch((err) => {
               logWarn('Auth', 'Push token registration failed:', err);
@@ -399,6 +414,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     if (merchantData.onboardingCompleted) {
       s.setOnboardingCompleted(true);
       await SecureStore.setItemAsync('onboardingCompleted', 'true');
+    } else {
+      s.setOnboardingCompleted(false);
+      await SecureStore.deleteItemAsync('onboardingCompleted');
     }
 
     registerPushToken(true).catch((err) => {

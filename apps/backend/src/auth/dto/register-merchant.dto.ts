@@ -66,10 +66,10 @@ export class RegisterMerchantDto {
   termsAccepted?: boolean;
 
   @IsString()
-  @IsOptional()
+  @IsNotEmpty({ message: 'Le numéro de téléphone est requis' })
   @Matches(/^\+?[0-9]{8,15}$/, { message: 'Numéro de téléphone invalide' })
   @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
-  phoneNumber?: string;
+  phoneNumber: string;
 
   /** Prénom du propriétaire (optionnel) */
   @IsString()

@@ -141,4 +141,8 @@ export class UpdateProfileDto {
   @Type(() => OpeningHoursDto)
   @IsOptional()
   openingHours?: OpeningHoursDto;
+
+  @IsBoolean({ message: 'Valeur invalide pour la visibilité du guide de bienvenue' })
+  @IsOptional()
+  welcomeGuideVisible?: boolean;
 }

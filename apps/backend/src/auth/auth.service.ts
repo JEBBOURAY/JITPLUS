@@ -651,6 +651,9 @@ export class AuthService implements OnApplicationBootstrap {
             },
           }),
           termsAccepted: registerDto.termsAccepted ?? false,
+          welcomeGuideVisible: true,
+          // Email verification is disabled — accounts are created pre-verified.
+          emailVerified: true,
           pointsRules: DEFAULT_POINTS_RULES,
           // Plan: 30-day free PREMIUM trial
           ...trialData,
@@ -693,15 +696,15 @@ export class AuthService implements OnApplicationBootstrap {
 
     // No destructuring needed — select already excludes sensitive fields
 
-    // Welcome email is deferred until email verification (OTP validated)
-
-    // Send verification email (fire-and-forget, scheduled OUT of the request critical path).
-    // setImmediate ensures the HTTP response is flushed before SMTP work starts.
-    // Capture the email synchronously — avoid retaining a closure on the merchant object.
-    const verificationEmail = merchant.email;
+    // Email verification is disabled: the account is created pre-verified and no
+    // OTP validation email is sent. Send the welcome email immediately instead
+    // (fire-and-forget, off the request critical path).
+    const welcomeEmail = merchant.email;
+    const welcomeNom = merchant.nom;
+    const welcomeLang = merchant.language;
     setImmediate(() => {
-      this.sendVerificationEmail(verificationEmail)
-        .catch((err) => this.logger.warn('Verification email failed', errMsg(err)));
+      this.mailProvider.sendWelcomeMerchant(welcomeEmail, welcomeNom ?? '', pickEmailLang(welcomeLang))
+        .catch((err) => this.logger.warn('Welcome email failed', errMsg(err)));
     });
 
     // Merchant-to-merchant referral bonus is deferred until the referred merchant
@@ -958,6 +961,7 @@ export class AuthService implements OnApplicationBootstrap {
             },
           }),
           termsAccepted: dto.termsAccepted ?? false,
+          welcomeGuideVisible: true,
           pointsRules: DEFAULT_POINTS_RULES,
           ...trialData,
           ...(referredById && { referredById }),
@@ -1244,6 +1248,7 @@ export class AuthService implements OnApplicationBootstrap {
             },
           }),
           termsAccepted: dto.termsAccepted ?? false,
+          welcomeGuideVisible: true,
           pointsRules: DEFAULT_POINTS_RULES,
           ...trialData,
           ...(referredById && { referredById }),
