@@ -40,9 +40,6 @@ substitutions:
   _AR_REPO: jitplus
   _CLOUD_SQL_INSTANCE: jitplus-97259:europe-west9:jitplus-db
   _IMAGE: ${_REGION}-docker.pkg.dev/jitplus-97259/${_AR_REPO}/backend
-  # Use Cloud Build SA for migration job execution so it can reuse CI IAM grants
-  # (Secret Manager accessor / Cloud SQL Client).
-  _MIGRATE_SERVICE_ACCOUNT: ${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com
 
 steps:
   # ── 1. Build the Docker image ───────────────────────────────────────────────
@@ -82,11 +79,9 @@ steps:
       - jitplus-migrate
       - --image=$_IMAGE:$COMMIT_SHA
       - --region=$_REGION
-      - --service-account=$_MIGRATE_SERVICE_ACCOUNT
       - --set-cloudsql-instances=$_CLOUD_SQL_INSTANCE
       - --set-env-vars=NODE_ENV=production,SKIP_MIGRATIONS=0,GCP_PROJECT_ID=${PROJECT_ID},GCP_STORAGE_BUCKET_NAME=jitplus-uploads-prod
-      # ADMIN_PASSWORD is optional. Keep migrations independent from bootstrap secret availability.
-      - --set-secrets=DATABASE_URL=DATABASE_URL:latest,JWT_SECRET=JWT_SECRET:latest,DIRECT_DATABASE_URL=DATABASE_URL:latest
+      - --set-secrets=DATABASE_URL=DATABASE_URL:latest,JWT_SECRET=JWT_SECRET:latest,DIRECT_DATABASE_URL=DATABASE_URL:latest,ADMIN_PASSWORD=ADMIN_PASSWORD:latest
       - --command=/app/docker-entrypoint.sh
       - --args=echo,migrations-complete
       - --task-timeout=300s
@@ -95,34 +90,14 @@ steps:
 
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     id: run-migrations
-    entrypoint: bash
+    entrypoint: gcloud
     args:
-      - -c
-      - |
-        set -euo pipefail
-        if gcloud run jobs execute jitplus-migrate --region=$_REGION --wait; then
-          echo "Migrations job completed successfully."
-          exit 0
-        fi
-
-        echo "Migrations job failed. Fetching latest execution details..."
-        EXEC_NAME=$$(gcloud run jobs executions list \
-          --job=jitplus-migrate \
-          --region=$_REGION \
-          --sort-by=~createTime \
-          --limit=1 \
-          --format='value(name)')
-
-        if [ -n "$$EXEC_NAME" ]; then
-          gcloud run jobs executions describe "$$EXEC_NAME" --region=$_REGION || true
-          gcloud logging read \
-            "resource.type=cloud_run_job AND resource.labels.job_name=jitplus-migrate AND labels.run.googleapis.com/execution_name=$$EXEC_NAME" \
-            --project=${PROJECT_ID} \
-            --limit=200 \
-            --format='value(textPayload)' || true
-        fi
-
-        exit 1
+      - run
+      - jobs
+      - execute
+      - jitplus-migrate
+      - --region=$_REGION
+      - --wait
     waitFor: [deploy-migrate-job]
 
   # ── 4-pre. Detach SMTP_FROM secret binding (one-shot migration) ────────────

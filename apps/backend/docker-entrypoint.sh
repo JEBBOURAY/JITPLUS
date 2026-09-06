@@ -45,15 +45,25 @@ else
     echo "$FAILED_MIGRATIONS" | while IFS= read -r mig; do
       if [ -n "$mig" ]; then
         echo "[Entrypoint]   → prisma migrate resolve --rolled-back $mig"
-        ./node_modules/.bin/prisma migrate resolve \
-          --schema ./prisma/schema.prisma \
-          --rolled-back "$mig" || true
+        if [ -f "./node_modules/prisma/build/index.js" ]; then
+          node ./node_modules/prisma/build/index.js migrate resolve \
+            --schema ./prisma/schema.prisma \
+            --rolled-back "$mig" || true
+        else
+          ./node_modules/.bin/prisma migrate resolve \
+            --schema ./prisma/schema.prisma \
+            --rolled-back "$mig" || true
+        fi
       fi
     done
   fi
 
   # Use the locally installed Prisma CLI (avoids npx downloading it)
-  ./node_modules/.bin/prisma migrate deploy --schema ./prisma/schema.prisma
+  if [ -f "./node_modules/prisma/build/index.js" ]; then
+    node ./node_modules/prisma/build/index.js migrate deploy --schema ./prisma/schema.prisma
+  else
+    ./node_modules/.bin/prisma migrate deploy --schema ./prisma/schema.prisma
+  fi
   echo "[Entrypoint] Migrations complete."
 fi
 
