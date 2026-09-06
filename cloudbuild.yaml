@@ -106,17 +106,17 @@ steps:
         fi
 
         echo "Migrations job failed. Fetching latest execution details..."
-        EXEC_NAME=$(gcloud run jobs executions list \
+        EXEC_NAME=$$(gcloud run jobs executions list \
           --job=jitplus-migrate \
           --region=$_REGION \
           --sort-by=~createTime \
           --limit=1 \
           --format='value(name)')
 
-        if [ -n "$EXEC_NAME" ]; then
-          gcloud run jobs executions describe "$EXEC_NAME" --region=$_REGION || true
+        if [ -n "$$EXEC_NAME" ]; then
+          gcloud run jobs executions describe "$$EXEC_NAME" --region=$_REGION || true
           gcloud logging read \
-            "resource.type=cloud_run_job AND resource.labels.job_name=jitplus-migrate AND labels.run.googleapis.com/execution_name=$EXEC_NAME" \
+            "resource.type=cloud_run_job AND resource.labels.job_name=jitplus-migrate AND labels.run.googleapis.com/execution_name=$$EXEC_NAME" \
             --project=${PROJECT_ID} \
             --limit=200 \
             --format='value(textPayload)' || true
