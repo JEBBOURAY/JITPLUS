@@ -38,7 +38,6 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.4",
     "compression": "^1.8.1",
-    "expo-media-library": "~18.2.1",
     "firebase-admin": "^13.8.0",
     "google-auth-library": "^10.6.2",
     "helmet": "^8.1.0",
@@ -51,7 +50,7 @@
     "reflect-metadata": "^0.2.2",
     "resend": "^4.8.0",
     "rxjs": "^7.8.2",
-    "sharp": "^0.34.5",
+    "sharp": "^0.35.0",
     "socket.io": "^4.8.3",
     "twilio": "^5.13.0"
   },
@@ -93,14 +92,5 @@
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "@prisma/client",
-      "@prisma/engines",
-      "prisma",
-      "sharp",
-      "protobufjs"
-    ]
   }
 }
