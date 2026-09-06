@@ -40,9 +40,9 @@ substitutions:
   _AR_REPO: jitplus
   _CLOUD_SQL_INSTANCE: jitplus-97259:europe-west9:jitplus-db
   _IMAGE: ${_REGION}-docker.pkg.dev/jitplus-97259/${_AR_REPO}/backend
-  # Runtime service account used by Cloud Run service and migration job.
-  # Override in trigger if you use a dedicated SA.
-  _RUN_SERVICE_ACCOUNT: 290470991104-compute@developer.gserviceaccount.com
+  # Use Cloud Build SA for migration job execution so it can reuse CI IAM grants
+  # (Secret Manager accessor / Cloud SQL Client).
+  _MIGRATE_SERVICE_ACCOUNT: ${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com
 
 steps:
   # ── 1. Build the Docker image ───────────────────────────────────────────────
@@ -82,7 +82,7 @@ steps:
       - jitplus-migrate
       - --image=$_IMAGE:$COMMIT_SHA
       - --region=$_REGION
-      - --service-account=$_RUN_SERVICE_ACCOUNT
+      - --service-account=$_MIGRATE_SERVICE_ACCOUNT
       - --set-cloudsql-instances=$_CLOUD_SQL_INSTANCE
       - --set-env-vars=NODE_ENV=production,SKIP_MIGRATIONS=0,GCP_PROJECT_ID=${PROJECT_ID},GCP_STORAGE_BUCKET_NAME=jitplus-uploads-prod
       # ADMIN_PASSWORD is optional. Keep migrations independent from bootstrap secret availability.
@@ -154,7 +154,6 @@ steps:
       - --image=$_IMAGE:$COMMIT_SHA
       - --region=$_REGION
       - --platform=managed
-      - --service-account=$_RUN_SERVICE_ACCOUNT
       - --allow-unauthenticated
       - --port=3000
       - --min-instances=0
