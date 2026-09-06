@@ -53,6 +53,9 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
 # Generate Prisma Client (needed for runtime engine binaries)
 RUN pnpm exec prisma generate --schema ./prisma/schema.prisma
 
+# Pre-download Prisma engines (query-engine & schema-engine) into node_modules during build
+RUN node ./node_modules/@prisma/engines/scripts/postinstall.js || true
+
 # ── Stage 3: Runner (Final Image) ──
 FROM node:22-alpine AS runner
 
@@ -71,8 +74,12 @@ ENV NODE_ENV=production
 # Cloud Run sets PORT=8080 automatically; default to 3000 for local use
 ENV PORT=3000
 
-# Create a non-root user
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+# Create a non-root user with an explicit home directory
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup -h /home/appuser -D && \
+    mkdir -p /home/appuser/.cache /tmp/prisma && \
+    chown -R appuser:appgroup /home/appuser /tmp/prisma
+
+ENV HOME=/home/appuser
 
 # Copy built application from builder
 COPY --from=builder /app/apps/backend/dist ./dist

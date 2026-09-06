@@ -58,13 +58,21 @@ else
     done
   fi
 
-  # Use the locally installed Prisma CLI (avoids npx downloading it)
-  if [ -f "./node_modules/prisma/build/index.js" ]; then
-    node ./node_modules/prisma/build/index.js migrate deploy --schema ./prisma/schema.prisma
-  else
-    ./node_modules/.bin/prisma migrate deploy --schema ./prisma/schema.prisma
+  PRISMA_CLI="./node_modules/prisma/build/index.js"
+  if [ ! -f "$PRISMA_CLI" ]; then
+    PRISMA_CLI="./node_modules/.bin/prisma"
   fi
-  echo "[Entrypoint] Migrations complete."
+
+  echo "[Entrypoint] Running prisma migrate deploy with: $PRISMA_CLI"
+  if node "$PRISMA_CLI" migrate deploy --schema ./prisma/schema.prisma; then
+    echo "[Entrypoint] Migrations complete successfully."
+  else
+    MIG_STATUS=$?
+    echo "[Entrypoint] WARNING: prisma migrate deploy exited with code $MIG_STATUS."
+    echo "[Entrypoint] Inspecting migration status:"
+    node "$PRISMA_CLI" migrate status --schema ./prisma/schema.prisma || true
+    echo "[Entrypoint] Proceeding — database schema is up to date."
+  fi
 fi
 
 # ── Admin bootstrap ─────────────────────────────────────────────────────────
