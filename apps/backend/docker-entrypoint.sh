@@ -68,10 +68,9 @@ else
     echo "[Entrypoint] Migrations complete successfully."
   else
     MIG_STATUS=$?
-    echo "[Entrypoint] WARNING: prisma migrate deploy exited with code $MIG_STATUS."
-    echo "[Entrypoint] Inspecting migration status:"
+    echo "[Entrypoint] ERROR: prisma migrate deploy exited with code $MIG_STATUS."
     node "$PRISMA_CLI" migrate status --schema ./prisma/schema.prisma || true
-    echo "[Entrypoint] Proceeding — database schema is up to date."
+    exit "$MIG_STATUS"
   fi
 fi
 
