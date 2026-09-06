@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,7 @@ import {
   RefreshControl,
   Platform,
 } from 'react-native';
-import { ArrowLeft, Bell, Megaphone, Mail, Send, CheckCheck, BellOff } from 'lucide-react-native';
+import { ArrowLeft, Bell, Megaphone, Mail, Send, CheckCheck, BellOff, ChevronDown, ChevronUp } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useTheme, brandGradient, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -35,6 +35,8 @@ export default function AdminNotificationsScreen() {
   const markSingleRead = useMarkSingleAdminNotifRead();
   const { data: unreadData } = useAdminNotifUnreadCount();
   const unreadCount = unreadData?.count ?? 0;
+  // Long messages are truncated to 3 lines by default; tap "Voir plus" to read them in full.
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
   const channelIcon = useCallback((channel: string | null) => {
     switch (channel) {
@@ -61,6 +63,16 @@ export default function AdminNotificationsScreen() {
     }
   }, [markSingleRead]);
 
+  const toggleExpand = useCallback((item: AdminNotification) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(item.id)) next.delete(item.id);
+      else next.add(item.id);
+      return next;
+    });
+    handlePress(item);
+  }, [handlePress]);
+
   const handleMarkAllRead = useCallback(() => {
     if (unreadCount > 0) {
       markAllRead.mutate(undefined, {
@@ -72,6 +84,8 @@ export default function AdminNotificationsScreen() {
   const renderItem = useCallback(({ item }: { item: AdminNotification }) => {
     const Icon = channelIcon(item.channel);
     const color = channelColor(item.channel, item.isRead);
+    const isExpanded = expandedIds.has(item.id);
+    const isLong = item.body.length > 90 || item.body.includes('\n');
 
     return (
       <TouchableOpacity
@@ -111,10 +125,27 @@ export default function AdminNotificationsScreen() {
               styles.cardText,
               { color: item.isRead ? theme.textMuted : theme.textSecondary },
             ]}
-            numberOfLines={3}
+            numberOfLines={isExpanded ? undefined : 3}
           >
             {item.body}
           </Text>
+          {isLong && (
+            <TouchableOpacity
+              onPress={() => toggleExpand(item)}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              activeOpacity={0.7}
+              style={styles.expandBtn}
+              accessibilityRole="button"
+              accessibilityLabel={t(isExpanded ? 'common.collapse' : 'common.expand')}
+            >
+              <Text style={[styles.expandBtnText, { color: theme.primary }]}>
+                {t(isExpanded ? 'common.collapse' : 'common.expand')}
+              </Text>
+              {isExpanded
+                ? <ChevronUp size={ms(13)} color={theme.primary} strokeWidth={2} />
+                : <ChevronDown size={ms(13)} color={theme.primary} strokeWidth={2} />}
+            </TouchableOpacity>
+          )}
           <View style={styles.cardFooter}>
             <Text style={[styles.cardTime, { color: theme.textMuted }]}>
               {timeAgo(item.createdAt, locale)}
@@ -126,7 +157,7 @@ export default function AdminNotificationsScreen() {
         </View>
       </TouchableOpacity>
     );
-  }, [theme, channelIcon, channelColor, locale, handlePress]);
+  }, [theme, channelIcon, channelColor, locale, handlePress, expandedIds, toggleExpand, t]);
 
   const notifications = data?.notifications ?? [];
 
@@ -294,6 +325,18 @@ const styles = StyleSheet.create({
     fontFamily: 'Lexend_400Regular',
     lineHeight: ms(18),
     marginBottom: hp(6),
+  },
+  expandBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    alignSelf: 'flex-start',
+    marginBottom: hp(8),
+  },
+  expandBtnText: {
+    fontSize: ms(12),
+    fontWeight: '600',
+    fontFamily: 'Lexend_600SemiBold',
   },
   cardFooter: {
     flexDirection: 'row',

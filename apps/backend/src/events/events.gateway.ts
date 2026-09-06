@@ -29,8 +29,10 @@ import {
 @WebSocketGateway({
   cors: {
     origin: (origin: string | undefined, cb: (err: Error | null, allow?: boolean) => void) => {
-      // Allow connections with no origin (mobile apps, server-to-server)
-      if (!origin) return cb(null, true);
+      // Allow connections with no origin (mobile apps, server-to-server).
+      // React Native / native WebSocket clients commonly send the literal
+      // string "null" as the Origin header rather than omitting it entirely.
+      if (!origin || origin === 'null') return cb(null, true);
       const corsOrigins = process.env.CORS_ORIGINS;
       if (!corsOrigins) {
         // Reject all browser origins when CORS_ORIGINS is not configured

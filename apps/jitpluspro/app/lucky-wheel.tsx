@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useReducer, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useReducer, useMemo } from 'react';
 import {
   View,
   Text,
@@ -38,7 +38,11 @@ import {
   Banknote,
   Edit3,
   Send,
+  FerrisWheel,
 } from 'lucide-react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ASYNC_STORAGE_KEYS } from '@/constants/app';
+import Svg, { Path, Circle as SvgCircle } from 'react-native-svg';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { ms } from '@/utils/responsive';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -199,7 +203,8 @@ const isValidDateStr = (s: string) => DATE_REGEX.test(s) && !isNaN(new Date(s).g
 
 const formatDate = (d: string) => new Date(d).toLocaleDateString();
 
-const TOTAL_STEPS = 3;
+const TOTAL_STEPS = 5;
+const MIN_WHEEL_NAME_LENGTH = 3;
 
 // Semantic tone colors (used for status badges & action buttons)
 const TONE = {
@@ -212,6 +217,74 @@ const TONE_BG = {
   warning: `${TONE.warning}18`,
   danger: `${TONE.danger}18`,
 } as const;
+
+// ── Live wheel preview (SVG pie chart, segments sized by prize weight) ──
+const WHEEL_COLORS = ['#7C3AED', '#A78BFA', '#F59E0B', '#16A34A', '#EC4899', '#0EA5E9', '#F97316', '#8B5CF6'];
+
+function polarToCartesian(cx: number, cy: number, r: number, angleDeg: number) {
+  const rad = ((angleDeg - 90) * Math.PI) / 180;
+  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+}
+
+function describeSlice(cx: number, cy: number, r: number, startAngle: number, endAngle: number) {
+  const start = polarToCartesian(cx, cy, r, endAngle);
+  const end = polarToCartesian(cx, cy, r, startAngle);
+  const largeArcFlag = endAngle - startAngle <= 180 ? '0' : '1';
+  return `M ${cx} ${cy} L ${start.x} ${start.y} A ${r} ${r} 0 ${largeArcFlag} 0 ${end.x} ${end.y} Z`;
+}
+
+const WheelPreviewCard = React.memo(function WheelPreviewCard({
+  prizes,
+  winRatePct,
+  theme,
+  t,
+}: {
+  prizes: PrizeForm[];
+  winRatePct: number;
+  theme: ReturnType<typeof useTheme>;
+  t: (key: string, params?: Record<string, unknown>) => string;
+}) {
+  const size = 72;
+  const r = size / 2;
+  const totalWeight = prizes.reduce((s, p) => s + (parseInt(p.weight, 10) || 1), 0) || 1;
+  let cursor = 0;
+  const slices = prizes.map((p, i) => {
+    const w = parseInt(p.weight, 10) || 1;
+    const start = cursor;
+    const end = cursor + (w / totalWeight) * 360;
+    cursor = end;
+    return { id: p.id, start, end, color: WHEEL_COLORS[i % WHEEL_COLORS.length], label: p.label };
+  });
+
+  return (
+    <View style={[styles.wheelPreviewCard, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
+      <View style={styles.wheelGraphicWrap}>
+        <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+          {slices.length <= 1 ? (
+            <SvgCircle cx={r} cy={r} r={r - 1.5} fill={slices[0]?.color ?? theme.primary} stroke="#fff" strokeWidth={2} />
+          ) : (
+            slices.map((s) => (
+              <Path key={s.id} d={describeSlice(r, r, r - 1.5, s.start, s.end)} fill={s.color} stroke="#fff" strokeWidth={1.5} />
+            ))
+          )}
+          <SvgCircle cx={r} cy={r} r={size * 0.14} fill="#fff" />
+        </Svg>
+        <View style={[styles.wheelPointer, { borderBottomColor: theme.text }]} />
+      </View>
+      <View style={styles.wheelPreviewInfo}>
+        <Text style={[styles.wheelPreviewTitle, { color: theme.text }]} numberOfLines={1}>
+          {t('luckyWheel.wizWheelPreviewTitle')}
+        </Text>
+        <Text style={[styles.wheelPreviewLine, { color: theme.primary }]} numberOfLines={1}>
+          {t('luckyWheel.wizWinPreview', { pct: String(winRatePct) })}
+        </Text>
+        <Text style={[styles.wheelPreviewLine, { color: theme.textSecondary }]} numberOfLines={1}>
+          {t('luckyWheel.wizWheelPrizesCount', { count: prizes.length })}
+        </Text>
+      </View>
+    </View>
+  );
+});
 
 // Static preset values (no i18n) — kept at module scope to avoid recreating on every render.
 const DURATION_DAYS = [7, 30, 90] as const;
@@ -495,6 +568,31 @@ const CampaignCard = React.memo(function CampaignCard({
   );
 });
 
+/** Compact field label with an ⓘ that reveals hint + tip in an Alert instead of static always-visible text. */
+const MiniLabelWithInfo = React.memo(function MiniLabelWithInfo({
+  label,
+  info,
+  theme,
+}: {
+  label: string;
+  info: string;
+  theme: ReturnType<typeof useTheme>;
+}) {
+  return (
+    <View style={styles.miniLabelRow}>
+      <Text style={[styles.miniLabel, { color: theme.textMuted, marginBottom: 0 }]}>{label}</Text>
+      <TouchableOpacity
+        onPress={() => Alert.alert(label, info)}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        accessibilityRole="button"
+        accessibilityLabel={info}
+      >
+        <Info size={13} color={theme.textMuted} strokeWidth={2} />
+      </TouchableOpacity>
+    </View>
+  );
+});
+
 const PrizeCardItem = React.memo(function PrizeCardItem({
   prize,
   index,
@@ -574,8 +672,11 @@ const PrizeCardItem = React.memo(function PrizeCardItem({
 
       <View style={styles.prizeMetaRow}>
         <View style={styles.flexOne}>
-          <Text style={[styles.miniLabel, { color: theme.textMuted }]}>{t('luckyWheel.prizeStockLabel')}</Text>
-          <Text style={[styles.miniHint, { color: theme.textMuted }]}>{t('luckyWheel.prizeStockHint')}</Text>
+          <MiniLabelWithInfo
+            label={t('luckyWheel.prizeStockLabel')}
+            info={`${t('luckyWheel.prizeStockHint')}\n\n${t('luckyWheel.prizeStockTip')}`}
+            theme={theme}
+          />
           <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.border }]}>
             <Package size={14} color={theme.textMuted} strokeWidth={1.5} />
             <TextInput
@@ -585,14 +686,14 @@ const PrizeCardItem = React.memo(function PrizeCardItem({
               keyboardType="number-pad"
             />
           </View>
-          <Text style={[styles.fieldExamples, { color: theme.textMuted }]}> 
-            {t('luckyWheel.prizeStockTip')}
-          </Text>
         </View>
         <View style={styles.metaSpacer} />
         <View style={styles.flexOne}>
-          <Text style={[styles.miniLabel, { color: theme.textMuted }]}>{t('luckyWheel.prizeWeightLabel')}</Text>
-          <Text style={[styles.miniHint, { color: theme.textMuted }]}>{t('luckyWheel.prizeWeightHint')}</Text>
+          <MiniLabelWithInfo
+            label={t('luckyWheel.prizeWeightLabel')}
+            info={`${t('luckyWheel.prizeWeightHint')}\n\n${t('luckyWheel.prizeWeightTip')}`}
+            theme={theme}
+          />
           <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: theme.border }]}>
             <Target size={14} color={theme.textMuted} strokeWidth={1.5} />
             <TextInput
@@ -602,9 +703,6 @@ const PrizeCardItem = React.memo(function PrizeCardItem({
               keyboardType="number-pad"
             />
           </View>
-          <Text style={[styles.fieldExamples, { color: theme.textMuted }]}> 
-            {t('luckyWheel.prizeWeightTip')}
-          </Text>
         </View>
       </View>
 
@@ -621,9 +719,12 @@ const PrizeCardItem = React.memo(function PrizeCardItem({
       )}
 
       <View style={{ marginTop: 12 }}>
-        <Text style={[styles.miniLabel, { color: theme.textMuted }]}>{t('luckyWheel.prizeClaimLabel')}</Text>
-        <Text style={[styles.miniHint, { color: theme.textMuted }]}>{t('luckyWheel.prizeClaimHint')}</Text>
-        <View style={[styles.durationChipRow, { marginBottom: 8 }]}> 
+        <MiniLabelWithInfo
+          label={t('luckyWheel.prizeClaimLabel')}
+          info={`${t('luckyWheel.prizeClaimHint')}\n\n${t('luckyWheel.prizeClaimTip')}`}
+          theme={theme}
+        />
+        <View style={[styles.durationChipRow, { marginTop: 6, marginBottom: 8 }]}> 
           {claimWindowOptions.map(({ label, val }) => {
             const isActive = prize.claimWindowHours === val;
             return (
@@ -655,9 +756,6 @@ const PrizeCardItem = React.memo(function PrizeCardItem({
           />
           <Text style={[styles.unitLabel, { color: theme.textMuted }]}>h</Text>
         </View>
-        <Text style={[styles.fieldExamples, { color: theme.textMuted }]}> 
-          {t('luckyWheel.prizeClaimTip')}
-        </Text>
       </View>
     </View>
   );
@@ -695,15 +793,32 @@ export default function LuckyWheelScreen() {
   const [fulfilledLimit, setFulfilledLimit] = useState(20);
   const [formSnapshot, setFormSnapshot] = useState('');
 
+  // ── Compact intro card: dismissed once, stays hidden across sessions ──
+  const [introDismissed, setIntroDismissed] = useState(false);
+  useEffect(() => {
+    let active = true;
+    AsyncStorage.getItem(ASYNC_STORAGE_KEYS.LUCKY_WHEEL_INTRO_DISMISSED)
+      .then((v) => { if (active && v === 'true') setIntroDismissed(true); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
+  const dismissIntro = useCallback(() => {
+    setIntroDismissed(true);
+    AsyncStorage.setItem(ASYNC_STORAGE_KEYS.LUCKY_WHEEL_INTRO_DISMISSED, 'true').catch(() => {});
+  }, []);
+
   const totalSteps = TOTAL_STEPS;
 
   // ── Step navigation helpers ──
+  // Steps: 0 Informations · 1 Chances de gagner · 2 Durée & conditions · 3 Lots · 4 Récapitulatif
   const canGoNext = useMemo(() => {
-    if (step === 0) return form.name.trim().length > 0;
+    if (step === 0) return form.name.trim().length >= MIN_WHEEL_NAME_LENGTH;
     if (step === 1) {
       const rate = parseInt(form.globalWinRate, 10);
-      const dateValid = form.endsAt > form.startsAt && (editingCampaign ? true : form.startsAt >= today());
-      return !isNaN(rate) && rate >= 1 && rate <= 100 && dateValid;
+      return !isNaN(rate) && rate >= 1 && rate <= 100;
+    }
+    if (step === 2) {
+      return form.endsAt > form.startsAt && (editingCampaign ? true : form.startsAt >= today());
     }
     return true;
   }, [step, form, editingCampaign]);
@@ -745,6 +860,10 @@ export default function LuckyWheelScreen() {
   const handleCreate = useCallback(async () => {
     if (!form.name.trim()) {
       Alert.alert(t('common.error'), t('luckyWheel.nameRequired'));
+      return;
+    }
+    if (form.name.trim().length < MIN_WHEEL_NAME_LENGTH) {
+      Alert.alert(t('common.error'), t('luckyWheel.nameTooShort', { min: MIN_WHEEL_NAME_LENGTH }));
       return;
     }
     const start = new Date(form.startsAt);
@@ -948,6 +1067,10 @@ export default function LuckyWheelScreen() {
     ]);
   }, [pushMutation, t]);
 
+  const handleViewExample = useCallback(() => {
+    Alert.alert(t('luckyWheel.exampleTitle'), t('luckyWheel.exampleBody'));
+  }, [t]);
+
   const openCreateModal = useCallback(() => {
     dispatch({ type: 'RESET' });
     setStep(0);
@@ -1056,6 +1179,9 @@ export default function LuckyWheelScreen() {
     statusLabel: (status: string) => string;
     formatDate: (d: string) => string;
     onOpenCreateModal: () => void;
+    introDismissed: boolean;
+    onDismissIntro: () => void;
+    onViewExample: () => void;
     onStatusChange: (id: string, status: string) => void;
     onPush: (campaign: LuckyWheelCampaignData) => void;
     onEdit: (campaign: LuckyWheelCampaignData) => void;
@@ -1089,6 +1215,9 @@ export default function LuckyWheelScreen() {
     statusLabel,
     formatDate,
     onOpenCreateModal,
+    introDismissed,
+    onDismissIntro,
+    onViewExample,
     onStatusChange,
     onPush,
     onEdit,
@@ -1113,15 +1242,6 @@ export default function LuckyWheelScreen() {
           <Text style={[styles.headerTitle, { color: theme.text }]} maxFontSizeMultiplier={1.2}>
             {t('luckyWheel.title')}
           </Text>
-          <TouchableOpacity
-            onPress={onOpenCreateModal}
-            style={[styles.headerAction, { backgroundColor: theme.primary + '12' }]}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            accessibilityRole="button"
-            accessibilityLabel={t('luckyWheel.createBtn')}
-          >
-            <Plus size={20} color={theme.primary} strokeWidth={2.4} />
-          </TouchableOpacity>
         </View>
 
         <ScrollView
@@ -1130,58 +1250,93 @@ export default function LuckyWheelScreen() {
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => refetch()} tintColor={theme.primary} colors={[theme.primary]} />}
         >
-          <View style={styles.guideContainer}>
-            <View style={[styles.guideCard, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}> 
-              <View style={styles.guideHeaderRow}>
-                <View style={[styles.guideIcon, { backgroundColor: theme.primary + '14' }]}> 
-                  <Gift size={ms(18)} color={theme.primary} strokeWidth={1.8} />
-                </View>
-                <View style={styles.flexOne}>
-                  <Text style={[styles.guideTitle, { color: theme.text }]} maxFontSizeMultiplier={1.3}>
-                    {t('luckyWheel.heroTitle')}
-                  </Text>
-                  <Text style={[styles.guideText, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>
-                    {t('luckyWheel.heroSubtitle')}
-                  </Text>
-                </View>
+          {/* ── Compact intro card — dismissible ── */}
+          {!introDismissed && (
+            <View style={[styles.guideCardCompact, { backgroundColor: theme.primary + '0C', borderColor: theme.primary + '26' }]}>
+              <View style={[styles.guideIconSmall, { backgroundColor: theme.primary + '18' }]}>
+                <FerrisWheel size={ms(16)} color={theme.primary} strokeWidth={1.8} />
               </View>
+              <Text style={[styles.guideTitleCompact, { color: theme.text }]} maxFontSizeMultiplier={1.2}>
+                {t('luckyWheel.heroTitle')}
+              </Text>
+              <TouchableOpacity
+                onPress={onDismissIntro}
+                style={styles.guideCloseBtn}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel={t('common.close')}
+              >
+                <X size={16} color={theme.textMuted} strokeWidth={2} />
+              </TouchableOpacity>
             </View>
+          )}
+
+          {/* ── Primary CTA — always visible for owners ── */}
+          {!isTeamMember && (
+            <TouchableOpacity
+              onPress={onOpenCreateModal}
+              style={[styles.createBtn, { backgroundColor: theme.primary, marginTop: introDismissed ? 16 : 4 }]}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel={t('luckyWheel.createCta')}
+            >
+              <FerrisWheel size={19} color="#FFF" strokeWidth={2} />
+              <Text style={styles.createBtnText} maxFontSizeMultiplier={1.3}>{t('luckyWheel.createCta')}</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* ── Prize summary: pending / delivered at a glance ── */}
+          <Text
+            style={[styles.sectionTitle, { color: theme.text, marginHorizontal: 16, marginTop: 20, marginBottom: 10 }]}
+            maxFontSizeMultiplier={1.3}
+            accessibilityRole="header"
+          >
+            {t('luckyWheel.prizesTrackingTitle')}
+          </Text>
+          <View style={styles.prizeStatsRow}>
+            <TouchableOpacity
+              style={[styles.prizeStatCard, { backgroundColor: TONE_BG.warning, borderColor: TONE.warning + '30' }]}
+              onPress={() => pendingPrizes.length > 0 && setPendingExpanded(v => !v)}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel={t('luckyWheel.pendingClaims')}
+              accessibilityState={{ expanded: pendingExpanded }}
+            >
+              <View style={styles.prizeStatTopRow}>
+                <View style={[styles.prizeStatIconWrap, { backgroundColor: TONE.warning + '22' }]}>
+                  <Clock size={ms(15)} color={TONE.warning} strokeWidth={2} />
+                </View>
+                {pendingPrizes.length > 0 && (pendingExpanded
+                  ? <ChevronUp size={14} color={TONE.warning} />
+                  : <ChevronDown size={14} color={TONE.warning} />)}
+              </View>
+              <Text style={[styles.prizeStatCount, { color: theme.text }]}>{pendingPrizes.length}</Text>
+              <Text style={[styles.prizeStatLabel, { color: theme.textSecondary }]} numberOfLines={1}>{t('luckyWheel.pendingClaims')}</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.prizeStatCard, { backgroundColor: TONE_BG.success, borderColor: TONE.success + '30' }]}
+              onPress={() => fulfilledPrizes.length > 0 && setFulfilledExpanded(v => !v)}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel={t('luckyWheel.fulfilled')}
+              accessibilityState={{ expanded: fulfilledExpanded }}
+            >
+              <View style={styles.prizeStatTopRow}>
+                <View style={[styles.prizeStatIconWrap, { backgroundColor: TONE.success + '22' }]}>
+                  <CheckCircle size={ms(15)} color={TONE.success} strokeWidth={2} />
+                </View>
+                {fulfilledPrizes.length > 0 && (fulfilledExpanded
+                  ? <ChevronUp size={14} color={TONE.success} />
+                  : <ChevronDown size={14} color={TONE.success} />)}
+              </View>
+              <Text style={[styles.prizeStatCount, { color: theme.text }]}>{fulfilledPrizes.length}</Text>
+              <Text style={[styles.prizeStatLabel, { color: theme.textSecondary }]} numberOfLines={1}>{t('luckyWheel.fulfilled')}</Text>
+            </TouchableOpacity>
           </View>
 
-          {/* ── Section: Pending Prizes ── */}
-          <TouchableOpacity
-            style={styles.sectionHeader}
-            onPress={() => setPendingExpanded(v => !v)}
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel={t('luckyWheel.pendingSection')}
-            accessibilityState={{ expanded: pendingExpanded }}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <View style={styles.sectionHeaderContent}>
-              <View style={styles.sectionHeaderIcon}>
-                <Clock size={ms(16)} color={palette.violet} strokeWidth={2} />
-              </View>
-              <Text style={[styles.sectionTitle, { color: theme.text }]} maxFontSizeMultiplier={1.3} accessibilityRole="header">
-                {t('luckyWheel.pendingSection')} ({pendingPrizes.length})
-              </Text>
-            </View>
-            {pendingExpanded
-              ? <ChevronUp size={20} color={theme.textMuted} />
-              : <ChevronDown size={20} color={theme.textMuted} />}
-          </TouchableOpacity>
-
-          {pendingExpanded && (
-            <>
-              {pendingPrizes.length === 0 && (
-                <View style={styles.emptyState}>
-                  <View style={styles.emptyIconWrap}>
-                    <CheckCircle size={ms(36)} color={palette.violet} strokeWidth={1.5} />
-                  </View>
-                  <Text style={[styles.emptyTitle, { color: theme.text }]} maxFontSizeMultiplier={1.3}>{t('luckyWheel.noPendingPrizes')}</Text>
-                  <Text style={[styles.emptyHint, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>{t('luckyWheel.noPendingPrizesHint')}</Text>
-                </View>
-              )}
+          {pendingExpanded && pendingPrizes.length > 0 && (
+            <View style={[styles.card, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
               {pendingPrizes.map((draw: PendingDrawData) => (
                 <PendingPrizeRow
                   key={draw.id}
@@ -1193,43 +1348,11 @@ export default function LuckyWheelScreen() {
                   tone={TONE}
                 />
               ))}
-            </>
+            </View>
           )}
 
-          {/* ── Section: Fulfilled Prizes ── */}
-          <TouchableOpacity
-            style={styles.sectionHeader}
-            onPress={() => setFulfilledExpanded(v => !v)}
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel={t('luckyWheel.fulfilledSection')}
-            accessibilityState={{ expanded: fulfilledExpanded }}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <View style={styles.sectionHeaderContent}>
-              <View style={styles.sectionHeaderIcon}>
-                <CheckCircle size={ms(16)} color={palette.violet} strokeWidth={2} />
-              </View>
-              <Text style={[styles.sectionTitle, { color: theme.text }]} maxFontSizeMultiplier={1.3} accessibilityRole="header">
-                {t('luckyWheel.fulfilledSection')} ({fulfilledPrizes.length})
-              </Text>
-            </View>
-            {fulfilledExpanded
-              ? <ChevronUp size={20} color={theme.textMuted} />
-              : <ChevronDown size={20} color={theme.textMuted} />}
-          </TouchableOpacity>
-
-          {fulfilledExpanded && (
-            <>
-              {fulfilledPrizes.length === 0 && (
-                <View style={styles.emptyState}>
-                  <View style={styles.emptyIconWrap}>
-                    <CheckCircle size={ms(36)} color={palette.violet} strokeWidth={1.5} />
-                  </View>
-                  <Text style={[styles.emptyTitle, { color: theme.text }]} maxFontSizeMultiplier={1.3}>{t('luckyWheel.noFulfilledPrizes')}</Text>
-                  <Text style={[styles.emptyHint, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>{t('luckyWheel.noFulfilledPrizesHint')}</Text>
-                </View>
-              )}
+          {fulfilledExpanded && fulfilledPrizes.length > 0 && (
+            <View style={[styles.card, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
               {fulfilledPrizes.slice(0, fulfilledLimit).map((draw: FulfilledDrawData) => (
                 <FulfilledPrizeRow key={draw.id} draw={draw} theme={theme} t={t} />
               ))}
@@ -1244,7 +1367,7 @@ export default function LuckyWheelScreen() {
                   <Text style={[styles.showMoreText, { color: theme.primary }]}>{t('common.showMore')}</Text>
                 </TouchableOpacity>
               )}
-            </>
+            </View>
           )}
 
           {/* ── Section: Campaigns ── */}
@@ -1274,11 +1397,21 @@ export default function LuckyWheelScreen() {
             <>
               {campaigns.length === 0 && (
                 <View style={styles.emptyState}>
-                  <View style={styles.emptyIconWrap}>
-                    <Gift size={ms(36)} color={palette.violet} strokeWidth={1.5} />
+                  <View style={[styles.emptyIconWrap, { backgroundColor: theme.primary + '14' }]}>
+                    <FerrisWheel size={ms(40)} color={theme.primary} strokeWidth={1.5} />
                   </View>
                   <Text style={[styles.emptyTitle, { color: theme.text }]} maxFontSizeMultiplier={1.3}>{t('luckyWheel.noCampaigns')}</Text>
-                  <Text style={[styles.emptyHint, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>{t('luckyWheel.noCampaignsHint')}</Text>
+                  <Text style={[styles.emptyHint, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.4}>{t('luckyWheel.noCampaignsHint')}</Text>
+                  <TouchableOpacity
+                    onPress={onViewExample}
+                    style={[styles.emptySecondaryBtn, { borderColor: theme.primary + '50' }]}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('luckyWheel.viewExample')}
+                  >
+                    <Ticket size={14} color={theme.primary} strokeWidth={2} />
+                    <Text style={[styles.emptySecondaryBtnText, { color: theme.primary }]}>{t('luckyWheel.viewExample')}</Text>
+                  </TouchableOpacity>
                 </View>
               )}
 
@@ -1323,246 +1456,42 @@ export default function LuckyWheelScreen() {
   }
 
   return (
-    <LuckyWheelContent
-      theme={theme}
-      insets={insets}
-      router={router}
-      t={t}
-      isTeamMember={isTeamMember}
-      campaigns={campaigns}
-      pendingPrizes={pendingPrizes}
-      fulfilledPrizes={fulfilledPrizes}
-      campaignsExpanded={campaignsExpanded}
-      pendingExpanded={pendingExpanded}
-      fulfilledExpanded={fulfilledExpanded}
-      expandedCampaign={expandedCampaign}
-      fulfillingDrawId={fulfillingDrawId}
-      fulfilledLimit={fulfilledLimit}
-      setCampaignsExpanded={setCampaignsExpanded}
-      setPendingExpanded={setPendingExpanded}
-      setFulfilledExpanded={setFulfilledExpanded}
-      setExpandedCampaign={setExpandedCampaign}
-      setFulfilledLimit={setFulfilledLimit}
-      statusLabel={statusLabel}
-      formatDate={formatDate}
-      onOpenCreateModal={openCreateModal}
-      onStatusChange={handleStatusChange}
-      onPush={handlePush}
-      onEdit={handleEdit}
-      onDelete={handleDelete}
-      onFulfill={handleFulfil}
-      statusMutation={statusMutation}
-      pushMutation={pushMutation}
-      deleteMutation={deleteMutation}
-    />
-  );
-
-  return (
-    <View style={[styles.container, { backgroundColor: theme.bg }]}> 
-      {/* ── Header ── */}
-      <View style={[styles.headerBar, { paddingTop: insets.top + 12 }]}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={styles.backBtn}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          accessibilityRole="button"
-          accessibilityLabel={t('common.back')}
-        >
-          <ArrowLeft
-            size={22}
-            color={theme.text}
-            style={I18nManager.isRTL ? { transform: [{ scaleX: -1 }] } : undefined}
-          />
-        </TouchableOpacity>
-        <Text
-          style={[styles.headerTitle, { color: theme.text }]}
-          numberOfLines={1}
-          maxFontSizeMultiplier={1.3}
-          accessibilityRole="header"
-        >
-          {t('luckyWheel.title')}
-        </Text>
-      </View>
-
-      <ScrollView
-        contentContainerStyle={{ paddingBottom: 120 }}
-        showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={theme.primary} />}
-      >
-        {/* ── Guide text ── */}
-        <View style={[styles.guideContainer, { backgroundColor: theme.primaryBg || (theme.primary + '10'), borderLeftColor: theme.primary }]}>
-          <Text style={[styles.guideText, { color: theme.textSecondary }]}>
-            {t('luckyWheel.subtitle')}
-          </Text>
-        </View>
-
-        {/* ── Create Button (owner only) ── */}
-        {!isTeamMember && (
-          <TouchableOpacity
-            onPress={openCreateModal}
-            style={[styles.createBtn, { backgroundColor: theme.primary }]}
-            activeOpacity={0.8}
-            accessibilityRole="button"
-            accessibilityLabel={t('luckyWheel.createBtn')}
-          >
-            <Plus size={18} color="#FFF" strokeWidth={2} />
-            <Text style={styles.createBtnText} maxFontSizeMultiplier={1.3}>{t('luckyWheel.createBtn')}</Text>
-          </TouchableOpacity>
-        )}
-
-        {/* ── Section: Pending Prizes ── */}
-        {pendingPrizes.length > 0 && (
-          <>
-            <TouchableOpacity
-              style={styles.sectionHeader}
-              onPress={() => setPendingExpanded(v => !v)}
-              activeOpacity={0.7}
-              accessibilityRole="button"
-              accessibilityLabel={t('luckyWheel.pendingTitle')}
-              accessibilityState={{ expanded: pendingExpanded }}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <View style={styles.sectionHeaderContent}>
-                <View style={styles.sectionHeaderIconWarning}>
-                  <AlertTriangle size={ms(16)} color="#F59E0B" strokeWidth={2} />
-                </View>
-                <Text style={[styles.sectionTitle, { color: theme.text }]} maxFontSizeMultiplier={1.3} accessibilityRole="header">
-                  {t('luckyWheel.pendingTitle')} ({pendingPrizes.length})
-                </Text>
-              </View>
-              {pendingExpanded
-                ? <ChevronUp size={20} color={theme.textMuted} />
-                : <ChevronDown size={20} color={theme.textMuted} />}
-            </TouchableOpacity>
-
-            {pendingExpanded && (
-              <View style={[styles.card, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
-                {pendingPrizes.map((draw: PendingDrawData) => (
-                  <PendingPrizeRow
-                    key={draw.id}
-                    draw={draw}
-                    isFulfilling={fulfillingDrawId === draw.id}
-                    onFulfill={handleFulfil}
-                    theme={theme}
-                    t={t}
-                    tone={TONE}
-                  />
-                ))}
-              </View>
-            )}
-          </>
-        )}
-
-        {/* ── Section: Fulfilled Prizes ── */}
-        {fulfilledPrizes.length > 0 && (
-          <>
-            <TouchableOpacity
-              style={styles.sectionHeader}
-              onPress={() => setFulfilledExpanded(v => !v)}
-              activeOpacity={0.7}
-              accessibilityRole="button"
-              accessibilityLabel={t('luckyWheel.fulfilledTitle')}
-              accessibilityState={{ expanded: fulfilledExpanded }}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <View style={styles.sectionHeaderContent}>
-                <View style={styles.sectionHeaderIconSuccess}>
-                  <CheckCircle size={ms(16)} color="#16A34A" strokeWidth={2} />
-                </View>
-                <Text style={[styles.sectionTitle, { color: theme.text }]} maxFontSizeMultiplier={1.3} accessibilityRole="header">
-                  {t('luckyWheel.fulfilledTitle')} ({fulfilledPrizes.length})
-                </Text>
-              </View>
-              {fulfilledExpanded
-                ? <ChevronUp size={20} color={theme.textMuted} />
-                : <ChevronDown size={20} color={theme.textMuted} />}
-            </TouchableOpacity>
-
-            {fulfilledExpanded && (
-              <View style={[styles.card, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
-                {fulfilledPrizes.slice(0, fulfilledLimit).map((draw: FulfilledDrawData) => (
-                  <FulfilledPrizeRow key={draw.id} draw={draw} theme={theme} t={t} />
-                ))}
-                {fulfilledPrizes.length > fulfilledLimit && (
-                  <TouchableOpacity
-                    onPress={() => setFulfilledLimit(l => l + 20)}
-                    style={styles.showMoreBtn}
-                    activeOpacity={0.7}
-                    accessibilityRole="button"
-                    accessibilityLabel={t('luckyWheel.fulfilledShowMore')}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  >
-                    <Text style={[styles.showMoreText, { color: theme.primary }]} maxFontSizeMultiplier={1.3}>
-                      {t('luckyWheel.fulfilledShowMore')} ({fulfilledPrizes.length - fulfilledLimit})
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            )}
-          </>
-        )}
-
-        {/* ── Section: Campaigns ── */}
-        <TouchableOpacity
-          style={styles.sectionHeader}
-          onPress={() => setCampaignsExpanded(v => !v)}
-          activeOpacity={0.7}
-          accessibilityRole="button"
-          accessibilityLabel={t('luckyWheel.campaignsSection')}
-          accessibilityState={{ expanded: campaignsExpanded }}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <View style={styles.sectionHeaderContent}>
-            <View style={styles.sectionHeaderIcon}>
-              <Gift size={ms(16)} color={palette.violet} strokeWidth={2} />
-            </View>
-            <Text style={[styles.sectionTitle, { color: theme.text }]} maxFontSizeMultiplier={1.3} accessibilityRole="header">
-              {t('luckyWheel.campaignsSection')} ({campaigns.length})
-            </Text>
-          </View>
-          {campaignsExpanded
-            ? <ChevronUp size={20} color={theme.textMuted} />
-            : <ChevronDown size={20} color={theme.textMuted} />}
-        </TouchableOpacity>
-
-        {campaignsExpanded && (
-          <>
-            {campaigns.length === 0 && (
-              <View style={styles.emptyState}>
-                <View style={styles.emptyIconWrap}>
-                  <Gift size={ms(36)} color={palette.violet} strokeWidth={1.5} />
-                </View>
-                <Text style={[styles.emptyTitle, { color: theme.text }]} maxFontSizeMultiplier={1.3}>{t('luckyWheel.noCampaigns')}</Text>
-                <Text style={[styles.emptyHint, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>{t('luckyWheel.noCampaignsHint')}</Text>
-              </View>
-            )}
-
-            {campaigns.map((campaign: LuckyWheelCampaignData) => {
-              const isExpanded = expandedCampaign === campaign.id;
-              return (
-                <CampaignCard
-                  key={campaign.id}
-                  campaign={campaign}
-                  isExpanded={isExpanded}
-                  isTeamMember={isTeamMember}
-                  theme={theme}
-                  statusLabel={statusLabel}
-                  formatDate={formatDate}
-                  onToggle={(id) => setExpandedCampaign(isExpanded ? null : id)}
-                  onStatusChange={handleStatusChange}
-                  onPush={handlePush}
-                  onEdit={handleEdit}
-                  onDelete={handleDelete}
-                  statusMutation={statusMutation}
-                  pushMutation={pushMutation}
-                  deleteMutation={deleteMutation}
-                  t={t}
-                />
-              );
-            })}
-          </>
-        )}
-      </ScrollView>
+    <>
+      <LuckyWheelContent
+        theme={theme}
+        insets={insets}
+        router={router}
+        t={t}
+        isTeamMember={isTeamMember}
+        campaigns={campaigns}
+        pendingPrizes={pendingPrizes}
+        fulfilledPrizes={fulfilledPrizes}
+        campaignsExpanded={campaignsExpanded}
+        pendingExpanded={pendingExpanded}
+        fulfilledExpanded={fulfilledExpanded}
+        expandedCampaign={expandedCampaign}
+        fulfillingDrawId={fulfillingDrawId}
+        fulfilledLimit={fulfilledLimit}
+        setCampaignsExpanded={setCampaignsExpanded}
+        setPendingExpanded={setPendingExpanded}
+        setFulfilledExpanded={setFulfilledExpanded}
+        setExpandedCampaign={setExpandedCampaign}
+        setFulfilledLimit={setFulfilledLimit}
+        statusLabel={statusLabel}
+        formatDate={formatDate}
+        onOpenCreateModal={openCreateModal}
+        introDismissed={introDismissed}
+        onDismissIntro={dismissIntro}
+        onViewExample={handleViewExample}
+        onStatusChange={handleStatusChange}
+        onPush={handlePush}
+        onEdit={handleEdit}
+        onDelete={handleDelete}
+        onFulfill={handleFulfil}
+        statusMutation={statusMutation}
+        pushMutation={pushMutation}
+        deleteMutation={deleteMutation}
+      />
 
       {/* ══════════════════════════════════════════════════════════
           ── Create Modal — 3-Step Wizard (like stores)
@@ -1601,27 +1530,45 @@ export default function LuckyWheelScreen() {
                 <View style={{ width: 22 }} />
               </View>
 
-              {/* ── Progress Bar ── */}
-              <View style={[styles.progressTrack, { backgroundColor: theme.border }]}>
-                <View style={[styles.progressFill, { width: `${((step + 1) / totalSteps) * 100}%`, backgroundColor: theme.primary }]} />
+              {/* ── Progress Bar — segmented, one pill per step ── */}
+              <View style={styles.progressSegmentsRow}>
+                {Array.from({ length: totalSteps }).map((_, i) => (
+                  <View
+                    key={i}
+                    style={[
+                      styles.progressSegment,
+                      { backgroundColor: i <= step ? theme.primary : theme.border },
+                    ]}
+                  />
+                ))}
               </View>
 
               {/* ── Step Icon + Title + Description ── */}
               <View style={styles.stepTitleRow}>
                 <View style={[styles.stepIconCircle, { backgroundColor: theme.primary + '14' }]}>
                   {step === 0 && <Gift size={18} color={theme.primary} strokeWidth={1.5} />}
-                  {step === 1 && <Target size={18} color={theme.primary} strokeWidth={1.5} />}
-                  {step === 2 && <Package size={18} color={theme.primary} strokeWidth={1.5} />}
+                  {step === 1 && <Percent size={18} color={theme.primary} strokeWidth={1.5} />}
+                  {step === 2 && <Calendar size={18} color={theme.primary} strokeWidth={1.5} />}
+                  {step === 3 && <Package size={18} color={theme.primary} strokeWidth={1.5} />}
+                  {step === 4 && <CheckCircle size={18} color={theme.primary} strokeWidth={1.5} />}
                 </View>
                 <View style={{ flex: 1, marginLeft: 12 }}>
                   <Text style={[styles.stepTitleText, { color: theme.text }]}>
-                    {step === 0 ? t('luckyWheel.wizStep1Title') : step === 1 ? t('luckyWheel.wizStep2Title') : t('luckyWheel.wizStep3Title')}
+                    {t(`luckyWheel.wizStep${step + 1}Title`)}
                   </Text>
                   <Text style={[styles.stepDesc, { color: theme.textMuted }]}>
-                    {step === 0 ? t('luckyWheel.wizStep1Desc') : step === 1 ? t('luckyWheel.wizStep2Desc') : t('luckyWheel.wizStep3Desc')}
+                    {t(`luckyWheel.wizStep${step + 1}Desc`)}
                   </Text>
                 </View>
               </View>
+
+              {/* ── Live wheel preview — updates as the form changes, on every step ── */}
+              <WheelPreviewCard
+                prizes={form.prizes}
+                winRatePct={Math.min(100, parseInt(form.globalWinRate, 10) || 0)}
+                theme={theme}
+                t={t}
+              />
 
               {/* ── Form Content ── */}
               <ScrollView
@@ -1641,8 +1588,8 @@ export default function LuckyWheelScreen() {
                     <Text style={[styles.fieldHint, { color: theme.textMuted }]}>
                       {t('luckyWheel.nameHint')}
                     </Text>
-                    <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: form.name.trim() ? theme.primary : theme.border }]}>
-                      <Gift size={18} color={form.name.trim() ? theme.primary : theme.textMuted} strokeWidth={1.5} />
+                    <View style={[styles.inputWrapper, { backgroundColor: theme.bgInput, borderColor: form.name.trim().length >= MIN_WHEEL_NAME_LENGTH ? theme.primary : (form.name.trim().length > 0 ? TONE.danger : theme.border) }]}>
+                      <Gift size={18} color={form.name.trim().length >= MIN_WHEEL_NAME_LENGTH ? theme.primary : theme.textMuted} strokeWidth={1.5} />
                       <TextInput
                         style={[styles.wizInput, { color: theme.text }]}
                         value={form.name}
@@ -1652,11 +1599,15 @@ export default function LuckyWheelScreen() {
                         maxLength={255}
                         autoFocus
                       />
-                      {form.name.trim().length > 0 && <Check size={16} color={theme.primary} strokeWidth={2.5} />}
+                      {form.name.trim().length >= MIN_WHEEL_NAME_LENGTH && <Check size={16} color={theme.primary} strokeWidth={2.5} />}
                     </View>
-                    <Text style={[styles.fieldExamples, { color: theme.textMuted }]}>
-                      {t('luckyWheel.nameExamples')}
-                    </Text>
+                    {form.name.trim().length > 0 && form.name.trim().length < MIN_WHEEL_NAME_LENGTH ? (
+                      <Text style={styles.dateError}>{t('luckyWheel.nameTooShort', { min: MIN_WHEEL_NAME_LENGTH })}</Text>
+                    ) : (
+                      <Text style={[styles.fieldExamples, { color: theme.textMuted }]}>
+                        {t('luckyWheel.nameExamples')}
+                      </Text>
+                    )}
 
                     {/* Description */}
                     <Text style={[styles.fieldLabel, { color: theme.text, marginTop: 20 }]}>
@@ -1691,7 +1642,7 @@ export default function LuckyWheelScreen() {
                 )}
 
                 {/* ═══════════════════════════════════════════
-                    STEP 2: Règle du jeu
+                    STEP 2: Chances de gagner
                     ═══════════════════════════════════════════ */}
                 {step === 1 && (
                   <>
@@ -1767,10 +1718,14 @@ export default function LuckyWheelScreen() {
                         <Text style={[styles.customRatePct, { color: theme.textMuted }]}>%</Text>
                       </View>
                     </View>
+                  </>
+                )}
 
-                    {/* Divider */}
-                    <View style={[styles.divider, { backgroundColor: theme.borderLight }]} />
-
+                {/* ═══════════════════════════════════════════
+                    STEP 3: Durée & conditions
+                    ═══════════════════════════════════════════ */}
+                {step === 2 && (
+                  <>
                     {/* Duration */}
                     <Text style={[styles.fieldLabel, { color: theme.text }]}>
                       {t('luckyWheel.durationLabel')}
@@ -1805,8 +1760,13 @@ export default function LuckyWheelScreen() {
                         );
                       })}
                     </View>
+                    {!DURATION_DAYS.includes(durationDays as typeof DURATION_DAYS[number]) && (
+                      <Text style={[styles.miniHint, { color: theme.textMuted, marginTop: -6 }]}>
+                        {t('luckyWheel.wizCustomDuration', { days: durationDays })}
+                      </Text>
+                    )}
 
-                    {/* Custom dates */}
+                    {/* Custom dates — editing these manually deselects the shortcut above */}
                     <View style={styles.dateRow}>
                       <View style={styles.dateCol}>
                         <Text style={[styles.miniLabel, { color: theme.textMuted }]}>{t('luckyWheel.startDateLabel')}</Text>
@@ -1911,9 +1871,9 @@ export default function LuckyWheelScreen() {
                 )}
 
                 {/* ═══════════════════════════════════════════
-                    STEP 3: Lots à gagner
+                    STEP 4: Lots à gagner
                     ═══════════════════════════════════════════ */}
-                {step === 2 && (
+                {step === 3 && (
                   <>
                     {/* Tip box */}
                     <View style={[styles.tipBox, { backgroundColor: theme.primary + '08' }]}>
@@ -1948,42 +1908,84 @@ export default function LuckyWheelScreen() {
                       <Plus size={16} color={theme.primary} strokeWidth={2} />
                       <Text style={[styles.addPrizeText, { color: theme.primary }]}>{t('luckyWheel.addPrize')}</Text>
                     </TouchableOpacity>
+                  </>
+                )}
 
-                    {/* Summary before launch */}
+                {/* ═══════════════════════════════════════════
+                    STEP 5: Récapitulatif — tap the pencil to edit a field
+                    ═══════════════════════════════════════════ */}
+                {step === 4 && (
+                  <>
                     <View style={[styles.summaryCard, { backgroundColor: theme.primary + '08', borderColor: theme.primary + '20' }]}>
                       <Text style={[styles.summaryTitle, { color: theme.primary }]}>{t('luckyWheel.wizSummaryTitle')}</Text>
+
                       <View style={styles.summaryRow}>
                         <Text style={[styles.summaryLabel, { color: theme.textMuted }]}>{t('luckyWheel.nameLabel')}</Text>
-                        <Text style={[styles.summaryValue, { color: theme.text }]}>{form.name || '—'}</Text>
+                        <View style={styles.summaryValueEditWrap}>
+                          <Text style={[styles.summaryValue, { color: theme.text }]} numberOfLines={1}>{form.name || '—'}</Text>
+                          <TouchableOpacity onPress={() => setStep(0)} style={styles.summaryEditBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={t('luckyWheel.editBtn')}>
+                            <Edit3 size={13} color={theme.primary} strokeWidth={2} />
+                          </TouchableOpacity>
+                        </View>
                       </View>
+
                       <View style={styles.summaryRow}>
                         <Text style={[styles.summaryLabel, { color: theme.textMuted }]}>{t('luckyWheel.winRateLabel')}</Text>
-                        <Text style={[styles.summaryValue, { color: theme.text }]}>{form.globalWinRate}%</Text>
+                        <View style={styles.summaryValueEditWrap}>
+                          <Text style={[styles.summaryValue, { color: theme.text }]}>{form.globalWinRate}%</Text>
+                          <TouchableOpacity onPress={() => setStep(1)} style={styles.summaryEditBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={t('luckyWheel.editBtn')}>
+                            <Edit3 size={13} color={theme.primary} strokeWidth={2} />
+                          </TouchableOpacity>
+                        </View>
                       </View>
+
                       <View style={styles.summaryRow}>
                         <Text style={[styles.summaryLabel, { color: theme.textMuted }]}>{t('luckyWheel.durationLabel')}</Text>
-                        <Text style={[styles.summaryValue, { color: theme.text }]}>{durationDays} {t('luckyWheel.wizDays')}</Text>
+                        <View style={styles.summaryValueEditWrap}>
+                          <Text style={[styles.summaryValue, { color: theme.text }]}>{durationDays} {t('luckyWheel.wizDays')}</Text>
+                          <TouchableOpacity onPress={() => setStep(2)} style={styles.summaryEditBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={t('luckyWheel.editBtn')}>
+                            <Edit3 size={13} color={theme.primary} strokeWidth={2} />
+                          </TouchableOpacity>
+                        </View>
                       </View>
+
                       <View style={styles.summaryRow}>
                         <Text style={[styles.summaryLabel, { color: theme.textMuted }]}>{t('luckyWheel.wizSummaryDates')}</Text>
-                        <Text style={[styles.summaryValue, { color: theme.text }]}>{form.startsAt} → {form.endsAt}</Text>
+                        <View style={styles.summaryValueEditWrap}>
+                          <Text style={[styles.summaryValue, { color: theme.text }]} numberOfLines={1}>{form.startsAt} → {form.endsAt}</Text>
+                          <TouchableOpacity onPress={() => setStep(2)} style={styles.summaryEditBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={t('luckyWheel.editBtn')}>
+                            <Edit3 size={13} color={theme.primary} strokeWidth={2} />
+                          </TouchableOpacity>
+                        </View>
                       </View>
+
                       {parseInt(form.minSpendAmount, 10) > 0 && (
                         <View style={styles.summaryRow}>
                           <Text style={[styles.summaryLabel, { color: theme.textMuted }]}>{t('luckyWheel.minSpendLabel')}</Text>
-                          <Text style={[styles.summaryValue, { color: theme.text }]}>{form.minSpendAmount} MAD</Text>
+                          <View style={styles.summaryValueEditWrap}>
+                            <Text style={[styles.summaryValue, { color: theme.text }]}>{form.minSpendAmount} MAD</Text>
+                            <TouchableOpacity onPress={() => setStep(2)} style={styles.summaryEditBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={t('luckyWheel.editBtn')}>
+                              <Edit3 size={13} color={theme.primary} strokeWidth={2} />
+                            </TouchableOpacity>
+                          </View>
                         </View>
                       )}
+
                       <View style={[styles.summaryDivider, { backgroundColor: theme.primary + '18' }]} />
-                      <Text style={[styles.summarySubtitle, { color: theme.primary }]}>
-                        {t('luckyWheel.prizesTitle')} ({form.prizes.length})
-                      </Text>
+                      <View style={styles.summarySubtitleRow}>
+                        <Text style={[styles.summarySubtitle, { color: theme.primary, marginBottom: 0 }]}>
+                          {t('luckyWheel.prizesTitle')} ({form.prizes.length})
+                        </Text>
+                        <TouchableOpacity onPress={() => setStep(3)} style={styles.summaryEditBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={t('luckyWheel.editBtn')}>
+                          <Edit3 size={13} color={theme.primary} strokeWidth={2} />
+                        </TouchableOpacity>
+                      </View>
                       {form.prizes.map((p, i) => {
                         const pct = Math.round(((parseInt(p.weight, 10) || 1) / totalWeight) * 100);
                         const stock = parseInt(p.totalStock, 10) || 0;
                         return (
                           <View key={p.id} style={styles.summaryPrizeRow}>
-                            <View style={[styles.summaryPrizeDot, { backgroundColor: theme.primary }]} />
+                            <View style={[styles.summaryPrizeDot, { backgroundColor: WHEEL_COLORS[i % WHEEL_COLORS.length] }]} />
                             <Text style={[styles.summaryPrizeName, { color: theme.text }]} numberOfLines={1}>
                               {p.label || `${t('luckyWheel.wizPrizeNum', { num: i + 1 })}`}
                             </Text>
@@ -2036,7 +2038,7 @@ export default function LuckyWheelScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
-    </View>
+    </>
   );
 }
 
@@ -2141,11 +2143,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginHorizontal: 20,
+    marginHorizontal: 16,
     marginTop: 20,
-    paddingVertical: 14,
-    borderRadius: 12,
+    paddingVertical: 15,
+    borderRadius: 14,
     gap: 8,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
   },
   createBtnText: {
     color: '#FFF',
@@ -2154,10 +2161,94 @@ const styles = StyleSheet.create({
     fontFamily: 'Lexend_700Bold',
   },
 
+  // ── Compact intro card ──
+  guideCardCompact: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginHorizontal: 16,
+    marginTop: 12,
+    padding: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  guideIconSmall: {
+    width: ms(30),
+    height: ms(30),
+    borderRadius: ms(10),
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  guideTitleCompact: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '600',
+    lineHeight: 18,
+    fontFamily: 'Lexend_600SemiBold',
+  },
+  guideCloseBtn: {
+    marginLeft: 8,
+    padding: 2,
+  },
+
+  // ── Prize stats summary (pending / delivered at a glance) ──
+  prizeStatsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginHorizontal: 16,
+    marginTop: 14,
+    marginBottom: 4,
+  },
+  prizeStatCard: {
+    flex: 1,
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 12,
+  },
+  prizeStatTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  prizeStatIconWrap: {
+    width: ms(28),
+    height: ms(28),
+    borderRadius: ms(9),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  prizeStatCount: {
+    fontSize: 22,
+    fontWeight: '800',
+    fontFamily: 'Lexend_700Bold',
+  },
+  prizeStatLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: 2,
+    fontFamily: 'Lexend_500Medium',
+  },
+
   // ── Empty ──
   emptyState: { alignItems: 'center', paddingVertical: 60 },
   emptyTitle: { fontSize: 16, fontWeight: '600', marginTop: 16, fontFamily: 'Lexend_600SemiBold' },
   emptyHint: { fontSize: 14, marginTop: 8, textAlign: 'center', paddingHorizontal: 32, fontFamily: 'Lexend_400Regular' },
+  emptySecondaryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    borderRadius: 10,
+    borderWidth: 1.5,
+  },
+  emptySecondaryBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    fontFamily: 'Lexend_700Bold',
+  },
 
   // ── Pending ──
   pendingRow: {
@@ -2245,17 +2336,61 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 16, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
   stepLabel: { fontSize: 12, marginTop: 2, fontFamily: 'Lexend_400Regular' },
 
-  // ── Progress ──
-  progressTrack: {
-    height: 3,
+  // ── Progress ── segmented pills, one per step
+  progressSegmentsRow: {
+    flexDirection: 'row',
+    gap: 5,
     marginHorizontal: 20,
-    marginTop: 8,
-    borderRadius: 2,
-    overflow: 'hidden',
+    marginTop: 10,
   },
-  progressFill: {
-    height: '100%',
+  progressSegment: {
+    flex: 1,
+    height: 4,
     borderRadius: 2,
+  },
+
+  // ── Live wheel preview ──
+  wheelPreviewCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 20,
+    marginTop: 12,
+    padding: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  wheelGraphicWrap: {
+    width: 72,
+    height: 72,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  wheelPointer: {
+    position: 'absolute',
+    top: -4,
+    width: 0,
+    height: 0,
+    borderLeftWidth: 5,
+    borderRightWidth: 5,
+    borderBottomWidth: 7,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+  },
+  wheelPreviewInfo: {
+    flex: 1,
+    marginLeft: 14,
+  },
+  wheelPreviewTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    fontFamily: 'Lexend_600SemiBold',
+    marginBottom: 3,
+  },
+  wheelPreviewLine: {
+    fontSize: 12,
+    fontWeight: '500',
+    fontFamily: 'Lexend_500Medium',
+    marginTop: 2,
   },
 
   // ── Step Title ──
@@ -2263,7 +2398,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingTop: 20,
+    paddingTop: 16,
     paddingBottom: 8,
   },
   stepIconCircle: {
@@ -2298,6 +2433,12 @@ const styles = StyleSheet.create({
   fieldExamples: { fontSize: 12, marginTop: 6, marginBottom: 2, lineHeight: 16, fontFamily: 'Lexend_400Regular', fontStyle: 'italic' as const, opacity: 0.7 },
   miniLabel: { fontSize: 12, marginBottom: 4, fontFamily: 'Lexend_400Regular' },
   miniHint: { fontSize: 11, marginBottom: 6, fontFamily: 'Lexend_400Regular', opacity: 0.7 },
+  miniLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
 
   inputWrapper: {
     flexDirection: 'row',
@@ -2497,13 +2638,29 @@ const styles = StyleSheet.create({
     fontFamily: 'Lexend_600SemiBold',
     marginBottom: 8,
   },
+  summarySubtitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
   summaryRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
     paddingVertical: 6,
   },
   summaryLabel: { fontSize: 13, fontFamily: 'Lexend_400Regular' },
-  summaryValue: { fontSize: 13, fontWeight: '600', fontFamily: 'Lexend_600SemiBold', maxWidth: '55%', textAlign: 'right' as const },
+  summaryValue: { fontSize: 13, fontWeight: '600', fontFamily: 'Lexend_600SemiBold', maxWidth: '75%', textAlign: 'right' as const },
+  summaryValueEditWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    maxWidth: '65%',
+  },
+  summaryEditBtn: {
+    padding: 2,
+  },
   summaryDivider: { height: 1, marginVertical: 10 },
   summaryPrizeRow: {
     flexDirection: 'row',

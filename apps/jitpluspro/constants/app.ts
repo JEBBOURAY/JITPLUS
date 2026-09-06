@@ -40,6 +40,10 @@ export const ASYNC_STORAGE_KEYS = {
   // launch after that plays the reduced ~250ms logo fade instead so returning
   // users aren't slowed down.
   SPLASH_SHOWN: 'splash_shown',
+  // Lucky wheel screen: intro/hero card permanently hidden once dismissed.
+  LUCKY_WHEEL_INTRO_DISMISSED: 'lucky_wheel_intro_dismissed',
+  // Accueil: one-time ecosystem poster ("how loyalty flows") shown after login.
+  WELCOME_POSTER_DISMISSED: 'welcome_poster_dismissed_v3',
 };
 
 // Upload validation

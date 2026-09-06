@@ -132,6 +132,8 @@ export function useAuthMethods(
       AsyncStorage.removeItem('showWelcome'),
       AsyncStorage.removeItem('showGuidBadge'),
       import('expo-secure-store').then((ss) => ss.deleteItemAsync('qr_permanent_token')).catch(() => {}),
+      AsyncStorage.removeItem('profile_draft'),
+      // Legacy: drafts were stored in SecureStore before the 2048-byte limit fix
       import('expo-secure-store').then((ss) => ss.deleteItemAsync('profile_draft')).catch(() => {}),
     ]);
     store.reset();

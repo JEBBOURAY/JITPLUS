@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { Alert, Platform, AppState, AppStateStatus } from 'react-native';
-import * as SecureStore from 'expo-secure-store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { haptic, HapticStyle } from '@/utils/haptics';
 import { api } from '@/services/api';
 import { isValidEmail } from '@/utils/validation';
@@ -50,7 +50,8 @@ export function useProfileEditing(
         if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
         draftTimerRef.current = setTimeout(async () => {
           try {
-            await SecureStore.setItemAsync('profile_draft', JSON.stringify(draftRef.current));
+            // AsyncStorage: drafts can exceed SecureStore's 2048-byte limit
+            await AsyncStorage.setItem('profile_draft', JSON.stringify(draftRef.current));
           } catch { /* best-effort */ }
         }, DRAFT_PERSIST_DEBOUNCE_MS);
       }
@@ -64,7 +65,7 @@ export function useProfileEditing(
 
   // Restore draft on mount
   useEffect(() => {
-    SecureStore.getItemAsync('profile_draft').then((raw) => {
+    AsyncStorage.getItem('profile_draft').then((raw) => {
       if (!raw) return;
       try {
         const d = JSON.parse(raw);
@@ -80,7 +81,7 @@ export function useProfileEditing(
         setEditDateNaissance(d.editDateNaissance || '');
         setIsEditing(true);
       } catch { /* corrupt draft, ignore */ }
-      SecureStore.deleteItemAsync('profile_draft').catch(() => {});
+      AsyncStorage.removeItem('profile_draft').catch(() => {});
     });
   }, []);
 
@@ -125,7 +126,7 @@ export function useProfileEditing(
 
   const cancelEditing = useCallback(() => {
     setIsEditing(false);
-    SecureStore.deleteItemAsync('profile_draft').catch(() => {});
+    AsyncStorage.removeItem('profile_draft').catch(() => {});
     haptic(HapticStyle.Light);
   }, []);
 

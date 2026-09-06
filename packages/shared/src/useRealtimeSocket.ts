@@ -62,9 +62,13 @@ export function useRealtimeSocket(config: RealtimeSocketConfig): Socket | null {
 
       authFailures.current = 0;
 
-      const allowPollingFallback =
-        __DEV__ ||
-        process.env.EXPO_PUBLIC_WS_ALLOW_POLLING === 'true';
+      // The backend gateway only accepts 'websocket' (polling is disabled to
+      // avoid recurring Cloud Run requests) — starting with 'polling' here
+      // would make every handshake fail (400) since socket.io only upgrades
+      // to websocket AFTER a successful polling connection. Only opt into
+      // polling via the explicit env flag if the server is ever reconfigured
+      // to support it.
+      const allowPollingFallback = process.env.EXPO_PUBLIC_WS_ALLOW_POLLING === 'true';
       const transports: Array<'websocket' | 'polling'> = allowPollingFallback
         ? ['polling', 'websocket']
         : ['websocket'];

@@ -1,4 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
 const IS_DEV = __DEV__;
@@ -72,7 +73,7 @@ export async function clearAuth(): Promise<void> {
   await clearEmailOtpNewUser();
   await clearRememberMe();
   await removeStored(QR_TOKEN_KEY);
-  await removeStored(PROFILE_CACHE_KEY);
+  await clearCachedProfile();
 }
 
 export async function setRememberMe(value: boolean): Promise<void> {
@@ -104,17 +105,33 @@ export async function clearEmailOtpNewUser(): Promise<void> {
 
 // ── Offline profile cache ──────────────────────────────
 // Store the authenticated client profile so it can be restored on cold-start
-// even when the device is offline. SecureStore-backed so PII stays encrypted.
+// even when the device is offline. Uses AsyncStorage: profile JSON regularly
+// exceeds SecureStore's 2048-byte limit (Android Keystore silently drops the
+// value today and will throw in a future SDK — seen in Sentry production).
 export async function setCachedProfile(profile: unknown): Promise<void> {
-  try { await setStored(PROFILE_CACHE_KEY, JSON.stringify(profile)); } catch { /* non-fatal */ }
+  try {
+    const json = JSON.stringify(profile);
+    if (Platform.OS === 'web') { memoryTokens[PROFILE_CACHE_KEY] = json; return; }
+    await AsyncStorage.setItem(PROFILE_CACHE_KEY, json);
+    // One-time cleanup of the legacy oversized SecureStore entry
+    SecureStore.deleteItemAsync(PROFILE_CACHE_KEY).catch(() => {});
+  } catch { /* non-fatal */ }
 }
 
 export async function getCachedProfile<T = unknown>(): Promise<T | null> {
-  const raw = await getStored(PROFILE_CACHE_KEY);
-  if (!raw) return null;
-  try { return JSON.parse(raw) as T; } catch { return null; }
+  try {
+    const raw = Platform.OS === 'web'
+      ? (memoryTokens[PROFILE_CACHE_KEY] ?? null)
+      : await AsyncStorage.getItem(PROFILE_CACHE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as T;
+  } catch { return null; }
 }
 
 export async function clearCachedProfile(): Promise<void> {
-  await removeStored(PROFILE_CACHE_KEY);
+  memoryTokens[PROFILE_CACHE_KEY] = null;
+  if (Platform.OS === 'web') return;
+  try { await AsyncStorage.removeItem(PROFILE_CACHE_KEY); } catch { /* non-fatal */ }
+  // Also purge the legacy SecureStore entry (pre-migration installs)
+  try { await SecureStore.deleteItemAsync(PROFILE_CACHE_KEY); } catch { /* non-fatal */ }
 }
