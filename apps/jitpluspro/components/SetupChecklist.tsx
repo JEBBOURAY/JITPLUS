@@ -148,9 +148,6 @@ function SetupChecklistInner() {
   }, []);
 
   // ── Resolved state ──
-  const isSocial = !!merchant?.googleId || !!merchant?.appleId;
-  const emailVerified = !!merchant?.emailVerified;
-  const emailItemShown = !isSocial; // social accounts are considered verified
   // Loyalty program is real backend truth now: null until the merchant chooses.
   const loyaltyChosen = !!merchant?.loyaltyType;
   const hasLogo = !!merchant?.logoUrl;
@@ -279,9 +276,7 @@ function SetupChecklistInner() {
     goToLoyalty,
     hasReward,
     hasScanned,
-    emailItemShown,
-    emailVerified,
-    merchant?.email,
+    openScanner,
     router,
   ]);
 
@@ -870,7 +865,7 @@ const styles = StyleSheet.create({
   proBadgeText: { fontSize: ms(10), fontFamily: 'Lexend_700Bold', color: '#B45309' },
 
   // ── Progress ring (collapsed) ──
-  ringCenter: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
+  ringCenter: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
   ringText: { fontSize: ms(12), fontFamily: 'Lexend_700Bold', letterSpacing: -0.3 },
 
   // ── Collapsed card ──

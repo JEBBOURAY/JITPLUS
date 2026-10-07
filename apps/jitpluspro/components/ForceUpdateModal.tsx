@@ -151,7 +151,7 @@ export default function ForceUpdateModal({ status, storeUrl }: Props) {
 
 const styles = StyleSheet.create({
   root: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 9999,
     flexDirection: 'column',
   },

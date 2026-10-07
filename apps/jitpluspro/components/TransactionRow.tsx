@@ -3,7 +3,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ArrowUpRight, ArrowDownLeft, RefreshCw, Gift, Aperture } from 'lucide-react-native';
 import { getTransactionConfig } from '@/constants/transactions';
-import { useTheme, palette } from '@/contexts/ThemeContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { formatCurrency, DEFAULT_CURRENCY, getIntlLocale } from '@/config/currency';
 import { formatDateTime } from '@/utils/date';

@@ -116,8 +116,6 @@ module.exports = ({ config }) => {
           apiKey: GOOGLE_MAPS_KEY_ANDROID,
         },
       },
-      // Re-enabled for Android 15+ Edge-to-Edge compliance (targetSdkVersion 35)
-      edgeToEdgeEnabled: true,
       // Disabled: prevents accidental back gesture from killing auth/OTP/onboarding flows
       predictiveBackGestureEnabled: false,
       permissions: [
@@ -194,13 +192,13 @@ module.exports = ({ config }) => {
         'expo-build-properties',
         {
           ios: {
-            deploymentTarget: '15.1',
+            deploymentTarget: '16.4',
           },
           android: {
             compileSdkVersion: 36,
             targetSdkVersion: 36,
             minSdkVersion: 24,
-            buildToolsVersion: '35.0.0',
+            buildToolsVersion: '36.0.0',
           },
         },
       ],

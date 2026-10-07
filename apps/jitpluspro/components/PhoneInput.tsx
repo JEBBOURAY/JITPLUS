@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef, forwardRef } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, StyleProp, ViewStyle, TextInputProps, Animated } from 'react-native';
-import { ChevronDown, Phone, Check, AlertCircle } from 'lucide-react-native';
+import { ChevronDown, Phone } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import CountryPickerModal from '@/components/CountryPickerModal';

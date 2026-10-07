@@ -1,12 +1,12 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { DarkTheme, DefaultTheme, ThemeProvider as NavThemeProvider } from '@react-navigation/native';
+import { DarkTheme, DefaultTheme, ThemeProvider as NavThemeProvider } from 'expo-router/react-navigation';
 import { Lexend_400Regular, Lexend_500Medium, Lexend_600SemiBold, Lexend_700Bold } from '@expo-google-fonts/lexend';
 import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
 import { useFonts } from 'expo-font';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { Platform, View, InteractionManager } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClient, QueryCache, MutationCache, onlineManager, useQueryClient } from '@tanstack/react-query';
@@ -322,7 +322,7 @@ function SplashGate({ children }: { children: React.ReactNode }) {
 // Memoized to avoid the StatusBar native module being called on every parent
 // re-render (logcat showed 102 "Ignored status bar change" warnings per 3 min).
 const StatusBarMemo = React.memo(function StatusBarMemo({ isDark }: { isDark: boolean }) {
-  return <StatusBar style={isDark ? 'light' : 'dark'} translucent backgroundColor="transparent" />;
+  return <StatusBar style={isDark ? 'light' : 'dark'} />;
 });
 
 function RootLayoutNav() {
@@ -354,7 +354,7 @@ const PUBLIC_ROUTES = new Set(['login', 'register', 'verify-email', 'forgot-pass
 function ThemedNavigator() {
   const theme = useTheme();
   const { isDark } = theme;
-  const { merchant, isTeamMember, loading } = useAuth();
+  const { merchant, loading } = useAuth();
   const { status, storeUrl } = useForceUpdate();
   const router = useRouter();
   const segments = useSegments();
@@ -407,7 +407,6 @@ function ThemedNavigator() {
   const notificationListener = useRef<{ remove(): void } | null>(null);
   const responseListener = useRef<{ remove(): void } | null>(null);
 
-  const hasMerchant = !!merchant;
 
   // ── Real-time WebSocket connection ────────────────────────
   const socket = useRealtimeSocket({

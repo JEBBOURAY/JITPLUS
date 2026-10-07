@@ -98,9 +98,9 @@ export default function DiscoverScreen() {
     <View style={styles.container}>
       {MAPS_AVAILABLE ? (
         <SafeMapView
-          ref={mapRef} style={StyleSheet.absoluteFillObject} initialRegion={DEFAULT_REGION}
+          ref={mapRef} style={StyleSheet.absoluteFill} initialRegion={DEFAULT_REGION}
           showsUserLocation showsMyLocationButton={false} showsCompass={false}
-          showsPointsOfInterest={false} showsBuildings={false} showsIndoors={false} showsTraffic={false}
+          showsPointsOfInterests={false} showsBuildings={false} showsIndoors={false} showsTraffic={false}
           customMapStyle={MAP_STYLE} onMapReady={handleMapReady} onRegionChangeComplete={handleRegionChange} onPress={handleMapPress}
         >
           {mapItems.map((item) => {
@@ -120,7 +120,7 @@ export default function DiscoverScreen() {
           })}
         </SafeMapView>
       ) : (
-        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: theme.bg }]}>
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: theme.bg }]}>
           <FlatList
             data={sortedMappableMerchants} keyExtractor={fallbackKeyExtractor} renderItem={renderFallbackItem}
             contentContainerStyle={[styles.fallbackList, { paddingTop: fallbackTopPadding, paddingBottom: fallbackBottomPadding }]}

@@ -5,7 +5,7 @@
  */
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, FlatList,
+  View, Text, TextInput, TouchableOpacity,
   ActivityIndicator, StyleSheet, Keyboard, Platform,
 } from 'react-native';
 import { Search, MapPin, X, Info } from 'lucide-react-native';

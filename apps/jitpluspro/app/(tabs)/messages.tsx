@@ -61,7 +61,7 @@ const safeNotification = (type: Haptics.NotificationFeedbackType) => {
 if (
   Platform.OS === 'android' &&
   UIManager.setLayoutAnimationEnabledExperimental &&
-  typeof (global as Record<string, unknown>).nativeFabricUIManager === 'undefined'
+  typeof (globalThis as Record<string, unknown>).nativeFabricUIManager === 'undefined'
 ) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
@@ -387,7 +387,7 @@ export default function MessagesScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { focusStyle } = useFocusFade();
-  const { t, locale } = useLanguage();
+  const { t } = useLanguage();
 
   // ── Banner dismiss state ──
   const [bannerVisible, setBannerVisible] = useState(false);

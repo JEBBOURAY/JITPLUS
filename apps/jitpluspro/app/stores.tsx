@@ -54,7 +54,6 @@ import { getCategoryLabel as getCategoryLabelFn, getCategoryOptions } from '@/co
 import { useStoresCRUD, MAX_STORES } from '@/hooks/useStoresCRUD';
 import { isValidEmail } from '@/utils/validation';
 import PremiumLockModal from '@/components/PremiumLockModal';
-import MerchantLogo from '@/components/MerchantLogo';
 import { wp, hp, ms, fontSize as FS } from '@/utils/responsive';
 import { palette } from '@/contexts/ThemeContext';
 import { resolveImageUrl } from '@/utils/imageUrl';
@@ -500,22 +499,6 @@ export default function StoresScreen() {
     return () => clearTimeout(fitTimerRef.current);
   }, [storesWithCoords]);
 
-  // â”€â”€ Reset form â”€â”€
-  const resetForm = () => {
-    // P3 — 2nd+ store prefill: inherit the category from the reference store
-    // (editable). Name and location are never prefilled (autofocus stays on the
-    // name); social/email/description are inherited & locked in branch mode.
-    const isNewBranch = stores.length > 0;
-    formDispatch({
-      type: 'RESET',
-      defaults: {
-        categorie: (isNewBranch ? referenceStore?.categorie : merchant?.categorie) ?? merchant?.categorie ?? '',
-        ville: isNewBranch ? '' : (merchant?.ville ?? ''),
-      },
-    });
-    setEditingStore(null);
-  };
-
   // â”€â”€ Open modal â”€â”€
   const openCreate = () => {
     if (stores.length >= effectiveMax) {
@@ -791,7 +774,7 @@ export default function StoresScreen() {
             style={styles.overviewMap}
             region={overviewRegion}
             customMapStyle={MAP_STYLE}
-            showsPointsOfInterest={false}
+            showsPointsOfInterests={false}
             showsBuildings={false}
             showsIndoors={false}
             showsTraffic={false}
@@ -1233,7 +1216,7 @@ export default function StoresScreen() {
                           latitudeDelta: FIVE_KM_DELTA,
                           longitudeDelta: FIVE_KM_DELTA,
                         }}
-                        showsPointsOfInterest={false}
+                        showsPointsOfInterests={false}
                         showsBuildings={false}
                         onPress={(e: { nativeEvent: { coordinate: { latitude: number; longitude: number } } }) => {
                           const coords = e.nativeEvent.coordinate;

@@ -7,7 +7,7 @@ import { Camera, Trash2 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { palette, type ThemeColors } from '@/contexts/ThemeContext';
 import MerchantLogo from '@/components/MerchantLogo';
-import { wp, hp, ms, fontSize as FS, radius } from '@/utils/responsive';
+import { hp, ms, fontSize as FS } from '@/utils/responsive';
 import type { Merchant } from '@/types';
 
 /* ── Logo Edit Bottom Sheet ── */

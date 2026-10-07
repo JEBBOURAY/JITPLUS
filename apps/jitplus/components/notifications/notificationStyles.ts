@@ -30,7 +30,7 @@ export const notificationStyles = StyleSheet.create({
   notifDate: { fontSize: fontSize.xs },
 
   swipeBackground: {
-    ...StyleSheet.absoluteFillObject, backgroundColor: '#EF4444', borderRadius: radius.xl,
+    ...StyleSheet.absoluteFill, backgroundColor: '#EF4444', borderRadius: radius.xl,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: wp(24), marginBottom: hp(10),
   },
@@ -52,7 +52,7 @@ export const notificationStyles = StyleSheet.create({
   footerLoader: { paddingVertical: hp(16), alignItems: 'center' },
   footerSpacer: { height: hp(120) },
 
-  modalOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.45)' },
+  modalOverlay: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.45)' },
   modalSheet: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
     borderTopLeftRadius: radius.xl * 1.5, borderTopRightRadius: radius.xl * 1.5,

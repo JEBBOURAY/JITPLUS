@@ -9,9 +9,9 @@ import {
   RefreshControl,
   Platform,
 } from 'react-native';
-import { ArrowLeft, Bell, Megaphone, Mail, Send, CheckCheck, BellOff, ChevronDown, ChevronUp } from 'lucide-react-native';
+import { ArrowLeft, Megaphone, Mail, Send, CheckCheck, BellOff, ChevronDown, ChevronUp } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
-import { useTheme, brandGradient, palette } from '@/contexts/ThemeContext';
+import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import {
   useAdminNotifications,

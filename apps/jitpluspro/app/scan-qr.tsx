@@ -36,7 +36,7 @@ import {
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect } from 'expo-router/react-navigation';
 import api from '@/services/api';
 import { getErrorMessage } from '@/utils/error';
 import { normalizePhone } from '@/utils/normalizePhone';
@@ -323,7 +323,7 @@ const HowItWorksBanner = React.memo(function HowItWorksBanner({
       <BlurView
         intensity={18}
         tint="dark"
-        experimentalBlurMethod="dimezisBlurView"
+        blurMethod="dimezisBlurView"
         style={StyleSheet.absoluteFill}
       />
       <View style={styles.infoBannerTint} />
@@ -460,7 +460,7 @@ const BottomControls = React.memo(function BottomControls({
               <BlurView
                 intensity={18}
                 tint="dark"
-                experimentalBlurMethod="dimezisBlurView"
+                blurMethod="dimezisBlurView"
                 style={StyleSheet.absoluteFill}
               />
               <View style={styles.actionCircleTint} />
@@ -484,7 +484,7 @@ const BottomControls = React.memo(function BottomControls({
             <BlurView
               intensity={18}
               tint="dark"
-              experimentalBlurMethod="dimezisBlurView"
+              blurMethod="dimezisBlurView"
               style={StyleSheet.absoluteFill}
             />
             <View style={styles.actionCircleTint} />
@@ -900,7 +900,7 @@ export default function ScanQRScreen() {
   if (!permission) {
     return (
       <View style={[styles.permissionContainer, { backgroundColor: theme.bg }]}>
-        <StatusBar style={theme.mode === 'dark' ? 'light' : 'dark'} translucent />
+        <StatusBar style={theme.mode === 'dark' ? 'light' : 'dark'} />
         <ActivityIndicator size="large" color={theme.primary} />
         <Text style={[styles.permissionText, { color: theme.textMuted }]}>{t('scan.cameraInit')}</Text>
       </View>
@@ -910,7 +910,7 @@ export default function ScanQRScreen() {
   if (!permission.granted) {
     return (
       <View style={[styles.permissionContainer, { backgroundColor: theme.bg }]}>
-        <StatusBar style={theme.mode === 'dark' ? 'light' : 'dark'} translucent />
+        <StatusBar style={theme.mode === 'dark' ? 'light' : 'dark'} />
         <Animated.View style={styles.permissionContent}>
           <View style={[styles.permissionIconCircle, { backgroundColor: theme.primaryBg, borderColor: theme.primary + '40' }]}>
             <Camera size={48} color={theme.primary} strokeWidth={2} />
@@ -949,7 +949,7 @@ export default function ScanQRScreen() {
 
   return (
     <View style={styles.container}>
-      <StatusBar style="light" translucent />
+      <StatusBar style="light" />
 
       {/* ── Camera (conditionally mounted to release Camera2 on blur/background) ── */}
       {cameraMounted && (
@@ -1213,7 +1213,7 @@ const styles = StyleSheet.create({
 
   // ── Detected overlay ──
   detectedOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(34,211,238,0.12)',
@@ -1265,7 +1265,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.28)',
   },
   actionCircleTint: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(255,255,255,0.14)',
   },
   actionCircleActive: {
@@ -1346,7 +1346,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row-reverse',
   },
   infoBannerTint: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(124,58,237,0.16)',
   },
   infoBannerIcon: {

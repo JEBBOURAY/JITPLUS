@@ -621,7 +621,7 @@ export default function DashboardScreen() {
         <BlurView
           intensity={theme.mode === 'dark' ? 22 : 16}
           tint="dark"
-          experimentalBlurMethod="dimezisBlurView"
+          blurMethod="dimezisBlurView"
           style={styles.premiumOverlay}
         >
           <View style={styles.premiumCard}>
@@ -944,7 +944,7 @@ const styles = StyleSheet.create({
 
   // ── Premium lock overlay ──
   premiumOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(6,4,16,0.42)',
     justifyContent: 'center',
     alignItems: 'center',

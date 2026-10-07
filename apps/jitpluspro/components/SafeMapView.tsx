@@ -4,7 +4,7 @@
  * - Expo Go: react-native-maps n'est pas disponible → graceful text fallback
  *   avec bouton « Ouvrir dans Maps » pour chaque boutique.
  */
-import React, { forwardRef, useImperativeHandle, useCallback, useState, useRef, useEffect, useMemo } from 'react';
+import React, { forwardRef, useImperativeHandle, useCallback, useState, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -135,7 +135,7 @@ interface SafeMapViewProps {
   rotateEnabled?: boolean;
   mapType?: string;
   customMapStyle?: readonly unknown[];
-  showsPointsOfInterest?: boolean;
+  showsPointsOfInterests?: boolean;
   showsBuildings?: boolean;
   showsIndoors?: boolean;
   showsTraffic?: boolean;

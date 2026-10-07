@@ -29,7 +29,6 @@ import {
   Ticket,
   Target,
   Package,
-  AlertTriangle,
   X,
   Calendar,
   Percent,
@@ -288,8 +287,6 @@ const WheelPreviewCard = React.memo(function WheelPreviewCard({
 
 // Static preset values (no i18n) — kept at module scope to avoid recreating on every render.
 const DURATION_DAYS = [7, 30, 90] as const;
-const WIN_RATE_VALUES = ['25', '40', '50', '70'] as const;
-const MIN_SPEND_VALUES = ['0', '50', '100', '200'] as const;
 
 const PendingPrizeRow = React.memo(function PendingPrizeRow({
   draw,
@@ -615,7 +612,6 @@ const PrizeCardItem = React.memo(function PrizeCardItem({
   claimWindowOptions: ReadonlyArray<{ label: string; val: string }>;
 }) {
   const pct = Math.round(((parseInt(prize.weight, 10) || 1) / totalWeight) * 100);
-  const stock = parseInt(prize.totalStock, 10) || 0;
 
   return (
     <View style={[styles.prizeCard, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>

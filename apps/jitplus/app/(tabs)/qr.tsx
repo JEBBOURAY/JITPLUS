@@ -27,6 +27,7 @@ import { wp, hp, ms, fontSize, radius, SCREEN } from '@/utils/responsive';
 
 // react-native-view-shot is NOT available in Expo Go SDK 51+
 import type ViewShotType from 'react-native-view-shot';
+import type { ViewShotRef } from 'react-native-view-shot';
 let ViewShot: typeof ViewShotType | null = null;
 try {
   ViewShot = require('react-native-view-shot').default as typeof ViewShotType;
@@ -61,7 +62,7 @@ export default function QRScreen() {
   // Auto-released on unmount — no cleanup needed.
   useKeepAwake('jitplus-qr');
 
-  const qrViewRef = useRef<ViewShotType | null>(null);
+  const qrViewRef = useRef<ViewShotRef | null>(null);
   const [qrValue, setQrValue] = useState<string | null>(null);
   const [qrLoading, setQrLoading] = useState(true);
   // v2 tokens expire (~60s). Null for v1 permanent tokens.
@@ -140,7 +141,7 @@ export default function QRScreen() {
       // ── Brightness boost ── maximize screen brightness for QR readability
       // (HIG / Material best practice for scannable codes). Restore on blur.
       // We override the WINDOW brightness (not system), then release it on blur
-      // via useSystemBrightnessAsync so the OS auto-brightness takes over again.
+      // via restoreSystemBrightnessAsync so the OS auto-brightness takes over again.
       // A keep-alive re-applies max brightness if Android resets it (some OEMs
       // revert window brightness when a system dialog/notification briefly takes
       // focus). Throttled to every 8s with a concurrency guard to keep the JS↔native
@@ -177,7 +178,7 @@ export default function QRScreen() {
         // user-set system brightness immediately takes over again. This is
         // more reliable than restoring a captured numeric value (which can
         // fail to read on some Android OEMs).
-        Brightness.useSystemBrightnessAsync().catch(() => {});
+        Brightness.restoreSystemBrightnessAsync().catch(() => {});
         ScreenCapture.allowScreenCaptureAsync('jitplus-qr').catch(() => {});
       };
     }, [fetchQrToken])

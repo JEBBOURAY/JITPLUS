@@ -14,7 +14,6 @@ import {
   Pressable,
   Animated,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Image as ExpoImage } from 'expo-image';
 import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -23,22 +22,15 @@ import {
   ArrowLeft,
   Check,
   ChevronDown,
-  Clock3,
   Contact,
   Eye,
   Instagram,
-  Loader2,
   MapPin,
   Pencil,
-  Plus,
   Save,
-  Search,
-  ShieldCheck,
   Store,
   Tag,
-  Trash2,
   Globe,
-  Phone,
   Mail,
   Navigation,
   Sparkles,
@@ -46,7 +38,7 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { useStoresCRUD, MAX_STORES } from '@/hooks/useStoresCRUD';
+import { useStoresCRUD } from '@/hooks/useStoresCRUD';
 import FichePreviewModal from '@/components/FichePreviewModal';
 import MerchantCategoryIcon from '@/components/MerchantCategoryIcon';
 import PhoneInput from '@/components/PhoneInput';
@@ -54,7 +46,7 @@ import AddressAutocomplete, { AddressResult } from '@/components/AddressAutocomp
 import SafeMapView, { Marker, SafeMapViewRef } from '@/components/SafeMapView';
 import { reverseGeocodeAsync } from '@/utils/geocodeCache';
 import { getCategoryLabel as getCategoryLabelFn, getCategoryOptions } from '@/constants/categories';
-import { ms, wp, hp } from '@/utils/responsive';
+import { ms, hp } from '@/utils/responsive';
 import type { Store as StoreType, Merchant, MerchantCategory, SocialLinks } from '@/types';
 import { resolveImageUrl } from '@/utils/imageUrl';
 
@@ -70,8 +62,6 @@ const defaultHours = () => ({
   sat: { slots: [] },
   sun: { slots: [] },
 });
-
-const BASE_SOCIALS = { instagram: '', tiktok: '', website: '' };
 
 const VIOLET_MAP_STYLE = [
   { elementType: 'geometry', stylers: [{ color: '#FAFAF8' }] },
@@ -209,7 +199,7 @@ export default function StoreFormScreen({ mode, storeId, initialView = 'edit' }:
   const router = useRouter();
   const theme = useTheme();
   const { t } = useLanguage();
-  const { merchant, isTeamMember } = useAuth();
+  const { merchant } = useAuth();
   const insets = useSafeAreaInsets();
   const { stores, loading, saving, canCreateStore, alertMaxStores, saveStore } = useStoresCRUD();
 
@@ -220,7 +210,6 @@ export default function StoreFormScreen({ mode, storeId, initialView = 'edit' }:
   }, [mode, storeId, stores]);
 
   const referenceStore = useMemo(() => stores[0] ?? null, [stores]);
-  const hasExistingStores = stores.length > 0;
   const isCreateMode = mode === 'create';
   const isEditMode = mode === 'edit';
   const isReferenceStore = !!currentStore && referenceStore?.id === currentStore.id;
@@ -835,7 +824,7 @@ export default function StoreFormScreen({ mode, storeId, initialView = 'edit' }:
                     pitchEnabled={false}
                     rotateEnabled={false}
                     customMapStyle={VIOLET_MAP_STYLE}
-                    showsPointsOfInterest={false}
+                    showsPointsOfInterests={false}
                     showsBuildings={false}
                   >
                     {form.latitude != null && form.longitude != null ? (
@@ -990,7 +979,7 @@ const styles = StyleSheet.create({
   toastWrap: { position: 'absolute', top: 12, left: 16, right: 16, zIndex: 1000, alignItems: 'center' },
   toast: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 999, borderWidth: 1, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
   toastText: { fontSize: ms(12), fontFamily: 'Lexend_700Bold', fontWeight: '700' },
-  absoluteOverlay: { ...StyleSheet.absoluteFillObject, pointerEvents: 'box-none' },
+  absoluteOverlay: { ...StyleSheet.absoluteFill, pointerEvents: 'box-none' },
   pickerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', padding: 18 },
   pickerSheet: { borderRadius: 22, padding: 16, maxHeight: hp(560) },
   pickerTitle: { fontSize: ms(16), fontFamily: 'Lexend_700Bold', fontWeight: '700', marginBottom: 10 },

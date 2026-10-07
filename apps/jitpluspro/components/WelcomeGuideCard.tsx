@@ -11,7 +11,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import { useIsFocused } from '@react-navigation/native';
+import { useIsFocused } from 'expo-router/react-navigation';
 import { LinearGradient as ExpoLinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Path, Pattern, Rect, Stop } from 'react-native-svg';
@@ -59,6 +59,8 @@ const DOT_DURATION = 250;
 const TOGGLE_DURATION = 200;
 const CARD_SCALE_EASING = Easing.bezier(0.16, 0.8, 0.24, 1);
 const STEP_OVERSHOOT_EASING = Easing.bezier(0.34, 1.4, 0.4, 1);
+const STEP_Y_COMPACT = [6, 72, 138, 204];
+const STEP_Y_REGULAR = [8, 86, 164, 242];
 
 export default function WelcomeGuideCard() {
   const merchant = useAuthStore((s) => s.merchant);
@@ -91,7 +93,7 @@ export default function WelcomeGuideCard() {
   const roadmapWidth = cardWidth - 32;
   const roadmapHeight = compact ? 266 : 308;
   const nodeSize = compact ? 46 : 50;
-  const stepY = compact ? [6, 72, 138, 204] : [8, 86, 164, 242];
+  const stepY = compact ? STEP_Y_COMPACT : STEP_Y_REGULAR;
   const firstSide = rtl ? 1 : -1;
   const nodeX = useCallback((index: number) => ((index % 2 === 0 ? firstSide : -firstSide) === -1 ? 44 : roadmapWidth - 44), [roadmapWidth, firstSide]);
   const labelSide = useCallback((index: number) => ((index % 2 === 0 ? -firstSide : firstSide) === -1 ? 'right' : 'left'), [firstSide]);
@@ -669,7 +671,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   toggleGradientWrap: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     borderRadius: 20,
     overflow: 'hidden',
   },

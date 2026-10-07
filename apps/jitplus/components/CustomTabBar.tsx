@@ -5,7 +5,7 @@ import { haptic } from '@/utils/haptics';
 import { CreditCard, Compass, User, Bell, QrCode } from 'lucide-react-native';
 import type { LucideIcon } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import type { BottomTabBarProps } from 'expo-router/js-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { ms, hp } from '@/utils/responsive';

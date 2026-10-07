@@ -61,7 +61,7 @@ import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
 if (
   Platform.OS === 'android' &&
   UIManager.setLayoutAnimationEnabledExperimental &&
-  typeof (global as Record<string, unknown>).nativeFabricUIManager === 'undefined'
+  typeof (globalThis as Record<string, unknown>).nativeFabricUIManager === 'undefined'
 ) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
@@ -846,7 +846,7 @@ export default function RegisterScreen() {
                     scrollEnabled
                     pitchEnabled={false}
                     rotateEnabled={false}
-                    showsPointsOfInterest={false}
+                    showsPointsOfInterests={false}
                     showsBuildings={false}
                   >
                     {latitude != null && longitude != null ? (

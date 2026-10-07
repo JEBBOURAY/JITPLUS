@@ -473,11 +473,11 @@ export default function StorePreviewScreen() {
       <View style={[styles.cardPreviewItem, { backgroundColor: cardBgColor ?? theme.bgCard }]}> 
         {bgSource ? (
           <>
-            <ExpoImage source={bgSource} style={StyleSheet.absoluteFillObject as any} contentFit="cover" cachePolicy="memory-disk" />
-            <View pointerEvents="none" style={[StyleSheet.absoluteFillObject as any, { backgroundColor: overlayColor }]} />
+            <ExpoImage source={bgSource} style={StyleSheet.absoluteFill as any} contentFit="cover" cachePolicy="memory-disk" />
+            <View pointerEvents="none" style={[StyleSheet.absoluteFill as any, { backgroundColor: overlayColor }]} />
           </>
         ) : cardBgColor ? (
-          <View pointerEvents="none" style={[StyleSheet.absoluteFillObject as any, { backgroundColor: overlayColor }]} />
+          <View pointerEvents="none" style={[StyleSheet.absoluteFill as any, { backgroundColor: overlayColor }]} />
         ) : null}
         <LinearGradient colors={[accentDark, accent]} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={styles.cardPreviewAccentBar} />
         <View style={[styles.cardPreviewIcon, { backgroundColor: theme.primaryBg }]}> 
@@ -614,8 +614,8 @@ export default function StorePreviewScreen() {
           {openSection === 'fiche' && (<>
             <View style={[styles.previewCard, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}> 
               <View style={styles.previewCover}> 
-                {merchant.coverUrl ? <ExpoImage source={resolveImageUrl(merchant.coverUrl)} style={StyleSheet.absoluteFillObject} contentFit="cover" cachePolicy="memory-disk" /> : <LinearGradient colors={[`${accent}40`, `${accent}10`, theme.bgCard]} style={StyleSheet.absoluteFillObject} />}
-                <LinearGradient colors={['transparent', theme.bgCard]} style={[StyleSheet.absoluteFillObject, { top: '40%' }]} />
+                {merchant.coverUrl ? <ExpoImage source={resolveImageUrl(merchant.coverUrl)} style={StyleSheet.absoluteFill} contentFit="cover" cachePolicy="memory-disk" /> : <LinearGradient colors={[`${accent}40`, `${accent}10`, theme.bgCard]} style={StyleSheet.absoluteFill} />}
+                <LinearGradient colors={['transparent', theme.bgCard]} style={[StyleSheet.absoluteFill, { top: '40%' }]} />
                 <View style={[styles.previewLogoRing, { backgroundColor: theme.bgCard, borderColor: theme.bgCard }]}> 
                   {merchant.logoUrl ? <ExpoImage source={resolveImageUrl(merchant.logoUrl)} style={styles.previewLogo} contentFit="cover" cachePolicy="memory-disk" /> : SelectedIconCmp ? <View style={[styles.previewLogo, { backgroundColor: `${accent}20`, justifyContent: 'center', alignItems: 'center' }]}><SelectedIconCmp size={ms(30)} color={accent} strokeWidth={1.75} /></View> : <View style={[styles.previewLogo, { backgroundColor: `${accent}20`, justifyContent: 'center', alignItems: 'center' }]}><Text style={{ fontSize: 28 }}>🏷️</Text></View>}
                   {merchant.logoUrl && SelectedIconCmp && <View style={[styles.previewIconBadge, { backgroundColor: accent, borderColor: theme.bgCard }]}><SelectedIconCmp size={ms(14)} color="#FFFFFF" strokeWidth={2} /></View>}
@@ -773,7 +773,7 @@ const styles = StyleSheet.create({
   galleryPosText: { color: '#fff', fontSize: ms(11), fontWeight: '700' },
   galleryCoverBadge: { position: 'absolute', top: 30, left: 4, flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 },
   galleryCoverText: { color: '#fff', fontSize: ms(9), fontWeight: '800', letterSpacing: 0.3 },
-  galleryBusyOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center' },
+  galleryBusyOverlay: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center' },
   galleryRemoveBtn: { position: 'absolute', top: 4, right: 4, width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center' },
   galleryOrderRow: { position: 'absolute', bottom: 4, left: 4, right: 4, flexDirection: 'row', justifyContent: 'space-between' },
   galleryOrderBtn: { width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center' },

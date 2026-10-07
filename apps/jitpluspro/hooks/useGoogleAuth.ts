@@ -9,7 +9,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { GoogleSignin, isErrorWithCode, statusCodes } from '@/utils/googleSignin';
 import { isNoAccountError } from '@/utils/authErrors';
-import { WEB_CLIENT_ID } from '@/config/google';
 
 interface UseGoogleAuthOptions {
   /** Optional callback when the flow is cancelled or errors */

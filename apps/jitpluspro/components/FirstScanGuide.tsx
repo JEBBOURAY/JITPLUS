@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Text, Pressable, Animated, Easing, StyleSheet, Linking, Platform } from 'react-native';
+import { View, Text, Pressable, Animated, Easing, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Download, X, Smartphone, ArrowRight } from 'lucide-react-native';
+import { X, Smartphone, ArrowRight } from 'lucide-react-native';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { ms, wp, hp, fontSize, radius } from '@/utils/responsive';
@@ -10,9 +10,6 @@ interface Props {
   visible: boolean;
   onClose: () => void;
 }
-
-const CLIENT_APP_ANDROID = 'https://play.google.com/store/apps/details?id=com.jitplus.client';
-const CLIENT_APP_IOS = 'https://apps.apple.com/app/jitplus/id6762307929';
 
 export default function FirstScanGuide({ visible, onClose }: Props) {
   const theme = useTheme();

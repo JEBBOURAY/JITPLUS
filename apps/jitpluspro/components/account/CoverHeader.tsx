@@ -157,7 +157,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   coverBg: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   coverUploadPending: {
     backgroundColor: '#00000066',

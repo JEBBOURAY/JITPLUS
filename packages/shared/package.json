@@ -9,12 +9,16 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@types/react": "19.1.17",
-    "typescript": "^5.9.3",
-    "react": "19.1.0",
-    "react-native": "0.81.5",
-    "react-dom": "19.1.0",
-    "expo-router": "6.0.23"
+    "@babel/core": "^7.29.7",
+    "@expo/log-box": "^57.0.4",
+    "@expo/metro-runtime": "~57.0.16",
+    "@react-native-community/netinfo": "12.0.1",
+    "@types/react": "~19.2.4",
+    "expo-router": "~57.0.25",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native": "0.86.3",
+    "typescript": "^5.9.3"
   },
   "dependencies": {
     "@tanstack/query-async-storage-persister": "^5.90.24",

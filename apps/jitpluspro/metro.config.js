@@ -63,11 +63,6 @@ config.resolver.extraNodeModules = {
   'react-native-screens': path.resolve(projectRoot, 'node_modules', 'react-native-screens'),
   'expo-router': path.resolve(projectRoot, 'node_modules', 'expo-router'),
   'expo-modules-core': path.resolve(monorepoRoot, 'node_modules', 'expo-modules-core'),
-  '@react-navigation/core': path.resolve(projectRoot, 'node_modules', '@react-navigation', 'core'),
-  '@react-navigation/native': path.resolve(projectRoot, 'node_modules', '@react-navigation', 'native'),
-  '@react-navigation/elements': path.resolve(projectRoot, 'node_modules', '@react-navigation', 'elements'),
-  '@react-navigation/bottom-tabs': path.resolve(projectRoot, 'node_modules', '@react-navigation', 'bottom-tabs'),
-  '@react-navigation/native-stack': path.resolve(projectRoot, 'node_modules', '@react-navigation', 'native-stack'),
 };
 
 // 5. Force-resolve singleton packages from projectRoot regardless of the
@@ -92,7 +87,6 @@ const FORCE_PREFIX = [
   'expo-router',                        // must be single copy (contexts)
   'expo-modules-core',                  // native module proxy / view adapter
   'expo-linear-gradient',               // native ExpoLinearGradient
-  '@react-navigation',                  // all scoped packages
   'lucide-react-native',
 ];
 

@@ -94,8 +94,6 @@ module.exports = ({ config }) => {
         foregroundImage: './assets/images/adaptive-icon-white.png',
         backgroundColor: '#FFFFFF',
       },
-      // Re-enabled for Android 15+ Edge-to-Edge compliance (targetSdkVersion 35)
-      edgeToEdgeEnabled: true,
       // Prevents unexpected back gesture from killing auth/OTP flows
       predictiveBackGestureEnabled: false,
       package: 'com.jitplus.client',
@@ -166,7 +164,7 @@ module.exports = ({ config }) => {
         'expo-build-properties',
         {
           ios: {
-            deploymentTarget: '15.1',
+            deploymentTarget: '16.4',
           },
           android: {
             compileSdkVersion: 36,

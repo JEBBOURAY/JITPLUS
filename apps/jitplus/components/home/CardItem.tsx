@@ -173,15 +173,15 @@ const CardItem = React.memo(function CardItem({
           <>
             <Image
               source={resolveImageUrl(cardBgUrl)}
-              style={StyleSheet.absoluteFillObject as any}
+              style={StyleSheet.absoluteFill as any}
               contentFit="cover"
               cachePolicy="memory-disk"
               recyclingKey={cardBgUrl}
             />
-            <View pointerEvents="none" style={[StyleSheet.absoluteFillObject as any, { backgroundColor: overlayColor }]} />
+            <View pointerEvents="none" style={[StyleSheet.absoluteFill as any, { backgroundColor: overlayColor }]} />
           </>
         ) : cardBgColor ? (
-          <View pointerEvents="none" style={[StyleSheet.absoluteFillObject as any, { backgroundColor: overlayColor }]} />
+          <View pointerEvents="none" style={[StyleSheet.absoluteFill as any, { backgroundColor: overlayColor }]} />
         ) : null}
         {rewardReady && (
           <Animated.View

@@ -4,14 +4,14 @@ import { Zap, ChevronRight, Crown } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { palette } from '@/contexts/ThemeContext';
 import { wp, hp, ms, fontSize as FS, radius } from '@/utils/responsive';
-import type { Router } from 'expo-router';
+import type { ImperativeRouter } from 'expo-router';
 import type { Merchant } from '@/types';
 
 interface Props {
   t: (key: string, opts?: Record<string, unknown>) => string;
   locale: string;
   merchant: Merchant | null;
-  router: Router;
+  router: ImperativeRouter;
   /** Team members can view plan status but must not manage billing. */
   isTeamMember?: boolean;
 }
@@ -74,7 +74,7 @@ export default React.memo(function TrialCard({ t, locale, merchant, router, isTe
         colors={['#0f031e', '#1a0533']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={StyleSheet.absoluteFillObject}
+        style={StyleSheet.absoluteFill}
       />
 
       {/* Top row: title + PREMIUM gold badge */}

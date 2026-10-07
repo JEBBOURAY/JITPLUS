@@ -26,7 +26,7 @@ jest.mock('@/contexts/LanguageContext', () => ({
 
 describe('StampGrid', () => {
   it('renders correct number of circles', () => {
-    const { getAllByTestId, toJSON } = render(
+    const { toJSON } = render(
       <StampGrid current={3} total={10} />,
     );
     const tree = toJSON();

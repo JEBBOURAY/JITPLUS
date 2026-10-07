@@ -3,7 +3,7 @@ import { Platform, View, Image, StyleSheet, ActivityIndicator, Linking, Text, Te
 import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
-import { DarkTheme, DefaultTheme, ThemeProvider as NavThemeProvider } from '@react-navigation/native';
+import { DarkTheme, DefaultTheme, ThemeProvider as NavThemeProvider } from 'expo-router/react-navigation';
 import { Lexend_400Regular, Lexend_500Medium, Lexend_600SemiBold, Lexend_700Bold } from '@expo-google-fonts/lexend';
 import { Cairo_400Regular, Cairo_500Medium, Cairo_600SemiBold, Cairo_700Bold } from '@expo-google-fonts/cairo';
 import * as SplashScreen from 'expo-splash-screen';
@@ -480,7 +480,7 @@ function RootLayoutNav() {
       {(forceUpdateStatus === 'update' || forceUpdateStatus === 'maintenance') && (
         <ForceUpdateModal status={forceUpdateStatus} storeUrl={forceUpdateStoreUrl} />
       )}
-      <StatusBar style={isDark ? 'light' : 'dark'} translucent backgroundColor="transparent" />
+      <StatusBar style={isDark ? 'light' : 'dark'} />
       <ErrorBoundary>
         <Stack
           screenOptions={{

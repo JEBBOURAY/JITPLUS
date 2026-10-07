@@ -11,7 +11,7 @@ import { ms } from '@/utils/responsive';
 import { getStoreUrl, getReviewUrl, SUPPORT_EMAIL } from '@/constants';
 import type { ThemeColors } from '@/contexts/ThemeContext';
 import type { Client } from '@/types';
-import type { Router } from 'expo-router';
+import type { ImperativeRouter } from 'expo-router';
 
 interface AccountSectionProps {
   theme: ThemeColors;
@@ -25,7 +25,7 @@ interface AccountSectionProps {
   handleExportData: () => void;
   handleLogout: () => void;
   handleDeleteAccount: () => void;
-  router: Router;
+  router: ImperativeRouter;
 }
 
 export default function AccountSection({

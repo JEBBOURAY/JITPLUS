@@ -4,13 +4,13 @@ import * as Clipboard from 'expo-clipboard';
 import { Gift, Copy, Check } from 'lucide-react-native';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { wp, hp, ms, fontSize as FS, radius } from '@/utils/responsive';
-import type { Router } from 'expo-router';
+import type { ImperativeRouter } from 'expo-router';
 
 interface Props {
   theme: ReturnType<typeof useTheme>;
   t: (key: string, opts?: Record<string, unknown>) => string;
   referralCode: string;
-  router: Router;
+  router: ImperativeRouter;
 }
 
 /**

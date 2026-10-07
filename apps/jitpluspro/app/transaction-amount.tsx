@@ -18,15 +18,12 @@ import {
   CircleUser,
   Gift,
   CheckCircle,
-  X,
   Award,
   Stamp,
   Trophy,
-  Info,
   PartyPopper,
   ArrowLeft,
   ShoppingBag,
-  Tag,
 } from 'lucide-react-native';
 
 // lottie-react-native is NOT available in Expo Go SDK 51+

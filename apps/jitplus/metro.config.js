@@ -58,11 +58,6 @@ config.resolver.extraNodeModules = {
   'react-native-screens': path.resolve(projectRoot, 'node_modules', 'react-native-screens'),
   'expo-router': path.resolve(projectRoot, 'node_modules', 'expo-router'),
   'expo-modules-core': path.resolve(workspaceRoot, 'node_modules', 'expo-modules-core'),
-  '@react-navigation/core': path.resolve(projectRoot, 'node_modules', '@react-navigation', 'core'),
-  '@react-navigation/native': path.resolve(projectRoot, 'node_modules', '@react-navigation', 'native'),
-  '@react-navigation/elements': path.resolve(projectRoot, 'node_modules', '@react-navigation', 'elements'),
-  '@react-navigation/bottom-tabs': path.resolve(projectRoot, 'node_modules', '@react-navigation', 'bottom-tabs'),
-  '@react-navigation/native-stack': path.resolve(projectRoot, 'node_modules', '@react-navigation', 'native-stack'),
 };
 
 // Force-resolve singleton packages from projectRoot.  In a pnpm monorepo many
@@ -80,7 +75,6 @@ const FORCE_PREFIX = [
   'expo-router',
   'expo-modules-core',
   'expo-linear-gradient',
-  '@react-navigation',
   'lucide-react-native',
 ];
 

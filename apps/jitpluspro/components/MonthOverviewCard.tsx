@@ -21,16 +21,13 @@ export interface MonthOverviewData {
 function MonthOverviewCard({ daily }: MonthOverviewData) {
   const { t, locale } = useLanguage();
 
-  const { bars, total, activeIndex, todayIndex } = useMemo(() => {
+  const { bars, total, activeIndex } = useMemo(() => {
     const daysInMonth = daily.length || 1;
-    const todayDay = new Date().getDate(); // 1-based
     // Downsample the month into ~15 buckets spanning day 1..daysInMonth.
     const buckets: number[] = new Array(BAR_COUNT).fill(0);
-    let todayBucket = BAR_COUNT - 1;
     for (let d = 0; d < daysInMonth; d++) {
       const b = Math.min(BAR_COUNT - 1, Math.floor((d / daysInMonth) * BAR_COUNT));
       buckets[b] += daily[d] ?? 0;
-      if (d + 1 === todayDay) todayBucket = b;
     }
     let max = 0;
     let maxIdx = 0;
@@ -38,7 +35,7 @@ function MonthOverviewCard({ daily }: MonthOverviewData) {
       if (buckets[i] > max) { max = buckets[i]; maxIdx = i; }
     }
     const sum = daily.reduce((acc, n) => acc + n, 0);
-    return { bars: buckets, total: sum, activeIndex: max > 0 ? maxIdx : -1, todayIndex: todayBucket };
+    return { bars: buckets, total: sum, activeIndex: max > 0 ? maxIdx : -1 };
   }, [daily]);
 
   const maxBar = Math.max(1, ...bars);

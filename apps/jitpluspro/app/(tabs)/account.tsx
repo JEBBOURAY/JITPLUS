@@ -487,7 +487,8 @@ export default function AccountScreen() {
 
   // Stable binary dark-mode toggle (keeps the InfoRow memo intact and flips
   // the theme deterministically in a single tap regardless of current mode).
-  const toggleDark = useCallback(() => theme.setDarkMode(!theme.isDark), [theme.isDark, theme.setDarkMode]);
+  const { isDark: themeIsDark, setDarkMode } = theme;
+  const toggleDark = useCallback(() => setDarkMode(!themeIsDark), [themeIsDark, setDarkMode]);
 
   const pickAndUploadLogo = useCallback(async () => {
     if (uploadLogoMutation.isPending) return;
@@ -763,16 +764,6 @@ export default function AccountScreen() {
     );
   }, [t]);
 
-  if (loading) {
-    return (
-      <View style={[styles.centered, { backgroundColor: theme.bg }]}>
-        <ActivityIndicator size="large" color={theme.primary} />
-      </View>
-    );
-  }
-
-  if (!merchant) return null;
-
   const contentContainerStyle = useMemo(
     () => [styles.contentContainer, { paddingBottom: hp(120) + insets.bottom }],
     [insets.bottom],
@@ -787,6 +778,16 @@ export default function AccountScreen() {
     () => [styles.body, { backgroundColor: theme.isDark ? theme.bgElevated : theme.bg }],
     [theme.isDark, theme.bgElevated, theme.bg],
   );
+
+  if (loading) {
+    return (
+      <View style={[styles.centered, { backgroundColor: theme.bg }]}>
+        <ActivityIndicator size="large" color={theme.primary} />
+      </View>
+    );
+  }
+
+  if (!merchant) return null;
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
