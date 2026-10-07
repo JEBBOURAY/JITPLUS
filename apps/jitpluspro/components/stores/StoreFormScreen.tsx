@@ -290,8 +290,10 @@ export default function StoreFormScreen({ mode, storeId, initialView = 'edit' }:
     }
   }, [isCreateMode]);
 
+  // dismissTo pops back to the /stores screen already in the stack (or
+  // replaces this one when there is none); replace would stack a duplicate.
   const handleBack = useCallback(() => {
-    router.replace('/stores');
+    router.dismissTo('/stores');
   }, [router]);
 
   const handleCategoryPick = useCallback((categorie: MerchantCategory) => {
@@ -489,7 +491,7 @@ export default function StoreFormScreen({ mode, storeId, initialView = 'edit' }:
 
     const ok = await saveStore(payload as any, currentStore?.id);
     if (!ok) return;
-    router.replace({ pathname: '/stores', params: { toast: isCreateMode ? 'created' : 'saved' } });
+    router.dismissTo({ pathname: '/stores', params: { toast: isCreateMode ? 'created' : 'saved' } });
   }, [alertMaxStores, canCreateStore, currentStore?.id, form, hasUsableName, isCreateMode, isValidWebsite, router, saveStore, t]);
 
   const referenceBadge = isReferenceStore ? t('stores.referenceLabel') : undefined;

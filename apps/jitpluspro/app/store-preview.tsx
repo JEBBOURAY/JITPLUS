@@ -1,6 +1,5 @@
 import React from 'react';
-import { useLocalSearchParams } from 'expo-router';
-import StorePreviewScreen from '@/components/store-preview/StorePreviewScreen';
+import { Redirect, useLocalSearchParams } from 'expo-router';
 import StoreFormScreen from '@/components/stores/StoreFormScreen';
 
 export default function StorePreviewRoute() {
@@ -16,5 +15,6 @@ export default function StorePreviewRoute() {
     return <StoreFormScreen mode={mode} storeId={storeIdParam} initialView="edit" />;
   }
 
-  return <StorePreviewScreen />;
+  // The fiche customisation now lives in the "Fiche & carte" tab of /stores.
+  return <Redirect href={{ pathname: '/stores', params: { tab: 'fiche' } }} />;
 }

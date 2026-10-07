@@ -1,9 +1,9 @@
 /**
- * Memoized subsections for the Store Preview screen.
+ * Memoized subsections for the "Fiche & carte" tab (FicheCommerceTab).
  *
  * Why this file exists
  * --------------------
- * `app/store-preview.tsx` is a single mega-component that mounts ~43 lucide
+ * `FicheCommerceTab.tsx` is a single mega-component that mounts ~43 lucide
  * icon tiles + 7 hour blocks + chip grids + gallery + color rows inside one
  * ScrollView. Before this split, every keystroke in the tagline TextInput
  * re-rendered the *entire* subtree, which is the root cause of the iOS lag

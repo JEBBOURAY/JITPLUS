@@ -286,13 +286,15 @@ function AccountSection({
               iconBg={VIOLET_ICON_BG}
             />
           )}
-          <InfoRow
-            icon={<SlidersHorizontal size={ms(16)} color={palette.violet} strokeWidth={1.5} />}
-            label={t('account.storePreviewTitle')}
-            subtitle={t('account.storePreviewSubtitle')}
-            onPress={goToStorePreview}
-            iconBg={VIOLET_ICON_BG}
-          />
+          {!isTeamMember && (
+            <InfoRow
+              icon={<SlidersHorizontal size={ms(16)} color={palette.violet} strokeWidth={1.5} />}
+              label={t('account.storePreviewTitle')}
+              subtitle={t('account.storePreviewSubtitle')}
+              onPress={goToStorePreview}
+              iconBg={VIOLET_ICON_BG}
+            />
+          )}
           <InfoRow
             icon={<Shield size={ms(16)} color={palette.violet} strokeWidth={1.5} />}
             label={t('account.legalSection')}
@@ -712,7 +714,7 @@ export default function AccountScreen() {
   const goToReferral = useCallback(() => router.push('/referral'), [router]);
   const goToLegal = useCallback(() => router.push('/legal'), [router]);
   const goToSecurity = useCallback(() => router.push('/security'), [router]);
-  const goToStorePreview = useCallback(() => router.push({ pathname: '/store-preview', params: { mode: 'edit', view: 'preview' } } as never), [router]);
+  const goToStorePreview = useCallback(() => router.push({ pathname: '/stores', params: { tab: 'fiche' } }), [router]);
   const goToDevices = useCallback(() => router.push('/security?tab=devices'), [router]);
   const goToDelete = useCallback(() => router.push('/security?tab=delete'), [router]);
 

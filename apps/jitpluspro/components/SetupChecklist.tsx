@@ -292,7 +292,7 @@ function SetupChecklistInner() {
         id: 'preview',
         title: t('checklist.secondaryPreview'),
         Icon: Eye,
-        onPress: () => router.push({ pathname: '/store-preview', params: { mode: 'edit', view: 'preview' } } as never),
+        onPress: () => router.push({ pathname: '/stores', params: { tab: 'fiche' } }),
       },
       {
         id: 'wheel',

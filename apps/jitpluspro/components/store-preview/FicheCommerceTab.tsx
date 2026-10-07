@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
-  I18nManager,
   Dimensions,
   KeyboardAvoidingView,
   Platform,
@@ -15,12 +14,10 @@ import {
 import { Image as ExpoImage } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
-  ArrowLeft,
   Save,
   Eye,
   Users,
   Gift,
-  Coins,
   Stamp,
   Palette as PaletteIcon,
   Shapes,
@@ -34,7 +31,7 @@ import {
   ChevronUp,
   Trash2,
 } from 'lucide-react-native';
-import { useRouter, useNavigation, useLocalSearchParams } from 'expo-router';
+import { useNavigation } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme, palette } from '@/contexts/ThemeContext';
@@ -71,9 +68,6 @@ const haptic = () => {
 
 const HEX_RE = /^#[0-9A-Fa-f]{6}$/;
 const DEFAULT_COLOR = palette.violet;
-const ICON_COLS = 6;
-const ICON_GAP = 8;
-const ICON_TILE_SIZE = Math.floor((Dimensions.get('window').width - 32 - (ICON_COLS - 1) * ICON_GAP) / ICON_COLS);
 const GALLERY_COLS = 3;
 const GALLERY_GAP = 10;
 const GALLERY_TILE_SIZE = Math.floor((Dimensions.get('window').width - 32 - (GALLERY_COLS - 1) * GALLERY_GAP) / GALLERY_COLS);
@@ -122,13 +116,23 @@ function hoursHasAny(h: OpeningHours): boolean {
   return WEEK_DAYS.some((d) => h[d]?.closed || (h[d]?.slots?.length ?? 0) > 0);
 }
 
-export default function StorePreviewScreen() {
+interface Props {
+  /** Open the full-screen client preview right away (Accueil eye shortcut). */
+  autoPreview?: boolean;
+  /** Distance from the top of the screen to this tab (header + tab bar). */
+  keyboardOffset?: number;
+}
+
+/**
+ * "Fiche & carte" tab of the stores screen: customises the public merchant
+ * profile (colors, icon, tagline, badges, hours, gallery) and the loyalty
+ * card design.
+ */
+export default function FicheCommerceTab({ autoPreview = false, keyboardOffset = 0 }: Props) {
   const { merchant, loadProfile } = useAuth();
   const theme = useTheme();
-  const router = useRouter();
   const { t } = useLanguage();
   const insets = useSafeAreaInsets();
-  const { autoPreview } = useLocalSearchParams<{ autoPreview?: string }>();
   const updateTheme = useUpdateMerchantTheme();
   const uploadGalleryImage = useUploadMerchantGalleryImage();
   const uploadCardBackground = useUploadMerchantCardBackground();
@@ -160,12 +164,7 @@ export default function StorePreviewScreen() {
   const [cardBgUrl, setCardBgUrl] = useState<string | null>(initialCardBg);
   const [cardBgColor, setCardBgColor] = useState<string | null>(initialCardBgColor);
   const [cardTextColor, setCardTextColor] = useState<'LIGHT' | 'DARK'>(initialCardTextColor);
-  const [previewVisible, setPreviewVisible] = useState(false);
-  // Deep-link shortcut (Accueil eye icon): open the real preview immediately,
-  // without requiring a tap on the in-screen "Preview" button first.
-  useEffect(() => {
-    if (autoPreview === '1') setPreviewVisible(true);
-  }, [autoPreview]);
+  const [previewVisible, setPreviewVisible] = useState(autoPreview);
   const [openSection, setOpenSection] = useState<'fiche' | 'card'>('fiche');
   const toggleSection = useCallback((s: 'fiche' | 'card') => {
     haptic();
@@ -424,9 +423,7 @@ export default function StorePreviewScreen() {
     const textPrimary = hasBg ? (cardTextColor === 'DARK' ? '#111827' : '#F9FAFB') : theme.text;
     const textSecondary = hasBg ? (cardTextColor === 'DARK' ? '#374151' : '#E5E7EB') : theme.textMuted;
     const accentDark = accent === palette.violet ? palette.violetDark : accent;
-    const isStamps = merchant?.loyaltyType === 'STAMPS';
     const sampleEarned = 3;
-    const samplePct = 35;
     const categoryEmoji = merchant?.categorie ? (CATEGORY_EMOJIS[merchant.categorie] ?? '🏷️') : '🏷️';
     const logoUrl = merchant?.logoUrl;
     const logoSource = logoUrl ? resolveImageUrl(logoUrl) : null;
@@ -491,26 +488,13 @@ export default function StorePreviewScreen() {
           <View style={styles.cardPreviewNameRow}> 
             <Text style={[styles.cardPreviewName, { color: textPrimary }]} numberOfLines={1}>{merchant?.nom || 'Commerce'}</Text> 
           </View>
-          {isStamps ? <View style={styles.cardPreviewStampsGrid}>{stampDots}</View> : (
-            <>
-              <View style={styles.cardPreviewPointsRow}> 
-                <View style={styles.cardPreviewPointsLeft}>
-                  <Coins size={ms(12)} color={palette.gold} strokeWidth={1.5} />
-                  <Text style={[styles.cardPreviewPointsValue, { color: hasBg ? textPrimary : accent }]}>120 pts</Text>
-                </View>
-                <Text style={[styles.cardPreviewPct, { color: textSecondary }]}>{samplePct}%</Text>
-              </View>
-              <View style={[styles.cardPreviewBar, { backgroundColor: hasBg ? 'rgba(255,255,255,0.25)' : theme.borderLight }]}>
-                <View style={[styles.cardPreviewBarFill, { width: `${samplePct}%`, backgroundColor: accent }]} />
-              </View>
-            </>
-          )}
+          <View style={styles.cardPreviewStampsGrid}>{stampDots}</View>
           <Text style={[styles.cardPreviewLastScan, { color: textSecondary }]} numberOfLines={1}>{t('storePreview.cardDesignPreviewSub')}</Text>
         </View>
         <ChevronRight size={ms(18)} color={textSecondary} strokeWidth={2} />
       </View>
     );
-  }, [cardBgUrl, cardBgColor, cardTextColor, accent, merchant?.loyaltyType, merchant?.logoUrl, merchant?.nom, merchant?.categorie, theme.text, theme.textMuted, theme.bgCard, theme.bgElevated, theme.borderLight, theme.primaryBg, t]);
+  }, [cardBgUrl, cardBgColor, cardTextColor, accent, merchant?.logoUrl, merchant?.nom, merchant?.categorie, theme.text, theme.textMuted, theme.bgCard, theme.bgElevated, theme.borderLight, theme.primaryBg, t]);
 
   const toggleBadge = useCallback((code: MerchantBadge) => {
     haptic();
@@ -590,19 +574,15 @@ export default function StorePreviewScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}> 
-      <View style={[styles.headerBar, { paddingTop: insets.top + 12 }]}> 
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel={t('common.back')}> 
-          <ArrowLeft size={22} color={theme.text} style={I18nManager.isRTL ? { transform: [{ scaleX: -1 }] } : undefined} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1} accessibilityRole="header">{t('storePreview.title')}</Text>
-        <TouchableOpacity onPress={() => { haptic(); setPreviewVisible(true); }} style={[styles.previewHeaderBtn, { backgroundColor: `${accent}15`, borderColor: `${accent}40` }]} hitSlop={8} accessibilityRole="button" accessibilityLabel={t('storePreview.previewBtn')}> 
-          <Eye size={ms(15)} color={accent} strokeWidth={2} />
-          <Text style={[styles.previewHeaderBtnText, { color: accent }]} numberOfLines={1}>{t('storePreview.previewBtn')}</Text>
-        </TouchableOpacity>
-      </View>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}> 
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={keyboardOffset}> 
         <ScrollView contentContainerStyle={{ paddingBottom: 140 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled"> 
-          <Text style={[styles.intro, { color: theme.textSecondary }]}>{t('storePreview.intro')}</Text>
+          <View style={styles.introRow}> 
+            <Text style={[styles.intro, { color: theme.textSecondary }]}>{t('storePreview.intro')}</Text>
+            <TouchableOpacity onPress={() => { haptic(); setPreviewVisible(true); }} style={[styles.previewBtn, { backgroundColor: `${accent}15`, borderColor: `${accent}40` }]} hitSlop={8} accessibilityRole="button" accessibilityLabel={t('storePreview.previewBtn')}> 
+              <Eye size={ms(15)} color={accent} strokeWidth={2} />
+              <Text style={[styles.previewBtnText, { color: accent }]} numberOfLines={1}>{t('storePreview.previewBtn')}</Text>
+            </TouchableOpacity>
+          </View>
           <TouchableOpacity activeOpacity={0.85} onPress={() => toggleSection('fiche')} style={[styles.groupBanner, { backgroundColor: `${accent}1A`, borderColor: `${accent}40` }]} accessibilityRole="button" accessibilityState={{ expanded: openSection === 'fiche' }}> 
             <View style={[styles.groupBannerStripe, { backgroundColor: accent }]} />
             <View style={styles.groupBannerContent}> 
@@ -631,8 +611,8 @@ export default function StorePreviewScreen() {
                   <View style={[styles.previewStatChip, { backgroundColor: theme.bgElevated }]}><Users size={13} color={accent} strokeWidth={2} /><Text style={[styles.previewStatText, { color: theme.text }]}>0</Text></View>
                 </View>
                 <View style={[styles.previewRewardRow, { backgroundColor: `${accent}08`, borderColor: `${accent}20` }]}> 
-                  <View style={[styles.previewRewardIcon, { backgroundColor: `${accent}15` }]}>{merchant.loyaltyType === 'STAMPS' ? <Stamp size={14} color={accent} strokeWidth={1.5} /> : <Coins size={14} color={accent} strokeWidth={1.5} />}</View>
-                  <Text style={[styles.previewRewardText, { color: theme.text }]} numberOfLines={1}>{merchant.loyaltyType === 'STAMPS' ? t('storePreview.stampCard') : t('storePreview.pointsAccumulation')}</Text>
+                  <View style={[styles.previewRewardIcon, { backgroundColor: `${accent}15` }]}><Stamp size={14} color={accent} strokeWidth={1.5} /></View>
+                  <Text style={[styles.previewRewardText, { color: theme.text }]} numberOfLines={1}>{t('storePreview.stampCard')}</Text>
                   <Gift size={14} color={accent} strokeWidth={1.5} />
                 </View>
               </View>
@@ -718,12 +698,10 @@ export default function StorePreviewScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  headerBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 12 },
-  backBtn: { padding: 4, marginRight: 8 },
-  headerTitle: { fontSize: ms(18), fontWeight: '700', flex: 1 },
-  previewHeaderBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, borderWidth: 1 },
-  previewHeaderBtnText: { fontSize: ms(12), fontWeight: '700' },
-  intro: { fontSize: ms(13), paddingHorizontal: 16, marginBottom: 12, lineHeight: ms(18) },
+  introRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, marginTop: 12, marginBottom: 12 },
+  intro: { flex: 1, fontSize: ms(13), lineHeight: ms(18) },
+  previewBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, borderWidth: 1 },
+  previewBtnText: { fontSize: ms(12), fontWeight: '700' },
   previewCard: { marginHorizontal: 16, borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden', marginBottom: 24 },
   previewCover: { height: hp(140), width: '100%', backgroundColor: '#0001' },
   previewLogoRing: { position: 'absolute', bottom: -28, left: 16, width: 72, height: 72, borderRadius: 36, borderWidth: 3, padding: 3 },
@@ -741,48 +719,9 @@ const styles = StyleSheet.create({
   previewRewardText: { flex: 1, fontSize: ms(12), fontWeight: '600' },
   sectionHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, marginBottom: 10, marginTop: 8 },
   sectionTitle: { fontSize: ms(14), fontWeight: '700' },
-  swatchGrid: { flexDirection: 'row', gap: 6, paddingHorizontal: 16, marginBottom: 18 },
-  swatch: { flex: 1, aspectRatio: 1, borderRadius: 12, borderWidth: 3, justifyContent: 'center', alignItems: 'center' },
-  iconGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: ICON_GAP, paddingHorizontal: 16, marginBottom: 8 },
-  iconTile: { width: ICON_TILE_SIZE, height: ICON_TILE_SIZE, borderRadius: 10, borderWidth: 1.5, justifyContent: 'center', alignItems: 'center' },
-  categoryChipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 16, marginBottom: 8 },
-  categoryChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: 1.5 },
-  categoryChipText: { fontSize: ms(13), fontWeight: '600' },
-  taglineWrap: { marginHorizontal: 16, marginBottom: 8, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 14, paddingVertical: 10 },
-  taglineInput: { fontSize: ms(15), minHeight: 56, textAlignVertical: 'top', padding: 0 },
-  taglineCounter: { fontSize: ms(11), textAlign: 'right', marginTop: 4 },
-  hoursContainer: { marginHorizontal: 16, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 12 },
-  hoursDayBlock: { paddingVertical: 12 },
-  hoursDayHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  hoursDayLabel: { fontSize: ms(14), fontWeight: '700' },
-  hoursToggle: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 14, borderWidth: 1 },
-  hoursToggleText: { fontSize: ms(12), fontWeight: '700' },
-  hoursSlots: { marginTop: 8, gap: 8 },
-  hoursSlotRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  hoursTimeInput: { width: 70, fontSize: ms(14), fontWeight: '600', textAlign: 'center', paddingVertical: 6, paddingHorizontal: 8, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth },
-  hoursTimeSep: { fontSize: ms(14), fontWeight: '700' },
-  hoursSlotRemove: { padding: 6, marginLeft: 'auto' },
-  hoursAddBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, borderWidth: 1, borderStyle: 'dashed' },
-  hoursAddText: { fontSize: ms(12), fontWeight: '700' },
-  galleryGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, gap: GALLERY_GAP },
   galleryCountPill: { marginLeft: 'auto', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, borderWidth: 1 },
   galleryCountText: { fontSize: ms(11), fontWeight: '700' },
-  galleryThumbWrap: { width: GALLERY_TILE_SIZE, height: GALLERY_TILE_SIZE, borderRadius: 12, overflow: 'hidden', position: 'relative' },
-  galleryThumb: { width: '100%', height: '100%' },
-  galleryPosPill: { position: 'absolute', top: 4, left: 4, minWidth: 22, height: 22, borderRadius: 11, paddingHorizontal: 6, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center' },
-  galleryPosText: { color: '#fff', fontSize: ms(11), fontWeight: '700' },
-  galleryCoverBadge: { position: 'absolute', top: 30, left: 4, flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 },
-  galleryCoverText: { color: '#fff', fontSize: ms(9), fontWeight: '800', letterSpacing: 0.3 },
-  galleryBusyOverlay: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center' },
-  galleryRemoveBtn: { position: 'absolute', top: 4, right: 4, width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center' },
-  galleryOrderRow: { position: 'absolute', bottom: 4, left: 4, right: 4, flexDirection: 'row', justifyContent: 'space-between' },
-  galleryOrderBtn: { width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center' },
-  galleryAddBtn: { width: GALLERY_TILE_SIZE, height: GALLERY_TILE_SIZE, borderRadius: 12, borderWidth: 2, borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6, gap: 6 },
-  galleryAddIconCircle: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  galleryAddText: { fontSize: ms(11), fontWeight: '700', textAlign: 'center' },
   helperText: { fontSize: ms(11), paddingHorizontal: 16, marginTop: 6 },
-  resetBtn: { alignSelf: 'center', marginTop: 24, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 999, borderWidth: 1 },
-  resetText: { fontSize: ms(13), fontWeight: '600' },
   saveBar: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 16, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth },
   saveBtn: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8, paddingVertical: 14, borderRadius: 14 },
   saveBtnText: { fontSize: ms(15), fontWeight: '700' },
@@ -797,29 +736,17 @@ const styles = StyleSheet.create({
   cardPreviewStampsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: wp(4), marginTop: hp(4), marginBottom: hp(4) },
   cardPreviewStampDot: { width: ms(26), height: ms(26), borderRadius: ms(13), borderWidth: 1.5, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   cardPreviewStampCheck: { color: '#fff', fontSize: ms(12), fontWeight: '700' },
-  cardPreviewPointsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: hp(4), marginBottom: hp(5) },
-  cardPreviewPointsLeft: { flexDirection: 'row', alignItems: 'center', gap: wp(4) },
-  cardPreviewPointsValue: { fontSize: ms(13), fontWeight: '700' },
-  cardPreviewPct: { fontSize: ms(11), fontWeight: '600' },
-  cardPreviewBar: { height: ms(7), borderRadius: ms(4), overflow: 'hidden', marginBottom: hp(4) },
-  cardPreviewBarFill: { height: '100%', borderRadius: ms(4) },
   cardPreviewLastScan: { fontSize: ms(11), fontWeight: '500', marginTop: hp(3), opacity: 0.75 },
   cardBgRow: { flexDirection: 'row', gap: 8, marginBottom: 14, flexWrap: 'wrap' },
-  cardColorRow: { flexDirection: 'row', gap: 10, marginBottom: 14, flexWrap: 'wrap' },
   groupBanner: { flexDirection: 'row', alignItems: 'stretch', gap: 12, borderWidth: 1, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 12, marginTop: 20, marginBottom: 12 },
   groupBannerStripe: { width: 4, borderRadius: 2 },
   groupBannerContent: { flex: 1, gap: 4, justifyContent: 'center' },
   groupBannerTitle: { fontSize: 17, fontWeight: '700', letterSpacing: 0.2 },
   groupBannerSubtitle: { fontSize: 12, fontWeight: '500' },
-  cardColorSwatch: { width: 36, height: 36, borderRadius: 18, borderWidth: 2, justifyContent: 'center', alignItems: 'center' },
   cardBgPickBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, borderWidth: 1.5, borderStyle: 'dashed' },
   cardBgPickIconCircle: { width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
   cardBgPickText: { fontSize: ms(13), fontWeight: '700' },
   cardBgRemoveBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth },
   cardBgRemoveText: { fontSize: ms(12), fontWeight: '700' },
   cardBgSubLabel: { fontSize: ms(13), fontWeight: '700', marginBottom: 4 },
-  cardTextColorRow: { flexDirection: 'row', gap: 8, marginBottom: 6 },
-  cardTextColorPill: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, borderWidth: 1.5 },
-  cardTextColorSwatch: { width: 22, height: 22, borderRadius: 11, borderWidth: StyleSheet.hairlineWidth },
-  cardTextColorLabel: { flex: 1, fontSize: ms(13), fontWeight: '700' },
 });

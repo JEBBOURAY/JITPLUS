@@ -222,7 +222,7 @@ export default function HomeScreen() {
   const avatarTourRef = useTourTarget('avatar');
   const dashboardTourRef = useTourTarget('dashboard');
   const goToAccount = useCallback(() => router.push('/account'), [router]);
-  const goToStorePreview = useCallback(() => router.push('/store-preview?mode=edit&view=preview&autoPreview=1' as never), [router]);
+  const goToStorePreview = useCallback(() => router.push({ pathname: '/stores', params: { tab: 'fiche', autoPreview: '1' } }), [router]);
   const goToDashboard = useCallback(() => {
     // Same premium gating as Compte → Mon commerce → Dashboard
     if (merchant?.plan !== 'PREMIUM') {
@@ -240,7 +240,7 @@ export default function HomeScreen() {
     () => [
       { key: 'stores', label: t('home.qaStores'), Icon: Store, route: '/stores', tourKey: 'stores' },
       { key: 'loyalty', label: t('home.qaLoyalty'), Icon: Coins, route: '/settings', tourKey: 'loyalty' },
-      { key: 'storecard', label: t('home.qaStoreCard'), Icon: CreditCard, route: '/store-preview?mode=edit&view=preview', tourKey: 'storecard' },
+      { key: 'storecard', label: t('home.qaStoreCard'), Icon: CreditCard, route: '/stores?tab=fiche', tourKey: 'storecard' },
       { key: 'team', label: t('home.qaTeam'), Icon: Users, route: '/team-management', premium: true, tourKey: 'team' },
       { key: 'wheel', label: t('home.qaWheel'), Icon: Ticket, route: '/lucky-wheel', premium: true, tourKey: 'wheel' },
     ],

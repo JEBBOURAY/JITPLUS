@@ -1,4 +1,3 @@
-import { useCallback } from 'react';
 import { useGuardedCallback } from './useGuardedCallback';
 import { Alert } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
@@ -26,10 +25,6 @@ export function useStoresCRUD() {
   const saving = createMutation.isPending || updateMutation.isPending;
 
   // ── Refresh ──
-  const loadStores = useCallback(() => {
-    qc.invalidateQueries({ queryKey: queryKeys.stores });
-  }, [qc]);
-
   const onRefresh = useGuardedCallback(async () => {
     await qc.invalidateQueries({ queryKey: queryKeys.stores });
   }, [qc]);
@@ -64,29 +59,8 @@ export function useStoresCRUD() {
   };
 
   // ── Delete ──
-  const deleteStore = (store: StoreType) => {
-    Alert.alert(
-      t('storesCrud.deleteTitle'),
-      t('storesCrud.deleteMsg', { name: store.nom }),
-      [
-        { text: t('common.cancel'), style: 'cancel' },
-        {
-          text: t('common.delete'),
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteMutation.mutateAsync(store.id);
-            } catch {
-              Alert.alert(t('common.error'), t('storesCrud.deleteError'));
-            }
-          },
-        },
-      ],
-    );
-  };
-
-  // Delete without the native Alert — used when the caller drives its own
-  // confirmation UI (custom modal). Returns whether the deletion succeeded.
+  // No confirmation here: the caller drives its own confirmation UI.
+  // Returns whether the deletion succeeded.
   const deleteStoreDirect = async (store: StoreType): Promise<boolean> => {
     try {
       await deleteMutation.mutateAsync(store.id);
@@ -111,12 +85,10 @@ export function useStoresCRUD() {
     loading,
     refreshing,
     saving,
-    loadStores,
     onRefresh,
     canCreateStore,
     alertMaxStores,
     saveStore,
-    deleteStore,
     deleteStoreDirect,
     toggleActive,
   };

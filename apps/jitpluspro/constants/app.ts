@@ -22,9 +22,8 @@ export const ASYNC_STORAGE_KEYS = {
   CHECKLIST_HIDDEN: 'checklist_hidden',
   // One-time discreet notice shown once after the user permanently hides the guide.
   CHECKLIST_HIDE_NOTICE_SEEN: 'checklist_hide_notice_seen',
-  // Contextual reminder banners (messages / store-preview) dismissals.
+  // Contextual reminder banner (messages) dismissal.
   MESSAGES_LOGO_BANNER_DISMISSED: 'messages_logo_banner_dismissed',
-  STORE_PREVIEW_BANNER_DISMISSED: 'store_preview_banner_dismissed',
   // Premium trial-end reminder (Accueil): stores the YYYY-MM-DD it was dismissed
   // so it reappears the next day until the trial converts or expires.
   TRIAL_END_BANNER_DISMISSED_DAY: 'trial_end_banner_dismissed_day',
