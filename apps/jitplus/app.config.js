@@ -65,9 +65,9 @@ module.exports = ({ config }) => {
       usesNonExemptEncryption: false,
       // Required for push notifications to arrive in background
       backgroundModes: ['remote-notification'],
-      config: {
-        googleMapsApiKey: GOOGLE_MAPS_KEY_IOS,
-      },
+      // Google Maps iOS key is set through the react-native-maps plugin below:
+      // `ios.config.googleMapsApiKey` makes Expo add the `react-native-google-maps`
+      // pod, which react-native-maps >= 1.22 no longer ships (pod install fails).
       infoPlist: {
         // Belt-and-suspenders: explicit Info.plist entry mirrors usesNonExemptEncryption above
         ITSAppUsesNonExemptEncryption: false,
@@ -161,6 +161,8 @@ module.exports = ({ config }) => {
       'expo-secure-store',
       '@react-native-google-signin/google-signin',
       'expo-apple-authentication',
+      // Adds `react-native-maps/Google` to the Podfile and the GMSServices init.
+      ['react-native-maps', { iosGoogleMapsApiKey: GOOGLE_MAPS_KEY_IOS }],
       [
         'expo-build-properties',
         {

@@ -69,9 +69,9 @@ module.exports = ({ config }) => {
       usesNonExemptEncryption: false,
       // Firebase config for iOS — download from Firebase Console → Project Settings → iOS app
       googleServicesFile: './GoogleService-Info.plist',
-      config: {
-        googleMapsApiKey: GOOGLE_MAPS_KEY_IOS,
-      },
+      // Google Maps iOS key is set through the react-native-maps plugin below:
+      // `ios.config.googleMapsApiKey` makes Expo add the `react-native-google-maps`
+      // pod, which react-native-maps >= 1.22 no longer ships (pod install fails).
       infoPlist: {
         // Belt-and-suspenders: explicit Info.plist entry mirrors usesNonExemptEncryption above
         ITSAppUsesNonExemptEncryption: false,
@@ -188,6 +188,8 @@ module.exports = ({ config }) => {
       ],
       '@react-native-google-signin/google-signin',
       'expo-apple-authentication',
+      // Adds `react-native-maps/Google` to the Podfile and the GMSServices init.
+      ['react-native-maps', { iosGoogleMapsApiKey: GOOGLE_MAPS_KEY_IOS }],
       // Explicit iOS / Android SDK targets — avoids surprises on Expo SDK bumps
       // and satisfies Google Play's Android 16 requirement for targetSdkVersion 36.
       [
