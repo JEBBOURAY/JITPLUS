@@ -20,7 +20,6 @@ import { PaginationQueryDto, SearchPaginationQueryDto } from '../common/dto/pagi
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { UpdatePushTokenDto } from './dto/update-push-token.dto';
-import { UpdateSettingsDto } from './dto/update-settings.dto';
 import { UpdateLoyaltySettingsDto, PreviewAccumulationLimitDto } from './dto/update-loyalty-settings.dto';
 import { UploadQueryDto, UploadType } from './dto/upload-logo.dto';
 import { VerifyQrDto } from './dto/verify-qr.dto';
@@ -55,7 +54,7 @@ import {
   MerchantPlanService,
   MerchantReferralService,
 } from './services';
-import { NotificationsService } from '../notifications/notifications.service';
+import { MerchantInboxService } from '../merchant-inbox/merchant-inbox.service';
 
 @ApiTags('Merchant')
 @ApiBearerAuth()
@@ -70,7 +69,7 @@ export class MerchantController {
     
     private planService: MerchantPlanService,
     private referralService: MerchantReferralService,
-    private notificationsService: NotificationsService,
+    private inboxService: MerchantInboxService,
     private configService: ConfigService,
     @Inject(STORAGE_PROVIDER) private storageProvider: IStorageProvider,
     private imageOptimizer: ImageOptimizerService,
@@ -430,12 +429,6 @@ export class MerchantController {
     return this.clientService.getClientDetail(clientId, user.userId);
   }
 
-  @Patch('settings')
-  @UseGuards(MerchantOwnerGuard)
-  async updateSettings(@Body() dto: UpdateSettingsDto, @CurrentUser() user: JwtPayload): Promise<MerchantProfileData> {
-    return this.profileService.updateSettings(user.userId, dto);
-  }
-
   @Post('loyalty-settings/preview-limit')
   @UseGuards(MerchantOwnerGuard)
   async previewAccumulationLimit(
@@ -443,6 +436,12 @@ export class MerchantController {
     @CurrentUser() user: JwtPayload,
   ): Promise<{ affectedClients: number }> {
     return this.profileService.previewAccumulationLimit(user.userId, dto.limit);
+  }
+
+  @Get('loyalty-settings/preview-slots')
+  @UseGuards(MerchantOwnerGuard)
+  async previewCardSlots(@CurrentUser() user: JwtPayload): Promise<{ clientsWithStamps: number }> {
+    return this.profileService.previewCardSlots(user.userId);
   }
 
   @Patch('loyalty-settings')
@@ -481,23 +480,24 @@ export class MerchantController {
     return this.planService.applyEarnedReferralMonths(user.userId);
   }
 
-  // ── Admin notifications inbox (received from admin dashboard) ─────────────
+  // ── Notifications inbox: admin broadcasts + automatic pushes ──────────────
+  // Route names kept as `admin-notifications` for already-installed app versions.
   @Get('admin-notifications')
   async getAdminNotifications(
     @CurrentUser() user: JwtPayload,
     @Query() { page, limit }: PaginationQueryDto,
   ) {
-    return this.notificationsService.getAdminNotificationsForMerchants(user.userId, page, limit);
+    return this.inboxService.list(user.userId, page, limit);
   }
 
   @Get('admin-notifications/unread-count')
   async getAdminNotificationsUnreadCount(@CurrentUser() user: JwtPayload) {
-    return { count: await this.notificationsService.countUnreadAdminNotifications(user.userId) };
+    return { count: await this.inboxService.countUnread(user.userId) };
   }
 
   @Patch('admin-notifications/mark-read')
   async markAdminNotificationsRead(@CurrentUser() user: JwtPayload) {
-    await this.notificationsService.markAllAdminNotifsRead(user.userId);
+    await this.inboxService.markAllRead(user.userId);
     return { success: true };
   }
 
@@ -506,7 +506,7 @@ export class MerchantController {
     @CurrentUser() user: JwtPayload,
     @Param('id') notificationId: string,
   ) {
-    await this.notificationsService.markSingleAdminNotifRead(user.userId, notificationId);
+    await this.inboxService.markRead(user.userId, notificationId);
     return { success: true };
   }
 }

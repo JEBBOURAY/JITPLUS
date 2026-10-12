@@ -3,7 +3,7 @@ import {
   MerchantCategory,
   MerchantPlan,
   AdminRole,
-  LoyaltyType,
+  StampEarningMode,
   TransactionType,
   TransactionStatus,
   AuditAction,
@@ -66,7 +66,7 @@ async function main() {
   // 2. MERCHANTS (12 marchands variés, multi-villes, multi-plans)
   // ═══════════════════════════════════════════
   const merchantsData = [
-    // ─── idx 0 : Café STAMPS, PREMIUM actif, onboarding OK, Casablanca ───
+    // ─── idx 0 : Café PER_VISIT, PREMIUM actif, onboarding OK, Casablanca ───
     {
       nom: 'Café Barrista',
       email: 'cafe@test.com',
@@ -78,11 +78,9 @@ async function main() {
       latitude: 33.5731,
       longitude: -7.6298,
       phoneNumber: '+212661000001',
-      pointsRate: 10,
-      loyaltyType: LoyaltyType.STAMPS,
+      stampEarningMode: StampEarningMode.PER_VISIT,
+      amountPerStamp: 10,
       stampsForReward: 8,
-      conversionRate: 10,
-      pointsRules: { pointsPerDirham: 1, minimumPurchase: 15 },
       plan: MerchantPlan.PREMIUM,
       planExpiresAt: daysFromNow(180),
       onboardingCompleted: true,
@@ -90,7 +88,7 @@ async function main() {
       socialLinks: { instagram: 'cafebarrista', facebook: 'cafebarrista', tiktok: 'cafebarrista_ma', website: 'https://cafebarrista.ma' },
       profileViews: 342,
     },
-    // ─── idx 1 : Épicerie POINTS, PREMIUM admin-activé, Casablanca ───
+    // ─── idx 1 : Épicerie PER_AMOUNT, PREMIUM admin-activé, Casablanca ───
     {
       nom: 'Épicerie Verte',
       email: 'epicerie@test.com',
@@ -102,10 +100,9 @@ async function main() {
       latitude: 33.5850,
       longitude: -7.6190,
       phoneNumber: '+212661000002',
-      pointsRate: 5,
-      loyaltyType: LoyaltyType.POINTS,
-      conversionRate: 5,
-      pointsRules: { pointsPerDirham: 1, minimumPurchase: 20 },
+      stampEarningMode: StampEarningMode.PER_AMOUNT,
+      amountPerStamp: 20,
+      stampsForReward: 10,
       plan: MerchantPlan.PREMIUM,
       planExpiresAt: daysFromNow(90),
       planActivatedByAdmin: true,
@@ -114,7 +111,7 @@ async function main() {
       socialLinks: { instagram: 'epicerieverte', tiktok: 'epicerieverte' },
       profileViews: 128,
     },
-    // ─── idx 2 : Restaurant POINTS, PREMIUM trial, Casablanca ───
+    // ─── idx 2 : Restaurant PER_AMOUNT, PREMIUM trial, Casablanca ───
     {
       nom: 'Restaurant Dar Zellij',
       email: 'restaurant@test.com',
@@ -126,10 +123,9 @@ async function main() {
       latitude: 33.5680,
       longitude: -7.6600,
       phoneNumber: '+212661000003',
-      pointsRate: 15,
-      loyaltyType: LoyaltyType.POINTS,
-      conversionRate: 15,
-      pointsRules: { pointsPerDirham: 2, minimumPurchase: 50 },
+      stampEarningMode: StampEarningMode.PER_AMOUNT,
+      amountPerStamp: 50,
+      stampsForReward: 10,
       plan: MerchantPlan.PREMIUM,
       planExpiresAt: daysFromNow(10),
       trialStartedAt: daysAgo(20),
@@ -139,7 +135,7 @@ async function main() {
       socialLinks: { instagram: 'darzellij', facebook: 'darzellij', tiktok: 'darzellij_officiel', youtube: 'darzellij' },
       profileViews: 567,
     },
-    // ─── idx 3 : Boulangerie STAMPS, FREE (trial expiré), Casablanca ───
+    // ─── idx 3 : Boulangerie PER_VISIT, FREE (trial expiré), Casablanca ───
     {
       nom: 'Boulangerie Al Fourno',
       email: 'boulangerie@test.com',
@@ -151,11 +147,9 @@ async function main() {
       latitude: 33.5890,
       longitude: -7.6150,
       phoneNumber: '+212661000004',
-      pointsRate: 8,
-      loyaltyType: LoyaltyType.STAMPS,
+      stampEarningMode: StampEarningMode.PER_VISIT,
+      amountPerStamp: 10,
       stampsForReward: 10,
-      conversionRate: 8,
-      pointsRules: { pointsPerDirham: 1, minimumPurchase: 10 },
       plan: MerchantPlan.FREE,
       trialStartedAt: daysAgo(45),
       onboardingCompleted: true,
@@ -163,7 +157,7 @@ async function main() {
       socialLinks: { facebook: 'alfourno', instagram: 'alfourno_boulangerie' },
       profileViews: 89,
     },
-    // ─── idx 4 : Pharmacie POINTS, FREE, Casablanca ───
+    // ─── idx 4 : Pharmacie PER_AMOUNT, FREE, Casablanca ───
     {
       nom: 'Pharmacie Centrale',
       email: 'pharmacie@test.com',
@@ -175,15 +169,14 @@ async function main() {
       latitude: 33.5950,
       longitude: -7.6100,
       phoneNumber: '+212661000005',
-      pointsRate: 3,
-      loyaltyType: LoyaltyType.POINTS,
-      conversionRate: 3,
-      pointsRules: { pointsPerDirham: 1, minimumPurchase: 30 },
+      stampEarningMode: StampEarningMode.PER_AMOUNT,
+      amountPerStamp: 30,
+      stampsForReward: 10,
       plan: MerchantPlan.FREE,
       onboardingCompleted: true,
       profileViews: 210,
     },
-    // ─── idx 5 : Librairie POINTS, PREMIUM, Rabat ───
+    // ─── idx 5 : Librairie PER_AMOUNT, PREMIUM, Rabat ───
     {
       nom: 'Librairie Kalila',
       email: 'librairie@test.com',
@@ -195,10 +188,9 @@ async function main() {
       latitude: 33.9911,
       longitude: -6.8498,
       phoneNumber: '+212661000006',
-      pointsRate: 12,
-      loyaltyType: LoyaltyType.POINTS,
-      conversionRate: 12,
-      pointsRules: { pointsPerDirham: 2, minimumPurchase: 40 },
+      stampEarningMode: StampEarningMode.PER_AMOUNT,
+      amountPerStamp: 40,
+      stampsForReward: 10,
       plan: MerchantPlan.PREMIUM,
       planExpiresAt: daysFromNow(365),
       onboardingCompleted: true,
@@ -206,7 +198,7 @@ async function main() {
       socialLinks: { instagram: 'librairekalila', tiktok: 'librairekalila', snapchat: 'librairekalila' },
       profileViews: 175,
     },
-    // ─── idx 6 : Fashion POINTS, PREMIUM, Casablanca ───
+    // ─── idx 6 : Fashion PER_AMOUNT, PREMIUM, Casablanca ───
     {
       nom: 'Fashion House',
       email: 'vetements@test.com',
@@ -218,10 +210,9 @@ async function main() {
       latitude: 33.5460,
       longitude: -7.6730,
       phoneNumber: '+212661000007',
-      pointsRate: 20,
-      loyaltyType: LoyaltyType.POINTS,
-      conversionRate: 20,
-      pointsRules: { pointsPerDirham: 3, minimumPurchase: 100 },
+      stampEarningMode: StampEarningMode.PER_AMOUNT,
+      amountPerStamp: 100,
+      stampsForReward: 10,
       plan: MerchantPlan.PREMIUM,
       planExpiresAt: daysFromNow(240),
       onboardingCompleted: true,
@@ -230,7 +221,7 @@ async function main() {
       socialLinks: { instagram: 'fashionhouse', tiktok: 'fashionhouse_ma', website: 'https://fashionhouse.ma' },
       profileViews: 890,
     },
-    // ─── idx 7 : Coiffure STAMPS, FREE, Marrakech ───
+    // ─── idx 7 : Coiffure PER_VISIT, FREE, Marrakech ───
     {
       nom: 'Coiffure Studio M',
       email: 'coiffure@test.com',
@@ -242,17 +233,15 @@ async function main() {
       latitude: 31.6340,
       longitude: -8.0080,
       phoneNumber: '+212661000008',
-      pointsRate: 10,
-      loyaltyType: LoyaltyType.STAMPS,
+      stampEarningMode: StampEarningMode.PER_VISIT,
+      amountPerStamp: 10,
       stampsForReward: 6,
-      conversionRate: 10,
-      pointsRules: { pointsPerDirham: 1, minimumPurchase: 50 },
       plan: MerchantPlan.FREE,
       onboardingCompleted: true,
       referralCode: 'COIF-STUD',
       profileViews: 66,
     },
-    // ─── idx 8 : TechZone POINTS, PREMIUM, Casablanca ───
+    // ─── idx 8 : TechZone PER_AMOUNT, PREMIUM, Casablanca ───
     {
       nom: 'TechZone',
       email: 'tech@test.com',
@@ -264,19 +253,18 @@ async function main() {
       latitude: 33.5700,
       longitude: -7.6500,
       phoneNumber: '+212661000009',
-      pointsRate: 25,
-      loyaltyType: LoyaltyType.POINTS,
-      conversionRate: 25,
-      pointsRules: { pointsPerDirham: 5, minimumPurchase: 200 },
+      stampEarningMode: StampEarningMode.PER_AMOUNT,
+      amountPerStamp: 100,
+      stampsForReward: 15,
       plan: MerchantPlan.PREMIUM,
       planExpiresAt: daysFromNow(60),
       onboardingCompleted: true,
       referralCode: 'TECH-ZONE',
       socialLinks: { instagram: 'techzonema', tiktok: 'techzone_maroc', website: 'https://techzone.ma' },
       profileViews: 445,
-      accumulationLimit: 1000,
+      accumulationLimit: 30,
     },
-    // ─── idx 9 : Sport STAMPS, PREMIUM trial, Casablanca ───
+    // ─── idx 9 : Sport PER_VISIT, PREMIUM trial, Casablanca ───
     {
       nom: 'FitClub Gym',
       email: 'sport@test.com',
@@ -288,11 +276,9 @@ async function main() {
       latitude: 33.5550,
       longitude: -7.6700,
       phoneNumber: '+212661000010',
-      pointsRate: 10,
-      loyaltyType: LoyaltyType.STAMPS,
+      stampEarningMode: StampEarningMode.PER_VISIT,
+      amountPerStamp: 10,
       stampsForReward: 12,
-      conversionRate: 10,
-      pointsRules: { pointsPerDirham: 1, minimumPurchase: 0 },
       plan: MerchantPlan.PREMIUM,
       planExpiresAt: daysFromNow(5),
       trialStartedAt: daysAgo(25),
@@ -301,7 +287,7 @@ async function main() {
       socialLinks: { instagram: 'fitclubgym', tiktok: 'fitclubgym_casa' },
       profileViews: 310,
     },
-    // ─── idx 10 : Beauté POINTS, FREE, onboarding NON complété (nouveau marchand) ───
+    // ─── idx 10 : Beauté PER_VISIT, FREE, onboarding NON complété (nouveau marchand) ───
     {
       nom: 'Beauté Zen',
       email: 'beaute@test.com',
@@ -313,15 +299,14 @@ async function main() {
       latitude: 35.7673,
       longitude: -5.7998,
       phoneNumber: '+212661000011',
-      pointsRate: 10,
-      loyaltyType: LoyaltyType.POINTS,
-      conversionRate: 10,
-      pointsRules: { pointsPerDirham: 1, minimumPurchase: 50 },
+      stampEarningMode: StampEarningMode.PER_VISIT,
+      amountPerStamp: 10,
+      stampsForReward: 10,
       plan: MerchantPlan.FREE,
       onboardingCompleted: false,
       profileViews: 5,
     },
-    // ─── idx 11 : Supermarché POINTS, PREMIUM, Casablanca — désactivé (banni) ───
+    // ─── idx 11 : Supermarché PER_AMOUNT, PREMIUM, Casablanca — désactivé (banni) ───
     {
       nom: 'SuperMarché Atlas',
       email: 'supermarche@test.com',
@@ -333,10 +318,9 @@ async function main() {
       latitude: 33.5580,
       longitude: -7.6820,
       phoneNumber: '+212661000012',
-      pointsRate: 5,
-      loyaltyType: LoyaltyType.POINTS,
-      conversionRate: 5,
-      pointsRules: { pointsPerDirham: 1, minimumPurchase: 50 },
+      stampEarningMode: StampEarningMode.PER_AMOUNT,
+      amountPerStamp: 50,
+      stampsForReward: 10,
       plan: MerchantPlan.PREMIUM,
       planExpiresAt: daysFromNow(30),
       onboardingCompleted: true,
@@ -360,11 +344,9 @@ async function main() {
         latitude: m.latitude,
         longitude: m.longitude,
         phoneNumber: m.phoneNumber,
-        pointsRate: m.pointsRate,
-        loyaltyType: m.loyaltyType,
-        conversionRate: m.conversionRate,
-        stampsForReward: (m as any).stampsForReward ?? 10,
-        pointsRules: m.pointsRules,
+        stampEarningMode: m.stampEarningMode,
+        amountPerStamp: m.amountPerStamp,
+        stampsForReward: m.stampsForReward,
         socialLinks: (m as any).socialLinks ?? undefined,
         profileViews: m.profileViews ?? 0,
         plan: m.plan ?? MerchantPlan.FREE,
@@ -427,31 +409,31 @@ async function main() {
   console.log(`✅ ${storesData.length} stores créés`);
 
   // ═══════════════════════════════════════════
-  // 4. REWARDS (récompenses par marchand)
+  // 4. REWARDS (récompenses par marchand, coût en tampons)
   // ═══════════════════════════════════════════
   const rewardsData = [
-    { merchantIdx: 0, titre: 'Café offert', cout: 80, description: 'Un café au choix offert (espresso, cappuccino, latte)' },
-    { merchantIdx: 0, titre: 'Croissant offert', cout: 50, description: 'Un croissant beurre ou chocolat offert' },
-    { merchantIdx: 0, titre: 'Petit-déj offert', cout: 150, description: 'Un petit-déjeuner complet offert (café + jus + viennoiserie)' },
-    { merchantIdx: 1, titre: 'Panier fruits', cout: 100, description: 'Un panier de fruits de saison offert' },
-    { merchantIdx: 1, titre: '-20% sur commande', cout: 150, description: '20% de réduction sur votre prochaine commande' },
-    { merchantIdx: 2, titre: 'Thé à la menthe offert', cout: 50, description: 'Un thé à la menthe traditionnel offert' },
-    { merchantIdx: 2, titre: 'Dessert offert', cout: 200, description: 'Un dessert au choix offert avec votre repas' },
-    { merchantIdx: 2, titre: 'Menu complet -25%', cout: 350, description: '25% de réduction sur un menu complet' },
-    { merchantIdx: 3, titre: 'Baguette offerte', cout: 60, description: 'Une baguette tradition offerte' },
-    { merchantIdx: 3, titre: 'Pâtisserie offerte', cout: 100, description: 'Une pâtisserie marocaine au choix' },
-    { merchantIdx: 4, titre: '-10% parapharmacie', cout: 80, description: '10% de réduction sur la parapharmacie' },
-    { merchantIdx: 5, titre: 'Livre de poche offert', cout: 120, description: 'Un livre de poche au choix offert' },
-    { merchantIdx: 5, titre: 'Carnet premium offert', cout: 200, description: 'Un carnet Moleskine offert' },
-    { merchantIdx: 6, titre: 'Bon de 50 DH', cout: 200, description: 'Bon d\'achat de 50 DH sur votre prochain achat' },
-    { merchantIdx: 6, titre: 'Bon de 100 DH', cout: 350, description: 'Bon d\'achat de 100 DH' },
-    { merchantIdx: 7, titre: 'Coupe gratuite', cout: 100, description: 'Une coupe homme ou femme offerte' },
-    { merchantIdx: 7, titre: 'Soin capillaire offert', cout: 150, description: 'Un soin capillaire professionnel offert' },
-    { merchantIdx: 8, titre: 'Accessoire offert', cout: 300, description: 'Un accessoire téléphone offert (coque, chargeur...)' },
-    { merchantIdx: 8, titre: 'Réparation -50%', cout: 500, description: '50% de réduction sur une réparation d\'écran' },
-    { merchantIdx: 9, titre: 'Séance offerte', cout: 100, description: 'Une séance de sport offerte avec coach' },
-    { merchantIdx: 9, titre: 'Mois -30%', cout: 250, description: '30% de réduction sur votre prochain abonnement mensuel' },
-    { merchantIdx: 10, titre: 'Soin visage offert', cout: 150, description: 'Un soin du visage express (30 min) offert' },
+    { merchantIdx: 0, titre: 'Café offert', cout: 8, description: 'Un café au choix offert (espresso, cappuccino, latte)' },
+    { merchantIdx: 0, titre: 'Croissant offert', cout: 10, description: 'Un croissant beurre ou chocolat offert' },
+    { merchantIdx: 0, titre: 'Petit-déj offert', cout: 15, description: 'Un petit-déjeuner complet offert (café + jus + viennoiserie)' },
+    { merchantIdx: 1, titre: 'Panier fruits', cout: 10, description: 'Un panier de fruits de saison offert' },
+    { merchantIdx: 1, titre: '-20% sur commande', cout: 15, description: '20% de réduction sur votre prochaine commande' },
+    { merchantIdx: 2, titre: 'Thé à la menthe offert', cout: 10, description: 'Un thé à la menthe traditionnel offert' },
+    { merchantIdx: 2, titre: 'Dessert offert', cout: 15, description: 'Un dessert au choix offert avec votre repas' },
+    { merchantIdx: 2, titre: 'Menu complet -25%', cout: 20, description: '25% de réduction sur un menu complet' },
+    { merchantIdx: 3, titre: 'Baguette offerte', cout: 10, description: 'Une baguette tradition offerte' },
+    { merchantIdx: 3, titre: 'Pâtisserie offerte', cout: 14, description: 'Une pâtisserie marocaine au choix' },
+    { merchantIdx: 4, titre: '-10% parapharmacie', cout: 10, description: '10% de réduction sur la parapharmacie' },
+    { merchantIdx: 5, titre: 'Livre de poche offert', cout: 10, description: 'Un livre de poche au choix offert' },
+    { merchantIdx: 5, titre: 'Carnet premium offert', cout: 16, description: 'Un carnet Moleskine offert' },
+    { merchantIdx: 6, titre: 'Bon de 50 DH', cout: 10, description: 'Bon d\'achat de 50 DH sur votre prochain achat' },
+    { merchantIdx: 6, titre: 'Bon de 100 DH', cout: 18, description: 'Bon d\'achat de 100 DH' },
+    { merchantIdx: 7, titre: 'Coupe gratuite', cout: 6, description: 'Une coupe homme ou femme offerte' },
+    { merchantIdx: 7, titre: 'Soin capillaire offert', cout: 9, description: 'Un soin capillaire professionnel offert' },
+    { merchantIdx: 8, titre: 'Accessoire offert', cout: 15, description: 'Un accessoire téléphone offert (coque, chargeur...)' },
+    { merchantIdx: 8, titre: 'Réparation -50%', cout: 25, description: '50% de réduction sur une réparation d\'écran' },
+    { merchantIdx: 9, titre: 'Séance offerte', cout: 12, description: 'Une séance de sport offerte avec coach' },
+    { merchantIdx: 9, titre: 'Mois -30%', cout: 20, description: '30% de réduction sur votre prochain abonnement mensuel' },
+    { merchantIdx: 10, titre: 'Soin visage offert', cout: 10, description: 'Un soin du visage express (30 min) offert' },
   ];
 
   const rewards: any[] = [];
@@ -563,43 +545,43 @@ async function main() {
   // 7. LOYALTY CARDS (chaque client actif a plusieurs cartes)
   // ═══════════════════════════════════════════
   const cardsData = [
-    // Ayoub (idx 0) → 5 marchands (client très actif)
-    { clientIdx: 0, merchantIdx: 0, points: 65 },
-    { clientIdx: 0, merchantIdx: 2, points: 180 },
-    { clientIdx: 0, merchantIdx: 3, points: 45 },
-    { clientIdx: 0, merchantIdx: 5, points: 80 },
-    { clientIdx: 0, merchantIdx: 8, points: 250 },
+    // Ayoub (idx 0) → 5 marchands (client très actif, à 1 tampon du café offert)
+    { clientIdx: 0, merchantIdx: 0, stamps: 7 },
+    { clientIdx: 0, merchantIdx: 2, stamps: 4 },
+    { clientIdx: 0, merchantIdx: 3, stamps: 2 },
+    { clientIdx: 0, merchantIdx: 5, stamps: 3 },
+    { clientIdx: 0, merchantIdx: 8, stamps: 10 },
     // Fatima (idx 1) → 4 marchands
-    { clientIdx: 1, merchantIdx: 0, points: 30 },
-    { clientIdx: 1, merchantIdx: 1, points: 90 },
-    { clientIdx: 1, merchantIdx: 4, points: 60 },
-    { clientIdx: 1, merchantIdx: 7, points: 4 },
+    { clientIdx: 1, merchantIdx: 0, stamps: 1 },
+    { clientIdx: 1, merchantIdx: 1, stamps: 9 },
+    { clientIdx: 1, merchantIdx: 4, stamps: 6 },
+    { clientIdx: 1, merchantIdx: 7, stamps: 1 },
     // Mohamed (idx 2) → 6 marchands (super actif)
-    { clientIdx: 2, merchantIdx: 0, points: 120 },
-    { clientIdx: 2, merchantIdx: 2, points: 95 },
-    { clientIdx: 2, merchantIdx: 5, points: 200 },
-    { clientIdx: 2, merchantIdx: 6, points: 150 },
-    { clientIdx: 2, merchantIdx: 8, points: 400 },
-    { clientIdx: 2, merchantIdx: 9, points: 80 },
+    { clientIdx: 2, merchantIdx: 0, stamps: 2 },
+    { clientIdx: 2, merchantIdx: 2, stamps: 3 },
+    { clientIdx: 2, merchantIdx: 5, stamps: 7 },
+    { clientIdx: 2, merchantIdx: 6, stamps: 4 },
+    { clientIdx: 2, merchantIdx: 8, stamps: 30 },
+    { clientIdx: 2, merchantIdx: 9, stamps: 1 },
     // Salma (idx 3) → 3 marchands
-    { clientIdx: 3, merchantIdx: 1, points: 40 },
-    { clientIdx: 3, merchantIdx: 3, points: 75 },
-    { clientIdx: 3, merchantIdx: 7, points: 55 },
+    { clientIdx: 3, merchantIdx: 1, stamps: 3 },
+    { clientIdx: 3, merchantIdx: 3, stamps: 1 },
+    { clientIdx: 3, merchantIdx: 7, stamps: 1 },
     // Yassine (idx 4) → 2 marchands
-    { clientIdx: 4, merchantIdx: 0, points: 15 },
-    { clientIdx: 4, merchantIdx: 9, points: 100 },
+    { clientIdx: 4, merchantIdx: 0, stamps: 1 },
+    { clientIdx: 4, merchantIdx: 9, stamps: 1 },
     // Khadija (idx 5) → 3 marchands (Google user)
-    { clientIdx: 5, merchantIdx: 0, points: 50 },
-    { clientIdx: 5, merchantIdx: 2, points: 120 },
-    { clientIdx: 5, merchantIdx: 6, points: 75 },
+    { clientIdx: 5, merchantIdx: 0, stamps: 1 },
+    { clientIdx: 5, merchantIdx: 2, stamps: 4 },
+    { clientIdx: 5, merchantIdx: 6, stamps: 2 },
     // Hassan (idx 6) → 2 marchands (téléphone only)
-    { clientIdx: 6, merchantIdx: 3, points: 30 },
-    { clientIdx: 6, merchantIdx: 4, points: 20 },
-    // Sophie (idx 7) → 2 marchands (française)
-    { clientIdx: 7, merchantIdx: 2, points: 160 },
-    { clientIdx: 7, merchantIdx: 6, points: 200 },
+    { clientIdx: 6, merchantIdx: 3, stamps: 1 },
+    { clientIdx: 6, merchantIdx: 4, stamps: 3 },
+    // Sophie (idx 7) → 2 marchands (française, récompense disponible au restaurant)
+    { clientIdx: 7, merchantIdx: 2, stamps: 11 },
+    { clientIdx: 7, merchantIdx: 6, stamps: 6 },
     // Omar (idx 8) → 1 marchand (push OFF)
-    { clientIdx: 8, merchantIdx: 0, points: 25 },
+    { clientIdx: 8, merchantIdx: 0, stamps: 1 },
   ];
 
   const cards: any[] = [];
@@ -608,7 +590,7 @@ async function main() {
       data: {
         clientId: clients[c.clientIdx].id,
         merchantId: merchants[c.merchantIdx].id,
-        points: c.points,
+        stamps: c.stamps,
       },
     });
     cards.push(card);
@@ -618,87 +600,103 @@ async function main() {
   // ═══════════════════════════════════════════
   // 8. TRANSACTIONS (historique riche et réaliste)
   // ═══════════════════════════════════════════
+  // PER_VISIT : 1 tampon par passage. PER_AMOUNT : floor(montant / amountPerStamp), max 20.
+  // Les soldes des cartes (section 7) correspondent à la somme des transactions actives.
   const txData: Array<{
     clientIdx: number; merchantIdx: number; type: TransactionType;
-    amount: number; points: number; daysAgo: number;
+    amount: number; stamps: number; daysAgo: number;
     rewardIdx?: number; teamIdx?: number; status?: TransactionStatus; note?: string;
   }> = [
-    // ── Ayoub @ Café Barrista (Stamps) ──
-    { clientIdx: 0, merchantIdx: 0, type: TransactionType.EARN_POINTS, amount: 35, points: 35, daysAgo: 45, teamIdx: 0 },
-    { clientIdx: 0, merchantIdx: 0, type: TransactionType.EARN_POINTS, amount: 20, points: 20, daysAgo: 30, teamIdx: 1 },
-    { clientIdx: 0, merchantIdx: 0, type: TransactionType.EARN_POINTS, amount: 15, points: 10, daysAgo: 10, teamIdx: 0 },
-    // ── Ayoub @ Restaurant Dar Zellij ──
-    { clientIdx: 0, merchantIdx: 2, type: TransactionType.EARN_POINTS, amount: 120, points: 80, daysAgo: 40, teamIdx: 3 },
-    { clientIdx: 0, merchantIdx: 2, type: TransactionType.EARN_POINTS, amount: 85, points: 60, daysAgo: 25 },
-    { clientIdx: 0, merchantIdx: 2, type: TransactionType.EARN_POINTS, amount: 60, points: 40, daysAgo: 5, teamIdx: 4 },
+    // ── Ayoub @ Café Barrista (par passage) ──
+    { clientIdx: 0, merchantIdx: 0, type: TransactionType.EARN_STAMPS, amount: 35, stamps: 1, daysAgo: 45, teamIdx: 0 },
+    { clientIdx: 0, merchantIdx: 0, type: TransactionType.EARN_STAMPS, amount: 20, stamps: 1, daysAgo: 30, teamIdx: 1 },
+    { clientIdx: 0, merchantIdx: 0, type: TransactionType.EARN_STAMPS, amount: 15, stamps: 1, daysAgo: 10, teamIdx: 0 },
+    { clientIdx: 0, merchantIdx: 0, type: TransactionType.EARN_STAMPS, amount: 25, stamps: 1, daysAgo: 7, teamIdx: 2 },
+    { clientIdx: 0, merchantIdx: 0, type: TransactionType.EARN_STAMPS, amount: 18, stamps: 1, daysAgo: 5 },
+    { clientIdx: 0, merchantIdx: 0, type: TransactionType.EARN_STAMPS, amount: 30, stamps: 1, daysAgo: 3, teamIdx: 1 },
+    { clientIdx: 0, merchantIdx: 0, type: TransactionType.EARN_STAMPS, amount: 22, stamps: 1, daysAgo: 1, teamIdx: 0 },
+    // ── Ayoub @ Restaurant Dar Zellij (1 tampon / 50 DH) ──
+    { clientIdx: 0, merchantIdx: 2, type: TransactionType.EARN_STAMPS, amount: 120, stamps: 2, daysAgo: 40, teamIdx: 3 },
+    { clientIdx: 0, merchantIdx: 2, type: TransactionType.EARN_STAMPS, amount: 85, stamps: 1, daysAgo: 25 },
+    { clientIdx: 0, merchantIdx: 2, type: TransactionType.EARN_STAMPS, amount: 60, stamps: 1, daysAgo: 5, teamIdx: 4 },
     // ── Ayoub @ Boulangerie ──
-    { clientIdx: 0, merchantIdx: 3, type: TransactionType.EARN_POINTS, amount: 25, points: 25, daysAgo: 18 },
-    { clientIdx: 0, merchantIdx: 3, type: TransactionType.EARN_POINTS, amount: 20, points: 20, daysAgo: 8 },
-    // ── Ayoub @ Librairie ──
-    { clientIdx: 0, merchantIdx: 5, type: TransactionType.EARN_POINTS, amount: 120, points: 80, daysAgo: 15 },
-    // ── Ayoub @ TechZone ──
-    { clientIdx: 0, merchantIdx: 8, type: TransactionType.EARN_POINTS, amount: 500, points: 250, daysAgo: 12, teamIdx: 7 },
+    { clientIdx: 0, merchantIdx: 3, type: TransactionType.EARN_STAMPS, amount: 25, stamps: 1, daysAgo: 18 },
+    { clientIdx: 0, merchantIdx: 3, type: TransactionType.EARN_STAMPS, amount: 20, stamps: 1, daysAgo: 8 },
+    // ── Ayoub @ Librairie (1 tampon / 40 DH) ──
+    { clientIdx: 0, merchantIdx: 5, type: TransactionType.EARN_STAMPS, amount: 120, stamps: 3, daysAgo: 15 },
+    // ── Ayoub @ TechZone (1 tampon / 100 DH) ──
+    { clientIdx: 0, merchantIdx: 8, type: TransactionType.EARN_STAMPS, amount: 500, stamps: 5, daysAgo: 12, teamIdx: 7 },
 
     // ── Fatima @ Café ──
-    { clientIdx: 1, merchantIdx: 0, type: TransactionType.EARN_POINTS, amount: 30, points: 30, daysAgo: 20, teamIdx: 1 },
-    // ── Fatima @ Épicerie ──
-    { clientIdx: 1, merchantIdx: 1, type: TransactionType.EARN_POINTS, amount: 80, points: 40, daysAgo: 14 },
-    { clientIdx: 1, merchantIdx: 1, type: TransactionType.EARN_POINTS, amount: 100, points: 50, daysAgo: 7 },
-    // ── Fatima @ Pharmacie ──
-    { clientIdx: 1, merchantIdx: 4, type: TransactionType.EARN_POINTS, amount: 200, points: 60, daysAgo: 9 },
+    { clientIdx: 1, merchantIdx: 0, type: TransactionType.EARN_STAMPS, amount: 30, stamps: 1, daysAgo: 20, teamIdx: 1 },
+    // ── Fatima @ Épicerie (1 tampon / 20 DH) ──
+    { clientIdx: 1, merchantIdx: 1, type: TransactionType.EARN_STAMPS, amount: 80, stamps: 4, daysAgo: 14 },
+    { clientIdx: 1, merchantIdx: 1, type: TransactionType.EARN_STAMPS, amount: 100, stamps: 5, daysAgo: 7 },
+    // ── Fatima @ Pharmacie (1 tampon / 30 DH) ──
+    { clientIdx: 1, merchantIdx: 4, type: TransactionType.EARN_STAMPS, amount: 200, stamps: 6, daysAgo: 9 },
     // ── Fatima @ Coiffure (Marrakech) ──
-    { clientIdx: 1, merchantIdx: 7, type: TransactionType.EARN_POINTS, amount: 150, points: 4, daysAgo: 3 },
+    { clientIdx: 1, merchantIdx: 7, type: TransactionType.EARN_STAMPS, amount: 150, stamps: 1, daysAgo: 3 },
 
-    // ── Mohamed @ Café (gros client — a redemé un reward) ──
-    { clientIdx: 2, merchantIdx: 0, type: TransactionType.EARN_POINTS, amount: 200, points: 200, daysAgo: 50, teamIdx: 0 },
-    { clientIdx: 2, merchantIdx: 0, type: TransactionType.EARN_POINTS, amount: 50, points: 50, daysAgo: 35 },
-    { clientIdx: 2, merchantIdx: 0, type: TransactionType.REDEEM_REWARD, amount: 0, points: 80, daysAgo: 30, rewardIdx: 0 },
-    { clientIdx: 2, merchantIdx: 0, type: TransactionType.EARN_POINTS, amount: 40, points: 40, daysAgo: 15 },
+    // ── Mohamed @ Café (gros client — a échangé une récompense) ──
+    { clientIdx: 2, merchantIdx: 0, type: TransactionType.EARN_STAMPS, amount: 40, stamps: 1, daysAgo: 58, teamIdx: 0 },
+    { clientIdx: 2, merchantIdx: 0, type: TransactionType.EARN_STAMPS, amount: 25, stamps: 1, daysAgo: 55 },
+    { clientIdx: 2, merchantIdx: 0, type: TransactionType.EARN_STAMPS, amount: 30, stamps: 1, daysAgo: 51, teamIdx: 1 },
+    { clientIdx: 2, merchantIdx: 0, type: TransactionType.EARN_STAMPS, amount: 200, stamps: 1, daysAgo: 50, teamIdx: 0 },
+    { clientIdx: 2, merchantIdx: 0, type: TransactionType.EARN_STAMPS, amount: 35, stamps: 1, daysAgo: 45 },
+    { clientIdx: 2, merchantIdx: 0, type: TransactionType.EARN_STAMPS, amount: 20, stamps: 1, daysAgo: 40 },
+    { clientIdx: 2, merchantIdx: 0, type: TransactionType.EARN_STAMPS, amount: 50, stamps: 1, daysAgo: 35 },
+    { clientIdx: 2, merchantIdx: 0, type: TransactionType.EARN_STAMPS, amount: 28, stamps: 1, daysAgo: 32, teamIdx: 2 },
+    { clientIdx: 2, merchantIdx: 0, type: TransactionType.REDEEM_REWARD, amount: 0, stamps: 8, daysAgo: 30, rewardIdx: 0 },
+    { clientIdx: 2, merchantIdx: 0, type: TransactionType.EARN_STAMPS, amount: 40, stamps: 1, daysAgo: 15 },
+    { clientIdx: 2, merchantIdx: 0, type: TransactionType.EARN_STAMPS, amount: 40, stamps: 1, daysAgo: 14 },
+    { clientIdx: 2, merchantIdx: 0, type: TransactionType.ADJUST_STAMPS, amount: 0, stamps: -1, daysAgo: 14, note: 'Correction: double scan détecté' },
+    { clientIdx: 2, merchantIdx: 0, type: TransactionType.EARN_STAMPS, amount: 32, stamps: 1, daysAgo: 6 },
     // ── Mohamed @ Restaurant ──
-    { clientIdx: 2, merchantIdx: 2, type: TransactionType.EARN_POINTS, amount: 150, points: 95, daysAgo: 22, teamIdx: 3 },
+    { clientIdx: 2, merchantIdx: 2, type: TransactionType.EARN_STAMPS, amount: 150, stamps: 3, daysAgo: 22, teamIdx: 3 },
     // ── Mohamed @ Librairie ──
-    { clientIdx: 2, merchantIdx: 5, type: TransactionType.EARN_POINTS, amount: 300, points: 200, daysAgo: 28 },
-    // ── Mohamed @ Fashion ──
-    { clientIdx: 2, merchantIdx: 6, type: TransactionType.EARN_POINTS, amount: 450, points: 150, daysAgo: 6, teamIdx: 5 },
-    // ── Mohamed @ TechZone (a atteint la limite d'accumulation) ──
-    { clientIdx: 2, merchantIdx: 8, type: TransactionType.EARN_POINTS, amount: 800, points: 400, daysAgo: 20, teamIdx: 7 },
+    { clientIdx: 2, merchantIdx: 5, type: TransactionType.EARN_STAMPS, amount: 300, stamps: 7, daysAgo: 28 },
+    // ── Mohamed @ Fashion (1 tampon / 100 DH) ──
+    { clientIdx: 2, merchantIdx: 6, type: TransactionType.EARN_STAMPS, amount: 450, stamps: 4, daysAgo: 6, teamIdx: 5 },
+    // ── Mohamed @ TechZone (a atteint la limite d'accumulation de 30 tampons) ──
+    { clientIdx: 2, merchantIdx: 8, type: TransactionType.EARN_STAMPS, amount: 2000, stamps: 20, daysAgo: 20, teamIdx: 7 },
+    { clientIdx: 2, merchantIdx: 8, type: TransactionType.EARN_STAMPS, amount: 1200, stamps: 10, daysAgo: 9, teamIdx: 7 },
     // ── Mohamed @ FitClub ──
-    { clientIdx: 2, merchantIdx: 9, type: TransactionType.EARN_POINTS, amount: 300, points: 80, daysAgo: 3, teamIdx: 8 },
+    { clientIdx: 2, merchantIdx: 9, type: TransactionType.EARN_STAMPS, amount: 300, stamps: 1, daysAgo: 3, teamIdx: 8 },
 
     // ── Salma ──
-    { clientIdx: 3, merchantIdx: 1, type: TransactionType.EARN_POINTS, amount: 60, points: 40, daysAgo: 16 },
-    { clientIdx: 3, merchantIdx: 3, type: TransactionType.EARN_POINTS, amount: 50, points: 75, daysAgo: 11 },
-    { clientIdx: 3, merchantIdx: 7, type: TransactionType.EARN_POINTS, amount: 120, points: 55, daysAgo: 4 },
+    { clientIdx: 3, merchantIdx: 1, type: TransactionType.EARN_STAMPS, amount: 60, stamps: 3, daysAgo: 16 },
+    { clientIdx: 3, merchantIdx: 3, type: TransactionType.EARN_STAMPS, amount: 50, stamps: 1, daysAgo: 11 },
+    { clientIdx: 3, merchantIdx: 7, type: TransactionType.EARN_STAMPS, amount: 120, stamps: 1, daysAgo: 4 },
 
     // ── Yassine ──
-    { clientIdx: 4, merchantIdx: 0, type: TransactionType.EARN_POINTS, amount: 15, points: 15, daysAgo: 2, teamIdx: 2 },
-    { clientIdx: 4, merchantIdx: 9, type: TransactionType.EARN_POINTS, amount: 600, points: 100, daysAgo: 1, teamIdx: 9 },
+    { clientIdx: 4, merchantIdx: 0, type: TransactionType.EARN_STAMPS, amount: 15, stamps: 1, daysAgo: 2, teamIdx: 2 },
+    { clientIdx: 4, merchantIdx: 9, type: TransactionType.EARN_STAMPS, amount: 600, stamps: 1, daysAgo: 1, teamIdx: 9 },
 
     // ── Khadija (Google user) ──
-    { clientIdx: 5, merchantIdx: 0, type: TransactionType.EARN_POINTS, amount: 50, points: 50, daysAgo: 12, teamIdx: 0 },
-    { clientIdx: 5, merchantIdx: 2, type: TransactionType.EARN_POINTS, amount: 200, points: 120, daysAgo: 8 },
-    { clientIdx: 5, merchantIdx: 6, type: TransactionType.EARN_POINTS, amount: 250, points: 75, daysAgo: 4 },
+    { clientIdx: 5, merchantIdx: 0, type: TransactionType.EARN_STAMPS, amount: 50, stamps: 1, daysAgo: 12, teamIdx: 0 },
+    { clientIdx: 5, merchantIdx: 2, type: TransactionType.EARN_STAMPS, amount: 200, stamps: 4, daysAgo: 8 },
+    { clientIdx: 5, merchantIdx: 6, type: TransactionType.EARN_STAMPS, amount: 250, stamps: 2, daysAgo: 4 },
 
     // ── Hassan (téléphone only) ──
-    { clientIdx: 6, merchantIdx: 3, type: TransactionType.EARN_POINTS, amount: 30, points: 30, daysAgo: 7 },
-    { clientIdx: 6, merchantIdx: 4, type: TransactionType.EARN_POINTS, amount: 100, points: 20, daysAgo: 5 },
+    { clientIdx: 6, merchantIdx: 3, type: TransactionType.EARN_STAMPS, amount: 30, stamps: 1, daysAgo: 7 },
+    { clientIdx: 6, merchantIdx: 4, type: TransactionType.EARN_STAMPS, amount: 100, stamps: 3, daysAgo: 5 },
 
     // ── Sophie (française) ──
-    { clientIdx: 7, merchantIdx: 2, type: TransactionType.EARN_POINTS, amount: 300, points: 160, daysAgo: 18, teamIdx: 3 },
-    { clientIdx: 7, merchantIdx: 6, type: TransactionType.EARN_POINTS, amount: 600, points: 200, daysAgo: 10, teamIdx: 6 },
+    { clientIdx: 7, merchantIdx: 2, type: TransactionType.EARN_STAMPS, amount: 300, stamps: 6, daysAgo: 18, teamIdx: 3 },
+    { clientIdx: 7, merchantIdx: 2, type: TransactionType.EARN_STAMPS, amount: 250, stamps: 5, daysAgo: 2, teamIdx: 4 },
+    { clientIdx: 7, merchantIdx: 6, type: TransactionType.EARN_STAMPS, amount: 600, stamps: 6, daysAgo: 10, teamIdx: 6 },
 
     // ── Omar (push OFF) ──
-    { clientIdx: 8, merchantIdx: 0, type: TransactionType.EARN_POINTS, amount: 25, points: 25, daysAgo: 3 },
+    { clientIdx: 8, merchantIdx: 0, type: TransactionType.EARN_STAMPS, amount: 25, stamps: 1, daysAgo: 3 },
 
-    // ── Transactions ADJUST_POINTS (correction admin) ──
-    { clientIdx: 2, merchantIdx: 0, type: TransactionType.ADJUST_POINTS, amount: 0, points: -10, daysAgo: 14, note: 'Correction: double scan détecté' },
-    { clientIdx: 0, merchantIdx: 8, type: TransactionType.ADJUST_POINTS, amount: 0, points: 50, daysAgo: 11, note: 'Bonus fidélité anniversaire' },
+    // ── Ajustement manuel (bonus) ──
+    { clientIdx: 0, merchantIdx: 8, type: TransactionType.ADJUST_STAMPS, amount: 0, stamps: 5, daysAgo: 11, note: 'Bonus fidélité anniversaire' },
 
-    // ── Transaction CANCELLED (annulée) ──
-    { clientIdx: 1, merchantIdx: 1, type: TransactionType.EARN_POINTS, amount: 50, points: 25, daysAgo: 5, status: TransactionStatus.CANCELLED, note: 'Annulée par le client' },
+    // ── Transaction CANCELLED (annulée, exclue du solde) ──
+    { clientIdx: 1, merchantIdx: 1, type: TransactionType.EARN_STAMPS, amount: 50, stamps: 2, daysAgo: 5, status: TransactionStatus.CANCELLED, note: 'Annulée par le client' },
 
-    // ── Transaction LOYALTY_PROGRAM_CHANGE ──
-    { clientIdx: 2, merchantIdx: 0, type: TransactionType.LOYALTY_PROGRAM_CHANGE, amount: 0, points: 0, daysAgo: 60, note: 'Migration POINTS → STAMPS' },
+    // ── Transaction LOYALTY_PROGRAM_CHANGE (entrée d'historique informative, 0 tampon) ──
+    { clientIdx: 2, merchantIdx: 0, type: TransactionType.LOYALTY_PROGRAM_CHANGE, amount: 0, stamps: 0, daysAgo: 60, note: 'Changement de programme de fidélité' },
   ];
 
   for (const tx of txData) {
@@ -708,7 +706,7 @@ async function main() {
         merchantId: merchants[tx.merchantIdx].id,
         type: tx.type,
         amount: tx.amount,
-        points: Math.abs(tx.points),
+        stamps: tx.stamps,
         rewardId: tx.rewardIdx !== undefined ? rewards[tx.rewardIdx].id : undefined,
         teamMemberId: tx.teamIdx !== undefined ? teamMembers[tx.teamIdx].id : undefined,
         performedByName: tx.teamIdx !== undefined ? teamMembers[tx.teamIdx].nom : undefined,
@@ -980,7 +978,7 @@ async function main() {
   console.log(`   ${teamData.length} membres d'équipe`);
   console.log(`   ${clients.length} clients (${clientsData.filter(c => (c as any).password).length} avec mdp, ${clientsData.filter(c => (c as any).googleId).length} Google, ${clientsData.filter(c => (c as any).deletedAt).length} supprimé)`);
   console.log(`   ${cards.length} cartes de fidélité`);
-  console.log(`   ${txData.length} transactions (${txData.filter(t => t.type === TransactionType.REDEEM_REWARD).length} redemptions, ${txData.filter(t => t.type === TransactionType.ADJUST_POINTS).length} ajustements, ${txData.filter(t => t.status === TransactionStatus.CANCELLED).length} annulée)`);
+  console.log(`   ${txData.length} transactions (${txData.filter(t => t.type === TransactionType.REDEEM_REWARD).length} redemptions, ${txData.filter(t => t.type === TransactionType.ADJUST_STAMPS).length} ajustements, ${txData.filter(t => t.status === TransactionStatus.CANCELLED).length} annulée)`);
   console.log(`   ${notifications.length} notifications`);
   console.log(`   ${clientNotifData.length} statuts de notification`);
   console.log(`   ${deviceData.length} sessions d'appareils`);

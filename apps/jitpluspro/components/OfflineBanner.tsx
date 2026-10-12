@@ -1,4 +1,3 @@
-import React from 'react';
 import SharedOfflineBanner from '@jitplus/shared/src/OfflineBanner';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 

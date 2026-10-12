@@ -36,7 +36,7 @@ module.exports = ({ config }) => {
     name: 'JitPlus',
     slug: 'jitplus',
     description: 'Digital loyalty cards app — collect stamps and earn rewards at your favorite local shops.',
-    version: '1.3.33',
+    version: '1.5.0',
     orientation: 'portrait',
     icon: './assets/images/icon-white.png',
     scheme: 'jitplus',
@@ -56,7 +56,7 @@ module.exports = ({ config }) => {
       supportsTablet: false,
       bundleIdentifier: 'com.jitplus.client',
       // Initial build number — EAS autoIncrement bumps this on every production build
-      buildNumber: '54',
+      buildNumber: '55',
       // Portrait-only app: disable iPad Split View / Slide Over to avoid orientation-support review issues
       requiresFullScreen: true,
       // Firebase config for iOS — download from Firebase Console
@@ -88,7 +88,7 @@ module.exports = ({ config }) => {
       ],
     },
     android: {
-      versionCode: 63,
+      versionCode: 64,
       icon: './assets/images/icon-white.png',
       adaptiveIcon: {
         foregroundImage: './assets/images/adaptive-icon-white.png',
@@ -119,6 +119,7 @@ module.exports = ({ config }) => {
         'android.permission.READ_MEDIA_IMAGES',
         'android.permission.READ_MEDIA_VIDEO',
         'android.permission.READ_MEDIA_AUDIO',
+        'android.permission.RECORD_AUDIO',
       ],
       // Deep links: open /m/:id merchant share URLs directly in the app
       intentFilters: [
@@ -171,6 +172,12 @@ module.exports = ({ config }) => {
             targetSdkVersion: 36,
             minSdkVersion: 24,
             buildToolsVersion: '36.0.0',
+            // R8: strips unused Java/Kotlin code and resources from release
+            // builds. Native stack traces become obfuscated — upload
+            // android/app/build/outputs/mapping/release/mapping.txt to Sentry
+            // and the Play Console to keep them readable.
+            enableMinifyInReleaseBuilds: true,
+            enableShrinkResourcesInReleaseBuilds: true,
           },
         },
       ],
@@ -244,6 +251,18 @@ module.exports = ({ config }) => {
             "Permettre à JitPlus d'enregistrer l'image de votre carte de fidélité dans vos photos.",
           isAccessMediaLocationEnabled: false,
           preventAutomaticLimitedAccessAlert: true,
+        },
+      ],
+      [
+        // Short UI sounds only (stamp confirmation on the QR screen): no
+        // microphone and no background playback, so no extra permissions,
+        // UIBackgroundModes entry or foreground media service.
+        'expo-audio',
+        {
+          microphonePermission: false,
+          recordAudioAndroid: false,
+          enableBackgroundPlayback: false,
+          enableBackgroundRecording: false,
         },
       ],
       // Note: expo-screen-capture is a runtime-only module (no config plugin).

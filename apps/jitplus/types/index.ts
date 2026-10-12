@@ -1,7 +1,6 @@
-import type { SocialLinks, LoyaltyType, Pagination, OpeningHours, MerchantBadge } from '@jitplus/shared';
+import type { SocialLinks, Pagination, OpeningHours } from '@jitplus/shared';
 
-export type { SocialLinks, LoyaltyType, Pagination, OpeningHours, MerchantBadge } from '@jitplus/shared';
-export { MERCHANT_BADGE_CODES } from '@jitplus/shared';
+export type { SocialLinks, Pagination, OpeningHours, MerchantBadge } from '@jitplus/shared';
 
 export interface Client {
   id: string;
@@ -58,10 +57,11 @@ export interface Merchant {
   ville?: string;
   latitude?: number | null;
   longitude?: number | null;
-  loyaltyType: LoyaltyType;
-  conversionRate?: number;
-  pointsRate?: number;
   stampsForReward?: number;
+  /** Stamps reset after this many days without a visit; null = never expire. */
+  stampValidityDays?: number | null;
+  /** When the client's current stamps expire if they do not come back (ISO). */
+  cardStampsExpireAt?: string | null;
   minRewardCost?: number | null;
   logoUrl?: string | null;
   coverUrl?: string | null;
@@ -76,13 +76,11 @@ export interface Merchant {
   rewards?: MerchantReward[];
   /** Active luckyWheel campaign for this merchant */
   activeLuckyWheel?: MerchantActiveLuckyWheel | null;
-  /** Balance du client chez ce marchand (retourné par /merchants/nearby) */
-  userPoints?: number;
   /** Whether the client already has a loyalty card with this merchant */
   hasCard?: boolean;
   /** Whether the client's card is deactivated */
   cardDeactivated?: boolean;
-  /** Current points/stamps balance on the card */
+  /** Current stamps balance on the card */
   cardBalance?: number;
   /** Store ID when this entry represents a specific store location */
   storeId?: string;
@@ -112,18 +110,6 @@ export interface LoyaltyCard {
   merchant?: Merchant;
 }
 
-export interface Transaction {
-  id: string;
-  merchantId: string;
-  clientId: string;
-  amount: number;
-  pointsEarned: number;
-  type: 'EARN' | 'REDEEM' | 'ADJUST';
-  createdAt: string;
-  merchant?: Merchant;
-  note?: string | null;
-}
-
 export interface OtpResponse {
   message: string;
   success: boolean;
@@ -141,8 +127,8 @@ export interface CompleteProfileResponse {
   client: Client;
 }
 
-export interface PointsOverview {
-  totalPoints: number;
+export interface StampsOverview {
+  totalStamps: number;
   totalCards: number;
   cards: LoyaltyCard[];
 }

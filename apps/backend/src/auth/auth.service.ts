@@ -20,7 +20,7 @@ import { GoogleRegisterMerchantDto } from './dto/google-register-merchant.dto';
 import { AppleLoginMerchantDto } from './dto/apple-login-merchant.dto';
 import { AppleRegisterMerchantDto } from './dto/apple-register-merchant.dto';
 import { RegisterMerchantDto } from './dto/register-merchant.dto';
-import { BCRYPT_SALT_ROUNDS, USER_TYPE_MERCHANT, USER_TYPE_TEAM_MEMBER, DEFAULT_POINTS_RULES, OTP_MIN, OTP_MAX, OTP_EXPIRY_MS, OTP_COOLDOWN_MS, MAX_SESSIONS_PER_MERCHANT, MAX_OTP_ATTEMPTS } from '../common/constants';
+import { BCRYPT_SALT_ROUNDS, USER_TYPE_MERCHANT, USER_TYPE_TEAM_MEMBER, OTP_MIN, OTP_MAX, OTP_EXPIRY_MS, OTP_COOLDOWN_MS, MAX_SESSIONS_PER_MERCHANT, MAX_OTP_ATTEMPTS } from '../common/constants';
 import { hashOtp, validateOtp, checkDailyOtpLimit } from '../common/utils/otp.helper';
 import { errMsg } from '../common/utils';
 import * as jwt from 'jsonwebtoken';
@@ -31,6 +31,7 @@ import { MerchantPlanService } from '../merchant/services/merchant-plan.service'
 import { MerchantReferralService } from '../merchant/services/merchant-referral.service';
 import { ClientReferralService } from '../client-auth/client-referral.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
+import { MerchantInboxService } from '../merchant-inbox/merchant-inbox.service';
 
 /** Shape returned by login/register containing an access token + merchant data. */
 export interface AuthResult {
@@ -95,6 +96,7 @@ export class AuthService implements OnApplicationBootstrap {
     private clientReferralService: ClientReferralService,
     private jwtStrategy: JwtStrategy,
     private configService: ConfigService,
+    private inbox: MerchantInboxService,
   ) {
     this.googleClient = new OAuth2Client(this.configService.get<string>('GOOGLE_CLIENT_ID'));
   }
@@ -388,29 +390,44 @@ export class AuthService implements OnApplicationBootstrap {
 
     const l = (lang === 'en' || lang === 'ar' ? lang : 'fr') as 'fr' | 'en' | 'ar';
 
+    const LOGIN_MESSAGES = {
+      fr: {
+        title: 'Nouvelle connexion à votre compte',
+        owner: 'Connexion au compte propriétaire',
+        member: (name: string) => `Connexion de ${name} (équipe)`,
+        via: (provider: string) => ` avec ${provider}`,
+        on: (device: string) => ` sur ${device}`,
+        outro: '. Ce n\'est pas vous ? Déconnectez l\'appareil depuis Sécurité.',
+      },
+      en: {
+        title: 'New sign-in to your account',
+        owner: 'Sign-in to the owner account',
+        member: (name: string) => `Sign-in by ${name} (team)`,
+        via: (provider: string) => ` with ${provider}`,
+        on: (device: string) => ` on ${device}`,
+        outro: '. Not you? Sign the device out from Security.',
+      },
+      ar: {
+        title: 'دخول جديد للحساب ديالك',
+        owner: 'دخول لحساب المالك',
+        member: (name: string) => `دخول ديال ${name} (الفريق)`,
+        via: (provider: string) => ` عبر ${provider}`,
+        on: (device: string) => ` من ${device}`,
+        outro: '. ماشي نتا؟ خرّج الجهاز من الأمان.',
+      },
+    };
+
+    const msg = LOGIN_MESSAGES[l];
+    // `who` is 'Propriétaire', 'Propriétaire (Google)', 'Propriétaire (Apple)' or a team member's name.
+    const owner = /^Propriétaire(?: \((\w+)\))?$/.exec(who);
+    const actor = owner ? msg.owner + (owner[1] ? msg.via(owner[1]) : '') : msg.member(who);
+    const title = msg.title;
+    const body = actor + (deviceName ? msg.on(deviceName) : '') + msg.outro;
+
+    // Recorded even without a push token: the inbox doubles as a sign-in history.
+    await this.inbox.record(merchantId, { category: 'SECURITY', title, body, action: 'open_security' });
+
     if (token) {
-      const LOGIN_MESSAGES = {
-        fr: {
-          title: '🔐 Nouvelle connexion détectée',
-          withDevice: (w: string, d: string) => `${w} s'est connecté(e) sur ${d}. Si ce n'est pas vous, changez votre mot de passe.`,
-          noDevice: (w: string) => `${w} s'est connecté(e) à votre commerce. Si ce n'est pas vous, changez votre mot de passe.`,
-        },
-        en: {
-          title: '🔐 New login detected',
-          withDevice: (w: string, d: string) => `${w} logged in on ${d}. If this wasn't you, change your password.`,
-          noDevice: (w: string) => `${w} logged in to your business. If this wasn't you, change your password.`,
-        },
-        ar: {
-          title: '🔐 كونيكسيون جديدة',
-          withDevice: (w: string, d: string) => `${w} دخل(ات) من ${d}. إلا ماشي نتا، بدل الباسوورد ديالك.`,
-          noDevice: (w: string) => `${w} دخل(ات) للكومرس ديالك. إلا ماشي نتا، بدل الباسوورد ديالك.`,
-        },
-      };
-
-      const msg = LOGIN_MESSAGES[l];
-      const title = msg.title;
-      const body = deviceName ? msg.withDevice(who, deviceName) : msg.noDevice(who);
-
       // Deep-link: tap → Sécurité (`/security`) so the merchant can immediately
       // review active sessions and revoke a suspicious device.
       await this.pushProvider.sendMulticast(
@@ -654,7 +671,6 @@ export class AuthService implements OnApplicationBootstrap {
           welcomeGuideVisible: true,
           // Email verification is disabled — accounts are created pre-verified.
           emailVerified: true,
-          pointsRules: DEFAULT_POINTS_RULES,
           // Plan: 30-day free PREMIUM trial
           ...trialData,
           // Parrainage
@@ -962,7 +978,6 @@ export class AuthService implements OnApplicationBootstrap {
           }),
           termsAccepted: dto.termsAccepted ?? false,
           welcomeGuideVisible: true,
-          pointsRules: DEFAULT_POINTS_RULES,
           ...trialData,
           ...(referredById && { referredById }),
           ...(referredByClientId && { referredByClientId }),
@@ -1249,7 +1264,6 @@ export class AuthService implements OnApplicationBootstrap {
           }),
           termsAccepted: dto.termsAccepted ?? false,
           welcomeGuideVisible: true,
-          pointsRules: DEFAULT_POINTS_RULES,
           ...trialData,
           ...(referredById && { referredById }),
           ...(referredByClientId && { referredByClientId }),

@@ -162,6 +162,18 @@ export function isQuietHours(now: Date = new Date()): boolean {
   return false;
 }
 
+/** `at` itself when allowed, otherwise the end of the quiet window it falls in. */
+export function nextAllowedSendTime(at: Date): Date {
+  if (!isQuietHours(at)) return at;
+  const offsetMs = MOROCCO_UTC_OFFSET_HOURS * 3_600_000;
+  const wall = new Date(at.getTime() + offsetMs);
+  const h = wall.getUTCHours();
+  const target = new Date(Date.UTC(wall.getUTCFullYear(), wall.getUTCMonth(), wall.getUTCDate(), 9, 0));
+  if (h >= 21) target.setUTCDate(target.getUTCDate() + 1);
+  else if (h >= 9) target.setUTCHours(14, 0); // Jumu'ah
+  return new Date(target.getTime() - offsetMs);
+}
+
 /**
  * Guard a cron method with both ENABLE_CRONS gate *and* quiet-hours check.
  * Returns true only if we're allowed to run and send.

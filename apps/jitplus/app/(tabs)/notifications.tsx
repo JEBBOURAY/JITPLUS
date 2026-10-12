@@ -1,14 +1,15 @@
-import React, { useCallback, useMemo, useState, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  View, Text, FlatList, RefreshControl,
-  TouchableOpacity, Alert, Platform, Linking,
+  View, Text, FlatList, RefreshControl, TouchableOpacity, Pressable, Alert, Platform, Linking,
+  AppState, LayoutAnimation, type NativeSyntheticEvent, type NativeScrollEvent,
 } from 'react-native';
-export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BellOff, Trash2, CheckCheck, CircleDot, BellRing, X, Settings } from 'lucide-react-native';
-import { useFocusEffect } from 'expo-router';
+import {
+  Bell, BellRing, CheckCheck, Trash2, X, Compass, WifiOff, RotateCcw, ArrowLeftRight,
+} from 'lucide-react-native';
+import { useFocusEffect, useRouter } from 'expo-router';
 import Constants from 'expo-constants';
-import { haptic } from '@/utils/haptics';
+import { haptic, hapticSuccess, HapticStyle } from '@/utils/haptics';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -17,43 +18,77 @@ import FadeInView from '@/components/FadeInView';
 import GuestGuard from '@/components/GuestGuard';
 import Skeleton from '@/components/Skeleton';
 import { wp, hp, ms } from '@/utils/responsive';
+import { useAppFonts } from '@/utils/fonts';
 import { useGuardedCallback } from '@/hooks/useGuardedCallback';
 import {
   useNotifications, useUnreadNotificationCount,
   useMarkNotificationAsRead, useMarkAllNotificationsAsRead,
   useDismissNotification, useDismissAllNotifications,
 } from '@/hooks/useQueryHooks';
-import MerchantLogo from '@/components/MerchantLogo';
 import { api } from '@/services/api';
 import { STAGGER_DELAY_MS, MAX_STAGGER_DELAY_MS } from '@/constants';
 import {
+  getNotifSection, getRelativeAge, groupNotificationsBySection,
+  type NotifListItem, type NotifSection,
+} from '@/utils/notificationTime';
+import {
   notificationStyles as styles,
-  SwipeableNotifCard,
+  NotificationCard,
   NotificationDetailModal,
 } from '@/components/notifications';
 
-function getNotifDateFmt(locale: string) {
-  const localeMap: Record<string, string> = { fr: 'fr-FR', en: 'en-US', ar: 'ar-SA' };
-  return new Intl.DateTimeFormat(localeMap[locale] || 'fr-FR', {
-    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
-  });
+export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
+
+type Filter = 'all' | 'unread';
+type ListItem = NotifListItem<ClientNotification>;
+
+const LOCALE_TAGS: Record<string, string> = { fr: 'fr-FR', en: 'en-US', ar: 'ar-MA' };
+const SECTION_LABEL_KEYS: Record<NotifSection, string> = {
+  today: 'notifications.sectionToday',
+  yesterday: 'notifications.sectionYesterday',
+  thisWeek: 'notifications.sectionThisWeek',
+  earlier: 'notifications.sectionEarlier',
+};
+const SCROLLED_THRESHOLD = 4;
+const NOW_TICK_MS = 60_000;
+const STAGGERED_ITEMS = 6;
+
+function getDateFormatters(locale: string) {
+  const tag = LOCALE_TAGS[locale] || 'fr-FR';
+  return {
+    time: new Intl.DateTimeFormat(tag, { hour: '2-digit', minute: '2-digit' }),
+    weekday: new Intl.DateTimeFormat(tag, { weekday: 'long' }),
+    dayMonth: new Intl.DateTimeFormat(tag, { day: 'numeric', month: 'short' }),
+    dayMonthYear: new Intl.DateTimeFormat(tag, { day: 'numeric', month: 'short', year: 'numeric' }),
+    full: new Intl.DateTimeFormat(tag, { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }),
+  };
 }
 
-const COLOR_MAP: Record<string, string> = {
-  reward: '#10B981', promo: palette.violet, info: '#3B82F6',
-};
+function smoothLayout() {
+  LayoutAnimation.configureNext(LayoutAnimation.create(220, 'easeInEaseOut', 'opacity'));
+}
 
 export default function NotificationsScreen() {
   const theme = useTheme();
+  const isDark = theme.mode === 'dark';
+  const accent = isDark ? palette.violetLight : palette.violet;
+  // useAppFonts returns a fresh object each render; stabilise it so memoised cards don't re-render.
+  const { regular, medium, semibold, bold } = useAppFonts();
+  const fonts = useMemo(() => ({ regular, medium, semibold, bold }), [regular, medium, semibold, bold]);
+  const router = useRouter();
   const { t, locale } = useLanguage();
-  const notifDateFmt = useMemo(() => getNotifDateFmt(locale), [locale]);
   const { client, isGuest } = useAuth();
   const insets = useSafeAreaInsets();
+  const fmts = useMemo(() => getDateFormatters(locale), [locale]);
 
-  const [pushPermission, setPushPermission] = useState<'granted' | 'denied' | 'unknown'>('unknown');
-  const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [filter, setFilter] = useState<Filter>('all');
+  const [isScrolled, setIsScrolled] = useState(false);
+  const [now, setNow] = useState(() => new Date());
   const [selectedNotif, setSelectedNotif] = useState<ClientNotification | null>(null);
 
+  // ── Push permission ──
+  const [pushPermission, setPushPermission] = useState<'granted' | 'denied' | 'unknown'>('unknown');
+  const [bannerDismissed, setBannerDismissed] = useState(false);
   const isExpoGo = Constants.appOwnership === 'expo';
 
   const checkPushPermission = useCallback(async () => {
@@ -66,13 +101,22 @@ export default function NotificationsScreen() {
   }, [isExpoGo]);
 
   useFocusEffect(useCallback(() => {
-    setBannerDismissed(false);
     checkPushPermission();
+    setNow(new Date());
+    const tick = setInterval(() => setNow(new Date()), NOW_TICK_MS);
+    // Coming back from the OS settings screen doesn't re-focus the tab.
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') { checkPushPermission(); setNow(new Date()); }
+    });
+    return () => { clearInterval(tick); sub.remove(); };
   }, [checkPushPermission]));
 
   const handleOpenSettings = useCallback(async () => {
     haptic();
-    Platform.OS === 'ios' ? await Linking.openURL('app-settings:') : await Linking.openSettings();
+    try {
+      if (Platform.OS === 'ios') await Linking.openURL('app-settings:');
+      else await Linking.openSettings();
+    } catch { /* settings unavailable */ }
   }, []);
 
   const handleRequestPermission = useCallback(async () => {
@@ -83,6 +127,7 @@ export default function NotificationsScreen() {
       const { status } = await Notifs.requestPermissionsAsync();
       if (status === 'granted') {
         setPushPermission('granted');
+        hapticSuccess();
         const { registerForPushNotifications } = require('@/utils/notifications');
         const pushToken = await registerForPushNotifications();
         if (pushToken) await api.updatePushToken(pushToken);
@@ -90,9 +135,13 @@ export default function NotificationsScreen() {
     } catch { handleOpenSettings(); }
   }, [isExpoGo, handleOpenSettings]);
 
+  const handleDismissBanner = useCallback(() => { haptic(); smoothLayout(); setBannerDismissed(true); }, []);
   const showPushBanner = pushPermission === 'denied' && !bannerDismissed;
 
-  const { data, isLoading, refetch, isRefetching, fetchNextPage, hasNextPage, isFetchingNextPage } = useNotifications(!!client);
+  // ── Data ──
+  const {
+    data, isLoading, isError, refetch, fetchNextPage, hasNextPage, isFetchingNextPage,
+  } = useNotifications(!!client);
   const { data: unreadData } = useUnreadNotificationCount(!!client);
   const unreadCount = unreadData?.unreadCount ?? 0;
 
@@ -102,158 +151,413 @@ export default function NotificationsScreen() {
   const dismissAll = useDismissAllNotifications();
 
   const notifications = useMemo(() => data?.pages?.flatMap((p) => p?.notifications ?? []) ?? [], [data]);
+  const hasAny = notifications.length > 0;
 
-  const handleRefresh = useGuardedCallback(async () => { haptic(); await refetch(); }, [refetch]);
-  const handleTapNotification = useCallback((notif: ClientNotification) => {
+  const selectedId = selectedNotif?.id;
+  const visible = useMemo(() => (
+    filter === 'unread'
+      // The open notification stays in the "unread" list until the sheet closes,
+      // otherwise it would vanish behind the sheet the moment it's marked read.
+      ? notifications.filter((n) => !n.isRead || n.id === selectedId)
+      : notifications
+  ), [notifications, filter, selectedId]);
+
+  const items = useMemo(() => groupNotificationsBySection(visible, now), [visible, now]);
+
+  // Unread items may live on pages that aren't loaded yet.
+  useEffect(() => {
+    if (filter === 'unread' && visible.length === 0 && unreadCount > 0 && hasNextPage && !isFetchingNextPage) {
+      fetchNextPage();
+    }
+  }, [filter, visible.length, unreadCount, hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+  // ── Actions ──
+  // Local flag so background refetches (after mark-as-read, WS pushes, next page)
+  // don't flash the pull-to-refresh spinner.
+  const [isPullRefreshing, setIsPullRefreshing] = useState(false);
+  const handleRefresh = useGuardedCallback(async () => {
+    haptic();
+    setIsPullRefreshing(true);
+    setNow(new Date());
+    try {
+      await Promise.all([refetch(), checkPushPermission()]);
+    } finally {
+      setIsPullRefreshing(false);
+    }
+  }, [refetch, checkPushPermission]);
+
+  const handleOpenNotif = useCallback((notif: ClientNotification) => {
     haptic();
     if (!notif.isRead) markAsRead.mutate(notif.id);
     setSelectedNotif(notif);
   }, [markAsRead]);
-  const handleDismiss = useCallback((notifId: string) => { haptic(); dismissOne.mutate(notifId); }, [dismissOne]);
+
   const handleCloseModal = useCallback(() => setSelectedNotif(null), []);
-  const handleMarkAllAsRead = useCallback(() => { haptic(); markAllAsRead.mutate(); }, [markAllAsRead]);
+
+  const handleSwipeDismiss = useCallback((id: string) => { dismissOne.mutate(id); }, [dismissOne]);
+
+  const handleModalDelete = useCallback((id: string) => {
+    haptic(HapticStyle.Medium);
+    smoothLayout();
+    dismissOne.mutate(id);
+  }, [dismissOne]);
+
+  const handleMarkAllAsRead = useCallback(() => {
+    hapticSuccess();
+    smoothLayout();
+    markAllAsRead.mutate();
+  }, [markAllAsRead]);
+
   const handleDismissAll = useCallback(() => {
+    haptic(HapticStyle.Medium);
     Alert.alert(t('notifications.deleteAllTitle'), t('notifications.deleteAllMessage'), [
       { text: t('common.cancel'), style: 'cancel' },
-      { text: t('common.delete'), style: 'destructive', onPress: () => { haptic(); dismissAll.mutate(); } },
+      {
+        text: t('common.delete'), style: 'destructive',
+        onPress: () => { haptic(HapticStyle.Heavy); smoothLayout(); setFilter('all'); dismissAll.mutate(); },
+      },
     ]);
   }, [dismissAll, t]);
+
+  const handleFilterChange = useCallback((next: Filter) => {
+    if (next === filter) return;
+    haptic();
+    smoothLayout();
+    setFilter(next);
+  }, [filter]);
 
   const handleEndReached = useCallback(() => {
     if (hasNextPage && !isFetchingNextPage) fetchNextPage();
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
-  const loadingSkeleton = useMemo(() => (
-    <View style={{ paddingHorizontal: wp(20), paddingTop: insets.top + hp(12), gap: hp(10) }}>
-      {[1, 2, 3, 4].map((i) => (
-        <View key={i} style={[styles.notifCard, { backgroundColor: theme.bgCard }]}>
-          <Skeleton width={ms(42)} height={ms(42)} borderRadius={ms(14)} />
-          <View style={{ flex: 1, gap: hp(6) }}>
-            <Skeleton width={wp(140)} height={ms(16)} borderRadius={6} />
-            <Skeleton width={wp(220)} height={ms(14)} borderRadius={6} />
-            <Skeleton width={wp(100)} height={ms(12)} borderRadius={6} />
+  const handleScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const scrolled = e.nativeEvent.contentOffset.y > SCROLLED_THRESHOLD;
+    setIsScrolled((prev) => (prev === scrolled ? prev : scrolled));
+  }, []);
+
+  // ── Formatting ──
+  const formatTimeLabel = useCallback((iso: string) => {
+    const date = new Date(iso);
+    const section = getNotifSection(date, now);
+    if (section === 'today') {
+      const age = getRelativeAge(date, now);
+      if (age.unit === 'now') return t('notifications.justNow');
+      if (age.unit === 'minutes') return t('notifications.minutesAgo', { count: age.value });
+      return t('notifications.hoursAgo', { count: age.value });
+    }
+    if (section === 'yesterday') return fmts.time.format(date);
+    if (section === 'thisWeek') return fmts.weekday.format(date);
+    return date.getFullYear() === now.getFullYear() ? fmts.dayMonth.format(date) : fmts.dayMonthYear.format(date);
+  }, [now, fmts, t]);
+
+  const formatFullDate = useCallback((date: Date) => fmts.full.format(date), [fmts]);
+
+  // ── Rendering ──
+  const staggerCacheRef = useRef<Map<string, number>>(new Map());
+
+  const renderItem = useCallback(({ item, index }: { item: ListItem; index: number }) => {
+    if (item.kind === 'header') {
+      return (
+        <Text
+          style={[styles.sectionHeader, { color: theme.textMuted, fontFamily: fonts.semibold }, index === 0 && { marginTop: hp(6) }]}
+          accessibilityRole="header"
+        >
+          {t(SECTION_LABEL_KEYS[item.section])}
+        </Text>
+      );
+    }
+    const { notif } = item;
+    if (!staggerCacheRef.current.has(notif.id)) {
+      staggerCacheRef.current.set(
+        notif.id,
+        index < STAGGERED_ITEMS ? Math.min(index * STAGGER_DELAY_MS, MAX_STAGGER_DELAY_MS) : 0,
+      );
+    }
+    return (
+      <FadeInView delay={staggerCacheRef.current.get(notif.id)!} duration={350} distance={hp(10)}>
+        <NotificationCard
+          notif={notif}
+          timeLabel={formatTimeLabel(notif.createdAt)}
+          onPress={handleOpenNotif}
+          onDismiss={handleSwipeDismiss}
+          theme={theme}
+          fonts={fonts}
+          t={t}
+        />
+      </FadeInView>
+    );
+  }, [theme, fonts, t, formatTimeLabel, handleOpenNotif, handleSwipeDismiss]);
+
+  const keyExtractor = useCallback((item: ListItem) => item.key, []);
+
+  const pushBanner = showPushBanner ? (
+    <FadeInView delay={80} duration={350} distance={hp(8)}>
+      <View style={[styles.pushBanner, { backgroundColor: isDark ? '#2A2113' : palette.goldUltraLight, borderColor: `${palette.gold}40` }]}>
+        <View style={[styles.pushBannerIcon, { backgroundColor: `${palette.gold}22` }]}>
+          <BellRing size={ms(20)} color={palette.goldDark} strokeWidth={2} />
+        </View>
+        <View style={styles.pushBannerTextWrap}>
+          <Text style={[styles.pushBannerTitle, { color: theme.text, fontFamily: fonts.bold }]}>{t('notifications.enableTitle')}</Text>
+          <Text style={[styles.pushBannerText, { color: theme.textSecondary, fontFamily: fonts.regular }]}>{t('notifications.enableMessage')}</Text>
+          <View style={styles.pushBannerActions}>
+            <TouchableOpacity
+              onPress={handleRequestPermission}
+              activeOpacity={0.85}
+              style={[styles.pushBannerBtn, { backgroundColor: palette.goldDark }]}
+              accessibilityRole="button"
+            >
+              <Bell size={ms(13)} color="#fff" strokeWidth={2.2} />
+              <Text style={[styles.pushBannerBtnText, { fontFamily: fonts.bold }]}>{t('notifications.enableShort')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleDismissBanner} hitSlop={8} accessibilityRole="button">
+              <Text style={[styles.pushBannerLater, { color: theme.textMuted, fontFamily: fonts.semibold }]}>{t('notifications.later')}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+        <TouchableOpacity
+          onPress={handleDismissBanner}
+          hitSlop={10}
+          style={{ alignSelf: 'flex-start' }}
+          accessibilityRole="button"
+          accessibilityLabel={t('common.close')}
+        >
+          <X size={ms(16)} color={theme.textMuted} strokeWidth={2} />
+        </TouchableOpacity>
+      </View>
+    </FadeInView>
+  ) : null;
+
+  const loadingSkeleton = (
+    <View style={{ paddingHorizontal: wp(16), paddingTop: hp(14) }}>
+      <Skeleton width={wp(80)} height={ms(11)} borderRadius={5} style={{ marginBottom: hp(10), marginHorizontal: wp(4) }} />
+      {[0, 1, 2, 3, 4].map((i) => (
+        <View key={i} style={[styles.skeletonCard, { backgroundColor: theme.bgCard, borderColor: theme.border }]}>
+          <Skeleton width={ms(46)} height={ms(46)} borderRadius={ms(14)} />
+          <View style={{ flex: 1, gap: hp(7) }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <Skeleton width="38%" height={ms(11)} borderRadius={5} />
+              <Skeleton width="16%" height={ms(11)} borderRadius={5} />
+            </View>
+            <Skeleton width="75%" height={ms(15)} borderRadius={6} />
+            <Skeleton width="92%" height={ms(12)} borderRadius={6} />
           </View>
         </View>
       ))}
     </View>
-  ), [theme.bgCard, insets.top]);
+  );
 
-  const ListHeader = useMemo(() => {
-    if (notifications.length === 0) return null;
-    return (
-      <View style={styles.actionsRow}>
-        {unreadCount > 0 && (
-          <TouchableOpacity style={[styles.actionBtn, { backgroundColor: `${palette.gold}12` }]} onPress={handleMarkAllAsRead} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={t('notifications.readAll', { count: unreadCount })}>
-            <CheckCheck size={ms(14)} color={palette.gold} strokeWidth={1.5} />
-            <Text style={[styles.actionBtnText, { color: palette.gold }]}>{t('notifications.readAll', { count: unreadCount })}</Text>
-          </TouchableOpacity>
-        )}
-        <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#EF444412' }]} onPress={handleDismissAll} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={t('notifications.deleteAll')}>
-          <Trash2 size={ms(14)} color="#EF4444" strokeWidth={1.5} />
-          <Text style={[styles.actionBtnText, { color: '#EF4444' }]}>{t('notifications.deleteAll')}</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }, [notifications.length, unreadCount, handleMarkAllAsRead, handleDismissAll, t]);
+  const listEmpty = useMemo(() => {
+    if (isLoading) return null;
 
-  const staggerCacheRef = useRef<Map<string, number>>(new Map());
-  const renderNotif = useCallback(({ item: notif, index }: { item: ClientNotification; index: number }) => {
-    const color = COLOR_MAP[notif.type] || theme.primary;
-    const isUnread = !notif.isRead;
-    const isAdmin = !notif.merchantName;
-    if (!staggerCacheRef.current.has(notif.id)) {
-      staggerCacheRef.current.set(notif.id, index < 5 ? Math.min(index * STAGGER_DELAY_MS, MAX_STAGGER_DELAY_MS) : 0);
-    }
-    return (
-      <FadeInView key={notif.id} delay={staggerCacheRef.current.get(notif.id)!}>
-        <SwipeableNotifCard onDismiss={() => handleDismiss(notif.id)} dismissLabel={t('notifications.swipeToDismiss')}>
+    if (isError && !hasAny) {
+      return (
+        <FadeInView delay={60} style={styles.emptyWrap}>
+          <View style={[styles.emptyIcon, { backgroundColor: `${theme.danger}14` }]}>
+            <WifiOff size={ms(34)} color={theme.danger} strokeWidth={1.6} />
+          </View>
+          <Text style={[styles.emptyTitle, { color: theme.text, fontFamily: fonts.bold }]}>{t('notifications.loadErrorTitle')}</Text>
+          <Text style={[styles.emptyHint, { color: theme.textSecondary, fontFamily: fonts.regular }]}>{t('notifications.loadErrorHint')}</Text>
           <TouchableOpacity
-            activeOpacity={0.75} onPress={() => handleTapNotification(notif)}
-            style={[styles.notifCard, {
-              backgroundColor: theme.bgCard,
-              borderLeftColor: isUnread ? (isAdmin ? '#3B82F6' : palette.violet) : 'transparent',
-              borderLeftWidth: isUnread ? ms(3) : 0,
-              shadowColor: isUnread ? palette.violet : '#000',
-              shadowOpacity: isUnread ? 0.08 : 0.04,
-              shadowRadius: isUnread ? 12 : 8,
-              elevation: isUnread ? 3 : 2,
-            }]}
+            onPress={() => { haptic(); refetch(); }}
+            activeOpacity={0.85}
+            style={[styles.emptyBtn, { backgroundColor: theme.bgCard, borderWidth: 1, borderColor: theme.border }]}
+            accessibilityRole="button"
           >
-            {isUnread && <View style={styles.unreadDot}><CircleDot size={ms(8)} color={isAdmin ? '#3B82F6' : palette.violet} fill={isAdmin ? '#3B82F6' : palette.violet} /></View>}
-            <View style={[styles.notifIcon, { backgroundColor: `${color}15` }]}>
-              <MerchantLogo logoUrl={notif.merchantLogoUrl} style={styles.notifLogoImg} />
-            </View>
-            <View style={styles.notifContent}>
-              <Text style={[styles.notifTitle, { color: theme.text, fontWeight: isUnread ? '700' : '500', opacity: isUnread ? 1 : 0.8 }]}>{notif.title}</Text>
-              <Text style={[styles.notifBody, { color: theme.textMuted }]} numberOfLines={2}>{notif.body}</Text>
-              <View style={styles.notifMeta}>
-                <Text style={[styles.notifMerchant, { color: isAdmin ? '#3B82F6' : theme.primaryLight }, isAdmin && styles.notifOfficialBadge]}>{notif.merchantName || 'JitPlus'}</Text>
-                <Text style={[styles.notifDate, { color: theme.textMuted }]}>{notifDateFmt.format(new Date(notif.createdAt))}</Text>
-              </View>
-            </View>
+            <RotateCcw size={ms(16)} color={theme.text} strokeWidth={2} />
+            <Text style={[styles.emptyBtnText, { color: theme.text, fontFamily: fonts.semibold }]}>{t('common.retry')}</Text>
           </TouchableOpacity>
-        </SwipeableNotifCard>
+        </FadeInView>
+      );
+    }
+
+    if (filter === 'unread' && hasAny) {
+      return (
+        <FadeInView delay={60} style={styles.emptyWrap}>
+          <View style={[styles.emptyIcon, { backgroundColor: `${palette.emerald}16` }]}>
+            <CheckCheck size={ms(34)} color={palette.emerald} strokeWidth={1.8} />
+          </View>
+          <Text style={[styles.emptyTitle, { color: theme.text, fontFamily: fonts.bold }]}>{t('notifications.noUnread')}</Text>
+          <Text style={[styles.emptyHint, { color: theme.textSecondary, fontFamily: fonts.regular }]}>{t('notifications.noUnreadHint')}</Text>
+          <TouchableOpacity
+            onPress={() => handleFilterChange('all')}
+            activeOpacity={0.85}
+            style={[styles.emptyBtn, { backgroundColor: theme.bgCard, borderWidth: 1, borderColor: theme.border }]}
+            accessibilityRole="button"
+          >
+            <Text style={[styles.emptyBtnText, { color: theme.text, fontFamily: fonts.semibold }]}>{t('notifications.showAll')}</Text>
+          </TouchableOpacity>
+        </FadeInView>
+      );
+    }
+
+    const needsPush = pushPermission === 'denied';
+    return (
+      <FadeInView delay={60} style={styles.emptyWrap}>
+        <View style={[styles.emptyIcon, { backgroundColor: `${palette.violet}12` }]}>
+          <Bell size={ms(34)} color={accent} strokeWidth={1.6} />
+        </View>
+        <Text style={[styles.emptyTitle, { color: theme.text, fontFamily: fonts.bold }]}>{t('notifications.noNotifications')}</Text>
+        <Text style={[styles.emptyHint, { color: theme.textSecondary, fontFamily: fonts.regular }]}>{t('notifications.noNotificationsHint')}</Text>
+        <TouchableOpacity
+          onPress={needsPush ? handleRequestPermission : () => { haptic(); router.push('/(tabs)/discover'); }}
+          activeOpacity={0.85}
+          style={[styles.emptyBtn, { backgroundColor: palette.violet }]}
+          accessibilityRole="button"
+        >
+          {needsPush
+            ? <BellRing size={ms(16)} color="#fff" strokeWidth={2} />
+            : <Compass size={ms(16)} color="#fff" strokeWidth={2} />}
+          <Text style={[styles.emptyBtnText, { color: '#fff', fontFamily: fonts.bold }]}>
+            {needsPush ? t('notifications.enableButton') : t('home.discoverCta')}
+          </Text>
+        </TouchableOpacity>
       </FadeInView>
     );
-  }, [theme, handleTapNotification, handleDismiss, notifDateFmt, t]);
+  }, [isLoading, isError, hasAny, filter, pushPermission, theme, fonts, accent, t, refetch, handleFilterChange, handleRequestPermission, router]);
 
-  const keyExtractor = useCallback((item: ClientNotification) => item.id, []);
+  const listFooter = (
+    <>
+      {isFetchingNextPage && (
+        <View style={styles.footerLoader}>
+          <Skeleton width={wp(160)} height={ms(12)} borderRadius={6} />
+        </View>
+      )}
+      {!isFetchingNextPage && !hasNextPage && visible.length > 0 && (
+        <View style={styles.swipeHint}>
+          <ArrowLeftRight size={ms(12)} color={theme.textMuted} strokeWidth={2} />
+          <Text style={[styles.swipeHintText, { color: theme.textMuted, fontFamily: fonts.regular }]}>{t('notifications.swipeHint')}</Text>
+        </View>
+      )}
+      <View style={{ height: hp(130) + insets.bottom }} />
+    </>
+  );
 
   if (isGuest) return <GuestGuard />;
 
+  const subtitle = !hasAny
+    ? null
+    : unreadCount > 0
+      ? t('notifications.unreadCount', { count: unreadCount })
+      : t('notifications.allCaughtUp');
+
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
-      <NotificationDetailModal notif={selectedNotif} onClose={handleCloseModal} theme={theme} notifDateFmt={notifDateFmt} t={t} />
+      {/* ── Header ── */}
+      <View
+        style={[
+          styles.header,
+          { paddingTop: insets.top + hp(10), backgroundColor: theme.bg, borderBottomColor: isScrolled ? theme.border : 'transparent' },
+          isScrolled && !isDark && styles.headerShadow,
+        ]}
+      >
+        <View style={styles.titleRow}>
+          <View style={styles.titleBlock}>
+            <Text style={[styles.title, { color: theme.text, fontFamily: fonts.bold }]} numberOfLines={1} accessibilityRole="header">
+              {t('notifications.title')}
+            </Text>
+            {subtitle && (
+              <Text
+                style={[styles.subtitle, { color: unreadCount > 0 ? accent : theme.textMuted, fontFamily: fonts.medium }]}
+                numberOfLines={1}
+              >
+                {subtitle}
+              </Text>
+            )}
+          </View>
+          {unreadCount > 0 && (
+            <TouchableOpacity
+              style={[styles.headerPill, { backgroundColor: `${palette.violet}${isDark ? '2E' : '14'}` }]}
+              onPress={handleMarkAllAsRead}
+              activeOpacity={0.75}
+              accessibilityRole="button"
+              accessibilityLabel={t('notifications.markAllRead')}
+            >
+              <CheckCheck size={ms(15)} color={accent} strokeWidth={2.2} />
+              <Text style={[styles.headerPillText, { color: accent, fontFamily: fonts.bold }]} numberOfLines={1}>
+                {t('notifications.markAllReadShort')}
+              </Text>
+            </TouchableOpacity>
+          )}
+          {hasAny && (
+            <TouchableOpacity
+              style={[styles.iconBtn, { backgroundColor: theme.bgCard, borderColor: theme.border }]}
+              onPress={handleDismissAll}
+              activeOpacity={0.75}
+              accessibilityRole="button"
+              accessibilityLabel={t('notifications.deleteAll')}
+            >
+              <Trash2 size={ms(17)} color={theme.textSecondary} strokeWidth={2} />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {hasAny && (
+          <View style={styles.filterRow} accessibilityRole="tablist">
+            {(['all', 'unread'] as const).map((key) => {
+              const active = filter === key;
+              return (
+                <Pressable
+                  key={key}
+                  onPress={() => handleFilterChange(key)}
+                  style={[
+                    styles.filterChip,
+                    active
+                      ? { backgroundColor: theme.text, borderColor: theme.text }
+                      : { backgroundColor: theme.bgCard, borderColor: theme.border },
+                  ]}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: active }}
+                >
+                  <Text style={[styles.filterChipText, { color: active ? theme.bg : theme.text, fontFamily: fonts.semibold }]}>
+                    {t(key === 'all' ? 'notifications.filterAll' : 'notifications.filterUnread')}
+                  </Text>
+                  {key === 'unread' && unreadCount > 0 && (
+                    <View style={[styles.filterBadge, { backgroundColor: palette.violet }]}>
+                      <Text style={[styles.filterBadgeText, { fontFamily: fonts.bold }]}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
+                    </View>
+                  )}
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
+      </View>
+
       {isLoading ? loadingSkeleton : (
         <FlatList
-          data={notifications} renderItem={renderNotif} keyExtractor={keyExtractor}
-          style={styles.scroll} removeClippedSubviews={Platform.OS === 'android'}
-          maxToRenderPerBatch={10} windowSize={7} initialNumToRender={10}
-          contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + hp(12) }, notifications.length === 0 && styles.scrollContentEmpty]}
-          showsVerticalScrollIndicator={false}
-          ListHeaderComponent={
-            <>
-              {showPushBanner && (
-                <FadeInView delay={100}>
-                  <View style={[styles.pushBanner, { backgroundColor: `${palette.gold}12`, borderColor: `${palette.gold}35` }]}>
-                    <View style={styles.pushBannerTop}>
-                      <View style={[styles.pushBannerIcon, { backgroundColor: `${palette.gold}20` }]}>
-                        <BellRing size={ms(20)} color={palette.gold} strokeWidth={1.5} />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={[styles.pushBannerTitle, { color: theme.text }]}>{t('notifications.enableTitle')}</Text>
-                        <Text style={[styles.pushBannerText, { color: theme.textMuted }]}>{t('notifications.enableMessage')}</Text>
-                      </View>
-                      <TouchableOpacity onPress={() => setBannerDismissed(true)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} style={{ padding: ms(4) }}>
-                        <X size={ms(16)} color={theme.textMuted} strokeWidth={1.5} />
-                      </TouchableOpacity>
-                    </View>
-                    <TouchableOpacity onPress={handleRequestPermission} activeOpacity={0.7} style={[styles.pushBannerBtn, { backgroundColor: `${palette.gold}22` }]}>
-                      <Settings size={ms(14)} color={palette.gold} strokeWidth={1.5} />
-                      <Text style={[styles.pushBannerBtnText, { color: palette.gold }]}>{t('notifications.enableButton')}</Text>
-                    </TouchableOpacity>
-                  </View>
-                </FadeInView>
-              )}
-              {ListHeader}
-            </>
+          data={items}
+          renderItem={renderItem}
+          keyExtractor={keyExtractor}
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          ListHeaderComponent={pushBanner}
+          ListEmptyComponent={listEmpty}
+          ListFooterComponent={listFooter}
+          refreshControl={
+            <RefreshControl refreshing={isPullRefreshing} onRefresh={handleRefresh}
+              tintColor={theme.primaryLight} colors={[theme.primary]} progressBackgroundColor={theme.bgCard} />
           }
-          refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={handleRefresh} tintColor={theme.primaryLight} colors={[theme.primary]} />}
-          ListEmptyComponent={!isLoading ? (
-            <FadeInView delay={200}>
-              <View style={styles.emptyState}>
-                <View style={[styles.emptyIcon, { backgroundColor: `${palette.gold}15` }]}>
-                  <BellOff size={ms(36)} color={palette.gold} strokeWidth={1.5} />
-                </View>
-                <Text style={[styles.emptyTitle, { color: theme.text }]}>{t('notifications.noNotifications')}</Text>
-                <Text style={[styles.emptyText, { color: theme.textMuted }]}>{t('notifications.noNotificationsHint')}</Text>
-              </View>
-            </FadeInView>
-          ) : null}
-          ListFooterComponent={isFetchingNextPage ? <View style={styles.footerLoader}><Skeleton width={wp(200)} height={ms(14)} borderRadius={6} /></View> : <View style={styles.footerSpacer} />}
-          onEndReached={handleEndReached} onEndReachedThreshold={0.4}
+          onScroll={handleScroll}
+          scrollEventThrottle={32}
+          onEndReached={handleEndReached}
+          onEndReachedThreshold={0.4}
+          showsVerticalScrollIndicator={false}
+          removeClippedSubviews={Platform.OS === 'android'}
+          maxToRenderPerBatch={10}
+          windowSize={7}
+          initialNumToRender={12}
         />
       )}
+
+      <NotificationDetailModal
+        notif={selectedNotif}
+        onClose={handleCloseModal}
+        onDelete={handleModalDelete}
+        theme={theme}
+        fonts={fonts}
+        formatDate={formatFullDate}
+        t={t}
+      />
     </View>
   );
 }

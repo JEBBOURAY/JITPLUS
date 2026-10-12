@@ -19,10 +19,7 @@ export interface MerchantResponse {
   longitude: number | null;
   logoUrl: string | null;
   coverUrl: string | null;
-  pointsRules: unknown;
-  pointsRate: number;
-  loyaltyType: string | null;
-  conversionRate: number;
+  amountPerStamp: number;
   stampsForReward: number;
   activeRewardId: string | null;
   isActive: boolean;

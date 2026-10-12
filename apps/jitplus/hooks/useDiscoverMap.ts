@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import { Platform, Keyboard } from 'react-native';
+import { Keyboard } from 'react-native';
 import * as Location from 'expo-location';
 import { useLocalSearchParams } from 'expo-router';
 import { haptic, HapticStyle } from '@/utils/haptics';

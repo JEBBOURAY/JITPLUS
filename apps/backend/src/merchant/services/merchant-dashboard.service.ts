@@ -6,13 +6,15 @@ import {
   REWARD_REPOSITORY, type IRewardRepository,
   RAW_QUERY_RUNNER, type IRawQueryRunner,
 } from '../../common/repositories';
-import { MS_PER_DAY, DEFAULT_LOYALTY_TYPE } from '../../common/constants';
+import { MS_PER_DAY } from '../../common/constants';
 
 @Injectable()
 export class MerchantDashboardService {
   private static readonly STATS_TTL = 5 * 60_000;
   private static readonly TRENDS_TTL = 10 * 60_000;
   private static readonly DISTRIBUTION_TTL = 5 * 60_000;
+  private static readonly GAMES_TTL = 2 * 60_000;
+  private static readonly TOP_PRIZES_LIMIT = 5;
 
   constructor(
     @Inject(REWARD_REPOSITORY) private rewardRepo: IRewardRepository,
@@ -28,11 +30,10 @@ export class MerchantDashboardService {
 
     const [row] = await this.rawQuery.queryRaw<{
       total_clients: number;
-      total_points: number;
-      total_redeemed_points: number;
+      total_stamps: number;
+      total_redeemed_stamps: number;
       total_transactions: number;
       profile_views: number;
-      loyalty_type: string;
       total_rewards_given: number;
       lucky_wheel_plays: number;
       lucky_wheel_wins: number;
@@ -40,13 +41,12 @@ export class MerchantDashboardService {
     }>(Prisma.sql`
       SELECT
         (SELECT COUNT(*)::int FROM loyalty_cards WHERE merchant_id = ${merchantId}) AS total_clients,
-        (SELECT COALESCE(SUM(points), 0)::int FROM loyalty_cards WHERE merchant_id = ${merchantId}) AS total_points,
-        (SELECT COALESCE(SUM(t.points), 0)::int FROM transactions t
-         WHERE t.merchant_id = ${merchantId} AND t.status = 'ACTIVE' AND t.type = 'REDEEM_REWARD') AS total_redeemed_points,
+        (SELECT COALESCE(SUM(stamps), 0)::int FROM loyalty_cards WHERE merchant_id = ${merchantId}) AS total_stamps,
+        (SELECT COALESCE(SUM(t.stamps), 0)::int FROM transactions t
+         WHERE t.merchant_id = ${merchantId} AND t.status = 'ACTIVE' AND t.type = 'REDEEM_REWARD') AS total_redeemed_stamps,
         (SELECT COUNT(*)::int FROM transactions t
          WHERE t.merchant_id = ${merchantId} AND t.status = 'ACTIVE') AS total_transactions,
         (SELECT profile_views FROM merchants WHERE id = ${merchantId}) AS profile_views,
-        (SELECT loyalty_type FROM merchants WHERE id = ${merchantId}) AS loyalty_type,
         (SELECT COUNT(*)::int FROM transactions t
          WHERE t.merchant_id = ${merchantId} AND t.status = 'ACTIVE' AND t.type = 'REDEEM_REWARD') AS total_rewards_given,
         (SELECT COUNT(*)::int FROM lucky_wheel_draws d
@@ -65,12 +65,11 @@ export class MerchantDashboardService {
 
     const result = {
       totalClients: row?.total_clients ?? 0,
-      totalPoints: row?.total_points ?? 0,
-      totalRedeemedPoints: row?.total_redeemed_points ?? 0,
+      totalStamps: row?.total_stamps ?? 0,
+      totalRedeemedStamps: row?.total_redeemed_stamps ?? 0,
       totalTransactions: row?.total_transactions ?? 0,
       totalRewardsGiven: (row?.total_rewards_given ?? 0) + (row?.lucky_wheel_fulfilled ?? 0),
       profileViews: row?.profile_views ?? 0,
-      loyaltyType: row?.loyalty_type || DEFAULT_LOYALTY_TYPE,
       luckyWheelPlays: row?.lucky_wheel_plays ?? 0,
       luckyWheelWins: row?.lucky_wheel_wins ?? 0,
     };
@@ -79,7 +78,7 @@ export class MerchantDashboardService {
     return result;
   }
 
-  // ── Accueil home stats — today/yesterday points + current-month daily scans.
+  // ── Accueil home stats — today/yesterday stamps + current-month daily scans.
   // All plans, team-accessible, uncached (kept live: refetched on WS scan events). ──
   async getHomeStats(merchantId: string) {
     // Day/month boundaries in Morocco time (UTC+1, no DST) so "today" matches the
@@ -96,18 +95,18 @@ export class MerchantDashboardService {
     const daysInMonth = new Date(Date.UTC(y, mo + 1, 0)).getUTCDate();
 
     const [agg] = await this.rawQuery.queryRaw<{
-      today_points: number;
+      today_stamps: number;
       today_clients: number;
-      yesterday_points: number;
+      yesterday_stamps: number;
     }>(Prisma.sql`
       SELECT
-        COALESCE(SUM(points) FILTER (WHERE created_at >= ${startToday}), 0)::int AS today_points,
+        COALESCE(SUM(stamps) FILTER (WHERE created_at >= ${startToday}), 0)::int AS today_stamps,
         COUNT(DISTINCT client_id) FILTER (WHERE created_at >= ${startToday})::int AS today_clients,
-        COALESCE(SUM(points) FILTER (WHERE created_at >= ${startYesterday} AND created_at < ${startToday}), 0)::int AS yesterday_points
+        COALESCE(SUM(stamps) FILTER (WHERE created_at >= ${startYesterday} AND created_at < ${startToday}), 0)::int AS yesterday_stamps
       FROM transactions
       WHERE merchant_id = ${merchantId}
         AND status = 'ACTIVE'
-        AND type = 'EARN_POINTS'
+        AND type = 'EARN_STAMPS'
         AND created_at >= ${startYesterday}
     `);
 
@@ -116,7 +115,7 @@ export class MerchantDashboardService {
       FROM transactions
       WHERE merchant_id = ${merchantId}
         AND status = 'ACTIVE'
-        AND type = 'EARN_POINTS'
+        AND type = 'EARN_STAMPS'
         AND created_at >= ${startMonth}
         AND created_at < ${startNextMonth}
       GROUP BY 1
@@ -133,8 +132,8 @@ export class MerchantDashboardService {
     }
 
     return {
-      today: { points: agg?.today_points ?? 0, clients: agg?.today_clients ?? 0 },
-      yesterday: { points: agg?.yesterday_points ?? 0 },
+      today: { stamps: agg?.today_stamps ?? 0, clients: agg?.today_clients ?? 0 },
+      yesterday: { stamps: agg?.yesterday_stamps ?? 0 },
       month: { total: monthTotal, daily },
     };
   }
@@ -180,22 +179,122 @@ export class MerchantDashboardService {
       distribution.push({ rewardId: null, title: 'Non attribue', count: unknownRedemptions });
     }
 
-    // Include LuckyWheel fulfilled prizes in distribution
-    const luckyWheelPrizeRows = await this.rawQuery.queryRaw<{ prize_id: string; label: string; cnt: number }>(Prisma.sql`
-      SELECT p.id AS prize_id, p.label, COUNT(*)::int AS cnt
-      FROM lucky_wheel_draws d
-      INNER JOIN lucky_wheel_tickets tk ON tk.id = d.ticket_id
-      INNER JOIN lucky_wheel_campaigns c ON c.id = tk.campaign_id
-      INNER JOIN lucky_wheel_prizes p ON p.id = d.prize_id
-      WHERE c.merchant_id = ${merchantId} AND d.fulfilment = 'CLAIMED'
-      GROUP BY p.id, p.label
-    `);
-    for (const tp of luckyWheelPrizeRows) {
-      distribution.push({ rewardId: tp.prize_id, title: `�️ ${tp.label}`, count: tp.cnt ?? 0 });
-    }
-
+    // Lucky-wheel and scratch prizes are reported by getGamesStats (top prizes),
+    // so this list stays limited to the loyalty reward catalogue.
     await this.cache.set(cacheKey, distribution, MerchantDashboardService.DISTRIBUTION_TTL);
     return distribution;
+  }
+
+  // ── 3. Games — scratch cards + lucky wheel summary ─────────
+  async getGamesStats(merchantId: string) {
+    const cacheKey = `dashboard:games:${merchantId}`;
+    const cached = await this.cache.get(cacheKey);
+    if (cached) return cached;
+
+    const [[row], topRows] = await Promise.all([
+      this.rawQuery.queryRaw<{
+        scratch_campaigns: number;
+        scratch_active_campaigns: number;
+        scratch_sent: number;
+        scratch_scratched: number;
+        scratch_redeemed: number;
+        scratch_revenue: number;
+        scratch_discount: number;
+        wheel_campaigns: number;
+        wheel_active_campaigns: number;
+        wheel_plays: number;
+        wheel_wins: number;
+        wheel_pending: number;
+        wheel_fulfilled: number;
+      }>(Prisma.sql`
+        SELECT
+          (SELECT COUNT(*)::int FROM scratch_campaigns
+           WHERE merchant_id = ${merchantId}) AS scratch_campaigns,
+          (SELECT COUNT(*)::int FROM scratch_campaigns
+           WHERE merchant_id = ${merchantId} AND status IN ('SCHEDULED', 'SENDING', 'SENT')) AS scratch_active_campaigns,
+          (SELECT COUNT(*)::int FROM scratch_cards
+           WHERE merchant_id = ${merchantId}) AS scratch_sent,
+          (SELECT COUNT(*)::int FROM scratch_cards
+           WHERE merchant_id = ${merchantId} AND status = 'SCRATCHED') AS scratch_scratched,
+          sc.redeemed AS scratch_redeemed,
+          sc.revenue AS scratch_revenue,
+          sc.discount AS scratch_discount,
+          (SELECT COUNT(*)::int FROM lucky_wheel_campaigns
+           WHERE merchant_id = ${merchantId}) AS wheel_campaigns,
+          (SELECT COUNT(*)::int FROM lucky_wheel_campaigns
+           WHERE merchant_id = ${merchantId} AND status = 'ACTIVE' AND ends_at > now()) AS wheel_active_campaigns,
+          wd.plays AS wheel_plays,
+          wd.wins AS wheel_wins,
+          wd.pending AS wheel_pending,
+          wd.fulfilled AS wheel_fulfilled
+        FROM (
+          SELECT
+            COUNT(*)::int AS redeemed,
+            COALESCE(SUM(purchase_amount), 0)::float AS revenue,
+            COALESCE(SUM(discount_amount), 0)::float AS discount
+          FROM coupons
+          WHERE merchant_id = ${merchantId} AND source = 'SCRATCH_CARD' AND status = 'REDEEMED'
+        ) sc,
+        (
+          SELECT
+            COUNT(*)::int AS plays,
+            COUNT(*) FILTER (WHERE d.result = 'WON')::int AS wins,
+            -- Overdue draws are only flagged EXPIRED lazily, so filter on claim_before here.
+            COUNT(*) FILTER (
+              WHERE d.result = 'WON' AND d.fulfilment = 'PENDING'
+                AND (d.claim_before IS NULL OR d.claim_before >= now())
+            )::int AS pending,
+            COUNT(*) FILTER (WHERE d.fulfilment = 'CLAIMED')::int AS fulfilled
+          FROM lucky_wheel_draws d
+          INNER JOIN lucky_wheel_tickets tk ON tk.id = d.ticket_id
+          INNER JOIN lucky_wheel_campaigns c ON c.id = tk.campaign_id
+          WHERE c.merchant_id = ${merchantId}
+        ) wd
+      `),
+      this.rawQuery.queryRaw<{ label: string; source: 'SCRATCH' | 'WHEEL'; cnt: number }>(Prisma.sql`
+        SELECT label, source, cnt FROM (
+          SELECT label, 'SCRATCH' AS source, COUNT(*)::int AS cnt
+          FROM coupons
+          WHERE merchant_id = ${merchantId} AND source = 'SCRATCH_CARD' AND status <> 'CANCELLED'
+          GROUP BY label
+          UNION ALL
+          SELECT p.label, 'WHEEL' AS source, COUNT(*)::int AS cnt
+          FROM lucky_wheel_draws d
+          INNER JOIN lucky_wheel_tickets tk ON tk.id = d.ticket_id
+          INNER JOIN lucky_wheel_campaigns c ON c.id = tk.campaign_id
+          INNER JOIN lucky_wheel_prizes p ON p.id = d.prize_id
+          WHERE c.merchant_id = ${merchantId} AND d.result = 'WON'
+          GROUP BY p.label
+        ) prizes
+        ORDER BY cnt DESC, label ASC
+        LIMIT ${MerchantDashboardService.TOP_PRIZES_LIMIT}
+      `),
+    ]);
+
+    const roundMoney = (n: number | null | undefined) => Math.round((n ?? 0) * 100) / 100;
+    const result = {
+      scratch: {
+        campaigns: row?.scratch_campaigns ?? 0,
+        activeCampaigns: row?.scratch_active_campaigns ?? 0,
+        sent: row?.scratch_sent ?? 0,
+        scratched: row?.scratch_scratched ?? 0,
+        redeemed: row?.scratch_redeemed ?? 0,
+        revenue: roundMoney(row?.scratch_revenue),
+        discountGiven: roundMoney(row?.scratch_discount),
+      },
+      wheel: {
+        campaigns: row?.wheel_campaigns ?? 0,
+        activeCampaigns: row?.wheel_active_campaigns ?? 0,
+        plays: row?.wheel_plays ?? 0,
+        wins: row?.wheel_wins ?? 0,
+        pending: row?.wheel_pending ?? 0,
+        fulfilled: row?.wheel_fulfilled ?? 0,
+      },
+      topPrizes: topRows.map((r) => ({ label: r.label, source: r.source, count: r.cnt ?? 0 })),
+    };
+
+    await this.cache.set(cacheKey, result, MerchantDashboardService.GAMES_TTL);
+    return result;
   }
 
   async getDashboardTrends(

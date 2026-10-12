@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Info } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 
@@ -9,19 +10,17 @@ interface InfoHintProps {
   text: string;
   /** Optional heading above the explanation. */
   title?: string;
-  /** Colour treatment — violet (default) or amber (used inside warnings). */
-  variant?: 'violet' | 'amber';
-  /** Diameter of the round "!" button. Defaults to 18. */
+  /** Size of the "i" icon. Defaults to 16. */
   size?: number;
   accessibilityLabel?: string;
 }
 
 /**
- * Small round "!" affordance used across the Fidéliser screen. Replaces
- * permanent explanatory paragraphs (§8): the concept is labelled with a short
+ * Discreet grey "i" affordance used across the Fidéliser screen. Replaces
+ * permanent explanatory paragraphs: the concept is labelled with a short
  * word and the full explanation appears in a bottom sheet only on tap.
  */
-function InfoHint({ text, title, variant = 'violet', size = 18, accessibilityLabel }: InfoHintProps) {
+function InfoHint({ text, title, size = 16, accessibilityLabel }: InfoHintProps) {
   const theme = useTheme();
   const { t } = useLanguage();
   const insets = useSafeAreaInsets();
@@ -30,23 +29,17 @@ function InfoHint({ text, title, variant = 'violet', size = 18, accessibilityLab
   const open = useCallback(() => setVisible(true), []);
   const close = useCallback(() => setVisible(false), []);
 
-  const isAmber = variant === 'amber';
-  const dotBg = isAmber ? 'rgba(146,64,14,0.14)' : theme.primary + '17';
-  const dotColor = isAmber ? theme.warning : theme.primary;
-
   return (
     <>
       <TouchableOpacity
         onPress={open}
         activeOpacity={0.7}
         hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
-        style={[styles.dot, { width: size, height: size, borderRadius: size / 2, backgroundColor: dotBg }]}
+        style={styles.dot}
         accessibilityRole="button"
         accessibilityLabel={accessibilityLabel ?? t('common.moreInfo')}
       >
-        <Text style={[styles.dotText, { color: dotColor, fontSize: Math.round(size * 0.62) }]} maxFontSizeMultiplier={1.2}>
-          !
-        </Text>
+        <Info size={size} color={theme.textMuted} strokeWidth={1.8} />
       </TouchableOpacity>
 
       <Modal visible={visible} transparent animationType="slide" statusBarTranslucent onRequestClose={close}>
@@ -83,8 +76,7 @@ function InfoHint({ text, title, variant = 'violet', size = 18, accessibilityLab
 export default React.memo(InfoHint);
 
 const styles = StyleSheet.create({
-  dot: { alignItems: 'center', justifyContent: 'center' },
-  dotText: { fontWeight: '800', fontFamily: 'Lexend_700Bold' },
+  dot: { alignItems: 'center', justifyContent: 'center', opacity: 0.8 },
   backdrop: { flex: 1, backgroundColor: 'rgba(11,15,20,0.55)', justifyContent: 'flex-end' },
   sheet: {
     borderTopLeftRadius: 24,

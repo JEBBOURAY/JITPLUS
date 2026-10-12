@@ -28,13 +28,11 @@ export const MERCHANT_PROFILE_SELECT = {
   cardBackgroundColor: true,
   cardTextColor: true,
   socialLinks: true,
-  pointsRules: true,
-  pointsRate: true,
-  loyaltyType: true,
-  conversionRate: true,
+  amountPerStamp: true,
   stampsForReward: true,
   stampEarningMode: true,
   accumulationLimit: true,
+  stampValidityDays: true,
   activeRewardId: true,
   rewards: true,
   countryCode: true,
@@ -59,7 +57,7 @@ export const MERCHANT_PROFILE_SELECT = {
 
 /**
  * Lightweight merchant list select — used for listing/discovery endpoints.
- * Omits heavy JSON fields (rewards, socialLinks, pointsRules) to reduce
+ * Omits heavy JSON fields (rewards, socialLinks) to reduce
  * payload by ~70% and lower serialization overhead in list responses.
  */
 export const MERCHANT_LIST_SELECT = {
@@ -81,7 +79,9 @@ export const MERCHANT_LIST_SELECT = {
   coverUrl: true,
   themeColor: true,
   themeIcon: true,
-  loyaltyType: true,
+  stampEarningMode: true,
+  amountPerStamp: true,
+  stampsForReward: true,
   isActive: true,
   plan: true,
   createdAt: true,
@@ -94,10 +94,7 @@ export type MerchantProfileData = Prisma.MerchantGetPayload<{ select: typeof MER
  * Merchant loyalty metadata select — used in getClientStatus, getClientDetail, createTransaction.
  */
 export const MERCHANT_LOYALTY_SELECT = {
-  pointsRules: true,
-  pointsRate: true,
-  loyaltyType: true,
-  conversionRate: true,
+  amountPerStamp: true,
   stampsForReward: true,
   stampEarningMode: true,
   accumulationLimit: true,

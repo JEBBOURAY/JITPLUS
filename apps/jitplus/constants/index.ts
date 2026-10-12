@@ -17,10 +17,6 @@ export const REWARD_BANNER_VISIBLE_MS = 5000;
 export const FRESH_REWARD_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 // ── Animation ──
-/** Progress bar fill duration (ms) — used for stamp/point bars */
-export const PROGRESS_ANIM_DURATION_MS = 700;
-/** Delay before progress bar animation starts (ms) */
-export const PROGRESS_ANIM_DELAY_MS = 150;
 /** Stagger delay between notification items (ms) */
 export const STAGGER_DELAY_MS = 60;
 /** Maximum total stagger delay for long lists (ms) */
@@ -65,10 +61,6 @@ export const OTP_RESEND_COOLDOWN_S = 60;
 export const OTP_CODE_LENGTH = 6;
 /** Draft persist debounce when going to background (ms) */
 export const DRAFT_PERSIST_DEBOUNCE_MS = 300;
-/** Minimum name length for profile validation */
-export const MIN_NAME_LENGTH = 2;
-/** Maximum name input length */
-export const MAX_NAME_LENGTH = 50;
 /** Minimum password length */
 export const MIN_PASSWORD_LENGTH = 8;
 

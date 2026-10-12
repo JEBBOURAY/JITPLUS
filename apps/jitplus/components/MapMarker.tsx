@@ -12,7 +12,7 @@ import { View, Image, StyleSheet } from 'react-native';
 
 const SIZE = 30;
 const LOGO_SIZE = 20;
-const LOGO = require('@/assets/images/jitpluslogo.png');
+const LOGO = require('@/assets/images/jitpluslogo-app.png');
 
 const MapMarker = memo(function MapMarker() {
   return (

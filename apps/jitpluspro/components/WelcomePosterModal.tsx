@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Modal, View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
 import { X } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -8,7 +8,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { ASYNC_STORAGE_KEYS } from '@/constants/app';
 
 // Place the poster image at this path — see components/WelcomePosterModal.tsx usage.
-const posterImage = require('@/assets/images/welcome-poster.png');
+const posterImage = require('@/assets/images/welcome-poster.webp');
 
 /**
  * One-time ecosystem poster shown on the Accueil screen after login.

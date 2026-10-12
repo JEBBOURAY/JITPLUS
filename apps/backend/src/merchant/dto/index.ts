@@ -1,4 +1,4 @@
-export * from './adjust-points.dto';
+export * from './adjust-stamps.dto';
 export * from './change-password.dto';
 export * from './create-store.dto';
 export * from './create-team-member.dto';
@@ -9,7 +9,6 @@ export * from './register-device.dto';
 export * from './update-loyalty-settings.dto';
 export * from './update-profile.dto';
 export * from './update-push-token.dto';
-export * from './update-settings.dto';
 export * from './update-store.dto';
 export * from './update-team-member.dto';
 export * from './upload-logo.dto';

@@ -116,7 +116,7 @@ export default function Overview() {
 
   const { merchants, clients, transactions, rewards, notifications, trends, recentMerchants, recentAuditLogs } = stats;
   const premiumPct = merchants.total ? Math.round((merchants.premium / merchants.total) * 100) : 0;
-  const txTotal = transactions.earnPoints + transactions.redeemReward + transactions.adjustPoints;
+  const txTotal = transactions.earnStamps + transactions.redeemReward + transactions.adjustStamps;
   const today = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
   return (
@@ -173,10 +173,10 @@ export default function Overview() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                <span style={{ fontSize: 13, color: C.text, fontWeight: 500 }}>Points gagnes</span>
-                <span style={{ fontSize: 12, color: C.textMuted }}>{txTotal > 0 ? Math.round((transactions.earnPoints / txTotal) * 100) : 0}%</span>
+                <span style={{ fontSize: 13, color: C.text, fontWeight: 500 }}>Tampons gagnes</span>
+                <span style={{ fontSize: 12, color: C.textMuted }}>{txTotal > 0 ? Math.round((transactions.earnStamps / txTotal) * 100) : 0}%</span>
               </div>
-              <ProgressBar value={transactions.earnPoints} max={txTotal} color={C.green} />
+              <ProgressBar value={transactions.earnStamps} max={txTotal} color={C.green} />
             </div>
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
@@ -188,9 +188,9 @@ export default function Overview() {
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
                 <span style={{ fontSize: 13, color: C.text, fontWeight: 500 }}>Ajustements manuels</span>
-                <span style={{ fontSize: 12, color: C.textMuted }}>{txTotal > 0 ? Math.round((transactions.adjustPoints / txTotal) * 100) : 0}%</span>
+                <span style={{ fontSize: 12, color: C.textMuted }}>{txTotal > 0 ? Math.round((transactions.adjustStamps / txTotal) * 100) : 0}%</span>
               </div>
-              <ProgressBar value={transactions.adjustPoints} max={txTotal} color={C.blue} />
+              <ProgressBar value={transactions.adjustStamps} max={txTotal} color={C.blue} />
             </div>
 
             <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>

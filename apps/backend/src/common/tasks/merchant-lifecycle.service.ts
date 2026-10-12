@@ -8,6 +8,7 @@ import {
 } from '../repositories';
 import { IPushProvider, PUSH_PROVIDER, IMailProvider, MAIL_PROVIDER } from '../interfaces';
 import { pickEmailLang } from '../../mail/transactional-i18n';
+import { MerchantInboxService } from '../../merchant-inbox/merchant-inbox.service';
 import {
   isCronEnabled,
   dayTag,
@@ -38,82 +39,88 @@ function lang(v?: string | null): Lang {
 const MESSAGES = {
   trialEnding: {
     fr: {
-      title: '⏳ Votre essai Premium se termine bientôt',
+      title: (days: number) =>
+        days <= 1 ? 'Votre essai Premium se termine demain' : `Plus que ${days} jours d'essai Premium`,
       body: (days: number) =>
         days <= 1
-          ? `Votre essai Premium se termine demain. Souscrivez maintenant pour garder vos avantages !`
-          : `Plus que ${days} jours d'essai Premium. Souscrivez avant la fin pour ne rien perdre.`,
+          ? 'Abonnez-vous pour garder vos fonctionnalités Premium sans interruption.'
+          : 'Abonnez-vous avant la fin pour garder vos fonctionnalités Premium.',
     },
     en: {
-      title: '⏳ Your Premium trial is ending',
+      title: (days: number) =>
+        days <= 1 ? 'Your Premium trial ends tomorrow' : `${days} days left in your Premium trial`,
       body: (days: number) =>
         days <= 1
-          ? `Your Premium trial ends tomorrow. Subscribe now to keep your benefits!`
-          : `Only ${days} days left in your Premium trial. Subscribe before it ends.`,
+          ? 'Subscribe to keep your Premium features without interruption.'
+          : 'Subscribe before it ends to keep your Premium features.',
     },
     ar: {
-      title: '⏳ التجربة Premium ديالك قاربت تسالي',
+      title: (days: number) =>
+        days <= 1 ? 'التجربة ديال Premium كتسالي غدا' : `بقاو ${days} أيام فالتجربة ديال Premium`,
       body: (days: number) =>
         days <= 1
-          ? `التجربة ديالك Premium كتسالي غدا. اشترك دابا باش متخسرش الميزات!`
-          : `بقاو غير ${days} أيام فالتجربة Premium. اشترك قبل ما تسالي.`,
+          ? 'اشترك باش تبقى عندك الميزات ديال Premium بلا ما يتقطعو.'
+          : 'اشترك قبل ما تسالي باش تحتافظ بالميزات ديال Premium.',
     },
   },
   premiumEnding: {
     fr: {
-      title: '⚠️ Votre Premium expire bientôt',
+      title: (days: number) =>
+        days <= 1 ? 'Votre Premium expire demain' : `Votre Premium expire dans ${days} jours`,
       body: (days: number) =>
         days <= 1
-          ? `Votre abonnement Premium expire demain. Renouvelez pour ne pas perdre l'accès Premium.`
-          : `Votre Premium expire dans ${days} jours. Pensez à renouveler pour conserver vos avantages.`,
+          ? 'Renouvelez votre abonnement pour continuer sans interruption.'
+          : 'Renouvelez dès maintenant pour garder toutes vos fonctionnalités.',
     },
     en: {
-      title: '⚠️ Your Premium expires soon',
+      title: (days: number) =>
+        days <= 1 ? 'Your Premium expires tomorrow' : `Your Premium expires in ${days} days`,
       body: (days: number) =>
         days <= 1
-          ? `Your Premium subscription expires tomorrow. Renew to keep Premium access.`
-          : `Your Premium expires in ${days} days. Renew now to keep your benefits.`,
+          ? 'Renew your subscription to continue without interruption.'
+          : 'Renew now to keep all your features.',
     },
     ar: {
-      title: '⚠️ Premium ديالك قاربت تسالي',
+      title: (days: number) =>
+        days <= 1 ? 'Premium ديالك كيسالي غدا' : `Premium ديالك كيسالي فـ ${days} أيام`,
       body: (days: number) =>
         days <= 1
-          ? `الاشتراك Premium ديالك كيسالي غدا. جدد باش متخسرش الميزات.`
-          : `Premium ديالك كيسالي فـ${days} أيام. جدد دابا باش تحتفظ بالأفضليات.`,
+          ? 'جدّد الاشتراك ديالك باش تكمّل بلا ما يتقطع.'
+          : 'جدّد دابا باش تحتافظ بكاع الميزات ديالك.',
     },
   },
   emailQuotaLow: {
     fr: {
-      title: '📧 Quota email bientôt épuisé',
+      title: 'Quota email presque atteint',
       body: (used: number, max: number) =>
-        `Vous avez utilisé ${used}/${max} emails ce mois-ci. Il en reste peu — prévoyez vos prochaines campagnes.`,
+        `${used} emails envoyés sur ${max} ce mois-ci. Il vous en reste ${max - used}.`,
     },
     en: {
-      title: '📧 Email quota almost full',
+      title: 'Email quota almost reached',
       body: (used: number, max: number) =>
-        `You've used ${used}/${max} emails this month. Few left — plan your next campaigns wisely.`,
+        `${used} of ${max} emails sent this month. ${max - used} left.`,
     },
     ar: {
-      title: '📧 الكوطا ديال الإيميل قاربت تسالي',
+      title: 'الكوطا ديال الإيميل قربات تكمل',
       body: (used: number, max: number) =>
-        `استعملتي ${used}/${max} إيميلات هاد الشهر. بقا شوية — قيس الكامباني الجايين.`,
+        `صيفطتي ${used} من ${max} إيميل هاد الشهر. بقاو ليك ${max - used}.`,
     },
   },
   whatsappQuotaLow: {
     fr: {
-      title: '💬 Quota WhatsApp bientôt épuisé',
+      title: 'Quota WhatsApp presque atteint',
       body: (used: number, max: number) =>
-        `Vous avez utilisé ${used}/${max} messages WhatsApp ce mois-ci. Plus que peu de messages disponibles.`,
+        `${used} messages WhatsApp envoyés sur ${max} ce mois-ci. Il vous en reste ${max - used}.`,
     },
     en: {
-      title: '💬 WhatsApp quota almost full',
+      title: 'WhatsApp quota almost reached',
       body: (used: number, max: number) =>
-        `You've used ${used}/${max} WhatsApp messages this month. Few messages left.`,
+        `${used} of ${max} WhatsApp messages sent this month. ${max - used} left.`,
     },
     ar: {
-      title: '💬 الكوطا ديال WhatsApp قاربت تسالي',
+      title: 'الكوطا ديال WhatsApp قربات تكمل',
       body: (used: number, max: number) =>
-        `استعملتي ${used}/${max} ميساج WhatsApp هاد الشهر. بقاو شوية ديال الميساجات.`,
+        `صيفطتي ${used} من ${max} ميساج WhatsApp هاد الشهر. بقاو ليك ${max - used}.`,
     },
   },
 } as const;
@@ -131,6 +138,7 @@ export class MerchantLifecycleService {
     @Inject(CAMPAIGN_SENT_TRACKER_REPOSITORY) private readonly campaignTrackerRepo: ICampaignSentTrackerRepository,
     @Inject(PUSH_PROVIDER) private readonly pushProvider: IPushProvider,
     @Inject(MAIL_PROVIDER) private readonly mailProvider: IMailProvider,
+    private readonly inbox: MerchantInboxService,
   ) {}
 
   /** 09:30 UTC daily = 10:30 Maroc (after the 09:00/09:01 reminder slots) */
@@ -188,16 +196,19 @@ export class MerchantLifecycleService {
             const campaignId = `merchant_${isTrial ? 'trial' : 'premium'}_ending_${days}d_${tag}`;
 
             if (!(await merchantAlreadySent(this.campaignTrackerRepo, m.id, campaignId, 'PUSH'))) {
+              const title = msg.title(days);
+              const body = msg.body(days);
               const result = await this.pushProvider.sendToMerchant(
                 m.pushToken,
-                msg.title,
-                msg.body(days),
+                title,
+                body,
                 { event: 'plan_expiring', action: 'open_plan', daysLeft: String(days) },
               );
               if (result.invalidToken) {
                 staleTokenIds.push(m.id);
                 continue;
               }
+              await this.inbox.record(m.id, { category: 'PLAN', title, body, action: 'open_plan' });
               if (isTrial) trialAlerts++;
               else premiumAlerts++;
               await merchantMarkSent(this.campaignTrackerRepo, m.id, campaignId, 'PUSH');
@@ -222,16 +233,18 @@ export class MerchantLifecycleService {
             const campaignId = `merchant_email_quota_low_${tag}`;
             if (!(await merchantAlreadySent(this.campaignTrackerRepo, m.id, campaignId, 'PUSH'))) {
               const msg = MESSAGES.emailQuotaLow[l];
+              const body = msg.body(m.emailQuotaUsed, m.emailQuotaMax);
               const result = await this.pushProvider.sendToMerchant(
                 m.pushToken,
                 msg.title,
-                msg.body(m.emailQuotaUsed, m.emailQuotaMax),
+                body,
                 { event: 'quota_low', action: 'open_plan', channel: 'email' },
               );
               if (result.invalidToken) {
                 staleTokenIds.push(m.id);
                 continue;
               }
+              await this.inbox.record(m.id, { category: 'QUOTA', title: msg.title, body, action: 'open_plan' });
               emailAlerts++;
               await merchantMarkSent(this.campaignTrackerRepo, m.id, campaignId, 'PUSH');
             }
@@ -246,16 +259,18 @@ export class MerchantLifecycleService {
             const campaignId = `merchant_wa_quota_low_${tag}`;
             if (!(await merchantAlreadySent(this.campaignTrackerRepo, m.id, campaignId, 'PUSH'))) {
               const msg = MESSAGES.whatsappQuotaLow[l];
+              const body = msg.body(m.whatsappQuotaUsed, m.whatsappQuotaMax);
               const result = await this.pushProvider.sendToMerchant(
                 m.pushToken,
                 msg.title,
-                msg.body(m.whatsappQuotaUsed, m.whatsappQuotaMax),
+                body,
                 { event: 'quota_low', action: 'open_plan', channel: 'whatsapp' },
               );
               if (result.invalidToken) {
                 staleTokenIds.push(m.id);
                 continue;
               }
+              await this.inbox.record(m.id, { category: 'QUOTA', title: msg.title, body, action: 'open_plan' });
               waAlerts++;
               await merchantMarkSent(this.campaignTrackerRepo, m.id, campaignId, 'PUSH');
             }

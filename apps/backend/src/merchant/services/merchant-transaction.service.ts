@@ -2,7 +2,6 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
-  ConflictException,
   Logger,
   Inject,
 } from '@nestjs/common';
@@ -18,13 +17,13 @@ import { AuditLogService, AuditAction, AuditTargetType } from '../../admin/audit
 import { NotificationsService } from '../../notifications/notifications.service';
 import { EventsGateway } from '../../events';
 import { MerchantPlanService } from './merchant-plan.service';
-import { DEFAULT_POINTS_RATE, MAX_STAMPS_PER_TX, MAX_POINTS_PER_TX } from '../../common/constants';
+import { DEFAULT_AMOUNT_PER_STAMP } from '../../common/constants';
 import { errMsg, maskName } from '../../common/utils';
 import { MERCHANT_LOYALTY_SELECT } from '../../common/prisma-selects';
 import { buildPagination } from '../../common/utils';
 import { withRetry } from '../../common/utils/retry-transaction.helper';
-import { PointsRules } from '../interfaces/points-rules.interface';
-import { computeRewardThreshold } from '../utils/loyalty.utils';
+import { computeEarnedStamps, computeRewardThreshold } from '../utils/loyalty.utils';
+import { awardLuckyWheelTicketsInTx } from '../utils/lucky-wheel-tickets';
 import { getNotifTranslations } from '../../common/utils/notification-i18n';
 
 @Injectable()
@@ -47,9 +46,9 @@ export class MerchantTransactionService {
   async createTransaction(
     clientId: string,
     merchantId: string,
-    type: 'EARN_POINTS' | 'REDEEM_REWARD',
+    type: 'EARN_STAMPS' | 'REDEEM_REWARD',
     amount: number,
-    points: number,
+    stamps: number,
     rewardId?: string,
     teamMemberId?: string,
     performedByName?: string,
@@ -78,74 +77,42 @@ export class MerchantTransactionService {
     if (!client || client.deletedAt) throw new NotFoundException('Client non trouvé');
     if (!merchant || merchant.deletedAt || !merchant.isActive) throw new NotFoundException('Commerce non trouvé');
 
-    // The merchant must have explicitly chosen a loyalty program before any
-    // transaction can be recorded. New accounts start with loyaltyType = null
-    // (no default). The app catches this code and redirects to loyalty settings.
-    if (!merchant.loyaltyType) {
-      throw new ConflictException({
-        message: 'Choisissez d\'abord votre programme de fidélité.',
-        code: 'LOYALTY_NOT_CONFIGURED',
-      });
-    }
-
     // Anti-fraud: force amount=0 on REDEEM_REWARD (client-provided amount must never inflate analytics / lucky-wheel)
     if (type === 'REDEEM_REWARD') {
       amount = 0;
     }
 
-    // Validate points
-    if (type === 'EARN_POINTS') {
-      if (merchant.loyaltyType === 'STAMPS') {
-        if (merchant.stampEarningMode === 'PER_AMOUNT') {
-          // PER_AMOUNT — a purchase amount is required to derive expected stamps
-          if (amount <= 0) {
-            throw new BadRequestException(
-              'Un montant d\'achat est requis pour les transactions en mode tampons',
-            );
-          }
-          const pointsRate = merchant.pointsRate || DEFAULT_POINTS_RATE;
-          const expectedStamps = Math.floor(amount / pointsRate);
-          if (points !== expectedStamps) {
-            throw new BadRequestException(
-              `Nombre de tampons invalide. Attendu: ${expectedStamps}, reçu: ${points}`,
-            );
-          }
-          // Anti-fraud: hard cap on stamps per single transaction
-          if (points > MAX_STAMPS_PER_TX) {
-            throw new BadRequestException(
-              `Un maximum de ${MAX_STAMPS_PER_TX} tampons peut être attribué par transaction`,
-            );
-          }
-        } else {
-          // PER_VISIT (default) — exactly 1 stamp per visit, amount optional but never negative
-          if (points !== 1) {
-            throw new BadRequestException(
-              'En mode tampon par visite, 1 seul tampon est attribué par visite',
-            );
-          }
-          if (amount < 0) {
-            throw new BadRequestException('Le montant ne peut pas être négatif');
-          }
-        }
-      } else {
-        // POINTS mode — a purchase amount is required to derive expected points
+    // Validate stamps
+    if (type === 'EARN_STAMPS') {
+      if (merchant.stampEarningMode === 'PER_AMOUNT') {
+        // PER_AMOUNT — a purchase amount is required to derive expected stamps
         if (amount <= 0) {
           throw new BadRequestException(
-            'Un montant d\'achat est requis pour les transactions en mode points',
+            'Un montant d\'achat est requis pour calculer les tampons',
           );
         }
-        const pointsRate = merchant.pointsRate || DEFAULT_POINTS_RATE;
-        const expectedPoints = Math.floor(amount / pointsRate);
-        if (points !== expectedPoints) {
+        const amountPerStamp = merchant.amountPerStamp || DEFAULT_AMOUNT_PER_STAMP;
+        // Capped at MAX_STAMPS_PER_TX (anti-fraud) — large purchases earn the cap, not an error
+        const expectedStamps = computeEarnedStamps(amount, amountPerStamp);
+        if (expectedStamps === 0) {
           throw new BadRequestException(
-            `Nombre de points invalide. Attendu: ${expectedPoints}, reçu: ${points}`,
+            `Montant insuffisant pour gagner un tampon (minimum ${amountPerStamp})`,
           );
         }
-        // Anti-fraud: hard cap on points per single transaction
-        if (points > MAX_POINTS_PER_TX) {
+        if (stamps !== expectedStamps) {
           throw new BadRequestException(
-            `Un maximum de ${MAX_POINTS_PER_TX} points peut être attribué par transaction`,
+            `Nombre de tampons invalide. Attendu: ${expectedStamps}, reçu: ${stamps}`,
           );
+        }
+      } else {
+        // PER_VISIT (default) — exactly 1 stamp per visit, amount optional but never negative
+        if (stamps !== 1) {
+          throw new BadRequestException(
+            'En mode tampon par visite, 1 seul tampon est attribué par visite',
+          );
+        }
+        if (amount < 0) {
+          throw new BadRequestException('Le montant ne peut pas être négatif');
         }
       }
     }
@@ -160,9 +127,9 @@ export class MerchantTransactionService {
         select: { cout: true, titre: true },
       });
       if (!reward) throw new BadRequestException('Cadeau invalide');
-      if (points !== reward.cout) {
+      if (stamps !== reward.cout) {
         throw new BadRequestException(
-          `Nombre de points invalide. Attendu: ${reward.cout}, reçu: ${points}`,
+          `Nombre de tampons invalide. Attendu: ${reward.cout}, reçu: ${stamps}`,
         );
       }
       rewardTitle = reward.titre;
@@ -170,8 +137,8 @@ export class MerchantTransactionService {
 
     let result: {
       transaction: any;
-      newPoints: number;
-      actualPointsAdded: number;
+      newStamps: number;
+      actualStampsAdded: number;
       luckyWheelTicketsAwarded: number;
       _replayed?: boolean;
     };
@@ -191,12 +158,12 @@ export class MerchantTransactionService {
         // race conditions where two concurrent requests read the same balance.
         let loyaltyCard = await prisma.loyaltyCard.findUnique({
           where: { clientId_merchantId: { clientId, merchantId } },
-          select: { id: true, points: true, deactivatedAt: true },
+          select: { id: true, stamps: true, deactivatedAt: true },
         });
 
         if (loyaltyCard?.deactivatedAt) {
           throw new BadRequestException(
-            'Le client a quitté ce programme de fidélité. Il doit rejoindre à nouveau avant de pouvoir accumuler des points.',
+            'Le client a quitté ce programme de fidélité. Il doit rejoindre à nouveau avant de pouvoir accumuler des tampons.',
           );
         }
 
@@ -204,36 +171,36 @@ export class MerchantTransactionService {
           // Enforce client limit for FREE plan before creating loyalty card
           await this.planService.assertCanAddClient(merchantId);
           loyaltyCard = await prisma.loyaltyCard.create({
-            data: { clientId, merchantId, points: 0 },
-            select: { id: true, points: true, deactivatedAt: true },
+            data: { clientId, merchantId, stamps: 0 },
+            select: { id: true, stamps: true, deactivatedAt: true },
           });
         }
 
         // Enforce accumulation limit before creating the transaction
-        if (type === 'EARN_POINTS' && merchant.accumulationLimit != null) {
-          if (loyaltyCard.points >= merchant.accumulationLimit) {
+        if (type === 'EARN_STAMPS' && merchant.accumulationLimit != null) {
+          if (loyaltyCard.stamps >= merchant.accumulationLimit) {
             throw new BadRequestException(
-              `Le client a atteint la limite d'accumulation (${merchant.accumulationLimit} ${merchant.loyaltyType === 'STAMPS' ? 'tampons' : 'points'})`,
+              `Le client a atteint la limite d'accumulation (${merchant.accumulationLimit} tampons)`,
             );
           }
         }
 
-        let newPoints: number;
-        let actualPointsAdded = points;
+        let newStamps: number;
+        let actualStampsAdded = stamps;
 
-        if (type === 'EARN_POINTS') {
-          newPoints = loyaltyCard.points + points;
+        if (type === 'EARN_STAMPS') {
+          newStamps = loyaltyCard.stamps + stamps;
           // Cap balance at accumulation limit if configured
-          if (merchant.accumulationLimit != null && newPoints > merchant.accumulationLimit) {
-            newPoints = merchant.accumulationLimit;
-            // Provide accurate added points (capped)
-            actualPointsAdded = newPoints - loyaltyCard.points;
+          if (merchant.accumulationLimit != null && newStamps > merchant.accumulationLimit) {
+            newStamps = merchant.accumulationLimit;
+            // Provide accurate added stamps (capped)
+            actualStampsAdded = newStamps - loyaltyCard.stamps;
           }
         } else if (type === 'REDEEM_REWARD') {
-          if (loyaltyCard.points < points) {
-            throw new BadRequestException('Pas assez de points pour cette récompense');
+          if (loyaltyCard.stamps < stamps) {
+            throw new BadRequestException('Pas assez de tampons pour cette récompense');
           }
-          newPoints = loyaltyCard.points - points;
+          newStamps = loyaltyCard.stamps - stamps;
         } else {
           throw new BadRequestException('Type de transaction invalide');
         }
@@ -246,9 +213,8 @@ export class MerchantTransactionService {
             teamMemberId: teamMemberId || null,
             performedByName: performedByName || null,
             type,
-            loyaltyType: merchant.loyaltyType || 'POINTS',
             amount,
-            points: type === 'EARN_POINTS' ? actualPointsAdded : points,
+            stamps: type === 'EARN_STAMPS' ? actualStampsAdded : stamps,
             idempotencyKey: idempotencyKey || null,
             ...(type === 'REDEEM_REWARD' ? { giftStatus: 'FULFILLED', fulfilledAt: new Date() } : {}),
           },
@@ -256,70 +222,19 @@ export class MerchantTransactionService {
 
         await prisma.loyaltyCard.update({
           where: { clientId_merchantId: { clientId, merchantId } },
-          data: { points: newPoints },
+          data: { stamps: newStamps, lastVisitAt: new Date(), expiryReminderSentAt: null },
         });
 
-        // ── Lucky wheel: auto-create ticket for eligible active campaigns ──
-        // Rules:
-        //   ticketCostPoints > 0  → ticket granted on REDEEM_REWARD when points spent >= threshold
-        //   ticketCostPoints == 0 → ticket granted on every EARN_POINTS (each visit)
-        //   ticketEveryNVisits    → only grant on every N-th qualifying transaction
-        let luckyWheelTicketsAwarded = 0;
-        if (type === 'EARN_POINTS' || type === 'REDEEM_REWARD') {
-          const activeCampaigns = await prisma.luckyWheelCampaign.findMany({
-            where: {
-              merchantId,
-              status: 'ACTIVE',
-              startsAt: { lte: new Date() },
-              endsAt: { gte: new Date() },
-            },
-            select: { id: true, ticketCostPoints: true, ticketEveryNVisits: true, minSpendAmount: true, startsAt: true },
-          });
+        const luckyWheelTicketsAwarded = await awardLuckyWheelTicketsInTx(prisma, {
+          clientId,
+          merchantId,
+          type,
+          amount,
+          stamps,
+          transactionId: newTransaction.id,
+        });
 
-          const eligibleCampaignIds: string[] = [];
-          for (const c of activeCampaigns) {
-            // Check minimum purchase amount threshold
-            if (c.minSpendAmount > 0 && amount < c.minSpendAmount) continue;
-            // Determine if this transaction type qualifies
-            if (c.ticketCostPoints > 0) {
-              // Cost-based: only on REDEEM_REWARD with enough points spent
-              if (type !== 'REDEEM_REWARD' || points < c.ticketCostPoints) continue;
-            } else {
-              // Free: only on EARN_POINTS (each visit)
-              if (type !== 'EARN_POINTS') continue;
-            }
-            // Check every-N-visits rule
-            if (c.ticketEveryNVisits && c.ticketEveryNVisits > 1) {
-              // Count qualifying transactions (not tickets) to avoid deadlock:
-              // tickets are only created when the modulo passes, so counting
-              // tickets would keep the count at 0 forever.
-              const qualifyingTxCount = await prisma.transaction.count({
-                where: {
-                  clientId,
-                  merchantId,
-                  type: c.ticketCostPoints > 0 ? 'REDEEM_REWARD' : 'EARN_POINTS',
-                  createdAt: { gte: c.startsAt },
-                },
-              });
-              // qualifyingTxCount includes the current transaction (already created above)
-              if (qualifyingTxCount % c.ticketEveryNVisits !== 0) continue;
-            }
-            eligibleCampaignIds.push(c.id);
-          }
-
-          if (eligibleCampaignIds.length > 0) {
-            await prisma.luckyWheelTicket.createMany({
-              data: eligibleCampaignIds.map((cId) => ({
-                campaignId: cId,
-                clientId,
-                transactionId: newTransaction.id,
-              })),
-            });
-            luckyWheelTicketsAwarded = eligibleCampaignIds.length;
-          }
-        }
-
-        return { transaction: newTransaction, newPoints, actualPointsAdded, luckyWheelTicketsAwarded };
+        return { transaction: newTransaction, newStamps, actualStampsAdded, luckyWheelTicketsAwarded };
       }, {
         // RepeatableRead prevents lost-update race conditions on the loyalty card balance
         // while being significantly less contended than Serializable.
@@ -339,12 +254,12 @@ export class MerchantTransactionService {
         if (existing) {
           const currentCard = await this.loyaltyCardRepo.findUnique({
             where: { clientId_merchantId: { clientId, merchantId } },
-            select: { points: true },
+            select: { stamps: true },
           });
           result = {
             transaction: existing,
-            newPoints: currentCard?.points ?? 0,
-            actualPointsAdded: existing.points,
+            newStamps: currentCard?.stamps ?? 0,
+            actualStampsAdded: existing.stamps,
             luckyWheelTicketsAwarded: 0,
             _replayed: true,
           };
@@ -362,13 +277,12 @@ export class MerchantTransactionService {
     }
 
     // ── Real-time: emit WebSocket events IMMEDIATELY (sub-100ms) ──
-    this.eventsGateway.emitPointsUpdated(clientId, {
+    this.eventsGateway.emitStampsUpdated(clientId, {
       clientId,
       merchantId,
       merchantName: merchant!.nom,
-      loyaltyType: (merchant!.loyaltyType as 'POINTS' | 'STAMPS') || 'POINTS',
-      points: type === 'EARN_POINTS' ? result.actualPointsAdded : points,
-      newBalance: result.newPoints,
+      stamps: type === 'EARN_STAMPS' ? result.actualStampsAdded : stamps,
+      newBalance: result.newStamps,
       type,
       rewardTitle,
     });
@@ -379,8 +293,8 @@ export class MerchantTransactionService {
       clientName: '', // Filled by the client lookup below (non-blocking)
       transactionId: result.transaction.id,
       type,
-      points: type === 'EARN_POINTS' ? result.actualPointsAdded : points,
-      newBalance: result.newPoints,
+      stamps: type === 'EARN_STAMPS' ? result.actualStampsAdded : stamps,
+      newBalance: result.newStamps,
     });
 
     // ── Send push notifications (fire-and-forget — FCM fallback for background/offline) ──
@@ -389,8 +303,8 @@ export class MerchantTransactionService {
       merchantId,
       merchant!,
       type,
-      type === 'EARN_POINTS' ? result.actualPointsAdded : points,
-      result.newPoints,
+      type === 'EARN_STAMPS' ? result.actualStampsAdded : stamps,
+      result.newStamps,
       client.language,
       rewardId,
       rewardTitle,
@@ -427,9 +341,8 @@ export class MerchantTransactionService {
           teamMemberId: true,
           performedByName: true,
           type: true,
-          loyaltyType: true,
           amount: true,
-          points: true,
+          stamps: true,
           status: true,
           giftStatus: true,
           fulfilledAt: true,
@@ -472,7 +385,7 @@ export class MerchantTransactionService {
       this.txRunner.run(async (prisma) => {
         const transaction = await prisma.transaction.findUnique({
           where: { id: transactionId },
-          select: { id: true, merchantId: true, clientId: true, type: true, points: true, status: true },
+          select: { id: true, merchantId: true, clientId: true, type: true, stamps: true, status: true },
         });
 
         if (!transaction) throw new NotFoundException('Transaction non trouvée');
@@ -482,6 +395,9 @@ export class MerchantTransactionService {
         if (transaction.status === 'CANCELLED') {
           throw new BadRequestException('Cette transaction est déjà annulée');
         }
+        if (transaction.type === 'COUPON_REDEEM') {
+          throw new BadRequestException('Un coupon utilisé ne peut pas être annulé');
+        }
         const cancelledTransaction = await prisma.transaction.update({
           where: { id: transactionId },
           data: { status: 'CANCELLED' },
@@ -489,25 +405,25 @@ export class MerchantTransactionService {
 
         const loyaltyCard = await prisma.loyaltyCard.findUnique({
           where: { clientId_merchantId: { clientId: transaction.clientId, merchantId } },
-          select: { id: true, points: true },
+          select: { id: true, stamps: true },
         });
 
         if (!loyaltyCard) throw new NotFoundException('Carte de fidélité non trouvée');
 
-        let newPoints: number;
-        if (transaction.type === 'EARN_POINTS') {
-          newPoints = Math.max(0, loyaltyCard.points - transaction.points);
+        let newStamps: number;
+        if (transaction.type === 'EARN_STAMPS') {
+          newStamps = Math.max(0, loyaltyCard.stamps - transaction.stamps);
         } else if (transaction.type === 'REDEEM_REWARD') {
-          newPoints = loyaltyCard.points + transaction.points;
-        } else if (transaction.type === 'ADJUST_POINTS') {
-          newPoints = Math.max(0, loyaltyCard.points - transaction.points);
+          newStamps = loyaltyCard.stamps + transaction.stamps;
+        } else if (transaction.type === 'ADJUST_STAMPS') {
+          newStamps = Math.max(0, loyaltyCard.stamps - transaction.stamps);
         } else {
           throw new BadRequestException('Type de transaction invalide');
         }
 
         await prisma.loyaltyCard.update({
           where: { clientId_merchantId: { clientId: transaction.clientId, merchantId } },
-          data: { points: newPoints },
+          data: { stamps: newStamps },
         });
 
         return cancelledTransaction;
@@ -568,7 +484,7 @@ export class MerchantTransactionService {
         id: true,
         clientId: true,
         rewardId: true,
-        points: true,
+        stamps: true,
         giftStatus: true,
         createdAt: true,
         client: { select: { id: true, prenom: true, nom: true, email: true, shareInfoMerchants: true } },
@@ -594,83 +510,79 @@ export class MerchantTransactionService {
     });
   }
 
-  // â”€â”€â”€ Private: Transaction Notifications â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // ─── Private: Transaction Notifications ──────────────────────────────────
   private async sendTransactionNotifications(
     clientId: string,
     merchantId: string,
-    merchant: { nom: string; loyaltyType: string | null; stampsForReward: number | null; pointsRules: unknown; conversionRate: number | null },
-    type: 'EARN_POINTS' | 'REDEEM_REWARD',
-    points: number,
-    newPoints: number,
+    merchant: { nom: string; stampsForReward: number | null; rewards?: { cout: number }[] },
+    type: 'EARN_STAMPS' | 'REDEEM_REWARD',
+    stamps: number,
+    newStamps: number,
     clientLanguage?: string | null,
     rewardId?: string,
     rewardTitle?: string,
   ): Promise<void> {
     const t = getNotifTranslations(clientLanguage);
-    const isStamps = merchant.loyaltyType === 'STAMPS';
-    const unitFor = (n: number) => isStamps ? t.unitStamps(n) : t.unitPoints(n);
-    const unit = unitFor(points);
+    const unit = t.unitStamps(stamps);
 
     // FCM data payload for instant client-side cache invalidation
     const pushData: Record<string, string> = {
-      event: 'points_updated',
+      event: 'stamps_updated',
       merchantId,
-      newBalance: String(newPoints),
-      points: String(points),
+      merchantName: merchant.nom,
+      newBalance: String(newStamps),
+      stamps: String(stamps),
       type,
-      loyaltyType: merchant.loyaltyType || 'POINTS',
     };
 
-    if (type === 'EARN_POINTS') {
-      // 1. Notify: points/stamps earned
+    if (type === 'EARN_STAMPS') {
+      // 1. Notify: stamps earned
       await this.notifications.sendToClient(
         merchantId,
         clientId,
-        t.earnTitle(points, unit),
-        t.earnBody(points, unit, merchant.nom, newPoints, unitFor(newPoints)),
+        t.earnTitle(stamps, unit),
+        t.earnBody(stamps, unit, merchant.nom, newStamps, t.unitStamps(newStamps)),
         pushData,
       );
 
       // 2. Check if client just reached the reward threshold → reward available!
-      const pointsRules = merchant.pointsRules as PointsRules | null;
-      const threshold = computeRewardThreshold(merchant, pointsRules);
-      const previousPoints = newPoints - points;
+      const threshold = computeRewardThreshold(merchant);
+      const previousStamps = newStamps - stamps;
 
-      if (previousPoints < threshold && newPoints >= threshold) {
+      if (previousStamps < threshold && newStamps >= threshold) {
         await this.notifications.sendToClient(
           merchantId,
           clientId,
           t.rewardAvailableTitle,
-          t.rewardAvailableBody(threshold, isStamps ? t.unitStamps(threshold) : t.unitPoints(threshold), merchant.nom),
+          t.rewardAvailableBody(threshold, t.unitStamps(threshold), merchant.nom),
           { ...pushData, event: 'reward_available' },
         );
       }
     } else if (type === 'REDEEM_REWARD') {
-      // 3. Notify: points redeemed (rewardTitle passed from createTransaction — no extra DB query)
+      // 3. Notify: stamps redeemed (rewardTitle passed from createTransaction — no extra DB query)
       const rewardName = rewardTitle ?? t.redeemFallbackReward;
 
       await this.notifications.sendToClient(
         merchantId,
         clientId,
         t.redeemTitle,
-        t.redeemBody(points, unit, rewardName, merchant.nom, newPoints, unitFor(newPoints)),
+        t.redeemBody(stamps, unit, rewardName, merchant.nom, newStamps, t.unitStamps(newStamps)),
         { ...pushData, event: 'reward_redeemed', rewardTitle: rewardName },
       );
     }
   }
 
-  // â”€â”€â”€ Adjust Points (add / modify / remove) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  async adjustPoints(
+  // ─── Adjust Stamps (add / modify / remove) ───────────────────────────────
+  async adjustStamps(
     clientId: string,
     merchantId: string,
-    points: number,
+    stamps: number,
     note?: string,
     teamMemberId?: string,
     performedByName?: string,
   ) {
-    if (points === 0) {
-      throw new BadRequestException('Le nombre de points ne peut pas être zéro');
+    if (stamps === 0) {
+      throw new BadRequestException('Le nombre de tampons ne peut pas être zéro');
     }
 
     const [client, merchant] = await Promise.all([
@@ -680,7 +592,7 @@ export class MerchantTransactionService {
       }),
       this.merchantRepo.findUnique({
         where: { id: merchantId },
-        select: { nom: true, loyaltyType: true, accumulationLimit: true },
+        select: { nom: true, accumulationLimit: true },
       }),
     ]);
     if (!client) throw new NotFoundException('Client non trouvé');
@@ -690,7 +602,7 @@ export class MerchantTransactionService {
       this.txRunner.run(async (prisma) => {
         let loyaltyCard = await prisma.loyaltyCard.findUnique({
           where: { clientId_merchantId: { clientId, merchantId } },
-          select: { id: true, points: true, deactivatedAt: true },
+          select: { id: true, stamps: true, deactivatedAt: true },
         });
 
         if (loyaltyCard?.deactivatedAt) {
@@ -703,30 +615,30 @@ export class MerchantTransactionService {
           // Enforce client limit for FREE plan
           await this.planService.assertCanAddClient(merchantId);
           loyaltyCard = await prisma.loyaltyCard.create({
-            data: { clientId, merchantId, points: 0 },
-            select: { id: true, points: true, deactivatedAt: true },
+            data: { clientId, merchantId, stamps: 0 },
+            select: { id: true, stamps: true, deactivatedAt: true },
           });
         }
 
-        let newPoints = loyaltyCard.points + points;
-        let actualPointsAdjusted = points;
+        let newStamps = loyaltyCard.stamps + stamps;
+        let actualStampsAdjusted = stamps;
 
         // Cap at accumulation limit for positive adjustments
-        if (points > 0 && merchant.accumulationLimit != null && newPoints > merchant.accumulationLimit) {
-          newPoints = merchant.accumulationLimit;
-          actualPointsAdjusted = newPoints - loyaltyCard.points;
+        if (stamps > 0 && merchant.accumulationLimit != null && newStamps > merchant.accumulationLimit) {
+          newStamps = merchant.accumulationLimit;
+          actualStampsAdjusted = newStamps - loyaltyCard.stamps;
         }
 
-        // If capping resulted in 0 effective points, the client is already at the limit
-        if (points > 0 && actualPointsAdjusted <= 0) {
+        // If capping resulted in 0 effective stamps, the client is already at the limit
+        if (stamps > 0 && actualStampsAdjusted <= 0) {
           throw new BadRequestException(
-            `Le client a atteint la limite d'accumulation (${merchant.accumulationLimit} ${merchant.loyaltyType === 'STAMPS' ? 'tampons' : 'points'})`,
+            `Le client a atteint la limite d'accumulation (${merchant.accumulationLimit} tampons)`,
           );
         }
 
-        if (newPoints < 0) {
+        if (newStamps < 0) {
           throw new BadRequestException(
-            `Points insuffisants. Le client a ${loyaltyCard.points} ${merchant.loyaltyType === 'STAMPS' ? 'tampons' : 'points'}, impossible de retirer ${Math.abs(points)}.`,
+            `Tampons insuffisants. Le client a ${loyaltyCard.stamps} tampons, impossible de retirer ${Math.abs(stamps)}.`,
           );
         }
 
@@ -736,53 +648,50 @@ export class MerchantTransactionService {
             merchantId,
             teamMemberId: teamMemberId || null,
             performedByName: performedByName || null,
-            type: 'ADJUST_POINTS',
-            loyaltyType: merchant.loyaltyType || 'POINTS',
+            type: 'ADJUST_STAMPS',
             amount: 0,
-            points: actualPointsAdjusted,
+            stamps: actualStampsAdjusted,
             note: note || null,
           },
         });
 
         await prisma.loyaltyCard.update({
           where: { clientId_merchantId: { clientId, merchantId } },
-          data: { points: newPoints },
+          data: { stamps: newStamps },
         });
 
-        return { transaction: newTransaction, newPoints, previousPoints: loyaltyCard.points, actualPointsAdjusted };
+        return { transaction: newTransaction, newStamps, previousStamps: loyaltyCard.stamps, actualStampsAdjusted };
       }, { isolationLevel: 'Serializable' }),
     );
 
-    // â”€â”€ Send push notification (fire-and-forget) â”€â”€
+    // ── Send push notification (fire-and-forget) ──
     const t = getNotifTranslations(client.language);
-    const isStamps = merchant.loyaltyType === 'STAMPS';
-    const isAdd = result.actualPointsAdjusted > 0;
-    const absPoints = Math.abs(result.actualPointsAdjusted);
-    const unit = isStamps ? t.unitStamps(absPoints) : t.unitPoints(absPoints);
+    const isAdd = result.actualStampsAdjusted > 0;
+    const absStamps = Math.abs(result.actualStampsAdjusted);
+    const unit = t.unitStamps(absStamps);
 
     const title = isAdd
-      ? t.adjustAddTitle(absPoints, unit)
-      : t.adjustRemoveTitle(absPoints, unit);
+      ? t.adjustAddTitle(absStamps, unit)
+      : t.adjustRemoveTitle(absStamps, unit);
 
     let body = isAdd
-      ? t.adjustAddBody(absPoints, unit, merchant.nom)
-      : t.adjustRemoveBody(absPoints, unit, merchant.nom);
+      ? t.adjustAddBody(absStamps, unit, merchant.nom)
+      : t.adjustRemoveBody(absStamps, unit, merchant.nom);
 
     if (note) {
       body += t.adjustReason(note);
     }
 
-    body += t.adjustBalance(result.newPoints, isStamps ? t.unitStamps(result.newPoints) : t.unitPoints(result.newPoints));
+    body += t.adjustBalance(result.newStamps, t.unitStamps(result.newStamps));
 
     // ── Real-time: emit WebSocket event for instant UI update ──
-    this.eventsGateway.emitPointsUpdated(clientId, {
+    this.eventsGateway.emitStampsUpdated(clientId, {
       clientId,
       merchantId,
       merchantName: merchant.nom,
-      loyaltyType: (merchant.loyaltyType as 'POINTS' | 'STAMPS') || 'POINTS',
-      points: absPoints,
-      newBalance: result.newPoints,
-      type: 'ADJUST_POINTS',
+      stamps: absStamps,
+      newBalance: result.newStamps,
+      type: 'ADJUST_STAMPS',
     });
 
     this.eventsGateway.emitTransactionRecorded(merchantId, {
@@ -790,25 +699,24 @@ export class MerchantTransactionService {
       clientId,
       clientName: '',
       transactionId: result.transaction.id,
-      type: 'ADJUST_POINTS',
-      points: absPoints,
-      newBalance: result.newPoints,
+      type: 'ADJUST_STAMPS',
+      stamps: absStamps,
+      newBalance: result.newStamps,
     });
 
     this.notifications.sendToClient(merchantId, clientId, title, body, {
-      event: 'points_updated',
+      event: 'stamps_updated',
       merchantId,
-      newBalance: String(result.newPoints),
-      points: String(absPoints),
-      type: 'ADJUST_POINTS',
-      loyaltyType: merchant.loyaltyType || 'POINTS',
+      newBalance: String(result.newStamps),
+      stamps: String(absStamps),
+      type: 'ADJUST_STAMPS',
     })
       .catch((err) => this.logger.warn(`Adjust notification failed: ${errMsg(err)}`));
 
     return {
       transaction: result.transaction,
-      previousPoints: result.previousPoints,
-      newPoints: result.newPoints,
+      previousStamps: result.previousStamps,
+      newStamps: result.newStamps,
     };
   }
 }

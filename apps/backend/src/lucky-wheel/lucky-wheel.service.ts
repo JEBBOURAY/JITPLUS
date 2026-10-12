@@ -20,6 +20,7 @@ import type {
   ILuckyWheelDrawRepository,
 } from '../common/repositories/repository.types';
 import { withRetry } from '../common/utils/retry-transaction.helper';
+import { weightedRandomPick } from '../common/utils/weighted-draw';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -42,12 +43,12 @@ export class LuckyWheelService {
     globalWinRate: number;
     startsAt: Date;
     endsAt: Date;
-    // STORE COMPLIANCE: ticketCostPoints is in loyalty points earned through
-    // visits / scans only. Points MUST NEVER become purchasable with real
-    // money (no IAP, no card). Introducing paid points would turn the wheel
+    // STORE COMPLIANCE: ticketCostStamps is in loyalty stamps earned through
+    // visits / scans only. Stamps MUST NEVER become purchasable with real
+    // money (no IAP, no card). Introducing paid stamps would turn the wheel
     // into real-money gambling and violate Apple 5.3 / Google Play Real-Money
     // Gambling policies.
-    ticketCostPoints?: number;
+    ticketCostStamps?: number;
     ticketEveryNVisits?: number;
     minSpendAmount?: number;
     prizes: { label: string; description?: string; weight: number; totalStock: number; claimWindowHours?: number }[];
@@ -77,7 +78,7 @@ export class LuckyWheelService {
         globalWinRate: data.globalWinRate,
         startsAt: data.startsAt,
         endsAt: data.endsAt,
-        ticketCostPoints: data.ticketCostPoints ?? 0,
+        ticketCostStamps: data.ticketCostStamps ?? 0,
         ticketEveryNVisits: data.ticketEveryNVisits,
         minSpendAmount: data.minSpendAmount ?? 0,
         prizes: {
@@ -498,7 +499,7 @@ export class LuckyWheelService {
               clientId,
               merchantId: campaign.merchantId,
               type: 'LUCKY_WHEEL_WIN',
-              points: 0,
+              stamps: 0,
               amount: 0,
               status: 'ACTIVE',
               note: `🎁 ${fallbackPrize.label}`,
@@ -536,7 +537,7 @@ export class LuckyWheelService {
             clientId,
             merchantId: campaign.merchantId,
             type: 'LUCKY_WHEEL_WIN',
-            points: 0,
+            stamps: 0,
             amount: 0,
             status: 'ACTIVE',
             note: `🎁 ${selectedPrize.label}`,
@@ -606,14 +607,15 @@ export class LuckyWheelService {
     });
   }
 
-  async getPendingPrizes(merchantId: string) {
+  async getPendingPrizes(merchantId: string, clientId?: string) {
+    const ticketWhere = { campaign: { merchantId }, ...(clientId ? { clientId } : {}) };
     // Auto-expire overdue draws before returning
     await this.drawRepo.updateMany({
       where: {
         result: 'WON',
         fulfilment: 'PENDING',
         claimBefore: { lt: new Date() },
-        ticket: { campaign: { merchantId } },
+        ticket: ticketWhere,
       },
       data: { fulfilment: 'EXPIRED' },
     });
@@ -622,7 +624,7 @@ export class LuckyWheelService {
       where: {
         result: 'WON',
         fulfilment: 'PENDING',
-        ticket: { campaign: { merchantId } },
+        ticket: ticketWhere,
       },
       include: {
         prize: { select: { label: true, description: true } },
@@ -680,18 +682,6 @@ export class LuckyWheelService {
   // ── Weighted Random Algorithm ──────────────────────────────
 
   private weightedRandomPick<T extends Record<string, any> & { weight: number }>(items: T[]): T {
-    const totalWeight = items.reduce((sum, item) => sum + item.weight, 0);
-    if (totalWeight <= 0) return items[0];
-    // Cryptographically secure random number
-    const roll = randomInt(0, totalWeight);
-
-    let cumulative = 0;
-    for (const item of items) {
-      cumulative += item.weight;
-      if (roll < cumulative) return item;
-    }
-
-    // Fallback (should never reach here)
-    return items[items.length - 1];
+    return weightedRandomPick(items) ?? items[0];
   }
 }

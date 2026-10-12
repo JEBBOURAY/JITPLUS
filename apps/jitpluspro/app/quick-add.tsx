@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -32,12 +32,13 @@ import { logPerf } from '@jitplus/shared/src/devLogger';
 import { normalizePhone } from '@/utils/normalizePhone';
 import { COUNTRIES } from '@/constants/Countries';
 import CountryPickerModal from '@/components/CountryPickerModal';
-import { MAX_AMOUNT_DIGITS } from '@/constants/app';
+import { MAX_AMOUNT_DIGITS, MAX_STAMPS_PER_TX } from '@/constants/app';
+import { computeStampsForAmount } from '@/utils/stamps';
 
 const MAX_PHONE_LEN = 15;
 
 type QuickAddResult = {
-  transaction: { id: string; points: number; amount: number };
+  transaction: { id: string; stamps: number; amount: number };
   claim: { url: string; expiresAt: string };
   client: { id: string; telephone: string; isAnonymous: boolean };
 };
@@ -49,7 +50,7 @@ export default function QuickAddScreen() {
   const theme = useTheme();
   const { t } = useLanguage();
   const merchant = useAuthStore((s) => s.merchant);
-  const params = useLocalSearchParams<{ telephone?: string; localPhone?: string; countryCode?: string; prenom?: string }>();
+  const params = useLocalSearchParams<{ localPhone?: string; countryCode?: string; prenom?: string }>();
 
   // ── Form state ──
   const [countryIndex, setCountryIndex] = useState<number>(() => {
@@ -59,23 +60,9 @@ export default function QuickAddScreen() {
     return idx >= 0 ? idx : 0;
   });
   const [showCountryPicker, setShowCountryPicker] = useState(false);
-  // Phone state: prefer the raw `localPhone` digits the merchant typed on the
-  // scan page (lossless). Fall back to the legacy `telephone` param by stripping
-  // a best-guess dial code only when no localPhone is available.
-  const [phone, setPhone] = useState<string>(() => {
-    if (params.localPhone) return params.localPhone.replace(/[^\d]/g, '').slice(0, MAX_PHONE_LEN);
-    if (params.telephone) {
-      const t = params.telephone.replace(/^\+/, '');
-      const dial = (params.countryCode
-        ? COUNTRIES.find((c) => c.code === params.countryCode)?.dial
-        : merchant?.countryCode
-          ? COUNTRIES.find((c) => c.code === merchant.countryCode)?.dial
-          : null) ?? '';
-      const dialDigits = dial.replace(/[^\d]/g, '');
-      return (dialDigits && t.startsWith(dialDigits) ? t.slice(dialDigits.length) : t).slice(0, MAX_PHONE_LEN);
-    }
-    return '';
-  });
+  const [phone, setPhone] = useState<string>(() =>
+    (params.localPhone ?? '').replace(/[^\d]/g, '').slice(0, MAX_PHONE_LEN),
+  );
   const [prenom, setPrenom] = useState<string>(params.prenom ?? '');
   const [amount, setAmount] = useState<string>('');
   const [loading, setLoading] = useState(false);
@@ -101,17 +88,14 @@ export default function QuickAddScreen() {
       .catch(() => { canOpenWaRef.current = false; });
   }, []);
 
-  const isStampsMode = merchant?.loyaltyType === 'STAMPS';
-  const isPerVisit = isStampsMode && (merchant?.stampEarningMode || 'PER_VISIT') === 'PER_VISIT';
-  const pointsRate = merchant?.pointsRate || 10;
+  const isPerVisit = (merchant?.stampEarningMode || 'PER_VISIT') === 'PER_VISIT';
+  const amountPerStamp = merchant?.amountPerStamp;
 
-  // ── Computed points/stamps preview ──
-  const computedPoints = useMemo(() => {
-    if (isPerVisit) return 1;
-    const n = parseFloat(amount.replace(',', '.')) || 0;
-    if (n <= 0 || !Number.isFinite(pointsRate) || pointsRate <= 0) return 0;
-    return Math.floor(n / pointsRate);
-  }, [amount, isPerVisit, pointsRate]);
+  // ── Computed stamps preview ──
+  const { stamps: computedStamps, capped: stampsCapped } = useMemo(() => {
+    if (isPerVisit) return { stamps: 1, capped: false };
+    return computeStampsForAmount(parseFloat(amount.replace(',', '.')) || 0, amountPerStamp);
+  }, [amount, isPerVisit, amountPerStamp]);
 
   // ── Input handlers ──
   const handleAmountChange = useCallback((text: string) => {
@@ -129,7 +113,7 @@ export default function QuickAddScreen() {
   }, []);
 
   // ── Submit ──
-  const canSubmit = phone.length >= 6 && (isPerVisit || computedPoints > 0) && !loading;
+  const canSubmit = phone.length >= 6 && (isPerVisit || computedStamps > 0) && !loading;
 
   const handleSubmit = useCallback(async () => {
     if (!canSubmit) return;
@@ -160,9 +144,9 @@ export default function QuickAddScreen() {
           telephone: normalizedPhone,
           countryCode: country.code,
           prenom: prenom.trim() || undefined,
-          type: 'EARN_POINTS',
+          type: 'EARN_STAMPS',
           amount: isPerVisit ? Math.max(amountNum, 0) : amountNum,
-          points: computedPoints,
+          stamps: computedStamps,
         },
         { headers: { 'Idempotency-Key': idempotencyKey } },
       );
@@ -183,22 +167,21 @@ export default function QuickAddScreen() {
     } finally {
       setLoading(false);
     }
-  }, [canSubmit, countryIndex, phone, amount, prenom, computedPoints, isPerVisit, t]);
+  }, [canSubmit, countryIndex, phone, amount, prenom, computedStamps, isPerVisit, t]);
 
   // ── WhatsApp share ──
   const buildWaMessage = useCallback(
     (data: QuickAddResult): string => {
-      const unit = isStampsMode ? t('common.stamps') : t('common.points');
       const namePart = prenom.trim() ? t('quickAdd.waMessageHello', { name: prenom.trim() }) : '';
       return t('quickAdd.waMessage', {
         name: namePart,
-        points: data.transaction.points,
-        unit,
+        stamps: data.transaction.stamps,
+        unit: t('common.stamps'),
         merchant: merchant?.nom ?? 'JitPlus',
         url: data.claim.url,
       });
     },
-    [isStampsMode, prenom, t, merchant?.nom],
+    [prenom, t, merchant?.nom],
   );
 
   const shareViaWhatsApp = useCallback(
@@ -342,13 +325,16 @@ export default function QuickAddScreen() {
           )}
 
           {/* Preview */}
-          {computedPoints > 0 && (
+          {computedStamps > 0 && (
             <View style={[styles.previewBox, { backgroundColor: theme.primaryBg }]}>
               <Text style={[styles.previewText, { color: theme.primary }]}>
-                {isStampsMode
-                  ? t('quickAdd.stampsPreview', { count: computedPoints })
-                  : t('quickAdd.pointsPreview', { count: computedPoints })}
+                {t('quickAdd.stampsPreview', { count: computedStamps })}
               </Text>
+              {stampsCapped && (
+                <Text style={[styles.previewCapText, { color: theme.primary }]}>
+                  {t('transaction.maxStampsPerTxHint', { max: MAX_STAMPS_PER_TX })}
+                </Text>
+              )}
             </View>
           )}
 
@@ -508,6 +494,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   previewText: { fontSize: 16, fontWeight: '700' },
+  previewCapText: { fontSize: 12, marginTop: 4, textAlign: 'center' },
   submitBtn: {
     marginTop: 24,
     flexDirection: 'row',

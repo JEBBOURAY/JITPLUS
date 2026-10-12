@@ -5,7 +5,7 @@
  * réseaux sociaux, description, badges, galerie, horaires, fidélité,
  * autres adresses et barre d'action.
  */
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Modal, View, Text, StyleSheet, ScrollView, Pressable, TouchableOpacity,
   StatusBar, I18nManager, Dimensions, Platform,
@@ -13,11 +13,12 @@ import {
 import { Image as ExpoImage } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
-  X as XIcon, ArrowLeft, Send, Flag, Eye, Users, Clock, Gift, Coins, Stamp,
+  X as XIcon, ArrowLeft, Send, Flag, Eye, Users, Clock, Gift, Stamp,
   MapPin, Phone, ChevronRight, Wallet,
-  Instagram, Music2, Mail, Globe,
+  Instagram, Music2, Mail, Globe, Facebook, Ghost, Youtube, MessageCircle,
   Wifi, ParkingSquare, TreePine, Snowflake, CreditCard, Truck, ShoppingBag,
   Utensils, Leaf, Accessibility, Dog, Baby, CalendarCheck,
+  type LucideIcon,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { wp, hp, ms } from '@/utils/responsive';
@@ -25,11 +26,12 @@ import { resolveImageUrl } from '@/utils/imageUrl';
 import { MERCHANT_ICON_MAP } from '@/utils/merchantIcons';
 import { palette } from '@/contexts/ThemeContext';
 import { useRewards } from '@/hooks/useQueryHooks';
+import { hoursHasAny } from '@/components/stores/brand';
 import type { Merchant, MerchantCategory, Reward } from '@/types';
 import type { OpeningHours } from '@jitplus/shared';
 
 // ─── Helpers identiques à la fiche client ────────────────────────────────
-const BADGE_ICONS: Record<string, React.ComponentType<any>> = {
+const BADGE_ICONS: Record<string, LucideIcon> = {
   WIFI: Wifi, PARKING: ParkingSquare, TERRASSE: TreePine, CLIMATISE: Snowflake,
   CARTE_BANCAIRE: CreditCard, LIVRAISON: Truck, TAKEAWAY: ShoppingBag,
   HALAL: Utensils, VEGETARIEN: Leaf, ACCESS_PMR: Accessibility,
@@ -87,17 +89,14 @@ interface Props {
   merchant: Merchant;
   draft: PreviewState;
   theme: Theme;
-  t: (key: string, opts?: any) => string;
+  t: (key: string, opts?: Record<string, unknown>) => string;
   getCategoryLabel: (c: string) => string;
-  /** When true, renders the preview content inline (no Modal wrapper) so it can
-   *  live inside the store-preview screen behind an Édition/Aperçu toggle. */
-  inline?: boolean;
 }
 
 const SCREEN_W = Dimensions.get('window').width;
 
 function FichePreviewModalInner({
-  onClose, merchant, draft, theme, t, getCategoryLabel, inline = false,
+  onClose, merchant, draft, theme, t, getCategoryLabel,
 }: Omit<Props, 'visible'>) {
   const insets = useSafeAreaInsets();
   const [galleryIdx, setGalleryIdx] = useState<number | null>(null);
@@ -112,7 +111,7 @@ function FichePreviewModalInner({
     return list.map((c) => getCategoryLabel(c)).join(' · ');
   }, [merchant.categorie, draft.secondary, getCategoryLabel]);
 
-  const hasAnyHours = !!draft.hours && WEEK_DAYS.some((d) => draft.hours[d]);
+  const hasAnyHours = hoursHasAny(draft.hours);
   const hasGallery = draft.gallery.length > 0;
   const hasBadges = draft.badges.length > 0;
   const hasDescription = !!merchant.description && merchant.description.trim().length > 0;
@@ -144,32 +143,34 @@ function FichePreviewModalInner({
     : (fallbackStore ? [fallbackStore] : []);
   const showLocations = displayedStores.length > 0;
 
-  // Réseaux sociaux
-  const storeEmail = useMemo(
-    () => merchant.stores?.find((s) => !!s.email)?.email,
-    [merchant.stores],
-  );
-  const hasSocial = !!storeEmail
-    || !!merchant.socialLinks?.instagram
-    || !!merchant.socialLinks?.tiktok
-    || !!merchant.socialLinks?.website;
+  // Réseaux sociaux : même ordre que MerchantSocialLinks côté client.
+  const socialIcons = useMemo(() => {
+    const links = merchant.socialLinks;
+    const email = merchant.stores?.find((st) => !!st.email)?.email;
+    const icons: { key: string; Icon: LucideIcon; color: string; bg: string }[] = [];
+    const add = (on: unknown, key: string, Icon: LucideIcon, color: string, bg = `${color}12`) => {
+      if (on) icons.push({ key, Icon, color, bg });
+    };
+    add(links?.whatsapp, 'whatsapp', MessageCircle, '#25D366');
+    add(links?.instagram, 'instagram', Instagram, '#E1306C');
+    add(links?.tiktok, 'tiktok', Music2, palette.gray900, `${palette.gray900}08`);
+    add(links?.facebook, 'facebook', Facebook, '#1877F2');
+    add(links?.snapchat, 'snapchat', Ghost, '#C9A400');
+    add(links?.youtube, 'youtube', Youtube, '#FF0000');
+    add(email, 'email', Mail, '#EA4335');
+    add(links?.website, 'website', Globe, accent, `${accent}10`);
+    return icons;
+  }, [merchant.socialLinks, merchant.stores, accent]);
 
   // Rewards : on combine les vrais rewards + fallback tampons (comme la fiche client)
   const rewardsList: Reward[] = useMemo(() => {
     if (rewardsData && rewardsData.length > 0) return rewardsData;
-    if (merchant.loyaltyType === 'STAMPS') {
-      return [{
-        id: 'default-stamp',
-        titre: t('common.gift') || 'Cadeau',
-        cout: merchant.stampsForReward || 10,
-      }];
-    }
-    return [];
-  }, [rewardsData, merchant.loyaltyType, merchant.stampsForReward, t]);
-
-  const loyaltyTypeLabel = merchant.loyaltyType === 'STAMPS'
-    ? t('storePreview.stampCard')
-    : t('storePreview.pointsAccumulation');
+    return [{
+      id: 'default-stamp',
+      titre: t('common.gift'),
+      cout: merchant.stampsForReward || 10,
+    }];
+  }, [rewardsData, merchant.stampsForReward, t]);
 
   const body = (
       <View style={[s.root, { backgroundColor: theme.bg }]}>
@@ -302,28 +303,13 @@ function FichePreviewModalInner({
           </View>
 
           {/* ── Réseaux sociaux ──────────────────────────────────── */}
-          {hasSocial && (
+          {socialIcons.length > 0 && (
             <View style={s.socialRow}>
-              {!!merchant.socialLinks?.instagram && (
-                <View style={[s.socialIconBtn, { backgroundColor: '#E1306C12' }]}>
-                  <Instagram size={18} color="#E1306C" strokeWidth={2} />
+              {socialIcons.map(({ key, Icon, color, bg }) => (
+                <View key={key} style={[s.socialIconBtn, { backgroundColor: bg }]}>
+                  <Icon size={18} color={color} strokeWidth={2} />
                 </View>
-              )}
-              {!!merchant.socialLinks?.tiktok && (
-                <View style={[s.socialIconBtn, { backgroundColor: `${palette.gray900}08` }]}>
-                  <Music2 size={18} color={palette.gray900} strokeWidth={2} />
-                </View>
-              )}
-              {!!storeEmail && (
-                <View style={[s.socialIconBtn, { backgroundColor: '#EA433512' }]}>
-                  <Mail size={18} color="#EA4335" strokeWidth={2} />
-                </View>
-              )}
-              {!!merchant.socialLinks?.website && (
-                <View style={[s.socialIconBtn, { backgroundColor: `${accent}10` }]}>
-                  <Globe size={18} color={accent} strokeWidth={2} />
-                </View>
-              )}
+              ))}
             </View>
           )}
 
@@ -460,16 +446,14 @@ function FichePreviewModalInner({
             >
               <View style={s.loyaltyRow}>
                 <View style={[s.cardIconBadge, { backgroundColor: `${accent}15` }]}>
-                  {merchant.loyaltyType === 'STAMPS'
-                    ? <Stamp size={ms(16)} color={accent} strokeWidth={1.5} />
-                    : <Coins size={ms(16)} color={accent} strokeWidth={1.5} />}
+                  <Stamp size={ms(16)} color={accent} strokeWidth={1.5} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={[s.cardLabel, { color: theme.textMuted }]}>
                     {t('storePreview.previewLoyaltyProgram')}
                   </Text>
                   <Text style={[s.cardValue, { color: theme.text }]} numberOfLines={1}>
-                    {loyaltyTypeLabel}
+                    {t('storePreview.stampCard')}
                   </Text>
                 </View>
               </View>
@@ -511,9 +495,7 @@ function FichePreviewModalInner({
                         </Text>
                         <View style={[s.rewardCostBadge, { backgroundColor: `${accent}15` }]}>
                           <Text style={[s.rewardCost, { color: accent }]} numberOfLines={1}>
-                            {merchant.loyaltyType === 'STAMPS'
-                              ? t('storePreview.previewStampsCost', { count: reward.cout })
-                              : t('storePreview.previewPointsCost', { count: reward.cout })}
+                            {t('storePreview.previewStampsCost', { count: reward.cout })}
                           </Text>
                         </View>
                       </View>
@@ -645,8 +627,6 @@ function FichePreviewModalInner({
       </View>
   );
 
-  if (inline) return body;
-
   return (
     <Modal
       visible={true}
@@ -761,8 +741,8 @@ const s = StyleSheet.create({
 
   // Social
   socialRow: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: wp(14), paddingBottom: hp(16),
+    flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center',
+    gap: wp(12), paddingHorizontal: wp(16), paddingBottom: hp(16),
   },
   socialIconBtn: {
     width: ms(42), height: ms(42), borderRadius: ms(21),

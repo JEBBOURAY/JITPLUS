@@ -21,10 +21,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 // expo-image-picker is lazy-loaded inside the picker handlers below — its
 // native module weighs ~800KB and is only needed if the user taps the
 // logo/cover edit buttons.
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getErrorMessage } from '@/utils/error';
 import InfoRow from '@/components/InfoRow';
-import { useReferral, useUploadMerchantLogo, useDeleteMerchantLogo, useUploadMerchantCover, useDeleteMerchantCover } from '@/hooks/useQueryHooks';
+import { useReferral } from '@/hooks/useQueryHooks';
+import { useMerchantMedia } from '@/hooks/useMerchantMedia';
 import {
   LogOut,
   ChevronDown,
@@ -33,6 +33,7 @@ import {
   Shield,
   ShieldCheck,
   SlidersHorizontal,
+  Store,
   Moon,
   Gift,
   Mail,
@@ -41,7 +42,6 @@ import {
   Check,
   X,
   Ticket,
-  ClipboardList,
 } from 'lucide-react-native';
 import { useAuthState, useAuthActions } from '@/contexts/AuthContext';
 import api from '@/services/api';
@@ -51,10 +51,8 @@ import { useLanguage, LANGUAGES } from '@/contexts/LanguageContext';
 import type { AppLocale } from '@/contexts/LanguageContext';
 import * as Updates from 'expo-updates';
 import Constants from 'expo-constants';
-import PremiumLockModal from '@/components/PremiumLockModal';
 import { wp, hp, ms, fontSize as FS, radius } from '@/utils/responsive';
-import { ASYNC_STORAGE_KEYS } from '@/constants/app';
-import { CoverHeader, TrialCard, ReferralInlineRow, LogoEditModal, CoverEditModal } from '@/components/account';
+import { CoverHeader, TrialCard, ReferralInlineRow } from '@/components/account';
 
 /**
  * Chevron that smoothly rotates 180° (~250ms) when a section opens/closes,
@@ -89,8 +87,6 @@ function PreferencesSection({
   referralCode,
   toggleDark,
   goToReferral,
-  checklistHidden,
-  onRestoreChecklist,
   t,
 }: {
   prefExpanded: boolean;
@@ -104,8 +100,6 @@ function PreferencesSection({
   referralCode: string | null;
   toggleDark: () => void;
   goToReferral: () => void;
-  checklistHidden: boolean;
-  onRestoreChecklist: () => void;
   t: (key: string, params?: Record<string, unknown>) => string;
 }) {
   return (
@@ -155,15 +149,6 @@ function PreferencesSection({
               label={t('referral.menuTitle')}
               subtitle={t('referral.menuSubtitle')}
               onPress={goToReferral}
-              iconBg={VIOLET_ICON_BG}
-            />
-          )}
-          {checklistHidden && (
-            <InfoRow
-              icon={<ClipboardList size={ms(16)} color={palette.violet} strokeWidth={1.5} />}
-              label={t('account.showChecklist')}
-              subtitle={t('account.showChecklistSub')}
-              onPress={onRestoreChecklist}
               iconBg={VIOLET_ICON_BG}
             />
           )}
@@ -230,7 +215,7 @@ function AccountSection({
   goToSecurity,
   goToDevices,
   goToLegal,
-  goToStorePreview,
+  goToStore,
   openSupport,
   t,
 }: {
@@ -243,7 +228,7 @@ function AccountSection({
   goToSecurity: () => void;
   goToDevices: () => void;
   goToLegal: () => void;
-  goToStorePreview: () => void;
+  goToStore: () => void;
   openSupport: () => void;
   t: (key: string, params?: Record<string, unknown>) => string;
 }) {
@@ -288,10 +273,10 @@ function AccountSection({
           )}
           {!isTeamMember && (
             <InfoRow
-              icon={<SlidersHorizontal size={ms(16)} color={palette.violet} strokeWidth={1.5} />}
-              label={t('account.storePreviewTitle')}
-              subtitle={t('account.storePreviewSubtitle')}
-              onPress={goToStorePreview}
+              icon={<Store size={ms(16)} color={palette.violet} strokeWidth={1.5} />}
+              label={t('account.storeHubTitle')}
+              subtitle={t('account.storeHubSubtitle')}
+              onPress={goToStore}
               iconBg={VIOLET_ICON_BG}
             />
           )}
@@ -456,10 +441,7 @@ export default function AccountScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { locale, setLocale, t } = useLanguage();
-  const uploadLogoMutation = useUploadMerchantLogo();
-  const deleteLogoMutation = useDeleteMerchantLogo();
-  const uploadCoverMutation = useUploadMerchantCover();
-  const deleteCoverMutation = useDeleteMerchantCover();
+  const media = useMerchantMedia();
 
   // Collapsible section states â€” single state to avoid triple re-renders
   const [expandedSection, setExpandedSection] = useState<'pref' | 'compte' | null>(null);
@@ -467,14 +449,6 @@ export default function AccountScreen() {
   const toggleCompte = useCallback(() => setExpandedSection((p) => (p === 'compte' ? null : 'compte')), []);
   const prefExpanded = expandedSection === 'pref';
   const compteExpanded = expandedSection === 'compte';
-  const [showLogoModal, setShowLogoModal] = useState(false);
-  const [showCoverModal, setShowCoverModal] = useState(false);
-  const [premiumModal, setPremiumModal] = useState<{ visible: boolean; titleKey: string; descKey: string }>({
-    visible: false,
-    titleKey: '',
-    descKey: '',
-  });
-
   const isPremium = merchant?.plan === 'PREMIUM';
 
   // Soft violet used consistently for every list/accordion icon (BRIEF token).
@@ -492,137 +466,9 @@ export default function AccountScreen() {
   const { isDark: themeIsDark, setDarkMode } = theme;
   const toggleDark = useCallback(() => setDarkMode(!themeIsDark), [themeIsDark, setDarkMode]);
 
-  const pickAndUploadLogo = useCallback(async () => {
-    if (uploadLogoMutation.isPending) return;
-    try {
-      const ImagePicker = await import('expo-image-picker');
-      const preferredMode =
-        (ImagePicker as any).UIImagePickerPreferredAssetRepresentationMode?.Compatible ?? 'compatible';
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.7,
-        preferredAssetRepresentationMode: preferredMode,
-      });
-      if (result.canceled || !result.assets?.[0]) return;
-      const asset = result.assets[0];
-      const { url } = await uploadLogoMutation.mutateAsync({
-        uri: asset.uri,
-        mimeType: asset.mimeType,
-        merchantName: merchant?.nom,
-      });
-      updateMerchant({ ...merchant!, logoUrl: url });
-    } catch (err) {
-      Alert.alert(t('common.error'), getErrorMessage(err, t('account.logoUploadError')));
-    }
-  }, [uploadLogoMutation, merchant, updateMerchant, t]);
-
-  const pickAndUploadCover = useCallback(async () => {
-    if (uploadCoverMutation.isPending) return;
-    try {
-      const ImagePicker = await import('expo-image-picker');
-      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!perm.granted) {
-        Alert.alert(t('common.error'), t('upload.permissionDenied'));
-        return;
-      }
-      const preferredMode =
-        (ImagePicker as any).UIImagePickerPreferredAssetRepresentationMode?.Compatible ?? 'compatible';
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsEditing: true,
-        aspect: [16, 9], // Cover images are usually wider
-        quality: 0.8,    // A bit more quality for covers
-        preferredAssetRepresentationMode: preferredMode,
-      });
-      if (result.canceled || !result.assets?.[0]) return;
-      const asset = result.assets[0];
-      const { url } = await uploadCoverMutation.mutateAsync({
-        uri: asset.uri,
-        mimeType: asset.mimeType,
-        merchantName: merchant?.nom,
-        fileSize: asset.fileSize,
-      });
-      updateMerchant({ ...merchant!, coverUrl: url });
-    } catch (err) {
-      Alert.alert(t('common.error'), getErrorMessage(err, t('account.coverUploadError')));
-    }
-  }, [uploadCoverMutation, merchant, updateMerchant, t]);
-
-  const handleLogoPress = useCallback(() => {
-    if (isTeamMember) {
-      Alert.alert(t('account.logoOwnerOnly'), t('account.logoOwnerOnlyMsg'));
-      return;
-    }
-    if (!isPremium) {
-      setPremiumModal({ visible: true, titleKey: 'account.logoProTitle', descKey: 'account.logoProMsg' });
-      return;
-    }
-    setShowLogoModal(true);
-  }, [isPremium, isTeamMember, t]);
-
-  const handleCoverPress = useCallback(() => {
-    if (isTeamMember) {
-      Alert.alert(t('account.logoOwnerOnly'), t('account.logoOwnerOnlyMsg'));
-      return;
-    }
-    setShowCoverModal(true);
-  }, [isTeamMember, t]);
-
-  const handleDeleteLogo = useCallback(() => {
-    setShowLogoModal(false);
-    Alert.alert(
-      t('account.logoDeleteConfirmTitle'),
-      t('account.logoDeleteConfirmMsg'),
-      [
-        { text: t('common.cancel'), style: 'cancel' },
-        {
-          text: t('account.deleteProfilePhoto'),
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteLogoMutation.mutateAsync();
-              updateMerchant({ ...merchant!, logoUrl: undefined });
-            } catch (err) {
-              Alert.alert(t('common.error'), getErrorMessage(err, t('account.logoDeleteError')));
-            }
-          },
-        },
-      ],
-    );
-  }, [deleteLogoMutation, merchant, updateMerchant, t]);
-
-  const handleDeleteCover = useCallback(() => {
-    setShowCoverModal(false);
-    Alert.alert(
-      t('account.coverDeleteConfirmTitle'),
-      t('account.coverDeleteConfirmMsg'),
-      [
-        { text: t('common.cancel'), style: 'cancel' },
-        {
-          text: t('account.deleteCoverPhoto'),
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteCoverMutation.mutateAsync();
-              updateMerchant({ ...merchant!, coverUrl: undefined });
-            } catch (err) {
-              Alert.alert(t('common.error'), getErrorMessage(err, t('account.coverDeleteError')));
-            }
-          },
-        },
-      ],
-    );
-  }, [deleteCoverMutation, merchant, updateMerchant, t]);
   const { data: referralData } = useReferral(!isTeamMember);
   const referralCode = referralData?.referralCode ?? null;
 
-  // Profile data is managed by React Query (useMerchantProfile, staleTime: 5min).
-  // No need to force-reload on every tab focus â€” pull-to-refresh or mutations handle invalidation.
-  const closeLogoModal = useCallback(() => setShowLogoModal(false), []);
-  const closeCoverModal = useCallback(() => setShowCoverModal(false), []);
-  const closePremiumModal = useCallback(() => setPremiumModal((prev) => ({ ...prev, visible: false })), []);
 
   // Inline language switch (pills). Mirrors the RTL-restart flow from LanguageModal.
   const handleSelectLanguage = useCallback(async (code: AppLocale) => {
@@ -691,30 +537,11 @@ export default function AccountScreen() {
     ]);
   }, [signOut, t]);
 
-  // -- Checklist hidden state (readable from Compte so user can restore it) --
-  const [checklistHidden, setChecklistHidden] = useState<boolean>(false);
-  useEffect(() => {
-    AsyncStorage.getItem(ASYNC_STORAGE_KEYS.CHECKLIST_HIDDEN).then((v) => {
-      setChecklistHidden(v === 'true');
-    }).catch(() => {});
-  }, []);
-
-  const restoreChecklist = useCallback(() => {
-    AsyncStorage.multiSet([
-      [ASYNC_STORAGE_KEYS.CHECKLIST_HIDDEN, 'false'],
-      [ASYNC_STORAGE_KEYS.CHECKLIST_HIDE_NOTICE_SEEN, 'false'],
-    ]).catch(() => {});
-    setChecklistHidden(false);
-    // Always land on Accueil (matches the "sur l'Accueil" promise in the subtitle copy) —
-    // router.back() is unreliable here since it depends on how the user reached Compte.
-    router.replace('/(tabs)/activity');
-  }, [router]);
-
   // -- Stable navigation callbacks (keeps InfoRow / ProfileCard memo stable) --
   const goToReferral = useCallback(() => router.push('/referral'), [router]);
   const goToLegal = useCallback(() => router.push('/legal'), [router]);
   const goToSecurity = useCallback(() => router.push('/security'), [router]);
-  const goToStorePreview = useCallback(() => router.push({ pathname: '/stores', params: { tab: 'fiche' } }), [router]);
+  const goToStore = useCallback(() => router.push('/stores'), [router]);
   const goToDevices = useCallback(() => router.push('/security?tab=devices'), [router]);
   const goToDelete = useCallback(() => router.push('/security?tab=delete'), [router]);
 
@@ -807,10 +634,10 @@ export default function AccountScreen() {
         <CoverHeader
           t={t}
           merchant={merchant}
-          uploadIsPending={uploadLogoMutation.isPending}
-          coverUploadIsPending={uploadCoverMutation.isPending}
-          onLogoPress={handleLogoPress}
-          onCoverPress={!isTeamMember ? handleCoverPress : undefined}
+          uploadIsPending={media.logoUploading}
+          coverUploadIsPending={media.coverUploading}
+          onLogoPress={media.openLogo}
+          onCoverPress={!isTeamMember ? media.openCover : undefined}
           onBackPress={goBack}
           onEditName={!isTeamMember ? handleEditName : undefined}
           topInset={insets.top}
@@ -867,8 +694,6 @@ export default function AccountScreen() {
             referralCode={referralCode}
             toggleDark={toggleDark}
             goToReferral={goToReferral}
-            checklistHidden={checklistHidden}
-            onRestoreChecklist={restoreChecklist}
             t={t}
           />
 
@@ -883,7 +708,7 @@ export default function AccountScreen() {
             goToSecurity={goToSecurity}
             goToDevices={goToDevices}
             goToLegal={goToLegal}
-            goToStorePreview={goToStorePreview}
+            goToStore={goToStore}
             openSupport={openSupport}
             t={t}
           />
@@ -907,34 +732,7 @@ export default function AccountScreen() {
         </View>
       </ScrollView>
 
-      <LogoEditModal
-        visible={showLogoModal}
-        onClose={closeLogoModal}
-        theme={theme}
-        t={t}
-        merchant={merchant}
-        uploadIsPending={uploadLogoMutation.isPending}
-        onPickPhoto={pickAndUploadLogo}
-        onDelete={handleDeleteLogo}
-      />
-
-      <CoverEditModal
-        visible={showCoverModal}
-        onClose={closeCoverModal}
-        theme={theme}
-        t={t}
-        merchant={merchant}
-        uploadIsPending={uploadCoverMutation.isPending}
-        onPickPhoto={pickAndUploadCover}
-        onDelete={handleDeleteCover}
-      />
-
-      <PremiumLockModal
-        visible={premiumModal.visible}
-        onClose={closePremiumModal}
-        titleKey={premiumModal.titleKey}
-        descKey={premiumModal.descKey}
-      />
+      {media.modals}
 
       {/* -- Edit Profile Name Modal -- */}
       <Modal

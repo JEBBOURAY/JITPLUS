@@ -20,3 +20,7 @@ npm-debug.log*
 
 # Uploads (files are on GCS in production)
 /uploads
+
+# Stamps-only migration reports (contain client ids)
+stamps-precheck-*.json
+precheck-*.json

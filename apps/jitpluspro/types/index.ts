@@ -1,5 +1,5 @@
-import type { MerchantCategory, LoyaltyType, MerchantPlan, SocialLinks, OpeningHours } from '@jitplus/shared';
-export { MerchantCategory, MERCHANT_BADGE_CODES, type LoyaltyType, type MerchantPlan, type SocialLinks, type OpeningHours, type MerchantBadge } from '@jitplus/shared';
+import type { MerchantCategory, MerchantPlan, SocialLinks, OpeningHours } from '@jitplus/shared';
+export { MerchantCategory, MERCHANT_BADGE_CODES, type MerchantPlan, type SocialLinks, type OpeningHours, type MerchantBadge } from '@jitplus/shared';
 
 export interface PlanLimits {
   maxClients: number;
@@ -52,16 +52,12 @@ export interface Merchant {
   socialLinks?: SocialLinks | null;
   googleId?: string | null;
   appleId?: string | null;
-  pointsRate?: number;
-  loyaltyType?: LoyaltyType;
-  conversionRate?: number;
+  amountPerStamp?: number;
   stampsForReward?: number;
   stampEarningMode?: 'PER_VISIT' | 'PER_AMOUNT';
   accumulationLimit?: number | null;
-  pointsRules?: {
-    pointsPerDirham: number;
-    minimumPurchase: number;
-  };
+  /** Stamps reset after this many days without a visit; null = never expire. */
+  stampValidityDays?: number | null;
   plan?: MerchantPlan;
   planExpiresAt?: string | null;
   planActivatedByAdmin?: boolean;
@@ -86,8 +82,8 @@ export interface Store {
   adresse?: string;
   latitude?: number;
   longitude?: number;
-  telephone?: string;
-  email?: string;
+  telephone?: string | null;
+  email?: string | null;
   logoUrl?: string;
   coverUrl?: string;
   socialLinks?: SocialLinks | null;
@@ -132,22 +128,42 @@ export interface Reward {
   imageUrl?: string | null;
 }
 
-export type TransactionType = 'EARN_POINTS' | 'REDEEM_REWARD' | 'ADJUST_POINTS' | 'LOYALTY_PROGRAM_CHANGE' | 'LUCKY_WHEEL_WIN';
+export type TransactionType = 'EARN_STAMPS' | 'REDEEM_REWARD' | 'ADJUST_STAMPS' | 'LOYALTY_PROGRAM_CHANGE' | 'LUCKY_WHEEL_WIN' | 'COUPON_REDEEM';
 export type GiftStatus = 'PENDING' | 'FULFILLED';
 
 export interface DashboardKpis {
   totalClients: number;
-  totalPoints: number;
-  totalRedeemedPoints: number;
+  totalStamps: number;
+  totalRedeemedStamps: number;
   totalTransactions: number;
   totalRewardsGiven: number;
   profileViews: number;
-  loyaltyType: 'POINTS' | 'STAMPS';
   luckyWheelPlays: number;
   luckyWheelWins: number;
 }
 
 export type RewardDistribution = { rewardId: string | null; title: string; count: number }[];
+
+export interface DashboardGames {
+  scratch: {
+    campaigns: number;
+    activeCampaigns: number;
+    sent: number;
+    scratched: number;
+    redeemed: number;
+    revenue: number;
+    discountGiven: number;
+  };
+  wheel: {
+    campaigns: number;
+    activeCampaigns: number;
+    plays: number;
+    wins: number;
+    pending: number;
+    fulfilled: number;
+  };
+  topPrizes: { label: string; source: 'SCRATCH' | 'WHEEL'; count: number }[];
+}
 
 export interface TrendPoint {
   bucket: string;
@@ -164,9 +180,8 @@ export interface TrendResponse {
 export interface ClientDetailTransaction {
   id: string;
   type: TransactionType;
-  loyaltyType?: 'POINTS' | 'STAMPS' | null;
   amount: number;
-  points: number;
+  stamps: number;
   status: 'ACTIVE' | 'CANCELLED';
   createdAt: string;
   reward?: { id: string; titre: string; cout: number } | null;
@@ -182,12 +197,11 @@ export interface ClientDetail {
   email: string;
   telephone?: string | null;
   isAnonymous?: boolean;
-  points: number;
+  stamps: number;
   rewardThreshold: number;
   hasReward: boolean;
   memberSince: string;
   transactions: ClientDetailTransaction[];
-  loyaltyType?: 'POINTS' | 'STAMPS';
   stampsForReward?: number;
   termsAccepted?: boolean;
 }
@@ -197,10 +211,9 @@ export interface CustomerStatus {
   prenom?: string | null;
   nom: string;
   email: string;
-  points: number;
+  stamps: number;
   hasReward: boolean;
   rewardThreshold: number;
-  loyaltyType?: 'POINTS' | 'STAMPS';
   stampsForReward?: number;
   isBirthday?: boolean;
 }
@@ -209,9 +222,8 @@ export interface Transaction {
   id: string;
   clientId: string;
   type: TransactionType;
-  loyaltyType?: 'POINTS' | 'STAMPS' | null;
   amount: number;
-  points: number;
+  stamps: number;
   status: 'ACTIVE' | 'CANCELLED';
   createdAt: string;
   note?: string | null;
@@ -225,17 +237,6 @@ export interface Transaction {
 
 export interface TransactionsPage {
   transactions: Transaction[];
-}
-
-export interface PendingGift {
-  id: string;
-  clientId: string;
-  rewardId: string | null;
-  points: number;
-  giftStatus: GiftStatus;
-  createdAt: string;
-  client: { id: string; prenom?: string | null; nom: string; email: string | null };
-  reward: { id: string; titre: string; cout: number } | null;
 }
 
 export interface ReferredMerchant {
@@ -260,7 +261,7 @@ export interface ClientListItem {
   nom: string;
   email: string;
   telephone?: string | null;
-  points: number;
+  stamps: number;
   totalTransactions: number;
   lastVisit: string;
   memberSince: string;
@@ -290,8 +291,8 @@ export interface CreateStorePayload {
   adresse?: string;
   latitude?: number;
   longitude?: number;
-  telephone?: string;
-  email?: string;
+  telephone?: string | null;
+  email?: string | null;
   logoUrl?: string;
   coverUrl?: string;
   socialLinks?: SocialLinks | null;
@@ -302,7 +303,7 @@ export interface RecordTransactionPayload {
   clientId: string;
   type: TransactionType;
   amount?: number;
-  points?: number;
+  stamps?: number;
   rewardId?: string;
   note?: string;
   /** Optional: supply to override auto-generated Idempotency-Key (advanced). */

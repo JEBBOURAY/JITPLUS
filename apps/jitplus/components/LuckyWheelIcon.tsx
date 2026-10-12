@@ -3,6 +3,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import Svg, { G, Path, Circle, Line, Defs, RadialGradient, Stop, Polygon } from 'react-native-svg';
 import { palette } from '@/contexts/ThemeContext';
 import { useAppFonts } from '@/utils/fonts';
+import type { WheelSegment } from '@/utils/luckyWheel';
 
 const DEFAULT_COLORS = [
   palette.violet,
@@ -15,17 +16,16 @@ const DEFAULT_COLORS = [
   '#10B981',
 ];
 
-export interface WheelSegment {
-  label: string;
-  color: string;
-}
+export type { WheelSegment };
 
 interface Props {
   size?: number;
   segments?: WheelSegment[];
+  /** The full-screen wheel draws its own fixed pointer outside the rotating layer. */
+  showPointer?: boolean;
 }
 
-export default React.memo(function LuckyWheelIcon({ size = 28, segments }: Props) {
+export default React.memo(function LuckyWheelIcon({ size = 28, segments, showPointer = true }: Props) {
   const fonts = useAppFonts();
   const cx = size / 2;
   const cy = size / 2;
@@ -124,7 +124,9 @@ export default React.memo(function LuckyWheelIcon({ size = 28, segments }: Props
       <Circle cx={cx} cy={cy} r={hubInnerR} fill="url(#hubGrad)" />
 
       {/* Pointer notch (gold triangle) */}
-      <Polygon points={ptrPoints} fill={palette.gold} stroke={palette.goldDark} strokeWidth={size * 0.008} />
+      {showPointer && (
+        <Polygon points={ptrPoints} fill={palette.gold} stroke={palette.goldDark} strokeWidth={size * 0.008} />
+      )}
     </Svg>
     {/* Labels as RN Text overlays — proper Arabic text shaping */}
     {labelData?.map((l) => {

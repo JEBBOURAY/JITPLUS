@@ -15,72 +15,53 @@ import {
   STORE_REPOSITORY,
 } from '../../common/repositories';
 import { NotificationsService } from '../../notifications/notifications.service';
-import { EventsGateway } from '../../events/events.gateway';
 import { AuditLogService } from '../../admin/audit-log.service';
 import { MailService } from '../../mail/mail.service';
 
 // ── Tx mock that records SQL and simulates UPDATEs against an in-memory store ──
 //
 // We do not need a real DB: we just verify that the SERVICE issues the correct
-// formula by matching arguments captured by $executeRaw. For aggregate queries
-// we return pre-computed sums so the audit summary can be asserted.
+// formula by matching arguments captured by $executeRaw.
 
 interface FakeCard {
   id: string;
-  points: number;
+  stamps: number;
 }
 interface FakeReward {
   id: string;
   cout: number;
 }
+interface TxState {
+  cards: FakeCard[];
+  rewards: FakeReward[];
+  merchantId: string;
+}
 
-function makeTxMock(state: { cards: FakeCard[]; rewards: FakeReward[]; merchantId: string }) {
+function makeTxMock(state: TxState) {
   // $executeRaw is a tag function in Prisma. Jest receives (strings, ...values).
   const executeRawCalls: { sql: string; values: unknown[] }[] = [];
   const $executeRaw = jest.fn((strings: TemplateStringsArray, ...values: unknown[]) => {
     const sql = strings.join('?');
     executeRawCalls.push({ sql, values });
 
-    // Simulate the UPDATE side-effect on the in-memory state.
+    // Simulate the rescale UPDATE side-effect: value * newRef / oldRef.
     if (sql.includes('UPDATE loyalty_cards')) {
-      // Detect direction from SQL fragment (handles optional ::numeric cast).
-      const isDivide = /points(?:::numeric)?\s*\/\s*\?/.test(sql);
-      const isMultiply = /points(?:::numeric)?\s*\*\s*\?/.test(sql);
-      const ratio = values[0] as number;
-      const cap = sql.includes('LEAST') ? (values[1] as number) : null;
+      const [newRef, oldRef] = values as number[];
+      const cap = sql.includes('LEAST') ? (values[2] as number) : null;
       for (const c of state.cards) {
-        let v = c.points;
-        if (isDivide) v = Math.max(Math.round(c.points / ratio), 0);
-        else if (isMultiply) v = Math.max(Math.round(c.points * ratio), 0);
+        let v = Math.max(Math.round((c.stamps * newRef) / oldRef), 0);
         if (cap !== null) v = Math.min(v, cap);
-        c.points = v;
+        c.stamps = v;
       }
     } else if (sql.includes('UPDATE rewards')) {
-      const isDivide = /cout(?:::numeric)?\s*\/\s*\?/.test(sql);
-      const isMultiply = /cout(?:::numeric)?\s*\*\s*\?/.test(sql);
-      const ratio = values[0] as number;
+      const [newRef, oldRef] = values as number[];
       for (const r of state.rewards) {
-        let v = r.cout;
-        if (isDivide) v = Math.max(Math.round(r.cout / ratio), 1);
-        else if (isMultiply) v = Math.max(Math.round(r.cout * ratio), 1);
-        r.cout = v;
+        r.cout = Math.max(Math.round((r.cout * newRef) / oldRef), 1);
       }
     }
     return Promise.resolve(state.cards.length);
   });
 
-  const reward = {
-    findMany: jest.fn(async () => state.rewards.map((r) => ({ ...r }))),
-  };
-  const loyaltyCard = {
-    aggregate: jest.fn(async (args: any) => {
-      const sum = state.cards.reduce((s, c) => s + c.points, 0);
-      const count = state.cards.length;
-      const result: any = { _sum: { points: sum } };
-      if (args?._count) result._count = { _all: count };
-      return result;
-    }),
-  };
   const merchant = {
     update: jest.fn(async ({ data, select }: any) => ({
       id: state.merchantId,
@@ -91,36 +72,45 @@ function makeTxMock(state: { cards: FakeCard[]; rewards: FakeReward[]; merchantI
     })),
   };
 
-  return { tx: { $executeRaw, reward, loyaltyCard, merchant }, executeRawCalls };
+  return { tx: { $executeRaw, merchant }, executeRawCalls };
 }
 
-describe('MerchantProfileService.updateLoyaltySettings — loyalty type conversion', () => {
-  let service: MerchantProfileService;
+const flushPromises = () => new Promise((resolve) => setImmediate(resolve));
 
+describe('MerchantProfileService — stamps loyalty settings', () => {
   // Build a fresh service with the chosen merchant fixture + tx state.
   async function buildService(opts: {
     merchant: any;
     cards: FakeCard[];
     rewards: FakeReward[];
+    txRunner?: { run: jest.Mock };
+    tx?: ReturnType<typeof makeTxMock>['tx'];
+    cardsOverLimit?: { id: string; clientId: string; stamps: number; client: { language: string | null } }[];
   }) {
-    const txState = { cards: [...opts.cards], rewards: [...opts.rewards], merchantId: opts.merchant.id };
-    const { tx, executeRawCalls } = makeTxMock(txState);
+    const txState: TxState = { cards: [...opts.cards], rewards: [...opts.rewards], merchantId: opts.merchant.id };
+    const mock = makeTxMock(txState);
+    const tx = opts.tx ?? mock.tx;
 
     const merchantRepo = {
       findUnique: jest.fn().mockResolvedValue(opts.merchant),
       update: jest.fn().mockImplementation(async ({ data }: any) => ({ ...opts.merchant, ...data })),
     };
 
-    const txRunner = {
+    const txRunner = opts.txRunner ?? {
       run: jest.fn().mockImplementation(async (fn: any) => fn(tx)),
     };
 
     const auditLogService = { log: jest.fn() };
     const cache = { get: jest.fn(), set: jest.fn(), del: jest.fn().mockResolvedValue(undefined) };
-    const notifications = { sendToClient: jest.fn(), sendToAll: jest.fn() };
-    const eventsGateway = { emitPointsUpdated: jest.fn() };
-    const transactionRepoDelegate = { createMany: jest.fn() };
-    const loyaltyCardRepo = { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn(), count: jest.fn() };
+    const notifications = { sendToClient: jest.fn().mockResolvedValue(undefined), sendToAll: jest.fn() };
+    const transactionRepoDelegate = { createMany: jest.fn().mockResolvedValue({ count: 0 }) };
+    const loyaltyCardRepo = {
+      findMany: jest.fn()
+        .mockResolvedValueOnce(opts.cardsOverLimit ?? [])
+        .mockResolvedValue([]),
+      updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      count: jest.fn().mockResolvedValue(3),
+    };
     const rawQuery = { executeRaw: jest.fn() };
     const config = { get: jest.fn() };
 
@@ -138,15 +128,25 @@ describe('MerchantProfileService.updateLoyaltySettings — loyalty type conversi
         { provide: STORE_REPOSITORY, useValue: {} },
         { provide: CACHE_MANAGER, useValue: cache },
         { provide: NotificationsService, useValue: notifications },
-        { provide: EventsGateway, useValue: eventsGateway },
         { provide: ConfigService, useValue: config },
         { provide: AuditLogService, useValue: auditLogService },
         { provide: MailService, useValue: {} },
       ],
     }).compile();
 
-    service = module.get(MerchantProfileService);
-    return { service, txState, txRunner, auditLogService, executeRawCalls, merchantRepo };
+    const service = module.get(MerchantProfileService);
+    return {
+      service,
+      txState,
+      tx,
+      txRunner,
+      auditLogService,
+      executeRawCalls: mock.executeRawCalls,
+      merchantRepo,
+      loyaltyCardRepo,
+      transactionRepoDelegate,
+      notifications,
+    };
   }
 
   // ── Fixtures ────────────────────────────────────────────────────────────────
@@ -154,144 +154,112 @@ describe('MerchantProfileService.updateLoyaltySettings — loyalty type conversi
   const baseMerchant = {
     id: 'm1',
     nom: 'Café Test',
-    loyaltyType: 'POINTS',
-    conversionRate: 10,
     stampsForReward: 10,
-    pointsRules: { rewardThreshold: 100 },
-    accumulationLimit: 500,
+    accumulationLimit: null,
   };
 
-  // ── Cas 1 — POINTS → STAMPS, ratio par défaut (100/10 = 10) ─────────────────
+  // ── Rescale on stampsForReward change ──────────────────────────────────────
 
-  it('POINTS → STAMPS converts balances using rewardThreshold/stampsForReward', async () => {
-    const { service, txState, auditLogService } = await buildService({
+  it('rescales reward costs and client balances when stampsForReward changes', async () => {
+    const { service, txState, tx } = await buildService({
       merchant: baseMerchant,
       cards: [
-        { id: 'a', points: 0 },
-        { id: 'b', points: 80 },
-        { id: 'c', points: 1000 },
+        { id: 'a', stamps: 0 },
+        { id: 'b', stamps: 5 },
+        { id: 'c', stamps: 10 },
       ],
-      rewards: [{ id: 'r1', cout: 200 }],
+      rewards: [
+        { id: 'r1', cout: 10 },
+        { id: 'r2', cout: 20 },
+      ],
     });
 
-    await service.updateLoyaltySettings('m1', { loyaltyType: 'STAMPS' });
+    await service.updateLoyaltySettings('m1', { stampsForReward: 15 });
 
-    // pointsPerStamp = 100/10 = 10
-    expect(txState.cards.find((c) => c.id === 'a')!.points).toBe(0);
-    expect(txState.cards.find((c) => c.id === 'b')!.points).toBe(8); // 80/10
-    expect(txState.cards.find((c) => c.id === 'c')!.points).toBe(100); // 1000/10
-    expect(txState.rewards[0].cout).toBe(20); // 200/10
+    // value * 15 / 10
+    expect(txState.cards.find((c) => c.id === 'a')!.stamps).toBe(0);
+    expect(txState.cards.find((c) => c.id === 'b')!.stamps).toBe(8); // 7.5 → 8
+    expect(txState.cards.find((c) => c.id === 'c')!.stamps).toBe(15);
+    expect(txState.rewards.map((r) => r.cout)).toEqual([15, 30]);
 
-    // Audit summary recorded
-    const auditCall = (auditLogService.log as jest.Mock).mock.calls[0][0];
-    expect(auditCall.metadata.loyaltyTypeChanged).toBe(true);
-    expect(auditCall.metadata.conversion).toMatchObject({
-      oldType: 'POINTS',
-      newType: 'STAMPS',
-      pointsPerStamp: 10,
-      cardsAffected: 3,
-      totalBalanceBefore: 1080,
-    });
-    expect(auditCall.metadata.conversion.rewardsBefore).toEqual([{ id: 'r1', cout: 200 }]);
-    expect(auditCall.metadata.conversion.rewardsAfter).toEqual([{ id: 'r1', cout: 20 }]);
+    // The new value is persisted on the merchant in the same transaction
+    expect(tx.merchant.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { stampsForReward: 15 } }),
+    );
   });
 
-  // ── Cas 2 — Régression : ne PAS utiliser conversionRate (l'ancien bug) ──────
-
-  it('does not use conversionRate as the equivalence ratio (regression)', async () => {
-    // conversionRate=2 but stampsForReward=10 ⇒ pointsPerStamp must remain 100/10 = 10,
-    // NOT 2 (which was the buggy behaviour).
-    const merchant = { ...baseMerchant, conversionRate: 2 };
-    const { service, txState } = await buildService({
-      merchant,
-      cards: [{ id: 'b', points: 80 }],
+  it('locks the merchant row before rescaling', async () => {
+    const { service, executeRawCalls } = await buildService({
+      merchant: baseMerchant,
+      cards: [{ id: 'b', stamps: 5 }],
       rewards: [],
     });
 
-    await service.updateLoyaltySettings('m1', { loyaltyType: 'STAMPS' });
+    await service.updateLoyaltySettings('m1', { stampsForReward: 20 });
 
-    // With the bug: 80 / 2 = 40 stamps. Correct: 80 / 10 = 8.
-    expect(txState.cards[0].points).toBe(8);
-    expect(txState.cards[0].points).not.toBe(40);
+    expect(executeRawCalls[0].sql).toContain('FOR UPDATE');
+    expect(executeRawCalls.some((c) => c.sql.includes('UPDATE loyalty_cards') && c.sql.includes('stamps'))).toBe(true);
   });
 
-  // ── Cas 3 — STAMPS → POINTS respects accumulationLimit ─────────────────────
-
-  it('STAMPS → POINTS caps converted balances at accumulationLimit', async () => {
-    const merchant = { ...baseMerchant, loyaltyType: 'STAMPS', accumulationLimit: 500 };
+  it('caps rescaled balances at accumulationLimit', async () => {
     const { service, txState } = await buildService({
-      merchant,
+      merchant: { ...baseMerchant, accumulationLimit: 25 },
       cards: [
-        { id: 'a', points: 60 }, // 60×10 = 600 → capped to 500
-        { id: 'b', points: 10 }, // 10×10 = 100 → unchanged
+        { id: 'a', stamps: 15 }, // 15 × 2 = 30 → capped to 25
+        { id: 'b', stamps: 5 },  // 5 × 2 = 10 → unchanged
       ],
-      rewards: [{ id: 'r1', cout: 20 }],
+      rewards: [{ id: 'r1', cout: 10 }],
     });
 
-    await service.updateLoyaltySettings('m1', { loyaltyType: 'POINTS' });
+    await service.updateLoyaltySettings('m1', { stampsForReward: 20 });
 
-    expect(txState.cards.find((c) => c.id === 'a')!.points).toBe(500);
-    expect(txState.cards.find((c) => c.id === 'b')!.points).toBe(100);
-    expect(txState.rewards[0].cout).toBe(200); // 20×10
+    expect(txState.cards.find((c) => c.id === 'a')!.stamps).toBe(25);
+    expect(txState.cards.find((c) => c.id === 'b')!.stamps).toBe(10);
+    expect(txState.rewards[0].cout).toBe(20);
   });
 
-  // ── Cas 4 — Round-trip preserves value (no asymmetric FLOOR drift) ─────────
-
-  it('round-trip POINTS→STAMPS→POINTS preserves balances within ±ratio', async () => {
-    // Step 1
-    const { service: s1, txState: state1 } = await buildService({
-      merchant: { ...baseMerchant, accumulationLimit: null },
-      cards: [{ id: 'b', points: 80 }],
-      rewards: [],
-    });
-    await s1.updateLoyaltySettings('m1', { loyaltyType: 'STAMPS' });
-    const stamps = state1.cards[0].points; // 8
-
-    // Step 2: simulate the merchant now in STAMPS state with that balance
-    const { service: s2, txState: state2 } = await buildService({
-      merchant: { ...baseMerchant, loyaltyType: 'STAMPS', accumulationLimit: null },
-      cards: [{ id: 'b', points: stamps }],
-      rewards: [],
-    });
-    await s2.updateLoyaltySettings('m1', { loyaltyType: 'POINTS' });
-
-    // 80 → 8 → 80, lossless because 80 is a multiple of 10.
-    expect(state2.cards[0].points).toBe(80);
-  });
-
-  // ── Cas 5 — Reward cost minimum is 1 (no free rewards exploit) ─────────────
-
-  it('reward cost never falls below 1 after conversion', async () => {
+  it('reward cost never falls below 1 after rescale', async () => {
     const { service, txState } = await buildService({
       merchant: baseMerchant,
       cards: [],
-      rewards: [{ id: 'r1', cout: 5 }], // 5 / 10 = 0.5 → ROUND = 1 (clamp)
+      rewards: [{ id: 'r1', cout: 2 }], // 2 × 1 / 10 = 0.2 → clamped to 1
     });
 
-    await service.updateLoyaltySettings('m1', { loyaltyType: 'STAMPS' });
-    expect(txState.rewards[0].cout).toBeGreaterThanOrEqual(1);
+    await service.updateLoyaltySettings('m1', { stampsForReward: 1 });
+    expect(txState.rewards[0].cout).toBe(1);
   });
 
-  // ── Cas 6 — Atomicity: tx rollback when merchant.update fails ──────────────
+  it('does not touch balances or rewards when stampsForReward is unchanged', async () => {
+    const { service, txState, executeRawCalls } = await buildService({
+      merchant: baseMerchant,
+      cards: [{ id: 'b', stamps: 8 }],
+      rewards: [{ id: 'r1', cout: 10 }],
+    });
 
-  it('rolls back balance conversion if merchant.update fails', async () => {
-    const txState = { cards: [{ id: 'b', points: 80 }], rewards: [], merchantId: 'm1' };
+    await service.updateLoyaltySettings('m1', {
+      stampsForReward: 10,
+      stampEarningMode: 'PER_AMOUNT',
+      amountPerStamp: 25,
+    });
+
+    expect(executeRawCalls).toHaveLength(0);
+    expect(txState.cards[0].stamps).toBe(8);
+    expect(txState.rewards[0].cout).toBe(10);
+  });
+
+  it('rolls back the rescale if merchant.update fails', async () => {
+    const txState: TxState = { cards: [{ id: 'b', stamps: 5 }], rewards: [{ id: 'r1', cout: 10 }], merchantId: 'm1' };
     const { tx } = makeTxMock(txState);
-
-    // Make merchant.update throw inside the tx callback.
     tx.merchant.update = jest.fn().mockRejectedValue(new Error('DB down'));
 
-    // Simulate Prisma's $transaction rollback: if the callback throws, the
-    // caller observes the throw AND no UPDATE side-effects should be visible
-    // to subsequent reads. Our fake tx already mutated state, so we restore
-    // it manually on rollback to mimic real Prisma semantics.
+    // Simulate Prisma's $transaction rollback: our fake tx already mutated
+    // state, so restore it on throw to mimic real Prisma semantics.
     const txRunner = {
       run: jest.fn().mockImplementation(async (fn: any) => {
         const before = JSON.parse(JSON.stringify(txState));
         try {
           return await fn(tx);
         } catch (e) {
-          // rollback
           txState.cards = before.cards;
           txState.rewards = before.rewards;
           throw e;
@@ -299,77 +267,93 @@ describe('MerchantProfileService.updateLoyaltySettings — loyalty type conversi
       }),
     };
 
-    const merchantRepo = {
-      findUnique: jest.fn().mockResolvedValue(baseMerchant),
-      update: jest.fn(),
-    };
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        MerchantProfileService,
-        { provide: MERCHANT_REPOSITORY, useValue: merchantRepo },
-        { provide: DEVICE_SESSION_REPOSITORY, useValue: {} },
-        { provide: LOYALTY_CARD_REPOSITORY, useValue: { findMany: jest.fn().mockResolvedValue([]) } },
-        { provide: TRANSACTION_REPOSITORY, useValue: { createMany: jest.fn() } },
-        { provide: TRANSACTION_RUNNER, useValue: txRunner },
-        { provide: RAW_QUERY_RUNNER, useValue: { executeRaw: jest.fn() } },
-        { provide: REWARD_REPOSITORY, useValue: {} },
-        { provide: TEAM_MEMBER_REPOSITORY, useValue: {} },
-        { provide: STORE_REPOSITORY, useValue: {} },
-        { provide: CACHE_MANAGER, useValue: { del: jest.fn() } },
-        { provide: NotificationsService, useValue: { sendToClient: jest.fn(), sendToAll: jest.fn() } },
-        { provide: EventsGateway, useValue: { emitPointsUpdated: jest.fn() } },
-        { provide: ConfigService, useValue: { get: jest.fn() } },
-        { provide: AuditLogService, useValue: { log: jest.fn() } },
-        { provide: MailService, useValue: {} },
-      ],
-    }).compile();
+    const { service } = await buildService({ merchant: baseMerchant, cards: [], rewards: [], tx, txRunner });
 
-    const svc = module.get(MerchantProfileService);
-    await expect(svc.updateLoyaltySettings('m1', { loyaltyType: 'STAMPS' })).rejects.toThrow('DB down');
-    // Balance must be back to the original value (rollback)
-    expect(txState.cards[0].points).toBe(80);
+    await expect(service.updateLoyaltySettings('m1', { stampsForReward: 20 })).rejects.toThrow('DB down');
+    expect(txState.cards[0].stamps).toBe(5);
+    expect(txState.rewards[0].cout).toBe(10);
   });
 
-  // ── Cas 7 — Guard: invalid stampsForReward triggers BadRequest ─────────────
+  // ── Guards ────────────────────────────────────────────────────────────────
 
   it('rejects an explicit stampsForReward < 1', async () => {
     const { service } = await buildService({ merchant: baseMerchant, cards: [], rewards: [] });
     await expect(
-      service.updateLoyaltySettings('m1', { loyaltyType: 'STAMPS', stampsForReward: 0 }),
+      service.updateLoyaltySettings('m1', { stampsForReward: 0 }),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  // ── Cas 8 — Same-type update does NOT touch balances ───────────────────────
-
-  it('does not convert balances when loyaltyType is unchanged', async () => {
-    const { service, txState, auditLogService } = await buildService({
-      merchant: baseMerchant,
-      cards: [{ id: 'b', points: 80 }],
-      rewards: [{ id: 'r1', cout: 200 }],
-    });
-
-    await service.updateLoyaltySettings('m1', { conversionRate: 5 });
-
-    expect(txState.cards[0].points).toBe(80);
-    expect(txState.rewards[0].cout).toBe(200);
-    const audit = (auditLogService.log as jest.Mock).mock.calls[0][0];
-    expect(audit.metadata.loyaltyTypeChanged).toBe(false);
-    expect(audit.metadata.conversion).toBeUndefined();
+  it('rejects a non-positive amountPerStamp', async () => {
+    const { service } = await buildService({ merchant: baseMerchant, cards: [], rewards: [] });
+    await expect(
+      service.updateLoyaltySettings('m1', { amountPerStamp: 0 }),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  // ── Cas 9 — Combined dto: switch + new stampsForReward uses the NEW value ──
+  // ── Audit log ─────────────────────────────────────────────────────────────
 
-  it('combined { loyaltyType, stampsForReward } switch uses the NEW stampsForReward in the ratio', async () => {
-    // rewardThreshold=100, NEW stampsForReward=5 ⇒ pointsPerStamp = 20
-    const { service, txState } = await buildService({
+  it('records the stamps settings in the audit log', async () => {
+    const { service, auditLogService } = await buildService({ merchant: baseMerchant, cards: [], rewards: [] });
+
+    await service.updateLoyaltySettings('m1', { stampsForReward: 12, accumulationLimit: 50 });
+
+    const audit = (auditLogService.log as jest.Mock).mock.calls[0][0];
+    expect(audit.action).toBe('UPDATE_LOYALTY_SETTINGS');
+    expect(audit.metadata).toEqual({
+      stampEarningMode: undefined,
+      amountPerStamp: undefined,
+      stampsForReward: 12,
+      accumulationLimit: 50,
+    });
+  });
+
+  // ── Accumulation limit ────────────────────────────────────────────────────
+
+  it('previewAccumulationLimit counts cards whose stamps exceed the limit', async () => {
+    const { service, loyaltyCardRepo } = await buildService({ merchant: baseMerchant, cards: [], rewards: [] });
+
+    await expect(service.previewAccumulationLimit('m1', 30)).resolves.toEqual({ affectedClients: 3 });
+    expect(loyaltyCardRepo.count).toHaveBeenCalledWith({ where: { merchantId: 'm1', stamps: { gt: 30 } } });
+  });
+
+  it('forceCapClients caps over-limit balances, logs ADJUST_STAMPS and notifies clients', async () => {
+    const { service, tx, loyaltyCardRepo, transactionRepoDelegate, notifications } = await buildService({
       merchant: baseMerchant,
-      cards: [{ id: 'b', points: 100 }],
+      cards: [],
       rewards: [],
+      cardsOverLimit: [
+        { id: 'c1', clientId: 'cl1', stamps: 40, client: { language: 'fr' } },
+        { id: 'c2', clientId: 'cl2', stamps: 35, client: { language: 'en' } },
+      ],
     });
 
-    await service.updateLoyaltySettings('m1', { loyaltyType: 'STAMPS', stampsForReward: 5 });
+    await service.updateLoyaltySettings('m1', { accumulationLimit: 30, forceCapClients: true });
+    await flushPromises();
 
-    // 100 / 20 = 5 stamps (not 100/10=10)
-    expect(txState.cards[0].points).toBe(5);
+    // forceCapClients is not a DB column
+    expect(tx.merchant.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { accumulationLimit: 30 } }),
+    );
+    expect(loyaltyCardRepo.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { merchantId: 'm1', stamps: { gt: 30 } } }),
+    );
+    expect(loyaltyCardRepo.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ['c1', 'c2'] } },
+      data: { stamps: 30 },
+    });
+
+    const createdTx = transactionRepoDelegate.createMany.mock.calls[0][0].data;
+    expect(createdTx).toEqual([
+      expect.objectContaining({ clientId: 'cl1', type: 'ADJUST_STAMPS', stamps: -10, amount: 0 }),
+      expect.objectContaining({ clientId: 'cl2', type: 'ADJUST_STAMPS', stamps: -5, amount: 0 }),
+    ]);
+    expect(createdTx[0].note).toContain('tampons');
+
+    expect(notifications.sendToClient).toHaveBeenCalledTimes(2);
+    expect(notifications.sendToClient.mock.calls[0][4]).toEqual({
+      event: 'stamps_updated',
+      merchantId: 'm1',
+      newBalance: '30',
+    });
   });
 });

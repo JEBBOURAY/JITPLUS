@@ -87,6 +87,7 @@ export function createAuthMethods(http: AxiosInstance) {
       alreadyConsumed: boolean;
       mergedCards: number;
       merchant: { id: string; nom: string | null };
+      pendingScratchCards: number;
     }> {
       const { data } = await http.post('/client-auth/claim', { token });
       return data;

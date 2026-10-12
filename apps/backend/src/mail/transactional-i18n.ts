@@ -174,7 +174,7 @@ export const WELCOME_CLIENT_I18N: Record<EmailLang, {
     greeting: (n) => `Bienvenue ${n} ! 🎉`,
     intro: 'Votre compte JitPlus a été créé avec succès. Vous pouvez désormais :',
     bullets: [
-      'Cumuler des points chez vos commerçants préférés',
+      'Cumuler des tampons chez vos commerçants préférés',
       'Profiter de récompenses exclusives',
       'Scanner votre QR code en magasin',
     ],
@@ -186,7 +186,7 @@ export const WELCOME_CLIENT_I18N: Record<EmailLang, {
     greeting: (n) => `Welcome ${n}! 🎉`,
     intro: 'Your JitPlus account is ready. You can now:',
     bullets: [
-      'Earn points at your favourite merchants',
+      'Earn stamps at your favourite merchants',
       'Enjoy exclusive rewards',
       'Scan your QR code in store',
     ],
@@ -198,11 +198,11 @@ export const WELCOME_CLIENT_I18N: Record<EmailLang, {
     greeting: (n) => `مرحبا ${n} ! 🎉`,
     intro: 'الكومبت ديالك ف JitPlus تصاوب. دابا تقدر :',
     bullets: [
-      'تجمع البوينطات عند الكوميرسان ديالك',
+      'تجمع الطوابع عند الكوميرسان ديالك',
       'تستافد من ريكومبانس حصرية',
       'تسكاني الـQR ديالك ف المحل',
     ],
-    cta: 'حل JitPlus و بدا تجمع البوينطات !',
+    cta: 'حل JitPlus و بدا تجمع الطوابع !',
     preheader: (n) => `مرحبا بيك ف JitPlus ${n} !`,
   },
 };
@@ -220,7 +220,7 @@ export const WELCOME_MERCHANT_I18N: Record<EmailLang, {
     greeting: 'Bienvenue sur JitPlus Pro ! 🚀',
     intro: (n) => `Votre commerce <strong>${n}</strong> est maintenant enregistré sur JitPlus.`,
     bullets: [
-      'Scannez les QR codes de vos clients pour leur attribuer des points',
+      'Scannez les QR codes de vos clients pour leur attribuer des tampons',
       'Créez des récompenses attractives',
       'Suivez vos statistiques en temps réel',
       'Gérez votre équipe facilement',
@@ -233,7 +233,7 @@ export const WELCOME_MERCHANT_I18N: Record<EmailLang, {
     greeting: 'Welcome to JitPlus Pro! 🚀',
     intro: (n) => `Your business <strong>${n}</strong> is now on JitPlus.`,
     bullets: [
-      'Scan customer QR codes to award points',
+      'Scan customer QR codes to award stamps',
       'Create attractive rewards',
       'Track your stats in real time',
       'Easily manage your team',
@@ -246,7 +246,7 @@ export const WELCOME_MERCHANT_I18N: Record<EmailLang, {
     greeting: 'مرحبا بيك ف JitPlus Pro ! 🚀',
     intro: (n) => `الكوميرس ديالك <strong>${n}</strong> دابا مسجل ف JitPlus.`,
     bullets: [
-      'سكاني الـQR ديال الكليان باش تعطيهوم البوينطات',
+      'سكاني الـQR ديال الكليان باش تعطيهوم الطوابع',
       'صاوب ريكومبانس مزيانة',
       'تتبع لاسطاط ديالك ف الـreal time',
       'دير الفريق ديالك بسهولة',

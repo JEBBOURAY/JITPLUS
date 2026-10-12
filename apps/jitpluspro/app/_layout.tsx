@@ -1,13 +1,15 @@
-import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { DarkTheme, DefaultTheme, ThemeProvider as NavThemeProvider } from 'expo-router/react-navigation';
-import { Lexend_400Regular, Lexend_500Medium, Lexend_600SemiBold, Lexend_700Bold } from '@expo-google-fonts/lexend';
-import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
+// Per-weight imports: the package root requires every weight's .ttf, which Metro then bundles.
+import { Lexend_400Regular } from '@expo-google-fonts/lexend/400Regular';
+import { Lexend_500Medium } from '@expo-google-fonts/lexend/500Medium';
+import { Lexend_600SemiBold } from '@expo-google-fonts/lexend/600SemiBold';
+import { Lexend_700Bold } from '@expo-google-fonts/lexend/700Bold';
 import { useFonts } from 'expo-font';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useRef, useState, useMemo } from 'react';
-import { Platform, View, InteractionManager } from 'react-native';
+import { Platform, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClient, QueryCache, MutationCache, onlineManager, useQueryClient } from '@tanstack/react-query';
 import NetInfo from '@react-native-community/netinfo';
@@ -20,6 +22,7 @@ import { useRealtimeEvents } from '@/hooks/useRealtimeEvents';
 import { useAppForegroundRefresh } from '@/hooks/useAppForegroundRefresh';
 import api, { getServerBaseUrl } from '@/services/api';
 import { logError, logWarn, logInfo } from '@/utils/devLogger';
+import { routeForAction } from '@/utils/notificationRoutes';
 
 // ── GDPR opt-out (honours SENTRY_OPT_OUT AsyncStorage flag) ─────
 // Sentry is configured as PII-free anonymous crash reporting (legitimate
@@ -264,12 +267,6 @@ export default function RootLayout() {
     Lexend_500Medium,
     Lexend_600SemiBold,
     Lexend_700Bold,
-    Inter_400Regular,
-    Inter_500Medium,
-    Inter_600SemiBold,
-    Inter_700Bold,
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
-    ...FontAwesome.font,
   });
 
   // Expo Router uses Error Boundaries to catch errors in the navigation tree.
@@ -289,10 +286,10 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
-    const handle = InteractionManager.runAfterInteractions(() => {
+    const handle = requestIdleCallback(() => {
       void MetaAdsManager.initialize();
     });
-    return () => handle?.cancel?.();
+    return () => cancelIdleCallback(handle);
   }, []);
 
   if (!loaded && !fontTimeout && !error) {
@@ -399,7 +396,7 @@ function ThemedNavigator() {
   useEffect(() => {
     if (loading || !merchant || didPreloadRef.current) return;
     didPreloadRef.current = true;
-    InteractionManager.runAfterInteractions(() => {
+    requestIdleCallback(() => {
       try { require('expo-camera'); } catch {}
       try { require('expo-image-picker'); } catch {}
     });
@@ -429,12 +426,12 @@ function ThemedNavigator() {
     // in utils/notifications.ts. Here we listen for received + tapped events.
 
     // Listen for push token changes (FCM rotation) — re-register with backend.
-    // We defer the work to runAfterInteractions because Android sometimes
+    // We defer the work to an idle callback because Android sometimes
     // delivers the token rotation event on resume, when the JS thread is
     // already busy with screen rendering.
     const tokenSub = Notifications.addPushTokenListener(() => {
       logInfo('Notifications', 'Push token rotated, re-registering');
-      InteractionManager.runAfterInteractions(async () => {
+      requestIdleCallback(async () => {
         try {
           const projectId = Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
           if (projectId) {
@@ -477,22 +474,12 @@ function ThemedNavigator() {
 
         // 1. Action-based deep links from scheduled campaigns / reminders
         if (action) {
-          switch (action) {
-            case 'open_referral':            router.push('/referral'); return;
-            case 'open_settings':            router.push('/settings'); return;
-            case 'open_security':            router.push('/security'); return;
-            case 'open_logo':                router.push('/(tabs)/account'); return;
-            case 'open_scan':                router.push('/(tabs)/scan'); return;
-            case 'open_plan':                router.push('/plan'); return;
-            case 'open_dashboard':           router.push('/(tabs)'); return;
-            case 'open_clients':             router.push('/(tabs)/activity'); return;
-            case 'open_messages':            router.push('/(tabs)/messages'); return;
-            case 'open_notifications':      // alias used by some campaigns
-            case 'open_admin_notifications': router.push('/admin-notifications'); return;
-            default:
-              logWarn('Notifications', 'Unknown FCM action:', action);
-              break;
+          const route = routeForAction(action);
+          if (route) {
+            router.push(route);
+            return;
           }
+          logWarn('Notifications', 'Unknown FCM action:', action);
         }
 
         // 2. Event-based fallback (admin broadcasts, future server-side events)
@@ -594,6 +581,7 @@ function ThemedNavigator() {
             <Stack.Screen name="security" options={{ headerShown: false }} />
             <Stack.Screen name="team-management" options={{ headerShown: false }} />
             <Stack.Screen name="stores" options={{ headerShown: false }} />
+            <Stack.Screen name="games" options={{ headerShown: false }} />
             <Stack.Screen name="referral" options={{ headerShown: false }} />
             <Stack.Screen name="admin-notifications" options={{ headerShown: false }} />
             <Stack.Screen name="transactions" options={{ headerShown: false, animation: 'slide_from_right' }} />

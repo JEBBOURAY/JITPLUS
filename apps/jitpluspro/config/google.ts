@@ -10,10 +10,3 @@ export const WEB_CLIENT_ID =
   process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID
   || (Constants.expoConfig?.extra as Record<string, string> | undefined)?.googleWebClientId
   || '';
-
-if (!WEB_CLIENT_ID && !__DEV__) {
-  // Silently swallowed — this is a deployment check; Sentry will catch
-  // downstream Google Sign-In failures with proper stack traces.
-}
-
-export const IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || '';

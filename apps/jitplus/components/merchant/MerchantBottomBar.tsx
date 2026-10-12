@@ -4,7 +4,6 @@ import { Wallet, BadgeCheck, LogOut } from 'lucide-react-native';
 import { palette } from '@/contexts/ThemeContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { merchantStyles as styles } from './merchantStyles';
-import { wp } from '@/utils/responsive';
 import type { Merchant } from '@/types';
 import type { ThemeColors } from '@/contexts/ThemeContext';
 

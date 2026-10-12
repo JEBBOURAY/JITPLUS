@@ -36,8 +36,6 @@ export enum MerchantCategory {
   AUTRE = 'AUTRE',
 }
 
-export type LoyaltyType = 'POINTS' | 'STAMPS';
-
 export type MerchantPlan = 'FREE' | 'PREMIUM';
 
 // ── Common interfaces ───────────────────────────────────────────────────────
@@ -49,6 +47,7 @@ export interface SocialLinks {
   website?: string;
   snapchat?: string;
   youtube?: string;
+  whatsapp?: string;
 }
 
 export interface Pagination {

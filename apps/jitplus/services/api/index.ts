@@ -14,6 +14,7 @@ import { createMerchantMethods } from './merchants';
 import { createNotificationMethods } from './notifications';
 import { createReferralMethods } from './referral';
 import { createLuckyWheelMethods } from './lucky-wheel';
+import { createScratchMethods } from './scratch';
 
 const ENV_URL = process.env.EXPO_PUBLIC_API_URL;
 const IS_DEV = __DEV__;
@@ -86,4 +87,5 @@ export const api = {
   ...createNotificationMethods(http),
   ...createReferralMethods(http),
   ...createLuckyWheelMethods(http),
+  ...createScratchMethods(http),
 };

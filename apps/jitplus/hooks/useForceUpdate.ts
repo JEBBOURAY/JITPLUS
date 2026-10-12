@@ -62,7 +62,7 @@ export function useForceUpdate(): ForceUpdateState {
         min_ios_version: string;
         min_android_version: string;
         maintenance: boolean;
-      }>(`${getServerBaseUrl()}/health/version`);
+      }>(`${getServerBaseUrl()}/health/version?app=jitplus`);
 
       if (cancelledRef.current) return;
 

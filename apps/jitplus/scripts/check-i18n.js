@@ -41,9 +41,27 @@ const IGNORE_DIRS = new Set([
 ]);
 
 // ── 1. Load & flatten locales via ts-node-like transpile ─────────────────────
+// Locale files import shared packs from '@jitplus/shared/src/...' (plain .ts).
+// Register a minimal .ts require hook so Node can resolve them.
+{
+  const tsLib = require('typescript');
+  require.extensions['.ts'] = (module, filename) => {
+    const src = fs.readFileSync(filename, 'utf8');
+    const js = tsLib.transpileModule(src, {
+      compilerOptions: {
+        module: tsLib.ModuleKind.CommonJS,
+        target: tsLib.ScriptTarget.ES2020,
+      },
+    }).outputText;
+    module._compile(js, filename);
+  };
+}
+
 function loadLocale(locale) {
   const tsLib = require('typescript');
-  const src = fs.readFileSync(path.join(LOCALES_DIR, `${locale}.ts`), 'utf8');
+  const { createRequire } = require('module');
+  const localePath = path.join(LOCALES_DIR, `${locale}.ts`);
+  const src = fs.readFileSync(localePath, 'utf8');
   const js = tsLib.transpileModule(src, {
     compilerOptions: {
       module: tsLib.ModuleKind.CommonJS,
@@ -51,8 +69,10 @@ function loadLocale(locale) {
     },
   }).outputText;
   const m = { exports: {} };
+  // Resolve relative imports (e.g. './scratchClient') from the locale file.
+  const localeRequire = createRequire(localePath);
   // eslint-disable-next-line no-new-func
-  new Function('module', 'exports', 'require', js)(m, m.exports, require);
+  new Function('module', 'exports', 'require', js)(m, m.exports, localeRequire);
   return m.exports.default || m.exports;
 }
 

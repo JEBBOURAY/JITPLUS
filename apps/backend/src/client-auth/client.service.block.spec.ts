@@ -14,6 +14,7 @@ import {
 } from '../common/repositories';
 import { MailService } from '../mail/mail.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { ClientClaimService } from '../merchant/services/client-claim.service';
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -70,6 +71,7 @@ describe('ClientService — block / unblock / filter', () => {
         { provide: CACHE_MANAGER, useValue: mockCache },
         { provide: MailService, useValue: { sendContentReport: jest.fn() } },
         { provide: PrismaService, useValue: mockPrisma },
+        { provide: ClientClaimService, useValue: {} },
       ],
     }).compile();
 
@@ -105,7 +107,7 @@ describe('ClientService — block / unblock / filter', () => {
       });
       expect(mockLoyaltyCardRepo.update).toHaveBeenCalledWith({
         where: { id: 'card-1' },
-        data: { deactivatedAt: expect.any(Date), points: 0 },
+        data: { deactivatedAt: expect.any(Date), stamps: 0 },
       });
       expect(mockCache.del).toHaveBeenCalledWith(`merchant:detail:${MERCHANT_ID}`);
     });

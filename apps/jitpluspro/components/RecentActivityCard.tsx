@@ -1,6 +1,6 @@
 import React, { useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, I18nManager } from 'react-native';
-import { Gift, ArrowUpRight, ChevronRight, Aperture, RefreshCw, Star, Stamp } from 'lucide-react-native';
+import { Gift, ArrowUpRight, ChevronRight, Aperture, RefreshCw, Stamp, Ticket } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { getIntlLocale } from '@/config/currency';
@@ -27,30 +27,27 @@ function formatRelativeTime(dateStr: string, t: (k: string) => string, locale: s
 function RecentRow({
   tx,
   isFirst,
-  merchantLoyaltyType,
   onPress,
 }: {
   tx: Transaction;
   isFirst: boolean;
-  merchantLoyaltyType?: string | null;
   onPress: () => void;
 }) {
   const theme = useTheme();
   const { t, locale } = useLanguage();
-  const isEarn = tx.type === 'EARN_POINTS';
+  const isEarn = tx.type === 'EARN_STAMPS';
   const isReward = tx.type === 'REDEEM_REWARD';
   const isWheel = tx.type === 'LUCKY_WHEEL_WIN';
   const isProgram = tx.type === 'LOYALTY_PROGRAM_CHANGE';
+  const isCoupon = tx.type === 'COUPON_REDEEM';
   const isCancelled = tx.status === 'CANCELLED';
 
   const color = isCancelled ? theme.danger : isEarn ? GREEN : isReward ? theme.primary : theme.accent;
-  const IconComp = isReward ? Gift : isWheel ? Aperture : isProgram ? RefreshCw : ArrowUpRight;
-
-  const isStampsUnit = (tx.loyaltyType ?? merchantLoyaltyType) === 'STAMPS';
+  const IconComp = isReward ? Gift : isWheel ? Aperture : isProgram ? RefreshCw : isCoupon ? Ticket : ArrowUpRight;
 
   const name = [tx.client?.prenom, tx.client?.nom].filter(Boolean).join(' ') || '?';
 
-  // Gains show "+N" followed by a star/stamp icon (never the unit as text, §3/§7).
+  // Gains show "+N" followed by a stamp icon (never the unit as text, §3/§7).
   const isGain = !isReward && !isProgram;
   let amountText: string;
   let amountColor: string;
@@ -61,7 +58,7 @@ function RecentRow({
     amountText = t('home.programChanged');
     amountColor = theme.textMuted;
   } else {
-    amountText = `+${tx.points}`;
+    amountText = `+${tx.stamps}`;
     amountColor = isCancelled ? theme.textMuted : GREEN;
   }
 
@@ -97,11 +94,7 @@ function RecentRow({
           >
             {amountText}
           </Text>
-          {isStampsUnit ? (
-            <Stamp size={13} color={amountColor} strokeWidth={2.4} />
-          ) : (
-            <Star size={13} color={amountColor} fill={isCancelled ? 'transparent' : amountColor} strokeWidth={isCancelled ? 2 : 0} />
-          )}
+          <Stamp size={13} color={amountColor} strokeWidth={2.4} />
         </View>
       ) : (
         <Text
@@ -122,11 +115,9 @@ function RecentRow({
  */
 function RecentActivityCard({
   transactions,
-  merchantLoyaltyType,
   onViewAll,
 }: {
   transactions: Transaction[];
-  merchantLoyaltyType?: string | null;
   onViewAll: () => void;
 }) {
   const theme = useTheme();
@@ -143,7 +134,6 @@ function RecentActivityCard({
           key={tx.id}
           tx={tx}
           isFirst={i === 0}
-          merchantLoyaltyType={merchantLoyaltyType}
           onPress={handleRowPress}
         />
       ))}

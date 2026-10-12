@@ -39,22 +39,11 @@ function recalcDerived() {
   fontSize['2xl'] = _ms(24);
   fontSize['3xl'] = _ms(28);
   fontSize['4xl'] = _ms(32);
-
-  iconSize.sm = _ms(16);
-  iconSize.md = _ms(20);
-  iconSize.lg = _ms(24);
-  iconSize.xl = _ms(28);
-  iconSize['2xl'] = _ms(32);
 }
 
 Dimensions.addEventListener('change', ({ window }) => {
   SCREEN_WIDTH = window.width;
   SCREEN_HEIGHT = window.height;
-  SCREEN.width = SCREEN_WIDTH;
-  SCREEN.height = SCREEN_HEIGHT;
-  SCREEN.isSmall = SCREEN_WIDTH < 360;
-  SCREEN.isMedium = SCREEN_WIDTH >= 360 && SCREEN_WIDTH < 400;
-  SCREEN.isLarge = SCREEN_WIDTH >= 400;
   recalcDerived();
 });
 
@@ -75,15 +64,6 @@ export function ms(size: number, factor: number = 0.5): number {
 
 type RadiusKey = 'sm' | 'md' | 'lg' | 'xl' | '2xl' | 'full';
 type FontSizeKey = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl';
-type IconSizeKey = 'sm' | 'md' | 'lg' | 'xl' | '2xl';
-
-export const SCREEN = {
-  width: SCREEN_WIDTH,
-  height: SCREEN_HEIGHT,
-  isSmall: SCREEN_WIDTH < 360,
-  isMedium: SCREEN_WIDTH >= 360 && SCREEN_WIDTH < 400,
-  isLarge: SCREEN_WIDTH >= 400,
-};
 
 export const radius: Record<RadiusKey, number> = {
   sm: _wp(8),
@@ -103,12 +83,4 @@ export const fontSize: Record<FontSizeKey, number> = {
   '2xl': _ms(24),
   '3xl': _ms(28),
   '4xl': _ms(32),
-};
-
-export const iconSize: Record<IconSizeKey, number> = {
-  sm: _ms(16),
-  md: _ms(20),
-  lg: _ms(24),
-  xl: _ms(28),
-  '2xl': _ms(32),
 };

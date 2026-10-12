@@ -1,7 +1,7 @@
 {
   "name": "jitpluspro",
   "main": "expo-router/entry",
-  "version": "1.5.21",
+  "version": "1.7.0",
   "expo": {
     "install": {
       "exclude": [
@@ -19,7 +19,6 @@
     "start:go": "cross-env EXPO_NO_DOCTOR=1 expo start --host lan --port 8082 --go --clear",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "web": "expo start --web",
     "prebuild": "expo prebuild",
     "prebuild:clean": "expo prebuild --clean",
     "test": "jest",
@@ -28,11 +27,9 @@
     "lint:fix": "eslint . --ext .ts,.tsx --fix"
   },
   "dependencies": {
-    "@expo-google-fonts/inter": "^0.4.2",
     "@expo-google-fonts/lexend": "^0.4.1",
     "@expo/log-box": "^57.0.4",
     "@expo/metro-runtime": "~57.0.16",
-    "@expo/vector-icons": "^15.1.1",
     "@jitplus/shared": "workspace:*",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-community/netinfo": "12.0.1",

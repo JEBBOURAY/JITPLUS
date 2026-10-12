@@ -22,6 +22,7 @@ export type IProfileViewRepository = PrismaService['profileView'];
 export type IRewardRepository = PrismaService['reward'];
 export type IClientReferralRepository = PrismaService['clientReferral'];
 export type IMerchantNotificationReadRepository = PrismaService['merchantNotificationRead'];
+export type IMerchantInboxRepository = PrismaService['merchantInboxNotification'];
 export type IPayoutRequestRepository = PrismaService['payoutRequest'];
 export type ILuckyWheelCampaignRepository = PrismaService['luckyWheelCampaign'];
 export type ILuckyWheelPrizeRepository = PrismaService['luckyWheelPrize'];

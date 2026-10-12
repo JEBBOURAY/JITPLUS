@@ -1,4 +1,4 @@
-import { X, RefreshCw, Gift, SlidersHorizontal, TrendingUp, Disc3 } from 'lucide-react-native';
+import { X, RefreshCw, Gift, SlidersHorizontal, TrendingUp, Disc3, Ticket } from 'lucide-react-native';
 import type { LucideIcon } from 'lucide-react-native';
 import type { TransactionType } from '@/types';
 import type { ThemeColors } from '@/contexts/ThemeContext';
@@ -10,7 +10,7 @@ interface TransactionTypeConfig {
 }
 
 export const TRANSACTION_TYPE_CONFIG: Record<TransactionType, TransactionTypeConfig> = {
-  EARN_POINTS: {
+  EARN_STAMPS: {
     icon: TrendingUp,
     color: (theme) => theme.primary,
     sign: '+',
@@ -20,7 +20,7 @@ export const TRANSACTION_TYPE_CONFIG: Record<TransactionType, TransactionTypeCon
     color: (theme) => theme.accent,
     sign: '-',
   },
-  ADJUST_POINTS: {
+  ADJUST_STAMPS: {
     icon: SlidersHorizontal,
     color: (theme) => theme.textMuted,
     sign: '',
@@ -34,6 +34,11 @@ export const TRANSACTION_TYPE_CONFIG: Record<TransactionType, TransactionTypeCon
     icon: Disc3,
     color: (theme) => theme.accent,
     sign: '',
+  },
+  COUPON_REDEEM: {
+    icon: Ticket,
+    color: (theme) => theme.accent,
+    sign: '+',
   },
 };
 

@@ -182,8 +182,8 @@ export default function PlanScreen() {
       {
         icon: <Repeat size={16} color={theme.primary} />,
         label: t('account.planFeatureLoyalty'),
-        free: t('account.planFeatureLoyaltyFree'),
-        premium: t('account.planFeatureLoyaltyPremium'),
+        free: true,
+        premium: true,
       },
       {
         icon: <Store size={16} color={theme.primary} />,

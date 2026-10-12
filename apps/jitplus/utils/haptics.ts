@@ -14,3 +14,17 @@ export function haptic(style: Haptics.ImpactFeedbackStyle = Haptics.ImpactFeedba
     Haptics.impactAsync(style).catch(() => {});
   }
 }
+
+/** Very light tick (wheel segments passing the pointer…) — no-op on web. */
+export function hapticSelection(): void {
+  if (Platform.OS !== 'web') {
+    Haptics.selectionAsync().catch(() => {});
+  }
+}
+
+/** Success notification haptic (card reveal, coupon redeemed…) — no-op on web. */
+export function hapticSuccess(): void {
+  if (Platform.OS !== 'web') {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+  }
+}

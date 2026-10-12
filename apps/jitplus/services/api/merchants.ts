@@ -1,15 +1,11 @@
 import { AxiosInstance } from 'axios';
-import { Merchant, PointsOverview, QrTokenResponse } from '@/types';
+import { Merchant, StampsOverview, QrTokenResponse } from '@/types';
 import { getToken } from './storage';
 
 export function createMerchantMethods(http: AxiosInstance) {
   return {
-    async getProfileStats(): Promise<{ totalScans: number; totalRewards: number }> {
-      const { data } = await http.get('/client/stats');
-      return data;
-    },
-    async getPointsOverview(): Promise<PointsOverview> {
-      const { data } = await http.get('/client/points');
+    async getStampsOverview(): Promise<StampsOverview> {
+      const { data } = await http.get('/client/stamps');
       return data;
     },
     async getMerchants(page = 1, limit = 100): Promise<Merchant[]> {
@@ -25,7 +21,7 @@ export function createMerchantMethods(http: AxiosInstance) {
       const { data } = await http.get(`/client/merchants/${id}`);
       return data;
     },
-    async joinMerchant(merchantId: string): Promise<{ success: boolean; card: { id: string; points: number; createdAt: string } }> {
+    async joinMerchant(merchantId: string): Promise<{ success: boolean; card: { id: string; stamps: number; createdAt: string } }> {
       const { data } = await http.post(`/client/merchants/${merchantId}/join`);
       return data;
     },

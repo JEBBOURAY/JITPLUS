@@ -2,21 +2,25 @@
  * React Query hooks for data fetching with automatic caching,
  * stale-while-revalidate, deduplication, and retry.
  */
-import { useQuery, useInfiniteQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
+import {
+  useQuery, useInfiniteQuery, useMutation, useQueryClient, keepPreviousData,
+  type InfiniteData, type QueryClient,
+} from '@tanstack/react-query';
 import { api } from '@/services/api';
-import { PointsOverview, Merchant, NotificationsResponse, LuckyWheelTicket, LuckyWheelDraw } from '@/types';
+import {
+  StampsOverview, Merchant, NotificationsResponse, ClientNotification, LuckyWheelTicket, LuckyWheelDraw,
+} from '@/types';
 import { useWsStore } from '@/stores/wsStore';
 
 // ── Query keys (centralised for easy invalidation) ──
 
 export const queryKeys = {
-  points: ['points'] as const,
+  stamps: ['stamps'] as const,
   merchants: ['merchants'] as const,
   notifications: ['notifications'] as const,
   unreadCount: ['notifications-unread-count'] as const,
   luckyWheelDraws: ['lucky-wheel-available-draws'] as const,
   luckyWheelHistory: ['lucky-wheel-history'] as const,
-  transactionsHistory: ['transactions-history'] as const,
 } as const;
 
 // Single-pass invalidation predicate for both notification-related caches —
@@ -26,42 +30,15 @@ const isNotificationsQuery = (q: { queryKey: readonly unknown[] }) => {
   return k === 'notifications' || k === 'notifications-unread-count';
 };
 
-// ── Points / loyalty cards ──
+// ── Stamps / loyalty cards ──
 
-export function usePointsOverview(enabled = true) {
-  return useQuery<PointsOverview>({
-    queryKey: queryKeys.points,
-    queryFn: () => api.getPointsOverview(),
+export function useStampsOverview(enabled = true, refetchInterval: number | false = false) {
+  return useQuery<StampsOverview>({
+    queryKey: queryKeys.stamps,
+    queryFn: () => api.getStampsOverview(),
     staleTime: 30 * 1000, // 30s — WS auto-invalidates on transactions
     enabled,
-  });
-}
-
-export function useTransactionsHistory(enabled = true) {
-  return useInfiniteQuery({
-    queryKey: queryKeys.transactionsHistory,
-    queryFn: ({ pageParam = 1 }) => api.getTransactionsHistory(pageParam as number, 20),
-    initialPageParam: 1,
-    getNextPageParam: (lastPage: any) => {
-      const { currentPage, lastPage: maxPage } = lastPage.pagination;
-      return currentPage < maxPage ? currentPage + 1 : undefined;
-    },
-    staleTime: 30 * 1000,
-    enabled,
-  });
-}
-
-export function useRewardsHistory(enabled = true) {
-  return useInfiniteQuery({
-    queryKey: ['rewardsHistory'],
-    queryFn: ({ pageParam = 1 }) => api.getRewardsHistory(pageParam as number, 20),
-    initialPageParam: 1,
-    getNextPageParam: (lastPage: any) => {
-      const { page, totalPages } = lastPage.meta || lastPage.pagination || { page: 1, totalPages: 1 };
-      return page < totalPages ? page + 1 : undefined;
-    },
-    staleTime: 30 * 1000,
-    enabled,
+    refetchInterval,
   });
 }
 
@@ -120,23 +97,62 @@ export function useUnreadNotificationCount(enabled = true) {
 }
 
 // ── Notification mutations ──
+// All four mutations patch the cached list optimistically so the UI reacts
+// instantly (no flicker between the action and the refetch), then roll back
+// on error and re-sync with the server once settled.
+
+type NotifPages = InfiniteData<NotificationsResponse>;
+type UnreadCount = { unreadCount: number };
+type NotifSnapshot = { prevList?: NotifPages; prevCount?: UnreadCount };
+
+async function snapshotNotifications(queryClient: QueryClient): Promise<NotifSnapshot> {
+  await queryClient.cancelQueries({ predicate: isNotificationsQuery });
+  return {
+    prevList: queryClient.getQueryData<NotifPages>(queryKeys.notifications),
+    prevCount: queryClient.getQueryData<UnreadCount>(queryKeys.unreadCount),
+  };
+}
+
+function patchNotificationList(
+  queryClient: QueryClient,
+  fn: (list: ClientNotification[]) => ClientNotification[],
+) {
+  queryClient.setQueryData<NotifPages>(queryKeys.notifications, (old) => old && ({
+    ...old,
+    pages: old.pages.map((p) => (p ? { ...p, notifications: fn(p.notifications ?? []) } : p)),
+  }));
+}
+
+function setUnreadCount(queryClient: QueryClient, fn: (n: number) => number) {
+  queryClient.setQueryData<UnreadCount>(queryKeys.unreadCount, (old) =>
+    old ? { unreadCount: Math.max(0, fn(old.unreadCount)) } : old,
+  );
+}
+
+function restoreNotifications(queryClient: QueryClient, ctx?: NotifSnapshot) {
+  if (ctx?.prevList) queryClient.setQueryData(queryKeys.notifications, ctx.prevList);
+  if (ctx?.prevCount) queryClient.setQueryData(queryKeys.unreadCount, ctx.prevCount);
+}
+
+function isUnreadInCache(queryClient: QueryClient, id: string): boolean {
+  const data = queryClient.getQueryData<NotifPages>(queryKeys.notifications);
+  return !!data?.pages.some((p) => p?.notifications?.some((n) => n.id === id && !n.isRead));
+}
 
 export function useMarkNotificationAsRead() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (notificationId: string) => api.markNotificationAsRead(notificationId),
-    onMutate: async () => {
-      // Optimistic update: decrement unread count immediately
-      await queryClient.cancelQueries({ queryKey: queryKeys.unreadCount });
-      const prev = queryClient.getQueryData<{ unreadCount: number }>(queryKeys.unreadCount);
-      if (prev && prev.unreadCount > 0) {
-        queryClient.setQueryData(queryKeys.unreadCount, { unreadCount: prev.unreadCount - 1 });
-      }
-      return { prev };
+    onMutate: async (notificationId) => {
+      const ctx = await snapshotNotifications(queryClient);
+      const wasUnread = isUnreadInCache(queryClient, notificationId);
+      patchNotificationList(queryClient, (list) => list.map((n) =>
+        n.id === notificationId && !n.isRead ? { ...n, isRead: true, readAt: new Date().toISOString() } : n,
+      ));
+      if (wasUnread || !ctx.prevList) setUnreadCount(queryClient, (n) => n - 1);
+      return ctx;
     },
-    onError: (_err, _vars, context) => {
-      if (context?.prev) queryClient.setQueryData(queryKeys.unreadCount, context.prev);
-    },
+    onError: (_err, _vars, ctx) => restoreNotifications(queryClient, ctx),
     onSettled: () => {
       // Single predicate invalidates both notification queries in one cycle.
       queryClient.invalidateQueries({ predicate: isNotificationsQuery });
@@ -149,14 +165,13 @@ export function useMarkAllNotificationsAsRead() {
   return useMutation({
     mutationFn: () => api.markAllNotificationsAsRead(),
     onMutate: async () => {
-      await queryClient.cancelQueries({ queryKey: queryKeys.unreadCount });
-      const prev = queryClient.getQueryData<{ unreadCount: number }>(queryKeys.unreadCount);
-      queryClient.setQueryData(queryKeys.unreadCount, { unreadCount: 0 });
-      return { prev };
+      const ctx = await snapshotNotifications(queryClient);
+      const readAt = new Date().toISOString();
+      patchNotificationList(queryClient, (list) => list.map((n) => (n.isRead ? n : { ...n, isRead: true, readAt })));
+      setUnreadCount(queryClient, () => 0);
+      return ctx;
     },
-    onError: (_err, _vars, context) => {
-      if (context?.prev) queryClient.setQueryData(queryKeys.unreadCount, context.prev);
-    },
+    onError: (_err, _vars, ctx) => restoreNotifications(queryClient, ctx),
     onSettled: () => {
       queryClient.invalidateQueries({ predicate: isNotificationsQuery });
     },
@@ -167,7 +182,15 @@ export function useDismissNotification() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (notificationId: string) => api.dismissNotification(notificationId),
-    onSuccess: () => {
+    onMutate: async (notificationId) => {
+      const ctx = await snapshotNotifications(queryClient);
+      const wasUnread = isUnreadInCache(queryClient, notificationId);
+      patchNotificationList(queryClient, (list) => list.filter((n) => n.id !== notificationId));
+      if (wasUnread) setUnreadCount(queryClient, (n) => n - 1);
+      return ctx;
+    },
+    onError: (_err, _vars, ctx) => restoreNotifications(queryClient, ctx),
+    onSettled: () => {
       queryClient.invalidateQueries({ predicate: isNotificationsQuery });
     },
   });
@@ -177,7 +200,14 @@ export function useDismissAllNotifications() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => api.dismissAllNotifications(),
-    onSuccess: () => {
+    onMutate: async () => {
+      const ctx = await snapshotNotifications(queryClient);
+      patchNotificationList(queryClient, () => []);
+      setUnreadCount(queryClient, () => 0);
+      return ctx;
+    },
+    onError: (_err, _vars, ctx) => restoreNotifications(queryClient, ctx),
+    onSettled: () => {
       queryClient.invalidateQueries({ predicate: isNotificationsQuery });
     },
   });

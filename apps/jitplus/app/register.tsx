@@ -131,7 +131,7 @@ export default function RegisterScreen() {
               }],
             }]}>
               <Image
-                source={require('@/assets/images/jitpluslogo.png')}
+                source={require('@/assets/images/jitpluslogo-app.png')}
                 style={styles.logoImage}
                 resizeMode="contain"
               />

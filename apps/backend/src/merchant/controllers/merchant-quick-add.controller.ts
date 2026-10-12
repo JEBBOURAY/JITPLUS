@@ -57,7 +57,7 @@ export class MerchantQuickAddController {
       prenom: dto.prenom,
       type: dto.type,
       amount: dto.amount,
-      points: dto.points,
+      stamps: dto.stamps,
       rewardId: dto.rewardId,
       teamMemberId: user.teamMemberId ?? undefined,
       performedByName: user.teamMemberName ?? undefined,

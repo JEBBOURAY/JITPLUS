@@ -9,36 +9,36 @@ import { isCronAllowed } from './cron-utils';
 // ── Welcome Series: 4-step onboarding over first 7 days ─────────────────────
 // Day 0 (signup): handled by auth controller (immediate welcome push)
 // Day 1: Discover nearby merchants
-// Day 3: Earn your first points
+// Day 3: Earn your first stamps
 // Day 7: Referral program
 
 const MESSAGES = {
   day1: {
     fr: {
       title: '🏪 Découvrez les commerces autour de vous',
-      body: 'Des dizaines de commerces vous attendent sur JIT+. Explorez et commencez à cumuler des points de fidélité !',
+      body: 'Des dizaines de commerces vous attendent sur JIT+. Explorez et commencez à cumuler des tampons de fidélité !',
     },
     en: {
       title: '🏪 Discover nearby businesses',
-      body: 'Dozens of businesses are waiting for you on JIT+. Explore and start earning loyalty points!',
+      body: 'Dozens of businesses are waiting for you on JIT+. Explore and start earning loyalty stamps!',
     },
     ar: {
       title: '🏪 اكتشف المحلات اللي قريبين منك',
-      body: 'عشرات المحلات كيتسناوك فـ JIT+. تصفح وبدا جمع نقاط الولاء!',
+      body: 'عشرات المحلات كيتسناوك فـ JIT+. تصفح وبدا جمع طوابع الولاء!',
     },
   },
   day3: {
     fr: {
-      title: '⭐ Gagnez vos premiers points !',
-      body: 'Visitez un commerce partenaire et scannez votre QR code pour gagner vos premiers points. C\'est gratuit et rapide !',
+      title: '⭐ Gagnez vos premiers tampons !',
+      body: 'Visitez un commerce partenaire et scannez votre QR code pour gagner vos premiers tampons. C\'est gratuit et rapide !',
     },
     en: {
-      title: '⭐ Earn your first points!',
-      body: 'Visit a partner business and scan your QR code to earn your first points. It\'s free and fast!',
+      title: '⭐ Earn your first stamps!',
+      body: 'Visit a partner business and scan your QR code to earn your first stamps. It\'s free and fast!',
     },
     ar: {
-      title: '⭐ اربح أول النقط ديالك!',
-      body: 'زور محل شريك وسكاني الـ QR code ديالك باش تربح النقاط الأولى. مجاني وسريع!',
+      title: '⭐ اربح أول الطوابع ديالك!',
+      body: 'زور محل شريك وسكاني الـ QR code ديالك باش تربح الطوابع الأولى. مجاني وسريع!',
     },
   },
   day7: {
@@ -72,7 +72,7 @@ function getMsg(key: MsgKey, l: Lang): { title: string; body: string } {
  * Welcome series: automated push notifications for new JIT+ clients.
  *
  * Targets clients who signed up 1, 3, or 7 days ago and have NOT
- * yet earned any loyalty points (haven't engaged yet).
+ * yet earned any loyalty stamps (haven't engaged yet).
  *
  * Runs daily at 09:00 AM UTC.
  */

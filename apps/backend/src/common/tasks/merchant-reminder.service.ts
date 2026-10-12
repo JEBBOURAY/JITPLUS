@@ -7,6 +7,7 @@ import {
   type ICampaignSentTrackerRepository,
 } from '../repositories';
 import { IPushProvider, PUSH_PROVIDER } from '../interfaces';
+import { MerchantInboxService } from '../../merchant-inbox/merchant-inbox.service';
 import {
   isCronEnabled,
   dayTag,
@@ -16,38 +17,38 @@ import {
 
 // ── Localized issue labels ──
 const ISSUE_LABELS: Record<string, Record<string, string>> = {
-  logo:        { fr: 'logo',         en: 'logo',           ar: 'اللوغو' },
-  loyalty:     { fr: 'fidélité',     en: 'loyalty config', ar: 'برنامج الولاء' },
-  rewards:     { fr: 'récompenses',  en: 'rewards',        ar: 'المكافآت' },
+  logo:        { fr: 'votre logo',      en: 'your logo',  ar: 'اللوغو ديالك' },
+  rewards:     { fr: 'une récompense',  en: 'a reward',   ar: 'مكافأة' },
 };
+const LIST_JOINER: Record<string, string> = { fr: ' et ', en: ' and ', ar: ' و ' };
 
 const SETUP_MESSAGES: Record<string, { title: string; body: (issues: string) => string }> = {
   fr: {
-    title: '⚙️ Configuration incomplète',
-    body: (issues) => `Il manque : ${issues}. Complétez votre profil pour attirer plus de clients !`,
+    title: 'Votre profil n\'est pas encore complet',
+    body: (issues) => `Il manque encore ${issues}. Un profil complet inspire confiance à vos clients.`,
   },
   en: {
-    title: '⚙️ Incomplete setup',
-    body: (issues) => `Missing: ${issues}. Complete your profile to attract more clients!`,
+    title: 'Your profile is not complete yet',
+    body: (issues) => `Still missing: ${issues}. A complete profile builds trust with your customers.`,
   },
   ar: {
-    title: '⚙️ الإعداد ما كملش',
-    body: (issues) => `ناقص: ${issues}. كمل البروفيل ديالك باش تجلب كثر ديال الكليان!`,
+    title: 'البروفيل ديالك مازال ما كملش',
+    body: (issues) => `مازال خاصك ${issues}. البروفيل الكامل كيعطي الثقة للكليان ديالك.`,
   },
 };
 
 const REFERRAL_MESSAGES: Record<string, { title: string; body: string }> = {
   fr: {
-    title: '🎁 Parrainez et gagnez 1 mois Premium',
-    body: 'Parrainez un commerce et recevez +1 mois Premium gratuit dès qu\'il s\'abonne. Partagez votre code !',
+    title: 'Gagnez 1 mois Premium offert',
+    body: 'Invitez un commerçant avec votre code : dès qu\'il s\'abonne, vous recevez 1 mois Premium.',
   },
   en: {
-    title: '🎁 Refer & earn 1 month Premium',
-    body: 'Refer a business and get +1 free Premium month when they subscribe. Share your code!',
+    title: 'Earn a free month of Premium',
+    body: 'Invite a business owner with your code: as soon as they subscribe, you get 1 month of Premium.',
   },
   ar: {
-    title: '🎁 باريني واربح 1 شهر بريميوم',
-    body: 'باريني كومرس واربح +1 شهر بريميوم مجانا ملي يشترك. بارطاجي الكود ديالك!',
+    title: 'ربح شهر Premium فابور',
+    body: 'عرض على شي تاجر بالكود ديالك: ملي يشترك، كتربح شهر ديال Premium.',
   },
 };
 
@@ -60,8 +61,8 @@ function lang(v?: string | null): Lang {
  * Scheduled task: send push notification reminders to merchants every 48 hours.
  *
  * Two reminder types:
- * 1. **Setup reminder** — merchant completed onboarding but is missing logo,
- *    loyalty config, or rewards.
+ * 1. **Setup reminder** — merchant completed onboarding but is missing a logo
+ *    or rewards.
  * 2. **Referral reminder** — nudge merchants to share their referral code.
  *
  * Runs every 48 hours at 10:01 UTC (staggered from the smart-campaign weekly
@@ -79,6 +80,7 @@ export class MerchantReminderService {
     @Inject(MERCHANT_REPOSITORY) private readonly merchantRepo: IMerchantRepository,
     @Inject(CAMPAIGN_SENT_TRACKER_REPOSITORY) private readonly campaignTrackerRepo: ICampaignSentTrackerRepository,
     @Inject(PUSH_PROVIDER) private readonly pushProvider: IPushProvider,
+    private readonly inbox: MerchantInboxService,
   ) {}
 
   // Every 48 hours: send setup + referral push reminders.
@@ -103,7 +105,6 @@ export class MerchantReminderService {
           pushToken: true,
           language: true,
           logoUrl: true,
-          loyaltyType: true,
           _count: { select: { rewards: true } },
         },
       });
@@ -123,7 +124,6 @@ export class MerchantReminderService {
         // ── Setup reminder ───────────────────────────────────
         const issueKeys: string[] = [];
         if (!merchant.logoUrl) issueKeys.push('logo');
-        if (!merchant.loyaltyType) issueKeys.push('loyalty');
         if (merchant._count.rewards === 0) issueKeys.push('rewards');
 
         const campaignId = issueKeys.length > 0
@@ -136,25 +136,26 @@ export class MerchantReminderService {
         }
 
         if (issueKeys.length > 0) {
-          const issueLabels = issueKeys.map((k) => ISSUE_LABELS[k][l]).join(', ');
+          const issueLabels = issueKeys.map((k) => ISSUE_LABELS[k][l]).join(LIST_JOINER[l]);
           const msg = SETUP_MESSAGES[l];
 
           // Navigate to the page matching the first missing item
           const actionMap: Record<string, string> = {
             logo: 'open_logo',
-            loyalty: 'open_settings',
             rewards: 'open_settings',
           };
           const action = actionMap[issueKeys[0]] || 'open_settings';
 
+          const body = msg.body(issueLabels);
           result = await this.pushProvider.sendToMerchant(
             merchant.pushToken,
             msg.title,
-            msg.body(issueLabels),
+            body,
             { action },
           );
           if (!result.invalidToken) {
             setupCount++;
+            await this.inbox.record(merchant.id, { category: 'SETUP', title: msg.title, body, action });
             await merchantMarkSent(this.campaignTrackerRepo, merchant.id, campaignId, 'PUSH');
           }
         } else {
@@ -169,6 +170,7 @@ export class MerchantReminderService {
           );
           if (!result.invalidToken) {
             referralCount++;
+            await this.inbox.record(merchant.id, { category: 'OFFER', title: msg.title, body: msg.body, action: 'open_referral' });
             await merchantMarkSent(this.campaignTrackerRepo, merchant.id, campaignId, 'PUSH');
           }
         }

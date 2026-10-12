@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -7,44 +7,52 @@ import {
   Alert,
   ScrollView,
   I18nManager,
-  Image as RNImage,
+  type LayoutChangeEvent,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, Share2, FileText, ChevronRight } from 'lucide-react-native';
+import { ArrowLeft, Share2, ChevronRight, Check, Printer, Stamp, Gift, Ticket, Clock, Settings2 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import QRCode from 'react-native-qrcode-svg';
 import * as Sharing from 'expo-sharing';
 import { captureRef } from 'react-native-view-shot';
 import { useTheme, brandGradient } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuthStore } from '@/stores/authStore';
-import MerchantLogo from '@/components/MerchantLogo';
-
-const CLIENT_APP_ANDROID = 'https://play.google.com/store/apps/details?id=com.jitplus.client';
-const CLIENT_APP_IOS = 'https://apps.apple.com/app/jitplus/id6762307929';
+import PlvPoster, { PLV_TEMPLATES, type PlvTemplateId } from '@/components/plv/PlvPoster';
+import { usePlvProgram } from '@/components/plv/usePlvProgram';
 
 export default function ClientAppQrScreen() {
   const theme = useTheme();
   const { t } = useLanguage();
   const router = useRouter();
   const merchant = useAuthStore((s) => s.merchant);
+  const isTeamMember = useAuthStore((s) => s.isTeamMember);
   const insets = useSafeAreaInsets();
   const posterRef = useRef<View | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [templateId, setTemplateId] = useState<PlvTemplateId>('classic');
+  const [posterW, setPosterW] = useState(0);
+  const isRTL = I18nManager.isRTL;
 
-  const qrPlatforms = useMemo(() => ([
-    {
-      key: 'android',
-      title: t('home.clientQrAndroidTitle'),
-      url: CLIENT_APP_ANDROID,
-    },
-    {
-      key: 'ios',
-      title: t('home.clientQrIosTitle'),
-      url: CLIENT_APP_IOS,
-    },
-  ]), [t]);
+  const program = usePlvProgram();
+  const programRows = useMemo(
+    () => [
+      { Icon: Stamp, text: program.earnLine },
+      { Icon: Gift, text: program.rewardHeadline },
+      ...program.otherRewards.map((r) => ({ Icon: Gift, text: r.label })),
+      ...(program.wheelLine ? [{ Icon: Ticket, text: program.wheelLine }] : []),
+      ...(program.validityLine ? [{ Icon: Clock, text: program.validityLine }] : []),
+    ],
+    [program],
+  );
+
+  const selected = PLV_TEMPLATES.find((d) => d.id === templateId) ?? PLV_TEMPLATES[0];
+  const hairline = theme.mode === 'dark' ? 'rgba(255,255,255,0.10)' : 'rgba(15,23,42,0.08)';
+
+  const onPosterLayout = useCallback((e: LayoutChangeEvent) => {
+    const w = Math.floor(e.nativeEvent.layout.width);
+    setPosterW((prev) => (prev === w ? prev : w));
+  }, []);
 
   const exportPosterImage = useCallback(async () => {
     if (exporting) return;
@@ -55,7 +63,6 @@ export default function ClientAppQrScreen() {
         Alert.alert(t('common.error'), t('home.clientQrShareUnavailable'));
         return;
       }
-
       if (!posterRef.current) {
         throw new Error('Poster view unavailable');
       }
@@ -64,7 +71,6 @@ export default function ClientAppQrScreen() {
         quality: 1,
         result: 'tmpfile',
       });
-
       await Sharing.shareAsync(fileUri, {
         mimeType: 'image/png',
         dialogTitle: t('home.clientQrExportDialog'),
@@ -77,8 +83,8 @@ export default function ClientAppQrScreen() {
   }, [exporting, t]);
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.bg }]}> 
-      <View style={[styles.header, { paddingTop: insets.top + 12 }]}> 
+    <View style={[styles.container, { backgroundColor: theme.bg }]}>
+      <View style={[styles.header, isRTL && styles.rowRtl, { paddingTop: insets.top + 12 }]}>
         <TouchableOpacity
           onPress={() => router.back()}
           hitSlop={{ top: 12, right: 12, bottom: 12, left: 12 }}
@@ -89,7 +95,7 @@ export default function ClientAppQrScreen() {
             size={22}
             color={theme.text}
             strokeWidth={2}
-            style={I18nManager.isRTL ? { transform: [{ scaleX: -1 }] } : undefined}
+            style={isRTL ? { transform: [{ scaleX: -1 }] } : undefined}
           />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: theme.text }]} maxFontSizeMultiplier={1.3}>
@@ -102,87 +108,149 @@ export default function ClientAppQrScreen() {
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 26 }]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={[styles.qrCard, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}> 
-          <View style={[styles.qrIconWrap, { backgroundColor: theme.primaryBg }]}> 
-            <FileText size={18} color={theme.primary} strokeWidth={2} />
-          </View>
-          <Text style={[styles.title, { color: theme.text }]} maxFontSizeMultiplier={1.3}>
-            {t('home.clientQrTitle')}
-          </Text>
-          <Text style={[styles.subtitle, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>
-            {t('home.clientQrSubtitle')}
-          </Text>
+        <Text style={[styles.title, { color: theme.text }]} maxFontSizeMultiplier={1.3}>
+          {t('home.clientQrTitle')}
+        </Text>
+        <Text style={[styles.subtitle, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>
+          {t('home.clientQrSubtitle')}
+        </Text>
 
-          <View ref={posterRef} collapsable={false} style={styles.poster}>
-            <View style={styles.posterBrandRow}>
-              <View style={styles.posterLogoBox}>
-                <RNImage source={require('@/assets/images/jitpluslogo.png')} style={styles.posterJitLogo} resizeMode="contain" />
+        <Text style={[styles.sectionLabel, { color: theme.primary }]} maxFontSizeMultiplier={1.2}>
+          {t('home.clientPlvPickerLabel').toUpperCase()}
+        </Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.pickerTrack}
+          style={styles.picker}
+        >
+          {PLV_TEMPLATES.map((tpl) => {
+            const active = tpl.id === templateId;
+            return (
+              <TouchableOpacity
+                key={tpl.id}
+                onPress={() => setTemplateId(tpl.id)}
+                activeOpacity={0.85}
+                style={[
+                  styles.pickerItem,
+                  { backgroundColor: theme.bgCard, borderColor: active ? theme.primary : hairline },
+                  active && styles.pickerItemActive,
+                ]}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                accessibilityLabel={t(tpl.nameKey)}
+              >
+                <LinearGradient
+                  colors={[tpl.swatch[0], tpl.swatch[1]]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={[styles.swatch, { aspectRatio: 1 / Math.min(tpl.ratio, 1.2), borderColor: hairline }]}
+                >
+                  {active ? (
+                    <View style={[styles.swatchCheck, { backgroundColor: theme.primary }]}>
+                      <Check size={12} color="#FFFFFF" strokeWidth={3} />
+                    </View>
+                  ) : null}
+                </LinearGradient>
+                <Text style={[styles.pickerName, { color: theme.text }]} maxFontSizeMultiplier={1.25} numberOfLines={1}>
+                  {t(tpl.nameKey)}
+                </Text>
+                <Text style={[styles.pickerUse, { color: theme.textMuted }]} maxFontSizeMultiplier={1.25} numberOfLines={2}>
+                  {t(tpl.useKey)}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
+        <View
+          style={[styles.previewFrame, { backgroundColor: theme.mode === 'dark' ? 'rgba(255,255,255,0.04)' : '#EEF2F7' }]}
+        >
+          <View style={styles.previewInner} onLayout={onPosterLayout}>
+            {posterW > 0 ? (
+              <View ref={posterRef} collapsable={false} style={styles.posterShadow}>
+                {/* Remount per template so the native root never keeps styles from another layout. */}
+                <PlvPoster
+                  key={templateId}
+                  template={templateId}
+                  width={posterW}
+                  merchantName={merchant?.nom || t('home.clientShareStoreFallback')}
+                  logoUrl={merchant?.logoUrl}
+                  brandColor={merchant?.themeColor}
+                  program={program}
+                  t={t}
+                />
               </View>
-              <Text style={styles.posterCross}>×</Text>
-              <View style={styles.posterLogoBox}>
-                <MerchantLogo logoUrl={merchant?.logoUrl} style={styles.posterMerchantLogo} />
-              </View>
-            </View>
-
-            <Text style={styles.posterMerchantName} numberOfLines={1}>
-              {merchant?.nom || 'Commerce'}
-            </Text>
-
-            <Text style={styles.posterHeadline}>
-              {t('home.clientPlvHeadline')}
-            </Text>
-
-            <View style={styles.posterQrRow}>
-              {qrPlatforms.map((item) => (
-                <View key={item.key} style={styles.posterQrCol}>
-                  <Text style={styles.posterQrLabel}>{item.title}</Text>
-                  <View style={styles.posterQrFrame}>
-                    <QRCode value={item.url} size={110} />
-                  </View>
-                </View>
-              ))}
-            </View>
-
-            <View style={styles.posterStepsRow}>
-              <Text style={styles.posterStepText}>{t('home.clientPlvStep1')}</Text>
-              <Text style={styles.posterArrow}>➜</Text>
-              <Text style={styles.posterStepText}>{t('home.clientPlvStep2')}</Text>
-              <Text style={styles.posterArrow}>➜</Text>
-              <Text style={styles.posterStepText}>{t('home.clientPlvStep3')}</Text>
-            </View>
+            ) : null}
           </View>
+        </View>
 
-          <LinearGradient
-            colors={[brandGradient[0], brandGradient[1]]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.ctaGradient}
-          >
-            <TouchableOpacity
-              onPress={exportPosterImage}
-              activeOpacity={0.85}
-              style={[styles.ctaButton, I18nManager.isRTL ? styles.rowRtl : styles.rowLtr]}
-              accessibilityRole="button"
-              accessibilityLabel={t('home.clientQrExportCta')}
-              disabled={exporting}
-            >
-              <Share2 size={16} color="#FFFFFF" strokeWidth={2} />
-              <Text style={styles.ctaText} maxFontSizeMultiplier={1.25}>
-                {exporting ? t('common.loading') : t('home.clientQrExportCta')}
+        <View style={[styles.programCard, { backgroundColor: theme.bgCard, borderColor: hairline }]}>
+          <Text style={[styles.programLabel, { color: theme.primary }]} maxFontSizeMultiplier={1.2}>
+            {t('home.clientPlvProgramLabel').toUpperCase()}
+          </Text>
+          {programRows.map((row, i) => (
+            <View key={i} style={[styles.programRow, isRTL && styles.rowRtl]}>
+              <row.Icon size={15} color={theme.primary} strokeWidth={2.2} />
+              <Text style={[styles.programText, { color: theme.text }]} maxFontSizeMultiplier={1.3}>
+                {row.text}
               </Text>
-              <ChevronRight
-                size={16}
-                color="#FFFFFF"
-                strokeWidth={2}
-                style={I18nManager.isRTL ? { transform: [{ scaleX: -1 }] } : undefined}
-              />
+            </View>
+          ))}
+          {/* Settings are owner-only; team members get a dead end there. */}
+          {!isTeamMember ? (
+            <TouchableOpacity
+              onPress={() => router.push('/settings')}
+              activeOpacity={0.7}
+              style={[styles.programEdit, isRTL && styles.rowRtl]}
+              accessibilityRole="button"
+              accessibilityLabel={t('home.clientPlvProgramEdit')}
+            >
+              <Settings2 size={14} color={theme.textMuted} strokeWidth={2} />
+              <Text style={[styles.programEditText, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>
+                {t('home.clientPlvProgramEdit')}
+              </Text>
             </TouchableOpacity>
-          </LinearGradient>
+          ) : null}
+        </View>
 
-          <Text style={[styles.hint, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>
-            {t('home.clientQrHint')}
+        <View style={[styles.useRow, isRTL && styles.rowRtl]}>
+          <Printer size={14} color={theme.textMuted} strokeWidth={2} />
+          <Text style={[styles.useText, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.3}>
+            {t(selected.useKey)}
           </Text>
         </View>
+
+        <LinearGradient
+          colors={[brandGradient[0], brandGradient[1]]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.ctaGradient}
+        >
+          <TouchableOpacity
+            onPress={exportPosterImage}
+            activeOpacity={0.85}
+            style={[styles.ctaButton, isRTL ? styles.rowRtl : styles.rowLtr]}
+            accessibilityRole="button"
+            accessibilityLabel={t('home.clientQrExportCta')}
+            disabled={exporting || posterW === 0}
+          >
+            <Share2 size={16} color="#FFFFFF" strokeWidth={2} />
+            <Text style={styles.ctaText} maxFontSizeMultiplier={1.25}>
+              {exporting ? t('common.loading') : t('home.clientQrExportCta')}
+            </Text>
+            <ChevronRight
+              size={16}
+              color="#FFFFFF"
+              strokeWidth={2}
+              style={isRTL ? { transform: [{ scaleX: -1 }] } : undefined}
+            />
+          </TouchableOpacity>
+        </LinearGradient>
+
+        <Text style={[styles.hint, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>
+          {t('home.clientQrHint')}
+        </Text>
       </ScrollView>
     </View>
   );
@@ -204,186 +272,60 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scroll: { flex: 1 },
-  scrollContent: { paddingHorizontal: 16, paddingTop: 8 },
-  qrCard: {
-    borderWidth: 1,
-    borderRadius: 18,
-    paddingHorizontal: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
+  scrollContent: { paddingHorizontal: 16, paddingTop: 4 },
+  title: { fontSize: 19, lineHeight: 25, fontFamily: 'Lexend_700Bold', letterSpacing: -0.3 },
+  subtitle: { marginTop: 4, fontSize: 12.5, lineHeight: 18, fontFamily: 'Lexend_400Regular' },
+  sectionLabel: { fontSize: 11, letterSpacing: 1, fontFamily: 'Lexend_700Bold', marginTop: 18, marginBottom: 8 },
+
+  picker: { marginHorizontal: -16 },
+  pickerTrack: { paddingHorizontal: 16, gap: 10 },
+  pickerItem: { width: 118, borderWidth: 1.5, borderRadius: 16, padding: 8 },
+  pickerItemActive: {
+    shadowColor: '#7C3AED',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    elevation: 3,
   },
-  qrIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 10,
-  },
-  title: {
-    fontSize: 16,
-    lineHeight: 20,
-    textAlign: 'center',
-    fontFamily: 'Lexend_700Bold',
-  },
-  subtitle: {
-    marginTop: 5,
-    fontSize: 12,
-    lineHeight: 18,
-    textAlign: 'center',
-    fontFamily: 'Lexend_400Regular',
-  },
-  qrFrame: {
-    marginTop: 14,
-    backgroundColor: '#FFFFFF',
+  swatch: { width: '100%', borderRadius: 10, borderWidth: 1, alignItems: 'flex-end', padding: 6 },
+  swatchCheck: { width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  pickerName: { marginTop: 8, fontSize: 13, fontFamily: 'Lexend_700Bold' },
+  pickerUse: { marginTop: 2, fontSize: 10.5, lineHeight: 14, fontFamily: 'Lexend_400Regular' },
+
+  previewFrame: { marginTop: 16, borderRadius: 20, padding: 16 },
+  previewInner: { width: '100%', alignItems: 'center' },
+  posterShadow: {
     borderRadius: 14,
-    padding: 10,
-  },
-  platformBlock: {
-    width: '100%',
-    marginTop: 14,
-    alignItems: 'center',
-  },
-  poster: {
-    width: '100%',
-    marginTop: 14,
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
     backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 14,
+    elevation: 5,
   },
-  posterBrandRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 8,
-  },
-  posterLogoBox: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
-  },
-  posterJitLogo: {
-    width: 28,
-    height: 28,
-  },
-  posterMerchantLogo: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-  },
-  posterCross: {
-    color: '#64748B',
-    fontSize: 14,
-    fontFamily: 'Lexend_700Bold',
-  },
-  posterMerchantName: {
-    marginTop: 6,
-    textAlign: 'center',
-    color: '#1F2937',
-    fontSize: 12,
-    fontFamily: 'Lexend_700Bold',
-  },
-  posterHeadline: {
-    marginTop: 8,
-    textAlign: 'center',
-    color: '#0F172A',
-    fontSize: 13,
-    lineHeight: 17,
-    fontFamily: 'Lexend_700Bold',
-  },
-  posterQrRow: {
-    marginTop: 10,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  posterQrCol: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  posterQrLabel: {
-    color: '#334155',
-    fontSize: 11,
-    fontFamily: 'Lexend_600SemiBold',
-    marginBottom: 6,
-    textAlign: 'center',
-  },
-  posterQrFrame: {
-    padding: 6,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    backgroundColor: '#FFFFFF',
-  },
-  posterStepsRow: {
-    marginTop: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexWrap: 'wrap',
-    gap: 4,
-  },
-  posterStepText: {
-    color: '#334155',
-    fontSize: 10.5,
-    lineHeight: 14,
-    fontFamily: 'Lexend_600SemiBold',
-    textAlign: 'center',
-  },
-  posterArrow: {
-    color: '#64748B',
-    fontSize: 10,
-    fontFamily: 'Lexend_700Bold',
-  },
-  platformTitle: {
-    alignSelf: 'flex-start',
-    fontSize: 12.5,
-    fontFamily: 'Lexend_600SemiBold',
-  },
-  urlLabel: {
-    marginTop: 10,
-    fontSize: 11,
-    lineHeight: 15,
-    textAlign: 'center',
-    fontFamily: 'Lexend_400Regular',
-  },
-  ctaGradient: {
-    width: '100%',
-    marginTop: 14,
-    borderRadius: 14,
-    overflow: 'hidden',
-  },
+
+  programCard: { marginTop: 14, borderWidth: 1, borderRadius: 16, padding: 14, gap: 9 },
+  programLabel: { fontSize: 11, letterSpacing: 1, fontFamily: 'Lexend_700Bold' },
+  programRow: { flexDirection: 'row', alignItems: 'center', gap: 9 },
+  programText: { flex: 1, fontSize: 13, lineHeight: 18, fontFamily: 'Lexend_500Medium' },
+  programEdit: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
+  programEditText: { fontSize: 11.5, fontFamily: 'Lexend_500Medium', flexShrink: 1 },
+
+  useRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 12 },
+  useText: { fontSize: 12, fontFamily: 'Lexend_500Medium', textAlign: 'center', flexShrink: 1 },
+
+  ctaGradient: { width: '100%', marginTop: 14, borderRadius: 14, overflow: 'hidden' },
   ctaButton: {
     width: '100%',
-    minHeight: 46,
+    minHeight: 48,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
     paddingHorizontal: 14,
     paddingVertical: 10,
   },
-  ctaText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontFamily: 'Lexend_700Bold',
-    textAlign: 'center',
-    flexShrink: 1,
-  },
-  hint: {
-    marginTop: 10,
-    fontSize: 11,
-    lineHeight: 16,
-    textAlign: 'center',
-    fontFamily: 'Lexend_400Regular',
-  },
+  ctaText: { color: '#FFFFFF', fontSize: 13.5, fontFamily: 'Lexend_700Bold', textAlign: 'center', flexShrink: 1 },
+  hint: { marginTop: 10, fontSize: 11, lineHeight: 16, textAlign: 'center', fontFamily: 'Lexend_400Regular' },
   rowLtr: { flexDirection: 'row' },
   rowRtl: { flexDirection: 'row-reverse' },
 });

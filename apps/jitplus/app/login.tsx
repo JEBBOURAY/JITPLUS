@@ -473,7 +473,7 @@ export default function LoginScreen() {
               }]}>
               <View style={styles.brandRow}>
                 <Image
-                  source={require('@/assets/images/jitpluslogo.png')}
+                  source={require('@/assets/images/jitpluslogo-app.png')}
                   style={styles.logoImage}
                   resizeMode="contain"
                 />
@@ -485,7 +485,7 @@ export default function LoginScreen() {
             <View style={styles.headerSmall}>
               <View style={styles.brandRow}>
                 <Image
-                  source={require('@/assets/images/jitpluslogo.png')}
+                  source={require('@/assets/images/jitpluslogo-app.png')}
                   style={styles.logoImageSmall}
                   resizeMode="contain"
                 />

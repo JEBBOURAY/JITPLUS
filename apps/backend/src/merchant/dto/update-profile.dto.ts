@@ -1,6 +1,7 @@
 import { IsEmail, IsOptional, IsString, IsUrl, MaxLength, MinLength, Matches, IsArray, ArrayMaxSize, IsEnum, IsIn, IsObject, ValidateNested, IsBoolean, ArrayUnique } from 'class-validator';
 import { Type } from 'class-transformer';
 import { MerchantCategory } from '@prisma/client';
+import { SocialLinksDto } from './social-links.dto';
 
 const MERCHANT_BADGE_CODES = [
   'WIFI',
@@ -109,6 +110,21 @@ export class UpdateProfileDto {
   @IsIn(['LIGHT', 'DARK'], { message: 'Couleur du texte invalide (LIGHT ou DARK)' })
   @IsOptional()
   cardTextColor?: string | null;
+
+  @IsEnum(MerchantCategory, { message: 'Catégorie invalide' })
+  @IsOptional()
+  categorie?: MerchantCategory;
+
+  @IsString()
+  @MaxLength(1000, { message: 'Description trop longue (1000 caractères max)' })
+  @IsOptional()
+  description?: string;
+
+  @IsObject()
+  @ValidateNested()
+  @Type(() => SocialLinksDto)
+  @IsOptional()
+  socialLinks?: SocialLinksDto;
 
   @IsArray()
   @ArrayMaxSize(3, { message: 'Maximum 3 catégories secondaires' })

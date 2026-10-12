@@ -22,6 +22,10 @@ import { io, Socket } from 'socket.io-client';
 let lastDevWsErrorSig = '';
 let lastDevWsErrorAt = 0;
 
+/** After an auth rejection, poll the stored token for a refreshed one (~2 min max). */
+const AUTH_RETRY_INTERVAL_MS = 4000;
+const AUTH_RETRY_MAX_CHECKS = 30;
+
 export interface RealtimeSocketConfig {
   /** Server base URL (without /api/v1), e.g. http://192.168.1.10:3000 */
   serverUrl: string;
@@ -44,11 +48,23 @@ export function useRealtimeSocket(config: RealtimeSocketConfig): Socket | null {
   const MAX_AUTH_FAILURES = 5;
   const connectErrorCountRef = useRef(0);
   const lastConnectErrorLogAtRef = useRef(0);
-  const connectingRef = useRef(false);
+  // Bumped on every effect cleanup so a connect() still awaiting its token
+  // after logout/unmount does not open an orphan socket.
+  const connectGenRef = useRef(0);
+  const connectingGenRef = useRef<number | null>(null);
+  const authRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearAuthRetry = useCallback(() => {
+    if (authRetryTimerRef.current) {
+      clearTimeout(authRetryTimerRef.current);
+      authRetryTimerRef.current = null;
+    }
+  }, []);
 
   const connect = useCallback(async () => {
-    if (connectingRef.current) return;
-    connectingRef.current = true;
+    const gen = connectGenRef.current;
+    if (connectingGenRef.current === gen) return;
+    connectingGenRef.current = gen;
+    clearAuthRetry();
     try {
       // Disconnect previous socket if any
       if (socketRef.current) {
@@ -58,7 +74,7 @@ export function useRealtimeSocket(config: RealtimeSocketConfig): Socket | null {
       }
 
       const token = await getTokenRef.current();
-      if (!token) return;
+      if (!token || gen !== connectGenRef.current) return;
 
       authFailures.current = 0;
 
@@ -130,6 +146,28 @@ export function useRealtimeSocket(config: RealtimeSocketConfig): Socket | null {
         if (socketRef.current !== newSocket) return;
         if (__DEV__) console.warn('[WS] Auth error received, disconnecting');
         newSocket.disconnect();
+        // Usually an expired access token. The HTTP client refreshes the stored
+        // token on its next request: wait for the stored token to change, then
+        // reconnect with it instead of staying offline until the app restarts.
+        const rejectedToken = (newSocket.auth as Record<string, string>).token;
+        clearAuthRetry();
+        const waitForFreshToken = (attempt: number) => {
+          authRetryTimerRef.current = setTimeout(() => {
+            authRetryTimerRef.current = null;
+            // In background the foreground handler takes over the reconnection.
+            if (socketRef.current !== newSocket || newSocket.connected || AppState.currentState !== 'active') return;
+            getTokenRef.current().then((freshToken) => {
+              if (socketRef.current !== newSocket || newSocket.connected) return;
+              if (freshToken && freshToken !== rejectedToken) {
+                (newSocket.auth as Record<string, string>).token = freshToken;
+                newSocket.connect();
+              } else if (attempt < AUTH_RETRY_MAX_CHECKS) {
+                waitForFreshToken(attempt + 1);
+              }
+            }).catch(() => {});
+          }, AUTH_RETRY_INTERVAL_MS);
+        };
+        waitForFreshToken(1);
       });
 
       if (__DEV__) {
@@ -172,15 +210,16 @@ export function useRealtimeSocket(config: RealtimeSocketConfig): Socket | null {
 
       setSocket(newSocket);
     } finally {
-      connectingRef.current = false;
+      if (connectingGenRef.current === gen) connectingGenRef.current = null;
     }
-  }, [serverUrl]);
+  }, [serverUrl, clearAuthRetry]);
 
   // Connect when enabled changes
   useEffect(() => {
     if (enabled) {
       connect();
     } else {
+      clearAuthRetry();
       if (socketRef.current) {
         socketRef.current.removeAllListeners();
         socketRef.current.disconnect();
@@ -190,13 +229,15 @@ export function useRealtimeSocket(config: RealtimeSocketConfig): Socket | null {
     }
 
     return () => {
+      connectGenRef.current += 1;
+      clearAuthRetry();
       if (socketRef.current) {
         socketRef.current.removeAllListeners();
         socketRef.current.disconnect();
         socketRef.current = null;
       }
     };
-  }, [enabled, connect]);
+  }, [enabled, connect, clearAuthRetry]);
 
   // Disconnect in background, reconnect on foreground.
   // COST: a live WebSocket keeps a Cloud Run request (and its billed CPU) open.
@@ -211,11 +252,22 @@ export function useRealtimeSocket(config: RealtimeSocketConfig): Socket | null {
         if (!s) {
           connect();
         } else if (!s.connected && !s.active) {
-          s.connect();
+          clearAuthRetry();
+          // The handshake token may have expired while in background.
+          getTokenRef.current()
+            .then((freshToken) => {
+              if (freshToken) (s.auth as Record<string, string>).token = freshToken;
+            })
+            .catch(() => {})
+            .finally(() => {
+              if (socketRef.current === s && !s.connected && !s.active) s.connect();
+            });
         }
-      } else {
-        // Going to background/inactive → close the socket to release the
-        // server-side connection (and its Cloud Run billing) right away.
+      } else if (nextState === 'background') {
+        // Going to background → close the socket to release the server-side
+        // connection (and its Cloud Run billing) right away. iOS 'inactive'
+        // (Control Center, Face ID, system dialogs) is ignored: the app is
+        // still on screen, and a real backgrounding always ends in 'background'.
         const s = socketRef.current;
         if (s && (s.connected || s.active)) {
           s.disconnect();
@@ -225,7 +277,7 @@ export function useRealtimeSocket(config: RealtimeSocketConfig): Socket | null {
 
     const sub = AppState.addEventListener('change', handleAppState);
     return () => sub.remove();
-  }, [enabled, connect]);
+  }, [enabled, connect, clearAuthRetry]);
 
   return socket;
 }

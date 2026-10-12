@@ -11,9 +11,12 @@ import { JwtService } from '@nestjs/jwt';
 import { Server, Socket } from 'socket.io';
 import {
   WS_EVENTS,
-  PointsUpdatedPayload,
+  StampsUpdatedPayload,
   NotificationNewPayload,
   TransactionRecordedPayload,
+  CouponUpdatedPayload,
+  ScratchCardsChangedPayload,
+  CouponRedeemedPayload,
 } from './events.types';
 
 /**
@@ -159,11 +162,11 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect, 
 
   // ── Emit helpers (called by services) ────────────────────────
 
-  /** Notify a client that their points/stamps balance changed */
-  emitPointsUpdated(clientId: string, payload: PointsUpdatedPayload) {
+  /** Notify a client that their stamps balance changed */
+  emitStampsUpdated(clientId: string, payload: StampsUpdatedPayload) {
     this.server
       .to(`client:${clientId}`)
-      .emit(WS_EVENTS.POINTS_UPDATED, payload);
+      .emit(WS_EVENTS.STAMPS_UPDATED, payload);
   }
 
   /** Notify a client of a new notification */
@@ -178,5 +181,21 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect, 
     this.server
       .to(`merchant:${merchantId}`)
       .emit(WS_EVENTS.TRANSACTION_RECORDED, payload);
+  }
+
+  emitCouponUpdated(clientIds: string | string[], payload: CouponUpdatedPayload) {
+    const ids = Array.isArray(clientIds) ? clientIds : [clientIds];
+    if (ids.length === 0) return;
+    this.server.to(ids.map((id) => `client:${id}`)).emit(WS_EVENTS.COUPON_UPDATED, payload);
+  }
+
+  emitScratchCardsChanged(clientIds: string | string[], payload: ScratchCardsChangedPayload) {
+    const ids = Array.isArray(clientIds) ? clientIds : [clientIds];
+    if (ids.length === 0) return;
+    this.server.to(ids.map((id) => `client:${id}`)).emit(WS_EVENTS.SCRATCH_CARDS_CHANGED, payload);
+  }
+
+  emitCouponRedeemed(merchantId: string, payload: CouponRedeemedPayload) {
+    this.server.to(`merchant:${merchantId}`).emit(WS_EVENTS.COUPON_REDEEMED, payload);
   }
 }

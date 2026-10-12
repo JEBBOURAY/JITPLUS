@@ -39,7 +39,10 @@
         "EXPO_PUBLIC_TERMS_URL": "https://jitplus.com/cgu",
         "EXPO_PUBLIC_DATA_RIGHTS_URL": "https://jitplus.com/legal",
         "EXPO_PUBLIC_SENTRY_DSN_PRO": "$EXPO_PUBLIC_SENTRY_DSN_PRO",
-        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true",
+        "ANDROID_ENABLE_R8": "true",
+        "EXPO_UNSTABLE_TREE_SHAKING": "1",
+        "EXPO_UNSTABLE_METRO_OPTIMIZE_GRAPH": "1"
       }
     },
     "production": {
@@ -62,7 +65,10 @@
         "SENTRY_AUTH_TOKEN": "$SENTRY_AUTH_TOKEN",
         "SENTRY_ORG": "jitplus",
         "SENTRY_PROJECT": "jitpluspro-mobile",
-        "SENTRY_URL": "https://de.sentry.io/"
+        "SENTRY_URL": "https://de.sentry.io/",
+        "ANDROID_ENABLE_R8": "true",
+        "EXPO_UNSTABLE_TREE_SHAKING": "1",
+        "EXPO_UNSTABLE_METRO_OPTIMIZE_GRAPH": "1"
       }
     },
     "production-apk": {
@@ -82,7 +88,10 @@
         "EXPO_PUBLIC_DATA_RIGHTS_URL": "https://jitplus.com/legal",
         "EXPO_PUBLIC_IOS_APP_ID": "$EXPO_PUBLIC_IOS_APP_ID",
         "EXPO_PUBLIC_SENTRY_DSN_PRO": "$EXPO_PUBLIC_SENTRY_DSN_PRO",
-        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true",
+        "ANDROID_ENABLE_R8": "true",
+        "EXPO_UNSTABLE_TREE_SHAKING": "1",
+        "EXPO_UNSTABLE_METRO_OPTIMIZE_GRAPH": "1"
       }
     }
   },

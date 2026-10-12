@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { View, DimensionValue, StyleSheet, ViewStyle, useWindowDimensions, Animated } from 'react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 
@@ -188,5 +188,3 @@ const skStyles = StyleSheet.create({
     gap: 6,
   },
 });
-
-export default ShimmerBlock;

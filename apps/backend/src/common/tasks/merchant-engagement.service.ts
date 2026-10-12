@@ -9,6 +9,7 @@ import {
   type ICampaignSentTrackerRepository,
 } from '../repositories';
 import { IPushProvider, PUSH_PROVIDER } from '../interfaces';
+import { MerchantInboxService } from '../../merchant-inbox/merchant-inbox.service';
 import {
   isCronEnabled,
   dayTag,
@@ -20,30 +21,30 @@ import {
 const MESSAGES = {
   neverScanned: {
     fr: {
-      title: '🚀 Lancez votre programme de fidélité !',
-      body: 'Scannez votre premier client et commencez à fidéliser. C\'est simple, rapide et vos clients adorent !',
+      title: 'Prêt pour votre premier client ?',
+      body: 'Scannez le QR code de votre premier client : il gagne son premier tampon en quelques secondes.',
     },
     en: {
-      title: '🚀 Launch your loyalty program!',
-      body: 'Scan your first client and start building loyalty. It\'s simple, fast, and your clients love it!',
+      title: 'Ready for your first customer?',
+      body: 'Scan your first customer\'s QR code: they earn their first stamp in seconds.',
     },
     ar: {
-      title: '🚀 بدا برنامج الولاء ديالك!',
-      body: 'سكاني أول كليان ديالك وبدا فيداليزي. ساهل، سريع والكليان كيعجبهم!',
+      title: 'واجد للكليان الأول ديالك؟',
+      body: 'سكاني QR ديال أول كليان: كيربح أول طابع ديالو فثواني.',
     },
   },
   inactive: {
     fr: {
-      title: '📊 Vos clients vous attendent !',
-      body: 'Ça fait plus de 5 jours sans scan. Gardez le rythme pour fidéliser vos clients et augmenter vos ventes !',
+      title: 'Aucun scan depuis 5 jours',
+      body: 'Pensez à scanner chaque passage : un client qui voit sa carte avancer revient plus souvent.',
     },
     en: {
-      title: '📊 Your clients are waiting!',
-      body: 'It\'s been over 5 days since your last scan. Keep the momentum to retain clients and boost sales!',
+      title: 'No scans in the last 5 days',
+      body: 'Remember to scan every visit: customers who see their card progress come back more often.',
     },
     ar: {
-      title: '📊 الكليان ديالك كيتسناوك!',
-      body: 'فاتو كثر من 5 أيام بلا سكان. كمل الإيقاع باش تفيّد الكليان وتزيد المبيعات!',
+      title: 'حتى سكان هادي 5 أيام',
+      body: 'عقل تسكاني كل زيارة: الكليان اللي كيشوف الكارطة ديالو كتقدم كيرجع كثر.',
     },
   },
 } as const;
@@ -62,10 +63,10 @@ function getMsg(key: MsgKey, lang?: string): { title: string; body: string } {
  * Two segments:
  *
  * 1. **Never scanned** — Merchant completed onboarding, has a push token,
- *    but has **zero** EARN_POINTS transactions (i.e. never scanned a client).
+ *    but has **zero** EARN_STAMPS transactions (i.e. never scanned a client).
  *    → Encourage them to scan their first client.
  *
- * 2. **Inactive 5+ days** — Merchant has at least one EARN_POINTS transaction
+ * 2. **Inactive 5+ days** — Merchant has at least one EARN_STAMPS transaction
  *    but the most recent one is older than 5 days.
  *    → Remind them to stay active and keep clients coming back.
  *
@@ -83,6 +84,7 @@ export class MerchantEngagementService {
     @Inject(TRANSACTION_REPOSITORY) private readonly txRepo: ITransactionRepository,
     @Inject(CAMPAIGN_SENT_TRACKER_REPOSITORY) private readonly campaignTrackerRepo: ICampaignSentTrackerRepository,
     @Inject(PUSH_PROVIDER) private readonly pushProvider: IPushProvider,
+    private readonly inbox: MerchantInboxService,
   ) {}
 
   // 08:00 UTC = 09:00 Maroc (début de matinée, hors heures de prière).
@@ -126,7 +128,7 @@ export class MerchantEngagementService {
         by: ['merchantId'],
         where: {
           merchantId: { in: merchantIds },
-          type: 'EARN_POINTS',
+          type: 'EARN_STAMPS',
           status: 'ACTIVE',
         },
         _max: { createdAt: true },
@@ -169,6 +171,7 @@ export class MerchantEngagementService {
         }
 
         await merchantMarkSent(this.campaignTrackerRepo, merchant.id, campaignId, 'PUSH');
+        await this.inbox.record(merchant.id, { category: 'ACTIVITY', title: msg.title, body: msg.body, action: 'open_scan' });
         if (segment === 'neverScanned') neverScannedCount++;
         else inactiveCount++;
       }

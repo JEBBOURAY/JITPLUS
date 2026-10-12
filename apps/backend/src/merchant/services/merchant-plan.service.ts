@@ -9,6 +9,7 @@ import { IPushProvider, PUSH_PROVIDER, IMailProvider, MAIL_PROVIDER } from '../.
 import { pickEmailLang } from '../../mail/transactional-i18n';
 import { ClientReferralService } from '../../client-auth/client-referral.service';
 import { MerchantReferralService } from './merchant-referral.service';
+import { MerchantInboxService } from '../../merchant-inbox/merchant-inbox.service';
 import { MerchantPlan } from '@prisma/client';
 import {
   FREE_MAX_CLIENTS,
@@ -52,30 +53,30 @@ function planLang(v?: string | null): PlanLang {
 const PLAN_MESSAGES = {
   activated: {
     fr: {
-      title: '🎉 Plan Premium activé !',
-      body: 'Félicitations ! Votre abonnement JitPlus Premium est maintenant actif. Profitez de toutes les fonctionnalités sans limite.',
+      title: 'Premium est activé',
+      body: 'Toutes les fonctionnalités Premium sont débloquées pour votre commerce. Découvrez-les dès maintenant.',
     },
     en: {
-      title: '🎉 Premium Plan activated!',
-      body: 'Congratulations! Your JitPlus Premium subscription is now active. Enjoy all features with no limits.',
+      title: 'Premium is now active',
+      body: 'Every Premium feature is now unlocked for your business. Explore them now.',
     },
     ar: {
-      title: '🎉 بلان بريميوم تفعل!',
-      body: 'مبروك! الاشتراك ديالك فـ JitPlus Premium ولا نشيط. استافد من كاع الميزات بلا حدود.',
+      title: 'Premium تفعّل',
+      body: 'كاع الميزات ديال Premium تحلّو للكومرس ديالك. اكتاشفهم دابا.',
     },
   },
   revoked: {
     fr: {
-      title: '📋 Plan modifié — Gratuit',
-      body: 'Votre accès Premium a été désactivé. Votre commerce fonctionne désormais avec le plan Gratuit.',
+      title: 'Votre commerce est passé au plan Gratuit',
+      body: 'L\'accès Premium a été désactivé. Consultez votre plan pour voir ce qui change.',
     },
     en: {
-      title: '📋 Plan changed — Free',
-      body: 'Your Premium access has been deactivated. Your business now runs on the Free plan.',
+      title: 'Your business is now on the Free plan',
+      body: 'Premium access has been turned off. Check your plan to see what changes.',
     },
     ar: {
-      title: '📋 البلان تبدل — مجاني',
-      body: 'الأكسي بريميوم تعطل. الكومرس ديالك دابا خدام بالبلان المجاني.',
+      title: 'الكومرس ديالك دوز للبلان المجاني',
+      body: 'الأكسي ديال Premium تحيّد. شوف البلان ديالك باش تعرف شنو تبدّل.',
     },
   },
 } as const;
@@ -92,7 +93,27 @@ export class MerchantPlanService {
     @Inject(MAIL_PROVIDER) private readonly mailProvider: IMailProvider,
     private readonly clientReferralService: ClientReferralService,
     private readonly merchantReferralService: MerchantReferralService,
+    private readonly inbox: MerchantInboxService,
   ) {}
+
+  /** Records the plan change in the merchant inbox, then pushes it when a device is registered. */
+  private async notifyPlanChange(
+    merchantId: string,
+    merchant: { pushToken: string | null; language: string | null } | null | undefined,
+    kind: 'activated' | 'revoked',
+  ): Promise<void> {
+    if (!merchant) return;
+    const msg = PLAN_MESSAGES[kind][planLang(merchant.language)];
+    await this.inbox.record(merchantId, { category: 'PLAN', title: msg.title, body: msg.body, action: 'open_plan' });
+    if (merchant.pushToken) {
+      await this.pushProvider.sendToMerchant(
+        merchant.pushToken,
+        msg.title,
+        msg.body,
+        { event: kind === 'activated' ? 'plan_activated' : 'plan_revoked', action: 'open_plan' },
+      );
+    }
+  }
 
   /** Cache key for a merchant's effective plan */
   private planCacheKey(merchantId: string): string {
@@ -289,15 +310,7 @@ export class MerchantPlanService {
     this.merchantReferralService.creditReferrerOnPayment(merchantId)
       .catch((err) => this.logger.error(`Merchant referral credit failed for merchant ${merchantId}`, err?.stack));
     // ── Push notification ────────────────────────────────────────
-    if (merchant?.pushToken) {
-      const msg = PLAN_MESSAGES.activated[planLang(merchant.language)];
-      await this.pushProvider.sendToMerchant(
-        merchant.pushToken,
-        msg.title,
-        msg.body,
-        { event: 'plan_activated', action: 'open_plan' },
-      );
-    }
+    await this.notifyPlanChange(merchantId, merchant, 'activated');
     if (merchant?.email) {
       this.mailProvider
         .sendPlanActivated(merchant.email, null, pickEmailLang(merchant.language))
@@ -341,15 +354,7 @@ export class MerchantPlanService {
     // Referrer bonus is only granted when the referred merchant pays for PREMIUM.
 
     // ── Push notification: Premium activated via referral months ──
-    if (updated?.pushToken) {
-      const msg = PLAN_MESSAGES.activated[planLang(updated.language)];
-      await this.pushProvider.sendToMerchant(
-        updated.pushToken,
-        msg.title,
-        msg.body,
-        { event: 'plan_activated', action: 'open_plan' },
-      );
-    }
+    await this.notifyPlanChange(merchantId, updated, 'activated');
     if (updated?.email) {
       this.mailProvider
         .sendPlanActivated(updated.email, expiresAt, pickEmailLang(updated.language))
@@ -376,15 +381,7 @@ export class MerchantPlanService {
     this.logger.log(`Admin revoked PREMIUM for merchant ${merchantId}`);
 
     // ── Push notification ────────────────────────────────────────
-    if (merchant?.pushToken) {
-      const msg = PLAN_MESSAGES.revoked[planLang(merchant.language)];
-      await this.pushProvider.sendToMerchant(
-        merchant.pushToken,
-        msg.title,
-        msg.body,
-        { event: 'plan_revoked', action: 'open_plan' },
-      );
-    }
+    await this.notifyPlanChange(merchantId, merchant, 'revoked');
     if (merchant?.email) {
       this.mailProvider
         .sendPlanRevoked(merchant.email, pickEmailLang(merchant.language))
@@ -479,15 +476,7 @@ export class MerchantPlanService {
         .catch((err) => this.logger.error(`Merchant referral credit failed for merchant ${merchantId}`, err?.stack));
 
       // ── Push notification: Premium activated by admin (with end date) ──
-      if (merchant?.pushToken) {
-        const msg = PLAN_MESSAGES.activated[planLang(merchant.language)];
-        await this.pushProvider.sendToMerchant(
-          merchant.pushToken,
-          msg.title,
-          msg.body,
-          { event: 'plan_activated', action: 'open_plan' },
-        );
-      }
+      await this.notifyPlanChange(merchantId, merchant, 'activated');
       if (merchant?.email) {
         const expiresAt = (data.planExpiresAt as Date) || null;
         this.mailProvider

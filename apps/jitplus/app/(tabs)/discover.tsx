@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect } from 'react';
 import {
   View, Text, TextInput, StyleSheet, ScrollView, FlatList, Pressable,
   Platform, TouchableOpacity, Linking, Keyboard, I18nManager,
@@ -15,11 +15,10 @@ import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Merchant } from '@/types';
-import FadeInView from '@/components/FadeInView';
 import SafeMapView, { MAPS_AVAILABLE } from '@/components/SafeMapView';
 import { CATEGORIES, getCategoryEmoji } from '@/utils/categories';
 import { getDistanceKm } from '@/utils/distance';
-import { wp, hp, ms, fontSize as FS, radius } from '@/utils/responsive';
+import { wp, hp, ms, fontSize as FS } from '@/utils/responsive';
 import { useAppFonts } from '@/utils/fonts';
 import { useMerchants } from '@/hooks/useQueryHooks';
 import { prefetchImages } from '@/utils/imageCache';
@@ -27,7 +26,7 @@ import { Image } from 'expo-image';
 import { resolveImageUrl } from '@/utils/imageUrl';
 import MapMarker from '@/components/MapMarker';
 import ClusterMarker from '@/components/ClusterMarker';
-import { COMPACT_SCREEN_HEIGHT, FOCUS_DELAY_MS } from '@/constants';
+import { COMPACT_SCREEN_HEIGHT } from '@/constants';
 import {
   FallbackMerchantCard, MerchantCallout, discoverStyles as styles,
   TrackedMarker, MAP_STYLE, DEFAULT_REGION,
@@ -55,7 +54,7 @@ export default function DiscoverScreen() {
   const {
     searchQuery, setSearchQuery, debouncedSearch, selectedCategory,
     showSearch, setShowSearch, showFilters, userLocation, mapReady,
-    selectedMerchant, setSelectedMerchant, mapRef, searchInputRef,
+    selectedMerchant, mapRef, searchInputRef,
     filteredMerchants, mappableMerchants, mapItems, sortedMappableMerchants,
     selectedMerchantDistance, handleRegionChange, handleCategoryPress,
     handleMarkerPress, handleClusterPress, centerOnUser, handleMapPress,

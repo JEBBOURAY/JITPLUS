@@ -1,30 +1,28 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import {
-  View, Text, StyleSheet, Animated, Easing, Image as RNImage,
-} from 'react-native';
+import React, { useEffect, useRef, useMemo, useCallback, useState } from 'react';
+import { View, Text, StyleSheet, Animated, Easing, I18nManager } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { AlertCircle, ChevronRight, Coins, Gift, MapPin } from 'lucide-react-native';
+import { AlertCircle, ChevronRight, Gift } from 'lucide-react-native';
 import { palette, type ThemeColors } from '@/contexts/ThemeContext';
 import { LoyaltyCard } from '@/types';
 import GlassCard from '@/components/GlassCard';
-import { getCategoryEmoji } from '@/utils/categories';
+import MerchantLogo from '@/components/MerchantLogo';
 import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
 import { resolveImageUrl } from '@/utils/imageUrl';
 import { timeAgo } from '@/utils/date';
-import {
-  PROGRESS_ANIM_DURATION_MS, PROGRESS_ANIM_DELAY_MS,
-  MAX_VISIBLE_STAMPS, DEFAULT_STAMPS_GOAL,
-} from '@/constants';
+import { getFontFamily } from '@/utils/fonts';
+import { getCardProgress } from '@/utils/cardProgress';
 
-const PROGRESS_BAR_ORIGIN = { transformOrigin: 'left center' } as const;
-const JITPLUS_LOGO = require('@/assets/images/jitpluslogo.png');
-
-/** Next-milestone helper for POINTS cards with no configured reward */
-const MILESTONES = [50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000] as const;
-function getNextMilestone(pts: number): number {
-  return MILESTONES.find((m) => m > pts) ?? Math.ceil((pts + 1) / 1000) * 1000;
-}
+/** Above this goal, individual stamps get too small to read: show a progress bar instead. */
+const MAX_DOT_STAMPS = 12;
+const HEX_COLOR = /^#[0-9A-Fa-f]{6}$/;
+const GOLD_GRADIENT = [palette.goldLight, palette.gold] as const;
+/** Fallback mark shown inside a stamp when the merchant has no logo. */
+const STAMP_LOGO = require('@/assets/images/jitpluslogo-app.png');
+const TINT_START = { x: 0, y: 0 } as const;
+const TINT_END = { x: 1, y: 1 } as const;
+const GRADIENT_H_START = { x: 0, y: 0 } as const;
+const GRADIENT_H_END = { x: 1, y: 0 } as const;
 
 const CardItem = React.memo(function CardItem({
   card,
@@ -43,323 +41,271 @@ const CardItem = React.memo(function CardItem({
   searchHighlight?: string;
   theme: ThemeColors;
 }) {
-  const isStamps = card.merchant?.loyaltyType === 'STAMPS';
   const isMerchantUnavailable = !card.merchant?.id || !card.merchant?.nomBoutique;
-  const [logoError, setLogoError] = useState(false);
+  const isDark = theme.mode === 'dark';
+  const logoUrl = card.merchant?.logoUrl;
+  // Stamp mark: the merchant logo; the tinted JitPlus mark when missing or broken.
+  const [stampLogoFailed, setStampLogoFailed] = useState(false);
+  useEffect(() => setStampLogoFailed(false), [logoUrl]);
+  const stampLogoUrl = logoUrl && !stampLogoFailed ? resolveImageUrl(logoUrl) : null;
 
   const handlePress = useCallback(() => {
     if (isMerchantUnavailable) return;
     onPress(card.merchantId);
   }, [isMerchantUnavailable, onPress, card.merchantId]);
 
-  const balance = card.balance ?? 0;
+  const { goal, earned, remaining, ratio, isComplete } = getCardProgress(card);
+  const useDots = goal <= MAX_DOT_STAMPS;
 
-  // ── STAMPS ──
-  const goal = card.merchant?.minRewardCost ?? card.merchant?.stampsForReward ?? DEFAULT_STAMPS_GOAL;
-  const stampsEarned = Math.min(balance, goal);
-  const stampsRemaining = Math.max(0, goal - stampsEarned);
-  const stampsComplete = stampsEarned >= goal;
-
-  // ── POINTS ──
-  const minRewardCost = card.merchant?.minRewardCost;
-  const nextTarget = minRewardCost || getNextMilestone(balance);
-  const pointsProgress = Math.min(balance / nextTarget, 1);
-  const pointsPct = Math.round(pointsProgress * 100);
-  const pointsComplete = balance >= nextTarget;
-
-  const progressAnim = useRef(new Animated.Value(0)).current;
-  const animTarget = isStamps ? stampsEarned / goal : pointsProgress;
-
-  // ── Reward celebration: glow + pulse ──
-  const rewardReady = stampsComplete || pointsComplete;
-  const glowAnim = useRef(new Animated.Value(0)).current;
+  // Gentle pulse on the reward pill only — the card itself stays calm.
+  const pulseAnim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    if (!rewardReady) { glowAnim.setValue(0); return; }
+    if (!isComplete) { pulseAnim.setValue(0); return; }
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(glowAnim, { toValue: 1, duration: 1200, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(glowAnim, { toValue: 0, duration: 1200, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 1100, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 0, duration: 1100, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
       ]),
     );
     loop.start();
     return () => loop.stop();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rewardReady]);
-  const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.13] });
-  const pulseScale = glowAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [1, 1.08, 1] });
-  useEffect(() => {
-    Animated.timing(progressAnim, {
-      toValue: animTarget,
-      duration: PROGRESS_ANIM_DURATION_MS,
-      delay: PROGRESS_ANIM_DELAY_MS,
-      useNativeDriver: true,
-      easing: Easing.out(Easing.cubic),
-    }).start();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [animTarget]);
+  }, [isComplete, pulseAnim]);
+  const pulseScale = pulseAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.05] });
 
-  const visibleStamps = Math.min(goal, MAX_VISIBLE_STAMPS);
-  const stampDots = useMemo(
-    () => Array.from({ length: visibleStamps }, (_, i) => i < stampsEarned),
-    [visibleStamps, stampsEarned],
-  );
-  const dotSize = goal <= 10 ? ms(26) : goal <= 15 ? ms(22) : ms(18);
-  const dotRadius = dotSize / 2;
-  const dotBorder = goal <= 15 ? 1.5 : 1;
-
-  const stampStyles = useMemo(() => ({
-    filledLogo: { borderColor: palette.violet, backgroundColor: theme.bgElevated },
-    emptyLogo: { borderColor: theme.borderLight, backgroundColor: theme.bgCard },
-    filledNoLogo: { backgroundColor: palette.violet, borderColor: palette.violet },
-    emptyNoLogo: { backgroundColor: 'transparent' as const, borderColor: theme.borderLight },
-    logoFilled: { opacity: 1 },
-    logoEmpty: { opacity: 0.18 },
-  }), [theme.bgElevated, theme.bgCard, theme.borderLight]);
-
-  // Hoist once per render instead of per-stamp (perf)
-  const logoUrl = card.merchant?.logoUrl;
-  const stampHasLogo = !!logoUrl && !logoError;
-
-  const lastScanLabel = useMemo(
+  const lastVisitLabel = useMemo(
     () => timeAgo(card.updatedAt || card.createdAt, locale),
     [card.updatedAt, card.createdAt, locale],
   );
 
-  const formatNumber = useCallback((num: number) => {
-    try {
-      return new Intl.NumberFormat(locale || 'fr-FR').format(num);
-    } catch {
-      return num.toString();
-    }
-  }, [locale]);
+  const categoryLabel = card.merchant?.categorie
+    ? t(`categories.${card.merchant.categorie}`, { defaultValue: '' })
+    : '';
 
-  // Card customization (merchant-controlled). Defaults preserve previous look.
+  // ── Merchant-controlled card customization ──
   const cardBgUrl = card.merchant?.cardBackgroundUrl ?? null;
   const cardBgColorRaw = card.merchant?.cardBackgroundColor ?? null;
-  const cardBgColor = cardBgColorRaw && /^#[0-9A-Fa-f]{6}$/.test(cardBgColorRaw) ? cardBgColorRaw : null;
-  const hasCardBg = !!cardBgUrl || !!cardBgColor;
-  const cardTextMode = card.merchant?.cardTextColor === 'DARK' ? 'DARK' : 'LIGHT';
-  const accentColor = useMemo(() => {
+  const cardBgColor = cardBgColorRaw && HEX_COLOR.test(cardBgColorRaw) ? cardBgColorRaw : null;
+  const hasCustomBg = !!cardBgUrl || !!cardBgColor;
+  const darkText = card.merchant?.cardTextColor === 'DARK';
+
+  const accent = useMemo(() => {
     const c = card.merchant?.themeColor;
-    return c && /^#[0-9A-Fa-f]{6}$/.test(c) ? c : palette.violet;
-  }, [card.merchant?.themeColor]);
-  const accentColorDark = useMemo(() => {
-    // Darken accent for gradient end-stop. Fallback to violetDark for default.
-    if (accentColor === palette.violet) return palette.violetDark;
-    return accentColor;
-  }, [accentColor]);
-  const cardTextColors = useMemo(() => {
-    if (!hasCardBg) {
-      return { primary: theme.text, secondary: theme.textMuted };
+    if (c && HEX_COLOR.test(c)) return c;
+    return isDark ? palette.violetLight : palette.violet;
+  }, [card.merchant?.themeColor, isDark]);
+
+  const colors = useMemo(() => {
+    if (!hasCustomBg) {
+      return {
+        primary: theme.text,
+        secondary: isDark ? '#94A3B8' : '#64748B',
+        muted: theme.textMuted,
+        count: accent,
+        stampOn: accent,
+        stampCheck: '#FFFFFF',
+        stampOff: `${accent}14`,
+        stampOffBorder: `${accent}30`,
+        overlay: 'transparent',
+      };
     }
-    return cardTextMode === 'DARK'
-      ? { primary: '#111827', secondary: '#374151' }
-      : { primary: '#F9FAFB', secondary: '#E5E7EB' };
-  }, [hasCardBg, cardTextMode, theme.text, theme.textMuted]);
-  const overlayColor = hasCardBg
-    ? cardTextMode === 'DARK'
-      ? 'rgba(255,255,255,0.22)'
-      : 'rgba(0,0,0,0.28)'
-    : 'transparent';
+    return darkText
+      ? {
+          primary: '#111827', secondary: '#374151', muted: '#4B5563', count: '#111827',
+          stampOn: '#111827', stampCheck: '#FFFFFF',
+          stampOff: 'rgba(17,24,39,0.10)', stampOffBorder: 'rgba(17,24,39,0.18)',
+          overlay: 'rgba(255,255,255,0.28)',
+        }
+      : {
+          primary: '#FFFFFF', secondary: 'rgba(255,255,255,0.82)', muted: 'rgba(255,255,255,0.7)', count: '#FFFFFF',
+          stampOn: '#FFFFFF', stampCheck: cardBgColor ?? '#111827',
+          stampOff: 'rgba(255,255,255,0.16)', stampOffBorder: 'rgba(255,255,255,0.28)',
+          overlay: 'rgba(0,0,0,0.32)',
+        };
+  }, [hasCustomBg, darkText, theme.text, theme.textMuted, isDark, accent, cardBgColor]);
+
+  const merchantName = card.merchant?.nomBoutique || t('common.shop');
+
+  const renderName = () => {
+    if (isMerchantUnavailable) return t('home.unavailableMerchantName');
+    if (!searchHighlight) return merchantName;
+    const idx = merchantName.toLowerCase().indexOf(searchHighlight.toLowerCase());
+    if (idx < 0) return merchantName;
+    return (
+      <>
+        {merchantName.slice(0, idx)}
+        <Text style={{ color: hasCustomBg ? colors.primary : accent, textDecorationLine: hasCustomBg ? 'underline' : 'none' }}>
+          {merchantName.slice(idx, idx + searchHighlight.length)}
+        </Text>
+        {merchantName.slice(idx + searchHighlight.length)}
+      </>
+    );
+  };
+
+  const a11yLabel = isMerchantUnavailable
+    ? t('home.unavailableMerchantName')
+    : [
+        t('home.cardAccessibility', { name: merchantName }),
+        t('home.stampsEarned', { earned, total: goal }),
+        isComplete ? t('home.rewardReadyShort') : '',
+      ].filter(Boolean).join(', ');
+
+  const borderColor = isComplete && !isMerchantUnavailable
+    ? `${palette.gold}AA`
+    : hasCustomBg ? 'transparent' : theme.border;
+
+  const fontBold = getFontFamily(locale ?? 'fr', 'bold');
+  const fontSemi = getFontFamily(locale ?? 'fr', 'semibold');
+  const fontMedium = getFontFamily(locale ?? 'fr', 'medium');
 
   return (
-    <GlassCard onPress={handlePress}>
-      <View
-        style={[styles.cardItem, { backgroundColor: cardBgColor ?? theme.bgCard }]}
-        accessibilityRole="button"
-        accessibilityLabel={t('home.cardAccessibility', { name: card.merchant?.nomBoutique || t('common.shop') })}
-      >
-        {cardBgUrl ? (
-          <>
+    <GlassCard
+      onPress={isMerchantUnavailable ? undefined : handlePress}
+      haptic={false}
+      radius={radius.xl}
+      style={styles.wrapper}
+      accessibilityLabel={a11yLabel}
+    >
+      <View style={[styles.shadow, !isDark && styles.shadowLight, isMerchantUnavailable && styles.dimmed]}>
+        <View style={[styles.card, { backgroundColor: cardBgColor ?? theme.bgCard, borderColor }]}>
+          {cardBgUrl ? (
             <Image
               source={resolveImageUrl(cardBgUrl)}
-              style={StyleSheet.absoluteFill as any}
+              style={StyleSheet.absoluteFill}
               contentFit="cover"
               cachePolicy="memory-disk"
               recyclingKey={cardBgUrl}
+              transition={200}
             />
-            <View pointerEvents="none" style={[StyleSheet.absoluteFill as any, { backgroundColor: overlayColor }]} />
-          </>
-        ) : cardBgColor ? (
-          <View pointerEvents="none" style={[StyleSheet.absoluteFill as any, { backgroundColor: overlayColor }]} />
-        ) : null}
-        {rewardReady && (
-          <Animated.View
-            pointerEvents="none"
-            style={[StyleSheet.absoluteFill, { backgroundColor: '#F59E0B', borderRadius: 16, opacity: glowOpacity }]}
-          />
-        )}
-        <LinearGradient
-          colors={[accentColorDark, accentColor]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 0, y: 1 }}
-          style={styles.accentBar}
-        />
-
-        <View style={[styles.cardIcon, { backgroundColor: theme.primaryBg }]}>
-          {card.merchant?.logoUrl && !logoError ? (
-            <Image
-              source={resolveImageUrl(card.merchant.logoUrl)}
-              style={styles.merchantLogo}
-              contentFit="cover"
-              cachePolicy="disk"
-              recyclingKey={card.merchant.logoUrl}
-              onError={() => setLogoError(true)}
-            />
+          ) : null}
+          {hasCustomBg ? (
+            <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: colors.overlay }]} />
           ) : (
-            <Text style={styles.cardEmoji}>{getCategoryEmoji(card.merchant?.categorie)}</Text>
-          )}
-        </View>
-
-        <View style={styles.cardInfo}>
-          {/* Name row */}
-          <View style={styles.cardNameRow}>
-            <Text style={[styles.cardName, { color: cardTextColors.primary }]} numberOfLines={1}>
-              {isMerchantUnavailable
-                ? t('home.unavailableMerchantName')
-                : (() => {
-                    const name = card.merchant?.nomBoutique || t('common.shop');
-                    if (!searchHighlight) return name;
-                    const idx = name.toLowerCase().indexOf(searchHighlight.toLowerCase());
-                    if (idx < 0) return name;
-                    return (
-                      <>
-                        {name.slice(0, idx)}
-                        <Text style={{ color: accentColor, fontWeight: '800' }}>
-                          {name.slice(idx, idx + searchHighlight.length)}
-                        </Text>
-                        {name.slice(idx + searchHighlight.length)}
-                      </>
-                    );
-                  })()
-              }
-            </Text>
-            <RNImage
-              source={JITPLUS_LOGO}
-              style={styles.cardLogo}
-              resizeMode="contain"
+            <LinearGradient
+              pointerEvents="none"
+              colors={[`${accent}${isDark ? '26' : '14'}`, `${accent}00`]}
+              start={TINT_START}
+              end={TINT_END}
+              style={StyleSheet.absoluteFill}
             />
-          </View>
-          {isClosest && (
-            <View style={[styles.closestBadge, { backgroundColor: `${palette.emerald}18` }]}>
-              <MapPin size={ms(9)} color={palette.emerald} strokeWidth={1.5} />
-              <Text style={[styles.closestBadgeText, { color: palette.emerald }]}>
-                {t('home.nearestBadge')}
-              </Text>
-            </View>
           )}
+
+          {/* ── Header: logo · name · progress count ── */}
+          <View style={styles.header}>
+            <View style={[styles.logoWrap, { backgroundColor: hasCustomBg ? 'rgba(255,255,255,0.92)' : '#FFFFFF' }]}>
+              <MerchantLogo logoUrl={logoUrl} merchantName={card.merchant?.nomBoutique} style={styles.logo} />
+            </View>
+
+            <View style={styles.headerText}>
+              <Text style={[styles.name, { color: colors.primary, fontFamily: fontBold }]} numberOfLines={1}>
+                {renderName()}
+              </Text>
+              <View style={styles.metaRow}>
+                {!!categoryLabel && (
+                  <Text style={[styles.meta, { color: colors.secondary, fontFamily: fontMedium }]} numberOfLines={1}>
+                    {categoryLabel}
+                  </Text>
+                )}
+                {isClosest && (
+                  <View style={[styles.nearPill, { backgroundColor: hasCustomBg ? 'rgba(255,255,255,0.9)' : `${palette.emerald}18` }]}>
+                    <Text style={[styles.nearText, { fontFamily: fontSemi }]} numberOfLines={1}>{t('home.nearestBadge')}</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+
+            {!isMerchantUnavailable && (
+              <View style={styles.countWrap}>
+                <Text style={[styles.countValue, { color: isComplete ? palette.goldDark : colors.count, fontFamily: fontBold }]}>
+                  {earned}
+                  <Text style={[styles.countTotal, { color: colors.muted, fontFamily: fontMedium }]}>/{goal}</Text>
+                </Text>
+                <ChevronRight
+                  size={ms(18)}
+                  color={colors.muted}
+                  strokeWidth={2}
+                  style={I18nManager.isRTL ? styles.flip : undefined}
+                />
+              </View>
+            )}
+          </View>
 
           {isMerchantUnavailable ? (
-            <View style={[styles.unavailableBanner, { backgroundColor: `${theme.danger}10` }]}>
-              <AlertCircle size={ms(12)} color={theme.danger} strokeWidth={1.5} />
-              <Text style={[styles.unavailableText, { color: theme.danger }]}>
+            <View style={[styles.unavailable, { backgroundColor: `${theme.danger}12` }]}>
+              <AlertCircle size={ms(14)} color={theme.danger} strokeWidth={2} />
+              <Text style={[styles.unavailableText, { color: theme.danger, fontFamily: fontMedium }]}>
                 {t('home.unavailableMerchantMessage')}
               </Text>
             </View>
-          ) : isStamps ? (
-            <>
-              <View style={styles.stampsGrid}>
-                {stampDots.map((filled, i) => {
-                  if (stampHasLogo && logoUrl) {
-                    return (
-                      <View
-                        key={`stamp-${i}`}
-                        style={[
-                          { width: dotSize, height: dotSize, borderRadius: dotRadius, borderWidth: dotBorder, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-                          filled ? stampStyles.filledLogo : stampStyles.emptyLogo,
-                        ]}
-                      >
-                        <Image
-                          source={resolveImageUrl(logoUrl)}
-                          style={[{ width: '100%', height: '100%', borderRadius: dotRadius }, filled ? stampStyles.logoFilled : stampStyles.logoEmpty]}
-                          contentFit="cover"
-                          cachePolicy="disk"
-                        />
-                      </View>
-                    );
-                  }
-                  return (
-                    <View
-                      key={`stamp-${i}`}
-                      style={[
-                        { width: dotSize, height: dotSize, borderRadius: dotRadius, borderWidth: dotBorder, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-                        filled ? stampStyles.filledNoLogo : stampStyles.emptyNoLogo,
-                      ]}
-                    >
-                      {filled && <Text style={[styles.stampCheck, goal > 15 && { fontSize: ms(9) }]}>✓</Text>}
-                    </View>
-                  );
-                })}
-                {goal > MAX_VISIBLE_STAMPS && (
-                  <Text style={[styles.stampsExtra, { color: theme.textMuted }]}>+{goal - MAX_VISIBLE_STAMPS}</Text>
-                )}
-              </View>
-
-              {stampsComplete ? (
-                <Animated.View style={[styles.rewardBanner, { backgroundColor: `${palette.emerald}22`, transform: [{ scale: pulseScale }] }]}>
-                  <Gift size={ms(12)} color={palette.emerald} strokeWidth={1.5} />
-                  <Text style={[styles.rewardBannerText, { color: palette.emerald }]}>
-                    {t('home.rewardReady')}
-                  </Text>
-                </Animated.View>
-              ) : (
-                <Text style={[styles.stampsMeta, { color: cardTextColors.secondary }]}>
-                  {t('home.stampsEarned', { earned: stampsEarned, total: goal })}
-                </Text>
-              )}
-            </>
           ) : (
             <>
-              <View style={styles.pointsTopRow}>
-                <View style={styles.pointsValueRow}>
-                  <Coins size={ms(12)} color={palette.gold} strokeWidth={1.5} />
-                  <Text style={[styles.pointsValue, { color: cardBgUrl ? cardTextColors.primary : accentColor }]}>
-                    {t('merchant.yourPoints', { count: formatNumber(balance) })}
-                  </Text>
+              {/* ── Progress ── */}
+              {useDots ? (
+                <View style={styles.dots} accessible={false}>
+                  {Array.from({ length: goal }, (_, i) => {
+                    const filled = i < earned;
+                    return (
+                      <View
+                        key={i}
+                        style={[
+                          styles.dot,
+                          filled
+                            ? { backgroundColor: colors.stampOn, borderColor: colors.stampOn }
+                            : { backgroundColor: colors.stampOff, borderColor: colors.stampOffBorder },
+                        ]}
+                      >
+                        {stampLogoUrl ? (
+                          <Image
+                            source={stampLogoUrl}
+                            style={[styles.dotLogoFull, !filled && styles.dotLogoDim]}
+                            contentFit="cover"
+                            cachePolicy="memory-disk"
+                            recyclingKey={logoUrl}
+                            transition={150}
+                            onError={() => setStampLogoFailed(true)}
+                          />
+                        ) : (
+                          <Image
+                            source={STAMP_LOGO}
+                            style={styles.dotLogo}
+                            contentFit="contain"
+                            tintColor={filled ? colors.stampCheck : colors.stampOffBorder}
+                          />
+                        )}
+                      </View>
+                    );
+                  })}
                 </View>
-                {pointsComplete ? (
-                  <Animated.View style={[styles.rewardBadge, { backgroundColor: `${palette.emerald}22`, transform: [{ scale: pulseScale }] }]}>
-                    <Gift size={ms(11)} color={palette.emerald} strokeWidth={1.5} />
-                    <Text style={[styles.rewardBadgeText, { color: palette.emerald }]}>
-                      {t('home.rewardReady')}
-                    </Text>
+              ) : (
+                <View style={[styles.barTrack, { backgroundColor: colors.stampOff }]}>
+                  <View style={[styles.barFill, { width: `${Math.max(ratio * 100, ratio > 0 ? 4 : 0)}%`, backgroundColor: colors.stampOn }]} />
+                </View>
+              )}
+
+              {/* ── Footer: status · last visit ── */}
+              <View style={styles.footer}>
+                {isComplete ? (
+                  <Animated.View style={[styles.rewardPillWrap, { transform: [{ scale: pulseScale }] }]}>
+                    <LinearGradient colors={GOLD_GRADIENT} start={GRADIENT_H_START} end={GRADIENT_H_END} style={styles.rewardPill}>
+                      <Gift size={ms(13)} color="#FFFFFF" strokeWidth={2.2} />
+                      <Text style={[styles.rewardPillText, { fontFamily: fontBold }]} numberOfLines={1}>
+                        {t('home.rewardReadyShort')}
+                      </Text>
+                    </LinearGradient>
                   </Animated.View>
                 ) : (
-                  <Text style={[styles.pointsPct, { color: cardTextColors.secondary }]}>{pointsPct}%</Text>
+                  <Text style={[styles.status, { color: colors.secondary, fontFamily: fontMedium }]} numberOfLines={1}>
+                    {t('home.stampsLeft', { count: remaining })}
+                  </Text>
+                )}
+                {!!lastVisitLabel && (
+                  <Text style={[styles.lastVisit, { color: colors.muted, fontFamily: fontMedium }]} numberOfLines={1}>
+                    {lastVisitLabel}
+                  </Text>
                 )}
               </View>
-
-              <View style={[styles.pointsBar, { backgroundColor: theme.borderLight }]}>
-                <Animated.View
-                  style={[
-                    styles.pointsBarFill,
-                    {
-                      transform: [{ scaleX: progressAnim }],
-                      backgroundColor: pointsComplete ? palette.emerald : accentColor,
-                    },
-                    PROGRESS_BAR_ORIGIN,
-                  ]}
-                />
-              </View>
-
-              {!pointsComplete && (
-                <Text style={[styles.pointsTargetLabel, { color: cardTextColors.secondary }]} numberOfLines={1}>
-                  {minRewardCost
-                    ? t('home.pointsProgress', {
-                        current: formatNumber(balance),
-                        target: formatNumber(nextTarget),
-                      })
-                    : t('home.pointsMilestone', { target: formatNumber(nextTarget) })}
-                </Text>
-              )}
             </>
           )}
-          <Text style={[styles.lastScanText, { color: cardTextColors.secondary }]}>
-            {t('home.lastScan')} {lastScanLabel}
-          </Text>
         </View>
-
-        {!isMerchantUnavailable && <ChevronRight size={ms(18)} color={cardBgUrl ? cardTextColors.secondary : theme.textMuted} strokeWidth={2} />}
       </View>
     </GlassCard>
   );
@@ -368,69 +314,66 @@ const CardItem = React.memo(function CardItem({
 export default CardItem;
 
 const styles = StyleSheet.create({
-  cardItem: {
-    flexDirection: 'row', alignItems: 'center',
-    borderRadius: radius.lg, padding: wp(14), paddingLeft: wp(10), marginBottom: hp(12),
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 3,
-    overflow: 'hidden' as const,
+  wrapper: { marginBottom: hp(12) },
+  shadow: { borderRadius: radius.xl },
+  shadowLight: {
+    shadowColor: '#0F172A', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.07, shadowRadius: 16, elevation: 2,
   },
-  accentBar: {
-    position: 'absolute' as const, left: 0, top: 0, bottom: 0, width: ms(4),
-    borderTopLeftRadius: radius.lg, borderBottomLeftRadius: radius.lg,
+  dimmed: { opacity: 0.6 },
+  card: {
+    borderRadius: radius.xl, borderWidth: 1,
+    paddingHorizontal: wp(16), paddingTop: hp(16), paddingBottom: hp(14),
+    overflow: 'hidden',
   },
-  cardIcon: { width: ms(50), height: ms(50), borderRadius: ms(14), alignItems: 'center', justifyContent: 'center', marginLeft: wp(4), marginRight: wp(14), overflow: 'hidden' as const },
-  cardEmoji: { fontSize: ms(22) },
-  merchantLogo: { width: ms(50), height: ms(50), borderRadius: ms(14) },
-  cardInfo: { flex: 1 },
-  cardNameRow: { flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const, marginBottom: hp(4) },
-  cardName: { fontSize: fontSize.md, fontWeight: '700', letterSpacing: -0.2, flex: 1 },
-  cardLogo: { width: ms(18), height: ms(18), marginLeft: wp(6), opacity: 0.4 },
 
-  // Stamps
-  stampsGrid: {
-    flexDirection: 'row' as const, flexWrap: 'wrap' as const,
-    gap: wp(4), marginTop: hp(4), marginBottom: hp(4),
+  // Header
+  header: { flexDirection: 'row', alignItems: 'center' },
+  logoWrap: {
+    width: ms(48), height: ms(48), borderRadius: ms(14),
+    alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
   },
-  stampCheck: { color: '#fff', fontSize: ms(12), fontWeight: '700' },
-  stampsExtra: { fontSize: fontSize.xs, fontWeight: '600', alignSelf: 'center' as const },
-  stampsMeta: { fontSize: fontSize.xs, fontWeight: '500', marginTop: hp(1) },
+  logo: { width: '100%', height: '100%' },
+  headerText: { flex: 1, marginHorizontal: wp(12) },
+  name: { fontSize: fontSize.md, letterSpacing: -0.2 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: wp(6), marginTop: hp(3) },
+  meta: { fontSize: fontSize.xs, flexShrink: 1 },
+  nearPill: { paddingHorizontal: wp(7), paddingVertical: hp(2), borderRadius: ms(8) },
+  nearText: { fontSize: ms(10), color: '#047857' },
+  countWrap: { flexDirection: 'row', alignItems: 'center', gap: wp(2) },
+  countValue: { fontSize: fontSize.xl, letterSpacing: -0.5 },
+  countTotal: { fontSize: fontSize.sm, letterSpacing: 0 },
+  flip: { transform: [{ scaleX: -1 }] },
 
-  // Points
-  pointsTopRow: {
-    flexDirection: 'row' as const, alignItems: 'center' as const,
-    justifyContent: 'space-between' as const, marginTop: hp(4), marginBottom: hp(5),
+  // Progress
+  dots: { flexDirection: 'row', gap: wp(6), marginTop: hp(16) },
+  dot: {
+    flex: 1, maxWidth: ms(30), aspectRatio: 1, borderRadius: 999, borderWidth: 1,
+    alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
   },
-  pointsValueRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: wp(4) },
-  pointsValue: { fontSize: fontSize.sm, fontWeight: '700' },
-  pointsPct: { fontSize: fontSize.xs, fontWeight: '600' },
-  pointsBar: { height: ms(7), borderRadius: ms(4), overflow: 'hidden' as const, marginBottom: hp(4) },
-  pointsBarFill: { width: '100%' as const, height: '100%' as const, borderRadius: ms(4) },
-  pointsTargetLabel: { fontSize: fontSize.xs, fontWeight: '500' },
+  dotLogo: { width: '58%', height: '58%' },
+  dotLogoFull: { width: '100%', height: '100%' },
+  dotLogoDim: { opacity: 0.3 },
+  barTrack: { height: ms(8), borderRadius: ms(4), overflow: 'hidden', marginTop: hp(18), marginBottom: hp(2) },
+  barFill: { height: '100%', borderRadius: ms(4) },
 
-  // Shared indicators
-  rewardBanner: {
-    flexDirection: 'row' as const, alignItems: 'center' as const, gap: wp(4),
-    marginTop: hp(4), paddingVertical: hp(4), paddingHorizontal: wp(10),
-    borderRadius: ms(8), alignSelf: 'flex-start' as const,
+  // Footer
+  footer: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    gap: wp(10), marginTop: hp(12), minHeight: ms(24),
   },
-  rewardBannerText: { fontSize: fontSize.xs, fontWeight: '700' },
-  rewardBadge: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: wp(3), paddingVertical: hp(2), paddingHorizontal: wp(8), borderRadius: ms(8) },
-  rewardBadgeText: { fontSize: fontSize.xs, fontWeight: '700' },
-  unavailableBanner: {
-    marginTop: hp(4), paddingVertical: hp(5), paddingHorizontal: wp(10),
-    borderRadius: ms(8), alignSelf: 'flex-start' as const,
-    flexDirection: 'row' as const, alignItems: 'center' as const, gap: wp(6),
+  status: { fontSize: fontSize.xs, flexShrink: 1 },
+  lastVisit: { fontSize: ms(11) },
+  rewardPillWrap: { flexShrink: 1 },
+  rewardPill: {
+    flexDirection: 'row', alignItems: 'center', gap: wp(5),
+    paddingHorizontal: wp(10), paddingVertical: hp(4), borderRadius: 999,
   },
-  unavailableText: { fontSize: fontSize.xs, fontWeight: '600' },
+  rewardPillText: { color: '#FFFFFF', fontSize: fontSize.xs },
 
-  // Closest badge
-  closestBadge: {
-    flexDirection: 'row' as const, alignItems: 'center' as const, gap: wp(4),
-    paddingHorizontal: wp(8), paddingVertical: hp(3), borderRadius: ms(8),
-    alignSelf: 'flex-start' as const, marginTop: hp(2), marginBottom: hp(3),
+  // Unavailable
+  unavailable: {
+    flexDirection: 'row', alignItems: 'center', gap: wp(8),
+    marginTop: hp(12), paddingVertical: hp(8), paddingHorizontal: wp(12), borderRadius: ms(10),
   },
-  closestBadgeText: { fontSize: fontSize.xs, fontWeight: '700' },
-
-  // Last scan
-  lastScanText: { fontSize: fontSize.xs, fontWeight: '500', marginTop: hp(3), opacity: 0.75 },
+  unavailableText: { fontSize: fontSize.xs, flex: 1 },
 });

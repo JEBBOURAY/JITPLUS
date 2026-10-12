@@ -11,7 +11,7 @@
  * badge and the transactions list.
  */
 import { useEffect, useRef } from 'react';
-import { AppState, AppStateStatus, InteractionManager } from 'react-native';
+import { AppState, AppStateStatus } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { logPerf } from '@jitplus/shared/src/devLogger';
 import * as Sentry from '@sentry/react-native';
@@ -49,7 +49,7 @@ export function useAppForegroundRefresh() {
           // Defer to AFTER the resume frame: native side has lots of work
           // (camera, navigation, layout) and any HTTP fetch fired in the same
           // tick blocks the JS thread and produces visible jank.
-          InteractionManager.runAfterInteractions(() => {
+          requestIdleCallback(() => {
             Sentry.startSpan(
               { name: 'App Foreground Refresh', op: 'ui.load' },
               async () => {

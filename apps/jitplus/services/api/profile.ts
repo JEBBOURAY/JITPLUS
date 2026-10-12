@@ -27,13 +27,5 @@ export function createProfileMethods(http: AxiosInstance) {
       const { data } = await http.get('/client-auth/data-export');
       return data;
     },
-    async getTransactionsHistory(page: number = 1, limit: number = 50): Promise<any> {
-      const { data } = await http.get('/client/transactions', { params: { page, limit } });
-      return data;
-    },
-    async getRewardsHistory(page: number = 1, limit: number = 50): Promise<any> {
-      const { data } = await http.get('/client/rewards', { params: { page, limit } });
-      return data;
-    },
   };
 }

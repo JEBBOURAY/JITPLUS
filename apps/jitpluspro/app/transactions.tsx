@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,6 @@ import {
 import { ArrowLeft, AlertCircle, Zap } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
-import { useAuthStore } from '@/stores/authStore';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { ActivityListSkeleton } from '@/components/Skeleton';
@@ -31,7 +30,6 @@ const safeImpact = (style: Haptics.ImpactFeedbackStyle) => {
 
 /** Full paginated transaction history (reached via "Tout afficher" on Accueil). */
 export default function TransactionsScreen() {
-  const merchant = useAuthStore((s) => s.merchant);
   const theme = useTheme();
   const router = useRouter();
   const { t, locale } = useLanguage();
@@ -69,10 +67,10 @@ export default function TransactionsScreen() {
     }
     return (
       <View style={styles.rowWrap}>
-        <TransactionRow item={item.tx} merchantLoyaltyType={merchant?.loyaltyType} />
+        <TransactionRow item={item.tx} />
       </View>
     );
-  }, [theme.textMuted, merchant?.loyaltyType]);
+  }, [theme.textMuted]);
 
   const keyExtractor = useCallback((item: HomeRow) => item.id, []);
 

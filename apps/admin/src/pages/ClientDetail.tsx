@@ -161,7 +161,7 @@ export default function ClientDetailPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ borderBottom: `1px solid ${C.border}` }}>
-                {['Commerçant', 'Catégorie', 'Points', 'Statut', 'Créée le'].map((h) => (
+                {['Commerçant', 'Catégorie', 'Tampons', 'Statut', 'Créée le'].map((h) => (
                   <th key={h} style={{ textAlign: 'left', padding: '8px 10px', color: C.textMuted, fontWeight: 600 }}>
                     {h}
                   </th>
@@ -184,7 +184,7 @@ export default function ClientDetailPage() {
                     {card.merchant.categorie.toLowerCase()}
                   </td>
                   <td style={{ padding: '10px 10px' }}>
-                    <span style={{ fontWeight: 700, color: C.primary }}>{card.points}</span>
+                    <span style={{ fontWeight: 700, color: C.primary }}>{card.stamps}</span>
                   </td>
                   <td style={{ padding: '10px 10px' }}>
                     {card.deactivatedAt ? (

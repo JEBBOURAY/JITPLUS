@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import { useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Linking, Alert } from 'react-native';
 import { LifeBuoy, MessageCircle, Mail } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';

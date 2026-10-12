@@ -9,9 +9,11 @@ import { Socket } from 'socket.io-client';
 import {
   WS_EVENTS,
   TransactionRecordedPayload,
+  CouponRedeemedPayload,
 } from '@jitplus/shared/src/realtime';
 import { logInfo, logWarn } from '@/utils/devLogger';
 import { queryKeys } from './useQueryHooks';
+import { scratchKeys } from './useScratchHooks';
 import { useAuthStore } from '@/stores/authStore';
 
 /**
@@ -54,15 +56,26 @@ export function useRealtimeEvents(socket: Socket | null) {
       debouncedInvalidateTx();
 
       if (__DEV__) {
-        logInfo('RT', 'Transaction recorded:', payload.type, payload.points, 'pts for client', payload.clientId);
+        logInfo('RT', 'Transaction recorded:', payload.type, payload.stamps, 'stamps for client', payload.clientId);
       }
     };
 
+    // ── Coupon redeemed at another till ───
+    const onCouponRedeemed = (payload: CouponRedeemedPayload) => {
+      const currentMerchant = useAuthStore.getState().merchant;
+      if (currentMerchant && payload.merchantId !== currentMerchant.id) return;
+      queryClient.invalidateQueries({ queryKey: scratchKeys.couponsAll });
+      queryClient.invalidateQueries({ queryKey: scratchKeys.campaigns });
+      queryClient.invalidateQueries({ queryKey: scratchKeys.statsAll });
+    };
+
     socket.on(WS_EVENTS.TRANSACTION_RECORDED, onTransactionRecorded);
+    socket.on(WS_EVENTS.COUPON_REDEEMED, onCouponRedeemed);
 
     return () => {
       if (txDebounceTimer) clearTimeout(txDebounceTimer);
       socket.off(WS_EVENTS.TRANSACTION_RECORDED, onTransactionRecorded);
+      socket.off(WS_EVENTS.COUPON_REDEEMED, onCouponRedeemed);
     };
   }, [socket, queryClient]);
 }

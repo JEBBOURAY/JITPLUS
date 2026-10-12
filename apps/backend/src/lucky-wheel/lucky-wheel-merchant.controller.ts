@@ -5,6 +5,8 @@ import {
   Patch,
   Delete,
   Param,
+  ParseUUIDPipe,
+  Query,
   Body,
   UseGuards,
 } from '@nestjs/common';
@@ -85,8 +87,11 @@ export class LuckyWheelMerchantController {
 
   @Get('pending-prizes')
   @UseGuards(PremiumGuard)
-  async getPendingPrizes(@CurrentUser() user: JwtPayload) {
-    return this.LuckyWheelService.getPendingPrizes(user.sub);
+  async getPendingPrizes(
+    @CurrentUser() user: JwtPayload,
+    @Query('clientId', new ParseUUIDPipe({ optional: true })) clientId?: string,
+  ) {
+    return this.LuckyWheelService.getPendingPrizes(user.sub, clientId);
   }
 
   @Get('fulfilled-prizes')

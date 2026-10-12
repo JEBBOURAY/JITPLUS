@@ -20,6 +20,8 @@ import { AdminModule } from './admin/admin.module';
 import { GeocodeModule } from './geocode/geocode.module';
 import { LuckyWheelModule } from './lucky-wheel/lucky-wheel.module';
 import { DeeplinkModule } from './deeplink/deeplink.module';
+import { ScratchCardModule } from './scratch-card/scratch-card.module';
+import { MerchantInboxModule } from './merchant-inbox/merchant-inbox.module';
 // GoogleWalletModule temporarily disabled for Play Store compliance
 // import { GoogleWalletModule } from './google-wallet/google-wallet.module';
 import { RequestLoggerMiddleware } from './common/middleware/request-logger.middleware';
@@ -33,6 +35,7 @@ import { ClientWelcomeService } from './common/tasks/client-welcome.service';
 import { ClientReengagementService } from './common/tasks/client-reengagement.service';
 import { ClientRewardReminderService } from './common/tasks/client-reward-reminder.service';
 import { ClientWeeklyDigestService } from './common/tasks/client-weekly-digest.service';
+import { StampExpiryService } from './common/tasks/stamp-expiry.service';
 // Email campaign crons disabled to reduce cost (Cloud Run compute + email volume).
 // import { ClientEmailCampaignService } from './common/tasks/client-email-campaign.service';
 // import { MerchantEmailCampaignService } from './common/tasks/merchant-email-campaign.service';
@@ -82,6 +85,8 @@ import { jwtModuleFactory } from './common/jwt/jwt-module.factory';
         FIREBASE_CLIENT_EMAIL: Joi.when('NODE_ENV', { is: 'production', then: Joi.string().required(), otherwise: Joi.string().optional() }),
         FIREBASE_PRIVATE_KEY: Joi.when('NODE_ENV', { is: 'production', then: Joi.string().required(), otherwise: Joi.string().optional() }),
         QR_HMAC_SECRET: Joi.when('NODE_ENV', { is: 'production', then: Joi.string().min(32).required(), otherwise: Joi.string().optional() }),
+        // Signs coupon QR codes; falls back to QR_HMAC_SECRET (tokens are domain-separated with "c1:")
+        COUPON_HMAC_SECRET: Joi.string().min(32).allow('').optional(),
         // SECURITY: Sentry DSN is required in production for error monitoring
         SENTRY_DSN: Joi.when('NODE_ENV', { is: 'production', then: Joi.string().uri().required(), otherwise: Joi.string().optional() }),
         // SECURITY: Dev auth bypass must NEVER be enabled in production
@@ -107,6 +112,7 @@ import { jwtModuleFactory } from './common/jwt/jwt-module.factory';
     JwtModule.registerAsync(jwtModuleFactory('jitplus-client', 'JWT_CLIENT_EXPIRATION', '2h')),
     MailModule,
     FirebaseModule,
+    MerchantInboxModule,
     StorageModule,
     AuthModule,
     ClientAuthModule,
@@ -118,6 +124,7 @@ import { jwtModuleFactory } from './common/jwt/jwt-module.factory';
     GeocodeModule,
     LuckyWheelModule,
     DeeplinkModule,
+    ScratchCardModule,
     // GoogleWalletModule, // temporarily disabled for Play Store compliance
   ],
   providers: [
@@ -132,6 +139,7 @@ import { jwtModuleFactory } from './common/jwt/jwt-module.factory';
     ClientReengagementService,
     ClientRewardReminderService,
     ClientWeeklyDigestService,
+    StampExpiryService,
     // Email campaign crons disabled to reduce cost:
     // ClientEmailCampaignService,
     // MerchantEmailCampaignService,

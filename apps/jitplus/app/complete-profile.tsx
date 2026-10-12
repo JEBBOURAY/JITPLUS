@@ -8,7 +8,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
-  User, ArrowRight, ArrowLeft, CheckCircle2, Sparkles, Calendar,
+  User, ArrowRight, ArrowLeft, CheckCircle2, Calendar,
   Lock, Eye, EyeOff, Gift, Shield, Info,
 } from 'lucide-react-native';
 import { useTheme, palette } from '@/contexts/ThemeContext';
@@ -36,7 +36,6 @@ const AVATAR_COLORS: [string, string] = [palette.gold, palette.violetVivid];
 const ICON_20 = ms(20);
 const ICON_18 = ms(18);
 const ICON_16 = ms(16);
-const ICON_14 = ms(14);
 
 /* ── Sub-components ── */
 
@@ -69,7 +68,7 @@ export default function CompleteProfileScreen() {
   const theme = useTheme();
   const { t } = useLanguage();
   const { completeProfile, client } = useAuth();
-  const { needsPassword, isGoogleUser } = useLocalSearchParams<{ needsPassword?: string; isGoogleUser?: string }>();
+  const { needsPassword } = useLocalSearchParams<{ needsPassword?: string; isGoogleUser?: string }>();
   const showPasswordStep = needsPassword === '1';
 
   const [step, setStep] = useState(0);
@@ -232,7 +231,7 @@ export default function CompleteProfileScreen() {
             {/* Header */}
             <Animated.View style={[s.header, headerStyle]}>
               <View style={s.logoRow}>
-                <Image source={require('@/assets/images/jitpluslogo.png')} style={s.logo} resizeMode="contain" />
+                <Image source={require('@/assets/images/jitpluslogo-app.png')} style={s.logo} resizeMode="contain" />
                 <BrandText size={18} />
               </View>
 

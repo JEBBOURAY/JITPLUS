@@ -11,12 +11,15 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Socket } from 'socket.io-client';
 import {
   WS_EVENTS,
-  PointsUpdatedPayload,
+  StampsUpdatedPayload,
   NotificationNewPayload,
+  ScratchCardsChangedPayload,
+  CouponUpdatedPayload,
 } from '@jitplus/shared/src/realtime';
 import { queryKeys } from './useQueryHooks';
+import { invalidateScratchCards, scratchKeys } from './useScratchHooks';
 import { useWsStore } from '@/stores/wsStore';
-import type { NotificationsResponse } from '@/types';
+import type { NotificationsResponse, StampsOverview } from '@/types';
 import type { InfiniteData } from '@tanstack/react-query';
 
 /** Optimistically increment unread count by 1 for instant badge update. */
@@ -54,13 +57,14 @@ export function useRealtimeEvents(socket: Socket | null) {
     // Set initial state
     setWsConnected(socket.connected);
 
-    // ── Points/stamps balance updated ────────────────────────
-    const onPointsUpdated = (payload: PointsUpdatedPayload) => {
-      // Invalidate the points overview so it refetches with new balance
-      queryClient.invalidateQueries({ queryKey: queryKeys.points });
+    // ── Stamps balance updated ───────────────────────────────
+    const onStampsUpdated = (payload: StampsUpdatedPayload) => {
+      // Invalidate the stamps overview so it refetches with new balance
+      queryClient.invalidateQueries({ queryKey: queryKeys.stamps });
+      useWsStore.getState().pushStampsEvent(payload);
 
       if (__DEV__) {
-        console.log('[RT] Points updated for merchant', payload.merchantName);
+        console.log('[RT] Stamps updated for merchant', payload.merchantName);
       }
     };
 
@@ -98,14 +102,35 @@ export function useRealtimeEvents(socket: Socket | null) {
       );
     };
 
-    socket.on(WS_EVENTS.POINTS_UPDATED, onPointsUpdated);
+    // ── Scratch cards changed (received / cancelled / extended) ──
+    const onScratchCardsChanged = (payload: ScratchCardsChangedPayload) => {
+      invalidateScratchCards(queryClient);
+      if (__DEV__) {
+        console.log('[RT] Scratch cards changed:', payload.reason);
+      }
+    };
+
+    // ── Coupon updated (used in store, cancelled, extended) ──
+    const onCouponUpdated = (payload: CouponUpdatedPayload) => {
+      queryClient.invalidateQueries({ queryKey: scratchKeys.coupons });
+      queryClient.invalidateQueries({ queryKey: scratchKeys.coupon(payload.couponId) });
+      if (__DEV__) {
+        console.log('[RT] Coupon updated:', payload.couponId, payload.status);
+      }
+    };
+
+    socket.on(WS_EVENTS.STAMPS_UPDATED, onStampsUpdated);
     socket.on(WS_EVENTS.NOTIFICATION_NEW, onNotificationNew);
+    socket.on(WS_EVENTS.SCRATCH_CARDS_CHANGED, onScratchCardsChanged);
+    socket.on(WS_EVENTS.COUPON_UPDATED, onCouponUpdated);
 
     return () => {
       socket.off('connect', onConnect);
       socket.off('disconnect', onDisconnect);
-      socket.off(WS_EVENTS.POINTS_UPDATED, onPointsUpdated);
+      socket.off(WS_EVENTS.STAMPS_UPDATED, onStampsUpdated);
       socket.off(WS_EVENTS.NOTIFICATION_NEW, onNotificationNew);
+      socket.off(WS_EVENTS.SCRATCH_CARDS_CHANGED, onScratchCardsChanged);
+      socket.off(WS_EVENTS.COUPON_UPDATED, onCouponUpdated);
       setWsConnected(false);
     };
   }, [socket, queryClient, setWsConnected]);
@@ -123,11 +148,11 @@ export function handleFcmDataPayload(
   if (!data?.event) return;
 
   switch (data.event) {
-    case 'points_updated':
+    case 'stamps_updated':
     case 'reward_available':
     case 'reward_redeemed':
-      // Only invalidate points — notification list will be refreshed by its own staleTime
-      queryClient.invalidateQueries({ queryKey: queryKeys.points });
+      // Only invalidate stamps — notification list will be refreshed by its own staleTime
+      queryClient.invalidateQueries({ queryKey: queryKeys.stamps });
       break;
     case 'notification_new': {
       // Optimistic +1 badge is enough — skip redundant invalidateQueries on
@@ -147,15 +172,68 @@ export function handleFcmDataPayload(
       queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
       break;
     case 'reward_reminder':
-      queryClient.invalidateQueries({ queryKey: queryKeys.points });
+      queryClient.invalidateQueries({ queryKey: queryKeys.stamps });
+      optimisticIncrementUnread(queryClient);
+      break;
+    // Scratch cards & coupons
+    case 'scratch_card_received':
+    case 'scratch_card_expiring':
+      invalidateScratchCards(queryClient);
+      optimisticIncrementUnread(queryClient);
+      break;
+    case 'coupon_expiring':
+    case 'coupon_cancelled':
+    case 'coupon_extended':
+      queryClient.invalidateQueries({ queryKey: scratchKeys.coupons });
+      invalidateScratchCards(queryClient);
+      if (data.couponId) {
+        queryClient.invalidateQueries({ queryKey: scratchKeys.coupon(data.couponId) });
+      }
+      optimisticIncrementUnread(queryClient);
+      break;
+    case 'coupon_redeemed':
+      queryClient.invalidateQueries({ queryKey: scratchKeys.coupons });
+      if (data.couponId) {
+        queryClient.invalidateQueries({ queryKey: scratchKeys.coupon(data.couponId) });
+      }
+      queryClient.invalidateQueries({ queryKey: queryKeys.stamps });
       optimisticIncrementUnread(queryClient);
       break;
     case 'weekly_digest':
-      queryClient.invalidateQueries({ queryKey: queryKeys.points });
+      queryClient.invalidateQueries({ queryKey: queryKeys.stamps });
       break;
     default:
       if (__DEV__) console.log('[FCM] Unhandled event type:', data.event);
   }
+}
+
+const SCAN_PUSH_EVENTS = new Set(['stamps_updated', 'reward_available', 'reward_redeemed']);
+
+/**
+ * Forward a scan push received while the app is in the foreground to the ws
+ * store, so the QR screen can confirm the scan even when the WebSocket missed it.
+ */
+export function pushStampsEventFromNotification(
+  data: Record<string, string> | undefined,
+  queryClient: ReturnType<typeof useQueryClient>,
+) {
+  if (!data?.event || !SCAN_PUSH_EVENTS.has(data.event) || !data.merchantId) return;
+  const type = data.type;
+  if (type !== 'EARN_STAMPS' && type !== 'REDEEM_REWARD') return;
+  const newBalance = Number(data.newBalance);
+  if (!Number.isFinite(newBalance)) return;
+  const card = queryClient
+    .getQueryData<StampsOverview>(queryKeys.stamps)
+    ?.cards.find((c) => c.merchantId === data.merchantId);
+  useWsStore.getState().pushStampsEvent({
+    clientId: card?.clientId ?? '',
+    merchantId: data.merchantId,
+    merchantName: data.merchantName || card?.merchant?.nomBoutique || '',
+    stamps: Number(data.stamps) || 0,
+    newBalance,
+    type,
+    rewardTitle: data.rewardTitle,
+  });
 }
 
 /**
@@ -182,7 +260,7 @@ export function useAppForegroundRefresh() {
         if (elapsed > 5 * 60 * 1000) {
           queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
           queryClient.invalidateQueries({ queryKey: queryKeys.unreadCount });
-          queryClient.invalidateQueries({ queryKey: queryKeys.points });
+          queryClient.invalidateQueries({ queryKey: queryKeys.stamps });
         }
       }
       appState.current = nextState;

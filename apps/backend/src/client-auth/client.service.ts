@@ -19,6 +19,7 @@ import { pickEmailLang } from '../mail/transactional-i18n';
 import { PrismaService } from '../prisma/prisma.service';
 import { ClientClaimService } from '../merchant/services/client-claim.service';
 import { withRetry } from '../common/utils/retry-transaction.helper';
+import { computeStampsExpiry } from '../merchant/utils/loyalty.utils';
 
 @Injectable()
 export class ClientService {
@@ -64,13 +65,12 @@ export class ClientService {
         loyaltyCards: {
           where: { merchant: { deletedAt: null } },
           select: {
-            id: true, merchantId: true, points: true, createdAt: true, updatedAt: true,
+            id: true, merchantId: true, stamps: true, createdAt: true, updatedAt: true,
             merchant: {
               select: {
                 id: true,
                 nom: true,
                 categorie: true,
-                loyaltyType: true,
               },
             },
           },
@@ -312,7 +312,7 @@ export class ClientService {
 
     const [totalScans, totalRewards] = await Promise.all([
       this.transactionRepo.count({
-        where: { clientId, type: 'EARN_POINTS', status: 'ACTIVE' },
+        where: { clientId, type: 'EARN_STAMPS', status: 'ACTIVE' },
       }),
       this.transactionRepo.count({
         where: { clientId, type: { in: ['REDEEM_REWARD', 'LUCKY_WHEEL_WIN'] }, status: 'ACTIVE' },
@@ -323,7 +323,7 @@ export class ClientService {
     return result;
   }
 
-  async getPointsOverview(clientId: string, page: number = 1, limit: number = 50) {
+  async getStampsOverview(clientId: string, page: number = 1, limit: number = 50) {
     const skip = (page - 1) * limit;
     const safeTake = Math.min(limit, 100);
 
@@ -333,7 +333,7 @@ export class ClientService {
         select: {
           id: true,
           merchantId: true,
-          points: true,
+          stamps: true,
           createdAt: true,
           updatedAt: true,
           merchant: {
@@ -341,10 +341,9 @@ export class ClientService {
               id: true,
               nom: true,
               categorie: true,
-              loyaltyType: true,
-              pointsRate: true,
+              stampEarningMode: true,
+              amountPerStamp: true,
               stampsForReward: true,
-              conversionRate: true,
               latitude: true,
               longitude: true,
               logoUrl: true,
@@ -367,16 +366,16 @@ export class ClientService {
       }),
       this.loyaltyCardRepo.count({ where: { clientId, deactivatedAt: null, merchant: { deletedAt: null } } }),
     ]);
-    const totalPoints = cards.reduce((sum: number, card: any) => sum + card.points, 0);
+    const totalStamps = cards.reduce((sum: number, card: any) => sum + card.stamps, 0);
 
     return {
-      totalPoints,
+      totalStamps,
       totalCards,
       pagination: buildPagination(totalCards, page, safeTake),
       cards: cards.map((card: any) => ({
         id: card.id,
         merchantId: card.merchantId,
-        balance: card.points,
+        balance: card.stamps,
         createdAt: card.createdAt,
         updatedAt: card.updatedAt,
         merchant: card.merchant
@@ -384,10 +383,9 @@ export class ClientService {
               id: card.merchant.id,
               nomBoutique: card.merchant.nom,
               categorie: card.merchant.categorie,
-              loyaltyType: card.merchant.loyaltyType,
-              pointsRate: card.merchant.pointsRate,
+              stampEarningMode: card.merchant.stampEarningMode,
+              amountPerStamp: card.merchant.amountPerStamp,
               stampsForReward: card.merchant.stampsForReward,
-              conversionRate: card.merchant.conversionRate,
               // null if the merchant has no rewards configured yet
               minRewardCost: card.merchant.rewards[0]?.cout ?? null,
               latitude: card.merchant.latitude,
@@ -422,8 +420,7 @@ export class ClientService {
           type: true,
           status: true,
           amount: true,
-          points: true,
-          loyaltyType: true,
+          stamps: true,
           createdAt: true,
           merchant: {
             select: {
@@ -476,8 +473,7 @@ export class ClientService {
           type: true,
           status: true,
           amount: true,
-          points: true,
-          loyaltyType: true,
+          stamps: true,
           createdAt: true,
           merchant: {
             select: {
@@ -537,10 +533,11 @@ export class ClientService {
           adresse: true,
           latitude: true,
           longitude: true,
-          loyaltyType: true,
-          conversionRate: true,
-          pointsRate: true,
+          stampEarningMode: true,
+          amountPerStamp: true,
           stampsForReward: true,
+          stampValidityDays: true,
+          stampValiditySince: true,
           logoUrl: true,
           coverUrl: true,
           themeColor: true,
@@ -619,8 +616,16 @@ export class ClientService {
     // Check if the client already has a loyalty card with this merchant
     const existingCard = await this.loyaltyCardRepo.findUnique({
       where: { clientId_merchantId: { clientId, merchantId: id } },
-      select: { id: true, points: true, deactivatedAt: true },
+      select: { id: true, stamps: true, deactivatedAt: true, lastVisitAt: true },
     });
+    const cardStampsExpireAt =
+      existingCard && !existingCard.deactivatedAt && existingCard.stamps > 0
+        ? computeStampsExpiry(
+            existingCard.lastVisitAt,
+            m.stampValidityDays,
+            m.stampValiditySince ? new Date(m.stampValiditySince) : null,
+          )
+        : null;
 
     return {
       id: m.id,
@@ -636,10 +641,10 @@ export class ClientService {
       adresse: m.adresse || (m.quartier ? `${m.quartier}, ${m.ville}` : m.ville),
       latitude: m.latitude,
       longitude: m.longitude,
-      loyaltyType: m.loyaltyType,
-      conversionRate: m.conversionRate,
-      pointsRate: m.pointsRate,
+      stampEarningMode: m.stampEarningMode,
+      amountPerStamp: m.amountPerStamp,
       stampsForReward: m.stampsForReward,
+      stampValidityDays: m.stampValidityDays ?? null,
       logoUrl: m.logoUrl ?? null,
       coverUrl: m.coverUrl ?? null,
       themeColor: m.themeColor ?? null,
@@ -652,7 +657,8 @@ export class ClientService {
       clientCount: m._count.loyaltyCards,
       hasCard: !!existingCard && !existingCard.deactivatedAt,
       cardDeactivated: !!existingCard?.deactivatedAt,
-      cardBalance: existingCard?.points ?? 0,
+      cardBalance: existingCard?.stamps ?? 0,
+      cardStampsExpireAt,
       stores: m.stores ?? [],
       rewards: m.rewards.map((r: any) => ({
         id: r.id,
@@ -693,9 +699,9 @@ export class ClientService {
 
     const card = await this.loyaltyCardRepo.upsert({
       where: { clientId_merchantId: { clientId, merchantId } },
-      create: { clientId, merchantId, points: 0 },
+      create: { clientId, merchantId, stamps: 0 },
       update: { deactivatedAt: null },
-      select: { id: true, points: true, createdAt: true },
+      select: { id: true, stamps: true, createdAt: true },
     });
 
     return { success: true, card };
@@ -703,8 +709,9 @@ export class ClientService {
 
   /**
    * Soft-deactivate the client's loyalty card with a merchant.
-   * The card is not deleted — points are preserved but the client is
-   * excluded from all merchant notifications (push, email, WhatsApp).
+   * The card is not deleted (transactions reference it) but its stamp balance
+   * is reset and the client is excluded from all merchant notifications
+   * (push, email, WhatsApp).
    */
   async deactivateCard(clientId: string, merchantId: string) {
     const card = await this.loyaltyCardRepo.findUnique({
@@ -716,7 +723,7 @@ export class ClientService {
 
     await this.loyaltyCardRepo.update({
       where: { id: card.id },
-      data: { deactivatedAt: new Date(), points: 0 },
+      data: { deactivatedAt: new Date(), stamps: 0 },
     });
 
     return { success: true };
@@ -797,7 +804,7 @@ export class ClientService {
       if (card && !card.deactivatedAt) {
         await this.loyaltyCardRepo.update({
           where: { id: card.id },
-          data: { deactivatedAt: new Date(), points: 0 },
+          data: { deactivatedAt: new Date(), stamps: 0 },
         });
       }
     } catch {
@@ -867,9 +874,8 @@ export class ClientService {
             adresse: true,
             latitude: true,
             longitude: true,
-            loyaltyType: true,
-            conversionRate: true,
-            pointsRate: true,
+            stampEarningMode: true,
+            amountPerStamp: true,
             stampsForReward: true,
             logoUrl: true,
             coverUrl: true,
@@ -935,9 +941,8 @@ export class ClientService {
         adresse: m.adresse || (m.quartier ? `${m.quartier}, ${m.ville}` : m.ville),
         latitude: m.latitude,
         longitude: m.longitude,
-        loyaltyType: m.loyaltyType,
-        conversionRate: m.conversionRate,
-        pointsRate: m.pointsRate,
+        stampEarningMode: m.stampEarningMode,
+        amountPerStamp: m.amountPerStamp,
         stampsForReward: m.stampsForReward,
         logoUrl: m.logoUrl ?? null,
         coverUrl: m.coverUrl ?? null,

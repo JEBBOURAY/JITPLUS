@@ -8,13 +8,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useQueryClient } from '@tanstack/react-query';
 import { useShallow } from 'zustand/react/shallow';
 import api, { onUnauthorized, resetApiTokenCache } from '@/services/api';
-import { sendMerchantPushToken } from '@/services/merchantPushToken';
+import { sendMerchantPushToken, resetMerchantPushTokenCache } from '@/services/merchantPushToken';
 import { getErrorMessage } from '@/utils/error';
 import { logInfo, logWarn, logError } from '@/utils/devLogger';
 import i18n from '@/i18n';
 import { Merchant, LoginCredentials, AuthResponse, TeamMember } from '@/types';
 import { useAuthStore } from '@/stores/authStore';
-import { ASYNC_STORAGE_KEYS } from '@/constants/app';
 
 // ── Lazy-load expo-notifications ──
 // Le require('expo-notifications') déclenche un side-effect (DevicePushTokenAutoRegistration)
@@ -232,6 +231,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
       // Clear push token from backend so this device stops receiving notifications
       api.patch('/merchant/push-token', { pushToken: '' }).catch(() => {});
+      resetMerchantPushTokenCache();
       // Fire-and-forget — don't block local cleanup on server response
       api.post('/auth/logout').catch(() => {});
       resetApiTokenCache();
@@ -246,16 +246,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       ]);
       queryClientRef.current.clear();
       await AsyncStorage.removeItem('jitpluspro-query-cache').catch(() => {});
-      // Checklist display prefs are device-local — clear them so a different account
-      // signing in on this device doesn't inherit a previous merchant's hidden/dismissed state.
-      await AsyncStorage.multiRemove([
-        ASYNC_STORAGE_KEYS.CHECKLIST_DISMISSED,
-        ASYNC_STORAGE_KEYS.CHECKLIST_LOYALTY_CONFIRMED,
-        ASYNC_STORAGE_KEYS.CHECKLIST_SCANNED,
-        ASYNC_STORAGE_KEYS.CHECKLIST_COLLAPSED,
-        ASYNC_STORAGE_KEYS.CHECKLIST_HIDDEN,
-        ASYNC_STORAGE_KEYS.CHECKLIST_HIDE_NOTICE_SEEN,
-      ]).catch(() => {});
       useAuthStore.getState().reset();
       useAuthStore.getState().setLoading(false);
     } catch (error) {
@@ -370,6 +360,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const unsubscribe = onUnauthorized(() => {
       logInfo('Auth', '401 détecté, déconnexion automatique');
+      resetMerchantPushTokenCache();
       const s = useAuthStore.getState();
       s.setToken(null);
       s.setMerchant(null);

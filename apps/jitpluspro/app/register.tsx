@@ -1,4 +1,4 @@
-import React, { useRef, useCallback, useEffect, useMemo, useState } from 'react';
+import { useRef, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -19,7 +19,6 @@ import {
   Keyboard,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   Check,
   ArrowLeft,
@@ -39,7 +38,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { ASYNC_STORAGE_KEYS } from '@/constants/app';
 import api from '@/services/api';
 import { isValidPassword } from '@/utils/passwordStrength';
 import { isValidEmail } from '@/utils/validation';
@@ -283,17 +281,6 @@ export default function RegisterScreen() {
     return emailValid && passwordOk;
   }, [storeNameValid, termsAccepted, phoneValid, isSocialAuth, emailValid, passwordOk]);
 
-  const resetChecklistStateForNewAccount = useCallback(async () => {
-    await AsyncStorage.multiRemove([
-      ASYNC_STORAGE_KEYS.CHECKLIST_DISMISSED,
-      ASYNC_STORAGE_KEYS.CHECKLIST_LOYALTY_CONFIRMED,
-      ASYNC_STORAGE_KEYS.CHECKLIST_SCANNED,
-      ASYNC_STORAGE_KEYS.CHECKLIST_COLLAPSED,
-      ASYNC_STORAGE_KEYS.CHECKLIST_HIDDEN,
-      ASYNC_STORAGE_KEYS.CHECKLIST_HIDE_NOTICE_SEEN,
-    ]).catch(() => {});
-  }, []);
-
   // ── Category + location (mirrors the store management screen) ──
   const handleCategoryPick = useCallback((value: MerchantCategory) => {
     setCategorie(value);
@@ -383,7 +370,6 @@ export default function RegisterScreen() {
       if (googleIdToken) {
         const result = await googleRegister(googleIdToken, { ...storeData, termsAccepted });
         if (result.success) {
-          await resetChecklistStateForNewAccount();
           router.replace('/(tabs)/activity');
         } else {
           Alert.alert(
@@ -403,7 +389,6 @@ export default function RegisterScreen() {
           appleRawNonce ?? undefined,
         );
         if (result.success) {
-          await resetChecklistStateForNewAccount();
           router.replace('/(tabs)/activity');
         } else {
           Alert.alert(
@@ -425,7 +410,6 @@ export default function RegisterScreen() {
       // as "registration failed" (the user would retry and hit a 409 on the now
       // existing email). Retry the auto-login once, then fall back to the login
       // screen so the user is never stuck.
-      await resetChecklistStateForNewAccount();
       const creds = { email: email.trim().toLowerCase(), password };
       try {
         await signIn(creds, true);
@@ -475,7 +459,6 @@ export default function RegisterScreen() {
     appleRegister,
     authRegister,
     signIn,
-    resetChecklistStateForNewAccount,
     router,
     t,
   ]);

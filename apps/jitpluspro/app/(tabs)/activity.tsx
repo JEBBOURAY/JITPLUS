@@ -16,14 +16,11 @@ import {
   TrendingUp,
   TrendingDown,
   Coins,
-  Star,
   Stamp,
   Crown,
   ChevronRight,
-  Eye,
   Store,
-  CreditCard,
-  Ticket,
+  Gamepad2,
   Users,
   Clock,
   X,
@@ -40,13 +37,12 @@ import { useGuardedCallback } from '@/hooks/useGuardedCallback';
 import { LinearGradient } from 'expo-linear-gradient';
 import MerchantLogo from '@/components/MerchantLogo';
 import PremiumLockModal from '@/components/PremiumLockModal';
-import { SetupChecklist } from '@/components/SetupChecklist';
 import TipsCarousel from '@/components/TipsCarousel';
 import QuickActionsRow, { type QuickAction } from '@/components/QuickActionsRow';
 import MonthOverviewCard from '@/components/MonthOverviewCard';
 import RecentActivityCard from '@/components/RecentActivityCard';
 import KpiCounter from '@/components/KpiCounter';
-import { useTourTarget } from '@/components/GuidedTour';
+import { useTour, useTourTarget } from '@/components/GuidedTour';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';import { useFocusFade } from '@/hooks/useFocusFade';
 import WelcomeGuideCard from '@/components/WelcomeGuideCard';
 import WelcomePosterModal from '@/components/WelcomePosterModal';
@@ -104,8 +100,7 @@ const ProUpgradeBanner = React.memo(function ProUpgradeBanner({ onPress }: { onP
 });
 
 /* ── Premium trial-end reminder (Accueil) — shown at J-7…J-1 before the trial
-   flips back to Free. Distinct from the config checklist and the Free→Pro
-   teaser; dismissable for the day but reappears the next day (P6). ── */
+   flips back to Free. Distinct from the Free→Pro teaser; dismissable for the day but reappears the next day (P6). ── */
 const TrialEndBanner = React.memo(function TrialEndBanner({
   daysRemaining, onPress, onDismiss,
 }: { daysRemaining: number; onPress: () => void; onDismiss: () => void }) {
@@ -170,6 +165,14 @@ export default function HomeScreen() {
   // Android: "press back again to exit" on the home tab
   useExitOnBack();
 
+  // The tour provider remembers it was proposed, so this only fires once per device.
+  const isTeamMember = useAuthStore((s) => s.isTeamMember);
+  const requestTourAutoStart = useTour()?.requestAutoStart;
+  const hasMerchant = !!merchant;
+  useEffect(() => {
+    if (hasMerchant && !isTeamMember) requestTourAutoStart?.();
+  }, [hasMerchant, isTeamMember, requestTourAutoStart]);
+
   // ── Premium gate for the dashboard shortcut (mirrors the Compte screen) ──
   const [premiumModal, setPremiumModal] = useState<{ visible: boolean; titleKey: string; descKey: string }>({
     visible: false,
@@ -195,10 +198,9 @@ export default function HomeScreen() {
   // just the first transactions page), so today's total, the "vs hier" delta and
   // the month chart stay correct for high-volume merchants. Live via WS events. ──
   const { data: homeStats, isLoading: statsLoading, refetch: refetchStats } = useHomeStats();
-  const isStamps = merchant?.loyaltyType === 'STAMPS';
   const { kpiValue, deltaPct, deltaSign, deltaPositive, clientsToday } = useMemo(() => {
-    const today = homeStats?.today.points ?? 0;
-    const yesterday = homeStats?.yesterday.points ?? 0;
+    const today = homeStats?.today.stamps ?? 0;
+    const yesterday = homeStats?.yesterday.stamps ?? 0;
     const rawDelta = yesterday > 0 ? Math.round(((today - yesterday) / yesterday) * 100) : today > 0 ? 100 : 0;
     return {
       kpiValue: today,
@@ -218,11 +220,9 @@ export default function HomeScreen() {
     await Promise.all([refetch(), refetchStats()]);
   }, [refetch, refetchStats]);
 
-  // ── Navigation shortcuts (Compte via avatar · Dashboard · Notifications) ──
+  // ── Navigation shortcuts (Compte via avatar · Notifications) ──
   const avatarTourRef = useTourTarget('avatar');
-  const dashboardTourRef = useTourTarget('dashboard');
   const goToAccount = useCallback(() => router.push('/account'), [router]);
-  const goToStorePreview = useCallback(() => router.push({ pathname: '/stores', params: { tab: 'fiche', autoPreview: '1' } }), [router]);
   const goToDashboard = useCallback(() => {
     // Same premium gating as Compte → Mon commerce → Dashboard
     if (merchant?.plan !== 'PREMIUM') {
@@ -238,13 +238,22 @@ export default function HomeScreen() {
   // ── Header quick actions (store management) ──
   const quickActions = useMemo<QuickAction[]>(
     () => [
-      { key: 'stores', label: t('home.qaStores'), Icon: Store, route: '/stores', tourKey: 'stores' },
+      { key: 'stores', label: t('home.qaStore'), Icon: Store, route: '/stores', tourKey: 'stores' },
       { key: 'loyalty', label: t('home.qaLoyalty'), Icon: Coins, route: '/settings', tourKey: 'loyalty' },
-      { key: 'storecard', label: t('home.qaStoreCard'), Icon: CreditCard, route: '/stores?tab=fiche', tourKey: 'storecard' },
       { key: 'team', label: t('home.qaTeam'), Icon: Users, route: '/team-management', premium: true, tourKey: 'team' },
-      { key: 'wheel', label: t('home.qaWheel'), Icon: Ticket, route: '/lucky-wheel', premium: true, tourKey: 'wheel' },
+      { key: 'games', label: t('home.qaGames'), Icon: Gamepad2, route: '/games', tourKey: 'games' },
+      {
+        key: 'dashboard',
+        label: t('home.qaDashboard'),
+        Icon: BarChart3,
+        route: '/dashboard',
+        premium: true,
+        onPress: goToDashboard,
+        accessibilityLabel: t('home.openDashboard'),
+        tourKey: 'dashboard',
+      },
     ],
-    [t],
+    [t, goToDashboard],
   );
 
   // Discrete upgrade teaser only for merchants still on the Free plan.
@@ -317,16 +326,12 @@ export default function HomeScreen() {
           <View style={styles.kpiLabelRow}>
             <Coins size={13} color="rgba(255,255,255,0.72)" strokeWidth={2} />
             <Text style={styles.kpiLabel} maxFontSizeMultiplier={1.4}>
-              {isStamps ? t('home.kpiStamps') : t('home.kpiPoints')}
+              {t('home.kpiStamps')}
             </Text>
           </View>
           <View style={styles.kpiValueRow}>
             <KpiCounter value={kpiValue} ready={!statsLoading} style={styles.kpiValue} />
-            {isStamps ? (
-              <Stamp size={26} color={palette.gold} strokeWidth={2.2} />
-            ) : (
-              <Star size={26} color={palette.gold} fill={palette.gold} strokeWidth={0} />
-            )}
+            <Stamp size={26} color={palette.gold} strokeWidth={2.2} />
           </View>
           <View style={styles.kpiSubRow}>
             {deltaPositive ? (
@@ -347,9 +352,6 @@ export default function HomeScreen() {
 
         {/* ── Content (scrolls with the hero) ── */}
         <View style={styles.content}>
-          {/* Setup checklist — auto-hides at 100% */}
-          <SetupChecklist />
-
           {/* Tips carousel — usage guide & why-loyalty */}
           <TipsCarousel />
 
@@ -404,7 +406,6 @@ export default function HomeScreen() {
           ) : recentTransactions.length > 0 ? (
             <RecentActivityCard
               transactions={recentTransactions}
-              merchantLoyaltyType={merchant?.loyaltyType}
               onViewAll={goToTransactions}
             />
           ) : (
@@ -471,27 +472,6 @@ export default function HomeScreen() {
           </TouchableOpacity>
 
           <View style={styles.headerActions}>
-            <TouchableOpacity
-              style={styles.iconBtn}
-              onPress={goToStorePreview}
-              activeOpacity={0.8}
-              hitSlop={HIT_SLOP_LARGE}
-              accessibilityRole="button"
-              accessibilityLabel={t('home.previewStore')}
-            >
-              <Eye size={18} color="#fff" strokeWidth={1.8} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              ref={dashboardTourRef}
-              style={styles.iconBtn}
-              onPress={goToDashboard}
-              activeOpacity={0.8}
-              hitSlop={HIT_SLOP_LARGE}
-              accessibilityRole="button"
-              accessibilityLabel={t('home.openDashboard')}
-            >
-              <BarChart3 size={18} color="#fff" strokeWidth={1.8} />
-            </TouchableOpacity>
             <TouchableOpacity
               style={styles.iconBtn}
               onPress={goToNotifications}

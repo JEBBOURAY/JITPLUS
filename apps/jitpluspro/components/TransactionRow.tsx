@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ArrowUpRight, ArrowDownLeft, RefreshCw, Gift, Aperture } from 'lucide-react-native';
+import { ArrowUpRight, ArrowDownLeft, RefreshCw, Gift, Aperture, Ticket } from 'lucide-react-native';
 import { getTransactionConfig } from '@/constants/transactions';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -73,31 +73,27 @@ export function buildHomeRows(
 /* ── Memoized rich transaction row (full history) ── */
 export const TransactionRow = React.memo(function TransactionRow({
   item,
-  merchantLoyaltyType,
 }: {
   item: Transaction;
-  merchantLoyaltyType?: string | null;
 }) {
   const theme = useTheme();
   const { t, locale } = useLanguage();
   const isDark = theme.mode === 'dark';
-  const isEarned = item.type === 'EARN_POINTS';
+  const isEarned = item.type === 'EARN_STAMPS';
   const isCancelled = item.status === 'CANCELLED';
   const isProgramChange = item.type === 'LOYALTY_PROGRAM_CHANGE';
   const isLuckyWheelWin = item.type === 'LUCKY_WHEEL_WIN';
+  const isCoupon = item.type === 'COUPON_REDEEM';
+  const isGain = isEarned || isCoupon;
   const { icon: IconComp, color } = getTransactionConfig(item.type, isCancelled, theme);
-  const flowColor = isCancelled ? theme.danger : isEarned ? theme.primary : theme.accent;
+  const flowColor = isCancelled ? theme.danger : isGain ? theme.primary : theme.accent;
   const flowBg = isCancelled
     ? `${theme.danger}14`
-    : isEarned
+    : isGain
       ? (isDark ? 'rgba(167,139,250,0.12)' : 'rgba(124,58,237,0.08)')
       : (isDark ? 'rgba(156,163,175,0.12)' : 'rgba(31,41,55,0.06)');
   const performerName = item.performedByName || item.teamMember?.nom || null;
   const isReward = item.type === 'REDEEM_REWARD' && !isCancelled;
-
-  const pointsLabel = (item.loyaltyType ?? merchantLoyaltyType) === 'STAMPS'
-    ? t('common.stampsAbbr')
-    : t('common.pointsAbbr');
 
   return (
     <View
@@ -107,7 +103,7 @@ export const TransactionRow = React.memo(function TransactionRow({
     >
       <View style={[styles.flowBar, { backgroundColor: flowColor }]} importantForAccessibility="no" />
 
-      {(isReward || (isEarned && !isCancelled) || (isLuckyWheelWin && !isCancelled)) ? (
+      {(isReward || (isGain && !isCancelled) || (isLuckyWheelWin && !isCancelled)) ? (
         <View style={[styles.txIconShadowWrapper, isReward && styles.giftShadow]} importantForAccessibility="no">
           <View style={[styles.txIcon, { overflow: 'hidden', borderWidth: 1, borderColor: `${color}40`, marginRight: 0 }]}>
             <LinearGradient
@@ -152,6 +148,14 @@ export const TransactionRow = React.memo(function TransactionRow({
             </Text>
           </View>
         )}
+        {isCoupon && item.note && (
+          <View style={styles.rewardRow}>
+            <Ticket size={11} color={theme.accent} strokeWidth={2} />
+            <Text style={[styles.txMeta, { color: theme.accent, flex: 1 }]} numberOfLines={1} maxFontSizeMultiplier={1.6}>
+              {stripEmojis(item.note)}
+            </Text>
+          </View>
+        )}
         {!isEarned && !isProgramChange && item.reward && (
           <View style={styles.rewardRow}>
             <Gift size={13} color={theme.accent} strokeWidth={2.5} />
@@ -181,11 +185,11 @@ export const TransactionRow = React.memo(function TransactionRow({
             </Text>
           )}
           <View style={[styles.flowPill, { backgroundColor: flowBg }]}>
-            {isEarned
+            {isGain
               ? <ArrowUpRight size={11} color={flowColor} strokeWidth={2.5} />
               : <ArrowDownLeft size={11} color={flowColor} strokeWidth={2.5} />}
             <Text style={[styles.flowPillText, { color: flowColor }, isCancelled && styles.cancelled]} maxFontSizeMultiplier={1.4}>
-              {isEarned ? '+' : '−'}{item.points} {pointsLabel}
+              {isGain ? '+' : '−'}{item.stamps} {t('common.stampsAbbr')}
             </Text>
           </View>
         </View>

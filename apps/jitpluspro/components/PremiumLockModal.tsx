@@ -1,4 +1,3 @@
-import React from 'react';
 import {
   View,
   Text,
@@ -10,7 +9,7 @@ import {
 import { Info, Sparkles, X, Crown } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { useTheme, palette } from '@/contexts/ThemeContext';
+import { palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 
 interface PremiumLockModalProps {
@@ -21,7 +20,6 @@ interface PremiumLockModalProps {
 }
 
 export default function PremiumLockModal({ visible, onClose, titleKey, descKey }: PremiumLockModalProps) {
-  const theme = useTheme();
   const { t } = useLanguage();
   const router = useRouter();
 

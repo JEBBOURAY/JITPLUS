@@ -48,7 +48,7 @@ export class RewardsService {
   }
 
   async create(merchantId: string, data: { titre: string; cout: number; description?: string; imageUrl?: string }): Promise<Reward> {
-    if (data.cout <= 0) throw new BadRequestException('Le coût en points doit être supérieur à 0');
+    if (data.cout <= 0) throw new BadRequestException('Le coût en tampons doit être supérieur à 0');
 
     // FREE plan: maximum 1 reward allowed
     const isPremium = await this.planService.isPremium(merchantId);
@@ -67,7 +67,7 @@ export class RewardsService {
   }
 
   async update(id: string, merchantId: string, data: { titre?: string; cout?: number; description?: string; imageUrl?: string | null }): Promise<Reward> {
-    if (data.cout !== undefined && data.cout <= 0) throw new BadRequestException('Le coût en points doit être supérieur à 0');
+    if (data.cout !== undefined && data.cout <= 0) throw new BadRequestException('Le coût en tampons doit être supérieur à 0');
     const reward = await this.rewardRepo.findOneByMerchant(id, merchantId);
     if (!reward) throw new NotFoundException('Récompense non trouvée ou ne vous appartient pas');
     const updated = await this.rewardRepo.update(id, data);

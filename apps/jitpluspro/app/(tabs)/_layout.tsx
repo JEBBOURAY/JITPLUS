@@ -1,11 +1,10 @@
-import React, { useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { Tabs, useRouter, useSegments } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { ActivityIndicator, View } from 'react-native';
 import CustomTabBar from '@/components/CustomTabBar';
 import { GuidedTourProvider } from '@/components/GuidedTour';
-import { canScan } from '@/hooks/useScanGuard';
 
 const renderTabBar = (props: any) => <CustomTabBar {...props} />;
 
@@ -18,8 +17,8 @@ export default function TabLayout() {
 
   const isAuthenticated = !!merchant;
 
-  // Auth is the ONLY blocking gate. Email verification and business setup are
-  // handled non-blockingly via the Accueil checklist — never a forced tunnel.
+  // Auth is the ONLY blocking gate: email verification and business setup are
+  // never a forced tunnel.
   // The app lands directly on the "Accueil" tab after login/registration.
   useEffect(() => {
     if (loading) return;
@@ -77,13 +76,7 @@ export default function TabLayout() {
           listeners={() => ({
             tabPress: (e) => {
               e.preventDefault();
-              // Hard dependency: no scanning without a loyalty program. Route to
-              // the loyalty setup (with warning banner) instead of the camera.
-              if (canScan(merchant)) {
-                router.push('/scan-qr');
-              } else {
-                router.push({ pathname: '/settings', params: { loyaltySetup: '1' } });
-              }
+              router.push('/scan-qr');
             },
           })}
         />

@@ -3,17 +3,20 @@ import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, BackHandle
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as SecureStore from 'expo-secure-store';
-import { CheckCircle2, AlertCircle, Clock } from 'lucide-react-native';
+import { CheckCircle2, AlertCircle, Clock, Ticket } from 'lucide-react-native';
 
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuthStore } from '@/stores/authStore';
 import { api } from '@/services/api';
+import { useQueryClient } from '@tanstack/react-query';
+import { invalidateScratchCards, usePendingScratchCards } from '@/hooks/useScratchHooks';
+import { queryKeys } from '@/hooks/useQueryHooks';
 
 const PENDING_CLAIM_KEY = 'pendingClaimToken';
 const TOKEN_RE = /^[A-Za-z0-9_-]{16,64}$/;
 
-type ConsumeResult = { success: true; alreadyConsumed: boolean; mergedCards: number; merchant: { id: string; nom: string | null } };
+type ConsumeResult = { success: true; alreadyConsumed: boolean; mergedCards: number; pendingScratchCards?: number; merchant: { id: string; nom: string | null } };
 
 type Screen =
   | { kind: 'loading' }
@@ -28,6 +31,7 @@ export default function ClaimScreen() {
   const { t } = useLanguage();
   const client = useAuthStore((s) => s.client);
   const params = useLocalSearchParams<{ token?: string }>();
+  const queryClient = useQueryClient();
   const [screen, setScreen] = useState<Screen>({ kind: 'loading' });
 
   const token = typeof params.token === 'string' ? params.token : '';
@@ -56,6 +60,9 @@ export default function ClaimScreen() {
       const result = await api.consumeClaim(token);
       // Clean up the stored pending token (may have been stashed before login).
       try { await SecureStore.deleteItemAsync(PENDING_CLAIM_KEY); } catch {}
+      // The merge moved cards and scratch cards onto this account; cached lists predate it.
+      invalidateScratchCards(queryClient);
+      queryClient.invalidateQueries({ queryKey: queryKeys.stamps });
       setScreen({ kind: 'success', result });
     } catch (err: any) {
       const status = err?.response?.status;
@@ -66,7 +73,7 @@ export default function ClaimScreen() {
       // "already used" / "expired" terminal states).
       if (status !== 403 && status !== 410) consumedRef.current = null;
     }
-  }, [token, tokenValid]);
+  }, [token, tokenValid, queryClient]);
 
   // Stash token + bounce to welcome if not authenticated; otherwise consume.
   useEffect(() => {
@@ -89,6 +96,20 @@ export default function ClaimScreen() {
   const goHome = useCallback(() => {
     router.replace('/(tabs)');
   }, [router]);
+
+  // After a successful merge, a scratch card may have been re-attributed to
+  // the user (consumeClaim returns the count). Surface it with a CTA.
+  const hasPendingScratch = screen.kind === 'success' && (screen.result.pendingScratchCards ?? 0) > 0;
+  const pendingCards = usePendingScratchCards(hasPendingScratch);
+  const firstPendingCardId = pendingCards.data?.[0]?.id;
+  const scratchCtaBusy = hasPendingScratch && pendingCards.isFetching;
+  const goToScratch = useCallback(() => {
+    if (firstPendingCardId) {
+      router.replace({ pathname: '/scratch/[id]', params: { id: firstPendingCardId } });
+    } else {
+      router.replace('/(tabs)');
+    }
+  }, [router, firstPendingCardId]);
 
   const goToLogin = useCallback(() => {
     router.replace('/welcome');
@@ -128,12 +149,26 @@ export default function ClaimScreen() {
             <Text style={[styles.body, { color: theme.textMuted }]}>
               {t('claim.successBody', { merchant: merchantName })}
             </Text>
+            {hasPendingScratch && (
+              <View style={[styles.scratchNote, { borderColor: theme.primary }]}>
+                <Ticket size={20} color={theme.primary} />
+                <Text style={[styles.scratchNoteText, { color: theme.primary }]}>{t('scratch.claim.pending')}</Text>
+              </View>
+            )}
             <TouchableOpacity
-              style={[styles.btnPrimary, { backgroundColor: theme.primary }]}
-              onPress={goHome}
+              style={[styles.btnPrimary, { backgroundColor: theme.primary }, scratchCtaBusy && { opacity: 0.6 }]}
+              onPress={hasPendingScratch ? goToScratch : goHome}
+              disabled={scratchCtaBusy}
               accessibilityRole="button"
+              accessibilityState={{ disabled: scratchCtaBusy, busy: scratchCtaBusy }}
             >
-              <Text style={styles.btnPrimaryText}>{t('claim.successCta')}</Text>
+              {scratchCtaBusy ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.btnPrimaryText}>
+                  {hasPendingScratch ? t('scratch.claim.cta') : t('claim.successCta')}
+                </Text>
+              )}
             </TouchableOpacity>
           </>
         );
@@ -182,4 +217,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   btnPrimaryText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  scratchNote: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12, borderWidth: 1,
+  },
+  scratchNoteText: { fontWeight: '700', fontSize: 14 },
 });

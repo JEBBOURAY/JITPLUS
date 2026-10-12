@@ -29,7 +29,6 @@ try {
 }
 
 const SafeMapView = forwardRef<MapViewType, MapViewProps>((props, ref) => {
-  const [mapReady, setMapReady] = useState(false);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [renderTimedOut, setRenderTimedOut] = useState(false);
 
@@ -75,7 +74,6 @@ const SafeMapView = forwardRef<MapViewType, MapViewProps>((props, ref) => {
       {...providerProp}
       {...props}
       onMapReady={() => {
-        setMapReady(true);
         if (__DEV__) {
           const locale = Platform.OS === 'ios'
             ? NativeModules.SettingsManager?.settings?.AppleLocale ?? NativeModules.SettingsManager?.settings?.AppleLanguages?.[0]

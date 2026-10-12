@@ -12,9 +12,9 @@ import i18n from '@/i18n';
 import type {
   Store,
   PlanInfo,
-  Merchant,
   Reward,
   DashboardKpis,
+  DashboardGames,
   RewardDistribution,
   TrendResponse,
   ClientDetail,
@@ -25,8 +25,11 @@ import type {
   NotificationRecord,
   CreateStorePayload,
   RecordTransactionPayload,
-  PendingGift,
   TeamMember,
+  Merchant,
+  MerchantCategory,
+  SocialLinks,
+  OpeningHours,
 } from '@/types';
 
 import {
@@ -37,9 +40,6 @@ import {
 // Backend ceiling for image uploads (sharp optimizes down afterwards).
 const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
 
-// Re-export types for backward compatibility
-export type { NotificationRecord, Reward, ClientListItem, Transaction, TransactionsPage } from '@/types';
-
 // ── Centralized query keys ──────────────────────────────────────
 export const queryKeys = {
   stores: ['stores'] as const,
@@ -49,23 +49,20 @@ export const queryKeys = {
   dashboardKpis: ['dashboard-kpis'] as const,
   dashboardTrends: (period: string) => ['dashboard-trends', period] as const,
   dashboardDistribution: ['dashboard-distribution'] as const,
+  dashboardGames: ['dashboard-games'] as const,
   transactions: ['transactions'] as const,
   homeStats: ['home-stats'] as const,
-  profile: ['profile'] as const,
   clientDetail: (id: string) => ['client-detail', id] as const,
   clientStatus: (id: string) => ['client-status', id] as const,
   clients: (search: string) => ['clients', search] as const,
   notificationHistory: ['notification-history'] as const,
   adminNotifications: ['admin-notifications'] as const,
   adminNotifUnreadCount: ['admin-notif-unread-count'] as const,
-  whatsappQuota: ['whatsapp-quota'] as const,
   emailQuota: ['email-quota'] as const,
-  pendingGifts: ['pending-gifts'] as const,
   teamMembers: ['team-members'] as const,
   luckyWheelCampaigns: ['lucky-wheel-campaigns'] as const,
   luckyWheelPendingPrizes: ['lucky-wheel-pending-prizes'] as const,
   luckyWheelFulfilledPrizes: ['lucky-wheel-fulfilled-prizes'] as const,
-  luckyWheelCampaignStats: (id: string) => ['lucky-wheel-campaign-stats', id] as const,
   luckyWheelActiveInfo: ['lucky-wheel-active-info'] as const,
 } as const;
 
@@ -268,27 +265,6 @@ export function useRewards(enabled = true) {
   });
 }
 
-export function useCreateReward() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (payload: { titre: string; cout: number; description?: string }) => {
-      const res = await api.post('/rewards', payload);
-      return res.data;
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.rewards }),
-  });
-}
-
-export function useDeleteReward() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (id: string) => {
-      await api.delete(`/rewards/${id}`);
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.rewards }),
-  });
-}
-
 // ── Plan & Referral ─────────────────────────────────────────────
 export function usePlan(enabled = true) {
   return useQuery<PlanInfo>({
@@ -366,6 +342,18 @@ export function useDashboardDistribution(enabled = true) {
   });
 }
 
+export function useDashboardGames(enabled = true) {
+  return useQuery<DashboardGames>({
+    queryKey: queryKeys.dashboardGames,
+    queryFn: async () => {
+      const res = await api.get('/merchant/dashboard-games');
+      return res.data;
+    },
+    staleTime: STALE.LONG,
+    enabled,
+  });
+}
+
 // ── Client Detail ───────────────────────────────────────────────
 export function useClientDetail(id: string | undefined, enabled = true) {
   return useQuery<ClientDetail>({
@@ -380,10 +368,10 @@ export function useClientDetail(id: string | undefined, enabled = true) {
   });
 }
 
-export function useAdjustPoints() {
+export function useAdjustStamps() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (payload: { clientId: string; points: number; note?: string }) => {
+    mutationFn: async (payload: { clientId: string; stamps: number; note?: string }) => {
       const res = await api.post('/merchant/transactions/adjust', payload);
       return res.data;
     },
@@ -429,18 +417,14 @@ export function useRecordTransaction() {
         qc.invalidateQueries({ queryKey: queryKeys.clientDetail(clientId) });
       }
       qc.invalidateQueries({ queryKey: queryKeys.transactions });
-      // Redemptions create a PENDING gift — refresh the pending-gifts badge/list immediately.
-      if (variables.type === 'REDEEM_REWARD') {
-        qc.invalidateQueries({ queryKey: queryKeys.pendingGifts });
-      }
     },
   });
 }
 
 // ── Transactions (infinite scroll) ──────────────────────────────
 export interface HomeStats {
-  today: { points: number; clients: number };
-  yesterday: { points: number };
+  today: { stamps: number; clients: number };
+  yesterday: { stamps: number };
   month: { total: number; daily: number[] };
 }
 
@@ -474,38 +458,6 @@ export function useTransactions(enabled = true) {
   });
 }
 
-// ── Profile (merchant) ──────────────────────────────────────────
-export function useMerchantProfile(enabled = true) {
-  return useQuery<Merchant>({
-    queryKey: queryKeys.profile,
-    queryFn: async () => {
-      const res = await api.get('/merchant/profile');
-      return res.data;
-    },
-    staleTime: STALE.SLOW,
-    enabled,
-  });
-}
-
-export function useUpdateLoyaltySettings() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (payload: {
-      loyaltyType: 'POINTS' | 'STAMPS';
-      pointsRate: number;
-      conversionRate: number;
-      stampsForReward: number;
-    }) => {
-      const res = await api.patch('/merchant/loyalty-settings', payload);
-      return res.data;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.profile });
-      qc.invalidateQueries({ queryKey: queryKeys.rewards });
-    },
-  });
-}
-
 // ── Clients ─────────────────────────────────────────────────────
 export function useClients(search: string, enabled = true) {
   return useQuery<ClientListItem[]>({
@@ -536,19 +488,6 @@ export function useNotificationHistory(enabled = true) {
   });
 }
 
-// ── WhatsApp Quota ──────────────────────────────────────────────
-export function useWhatsappQuota(enabled = true) {
-  return useQuery<{ used: number; max: number }>({
-    queryKey: queryKeys.whatsappQuota,
-    queryFn: async () => {
-      const res = await api.get('/merchant/whatsapp/quota');
-      return { used: res.data.whatsappQuotaUsed, max: res.data.whatsappQuotaMax };
-    },
-    staleTime: STALE.MEDIUM,
-    enabled,
-  });
-}
-
 // ── Email Quota ─────────────────────────────────────────────────
 export function useEmailQuota(enabled = true) {
   return useQuery<{ used: number; max: number }>({
@@ -559,32 +498,6 @@ export function useEmailQuota(enabled = true) {
     },
     staleTime: STALE.MEDIUM,
     enabled,
-  });
-}
-// ── Pending Gifts ───────────────────────────────────────────────
-export function usePendingGifts(enabled = true) {
-  return useQuery<PendingGift[]>({
-    queryKey: queryKeys.pendingGifts,
-    queryFn: async () => {
-      const res = await api.get('/merchant/pending-gifts');
-      return res.data;
-    },
-    staleTime: STALE.SHORT,
-    enabled,
-  });
-}
-
-export function useFulfillGift() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (transactionId: string) => {
-      const res = await api.patch(`/merchant/transactions/${transactionId}/fulfill`);
-      return res.data;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.pendingGifts });
-      qc.invalidateQueries({ queryKey: queryKeys.transactions });
-    },
   });
 }
 
@@ -630,20 +543,15 @@ export function useUploadMerchantCover() {
 }
 
 export function useDeleteMerchantCover() {
-  const qc = useQueryClient();
   return useMutation({
     mutationFn: async () => {
       // Backend clears the DB reference AND deletes the stored file (orphan cleanup)
       await api.patch('/merchant/profile', { coverUrl: null });
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.profile });
-    },
   });
 }
 
 export function useUploadMerchantGalleryImage() {
-  const qc = useQueryClient();
   return useMutation({
     mutationFn: async (asset: { uri: string; mimeType?: string | null; merchantName?: string; fileSize?: number | null }) => {
       const { mime } = normalizeUploadMimeAndExt(asset.uri, asset.mimeType);
@@ -662,21 +570,14 @@ export function useUploadMerchantGalleryImage() {
       });
       return res as { url: string; field: string; gallery: string[] };
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.profile });
-    },
   });
 }
 
 export function useDeleteMerchantLogo() {
-  const qc = useQueryClient();
   return useMutation({
     mutationFn: async () => {
       // Backend clears the DB reference AND deletes the stored file (orphan cleanup)
       await api.patch('/merchant/profile', { logoUrl: null });
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.profile });
     },
   });
 }
@@ -701,7 +602,6 @@ export function useUploadRewardImage() {
 }
 
 export function useUploadMerchantCardBackground() {
-  const qc = useQueryClient();
   return useMutation({
     mutationFn: async (asset: { uri: string; mimeType?: string | null; fileSize?: number | null }) => {
       const { mime } = normalizeUploadMimeAndExt(asset.uri, asset.mimeType);
@@ -716,43 +616,40 @@ export function useUploadMerchantCardBackground() {
       });
       return res as { url: string };
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.profile });
-    },
   });
 }
 
 export function useDeleteMerchantCardBackground() {
-  const qc = useQueryClient();
   return useMutation({
     mutationFn: async () => {
       await api.delete('/merchant/card-background');
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.profile });
-    },
   });
 }
 
-export function useUpdateMerchantTheme() {
-  const qc = useQueryClient();
+export interface MerchantProfilePayload {
+  nom?: string;
+  categorie?: MerchantCategory;
+  description?: string;
+  socialLinks?: SocialLinks;
+  themeColor?: string | null;
+  themeIcon?: string | null;
+  secondaryCategories?: MerchantCategory[];
+  tagline?: string | null;
+  badges?: string[];
+  gallery?: string[];
+  openingHours?: OpeningHours | null;
+  cardBackgroundUrl?: string | null;
+  cardBackgroundColor?: string | null;
+  cardTextColor?: 'LIGHT' | 'DARK' | null;
+}
+
+/** PATCH /merchant/profile. Resolves with the updated profile. */
+export function useUpdateMerchantProfile() {
   return useMutation({
-    mutationFn: async (payload: {
-      themeColor?: string | null;
-      themeIcon?: string | null;
-      secondaryCategories?: string[];
-      tagline?: string | null;
-      badges?: string[];
-      gallery?: string[];
-      openingHours?: Record<string, unknown> | null;
-      cardBackgroundUrl?: string | null;
-      cardBackgroundColor?: string | null;
-      cardTextColor?: 'LIGHT' | 'DARK' | null;
-    }) => {
-      await api.patch('/merchant/profile', payload);
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.profile });
+    mutationFn: async (payload: MerchantProfilePayload) => {
+      const res = await api.patch('/merchant/profile', payload);
+      return res.data as Merchant;
     },
   });
 }
@@ -766,20 +663,6 @@ export function useSendPushNotification() {
       return res.data as { recipientCount: number; successCount: number; failureCount: number };
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.notificationHistory });
-    },
-  });
-}
-
-export function useSendWhatsApp() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (payload: { body: string }) => {
-      const res = await api.post('/notifications/send-whatsapp-to-all', payload);
-      return res.data as { recipientCount: number; successCount: number; failureCount: number };
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.whatsappQuota });
       qc.invalidateQueries({ queryKey: queryKeys.notificationHistory });
     },
   });
@@ -844,20 +727,17 @@ export function useDeleteTeamMember() {
   });
 }
 
-// ── Invalidation helpers ────────────────────────────────────────
-export function useInvalidateQueries() {
-  const qc = useQueryClient();
-  return {
-    invalidateStores: () => qc.invalidateQueries({ queryKey: queryKeys.stores }),
-    invalidateRewards: () => qc.invalidateQueries({ queryKey: queryKeys.rewards }),
-    invalidatePlan: () => qc.invalidateQueries({ queryKey: queryKeys.plan }),
-    invalidateTransactions: () => qc.invalidateQueries({ queryKey: queryKeys.transactions }),
-    invalidateProfile: () => qc.invalidateQueries({ queryKey: queryKeys.profile }),
-    invalidateAll: () => qc.invalidateQueries(),
-  };
-}
+// ── Merchant inbox (automatic notifications + admin broadcasts) ──
+export type InboxCategory =
+  | 'SECURITY'
+  | 'PLAN'
+  | 'ACTIVITY'
+  | 'TIP'
+  | 'SETUP'
+  | 'QUOTA'
+  | 'OFFER'
+  | 'ADMIN';
 
-// ── Admin notifications (received from admin dashboard) ─────────
 export interface AdminNotification {
   id: string;
   title: string;
@@ -865,15 +745,32 @@ export interface AdminNotification {
   channel: string | null;
   createdAt: string;
   isRead: boolean;
+  /** Missing on servers older than the inbox release; treat as ADMIN. */
+  category?: InboxCategory;
+  action?: string | null;
 }
 
-export function useAdminNotifications(page = 1, enabled = true) {
-  return useQuery<{ notifications: AdminNotification[]; pagination: { total: number; page: number; limit: number; totalPages: number } }>({
-    queryKey: [...queryKeys.adminNotifications, page],
-    queryFn: async () => {
-      const res = await api.get('/merchant/admin-notifications', { params: { page, limit: 20 } });
+export interface AdminNotificationsPage {
+  notifications: AdminNotification[];
+  pagination: { total: number; page: number; limit: number; totalPages: number };
+}
+
+const INBOX_PAGE_SIZE = 20;
+
+export function useAdminNotifications(enabled = true) {
+  return useInfiniteQuery<AdminNotificationsPage>({
+    queryKey: [...queryKeys.adminNotifications, 'feed'],
+    queryFn: async ({ pageParam }) => {
+      const res = await api.get('/merchant/admin-notifications', {
+        params: { page: pageParam, limit: INBOX_PAGE_SIZE },
+      });
       return res.data;
     },
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) =>
+      lastPage.pagination.page < lastPage.pagination.totalPages
+        ? lastPage.pagination.page + 1
+        : undefined,
     staleTime: STALE.MEDIUM,
     enabled,
   });
@@ -891,6 +788,24 @@ export function useAdminNotifUnreadCount(enabled = true) {
   });
 }
 
+type InboxCache = { pages: AdminNotificationsPage[]; pageParams: unknown[] };
+
+function patchInboxCache(
+  qc: ReturnType<typeof useQueryClient>,
+  update: (n: AdminNotification) => AdminNotification,
+) {
+  qc.setQueriesData<InboxCache>({ queryKey: queryKeys.adminNotifications }, (old) => {
+    if (!old?.pages) return old;
+    return {
+      ...old,
+      pages: old.pages.map((page) => ({
+        ...page,
+        notifications: page.notifications.map(update),
+      })),
+    };
+  });
+}
+
 export function useMarkAdminNotifsRead() {
   const qc = useQueryClient();
   return useMutation({
@@ -898,6 +813,7 @@ export function useMarkAdminNotifsRead() {
       await api.patch('/merchant/admin-notifications/mark-read');
     },
     onSuccess: () => {
+      patchInboxCache(qc, (n) => (n.isRead ? n : { ...n, isRead: true }));
       qc.setQueryData(queryKeys.adminNotifUnreadCount, { count: 0 });
       qc.invalidateQueries({ queryKey: queryKeys.adminNotifUnreadCount });
       qc.invalidateQueries({ queryKey: queryKeys.adminNotifications });
@@ -911,7 +827,14 @@ export function useMarkSingleAdminNotifRead() {
     mutationFn: async (notificationId: string) => {
       await api.patch(`/merchant/admin-notifications/${notificationId}/read`);
     },
-    onSuccess: () => {
+    // Optimistic: the item turns "read" immediately, even when the tap navigates away.
+    onMutate: (notificationId) => {
+      patchInboxCache(qc, (n) => (n.id === notificationId ? { ...n, isRead: true } : n));
+      qc.setQueryData<{ count: number }>(queryKeys.adminNotifUnreadCount, (old) =>
+        old ? { count: Math.max(0, old.count - 1) } : old,
+      );
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: queryKeys.adminNotifications });
       qc.invalidateQueries({ queryKey: queryKeys.adminNotifUnreadCount });
     },
@@ -931,18 +854,6 @@ export function useLuckyWheelCampaigns() {
   });
 }
 
-export function useLuckyWheelCampaignStats(campaignId: string) {
-  return useQuery<any>({
-    queryKey: queryKeys.luckyWheelCampaignStats(campaignId),
-    queryFn: async () => {
-      const res = await api.get(`/lucky-wheel/merchant/campaigns/${campaignId}/stats`);
-      return res.data;
-    },
-    staleTime: STALE.SHORT,
-    enabled: !!campaignId,
-  });
-}
-
 export function useLuckyWheelPendingPrizes() {
   return useQuery<any[]>({
     queryKey: queryKeys.luckyWheelPendingPrizes,
@@ -951,6 +862,32 @@ export function useLuckyWheelPendingPrizes() {
       return Array.isArray(res.data) ? res.data : [];
     },
     staleTime: STALE.SHORT,
+  });
+}
+
+export interface LuckyWheelPendingDraw {
+  id: string;
+  claimBefore?: string | null;
+  createdAt?: string;
+  prize?: { label: string; description?: string | null };
+  ticket?: { clientId?: string; campaign?: { name: string } };
+}
+
+/** Prizes one client won and has not collected yet. Empty when the merchant has no Premium. */
+export function useLuckyWheelClientPrizes(clientId: string | undefined) {
+  return useQuery<LuckyWheelPendingDraw[]>({
+    queryKey: [...queryKeys.luckyWheelPendingPrizes, clientId ?? ''],
+    queryFn: async () => {
+      try {
+        const res = await api.get('/lucky-wheel/merchant/pending-prizes', { params: { clientId } });
+        return Array.isArray(res.data) ? res.data : [];
+      } catch (err) {
+        if ((err as { response?: { status?: number } })?.response?.status === 403) return [];
+        throw err;
+      }
+    },
+    enabled: !!clientId,
+    staleTime: 0,
   });
 }
 

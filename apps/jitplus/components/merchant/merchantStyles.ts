@@ -134,7 +134,7 @@ export const merchantStyles = StyleSheet.create({
   rewardCost: { fontSize: ms(11), fontWeight: '700' as const },
 
   // Social
-  socialRow: { flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'center' as const, gap: wp(14), paddingBottom: hp(16) },
+  socialRow: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, alignItems: 'center' as const, justifyContent: 'center' as const, gap: wp(12), paddingHorizontal: wp(16), paddingBottom: hp(16) },
   socialIconBtn: { width: ms(42), height: ms(42), borderRadius: ms(21), alignItems: 'center' as const, justifyContent: 'center' as const },
 
   // Locations

@@ -13,7 +13,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { JwtPayload } from '../../common/interfaces/jwt-payload.interface';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { CreateTransactionDto } from '../dto/create-transaction.dto';
-import { AdjustPointsDto } from '../dto/adjust-points.dto';
+import { AdjustStampsDto } from '../dto/adjust-stamps.dto';
 import { DashboardQueryDto } from '../dto/dashboard-query.dto';
 import { MerchantTransactionService, MerchantDashboardService } from '../services';
 
@@ -34,7 +34,7 @@ export class MerchantTransactionController {
     @CurrentUser() user: JwtPayload,
     @Headers('idempotency-key') idempotencyKey?: string,
   ) {
-    const { clientId, type, amount, points, rewardId } = dto;
+    const { clientId, type, amount, stamps, rewardId } = dto;
     // Normalize + validate idempotency key shape (printable ASCII, 1..64 chars).
     let normalizedKey: string | undefined;
     if (idempotencyKey && idempotencyKey.trim()) {
@@ -49,7 +49,7 @@ export class MerchantTransactionController {
       user.userId,
       type,
       amount,
-      points,
+      stamps,
       rewardId,
       user.teamMemberId ?? undefined,
       user.teamMemberName ?? undefined,
@@ -81,14 +81,14 @@ export class MerchantTransactionController {
 
   @Post('transactions/adjust')
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 20 } })
-  async adjustPoints(
-    @Body() dto: AdjustPointsDto,
+  async adjustStamps(
+    @Body() dto: AdjustStampsDto,
     @CurrentUser() user: JwtPayload,
   ) {
-    return this.transactionService.adjustPoints(
+    return this.transactionService.adjustStamps(
       dto.clientId,
       user.userId,
-      dto.points,
+      dto.stamps,
       dto.note,
       user.teamMemberId ?? undefined,
       user.teamMemberName ?? undefined,
@@ -121,5 +121,12 @@ export class MerchantTransactionController {
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 15 } })
   async getDashboardDistribution(@CurrentUser() user: JwtPayload) {
     return this.dashboardService.getRewardsDistribution(user.userId);
+  }
+
+  @Get('dashboard-games')
+  @UseGuards(MerchantOwnerGuard, PremiumGuard)
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 15 } })
+  async getDashboardGames(@CurrentUser() user: JwtPayload) {
+    return this.dashboardService.getGamesStats(user.userId);
   }
 }

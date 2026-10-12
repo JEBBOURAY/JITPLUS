@@ -45,13 +45,15 @@ model Merchant {
   cardTextColor        String?            @map("card_text_color") @db.VarChar(5) // 'LIGHT' or 'DARK'
   socialLinks          Json?              @map("social_links") // {instagram, facebook, tiktok, website, snapchat, youtube}
   profileViews         Int                @default(0) @map("profile_views")
-  pointsRules          Json?              @map("points_rules")
-  pointsRate           Float              @default(10) @map("points_rate")
-  loyaltyType          LoyaltyType?       @map("loyalty_type")
-  conversionRate       Float              @default(10) @map("conversion_rate")
+  /// Purchase amount (currency units) that earns one stamp in PER_AMOUNT mode
+  amountPerStamp       Float              @default(10) @map("amount_per_stamp")
   stampsForReward      Int                @default(10) @map("stamps_for_reward")
   stampEarningMode     StampEarningMode   @default(PER_VISIT) @map("stamp_earning_mode")
   accumulationLimit    Int?               @map("accumulation_limit")
+  /// Stamps are reset after this many days without a visit (null = never expire)
+  stampValidityDays    Int?               @map("stamp_validity_days")
+  /// Last change of stampValidityDays: the expiry countdown never starts before it
+  stampValiditySince   DateTime?          @map("stamp_validity_since")
   activeRewardId       String?            @map("active_reward_id")
   // Plan Freemium — les nouveaux marchands démarrent en FREE (le flow d'inscription attribue un essai PREMIUM via getTrialData())
   plan                 MerchantPlan       @default(FREE)
@@ -107,6 +109,7 @@ model Merchant {
   // Admin notifications
   lastAdminNotifReadAt DateTime?                  @map("last_admin_notif_read_at")
   notificationReads    MerchantNotificationRead[]
+  inboxNotifications   MerchantInboxNotification[]
 
   // Lucky Wheel campaigns
   luckyWheelCampaigns LuckyWheelCampaign[]
@@ -119,6 +122,10 @@ model Merchant {
 
   // Quick-add anonymous client claim links (WhatsApp friction-zero onboarding)
   clientClaims ClientClaim[]
+
+  // Scratch-card campaigns and the coupons they produce
+  scratchCampaigns ScratchCampaign[]
+  coupons          Coupon[]
 
   @@index([isActive])
   @@index([deletedAt])
@@ -250,6 +257,9 @@ enum AuditAction {
   DELETE_STORE
   CANCEL_TRANSACTION
   UPDATE_LOYALTY_SETTINGS
+  CREATE_SCRATCH_CAMPAIGN
+  CANCEL_SCRATCH_CAMPAIGN
+  REDEEM_COUPON
   // Future-proof slots
   RESET_PASSWORD
   UPDATE_PLAN_DURATION
@@ -306,11 +316,6 @@ enum MerchantPlan {
   PREMIUM
 }
 
-enum LoyaltyType {
-  POINTS
-  STAMPS
-}
-
 enum StampEarningMode {
   PER_VISIT
   PER_AMOUNT
@@ -363,6 +368,8 @@ model Client {
   campaignSentTrackers CampaignSentTracker[]
   merchantBlocks       ClientMerchantBlock[]
   clientClaims         ClientClaim[]
+  scratchCards         ScratchCard[]
+  coupons              Coupon[]
 
   @@index([nom])
   @@index([email])
@@ -406,7 +413,7 @@ model QrNonce {
   @@map("qr_nonces")
 }
 
-/// Magic-link claim tokens created when a merchant adds points for a walk-in
+/// Magic-link claim tokens created when a merchant adds stamps for a walk-in
 /// client (Quick-Add via WhatsApp). The raw token never hits the DB — only its
 /// SHA-256 digest. On claim, the anonymous Client's loyalty data is merged
 /// into the real registered Client and this row is marked consumed.
@@ -431,13 +438,17 @@ model ClientClaim {
 }
 
 model LoyaltyCard {
-  id            String    @id @default(uuid())
-  clientId      String    @map("client_id")
-  merchantId    String    @map("merchant_id")
-  points        Int       @default(0)
-  deactivatedAt DateTime? @map("deactivated_at")
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
+  id                   String    @id @default(uuid())
+  clientId             String    @map("client_id")
+  merchantId           String    @map("merchant_id")
+  stamps               Int       @default(0)
+  /// Last EARN_STAMPS / REDEEM_REWARD: reference for stamp expiry
+  lastVisitAt          DateTime  @default(now()) @map("last_visit_at")
+  /// Set when the "stamps expire soon" push was sent; cleared on the next visit
+  expiryReminderSentAt DateTime? @map("expiry_reminder_sent_at")
+  deactivatedAt        DateTime? @map("deactivated_at")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
 
   client   Client   @relation(fields: [clientId], references: [id], onDelete: Restrict)
   merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Restrict)
@@ -449,9 +460,11 @@ model LoyaltyCard {
   @@index([clientId, deactivatedAt])
   @@index([merchantId, createdAt])
   // Accumulation cap queries: fetch cards over limit for a merchant
-  @@index([merchantId, points])
+  @@index([merchantId, stamps])
   // Broadcast notification: cursor-paginated lookup of active cards per merchant
   @@index([merchantId, deactivatedAt, clientId])
+  // Stamp expiry cron: cards of a merchant ordered by last visit
+  @@index([merchantId, lastVisitAt])
   @@map("loyalty_cards")
 }
 
@@ -463,10 +476,9 @@ model Transaction {
   teamMemberId    String?           @map("team_member_id")
   performedByName String?           @map("performed_by_name")
   type            TransactionType
-  loyaltyType     LoyaltyType?      @map("loyalty_type")
   note            String?
   amount          Float             @default(0)
-  points          Int
+  stamps          Int
   status          TransactionStatus @default(ACTIVE)
   giftStatus      GiftStatus?       @map("gift_status")
   fulfilledAt     DateTime?         @map("fulfilled_at")
@@ -501,11 +513,14 @@ model Transaction {
 }
 
 enum TransactionType {
-  EARN_POINTS
+  EARN_STAMPS
   REDEEM_REWARD
-  ADJUST_POINTS
+  ADJUST_STAMPS
+  /// Informational history entry (0 stamps), e.g. the points → stamps conversion
   LOYALTY_PROGRAM_CHANGE
   LUCKY_WHEEL_WIN
+  /// Coupon used at the till (stamps = bonus stamps for BONUS_STAMPS coupons, 0 otherwise)
+  COUPON_REDEEM
 }
 
 enum TransactionStatus {
@@ -552,8 +567,9 @@ model Reward {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  merchant     Merchant      @relation(fields: [merchantId], references: [id], onDelete: Cascade)
-  transactions Transaction[]
+  merchant       Merchant        @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  transactions   Transaction[]
+  scratchRewards ScratchReward[]
 
   @@index([merchantId])
   @@map("rewards")
@@ -600,6 +616,29 @@ model MerchantNotificationRead {
   @@id([merchantId, notificationId])
   @@index([notificationId])
   @@map("merchant_notification_reads")
+}
+
+/// Personal inbox of a merchant: every automatic push sent to the Pro app
+/// (security, plan, activity, tips…) is recorded here so it also appears in
+/// the in-app Notifications screen, next to admin broadcasts.
+/// category: 'SECURITY' | 'PLAN' | 'ACTIVITY' | 'TIP' | 'SETUP' | 'QUOTA' | 'OFFER'
+/// action: deep-link key handled by the Pro app (e.g. 'open_plan').
+model MerchantInboxNotification {
+  id         String    @id @default(uuid())
+  merchantId String    @map("merchant_id")
+  category   String    @db.VarChar(20)
+  title      String    @db.VarChar(255)
+  body       String    @db.VarChar(2000)
+  action     String?   @db.VarChar(40)
+  readAt     DateTime? @map("read_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@index([merchantId, createdAt(sort: Desc)])
+  @@index([merchantId, readAt])
+  @@index([createdAt])
+  @@map("merchant_inbox_notifications")
 }
 
 /// Per-client notification status: tracks read/dismissed state.
@@ -785,8 +824,8 @@ model LuckyWheelCampaign {
   globalWinRate      Float                    @default(0.5) @map("global_win_rate")
   startsAt           DateTime                 @map("starts_at")
   endsAt             DateTime                 @map("ends_at")
-  /// Minimum points a client must spend (REDEEM_REWARD) to earn a ticket
-  ticketCostPoints   Int                      @default(0) @map("ticket_cost_points")
+  /// Minimum stamps a client must spend (REDEEM_REWARD) to earn a ticket
+  ticketCostStamps   Int                      @default(0) @map("ticket_cost_stamps")
   /// Or: earn a ticket on every N-th visit
   ticketEveryNVisits Int?                     @map("ticket_every_n_visits")
   /// Minimum purchase amount (in currency) required to earn a lucky-wheel ticket
@@ -893,4 +932,195 @@ model ClientMerchantBlock {
   @@index([clientId])
   @@index([merchantId])
   @@map("client_merchant_blocks")
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── Scratch cards (free promotional cards — every card wins a coupon) ─────────
+// ══════════════════════════════════════════════════════════════════════════════
+
+enum ScratchCampaignStatus {
+  DRAFT
+  SCHEDULED
+  SENDING
+  SENT
+  ENDED
+  CANCELLED
+}
+
+enum ScratchCardStatus {
+  PENDING
+  SCRATCHED
+  EXPIRED
+  CANCELLED
+}
+
+enum ScratchAudienceType {
+  ALL_CLIENTS
+  /// Visited within the last `audienceValue` days
+  ACTIVE_SINCE
+  /// No visit for at least `audienceValue` days
+  INACTIVE_SINCE
+  /// At least `audienceValue` stamps on their card
+  MIN_STAMPS
+  /// Joined the programme within the last `audienceValue` days
+  NEW_SINCE
+}
+
+enum CouponRewardType {
+  PERCENT_DISCOUNT
+  FIXED_DISCOUNT
+  FREE_PRODUCT
+  BONUS_STAMPS
+}
+
+enum CouponStatus {
+  ACTIVE
+  REDEEMED
+  EXPIRED
+  CANCELLED
+}
+
+enum CouponSource {
+  SCRATCH_CARD
+  LUCKY_WHEEL
+  MANUAL
+}
+
+model ScratchCampaign {
+  id               String                @id @default(uuid())
+  merchantId       String                @map("merchant_id")
+  name             String                @db.VarChar(80)
+  /// Optional merchant message shown on the card and in the push body (moderated)
+  message          String?               @db.VarChar(200)
+  /// Key of a shared card design (packages/shared/src/scratch/designs.ts)
+  designId         String                @default("violet") @map("design_id") @db.VarChar(32)
+  status           ScratchCampaignStatus @default(DRAFT)
+  audienceType     ScratchAudienceType   @default(ALL_CLIENTS) @map("audience_type")
+  audienceValue    Int?                  @map("audience_value")
+  sendAt           DateTime?             @map("send_at")
+  /// Set when an instance claims the campaign for dispatch; stale locks are retaken
+  sendingLockedAt  DateTime?             @map("sending_locked_at")
+  sentAt           DateTime?             @map("sent_at")
+  cancelledAt      DateTime?             @map("cancelled_at")
+  /// Last moment a card can be scratched (end of day, Morocco time)
+  cardExpiresAt    DateTime              @map("card_expires_at")
+  /// Last moment a won coupon can be used (end of day, Morocco time)
+  couponExpiresAt  DateTime              @map("coupon_expires_at")
+  recipientCount   Int                   @default(0) @map("recipient_count")
+  pushSuccessCount Int                   @default(0) @map("push_success_count")
+  createdAt        DateTime              @default(now()) @map("created_at")
+  updatedAt        DateTime              @updatedAt @map("updated_at")
+
+  merchant Merchant        @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  rewards  ScratchReward[]
+  cards    ScratchCard[]
+
+  @@index([merchantId, status])
+  @@index([status, sendAt])
+  @@map("scratch_campaigns")
+}
+
+model ScratchReward {
+  id                String           @id @default(uuid())
+  campaignId        String           @map("campaign_id")
+  type              CouponRewardType
+  label             String           @db.VarChar(80)
+  /// Percent (1-100), amount in MAD, or number of bonus stamps depending on `type`
+  value             Float?
+  /// Upper bound of the discount for PERCENT_DISCOUNT (MAD)
+  maxDiscount       Float?           @map("max_discount")
+  /// Optional link to the merchant's reward catalogue (FREE_PRODUCT)
+  rewardId          String?          @map("reward_id")
+  weight            Int
+  /// null = unlimited stock (every campaign needs at least one unlimited reward)
+  totalStock        Int?             @map("total_stock")
+  remaining         Int?
+  minPurchaseAmount Float?           @map("min_purchase_amount")
+  /// Hours after scratching before the coupon becomes usable ("next visit")
+  minDelayHours     Int              @default(0) @map("min_delay_hours")
+  /// Bitmask Monday=1 … Sunday=64 (null = every day)
+  allowedWeekdays   Int?             @map("allowed_weekdays")
+  /// Minutes since midnight, Morocco time (null = all day)
+  allowedFromMin    Int?             @map("allowed_from_min")
+  allowedToMin      Int?             @map("allowed_to_min")
+  createdAt         DateTime         @default(now()) @map("created_at")
+
+  campaign ScratchCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  reward   Reward?         @relation(fields: [rewardId], references: [id], onDelete: SetNull)
+  cards    ScratchCard[]
+
+  @@index([campaignId])
+  @@map("scratch_rewards")
+}
+
+model ScratchCard {
+  id             String            @id @default(uuid())
+  campaignId     String            @map("campaign_id")
+  clientId       String            @map("client_id")
+  /// Denormalised for merchant-scoped queries
+  merchantId     String            @map("merchant_id")
+  /// Filled when the card is scratched
+  rewardId       String?           @map("reward_id")
+  status         ScratchCardStatus @default(PENDING)
+  pushSentAt     DateTime?         @map("push_sent_at")
+  openedAt       DateTime?         @map("opened_at")
+  scratchedAt    DateTime?         @map("scratched_at")
+  expiresAt      DateTime          @map("expires_at")
+  reminderSentAt DateTime?         @map("reminder_sent_at")
+  /// Set when the card moved from a ghost (quick-add) account to a real one
+  claimedFromGhostAt DateTime?     @map("claimed_from_ghost_at")
+  createdAt      DateTime          @default(now()) @map("created_at")
+
+  campaign ScratchCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  client   Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  reward   ScratchReward?  @relation(fields: [rewardId], references: [id], onDelete: SetNull)
+  coupon   Coupon?
+
+  @@unique([campaignId, clientId])
+  @@index([clientId, status])
+  @@index([campaignId, status])
+  @@index([status, expiresAt])
+  @@map("scratch_cards")
+}
+
+model Coupon {
+  id                  String           @id @default(uuid())
+  source              CouponSource     @default(SCRATCH_CARD)
+  scratchCardId       String?          @unique @map("scratch_card_id")
+  clientId            String           @map("client_id")
+  merchantId          String           @map("merchant_id")
+  /// 6 digits, unique among ACTIVE coupons of a merchant (partial index in migration)
+  code                String           @db.Char(6)
+  // Snapshot of the reward: editing a campaign never changes a coupon already won
+  type                CouponRewardType
+  label               String           @db.VarChar(80)
+  value               Float?
+  maxDiscount         Float?           @map("max_discount")
+  /// { minPurchaseAmount, allowedWeekdays, allowedFromMin, allowedToMin }
+  conditions          Json
+  status              CouponStatus     @default(ACTIVE)
+  validFrom           DateTime         @map("valid_from")
+  expiresAt           DateTime         @map("expires_at")
+  reminderSentAt      DateTime?        @map("reminder_sent_at")
+  redeemedAt          DateTime?        @map("redeemed_at")
+  /// Merchant id or team member id
+  redeemedBy          String?          @map("redeemed_by")
+  cancelledAt         DateTime?        @map("cancelled_at")
+  /// Ticket total before discount, as typed by the cashier
+  purchaseAmount      Float?           @map("purchase_amount")
+  discountAmount      Float?           @map("discount_amount")
+  redeemTransactionId String?          @unique @map("redeem_transaction_id")
+  earnTransactionId   String?          @unique @map("earn_transaction_id")
+  createdAt           DateTime         @default(now()) @map("created_at")
+  updatedAt           DateTime         @updatedAt @map("updated_at")
+
+  scratchCard ScratchCard? @relation(fields: [scratchCardId], references: [id], onDelete: SetNull)
+  client      Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  merchant    Merchant     @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@index([clientId, status])
+  @@index([merchantId, status])
+  @@index([merchantId, code])
+  @@index([status, expiresAt])
+  @@map("coupons")
 }

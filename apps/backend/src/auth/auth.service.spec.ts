@@ -19,6 +19,7 @@ import {
   TRANSACTION_RUNNER,
 } from '../common/repositories';
 import { PUSH_PROVIDER, MAIL_PROVIDER } from '../common/interfaces';
+import { MerchantInboxService } from '../merchant-inbox/merchant-inbox.service';
 import * as bcrypt from 'bcryptjs';
 
 // ── Mocks ──────────────────────────────────────────────────────────────────────
@@ -39,10 +40,7 @@ const mockMerchant = {
   longitude: null,
   logoUrl: null,
   coverUrl: null,
-  pointsRules: {},
-  pointsRate: 10,
-  loyaltyType: 'POINTS',
-  conversionRate: 10,
+  amountPerStamp: 10,
   stampsForReward: 10,
   activeRewardId: null,
   countryCode: 'MA',
@@ -145,6 +143,7 @@ describe('AuthService', () => {
         { provide: ClientReferralService, useValue: { validateCode: jest.fn(), createReferral: jest.fn() } },
         { provide: JwtStrategy, useValue: { invalidateSession: jest.fn() } },
         { provide: ConfigService, useValue: mockConfigService },
+        { provide: MerchantInboxService, useValue: { record: jest.fn().mockResolvedValue(undefined) } },
       ],
     }).compile();
 

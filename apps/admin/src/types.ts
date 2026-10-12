@@ -93,9 +93,9 @@ export interface GlobalStats {
   transactions: {
     total: number;
     thisMonth: number;
-    earnPoints: number;
+    earnStamps: number;
     redeemReward: number;
-    adjustPoints: number;
+    adjustStamps: number;
   };
   rewards: { total: number };
   notifications: {
@@ -171,7 +171,7 @@ export interface ClientsResponse {
 
 export interface ClientLoyaltyCard {
   id: string;
-  points: number;
+  stamps: number;
   deactivatedAt: string | null;
   createdAt: string;
   merchant: {

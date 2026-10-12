@@ -33,9 +33,6 @@ try {
   if (__DEV__) logWarn('SafeMapView', 'react-native-maps not available (Expo Go?):', e);
 }
 
-export const PROVIDER_GOOGLE = RN_PROVIDER_GOOGLE;
-export const MAPS_AVAILABLE = !!RNMapView && !!RNMarker;
-
 /* ---------- Helpers ---------- */
 /** Extrait les coordonnées de TOUS les <Marker> enfants */
 function extractAllMarkerCoords(children: React.ReactNode): { latitude: number; longitude: number; title?: string }[] {

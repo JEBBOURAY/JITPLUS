@@ -14,6 +14,9 @@ module.exports = ({ config }) => {
   const META_APP_ID = process.env.EXPO_PUBLIC_META_APP_ID || '2706696686345947';
   const META_CLIENT_TOKEN = process.env.EXPO_PUBLIC_META_CLIENT_TOKEN || '';
   const META_DISPLAY_NAME = process.env.EXPO_PUBLIC_META_DISPLAY_NAME || 'JitPlus Pro';
+  // R8 code shrinking is opt-in per EAS profile (enabled in eas.json for preview and
+  // production). Facebook, Google Sign-In, Maps and Sentry rely on their consumer rules.
+  const ANDROID_ENABLE_R8 = process.env.ANDROID_ENABLE_R8 === 'true';
   const PRIVACY_POLICY_URL =
     process.env.EXPO_PUBLIC_PRIVACY_URL ||
     'https://jitplus.com/privacy';
@@ -37,7 +40,7 @@ module.exports = ({ config }) => {
     name: 'JitPlus Pro',
     slug: 'jitpluspro',
     description: 'Loyalty program management for local shops — scan QR codes, track customer visits, and set up stamp-based rewards.',
-    version: '1.5.21',
+    version: '1.7.0',
     orientation: 'portrait',
     icon: './assets/images/icon-white.png',
     scheme: 'jitpluspro',
@@ -59,13 +62,11 @@ module.exports = ({ config }) => {
       supportsTablet: false,
       bundleIdentifier: 'com.jitplus.pro',
       // Initial build number — EAS autoIncrement bumps this on every production build
-      buildNumber: '33',
+      buildNumber: '34',
       // Portrait-only app: disable iPad Split View / Slide Over to avoid orientation-support review issues
       requiresFullScreen: true,
       // Declares standard HTTPS encryption — waives export compliance questionnaire
       usesNonExemptEncryption: false,
-      // Required for push notifications to arrive when app is in background
-      backgroundModes: ['remote-notification'],
       // Firebase config for iOS — download from Firebase Console → Project Settings → iOS app
       googleServicesFile: './GoogleService-Info.plist',
       config: {
@@ -92,9 +93,15 @@ module.exports = ({ config }) => {
           { SKAdNetworkIdentifier: 'v9wttpbfk9.skadnetwork' },
           { SKAdNetworkIdentifier: 'n38lu8286q.skadnetwork' },
         ],
-        // Google Sign-In redirect — reversed iOS client ID
+        // Google Sign-In redirect — reversed iOS client ID. Setting CFBundleURLTypes
+        // makes Expo ignore `scheme`, so the app scheme must be re-declared here.
         ...(IOS_GOOGLE_CLIENT_ID
-          ? { CFBundleURLTypes: [{ CFBundleURLSchemes: [IOS_GOOGLE_CLIENT_ID] }] }
+          ? {
+              CFBundleURLTypes: [
+                { CFBundleURLSchemes: ['jitpluspro'] },
+                { CFBundleURLSchemes: [IOS_GOOGLE_CLIENT_ID] },
+              ],
+            }
           : {}),
       },
       // Deep links: Universal Links — DISABLED for v1.0
@@ -106,7 +113,7 @@ module.exports = ({ config }) => {
       // ],
     },
     android: {
-      versionCode: 35,
+      versionCode: 36,
       adaptiveIcon: {
         foregroundImage: './assets/images/adaptive-icon-white.png',
         backgroundColor: '#FFFFFF',
@@ -164,11 +171,6 @@ module.exports = ({ config }) => {
       package: 'com.jitplus.pro',
       googleServicesFile: process.env.GOOGLE_SERVICES_JSON || './google-services.json',
     },
-    web: {
-      bundler: 'metro',
-      output: 'static',
-      favicon: './assets/images/icon-white.png',
-    },
     plugins: [
       'expo-router',
       'expo-secure-store',
@@ -199,6 +201,8 @@ module.exports = ({ config }) => {
             targetSdkVersion: 36,
             minSdkVersion: 24,
             buildToolsVersion: '36.0.0',
+            enableMinifyInReleaseBuilds: ANDROID_ENABLE_R8,
+            enableShrinkResourcesInReleaseBuilds: ANDROID_ENABLE_R8,
           },
         },
       ],
@@ -242,6 +246,8 @@ module.exports = ({ config }) => {
       // DISABLED: Pins are still placeholders. Enable once api.jitplus.com has a stable
       // managed SSL certificate. Cloud Run *.a.run.app certs rotate too frequently.
       // './plugins/withCertificatePinning',
+      // Keep require()'d images/fonts when R8 resource shrinking is enabled
+      './plugins/withKeepJsAssets',
       // Force Google Maps region to Morocco — ensures correct border rendering (Sahara)
       './plugins/withMoroccoRegion',
       // Enable RTL support on Android — required for Arabic/Darija layout

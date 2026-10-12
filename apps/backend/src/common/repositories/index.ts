@@ -18,6 +18,7 @@ export {
   REWARD_REPOSITORY,
   CLIENT_REFERRAL_REPOSITORY,
   MERCHANT_NOTIFICATION_READ_REPOSITORY,
+  MERCHANT_INBOX_REPOSITORY,
   PAYOUT_REQUEST_REPOSITORY,
   CAMPAIGN_SENT_TRACKER_REPOSITORY,
   TRANSACTION_RUNNER,
@@ -42,6 +43,7 @@ export type {
   IRewardRepository,
   IClientReferralRepository,
   IMerchantNotificationReadRepository,
+  IMerchantInboxRepository,
   IPayoutRequestRepository,
   ICampaignSentTrackerRepository,
 } from './repository.types';

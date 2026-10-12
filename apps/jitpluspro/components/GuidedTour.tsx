@@ -40,8 +40,7 @@ import { ASYNC_STORAGE_KEYS } from '@/constants/app';
  * covers both shapes: a circle is just a rect whose corner radius equals half
  * its size.
  *
- * The tour is purely explanatory: it mutates no data and is not part of the
- * setup checklist.
+ * The tour is purely explanatory: it mutates no data.
  */
 
 // ── Public target keys ────────────────────────────────────
@@ -49,8 +48,7 @@ export type TourTargetKey =
   | 'avatar'
   | 'stores'
   | 'loyalty'
-  | 'storecard'
-  | 'wheel'
+  | 'games'
   | 'team'
   | 'dashboard'
   | 'clients'
@@ -69,10 +67,9 @@ const STEP_DEFS: StepDef[] = [
   { key: 'avatar', shape: 'circle', titleKey: 'tour.avatarTitle', textKey: 'tour.avatarText' },
   { key: 'stores', shape: 'circle', titleKey: 'tour.storesTitle', textKey: 'tour.storesText' },
   { key: 'loyalty', shape: 'circle', titleKey: 'tour.loyaltyTitle', textKey: 'tour.loyaltyText' },
-  { key: 'storecard', shape: 'circle', titleKey: 'tour.storecardTitle', textKey: 'tour.storecardText' },
-  { key: 'wheel', shape: 'circle', titleKey: 'tour.wheelTitle', textKey: 'tour.wheelText' },
+  { key: 'games', shape: 'circle', titleKey: 'tour.gamesTitle', textKey: 'tour.gamesText' },
   { key: 'team', shape: 'circle', titleKey: 'tour.teamTitle', textKey: 'tour.teamText' },
-  { key: 'dashboard', shape: 'rect', titleKey: 'tour.dashboardTitle', textKey: 'tour.dashboardText' },
+  { key: 'dashboard', shape: 'circle', titleKey: 'tour.dashboardTitle', textKey: 'tour.dashboardText' },
   { key: 'clients', shape: 'rect', titleKey: 'tour.clientsTitle', textKey: 'tour.clientsText' },
   { key: 'scan', shape: 'circle', titleKey: 'tour.scanTitle', textKey: 'tour.scanText' },
   { key: 'messages', shape: 'rect', titleKey: 'tour.messagesTitle', textKey: 'tour.messagesText' },

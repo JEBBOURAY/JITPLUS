@@ -1,11 +1,10 @@
-import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { QrCode } from 'lucide-react-native';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { ms } from '@/utils/responsive';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useScanGuard } from '@/hooks/useScanGuard';
+import { useRouter } from 'expo-router';
 
 /**
  * Fallback — in practice the tabPress listener intercepts and
@@ -15,7 +14,7 @@ export default function ScanScreen() {
   const theme = useTheme();
   const { t } = useLanguage();
   const insets = useSafeAreaInsets();
-  const { openScanner } = useScanGuard();
+  const router = useRouter();
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
@@ -34,7 +33,7 @@ export default function ScanScreen() {
           </Text>
           <TouchableOpacity
             style={[styles.button, { backgroundColor: theme.primary }]}
-            onPress={openScanner}
+            onPress={() => router.push('/scan-qr')}
             activeOpacity={0.8}
           >
             <QrCode size={20} color="#fff" strokeWidth={2} />

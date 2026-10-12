@@ -35,7 +35,7 @@ import {
   Info,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useFocusEffect } from 'expo-router/react-navigation';
 import api from '@/services/api';
 import { getErrorMessage } from '@/utils/error';
@@ -44,11 +44,11 @@ import { isValidUUID } from '@/utils/validation';
 import { SCAN_AREA_RATIO, NAVIGATION_DELAY_MS } from '@/constants/app';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { useAuthStore } from '@/stores/authStore';
 
 import { COUNTRIES } from '@/constants/Countries';
 import FirstScanGuide from '@/components/FirstScanGuide';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { COUPON_QR_PREFIX } from '@jitplus/shared/src/scratch';
 
 // Safe haptic wrappers — no-op on devices without haptic engine
 const safeNotification = (type: Haptics.NotificationFeedbackType) => {
@@ -426,14 +426,12 @@ const BottomControls = React.memo(function BottomControls({
   isFlashOn,
   onToggleFlash,
   onClose,
-  theme,
   t,
 }: {
   insetBottom: number;
   isFlashOn: boolean;
   onToggleFlash: () => void;
   onClose: () => void;
-  theme: ReturnType<typeof useTheme>;
   t: (key: string, params?: Record<string, unknown>) => string;
 }) {
   return (
@@ -500,11 +498,13 @@ const BottomControls = React.memo(function BottomControls({
 // ── Main Screen ───────────────────────────────────────────
 export default function ScanQRScreen() {
   const router = useRouter();
+  // Opened from the coupon screen (which replaced itself): replace again so the stack stays list → coupon-validate.
+  const { from } = useLocalSearchParams<{ from?: string }>();
+  const openedFromCoupon = from === 'coupon';
   const insets = useSafeAreaInsets();
   const inputRef = useRef<TextInput | null>(null);
   const { t } = useLanguage();
   const theme = useTheme();
-  const loyaltyType = useAuthStore((s) => s.merchant?.loyaltyType);
   const [permission, requestPermission] = useCameraPermissions();
   const { width: SCREEN_W, height: SCREEN_H } = useWindowDimensions();
   const SCAN_SIZE = SCREEN_W * SCAN_AREA_RATIO;
@@ -527,6 +527,8 @@ export default function ScanQRScreen() {
   const [showHowItWorks, setShowHowItWorks] = useState(false);
   const [showCountrySheet, setShowCountrySheet] = useState(false);
   const [overlayState, setOverlayState] = useState<ScanOverlayState>({ phase: 'idle', message: null });
+  const overlayPhaseRef = useRef(overlayState.phase);
+  overlayPhaseRef.current = overlayState.phase;
 
   useEffect(() => {
     (async () => {
@@ -646,9 +648,11 @@ export default function ScanQRScreen() {
   const isFocusedRef = useRef(false);
 
   const syncCameraMount = useCallback(() => {
-    const next = isFocusedRef.current && appStateRef.current === 'active' && !!loyaltyType;
+    // iOS 'inactive' (Control Center, notification shade, Face ID) only pauses
+    // the preview via `active`; remounting the camera would cost ~1–2 s.
+    const next = isFocusedRef.current && appStateRef.current !== 'background';
     setCameraMounted((prev) => (prev === next ? prev : next));
-  }, [loyaltyType]);
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -669,29 +673,16 @@ export default function ScanQRScreen() {
     const sub = AppState.addEventListener('change', (s) => {
       if (appStateRef.current === s) return;
       appStateRef.current = s;
-      dispatch({ type: 'SET', payload: { isScanning: s === 'active' && isFocusedRef.current } });
+      // Do not resume scanning over a verifying/found/error overlay: a second
+      // scan would run while the first one is still being processed.
+      dispatch({
+        type: 'SET',
+        payload: { isScanning: s === 'active' && isFocusedRef.current && overlayPhaseRef.current === 'idle' },
+      });
       syncCameraMount();
     });
     return () => sub.remove();
   }, [syncCameraMount]);
-
-  // ── Loyalty program guard ──
-  // A merchant must pick a loyalty program (points/stamps) before scanning:
-  // POST /merchant/verify-qr cannot resolve without it. If none is set we never
-  // mount the camera (see syncCameraMount) and redirect immediately to the
-  // loyalty settings, which surfaces a clear warning banner.
-  const loyaltyPromptRef = useRef(false);
-  useFocusEffect(
-    useCallback(() => {
-      if (loyaltyType) {
-        loyaltyPromptRef.current = false;
-        return;
-      }
-      if (loyaltyPromptRef.current) return;
-      loyaltyPromptRef.current = true;
-      router.replace({ pathname: '/settings', params: { loyaltySetup: '1' } });
-    }, [loyaltyType, router])
-  );
 
   // ── Navigate to transaction after resolving clientId ──
   const navigateToTransaction = useCallback((clientId: string, clientName?: string) => {
@@ -733,6 +724,19 @@ export default function ScanQRScreen() {
 
       // Haptic feedback
       safeNotification(Haptics.NotificationFeedbackType.Success);
+
+      // ── Coupon QR: jitplus://coupon/{token} (or bare c1.… token) → coupon validation screen
+      if (data.startsWith(COUPON_QR_PREFIX) || data.startsWith('c1.')) {
+        if (overlayTimeoutRef.current) clearTimeout(overlayTimeoutRef.current);
+        isNavigatingRef.current = true;
+        navTimeoutRef.current = setTimeout(() => {
+          navTimeoutRef.current = null;
+          const target = { pathname: '/coupon-validate', params: { token: data } } as const;
+          if (openedFromCoupon) router.replace(target);
+          else router.push(target);
+        }, NAVIGATION_DELAY_MS);
+        return;
+      }
 
       // ── Format 1: jitplus://scan/{JWT_TOKEN} (signed QR from client app)
       if (data.startsWith('jitplus://scan/')) {
@@ -803,7 +807,7 @@ export default function ScanQRScreen() {
         safeNotification(Haptics.NotificationFeedbackType.Error);
       }
     },
-    [isScanning, navigateToTransaction, set, t],
+    [isScanning, navigateToTransaction, set, t, router, openedFromCoupon],
   );
 
   // Gate the scanner handler at the prop level so CameraView sees a stable
@@ -1017,7 +1021,6 @@ export default function ScanQRScreen() {
           dispatch({ type: 'TOGGLE_FLASH' });
         }}
         onClose={handleClose}
-        theme={theme}
         t={t}
       />
 

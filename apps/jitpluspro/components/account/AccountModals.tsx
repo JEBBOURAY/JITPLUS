@@ -1,6 +1,6 @@
-import React, { useRef } from 'react';
+import { useRef } from 'react';
 import {
-  View, Text, StyleSheet, Modal, TouchableOpacity, Pressable, ActivityIndicator, Platform, InteractionManager,
+  View, Text, StyleSheet, Modal, TouchableOpacity, Pressable, ActivityIndicator, Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Camera, Trash2 } from 'lucide-react-native';
@@ -37,7 +37,7 @@ export function LogoEditModal({
       onClose();
     } else {
       onClose();
-      InteractionManager.runAfterInteractions(() => onPickPhoto());
+      requestIdleCallback(() => onPickPhoto());
     }
   };
   const handleDismiss = () => {
@@ -140,7 +140,7 @@ export function LogoEditModal({
 /* ── Cover Edit Bottom Sheet ── */
 
 export function CoverEditModal({
-  visible, onClose, theme, t, merchant, uploadIsPending, onPickPhoto, onDelete,
+  visible, onClose, theme, t, merchant, onPickPhoto, onDelete,
 }: LogoModalProps) {
   const insets = useSafeAreaInsets();
   // Same iOS constraint as the logo modal: defer picker launch to onDismiss.
@@ -151,7 +151,7 @@ export function CoverEditModal({
       onClose();
     } else {
       onClose();
-      InteractionManager.runAfterInteractions(() => onPickPhoto());
+      requestIdleCallback(() => onPickPhoto());
     }
   };
   const handleDismiss = () => {

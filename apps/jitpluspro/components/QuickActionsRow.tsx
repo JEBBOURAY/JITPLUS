@@ -18,7 +18,8 @@ import { useTourTarget, type TourTargetKey } from '@/components/GuidedTour';
  *
  * Data-driven: pass a list of {@link QuickAction} items (icon, label, optional
  * premium badge, destination route). Premium items still navigate on tap — the
- * locked/upsell state is handled by the destination screen, not here.
+ * locked/upsell state is handled by the destination screen, not here — unless
+ * the item provides its own `onPress` (e.g. to show an upsell modal first).
  */
 export interface QuickAction {
   key: string;
@@ -26,6 +27,8 @@ export interface QuickAction {
   Icon: LucideIcon;
   /** expo-router path pushed on tap. */
   route: string;
+  /** Custom tap handler; replaces the default `route` navigation when set. */
+  onPress?: () => void;
   /** Shows a gold Premium dot; does NOT block navigation. */
   premium?: boolean;
   /** Screen-reader label. Falls back to `label`. */
@@ -51,7 +54,7 @@ const QuickActionItem = React.memo(function QuickActionItem({
 }: {
   item: QuickAction;
   headerColor: string;
-  onPress: (route: string) => void;
+  onPress: (item: QuickAction) => void;
 }) {
   const tourRef = useTourTarget(item.tourKey);
   const { label, Icon, premium, accessibilityLabel } = item;
@@ -60,7 +63,7 @@ const QuickActionItem = React.memo(function QuickActionItem({
       ref={tourRef}
       style={styles.item}
       activeOpacity={0.75}
-      onPress={() => onPress(item.route)}
+      onPress={() => onPress(item)}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
       hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
@@ -85,9 +88,13 @@ function QuickActionsRow({ items, headerColor = palette.violetDeep }: Props) {
   const router = useRouter();
 
   const handlePress = useCallback(
-    (route: string) => {
+    (item: QuickAction) => {
       pokeInteraction();
-      router.push(route as never);
+      if (item.onPress) {
+        item.onPress();
+        return;
+      }
+      router.push(item.route as never);
     },
     [router],
   );

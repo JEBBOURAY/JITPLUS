@@ -27,7 +27,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useGuardedCallback } from '@/hooks/useGuardedCallback';
 import { timeAgo } from '@/utils/date';
 import { useNotificationHistory } from '@/hooks/useQueryHooks';
-import type { NotificationRecord } from '@/hooks/useQueryHooks';
+import type { NotificationRecord } from '@/types';
 
 type HistoryFilter = 'ALL' | 'PUSH' | 'EMAIL' | 'WHATSAPP';
 

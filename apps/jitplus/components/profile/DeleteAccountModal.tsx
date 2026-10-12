@@ -35,7 +35,7 @@ export default function DeleteAccountModal({ visible, hasPassword, onClose, onCo
       <View style={styles.modalOverlay}>
         <View style={[styles.modalCard, { backgroundColor: theme.bgCard }]} accessibilityRole="alert" accessibilityViewIsModal>
           <View style={[styles.modalIconCircle, { backgroundColor: `${theme.danger}12` }]}>
-            <AlertTriangle size={ms(16)} color={theme.danger} strokeWidth={1.5} />
+            <AlertTriangle size={ms(22)} color={theme.danger} strokeWidth={1.8} />
           </View>
           <Text style={[styles.modalTitle, { color: theme.text }]}>{t('profile.deleteModalTitle')}</Text>
           <Text style={[styles.modalBody, { color: theme.textMuted }]}>

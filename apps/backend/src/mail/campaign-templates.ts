@@ -200,35 +200,35 @@ const WELCOME_DAY1: Record<Lang, {
   bullets: [string, string, string]; cta: string;
 }> = {
   fr: {
-    pre: 'Explorez les commerces autour de vous et commencez à gagner des points !',
+    pre: 'Explorez les commerces autour de vous et commencez à gagner des tampons !',
     h: '🏪 D&eacute;couvrez les commerces pr&egrave;s de vous !',
-    p1: (b) => `Des dizaines de commerces partenaires vous attendent sur <strong style="color: ${b};">JitPlus</strong>. Caf&eacute;s, restaurants, salons de beaut&eacute;, boutiques&hellip; Gagnez des points &agrave; chaque visite !`,
+    p1: (b) => `Des dizaines de commerces partenaires vous attendent sur <strong style="color: ${b};">JitPlus</strong>. Caf&eacute;s, restaurants, salons de beaut&eacute;, boutiques&hellip; Gagnez des tampons &agrave; chaque visite !`,
     bullets: [
       '📍 Trouvez les commerces &agrave; c&ocirc;t&eacute; de vous',
-      '📱 Scannez le QR code pour gagner des points',
-      '🎁 &Eacute;changez vos points contre des r&eacute;compenses',
+      '📱 Scannez le QR code pour gagner des tampons',
+      '🎁 &Eacute;changez vos tampons contre des r&eacute;compenses',
     ],
     cta: 'Explorer les commerces',
   },
   en: {
-    pre: 'Discover shops around you and start earning points!',
+    pre: 'Discover shops around you and start earning stamps!',
     h: '🏪 Discover shops near you!',
-    p1: (b) => `Dozens of partner shops are waiting for you on <strong style="color: ${b};">JitPlus</strong>. Cafes, restaurants, beauty salons, boutiques&hellip; Earn points on every visit!`,
+    p1: (b) => `Dozens of partner shops are waiting for you on <strong style="color: ${b};">JitPlus</strong>. Cafes, restaurants, beauty salons, boutiques&hellip; Earn stamps on every visit!`,
     bullets: [
       '📍 Find shops right next to you',
-      '📱 Scan the QR code to earn points',
-      '🎁 Redeem your points for rewards',
+      '📱 Scan the QR code to earn stamps',
+      '🎁 Redeem your stamps for rewards',
     ],
     cta: 'Explore shops',
   },
   ar: {
-    pre: 'اكتشف المحلات اللي قريبين منك وابدا تجمع النقط!',
+    pre: 'اكتشف المحلات اللي قريبين منك وابدا تجمع الطوابع!',
     h: '🏪 اكتشف المحلات اللي قريبين منك!',
-    p1: (b) => `عشرات المحلات الشركاء كيتسناوك ف <strong style="color: ${b};">JitPlus</strong>. قهاوي، ريسطوران، صالونات، حوانت&hellip; اربح نقط ف كل زيارة!`,
+    p1: (b) => `عشرات المحلات الشركاء كيتسناوك ف <strong style="color: ${b};">JitPlus</strong>. قهاوي، ريسطوران، صالونات، حوانت&hellip; اربح طوابع ف كل زيارة!`,
     bullets: [
       '📍 لقى المحلات اللي حدا ليك',
-      '📱 سكاني QR كود باش تربح نقط',
-      '🎁 بدل النقط ديالك بكادوات',
+      '📱 سكاني QR كود باش تربح طوابع',
+      '🎁 بدل الطوابع ديالك بكادوات',
     ],
     cta: 'اكتشف المحلات',
   },
@@ -259,25 +259,25 @@ const WELCOME_DAY3: Record<Lang, {
   pre: string; h: string; p1: (b: string) => string; steps: string; flow: string; cta: string;
 }> = {
   fr: {
-    pre: 'Gagnez vos premiers points de fidélité — c\'est gratuit et rapide !',
-    h: '⭐ Gagnez vos premiers points !',
-    p1: (b) => `Saviez-vous que <strong>chaque achat</strong> chez un commerce partenaire vous rapporte des points ? Il suffit de montrer votre <strong style="color: ${b};">QR code JitPlus</strong> au commer&ccedil;ant.`,
+    pre: 'Gagnez vos premiers tampons de fidélité — c\'est gratuit et rapide !',
+    h: '⭐ Gagnez vos premiers tampons !',
+    p1: (b) => `Saviez-vous que <strong>chaque achat</strong> chez un commerce partenaire vous rapporte des tampons ? Il suffit de montrer votre <strong style="color: ${b};">QR code JitPlus</strong> au commer&ccedil;ant.`,
     steps: '3 &eacute;tapes simples',
     flow: '1. Achetez &mdash; 2. Scannez &mdash; 3. Gagnez !',
     cta: 'Ouvrir mon QR code',
   },
   en: {
-    pre: 'Earn your first loyalty points — it\'s free and fast!',
-    h: '⭐ Earn your first points!',
-    p1: (b) => `Did you know that <strong>every purchase</strong> at a partner shop earns you points? Just show your <strong style="color: ${b};">JitPlus QR code</strong> to the merchant.`,
+    pre: 'Earn your first loyalty stamps — it\'s free and fast!',
+    h: '⭐ Earn your first stamps!',
+    p1: (b) => `Did you know that <strong>every purchase</strong> at a partner shop earns you stamps? Just show your <strong style="color: ${b};">JitPlus QR code</strong> to the merchant.`,
     steps: '3 simple steps',
     flow: '1. Buy &mdash; 2. Scan &mdash; 3. Earn!',
     cta: 'Open my QR code',
   },
   ar: {
-    pre: 'اربح أول نقط ديالك ديال الوفاء — فابور وبزربة!',
-    h: '⭐ اربح أول النقط ديالك!',
-    p1: (b) => `واش كنتي تعرف بلي <strong>كل شراء</strong> عند تاجر شريك كيجيب ليك نقط؟ غير وري <strong style="color: ${b};">QR كود ديال JitPlus</strong> للتاجر.`,
+    pre: 'اربح أول طوابع ديالك ديال الوفاء — فابور وبزربة!',
+    h: '⭐ اربح أول الطوابع ديالك!',
+    p1: (b) => `واش كنتي تعرف بلي <strong>كل شراء</strong> عند تاجر شريك كيجيب ليك طوابع؟ غير وري <strong style="color: ${b};">QR كود ديال JitPlus</strong> للتاجر.`,
     steps: '3 خطوات ساهلين',
     flow: '1. شري &mdash; 2. سكاني &mdash; 3. اربح!',
     cta: 'حل QR كود ديالي',
@@ -359,25 +359,25 @@ export function buildWelcomeDay7Email(prenom: string | undefined, lang: Lang = '
 
 const REENGAGE_7D: Record<Lang, { pre: string; h: string; p1: string; p2: string; cta: string; }> = {
   fr: {
-    pre: 'Vos points vous attendent ! Passez chez vos commerces favoris.',
-    h: '💫 Vos points vous attendent !',
-    p1: 'Ça fait un moment qu\'on ne vous a pas vu ! Vos points de fidélité sont toujours là, prêts à être échangés contre des récompenses.',
-    p2: 'Passez chez vos commerces favoris pour continuer à cumuler des points ! 💪',
-    cta: 'Voir mes points',
+    pre: 'Vos tampons vous attendent ! Passez chez vos commerces favoris.',
+    h: '💫 Vos tampons vous attendent !',
+    p1: 'Ça fait un moment qu\'on ne vous a pas vu ! Vos tampons de fidélité sont toujours là, prêts à être échangés contre des récompenses.',
+    p2: 'Passez chez vos commerces favoris pour continuer à cumuler des tampons ! 💪',
+    cta: 'Voir mes tampons',
   },
   en: {
-    pre: 'Your points are waiting! Visit your favourite shops.',
-    h: '💫 Your points are waiting!',
-    p1: 'It\'s been a while! Your loyalty points are still here, ready to be redeemed for rewards.',
-    p2: 'Visit your favourite shops to keep earning points! 💪',
-    cta: 'View my points',
+    pre: 'Your stamps are waiting! Visit your favourite shops.',
+    h: '💫 Your stamps are waiting!',
+    p1: 'It\'s been a while! Your loyalty stamps are still here, ready to be redeemed for rewards.',
+    p2: 'Visit your favourite shops to keep earning stamps! 💪',
+    cta: 'View my stamps',
   },
   ar: {
-    pre: 'النقط ديالك كتسناك! دوز عند المحلات اللي كتعجبك.',
-    h: '💫 النقط ديالك كتسناك!',
-    p1: 'هادي شي مدة ما شفناكش! النقط ديال الوفاء ديالك مازالين ثمة، واجدين باش تبدلهم بكادوات.',
-    p2: 'دوز عند المحلات ديالك باش تكمل تجمع النقط! 💪',
-    cta: 'شوف النقط ديالي',
+    pre: 'الطوابع ديالك كتسناك! دوز عند المحلات اللي كتعجبك.',
+    h: '💫 الطوابع ديالك كتسناك!',
+    p1: 'هادي شي مدة ما شفناكش! الطوابع ديال الوفاء ديالك مازالين ثمة، واجدين باش تبدلهم بكادوات.',
+    p2: 'دوز عند المحلات ديالك باش تكمل تجمع الطوابع! 💪',
+    cta: 'شوف الطوابع ديالي',
   },
 };
 
@@ -401,24 +401,24 @@ export function buildReengagement7dEmail(prenom: string | undefined, lang: Lang 
 
 const REENGAGE_14D: Record<Lang, { pre: string; h: string; p1: string; badge: string; cta: string; }> = {
   fr: {
-    pre: 'Ne perdez pas vos avantages fidélité — revenez profiter de vos points !',
+    pre: 'Ne perdez pas vos avantages fidélité — revenez profiter de vos tampons !',
     h: '🔥 Ne perdez pas vos avantages !',
-    p1: 'Vos points et récompenses n\'attendent que vous. Ne laissez pas passer cette opportunité — des dizaines de commerces ont des offres spéciales pour vous !',
-    badge: '⚡ Vos points sont toujours valables',
+    p1: 'Vos tampons et récompenses n\'attendent que vous. Ne laissez pas passer cette opportunité — des dizaines de commerces ont des offres spéciales pour vous !',
+    badge: '⚡ Vos tampons sont toujours valables',
     cta: 'Revenir sur JitPlus',
   },
   en: {
-    pre: 'Don\'t lose your loyalty perks — come back and enjoy your points!',
+    pre: 'Don\'t lose your loyalty perks — come back and enjoy your stamps!',
     h: '🔥 Don\'t lose your perks!',
-    p1: 'Your points and rewards are waiting for you. Don\'t miss out — dozens of shops have special offers just for you!',
-    badge: '⚡ Your points are still valid',
+    p1: 'Your stamps and rewards are waiting for you. Don\'t miss out — dozens of shops have special offers just for you!',
+    badge: '⚡ Your stamps are still valid',
     cta: 'Come back to JitPlus',
   },
   ar: {
-    pre: 'ما تضيعش المزايا ديالك — رجع تمتع بالنقط!',
+    pre: 'ما تضيعش المزايا ديالك — رجع تمتع بالطوابع!',
     h: '🔥 ما تضيعش المزايا ديالك!',
-    p1: 'النقط والكادوات ديالك كيتسناوك. ما تخليش الفرصة تفوت — عشرات المحلات عندهم عروض خاصة ليك!',
-    badge: '⚡ النقط ديالك مازال صالحين',
+    p1: 'الطوابع والكادوات ديالك كيتسناوك. ما تخليش الفرصة تفوت — عشرات المحلات عندهم عروض خاصة ليك!',
+    badge: '⚡ الطوابع ديالك مازال صالحين',
     cta: 'رجع لـ JitPlus',
   },
 };
@@ -487,34 +487,42 @@ export function buildReengagement30dEmail(prenom: string | undefined, lang: Lang
 
 // ── Reward Reminder ────────────────────────────────────────────────────────
 
+/** Localized stamp unit label for reward reminder emails. */
+function stampUnit(lang: Lang, n: number): string {
+  if (lang === 'fr') return n > 1 ? 'tampons' : 'tampon';
+  if (lang === 'en') return n > 1 ? 'stamps' : 'stamp';
+  // Arabic / darija — same form for singular and plural
+  return 'طوابع';
+}
+
 const REWARD_AVAILABLE: Record<Lang, {
   pre: (r: string, m: string) => string;
   h: string; hello: string;
-  p1: (pts: number, m: string, accent: string) => string;
+  p1: (n: number, u: string, m: string, accent: string) => string;
   p2: (m: string) => string;
   cta: string;
 }> = {
   fr: {
-    pre: (r, m) => `Vous avez assez de points pour "${r}" chez ${m} !`,
+    pre: (r, m) => `Vous avez assez de tampons pour "${r}" chez ${m} !`,
     h: '🎉 R&eacute;compense disponible !',
     hello: 'Bonjour',
-    p1: (pts, m, accent) => `Bonne nouvelle ! Vous avez accumul&eacute; <strong style="color: ${accent};">${pts} points</strong> chez <strong>${m}</strong> &mdash; assez pour obtenir :`,
+    p1: (n, u, m, accent) => `Bonne nouvelle ! Vous avez accumul&eacute; <strong style="color: ${accent};">${n} ${u}</strong> chez <strong>${m}</strong> &mdash; assez pour obtenir :`,
     p2: (m) => `Passez chez <strong>${m}</strong> pour r&eacute;cup&eacute;rer votre r&eacute;compense !`,
     cta: 'Voir ma récompense',
   },
   en: {
-    pre: (r, m) => `You have enough points for "${r}" at ${m}!`,
+    pre: (r, m) => `You have enough stamps for "${r}" at ${m}!`,
     h: '🎉 Reward available!',
     hello: 'Hello',
-    p1: (pts, m, accent) => `Good news! You have earned <strong style="color: ${accent};">${pts} points</strong> at <strong>${m}</strong> &mdash; enough to claim:`,
+    p1: (n, u, m, accent) => `Good news! You have earned <strong style="color: ${accent};">${n} ${u}</strong> at <strong>${m}</strong> &mdash; enough to claim:`,
     p2: (m) => `Visit <strong>${m}</strong> to claim your reward!`,
     cta: 'View my reward',
   },
   ar: {
-    pre: (r, m) => `عندك نقط باش تاخد "${r}" عند ${m}!`,
+    pre: (r, m) => `عندك طوابع باش تاخد "${r}" عند ${m}!`,
     h: '🎉 الكادو متاح!',
     hello: 'السلام',
-    p1: (pts, m, accent) => `خبار زوين! جمعتي <strong style="color: ${accent};">${pts} نقطة</strong> عند <strong>${m}</strong> &mdash; كافيين باش تاخد:`,
+    p1: (n, u, m, accent) => `خبار زوين! جمعتي <strong style="color: ${accent};">${n} ${u}</strong> عند <strong>${m}</strong> &mdash; كافيين باش تاخد:`,
     p2: (m) => `دوز عند <strong>${m}</strong> باش تاخد الكادو ديالك!`,
     cta: 'شوف الكادو ديالي',
   },
@@ -524,7 +532,7 @@ export function buildRewardAvailableEmail(
   prenom: string | undefined,
   merchantName: string,
   rewardName: string,
-  points: number,
+  stamps: number,
   merchantId?: string,
   lang: Lang = 'fr',
 ): string {
@@ -540,7 +548,7 @@ export function buildRewardAvailableEmail(
     content: `
       <h2 style="color: #1E1B4B; font-size: 20px; margin: 0 0 12px;">${c.h}</h2>
       <p style="color: #334155; font-size: 15px; line-height: 1.7; margin: 0 0 16px;">${c.hello} ${name},</p>
-      <p style="color: #334155; font-size: 15px; line-height: 1.7; margin: 0 0 16px;">${c.p1(points, safeMerchant, brand.accent)}</p>
+      <p style="color: #334155; font-size: 15px; line-height: 1.7; margin: 0 0 16px;">${c.p1(stamps, stampUnit(lang, stamps), safeMerchant, brand.accent)}</p>
       <div style="background: ${brand.accentLight}; border-radius: 10px; padding: 20px; text-align: center; margin-bottom: 16px;">
         <p style="color: ${brand.accent}; font-size: 18px; font-weight: 800; margin: 0;">🎁 ${safeReward}</p>
       </div>
@@ -552,14 +560,6 @@ export function buildRewardAvailableEmail(
       merchantId,
     }),
   });
-}
-
-/** Localized unit label for the "almost there" email. */
-function almostUnit(lang: Lang, remaining: number, isStamps: boolean): string {
-  if (lang === 'fr') return isStamps ? (remaining > 1 ? 'tampons' : 'tampon') : 'points';
-  if (lang === 'en') return isStamps ? (remaining > 1 ? 'stamps' : 'stamp') : 'points';
-  // Arabic / darija — same form for singular and plural
-  return isStamps ? 'طوابع' : 'نقط';
 }
 
 const ALMOST_THERE: Record<Lang, {
@@ -577,7 +577,7 @@ const ALMOST_THERE: Record<Lang, {
     p1: (n, u, m, accent) => `Il ne vous manque plus que <strong style="color: ${accent};">${n} ${u}</strong> chez <strong>${m}</strong> pour d&eacute;bloquer votre r&eacute;compense !`,
     badge: (n, u) => `⚡ Plus que ${n} ${u} !`,
     p2: (m) => `Passez chez <strong>${m}</strong> pour compl&eacute;ter votre carte et profiter de votre r&eacute;compense !`,
-    cta: 'Voir mes points',
+    cta: 'Voir mes tampons',
   },
   en: {
     pre: (n, u, m) => `Only ${n} more ${u} at ${m} for your reward!`,
@@ -586,7 +586,7 @@ const ALMOST_THERE: Record<Lang, {
     p1: (n, u, m, accent) => `You only need <strong style="color: ${accent};">${n} more ${u}</strong> at <strong>${m}</strong> to unlock your reward!`,
     badge: (n, u) => `⚡ Only ${n} ${u} left!`,
     p2: (m) => `Stop by <strong>${m}</strong> to complete your card and enjoy your reward!`,
-    cta: 'View my points',
+    cta: 'View my stamps',
   },
   ar: {
     pre: (n, u, m) => `بقا ليك ${n} ${u} عند ${m} باش تاخد الكادو!`,
@@ -595,7 +595,7 @@ const ALMOST_THERE: Record<Lang, {
     p1: (n, u, m, accent) => `بقا ليك غير <strong style="color: ${accent};">${n} ${u}</strong> عند <strong>${m}</strong> باش تفتح الكادو!`,
     badge: (n, u) => `⚡ بقا ${n} ${u}!`,
     p2: (m) => `دوز عند <strong>${m}</strong> باش تكمل الكارط وتاخد الكادو ديالك!`,
-    cta: 'شوف النقط ديالي',
+    cta: 'شوف الطوابع ديالي',
   },
 };
 
@@ -603,14 +603,13 @@ export function buildAlmostThereEmail(
   prenom: string | undefined,
   merchantName: string,
   remaining: number,
-  isStamps: boolean,
   merchantId?: string,
   lang: Lang = 'fr',
 ): string {
   const brand = BRANDS.client;
   const name = escapeHtml(prenom || DEFAULT_NAME[lang]);
   const safeMerchant = escapeHtml(merchantName);
-  const unit = almostUnit(lang, remaining, isStamps);
+  const unit = stampUnit(lang, remaining);
   const c = ALMOST_THERE[lang];
 
   return wrapCampaignEmail({
@@ -636,50 +635,50 @@ export function buildAlmostThereEmail(
 // ── Weekly Digest ────────────────────────────────────────────────────────────
 
 const WEEKLY_DIGEST: Record<Lang, {
-  pre: (pts: number, n: number) => string;
+  pre: (stamps: number, n: number) => string;
   h: string; hello: string; intro: string;
   earnedLabel: string; visitsLabel: string;
   outroPositive: string; outroEmpty: string;
   cta: string;
 }> = {
   fr: {
-    pre: (pts, n) => `Cette semaine : +${pts} points chez ${n} commerce(s) !`,
+    pre: (stamps, n) => `Cette semaine : +${stamps} tampon(s) chez ${n} commerce(s) !`,
     h: '📊 Votre r&eacute;sum&eacute; de la semaine',
     hello: 'Bonjour',
     intro: 'Voici vos stats de la semaine sur JitPlus :',
-    earnedLabel: 'points gagn&eacute;s',
+    earnedLabel: 'tampons gagn&eacute;s',
     visitsLabel: 'commerce(s) visit&eacute;(s)',
     outroPositive: 'Bravo, continuez comme &ccedil;a ! 💪',
-    outroEmpty: 'Visitez vos commerces favoris cette semaine pour gagner des points !',
-    cta: 'Voir tous mes points',
+    outroEmpty: 'Visitez vos commerces favoris cette semaine pour gagner des tampons !',
+    cta: 'Voir tous mes tampons',
   },
   en: {
-    pre: (pts, n) => `This week: +${pts} points across ${n} shop(s)!`,
+    pre: (stamps, n) => `This week: +${stamps} stamp(s) across ${n} shop(s)!`,
     h: '📊 Your week on JitPlus',
     hello: 'Hello',
     intro: 'Here are your JitPlus stats for the week:',
-    earnedLabel: 'points earned',
+    earnedLabel: 'stamps earned',
     visitsLabel: 'shop(s) visited',
     outroPositive: 'Great work, keep it up! 💪',
-    outroEmpty: 'Visit your favourite shops this week to earn points!',
-    cta: 'View all my points',
+    outroEmpty: 'Visit your favourite shops this week to earn stamps!',
+    cta: 'View all my stamps',
   },
   ar: {
-    pre: (pts, n) => `هاد السيمانة: +${pts} نقطة عند ${n} محل!`,
+    pre: (stamps, n) => `هاد السيمانة: +${stamps} طابع عند ${n} محل!`,
     h: '📊 الملخص ديال السيمانة ديالك',
     hello: 'السلام',
     intro: 'هاهي الإحصائيات ديالك ف JitPlus هاد السيمانة:',
-    earnedLabel: 'نقط مربوحة',
+    earnedLabel: 'طوابع مربوحة',
     visitsLabel: 'محل مزور',
     outroPositive: 'برافو، كمل هكاك! 💪',
-    outroEmpty: 'زور المحلات ديالك هاد السيمانة باش تربح نقط!',
-    cta: 'شوف كل النقط ديالي',
+    outroEmpty: 'زور المحلات ديالك هاد السيمانة باش تربح طوابع!',
+    cta: 'شوف كل الطوابع ديالي',
   },
 };
 
 export function buildWeeklyDigestEmail(
   prenom: string | undefined,
-  totalPoints: number,
+  totalStamps: number,
   merchantCount: number,
   lang: Lang = 'fr',
 ): string {
@@ -689,7 +688,7 @@ export function buildWeeklyDigestEmail(
 
   return wrapCampaignEmail({
     brand, lang,
-    preheader: c.pre(totalPoints, merchantCount),
+    preheader: c.pre(totalStamps, merchantCount),
     content: `
       <h2 style="color: #1E1B4B; font-size: 20px; margin: 0 0 12px;">${c.h}</h2>
       <p style="color: #334155; font-size: 15px; line-height: 1.7; margin: 0 0 16px;">${c.hello} ${name},</p>
@@ -697,7 +696,7 @@ export function buildWeeklyDigestEmail(
       <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin-bottom: 20px;">
         <tr>
           <td style="width: 50%; padding: 12px; background: ${brand.accentLight}; border-radius: 10px 0 0 10px; text-align: center;">
-            <p style="color: ${brand.accent}; font-size: 28px; font-weight: 800; margin: 0;">+${totalPoints}</p>
+            <p style="color: ${brand.accent}; font-size: 28px; font-weight: 800; margin: 0;">+${totalStamps}</p>
             <p style="color: ${brand.accentMuted}; font-size: 13px; margin: 4px 0 0;">${c.earnedLabel}</p>
           </td>
           <td style="width: 50%; padding: 12px; background: ${brand.accentLight}; border-radius: 0 10px 10px 0; text-align: center;">
@@ -706,7 +705,7 @@ export function buildWeeklyDigestEmail(
           </td>
         </tr>
       </table>
-      <p style="color: #334155; font-size: 15px; line-height: 1.7; margin: 0;">${totalPoints > 0 ? c.outroPositive : c.outroEmpty}</p>`,
+      <p style="color: #334155; font-size: 15px; line-height: 1.7; margin: 0;">${totalStamps > 0 ? c.outroPositive : c.outroEmpty}</p>`,
     ctaText: c.cta,
     ctaUrl: buildCampaignCta({ appPath: '/(tabs)', campaign: 'weekly_digest' }),
   });
@@ -790,7 +789,7 @@ const FEATURE_STAMPS: Record<Lang, {
     pre: 'Découvrez les cartes de tampons — collectez et gagnez des récompenses gratuites !',
     h: '📋 Le saviez-vous ?',
     hello: 'Bonjour',
-    p1: (accent) => `Certains commerces sur JitPlus proposent des <strong style="color: ${accent};">cartes de tampons</strong>. &Agrave; chaque visite, vous collectez un tampon. Une fois la carte compl&egrave;te, vous gagnez une r&eacute;compense gratuite !`,
+    p1: (accent) => `Sur JitPlus, chaque commerce partenaire a sa <strong style="color: ${accent};">carte de tampons</strong>. &Agrave; chaque visite, vous collectez un tampon. Une fois la carte compl&egrave;te, vous gagnez une r&eacute;compense gratuite !`,
     caption: '10 tampons = 1 r&eacute;compense gratuite',
     cta: 'Découvrir les commerces',
   },
@@ -798,7 +797,7 @@ const FEATURE_STAMPS: Record<Lang, {
     pre: 'Discover stamp cards — collect and earn free rewards!',
     h: '📋 Did you know?',
     hello: 'Hello',
-    p1: (accent) => `Some shops on JitPlus offer <strong style="color: ${accent};">stamp cards</strong>. Every visit, you collect a stamp. Once the card is full, you get a free reward!`,
+    p1: (accent) => `On JitPlus, every partner shop has its own <strong style="color: ${accent};">stamp card</strong>. Every visit, you collect a stamp. Once the card is full, you get a free reward!`,
     caption: '10 stamps = 1 free reward',
     cta: 'Discover shops',
   },
@@ -806,7 +805,7 @@ const FEATURE_STAMPS: Record<Lang, {
     pre: 'اكتشف كارطات الطوابع — جمع واربح كادوات فابور!',
     h: '📋 واش كنتي تعرف؟',
     hello: 'السلام',
-    p1: (accent) => `بعض المحلات ف JitPlus كيقدمو <strong style="color: ${accent};">كارطات الطوابع</strong>. ف كل زيارة كتجمع طابع. ملي تكمل الكارطة، كتاخد كادو فابور!`,
+    p1: (accent) => `ف JitPlus، كل محل شريك عندو <strong style="color: ${accent};">كارطة الطوابع</strong> ديالو. ف كل زيارة كتجمع طابع. ملي تكمل الكارطة، كتاخد كادو فابور!`,
     caption: '10 طوابع = كادو فابور',
     cta: 'اكتشف المحلات',
   },
@@ -840,40 +839,40 @@ const FEATURE_QR: Record<Lang, {
   cta: string;
 }> = {
   fr: {
-    pre: 'Scanner = Gagner ! Gagnez des points automatiquement à chaque achat.',
+    pre: 'Scanner = Gagner ! Gagnez des tampons automatiquement à chaque achat.',
     h: '📱 Scanner = Gagner !',
     hello: 'Bonjour',
-    intro: 'Avec JitPlus, chaque achat vous rapporte des points. Comment &ccedil;a marche ?',
+    intro: 'Avec JitPlus, chaque achat vous rapporte des tampons. Comment &ccedil;a marche ?',
     steps: [
       '🛒 Faites vos achats normalement',
       '📲 Montrez votre QR code au commer&ccedil;ant',
-      '⭐ Les points s\'ajoutent automatiquement',
+      '⭐ Les tampons s\'ajoutent automatiquement',
       '🎁 &Eacute;changez contre des r&eacute;compenses',
     ],
     cta: 'Ouvrir mon QR code',
   },
   en: {
-    pre: 'Scan = Earn! Get points automatically on every purchase.',
+    pre: 'Scan = Earn! Get stamps automatically on every purchase.',
     h: '📱 Scan = Earn!',
     hello: 'Hello',
-    intro: 'With JitPlus, every purchase earns you points. How does it work?',
+    intro: 'With JitPlus, every purchase earns you stamps. How does it work?',
     steps: [
       '🛒 Shop as usual',
       '📲 Show your QR code to the merchant',
-      '⭐ Points are added automatically',
+      '⭐ Stamps are added automatically',
       '🎁 Redeem for rewards',
     ],
     cta: 'Open my QR code',
   },
   ar: {
-    pre: 'سكاني = اربح! اربح نقط أوتوماتيك ف كل شراء.',
+    pre: 'سكاني = اربح! اربح طوابع أوتوماتيك ف كل شراء.',
     h: '📱 سكاني = اربح!',
     hello: 'السلام',
-    intro: 'مع JitPlus، كل شراء كيجيب ليك نقط. كيفاش كتخدم؟',
+    intro: 'مع JitPlus، كل شراء كيجيب ليك طوابع. كيفاش كتخدم؟',
     steps: [
       '🛒 دير الشراء ديالك بشكل عادي',
       '📲 وري QR كود ديالك للتاجر',
-      '⭐ النقط كتزاد أوتوماتيك',
+      '⭐ الطوابع كتزاد أوتوماتيك',
       '🎁 بدلهم بكادوات',
     ],
     cta: 'حل QR كود ديالي',
@@ -993,10 +992,10 @@ const MERCHANT_EMAIL_STRINGS: Record<Lang, {
     tipRewTitle: '💡 Astuce : R&eacute;compenses personnalis&eacute;es',
     tipRewPreheader: 'Astuce : Créez des récompenses attractives pour fidéliser vos clients !',
     tipRewIntro: 'Les r&eacute;compenses sont le c&oelig;ur de votre programme de fid&eacute;lit&eacute;. Voici quelques id&eacute;es qui fonctionnent bien chez nos marchands :',
-    tipRewCoffee: '☕ <strong>Caf&eacute; gratuit</strong> &mdash; 100 points',
-    tipRewDiscount: '🏷️ <strong>Remise 10%</strong> &mdash; 200 points',
-    tipRewGift: '🎁 <strong>Cadeau surprise</strong> &mdash; 500 points',
-    tipRewVip: '⭐ <strong>Service VIP</strong> &mdash; 1000 points',
+    tipRewCoffee: '☕ <strong>Caf&eacute; gratuit</strong> &mdash; 5 tampons',
+    tipRewDiscount: '🏷️ <strong>Remise 10%</strong> &mdash; 10 tampons',
+    tipRewGift: '🎁 <strong>Cadeau surprise</strong> &mdash; 15 tampons',
+    tipRewVip: '⭐ <strong>Service VIP</strong> &mdash; 20 tampons',
     tipRewOutro: 'Cr&eacute;ez des r&eacute;compenses vari&eacute;es et accessibles pour encourager les visites r&eacute;p&eacute;t&eacute;es !',
     tipRewCta: 'Gérer mes récompenses',
     tipRewSubject: '💡 Personnalisez vos récompenses de fidélité',
@@ -1044,10 +1043,10 @@ const MERCHANT_EMAIL_STRINGS: Record<Lang, {
     tipRewTitle: '💡 Tip: Custom rewards',
     tipRewPreheader: 'Tip: Create attractive rewards to keep your clients loyal!',
     tipRewIntro: 'Rewards are the heart of your loyalty program. Here are a few ideas that work well for our merchants:',
-    tipRewCoffee: '☕ <strong>Free coffee</strong> &mdash; 100 points',
-    tipRewDiscount: '🏷️ <strong>10% off</strong> &mdash; 200 points',
-    tipRewGift: '🎁 <strong>Surprise gift</strong> &mdash; 500 points',
-    tipRewVip: '⭐ <strong>VIP service</strong> &mdash; 1000 points',
+    tipRewCoffee: '☕ <strong>Free coffee</strong> &mdash; 5 stamps',
+    tipRewDiscount: '🏷️ <strong>10% off</strong> &mdash; 10 stamps',
+    tipRewGift: '🎁 <strong>Surprise gift</strong> &mdash; 15 stamps',
+    tipRewVip: '⭐ <strong>VIP service</strong> &mdash; 20 stamps',
     tipRewOutro: 'Create varied, reachable rewards to encourage repeat visits!',
     tipRewCta: 'Manage my rewards',
     tipRewSubject: '💡 Customise your loyalty rewards',
@@ -1095,10 +1094,10 @@ const MERCHANT_EMAIL_STRINGS: Record<Lang, {
     tipRewTitle: '💡 نصيحة: مكافآت مخصصة',
     tipRewPreheader: 'نصيحة: صاوب مكافآت مغرية باش تفيداليزي الكليان!',
     tipRewIntro: 'المكافآت هي قلب برنامج الولاء ديالك. هاهي بعض الأفكار اللي كتخدم مزيان عند التجار ديالنا:',
-    tipRewCoffee: '☕ <strong>قهوة مجانية</strong> &mdash; 100 نقطة',
-    tipRewDiscount: '🏷️ <strong>تخفيض 10%</strong> &mdash; 200 نقطة',
-    tipRewGift: '🎁 <strong>كادو مفاجأة</strong> &mdash; 500 نقطة',
-    tipRewVip: '⭐ <strong>خدمة VIP</strong> &mdash; 1000 نقطة',
+    tipRewCoffee: '☕ <strong>قهوة مجانية</strong> &mdash; 5 طوابع',
+    tipRewDiscount: '🏷️ <strong>تخفيض 10%</strong> &mdash; 10 طوابع',
+    tipRewGift: '🎁 <strong>كادو مفاجأة</strong> &mdash; 15 طوابع',
+    tipRewVip: '⭐ <strong>خدمة VIP</strong> &mdash; 20 طوابع',
     tipRewOutro: 'صاوب مكافآت متنوعة وواصلة باش تشجع الزيارات المتكررة!',
     tipRewCta: 'دبر المكافآت ديالي',
     tipRewSubject: '💡 خصص المكافآت ديال الولاء',

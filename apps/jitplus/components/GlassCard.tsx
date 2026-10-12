@@ -7,9 +7,15 @@ interface GlassCardProps {
   style?: ViewStyle;
   children: React.ReactNode;
   haptic?: boolean;
+  /** Corner radius of the press-glow overlay; should match the child's radius. */
+  radius?: number;
+  accessibilityLabel?: string;
+  accessibilityHint?: string;
 }
 
-export default memo(function GlassCard({ onPress, style, children, haptic = true }: GlassCardProps) {
+export default memo(function GlassCard({
+  onPress, style, children, haptic = true, radius = 16, accessibilityLabel, accessibilityHint,
+}: GlassCardProps) {
   const scale = useRef(new Animated.Value(1)).current;
   const glow = useRef(new Animated.Value(0)).current;
   const currentAnim = useRef<Animated.CompositeAnimation | null>(null);
@@ -22,7 +28,7 @@ export default memo(function GlassCard({ onPress, style, children, haptic = true
     currentAnim.current?.stop();
     currentAnim.current = Animated.parallel([
       Animated.spring(scale, {
-        toValue: 0.965,
+        toValue: 0.975,
         useNativeDriver: true,
         speed: 60,
         bounciness: 1,
@@ -68,6 +74,8 @@ export default memo(function GlassCard({ onPress, style, children, haptic = true
       onPressOut={handlePressOut}
       disabled={!onPress}
       accessibilityRole={onPress ? 'button' : undefined}
+      accessibilityLabel={accessibilityLabel}
+      accessibilityHint={accessibilityHint}
     >
       <Animated.View style={[{ transform: [{ scale }] }, style]}>
         {children}
@@ -77,7 +85,7 @@ export default memo(function GlassCard({ onPress, style, children, haptic = true
           style={[
             StyleSheet.absoluteFill,
             glassStyles.glowOverlay,
-            { opacity: glow.interpolate({ inputRange: [0, 1], outputRange: [0, 0.07] }) },
+            { borderRadius: radius, opacity: glow.interpolate({ inputRange: [0, 1], outputRange: [0, 0.06] }) },
           ]}
         />
       </Animated.View>
@@ -88,6 +96,5 @@ export default memo(function GlassCard({ onPress, style, children, haptic = true
 const glassStyles = StyleSheet.create({
   glowOverlay: {
     backgroundColor: '#7C3AED',
-    borderRadius: 16,
   },
 });

@@ -4,6 +4,7 @@ import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { RewardsService } from './rewards.service';
 import { REWARD_REPOSITORY } from './reward.repository.interface';
 import { MerchantPlanService } from '../merchant/services/merchant-plan.service';
+import { STORAGE_PROVIDER } from '../common/interfaces';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -38,6 +39,10 @@ const mockPlanService = {
   isPremium: jest.fn().mockResolvedValue(true),
 };
 
+const mockStorage = {
+  deleteFile: jest.fn(),
+};
+
 // ── Suite ─────────────────────────────────────────────────────────────────────
 
 describe('RewardsService', () => {
@@ -50,6 +55,7 @@ describe('RewardsService', () => {
         { provide: REWARD_REPOSITORY, useValue: mockRewardRepo },
         { provide: CACHE_MANAGER, useValue: mockCache },
         { provide: MerchantPlanService, useValue: mockPlanService },
+        { provide: STORAGE_PROVIDER, useValue: mockStorage },
       ],
     }).compile();
 

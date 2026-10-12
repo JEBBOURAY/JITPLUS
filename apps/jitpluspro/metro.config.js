@@ -17,9 +17,8 @@ const config = getDefaultConfig(projectRoot);
 // mode" because there are too many files (node_modules/.pnpm, android/build…).
 //
 // Strategy (mirrors apps/jitplus/metro.config.js which works correctly):
-//  1. watchFolders = shared package + pnpm content-addressable store only
+//  1. watchFolders = shared package only
 //  2. nodeModulesPaths = project node_modules only (pnpm junctions are complete)
-//  3. unstable_enableSymlinks = true  → Metro follows pnpm junctions correctly
 
 // 1. Watch shared package paths only.
 //    Avoid watching the global pnpm store on Windows because it can make
@@ -46,13 +45,7 @@ config.resolver.nodeModulesPaths = [
 // Deduplicate in case the project root was already included
 config.resolver.nodeModulesPaths = [...new Set(config.resolver.nodeModulesPaths)];
 
-// 3. Follow pnpm symlinks/junctions on Windows only
-// (Linux/macOS uses real symlinks that Metro follows natively)
-if (process.platform === 'win32') {
-  // config.resolver.unstable_enableSymlinks = true;
-}
-
-// 4. Force a single copy of packages that break when duplicated (context mismatch).
+// 3. Force a single copy of packages that break when duplicated (context mismatch).
 //    pnpm creates multiple copies with different peer-dep resolutions; Metro may
 //    resolve different copies for different import chains, causing
 //    "useLinkPreviewContext must be used within a LinkPreviewContextProvider".
@@ -65,7 +58,7 @@ config.resolver.extraNodeModules = {
   'expo-modules-core': path.resolve(monorepoRoot, 'node_modules', 'expo-modules-core'),
 };
 
-// 5. Force-resolve singleton packages from projectRoot regardless of the
+// 4. Force-resolve singleton packages from projectRoot regardless of the
 //    importing file's location.  In a pnpm monorepo many packages also exist
 //    at <monorepoRoot>/node_modules (hoisted copies).  Metro's default
 //    resolution walks up directory trees, so an import from packages/shared

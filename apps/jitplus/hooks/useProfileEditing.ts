@@ -1,31 +1,76 @@
-import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { Alert, Platform, AppState, AppStateStatus } from 'react-native';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { Alert, AppState, AppStateStatus } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { haptic, HapticStyle } from '@/utils/haptics';
 import { api } from '@/services/api';
 import { isValidEmail } from '@/utils/validation';
 import { extractErrorMessage } from '@/utils/errorMessage';
-import { formatDateInput, toIsoDate, isoDtoDmy } from '@/utils/dateInput';
+import { toIsoDate, isoDtoDmy } from '@/utils/dateInput';
 import { DRAFT_PERSIST_DEBOUNCE_MS, OTP_RESEND_COOLDOWN_S } from '@/constants';
 import { DEFAULT_COUNTRY, COUNTRY_CODES, isValidPhoneForCountry, type CountryCode } from '@/utils/countryCodes';
 import type { Client } from '@/types';
 
+const DRAFT_KEY = 'profile_draft';
+
+// Longest-dial-first so '+1' (US) doesn't shadow '+12' / '+123' dial codes.
+const COUNTRIES_BY_DIAL_LENGTH = [...COUNTRY_CODES].sort((a, b) => b.dial.length - a.dial.length);
+
+interface ProfileFields {
+  prenom: string;
+  nom: string;
+  email: string;
+  phoneLocal: string;
+  phoneCountry: CountryCode;
+  dateNaissance: string;
+}
+
+function splitPhone(rawPhone: string): { country: CountryCode; local: string } {
+  if (!rawPhone.startsWith('+')) {
+    return { country: DEFAULT_COUNTRY, local: rawPhone.replace(/[^0-9]/g, '') };
+  }
+  const match = COUNTRIES_BY_DIAL_LENGTH.find((c) => rawPhone.startsWith(c.dial));
+  // Unknown dial code: keep the full +XXX number in the local field. The save
+  // path detects the leading '+' and sends it as-is instead of prefixing the
+  // selected dial again (would corrupt to e.g. '+212+33...').
+  return match
+    ? { country: match, local: rawPhone.slice(match.dial.length) }
+    : { country: DEFAULT_COUNTRY, local: rawPhone };
+}
+
+function fieldsFromClient(client: Client | null): ProfileFields {
+  const { country, local } = splitPhone(client?.telephone || '');
+  return {
+    prenom: client?.prenom || '',
+    nom: client?.nom || '',
+    email: client?.email || '',
+    phoneLocal: local,
+    phoneCountry: country,
+    dateNaissance: isoDtoDmy(client?.dateNaissance),
+  };
+}
+
+function sameFields(a: ProfileFields, b: ProfileFields): boolean {
+  return a.prenom === b.prenom
+    && a.nom === b.nom
+    && a.email === b.email
+    && a.phoneLocal === b.phoneLocal
+    && a.phoneCountry.code === b.phoneCountry.code
+    && a.dateNaissance === b.dateNaissance;
+}
+
+/**
+ * Form state for the edit-profile screen: field values seeded from the current
+ * client, dirty tracking, draft persistence when the app is backgrounded, and
+ * the OTP flow used to verify email / phone.
+ */
 export function useProfileEditing(
   client: Client | null,
   refreshProfile: (() => Promise<void>) | undefined,
   t: (key: string, options?: Record<string, unknown>) => string,
 ) {
-  const [isEditing, setIsEditing] = useState(false);
+  const [initialFields] = useState<ProfileFields>(() => fieldsFromClient(client));
+  const [fields, setFields] = useState<ProfileFields>(initialFields);
   const [isSaving, setIsSaving] = useState(false);
-
-  // Editable fields
-  const [editPrenom, setEditPrenom] = useState('');
-  const [editNom, setEditNom] = useState('');
-  const [editEmail, setEditEmail] = useState('');
-  const [editTelephone, setEditTelephone] = useState('');
-  const [editPhoneCountry, setEditPhoneCountry] = useState<CountryCode>(DEFAULT_COUNTRY);
-  const [editPhoneLocal, setEditPhoneLocal] = useState('');
-  const [editDateNaissance, setEditDateNaissance] = useState('');
 
   // OTP verification
   const [showOtpModal, setShowOtpModal] = useState(false);
@@ -36,53 +81,65 @@ export function useProfileEditing(
   const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [otpResendTimer, setOtpResendTimer] = useState(0);
 
-  // ── Persist editing draft when user leaves app ──
-  const isEditingRef = useRef(isEditing);
-  isEditingRef.current = isEditing;
-  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isDirty = !sameFields(fields, initialFields);
 
-  const draftRef = useRef({ editPrenom, editNom, editEmail, editTelephone, editPhoneLocal, editPhoneCountry: editPhoneCountry.code, editDateNaissance });
-  draftRef.current = { editPrenom, editNom, editEmail, editTelephone, editPhoneLocal, editPhoneCountry: editPhoneCountry.code, editDateNaissance };
+  const setField = useCallback(<K extends keyof ProfileFields>(key: K, value: ProfileFields[K]) => {
+    setFields((prev) => (prev[key] === value ? prev : { ...prev, [key]: value }));
+  }, []);
+
+  const setPrenom = useCallback((v: string) => setField('prenom', v), [setField]);
+  const setNom = useCallback((v: string) => setField('nom', v), [setField]);
+  const setEmail = useCallback((v: string) => setField('email', v), [setField]);
+  const setPhoneLocal = useCallback((v: string) => setField('phoneLocal', v), [setField]);
+  const setPhoneCountry = useCallback((v: CountryCode) => setField('phoneCountry', v), [setField]);
+  const setDateNaissance = useCallback((v: string) => setField('dateNaissance', v), [setField]);
+
+  // ── Persist the draft when the user leaves the app mid-edit ──
+  const fieldsRef = useRef(fields);
+  const isDirtyRef = useRef(isDirty);
+  useEffect(() => {
+    fieldsRef.current = fields;
+    isDirtyRef.current = isDirty;
+  }, [fields, isDirty]);
 
   useEffect(() => {
-    const handleAppState = async (nextState: AppStateStatus) => {
-      if (nextState === 'background' && isEditingRef.current) {
-        if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
-        draftTimerRef.current = setTimeout(async () => {
-          try {
-            // AsyncStorage: drafts can exceed SecureStore's 2048-byte limit
-            await AsyncStorage.setItem('profile_draft', JSON.stringify(draftRef.current));
-          } catch { /* best-effort */ }
-        }, DRAFT_PERSIST_DEBOUNCE_MS);
-      }
-    };
-    const sub = AppState.addEventListener('change', handleAppState);
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const sub = AppState.addEventListener('change', (next: AppStateStatus) => {
+      if (next !== 'background' || !isDirtyRef.current) return;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        const f = fieldsRef.current;
+        // AsyncStorage: drafts can exceed SecureStore's 2048-byte limit
+        AsyncStorage.setItem(DRAFT_KEY, JSON.stringify({ ...f, phoneCountry: f.phoneCountry.code })).catch(() => {});
+      }, DRAFT_PERSIST_DEBOUNCE_MS);
+    });
     return () => {
       sub.remove();
-      if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+      if (timer) clearTimeout(timer);
     };
   }, []);
 
-  // Restore draft on mount
+  // Restore a draft left by a previous session (one-shot).
   useEffect(() => {
-    AsyncStorage.getItem('profile_draft').then((raw) => {
+    AsyncStorage.getItem(DRAFT_KEY).then((raw) => {
       if (!raw) return;
+      AsyncStorage.removeItem(DRAFT_KEY).catch(() => {});
       try {
         const d = JSON.parse(raw);
-        setEditPrenom(d.editPrenom || '');
-        setEditNom(d.editNom || '');
-        setEditEmail(d.editEmail || '');
-        setEditTelephone(d.editTelephone || '');
-        setEditPhoneLocal(d.editPhoneLocal || '');
-        if (d.editPhoneCountry) {
-          const found = COUNTRY_CODES.find((c) => c.code === d.editPhoneCountry);
-          if (found) setEditPhoneCountry(found);
-        }
-        setEditDateNaissance(d.editDateNaissance || '');
-        setIsEditing(true);
+        setFields((prev) => ({
+          prenom: typeof d.prenom === 'string' ? d.prenom : prev.prenom,
+          nom: typeof d.nom === 'string' ? d.nom : prev.nom,
+          email: typeof d.email === 'string' ? d.email : prev.email,
+          phoneLocal: typeof d.phoneLocal === 'string' ? d.phoneLocal : prev.phoneLocal,
+          phoneCountry: COUNTRY_CODES.find((c) => c.code === d.phoneCountry) ?? prev.phoneCountry,
+          dateNaissance: typeof d.dateNaissance === 'string' ? d.dateNaissance : prev.dateNaissance,
+        }));
       } catch { /* corrupt draft, ignore */ }
-      AsyncStorage.removeItem('profile_draft').catch(() => {});
-    });
+    }).catch(() => {});
+  }, []);
+
+  const discardDraft = useCallback(() => {
+    AsyncStorage.removeItem(DRAFT_KEY).catch(() => {});
   }, []);
 
   // OTP resend timer
@@ -91,44 +148,6 @@ export function useProfileEditing(
     const id = setTimeout(() => setOtpResendTimer((s) => s - 1), 1000);
     return () => clearTimeout(id);
   }, [otpResendTimer]);
-
-  const startEditing = useCallback(() => {
-    setEditPrenom(client?.prenom || '');
-    setEditNom(client?.nom || '');
-    setEditEmail(client?.email || '');
-    const rawPhone = client?.telephone || '';
-    if (rawPhone.startsWith('+')) {
-      // Longest-dial-first match so '+1' (US) doesn't shadow '+12' / '+123'
-      // dial codes when both are present in COUNTRY_CODES.
-      const match = [...COUNTRY_CODES]
-        .sort((a, b) => b.dial.length - a.dial.length)
-        .find((c) => rawPhone.startsWith(c.dial));
-      if (match) {
-        setEditPhoneCountry(match);
-        setEditPhoneLocal(rawPhone.slice(match.dial.length));
-      } else {
-        // Unknown dial code — preserve the full +XXX number in the local
-        // field. The save path detects a leading '+' and sends as-is
-        // instead of concatenating country.dial again (would corrupt to
-        // e.g. '+212+33...').
-        setEditPhoneCountry(DEFAULT_COUNTRY);
-        setEditPhoneLocal(rawPhone);
-      }
-    } else {
-      setEditPhoneCountry(DEFAULT_COUNTRY);
-      setEditPhoneLocal(rawPhone.replace(/[^0-9]/g, ''));
-    }
-    setEditTelephone(rawPhone);
-    setEditDateNaissance(isoDtoDmy(client?.dateNaissance));
-    setIsEditing(true);
-    haptic(HapticStyle.Light);
-  }, [client]);
-
-  const cancelEditing = useCallback(() => {
-    setIsEditing(false);
-    AsyncStorage.removeItem('profile_draft').catch(() => {});
-    haptic(HapticStyle.Light);
-  }, []);
 
   const startOtpFlow = useCallback(async (target: { type: 'email' | 'telephone'; value: string }) => {
     setOtpTarget(target);
@@ -177,99 +196,74 @@ export function useProfileEditing(
     }
   }, [otpTarget, otpResendTimer, t]);
 
-  const dismissOtpModal = useCallback(() => {
-    setShowOtpModal(false);
+  const dismissOtpModal = useCallback(() => setShowOtpModal(false), []);
+
+  const changeOtpCode = useCallback((code: string) => {
+    setOtpCode(code);
+    setOtpError('');
   }, []);
 
-  const saveProfile = useCallback(async () => {
-    if (!editPrenom.trim() || !editNom.trim()) {
+  /** Validates and saves. Resolves to `true` on success so the screen can close. */
+  const saveProfile = useCallback(async (): Promise<boolean> => {
+    const { prenom, nom, email, phoneLocal, phoneCountry, dateNaissance } = fields;
+    if (!prenom.trim() || !nom.trim()) {
       Alert.alert(t('common.error'), t('profile.nameRequired'));
-      return;
+      return false;
     }
-    const emailTrimmed = editEmail.trim();
+    const emailTrimmed = email.trim();
     if (emailTrimmed && !isValidEmail(emailTrimmed)) {
       Alert.alert(t('common.error'), t('profile.emailInvalid'));
-      return;
+      return false;
     }
-    const phoneTrimmed = editPhoneLocal.trim();
-    if (phoneTrimmed && !isValidPhoneForCountry(phoneTrimmed, editPhoneCountry)) {
+    const phoneTrimmed = phoneLocal.trim();
+    if (phoneTrimmed && !phoneTrimmed.startsWith('+') && !isValidPhoneForCountry(phoneTrimmed, phoneCountry)) {
       Alert.alert(t('common.error'), t('profile.phoneInvalid'));
-      return;
+      return false;
     }
-    let dateNaissancePayload: string | null | undefined = undefined;
-    if (editDateNaissance.trim() === '') {
+    let dateNaissancePayload: string | null;
+    if (dateNaissance.trim() === '') {
       dateNaissancePayload = null;
-    } else if (editDateNaissance.length === 10) {
-      const iso = toIsoDate(editDateNaissance);
+    } else {
+      const iso = dateNaissance.length === 10 ? toIsoDate(dateNaissance) : null;
       if (!iso) {
         Alert.alert(t('common.error'), t('profile.dateInvalid'));
-        return;
+        return false;
       }
       dateNaissancePayload = iso;
-    } else if (editDateNaissance.length > 0) {
-      Alert.alert(t('common.error'), t('profile.dateInvalid'));
-      return;
     }
+
     setIsSaving(true);
     haptic(HapticStyle.Medium);
     try {
       await api.updateProfile({
-        prenom: editPrenom.trim(),
-        nom: editNom.trim(),
+        prenom: prenom.trim(),
+        nom: nom.trim(),
         ...(emailTrimmed ? { email: emailTrimmed } : {}),
-        // If the local field already carries a leading '+' (unknown dial code
-        // preserved by startEditing), send it as-is. Otherwise prepend the
-        // selected country dial.
         ...(phoneTrimmed
-          ? { telephone: phoneTrimmed.startsWith('+') ? phoneTrimmed : `${editPhoneCountry.dial}${phoneTrimmed}` }
+          ? { telephone: phoneTrimmed.startsWith('+') ? phoneTrimmed : `${phoneCountry.dial}${phoneTrimmed}` }
           : {}),
-        ...(dateNaissancePayload !== undefined ? { dateNaissance: dateNaissancePayload } : {}),
+        dateNaissance: dateNaissancePayload,
       });
       await refreshProfile?.();
-      setIsEditing(false);
-      Alert.alert(t('common.success'), t('profile.updateSuccess'));
+      discardDraft();
+      return true;
     } catch (error) {
       if (__DEV__) console.error('Update profile error:', error);
       Alert.alert(t('common.error'), extractErrorMessage(error));
+      return false;
     } finally {
       setIsSaving(false);
     }
-  }, [editPrenom, editNom, editEmail, editPhoneLocal, editPhoneCountry, editDateNaissance, refreshProfile, t]);
-
-  // ── Profile completion ──
-  const profileChecklist = useMemo(() => ([
-    { key: 'email', done: !!client?.email, label: t('home.profileFieldEmail') },
-    { key: 'emailVerified', done: !!client?.emailVerified, label: t('home.profileFieldEmailVerified') },
-    { key: 'phone', done: !!client?.telephone, label: t('home.profileFieldPhone') },
-    { key: 'phoneVerified', done: !!client?.telephoneVerified, label: t('home.profileFieldPhoneVerified') },
-    { key: 'birthDate', done: !!client?.dateNaissance, label: t('home.profileFieldBirthDate') },
-  ]), [client?.email, client?.emailVerified, client?.telephone, client?.telephoneVerified, client?.dateNaissance, t]);
-
-  const profileCompletionPercent = useMemo(() => {
-    const doneCount = profileChecklist.filter((f) => f.done).length;
-    return Math.round((doneCount / profileChecklist.length) * 100);
-  }, [profileChecklist]);
-
-  const missingProfileLabels = useMemo(
-    () => profileChecklist.filter((f) => !f.done).map((f) => f.label),
-    [profileChecklist],
-  );
+  }, [fields, refreshProfile, discardDraft, t]);
 
   return {
-    isEditing,
+    fields,
+    isDirty,
     isSaving,
-    editPrenom, setEditPrenom,
-    editNom, setEditNom,
-    editEmail, setEditEmail,
-    editTelephone, setEditTelephone,
-    editPhoneCountry, setEditPhoneCountry,
-    editPhoneLocal, setEditPhoneLocal,
-    editDateNaissance, setEditDateNaissance,
+    setPrenom, setNom, setEmail, setPhoneLocal, setPhoneCountry, setDateNaissance,
+    saveProfile, discardDraft,
     showOtpModal, otpTarget, otpCode, otpError,
     isVerifyingOtp, isSendingOtp, otpResendTimer,
-    profileCompletionPercent, missingProfileLabels,
-    startEditing, cancelEditing, saveProfile,
-    startOtpFlow, verifyOtpAndApply, resendOtp, dismissOtpModal,
-    setOtpCode, setOtpError,
+    startOtpFlow, verifyOtpAndApply, resendOtp, dismissOtpModal, changeOtpCode,
   };
 }

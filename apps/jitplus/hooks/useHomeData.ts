@@ -1,14 +1,13 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { Keyboard, TextInput, FlatList } from 'react-native';
 import * as Location from 'expo-location';
-import { haptic, HapticStyle } from '@/utils/haptics';
-import { usePointsOverview, useNotifications, useLuckyWheelAvailableDraws } from '@/hooks/useQueryHooks';
+import { haptic } from '@/utils/haptics';
+import { useStampsOverview, useNotifications, useLuckyWheelAvailableDraws } from '@/hooks/useQueryHooks';
 import { getDistanceSafe } from '@/utils/distance';
 import { prefetchImages } from '@/utils/imageCache';
-import { LoyaltyCard } from '@/types';
 import { FOCUS_DELAY_MS } from '@/constants';
 
-type SortMode = 'recent' | 'closest' | 'points' | 'random';
+type SortMode = 'recent' | 'closest' | 'stamps' | 'random';
 
 export { type SortMode };
 
@@ -41,22 +40,22 @@ export function useHomeData(client: { prenom?: string | null } | null) {
 
   // ── React Query ──
   const {
-    data: pointsData,
+    data: stampsData,
     isLoading,
     isError: loadError,
     refetch,
     isRefetching,
-  } = usePointsOverview(!!client);
+  } = useStampsOverview(!!client);
 
   const { data: luckyWheelTickets = [] } = useLuckyWheelAvailableDraws(!!client);
   const { data: notifData } = useNotifications(!!client);
 
   // Prefetch merchant logos
   useEffect(() => {
-    if (pointsData?.cards?.length) {
-      prefetchImages(pointsData.cards.map((c) => c.merchant?.logoUrl));
+    if (stampsData?.cards?.length) {
+      prefetchImages(stampsData.cards.map((c) => c.merchant?.logoUrl));
     }
-  }, [pointsData]);
+  }, [stampsData]);
 
   // Request location when "closest" is selected
   useEffect(() => {
@@ -112,7 +111,7 @@ export function useHomeData(client: { prenom?: string | null } | null) {
   const searchSuggestions = useMemo(() => {
     if (!debouncedSearch || debouncedSearch.length < 1) return [];
     const q = debouncedSearch.toLowerCase();
-    const rawCards = pointsData?.cards ?? [];
+    const rawCards = stampsData?.cards ?? [];
     const seen = new Set<string>();
     return rawCards
       .filter((c) => {
@@ -125,11 +124,11 @@ export function useHomeData(client: { prenom?: string | null } | null) {
       })
       .slice(0, 5)
       .map((c) => ({ id: c.merchantId, name: c.merchant!.nomBoutique, category: c.merchant?.categorie }));
-  }, [debouncedSearch, pointsData?.cards]);
+  }, [debouncedSearch, stampsData?.cards]);
 
   // ── Filter cards ──
   const filteredCards = useMemo(() => {
-    const rawCards = pointsData?.cards ?? [];
+    const rawCards = stampsData?.cards ?? [];
     return rawCards.filter((c) => {
       const matchesCategory = selectedCategory === 'all' || c.merchant?.categorie === selectedCategory;
       const matchesSearch = !debouncedSearch ||
@@ -137,18 +136,18 @@ export function useHomeData(client: { prenom?: string | null } | null) {
         c.merchant?.categorie?.toLowerCase().includes(debouncedSearch.toLowerCase());
       return matchesCategory && matchesSearch;
     });
-  }, [pointsData?.cards, selectedCategory, debouncedSearch]);
+  }, [stampsData?.cards, selectedCategory, debouncedSearch]);
 
   // ── Category counts ──
   const categoryCounts = useMemo(() => {
-    const rawCards = pointsData?.cards ?? [];
+    const rawCards = stampsData?.cards ?? [];
     const counts: Record<string, number> = { all: rawCards.length };
     for (const c of rawCards) {
       const cat = c.merchant?.categorie;
       if (cat) counts[cat] = (counts[cat] || 0) + 1;
     }
     return counts;
-  }, [pointsData?.cards]);
+  }, [stampsData?.cards]);
 
   // ── Sort cards ──
   const cards = useMemo(() => {
@@ -172,7 +171,7 @@ export function useHomeData(client: { prenom?: string | null } | null) {
           });
         }
         break;
-      case 'points':
+      case 'stamps':
         sorted.sort((a, b) => b.balance - a.balance);
         break;
       case 'random':
@@ -214,7 +213,7 @@ export function useHomeData(client: { prenom?: string | null } | null) {
     activeFilterCount,
 
     // Data
-    pointsData,
+    stampsData,
     isLoading,
     loadError,
     isRefetching,

@@ -36,7 +36,7 @@ const SS_ATTEMPT_COUNT = 'otp_attempt_count';
 export default function VerifyOtpScreen() {
   const theme = useTheme();
   const { t } = useLanguage();
-  const { telephone, isEmail, isRegister, isForgotPassword } = useLocalSearchParams<{ telephone: string; isEmail?: string; isRegister?: string; isForgotPassword?: string }>();
+  const { telephone, isRegister, isForgotPassword } = useLocalSearchParams<{ telephone: string; isEmail?: string; isRegister?: string; isForgotPassword?: string }>();
   const { verifyOtpEmail, sendOtpEmail } = useAuth();
   const isRegisterFlow = isRegister === '1';
   const isForgotPasswordFlow = isForgotPassword === '1';
@@ -190,7 +190,7 @@ export default function VerifyOtpScreen() {
           }]}>
             <View style={styles.shieldIcon}>
               <Image
-                source={require('@/assets/images/jitpluslogo.png')}
+                source={require('@/assets/images/jitpluslogo-app.png')}
                 style={styles.logoImage}
                 resizeMode="contain"
               />

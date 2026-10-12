@@ -1,4 +1,3 @@
-import React from 'react';
 import { 
   Coffee, 
   Utensils, 
@@ -31,8 +30,6 @@ import {
   type LucideIcon
 } from 'lucide-react-native';
 import { MerchantCategory } from '@/types';
-import { getCategoryLabel, getCategoryOptions } from '@/constants/categories';
-import i18n from '@/i18n';
 
 interface MerchantCategoryIconProps {
   category: MerchantCategory;
@@ -107,20 +104,3 @@ export default function MerchantCategoryIcon({
   );
 }
 
-/**
- * Hook helper pour obtenir les métadonnées d'une catégorie
- */
-export function useCategoryMetadata(category?: MerchantCategory) {
-  if (!category) {
-    return { label: '', description: '', IconComponent: Store };
-  }
-
-  return {
-    label: getCategoryLabel(category),
-    description: i18n.t(`categoryDesc.${category}`, { defaultValue: '' }),
-    IconComponent: categoryIconMap[category] || Store,
-  };
-}
-
-/** Flat list of categories for picker UIs (re-exported from constants) */
-export const CATEGORY_OPTIONS = getCategoryOptions();

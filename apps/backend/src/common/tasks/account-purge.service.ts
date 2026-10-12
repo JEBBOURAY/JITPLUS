@@ -100,6 +100,7 @@ export class AccountPurgeService {
             await tx.deviceSession.deleteMany({ where: { merchantId } });
             // Delete notifications
             await tx.merchantNotificationRead.deleteMany({ where: { merchantId } });
+            await tx.merchantInboxNotification.deleteMany({ where: { merchantId } });
             await tx.notification.deleteMany({ where: { merchantId } });
             // Delete profile views
             await tx.profileView.deleteMany({ where: { merchantId } });

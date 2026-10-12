@@ -21,7 +21,6 @@
     "android",
     "ios",
     "dist",
-    ".expo",
-    "i18n/locales/_diff.ts"
+    ".expo"
   ]
 }

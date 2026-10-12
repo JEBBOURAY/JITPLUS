@@ -43,4 +43,10 @@ export class SocialLinksDto {
   @MaxLength(200)
   @Matches(HANDLE_REGEX, { message: 'YouTube invalide' })
   youtube?: string;
+
+  // International number, digits only with optional leading + (used to build wa.me links).
+  @IsOptional()
+  @IsString()
+  @Matches(/^\+?[0-9]{6,15}$/, { message: 'Numéro WhatsApp invalide' })
+  whatsapp?: string;
 }

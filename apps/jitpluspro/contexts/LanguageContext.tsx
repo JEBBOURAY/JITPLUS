@@ -1,9 +1,9 @@
 import { I18nManager } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
-import i18n, { detectedLocale } from '@/i18n';
+import i18n, { detectedLocale, type AppLocale } from '@/i18n';
 import { createLanguageProvider } from '@jitplus/shared/src/createLanguageProvider';
 
-export type AppLocale = 'fr' | 'en' | 'ar';
+export type { AppLocale };
 
 // ── Language metadata ──────────────────────────────────────
 export const LANGUAGES: { code: AppLocale; label: string; flag: string; nativeLabel: string }[] = [

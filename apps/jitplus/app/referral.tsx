@@ -1,15 +1,12 @@
 import { useCallback, useState } from 'react';
 import {
   View, Text, ScrollView, RefreshControl, Pressable,
-  TouchableOpacity, Platform, Share, ActivityIndicator, Linking, Alert,
+  TouchableOpacity, Platform, Share, Linking, Alert,
 } from 'react-native';
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import {
-  ArrowLeft, Users, Gift, Clock, CheckCircle,
-  MessageCircle, Mail, AlertCircle, Banknote,
-} from 'lucide-react-native';
+import { ArrowLeft } from 'lucide-react-native';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useQuery } from '@tanstack/react-query';
 

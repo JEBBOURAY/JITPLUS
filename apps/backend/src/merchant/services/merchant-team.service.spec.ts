@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException, ConflictException } from '@nestjs/common';
 import { MerchantTeamService } from './merchant-team.service';
-import { TEAM_MEMBER_REPOSITORY, MERCHANT_REPOSITORY } from '../../common/repositories';
+import { TEAM_MEMBER_REPOSITORY, MERCHANT_REPOSITORY, TRANSACTION_RUNNER } from '../../common/repositories';
 import { AuditLogService } from '../../admin/audit-log.service';
 import * as bcrypt from 'bcryptjs';
 
@@ -37,6 +37,12 @@ const mockTeamMemberRepo = {
   delete: jest.fn(),
 };
 
+const mockTxRunner = {
+  run: jest.fn((fn: (tx: unknown) => unknown) =>
+    fn({ merchant: mockMerchantRepo, teamMember: mockTeamMemberRepo }),
+  ),
+};
+
 // ── Suite ─────────────────────────────────────────────────────────────────────
 
 describe('MerchantTeamService', () => {
@@ -48,6 +54,7 @@ describe('MerchantTeamService', () => {
         MerchantTeamService,
         { provide: TEAM_MEMBER_REPOSITORY, useValue: mockTeamMemberRepo },
         { provide: MERCHANT_REPOSITORY, useValue: mockMerchantRepo },
+        { provide: TRANSACTION_RUNNER, useValue: mockTxRunner },
         { provide: AuditLogService, useValue: { log: jest.fn() } },
       ],
     }).compile();

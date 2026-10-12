@@ -61,24 +61,6 @@ function lruSet<K, V>(cache: Map<K, CacheEntry<V>>, key: K, value: V): void {
   cache.set(key, { value, expiresAt: now + CACHE_TTL_MS });
 }
 
-// ── Forward geocode via backend proxy ──
-async function googleGeocode(address: string): Promise<Location.LocationGeocodedLocation[]> {
-  // Sanitize input: trim, cap length, reject suspicious patterns
-  const sanitized = address.trim().slice(0, 200);
-  if (!sanitized) return [];
-  const url = `${getServerBaseUrl()}/geocode/forward?address=${encodeURIComponent(sanitized)}`;
-  const res = await fetch(url);
-  const json = await res.json();
-  const results: GeoResult[] | undefined = json.results;
-  if (results && results.length > 0) {
-    return results.map((r: GeoResult) => ({
-      latitude: r.geometry.location.lat,
-      longitude: r.geometry.location.lng,
-    }));
-  }
-  return [];
-}
-
 // ── Reverse geocode via backend proxy ──
 async function googleReverseGeocode(
   lat: number,
@@ -109,35 +91,6 @@ async function googleReverseGeocode(
       formattedAddress: r.formatted_address ?? null,
     }];
   }
-  return [];
-}
-
-// ── Forward geocode cache (address → coords) ──
-const forwardCache = new Map<string, CacheEntry<Location.LocationGeocodedLocation[]>>();
-
-export async function geocodeAsync(address: string): Promise<Location.LocationGeocodedLocation[]> {
-  const key = address.trim().toLowerCase();
-  const cached = lruGet(forwardCache, key);
-  if (cached) return cached;
-
-  // 1. Try Google Geocoding API (most reliable for Morocco)
-  try {
-    const googleResults = await googleGeocode(address);
-    if (googleResults.length > 0) {
-      lruSet(forwardCache, key, googleResults);
-      return googleResults;
-    }
-  } catch (e) { logWarn('geocode', 'Google geocode failed:', e); }
-
-  // 2. Fallback: device native geocoder (expo-location)
-  try {
-    const results = await Location.geocodeAsync(address);
-    if (results.length > 0) {
-      lruSet(forwardCache, key, results);
-      return results;
-    }
-  } catch (e) { logWarn('geocode', 'native geocode failed:', e); }
-
   return [];
 }
 

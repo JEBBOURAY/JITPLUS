@@ -3,25 +3,51 @@
  * Shared between backend (emitter) and mobile apps (consumer).
  *
  * Import directly:
- *   import { WS_EVENTS, PointsUpdatedPayload } from '@jitplus/shared/src/realtime';
+ *   import { WS_EVENTS, StampsUpdatedPayload } from '@jitplus/shared/src/realtime';
  */
 
 // ── Event names ─────────────────────────────────────────────────
 export const WS_EVENTS = {
-  POINTS_UPDATED: 'points:updated',
+  // Server → Client (jitplus app)
+  STAMPS_UPDATED: 'stamps:updated',
   NOTIFICATION_NEW: 'notification:new',
+  SCRATCH_CARDS_CHANGED: 'scratch:cards_changed',
+  COUPON_UPDATED: 'coupon:updated',
+
+  // Server → Merchant (jitpluspro app)
   TRANSACTION_RECORDED: 'transaction:recorded',
+  COUPON_REDEEMED: 'coupon:redeemed',
 } as const;
 
 // ── Payload types ───────────────────────────────────────────────
-export interface PointsUpdatedPayload {
+
+/** Sent to the client when one of their coupons changes (used, cancelled, extended). */
+export interface CouponUpdatedPayload {
+  couponId: string;
+  merchantId: string;
+  status: 'ACTIVE' | 'REDEEMED' | 'EXPIRED' | 'CANCELLED';
+  reason?: 'redeemed' | 'cancelled' | 'extended';
+}
+
+/** Sent to the client when their list of scratch cards changes. */
+export interface ScratchCardsChangedPayload {
+  merchantId: string;
+  reason: 'received' | 'cancelled' | 'extended';
+}
+
+/** Sent to the merchant room (multi-device cashiers) after a coupon redemption. */
+export interface CouponRedeemedPayload {
+  merchantId: string;
+  couponId: string;
+  clientId: string;
+}
+export interface StampsUpdatedPayload {
   clientId: string;
   merchantId: string;
   merchantName: string;
-  loyaltyType: 'POINTS' | 'STAMPS';
-  points: number;
+  stamps: number;
   newBalance: number;
-  type: 'EARN_POINTS' | 'REDEEM_REWARD' | 'ADJUST_POINTS';
+  type: 'EARN_STAMPS' | 'REDEEM_REWARD' | 'ADJUST_STAMPS';
   rewardTitle?: string;
 }
 
@@ -38,7 +64,7 @@ export interface TransactionRecordedPayload {
   clientId: string;
   clientName: string;
   transactionId: string;
-  type: 'EARN_POINTS' | 'REDEEM_REWARD' | 'ADJUST_POINTS';
-  points: number;
+  type: 'EARN_STAMPS' | 'REDEEM_REWARD' | 'ADJUST_STAMPS';
+  stamps: number;
   newBalance: number;
 }

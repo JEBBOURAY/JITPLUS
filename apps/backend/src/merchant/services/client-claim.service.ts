@@ -16,6 +16,7 @@ import {
   TRANSACTION_RUNNER, type ITransactionRunner,
 } from '../../common/repositories';
 import { MerchantTransactionService } from './merchant-transaction.service';
+import { reassignScratchDataInTx } from '../../scratch-card/scratch-merge';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 /** Effectively never — set far in the future so the merchant’s WhatsApp link never goes stale. */
@@ -33,9 +34,9 @@ export interface QuickAddInput {
   telephone: string;
   countryCode?: string;
   prenom?: string;
-  type: 'EARN_POINTS' | 'REDEEM_REWARD';
+  type: 'EARN_STAMPS' | 'REDEEM_REWARD';
   amount: number;
-  points: number;
+  stamps: number;
   rewardId?: string;
   teamMemberId?: string;
   performedByName?: string;
@@ -142,13 +143,13 @@ export class ClientClaimService {
     }
 
     // 2. Credit the transaction using the existing audited flow
-    //    (covers idempotency, points/stamps rules, anti-fraud caps, etc.)
+    //    (covers idempotency, stamp earning rules, anti-fraud caps, etc.)
     const transaction = await this.transactionService.createTransaction(
       clientId,
       input.merchantId,
       input.type,
       input.amount,
-      input.points,
+      input.stamps,
       input.rewardId,
       input.teamMemberId,
       input.performedByName,
@@ -299,7 +300,7 @@ export class ClientClaimService {
         throw new ForbiddenException('Ce lien ne peut pas être utilisé');
       }
 
-      // 1) Merge loyalty cards (sum points if the real client already has one
+      // 1) Merge loyalty cards (sum stamps if the real client already has one
       //    for the same merchant, otherwise reassign).
       const anonCards = await tx.loyaltyCard.findMany({
         where: { clientId: anonymousId },
@@ -309,13 +310,14 @@ export class ClientClaimService {
       for (const card of anonCards) {
         const existing = await tx.loyaltyCard.findUnique({
           where: { clientId_merchantId: { clientId: realClientId, merchantId: card.merchantId } },
-          select: { id: true, points: true, deactivatedAt: true },
+          select: { id: true, stamps: true, deactivatedAt: true, lastVisitAt: true },
         });
         if (existing) {
           await tx.loyaltyCard.update({
             where: { id: existing.id },
             data: {
-              points: existing.points + card.points,
+              stamps: existing.stamps + card.stamps,
+              lastVisitAt: card.lastVisitAt > existing.lastVisitAt ? card.lastVisitAt : existing.lastVisitAt,
               // Re-activate if the real client had previously left the program
               deactivatedAt: existing.deactivatedAt && card.deactivatedAt === null ? null : existing.deactivatedAt,
             },
@@ -342,6 +344,9 @@ export class ClientClaimService {
         where: { clientId: anonymousId },
         data: { clientId: realClientId },
       });
+      // Scratch cards / coupons cascade on hard delete only: without this the
+      // card would stay on the soft-deleted ghost and never be seen.
+      const pendingScratchCards = await reassignScratchDataInTx(tx, anonymousId, realClientId);
 
       // 3) Mark the claim consumed (single-use)
       await tx.clientClaim.update({
@@ -381,13 +386,14 @@ export class ClientClaimService {
         }
       }
 
-      return { claim: found, alreadyConsumed: false, anonymousClient: { id: anonymousId }, mergedCards };
+      return { claim: found, alreadyConsumed: false, anonymousClient: { id: anonymousId }, mergedCards, pendingScratchCards };
     }, { isolationLevel: 'Serializable' });
 
     return {
       success: true,
       alreadyConsumed: claim.alreadyConsumed,
       mergedCards: claim.mergedCards,
+      pendingScratchCards: 'pendingScratchCards' in claim ? claim.pendingScratchCards : 0,
       merchant: {
         id: claim.claim.merchantId,
         nom: (claim.claim as any).merchant?.nom ?? null,
@@ -452,12 +458,12 @@ export class ClientClaimService {
 
     let message: string;
     if (names.length === 0) {
-      message = "Ce numéro est déjà lié à une carte de fidélité créée par un commerçant sur WhatsApp. Pour l’utiliser, tu dois d’abord ouvrir le lien WhatsApp qu’il t’a envoyé et cliquer sur « Récupérer mes points ». Si tu as supprimé le message, demande-lui de te renvoyer le lien.";
+      message = "Ce numéro est déjà lié à une carte de fidélité créée par un commerçant sur WhatsApp. Pour l’utiliser, tu dois d’abord ouvrir le lien WhatsApp qu’il t’a envoyé et cliquer sur « Récupérer mes tampons ». Si tu as supprimé le message, demande-lui de te renvoyer le lien.";
     } else if (names.length === 1) {
-      message = `Ce numéro est déjà lié à une carte de fidélité créée par ${names[0]} sur WhatsApp. Pour activer ton compte avec ce numéro, tu dois d’abord ouvrir le lien WhatsApp envoyé par ${names[0]} et cliquer sur « Récupérer mes points ». Si tu as supprimé le message, demande à ${names[0]} de te renvoyer le lien.`;
+      message = `Ce numéro est déjà lié à une carte de fidélité créée par ${names[0]} sur WhatsApp. Pour activer ton compte avec ce numéro, tu dois d’abord ouvrir le lien WhatsApp envoyé par ${names[0]} et cliquer sur « Récupérer mes tampons ». Si tu as supprimé le message, demande à ${names[0]} de te renvoyer le lien.`;
     } else {
       const list = names.slice(0, -1).join(', ') + ' et ' + names[names.length - 1];
-      message = `Ce numéro est déjà lié à plusieurs cartes de fidélité créées sur WhatsApp par : ${list}. Pour activer ton compte avec ce numéro, ouvre n’importe lequel de leurs liens WhatsApp et clique sur « Récupérer mes points » — toutes tes cartes seront fusionnées automatiquement. Si tu as supprimé les messages, demande à l’un d’eux de te renvoyer le lien.`;
+      message = `Ce numéro est déjà lié à plusieurs cartes de fidélité créées sur WhatsApp par : ${list}. Pour activer ton compte avec ce numéro, ouvre n’importe lequel de leurs liens WhatsApp et clique sur « Récupérer mes tampons » — toutes tes cartes seront fusionnées automatiquement. Si tu as supprimé les messages, demande à l’un d’eux de te renvoyer le lien.`;
     }
 
     return {

@@ -10,13 +10,11 @@ import {
   Animated,
   Platform,
 } from 'react-native';
-import { Users, Search, X, UserPlus, Star, Stamp, AlertCircle } from 'lucide-react-native';
+import { Users, Search, X, UserPlus, Stamp, AlertCircle } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { useFocusFade } from '@/hooks/useFocusFade';
-import { useAuthStore } from '@/stores/authStore';
-import { useScanGuard } from '@/hooks/useScanGuard';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { ClientListSkeleton } from '@/components/Skeleton';
@@ -37,28 +35,18 @@ const safeSelection = () => {
   Haptics.selectionAsync().catch(() => {});
 };
 
-/* ── Balance pill variants — differentiated by loyalty type (color + icon) so
-   colour-blind users can tell points vs stamps apart without relying on hue alone ── */
-const PILL_VARIANTS = {
-  points: {
-    light: { bg: 'rgba(124,58,237,0.09)', fg: '#7C3AED' },
-    dark: { bg: 'rgba(167,139,250,0.15)', fg: '#C4B5FD' },
-  },
-  stamps: {
-    light: { bg: 'rgba(245,158,11,0.10)', fg: '#B45309' },
-    dark: { bg: 'rgba(245,158,11,0.18)', fg: '#FBBF24' },
-  },
+const STAMPS_PILL = {
+  light: { bg: 'rgba(245,158,11,0.10)', fg: '#B45309' },
+  dark: { bg: 'rgba(245,158,11,0.18)', fg: '#FBBF24' },
 } as const;
 
 // ── Carte client ────────────────────────────────────
 const ClientCard = React.memo(function ClientCard({
   item,
   onOpenDetail,
-  isStamps,
 }: {
   item: ClientListItem;
   onOpenDetail: (id: string) => void;
-  isStamps?: boolean;
 }) {
   const theme = useTheme();
   const { t, locale } = useLanguage();
@@ -72,19 +60,17 @@ const ClientCard = React.memo(function ClientCard({
   const lastInitial = item.nom?.charAt(0) && item.prenom ? item.nom.charAt(0) : '';
   const initials = (firstInitial + lastInitial).toUpperCase() || '?';
 
-  const formattedPoints = item.points?.toLocaleString('fr-FR') ?? '0';
+  const formattedStamps = item.stamps?.toLocaleString('fr-FR') ?? '0';
 
-  // Balance pill differentiated by loyalty type (colour + distinct icon)
-  const variant = (isStamps ? PILL_VARIANTS.stamps : PILL_VARIANTS.points)[isDark ? 'dark' : 'light'];
-  const PillIcon = isStamps ? Stamp : Star;
-  const pointsUnit = isStamps ? t('common.stampsAbbr') : t('common.pointsAbbr');
+  const variant = STAMPS_PILL[isDark ? 'dark' : 'light'];
+  const stampsUnit = t('common.stampsAbbr');
 
   // "Last visit" subtext
   const lastVisitLabel = item.lastVisit
     ? t('clients.lastVisit', { time: timeAgo(item.lastVisit, locale) })
     : t('clients.neverVisited');
 
-  const a11yLabel = `${displayName}, ${formattedPoints} ${pointsUnit}, ${lastVisitLabel}`;
+  const a11yLabel = `${displayName}, ${formattedStamps} ${stampsUnit}, ${lastVisitLabel}`;
 
   return (
     <TouchableOpacity
@@ -113,16 +99,15 @@ const ClientCard = React.memo(function ClientCard({
         </Text>
       </View>
 
-      {/* Balance pill (points = star/violet, stamps = stamp/amber) */}
-      <View style={[styles.pointsPill, { backgroundColor: variant.bg }]} importantForAccessibility="no-hide-descendants">
-        <PillIcon size={ms(13)} color={variant.fg} strokeWidth={2.2} />
+      <View style={[styles.stampsPill, { backgroundColor: variant.bg }]} importantForAccessibility="no-hide-descendants">
+        <Stamp size={ms(13)} color={variant.fg} strokeWidth={2.2} />
         <Text
-          style={[styles.pointsPillText, { color: variant.fg }]}
+          style={[styles.stampsPillText, { color: variant.fg }]}
           numberOfLines={1}
           ellipsizeMode="tail"
           maxFontSizeMultiplier={1.4}
         >
-          {formattedPoints} {pointsUnit}
+          {formattedStamps} {stampsUnit}
         </Text>
       </View>
     </TouchableOpacity>
@@ -170,11 +155,9 @@ const EmptyState = React.memo(function EmptyState({ search, theme, onScan }: { s
 
 // ── Écran Clients ──────────────────────────────────────────
 export default function ClientsScreen() {
-  const merchant = useAuthStore((s) => s.merchant);
   const theme = useTheme();
   const router = useRouter();
   const { t } = useLanguage();
-  const { openScanner } = useScanGuard();
   const { focusStyle } = useFocusFade();
   const insets = useSafeAreaInsets();
   const [search, setSearch] = useState('');
@@ -228,13 +211,11 @@ export default function ClientsScreen() {
     router.push({ pathname: '/client-detail', params: { id: clientId } });
   }, [router]);
 
-  const goToScan = useCallback(() => openScanner(), [openScanner]);
-
-  const isStamps = merchant?.loyaltyType === 'STAMPS';
+  const goToScan = useCallback(() => router.push('/scan-qr'), [router]);
 
   const renderClient = useCallback(({ item }: { item: ClientListItem }) => (
-    <ClientCard item={item} onOpenDetail={openDetail} isStamps={isStamps} />
-  ), [openDetail, isStamps]);
+    <ClientCard item={item} onOpenDetail={openDetail} />
+  ), [openDetail]);
 
   const keyExtractor = useCallback((item: ClientListItem) => item.id, []);
 
@@ -512,7 +493,7 @@ const styles = StyleSheet.create({
     fontFamily: 'Lexend_500Medium',
     letterSpacing: 0.1,
   },
-  pointsPill: {
+  stampsPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
@@ -520,7 +501,7 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: 20,
   },
-  pointsPillText: {
+  stampsPillText: {
     fontSize: 13,
     fontWeight: '700',
     fontFamily: 'Lexend_700Bold',

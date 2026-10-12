@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Platform, InteractionManager } from 'react-native';
+import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import axios from 'axios';
 import { getServerBaseUrl } from '@/services/api';
@@ -64,7 +64,7 @@ function getStoreUrl(): string {
 const RECHECK_INTERVAL_MS = 30 * 60 * 1000;
 
 /**
- * Checks the backend `/health/version` endpoint on mount and periodically,
+ * Checks the backend `/health/version?app=jitpluspro` endpoint on mount and periodically,
  * resolving whether a force-update or maintenance screen should be shown.
  *
  * - In __DEV__ mode, `version` checks are skipped (status → 'ok').
@@ -88,12 +88,13 @@ export function useForceUpdate(): ForceUpdateState {
     try {
       // /health is mounted OUTSIDE the global /api/v1 prefix on the backend,
       // so we must call it via the bare server base URL (not the prefixed `api` client).
+      // `app=jitpluspro` selects the Pro-specific minimum versions (legacy values when omitted).
       const response = await axios.get<{
         api_version: string;
         min_ios_version: string;
         min_android_version: string;
         maintenance: boolean;
-      }>(`${getServerBaseUrl()}/health/version`);
+      }>(`${getServerBaseUrl()}/health/version`, { params: { app: 'jitpluspro' } });
 
       if (cancelledRef.current) return;
 
@@ -123,14 +124,14 @@ export function useForceUpdate(): ForceUpdateState {
     cancelledRef.current = false;
     // Defer the initial check to after the first frame: we don't want to
     // compete with navigation/list mounts on cold start.
-    const handle = InteractionManager.runAfterInteractions(() => {
+    const handle = requestIdleCallback(() => {
       check();
     });
 
     const interval = setInterval(check, RECHECK_INTERVAL_MS);
     return () => {
       cancelledRef.current = true;
-      handle?.cancel?.();
+      cancelIdleCallback(handle);
       clearInterval(interval);
     };
   }, [check]);

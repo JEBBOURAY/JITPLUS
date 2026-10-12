@@ -7,6 +7,7 @@ import {
   CAMPAIGN_SENT_TRACKER_REPOSITORY, type ICampaignSentTrackerRepository,
 } from '../repositories';
 import { IPushProvider, PUSH_PROVIDER } from '../interfaces';
+import { MerchantInboxService } from '../../merchant-inbox/merchant-inbox.service';
 import {
   isCronEnabled,
   weekTag,
@@ -20,99 +21,117 @@ const MESSAGES = {
   // Weekly performance summary
   weeklyPerf: {
     fr: {
-      title: '📈 Votre semaine en chiffres',
-      body: (scans: number, newClients: number) =>
-        `Cette semaine : ${scans} scan(s), ${newClients} nouveau(x) client(s). ${scans > 0 ? 'Bravo, continuez !' : 'Scannez vos clients pour les fidéliser !'}`,
+      title: 'Votre semaine en chiffres',
+      body: (scans: number, newClients: number) => {
+        if (scans === 0) return 'Aucun scan cette semaine. Scannez chaque passage pour faire revenir vos clients.';
+        const s = `${scans} scan${scans > 1 ? 's' : ''}`;
+        const c = newClients === 0
+          ? 'aucun nouveau client'
+          : `${newClients} nouveau${newClients > 1 ? 'x' : ''} client${newClients > 1 ? 's' : ''}`;
+        return `Cette semaine : ${s} et ${c}. Continuez sur cette lancée.`;
+      },
     },
     en: {
-      title: '📈 Your week in numbers',
-      body: (scans: number, newClients: number) =>
-        `This week: ${scans} scan(s), ${newClients} new client(s). ${scans > 0 ? 'Great job, keep going!' : 'Scan your clients to build loyalty!'}`,
+      title: 'Your week in numbers',
+      body: (scans: number, newClients: number) => {
+        if (scans === 0) return 'No scans this week. Scan every visit to bring your customers back.';
+        const c = newClients === 0 ? 'no new customers' : `${newClients} new customer${newClients === 1 ? '' : 's'}`;
+        return `This week: ${scans} scan${scans === 1 ? '' : 's'} and ${c}. Keep it up.`;
+      },
     },
     ar: {
-      title: '📈 الأسبوع ديالك بالأرقام',
-      body: (scans: number, newClients: number) =>
-        `هاد الأسبوع: ${scans} سكان، ${newClients} كليان جديد. ${scans > 0 ? 'برافو، كمل هكا!' : 'سكاني الكليان ديالك باش تفيداليزيهم!'}`,
+      title: 'الأسبوع ديالك بالأرقام',
+      body: (scans: number, newClients: number) => {
+        if (scans === 0) return 'حتى سكان هاد الأسبوع. سكاني كل زيارة باش يرجعو الكليان ديالك.';
+        return `هاد الأسبوع: ${scans} سكان و ${newClients} كليان جديد. كمّل هكا.`;
+      },
     },
   },
-  // Client milestone (every 10 clients)
+  // Client milestone (10, 25, 50… clients)
   clientMilestone: {
     fr: {
-      title: '🎯 Nouveau cap atteint !',
+      title: (count: number) => `Nouveau palier : ${count} clients`,
       body: (count: number) =>
-        `Félicitations ! Vous avez atteint ${count} clients fidèles. Votre programme de fidélité fait effet ! 🚀`,
+        `Vous avez maintenant ${count} clients dans votre programme de fidélité. Bravo !`,
     },
     en: {
-      title: '🎯 New milestone reached!',
+      title: (count: number) => `New milestone: ${count} customers`,
       body: (count: number) =>
-        `Congratulations! You've reached ${count} loyal clients. Your loyalty program is working! 🚀`,
+        `You now have ${count} customers in your loyalty program. Well done!`,
     },
     ar: {
-      title: '🎯 هدف جديد تحقق!',
+      title: (count: number) => `مرحلة جديدة: ${count} كليان`,
       body: (count: number) =>
-        `مبروك! وصلتي لـ ${count} كليان وفي. برنامج الولاء ديالك كيخدم! 🚀`,
+        `دابا عندك ${count} كليان فبرنامج الولاء ديالك. برافو!`,
     },
   },
   // Feature tips: send notifications to clients
   tipNotifications: {
     fr: {
-      title: '💡 Astuce : Envoyez des notifications push',
-      body: 'Saviez-vous que vous pouvez envoyer des notifications push à tous vos clients ? Promo, nouveauté, événement... Gardez le contact !',
+      title: 'Conseil : restez en contact avec vos clients',
+      body: 'Envoyez une notification à tous vos clients en un geste : promo, nouveauté ou événement.',
     },
     en: {
-      title: '💡 Tip: Send push notifications',
-      body: 'Did you know you can send push notifications to all your clients? Promos, news, events... Stay connected!',
+      title: 'Tip: stay in touch with your customers',
+      body: 'Send a notification to all your customers in one tap: a promo, something new or an event.',
     },
     ar: {
-      title: '💡 نصيحة: صيفط نوتيفيكاسيون',
-      body: 'واش كنتي عارف أنك تقدر تصيفط نوتيفيكاسيون لكاع الكليان ديالك؟ بروموسيون، جديد، إيفينمون... خلي الكونطاكت!',
+      title: 'نصيحة: بقى على تواصل مع الكليان ديالك',
+      body: 'صيفط نوتيفيكاسيون لكاع الكليان ديالك بضغطة وحدة: بروموسيون، جديد ولا مناسبة.',
     },
   },
   // Feature tips: customize rewards
   tipRewards: {
     fr: {
-      title: '💡 Astuce : Personnalisez vos récompenses',
-      body: 'Ajoutez des récompenses attractives pour motiver vos clients. Café gratuit, remise 10%, cadeau surprise... À vous de jouer !',
+      title: 'Conseil : une récompense qui donne envie',
+      body: 'Un café offert ou -10 % : une récompense simple et concrète motive vos clients à revenir.',
     },
     en: {
-      title: '💡 Tip: Customize your rewards',
-      body: 'Add attractive rewards to motivate your clients. Free coffee, 10% off, surprise gift... It\'s up to you!',
+      title: 'Tip: a reward worth coming back for',
+      body: 'A free coffee or 10% off: a simple, concrete reward motivates customers to return.',
     },
     ar: {
-      title: '💡 نصيحة: خصص المكافآت ديالك',
-      body: 'زيد مكافآت مغرية باش تحفز الكليان. قهوة مجانية، تخفيض 10%، كادو مفاجأة... أنت اللي تختار!',
+      title: 'نصيحة: مكافأة كتشوّق',
+      body: 'قهوة فابور ولا -10%: مكافأة بسيطة وواضحة كتحفّز الكليان يرجعو.',
     },
   },
   // Feature tips: email blasts (Premium)
   tipEmailBlast: {
     fr: {
-      title: '💡 Premium : Campagnes email illimitées',
-      body: 'Avec le plan Premium, envoyez des emails marketing à tous vos clients. Boostez vos ventes avec des campagnes personnalisées !',
+      title: 'Conseil : lancez une campagne email',
+      body: 'Avec Premium, envoyez un email à tous vos clients pour annoncer une offre ou une nouveauté.',
     },
     en: {
-      title: '💡 Premium: Unlimited email campaigns',
-      body: 'With the Premium plan, send marketing emails to all your clients. Boost sales with personalized campaigns!',
+      title: 'Tip: launch an email campaign',
+      body: 'With Premium, email all your customers to announce an offer or something new.',
     },
     ar: {
-      title: '💡 بريميوم: حملات إيميل بلا ليميت',
-      body: 'مع بلان بريميوم، صيفط إيميلات ماركتينغ لكاع الكليان. زيد المبيعات بحملات مخصصة!',
+      title: 'نصيحة: طلق حملة إيميل',
+      body: 'مع Premium، صيفط إيميل لكاع الكليان ديالك باش تعلن على عرض ولا جديد.',
     },
   },
   // Upgrade nudge for FREE plan merchants
   upgradePush: {
     fr: {
-      title: '⚡ Passez au Premium et débloquez tout !',
-      body: 'Emails, WhatsApp, analyses détaillées, équipe multi-employés... Le Premium vous donne les outils pour grandir. Essayez 30 jours gratuits !',
+      title: 'Passez à Premium',
+      body: 'Emails, WhatsApp, statistiques détaillées et équipe : tous les outils pour faire grandir votre commerce.',
     },
     en: {
-      title: '⚡ Upgrade to Premium and unlock everything!',
-      body: 'Emails, WhatsApp, detailed analytics, multi-staff team... Premium gives you the tools to grow. Try 30 days free!',
+      title: 'Upgrade to Premium',
+      body: 'Emails, WhatsApp, detailed stats and team access: every tool to grow your business.',
     },
     ar: {
-      title: '⚡ ترقّى لـ Premium وحل كلشي!',
-      body: 'إيميلات، واتساب، تحاليل مفصلة، فريق متعدد... بريميوم كيعطيك الأدوات باش تكبر. جرب 30 يوم مجانا!',
+      title: 'دوز لـ Premium',
+      body: 'إيميلات، واتساب، إحصائيات مفصّلة والفريق: كاع الأدوات باش يكبر الكومرس ديالك.',
     },
   },
+} as const;
+
+// Each tip opens the screen where the merchant can act on it.
+const TIP_ACTIONS = {
+  tipNotifications: 'open_messages',
+  tipRewards: 'open_settings',
+  tipEmailBlast: 'open_messages',
 } as const;
 
 type Lang = 'fr' | 'en' | 'ar';
@@ -143,6 +162,7 @@ export class MerchantSmartCampaignService {
     @Inject(TRANSACTION_REPOSITORY) private readonly txRepo: ITransactionRepository,
     @Inject(CAMPAIGN_SENT_TRACKER_REPOSITORY) private readonly campaignTrackerRepo: ICampaignSentTrackerRepository,
     @Inject(PUSH_PROVIDER) private readonly pushProvider: IPushProvider,
+    private readonly inbox: MerchantInboxService,
   ) {}
 
   // ── Monday: Weekly performance summary ──────────────────────────────────
@@ -183,7 +203,7 @@ export class MerchantSmartCampaignService {
         by: ['merchantId'],
         where: {
           merchantId: { in: merchantIds },
-          type: 'EARN_POINTS',
+          type: 'EARN_STAMPS',
           status: 'ACTIVE',
           createdAt: { gte: weekAgo },
         },
@@ -231,10 +251,11 @@ export class MerchantSmartCampaignService {
           skippedDup++;
         } else {
           const msg = MESSAGES.weeklyPerf[l];
+          const body = msg.body(weekScans, newClients);
           const result = await this.pushProvider.sendToMerchant(
             merchant.pushToken,
             msg.title,
-            msg.body(weekScans, newClients),
+            body,
             { action: 'open_dashboard' },
           );
           if (result.invalidToken) {
@@ -242,6 +263,7 @@ export class MerchantSmartCampaignService {
             continue;
           }
           digestCount++;
+          await this.inbox.record(merchant.id, { category: 'ACTIVITY', title: msg.title, body, action: 'open_dashboard' });
           await merchantMarkSent(this.campaignTrackerRepo, merchant.id, digestCampaignId, 'PUSH');
         }
 
@@ -253,13 +275,16 @@ export class MerchantSmartCampaignService {
           const mCampaignId = `merchant_milestone_${milestone}_${wtag}`;
           if (!(await merchantAlreadySent(this.campaignTrackerRepo, merchant.id, mCampaignId, 'PUSH'))) {
             const milestoneMsg = MESSAGES.clientMilestone[l];
+            const mTitle = milestoneMsg.title(milestone);
+            const mBody = milestoneMsg.body(milestone);
             await this.pushProvider.sendToMerchant(
               merchant.pushToken,
-              milestoneMsg.title,
-              milestoneMsg.body(milestone),
+              mTitle,
+              mBody,
               { action: 'open_clients' },
             );
             milestoneCount++;
+            await this.inbox.record(merchant.id, { category: 'ACTIVITY', title: mTitle, body: mBody, action: 'open_clients' });
             await merchantMarkSent(this.campaignTrackerRepo, merchant.id, mCampaignId, 'PUSH');
           }
         }
@@ -325,17 +350,19 @@ export class MerchantSmartCampaignService {
         const l = lang(merchant.language);
         const msg = MESSAGES[tipKey][l];
 
+        const action = TIP_ACTIONS[tipKey];
         const result = await this.pushProvider.sendToMerchant(
           merchant.pushToken,
           msg.title,
           msg.body,
-          { action: 'open_settings' },
+          { action },
         );
 
         if (result.invalidToken) {
           staleTokenIds.push(merchant.id);
         } else {
           pushCount++;
+          await this.inbox.record(merchant.id, { category: 'TIP', title: msg.title, body: msg.body, action });
           await merchantMarkSent(this.campaignTrackerRepo, merchant.id, campaignId, 'PUSH');
         }
       }
@@ -405,6 +432,7 @@ export class MerchantSmartCampaignService {
           staleTokenIds.push(merchant.id);
         } else {
           pushCount++;
+          await this.inbox.record(merchant.id, { category: 'OFFER', title: msg.title, body: msg.body, action: 'open_plan' });
           await merchantMarkSent(this.campaignTrackerRepo, merchant.id, campaignId, 'PUSH');
         }
       }

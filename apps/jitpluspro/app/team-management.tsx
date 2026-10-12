@@ -668,7 +668,7 @@ function AddEditMemberModal({
             <View style={styles.permList}>
               {[
                 { ok: true, key: 'team.permScanQR' },
-                { ok: true, key: 'team.permAwardPoints' },
+                { ok: true, key: 'team.permAwardStamps' },
                 { ok: true, key: 'team.permViewClients' },
               ].map((p) => (
                 <View key={p.key} style={styles.permRow}>

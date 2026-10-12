@@ -3,7 +3,7 @@ import { Image as RNImage, type ImageStyle, type StyleProp } from 'react-native'
 import { Image } from 'expo-image';
 import { resolveImageUrl } from '@/utils/imageUrl';
 
-const FALLBACK_LOGO = require('@/assets/images/jitpluslogo.png');
+const FALLBACK_LOGO = require('@/assets/images/jitpluslogo-app.png');
 
 /** Merchant logo with automatic fallback to the JitPlus logo on load error. */
 const MerchantLogo = memo(function MerchantLogo({

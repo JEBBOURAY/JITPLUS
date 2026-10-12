@@ -79,7 +79,7 @@ export default function MerchantDetailScreen() {
       queryClient.invalidateQueries({
         predicate: (q) => {
           const k0 = q.queryKey[0];
-          return k0 === 'points' || (k0 === 'merchant' && q.queryKey[1] === id);
+          return k0 === 'stamps' || (k0 === 'merchant' && q.queryKey[1] === id);
         },
       });
     } catch (e) {
@@ -93,9 +93,7 @@ export default function MerchantDetailScreen() {
 
   const handleLeaveMerchant = useCallback(() => {
     if (!id || !merchant || leaveLoading) return;
-    const balanceLabel = merchant.loyaltyType === 'STAMPS'
-      ? t('merchant.leaveStampsWarning', { count: merchant.cardBalance ?? 0 })
-      : t('merchant.leavePointsWarning', { count: merchant.cardBalance ?? 0 });
+    const balanceLabel = t('merchant.leaveStampsWarning', { count: merchant.cardBalance ?? 0 });
     Alert.alert(t('merchant.leaveTitle'), `${balanceLabel}\n\n${t('merchant.leaveMessage')}`, [
       { text: t('common.cancel'), style: 'cancel' },
       {
@@ -112,7 +110,7 @@ export default function MerchantDetailScreen() {
             queryClient.invalidateQueries({
               predicate: (q) => {
                 const k0 = q.queryKey[0];
-                return k0 === 'points' || (k0 === 'merchant' && q.queryKey[1] === id);
+                return k0 === 'stamps' || (k0 === 'merchant' && q.queryKey[1] === id);
               },
             });
           } catch (e) {

@@ -1,11 +1,19 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Platform, View, Image, StyleSheet, ActivityIndicator, Linking, Text, TextInput } from 'react-native';
+import { Platform, View, Linking, Text, TextInput } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
 import { DarkTheme, DefaultTheme, ThemeProvider as NavThemeProvider } from 'expo-router/react-navigation';
-import { Lexend_400Regular, Lexend_500Medium, Lexend_600SemiBold, Lexend_700Bold } from '@expo-google-fonts/lexend';
-import { Cairo_400Regular, Cairo_500Medium, Cairo_600SemiBold, Cairo_700Bold } from '@expo-google-fonts/cairo';
+// Per-weight subpaths: the package root require()s every weight (17 TTF files
+// bundled for the 8 used).
+import { Lexend_400Regular } from '@expo-google-fonts/lexend/400Regular';
+import { Lexend_500Medium } from '@expo-google-fonts/lexend/500Medium';
+import { Lexend_600SemiBold } from '@expo-google-fonts/lexend/600SemiBold';
+import { Lexend_700Bold } from '@expo-google-fonts/lexend/700Bold';
+import { Cairo_400Regular } from '@expo-google-fonts/cairo/400Regular';
+import { Cairo_500Medium } from '@expo-google-fonts/cairo/500Medium';
+import { Cairo_600SemiBold } from '@expo-google-fonts/cairo/600SemiBold';
+import { Cairo_700Bold } from '@expo-google-fonts/cairo/700Bold';
 import * as SplashScreen from 'expo-splash-screen';
 import { QueryClient, QueryCache, MutationCache, onlineManager, useQueryClient } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
@@ -15,13 +23,16 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { ThemeProvider, useTheme } from '@/contexts/ThemeContext';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { LanguageProvider, useLanguage } from '@/contexts/LanguageContext';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import OfflineBanner from '@/components/OfflineBanner';
 import { useRealtimeSocket } from '@jitplus/shared/src/useRealtimeSocket';
-import { useRealtimeEvents, handleFcmDataPayload, useAppForegroundRefresh } from '@/hooks/useRealtimeEvents';
+import {
+  useRealtimeEvents, handleFcmDataPayload, pushStampsEventFromNotification, useAppForegroundRefresh,
+} from '@/hooks/useRealtimeEvents';
 import { api, getServerBaseUrl } from '@/services/api';
 import Constants from 'expo-constants';
 import * as Sentry from '@sentry/react-native';
@@ -105,8 +116,7 @@ Sentry.init({
 // ── GDPR / CNDP opt-out (honours sentry_opt_out AsyncStorage flag) ─────
 // Sentry is declared as PII-free anonymous crash reporting, but users retain
 // the right to object to any processing under Loi 09-08 art. 9.
-import AsyncStorageForConsent from '@react-native-async-storage/async-storage';
-AsyncStorageForConsent.getItem('sentry_opt_out')
+AsyncStorage.getItem('sentry_opt_out')
   .then((v) => {
     if (v === 'true') {
       try { Sentry.close(); } catch { /* ignore */ }
@@ -380,11 +390,30 @@ function RootLayoutNav() {
             case 'open_notifications':
               router.push('/(tabs)/notifications');
               return;
-            case 'open_rewards_history':
-              router.push('/rewards-history');
+            case 'open_scratch': {
+              const cardId = data?.cardId;
+              const campaignId = data?.campaignId;
+              if (cardId && MERCHANT_ID_RE.test(cardId)) {
+                router.push({ pathname: '/scratch/[id]', params: { id: cardId } });
+              } else if (campaignId && MERCHANT_ID_RE.test(campaignId)) {
+                // The initial "card received" push only carries the campaign id
+                router.push({ pathname: '/scratch/[id]', params: { id: campaignId, mode: 'campaign' } });
+              } else {
+                router.push('/(tabs)');
+              }
               return;
-            case 'open_scan_history':
-              router.push('/scan-history');
+            }
+            case 'open_coupon': {
+              const couponId = data?.couponId;
+              if (couponId && MERCHANT_ID_RE.test(couponId)) {
+                router.push({ pathname: '/coupons/[id]', params: { id: couponId } });
+              } else {
+                router.push('/coupons');
+              }
+              return;
+            }
+            case 'open_coupons':
+              router.push('/coupons');
               return;
             default:
               if (__DEV__) console.warn('Unknown FCM action:', action);
@@ -394,7 +423,7 @@ function RootLayoutNav() {
 
         // Handle event-based navigation (transactional & broadcast notifications)
         switch (event) {
-          case 'points_updated':
+          case 'stamps_updated':
           case 'reward_available':
           case 'reward_redeemed':
           case 'reward_reminder':
@@ -443,6 +472,7 @@ function RootLayoutNav() {
       // Instantly invalidate cache from FCM data payload (fallback for when WS is offline)
       const data = notification.request.content.data as Record<string, string> | undefined;
       handleFcmDataPayload(data, queryClient);
+      pushStampsEventFromNotification(data, queryClient);
     });
 
     // Listen for notification taps (user interacted with the notification)
@@ -499,10 +529,13 @@ function RootLayoutNav() {
           <Stack.Screen name="complete-profile" options={{ animation: 'slide_from_bottom' }} />
           <Stack.Screen name="set-password" options={{ animation: 'slide_from_right', contentStyle: { backgroundColor: '#fff' } }} />
           <Stack.Screen name="change-password" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="edit-profile" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="referral" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="legal" options={{ animation: 'slide_from_right' }} />
-          <Stack.Screen name="scan-history" options={{ animation: 'slide_from_right' }} />
-          <Stack.Screen name="rewards-history" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="scratch/index" options={{ animation: 'slide_from_bottom' }} />
+          <Stack.Screen name="scratch/[id]" options={{ animation: 'slide_from_bottom' }} />
+          <Stack.Screen name="coupons/index" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="coupons/[id]" options={{ animation: 'slide_from_right' }} />
         </Stack>
       </ErrorBoundary>
       </View>
@@ -523,22 +556,6 @@ function SplashGate({ children }: { children: React.ReactNode }) {
   if (authLoading) return null;
   return <>{children}</>;
 }
-
-const splashStyles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  logo: {
-    width: 180,
-    height: 180,
-  },
-  spinner: {
-    marginTop: 24,
-  },
-});
 
 export default function RootLayout() {
   const [loaded, error] = useFonts({
@@ -582,6 +599,7 @@ export default function RootLayout() {
   }
 
   return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
     <SafeAreaProvider>
       <ErrorBoundary>
       <PersistQueryClientProvider
@@ -617,5 +635,6 @@ export default function RootLayout() {
       </PersistQueryClientProvider>
       </ErrorBoundary>
     </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }

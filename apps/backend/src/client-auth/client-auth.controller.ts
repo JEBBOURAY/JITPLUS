@@ -224,12 +224,12 @@ export class ClientController {
     return this.clientService.getTransactionsHistory(user.userId, page, limit);
   }
 
-  @Get('points')
-  async getPointsOverview(
+  @Get('stamps')
+  async getStampsOverview(
     @CurrentUser() user: JwtPayload,
     @Query() { page, limit }: PaginationQueryDto,
   ) {
-    return this.clientService.getPointsOverview(user.userId, page, limit);
+    return this.clientService.getStampsOverview(user.userId, page, limit);
   }
 
   @Get('merchants')

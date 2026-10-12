@@ -22,7 +22,6 @@ import {
   STORE_REPOSITORY, type IStoreRepository,
 } from '../../common/repositories';
 import { NotificationsService } from '../../notifications/notifications.service';
-import { EventsGateway } from '../../events/events.gateway';
 import { UpdateProfileDto } from '../dto/update-profile.dto';
 import { ChangePasswordDto } from '../dto/change-password.dto';
 import { UpdateLoyaltySettingsDto } from '../dto/update-loyalty-settings.dto';
@@ -31,26 +30,14 @@ import * as bcrypt from 'bcryptjs';
 import * as jwt from 'jsonwebtoken';
 import { createPublicKey, randomUUID } from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
-import { BCRYPT_SALT_ROUNDS, DEFAULT_REWARD_THRESHOLD, DEFAULT_STAMPS_FOR_REWARD } from '../../common/constants';
+import { BCRYPT_SALT_ROUNDS, DEFAULT_STAMPS_FOR_REWARD } from '../../common/constants';
 import { MERCHANT_PROFILE_SELECT, MerchantProfileData } from '../../common/prisma-selects';
 import { MERCHANT_PROFILE_CACHE_TTL } from '../../common/constants';
-import { PointsRules } from '../interfaces/points-rules.interface';
 import { stripUndefined } from '../../common/utils';
+import { assertClean } from '../../common/utils/content-moderation';
 import { getNotifTranslations } from '../../common/utils/notification-i18n';
 import { MailService } from '../../mail/mail.service';
 import { pickEmailLang } from '../../mail/transactional-i18n';
-
-/** Summary of a loyalty-type conversion — embedded in the audit log for rollback / forensics. */
-interface ConversionSummary {
-  oldType: string;
-  newType: string;
-  pointsPerStamp: number;
-  cardsAffected: number;
-  totalBalanceBefore: number;
-  totalBalanceAfter: number;
-  rewardsBefore: { id: string; cout: number }[];
-  rewardsAfter: { id: string; cout: number }[];
-}
 
 @Injectable()
 export class MerchantProfileService {
@@ -70,7 +57,6 @@ export class MerchantProfileService {
     @Inject(STORE_REPOSITORY) private storeRepo: IStoreRepository,
     @Inject(CACHE_MANAGER) private cache: Cache,
     private notifications: NotificationsService,
-    private eventsGateway: EventsGateway,
     private configService: ConfigService,
     private auditLogService: AuditLogService,
     private mailService: MailService,
@@ -111,7 +97,27 @@ export class MerchantProfileService {
   }
 
   async updateProfile(merchantId: string, dto: UpdateProfileDto): Promise<MerchantProfileData> {
-    const data = stripUndefined(dto);
+    // These fields are shown to end users in jitplus (UGC policy).
+    assertClean({
+      nom: dto.nom,
+      tagline: dto.tagline,
+      description: dto.description,
+      'socialLinks.instagram': dto.socialLinks?.instagram,
+      'socialLinks.tiktok': dto.socialLinks?.tiktok,
+      'socialLinks.facebook': dto.socialLinks?.facebook,
+      'socialLinks.snapchat': dto.socialLinks?.snapchat,
+      'socialLinks.youtube': dto.socialLinks?.youtube,
+      'socialLinks.website': dto.socialLinks?.website,
+    });
+
+    const { socialLinks, ...rest } = stripUndefined(dto);
+    const data: Record<string, unknown> = { ...rest };
+    if (socialLinks !== undefined) {
+      // The object replaces the stored links entirely: a missing or blank key removes that link.
+      data.socialLinks = Object.fromEntries(
+        Object.entries(socialLinks).filter(([, v]) => typeof v === 'string' && v.trim() !== ''),
+      ) as Prisma.InputJsonObject;
+    }
 
     // If email is being changed, reset emailVerified so merchant must re-verify
     if (data.email) {
@@ -120,7 +126,7 @@ export class MerchantProfileService {
         select: { email: true },
       });
       if (current && current.email !== data.email) {
-        (data as any).emailVerified = false;
+        data.emailVerified = false;
       }
     }
 
@@ -270,24 +276,19 @@ export class MerchantProfileService {
 
   // â”€â”€ Settings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  async updateSettings(merchantId: string, settings: { pointsRate?: number }): Promise<MerchantProfileData> {
-    if (settings.pointsRate !== undefined && settings.pointsRate <= 0) {
-      throw new BadRequestException('Le taux de conversion doit être supérieur à zéro');
-    }
-    const result = await this.merchantRepo.update({
-      where: { id: merchantId },
-      data: { pointsRate: settings.pointsRate },
-      select: MERCHANT_PROFILE_SELECT,
-    });
-    await this.cache.del(`merchant:profile:${merchantId}`);
-    return result;
-  }
-
   async previewAccumulationLimit(merchantId: string, limit: number): Promise<{ affectedClients: number }> {
     const count = await this.loyaltyCardRepo.count({
-      where: { merchantId, points: { gt: limit } },
+      where: { merchantId, stamps: { gt: limit } },
     });
     return { affectedClients: count };
+  }
+
+  /** Clients whose balance would be rescaled by a stampsForReward change. */
+  async previewCardSlots(merchantId: string): Promise<{ clientsWithStamps: number }> {
+    const count = await this.loyaltyCardRepo.count({
+      where: { merchantId, stamps: { gt: 0 }, deactivatedAt: null },
+    });
+    return { clientsWithStamps: count };
   }
 
   async updateLoyaltySettings(merchantId: string, dto: UpdateLoyaltySettingsDto): Promise<MerchantProfileData> {
@@ -296,106 +297,43 @@ export class MerchantProfileService {
       select: {
         id: true,
         nom: true,
-        loyaltyType: true,
-        conversionRate: true,
         stampsForReward: true,
-        pointsRules: true,
         accumulationLimit: true,
+        stampValidityDays: true,
       },
     });
     if (!merchant) throw new NotFoundException('Commerce non trouvé');
 
-    if (dto.conversionRate !== undefined && dto.conversionRate <= 0) {
-      throw new BadRequestException('Le taux de conversion doit être supérieur à zéro');
-    }
     if (dto.stampsForReward !== undefined && dto.stampsForReward < 1) {
       throw new BadRequestException('Le nombre de tampons pour un cadeau doit être au moins 1');
     }
-    if (dto.pointsRate !== undefined && dto.pointsRate <= 0) {
-      throw new BadRequestException('Le taux de points doit être supérieur à zéro');
+    if (dto.amountPerStamp !== undefined && dto.amountPerStamp <= 0) {
+      throw new BadRequestException('Le montant par tampon doit être supérieur à zéro');
     }
     if (dto.accumulationLimit !== undefined && dto.accumulationLimit !== null && dto.accumulationLimit < 1) {
       throw new BadRequestException("La limite d'accumulation doit être au moins 1");
-    }
-
-    const oldType = merchant.loyaltyType;
-    const newType = dto.loyaltyType ?? oldType;
-    // A first-time selection (no previous program) is NOT a conversion — there
-    // are no existing balances to rescale, we just persist the chosen type.
-    const loyaltyTypeChanged = !!dto.loyaltyType && !!oldType && dto.loyaltyType !== oldType;
-
-    // Auto-sync conversionRate with pointsRate when conversionRate is not explicitly provided.
-    // This ensures the client app displays the correct earning rate (e.g. after onboarding).
-    if (dto.pointsRate !== undefined && dto.conversionRate === undefined) {
-      dto.conversionRate = dto.pointsRate;
     }
 
     // Strip forceCapClients from the data sent to Prisma (not a DB field)
     const forceCapClients = dto.forceCapClients;
     const { forceCapClients: _strip, ...dtoWithoutForce } = dto;
     const data: Record<string, unknown> = stripUndefined(dtoWithoutForce);
-
-    // Compute the value-equivalence ratio between the two systems.
-    // pointsPerStamp = "how many points 1 stamp is worth".
-    //
-    // Source of truth on a type switch is the conversion rule the merchant
-    // typed in the form ("X fromUnit = Y toUnit"). The frontend sends that as
-    // dto.conversionRate = X/Y, but its meaning is asymmetric:
-    //   • newType=STAMPS (POINTS→STAMPS): from=Pts, to=Tmps → X/Y = pointsPerStamp.
-    //   • newType=POINTS (STAMPS→POINTS): from=Tmps, to=Pts → X/Y = 1/pointsPerStamp.
-    // We must invert in the second case, otherwise the on-disk balances are
-    // converted with the inverse ratio (the "x tmp = x pts" symptom).
-    //
-    // Outside a type switch (or when the user did not provide an explicit
-    // ratio), fall back to the historical rewardThreshold/stampsForReward
-    // ratio, which preserves the client's "progress to next reward".
-    const pointsRules = (merchant.pointsRules as PointsRules | null) ?? null;
-    const rewardThreshold = pointsRules?.rewardThreshold || DEFAULT_REWARD_THRESHOLD;
-    const stampsForReward = (dto.stampsForReward ?? merchant.stampsForReward) || DEFAULT_STAMPS_FOR_REWARD;
-    const dtoConversionRate =
-      typeof dto.conversionRate === 'number' && Number.isFinite(dto.conversionRate) && dto.conversionRate > 0
-        ? dto.conversionRate
-        : null;
-    let pointsPerStamp: number;
-    if (loyaltyTypeChanged && dtoConversionRate !== null) {
-      pointsPerStamp = newType === 'STAMPS' ? dtoConversionRate : 1 / dtoConversionRate;
-    } else {
-      pointsPerStamp = rewardThreshold / stampsForReward;
-    }
-    if (loyaltyTypeChanged && (!Number.isFinite(pointsPerStamp) || pointsPerStamp <= 0)) {
-      throw new BadRequestException(
-        'Conversion impossible : seuil de récompense ou nombre de tampons invalide',
-      );
+    // Restart the expiry countdown whenever the rule changes, so enabling or
+    // shortening the validity never wipes a card without a reminder first.
+    if (dto.stampValidityDays !== undefined && dto.stampValidityDays !== merchant.stampValidityDays) {
+      data.stampValiditySince = dto.stampValidityDays === null ? null : new Date();
     }
 
-    // Detect a stampsForReward change WITHOUT type switch in STAMPS mode:
-    // we must rescale existing reward costs proportionally so that the
-    // merchant's pricing tiers (e.g. small/medium/large) are preserved.
-    // Skipped if a type switch is happening — that path already converts cout
-    // via recalculateBalancesTx with the correct ratio.
+    // A stampsForReward change rescales existing reward costs proportionally so
+    // that the merchant's pricing tiers (e.g. small/medium/large) are preserved.
     const stampsForRewardChanged =
       dto.stampsForReward !== undefined &&
       dto.stampsForReward !== merchant.stampsForReward;
-    const shouldScaleRewardsForStamps =
-      stampsForRewardChanged && !loyaltyTypeChanged && newType === 'STAMPS';
 
-    // Atomic: convert balances + reward costs + apply merchant settings in a single DB transaction.
-    // Prevents desync if any step fails (e.g. type updated but balances stayed unconverted, or vice-versa).
-    let conversionSummary: ConversionSummary | null = null;
+    // Atomic: rescale reward costs + balances and apply merchant settings in a single DB transaction.
     const updated = await this.txRunner.run(
       async (tx) => {
-        if (loyaltyTypeChanged) {
-          // Prevent the unscaled UI payload from overwriting the scaled DB value
-          delete data.stampsForReward;
-          conversionSummary = await this.recalculateBalancesTx(
-            tx,
-            merchantId,
-            oldType!,
-            newType!,
-            pointsPerStamp,
-            merchant.accumulationLimit ?? null,
-          );
-        } else if (shouldScaleRewardsForStamps) {
+        if (stampsForRewardChanged) {
           await this.scaleRewardCostsTx(
             tx,
             merchantId,
@@ -412,21 +350,9 @@ export class MerchantProfileService {
       },
     );
 
-    if (loyaltyTypeChanged) {
-      // Fire-and-forget: do not block the HTTP response
-      this.notifyLoyaltyTypeChange(
-        merchantId,
-        updated.nom,
-        oldType as string,
-        newType as string,
-      ).catch((err) =>
-        this.logger.error(`notifyLoyaltyTypeChange failed: ${err}`),
-      );
-    }
-
     // Cap existing clients' balances and notify them if the merchant confirmed
     if (forceCapClients && dto.accumulationLimit != null) {
-      this.capAndNotifyClients(merchantId, merchant.nom, dto.accumulationLimit, (newType ?? oldType) as string)
+      this.capAndNotifyClients(merchantId, merchant.nom, dto.accumulationLimit)
         .catch((err) => this.logger.error(`capAndNotifyClients failed: ${err}`));
     }
 
@@ -441,14 +367,11 @@ export class MerchantProfileService {
       targetType: AuditTargetType.MERCHANT,
       targetId: merchantId,
       metadata: {
-        loyaltyType: dto.loyaltyType,
-        conversionRate: dto.conversionRate,
+        stampEarningMode: dto.stampEarningMode,
+        amountPerStamp: dto.amountPerStamp,
         stampsForReward: dto.stampsForReward,
         accumulationLimit: dto.accumulationLimit,
-        loyaltyTypeChanged,
-        // Conversion audit trail: enables rollback / post-mortem if a merchant
-        // disputes the resulting balances. Only populated on type switch.
-        ...(conversionSummary ? { conversion: conversionSummary } : {}),
+        stampValidityDays: dto.stampValidityDays,
       },
     });
 
@@ -465,17 +388,16 @@ export class MerchantProfileService {
     merchantId: string,
     merchantName: string,
     limit: number,
-    loyaltyType: string,
   ): Promise<void> {
-    // 1. Fetch ALL affected cards in one query (with points > limit)
+    // 1. Fetch ALL affected cards in one query (with stamps > limit)
     const BATCH_SIZE = 500;
     let totalCapped = 0;
 
     while (true) {
       // Fetch a batch — no skip needed since we update matching rows each iteration
       const cards = await this.loyaltyCardRepo.findMany({
-        where: { merchantId, points: { gt: limit } },
-        select: { id: true, clientId: true, points: true, client: { select: { language: true } } },
+        where: { merchantId, stamps: { gt: limit } },
+        select: { id: true, clientId: true, stamps: true, client: { select: { language: true } } },
         take: BATCH_SIZE,
       });
 
@@ -485,22 +407,20 @@ export class MerchantProfileService {
       const cardIds = cards.map((c: any) => c.id);
       await this.loyaltyCardRepo.updateMany({
         where: { id: { in: cardIds } },
-        data: { points: limit },
+        data: { stamps: limit },
       });
 
-      // 3. Bulk insert all ADJUST_POINTS transactions (instead of N individual creates)
+      // 3. Bulk insert all ADJUST_STAMPS transactions (instead of N individual creates)
       await this.transactionRepoDelegate.createMany({
         data: cards.map((card: any) => {
           const t = getNotifTranslations(card.client?.language);
-          const unitLabel = loyaltyType === 'STAMPS' ? t.unitStamps(card.points) : t.unitPoints(card.points);
           return {
             clientId: card.clientId,
             merchantId,
-            type: 'ADJUST_POINTS' as const,
-            loyaltyType: loyaltyType as any,
-            points: limit - card.points,
+            type: 'ADJUST_STAMPS' as const,
+            stamps: limit - card.stamps,
             amount: 0,
-            note: t.capNote(card.points, limit, unitLabel),
+            note: t.capNote(card.stamps, limit, t.unitStamps(limit)),
           };
         }),
       });
@@ -512,13 +432,12 @@ export class MerchantProfileService {
         await Promise.allSettled(
           chunk.map((card: any) => {
             const t = getNotifTranslations(card.client?.language);
-            const unitLabel = loyaltyType === 'STAMPS' ? t.unitStamps(card.points) : t.unitPoints(card.points);
             return this.notifications.sendToClient(
               merchantId,
               card.clientId,
               t.capTitle(merchantName),
-              t.capBody(card.points, limit, unitLabel, merchantName),
-              { event: 'points_updated', merchantId, newBalance: String(limit), loyaltyType },
+              t.capBody(card.stamps, limit, t.unitStamps(limit), merchantName),
+              { event: 'stamps_updated', merchantId, newBalance: String(limit) },
             );
           }),
         );
@@ -534,102 +453,8 @@ export class MerchantProfileService {
   }
 
   /**
-   * Create a LOYALTY_PROGRAM_CHANGE transaction for every client that holds a
-   * loyalty card with this merchant, and push a notification to all of them.
-   */
-  private async notifyLoyaltyTypeChange(
-    merchantId: string,
-    merchantName: string,
-    oldType: string,
-    newType: string,
-  ): Promise<void> {
-    const typeLabel = (t: string) =>
-      t === 'STAMPS' ? 'Tampons 🎫' : 'Points 🏅';
-
-    const note = `Programme de fidélité modifié : ${typeLabel(oldType)} → ${typeLabel(newType)}`;
-    const notifTitle = `🔄 Programme fidélité mis à jour`;
-    const notifBody =
-      `${merchantName} est passé au système ${typeLabel(newType)}. ` +
-      `Vos ${oldType === 'STAMPS' ? 'tampons' : 'points'} ont été convertis automatiquement.`;
-
-    // 1. Fetch and process clients in batches to avoid OOM on large merchants
-    const BATCH_SIZE = 500;
-    let skip = 0;
-    let totalProcessed = 0;
-
-    while (true) {
-      const cards = await this.loyaltyCardRepo.findMany({
-        where: { merchantId },
-        select: { clientId: true },
-        take: BATCH_SIZE,
-        skip,
-      });
-
-      if (cards.length === 0) break;
-
-      const clientIds = cards.map((c: any) => c.clientId);
-
-      // 2. Bulk insert transactions for this batch
-      await this.transactionRepoDelegate.createMany({
-        data: clientIds.map((clientId: string) => ({
-          clientId,
-          merchantId,
-          type: 'LOYALTY_PROGRAM_CHANGE' as const,
-          loyaltyType: newType as any,
-          points: 0,
-          amount: 0,
-          note,
-        })),
-        skipDuplicates: false,
-      });
-
-      totalProcessed += cards.length;
-      skip += BATCH_SIZE;
-
-      if (cards.length < BATCH_SIZE) break;
-    }
-
-    this.logger.log(
-      `Created ${totalProcessed} LOYALTY_PROGRAM_CHANGE transactions for merchant ${merchantId}`,
-    );
-
-    // 3. Send in-app + push notification to all clients
-    await this.notifications.sendToAll(merchantId, {
-      title: notifTitle,
-      body: notifBody,
-    });
-
-    // 4. Emit points_updated via WebSocket so client caches are invalidated instantly
-    const EMIT_BATCH = 500;
-    let emitSkip = 0;
-    while (true) {
-      const cards = await this.loyaltyCardRepo.findMany({
-        where: { merchantId },
-        select: { clientId: true, points: true },
-        take: EMIT_BATCH,
-        skip: emitSkip,
-      });
-      if (cards.length === 0) break;
-      for (const card of cards as { clientId: string; points: number }[]) {
-        this.eventsGateway.emitPointsUpdated(card.clientId, {
-          clientId: card.clientId,
-          merchantId,
-          merchantName,
-          loyaltyType: newType as 'POINTS' | 'STAMPS',
-          points: 0,
-          newBalance: card.points,
-          type: 'ADJUST_POINTS',
-        });
-      }
-      emitSkip += EMIT_BATCH;
-      if (cards.length < EMIT_BATCH) break;
-    }
-  }
-
-  /**
-   * Rescale every reward `cout` AND every client `loyalty_cards.points` (stamps)
-   * proportionally when the merchant changes `stampsForReward` (in STAMPS mode,
-   * no type switch).
+   * Rescale every reward `cout` AND every client `loyalty_cards.stamps`
+   * proportionally when the merchant changes `stampsForReward`.
    *
    * new_value = ROUND(value * newRef / oldRef).
    *  - rewards: floor 1 (a free reward at 0 stamps would be exploitable).
@@ -643,7 +468,7 @@ export class MerchantProfileService {
    *   ratio "current / threshold" across the change.
    *
    * Concurrency: SELECT … FOR UPDATE locks the merchant row so concurrent
-   * EARN_POINTS / REDEEM_REWARD wait until the rescale commits.
+   * EARN_STAMPS / REDEEM_REWARD wait until the rescale commits.
    *
    * Cast to ::numeric to avoid Postgres integer division.
    */
@@ -659,7 +484,6 @@ export class MerchantProfileService {
     }
     if (oldRef === newRef) return;
 
-    // Concurrency guard — same as recalculateBalancesTx.
     await tx.$executeRaw`SELECT id FROM merchants WHERE id = ${merchantId} FOR UPDATE`;
 
     // 1. Rescale reward costs (preserve tiers; floor 1).
@@ -673,13 +497,13 @@ export class MerchantProfileService {
     if (accumulationLimit && accumulationLimit > 0) {
       await tx.$executeRaw`
         UPDATE loyalty_cards
-        SET points = LEAST(GREATEST(ROUND(points::numeric * ${newRef} / ${oldRef})::int, 0), ${accumulationLimit}),
+        SET stamps = LEAST(GREATEST(ROUND(stamps::numeric * ${newRef} / ${oldRef})::int, 0), ${accumulationLimit}),
             updated_at = NOW()
         WHERE merchant_id = ${merchantId}`;
     } else {
       await tx.$executeRaw`
         UPDATE loyalty_cards
-        SET points = GREATEST(ROUND(points::numeric * ${newRef} / ${oldRef})::int, 0),
+        SET stamps = GREATEST(ROUND(stamps::numeric * ${newRef} / ${oldRef})::int, 0),
             updated_at = NOW()
         WHERE merchant_id = ${merchantId}`;
     }
@@ -687,134 +511,6 @@ export class MerchantProfileService {
     this.logger.log(
       `Scaled rewards + client balances by ${newRef}/${oldRef} for merchant ${merchantId}`,
     );
-  }
-
-  private async recalculateBalancesTx(
-    tx: import('../../common/repositories').TransactionClient,
-    merchantId: string,
-    oldType: string,
-    newType: string,
-    pointsPerStamp: number,
-    accumulationLimit: number | null,
-  ): Promise<ConversionSummary> {
-    if (!Number.isFinite(pointsPerStamp) || pointsPerStamp <= 0) {
-      throw new BadRequestException('Ratio de conversion invalide');
-    }
-
-    // Concurrency guard: lock the merchant row so concurrent EARN_POINTS /
-    // REDEEM_REWARD transactions (which all start by reading the merchant) wait
-    // until the conversion commits. Prevents a client from earning points on
-    // the OLD scale that get persisted after the bulk UPDATE.
-    await tx.$executeRaw`SELECT id FROM merchants WHERE id = ${merchantId} FOR UPDATE`;
-
-    // Snapshot rewards BEFORE conversion (audit trail — enables rollback if needed).
-    const rewardsBefore = await tx.reward.findMany({
-      where: { merchantId },
-      select: { id: true, cout: true },
-    });
-
-    // Aggregate balances BEFORE — used as audit summary; per-card snapshots would
-    // be too heavy on large merchants (the per-card transaction is created later
-    // by notifyLoyaltyTypeChange).
-    const balancesBefore = await tx.loyaltyCard.aggregate({
-      where: { merchantId },
-      _count: { _all: true },
-      _sum: { points: true },
-    });
-
-    if (oldType === 'POINTS' && newType === 'STAMPS') {
-      // POINTS → STAMPS : stamps = ROUND(points / pointsPerStamp)
-      // ROUND (vs FLOOR) preserves customer value symmetrically with the reverse path.
-      // CRITICAL: cast to numeric BEFORE the division — Postgres does integer division
-      // when both operands are int (e.g. 5/10 = 0, not 0.5), which would silently
-      // erase residual progress for clients whose balance is not a multiple of the ratio.
-      // Lower bound 0 ; we don't apply accumulationLimit here because stamps balances
-      // are typically much smaller than the points limit.
-      await tx.$executeRaw`
-        UPDATE loyalty_cards
-        SET points = GREATEST(ROUND(points::numeric / ${pointsPerStamp})::int, 0),
-            updated_at = NOW()
-        WHERE merchant_id = ${merchantId}`;
-
-      // Reward costs: same ratio, minimum 1 (a free reward at 0 stamps would be exploitable).
-      await tx.$executeRaw`
-        UPDATE rewards
-        SET cout = GREATEST(ROUND(cout::numeric / ${pointsPerStamp})::int, 1),
-            updated_at = NOW()
-        WHERE merchant_id = ${merchantId}`;
-
-      // Merchant stampsForReward setting (legacy field, still used for defaults and profile display)
-      await tx.$executeRaw`
-        UPDATE merchants
-        SET stamps_for_reward = GREATEST(ROUND(stamps_for_reward::numeric / ${pointsPerStamp})::int, 1),
-            updated_at = NOW()
-        WHERE id = ${merchantId}`;
-    } else if (oldType === 'STAMPS' && newType === 'POINTS') {
-      // STAMPS → POINTS : points = ROUND(stamps × pointsPerStamp)
-      // Multiplication is safe with int operands (no truncation). We still cast to
-      // numeric so a fractional pointsPerStamp would not silently floor.
-      // Cap by accumulationLimit if set, to honour the merchant's anti-abuse policy.
-      if (accumulationLimit && accumulationLimit > 0) {
-        await tx.$executeRaw`
-          UPDATE loyalty_cards
-          SET points = LEAST(GREATEST(ROUND(points::numeric * ${pointsPerStamp})::int, 0), ${accumulationLimit}),
-              updated_at = NOW()
-          WHERE merchant_id = ${merchantId}`;
-      } else {
-        await tx.$executeRaw`
-          UPDATE loyalty_cards
-          SET points = GREATEST(ROUND(points::numeric * ${pointsPerStamp})::int, 0),
-              updated_at = NOW()
-          WHERE merchant_id = ${merchantId}`;
-      }
-
-      await tx.$executeRaw`
-        UPDATE rewards
-        SET cout = GREATEST(ROUND(cout::numeric * ${pointsPerStamp})::int, 1),
-            updated_at = NOW()
-        WHERE merchant_id = ${merchantId}`;
-
-      await tx.$executeRaw`
-        UPDATE merchants
-        SET stamps_for_reward = GREATEST(ROUND(stamps_for_reward::numeric * ${pointsPerStamp})::int, 1),
-            updated_at = NOW()
-        WHERE id = ${merchantId}`;
-    } else {
-      // Same-type or unsupported transition: nothing to convert.
-      return {
-        oldType,
-        newType,
-        pointsPerStamp,
-        cardsAffected: 0,
-        totalBalanceBefore: 0,
-        totalBalanceAfter: 0,
-        rewardsBefore: [],
-        rewardsAfter: [],
-      };
-    }
-
-    // Snapshot AFTER — verifies the conversion landed in the expected range and
-    // gives admins the data to roll back via a UPDATE … VALUES (id, cout) script.
-    const rewardsAfter = await tx.reward.findMany({
-      where: { merchantId },
-      select: { id: true, cout: true },
-    });
-
-    const balancesAfter = await tx.loyaltyCard.aggregate({
-      where: { merchantId },
-      _sum: { points: true },
-    });
-
-    return {
-      oldType,
-      newType,
-      pointsPerStamp,
-      cardsAffected: balancesBefore._count?._all ?? 0,
-      totalBalanceBefore: balancesBefore._sum?.points ?? 0,
-      totalBalanceAfter: balancesAfter._sum?.points ?? 0,
-      rewardsBefore: rewardsBefore.map((r: { id: string; cout: number }) => ({ id: r.id, cout: r.cout })),
-      rewardsAfter: rewardsAfter.map((r: { id: string; cout: number }) => ({ id: r.id, cout: r.cout })),
-    };
   }
 
   // ── Delete Account (soft delete) ─────────────────────────────
@@ -924,6 +620,9 @@ export class MerchantProfileService {
 
       // 6. Clean up notification data so recreated accounts start fresh
       await tx.merchantNotificationRead.deleteMany({
+        where: { merchantId },
+      });
+      await tx.merchantInboxNotification.deleteMany({
         where: { merchantId },
       });
       await tx.notification.deleteMany({

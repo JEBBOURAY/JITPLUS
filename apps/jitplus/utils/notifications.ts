@@ -69,7 +69,7 @@ export async function setupAndroidChannel() {
       sound: 'default',
     });
 
-    // Transactional channel for stamps, points, rewards, luckyWheel
+    // Transactional channel for stamps, rewards, luckyWheel
     await Notifications.setNotificationChannelAsync('jit-transactions', {
       name: i18n.t('notifications.channelTransactions'),
       description: i18n.t('notifications.channelTransactionsDesc'),

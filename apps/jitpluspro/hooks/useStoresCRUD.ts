@@ -72,11 +72,13 @@ export function useStoresCRUD() {
   };
 
   // ── Toggle active ──
-  const toggleActive = async (store: StoreType) => {
+  const toggleActive = async (store: StoreType): Promise<boolean> => {
     try {
       await updateMutation.mutateAsync({ id: store.id, payload: { isActive: !store.isActive } });
+      return true;
     } catch {
       Alert.alert(t('common.error'), t('storesCrud.toggleError'));
+      return false;
     }
   };
 

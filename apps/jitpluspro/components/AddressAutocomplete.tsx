@@ -3,7 +3,7 @@
  * Calls the backend /geocode/* proxy (server-side API key, no app-restriction issues).
  * Shows live suggestions as the user types, biased to Morocco.
  */
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
   ActivityIndicator, StyleSheet, Keyboard, Platform,

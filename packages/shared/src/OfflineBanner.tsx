@@ -1,6 +1,5 @@
 // ── Shared OfflineBanner ─────────────────────────────────────────────────────
 // Shows a red banner when the device has no network connection.
-import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { WifiOff } from 'lucide-react-native';
 import { useNetworkStatus } from './useNetworkStatus';

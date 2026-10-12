@@ -140,7 +140,9 @@ export class MerchantStoreService {
     };
     const updated = await this.storeRepo.update({ where: { id: storeId }, data });
 
-    // Sync key fields to the merchant profile when the main (first) store is updated
+    // Sync key fields to the merchant profile when the main (first) store is updated.
+    // description/categorie/socialLinks are only sent by older app versions; current
+    // clients edit them on the merchant profile directly.
     const allStores = await this.storeRepo.findMany({
       where: { merchantId },
       orderBy: { createdAt: 'asc' },
@@ -192,41 +194,24 @@ export class MerchantStoreService {
 
     const isReferenceStore = allStores.length > 0 && allStores[0].id === storeId;
 
-    if (isReferenceStore && allStores.length > 1) {
-      // Transfer global data (email, socialLinks) to the next oldest store
+    if (isReferenceStore) {
+      // The merchant's location mirrors its reference store. Brand-level data
+      // (description, category, social links) lives on the merchant and stays as is.
       const nextStore = allStores[1];
-      const globalData: Record<string, unknown> = {};
-      if (store.email && !nextStore.email) globalData.email = store.email;
-      if (store.description && !nextStore.description) globalData.description = store.description;
-      const storeSocial = (store.socialLinks as Record<string, unknown>) ?? {};
-      const nextSocial = (nextStore.socialLinks as Record<string, unknown>) ?? {};
-      const mergedSocial = { ...storeSocial, ...nextSocial };
-      if (Object.keys(mergedSocial).length > 0) {
-        globalData.socialLinks = mergedSocial as unknown as Prisma.InputJsonObject;
-      }
-      if (Object.keys(globalData).length > 0) {
-        await this.storeRepo.update({ where: { id: nextStore.id }, data: globalData });
-      }
-
-      // Sync the new reference store's data to the merchant profile
-      const updatedNext = await this.storeRepo.findFirst({ where: { id: nextStore.id } });
-      if (updatedNext) {
-        const merchantSync: Record<string, unknown> = {
-          description: updatedNext.description,
-          categorie: updatedNext.categorie,
-          ville: updatedNext.ville,
-          quartier: updatedNext.quartier,
-          adresse: updatedNext.adresse,
-          latitude: updatedNext.latitude,
-          longitude: updatedNext.longitude,
-          socialLinks: (updatedNext.socialLinks ?? {}) as unknown as Prisma.InputJsonObject,
-        };
-        await this.merchantRepo.update({ where: { id: merchantId }, data: merchantSync });
-        await Promise.all([
-          this.cache.del(`merchant:detail:${merchantId}`),
-          this.cache.del(`merchant:profile:${merchantId}`),
-        ]);
-      }
+      await this.merchantRepo.update({
+        where: { id: merchantId },
+        data: {
+          ville: nextStore.ville,
+          quartier: nextStore.quartier,
+          adresse: nextStore.adresse,
+          latitude: nextStore.latitude,
+          longitude: nextStore.longitude,
+        },
+      });
+      await Promise.all([
+        this.cache.del(`merchant:detail:${merchantId}`),
+        this.cache.del(`merchant:profile:${merchantId}`),
+      ]);
     }
 
     await this.storeRepo.delete({ where: { id: storeId } });

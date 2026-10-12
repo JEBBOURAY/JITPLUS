@@ -37,10 +37,12 @@ const mockTheme: ThemeColors = {
 
 describe('TRANSACTION_TYPE_CONFIG', () => {
   const types: TransactionType[] = [
-    'EARN_POINTS',
+    'EARN_STAMPS',
     'REDEEM_REWARD',
-    'ADJUST_POINTS',
+    'ADJUST_STAMPS',
     'LOYALTY_PROGRAM_CHANGE',
+    'LUCKY_WHEEL_WIN',
+    'COUPON_REDEEM',
   ];
 
   it('has configuration for all transaction types', () => {
@@ -58,41 +60,47 @@ describe('TRANSACTION_TYPE_CONFIG', () => {
     });
   });
 
-  it('EARN_POINTS uses primary color', () => {
-    expect(TRANSACTION_TYPE_CONFIG.EARN_POINTS.color(mockTheme)).toBe(mockTheme.primary);
+  it('EARN_STAMPS uses primary color', () => {
+    expect(TRANSACTION_TYPE_CONFIG.EARN_STAMPS.color(mockTheme)).toBe(mockTheme.primary);
   });
 
   it('REDEEM_REWARD uses accent color', () => {
     expect(TRANSACTION_TYPE_CONFIG.REDEEM_REWARD.color(mockTheme)).toBe(mockTheme.accent);
   });
 
-  it('ADJUST_POINTS uses muted text color', () => {
-    expect(TRANSACTION_TYPE_CONFIG.ADJUST_POINTS.color(mockTheme)).toBe(mockTheme.textMuted);
+  it('ADJUST_STAMPS uses muted text color', () => {
+    expect(TRANSACTION_TYPE_CONFIG.ADJUST_STAMPS.color(mockTheme)).toBe(mockTheme.textMuted);
   });
 });
 
 describe('getTransactionConfig', () => {
-  it('returns config for EARN_POINTS (not cancelled)', () => {
-    const result = getTransactionConfig('EARN_POINTS', false, mockTheme);
+  it('returns config for EARN_STAMPS (not cancelled)', () => {
+    const result = getTransactionConfig('EARN_STAMPS', false, mockTheme);
     expect(result.color).toBe(mockTheme.primary);
     expect(result.sign).toBe('+');
   });
 
   it('overrides to danger color when cancelled', () => {
-    const result = getTransactionConfig('EARN_POINTS', true, mockTheme);
+    const result = getTransactionConfig('EARN_STAMPS', true, mockTheme);
     expect(result.color).toBe(mockTheme.danger);
     expect(result.sign).toBe('');
   });
 
   it('uses X icon when cancelled', () => {
-    const normal = getTransactionConfig('EARN_POINTS', false, mockTheme);
-    const cancelled = getTransactionConfig('EARN_POINTS', true, mockTheme);
+    const normal = getTransactionConfig('EARN_STAMPS', false, mockTheme);
+    const cancelled = getTransactionConfig('EARN_STAMPS', true, mockTheme);
     expect(cancelled.icon).not.toBe(normal.icon);
   });
 
   it('REDEEM_REWARD has minus sign', () => {
     const result = getTransactionConfig('REDEEM_REWARD', false, mockTheme);
     expect(result.sign).toBe('-');
+  });
+
+  it('COUPON_REDEEM has plus sign (bonus stamps)', () => {
+    const result = getTransactionConfig('COUPON_REDEEM', false, mockTheme);
+    expect(result.sign).toBe('+');
+    expect(result.color).toBe(mockTheme.accent);
   });
 
   it('LOYALTY_PROGRAM_CHANGE has empty sign', () => {

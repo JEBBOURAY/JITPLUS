@@ -480,9 +480,9 @@ export class AdminAuthService {
         SELECT
           COUNT(*) FILTER (WHERE status = 'ACTIVE')                                    AS total,
           COUNT(*) FILTER (WHERE status = 'ACTIVE' AND created_at >= ${startOfMonth})  AS this_month,
-          COUNT(*) FILTER (WHERE type = 'EARN_POINTS')                                 AS earn,
+          COUNT(*) FILTER (WHERE type = 'EARN_STAMPS')                                 AS earn,
           COUNT(*) FILTER (WHERE type = 'REDEEM_REWARD')                               AS redeem,
-          COUNT(*) FILTER (WHERE type = 'ADJUST_POINTS')                               AS adjust
+          COUNT(*) FILTER (WHERE type = 'ADJUST_STAMPS')                               AS adjust
         FROM transactions
       `,
       this.rewardRepo.count(),
@@ -523,9 +523,9 @@ export class AdminAuthService {
     const newClientsThisMonth = Number(clientRow?.new_this_month ?? 0);
     const totalTransactions = Number(txRow?.total ?? 0);
     const transactionsThisMonth = Number(txRow?.this_month ?? 0);
-    const earnPointsCount = Number(txRow?.earn ?? 0);
+    const earnStampsCount = Number(txRow?.earn ?? 0);
     const redeemRewardCount = Number(txRow?.redeem ?? 0);
-    const adjustPointsCount = Number(txRow?.adjust ?? 0);
+    const adjustStampsCount = Number(txRow?.adjust ?? 0);
 
     // Per-channel notification counts + monthly trends in 2 raw queries instead of 15 individual counts
     const sixMonthsAgo = monthBuckets[0].start;
@@ -589,9 +589,9 @@ export class AdminAuthService {
       transactions: {
         total: totalTransactions,
         thisMonth: transactionsThisMonth,
-        earnPoints: earnPointsCount,
+        earnStamps: earnStampsCount,
         redeemReward: redeemRewardCount,
-        adjustPoints: adjustPointsCount,
+        adjustStamps: adjustStampsCount,
       },
       rewards: { total: totalRewards },
       notifications: {
@@ -736,6 +736,9 @@ export class AdminAuthService {
       await tx.merchantNotificationRead.deleteMany({
         where: { merchantId },
       });
+      await tx.merchantInboxNotification.deleteMany({
+        where: { merchantId },
+      });
       await tx.notification.deleteMany({
         where: { merchantId },
       });
@@ -860,7 +863,7 @@ export class AdminAuthService {
         loyaltyCards: {
           select: {
             id: true,
-            points: true,
+            stamps: true,
             deactivatedAt: true,
             createdAt: true,
             merchant: {

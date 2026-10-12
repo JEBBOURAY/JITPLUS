@@ -1,162 +1,120 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Animated, Easing,
-  Modal, Alert, Dimensions, Pressable, ScrollView, Platform,
+  Modal, Alert, ScrollView, StatusBar, useWindowDimensions,
 } from 'react-native';
-import { Trophy, Frown, Ticket, X, Clock, ChevronLeft } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { useTheme, palette, brandGradient } from '@/contexts/ThemeContext';
+import { ChevronLeft, ChevronRight, History, Info, RefreshCw, Ticket, X } from 'lucide-react-native';
+import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAppFonts } from '@/utils/fonts';
-import { LinearGradient } from 'expo-linear-gradient';
 import { wp, hp, ms, fontSize as FS, radius } from '@/utils/responsive';
 import { extractErrorMessage } from '@/utils/errorMessage';
 import { useLuckyWheelAvailableDraws, useTriggerLuckyWheelDraw, useLuckyWheelHistory } from '@/hooks/useQueryHooks';
-import { haptic, HapticStyle } from '@/utils/haptics';
-import { LuckyWheelDraw } from '@/types';
-import LuckyWheelIcon, { WheelSegment } from './LuckyWheelIcon';
-import type { LuckyWheelPrize, LuckyWheelDrawResult } from '@/types';
+import { haptic, hapticSelection, hapticSuccess, HapticStyle } from '@/utils/haptics';
+import {
+  buildWheelSegments, computeLandingRotation, getDrawStatus, groupTicketsByCampaign,
+  pickTargetSegment, segmentAtPointer,
+} from '@/utils/luckyWheel';
+import type { LuckyWheelCampaign, LuckyWheelDrawResult } from '@/types';
+import MerchantLogo from './MerchantLogo';
+import WheelStage from './luckyWheel/WheelStage';
+import WheelResultSheet from './luckyWheel/WheelResultSheet';
+import WheelHistory from './luckyWheel/WheelHistory';
+import WheelPrizeList from './luckyWheel/WheelPrizeList';
+import CampaignPicker from './luckyWheel/CampaignPicker';
 
-const { width: SCREEN_W } = Dimensions.get('window');
-const BIG_WHEEL = ms(280);
+const LOCALE_TAGS: Record<string, string> = { fr: 'fr-FR', en: 'en-US', ar: 'ar-MA' };
+const BG_GRADIENT = ['#24104A', '#150830', '#0B0418'] as const;
 
-// Wheel segment palette & constants (module scope to avoid recreation per render)
-const PRIZE_COLORS = ['#7C3AED', '#F59E0B', '#10B981', '#3B82F6', '#EC4899', '#F97316'];
-const LOST_COLOR = '#6B7280';
-const MIN_SEGMENTS = 8;
-const MAX_SEGMENTS = 14;
-const LANDING_DURATION_MS = 3200;
-const MIN_TURNS_BEFORE_LANDING = 4;
-const WIN_PULSE_ITERATIONS = 4;
-// Fulfilment status returned by backend when a prize has been handed over
-const FULFILMENT_CLAIMED = 'CLAIMED';
-const FULFILMENT_EXPIRED = 'EXPIRED';
-
-/**
- * Normalize prize percentages using the largest-remainder method so that
- * they sum exactly to `totalPct` (avoiding rounding drift) and return the
- * leftover percentage as the lost share.
- */
-function computeOddsBreakdown(
-  prizes: { id?: string; label: string; weight?: number }[],
-  globalWinRate: number,
-): { perPrize: number[]; lostPct: number } {
-  const totalPct = Math.max(0, Math.min(100, Math.round(globalWinRate * 100)));
-  if (!prizes.length || totalPct === 0) {
-    return { perPrize: prizes.map(() => 0), lostPct: 100 };
-  }
-  const totalWeight = prizes.reduce((s, p) => s + (p.weight || 1), 0) || 1;
-  const raw = prizes.map((p) => ((p.weight || 1) / totalWeight) * totalPct);
-  const floors = raw.map((v) => Math.floor(v));
-  let remainder = totalPct - floors.reduce((s, v) => s + v, 0);
-  const order = raw
-    .map((v, i) => ({ i, frac: v - Math.floor(v) }))
-    .sort((a, b) => b.frac - a.frac);
-  const perPrize = [...floors];
-  for (let k = 0; k < order.length && remainder > 0; k++) {
-    perPrize[order[k].i] += 1;
-    remainder -= 1;
-  }
-  const lostPct = Math.max(0, 100 - perPrize.reduce((s, v) => s + v, 0));
-  return { perPrize, lostPct };
-}
+// Cruise speed (deg/s). The spin-up ends at this speed and the landing starts
+// at it, so the hand-off between the two animations is seamless.
+const CRUISE_SPEED = 960;
+const SPIN_UP_DEG = 180;
+const SPIN_UP_MS = ((2 * SPIN_UP_DEG) / CRUISE_SPEED) * 1000;
+const MIN_SPIN_MS = 900;
+const MIN_LANDING_TRAVEL = 360 * 4.5;
+const MIN_LANDING_MS = 2800;
+const TICK_HAPTIC_INTERVAL_MS = 80;
 
 interface Props {
   visible: boolean;
   onClose: () => void;
 }
 
+interface ShownResult {
+  data: LuckyWheelDrawResult;
+  merchantName: string;
+  remaining: number;
+}
+
+const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 export default React.memo(function LuckyWheelModal({ visible, onClose }: Props) {
   const theme = useTheme();
-  const { t } = useLanguage();
+  const { t, locale, isRTL } = useLanguage();
   const router = useRouter();
   const { isAuthenticated } = useAuth();
   const fonts = useAppFonts();
+  const insets = useSafeAreaInsets();
+  const { width: screenW, height: screenH } = useWindowDimensions();
+  const localeTag = LOCALE_TAGS[locale] ?? 'fr-FR';
 
-  const { data: tickets = [], isLoading, isError } = useLuckyWheelAvailableDraws(isAuthenticated && visible);
+  const {
+    data: tickets = [], isLoading, isError, refetch,
+  } = useLuckyWheelAvailableDraws(isAuthenticated && visible);
   const { data: historyData = [], isLoading: historyLoading } = useLuckyWheelHistory(isAuthenticated && visible);
   const drawMutation = useTriggerLuckyWheelDraw();
 
-  const [phase, setPhase] = useState<'wheel' | 'result' | 'history'>('wheel');
-  const [drawResult, setDrawResult] = useState<LuckyWheelDrawResult | null>(null);
+  const [phase, setPhase] = useState<'wheel' | 'history'>('wheel');
   const [spinning, setSpinning] = useState(false);
-  const [currentTicketIdx, setCurrentTicketIdx] = useState(0);
-  const spinLockRef = useRef(false); // immediate lock to prevent double-tap
+  const [result, setResult] = useState<ShownResult | null>(null);
+  const [usedIds, setUsedIds] = useState<string[]>([]);
+  const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
+  // Freezes the wheel on the campaign being played: the ticket list refetches
+  // mid-spin and must not swap the segments under the pointer.
+  const [lockedCampaign, setLockedCampaign] = useState<LuckyWheelCampaign | null>(null);
+  const [autoSpin, setAutoSpin] = useState(false);
 
-  // Current ticket (respects multi-merchant / multi-campaign)
-  const currentTicket = tickets[currentTicketIdx] ?? tickets[0];
-
-  // Build dynamic wheel segments from current ticket's campaign prizes
-  // Distribution reflects merchant config: globalWinRate + prize weights
-  const lostLabel = t('luckyWheel.lost');
-  const wheelSegments = useMemo<WheelSegment[] | undefined>(() => {
-    const prizes = currentTicket?.campaign?.prizes;
-    if (!prizes?.length) return undefined;
-    const winRate = currentTicket?.campaign?.globalWinRate ?? 0.5;
-
-    // Total weight across all prizes
-    const totalWeight = prizes.reduce((sum: number, p: LuckyWheelPrize) => sum + (p.weight || 1), 0);
-
-    // Target segment count — more prizes = more segments, clamped to [MIN, MAX]
-    const targetTotal = Math.max(MIN_SEGMENTS, Math.min(MAX_SEGMENTS, prizes.length * 3));
-
-    // Prize segments proportional to weight, at least 1 each
-    const winSegments = Math.max(prizes.length, Math.round(targetTotal * winRate));
-    const lostSegments = Math.max(1, targetTotal - winSegments);
-
-    // Distribute win segments among prizes by weight
-    const prizeSegCounts: number[] = [];
-    let assignedWin = 0;
-    prizes.forEach((p: LuckyWheelPrize, i: number) => {
-      const share = ((p.weight || 1) / totalWeight) * winSegments;
-      const count = i === prizes.length - 1
-        ? winSegments - assignedWin // last prize gets remainder
-        : Math.max(1, Math.round(share));
-      prizeSegCounts.push(count);
-      assignedWin += count;
-    });
-
-    // Build segment list: interleave prizes and lost segments evenly
-    const segs: WheelSegment[] = [];
-    // Create all prize segments
-    const prizeSegs: WheelSegment[] = [];
-    prizes.forEach((p: LuckyWheelPrize, i: number) => {
-      for (let j = 0; j < prizeSegCounts[i]; j++) {
-        prizeSegs.push({ label: p.label, color: PRIZE_COLORS[i % PRIZE_COLORS.length] });
-      }
-    });
-    // Create all lost segments
-    const lostSegs: WheelSegment[] = [];
-    for (let j = 0; j < lostSegments; j++) {
-      lostSegs.push({ label: lostLabel, color: LOST_COLOR });
-    }
-
-    // Interleave: distribute lost segments evenly among prize segments
-    const total = prizeSegs.length + lostSegs.length;
-    let pi = 0, li = 0;
-    for (let i = 0; i < total; i++) {
-      // Ratio-based interleaving: place a lost segment when proportionally due
-      const lostTarget = ((i + 1) / total) * lostSegments;
-      if (li < lostSegments && li < Math.round(lostTarget)) {
-        segs.push(lostSegs[li++]);
-      } else if (pi < prizeSegs.length) {
-        segs.push(prizeSegs[pi++]);
-      } else {
-        segs.push(lostSegs[li++]);
-      }
-    }
-
-    return segs;
-  }, [currentTicket, lostLabel]);
-
-  // Animations
-  const overlayAnim = useRef(new Animated.Value(0)).current;
-  const scaleAnim = useRef(new Animated.Value(0.15)).current;
-  const labelOpacity = useRef(new Animated.Value(0)).current;
   const spinAnim = useRef(new Animated.Value(0)).current;
-  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const pointerKick = useRef(new Animated.Value(0)).current;
+  const entrance = useRef(new Animated.Value(0)).current;
+  const contentFade = useRef(new Animated.Value(1)).current;
+  const rotationRef = useRef(0);
+  const rampRef = useRef<Animated.CompositeAnimation | null>(null);
+  const spinLockRef = useRef(false);
   const mountedRef = useRef(true);
+  const visibleRef = useRef(visible);
+  visibleRef.current = visible;
+
+  const available = useMemo(
+    () => tickets.filter((tk) => !tk.used && !usedIds.includes(tk.id)),
+    [tickets, usedIds],
+  );
+  const groups = useMemo(() => groupTicketsByCampaign(available), [available]);
+  const group = groups.find((g) => g.campaignId === selectedCampaignId) ?? groups[0];
+  const ticket = group?.tickets[0];
+  const campaign = lockedCampaign ?? ticket?.campaign ?? null;
+  const availableCountRef = useRef(0);
+  availableCountRef.current = available.length;
+
+  const pendingCount = useMemo(
+    () => historyData.filter((d) => getDrawStatus(d) === 'pending').length,
+    [historyData],
+  );
+
+  const lostLabel = t('luckyWheel.lostShort');
+  const segments = useMemo(
+    () => (campaign?.prizes?.length
+      ? buildWheelSegments(campaign.prizes, campaign.globalWinRate ?? 0, lostLabel)
+      : undefined),
+    [campaign, lostLabel],
+  );
+
+  const wheelSize = Math.round(Math.min(wp(300), screenW - ms(72), screenH * 0.4));
 
   useEffect(() => {
     mountedRef.current = true;
@@ -164,702 +122,539 @@ export default React.memo(function LuckyWheelModal({ visible, onClose }: Props) 
   }, []);
 
   useEffect(() => {
-    if (visible) {
-      setPhase('wheel');
-      setDrawResult(null);
-      setSpinning(false);
-      setCurrentTicketIdx(0);
-      spinLockRef.current = false;
-      overlayAnim.setValue(0);
-      scaleAnim.setValue(0.15);
-      labelOpacity.setValue(0);
-      spinAnim.setValue(0);
+    if (!visible) return;
+    setPhase('wheel');
+    setResult(null);
+    setSpinning(false);
+    setUsedIds([]);
+    setSelectedCampaignId(null);
+    setLockedCampaign(null);
+    setAutoSpin(false);
+    spinLockRef.current = false;
+    entrance.setValue(0);
+    Animated.spring(entrance, { toValue: 1, damping: 14, stiffness: 110, useNativeDriver: true }).start();
+  }, [visible, entrance]);
 
-      Animated.parallel([
-        Animated.timing(overlayAnim, {
-          toValue: 1,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-        Animated.spring(scaleAnim, {
-          toValue: 1,
-          damping: 14,
-          stiffness: 120,
-          useNativeDriver: true,
-        }),
-        Animated.timing(labelOpacity, {
-          toValue: 1,
-          duration: 400,
-          delay: 200,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    } else {
-      spinAnim.stopAnimation(() => {});
-    }
-  }, [visible, overlayAnim, scaleAnim, labelOpacity, spinAnim]);
+  useEffect(() => {
+    contentFade.setValue(0);
+    Animated.timing(contentFade, {
+      toValue: 1, duration: 220, easing: Easing.out(Easing.quad), useNativeDriver: true,
+    }).start();
+  }, [phase, contentFade]);
+
+  // Pointer flick + light tick each time a segment boundary passes the pointer.
+  useEffect(() => {
+    const count = segments?.length ?? 0;
+    if (!count) return undefined;
+    let last = segmentAtPointer(rotationRef.current, count);
+    let lastHaptic = 0;
+    const id = spinAnim.addListener(({ value }) => {
+      rotationRef.current = value;
+      const idx = segmentAtPointer(value, count);
+      if (idx === last) return;
+      last = idx;
+      pointerKick.setValue(1);
+      Animated.spring(pointerKick, {
+        toValue: 0, stiffness: 320, damping: 14, mass: 0.6, useNativeDriver: true,
+      }).start();
+      const now = Date.now();
+      if (now - lastHaptic > TICK_HAPTIC_INTERVAL_MS) {
+        lastHaptic = now;
+        hapticSelection();
+      }
+    });
+    return () => spinAnim.removeListener(id);
+  }, [segments, spinAnim, pointerKick]);
+
+  const stopSpin = useCallback(() => {
+    rampRef.current?.stop();
+    rampRef.current = null;
+    spinAnim.stopAnimation((v) => { rotationRef.current = v; });
+  }, [spinAnim]);
 
   const handleClose = useCallback(() => {
-    spinAnim.stopAnimation(() => {});
+    stopSpin();
     spinLockRef.current = false;
+    setSpinning(false);
+    onClose();
+  }, [onClose, stopSpin]);
 
-    Animated.parallel([
-      Animated.timing(overlayAnim, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-      Animated.timing(scaleAnim, {
-        toValue: 0.15,
-        duration: 250,
-        easing: Easing.in(Easing.ease),
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      setPhase('wheel');
-      setDrawResult(null);
-      setSpinning(false);
-      setCurrentTicketIdx(0);
-      pulseAnim.setValue(1);
-      onClose();
-    });
-  }, [onClose, overlayAnim, scaleAnim, pulseAnim]);
+  const dismissResult = useCallback(() => {
+    setResult(null);
+    setLockedCampaign(null);
+  }, []);
 
   const handleSpin = useCallback(async () => {
-    // Immediate lock to prevent double-tap
-    if (spinLockRef.current) return;
-    const ticket = currentTicket;
-    if (!ticket) return;
-    const segments = wheelSegments;
-    if (!segments?.length) return;
-
+    if (spinLockRef.current || !ticket || !segments?.length) return;
+    const playedCampaign = ticket.campaign;
+    const segs = segments;
     spinLockRef.current = true;
+    setLockedCampaign(playedCampaign);
+    setSelectedCampaignId(playedCampaign.id);
     setSpinning(true);
     haptic(HapticStyle.Medium);
 
-    // Start a long linear ramp; we'll interrupt and redirect to a precise
-    // landing angle once the server returns the result.
-    spinAnim.setValue(0);
-    Animated.timing(spinAnim, {
-      toValue: 360 * 30, // enough turns to cover the await window
-      duration: 30_000,
-      easing: Easing.linear,
-      useNativeDriver: true,
-    }).start();
+    const start = rotationRef.current % 360;
+    spinAnim.setValue(start);
+    rotationRef.current = start;
+    rampRef.current = Animated.sequence([
+      Animated.timing(spinAnim, {
+        toValue: start + SPIN_UP_DEG, duration: SPIN_UP_MS, easing: Easing.in(Easing.quad), useNativeDriver: true,
+      }),
+      Animated.timing(spinAnim, {
+        toValue: start + SPIN_UP_DEG + CRUISE_SPEED * 30, duration: 30_000, easing: Easing.linear, useNativeDriver: true,
+      }),
+    ]);
+    rampRef.current.start();
+    const minUntil = Date.now() + MIN_SPIN_MS;
 
     try {
-      const result = await drawMutation.mutateAsync(ticket.id);
-      if (!mountedRef.current) return;
+      const res = await drawMutation.mutateAsync(ticket.id);
+      if (!mountedRef.current || !visibleRef.current) return;
+      setUsedIds((ids) => [...ids, ticket.id]);
+      const remainingWait = minUntil - Date.now();
+      if (remainingWait > 0) await wait(remainingWait);
+      if (!mountedRef.current || !visibleRef.current || !spinLockRef.current) return;
 
-      // Pick the target segment index that matches the result.
-      const wonLabel = result.result === 'WON' ? result.prize?.label : null;
-      const targetIdx = wonLabel
-        ? segments.findIndex((s) => s.label === wonLabel && s.color !== LOST_COLOR)
-        : segments.findIndex((s) => s.color === LOST_COLOR);
-      const safeIdx = targetIdx >= 0 ? targetIdx : 0;
-      const anglePerSeg = 360 / segments.length;
-      // Segment i's center (measured clockwise from the top pointer) sits at
-      // i * angle + angle/2. To land it under the pointer we rotate the wheel
-      // backwards by that amount (i.e. negative rotation).
-      const landingAngle = -(safeIdx * anglePerSeg + anglePerSeg / 2);
-
-      spinAnim.stopAnimation((currentVal: number) => {
+      const target = pickTargetSegment(segs, res.result === 'WON' ? res.prize : null);
+      rampRef.current?.stop();
+      rampRef.current = null;
+      spinAnim.stopAnimation((current) => {
         if (!mountedRef.current) return;
-        // Compute the next forward angle that is a multiple of 360 plus the
-        // landing offset and ensures at least MIN_TURNS_BEFORE_LANDING extra spins.
-        const minTarget = currentVal + 360 * MIN_TURNS_BEFORE_LANDING;
-        const turns = Math.ceil((minTarget - landingAngle) / 360);
-        const finalAngle = turns * 360 + landingAngle;
-
+        const finalAngle = computeLandingRotation(current, target, segs.length, MIN_LANDING_TRAVEL, Math.random() - 0.5);
+        // Ease-out quad starts at 2 × average speed: match it to the cruise speed.
+        const duration = Math.max(MIN_LANDING_MS, ((2 * (finalAngle - current)) / CRUISE_SPEED) * 1000);
         Animated.timing(spinAnim, {
-          toValue: finalAngle,
-          duration: LANDING_DURATION_MS,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
+          toValue: finalAngle, duration, easing: Easing.out(Easing.quad), useNativeDriver: true,
         }).start(({ finished }) => {
           if (!mountedRef.current || !finished) return;
-          setSpinning(false);
-          setDrawResult(result);
-          setPhase('result');
-
-          if (result.result === 'WON') {
-            haptic(HapticStyle.Heavy);
-            pulseAnim.setValue(1);
-            Animated.loop(
-              Animated.sequence([
-                Animated.timing(pulseAnim, { toValue: 1.12, duration: 500, useNativeDriver: true }),
-                Animated.timing(pulseAnim, { toValue: 1, duration: 500, useNativeDriver: true }),
-              ]),
-              { iterations: WIN_PULSE_ITERATIONS },
-            ).start();
-          } else {
-            haptic(HapticStyle.Light);
-          }
-          // Reset to first ticket: the used ticket is removed from the list on refetch,
-          // so index 0 always points to the next available one (prevents skipping).
-          setCurrentTicketIdx(0);
+          rotationRef.current = finalAngle;
           spinLockRef.current = false;
+          setSpinning(false);
+          setResult({
+            data: res,
+            merchantName: playedCampaign.merchant?.nom || playedCampaign.name,
+            remaining: availableCountRef.current,
+          });
+          if (res.result === 'WON') hapticSuccess();
+          else haptic(HapticStyle.Light);
         });
       });
     } catch (err) {
-      spinAnim.stopAnimation(() => {});
+      rampRef.current?.stop();
+      rampRef.current = null;
+      spinAnim.stopAnimation((current) => {
+        Animated.timing(spinAnim, {
+          toValue: current + 90, duration: 450, easing: Easing.out(Easing.quad), useNativeDriver: true,
+        }).start();
+      });
       spinLockRef.current = false;
       if (!mountedRef.current) return;
       setSpinning(false);
-      Alert.alert(t('common.error'), extractErrorMessage(err));
+      setLockedCampaign(null);
+      if (visibleRef.current) Alert.alert(t('common.error'), extractErrorMessage(err));
     }
-  }, [currentTicket, wheelSegments, drawMutation, spinAnim, pulseAnim, t]);
+  }, [ticket, segments, drawMutation, spinAnim, t]);
 
-  const spinRotation = spinAnim.interpolate({
-    inputRange: [0, 360],
-    outputRange: ['0deg', '360deg'],
-  });
+  const handleReplay = useCallback(() => {
+    dismissResult();
+    setAutoSpin(true);
+  }, [dismissResult]);
 
-  const ticketCount = tickets.length;
+  const handleSpinRef = useRef(handleSpin);
+  handleSpinRef.current = handleSpin;
 
-  return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={handleClose}>
-      <Animated.View style={[styles.overlay, { opacity: overlayAnim }]}>
-        {/* Tap backdrop to close */}
-        <Pressable style={StyleSheet.absoluteFill} onPress={handleClose} />
+  // "Replay" from the result sheet spins straight away once the sheet is gone.
+  // Reads handleSpin through a ref so a ticket refetch can't cancel the timer.
+  useEffect(() => {
+    if (!autoSpin || result || spinning) return undefined;
+    const id = setTimeout(() => {
+      setAutoSpin(false);
+      void handleSpinRef.current();
+    }, 280);
+    return () => clearTimeout(id);
+  }, [autoSpin, result, spinning]);
 
-        {/* Main wheel area — centered */}
-        <View style={styles.centerContainer}>
-          {phase === 'wheel' && (
-            <>
-              {/* Title above wheel */}
-              <Animated.View style={{ opacity: labelOpacity, marginBottom: hp(18), alignItems: 'center' }}>
-                {currentTicket?.campaign?.name ? (
-                  <Text style={[styles.modalTitle, { fontFamily: fonts.bold }]} numberOfLines={2}>{currentTicket.campaign.name}</Text>
-                ) : (
-                  <Text style={[styles.modalTitle, { fontFamily: fonts.bold }]}>{t('luckyWheel.title')}</Text>
-                )}
-                {currentTicket?.campaign?.merchant?.nom ? (
-                  <Text style={[styles.merchantName, { fontFamily: fonts.semibold }]}>
-                    {t('luckyWheel.merchantLabel', { merchant: currentTicket.campaign.merchant.nom })}
-                  </Text>
-                ) : (
-                  <Text style={[styles.modalSubtitle, { fontFamily: fonts.regular }]}>{t('luckyWheel.subtitle')}</Text>
-                )}
-                {Platform.OS === 'ios' && (
-                  <Text style={{ fontSize: 10, textAlign: 'center', opacity: 0.5, marginTop: 4, letterSpacing: -0.2 }}>
-                    Apple Inc. n'est ni sponsor ni partenaire de ce jeu
-                  </Text>
-                )}
-                {Platform.OS === 'android' && (
-                  <Text style={{ fontSize: 10, textAlign: 'center', opacity: 0.5, marginTop: 4, letterSpacing: -0.2 }}>
-                    Google LLC n'est ni sponsor ni partenaire de ce jeu
-                  </Text>
-                )}
-                <Text style={{ fontSize: 10, textAlign: 'center', opacity: 0.6, marginTop: 4, letterSpacing: -0.2, fontFamily: fonts.medium }}>
-                  {t('luckyWheel.noPurchaseNotice')}
-                </Text>
-                <Text style={{ fontSize: 10, textAlign: 'center', opacity: 0.55, marginTop: 2, letterSpacing: -0.2 }}>
-                  {t('luckyWheel.notGamblingNotice')}
-                </Text>
-                <Text style={{ fontSize: 10, textAlign: 'center', opacity: 0.55, marginTop: 2, letterSpacing: -0.2 }}>
-                  {t('luckyWheel.merchantOrganizedNotice')}
-                </Text>
-                <Text style={{ fontSize: 10, textAlign: 'center', opacity: 0.5, marginTop: 4, letterSpacing: -0.2 }}>
-                  {t('luckyWheel.storeDisclaimer')}
-                </Text>
-                <TouchableOpacity
-                  onPress={() => {
-                    onClose();
-                    router.push('/legal/terms');
-                  }}
-                  accessibilityRole="link"
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <Text style={{ fontSize: 11, textAlign: 'center', marginTop: 2, color: palette.goldLight, textDecorationLine: 'underline' }}>
-                    {t('luckyWheel.rulesLink')}
-                  </Text>
-                </TouchableOpacity>
-              </Animated.View>
+  const handleViewPrizes = useCallback(() => {
+    dismissResult();
+    setPhase('history');
+  }, [dismissResult]);
 
-              <View style={styles.glowRing}>
-                <Animated.View style={[
-                  styles.bigWheel,
-                  {
-                    transform: [
-                      { scale: scaleAnim },
-                      { rotate: spinRotation },
-                    ],
-                  },
-                ]}>
-                  <Pressable
-                    onPress={ticketCount > 0 && !spinning && !spinLockRef.current ? handleSpin : undefined}
-                    style={styles.wheelPressable}
-                    accessibilityRole="button"
-                    accessibilityLabel={t('luckyWheel.spin')}
-                    accessibilityState={{ disabled: ticketCount === 0 || spinning }}
-                  >
-                    <LuckyWheelIcon size={BIG_WHEEL} segments={wheelSegments} />
-                  </Pressable>
-                </Animated.View>
+  const handleRequestClose = useCallback(() => {
+    if (result) dismissResult();
+    else if (phase === 'history') setPhase('wheel');
+    else handleClose();
+  }, [result, phase, dismissResult, handleClose]);
+
+  const openRules = useCallback(() => {
+    handleClose();
+    router.push('/legal/terms');
+  }, [handleClose, router]);
+
+  const spinRotation = spinAnim.interpolate({ inputRange: [0, 360], outputRange: ['0deg', '360deg'] });
+  const contentTranslate = contentFade.interpolate({ inputRange: [0, 1], outputRange: [hp(10), 0] });
+
+  const canSpin = !!ticket && !!segments?.length && !spinning && !result;
+  const spinsLeft = group?.tickets.length ?? 0;
+  const BackIcon = isRTL ? ChevronRight : ChevronLeft;
+  const merchantName = campaign?.merchant?.nom || campaign?.name || '';
+
+  const renderStatus = () => {
+    if (isLoading && !campaign) {
+      return <ActivityIndicator color={palette.goldLight} style={{ marginTop: hp(28) }} />;
+    }
+    if (isError && !campaign) {
+      return (
+        <View style={styles.stateCard}>
+          <Text style={[styles.stateTitle, { fontFamily: fonts.bold }]}>{t('luckyWheel.loadError')}</Text>
+          <TouchableOpacity onPress={() => { void refetch(); }} activeOpacity={0.8} style={styles.ghostBtn} accessibilityRole="button">
+            <RefreshCw size={ms(16)} color="#fff" strokeWidth={2} />
+            <Text style={[styles.ghostBtnText, { fontFamily: fonts.semibold }]}>{t('common.retry')}</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+    if (!ticket && !lockedCampaign) {
+      return (
+        <View style={styles.stateCard}>
+          <View style={styles.stateIcon}>
+            <Ticket size={ms(26)} color={palette.goldLight} strokeWidth={1.8} />
+          </View>
+          <Text style={[styles.stateTitle, { fontFamily: fonts.bold }]}>{t('luckyWheel.noTickets')}</Text>
+          <Text style={[styles.stateHint, { fontFamily: fonts.regular }]}>{t('luckyWheel.noTicketsHint')}</Text>
+          {pendingCount > 0 && (
+            <TouchableOpacity onPress={() => setPhase('history')} activeOpacity={0.8} style={styles.ghostBtn} accessibilityRole="button">
+              <Text style={[styles.ghostBtnText, { fontFamily: fonts.semibold }]}>{t('luckyWheel.viewPrizes')}</Text>
+              <View style={styles.badge}>
+                <Text style={[styles.badgeText, { fontFamily: fonts.bold }]}>{pendingCount}</Text>
               </View>
-
-              {/* Odds disclosure — required by App Store & Google Play */}
-              {!spinning && currentTicket?.campaign && (
-                <Animated.View style={{ opacity: labelOpacity, marginTop: hp(12), alignItems: 'center' }}>
-                  <View style={styles.oddsContainer}>
-                    <Text style={[styles.oddsTitle, { fontFamily: fonts.semibold }]}>
-                      {t('luckyWheel.winRate', { rate: Math.round((currentTicket.campaign.globalWinRate ?? 0) * 100) })}
-                    </Text>
-                    {currentTicket.campaign.prizes?.length > 0 && (() => {
-                      const { perPrize, lostPct } = computeOddsBreakdown(
-                        currentTicket.campaign.prizes,
-                        currentTicket.campaign.globalWinRate ?? 0,
-                      );
-                      return (
-                        <View style={styles.oddsList}>
-                          {currentTicket.campaign.prizes.map((p: LuckyWheelPrize, i: number) => (
-                            <Text key={p.id ?? i} style={[styles.oddsItem, { fontFamily: fonts.regular }]}>
-                              {p.label} — {perPrize[i]}%
-                            </Text>
-                          ))}
-                          <Text style={[styles.oddsItem, { fontFamily: fonts.regular, opacity: 0.7 }]}>
-                            {t('luckyWheel.lost')} — {lostPct}%
-                          </Text>
-                        </View>
-                      );
-                    })()}
-                  </View>
-                </Animated.View>
-              )}
-
-              {/* Label below wheel */}
-              <Animated.View style={{ opacity: labelOpacity, marginTop: hp(20) }}>
-                {isLoading ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : isError ? (
-                  <Text style={[styles.wheelLabel, { color: '#fff', fontFamily: fonts.bold }]}>{t('luckyWheel.errorDraw')}</Text>
-                ) : spinning ? (
-                  <Text style={[styles.wheelLabel, { color: palette.goldLight, fontFamily: fonts.bold }]}>{t('luckyWheel.spinning')}</Text>
-                ) : ticketCount > 0 ? (
-                  <View style={styles.labelGroup}>
-                    <View style={styles.ticketBadge}>
-                      <Ticket size={ms(16)} color={palette.gold} strokeWidth={1.5} />
-                      <Text style={[styles.ticketBadgeText, { fontFamily: fonts.semibold }]}>
-                        {t('luckyWheel.ticketsAvailable', { count: ticketCount })}
-                      </Text>
-                    </View>
-                    <Text style={[styles.spinCta, { fontFamily: fonts.bold }]}>
-                      {t('luckyWheel.spin')}
-                    </Text>
-                  </View>
-                ) : (
-                  <View style={styles.labelGroup}>
-                    <Text style={[styles.wheelLabel, { color: '#fff', fontFamily: fonts.bold }]}>{t('luckyWheel.noTickets')}</Text>
-                    <Text style={[styles.wheelHint, { color: 'rgba(255,255,255,0.65)', fontFamily: fonts.regular }]}>
-                      {t('luckyWheel.noTicketsHint')}
-                    </Text>
-                  </View>
-                )}
-              </Animated.View>
-
-              {/* History link */}
-              <TouchableOpacity onPress={() => setPhase('history')} activeOpacity={0.7} style={styles.historyLink}>
-                <Clock size={ms(14)} color="rgba(255,255,255,0.6)" strokeWidth={1.5} />
-                <Text style={[styles.historyLinkText, { fontFamily: fonts.medium }]}>{t('luckyWheel.history')}</Text>
-              </TouchableOpacity>
-            </>
+            </TouchableOpacity>
           )}
-
-          {phase === 'history' && (
-            <View style={[styles.historyCard, { backgroundColor: theme.bgCard }]}>
-              <View style={styles.historyHeader}>
-                <TouchableOpacity onPress={() => setPhase('wheel')} activeOpacity={0.7} hitSlop={8}>
-                  <ChevronLeft size={ms(22)} color={theme.text} strokeWidth={2} />
-                </TouchableOpacity>
-                <Text style={[styles.historyTitle, { color: theme.text, fontFamily: fonts.bold }]}>{t('luckyWheel.history')}</Text>
-                <View style={{ width: ms(22) }} />
-              </View>
-              {historyLoading ? (
-                <ActivityIndicator size="small" color={palette.violet} style={{ marginTop: hp(24) }} />
-              ) : historyData.length === 0 ? (
-                <View style={styles.historyEmpty}>
-                  <Clock size={ms(32)} color={theme.textMuted} strokeWidth={1.2} />
-                  <Text style={[styles.historyEmptyText, { color: theme.textMuted, fontFamily: fonts.regular }]}>{t('luckyWheel.noHistory')}</Text>
-                </View>
-              ) : (
-                <ScrollView style={styles.historyList} showsVerticalScrollIndicator={false}>
-                  {historyData.map((draw: LuckyWheelDraw) => {
-                    const isWon = draw.result === 'WON';
-                    const date = new Date(draw.createdAt);
-                    const dateStr = date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
-                    let status = '';
-                    if (isWon) {
-                      if (draw.fulfilment === FULFILMENT_CLAIMED) status = t('luckyWheel.claimed');
-                      else if (draw.fulfilment === FULFILMENT_EXPIRED || (draw.claimBefore && new Date(draw.claimBefore) < new Date())) status = t('luckyWheel.expired');
-                      else status = t('luckyWheel.pending');
-                    }
-                    return (
-                      <View
-                        key={draw.id}
-                        style={[styles.historyRow, { borderBottomColor: theme.border }]}
-                        accessible
-                        accessibilityRole="text"
-                        accessibilityLabel={t('luckyWheel.historyItemA11y', {
-                          result: isWon ? (draw.prize?.label ?? t('luckyWheel.won')) : t('luckyWheel.lost'),
-                          merchant: draw.ticket?.campaign?.merchant?.nom ?? '',
-                          campaign: draw.ticket?.campaign?.name ?? '',
-                          date: dateStr,
-                        })}
-                      >
-                        <View style={[styles.historyIcon, { backgroundColor: isWon ? `${palette.violet}15` : `${palette.red}10` }]}>
-                          {isWon ? <Trophy size={ms(18)} color={palette.violet} strokeWidth={1.5} /> : <Frown size={ms(18)} color={palette.red} strokeWidth={1.5} />}
-                        </View>
-                        <View style={styles.historyInfo}>
-                          <Text style={[styles.historyPrize, { color: theme.text, fontFamily: fonts.semibold }]}>
-                            {isWon ? draw.prize?.label ?? t('luckyWheel.won') : t('luckyWheel.lost')}
-                          </Text>
-                          <Text style={[styles.historyCampaign, { color: theme.textMuted, fontFamily: fonts.regular }]}>
-                            {[draw.ticket?.campaign?.merchant?.nom, draw.ticket?.campaign?.name].filter(Boolean).join(' · ')} · {dateStr}
-                          </Text>
-                          {isWon && status ? (
-                            <Text style={[styles.historyStatus, {
-                              color: draw.fulfilment === FULFILMENT_CLAIMED ? '#10B981' : (status === t('luckyWheel.expired') ? palette.red : palette.gold),
-                              fontFamily: fonts.medium,
-                            }]}>
-                              {status}
-                              {draw.claimBefore && draw.fulfilment !== FULFILMENT_CLAIMED && draw.fulfilment !== FULFILMENT_EXPIRED && new Date(draw.claimBefore) > new Date()
-                                ? ` — ${t('luckyWheel.claimBefore', { date: new Date(draw.claimBefore).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) })}`
-                                : ''}
-                            </Text>
-                          ) : null}
-                        </View>
-                      </View>
-                    );
-                  })}
-                </ScrollView>
-              )}
+        </View>
+      );
+    }
+    return (
+      <View style={styles.ctaBlock}>
+        <View style={styles.spinsRow}>
+          {spinning ? (
+            <Text style={[styles.spinningText, { fontFamily: fonts.semibold }]}>{t('luckyWheel.spinning')}</Text>
+          ) : (
+            <View style={styles.spinsPill}>
+              <Ticket size={ms(14)} color={palette.goldLight} strokeWidth={2} />
+              <Text style={[styles.spinsText, { fontFamily: fonts.semibold }]}>
+                {spinsLeft === 1 ? t('luckyWheel.spinsLeftOne') : t('luckyWheel.spinsLeftOther', { count: spinsLeft })}
+              </Text>
             </View>
           )}
+        </View>
+        <TouchableOpacity
+          onPress={handleSpin}
+          disabled={!canSpin}
+          activeOpacity={0.85}
+          style={[styles.spinBtnWrap, !canSpin && styles.spinBtnDisabled]}
+          accessibilityRole="button"
+          accessibilityLabel={t('luckyWheel.spinCta')}
+          accessibilityState={{ disabled: !canSpin, busy: spinning }}
+        >
+          <LinearGradient
+            colors={[palette.goldSoft, palette.goldLight, palette.goldDark]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 1 }}
+            style={styles.spinBtn}
+          >
+            {spinning ? (
+              <ActivityIndicator color="#3B1D06" />
+            ) : (
+              <Text style={[styles.spinBtnText, { fontFamily: fonts.bold }]}>{t('luckyWheel.spinCta')}</Text>
+            )}
+          </LinearGradient>
+        </TouchableOpacity>
+      </View>
+    );
+  };
 
-          {phase === 'result' && drawResult && (
-            <Animated.View style={[styles.resultCard, { backgroundColor: theme.bgCard, transform: [{ scale: scaleAnim }] }]}>
-              {drawResult.result === 'WON' ? (
-                <>
-                  <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
-                    <LinearGradient colors={brandGradient as [string, string]} style={styles.resultIcon}>
-                      <Trophy size={ms(40)} color="#FFF" strokeWidth={1.5} />
-                    </LinearGradient>
-                  </Animated.View>
-                  <Text style={[styles.resultTitle, { color: theme.text, fontFamily: fonts.bold }]}>{t('luckyWheel.resultWon')}</Text>
-                  <Text style={[styles.resultDesc, { color: theme.textSecondary, fontFamily: fonts.regular }]}>
-                    {t('luckyWheel.resultWonDesc', { prize: drawResult.prize?.label ?? '' })}
-                  </Text>
-                </>
-              ) : (
-                <>
-                  <View style={[styles.resultIcon, { backgroundColor: `${palette.red}15` }]}>
-                    <Frown size={ms(40)} color={palette.red} strokeWidth={1.5} />
-                  </View>
-                  <Text style={[styles.resultTitle, { color: theme.text, fontFamily: fonts.bold }]}>{t('luckyWheel.resultLost')}</Text>
-                  <Text style={[styles.resultDesc, { color: theme.textMuted, fontFamily: fonts.regular }]}>{t('luckyWheel.resultLostDesc')}</Text>
-                </>
+  return (
+    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={handleRequestClose}>
+      <StatusBar barStyle="light-content" />
+      <LinearGradient colors={BG_GRADIENT} style={styles.root}>
+        <View style={[styles.header, { paddingTop: insets.top + hp(8) }]}>
+          <TouchableOpacity
+            onPress={phase === 'history' ? () => setPhase('wheel') : handleClose}
+            activeOpacity={0.7}
+            style={styles.iconBtn}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={phase === 'history' ? t('common.back') : t('common.close')}
+          >
+            {phase === 'history'
+              ? <BackIcon size={ms(22)} color="#fff" strokeWidth={2} />
+              : <X size={ms(20)} color="#fff" strokeWidth={2} />}
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { fontFamily: fonts.bold }]} numberOfLines={1} accessibilityRole="header">
+            {phase === 'history' ? t('luckyWheel.history') : t('luckyWheel.title')}
+          </Text>
+          {phase === 'wheel' ? (
+            <TouchableOpacity
+              onPress={() => setPhase('history')}
+              disabled={spinning}
+              activeOpacity={0.7}
+              style={[styles.iconBtn, spinning && { opacity: 0.4 }]}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={pendingCount > 0
+                ? `${t('luckyWheel.history')}, ${t('luckyWheel.toCollect', { count: pendingCount })}`
+                : t('luckyWheel.history')}
+            >
+              <History size={ms(20)} color="#fff" strokeWidth={2} />
+              {pendingCount > 0 && (
+                <View style={styles.headerBadge}>
+                  <Text style={[styles.headerBadgeText, { fontFamily: fonts.bold }]}>{pendingCount}</Text>
+                </View>
               )}
-              {ticketCount > 0 ? (
-                <>
-                  <TouchableOpacity
-                    onPress={() => { setDrawResult(null); setPhase('wheel'); }}
-                    activeOpacity={0.8}
-                    style={styles.resultCloseBtn}
-                  >
-                    <LinearGradient colors={brandGradient as [string, string]} style={styles.resultCloseBtnGradient}>
-                      <Text style={[styles.resultCloseBtnText, { fontFamily: fonts.semibold }]}>{t('luckyWheel.replay')}</Text>
-                    </LinearGradient>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={handleClose} activeOpacity={0.7} style={styles.resultSecondaryBtn}>
-                    <Text style={[styles.resultSecondaryBtnText, { color: theme.textMuted, fontFamily: fonts.medium }]}>{t('luckyWheel.close')}</Text>
-                  </TouchableOpacity>
-                </>
-              ) : (
-                <TouchableOpacity onPress={handleClose} activeOpacity={0.8} style={styles.resultCloseBtn}>
-                  <LinearGradient colors={brandGradient as [string, string]} style={styles.resultCloseBtnGradient}>
-                    <Text style={[styles.resultCloseBtnText, { fontFamily: fonts.semibold }]}>{t('luckyWheel.close')}</Text>
-                  </LinearGradient>
-                </TouchableOpacity>
-              )}
-            </Animated.View>
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.iconBtnSpacer} />
           )}
         </View>
 
-        {/* Close X in top-right */}
-        <Animated.View style={[styles.closeBtn, { opacity: overlayAnim }]}>
-          <TouchableOpacity onPress={handleClose} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={t('common.close')}>
-            <View style={styles.closeBtnCircle}>
-              <X size={ms(20)} color="#fff" strokeWidth={1.5} />
-            </View>
-          </TouchableOpacity>
+        <Animated.View style={[styles.body, { opacity: contentFade, transform: [{ translateY: contentTranslate }] }]}>
+          {phase === 'history' ? (
+            <WheelHistory
+              draws={historyData}
+              loading={historyLoading}
+              localeTag={localeTag}
+              bottomInset={insets.bottom}
+              fonts={fonts}
+              t={t}
+            />
+          ) : (
+            <ScrollView
+              style={styles.body}
+              contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + hp(28) }]}
+              showsVerticalScrollIndicator={false}
+              scrollEnabled={!spinning}
+            >
+              {groups.length > 1 && (
+                <CampaignPicker
+                  groups={groups}
+                  selectedId={campaign?.id}
+                  disabled={spinning || !!result}
+                  fonts={fonts}
+                  t={t}
+                  onSelect={setSelectedCampaignId}
+                />
+              )}
+
+              {campaign && (
+                <View style={styles.merchantRow}>
+                  <MerchantLogo logoUrl={campaign.merchant?.logoUrl} merchantName={merchantName} style={styles.merchantLogo} />
+                  <View style={styles.merchantText}>
+                    <Text style={[styles.merchantName, { fontFamily: fonts.bold }]} numberOfLines={1}>{merchantName}</Text>
+                    {!!campaign.name && campaign.name !== merchantName && (
+                      <Text style={[styles.campaignName, { fontFamily: fonts.regular }]} numberOfLines={1}>{campaign.name}</Text>
+                    )}
+                  </View>
+                </View>
+              )}
+
+              <View style={styles.stage}>
+                <WheelStage
+                  size={wheelSize}
+                  segments={segments}
+                  rotation={spinRotation}
+                  pointerKick={pointerKick}
+                  entrance={entrance}
+                  spinning={spinning}
+                  dimmed={!campaign}
+                  onPress={canSpin ? handleSpin : undefined}
+                  accessibilityLabel={t('luckyWheel.spinCta')}
+                />
+              </View>
+
+              {renderStatus()}
+
+              {campaign && campaign.prizes?.length > 0 && (
+                <View style={styles.section}>
+                  <WheelPrizeList prizes={campaign.prizes} globalWinRate={campaign.globalWinRate ?? 0} fonts={fonts} t={t} />
+                </View>
+              )}
+
+              <View style={styles.legal}>
+                <View style={styles.legalHeader}>
+                  <Info size={ms(14)} color="rgba(255,255,255,0.6)" strokeWidth={2} />
+                  <Text style={[styles.legalTitle, { fontFamily: fonts.semibold }]}>{t('luckyWheel.goodToKnow')}</Text>
+                </View>
+                <Text style={[styles.legalText, { fontFamily: fonts.medium }]}>{t('luckyWheel.noPurchaseNotice')}</Text>
+                <Text style={[styles.legalText, { fontFamily: fonts.regular }]}>{t('luckyWheel.notGamblingNotice')}</Text>
+                <Text style={[styles.legalText, { fontFamily: fonts.regular }]}>{t('luckyWheel.merchantOrganizedNotice')}</Text>
+                <Text style={[styles.legalText, { fontFamily: fonts.regular }]}>{t('luckyWheel.storeDisclaimer')}</Text>
+                <TouchableOpacity onPress={openRules} accessibilityRole="link" hitSlop={8} style={styles.rulesBtn}>
+                  <Text style={[styles.rulesText, { fontFamily: fonts.semibold }]}>{t('luckyWheel.rulesLink')}</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          )}
         </Animated.View>
-      </Animated.View>
+
+        {result && (
+          <WheelResultSheet
+            result={result.data}
+            merchantName={result.merchantName}
+            remainingTickets={result.remaining}
+            localeTag={localeTag}
+            bottomInset={insets.bottom}
+            theme={theme}
+            fonts={fonts}
+            t={t}
+            onReplay={handleReplay}
+            onClose={handleClose}
+            onViewPrizes={handleViewPrizes}
+            onDismiss={dismissResult}
+          />
+        )}
+      </LinearGradient>
     </Modal>
   );
-})
+});
 
-// ── Styles ───────────────────────────────────────────────────
+const ICON_BTN = ms(40);
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(8,2,20,0.88)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  centerContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  // Title
-  modalTitle: {
-    fontSize: FS['2xl'],
-    fontWeight: '700',
-    fontFamily: 'Lexend_700Bold',
-    color: '#FFF',
-    textAlign: 'center',
-    letterSpacing: 0.5,
-  },
-  modalSubtitle: {
-    fontSize: FS.sm,
-    fontFamily: 'Lexend_400Regular',
-    color: 'rgba(255,255,255,0.55)',
-    textAlign: 'center',
-    marginTop: hp(4),
-  },
-  merchantName: {
-    fontSize: FS.md,
-    fontWeight: '600',
-    fontFamily: 'Lexend_600SemiBold',
-    color: palette.goldLight,
-    textAlign: 'center',
-    marginTop: hp(4),
-  },
-
-  // Glow ring around wheel
-  glowRing: {
-    width: BIG_WHEEL + ms(24),
-    height: BIG_WHEEL + ms(24),
-    borderRadius: (BIG_WHEEL + ms(24)) / 2,
-    borderWidth: 2,
-    borderColor: 'rgba(245,158,11,0.25)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: palette.violet,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6,
-    shadowRadius: 40,
-    elevation: 16,
-  },
-
-  // Big wheel
-  bigWheel: {
-    width: BIG_WHEEL,
-    height: BIG_WHEEL,
-    borderRadius: BIG_WHEEL / 2,
-    shadowColor: palette.gold,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.5,
-    shadowRadius: 30,
-    elevation: 14,
-  },
-  wheelPressable: {
-    width: BIG_WHEEL,
-    height: BIG_WHEEL,
-    borderRadius: BIG_WHEEL / 2,
-    overflow: 'hidden',
-  },
-
-  // Odds disclosure (store compliance)
-  oddsContainer: {
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderRadius: ms(12),
-    paddingHorizontal: ms(16),
-    paddingVertical: ms(10),
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    alignItems: 'center',
-    maxWidth: SCREEN_W - wp(80),
-  },
-  oddsTitle: {
-    fontSize: FS.sm,
-    fontWeight: '600',
-    color: palette.goldLight,
-    textAlign: 'center',
-    marginBottom: hp(4),
-  },
-  oddsList: {
-    gap: hp(2),
-    alignItems: 'center',
-  },
-  oddsItem: {
-    fontSize: FS.xs,
-    color: 'rgba(255,255,255,0.6)',
-    textAlign: 'center',
-  },
-
-  // Labels
-  labelGroup: { alignItems: 'center', gap: hp(8) },
-  wheelLabel: {
-    fontSize: FS.lg,
-    fontWeight: '700',
-    fontFamily: 'Lexend_700Bold',
-    textAlign: 'center',
-  },
-  wheelHint: {
-    fontSize: FS.sm,
-    fontFamily: 'Lexend_400Regular',
-    textAlign: 'center',
-    paddingHorizontal: wp(30),
-  },
-  ticketBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: ms(6),
-    backgroundColor: 'rgba(245,158,11,0.15)',
-    paddingHorizontal: ms(14),
-    paddingVertical: ms(6),
-    borderRadius: ms(20),
-    borderWidth: 1,
-    borderColor: 'rgba(245,158,11,0.3)',
-  },
-  ticketBadgeText: {
-    fontSize: FS.sm,
-    fontWeight: '600',
-    fontFamily: 'Lexend_600SemiBold',
-    color: palette.goldLight,
-  },
-  spinCta: {
-    fontSize: FS.md,
-    fontWeight: '700',
-    fontFamily: 'Lexend_700Bold',
-    color: 'rgba(255,255,255,0.8)',
-    letterSpacing: 0.3,
-  },
-
-  // Close button
-  closeBtn: {
-    position: 'absolute',
-    top: hp(50),
-    right: wp(20),
-  },
-  closeBtnCircle: {
-    width: ms(40),
-    height: ms(40),
-    borderRadius: ms(20),
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  // Result card
-  resultCard: {
-    width: SCREEN_W - wp(60),
-    borderRadius: radius['2xl'],
-    padding: ms(28),
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25,
-    shadowRadius: 20,
-    elevation: 10,
-  },
-  resultIcon: {
-    width: ms(80),
-    height: ms(80),
-    borderRadius: ms(40),
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: hp(16),
-  },
-  resultTitle: { fontSize: FS['2xl'], fontWeight: '700', fontFamily: 'Lexend_700Bold', textAlign: 'center' },
-  resultDesc: { fontSize: FS.md, marginTop: hp(8), textAlign: 'center', fontFamily: 'Lexend_400Regular' },
-  resultCloseBtn: { marginTop: hp(24), width: '100%', borderRadius: radius.md, overflow: 'hidden' },
-  resultCloseBtnGradient: { paddingVertical: hp(14), borderRadius: radius.md, alignItems: 'center' },
-  resultCloseBtnText: { color: '#FFF', fontSize: FS.md, fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
-  resultSecondaryBtn: { marginTop: hp(10), paddingVertical: hp(8), alignItems: 'center' },
-  resultSecondaryBtnText: { fontSize: FS.sm, fontWeight: '500' },
-
-  // History link below wheel
-  historyLink: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: ms(6),
-    marginTop: hp(12),
-    paddingVertical: hp(6),
-    paddingHorizontal: ms(12),
-  },
-  historyLinkText: {
-    fontSize: FS.sm,
-    color: 'rgba(255,255,255,0.6)',
-  },
-
-  // History view
-  historyCard: {
-    width: SCREEN_W - wp(40),
-    maxHeight: Dimensions.get('window').height * 0.7,
-    borderRadius: radius['2xl'],
-    padding: ms(20),
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25,
-    shadowRadius: 20,
-    elevation: 10,
-  },
-  historyHeader: {
+  root: { flex: 1 },
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: hp(16),
+    paddingHorizontal: wp(16),
+    paddingBottom: hp(8),
   },
-  historyTitle: {
-    fontSize: FS.xl,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  historyEmpty: {
-    alignItems: 'center',
-    paddingVertical: hp(40),
-    gap: hp(12),
-  },
-  historyEmptyText: {
-    fontSize: FS.md,
-    textAlign: 'center',
-  },
-  historyList: {
-    maxHeight: Dimensions.get('window').height * 0.55,
-  },
-  historyRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: hp(12),
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    gap: ms(12),
-  },
-  historyIcon: {
-    width: ms(40),
-    height: ms(40),
-    borderRadius: ms(20),
+  headerTitle: { flex: 1, color: '#fff', fontSize: FS.lg, textAlign: 'center', marginHorizontal: ms(8) },
+  iconBtn: {
+    width: ICON_BTN,
+    height: ICON_BTN,
+    borderRadius: ICON_BTN / 2,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
   },
-  historyInfo: {
-    flex: 1,
-    gap: hp(2),
+  iconBtnSpacer: { width: ICON_BTN, height: ICON_BTN },
+  headerBadge: {
+    position: 'absolute',
+    top: -ms(3),
+    right: -ms(3),
+    minWidth: ms(18),
+    height: ms(18),
+    borderRadius: ms(9),
+    paddingHorizontal: ms(4),
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: palette.goldLight,
+    borderWidth: 2,
+    borderColor: '#1E0D40',
   },
-  historyPrize: {
-    fontSize: FS.md,
-    fontWeight: '600',
+  headerBadgeText: { color: '#3B1D06', fontSize: ms(10) },
+
+  body: { flex: 1 },
+  scroll: { alignItems: 'center', paddingTop: hp(8) },
+
+  merchantRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: ms(10),
+    paddingHorizontal: wp(24),
+    maxWidth: '100%',
   },
-  historyCampaign: {
-    fontSize: FS.xs,
+  merchantLogo: { width: ms(36), height: ms(36), borderRadius: ms(18), backgroundColor: '#fff' },
+  merchantText: { flexShrink: 1 },
+  merchantName: { color: '#fff', fontSize: FS.md },
+  campaignName: { color: 'rgba(255,255,255,0.6)', fontSize: FS.xs, marginTop: hp(1) },
+
+  stage: { marginTop: hp(14), marginBottom: hp(6), alignItems: 'center' },
+
+  ctaBlock: { alignSelf: 'stretch', alignItems: 'center', paddingHorizontal: wp(24) },
+  spinsRow: { height: ms(32), alignItems: 'center', justifyContent: 'center', marginBottom: hp(10) },
+  spinsPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: ms(6),
+    paddingHorizontal: ms(12),
+    paddingVertical: ms(6),
+    borderRadius: 999,
+    backgroundColor: 'rgba(251,191,36,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(251,191,36,0.3)',
   },
-  historyStatus: {
-    fontSize: FS.xs,
-    marginTop: hp(2),
+  spinsText: { color: palette.goldLight, fontSize: FS.sm },
+  spinningText: { color: palette.goldLight, fontSize: FS.md },
+  spinBtnWrap: {
+    alignSelf: 'stretch',
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+    shadowColor: palette.gold,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    elevation: 8,
   },
+  spinBtnDisabled: { opacity: 0.55 },
+  spinBtn: { height: ms(56), alignItems: 'center', justifyContent: 'center', borderRadius: radius.lg },
+  spinBtnText: { color: '#3B1D06', fontSize: FS.lg, letterSpacing: 0.2 },
+
+  stateCard: {
+    alignSelf: 'stretch',
+    marginHorizontal: wp(24),
+    alignItems: 'center',
+    gap: hp(8),
+    paddingVertical: hp(18),
+    paddingHorizontal: wp(20),
+    borderRadius: radius.xl,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.09)',
+  },
+  stateIcon: {
+    width: ms(52),
+    height: ms(52),
+    borderRadius: ms(26),
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(251,191,36,0.12)',
+    marginBottom: hp(2),
+  },
+  stateTitle: { color: '#fff', fontSize: FS.lg, textAlign: 'center' },
+  stateHint: { color: 'rgba(255,255,255,0.6)', fontSize: FS.sm, textAlign: 'center', lineHeight: ms(20) },
+  ghostBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: ms(8),
+    marginTop: hp(6),
+    paddingHorizontal: ms(16),
+    height: ms(42),
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+  },
+  ghostBtnText: { color: '#fff', fontSize: FS.sm },
+  badge: {
+    minWidth: ms(20),
+    height: ms(20),
+    borderRadius: ms(10),
+    paddingHorizontal: ms(5),
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: palette.goldLight,
+  },
+  badgeText: { color: '#3B1D06', fontSize: FS.xs },
+
+  section: { alignSelf: 'stretch', paddingHorizontal: wp(20), marginTop: hp(22) },
+
+  legal: { alignSelf: 'stretch', paddingHorizontal: wp(24), marginTop: hp(22), gap: hp(6) },
+  legalHeader: { flexDirection: 'row', alignItems: 'center', gap: ms(6), marginBottom: hp(2) },
+  legalTitle: { color: 'rgba(255,255,255,0.7)', fontSize: FS.xs, textTransform: 'uppercase', letterSpacing: 0.8 },
+  legalText: { color: 'rgba(255,255,255,0.45)', fontSize: ms(11), lineHeight: ms(16) },
+  rulesBtn: { alignSelf: 'flex-start', marginTop: hp(4) },
+  rulesText: { color: palette.goldLight, fontSize: FS.xs, textDecorationLine: 'underline' },
 });

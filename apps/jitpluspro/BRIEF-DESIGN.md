@@ -12,7 +12,7 @@
 JitPlus **Pro** est l'application **côté commerçant** d'un programme de fidélité.
 Le commerçant l'utilise en caisse au quotidien pour :
 
-- scanner le QR code de ses clients pour créditer des points / tampons ou échanger une récompense,
+- scanner le QR code de ses clients pour créditer des tampons ou échanger une récompense,
 - consulter sa base clients et l'historique des transactions,
 - envoyer des campagnes marketing (push, WhatsApp, e-mail),
 - gérer son compte, sa boutique et son abonnement.
@@ -96,7 +96,7 @@ Barre inférieure personnalisée, translucide, avec 5 onglets :
 4. **Liste des cartes clients** — chaque carte :
    - Avatar rond avec **initiales** (ex. « JD ») sur fond violet doux,
    - Nom complet (Prénom Nom),
-   - **Pastille de solde** : « 1 250 pts » ou « 8 tampons » (violet),
+   - **Pastille de solde** : « 8 tampons » (violet),
    - Tap → ouvre la fiche détaillée du client.
 5. Bouton / état pour **charger la liste** (« Afficher mes clients »).
 
@@ -117,7 +117,7 @@ Barre inférieure personnalisée, translucide, avec 5 onglets :
 2. **Bannière conseil** (même style que Clients).
 3. **Filtres** (puces horizontales) : `Tout` · `Gains` · `Échanges` · `Ajustements` · `Équipe` · `Roue de chance`.
 4. **Liste des transactions** groupée par date (« Aujourd'hui », « Hier », dates) — chaque ligne :
-   - **Icône ronde** colorée selon le type (gain de points = flèche montante verte/violette ; échange récompense = cadeau ; ajustement ; gain roue de la chance),
+   - **Icône ronde** colorée selon le type (gain de tampons = flèche montante verte/violette ; échange récompense = cadeau ; ajustement ; gain roue de la chance),
    - Libellé de l'action + nom du client,
    - **Montant** à droite : « +30 pts » (gain, en vert/violet) ou « Échangé »,
    - Heure / auteur (« par [membre d'équipe] »),
@@ -146,7 +146,7 @@ Barre inférieure personnalisée, translucide, avec 5 onglets :
 - **QR invalide / expiré** : alerte + possibilité de re-scanner.
 - **Client introuvable** pour un numéro : message clair.
 
-> Après un scan réussi, l'app enchaîne vers l'écran de saisie du montant / attribution de points (hors de ce brief, mais garder la **cohérence visuelle**).
+> Après un scan réussi, l'app enchaîne vers l'écran de saisie du montant / attribution de tampons (hors de ce brief, mais garder la **cohérence visuelle**).
 
 ---
 

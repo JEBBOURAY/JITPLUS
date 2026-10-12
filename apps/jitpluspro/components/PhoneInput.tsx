@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useEffect, useRef, forwardRef } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef, forwardRef } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, StyleProp, ViewStyle, TextInputProps, Animated } from 'react-native';
 import { ChevronDown, Phone } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -12,15 +12,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 export interface PhoneInputProps extends Omit<TextInputProps, 'onChangeText' | 'value' | 'style'> {
   value: string;
   onChangeText: (value: string) => void;
-  /** @deprecated – validation is now automatic based on country rules */
-  isValid?: boolean;
   style?: StyleProp<ViewStyle>;
   /** Show validation state only after user has interacted */
   showValidation?: boolean;
 }
 
 /** Parse stored value "+212612..." or local "0612..." into dialCode + localPart + country */
-function parsePhone(value: string | undefined | null): {
+export function parsePhone(value: string | undefined | null): {
   dialCode: string;
   localPart: string;
   country: CountryCode;
@@ -40,7 +38,7 @@ function parsePhone(value: string | undefined | null): {
 }
 
 const PhoneInput = forwardRef<TextInput, PhoneInputProps>(
-  ({ value, onChangeText, placeholder, isValid: isValidProp, showValidation = true, style, ...rest }, ref) => {
+  ({ value, onChangeText, placeholder, showValidation = true, style, ...rest }, ref) => {
     const theme = useTheme();
     const { t } = useLanguage();
     const insets = useSafeAreaInsets();
@@ -232,12 +230,6 @@ const PhoneInput = forwardRef<TextInput, PhoneInputProps>(
 );
 
 export default PhoneInput;
-
-/** Helper: check if a stored phone value is valid for its detected country */
-export function isStoredPhoneValid(value: string): boolean {
-  const { localPart, country } = parsePhone(value);
-  return isValidPhoneForCountry(localPart, country);
-}
 
 const styles = StyleSheet.create({
   container: {

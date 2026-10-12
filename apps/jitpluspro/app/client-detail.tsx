@@ -18,6 +18,7 @@ import {
 import {
   ArrowLeft,
   Star,
+  Stamp,
   Phone,
   Mail,
   Calendar,
@@ -31,6 +32,7 @@ import {
   RefreshCw,
   FileText,
   MessageCircle,
+  Ticket,
 } from 'lucide-react-native';
 import { getTransactionConfig } from '@/constants/transactions';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -43,40 +45,29 @@ import StampGrid from '@/components/StampGrid';
 import { formatDate, formatDateTime } from '@/utils/date';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatCurrency, DEFAULT_CURRENCY, getIntlLocale } from '@/config/currency';
-import { useClientDetail, useAdjustPoints } from '@/hooks/useQueryHooks';
+import { useClientDetail, useAdjustStamps } from '@/hooks/useQueryHooks';
 import { isValidUUID } from '@/utils/validation';
 import api from '@/services/api';
 import { getErrorMessage } from '@/utils/error';
+import { stripEmojis } from '@/components/TransactionRow';
 
 // Type import for transactions
 import type { ClientDetailTransaction } from '@/types';
 
-/** Removes emojis from text (with performance cache) */
-const emojiCache = new Map<string, string>();
-const stripEmojis = (str: string | null | undefined) => {
-  if (!str) return '';
-  if (emojiCache.has(str)) return emojiCache.get(str)!;
-  const stripped = str.replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, '').trim();
-  if (emojiCache.size > 500) emojiCache.clear();
-  emojiCache.set(str, stripped);
-  return stripped;
-};
-
 /* ── Memoized transaction row — avoids re-render of every row on parent updates ── */
 const TransactionItem = React.memo(function TransactionItem({
   tx,
-  isStampsMode,
 }: {
   tx: ClientDetailTransaction;
-  isStampsMode: boolean;
 }) {
   const theme = useTheme();
   const { t, locale } = useLanguage();
 
-  const isEarned = tx.type === 'EARN_POINTS';
-  const isAdjust = tx.type === 'ADJUST_POINTS';
+  const isEarned = tx.type === 'EARN_STAMPS';
+  const isAdjust = tx.type === 'ADJUST_STAMPS';
   const isProgramChange = tx.type === 'LOYALTY_PROGRAM_CHANGE';
   const isLuckyWheelWin = tx.type === 'LUCKY_WHEEL_WIN';
+  const isCoupon = tx.type === 'COUPON_REDEEM';
   const isCancelled = tx.status === 'CANCELLED';
   const { icon: IconComp, color } = getTransactionConfig(tx.type, isCancelled, theme);
 
@@ -93,9 +84,11 @@ const TransactionItem = React.memo(function TransactionItem({
               ? t('clientDetail.txAdjustment')
               : isEarned
                 ? t('clientDetail.txEarned')
-                : isLuckyWheelWin
-                  ? t('common.luckyWheelWin', { defaultValue: 'Roue de la chance' })
-                  : t('clientDetail.txRedeemed')}
+                : isCoupon
+                  ? t('clientDetail.txCoupon')
+                  : isLuckyWheelWin
+                    ? t('common.luckyWheelWin', { defaultValue: 'Roue de la chance' })
+                    : t('clientDetail.txRedeemed')}
         </Text>
         {isProgramChange && tx.note && (
           <View style={styles.txInlineRow}>
@@ -121,7 +114,15 @@ const TransactionItem = React.memo(function TransactionItem({
             </Text>
           </View>
         )}
-        {!isEarned && !isAdjust && !isProgramChange && !isLuckyWheelWin && tx.reward && (
+        {isCoupon && tx.note && (
+          <View style={styles.txInlineRow}>
+            <Ticket size={10} color={theme.accent} strokeWidth={2} />
+            <Text style={[styles.txNote, { color: theme.accent, flex: 1 }]} numberOfLines={2}>
+              {stripEmojis(tx.note)}
+            </Text>
+          </View>
+        )}
+        {!isEarned && !isAdjust && !isProgramChange && !isLuckyWheelWin && !isCoupon && tx.reward && (
           <View style={styles.txRewardRow}>
             <Gift size={10} color={theme.primary} strokeWidth={2} />
             <Text style={[styles.txRewardName, { color: theme.primary, flex: 1 }]}>{stripEmojis(tx.reward.titre)}</Text>
@@ -143,8 +144,8 @@ const TransactionItem = React.memo(function TransactionItem({
               {formatCurrency(tx.amount, DEFAULT_CURRENCY, getIntlLocale(locale))}
             </Text>
           )}
-          <Text style={[styles.txPoints, { color }, isCancelled && styles.cancelled]}>
-            {isAdjust ? (tx.points >= 0 ? '+' : '') : isEarned ? '+' : '-'}{tx.points} {(tx.loyaltyType ?? (isStampsMode ? 'STAMPS' : 'POINTS')) === 'STAMPS' ? t('common.stampsAbbr') : t('common.pointsAbbr')}
+          <Text style={[styles.txStamps, { color }, isCancelled && styles.cancelled]}>
+            {isAdjust ? (tx.stamps >= 0 ? '+' : '') : isEarned || isCoupon ? '+' : '-'}{tx.stamps} {t('common.stampsAbbr')}
           </Text>
         </View>
       )}
@@ -162,7 +163,7 @@ export default function ClientDetailScreen() {
 
   const [adjustModalVisible, setAdjustModalVisible] = useState(false);
   const [adjustMode, setAdjustMode] = useState<'add' | 'remove'>('add');
-  const [adjustPoints, setAdjustPoints] = useState('');
+  const [adjustStamps, setAdjustStamps] = useState('');
   const [adjustNote, setAdjustNote] = useState('');
   const { t, locale } = useLanguage();
 
@@ -183,20 +184,16 @@ export default function ClientDetailScreen() {
     isRefetching: refreshing,
   } = useClientDetail(validId ? id : '');
 
-  const adjustMutation = useAdjustPoints();
+  const adjustMutation = useAdjustStamps();
 
   const onRefresh = useGuardedCallback(async () => { await refetch(); }, [refetch]);
 
   const openAdjustModal = useCallback((mode: 'add' | 'remove') => {
     setAdjustMode(mode);
-    setAdjustPoints('');
+    setAdjustStamps('');
     setAdjustNote('');
     setAdjustModalVisible(true);
   }, []);
-
-  const isStampsMode = client
-    ? (merchant?.loyaltyType === 'STAMPS' || client.loyaltyType === 'STAMPS')
-    : false;
 
   // Cap the rendered transactions to avoid mounting hundreds of rows inside a
   // ScrollView (no virtualization). Backend returns the most recent first.
@@ -207,22 +204,22 @@ export default function ClientDetailScreen() {
   );
   const hiddenTxCount = Math.max(0, (client?.transactions?.length ?? 0) - MAX_VISIBLE_TX);
 
-  const handleAdjustPoints = useCallback(async () => {
-    const pts = parseInt(adjustPoints, 10);
-    if (!pts || pts <= 0) {
-      Alert.alert(t('common.error'), t('clientDetail.adjustInvalidPts'));
+  const handleAdjustStamps = useCallback(async () => {
+    const count = parseInt(adjustStamps, 10);
+    if (!count || count <= 0) {
+      Alert.alert(t('common.error'), t('clientDetail.adjustInvalidCount'));
       return;
     }
 
-    const finalPoints = adjustMode === 'remove' ? -pts : pts;
-    const unit = isStampsMode ? t('common.stamps') : t('common.points');
+    const signedStamps = adjustMode === 'remove' ? -count : count;
+    const unit = t('common.stamps');
     const action = adjustMode === 'add' ? t('clientDetail.adjustActionAdd') : t('clientDetail.adjustActionRemove');
     const direction = adjustMode === 'add' ? t('clientDetail.adjustDirAdd') : t('clientDetail.adjustDirRemove');
     const displayName = [client?.prenom, client?.nom].filter(Boolean).join(' ');
 
     Alert.alert(
       t('common.confirm'),
-      t('clientDetail.adjustConfirmMsg', { action, pts, unit, direction, name: displayName }),
+      t('clientDetail.adjustConfirmMsg', { action, count, unit, direction, name: displayName }),
       [
         { text: t('common.cancel'), style: 'cancel' },
         {
@@ -231,12 +228,12 @@ export default function ClientDetailScreen() {
             try {
               await adjustMutation.mutateAsync({
                 clientId: id!,
-                points: finalPoints,
+                stamps: signedStamps,
                 note: adjustNote.trim() || undefined,
               });
               setAdjustModalVisible(false);
               const result = adjustMode === 'add' ? t('clientDetail.adjustResultAdd') : t('clientDetail.adjustResultRemove');
-              Alert.alert(t('common.confirm'), t('clientDetail.adjustSuccessMsg', { pts, unit, result }));
+              Alert.alert(t('common.confirm'), t('clientDetail.adjustSuccessMsg', { count, unit, result }));
             } catch (err: unknown) {
               const msg = getErrorMessage(err, t('clientDetail.adjustDefaultError'));
               Alert.alert(t('common.error'), msg);
@@ -245,7 +242,7 @@ export default function ClientDetailScreen() {
         },
       ],
     );
-  }, [adjustPoints, adjustMode, adjustNote, adjustMutation, id, client, isStampsMode, t]);
+  }, [adjustStamps, adjustMode, adjustNote, adjustMutation, id, client, t]);
 
   // ── Reshare WhatsApp claim link (anonymous Quick-Add clients only) ──
   const [resharing, setResharing] = useState(false);
@@ -296,15 +293,6 @@ export default function ClientDetailScreen() {
   // Use the dynamically computed threshold from the backend (client.stampsForReward / client.rewardThreshold)
   // rather than the merchant's static database field, as there might be custom rewards.
   const stampsForReward = client?.stampsForReward || merchant?.stampsForReward || 10;
-  const progressPct = useMemo(
-    () => {
-      if (!client) return 0;
-      return isStampsMode
-        ? Math.min((client.points / (stampsForReward || 1)) * 100, 100)
-        : Math.min((client.points / (client.rewardThreshold || 1)) * 100, 100);
-    },
-    [isStampsMode, client, stampsForReward],
-  );
 
   // Guard: auth not ready
   if (shouldWait) return null;
@@ -371,17 +359,16 @@ export default function ClientDetailScreen() {
               {t('clientDetail.memberSince', { date: formatDate(client.memberSince, locale) })}
             </Text>
 
-            {/* Points hero */}
-            <View style={[styles.pointsHero, { backgroundColor: `${palette.charbon}12` }]}>
+            <View style={[styles.stampsHero, { backgroundColor: `${palette.charbon}12` }]}>
               <View style={{ width: ms(36), height: ms(36), borderRadius: ms(12), backgroundColor: `${palette.charbon}12`, justifyContent: 'center', alignItems: 'center' }}>
-                <Star size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
+                <Stamp size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
               </View>
-              <Text style={[styles.pointsHeroValue, { color: theme.text }]}>{client.points}</Text>
-              <Text style={[styles.pointsHeroLabel, { color: theme.textMuted }]}>{isStampsMode ? t('common.stamps') : t('common.points')}</Text>
+              <Text style={[styles.stampsHeroValue, { color: theme.text }]}>{client.stamps}</Text>
+              <Text style={[styles.stampsHeroLabel, { color: theme.textMuted }]}>{t('common.stamps')}</Text>
             </View>
           </View>
 
-          {/* Adjust points buttons */}
+          {/* Adjust stamps buttons */}
           <View style={styles.adjustButtons}>
             <TouchableOpacity
               style={[styles.adjustBtn, { backgroundColor: theme.primary }]}
@@ -430,31 +417,11 @@ export default function ClientDetailScreen() {
               <Gift size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
             </View>
             <Text style={[styles.cardTitle, { color: theme.text }]}>
-              {isStampsMode ? t('clientDetail.loyaltyCard') : t('clientDetail.rewardProgress')}
+              {t('clientDetail.loyaltyCard')}
             </Text>
           </View>
 
-          {isStampsMode ? (
-            <StampGrid current={client.points} total={stampsForReward} size={38} />
-          ) : (
-            <>
-              <View style={[styles.progressBarBg, { backgroundColor: theme.bgElevated }]}>
-                <View style={[styles.progressBarFill, { width: `${progressPct}%`, backgroundColor: theme.primary }]} />
-              </View>
-              <View style={styles.progressLabels}>
-                <Text style={[styles.progressText, { color: theme.textMuted }]}>{client.points} / {client.rewardThreshold} pts</Text>
-                {client.hasReward ? (
-                  <Text style={[styles.progressBadge, { backgroundColor: theme.primaryBg, color: theme.primary }]}>
-                    {t('clientDetail.rewardAvailable')}
-                  </Text>
-                ) : (
-                  <Text style={[styles.progressRemaining, { color: theme.textMuted }]}>
-                    {t('clientDetail.pointsRemaining', { count: client.rewardThreshold - client.points })}
-                  </Text>
-                )}
-              </View>
-            </>
-          )}
+          <StampGrid current={client.stamps} total={stampsForReward} size={38} />
         </View>
 
         {/* ── Contact info ── */}
@@ -536,7 +503,7 @@ export default function ClientDetailScreen() {
           ) : (
             <>
               {visibleTransactions.map((tx) => (
-                <TransactionItem key={tx.id} tx={tx} isStampsMode={isStampsMode} />
+                <TransactionItem key={tx.id} tx={tx} />
               ))}
               {hiddenTxCount > 0 && (
                 <Text style={[styles.noTx, { color: theme.textMuted, paddingVertical: 12 }]}>
@@ -548,7 +515,7 @@ export default function ClientDetailScreen() {
         </View>
       </ScrollView>
 
-      {/* ── Adjust Points Modal ── */}
+      {/* ── Adjust Stamps Modal ── */}
       <Modal
         visible={adjustModalVisible}
         transparent
@@ -563,7 +530,7 @@ export default function ClientDetailScreen() {
           <View style={[styles.modalContent, { backgroundColor: theme.bgCard }]}>
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: theme.text }]}>
-                {t(adjustMode === 'add' ? 'clientDetail.adjustAddTitle' : 'clientDetail.adjustRemoveTitle', { unit: isStampsMode ? t('common.stamps') : t('common.points') })}
+                {t(adjustMode === 'add' ? 'clientDetail.adjustAddTitle' : 'clientDetail.adjustRemoveTitle', { unit: t('common.stamps') })}
               </Text>
               <TouchableOpacity onPress={() => setAdjustModalVisible(false)}>
                 <X size={22} color={theme.textMuted} />
@@ -571,15 +538,15 @@ export default function ClientDetailScreen() {
             </View>
 
             <Text style={[styles.modalLabel, { color: theme.textSecondary }]}>
-              {t('clientDetail.adjustCountLabel', { unit: isStampsMode ? t('common.stamps') : t('common.points') })}
+              {t('clientDetail.adjustCountLabel', { unit: t('common.stamps') })}
             </Text>
             <TextInput
               style={[styles.modalInput, { backgroundColor: theme.bgElevated, color: theme.text, borderColor: theme.borderLight }]}
               keyboardType="number-pad"
-              placeholder="Ex: 50"
+              placeholder="Ex: 2"
               placeholderTextColor={theme.textMuted}
-              value={adjustPoints}
-              onChangeText={(t) => setAdjustPoints(t.replace(/[^0-9]/g, ''))}
+              value={adjustStamps}
+              onChangeText={(t) => setAdjustStamps(t.replace(/[^0-9]/g, ''))}
               autoFocus
             />
 
@@ -602,14 +569,14 @@ export default function ClientDetailScreen() {
                 { backgroundColor: adjustMode === 'add' ? palette.violet : palette.charbon },
                 adjustMutation.isPending && { opacity: 0.6 },
               ]}
-              onPress={handleAdjustPoints}
+              onPress={handleAdjustStamps}
               disabled={adjustMutation.isPending}
             >
               {adjustMutation.isPending ? (
                 <ActivityIndicator color="#fff" size="small" />
               ) : (
                 <Text style={styles.modalConfirmText}>
-                  {t(adjustMode === 'add' ? 'clientDetail.adjustAddTitle' : 'clientDetail.adjustRemoveTitle', { unit: isStampsMode ? t('common.stamps') : t('common.points') })}
+                  {t(adjustMode === 'add' ? 'clientDetail.adjustAddTitle' : 'clientDetail.adjustRemoveTitle', { unit: t('common.stamps') })}
                 </Text>
               )}
             </TouchableOpacity>
@@ -660,7 +627,7 @@ const styles = StyleSheet.create({
   avatarLargeText: { fontSize: 28, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
   profileName: { fontSize: 22, fontWeight: '700', fontFamily: 'Lexend_700Bold', letterSpacing: -0.3 },
   memberSince: { fontSize: 13, marginTop: 4, fontFamily: 'Lexend_400Regular' },
-  pointsHero: {
+  stampsHero: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
@@ -669,8 +636,8 @@ const styles = StyleSheet.create({
     marginTop: 14,
     gap: 6,
   },
-  pointsHeroValue: { fontSize: 20, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
-  pointsHeroLabel: { fontSize: 13, fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
+  stampsHeroValue: { fontSize: 20, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
+  stampsHeroLabel: { fontSize: 13, fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
 
   // ── Body ──
   body: { flex: 1, paddingHorizontal: 16, paddingTop: 20 },
@@ -694,34 +661,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     paddingHorizontal: 8,
     paddingVertical: 2,
-    borderRadius: 10,
-    overflow: 'hidden',
-    fontFamily: 'Lexend_700Bold',
-  },
-
-  // ── Progress ──
-  progressBarBg: {
-    height: 10,
-    borderRadius: 5,
-    overflow: 'hidden',
-  },
-  progressBarFill: {
-    height: '100%',
-    borderRadius: 5,
-  },
-  progressLabels: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  progressText: { fontSize: 13, fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
-  progressRemaining: { fontSize: 12, fontFamily: 'Lexend_400Regular' },
-  progressBadge: {
-    fontSize: 12,
-    fontWeight: '700',
-    paddingHorizontal: 10,
-    paddingVertical: 3,
     borderRadius: 10,
     overflow: 'hidden',
     fontFamily: 'Lexend_700Bold',
@@ -784,7 +723,7 @@ const styles = StyleSheet.create({
   cancelled: { textDecorationLine: 'line-through', opacity: 0.5 },
   txRight: { alignItems: 'flex-end' },
   txAmount: { fontSize: 13, fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
-  txPoints: { fontSize: 14, fontWeight: '700', marginTop: 2, fontFamily: 'Lexend_700Bold' },
+  txStamps: { fontSize: 14, fontWeight: '700', marginTop: 2, fontFamily: 'Lexend_700Bold' },
   txNote: { fontSize: 12, marginTop: 2, fontStyle: 'italic', fontFamily: 'Lexend_400Regular' },
 
   // ── Adjust Buttons ──

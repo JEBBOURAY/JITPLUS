@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useReducer } from 'react';
+import React, { useState, useEffect, useCallback, useReducer, useMemo } from 'react';
 import {
   View,
   Text,
@@ -12,10 +12,9 @@ import {
   Platform,
   I18nManager,
 } from 'react-native';
-import { Save, Settings as SettingsIcon, ArrowLeft, Stamp, Star, AlertTriangle, ShieldCheck, ArrowRight, HelpCircle, Shield } from 'lucide-react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { Save, ArrowLeft, Stamp, HelpCircle, Shield, Lock, Minus, Plus, Clock, ShieldCheck, Crown } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
-import { useTheme, palette, brandGradient } from '@/contexts/ThemeContext';
+import { useTheme, palette, type ThemeColors } from '@/contexts/ThemeContext';
 import { useRouter } from 'expo-router';
 import api from '@/services/api';
 import { useQueryClient } from '@tanstack/react-query';
@@ -23,17 +22,28 @@ import { queryKeys } from '@/hooks/useQueryHooks';
 import { getErrorMessage } from '@/utils/error';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { ms } from '@/utils/responsive';
-import PremiumLockCard from '@/components/PremiumLockCard';
+import PremiumLockModal from '@/components/PremiumLockModal';
 import { RewardManager } from '@/components/settings/RewardManager';
 import InfoHint from '@/components/settings/InfoHint';
 import LoyaltyGuideSheet from '@/components/settings/LoyaltyGuideSheet';
+import LoyaltyCardPreview from '@/components/settings/LoyaltyCardPreview';
 import { DEFAULT_CURRENCY } from '@/config/currency';
+import { MAX_STAMPS_PER_TX } from '@/constants/app';
+import {
+  computeStampsForAmount,
+  rescaleStamps,
+  cardSlots,
+  DEFAULT_AMOUNT_PER_STAMP,
+  DEFAULT_STAMPS_FOR_REWARD,
+  DEFAULT_STAMP_VALIDITY_DAYS,
+  MIN_CARD_SLOTS,
+  MAX_CARD_SLOTS,
+  STAMP_VALIDITY_PRESETS,
+} from '@/utils/stamps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Merchant } from '@/types';
 
-const SIM_AMOUNT = 1000;
-
-type LoyaltyType = 'POINTS' | 'STAMPS';
+const SIM_AMOUNT = 100;
 
 interface Reward {
   id: string;
@@ -42,33 +52,29 @@ interface Reward {
   description?: string;
 }
 
-// â”€â”€ Settings reducer â”€â”€
+// ── Settings reducer ──
 interface SettingsState {
-  loyaltyType: LoyaltyType | null;
   stampEarningMode: 'PER_VISIT' | 'PER_AMOUNT';
-  pointsRate: string;
-  conversionRate: string;
-  stampsForReward: string;
+  amountPerStamp: string;
+  stampsForReward: number;
+  hasValidity: boolean;
+  validityDays: number;
   hasAccumulationLimit: boolean;
   accumulationLimit: string;
   saving: boolean;
-  conversionX: string;
-  conversionY: string;
   rewards: Reward[];
   rewardReloadToken: number;
 }
 
 const initialSettingsState: SettingsState = {
-  loyaltyType: null,
   stampEarningMode: 'PER_VISIT',
-  pointsRate: '10',
-  conversionRate: '10',
-  stampsForReward: '10',
+  amountPerStamp: String(DEFAULT_AMOUNT_PER_STAMP),
+  stampsForReward: DEFAULT_STAMPS_FOR_REWARD,
+  hasValidity: false,
+  validityDays: DEFAULT_STAMP_VALIDITY_DAYS,
   hasAccumulationLimit: false,
   accumulationLimit: '',
   saving: false,
-  conversionX: '10',
-  conversionY: '1',
   rewards: [],
   rewardReloadToken: 0,
 };
@@ -86,11 +92,11 @@ function settingsReducer(state: SettingsState, action: SettingsAction): Settings
       const m = action.merchant;
       return {
         ...state,
-        loyaltyType: m.loyaltyType ?? null,
         stampEarningMode: m.stampEarningMode || 'PER_VISIT',
-        pointsRate: m.pointsRate?.toString() || '10',
-        conversionRate: m.conversionRate?.toString() || '10',
-        stampsForReward: m.stampsForReward?.toString() || '10',
+        amountPerStamp: String(m.amountPerStamp ?? DEFAULT_AMOUNT_PER_STAMP),
+        stampsForReward: m.stampsForReward || DEFAULT_STAMPS_FOR_REWARD,
+        hasValidity: m.stampValidityDays != null,
+        validityDays: m.stampValidityDays ?? DEFAULT_STAMP_VALIDITY_DAYS,
         hasAccumulationLimit: m.accumulationLimit != null,
         accumulationLimit: m.accumulationLimit?.toString() || '',
       };
@@ -98,6 +104,71 @@ function settingsReducer(state: SettingsState, action: SettingsAction): Settings
     case 'INCREMENT_RELOAD':
       return { ...state, rewardReloadToken: state.rewardReloadToken + 1 };
   }
+}
+
+function confirmAsync(title: string, message: string, cancel: string, confirm: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    Alert.alert(
+      title,
+      message,
+      [
+        { text: cancel, style: 'cancel', onPress: () => resolve(false) },
+        { text: confirm, style: 'destructive', onPress: () => resolve(true) },
+      ],
+      { cancelable: false },
+    );
+  });
+}
+
+/** Light elevation used instead of borders for every surface on this screen. */
+function surfaceShadow(theme: ThemeColors) {
+  return theme.mode === 'dark'
+    ? null
+    : { shadowColor: '#0F172A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 14, elevation: 2 };
+}
+
+function fieldFill(theme: ThemeColors) {
+  return theme.mode === 'dark' ? 'rgba(255,255,255,0.06)' : theme.bgInput;
+}
+
+interface SwitchRowProps {
+  theme: ThemeColors;
+  label: string;
+  caption: string;
+  value: boolean;
+  locked: boolean;
+  icon: React.ReactNode;
+  onPress: () => void;
+}
+
+function SwitchRow({ theme, label, caption, value, locked, icon, onPress }: SwitchRowProps) {
+  const on = value && !locked;
+  return (
+    <TouchableOpacity
+      style={[styles.switchRow, { backgroundColor: on ? theme.primaryBg : fieldFill(theme) }]}
+      onPress={onPress}
+      activeOpacity={0.8}
+      accessibilityRole={locked ? 'button' : 'switch'}
+      accessibilityState={locked ? undefined : { checked: value }}
+      accessibilityLabel={label}
+      accessibilityHint={locked ? caption : undefined}
+    >
+      {icon}
+      <View style={styles.switchRowText}>
+        <Text style={[styles.fieldLabel, { color: theme.text }]} maxFontSizeMultiplier={1.3}>{label}</Text>
+        <Text style={[styles.caption, { color: on ? theme.primary : theme.textMuted }]} maxFontSizeMultiplier={1.3}>{caption}</Text>
+      </View>
+      {locked ? (
+        <View style={[styles.lockPill, { backgroundColor: palette.gold + '2E' }]}>
+          <Lock size={13} color="#B45309" strokeWidth={2.2} />
+        </View>
+      ) : (
+        <View style={[styles.switchTrack, { backgroundColor: value ? theme.primary : theme.border }]}>
+          <View style={[styles.switchKnob, value ? styles.switchKnobOn : styles.switchKnobOff]} />
+        </View>
+      )}
+    </TouchableOpacity>
+  );
 }
 
 export default function SettingsScreen() {
@@ -109,12 +180,18 @@ export default function SettingsScreen() {
   const qc = useQueryClient();
 
   const [state, dispatch] = useReducer(settingsReducer, initialSettingsState);
-  const { loyaltyType, stampEarningMode, pointsRate, conversionRate, stampsForReward, hasAccumulationLimit, accumulationLimit, saving, conversionX, conversionY, rewards, rewardReloadToken } = state;
+  const {
+    stampEarningMode, amountPerStamp, stampsForReward, hasValidity, validityDays,
+    hasAccumulationLimit, accumulationLimit, saving, rewards, rewardReloadToken,
+  } = state;
   const set = useCallback((payload: Partial<SettingsState>) => dispatch({ type: 'SET', payload }), []);
 
   const [guideVisible, setGuideVisible] = useState(false);
+  const [proOfferVisible, setProOfferVisible] = useState(false);
   const openGuide = useCallback(() => setGuideVisible(true), []);
   const closeGuide = useCallback(() => setGuideVisible(false), []);
+  const openProOffer = useCallback(() => setProOfferVisible(true), []);
+  const closeProOffer = useCallback(() => setProOfferVisible(false), []);
   const handleRewardsChange = useCallback((updatedRewards: Reward[]) => {
     set({ rewards: updatedRewards });
   }, [set]);
@@ -127,87 +204,51 @@ export default function SettingsScreen() {
     }
   }, [merchant, authLoading, router]);
 
+  const isPerAmount = stampEarningMode === 'PER_AMOUNT';
+  const parsedAmountPerStamp = parseFloat(amountPerStamp.replace(',', '.'));
+  const savedSlots = merchant?.stampsForReward || DEFAULT_STAMPS_FOR_REWARD;
+  const slotsChanged = stampsForReward !== savedSlots;
+  const draftValidity = hasValidity ? validityDays : null;
+  const validityChanged = draftValidity !== (merchant?.stampValidityDays ?? null);
 
-  // â”€â”€ Switch loyalty type with confirmation â”€â”€
-  const handleSwitchLoyaltyType = (newType: LoyaltyType) => {
-    if (newType === loyaltyType) return;
-    // Just switch the local state â€” the conversion card below will appear
-    set({ loyaltyType: newType });
-  };
+  // Reward costs as they will be once the stampsForReward rescale is applied.
+  const scaledRewards = useMemo(
+    () => rewards.map((r) => ({ ...r, scaled: rescaleStamps(r.cout, savedSlots, stampsForReward) })),
+    [rewards, savedSlots, stampsForReward],
+  );
 
-  // â”€â”€ Save all loyalty settings â”€â”€
+  const stampUnit = useCallback(
+    (n: number) => (n === 1 ? t('common.stamp') : t('common.stamps')),
+    [t],
+  );
+
+  // ── Save all loyalty settings ──
   const doSave = useCallback(async (forceCapClients: boolean) => {
-    const rate = parseFloat(pointsRate);
-    const conv = parseFloat(conversionRate);
-    const stamps = parseInt(stampsForReward, 10);
-    // First-time selection (no saved program yet) is NOT a conversion.
-    const loyaltyTypeChanged = !!merchant?.loyaltyType && loyaltyType !== merchant.loyaltyType;
-    const x = parseFloat(conversionX) || 10;
-    const y = parseFloat(conversionY) || 1;
-    if (loyaltyType === 'POINTS' && (!Number.isFinite(rate) || rate <= 0)) {
-      Alert.alert(t('common.error'), t('settingsPage.conversionRateError'));
+    const payload: Record<string, unknown> = {
+      stampEarningMode,
+      accumulationLimit: hasAccumulationLimit ? (parseInt(accumulationLimit, 10) || null) : null,
+    };
+    if (isPerAmount) payload.amountPerStamp = parsedAmountPerStamp;
+    if (slotsChanged) payload.stampsForReward = stampsForReward;
+    if (validityChanged) payload.stampValidityDays = draftValidity;
+    if (forceCapClients) payload.forceCapClients = true;
+
+    const res = await api.patch('/merchant/loyalty-settings', payload);
+    updateMerchant(res.data);
+    // A rescale or a cap changes reward costs and client balances shown
+    // elsewhere (home tab, client detail, transaction-amount).
+    qc.invalidateQueries({ queryKey: queryKeys.rewards });
+    qc.invalidateQueries({ queryKey: ['clients'] });
+    qc.invalidateQueries({ queryKey: ['client-status'] });
+    qc.invalidateQueries({ queryKey: ['client-detail'] });
+    dispatch({ type: 'INCREMENT_RELOAD' });
+    Alert.alert(t('common.confirm'), t('settingsPage.saveSuccess'));
+  }, [stampEarningMode, isPerAmount, parsedAmountPerStamp, hasAccumulationLimit, accumulationLimit, slotsChanged, stampsForReward, validityChanged, draftValidity, updateMerchant, t, qc]);
+
+  const handleSave = useCallback(async () => {
+    if (isPerAmount && (!Number.isFinite(parsedAmountPerStamp) || parsedAmountPerStamp <= 0)) {
+      Alert.alert(t('common.error'), t('settingsPage.amountPerStampError'));
       return;
-    }
-    if (loyaltyTypeChanged && (!Number.isFinite(x) || !Number.isFinite(y) || y <= 0)) {
-      Alert.alert(t('common.error'), t('settingsPage.conversionRateError'));
-      return;
-    }
-    const effectiveConvRate = loyaltyTypeChanged ? (y > 0 ? x / y : 1) : (conv || 10);
-
-    set({ saving: true });
-    try {
-      const payload: Record<string, unknown> = {
-        loyaltyType,
-        stampEarningMode,
-        pointsRate: rate || 10,
-        conversionRate: effectiveConvRate,
-        stampsForReward: stamps || 10,
-        accumulationLimit: hasAccumulationLimit ? (parseInt(accumulationLimit, 10) || null) : null,
-      };
-      if (forceCapClients) {
-        payload.forceCapClients = true;
-      }
-
-      const res = await api.patch('/merchant/loyalty-settings', payload);
-      updateMerchant(res.data);
-      if (res.data.conversionRate != null) {
-        set({ conversionRate: String(res.data.conversionRate) });
-      }
-      // Backend may rescale reward.cout and balances on type/stamps switch.
-      // Refresh React Query caches so transaction-amount, FichePreviewModal,
-      // home tab, etc. show the new values instead of pre-switch stale data.
-      qc.invalidateQueries({ queryKey: queryKeys.rewards });
-      qc.invalidateQueries({ queryKey: queryKeys.profile });
-      qc.invalidateQueries({ queryKey: ['clients'] });
-      qc.invalidateQueries({ queryKey: ['client-status'] });
-      qc.invalidateQueries({ queryKey: ['client-detail'] });
-      dispatch({ type: 'INCREMENT_RELOAD' });
-      Alert.alert(t('common.confirm'), t('settingsPage.saveSuccess'));
-    } catch (err: unknown) {
-      Alert.alert(t('common.error'), getErrorMessage(err, t('settingsPage.saveError')));
-    } finally {
-      set({ saving: false });
-    }
-  }, [loyaltyType, stampEarningMode, pointsRate, conversionRate, stampsForReward, conversionX, conversionY, hasAccumulationLimit, accumulationLimit, merchant, updateMerchant, t, qc, set]);
-
-  const performSave = useCallback(async () => {
-    const rate = parseFloat(pointsRate);
-    const stamps = parseInt(stampsForReward, 10);
-
-    if (!loyaltyType) {
-      Alert.alert(t('common.error'), t('settingsPage.chooseProgramError'));
-      return;
-    }
-
-    if (loyaltyType === 'POINTS' && (isNaN(rate) || rate <= 0)) {
-      Alert.alert(t('common.error'), t('settingsPage.conversionRateError'));
-      return;
-    }
-    if (loyaltyType === 'STAMPS') {
-      if (isNaN(stamps) || stamps < 1) {
-        Alert.alert(t('common.error'), t('settingsPage.stampsForRewardError'));
-        return;
-      }
     }
 
     const limitVal = parseInt(accumulationLimit, 10);
@@ -216,84 +257,77 @@ export default function SettingsScreen() {
       return;
     }
 
-    // Check if the new limit is lower than any existing reward cost
-    if (hasAccumulationLimit && !isNaN(limitVal) && rewards.length > 0) {
-      const exceeding = rewards.filter((r) => r.cout > limitVal);
+    const unit = t('common.stamps');
+    const cancel = t('common.cancel');
+    const ok = t('common.confirm');
+
+    // A limit below a reward cost makes that reward unreachable.
+    if (hasAccumulationLimit && scaledRewards.length > 0) {
+      const exceeding = scaledRewards.filter((r) => r.scaled > limitVal);
       if (exceeding.length > 0) {
-        const unit = loyaltyType === 'STAMPS' ? t('common.stamps') : t('common.points');
-        const names = exceeding.map((r) => `${r.titre} (${r.cout} ${unit})`).join(', ');
-        const proceed = await new Promise<boolean>((resolve) => {
-          Alert.alert(
-            t('settingsPage.limitBelowRewardsTitle'),
-            t('settingsPage.limitBelowRewardsMessage', { rewards: names, limit: limitVal, unit }),
-            [
-              { text: t('common.cancel'), style: 'cancel', onPress: () => resolve(false) },
-              { text: t('common.confirm'), style: 'destructive', onPress: () => resolve(true) },
-            ],
-            { cancelable: false },
-          );
-        });
+        const names = exceeding.map((r) => `${r.titre} (${r.scaled} ${unit})`).join(', ');
+        const proceed = await confirmAsync(
+          t('settingsPage.limitBelowRewardsTitle'),
+          t('settingsPage.limitBelowRewardsMessage', { rewards: names, limit: limitVal, unit }),
+          cancel,
+          ok,
+        );
         if (!proceed) return;
       }
     }
 
-    // Check if setting/lowering the limit would affect existing clients
-    if (hasAccumulationLimit && limitVal > 0) {
+    set({ saving: true });
+    try {
+      let forceCap = false;
       const currentLimit = merchant?.accumulationLimit;
-      const isNewOrLower = currentLimit == null || limitVal < currentLimit;
-
-      if (isNewOrLower) {
-        set({ saving: true });
-        try {
-          const preview = await api.post('/merchant/loyalty-settings/preview-limit', { limit: limitVal });
-          const affected = preview.data.affectedClients;
-          if (affected > 0) {
-            set({ saving: false });
-            Alert.alert(
-              t('settingsPage.limitConfirmTitle'),
-              t('settingsPage.limitConfirmMessage', {
-                count: affected,
-                limit: limitVal,
-                unit: loyaltyType === 'STAMPS' ? t('common.stamps') : t('common.points'),
-              }),
-              [
-                { text: t('common.cancel'), style: 'cancel' },
-                {
-                  text: t('common.confirm'),
-                  style: 'destructive',
-                  onPress: () => doSave(true),
-                },
-              ],
-            );
-            return;
-          }
-        } catch {
-          // If preview fails, proceed without confirmation
-        } finally {
-          set({ saving: false });
+      if (hasAccumulationLimit && (currentLimit == null || limitVal < currentLimit)) {
+        const affected = await api
+          .post('/merchant/loyalty-settings/preview-limit', { limit: limitVal })
+          .then((r) => r.data.affectedClients as number)
+          .catch(() => 0);
+        if (affected > 0) {
+          const proceed = await confirmAsync(
+            t('settingsPage.limitConfirmTitle'),
+            t('settingsPage.limitConfirmMessage', { count: affected, limit: limitVal, unit }),
+            cancel,
+            ok,
+          );
+          if (!proceed) return;
+          forceCap = true;
         }
       }
-    }
 
-    doSave(false);
-  }, [pointsRate, stampsForReward, loyaltyType, hasAccumulationLimit, accumulationLimit, rewards, merchant, t, doSave, set]);
+      if (slotsChanged) {
+        const withStamps = await api
+          .get('/merchant/loyalty-settings/preview-slots')
+          .then((r) => r.data.clientsWithStamps as number)
+          .catch(() => 0);
+        if (withStamps > 0) {
+          const exFrom = Math.max(1, Math.round(savedSlots / 2));
+          const exTo = rescaleStamps(exFrom, savedSlots, stampsForReward, 0);
+          const proceed = await confirmAsync(
+            t('settingsPage.slotsConfirmTitle'),
+            t(withStamps === 1 ? 'settingsPage.slotsConfirmMessage_one' : 'settingsPage.slotsConfirmMessage_other', {
+              count: withStamps,
+              from: savedSlots,
+              to: stampsForReward,
+              exFrom,
+              exTo,
+            }),
+            cancel,
+            ok,
+          );
+          if (!proceed) return;
+        }
+      }
 
-  // A mode change converts every client's balance — confirm before saving (§6/§10).
-  const handleSave = useCallback(() => {
-    const modeChanged = !!merchant?.loyaltyType && loyaltyType !== merchant.loyaltyType;
-    if (modeChanged) {
-      Alert.alert(
-        t('settingsPage.switchSaveConfirmTitle'),
-        t('settingsPage.switchSaveConfirmMessage'),
-        [
-          { text: t('common.cancel'), style: 'cancel' },
-          { text: t('common.confirm'), style: 'destructive', onPress: () => { void performSave(); } },
-        ],
-      );
-      return;
+      await doSave(forceCap);
+    } catch (err: unknown) {
+      Alert.alert(t('common.error'), getErrorMessage(err, t('settingsPage.saveError')));
+    } finally {
+      set({ saving: false });
     }
-    void performSave();
-  }, [merchant, loyaltyType, performSave, t]);
+  }, [parsedAmountPerStamp, isPerAmount, hasAccumulationLimit, accumulationLimit, scaledRewards, merchant, slotsChanged, savedSlots, stampsForReward, t, doSave, set]);
 
   if (isTeamMember) {
     return (
@@ -323,36 +357,45 @@ export default function SettingsScreen() {
     );
   }
 
-  const isStamps = loyaltyType === 'STAMPS';
-  const isPoints = loyaltyType === 'POINTS';
-  const savedLoyaltyType = merchant?.loyaltyType ?? null;
-  const isPremium = merchant?.plan === 'PREMIUM';
+  const isPremium = merchant.plan === 'PREMIUM';
+  const locked = !isPremium;
+  const savedAmountPerStamp = String(merchant.amountPerStamp ?? DEFAULT_AMOUNT_PER_STAMP);
   const hasChanges =
-    loyaltyType !== savedLoyaltyType ||
-    stampEarningMode !== (merchant?.stampEarningMode || 'PER_VISIT') ||
-    pointsRate !== (merchant?.pointsRate?.toString() || '10') ||
-    conversionRate !== (merchant?.conversionRate?.toString() || '10') ||
-    stampsForReward !== (merchant?.stampsForReward?.toString() || '10') ||
-    hasAccumulationLimit !== (merchant?.accumulationLimit != null) ||
-    (hasAccumulationLimit && accumulationLimit !== (merchant?.accumulationLimit?.toString() || ''));
+    stampEarningMode !== (merchant.stampEarningMode || 'PER_VISIT') ||
+    (isPerAmount && amountPerStamp !== savedAmountPerStamp) ||
+    slotsChanged ||
+    validityChanged ||
+    hasAccumulationLimit !== (merchant.accumulationLimit != null) ||
+    (hasAccumulationLimit && accumulationLimit !== (merchant.accumulationLimit?.toString() || ''));
 
-  // The migration rule (§6) appears whenever the UI mode differs from the mode
-  // currently saved server-side (merchant.loyaltyType) — both directions.
-  const modeChanged = !!savedLoyaltyType && loyaltyType !== savedLoyaltyType;
-  const showRateField = isPoints || (isStamps && stampEarningMode === 'PER_AMOUNT');
-  const rateNum = parseFloat(pointsRate) || 0;
-  const simEarned = isStamps
-    ? (stampEarningMode === 'PER_VISIT' ? 1 : (rateNum > 0 ? Math.round(SIM_AMOUNT / rateNum) : 0))
-    : (rateNum > 0 ? Math.round(SIM_AMOUNT / rateNum) : 0);
-  const rateSuffix = isStamps
-    ? t('settingsPage.stampRateSuffix', { symbol: DEFAULT_CURRENCY.symbol })
-    : t('settingsPage.pointsSuffix', { symbol: DEFAULT_CURRENCY.symbol });
-  const unitLabel = isStamps ? t('common.stamps') : t('common.points');
+  const sim = isPerAmount && parsedAmountPerStamp > 0
+    ? computeStampsForAmount(SIM_AMOUNT, parsedAmountPerStamp)
+    : { stamps: 0, capped: false };
+  const amountLabel = Number.isFinite(parsedAmountPerStamp) && parsedAmountPerStamp > 0
+    ? String(parsedAmountPerStamp)
+    : String(DEFAULT_AMOUNT_PER_STAMP);
+  const ruleText = isPerAmount
+    ? t('settingsPage.ruleAmount', { amount: amountLabel, currency: DEFAULT_CURRENCY.symbol })
+    : t('settingsPage.simPerVisit');
+
+  const previewTotal = cardSlots(scaledRewards.map((r) => r.scaled), stampsForReward);
+  const minSlots = Math.min(MIN_CARD_SLOTS, savedSlots);
+  const maxSlots = Math.max(MAX_CARD_SLOTS, savedSlots);
+  const validityPresets: number[] = STAMP_VALIDITY_PRESETS.includes(validityDays as (typeof STAMP_VALIDITY_PRESETS)[number])
+    ? [...STAMP_VALIDITY_PRESETS]
+    : [...STAMP_VALIDITY_PRESETS, validityDays].sort((a, b) => a - b);
+  const rescaledPreview = slotsChanged
+    ? scaledRewards.filter((r) => r.scaled !== r.cout).slice(0, 2)
+    : [];
+
+  const shadow = surfaceShadow(theme);
+  const fill = fieldFill(theme);
   const rtlFlip = I18nManager.isRTL ? { transform: [{ scaleX: -1 as number }] } : undefined;
+  const guard = (fn: () => void) => () => (locked ? openProOffer() : fn());
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
-      {/* ── Topbar (§1) ── */}
+      {/* ── Topbar ── */}
       <View style={[styles.headerBar, { paddingTop: insets.top + 12 }]}>
         <TouchableOpacity
           onPress={() => router.back()}
@@ -360,7 +403,7 @@ export default function SettingsScreen() {
           accessibilityRole="button"
           accessibilityLabel={t('common.back')}
         >
-          <View style={[styles.iconBtn, { backgroundColor: theme.bgInput }]}>
+          <View style={[styles.iconBtn, { backgroundColor: fill }]}>
             <ArrowLeft size={20} color={theme.text} style={rtlFlip} />
           </View>
         </TouchableOpacity>
@@ -378,8 +421,8 @@ export default function SettingsScreen() {
           accessibilityRole="button"
           accessibilityLabel={t('settingsPage.helpButton')}
         >
-          <View style={[styles.iconBtn, { backgroundColor: theme.primary + '17' }]}>
-            <HelpCircle size={20} color={theme.primary} strokeWidth={2} />
+          <View style={[styles.iconBtn, { backgroundColor: fill }]}>
+            <HelpCircle size={20} color={theme.textSecondary} strokeWidth={2} />
           </View>
         </TouchableOpacity>
       </View>
@@ -390,341 +433,356 @@ export default function SettingsScreen() {
         keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + 60 : 0}
       >
       <ScrollView
-        contentContainerStyle={{ paddingBottom: 140 }}
+        contentContainerStyle={{ paddingTop: 4, paddingBottom: isPremium ? 170 : 60 }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* ── Contextual banner (§2) — scan stays blocked until configured ── */}
-        <View style={[styles.contextBanner, { backgroundColor: theme.primary + '0D', borderColor: theme.primary + '26' }]}>
-          <View style={[styles.contextIcon, { backgroundColor: theme.primary }]}>
-            <ShieldCheck size={16} color="#fff" strokeWidth={2} />
-          </View>
-          <Text style={[styles.contextText, { color: theme.text }]} maxFontSizeMultiplier={1.3}>
-            {t('settingsPage.contextBanner')}
-          </Text>
-          <InfoHint text={t('settingsPage.contextBannerInfo')} />
-        </View>
+        {/* ── Live card preview ── */}
+        <LoyaltyCardPreview
+          theme={theme}
+          t={t}
+          merchant={merchant}
+          total={previewTotal}
+          ruleText={ruleText}
+          validityText={hasValidity && !locked ? t('settingsPage.validityPreview', { days: validityDays }) : null}
+        />
 
-        {/* ── Panel: Mode de fidélité (§1/§2) ── */}
-        <View style={[styles.panel, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
-          <View style={[styles.panelHeader, { borderBottomColor: theme.borderLight }]}>
-            <View style={[styles.panelIcon, { backgroundColor: theme.primary + '17' }]}>
-              <SettingsIcon size={16} color={theme.primary} strokeWidth={1.8} />
+        {/* ── Panel: Carte de tampons ── */}
+        <View style={[styles.panel, { backgroundColor: theme.bgCard }, shadow]}>
+          <View style={styles.panelHeader}>
+            <View style={[styles.panelIcon, { backgroundColor: theme.primaryBg }]}>
+              <Stamp size={17} color={theme.primary} strokeWidth={1.9} />
             </View>
             <Text style={[styles.panelTitle, { color: theme.text }]} maxFontSizeMultiplier={1.3} accessibilityRole="header">
               {t('settingsPage.loyaltyMode')}
             </Text>
-            <InfoHint text={t('settingsPage.loyaltyModeInfo')} />
+            {locked ? (
+              <TouchableOpacity
+                onPress={openProOffer}
+                style={[styles.proPill, { backgroundColor: palette.gold + '2E' }]}
+                accessibilityRole="button"
+                accessibilityLabel={t('settingsPage.proUnlockCta')}
+              >
+                <Lock size={11} color="#B45309" strokeWidth={2.4} />
+                <Text style={styles.proPillText} maxFontSizeMultiplier={1.2}>{t('settingsPage.proBadge')}</Text>
+              </TouchableOpacity>
+            ) : (
+              <InfoHint text={t('settingsPage.loyaltyModeInfo')} />
+            )}
           </View>
 
-          {!isPremium ? (
-            <PremiumLockCard titleKey="settingsPage.premiumLoyaltyTitle" descriptionKey="settingsPage.premiumLoyaltyDesc" />
-          ) : (
           <View style={styles.panelBody}>
-            {/* Mode choice cards (§2) */}
-            <View style={styles.modeChoiceRow}>
-              <TouchableOpacity
-                style={[styles.modeChoice, { borderColor: isPoints ? theme.primary : theme.borderLight, backgroundColor: isPoints ? theme.primary + '0D' : 'transparent' }]}
-                onPress={() => handleSwitchLoyaltyType('POINTS')}
-                activeOpacity={0.85}
-                accessibilityRole="button"
-                accessibilityState={{ selected: isPoints }}
-                accessibilityLabel={t('settingsPage.modePoints')}
-              >
-                {isPoints ? (
-                  <LinearGradient colors={brandGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.modeChoiceIcon}>
-                    <Star size={18} color="#fff" strokeWidth={2} />
-                  </LinearGradient>
-                ) : (
-                  <View style={[styles.modeChoiceIcon, { backgroundColor: theme.bgInput }]}>
-                    <Star size={18} color={theme.textMuted} strokeWidth={2} />
-                  </View>
-                )}
-                <Text style={[styles.modeChoiceTitle, { color: theme.text }]} maxFontSizeMultiplier={1.2}>{t('settingsPage.modePoints')}</Text>
-                <Text style={[styles.modeChoiceSub, { color: theme.textMuted }]} maxFontSizeMultiplier={1.2} numberOfLines={2}>{t('settingsPage.modePointsSub')}</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.modeChoice, { borderColor: isStamps ? theme.primary : theme.borderLight, backgroundColor: isStamps ? theme.primary + '0D' : 'transparent' }]}
-                onPress={() => handleSwitchLoyaltyType('STAMPS')}
-                activeOpacity={0.85}
-                accessibilityRole="button"
-                accessibilityState={{ selected: isStamps }}
-                accessibilityLabel={t('settingsPage.modeStamps')}
-              >
-                {isStamps ? (
-                  <LinearGradient colors={brandGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.modeChoiceIcon}>
-                    <Stamp size={18} color="#fff" strokeWidth={2} />
-                  </LinearGradient>
-                ) : (
-                  <View style={[styles.modeChoiceIcon, { backgroundColor: theme.bgInput }]}>
-                    <Stamp size={18} color={theme.textMuted} strokeWidth={2} />
-                  </View>
-                )}
-                <Text style={[styles.modeChoiceTitle, { color: theme.text }]} maxFontSizeMultiplier={1.2}>{t('settingsPage.modeStamps')}</Text>
-                <Text style={[styles.modeChoiceSub, { color: theme.textMuted }]} maxFontSizeMultiplier={1.2} numberOfLines={2}>{t('settingsPage.modeStampsSub')}</Text>
-              </TouchableOpacity>
+            {/* Earning mode */}
+            <View>
+              <View style={styles.labelRow}>
+                <Text style={[styles.fieldLabel, { color: theme.text }]} maxFontSizeMultiplier={1.3}>
+                  {t('settingsPage.stampEarningMode')}
+                </Text>
+                <InfoHint text={t('settingsPage.stampEarningModeInfo')} />
+              </View>
+              <View style={[styles.subToggle, { backgroundColor: fill }]}>
+                {(['PER_VISIT', 'PER_AMOUNT'] as const).map((mode) => {
+                  const active = stampEarningMode === mode;
+                  const label = mode === 'PER_VISIT' ? t('settingsPage.perVisit') : t('settingsPage.perAmount');
+                  return (
+                    <TouchableOpacity
+                      key={mode}
+                      style={[styles.subToggleBtn, active && [styles.subToggleBtnActive, { backgroundColor: theme.bgCard }]]}
+                      onPress={guard(() => set({ stampEarningMode: mode }))}
+                      activeOpacity={0.8}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: active }}
+                      accessibilityLabel={label}
+                    >
+                      <Text style={[styles.subToggleText, { color: active ? theme.primary : theme.textMuted }]} maxFontSizeMultiplier={1.2}>
+                        {label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
             </View>
 
-            {/* No program chosen yet — prompt the merchant to pick one */}
-            {!loyaltyType && (
-              <View style={[styles.inlineBanner, { backgroundColor: theme.primary + '14' }]}>
-                <AlertTriangle size={15} color={theme.primary} strokeWidth={2} />
-                <Text style={[styles.inlineBannerText, { color: theme.primary }]} maxFontSizeMultiplier={1.3}>
-                  {t('settingsPage.chooseProgramHint')}
-                </Text>
-              </View>
-            )}
-
-            {/* Mode change → bidirectional migration rule (§6) */}
-            {modeChanged && (
-              <View style={styles.migrationBlock}>
-                <View style={[styles.warnBanner, { backgroundColor: theme.warning + '14', borderColor: theme.warning + '3D' }]}>
-                  <AlertTriangle size={15} color={theme.warning} strokeWidth={2} />
-                  <Text style={[styles.warnBannerText, { color: theme.warning }]} maxFontSizeMultiplier={1.3}>
-                    {t('settingsPage.switchWarning')}
-                  </Text>
-                  <InfoHint text={t('settingsPage.migrationInfo')} variant="amber" />
-                </View>
-                <Text style={[styles.fieldLabelSm, { color: theme.text, marginBottom: 8 }]} maxFontSizeMultiplier={1.3}>
-                  {t('settingsPage.conversionRuleTitle')}
-                </Text>
-                <View style={styles.migrationRow}>
-                  <View style={[styles.rateWrap, styles.migrationInput, { backgroundColor: theme.bgInput }]}>
-                    <TextInput
-                      style={[styles.rateInput, { color: theme.text }]}
-                      value={conversionX}
-                      onChangeText={(v) => set({ conversionX: v })}
-                      keyboardType="decimal-pad"
-                      placeholder="10"
-                      placeholderTextColor={theme.textMuted}
-                      maxLength={6}
-                      maxFontSizeMultiplier={1.2}
-                    />
-                    <Text style={[styles.rateSuffix, { color: theme.textMuted }]} maxFontSizeMultiplier={1.2}>
-                      {loyaltyType === 'STAMPS' ? t('settingsPage.conversionRulePts') : t('settingsPage.conversionRuleTmps')}
-                    </Text>
-                  </View>
-                  <ArrowRight size={16} color={theme.textMuted} strokeWidth={2.5} style={rtlFlip} />
-                  <View style={[styles.rateWrap, styles.migrationInput, { backgroundColor: theme.bgInput }]}>
-                    <TextInput
-                      style={[styles.rateInput, { color: theme.text }]}
-                      value={conversionY}
-                      onChangeText={(v) => set({ conversionY: v })}
-                      keyboardType="decimal-pad"
-                      placeholder="1"
-                      placeholderTextColor={theme.textMuted}
-                      maxLength={6}
-                      maxFontSizeMultiplier={1.2}
-                    />
-                    <Text style={[styles.rateSuffix, { color: theme.textMuted }]} maxFontSizeMultiplier={1.2}>
-                      {loyaltyType === 'STAMPS' ? t('settingsPage.conversionRuleTmps') : t('settingsPage.conversionRulePts')}
-                    </Text>
-                  </View>
-                </View>
-              </View>
-            )}
-
-            {/* Stamps attribution sub-toggle (§3) */}
-            {isStamps && (
+            {/* Purchase amount per stamp */}
+            {isPerAmount && (
               <View style={styles.fieldBlock}>
                 <View style={styles.labelRow}>
-                  <Text style={[styles.fieldLabelSm, { color: theme.text }]} maxFontSizeMultiplier={1.3}>
-                    {t('settingsPage.stampEarningMode')}
-                  </Text>
-                  <InfoHint text={t('settingsPage.stampEarningModeInfo')} />
-                </View>
-                <View style={[styles.subToggle, { backgroundColor: theme.bgInput }]}>
-                  <TouchableOpacity
-                    style={[styles.subToggleBtn, stampEarningMode === 'PER_VISIT' && [styles.subToggleBtnActive, { backgroundColor: theme.bgCard }]]}
-                    onPress={() => set({ stampEarningMode: 'PER_VISIT' })}
-                    activeOpacity={0.8}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: stampEarningMode === 'PER_VISIT' }}
-                    accessibilityLabel={t('settingsPage.perVisit')}
-                  >
-                    <Text style={[styles.subToggleText, { color: stampEarningMode === 'PER_VISIT' ? theme.primary : theme.textSecondary }]} maxFontSizeMultiplier={1.2}>
-                      {t('settingsPage.perVisit')}
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.subToggleBtn, stampEarningMode === 'PER_AMOUNT' && [styles.subToggleBtnActive, { backgroundColor: theme.bgCard }]]}
-                    onPress={() => set({ stampEarningMode: 'PER_AMOUNT' })}
-                    activeOpacity={0.8}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: stampEarningMode === 'PER_AMOUNT' }}
-                    accessibilityLabel={t('settingsPage.perAmount')}
-                  >
-                    <Text style={[styles.subToggleText, { color: stampEarningMode === 'PER_AMOUNT' ? theme.primary : theme.textSecondary }]} maxFontSizeMultiplier={1.2}>
-                      {t('settingsPage.perAmount')}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
-
-            {/* Single accumulation rate (§3) */}
-            {showRateField && (
-              <View style={styles.fieldBlock}>
-                <View style={styles.labelRow}>
-                  <Text style={[styles.fieldLabelSm, { color: theme.text }]} maxFontSizeMultiplier={1.3}>
+                  <Text style={[styles.fieldLabel, { color: theme.text }]} maxFontSizeMultiplier={1.3}>
                     {t('settingsPage.accumulationRate')}
                   </Text>
                   <InfoHint text={t('settingsPage.accumulationRateInfo')} />
                 </View>
-                <View style={[styles.rateWrap, { backgroundColor: theme.bgInput }]}>
+                <View style={[styles.rateWrap, { backgroundColor: fill }]}>
                   <TextInput
                     style={[styles.rateInput, { color: theme.text }]}
-                    value={pointsRate}
-                    onChangeText={(v) => set({ pointsRate: v })}
-                    keyboardType="numeric"
+                    value={amountPerStamp}
+                    onChangeText={(v) => set({ amountPerStamp: v })}
+                    editable={!locked}
+                    onPressIn={locked ? openProOffer : undefined}
+                    keyboardType="decimal-pad"
                     placeholder="10"
                     placeholderTextColor={theme.textMuted}
                     maxLength={8}
                     maxFontSizeMultiplier={1.2}
                   />
                   <Text style={[styles.rateSuffix, { color: theme.textMuted }]} maxFontSizeMultiplier={1.2}>
-                    {rateSuffix}
+                    {t('settingsPage.stampRateSuffix', { symbol: DEFAULT_CURRENCY.symbol })}
                   </Text>
                 </View>
               </View>
             )}
 
-            {/* Live simulation (§4) */}
-            {!!loyaltyType && (
-              <LinearGradient
-                colors={theme.mode === 'dark' ? ['rgba(167,139,250,0.12)', 'rgba(31,41,55,0.14)'] : ['rgba(124,58,237,0.06)', 'rgba(31,41,55,0.03)']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={[styles.simCard, { borderColor: theme.primary + '1F' }]}
-              >
-                <View style={styles.simTop}>
-                  <LinearGradient colors={brandGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.simIcon}>
-                    {isStamps ? <Stamp size={19} color="#fff" strokeWidth={2} /> : <Star size={19} color="#fff" strokeWidth={2} />}
-                  </LinearGradient>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.simLabel, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>
-                      {t('settingsPage.simLabel', { amount: SIM_AMOUNT, currency: DEFAULT_CURRENCY.symbol })}
+            {/* Simulation */}
+            <View style={[styles.simCard, { backgroundColor: theme.primaryBg }]}>
+              <View style={[styles.simIcon, { backgroundColor: theme.primary }]}>
+                <Stamp size={18} color="#fff" strokeWidth={2} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.caption, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>
+                  {isPerAmount
+                    ? t('settingsPage.simLabel', { amount: SIM_AMOUNT, currency: DEFAULT_CURRENCY.symbol })
+                    : t('settingsPage.simLabelVisit')}
+                </Text>
+                {isPerAmount ? (
+                  <Text style={[styles.simValue, { color: theme.text }]} maxFontSizeMultiplier={1.2}>
+                    {sim.stamps}{' '}
+                    <Text style={[styles.simUnit, { color: theme.primary }]}>
+                      {t(sim.stamps === 1 ? 'settingsPage.simStampsEarned_one' : 'settingsPage.simStampsEarned_other')}
                     </Text>
-                    <Text style={[styles.simValue, { color: theme.text }]} maxFontSizeMultiplier={1.2}>
-                      {simEarned} <Text style={[styles.simUnit, { color: theme.primary }]}>{isStamps ? t('settingsPage.simStampsEarned') : t('settingsPage.simPointsEarned')}</Text>
-                    </Text>
-                  </View>
-                </View>
-              </LinearGradient>
-            )}
+                  </Text>
+                ) : (
+                  <Text style={[styles.simValue, { color: theme.text }]} maxFontSizeMultiplier={1.2}>
+                    {t('settingsPage.simPerVisit')}
+                  </Text>
+                )}
+                {sim.capped && (
+                  <Text style={[styles.caption, { color: theme.textMuted, marginTop: 2 }]} maxFontSizeMultiplier={1.3}>
+                    {t('transaction.maxStampsPerTxHint', { max: MAX_STAMPS_PER_TX })}
+                  </Text>
+                )}
+              </View>
+            </View>
 
-            {/* Accumulation limit (§5) — Pro feature */}
+            {/* Card slots */}
             <View style={styles.fieldBlock}>
               <View style={styles.labelRow}>
-                <Text style={[styles.fieldLabelSm, { color: theme.text }]} maxFontSizeMultiplier={1.3}>
-                  {t('settingsPage.accumulationLimit')}
+                <Text style={[styles.fieldLabel, { color: theme.text }]} maxFontSizeMultiplier={1.3}>
+                  {t('settingsPage.cardSlots')}
                 </Text>
-                <View style={styles.proBadge}>
-                  <Text style={styles.proBadgeText} maxFontSizeMultiplier={1.2}>{t('settingsPage.proBadge')}</Text>
-                </View>
-                <InfoHint text={t('settingsPage.accumulationLimitInfo')} />
+                <InfoHint text={t('settingsPage.cardSlotsInfo')} />
               </View>
-              <TouchableOpacity
-                style={[
-                  styles.limitRow,
-                  {
-                    backgroundColor: hasAccumulationLimit ? theme.primary + '12' : theme.bgInput,
-                    borderColor: hasAccumulationLimit ? theme.primary + '40' : 'transparent',
-                  },
-                ]}
-                onPress={() => {
-                  const next = !hasAccumulationLimit;
-                  set(next ? { hasAccumulationLimit: true } : { hasAccumulationLimit: false, accumulationLimit: '' });
-                }}
-                activeOpacity={0.8}
-                accessibilityRole="switch"
-                accessibilityState={{ checked: hasAccumulationLimit }}
-                accessibilityLabel={t('settingsPage.accumulationLimit')}
-              >
-                <ShieldCheck size={18} color={hasAccumulationLimit ? theme.primary : theme.textMuted} strokeWidth={1.8} />
-                <Text style={[styles.limitRowText, { color: hasAccumulationLimit ? theme.primary : theme.textSecondary }]} maxFontSizeMultiplier={1.2}>
-                  {hasAccumulationLimit ? t('settingsPage.limitEnabled') : t('settingsPage.limitDisabled')}
+              <View style={[styles.stepper, { backgroundColor: fill }]}>
+                <TouchableOpacity
+                  style={[styles.stepperBtn, { backgroundColor: theme.bgCard }, shadow]}
+                  onPress={guard(() => set({ stampsForReward: Math.max(minSlots, stampsForReward - 1) }))}
+                  disabled={!locked && stampsForReward <= minSlots}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('settingsPage.cardSlotsDecrease')}
+                >
+                  <Minus size={18} color={!locked && stampsForReward <= minSlots ? theme.textMuted : theme.text} strokeWidth={2.2} />
+                </TouchableOpacity>
+                <View style={styles.stepperValueWrap} accessibilityLiveRegion="polite">
+                  <Text style={[styles.stepperValue, { color: theme.text }]} maxFontSizeMultiplier={1.2}>{stampsForReward}</Text>
+                  <Text style={[styles.caption, { color: theme.textMuted }]} maxFontSizeMultiplier={1.2}>{stampUnit(stampsForReward)}</Text>
+                </View>
+                <TouchableOpacity
+                  style={[styles.stepperBtn, { backgroundColor: theme.bgCard }, shadow]}
+                  onPress={guard(() => set({ stampsForReward: Math.min(maxSlots, stampsForReward + 1) }))}
+                  disabled={!locked && stampsForReward >= maxSlots}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('settingsPage.cardSlotsIncrease')}
+                >
+                  <Plus size={18} color={!locked && stampsForReward >= maxSlots ? theme.textMuted : theme.text} strokeWidth={2.2} />
+                </TouchableOpacity>
+              </View>
+              {rescaledPreview.length > 0 && (
+                <Text style={[styles.caption, styles.fieldHint, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>
+                  {t('settingsPage.slotsRescaleHint', {
+                    rewards: rescaledPreview.map((r) => `${r.titre} ${r.cout} → ${r.scaled}`).join(' · '),
+                  })}
                 </Text>
-                <View style={[styles.switchTrack, { backgroundColor: hasAccumulationLimit ? theme.primary : theme.border }]}>
-                  <View style={[styles.switchKnob, hasAccumulationLimit ? styles.switchKnobOn : styles.switchKnobOff]} />
-                </View>
-              </TouchableOpacity>
-
-              {hasAccumulationLimit && (
-                <View style={[styles.rateWrap, { backgroundColor: theme.bgInput, marginTop: 10 }]}>
-                  <TextInput
-                    style={[styles.rateInput, { color: theme.text }]}
-                    value={accumulationLimit}
-                    onChangeText={(v) => set({ accumulationLimit: v })}
-                    keyboardType="numeric"
-                    placeholder={t('settingsPage.limitPlaceholder')}
-                    placeholderTextColor={theme.textMuted}
-                    maxLength={9}
-                    maxFontSizeMultiplier={1.2}
-                  />
-                  <Text style={[styles.rateSuffix, { color: theme.textMuted }]} maxFontSizeMultiplier={1.2}>
-                    {unitLabel}
-                  </Text>
-                </View>
               )}
             </View>
+
+            {/* Stamp validity */}
+            <View style={styles.fieldBlock}>
+              <SwitchRow
+                theme={theme}
+                label={t('settingsPage.stampValidity')}
+                caption={
+                  locked
+                    ? t('settingsPage.proLockedHint')
+                    : hasValidity
+                      ? t('settingsPage.validityOn', { days: validityDays })
+                      : t('settingsPage.validityOff')
+                }
+                value={hasValidity}
+                locked={locked}
+                icon={<Clock size={18} color={hasValidity && !locked ? theme.primary : theme.textMuted} strokeWidth={1.8} />}
+                onPress={guard(() => set({ hasValidity: !hasValidity }))}
+              />
+              {hasValidity && !locked && (
+                <>
+                  <View style={styles.chipRow}>
+                    {validityPresets.map((days) => {
+                      const active = days === validityDays;
+                      return (
+                        <TouchableOpacity
+                          key={days}
+                          style={[styles.chip, { backgroundColor: active ? theme.primary : fill }]}
+                          onPress={() => set({ validityDays: days })}
+                          activeOpacity={0.8}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: active }}
+                          accessibilityLabel={t('settingsPage.validityPresetA11y', { days })}
+                        >
+                          <Text style={[styles.chipText, { color: active ? '#fff' : theme.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                            {t('settingsPage.validityDays', { days })}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                  <View style={styles.hintRow}>
+                    <Text style={[styles.caption, { color: theme.textMuted, flex: 1 }]} maxFontSizeMultiplier={1.3}>
+                      {t('settingsPage.validityReminderHint')}
+                    </Text>
+                    <InfoHint text={t('settingsPage.stampValidityInfo')} />
+                  </View>
+                </>
+              )}
+            </View>
+
+            {/* Accumulation limit */}
+            <View style={styles.fieldBlock}>
+              <SwitchRow
+                theme={theme}
+                label={t('settingsPage.limitToggle')}
+                caption={
+                  locked
+                    ? t('settingsPage.proLockedHint')
+                    : hasAccumulationLimit
+                      ? t('settingsPage.limitEnabled')
+                      : t('settingsPage.limitDisabled')
+                }
+                value={hasAccumulationLimit}
+                locked={locked}
+                icon={<ShieldCheck size={18} color={hasAccumulationLimit && !locked ? theme.primary : theme.textMuted} strokeWidth={1.8} />}
+                onPress={guard(() =>
+                  set(hasAccumulationLimit ? { hasAccumulationLimit: false, accumulationLimit: '' } : { hasAccumulationLimit: true }),
+                )}
+              />
+              {hasAccumulationLimit && !locked && (
+                <>
+                  <View style={[styles.rateWrap, { backgroundColor: fill, marginTop: 10 }]}>
+                    <TextInput
+                      style={[styles.rateInput, { color: theme.text }]}
+                      value={accumulationLimit}
+                      onChangeText={(v) => set({ accumulationLimit: v })}
+                      keyboardType="numeric"
+                      placeholder={t('settingsPage.limitPlaceholder')}
+                      placeholderTextColor={theme.textMuted}
+                      maxLength={9}
+                      maxFontSizeMultiplier={1.2}
+                      accessibilityLabel={t('settingsPage.limitToggle')}
+                    />
+                    <Text style={[styles.rateSuffix, { color: theme.textMuted }]} maxFontSizeMultiplier={1.2}>
+                      {t('common.stamps')}
+                    </Text>
+                  </View>
+                  <View style={styles.hintRow}>
+                    <Text style={[styles.caption, { color: theme.textMuted, flex: 1 }]} maxFontSizeMultiplier={1.3}>
+                      {t('settingsPage.limitHint')}
+                    </Text>
+                    <InfoHint text={t('settingsPage.accumulationLimitInfo')} />
+                  </View>
+                </>
+              )}
+            </View>
+
+            {locked && (
+              <TouchableOpacity
+                style={[styles.unlockBtn, { backgroundColor: palette.charbon }]}
+                onPress={openProOffer}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel={t('settingsPage.proUnlockCta')}
+              >
+                <Crown size={16} color={palette.gold} strokeWidth={2} />
+                <Text style={styles.unlockBtnText} maxFontSizeMultiplier={1.2}>{t('settingsPage.proUnlockCta')}</Text>
+              </TouchableOpacity>
+            )}
           </View>
-          )}
         </View>
 
-        {/* ── Panel: Cadeaux (§9) ── */}
+        {/* ── Panel: Cadeaux ── */}
         <RewardManager
           theme={theme}
           t={t}
-          isStamps={isStamps}
           isPremium={isPremium}
-          loyaltyType={loyaltyType ?? 'POINTS'}
-          merchant={merchant}
-          conversionX={conversionX}
-          conversionY={conversionY}
           hasAccumulationLimit={hasAccumulationLimit}
           accumulationLimit={accumulationLimit}
+          stampsForReward={savedSlots}
           onRewardsChange={handleRewardsChange}
           reloadToken={rewardReloadToken}
         />
-
       </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* ── Sticky save bar (§10) — loyalty settings only ── */}
+      {/* ── Sticky save bar — loyalty rules only (rewards save on their own) ── */}
       {isPremium && (
-        <View style={[styles.saveBar, { backgroundColor: theme.bg, borderTopColor: theme.borderLight, paddingBottom: Math.max(insets.bottom + 12, 20) }]}>
-          {hasChanges ? (
-            <TouchableOpacity
-              onPress={handleSave}
-              disabled={saving}
-              activeOpacity={0.85}
-              accessibilityRole="button"
-              accessibilityLabel={t('settingsPage.saveBtn')}
-              accessibilityState={{ disabled: saving, busy: saving }}
-            >
-              <LinearGradient colors={brandGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.saveBtnGrad}>
-                {saving ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <>
-                    <Save size={19} color="#fff" strokeWidth={2} />
-                    <Text style={styles.saveBtnTextOn} maxFontSizeMultiplier={1.2}>{t('settingsPage.saveBtn')}</Text>
-                  </>
-                )}
-              </LinearGradient>
-            </TouchableOpacity>
-          ) : (
-            <View style={[styles.saveBtnGrad, { backgroundColor: theme.bgInput }]}>
-              <Save size={19} color={theme.textMuted} strokeWidth={2} />
-              <Text style={[styles.saveBtnTextOn, { color: theme.textMuted }]} maxFontSizeMultiplier={1.2}>{t('settingsPage.saveBtn')}</Text>
+        <View
+          style={[
+            styles.saveBar,
+            { backgroundColor: theme.bg, paddingBottom: Math.max(insets.bottom + 12, 20) },
+            theme.mode === 'dark' ? { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.borderLight } : styles.saveBarShadow,
+          ]}
+        >
+          {hasChanges && (
+            <View style={styles.unsavedRow} accessibilityLiveRegion="polite">
+              <View style={[styles.unsavedDot, { backgroundColor: theme.warning }]} />
+              <Text style={[styles.caption, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                {t('settingsPage.unsavedChanges')}
+              </Text>
             </View>
           )}
+          <TouchableOpacity
+            onPress={handleSave}
+            disabled={!hasChanges || saving}
+            activeOpacity={0.85}
+            style={[
+              styles.saveBtn,
+              hasChanges
+                ? [styles.saveBtnRaised, { backgroundColor: palette.violet, borderBottomColor: palette.violetDark }]
+                : { backgroundColor: fill, borderBottomColor: 'transparent' },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel={t('settingsPage.saveBtn')}
+            accessibilityState={{ disabled: !hasChanges || saving, busy: saving }}
+          >
+            {saving ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <>
+                <Save size={18} color={hasChanges ? '#fff' : theme.textMuted} strokeWidth={2} />
+                <Text style={[styles.saveBtnText, { color: hasChanges ? '#fff' : theme.textMuted }]} maxFontSizeMultiplier={1.2}>
+                  {t('settingsPage.saveBtn')}
+                </Text>
+              </>
+            )}
+          </TouchableOpacity>
         </View>
       )}
 
       <LoyaltyGuideSheet visible={guideVisible} onClose={closeGuide} />
+      <PremiumLockModal
+        visible={proOfferVisible}
+        onClose={closeProOffer}
+        titleKey="settingsPage.premiumLoyaltyTitle"
+        descKey="settingsPage.premiumLoyaltyDesc"
+      />
     </View>
   );
 }
@@ -733,129 +791,83 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
-  // ── Topbar ──
-  iconBtn: { width: 36, height: 36, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  // ── Typography scale (shared by every block on this screen) ──
+  //   header 28/Bold · panel title 15/SemiBold · field label 13.5/Medium
+  //   value 15–22/SemiBold–Bold · caption 12/Regular
+  fieldLabel: { fontSize: 13.5, fontFamily: 'Lexend_500Medium' },
+  caption: { fontSize: 12, lineHeight: 17, fontFamily: 'Lexend_400Regular' },
 
-  // ── Contextual banner (§2) ──
-  contextBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 11,
-    marginHorizontal: 16,
-    marginTop: 6,
-    marginBottom: 4,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 16,
-    borderWidth: 1,
-  },
-  contextIcon: { width: 30, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
-  contextText: { flex: 1, fontSize: 13, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
+  // ── Topbar ──
+  iconBtn: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  headerBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingBottom: 14, gap: 10 },
+  headerTitle: { flex: 1, fontSize: 28, fontFamily: 'Lexend_700Bold', letterSpacing: -0.5 },
 
   // ── Panel ──
-  panel: {
-    marginHorizontal: 16,
-    marginTop: 14,
-    borderWidth: 1,
-    borderRadius: 18,
-    overflow: 'hidden',
-  },
-  panelHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 11,
-    paddingVertical: 15,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-  },
-  panelIcon: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  panelTitle: { flex: 1, fontSize: 14, fontWeight: '700', fontFamily: 'Lexend_700Bold', letterSpacing: -0.2 },
-  panelBody: { padding: 16 },
-
-  // ── Mode choice cards (§2) ──
-  modeChoiceRow: { flexDirection: 'row', gap: 10 },
-  modeChoice: {
-    flex: 1,
-    borderWidth: 1.5,
-    borderRadius: 14,
-    paddingVertical: 14,
-    paddingHorizontal: 10,
-    alignItems: 'center',
-    minHeight: 108,
-  },
-  modeChoiceIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
-  modeChoiceTitle: { fontSize: 13, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
-  modeChoiceSub: { fontSize: 11, marginTop: 3, textAlign: 'center', fontFamily: 'Lexend_400Regular', lineHeight: 15 },
-
-  // ── Inline / warning banners ──
-  inlineBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14, paddingVertical: 11, paddingHorizontal: 12, borderRadius: 12 },
-  inlineBannerText: { flex: 1, fontSize: 12.5, fontWeight: '600', fontFamily: 'Lexend_600SemiBold', lineHeight: 17 },
-
-  // ── Migration rule (§6) ──
-  migrationBlock: { marginTop: 16 },
-  warnBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 11, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, marginBottom: 12 },
-  warnBannerText: { flex: 1, fontSize: 12.5, fontWeight: '600', fontFamily: 'Lexend_600SemiBold', lineHeight: 17 },
-  migrationRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  migrationInput: { flex: 1 },
+  panel: { marginHorizontal: 16, marginTop: 18, borderRadius: 20 },
+  panelHeader: { flexDirection: 'row', alignItems: 'center', gap: 11, paddingTop: 16, paddingHorizontal: 16 },
+  panelIcon: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  panelTitle: { flex: 1, fontSize: 15, fontFamily: 'Lexend_600SemiBold', letterSpacing: -0.2 },
+  panelBody: { padding: 16, paddingTop: 14 },
+  proPill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4, paddingHorizontal: 9, borderRadius: 9 },
+  proPillText: { fontSize: 11, color: '#B45309', fontFamily: 'Lexend_600SemiBold' },
 
   // ── Field blocks ──
-  fieldBlock: { marginTop: 16 },
-  labelRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  fieldLabelSm: { fontSize: 13, fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
+  fieldBlock: { marginTop: 18 },
+  labelRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
+  fieldHint: { marginTop: 8 },
+  hintRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
 
-  // ── Rate input ──
+  // ── Inputs ──
   rateWrap: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 13, paddingVertical: 13, paddingHorizontal: 14 },
-  rateInput: { flex: 1, fontSize: 15, fontWeight: '700', fontFamily: 'Lexend_700Bold', padding: 0 },
-  rateSuffix: { fontSize: 12, fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
+  rateInput: { flex: 1, fontSize: 15, fontFamily: 'Lexend_600SemiBold', padding: 0 },
+  rateSuffix: { fontSize: 12, fontFamily: 'Lexend_500Medium' },
 
   // ── Sub-toggle ──
   subToggle: { flexDirection: 'row', borderRadius: 12, padding: 3, gap: 3 },
-  subToggleBtn: { flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: 9 },
+  subToggleBtn: { flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 9 },
   subToggleBtnActive: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 1 },
-  subToggleText: { fontSize: 12, fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
+  subToggleText: { fontSize: 12.5, fontFamily: 'Lexend_500Medium' },
 
-  // ── Simulation card (§4) ──
-  simCard: { marginTop: 16, borderRadius: 16, borderWidth: 1, padding: 16 },
-  simTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  simIcon: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
-  simLabel: { fontSize: 11.5, fontWeight: '500', fontFamily: 'Lexend_500Medium' },
-  simValue: { fontSize: 22, fontWeight: '700', fontFamily: 'Lexend_700Bold', letterSpacing: -0.4, marginTop: 1 },
-  simUnit: { fontSize: 13, fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
+  // ── Simulation ──
+  simCard: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 16, borderRadius: 16, padding: 14 },
+  simIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  simValue: { fontSize: 20, fontFamily: 'Lexend_700Bold', letterSpacing: -0.3, marginTop: 1 },
+  simUnit: { fontSize: 13, fontFamily: 'Lexend_500Medium' },
 
-  // ── Pro badge ──
-  proBadge: { backgroundColor: 'rgba(252,211,77,0.16)', paddingVertical: 3, paddingHorizontal: 8, borderRadius: 8 },
-  proBadgeText: { fontSize: 9, fontWeight: '700', color: '#B45309', letterSpacing: 0.2, fontFamily: 'Lexend_700Bold' },
+  // ── Slots stepper ──
+  stepper: { flexDirection: 'row', alignItems: 'center', borderRadius: 14, padding: 6 },
+  stepperBtn: { width: 42, height: 42, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  stepperValueWrap: { flex: 1, alignItems: 'center' },
+  stepperValue: { fontSize: 20, fontFamily: 'Lexend_700Bold', lineHeight: 24 },
 
-  // ── Accumulation limit toggle ──
-  limitRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 13, paddingHorizontal: 14, borderRadius: 13, borderWidth: 1 },
-  limitRowText: { flex: 1, fontSize: 13, fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
+  // ── Switch rows ──
+  switchRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 14 },
+  switchRowText: { flex: 1, gap: 1 },
   switchTrack: { width: 40, height: 24, borderRadius: 12, padding: 2, justifyContent: 'center' },
-  switchKnob: { width: 18, height: 18, borderRadius: 9, backgroundColor: '#fff' },
+  switchKnob: { width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff' },
   switchKnobOn: { alignSelf: 'flex-end' },
   switchKnobOff: { alignSelf: 'flex-start' },
+  lockPill: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
 
-  // ── Sticky save bar (§10) ──
-  saveBar: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 20, paddingTop: 14, borderTopWidth: 1 },
-  saveBtnGrad: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 15, borderRadius: 15 },
-  saveBtnTextOn: { color: '#fff', fontSize: 14, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
+  // ── Validity chips ──
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
+  chip: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 20 },
+  chipText: { fontSize: 12.5, fontFamily: 'Lexend_500Medium' },
 
-  // Header — aligned with plan.tsx
-  headerBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingBottom: 16,
-    gap: 10,
-  },
-  headerTitle: {
-    fontSize: 28,
-    fontWeight: '700',
-    fontFamily: 'Lexend_700Bold',
-    letterSpacing: -0.5,
-    flex: 1,
-  },
+  // ── Free plan CTA ──
+  unlockBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 20, paddingVertical: 13, borderRadius: 14 },
+  unlockBtnText: { color: '#fff', fontSize: 14, fontFamily: 'Lexend_600SemiBold' },
 
-  // Owner-only guard
+  // ── Sticky save bar ──
+  saveBar: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 20, paddingTop: 12 },
+  saveBarShadow: { shadowColor: '#0F172A', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 8 },
+  unsavedRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, marginBottom: 10 },
+  unsavedDot: { width: 7, height: 7, borderRadius: 4 },
+  saveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 15, borderRadius: 15, borderBottomWidth: 3 },
+  saveBtnRaised: { shadowColor: palette.violet, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.28, shadowRadius: 10, elevation: 4 },
+  saveBtnText: { fontSize: 14.5, fontFamily: 'Lexend_600SemiBold' },
+
+  // ── Owner-only guard ──
   ownerOnlyIcon: {
     width: ms(88),
     height: ms(88),
@@ -864,27 +876,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
   },
-  ownerOnlyTitle: {
-    fontWeight: '600' as const,
-    fontSize: 16,
-    marginTop: 16,
-    fontFamily: 'Lexend_600SemiBold',
-  },
-  ownerOnlyMsg: {
-    textAlign: 'center' as const,
-    marginTop: 8,
-    paddingHorizontal: 32,
-    fontFamily: 'Lexend_400Regular',
-  },
-  ownerOnlyBtn: {
-    marginTop: 16,
-    paddingHorizontal: 24,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  ownerOnlyBtnText: {
-    color: '#fff',
-    fontWeight: '600' as const,
-    fontFamily: 'Lexend_600SemiBold',
-  },
+  ownerOnlyTitle: { fontSize: 16, marginTop: 16, fontFamily: 'Lexend_600SemiBold' },
+  ownerOnlyMsg: { textAlign: 'center' as const, marginTop: 8, paddingHorizontal: 32, fontFamily: 'Lexend_400Regular' },
+  ownerOnlyBtn: { marginTop: 16, paddingHorizontal: 24, paddingVertical: 10, borderRadius: 8 },
+  ownerOnlyBtnText: { color: '#fff', fontFamily: 'Lexend_600SemiBold' },
 });

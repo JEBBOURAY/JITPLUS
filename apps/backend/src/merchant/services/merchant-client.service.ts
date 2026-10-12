@@ -6,13 +6,10 @@ import {
   MERCHANT_REPOSITORY, type IMerchantRepository,
 } from '../../common/repositories';
 import { MerchantPlanService } from './merchant-plan.service';
-import { PointsRules } from '../interfaces/points-rules.interface';
 import { computeRewardThreshold } from '../utils/loyalty.utils';
 import {
   MAX_SCAN_RESULTS,
   DEFAULT_PAGE_SIZE,
-  DEFAULT_STAMPS_FOR_REWARD,
-  DEFAULT_LOYALTY_TYPE,
 } from '../../common/constants';
 import { MERCHANT_LOYALTY_SELECT, CLIENT_SCAN_SELECT } from '../../common/prisma-selects';
 import { buildClientSearchFilter, buildTxMap, mapClientResponse, buildPagination, maskName } from '../../common/utils';
@@ -61,7 +58,7 @@ export class MerchantClientService {
     const [loyaltyCards, lastTransactions] = await Promise.all([
       this.loyaltyCardRepo.findMany({
         where: { merchantId, clientId: { in: clientIds } },
-        select: { clientId: true, points: true, createdAt: true },
+        select: { clientId: true, stamps: true, createdAt: true },
       }),
       this.transactionRepo.groupBy({
         by: ['clientId'],
@@ -77,7 +74,7 @@ export class MerchantClientService {
 
     return {
       clients: clients.map((client: any) => {
-        const loyaltyCard = loyaltyMap.get(client.id) as { points: number; createdAt: Date } | undefined;
+        const loyaltyCard = loyaltyMap.get(client.id) as { stamps: number; createdAt: Date } | undefined;
         const tx = txMap.get(client.id);
         return mapClientResponse(client, loyaltyCard, tx);
       }),
@@ -154,7 +151,7 @@ export class MerchantClientService {
       ? await Promise.all([
           this.loyaltyCardRepo.findMany({
             where: { merchantId, clientId: { in: clientIds } },
-            select: { clientId: true, points: true, createdAt: true, deactivatedAt: true },
+            select: { clientId: true, stamps: true, createdAt: true, deactivatedAt: true },
           }),
           this.transactionRepo.groupBy({
             by: ['clientId'],
@@ -170,7 +167,7 @@ export class MerchantClientService {
     const txMap = buildTxMap(lastTransactions);
 
     return clients.map((client: any) => {
-      const loyaltyCard = loyaltyMap.get(client.id) as { points: number; createdAt: Date } | undefined;
+      const loyaltyCard = loyaltyMap.get(client.id) as { stamps: number; createdAt: Date } | undefined;
       const tx = txMap.get(client.id);
       return mapClientResponse(client, loyaltyCard, tx);
     });
@@ -184,7 +181,7 @@ export class MerchantClientService {
       }),
       this.loyaltyCardRepo.findUnique({
         where: { clientId_merchantId: { clientId, merchantId } },
-        select: { id: true, points: true, createdAt: true, deactivatedAt: true },
+        select: { id: true, stamps: true, createdAt: true, deactivatedAt: true },
       }),
       this.merchantRepo.findUnique({
         where: { id: merchantId },
@@ -199,7 +196,7 @@ export class MerchantClientService {
       loyaltyCard = await this.loyaltyCardRepo.update({
         where: { id: loyaltyCard.id },
         data: { deactivatedAt: null },
-        select: { id: true, points: true, createdAt: true, deactivatedAt: true },
+        select: { id: true, stamps: true, createdAt: true, deactivatedAt: true },
       });
     }
     if (!loyaltyCard) {
@@ -207,15 +204,15 @@ export class MerchantClientService {
       await this.planService.assertCanAddClient(merchantId);
       try {
         loyaltyCard = await this.loyaltyCardRepo.create({
-          data: { clientId, merchantId, points: 0 },
-          select: { id: true, points: true, createdAt: true, deactivatedAt: true },
+          data: { clientId, merchantId, stamps: 0 },
+          select: { id: true, stamps: true, createdAt: true, deactivatedAt: true },
         });
       } catch (e: any) {
         // P2002 = unique constraint: a concurrent request created the card first
         if (e?.code === 'P2002') {
           loyaltyCard = await this.loyaltyCardRepo.findUnique({
             where: { clientId_merchantId: { clientId, merchantId } },
-            select: { id: true, points: true, createdAt: true, deactivatedAt: true },
+            select: { id: true, stamps: true, createdAt: true, deactivatedAt: true },
           });
           if (!loyaltyCard) throw e;
         } else {
@@ -224,8 +221,7 @@ export class MerchantClientService {
       }
     }
 
-    const pointsRules = merchant?.pointsRules as PointsRules | null;
-    const rewardThreshold = computeRewardThreshold(merchant, pointsRules);
+    const rewardThreshold = computeRewardThreshold(merchant);
 
     const shared = client.shareInfoMerchants !== false;
 
@@ -242,10 +238,9 @@ export class MerchantClientService {
       nom: shared ? client.nom : maskName(client.nom),
       email: shared ? client.email : null,
       telephone: shared ? client.telephone : null,
-      points: loyaltyCard!.points,
-      hasReward: loyaltyCard!.points >= rewardThreshold,
+      stamps: loyaltyCard!.stamps,
+      hasReward: loyaltyCard!.stamps >= rewardThreshold,
       rewardThreshold,
-      loyaltyType: merchant?.loyaltyType || DEFAULT_LOYALTY_TYPE,
       stampsForReward: rewardThreshold,
       isBirthday,
     };
@@ -266,12 +261,12 @@ export class MerchantClientService {
       }),
       this.loyaltyCardRepo.findUnique({
         where: { clientId_merchantId: { clientId, merchantId } },
-        select: { points: true, createdAt: true, deactivatedAt: true },
+        select: { stamps: true, createdAt: true, deactivatedAt: true },
       }),
       this.transactionRepo.findMany({
         where: { clientId, merchantId },
         select: {
-          id: true, type: true, loyaltyType: true, amount: true, points: true,
+          id: true, type: true, amount: true, stamps: true,
           status: true, createdAt: true, note: true,
           reward: { select: { id: true, titre: true, cout: true } },
         },
@@ -285,8 +280,7 @@ export class MerchantClientService {
     ]);
     if (!client) throw new NotFoundException('Client non trouvé');
 
-    const pointsRules = merchant?.pointsRules as PointsRules | null;
-    const rewardThreshold = computeRewardThreshold(merchant, pointsRules);
+    const rewardThreshold = computeRewardThreshold(merchant);
 
     const shared = client.shareInfoMerchants !== false;
     // Anonymous clients were created by the merchant via Quick-Add — the merchant
@@ -301,23 +295,21 @@ export class MerchantClientService {
       email: shared ? client.email : null,
       telephone: shared || isAnon ? client.telephone : null,
       isAnonymous: isAnon,
-      points: loyaltyCard?.points ?? 0,
+      stamps: loyaltyCard?.stamps ?? 0,
       rewardThreshold,
-      hasReward: (loyaltyCard?.points ?? 0) >= rewardThreshold,
+      hasReward: (loyaltyCard?.stamps ?? 0) >= rewardThreshold,
       memberSince: loyaltyCard?.createdAt ?? client.createdAt,
       termsAccepted: client.termsAccepted,
       transactions: transactions.map((t: any) => ({
         id: t.id,
         type: t.type,
-        loyaltyType: t.loyaltyType ?? null,
         amount: t.amount,
-        points: t.points,
+        stamps: t.stamps,
         status: t.status,
         createdAt: t.createdAt,
         note: t.note ?? null,
         reward: t.reward ? { id: t.reward.id, titre: t.reward.titre, cout: t.reward.cout } : null,
       })),
-      loyaltyType: merchant?.loyaltyType || DEFAULT_LOYALTY_TYPE,
       stampsForReward: rewardThreshold,
     };
   }

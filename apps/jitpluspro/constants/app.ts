@@ -10,23 +10,17 @@ export const SEARCH_DEBOUNCE_MS = 350;
 export const ASYNC_STORAGE_KEYS = {
   ACTIVITY_BANNER_DISMISSED: 'activity_banner_dismissed',
   CLIENTS_BANNER_DISMISSED: 'clients_banner_dismissed',
-  // Setup checklist (Accueil) — dismissable only once 100% complete.
-  CHECKLIST_DISMISSED: 'checklist_dismissed',
-  // Local flag: user reviewed/confirmed their loyalty program from the checklist.
-  CHECKLIST_LOYALTY_CONFIRMED: 'checklist_loyalty_confirmed',
-  // Cached "first scan done" so the item stays checked without a data flash on reload.
-  CHECKLIST_SCANNED: 'checklist_scanned',
-  // Display preference: checklist widget collapsed to its compact one-line form.
-  CHECKLIST_COLLAPSED: 'checklist_collapsed',
-  // User permanently hid the checklist from the Accueil (still reachable elsewhere).
-  CHECKLIST_HIDDEN: 'checklist_hidden',
-  // One-time discreet notice shown once after the user permanently hides the guide.
-  CHECKLIST_HIDE_NOTICE_SEEN: 'checklist_hide_notice_seen',
   // Contextual reminder banner (messages) dismissal.
   MESSAGES_LOGO_BANNER_DISMISSED: 'messages_logo_banner_dismissed',
   // Premium trial-end reminder (Accueil): stores the YYYY-MM-DD it was dismissed
   // so it reappears the next day until the trial converts or expires.
   TRIAL_END_BANNER_DISMISSED_DAY: 'trial_end_banner_dismissed_day',
+  // Accueil promo carousel: JSON array of banner keys already opened.
+  PROMO_CARDS_READ: 'promo_cards_read',
+  // "Maîtrisez JitPlus" guide: prefix of a per-merchant JSON array of steps
+  // already detected as done, so they stay checked once older data leaves the
+  // first loaded page (e.g. the first reward given).
+  GUIDE_STEPS_DONE: 'guide_steps_done',
   // Guided tour (Accueil): set to 'true' once the tour has been auto-proposed,
   // so it is never proposed automatically again (still relaunchable via "?").
   TOUR_AUTO_SHOWN: 'tour_auto_shown',
@@ -61,5 +55,9 @@ export const SUCCESS_DISPLAY_MS = 2500;
 /** Maximum digits for amount input */
 export const MAX_AMOUNT_DIGITS = 8;
 
-/** Maximum stamps per single transaction */
+/** Maximum stamps per single transaction (aligned with backend MAX_STAMPS_PER_TX) */
 export const MAX_STAMPS_PER_TX = 20;
+
+/** Store pages of the JitPlus client app (the one customers install). */
+export const CLIENT_APP_ANDROID_URL = 'https://play.google.com/store/apps/details?id=com.jitplus.client';
+export const CLIENT_APP_IOS_URL = 'https://apps.apple.com/app/jitplus/id6762307929';

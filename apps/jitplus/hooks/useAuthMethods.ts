@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '@/services/api';
 import { extractErrorMessage, isNetworkError as checkNetworkError } from '@/utils/errorMessage';
-import { logInfo, logWarn, logError } from '@/utils/devLogger';
+import { logInfo, logError } from '@/utils/devLogger';
 import type { AuthState } from '@/stores/authStore';
 
 const LOGOUT_MAX_RETRIES = 2;

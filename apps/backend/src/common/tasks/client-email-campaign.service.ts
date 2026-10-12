@@ -39,9 +39,9 @@ const SUBJECTS = {
     ar: '🏪 اكتشف المحلات اللي قريبين منك!',
   },
   welcome_day3: {
-    fr: '⭐ Gagnez vos premiers points de fidélité !',
-    en: '⭐ Earn your first loyalty points!',
-    ar: '⭐ اربح أول النقط ديال الوفاء ديالك!',
+    fr: '⭐ Gagnez vos premiers tampons de fidélité !',
+    en: '⭐ Earn your first loyalty stamps!',
+    ar: '⭐ اربح أول الطوابع ديال الوفاء ديالك!',
   },
   welcome_day7: {
     fr: '🎁 Invitez vos amis, gagnez des récompenses !',
@@ -49,9 +49,9 @@ const SUBJECTS = {
     ar: '🎁 عيّط لصحابك واربح كادوات!',
   },
   reengage_7d: {
-    fr: '💫 Vos points vous attendent !',
-    en: '💫 Your points are waiting!',
-    ar: '💫 النقط ديالك كتسناك!',
+    fr: '💫 Vos tampons vous attendent !',
+    en: '💫 Your stamps are waiting!',
+    ar: '💫 الطوابع ديالك كتسناك!',
   },
   reengage_14d: {
     fr: '🔥 Ne perdez pas vos avantages !',
@@ -69,14 +69,14 @@ const SUBJECTS = {
     ar: (m: string) => `🎉 كادو متاح عند ${m}!`,
   },
   reward_almost: {
-    fr: (n: number) => `🔥 Plus que ${n} points pour votre récompense !`,
-    en: (n: number) => `🔥 Only ${n} more points for your reward!`,
-    ar: (n: number) => `🔥 بقا ${n} نقط للكادو ديالك!`,
+    fr: (n: number) => `🔥 Plus que ${n} tampon${n > 1 ? 's' : ''} pour votre récompense !`,
+    en: (n: number) => `🔥 Only ${n} more stamp${n > 1 ? 's' : ''} for your reward!`,
+    ar: (n: number) => `🔥 بقا ${n} طوابع للكادو ديالك!`,
   },
   weekly_digest: {
-    fr: (p: number, n: number) => `📊 Votre semaine : +${p} points chez ${n} commerce(s)`,
-    en: (p: number, n: number) => `📊 Your week: +${p} points at ${n} shop(s)`,
-    ar: (p: number, n: number) => `📊 السيمانة ديالك: +${p} نقطة عند ${n} محل`,
+    fr: (p: number, n: number) => `📊 Votre semaine : +${p} tampon${p > 1 ? 's' : ''} chez ${n} commerce(s)`,
+    en: (p: number, n: number) => `📊 Your week: +${p} stamp${p > 1 ? 's' : ''} at ${n} shop(s)`,
+    ar: (p: number, n: number) => `📊 السيمانة ديالك: +${p} طوابع عند ${n} محل`,
   },
   feature_stamps: {
     fr: '📋 Le saviez-vous ? Les cartes de tampons JitPlus !',
@@ -279,7 +279,7 @@ export class ClientEmailCampaignService {
           const lastTx = await this.txRepo.findFirst({
             where: {
               clientId: client.id,
-              type: { in: ['EARN_POINTS', 'REDEEM_REWARD'] },
+              type: { in: ['EARN_STAMPS', 'REDEEM_REWARD'] },
               status: 'ACTIVE',
             },
             orderBy: { createdAt: 'desc' },
@@ -364,7 +364,7 @@ export class ClientEmailCampaignService {
           },
           select: {
             id: true,
-            points: true,
+            stamps: true,
             clientId: true,
             merchantId: true,
           },
@@ -395,7 +395,7 @@ export class ClientEmailCampaignService {
         // Batch load merchant names
         const merchants = await this.merchantRepo.findMany({
           where: { id: { in: merchantIds } },
-          select: { id: true, nom: true, loyaltyType: true },
+          select: { id: true, nom: true },
         });
         const merchantMap = new Map<string, any>(merchants.map((m: any) => [m.id, m]));
 
@@ -415,12 +415,11 @@ export class ClientEmailCampaignService {
 
           const merchant = merchantMap.get(card.merchantId);
           const merchantName = merchant?.nom || 'votre commerce';
-          const isStamps = merchant?.loyaltyType === 'STAMPS';
-          const points = card.points || 0;
+          const stamps = card.stamps || 0;
           const lang: Lang = pickLang(client.language);
 
           try {
-            if (points >= cheapest.cout) {
+            if (stamps >= cheapest.cout) {
               const campaignId = `reward_available_${card.merchantId}_${new Date().toISOString().slice(0, 10)}`;
               if (await this.alreadySent(card.clientId, campaignId)) {
                 notifiedClients.add(card.clientId);
@@ -430,7 +429,7 @@ export class ClientEmailCampaignService {
                 client.prenom ?? undefined,
                 merchantName,
                 cheapest.titre,
-                points,
+                stamps,
                 card.merchantId,
                 lang,
               );
@@ -438,8 +437,8 @@ export class ClientEmailCampaignService {
               await this.markSent(card.clientId, campaignId);
               availableCount++;
               notifiedClients.add(card.clientId);
-            } else if (points >= cheapest.cout * 0.8) {
-              const remaining = cheapest.cout - points;
+            } else if (stamps >= cheapest.cout * 0.8) {
+              const remaining = cheapest.cout - stamps;
               const campaignId = `reward_almost_${card.merchantId}_${new Date().toISOString().slice(0, 10)}`;
               if (await this.alreadySent(card.clientId, campaignId)) {
                 notifiedClients.add(card.clientId);
@@ -449,7 +448,6 @@ export class ClientEmailCampaignService {
                 client.prenom ?? undefined,
                 merchantName,
                 remaining,
-                isStamps,
                 card.merchantId,
                 lang,
               );
@@ -485,7 +483,7 @@ export class ClientEmailCampaignService {
 
       const recentTx = await this.txRepo.findMany({
         where: {
-          type: 'EARN_POINTS',
+          type: 'EARN_STAMPS',
           status: 'ACTIVE',
           createdAt: { gte: weekAgo },
           client: {
@@ -496,19 +494,19 @@ export class ClientEmailCampaignService {
         },
         select: {
           clientId: true,
-          points: true,
+          stamps: true,
           merchantId: true,
         },
       });
 
       // Aggregate per client
-      const clientStats = new Map<string, { totalPoints: number; merchants: Set<string> }>();
+      const clientStats = new Map<string, { totalStamps: number; merchants: Set<string> }>();
       for (const tx of recentTx) {
         if (!clientStats.has(tx.clientId)) {
-          clientStats.set(tx.clientId, { totalPoints: 0, merchants: new Set() });
+          clientStats.set(tx.clientId, { totalStamps: 0, merchants: new Set() });
         }
         const stats = clientStats.get(tx.clientId)!;
-        stats.totalPoints += tx.points;
+        stats.totalStamps += tx.stamps;
         stats.merchants.add(tx.merchantId);
       }
 
@@ -537,13 +535,13 @@ export class ClientEmailCampaignService {
           const lang: Lang = pickLang(client.language);
           const html = buildWeeklyDigestEmail(
             client.prenom ?? undefined,
-            stats.totalPoints,
+            stats.totalStamps,
             stats.merchants.size,
             lang,
           );
           await this.mailProvider.sendRaw(
             client.email,
-            SUBJECTS.weekly_digest[lang](stats.totalPoints, stats.merchants.size),
+            SUBJECTS.weekly_digest[lang](stats.totalStamps, stats.merchants.size),
             html,
             this.buildUnsubscribeUrl(client.id),
           );

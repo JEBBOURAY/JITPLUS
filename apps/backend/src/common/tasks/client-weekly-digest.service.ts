@@ -16,18 +16,18 @@ const MESSAGES = {
   weeklyDigest: {
     fr: {
       title: '📊 Votre résumé de la semaine',
-      body: (points: number, merchants: number) =>
-        `Cette semaine : +${points} points cumulés chez ${merchants} commerce(s). Continuez comme ça ! 💪`,
+      body: (stamps: number, merchants: number) =>
+        `Cette semaine : +${stamps} tampon(s) cumulé(s) chez ${merchants} commerce(s). Continuez comme ça ! 💪`,
     },
     en: {
       title: '📊 Your weekly summary',
-      body: (points: number, merchants: number) =>
-        `This week: +${points} points earned at ${merchants} business(es). Keep it up! 💪`,
+      body: (stamps: number, merchants: number) =>
+        `This week: +${stamps} stamp(s) earned at ${merchants} business(es). Keep it up! 💪`,
     },
     ar: {
       title: '📊 ملخص الأسبوع ديالك',
-      body: (points: number, merchants: number) =>
-        `هاد الأسبوع: +${points} نقطة عند ${merchants} محل(ات). كمل هكا! 💪`,
+      body: (stamps: number, merchants: number) =>
+        `هاد الأسبوع: +${stamps} طابع عند ${merchants} محل(ات). كمل هكا! 💪`,
     },
   },
   // Referral viral loop
@@ -49,45 +49,45 @@ const MESSAGES = {
   newMerchants: {
     fr: {
       title: '🆕 Nouveaux commerces sur JIT+ !',
-      body: 'De nouveaux partenaires ont rejoint JIT+ cette semaine. Explorez et gagnez des points dans encore plus d\'endroits !',
+      body: 'De nouveaux partenaires ont rejoint JIT+ cette semaine. Explorez et gagnez des tampons dans encore plus d\'endroits !',
     },
     en: {
       title: '🆕 New businesses on JIT+!',
-      body: 'New partners joined JIT+ this week. Explore and earn points at even more places!',
+      body: 'New partners joined JIT+ this week. Explore and earn stamps at even more places!',
     },
     ar: {
       title: '🆕 محلات جديدة فـ JIT+!',
-      body: 'شركاء جداد دخلو لـ JIT+ هاد الأسبوع. تصفح واربح النقط فبلايص أكثر!',
+      body: 'شركاء جداد دخلو لـ JIT+ هاد الأسبوع. تصفح واربح الطوابع فبلايص أكثر!',
     },
   },
   // Feature highlight: stamps
   featureStamps: {
     fr: {
       title: '📋 Le saviez-vous ?',
-      body: 'Certains commerces offrent des cartes de tampons. Collectez tous les tampons et obtenez une récompense gratuite !',
+      body: 'Chaque commerce partenaire a sa carte de tampons. Collectez tous les tampons et obtenez une récompense gratuite !',
     },
     en: {
       title: '📋 Did you know?',
-      body: 'Some businesses offer stamp cards. Collect all stamps and get a free reward!',
+      body: 'Every partner business has its own stamp card. Collect all stamps and get a free reward!',
     },
     ar: {
       title: '📋 واش كنتي عارف؟',
-      body: 'شي محلات كيقدمو كارطات الطوابع. جمع الطوابع كلهم واربح مكافأة مجانية!',
+      body: 'كل محل شريك عندو كارطة الطوابع ديالو. جمع الطوابع كلهم واربح مكافأة مجانية!',
     },
   },
   // Feature highlight: QR scanning
   featureQR: {
     fr: {
       title: '📱 Scanner = Gagner !',
-      body: 'À chaque achat, scannez le QR code du commerçant pour accumuler des points automatiquement. Simple et rapide !',
+      body: 'À chaque achat, scannez le QR code du commerçant pour accumuler des tampons automatiquement. Simple et rapide !',
     },
     en: {
       title: '📱 Scan = Earn!',
-      body: 'With every purchase, scan the merchant\'s QR code to earn points automatically. Simple and fast!',
+      body: 'With every purchase, scan the merchant\'s QR code to earn stamps automatically. Simple and fast!',
     },
     ar: {
       title: '📱 سكاني = اربح!',
-      body: 'مع كل شراء، سكاني الـ QR code ديال التاجر باش تجمع النقاط أوتوماتيكيا. ساهل وسريع!',
+      body: 'مع كل شراء، سكاني الـ QR code ديال التاجر باش تجمع الطوابع أوتوماتيكيا. ساهل وسريع!',
     },
   },
 } as const;
@@ -101,7 +101,7 @@ function lang(v?: string | null): Lang {
 /**
  * Weekly engagement campaigns for JIT+ clients.
  *
- * - **Sunday 10:00**: Weekly digest for active users (points earned this week)
+ * - **Sunday 10:00**: Weekly digest for active users (stamps earned this week)
  * - **Wednesday 14:00**: Feature highlights & tips (rotating)
  * - **Friday 11:00**: Referral push + new merchants announcement
  *
@@ -158,7 +158,7 @@ export class ClientWeeklyDigestService {
       // Find clients who had transactions this week
       const recentClients = await this.txRepo.findMany({
         where: {
-          type: 'EARN_POINTS',
+          type: 'EARN_STAMPS',
           status: 'ACTIVE',
           createdAt: { gte: weekAgo },
           client: {
@@ -169,7 +169,7 @@ export class ClientWeeklyDigestService {
         },
         select: {
           clientId: true,
-          points: true,
+          stamps: true,
           merchantId: true,
           client: { select: { pushToken: true, language: true } },
         },
@@ -179,7 +179,7 @@ export class ClientWeeklyDigestService {
       const clientStats = new Map<string, {
         token: string;
         language: string;
-        totalPoints: number;
+        totalStamps: number;
         merchants: Set<string>;
       }>();
 
@@ -191,12 +191,12 @@ export class ClientWeeklyDigestService {
           clientStats.set(tx.clientId, {
             token: client.pushToken,
             language: client.language,
-            totalPoints: 0,
+            totalStamps: 0,
             merchants: new Set(),
           });
         }
         const stats = clientStats.get(tx.clientId)!;
-        stats.totalPoints += tx.points;
+        stats.totalStamps += tx.stamps;
         stats.merchants.add(tx.merchantId);
       }
 
@@ -205,7 +205,7 @@ export class ClientWeeklyDigestService {
       const campaignId = `weekly_digest_push_${weekKey}`;
       for (const [clientId, stats] of clientStats) {
         // Skip clients whose weekly score is zero (e.g. only pending / refunded tx)
-        if (stats.totalPoints <= 0) continue;
+        if (stats.totalStamps <= 0) continue;
         if (await this.alreadySent(clientId, campaignId)) continue;
 
         const l = lang(stats.language);
@@ -214,7 +214,7 @@ export class ClientWeeklyDigestService {
           const r = await this.pushProvider.sendMulticast(
             [stats.token],
             msg.title,
-            msg.body(stats.totalPoints, stats.merchants.size),
+            msg.body(stats.totalStamps, stats.merchants.size),
             undefined,
             { event: 'weekly_digest', action: 'open_cards' },
           );

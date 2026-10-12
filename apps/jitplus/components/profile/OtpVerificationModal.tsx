@@ -4,7 +4,7 @@ import {
 import { ShieldCheck } from 'lucide-react-native';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { ms, hp } from '@/utils/responsive';
+import { ms } from '@/utils/responsive';
 import { profileStyles as styles } from './profileStyles';
 
 interface Props {
@@ -34,7 +34,7 @@ export default function OtpVerificationModal({
       <Pressable style={styles.modalOverlay} onPress={onClose} accessibilityLabel={t('common.close')}>
         <Pressable style={[styles.otpModalCard, { backgroundColor: theme.bgCard }]} onPress={(e) => e.stopPropagation()} accessibilityRole="summary" accessibilityViewIsModal={true} accessibilityLabel={t('profile.otpVerifyTitle')}>
           <View style={[styles.modalIconCircle, { backgroundColor: `${palette.gold}15` }]}>
-            <ShieldCheck size={ms(16)} color={palette.gold} strokeWidth={1.5} />
+            <ShieldCheck size={ms(22)} color={palette.gold} strokeWidth={1.8} />
           </View>
           <Text style={[styles.modalTitle, { color: theme.text }]}>{t('profile.otpVerifyTitle')}</Text>
           <Text style={[styles.otpModalDesc, { color: theme.textMuted }]}>

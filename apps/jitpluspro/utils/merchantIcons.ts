@@ -62,8 +62,3 @@ export const MERCHANT_ICON_MAP: Record<string, LucideIcon> = {
 };
 
 export const MERCHANT_ICON_SLUGS = Object.keys(MERCHANT_ICON_MAP);
-
-export function getMerchantIconComponent(slug?: string | null): LucideIcon | null {
-  if (!slug) return null;
-  return MERCHANT_ICON_MAP[slug] ?? null;
-}

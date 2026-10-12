@@ -108,11 +108,11 @@ export class CreateCampaignDto {
   @IsDateString()
   endsAt: string;
 
-  @ApiPropertyOptional({ example: 0, description: 'Coût en points pour un ticket (0 = gratuit avec transaction)' })
+  @ApiPropertyOptional({ example: 0, description: 'Coût en tampons pour un ticket (0 = gratuit avec transaction)' })
   @IsOptional()
   @IsInt()
   @Min(0)
-  ticketCostPoints?: number;
+  ticketCostStamps?: number;
 
   @ApiPropertyOptional({ example: 5, description: 'Un ticket tous les N visites' })
   @IsOptional()

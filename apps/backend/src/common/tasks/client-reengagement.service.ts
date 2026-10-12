@@ -14,31 +14,31 @@ const MESSAGES = {
   // 7 days inactive: soft nudge
   inactive7d: {
     fr: {
-      title: '💫 Vos points vous attendent !',
-      body: 'Ça fait un moment ! Passez chez vos commerces favoris et continuez à accumuler des points.',
+      title: '💫 Vos tampons vous attendent !',
+      body: 'Ça fait un moment ! Passez chez vos commerces favoris et continuez à accumuler des tampons.',
     },
     en: {
-      title: '💫 Your points are waiting!',
-      body: 'It\'s been a while! Visit your favorite shops and keep earning points.',
+      title: '💫 Your stamps are waiting!',
+      body: 'It\'s been a while! Visit your favorite shops and keep earning stamps.',
     },
     ar: {
-      title: '💫 النقاط ديالك كيتسناوك!',
-      body: 'فات شي وقت! زور المحلات المفضلين ديالك وكمل تجمع النقاط.',
+      title: '💫 الطوابع ديالك كيتسناوك!',
+      body: 'فات شي وقت! زور المحلات المفضلين ديالك وكمل تجمع الطوابع.',
     },
   },
   // 14 days inactive: urgency
   inactive14d: {
     fr: {
       title: '🔥 Ne perdez pas vos avantages !',
-      body: 'Vos points et récompenses sont toujours là. Revenez et profitez de vos avantages fidélité !',
+      body: 'Vos tampons et récompenses sont toujours là. Revenez et profitez de vos avantages fidélité !',
     },
     en: {
       title: '🔥 Don\'t lose your perks!',
-      body: 'Your points and rewards are still here. Come back and enjoy your loyalty benefits!',
+      body: 'Your stamps and rewards are still here. Come back and enjoy your loyalty benefits!',
     },
     ar: {
       title: '🔥 ما تخسرش المزايا ديالك!',
-      body: 'النقط والمكافآت ديالك مازال تما. رجع تمتع بمزايا الولاء!',
+      body: 'الطوابع والمكافآت ديالك مازال تما. رجع تمتع بمزايا الولاء!',
     },
   },
   // 30 days inactive: win-back
@@ -60,15 +60,15 @@ const MESSAGES = {
   neverUsed: {
     fr: {
       title: '🚀 Commencez à gagner des récompenses !',
-      body: 'Vous n\'avez pas encore scanné votre premier commerce. Visitez un partenaire JIT+ et gagnez des points gratuitement !',
+      body: 'Vous n\'avez pas encore scanné votre premier commerce. Visitez un partenaire JIT+ et gagnez des tampons gratuitement !',
     },
     en: {
       title: '🚀 Start earning rewards!',
-      body: 'You haven\'t scanned your first business yet. Visit a JIT+ partner and earn points for free!',
+      body: 'You haven\'t scanned your first business yet. Visit a JIT+ partner and earn stamps for free!',
     },
     ar: {
       title: '🚀 بدا تربح المكافآت!',
-      body: 'مازال ما سكانيتي حتى محل. زور شريك JIT+ واربح النقط بالمجان!',
+      body: 'مازال ما سكانيتي حتى محل. زور شريك JIT+ واربح الطوابع بالمجان!',
     },
   },
 } as const;
@@ -282,7 +282,7 @@ export class ClientReengagementService {
         const lastTx = await this.txRepo.findFirst({
           where: {
             clientId: client.id,
-            type: { in: ['EARN_POINTS', 'REDEEM_REWARD'] },
+            type: { in: ['EARN_STAMPS', 'REDEEM_REWARD'] },
             status: 'ACTIVE',
           },
           orderBy: { createdAt: 'desc' },

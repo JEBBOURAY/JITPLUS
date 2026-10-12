@@ -12,7 +12,7 @@ interface Props {
 /**
  * Configuration guide opened from the "?" button in the topbar (§7). The only
  * source of long-form text on the Fidéliser screen — everything else uses the
- * ponctual "!" InfoHint affordances (§8).
+ * ponctual grey "i" InfoHint affordances.
  */
 function LoyaltyGuideSheet({ visible, onClose }: Props) {
   const theme = useTheme();
@@ -23,10 +23,16 @@ function LoyaltyGuideSheet({ visible, onClose }: Props) {
 
   return (
     <Modal visible={visible} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel={t('common.close')}>
+      <View style={styles.backdrop}>
+        {/* Sibling backdrop: a Pressable around the sheet would block the ScrollView. */}
         <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel={t('common.close')}
+        />
+        <View
           style={[styles.sheet, { backgroundColor: theme.bgCard, paddingBottom: Math.max(insets.bottom + 16, 30) }]}
-          onPress={(e) => e.stopPropagation()}
           accessibilityViewIsModal
         >
           <View style={[styles.grabber, { backgroundColor: theme.border }]} />
@@ -61,8 +67,8 @@ function LoyaltyGuideSheet({ visible, onClose }: Props) {
               {t('settingsPage.guideClose')}
             </Text>
           </TouchableOpacity>
-        </Pressable>
-      </Pressable>
+        </View>
+      </View>
     </Modal>
   );
 }
@@ -75,7 +81,7 @@ const styles = StyleSheet.create({
   grabber: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
   title: { fontSize: 18, fontWeight: '700', fontFamily: 'Lexend_700Bold', letterSpacing: -0.3 },
   subtitle: { fontSize: 13, fontFamily: 'Lexend_400Regular', marginTop: 4, marginBottom: 18 },
-  list: { flexGrow: 0 },
+  list: { flexGrow: 0, flexShrink: 1 },
   item: { flexDirection: 'row', gap: 12, marginBottom: 18 },
   num: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   numText: { fontSize: 13, fontWeight: '700', fontFamily: 'Lexend_700Bold' },

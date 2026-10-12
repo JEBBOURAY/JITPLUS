@@ -91,7 +91,7 @@ export class MerchantEmailCampaignService {
           by: ['merchantId'],
           where: {
             merchantId: { in: merchantIds },
-            type: 'EARN_POINTS',
+            type: 'EARN_STAMPS',
             status: 'ACTIVE',
             createdAt: { gte: weekAgo },
           },
