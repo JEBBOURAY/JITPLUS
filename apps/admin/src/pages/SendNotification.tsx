@@ -34,7 +34,7 @@ export default function SendNotification() {
 
   const loadMerchants = useCallback(async (search?: string) => {
     try {
-      const res = await getMerchants(1, 50, search || undefined);
+      const res = await getMerchants({ page: 1, limit: 50, search: search || undefined });
       setMerchants(res.merchants);
     } catch {
       // Silent fallback

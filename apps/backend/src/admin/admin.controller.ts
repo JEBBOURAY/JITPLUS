@@ -29,6 +29,9 @@ import { PaginationQueryDto, MerchantListQueryDto, ClientListQueryDto, Notificat
 import { AuditLogQueryDto } from './dto/audit-log-query.dto';
 import { BanMerchantDto } from './dto/ban-merchant.dto';
 import { SetPlanDatesDto } from './dto/set-plan-dates.dto';
+import { InsightsQueryDto } from './dto/insights-query.dto';
+import { AdminInsightsService } from './admin-insights.service';
+import { AdminDetailsService } from './admin-details.service';
 
 // ── Helper: extract real client IP (respects X-Forwarded-For) ────────────────
 function extractIp(req: Request): string {
@@ -59,6 +62,8 @@ export class AdminController {
     private readonly planService: MerchantPlanService,
     private readonly auditLog: AuditLogService,
     private readonly notificationsService: NotificationsService,
+    private readonly insightsService: AdminInsightsService,
+    private readonly detailsService: AdminDetailsService,
   ) {}
 
   // ── Public: Admin login ───────────────────────────────────────────────────
@@ -109,11 +114,29 @@ export class AdminController {
     return this.adminService.getGlobalStats();
   }
 
+  @Get('stats/insights')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @ApiOperation({ summary: 'Product analytics: growth, activation, retention, games, geography' })
+  async getInsights(@Query() query: InsightsQueryDto) {
+    return this.insightsService.getInsights(query.days ?? 30);
+  }
+
   @Get('merchants')
   @UseGuards(JwtAuthGuard, AdminGuard)
   @ApiOperation({ summary: 'Paginated list of all merchants' })
   async listMerchants(@Query() query: MerchantListQueryDto) {
-    return this.adminService.listMerchants(query.page, query.limit, query.search, query.plan, query.status, query.categorie);
+    return this.adminService.listMerchants(query.page, query.limit, query.search, query.plan, query.status, query.categorie, {
+      activity: query.activity,
+      ville: query.ville,
+      sort: query.sort,
+    });
+  }
+
+  @Get('merchants/facets')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @ApiOperation({ summary: 'Cities and categories with merchant counts, for list filters' })
+  async getMerchantFacets() {
+    return this.detailsService.merchantFacets();
   }
 
   @Get('merchants/:id')
@@ -121,6 +144,13 @@ export class AdminController {
   @ApiOperation({ summary: 'Detailed profile of a single merchant' })
   async getMerchantDetail(@Param('id') merchantId: string) {
     return this.adminService.getMerchantDetail(merchantId);
+  }
+
+  @Get('merchants/:id/activity')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @ApiOperation({ summary: 'Usage analytics of a single merchant (transactions, clients, features, team)' })
+  async getMerchantActivity(@Param('id') merchantId: string) {
+    return this.detailsService.getMerchantActivity(merchantId);
   }
 
   @Get('merchants/:id/subscription-history')
@@ -307,17 +337,45 @@ export class AdminController {
   @UseGuards(JwtAuthGuard, AdminGuard)
   @ApiOperation({ summary: 'Paginated list of all registered clients with contact info' })
   async listClients(@Query() query: ClientListQueryDto) {
-    return this.adminService.listClients(query.page, query.limit, query.search, query.status);
+    return this.adminService.listClients(query.page, query.limit, query.search, query.status, {
+      activity: query.activity,
+      type: query.type,
+      sort: query.sort,
+    });
   }
 
   @Get('notifications')
   @UseGuards(JwtAuthGuard, AdminGuard)
   @ApiOperation({ summary: 'Paginated list of all notifications across merchants' })
   async listNotifications(@Query() query: NotificationListQueryDto) {
-    return this.adminService.listNotifications(query.page, query.limit, query.channel, query.search);
+    return this.adminService.listNotifications(query.page, query.limit, query.channel, query.search, {
+      sender: query.sender,
+      merchantId: query.merchantId,
+    });
+  }
+
+  @Get('notifications/stats')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @ApiOperation({ summary: 'Notification performance by channel, sender and day' })
+  async getNotificationStats(@Query() query: InsightsQueryDto) {
+    return this.detailsService.getNotificationStats(query.days ?? 30);
+  }
+
+  @Get('alerts')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @ApiOperation({ summary: 'Lightweight counters for the navigation alert badges' })
+  async getAlerts() {
+    return this.detailsService.getAlerts();
   }
 
   // ── Client management ───────────────────────────────────────────────────
+
+  @Get('clients/:id/activity')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @ApiOperation({ summary: 'Usage analytics of a single client (visits, cards, games, notifications)' })
+  async getClientActivity(@Param('id') clientId: string) {
+    return this.detailsService.getClientActivity(clientId);
+  }
 
   @Get('clients/:id')
   @UseGuards(JwtAuthGuard, AdminGuard)

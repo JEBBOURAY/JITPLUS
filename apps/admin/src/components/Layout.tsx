@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { C } from '../theme';
-import { setToken, getEnv, setEnv, onEnvChange } from '../api';
+import { logout, getEnv, setEnv, onEnvChange } from '../api';
 import type { AdminEnv } from '../api';
+import { AlertsContext, buildAlerts, navBadges, useAlerts } from '../utils/alerts';
 
 // ── SVG Icons (20x20 stroke icons) ──────────────────────────────────────────
 const Icon = ({ d, size = 20 }: { d: string; size?: number }) => (
@@ -41,14 +42,17 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   useEffect(() => onEnvChange(setEnvState), []);
 
+  const alerts = useAlerts();
+  const badges = useMemo(() => (alerts ? navBadges(buildAlerts(alerts)) : {}), [alerts]);
+
   const handleEnvSwitch = (newEnv: AdminEnv) => {
     if (newEnv === env) return;
     setEnv(newEnv);
     navigate('/login');
   };
 
-  const handleLogout = () => {
-    setToken(null);
+  const handleLogout = async () => {
+    await logout();
     navigate('/login');
   };
 
@@ -196,7 +200,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
         {/* Nav links */}
         <nav style={{ flex: 1, padding: '16px 8px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {NAV.map(({ to, label, icon }) => (
+          {NAV.map(({ to, label, icon }) => {
+            const badge = badges[to];
+            const badgeColor = badge?.level === 'critical' ? C.red : C.amber;
+            return (
             <NavLink
               key={to}
               to={to}
@@ -217,14 +224,40 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 transition: 'all .12s ease',
                 justifyContent: sidebarOpen ? 'flex-start' : 'center',
                 letterSpacing: '-0.01em',
+                position: 'relative',
               })}
+              title={badge?.title}
             >
               <span style={{ flexShrink: 0, display: 'flex' }}>
                 <Icon d={Icons[icon]} />
               </span>
               {sidebarOpen && label}
+              {badge && (sidebarOpen ? (
+                <span
+                  style={{
+                    marginLeft: 'auto',
+                    minWidth: 20,
+                    height: 20,
+                    padding: '0 6px',
+                    borderRadius: 10,
+                    background: badgeColor,
+                    color: '#fff',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxSizing: 'border-box',
+                  }}
+                >
+                  {badge.count > 99 ? '99+' : badge.count}
+                </span>
+              ) : (
+                <span style={{ position: 'absolute', top: 6, right: 14, width: 8, height: 8, borderRadius: '50%', background: badgeColor, border: `2px solid ${C.surface}` }} />
+              ))}
             </NavLink>
-          ))}
+            );
+          })}
         </nav>
 
         {/* Logout */}
@@ -280,7 +313,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             PRODUCTION — Les actions affectent les vrais utilisateurs
           </div>
         )}
-        {children}
+        <AlertsContext.Provider value={alerts}>{children}</AlertsContext.Provider>
       </main>
     </div>
   );
