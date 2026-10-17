@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Param, Body, HttpCode, HttpStatus, UseGuards, Req, Headers } from '@nestjs/common';
+import { Controller, Post, Get, Param, Body, HttpCode, HttpStatus, Req, Headers } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { THROTTLE_TTL } from '../common/constants';
@@ -18,8 +18,6 @@ import { SendVerificationEmailDto } from './dto/send-verification-email.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
 import { CheckEmailDto } from './dto/check-email.dto';
 import { CheckPhoneDto } from './dto/check-phone.dto';
-import { JwtAuthGuard } from './guards/jwt-auth.guard';
-import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtService } from '@nestjs/jwt';
 import { JwtPayload } from '../common/interfaces/jwt-payload.interface';
 import { Request } from 'express';
@@ -95,13 +93,6 @@ export class AuthController {
       }
     } catch { /* token invalide ou expiré — on continue quand même */ }
     return this.authService.logout(sessionId);
-  }
-
-  @Post('refresh')
-  @UseGuards(JwtAuthGuard)
-  @HttpCode(HttpStatus.OK)
-  async refresh(@CurrentUser() user: JwtPayload) {
-    return this.authService.refreshToken(user);
   }
 
   // ── Mot de passe oublié ──

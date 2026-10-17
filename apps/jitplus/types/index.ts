@@ -58,6 +58,9 @@ export interface Merchant {
   latitude?: number | null;
   longitude?: number | null;
   stampsForReward?: number;
+  /** PER_VISIT: 1 stamp per visit. PER_AMOUNT: 1 stamp per `amountPerStamp` spent. */
+  stampEarningMode?: 'PER_VISIT' | 'PER_AMOUNT';
+  amountPerStamp?: number | null;
   /** Stamps reset after this many days without a visit; null = never expire. */
   stampValidityDays?: number | null;
   /** When the client's current stamps expire if they do not come back (ISO). */

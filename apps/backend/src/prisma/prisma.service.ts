@@ -1,5 +1,5 @@
 import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
-import { Prisma, PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 
 // Cloud Run: each container gets a limited pool.
 // Default Prisma uses num_cpus * 2 + 1 connections — on a 1-vCPU Cloud Run
@@ -11,8 +11,6 @@ const POOL_TIMEOUT_SECS = 5; // fail-fast: avoid queueing on 512Mi Cloud Run
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PrismaService.name);
-
-  private _extendedClient: any;
 
   constructor() {
     // Append pool params to DATABASE_URL if not already present
@@ -47,26 +45,6 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       }
     });
 
-    // ── Soft-delete with Prisma Extensions ──────────────────────────────────────
-    // Per-model interceptors — only Merchant and Client get the deletedAt filter,
-    // all other models bypass the extension entirely (zero overhead).
-    const softDeleteReadOps = ['findUnique', 'findFirst', 'findMany', 'count', 'aggregate', 'groupBy'] as const;
-
-    const injectDeletedAtFilter = async ({ operation, args, query }: any) => {
-      if (softDeleteReadOps.includes(operation)) {
-        if (args.where?.deletedAt === undefined) {
-          args.where = { ...args.where, deletedAt: null };
-        }
-      }
-      return query(args);
-    };
-
-    this._extendedClient = this.$extends({
-      query: {
-        merchant: { $allOperations: injectDeletedAtFilter },
-        client: { $allOperations: injectDeletedAtFilter },
-      },
-    });
   }
 
   async onModuleInit() {

@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Patch, Body, Param, Query, Headers,
+  Controller, Get, Post, Body, Query, Headers,
   UseGuards, BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
@@ -60,23 +60,6 @@ export class MerchantTransactionController {
   @Get('transactions')
   async getTransactions(@Query() { page, limit }: PaginationQueryDto, @CurrentUser() user: JwtPayload) {
     return this.transactionService.getTransactions(user.userId, page, limit);
-  }
-
-  @Patch('transactions/:id/cancel')
-  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 10 } })
-  async cancelTransaction(@Param('id') transactionId: string, @CurrentUser() user: JwtPayload) {
-    return this.transactionService.cancelTransaction(transactionId, user.userId);
-  }
-
-  @Patch('transactions/:id/fulfill')
-  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 10 } })
-  async fulfillGift(@Param('id') transactionId: string, @CurrentUser() user: JwtPayload) {
-    return this.transactionService.fulfillGift(transactionId, user.userId);
-  }
-
-  @Get('pending-gifts')
-  async getPendingGifts(@CurrentUser() user: JwtPayload) {
-    return this.transactionService.getPendingGifts(user.userId);
   }
 
   @Post('transactions/adjust')

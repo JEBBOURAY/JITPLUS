@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { C, S } from '../theme';
 import {
   getReferralStats,
@@ -25,6 +25,19 @@ type Tab = 'merchant' | 'client' | 'top' | 'payout';
 type ClientFilter = 'ALL' | 'PENDING' | 'VALIDATED';
 type PayoutFilter = 'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED' | 'PAID';
 
+const TABS: Tab[] = ['merchant', 'client', 'top', 'payout'];
+
+/** Deep links from the dashboard alerts, e.g. `/referrals?tab=payout&status=PENDING`. */
+function initialFromUrl(params: URLSearchParams) {
+  const tab = params.get('tab') as Tab | null;
+  const status = params.get('status');
+  return {
+    tab: tab && TABS.includes(tab) ? tab : 'merchant',
+    clientFilter: (status === 'PENDING' || status === 'VALIDATED' ? status : 'ALL') as ClientFilter,
+    payoutFilter: (['PENDING', 'APPROVED', 'REJECTED', 'PAID'].includes(status ?? '') ? status : 'ALL') as PayoutFilter,
+  };
+}
+
 const PLAN_COLORS: Record<string, string> = {
   FREE: C.textMuted,
   PREMIUM: C.amber,
@@ -33,8 +46,10 @@ const PLAN_COLORS: Record<string, string> = {
 
 export default function Referrals() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const [initial] = useState(() => initialFromUrl(searchParams));
   const [stats, setStats] = useState<ReferralStats | null>(null);
-  const [tab, setTab] = useState<Tab>('merchant');
+  const [tab, setTab] = useState<Tab>(initial.tab);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -48,7 +63,7 @@ export default function Referrals() {
   const [clientRefs, setClientRefs] = useState<ClientReferralRow[]>([]);
   const [clientPag, setClientPag] = useState<Pagination | null>(null);
   const [clientPage, setClientPage] = useState(1);
-  const [clientFilter, setClientFilter] = useState<ClientFilter>('ALL');
+  const [clientFilter, setClientFilter] = useState<ClientFilter>(initial.clientFilter);
   const [clientSearch, setClientSearch] = useState('');
 
   // Top referrers
@@ -58,7 +73,7 @@ export default function Referrals() {
   const [payoutReqs, setPayoutReqs] = useState<PayoutRequestRow[]>([]);
   const [payoutPag, setPayoutPag] = useState<Pagination | null>(null);
   const [payoutPage, setPayoutPage] = useState(1);
-  const [payoutFilter, setPayoutFilter] = useState<PayoutFilter>('ALL');
+  const [payoutFilter, setPayoutFilter] = useState<PayoutFilter>(initial.payoutFilter);
   const [payoutSearch, setPayoutSearch] = useState('');
   const [updatingPayout, setUpdatingPayout] = useState<string | null>(null);
 

@@ -68,6 +68,8 @@ async function bootstrap() {
       { path: 'health/*path', method: RequestMethod.ALL },
       { path: 'uploads/*path', method: RequestMethod.ALL },
       { path: 'm/:id', method: RequestMethod.GET },
+      // jitplus pro calls the geocode proxy on the server base URL (no /api/v1)
+      { path: 'geocode/*path', method: RequestMethod.GET },
       { path: '.well-known/assetlinks.json', method: RequestMethod.GET },
       { path: '.well-known/apple-app-site-association', method: RequestMethod.GET },
     ],

@@ -8,7 +8,7 @@ import {
 } from '../common/repositories';
 import { randomInt, randomBytes, createHash, createHmac, randomUUID } from 'crypto';
 import * as bcrypt from 'bcryptjs';
-import { OTP_MIN, OTP_MAX, OTP_EXPIRY_MS, OTP_COOLDOWN_MS, MAX_OTP_ATTEMPTS, BCRYPT_SALT_ROUNDS, CLIENT_REFRESH_TOKEN_DAYS, MS_PER_DAY } from '../common/constants';
+import { OTP_MIN, OTP_MAX, OTP_EXPIRY_MS, OTP_COOLDOWN_MS, BCRYPT_SALT_ROUNDS, CLIENT_REFRESH_TOKEN_DAYS, MS_PER_DAY } from '../common/constants';
 import { errMsg } from '../common/utils';
 import { checkLockout, handleFailedLogin, resetLoginAttempts, LockoutDbOps } from '../common/utils/login-lockout.helper';
 import { CLIENT_AUTH_SELECT, CLIENT_LOGIN_SELECT } from '../common/prisma-selects';

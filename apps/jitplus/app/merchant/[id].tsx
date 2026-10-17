@@ -1,139 +1,142 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
-import { useFocusEffect } from 'expo-router';
-import {
-  View, Text, Pressable, Share, Alert, ScrollView,
-} from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Image } from 'expo-image';
-export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
-import { useLocalSearchParams, useRouter, Redirect } from 'expo-router';
-import { ArrowLeft, AlertCircle, Eye, Users, Send, Flag } from 'lucide-react-native';
-import { haptic } from '@/utils/haptics';
+import { useState, useCallback, useMemo, useRef } from 'react';
+import { View, Text, Pressable, Share, Alert, Animated, StyleSheet } from 'react-native';
+import { useLocalSearchParams, useRouter, Redirect, useFocusEffect } from 'expo-router';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useQueryClient } from '@tanstack/react-query';
+import { isAxiosError } from 'axios';
+import { AlertCircle, Ban, Flag, LogOut } from 'lucide-react-native';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import Skeleton from '@/components/Skeleton';
-import { getCategoryEmoji } from '@/utils/categories';
+import ActionSheet, { type ActionSheetOption } from '@/components/ActionSheet';
 import { useMerchantById } from '@/hooks/useQueryHooks';
-import { useQueryClient } from '@tanstack/react-query';
-import { api } from '@/services/api';
-import { getServerBaseUrl } from '@/services/api';
-import { wp, hp, ms } from '@/utils/responsive';
-import { resolveImageUrl } from '@/utils/imageUrl';
+import { useKnownLocation } from '@/hooks/useKnownLocation';
+import { api, getServerBaseUrl } from '@/services/api';
+import { haptic, hapticSuccess } from '@/utils/haptics';
+import { useAppFonts } from '@/utils/fonts';
 import { getMerchantAccent } from '@/utils/merchantAccent';
-import { getMerchantIconComponent } from '@/utils/merchantIcons';
-import * as Location from 'expo-location';
+import { getOpenStatus, hasOpeningHours } from '@/utils/openingHours';
+import { withDistances } from '@/utils/merchantStores';
+import { wp, hp, ms } from '@/utils/responsive';
+import type { Merchant } from '@/types';
 import {
-  merchantStyles as styles,
-  MerchantSocialLinks, MerchantLoyaltyRewards,
-  MerchantLuckyWheel, MerchantLocations, MerchantBottomBar,
-  MerchantBadges, MerchantOpeningHours, MerchantGallery,
+  HERO_HEIGHT,
+  MerchantHero, MerchantStickyHeader, MerchantQuickActions, MerchantLoyaltyCard,
+  MerchantLuckyWheel, MerchantAbout, MerchantGallery, MerchantOpeningHours,
+  MerchantLocations, MerchantBottomBar,
 } from '@/components/merchant';
+
+export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
+
+type ReportReason = 'inappropriate' | 'spam' | 'fraud' | 'closed' | 'wrong_info' | 'other';
+type SheetMode = 'none' | 'more' | 'report';
+
+const REPORT_REASONS: { reason: ReportReason; labelKey: string }[] = [
+  { reason: 'inappropriate', labelKey: 'merchant.reportReasonInappropriate' },
+  { reason: 'spam', labelKey: 'merchant.reportReasonSpam' },
+  { reason: 'fraud', labelKey: 'merchant.reportReasonFraud' },
+  { reason: 'closed', labelKey: 'merchant.reportReasonClosed' },
+  { reason: 'wrong_info', labelKey: 'merchant.reportReasonWrongInfo' },
+  { reason: 'other', labelKey: 'merchant.reportReasonOther' },
+];
+
+/** Room for the fixed bottom bar so the last section stays reachable. */
+const BOTTOM_BAR_SPACE = hp(96);
 
 export default function MerchantDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { isAuthenticated } = useAuth();
   const theme = useTheme();
   const { t } = useLanguage();
+  const fonts = useAppFonts();
   const router = useRouter();
-
-  const { data: merchant, isLoading: loading, refetch } = useMerchantById(id, isAuthenticated);
+  const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
 
-  useFocusEffect(useCallback(() => { refetch(); }, [refetch]));
+  const { data: merchant, isLoading, error, refetch } = useMerchantById(id, isAuthenticated);
+  const userLocation = useKnownLocation();
 
+  // The query already fetches on mount; refresh only when coming back to the screen.
+  const hasFocusedRef = useRef(false);
+  useFocusEffect(useCallback(() => {
+    if (hasFocusedRef.current) refetch();
+    hasFocusedRef.current = true;
+  }, [refetch]));
+
+  const [scrollY] = useState(() => new Animated.Value(0));
+  const onScroll = useMemo(
+    () => Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true }),
+    [scrollY],
+  );
+
+  const [sheet, setSheet] = useState<SheetMode>('none');
   const [joinLoading, setJoinLoading] = useState(false);
-  const [justJoined, setJustJoined] = useState(false);
-  const [leaveLoading, setLeaveLoading] = useState(false);
-  const [justLeft, setJustLeft] = useState(false);
-  const joiningRef = useRef(false);
-  const leavingRef = useRef(false);
-  const [logoError, setLogoError] = useState(false);
-  const [coverError, setCoverError] = useState(false);
-  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const busyRef = useRef(false);
 
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status === 'granted') {
-          const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced, timeInterval: 10000 });
-          if (mounted) setUserLocation({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
-        }
-      } catch { /* location unavailable */ }
-    })();
-    return () => { mounted = false; };
-  }, []);
+  const pageBg = theme.mode === 'dark' ? theme.bg : palette.gray50;
 
-  const handleJoinMerchant = useCallback(async () => {
-    if (!id || joiningRef.current || merchant?.hasCard || justJoined) return;
-    joiningRef.current = true;
+  const stores = useMemo(() => withDistances(merchant?.stores, userLocation), [merchant?.stores, userLocation]);
+  const openStatus = useMemo(() => getOpenStatus(merchant?.openingHours), [merchant?.openingHours]);
+
+  const patchMerchant = useCallback((patch: Partial<Merchant>) => {
+    queryClient.setQueryData<Merchant>(['merchant', id], (m) => (m ? { ...m, ...patch } : m));
+  }, [queryClient, id]);
+
+  const refreshCards = useCallback(() => {
+    queryClient.invalidateQueries({
+      predicate: (q) => q.queryKey[0] === 'stamps' || (q.queryKey[0] === 'merchant' && q.queryKey[1] === id),
+    });
+  }, [queryClient, id]);
+
+  const handleJoin = useCallback(async () => {
+    if (!id || busyRef.current) return;
+    busyRef.current = true;
     setJoinLoading(true);
     try {
-      await api.joinMerchant(id);
-      setJustJoined(true);
-      setJustLeft(false);
-      haptic();
-      queryClient.invalidateQueries({
-        predicate: (q) => {
-          const k0 = q.queryKey[0];
-          return k0 === 'stamps' || (k0 === 'merchant' && q.queryKey[1] === id);
-        },
-      });
+      const res = await api.joinMerchant(id);
+      patchMerchant({ hasCard: true, cardDeactivated: false, cardBalance: res.card?.stamps ?? 0 });
+      hapticSuccess();
+      refreshCards();
     } catch (e) {
       if (__DEV__) console.warn('Join merchant error:', e);
       Alert.alert(t('common.error'), t('merchant.joinError'));
     } finally {
-      joiningRef.current = false;
+      busyRef.current = false;
       setJoinLoading(false);
     }
-  }, [id, merchant?.hasCard, justJoined, queryClient, t]);
+  }, [id, patchMerchant, refreshCards, t]);
 
-  const handleLeaveMerchant = useCallback(() => {
-    if (!id || !merchant || leaveLoading) return;
-    const balanceLabel = t('merchant.leaveStampsWarning', { count: merchant.cardBalance ?? 0 });
-    Alert.alert(t('merchant.leaveTitle'), `${balanceLabel}\n\n${t('merchant.leaveMessage')}`, [
+  const handleLeave = useCallback(() => {
+    if (!id || !merchant) return;
+    const warning = t('merchant.leaveStampsWarning', { count: merchant.cardBalance ?? 0 });
+    Alert.alert(t('merchant.leaveTitle'), `${warning}\n\n${t('merchant.leaveMessage')}`, [
       { text: t('common.cancel'), style: 'cancel' },
       {
-        text: t('merchant.leaveConfirm'), style: 'destructive',
+        text: t('merchant.leaveConfirm'),
+        style: 'destructive',
         onPress: async () => {
-          if (leavingRef.current) return;
-          leavingRef.current = true;
-          setLeaveLoading(true);
+          if (busyRef.current) return;
+          busyRef.current = true;
           try {
             await api.leaveMerchant(id);
-            setJustLeft(true);
-            setJustJoined(false);
+            patchMerchant({ hasCard: false, cardDeactivated: true, cardBalance: 0, cardStampsExpireAt: null });
             haptic();
-            queryClient.invalidateQueries({
-              predicate: (q) => {
-                const k0 = q.queryKey[0];
-                return k0 === 'stamps' || (k0 === 'merchant' && q.queryKey[1] === id);
-              },
-            });
+            refreshCards();
           } catch (e) {
             if (__DEV__) console.warn('Leave merchant error:', e);
             Alert.alert(t('common.error'), t('merchant.leaveError'));
           } finally {
-            leavingRef.current = false;
-            setLeaveLoading(false);
+            busyRef.current = false;
           }
         },
       },
     ]);
-  }, [id, merchant, leaveLoading, queryClient, t]);
+  }, [id, merchant, patchMerchant, refreshCards, t]);
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Content reporting (App Store 1.2 / Play UGC compliance)
-  // ─────────────────────────────────────────────────────────────────────────
-  const reportingRef = useRef(false);
-  const submitReport = useCallback(async (
-    reason: 'inappropriate' | 'spam' | 'fraud' | 'closed' | 'wrong_info' | 'other',
-  ) => {
-    if (!id || reportingRef.current) return;
-    reportingRef.current = true;
+  const submitReport = useCallback(async (reason: ReportReason) => {
+    if (!id || busyRef.current) return;
+    busyRef.current = true;
     try {
       await api.reportMerchant(id, reason);
       haptic();
@@ -142,231 +145,191 @@ export default function MerchantDetailScreen() {
       if (__DEV__) console.warn('Report merchant error:', e);
       Alert.alert(t('common.error'), t('merchant.reportError'));
     } finally {
-      reportingRef.current = false;
+      busyRef.current = false;
     }
   }, [id, t]);
 
-  const handleReportMerchant = useCallback(() => {
+  // Apple 1.2: blocking hides the merchant everywhere, then leaves the page.
+  const handleBlock = useCallback(() => {
     if (!id) return;
-    Alert.alert(
-      t('merchant.reportTitle'),
-      t('merchant.reportBody'),
-      [
-        { text: t('common.cancel'), style: 'cancel' },
-        { text: t('merchant.reportReasonInappropriate'), onPress: () => submitReport('inappropriate') },
-        { text: t('merchant.reportReasonSpam'), onPress: () => submitReport('spam') },
-        { text: t('merchant.reportReasonFraud'), onPress: () => submitReport('fraud') },
-        { text: t('merchant.reportReasonClosed'), onPress: () => submitReport('closed') },
-        { text: t('merchant.reportReasonWrongInfo'), onPress: () => submitReport('wrong_info') },
-        { text: t('merchant.reportReasonOther'), onPress: () => submitReport('other') },
-      ],
-      { cancelable: true },
-    );
-  }, [id, submitReport, t]);
-
-  // Block this merchant (Apple 1.2 requirement). Confirms then hides the
-  // merchant everywhere and navigates back.
-  const blockingRef = useRef(false);
-  const handleBlockMerchant = useCallback(() => {
-    if (!id || blockingRef.current) return;
-    Alert.alert(
-      t('merchant.blockTitle'),
-      t('merchant.blockBody'),
-      [
-        { text: t('common.cancel'), style: 'cancel' },
-        {
-          text: t('merchant.blockConfirm'),
-          style: 'destructive',
-          onPress: async () => {
-            blockingRef.current = true;
-            try {
-              await api.blockMerchant(id);
-              haptic();
-              queryClient.invalidateQueries({
-                predicate: (q) => {
-                  const k0 = q.queryKey[0];
-                  return k0 === 'merchants' || (k0 === 'merchant' && q.queryKey[1] === id);
-                },
-              });
-              Alert.alert(
-                t('merchant.blockedTitle'),
-                t('merchant.blockedBody'),
-                [{ text: t('common.ok'), onPress: () => router.back() }],
-              );
-            } catch (e) {
-              if (__DEV__) console.warn('Block merchant error:', e);
-              Alert.alert(t('common.error'), t('merchant.blockError'));
-            } finally {
-              blockingRef.current = false;
-            }
-          },
+    Alert.alert(t('merchant.blockTitle'), t('merchant.blockBody'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      {
+        text: t('merchant.blockConfirm'),
+        style: 'destructive',
+        onPress: async () => {
+          if (busyRef.current) return;
+          busyRef.current = true;
+          try {
+            await api.blockMerchant(id);
+            haptic();
+            queryClient.invalidateQueries({
+              predicate: (q) => q.queryKey[0] === 'merchants' || (q.queryKey[0] === 'merchant' && q.queryKey[1] === id),
+            });
+            Alert.alert(t('merchant.blockedTitle'), t('merchant.blockedBody'), [
+              { text: t('common.ok'), onPress: () => router.back() },
+            ]);
+          } catch (e) {
+            if (__DEV__) console.warn('Block merchant error:', e);
+            Alert.alert(t('common.error'), t('merchant.blockError'));
+          } finally {
+            busyRef.current = false;
+          }
         },
-      ],
-      { cancelable: true },
-    );
+      },
+    ], { cancelable: true });
   }, [id, queryClient, router, t]);
 
-  // Combined moderation action sheet: Report + Block.
-  const handleModerationSheet = useCallback(() => {
-    Alert.alert(
-      t('merchant.moderationTitle'),
-      t('merchant.moderationBody'),
-      [
-        { text: t('common.cancel'), style: 'cancel' },
-        { text: t('merchant.reportTitle'), onPress: () => handleReportMerchant() },
-        { text: t('merchant.blockTitle'), style: 'destructive', onPress: () => handleBlockMerchant() },
-      ],
-      { cancelable: true },
-    );
-  }, [handleReportMerchant, handleBlockMerchant, t]);
+  const handleShare = useCallback(async () => {
+    if (!merchant) return;
+    const shareUrl = `${getServerBaseUrl()}/m/${merchant.id}`;
+    try {
+      await Share.share({
+        message: `${t('merchant.shareText', { name: merchant.nomBoutique })}\n\n${shareUrl}`,
+        url: shareUrl, // iOS uses this for the rich link preview
+      });
+    } catch { /* user cancelled */ }
+  }, [merchant, t]);
+
+  const handleBack = useCallback(() => router.back(), [router]);
+  const handleShowQr = useCallback(() => { haptic(); router.push('/(tabs)/qr'); }, [router]);
+  const openMore = useCallback(() => setSheet('more'), []);
+  const closeSheet = useCallback(() => setSheet('none'), []);
+
+  const sheetOptions = useMemo<ActionSheetOption[]>(() => {
+    if (sheet === 'report') {
+      return REPORT_REASONS.map(({ reason, labelKey }) => ({
+        key: reason, label: t(labelKey), onPress: () => { void submitReport(reason); },
+      }));
+    }
+    return [
+      ...(merchant?.hasCard
+        ? [{ key: 'leave', label: t('merchant.leaveCard'), icon: LogOut, destructive: true, onPress: handleLeave }]
+        : []),
+      { key: 'report', label: t('merchant.reportTitle'), icon: Flag, keepOpen: true, onPress: () => setSheet('report') },
+      { key: 'block', label: t('merchant.blockTitle'), icon: Ban, destructive: true, onPress: handleBlock },
+    ];
+  }, [sheet, merchant?.hasCard, t, submitReport, handleLeave, handleBlock]);
 
   if (!isAuthenticated) return <Redirect href="/welcome" />;
 
-  if (loading) {
+  if (isLoading) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.bgCard }]} edges={['top', 'bottom']}>
-        <View style={styles.loadingWrap}>
-          <Skeleton width={wp(80)} height={hp(30)} borderRadius={ms(18)} />
-          <Skeleton width={ms(80)} height={ms(80)} borderRadius={ms(40)} />
-          <Skeleton width={wp(200)} height={hp(24)} borderRadius={ms(8)} />
-          <Skeleton width={wp(120)} height={hp(18)} borderRadius={ms(9)} />
-          <Skeleton width="100%" height={hp(100)} borderRadius={ms(16)} />
-          <Skeleton width="100%" height={hp(80)} borderRadius={ms(16)} />
-          <Skeleton width="100%" height={hp(50)} borderRadius={ms(14)} />
+      <View style={[styles.container, { backgroundColor: pageBg }]}>
+        <Skeleton width="100%" height={HERO_HEIGHT} borderRadius={0} />
+        <View style={styles.skeletonBody}>
+          <Skeleton width={ms(104)} height={ms(104)} borderRadius={ms(30)} style={styles.skeletonLogo} />
+          <Skeleton width={wp(200)} height={hp(26)} borderRadius={ms(8)} />
+          <Skeleton width={wp(140)} height={hp(16)} borderRadius={ms(8)} />
+          <Skeleton width="100%" height={hp(64)} borderRadius={ms(18)} />
+          <Skeleton width="100%" height={hp(180)} borderRadius={ms(22)} />
+          <Skeleton width="100%" height={hp(120)} borderRadius={ms(22)} />
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
   if (!merchant) {
+    const notFound = !error || (isAxiosError(error) && error.response?.status === 404);
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.bgCard }]} edges={['top', 'bottom']}>
+      <SafeAreaView style={[styles.container, { backgroundColor: pageBg }]} edges={['top', 'bottom']}>
         <View style={styles.errorContainer}>
-          <View style={[styles.errorIcon, { backgroundColor: theme.borderLight }]}>
-            <AlertCircle size={28} color={theme.textMuted} strokeWidth={2} />
+          <View style={[styles.errorIcon, { backgroundColor: theme.primaryBg }]}>
+            <AlertCircle size={ms(28)} color={theme.primary} strokeWidth={2} />
           </View>
-          <Text style={[styles.errorTitle, { color: theme.text }]}>{t('merchant.notFound')}</Text>
-          <Text style={[styles.errorText, { color: theme.textMuted }]}>{t('merchant.notFoundDesc')}</Text>
-          <Pressable onPress={() => router.back()} style={[styles.errorButton, { backgroundColor: theme.primary }]}>
-            <Text style={styles.errorButtonText}>{t('common.back')}</Text>
-          </Pressable>
+          <Text style={[styles.errorTitle, { color: theme.text, fontFamily: fonts.bold }]}>
+            {notFound ? t('merchant.notFound') : t('common.error')}
+          </Text>
+          <Text style={[styles.errorText, { color: theme.textMuted, fontFamily: fonts.regular }]}>
+            {notFound ? t('merchant.notFoundDesc') : t('errors.generic')}
+          </Text>
+          <View style={styles.errorActions}>
+            {!notFound && (
+              <Pressable onPress={() => refetch()} style={[styles.errorButton, { backgroundColor: theme.primary }]} accessibilityRole="button">
+                <Text style={[styles.errorButtonText, { fontFamily: fonts.bold }]}>{t('common.retry')}</Text>
+              </Pressable>
+            )}
+            <Pressable
+              onPress={handleBack}
+              style={[styles.errorButton, notFound ? { backgroundColor: theme.primary } : { backgroundColor: theme.bgInput }]}
+              accessibilityRole="button"
+            >
+              <Text style={[styles.errorButtonText, { fontFamily: fonts.bold }, !notFound && { color: theme.text }]}>
+                {t('common.back')}
+              </Text>
+            </Pressable>
+          </View>
         </View>
       </SafeAreaView>
     );
   }
 
   const accent = getMerchantAccent(merchant.themeColor);
-  const ThemeIcon = getMerchantIconComponent(merchant.themeIcon);
+  const gallery = merchant.gallery ?? [];
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.bg }]}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Hero section */}
-        <View style={styles.heroSection}>
-          {merchant.coverUrl && !coverError ? (
-            <Image source={resolveImageUrl(merchant.coverUrl)} style={styles.coverImage} contentFit="cover" cachePolicy="disk" recyclingKey={merchant.coverUrl} onError={() => setCoverError(true)} />
-          ) : (
-            <LinearGradient colors={[`${accent}18`, `${accent}08`, theme.bg]} style={styles.coverImage} />
+    <View style={[styles.container, { backgroundColor: pageBg }]}>
+      <Animated.ScrollView
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: insets.bottom + BOTTOM_BAR_SPACE }}
+      >
+        <MerchantHero
+          merchant={merchant}
+          scrollY={scrollY}
+          pageBg={pageBg}
+          openStatus={openStatus}
+          distanceKm={stores[0]?.distanceKm ?? null}
+        />
+        <MerchantQuickActions merchant={merchant} store={stores[0] ?? null} />
+
+        <View style={styles.sections}>
+          <MerchantLoyaltyCard merchant={merchant} />
+          {merchant.activeLuckyWheel && <MerchantLuckyWheel wheel={merchant.activeLuckyWheel} />}
+          <MerchantAbout merchant={merchant} />
+          <MerchantGallery images={gallery} accent={accent} />
+          {hasOpeningHours(merchant.openingHours) && (
+            <MerchantOpeningHours hours={merchant.openingHours} status={openStatus} accent={accent} />
           )}
-          <LinearGradient colors={['transparent', theme.bg]} style={styles.coverFade} />
-          <SafeAreaView edges={['top']} style={styles.floatingHeader}>
-            <Pressable onPress={() => { haptic(); router.back(); }} style={[styles.floatingBtn, { backgroundColor: 'rgba(255,255,255,0.85)' }]} accessibilityRole="button" accessibilityLabel={t('common.back')} hitSlop={8}>
-              <ArrowLeft size={20} color={palette.gray900} strokeWidth={2} />
-            </Pressable>
-            <Pressable onPress={async () => {
-              haptic();
-              try {
-                const shareUrl = `${getServerBaseUrl()}/m/${merchant.id}`;
-                await Share.share({
-                  message: `${t('merchant.shareText', { name: merchant.nomBoutique })}\n\n${shareUrl}`,
-                  url: shareUrl, // iOS uses this for the rich link preview
-                });
-              } catch { /* user cancelled */ }
-            }} style={[styles.floatingBtn, { backgroundColor: 'rgba(255,255,255,0.85)' }]} accessibilityRole="button" accessibilityLabel={t('merchant.shareApp')} hitSlop={8}>
-              <Send size={18} color={palette.gray900} strokeWidth={2} />
-            </Pressable>
-            <Pressable
-              onPress={() => { haptic(); handleModerationSheet(); }}
-              style={[styles.floatingBtn, { backgroundColor: 'rgba(255,255,255,0.85)' }]}
-              accessibilityRole="button"
-              accessibilityLabel={t('merchant.moderationTitle')}
-              hitSlop={8}
-            >
-              <Flag size={18} color={palette.gray900} strokeWidth={2} />
-            </Pressable>
-          </SafeAreaView>
-          <View style={styles.logoContainer}>
-            <View style={[styles.logoRing, { backgroundColor: theme.bg }]}>
-              {merchant.logoUrl && !logoError ? (
-                <Image source={resolveImageUrl(merchant.logoUrl)} style={styles.logo} contentFit="cover" cachePolicy="disk" recyclingKey={merchant.logoUrl} onError={() => setLogoError(true)} />
-              ) : ThemeIcon ? (
-                <View style={[styles.emojiWrap, { backgroundColor: `${accent}15` }]}>
-                  <ThemeIcon size={ms(44)} color={accent} strokeWidth={1.75} />
-                </View>
-              ) : (
-                <View style={[styles.emojiWrap, { backgroundColor: `${accent}10` }]}>
-                  <Text style={styles.emoji}>{getCategoryEmoji(merchant.categorie)}</Text>
-                </View>
-              )}
-            </View>
-          </View>
+          <MerchantLocations stores={stores} merchantName={merchant.nomBoutique} accent={accent} />
         </View>
+      </Animated.ScrollView>
 
-        {/* Identity */}
-        <View style={styles.identitySection}>
-          <Text style={[styles.merchantName, { color: theme.text }]} numberOfLines={2}>{merchant.nomBoutique}</Text>
-          {!!merchant.tagline && (
-            <Text style={[styles.tagline, { color: theme.textMuted }]} numberOfLines={3}>{merchant.tagline}</Text>
-          )}
-          <View style={[styles.categoryBadge, { backgroundColor: `${accent}10` }]}>
-            {ThemeIcon ? (
-              <ThemeIcon size={14} color={accent} strokeWidth={2} />
-            ) : (
-              <Text style={[styles.categoryText, { color: accent }]}>{getCategoryEmoji(merchant.categorie)}</Text>
-            )}
-            <Text style={[styles.categoryText, { color: accent }]} numberOfLines={1}>
-              {[merchant.categorie, ...(merchant.secondaryCategories ?? [])].join(' · ')}
-            </Text>
-          </View>
-          <View style={styles.statsRow}>
-            <View style={[styles.statChip, { backgroundColor: theme.bgCard }]}>
-              <Eye size={15} color={accent} strokeWidth={2} />
-              <Text style={[styles.statValue, { color: theme.text }]}>{(merchant.profileViews ?? 0).toLocaleString('fr-MA')}</Text>
-              <Text style={[styles.statLabel, { color: theme.textMuted }]}>{t('merchant.views')}</Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={[styles.statChip, { backgroundColor: theme.bgCard }]}>
-              <Users size={15} color={accent} strokeWidth={2} />
-              <Text style={[styles.statValue, { color: theme.text }]}>{(merchant.clientCount ?? 0).toLocaleString('fr-MA')}</Text>
-              <Text style={[styles.statLabel, { color: theme.textMuted }]}>{t('merchant.clients')}</Text>
-            </View>
-          </View>
-        </View>
+      <MerchantStickyHeader
+        title={merchant.nomBoutique}
+        scrollY={scrollY}
+        onBack={handleBack}
+        onShare={handleShare}
+        onMore={openMore}
+      />
 
-        <MerchantSocialLinks merchant={merchant} t={t} />
+      <MerchantBottomBar merchant={merchant} joinLoading={joinLoading} onJoin={handleJoin} onShowQr={handleShowQr} />
 
-        <View style={styles.contentArea}>
-          {!!merchant.description && (
-            <LinearGradient colors={[theme.bgCard, `${accent}10`, `${accent}18`]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.descriptionCard, { backgroundColor: theme.bgCard }]}>
-              <Text style={[styles.sectionTitle, { color: theme.text }]}>{t('merchant.aboutUs')}</Text>
-              <Text style={[styles.descriptionText, { color: theme.textSecondary }]}>{merchant.description}</Text>
-            </LinearGradient>
-          )}
-          {merchant.activeLuckyWheel && <MerchantLuckyWheel merchant={merchant} theme={theme} t={t} />}
-          <MerchantBadges merchant={merchant} theme={theme} t={t} />
-          <MerchantGallery merchant={merchant} theme={theme} t={t} />
-          <MerchantOpeningHours merchant={merchant} theme={theme} t={t} />
-          <MerchantLoyaltyRewards merchant={merchant} justJoined={justJoined} theme={theme} t={t} />
-          <MerchantLocations merchant={merchant} userLocation={userLocation} theme={theme} t={t} />
-        </View>
-      </ScrollView>
-
-      <MerchantBottomBar
-        merchant={merchant} justJoined={justJoined} justLeft={justLeft}
-        joinLoading={joinLoading} leaveLoading={leaveLoading}
-        handleJoinMerchant={handleJoinMerchant} handleLeaveMerchant={handleLeaveMerchant}
-        theme={theme} t={t}
+      <ActionSheet
+        visible={sheet !== 'none'}
+        title={sheet === 'report' ? t('merchant.reportTitle') : merchant.nomBoutique}
+        message={sheet === 'report' ? t('merchant.reportBody') : undefined}
+        options={sheetOptions}
+        cancelLabel={t('common.cancel')}
+        onClose={closeSheet}
       />
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: { flex: 1 },
+  sections: { paddingHorizontal: wp(16), paddingTop: hp(22), gap: hp(14) },
+
+  skeletonBody: { alignItems: 'center', paddingHorizontal: wp(16), gap: hp(14) },
+  skeletonLogo: { marginTop: -ms(52) },
+
+  errorContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: wp(40) },
+  errorIcon: { width: ms(64), height: ms(64), borderRadius: ms(22), alignItems: 'center', justifyContent: 'center', marginBottom: hp(16) },
+  errorTitle: { fontSize: ms(20), marginBottom: hp(8), textAlign: 'center' },
+  errorText: { fontSize: ms(14), textAlign: 'center', lineHeight: ms(22), marginBottom: hp(24) },
+  errorActions: { flexDirection: 'row', gap: wp(10) },
+  errorButton: { paddingHorizontal: wp(24), paddingVertical: hp(12), borderRadius: ms(14) },
+  errorButtonText: { color: '#fff', fontSize: ms(15) },
+});

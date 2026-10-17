@@ -9,6 +9,11 @@ module.exports = ({ config }) => {
     process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_ANDROID || GOOGLE_MAPS_KEY_SHARED;
   const GOOGLE_MAPS_KEY_IOS =
     process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_IOS || GOOGLE_MAPS_KEY_SHARED;
+  // Without a key the react-native-maps plugin strips the manifest entry and
+  // Google Maps crashes natively on open, so refuse to produce that binary.
+  if (process.env.EAS_BUILD_PLATFORM === 'android' && !GOOGLE_MAPS_KEY_ANDROID) {
+    throw new Error('Android EAS build has no Google Maps key: set EXPO_PUBLIC_GOOGLE_MAPS_API_KEY or EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_ANDROID.');
+  }
   // Reversed client ID from Google Cloud Console → OAuth 2.0 → iOS client
   const IOS_GOOGLE_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || '';
   const META_APP_ID = process.env.EXPO_PUBLIC_META_APP_ID || '2706696686345947';
@@ -40,7 +45,7 @@ module.exports = ({ config }) => {
     name: 'JitPlus Pro',
     slug: 'jitpluspro',
     description: 'Loyalty program management for local shops — scan QR codes, track customer visits, and set up stamp-based rewards.',
-    version: '1.7.0',
+    version: '1.7.1',
     orientation: 'portrait',
     icon: './assets/images/icon-white.png',
     scheme: 'jitpluspro',
@@ -62,7 +67,7 @@ module.exports = ({ config }) => {
       supportsTablet: false,
       bundleIdentifier: 'com.jitplus.pro',
       // Initial build number — EAS autoIncrement bumps this on every production build
-      buildNumber: '34',
+      buildNumber: '35',
       // Portrait-only app: disable iPad Split View / Slide Over to avoid orientation-support review issues
       requiresFullScreen: true,
       // Declares standard HTTPS encryption — waives export compliance questionnaire
@@ -113,7 +118,7 @@ module.exports = ({ config }) => {
       // ],
     },
     android: {
-      versionCode: 36,
+      versionCode: 37,
       adaptiveIcon: {
         foregroundImage: './assets/images/adaptive-icon-white.png',
         backgroundColor: '#FFFFFF',
@@ -189,7 +194,16 @@ module.exports = ({ config }) => {
       '@react-native-google-signin/google-signin',
       'expo-apple-authentication',
       // Adds `react-native-maps/Google` to the Podfile and the GMSServices init.
-      ['react-native-maps', { iosGoogleMapsApiKey: GOOGLE_MAPS_KEY_IOS }],
+      // androidGoogleMapsApiKey is mandatory: when omitted, this plugin REMOVES
+      // the com.google.android.geo.API_KEY meta-data written from
+      // android.config.googleMaps, and Google Maps crashes natively on open.
+      [
+        'react-native-maps',
+        {
+          iosGoogleMapsApiKey: GOOGLE_MAPS_KEY_IOS,
+          androidGoogleMapsApiKey: GOOGLE_MAPS_KEY_ANDROID,
+        },
+      ],
       // Explicit iOS / Android SDK targets — avoids surprises on Expo SDK bumps
       // and satisfies Google Play's Android 16 requirement for targetSdkVersion 36.
       [

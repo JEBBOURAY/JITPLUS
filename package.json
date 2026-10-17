@@ -65,7 +65,10 @@
       "prisma",
       "sharp",
       "protobufjs"
-    ]
+    ],
+    "patchedDependencies": {
+      "expo@57.0.27": "patches/expo@57.0.27.patch"
+    }
   },
   "dependencies": {
     "firebase-admin": "^13.8.0",

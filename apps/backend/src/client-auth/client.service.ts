@@ -8,12 +8,11 @@ import {
   NOTIFICATION_REPOSITORY, type INotificationRepository,
   CLIENT_NOTIFICATION_STATUS_REPOSITORY, type IClientNotificationStatusRepository,
   PROFILE_VIEW_REPOSITORY, type IProfileViewRepository,
-  TRANSACTION_REPOSITORY, type ITransactionRepository,
   TRANSACTION_RUNNER, type ITransactionRunner,
 } from '../common/repositories';
 import * as bcrypt from 'bcryptjs';
 import { buildPagination } from '../common/utils';
-import { MERCHANTS_LIST_CACHE_TTL, MERCHANT_DETAIL_CACHE_TTL, PROFILE_STATS_CACHE_TTL, UNREAD_COUNT_CACHE_TTL, EMAIL_LOGO_JITPLUS } from '../common/constants';
+import { MERCHANTS_LIST_CACHE_TTL, MERCHANT_DETAIL_CACHE_TTL, UNREAD_COUNT_CACHE_TTL, EMAIL_LOGO_JITPLUS } from '../common/constants';
 import { MailService } from '../mail/mail.service';
 import { pickEmailLang } from '../mail/transactional-i18n';
 import { PrismaService } from '../prisma/prisma.service';
@@ -32,7 +31,6 @@ export class ClientService {
     @Inject(NOTIFICATION_REPOSITORY) private notificationRepo: INotificationRepository,
     @Inject(CLIENT_NOTIFICATION_STATUS_REPOSITORY) private clientNotifStatusRepo: IClientNotificationStatusRepository,
     @Inject(PROFILE_VIEW_REPOSITORY) private profileViewRepo: IProfileViewRepository,
-    @Inject(TRANSACTION_REPOSITORY) private transactionRepo: ITransactionRepository,
     @Inject(TRANSACTION_RUNNER) private txRunner: ITransactionRunner,
     @Inject(CACHE_MANAGER) private cache: Cache,
     private mailService: MailService,
@@ -305,24 +303,6 @@ export class ClientService {
     return { success: true };
   }
 
-  async getProfileStats(clientId: string) {
-    const cacheKey = `profile-stats:${clientId}`;
-    const cached = await this.cache.get<{ totalScans: number; totalRewards: number }>(cacheKey);
-    if (cached) return cached;
-
-    const [totalScans, totalRewards] = await Promise.all([
-      this.transactionRepo.count({
-        where: { clientId, type: 'EARN_STAMPS', status: 'ACTIVE' },
-      }),
-      this.transactionRepo.count({
-        where: { clientId, type: { in: ['REDEEM_REWARD', 'LUCKY_WHEEL_WIN'] }, status: 'ACTIVE' },
-      }),
-    ]);
-    const result = { totalScans, totalRewards };
-    await this.cache.set(cacheKey, result, PROFILE_STATS_CACHE_TTL);
-    return result;
-  }
-
   async getStampsOverview(clientId: string, page: number = 1, limit: number = 50) {
     const skip = (page - 1) * limit;
     const safeTake = Math.min(limit, 100);
@@ -398,107 +378,6 @@ export class ClientService {
             }
           : undefined,
       })),
-    };
-  }
-
-  async getRewardsHistory(clientId: string, page: number = 1, limit: number = 50) {
-    const skip = (page - 1) * limit;
-    const safeTake = Math.min(limit, 100);
-
-    const [transactions, total] = await Promise.all([
-      this.transactionRepo.findMany({
-        where: { 
-          clientId, 
-          type: { in: ['REDEEM_REWARD', 'LUCKY_WHEEL_WIN'] },
-          status: 'ACTIVE' 
-        },
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: safeTake,
-        select: {
-          id: true,
-          type: true,
-          status: true,
-          amount: true,
-          stamps: true,
-          createdAt: true,
-          merchant: {
-            select: {
-              id: true,
-              nom: true,
-              categorie: true,
-              logoUrl: true,
-            },
-          },
-          reward: {
-            select: {
-              id: true,
-              titre: true,
-            },
-          },
-        },
-      }),
-      this.transactionRepo.count({
-        where: { 
-          clientId, 
-          type: { in: ['REDEEM_REWARD', 'LUCKY_WHEEL_WIN'] },
-          status: 'ACTIVE' 
-        },
-      }),
-    ]);
-
-    return {
-      transactions,
-      meta: {
-        total,
-        page,
-        limit: safeTake,
-        totalPages: Math.ceil(total / safeTake),
-      },
-    };
-  }
-
-  async getTransactionsHistory(clientId: string, page: number = 1, limit: number = 50) {
-    const skip = (page - 1) * limit;
-    const safeTake = Math.min(limit, 100);
-
-    const [transactions, total] = await Promise.all([
-      this.transactionRepo.findMany({
-        where: { clientId },
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: safeTake,
-        select: {
-          id: true,
-          type: true,
-          status: true,
-          amount: true,
-          stamps: true,
-          createdAt: true,
-          merchant: {
-            select: {
-              id: true,
-              nom: true,
-              categorie: true,
-              logoUrl: true,
-            },
-          },
-          reward: {
-            select: {
-              id: true,
-              titre: true,
-            },
-          },
-        },
-      }),
-      this.transactionRepo.count({
-        where: { clientId },
-      }),
-    ]);
-
-    return {
-      transactions,
-      pagination: buildPagination(total, page, safeTake),
     };
   }
 

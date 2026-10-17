@@ -54,15 +54,6 @@ export class LuckyWheelMerchantController {
     return this.LuckyWheelService.getMerchantCampaigns(user.sub);
   }
 
-  @Get('campaigns/:id/stats')
-  @UseGuards(PremiumGuard)
-  async getCampaignStats(
-    @CurrentUser() user: JwtPayload,
-    @Param('id') campaignId: string,
-  ) {
-    return this.LuckyWheelService.getCampaignStats(user.sub, campaignId);
-  }
-
   @Patch('campaigns/:id/status')
   @UseGuards(MerchantOwnerGuard, PremiumGuard)
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 10 } })

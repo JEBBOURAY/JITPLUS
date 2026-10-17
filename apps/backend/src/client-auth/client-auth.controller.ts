@@ -202,28 +202,6 @@ export class ClientController {
     private readonly clientReferralService: ClientReferralService,
   ) {}
 
-  @Get('stats')
-  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 30 } })
-  async getProfileStats(@CurrentUser() user: JwtPayload) {
-    return this.clientService.getProfileStats(user.userId);
-  }
-
-  @Get('rewards')
-  async getRewards(
-    @CurrentUser() user: JwtPayload,
-    @Query() { page, limit }: PaginationQueryDto,
-  ) {
-    return this.clientService.getRewardsHistory(user.userId, page, limit);
-  }
-
-  @Get('transactions')
-  async getTransactions(
-    @CurrentUser() user: JwtPayload,
-    @Query() { page, limit }: PaginationQueryDto,
-  ) {
-    return this.clientService.getTransactionsHistory(user.userId, page, limit);
-  }
-
   @Get('stamps')
   async getStampsOverview(
     @CurrentUser() user: JwtPayload,
@@ -319,11 +297,6 @@ export class ClientController {
   @Patch('notifications/read-all')
   async markAllNotificationsAsRead(@CurrentUser() user: JwtPayload) {
     return this.clientService.markAllAsRead(user.userId);
-  }
-
-  @Patch('notifications/unsubscribe-email')
-  async unsubscribeEmail(@CurrentUser() user: JwtPayload) {
-    return this.clientService.unsubscribeEmail(user.userId);
   }
 
   @Delete('notifications/all')

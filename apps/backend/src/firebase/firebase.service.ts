@@ -1,7 +1,7 @@
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as admin from 'firebase-admin';
-import { IPushProvider, PushMulticastResult } from '../common/interfaces';
+import { IPushProvider } from '../common/interfaces';
 
 @Injectable()
 export class FirebaseService implements OnModuleInit, IPushProvider {

@@ -4,7 +4,6 @@ import {
   BadRequestException,
   NotFoundException,
   ForbiddenException,
-  Logger,
 } from '@nestjs/common';
 import { randomBytes, randomInt } from 'crypto';
 import {
@@ -25,8 +24,6 @@ import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class LuckyWheelService {
-  private readonly logger = new Logger(LuckyWheelService.name);
-
   constructor(
     @Inject(LUCKY_WHEEL_CAMPAIGN_REPOSITORY) private campaignRepo: ILuckyWheelCampaignRepository,
     @Inject(LUCKY_WHEEL_PRIZE_REPOSITORY) private prizeRepo: ILuckyWheelPrizeRepository,
@@ -310,33 +307,6 @@ export class LuckyWheelService {
       },
       orderBy: { createdAt: 'desc' },
     });
-  }
-
-  async getCampaignStats(merchantId: string, campaignId: string) {
-    const campaign = await this.campaignRepo.findUnique({
-      where: { id: campaignId },
-      include: {
-        prizes: true,
-        _count: { select: { tickets: true } },
-      },
-    });
-    if (!campaign) throw new NotFoundException('Campagne introuvable');
-    if (campaign.merchantId !== merchantId) throw new ForbiddenException('Accès refusé');
-
-    const draws = await this.drawRepo.findMany({
-      where: { ticket: { campaignId } },
-      select: { result: true, fulfilment: true, prizeId: true },
-    });
-
-    const totalDraws = draws.length;
-    const wins = draws.filter((d: any) => d.result === 'WON').length;
-    const pendingClaims = draws.filter((d: any) => d.fulfilment === 'PENDING').length;
-    const fulfilled = draws.filter((d: any) => d.fulfilment === 'CLAIMED').length;
-
-    return {
-      campaign,
-      stats: { totalDraws, wins, losses: totalDraws - wins, pendingClaims, fulfilled },
-    };
   }
 
   // ── Client: Available Draws ────────────────────────────────

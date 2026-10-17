@@ -67,6 +67,22 @@ const MAX_RETRIES = 1;
 const RETRY_BASE_MS = 1000;
 
 /**
+ * Whether a failed refresh means the session is really gone (so the user
+ * must be logged out), as opposed to a transient failure where the stored
+ * refresh token is still valid and a later request can refresh again.
+ *
+ * Network errors, timeouts, 429 (refresh is throttled) and 5xx (e.g. a Cloud
+ * Run 504) keep the session. Non-HTTP errors (missing stored credentials, a
+ * malformed refresh response) and 4xx rejections end it.
+ */
+function isRefreshRejected(error: unknown): boolean {
+  const err = error as { isAxiosError?: boolean; response?: { status?: number } } | null;
+  const status = err?.response?.status;
+  if (status) return status >= 400 && status < 500 && status !== 429;
+  return !err?.isAxiosError;
+}
+
+/**
  * Create a pre-configured Axios instance with:
  * - Auth header injection
  * - Automatic retry on network/5xx/429 errors (single retry with backoff;
@@ -164,14 +180,11 @@ export function createApiClient(config: ApiFactoryConfig): AxiosInstance {
         return client(original);
       } catch (refreshError) {
         processQueue(null, refreshError);
-        
-        // Ensure we only log out on real HTTP errors, not transient network drops
-        const ax = refreshError as any;
-        const isNetworkError = ax?.isAxiosError && (ax?.code === 'ECONNABORTED' || ax?.code === 'ERR_NETWORK' || !ax?.response);
-        if (!isNetworkError) {
+
+        if (isRefreshRejected(refreshError)) {
           config.onAuthFailure();
         }
-        
+
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;

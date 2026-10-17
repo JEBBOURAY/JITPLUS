@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, ForbiddenException, NotFoundException, Logger, Inject } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ForbiddenException, NotFoundException, BadRequestException, Logger, Inject } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
 import { JwtService } from '@nestjs/jwt';
@@ -11,7 +11,6 @@ import {
   CLIENT_REPOSITORY, type IClientRepository,
   CLIENT_REFERRAL_REPOSITORY, type IClientReferralRepository,
   PAYOUT_REQUEST_REPOSITORY, type IPayoutRequestRepository,
-  TRANSACTION_REPOSITORY, type ITransactionRepository,
   REWARD_REPOSITORY, type IRewardRepository,
   NOTIFICATION_REPOSITORY, type INotificationRepository,
   AUDIT_LOG_REPOSITORY, type IAuditLogRepository,
@@ -21,10 +20,11 @@ import {
 } from '../common/repositories';
 import { checkLockout, handleFailedLogin, resetLoginAttempts, LockoutDbOps } from '../common/utils/login-lockout.helper';
 import { IMailProvider, MAIL_PROVIDER } from '../common/interfaces';
-import { pickEmailLang, EmailLang } from '../mail/transactional-i18n';
+import { pickEmailLang } from '../mail/transactional-i18n';
 import { formatPayoutAmount, formatPayoutMethod } from '../client-auth/client-referral.service';
 
 import { ADMIN_STATS_CACHE_TTL } from '../common/constants';
+import { AdminDetailsService } from './admin-details.service';
 
 /** TTL for admin session revocation cache entries (24 hours) */
 const ADMIN_REVOKE_TTL = 24 * 60 * 60 * 1000;
@@ -39,7 +39,6 @@ export class AdminAuthService {
     @Inject(CLIENT_REPOSITORY) private clientRepo: IClientRepository,
     @Inject(CLIENT_REFERRAL_REPOSITORY) private clientReferralRepo: IClientReferralRepository,
     @Inject(PAYOUT_REQUEST_REPOSITORY) private payoutReqRepo: IPayoutRequestRepository,
-    @Inject(TRANSACTION_REPOSITORY) private transactionRepo: ITransactionRepository,
     @Inject(REWARD_REPOSITORY) private rewardRepo: IRewardRepository,
     @Inject(NOTIFICATION_REPOSITORY) private notificationRepo: INotificationRepository,
     @Inject(AUDIT_LOG_REPOSITORY) private auditLogRepo: IAuditLogRepository,
@@ -49,7 +48,14 @@ export class AdminAuthService {
     @Inject(CACHE_MANAGER) private cache: Cache,
     @Inject(MAIL_PROVIDER) private mailProvider: IMailProvider,
     private jwtService: JwtService,
+    private details: AdminDetailsService,
   ) {}
+
+  /** findUnique that also returns soft-deleted rows, which the Prisma extension hides by default. */
+  private async findIncludingDeleted(repo: any, id: string, select: Record<string, unknown>): Promise<any> {
+    return (await repo.findUnique({ where: { id }, select }))
+      ?? repo.findFirst({ where: { id, deletedAt: { not: null } }, select });
+  }
 
   /**
    * Revoke an admin session by blacklisting its jti in cache.
@@ -145,8 +151,18 @@ export class AdminAuthService {
   /**
    * List all merchants with their plan info (for admin dashboard).
    */
-  async listMerchants(page = 1, limit = 20, search?: string, plan?: string, status?: string, categorie?: string) {
+  async listMerchants(
+    page = 1,
+    limit = 20,
+    search?: string,
+    plan?: string,
+    status?: string,
+    categorie?: string,
+    opts: { activity?: 'active30' | 'dormant' | 'never'; ville?: string; sort?: 'recent' | 'oldest' | 'name' | 'clients' | 'views' | 'expiring' } = {},
+  ) {
     const skip = (page - 1) * limit;
+    const now = new Date();
+    const d30 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
     const where: Record<string, unknown> = {};
 
@@ -160,6 +176,13 @@ export class AdminAuthService {
 
     if (plan === 'FREE' || plan === 'PREMIUM') {
       where.plan = plan;
+    } else if (plan === 'TRIAL') {
+      where.plan = 'PREMIUM';
+      where.planActivatedByAdmin = false;
+      where.planExpiresAt = { gt: now };
+    } else if (plan === 'PAID') {
+      where.plan = 'PREMIUM';
+      where.planActivatedByAdmin = true;
     }
 
     if (status === 'active') {
@@ -175,6 +198,35 @@ export class AdminAuthService {
     if (categorie) {
       where.categorie = categorie;
     }
+
+    if (opts.ville) {
+      where.ville = { equals: opts.ville, mode: 'insensitive' as const };
+    }
+
+    if (opts.activity === 'active30') {
+      where.transactions = { some: { status: 'ACTIVE', createdAt: { gte: d30 } } };
+    } else if (opts.activity === 'dormant') {
+      where.AND = [
+        { transactions: { some: { status: 'ACTIVE' } } },
+        { transactions: { none: { status: 'ACTIVE', createdAt: { gte: d30 } } } },
+      ];
+    } else if (opts.activity === 'never') {
+      where.transactions = { none: {} };
+    }
+
+    // "expiring" lists plans that still have an upcoming end date, soonest first
+    if (opts.sort === 'expiring') {
+      where.plan = 'PREMIUM';
+      where.planExpiresAt = { gt: now };
+    }
+
+    const orderBy =
+      opts.sort === 'oldest' ? { createdAt: 'asc' as const }
+      : opts.sort === 'name' ? { nom: 'asc' as const }
+      : opts.sort === 'clients' ? { loyaltyCards: { _count: 'desc' as const } }
+      : opts.sort === 'views' ? { profileViews: 'desc' as const }
+      : opts.sort === 'expiring' ? { planExpiresAt: 'asc' as const }
+      : { createdAt: 'desc' as const };
 
     const [merchants, total] = await Promise.all([
       this.merchantRepo.findMany({
@@ -192,6 +244,7 @@ export class AdminAuthService {
           trialStartedAt: true,
           profileViews: true,
           isActive: true,
+          deletedAt: true,
           createdAt: true,
           _count: {
             select: {
@@ -200,18 +253,23 @@ export class AdminAuthService {
             },
           },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy,
         skip,
         take: limit,
       }),
       this.merchantRepo.count({ where }),
     ]);
 
+    const activity = await this.details.merchantActivityByIds(merchants.map((m: any) => m.id));
+
     return {
       merchants: merchants.map((m: any) => ({
         ...m,
         clientCount: m._count.loyaltyCards,
         storeCount: m._count.stores,
+        isTrial: m.plan === 'PREMIUM' && !m.planActivatedByAdmin && !!m.planExpiresAt,
+        lastActivityAt: activity.get(m.id)?.lastActivityAt ?? null,
+        transactions30d: activity.get(m.id)?.transactions30d ?? 0,
         _count: undefined,
       })),
       pagination: {
@@ -222,35 +280,32 @@ export class AdminAuthService {
       },
     };
   }
-
   /**
    * Get a single merchant's plan details.
    */
   async getMerchantDetail(merchantId: string) {
-    const merchant = await this.merchantRepo.findUnique({
-      where: { id: merchantId },
-      select: {
-        id: true,
-        nom: true,
-        email: true,
-        categorie: true,
-        ville: true,
-        phoneNumber: true,
-        plan: true,
-        planExpiresAt: true,
-        planActivatedByAdmin: true,
-        trialStartedAt: true,
-        profileViews: true,
-        socialLinks: true,
-        isActive: true,
-        createdAt: true,
-        _count: {
-          select: {
-            loyaltyCards: { where: { deactivatedAt: null } },
-            stores: true,
-            notifications: true,
-            transactions: true,
-          },
+    const merchant = await this.findIncludingDeleted(this.merchantRepo, merchantId, {
+      id: true,
+      nom: true,
+      email: true,
+      categorie: true,
+      ville: true,
+      phoneNumber: true,
+      plan: true,
+      planExpiresAt: true,
+      planActivatedByAdmin: true,
+      trialStartedAt: true,
+      profileViews: true,
+      socialLinks: true,
+      isActive: true,
+      deletedAt: true,
+      createdAt: true,
+      _count: {
+        select: {
+          loyaltyCards: { where: { deactivatedAt: null } },
+          stores: true,
+          notifications: true,
+          transactions: true,
         },
       },
     });
@@ -261,6 +316,7 @@ export class AdminAuthService {
 
     return {
       ...merchant,
+      isTrial: merchant.plan === 'PREMIUM' && !merchant.planActivatedByAdmin && !!merchant.planExpiresAt,
       clientCount: merchant._count.loyaltyCards,
       storeCount: merchant._count.stores,
       notificationCount: merchant._count.notifications,
@@ -274,18 +330,15 @@ export class AdminAuthService {
    * Built from audit logs + current plan snapshot.
    */
   async getMerchantSubscriptionHistory(merchantId: string) {
-    const merchant = await this.merchantRepo.findUnique({
-      where: { id: merchantId },
-      select: {
-        id: true,
-        nom: true,
-        email: true,
-        plan: true,
-        planActivatedByAdmin: true,
-        planExpiresAt: true,
-        trialStartedAt: true,
-        createdAt: true,
-      },
+    const merchant = await this.findIncludingDeleted(this.merchantRepo, merchantId, {
+      id: true,
+      nom: true,
+      email: true,
+      plan: true,
+      planActivatedByAdmin: true,
+      planExpiresAt: true,
+      trialStartedAt: true,
+      createdAt: true,
     });
 
     if (!merchant) throw new NotFoundException('Commerçant non trouvé');
@@ -467,6 +520,7 @@ export class AdminAuthService {
           COUNT(*) FILTER (WHERE plan = 'FREE') AS free,
           COUNT(*) FILTER (WHERE plan = 'PREMIUM') AS premium
         FROM merchants
+        WHERE deleted_at IS NULL
       `,
       // Single raw query replaces 2 separate client count() calls
       this.rawQuery.queryRaw<{ total: bigint; new_this_month: bigint }>`
@@ -474,15 +528,16 @@ export class AdminAuthService {
           COUNT(*)                                         AS total,
           COUNT(*) FILTER (WHERE created_at >= ${startOfMonth}) AS new_this_month
         FROM clients
+        WHERE deleted_at IS NULL
       `,
       // Single raw query replaces 5 separate transaction count() calls
       this.rawQuery.queryRaw<{ total: bigint; this_month: bigint; earn: bigint; redeem: bigint; adjust: bigint }>`
         SELECT
           COUNT(*) FILTER (WHERE status = 'ACTIVE')                                    AS total,
           COUNT(*) FILTER (WHERE status = 'ACTIVE' AND created_at >= ${startOfMonth})  AS this_month,
-          COUNT(*) FILTER (WHERE type = 'EARN_STAMPS')                                 AS earn,
-          COUNT(*) FILTER (WHERE type = 'REDEEM_REWARD')                               AS redeem,
-          COUNT(*) FILTER (WHERE type = 'ADJUST_STAMPS')                               AS adjust
+          COUNT(*) FILTER (WHERE status = 'ACTIVE' AND type = 'EARN_STAMPS')           AS earn,
+          COUNT(*) FILTER (WHERE status = 'ACTIVE' AND type = 'REDEEM_REWARD')         AS redeem,
+          COUNT(*) FILTER (WHERE status = 'ACTIVE' AND type = 'ADJUST_STAMPS')         AS adjust
         FROM transactions
       `,
       this.rewardRepo.count(),
@@ -538,7 +593,7 @@ export class AdminAuthService {
       this.rawQuery.queryRaw<{ month: string; count: bigint }>`
         SELECT to_char(date_trunc('month', created_at), 'YYYY-MM') AS month, COUNT(*) AS count
         FROM merchants
-        WHERE created_at >= ${sixMonthsAgo}
+        WHERE deleted_at IS NULL AND created_at >= ${sixMonthsAgo}
         GROUP BY date_trunc('month', created_at)
         ORDER BY month
       `,
@@ -615,25 +670,62 @@ export class AdminAuthService {
   /**
    * List all registered clients with contact info (for admin dashboard).
    */
-  async listClients(page = 1, limit = 20, search?: string, status?: string) {
+  async listClients(
+    page = 1,
+    limit = 20,
+    search?: string,
+    status?: string,
+    opts: { activity?: 'active30' | 'inactive' | 'never'; type?: 'registered' | 'anonymous'; sort?: 'recent' | 'oldest' | 'name' | 'cards' } = {},
+  ) {
     const skip = (page - 1) * limit;
+    const d30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
     const where: Record<string, unknown> = {};
+    const and: Record<string, unknown>[] = [];
 
     if (search) {
-      where.OR = [
-        { nom: { contains: search, mode: 'insensitive' as const } },
-        { prenom: { contains: search, mode: 'insensitive' as const } },
-        { email: { contains: search, mode: 'insensitive' as const } },
-        { telephone: { contains: search, mode: 'insensitive' as const } },
-      ];
+      and.push({
+        OR: [
+          { nom: { contains: search, mode: 'insensitive' as const } },
+          { prenom: { contains: search, mode: 'insensitive' as const } },
+          { email: { contains: search, mode: 'insensitive' as const } },
+          { telephone: { contains: search, mode: 'insensitive' as const } },
+        ],
+      });
     }
 
     if (status === 'active') {
       where.deletedAt = null;
     } else if (status === 'deactivated') {
+      // Deleted accounts are anonymised with a deleted_<id> email: keep them out of "deactivated"
       where.deletedAt = { not: null };
+      and.push({ OR: [{ email: null }, { NOT: { email: { startsWith: 'deleted_' } } }] });
+    } else if (status === 'deleted') {
+      where.deletedAt = { not: null };
+      where.email = { startsWith: 'deleted_' };
     }
+
+    if (opts.type === 'anonymous') where.isAnonymous = true;
+    else if (opts.type === 'registered') where.isAnonymous = false;
+
+    if (opts.activity === 'active30') {
+      where.transactions = { some: { status: 'ACTIVE', createdAt: { gte: d30 } } };
+    } else if (opts.activity === 'inactive') {
+      and.push(
+        { transactions: { some: { status: 'ACTIVE' } } },
+        { transactions: { none: { status: 'ACTIVE', createdAt: { gte: d30 } } } },
+      );
+    } else if (opts.activity === 'never') {
+      where.transactions = { none: {} };
+    }
+
+    if (and.length) where.AND = and;
+
+    const orderBy =
+      opts.sort === 'oldest' ? { createdAt: 'asc' as const }
+      : opts.sort === 'name' ? [{ prenom: 'asc' as const }, { nom: 'asc' as const }]
+      : opts.sort === 'cards' ? { loyaltyCards: { _count: 'desc' as const } }
+      : { createdAt: 'desc' as const };
 
     const [clients, total] = await Promise.all([
       this.clientRepo.findMany({
@@ -645,20 +737,29 @@ export class AdminAuthService {
           email: true,
           telephone: true,
           countryCode: true,
+          isAnonymous: true,
+          notifPush: true,
+          pushToken: true,
+          deletedAt: true,
           createdAt: true,
-                  _count: { select: { loyaltyCards: { where: { deactivatedAt: null } } } },
+          _count: { select: { loyaltyCards: { where: { deactivatedAt: null } } } },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy,
         skip,
         take: limit,
       }),
       this.clientRepo.count({ where }),
     ]);
 
+    const activity = await this.details.clientActivityByIds(clients.map((c: any) => c.id));
+
     return {
-      clients: clients.map(({ _count, ...rest }: any) => ({
+      clients: clients.map(({ _count, pushToken, notifPush, ...rest }: any) => ({
         ...rest,
         merchantCount: _count.loyaltyCards,
+        pushReachable: !!pushToken && !!notifPush,
+        lastActivityAt: activity.get(rest.id)?.lastActivityAt ?? null,
+        transactionCount: activity.get(rest.id)?.transactionCount ?? 0,
       })),
       pagination: {
         total,
@@ -668,7 +769,6 @@ export class AdminAuthService {
       },
     };
   }
-
   /**
    * Soft-delete a merchant: mark as deleted + anonymise sensitive fields.
    * Related data (stores, cards, transactions) stays intact for analytics.
@@ -756,40 +856,44 @@ export class AdminAuthService {
   /**
    * List all notifications across all merchants (for admin dashboard tracking).
    */
-  async listNotifications(page = 1, limit = 20, channel?: string, search?: string) {
+  async listNotifications(
+    page = 1,
+    limit = 20,
+    channel?: string,
+    search?: string,
+    opts: { sender?: 'admin' | 'merchant'; merchantId?: string } = {},
+  ) {
     const skip = (page - 1) * limit;
 
     const where: Record<string, unknown> = {};
+    const and: Record<string, unknown>[] = [];
 
     if (channel) {
       // Treat null channel as 'PUSH' (legacy records before channel was set)
       if (channel === 'PUSH') {
-        where.OR = [{ channel: 'PUSH' }, { channel: null }];
+        and.push({ OR: [{ channel: 'PUSH' }, { channel: null }] });
       } else {
         where.channel = channel;
       }
     }
 
     if (search) {
-      const searchConditions: Record<string, unknown>[] = [
-        { title: { contains: search, mode: 'insensitive' } },
-        { body: { contains: search, mode: 'insensitive' } },
-        { merchant: { nom: { contains: search, mode: 'insensitive' } } },
-        { merchant: { email: { contains: search, mode: 'insensitive' } } },
-        { audience: { contains: search, mode: 'insensitive' } },
-      ];
-      // When both channel and search are active, use AND to combine them
-      if (where.OR) {
-        const channelFilter = where.OR;
-        delete where.OR;
-        where.AND = [
-          { OR: channelFilter as any },
-          { OR: searchConditions },
-        ];
-      } else {
-        where.OR = searchConditions;
-      }
+      and.push({
+        OR: [
+          { title: { contains: search, mode: 'insensitive' } },
+          { body: { contains: search, mode: 'insensitive' } },
+          { merchant: { nom: { contains: search, mode: 'insensitive' } } },
+          { merchant: { email: { contains: search, mode: 'insensitive' } } },
+          { audience: { contains: search, mode: 'insensitive' } },
+        ],
+      });
     }
+
+    if (opts.merchantId) where.merchantId = opts.merchantId;
+    else if (opts.sender === 'admin') where.merchantId = null;
+    else if (opts.sender === 'merchant') where.merchantId = { not: null };
+
+    if (and.length) where.AND = and;
 
     const [notifications, total] = await Promise.all([
       this.notificationRepo.findMany({
@@ -816,8 +920,14 @@ export class AdminAuthService {
       this.notificationRepo.count({ where }),
     ]);
 
+    const reads = await this.details.notificationReadsByIds(notifications.map((n: any) => n.id));
+
     return {
-      notifications,
+      notifications: notifications.map((n: any) => ({
+        ...n,
+        inboxDelivered: reads.get(n.id)?.delivered ?? 0,
+        inboxRead: reads.get(n.id)?.read ?? 0,
+      })),
       pagination: {
         total,
         page,
@@ -831,9 +941,7 @@ export class AdminAuthService {
    * Get a single client's detailed profile.
    */
   async getClientDetail(clientId: string) {
-    const client = await this.clientRepo.findUnique({
-      where: { id: clientId },
-      select: {
+    const client = await this.findIncludingDeleted(this.clientRepo, clientId, {
         id: true,
         prenom: true,
         nom: true,
@@ -873,7 +981,6 @@ export class AdminAuthService {
           orderBy: { createdAt: 'desc' as const },
           take: 50,
         },
-      },
     });
 
     if (!client) throw new NotFoundException('Client non trouvé');
@@ -910,11 +1017,11 @@ export class AdminAuthService {
    * Reactivate a client: clear deletedAt.
    */
   async activateClient(clientId: string): Promise<{ nom: string | null; email: string | null }> {
-    const client = await this.clientRepo.findUnique({
-      where: { id: clientId },
-      select: { nom: true, email: true },
-    });
+    const client = await this.findIncludingDeleted(this.clientRepo, clientId, { nom: true, email: true });
     if (!client) throw new NotFoundException('Client non trouvé');
+    if (client.email?.startsWith('deleted_')) {
+      throw new BadRequestException('Compte supprimé et anonymisé : impossible de le réactiver');
+    }
 
     await this.clientRepo.update({
       where: { id: clientId },
@@ -929,10 +1036,8 @@ export class AdminAuthService {
    * Delete a client permanently (soft-delete + anonymise).
    */
   async deleteClient(clientId: string): Promise<{ nom: string | null; email: string | null }> {
-    const client = await this.clientRepo.findUnique({
-      where: { id: clientId },
-      select: { nom: true, email: true },
-    });
+    // Deactivated clients must stay deletable, so bypass the soft-delete filter
+    const client = await this.findIncludingDeleted(this.clientRepo, clientId, { nom: true, email: true });
     if (!client) throw new NotFoundException('Client non trouvé');
 
     await this.clientRepo.update({

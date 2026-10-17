@@ -15,7 +15,26 @@ import type {
   PayoutRequestsResponse,
   PayoutRequestRow,
   PayoutStatus,
+  AdminInsights,
+  InsightPeriod,
+  MerchantListParams,
+  ClientListParams,
+  NotificationListParams,
+  MerchantFacets,
+  MerchantActivity,
+  ClientActivity,
+  NotificationStats,
+  AdminAlerts,
 } from './types';
+
+/** Query string from a params object, dropping empty values. */
+function qs(params: object): string {
+  const out = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null && v !== '') out.set(k, String(v));
+  }
+  return out.toString();
+}
 
 // ── Environment config ─────────────────────────────────────────────────────────
 export type AdminEnv = 'dev' | 'prod';
@@ -68,8 +87,7 @@ let _idleTimer: ReturnType<typeof setTimeout> | null = null;
 function resetIdleTimer() {
   if (_idleTimer) clearTimeout(_idleTimer);
   _idleTimer = setTimeout(() => {
-    setToken(null);
-    window.location.href = '/login';
+    void logout().finally(() => { window.location.href = '/login'; });
   }, IDLE_TIMEOUT_MS);
 }
 
@@ -127,21 +145,32 @@ export async function login(email: string, password: string): Promise<AdminInfo>
   return data.admin;
 }
 
+/** Revokes the session server-side so a leaked token cannot be replayed after logout. */
+export async function logout(): Promise<void> {
+  if (!_token) return;
+  try {
+    await req<{ message: string }>('/admin/logout', { method: 'POST' });
+  } catch {
+    // Best effort: the local token is cleared regardless.
+  } finally {
+    setToken(null);
+  }
+}
+
 // ── Stats ──────────────────────────────────────────────────────────────────────
 export const getStats = () => req<GlobalStats>('/admin/stats');
+export const getInsights = (days: InsightPeriod = 30) =>
+  req<AdminInsights>(`/admin/stats/insights?days=${days}`);
+export const getAlerts = () => req<AdminAlerts>('/admin/alerts');
 
 // ── Merchants ──────────────────────────────────────────────────────────────────
-export const getMerchants = (page = 1, limit = 20, search?: string, plan?: string, status?: string, categorie?: string) => {
-  const qs = new URLSearchParams({
-    page: String(page),
-    limit: String(limit),
-    ...(search ? { search } : {}),
-    ...(plan ? { plan } : {}),
-    ...(status ? { status } : {}),
-    ...(categorie ? { categorie } : {}),
-  }).toString();
-  return req<MerchantsResponse>(`/admin/merchants?${qs}`);
-};
+export const getMerchants = (params: MerchantListParams = {}) =>
+  req<MerchantsResponse>(`/admin/merchants?${qs({ page: 1, limit: 20, ...params })}`);
+
+export const getMerchantFacets = () => req<MerchantFacets>('/admin/merchants/facets');
+
+export const getMerchantActivity = (id: string) =>
+  req<MerchantActivity>(`/admin/merchants/${id}/activity`);
 
 export const getMerchantDetail = (id: string) =>
   req<MerchantDetail>(`/admin/merchants/${id}`);
@@ -187,29 +216,21 @@ export const getAuditLogs = (page = 1, limit = 30, action?: string, targetType?:
 };
 
 // ── Notifications ──────────────────────────────────────────────────────────────
-export const getNotifications = (page = 1, limit = 20, channel?: string, search?: string) => {
-  const qs = new URLSearchParams({
-    page: String(page),
-    limit: String(limit),
-    ...(channel ? { channel } : {}),
-    ...(search ? { search } : {}),
-  }).toString();
-  return req<NotificationsResponse>(`/admin/notifications?${qs}`);
-};
+export const getNotifications = (params: NotificationListParams = {}) =>
+  req<NotificationsResponse>(`/admin/notifications?${qs({ page: 1, limit: 20, ...params })}`);
+
+export const getNotificationStats = (days: InsightPeriod = 30) =>
+  req<NotificationStats>(`/admin/notifications/stats?days=${days}`);
 
 // ── Clients ────────────────────────────────────────────────────────────────────
-export const getClients = (page = 1, limit = 20, search?: string, status?: string) => {
-  const qs = new URLSearchParams({
-    page: String(page),
-    limit: String(limit),
-    ...(search ? { search } : {}),
-    ...(status ? { status } : {}),
-  }).toString();
-  return req<ClientsResponse>(`/admin/clients?${qs}`);
-};
+export const getClients = (params: ClientListParams = {}) =>
+  req<ClientsResponse>(`/admin/clients?${qs({ page: 1, limit: 20, ...params })}`);
 
 export const getClientDetail = (id: string) =>
   req<ClientDetail>(`/admin/clients/${id}`);
+
+export const getClientActivity = (id: string) =>
+  req<ClientActivity>(`/admin/clients/${id}/activity`);
 
 export const deactivateClient = (id: string) =>
   req<{ success: boolean }>(`/admin/clients/${id}/deactivate`, { method: 'POST' });

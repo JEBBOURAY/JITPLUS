@@ -424,7 +424,10 @@ export default function QRScreen() {
         Alert.alert(t('qr.permissionDeniedTitle'), t('qr.permissionDeniedMsg'));
         return;
       }
-      await MediaLibrary.saveToLibraryAsync(uri);
+      // Since expo-media-library 57, the legacy saveToLibraryAsync() exported
+      // from the package root always throws; Asset.create() is its replacement.
+      // ViewShot returns a bare path on iOS; Photos needs a file:// URL.
+      await MediaLibrary.Asset.create(uri.startsWith('/') ? `file://${uri}` : uri);
       hapticSuccess();
       Alert.alert(t('qr.savedTitle'), t('qr.savedMsg'));
     } catch (error) {

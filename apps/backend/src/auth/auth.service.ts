@@ -531,66 +531,6 @@ export class AuthService implements OnApplicationBootstrap {
     return { message: 'Déconnecté' };
   }
 
-  /**
-   * Refresh a merchant/team-member access token.
-   * Verifies the current session (via jti) is still valid,
-   * issues a new JWT with a fresh expiry, keeping the same session.
-   */
-  async refreshToken(user: {
-    userId: string;
-    email?: string;
-    type: string;
-    role?: string;
-    sessionId?: string;
-    teamMemberId?: string;
-    teamMemberName?: string;
-  }): Promise<AuthResult> {
-    // Parallelize: verify session + re-fetch merchant in a single round-trip
-    const [session, merchant] = await Promise.all([
-      user.sessionId
-        ? this.deviceSessionRepo.findUnique({
-            where: { tokenId: user.sessionId },
-            select: { id: true },
-          })
-        : Promise.resolve(null),
-      this.merchantRepo.findUnique({
-        where: { id: user.userId },
-        select: MERCHANT_OWNER_SELECT,
-      }),
-    ]);
-
-    if (user.sessionId && !session) {
-      throw new UnauthorizedException('Session expirée. Veuillez vous reconnecter.');
-    }
-    if (!merchant) {
-      throw new UnauthorizedException('Compte introuvable');
-    }
-    if (!merchant.isActive) {
-      throw new UnauthorizedException('Ce compte commerce n\'existe plus');
-    }
-
-    const { pushToken: _pt, ...merchantData } = merchant;
-
-    const payload: Record<string, unknown> = {
-      sub: user.userId,
-      email: user.email,
-      type: user.type,
-      role: user.role ?? 'owner',
-      jti: user.sessionId,
-    };
-
-    if (user.teamMemberId) {
-      payload.teamMemberId = user.teamMemberId;
-      payload.teamMemberName = user.teamMemberName;
-    }
-
-    return {
-      access_token: this.jwtService.sign(payload),
-      merchant: merchantData,
-      userType: user.type,
-    };
-  }
-
   /** Check if an email is already registered (timing-safe: always queries DB). */
   async checkEmailExists(email: string): Promise<{ exists: boolean }> {
     const merchant = await this.merchantRepo.findUnique({

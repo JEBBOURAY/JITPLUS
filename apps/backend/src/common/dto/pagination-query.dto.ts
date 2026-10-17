@@ -1,4 +1,4 @@
-import { IsOptional, IsInt, Min, Max, IsString } from 'class-validator';
+import { IsOptional, IsInt, Min, Max, IsString, IsIn, IsUUID } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -51,6 +51,21 @@ export class MerchantListQueryDto extends SearchPaginationQueryDto {
   @IsOptional()
   @IsString()
   categorie?: string;
+
+  @ApiPropertyOptional({ enum: ['active30', 'dormant', 'never'] })
+  @IsOptional()
+  @IsIn(['active30', 'dormant', 'never'])
+  activity?: 'active30' | 'dormant' | 'never';
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  ville?: string;
+
+  @ApiPropertyOptional({ enum: ['recent', 'oldest', 'name', 'clients', 'views', 'expiring'] })
+  @IsOptional()
+  @IsIn(['recent', 'oldest', 'name', 'clients', 'views', 'expiring'])
+  sort?: 'recent' | 'oldest' | 'name' | 'clients' | 'views' | 'expiring';
 }
 
 /**
@@ -61,6 +76,21 @@ export class ClientListQueryDto extends SearchPaginationQueryDto {
   @IsOptional()
   @IsString()
   status?: string;
+
+  @ApiPropertyOptional({ enum: ['active30', 'inactive', 'never'] })
+  @IsOptional()
+  @IsIn(['active30', 'inactive', 'never'])
+  activity?: 'active30' | 'inactive' | 'never';
+
+  @ApiPropertyOptional({ enum: ['registered', 'anonymous'] })
+  @IsOptional()
+  @IsIn(['registered', 'anonymous'])
+  type?: 'registered' | 'anonymous';
+
+  @ApiPropertyOptional({ enum: ['recent', 'oldest', 'name', 'cards'] })
+  @IsOptional()
+  @IsIn(['recent', 'oldest', 'name', 'cards'])
+  sort?: 'recent' | 'oldest' | 'name' | 'cards';
 }
 
 /**
@@ -71,4 +101,14 @@ export class NotificationListQueryDto extends SearchPaginationQueryDto {
   @IsOptional()
   @IsString()
   channel?: string;
+
+  @ApiPropertyOptional({ enum: ['admin', 'merchant'] })
+  @IsOptional()
+  @IsIn(['admin', 'merchant'])
+  sender?: 'admin' | 'merchant';
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  merchantId?: string;
 }

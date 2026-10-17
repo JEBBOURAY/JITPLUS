@@ -105,34 +105,3 @@ export function buildPagination(total: number, page: number, limit: number): Pag
   };
 }
 
-/**
- * Build a Prisma date filter for a given period.
- * Replaces duplicated period→dateFilter logic in dashboard/stats.
- */
-export function buildDateFilter(period: 'day' | 'week' | 'month' | 'year'): { gte: Date } {
-  const now = new Date();
-  const start = new Date(now);
-
-  switch (period) {
-    case 'day':
-      start.setHours(0, 0, 0, 0);
-      break;
-    case 'week': {
-      const day = start.getDay();
-      const diff = (day + 6) % 7;
-      start.setDate(start.getDate() - diff);
-      start.setHours(0, 0, 0, 0);
-      break;
-    }
-    case 'month':
-      start.setDate(1);
-      start.setHours(0, 0, 0, 0);
-      break;
-    case 'year':
-      start.setMonth(0, 1);
-      start.setHours(0, 0, 0, 0);
-      break;
-  }
-
-  return { gte: start };
-}

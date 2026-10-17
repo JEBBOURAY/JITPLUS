@@ -85,10 +85,11 @@ const api = createApiClient({
     }
 
     const baseURL = resolveApiUrl(ENV_URL, IS_DEV);
-    const { data } = await axios.post(`${baseURL}/auth/refresh-token`, {
-      refresh_token: refreshToken,
-      session_id: sessionId,
-    });
+    const { data } = await axios.post(
+      `${baseURL}/auth/refresh-token`,
+      { refresh_token: refreshToken, session_id: sessionId },
+      { timeout: API_TIMEOUT_MS },
+    );
 
     if (data.refresh_token) await SecureStore.setItemAsync('refreshToken', data.refresh_token);
     if (data.session_id) await SecureStore.setItemAsync('sessionId', data.session_id);

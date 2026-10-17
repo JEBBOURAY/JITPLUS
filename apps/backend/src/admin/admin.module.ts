@@ -4,6 +4,8 @@ import { PassportModule } from '@nestjs/passport';
 import { AdminController } from './admin.controller';
 import { AdminAuthService } from './admin.service';
 import { AuditLogService } from './audit-log.service';
+import { AdminInsightsService } from './admin-insights.service';
+import { AdminDetailsService } from './admin-details.service';
 import { MerchantPlanModule } from '../merchant/merchant-plan.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { jwtModuleFactory } from '../common/jwt/jwt-module.factory';
@@ -17,7 +19,7 @@ import { AdminGuard } from '../auth/guards/admin.guard';
     NotificationsModule,
   ],
   controllers: [AdminController],
-  providers: [AdminAuthService, AuditLogService, AdminGuard],
+  providers: [AdminAuthService, AdminInsightsService, AdminDetailsService, AuditLogService, AdminGuard],
   exports: [AuditLogService],
 })
 export class AdminModule {}

@@ -26,7 +26,6 @@ import { VerifyQrDto } from './dto/verify-qr.dto';
 import { VerifyClientDto } from './dto/verify-client.dto';
 import { RegisterDeviceDto } from './dto/register-device.dto';
 import { DeleteAccountDto } from './dto/delete-account.dto';
-import { RecordWhatsappUsageDto } from './dto';
 import { IStorageProvider, STORAGE_PROVIDER } from '../common/interfaces';
 import { ImageOptimizerService } from '../storage/image-optimizer.service';
 import { MerchantProfileData } from '../common/prisma-selects';
@@ -391,18 +390,6 @@ export class MerchantController {
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 3 } })
   async deleteAccount(@Body() dto: DeleteAccountDto, @CurrentUser() user: JwtPayload) {
     return this.profileService.deleteAccount(user.userId, dto.password, dto.idToken, dto.appleIdentityToken);
-  }
-
-  @Get('me')
-  async getMe(@CurrentUser() user: JwtPayload) {
-    return {
-      userId: user.userId,
-      email: user.email,
-      type: user.type,
-      role: user.role,
-      teamMemberId: user.teamMemberId || null,
-      teamMemberName: user.teamMemberName || null,
-    };
   }
 
   @Get('clients')

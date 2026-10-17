@@ -4,9 +4,6 @@ export const BCRYPT_SALT_ROUNDS = 12;
 /** Default HTTP port when PORT env var is not set */
 export const DEFAULT_PORT = 3000;
 
-/** Max results returned by getClients */
-export const MAX_CLIENT_RESULTS = 100;
-
 /** Max results returned by getClientsForScan */
 export const MAX_SCAN_RESULTS = 50;
 
@@ -44,9 +41,6 @@ export const MAX_STAMP_VALIDITY_DAYS = 730;
 
 /** How long before expiry the client gets the "stamps expire soon" push */
 export const STAMP_EXPIRY_REMINDER_DAYS = 7;
-
-/** QR v2 token TTL in seconds (short-lived, replayable only within this window) */
-export const QR_TOKEN_TTL_SECONDS = 60;
 
 /** Max stores per merchant (by plan) */
 export const FREE_MAX_STORES = 1;
@@ -92,8 +86,6 @@ export const UNREAD_COUNT_CACHE_TTL = 30_000;
 export const ADMIN_STATS_CACHE_TTL = 2 * 60_000;
 /** Referral stats cache (5 min) */
 export const REFERRAL_STATS_CACHE_TTL = 5 * 60_000;
-/** Client profile stats (scans/rewards count) cache (30 s) */
-export const PROFILE_STATS_CACHE_TTL = 30_000;
 
 // ── Client refresh token ────────────────────────────────────
 /** Client refresh token lifetime in days */

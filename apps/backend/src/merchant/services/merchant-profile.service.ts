@@ -16,10 +16,6 @@ import {
   LOYALTY_CARD_REPOSITORY, type ILoyaltyCardRepository,
   TRANSACTION_REPOSITORY, type ITransactionRepository,
   TRANSACTION_RUNNER, type ITransactionRunner,
-  RAW_QUERY_RUNNER, type IRawQueryRunner,
-  REWARD_REPOSITORY, type IRewardRepository,
-  TEAM_MEMBER_REPOSITORY, type ITeamMemberRepository,
-  STORE_REPOSITORY, type IStoreRepository,
 } from '../../common/repositories';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { UpdateProfileDto } from '../dto/update-profile.dto';
@@ -51,10 +47,6 @@ export class MerchantProfileService {
     @Inject(LOYALTY_CARD_REPOSITORY) private loyaltyCardRepo: ILoyaltyCardRepository,
     @Inject(TRANSACTION_REPOSITORY) private transactionRepoDelegate: ITransactionRepository,
     @Inject(TRANSACTION_RUNNER) private txRunner: ITransactionRunner,
-    @Inject(RAW_QUERY_RUNNER) private rawQuery: IRawQueryRunner,
-    @Inject(REWARD_REPOSITORY) private rewardRepo: IRewardRepository,
-    @Inject(TEAM_MEMBER_REPOSITORY) private teamMemberRepo: ITeamMemberRepository,
-    @Inject(STORE_REPOSITORY) private storeRepo: IStoreRepository,
     @Inject(CACHE_MANAGER) private cache: Cache,
     private notifications: NotificationsService,
     private configService: ConfigService,

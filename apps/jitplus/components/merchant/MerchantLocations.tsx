@@ -1,112 +1,108 @@
-import React from 'react';
-import { View, Text, Pressable, Linking, Platform } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { MapPin, Phone, ChevronRight } from 'lucide-react-native';
-import { palette } from '@/contexts/ThemeContext';
+import React, { memo } from 'react';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { MapPin, Navigation, Phone } from 'lucide-react-native';
+import { useTheme } from '@/contexts/ThemeContext';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { useAppFonts } from '@/utils/fonts';
 import { haptic } from '@/utils/haptics';
-import { merchantStyles as styles } from './merchantStyles';
-import { getDistanceSafe, formatDistance } from '@/utils/distance';
-import { ms } from '@/utils/responsive';
-import { getMerchantAccent } from '@/utils/merchantAccent';
-import type { Merchant } from '@/types';
-import type { ThemeColors } from '@/contexts/ThemeContext';
+import { formatDistance } from '@/utils/distance';
+import { callPhone, openDirections } from '@/utils/merchantLinks';
+import { hasCoords, type StoreWithDistance } from '@/utils/merchantStores';
+import { wp, hp, ms } from '@/utils/responsive';
+import MerchantSection from './MerchantSection';
 
-interface MerchantLocationsProps {
-  merchant: Merchant;
-  userLocation: { latitude: number; longitude: number } | null;
-  theme: ThemeColors;
-  t: (key: string, opts?: Record<string, unknown>) => string;
+interface Props {
+  stores: StoreWithDistance[];
+  merchantName: string;
+  accent: string;
 }
 
-function MerchantLocations({ merchant, userLocation, theme, t }: MerchantLocationsProps) {
-  if (!merchant.stores?.length) return null;
-  const accent = getMerchantAccent(merchant.themeColor);
+function MerchantLocations({ stores, merchantName, accent }: Props) {
+  const theme = useTheme();
+  const { t } = useLanguage();
+  const fonts = useAppFonts();
+
+  if (stores.length === 0) return null;
+  const multiple = stores.length > 1;
 
   return (
-    <LinearGradient
-      colors={[theme.bgCard, `${accent}10`, `${accent}18`]}
-      start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-      style={[styles.otherLocationsCard, { backgroundColor: theme.bgCard }]}
+    <MerchantSection
+      title={multiple ? t('merchant.otherLocationsTitle') : t('merchant.locationTitle')}
+      icon={MapPin}
+      accent={accent}
+      right={multiple ? (
+        <Text style={[styles.count, { color: theme.textMuted, fontFamily: fonts.semibold }]}>{stores.length}</Text>
+      ) : undefined}
     >
-      <View style={styles.otherLocationsHeader}>
-        <View style={[styles.cardIconBadge, { backgroundColor: `${palette.gold}12` }]}>
-          <MapPin size={ms(16)} color={palette.gold} strokeWidth={1.5} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.sectionTitle, { color: theme.text, marginBottom: 0 }]}>
-            {merchant.stores.length > 1 ? t('merchant.otherLocationsTitle') : t('merchant.locationTitle')}
-          </Text>
-          {merchant.stores.length > 1 && (
-            <Text style={[styles.otherLocationsCount, { color: theme.textMuted }]}>
-              {t('merchant.otherLocationsCount', { count: merchant.stores.length })}
-            </Text>
-          )}
-        </View>
-      </View>
-      {merchant.stores.map((store, idx: number) => (
-        <Pressable
-          key={store.id}
-          onPress={async () => {
+      <View style={styles.list}>
+        {stores.map((store, i) => {
+          const name = store.nom || merchantName;
+          const address = store.adresse || [store.quartier, store.ville].filter(Boolean).join(', ');
+          const canNavigate = hasCoords(store);
+          const navigate = () => {
+            if (!hasCoords(store)) return;
             haptic();
-            if (store.latitude == null || store.longitude == null) return;
-            if (isNaN(store.latitude) || isNaN(store.longitude)) return;
-            const label = encodeURIComponent(store.nom || merchant.nomBoutique);
-            const url = Platform.select({
-              ios: `maps:0,0?q=${label}@${store.latitude},${store.longitude}`,
-              default: `geo:${store.latitude},${store.longitude}?q=${store.latitude},${store.longitude}(${label})`,
-            });
-            if (!url) return;
-            try {
-              const canOpen = await Linking.canOpenURL(url);
-              if (canOpen) await Linking.openURL(url);
-              else await Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${store.latitude},${store.longitude}`);
-            } catch { /* maps app unavailable */ }
-          }}
-          style={({ pressed }) => [
-            styles.storeItem,
-            { backgroundColor: pressed ? `${palette.gold}06` : 'transparent' },
-            idx === 0 && { borderTopWidth: 0 },
-          ]}
-        >
-          <View style={[styles.storeItemDot, { backgroundColor: palette.gold }]} />
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.storeItemName, { color: theme.text }]} numberOfLines={1}>{store.nom}</Text>
-            {(store.adresse || store.quartier || store.ville) && (
-              <Text style={[styles.storeAddress, { color: theme.textMuted }]} numberOfLines={1}>
-                {store.adresse || [store.quartier, store.ville].filter(Boolean).join(', ')}
-              </Text>
-            )}
-            {!!store.telephone && (
-              <Pressable
-                onPress={async () => {
-                  haptic();
-                  const url = `tel:${store.telephone}`;
-                  try {
-                    const canOpen = await Linking.canOpenURL(url);
-                    if (canOpen) await Linking.openURL(url);
-                  } catch { /* no phone capability (iPad, etc.) */ }
-                }}
-                hitSlop={4}
-                style={({ pressed }) => [styles.storePhoneRow, { opacity: pressed ? 0.6 : 1 }]}
-                accessibilityRole="button" accessibilityLabel={`${t('merchant.call')} ${store.nom}`}
-              >
-                <Phone size={13} color={palette.emerald} strokeWidth={2} />
-                <Text style={[styles.storePhone, { color: palette.emerald }]} numberOfLines={1}>{store.telephone}</Text>
-              </Pressable>
-            )}
-          </View>
-          {userLocation && store.latitude != null && store.longitude != null && (
-            <Text style={[styles.storeDistance, { color: theme.textMuted }]} numberOfLines={1}>
-              {formatDistance(getDistanceSafe(userLocation.latitude, userLocation.longitude, store.latitude, store.longitude))}
-            </Text>
-          )}
-          {store.latitude != null && store.longitude != null && (
-            <ChevronRight size={16} color={palette.gold} strokeWidth={2} />
-          )}
-        </Pressable>
-      ))}
-    </LinearGradient>
+            void openDirections(store.latitude, store.longitude, name);
+          };
+          return (
+            <Pressable
+              key={store.id}
+              onPress={navigate}
+              disabled={!canNavigate}
+              style={({ pressed }) => [
+                styles.row,
+                i > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.border },
+                pressed && { opacity: 0.7 },
+              ]}
+              accessibilityRole={canNavigate ? 'button' : undefined}
+              accessibilityLabel={canNavigate ? `${t('merchant.directions')} ${name}` : name}
+            >
+              <View style={styles.flex}>
+                <Text style={[styles.name, { color: theme.text, fontFamily: fonts.semibold }]} numberOfLines={1}>{name}</Text>
+                {!!address && (
+                  <Text style={[styles.address, { color: theme.textMuted, fontFamily: fonts.regular }]} numberOfLines={2}>
+                    {address}
+                  </Text>
+                )}
+                {store.distanceKm != null && (
+                  <Text style={[styles.distance, { color: accent, fontFamily: fonts.semibold }]}>
+                    {formatDistance(store.distanceKm)}
+                  </Text>
+                )}
+              </View>
+              {!!store.telephone && (
+                <Pressable
+                  onPress={() => { haptic(); void callPhone(store.telephone!); }}
+                  style={({ pressed }) => [styles.action, { backgroundColor: `${theme.success}14`, opacity: pressed ? 0.7 : 1 }]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${t('merchant.call')} ${name}`}
+                  hitSlop={4}
+                >
+                  <Phone size={ms(17)} color={theme.success} strokeWidth={2} />
+                </Pressable>
+              )}
+              {canNavigate && (
+                <View style={[styles.action, { backgroundColor: `${accent}14` }]}>
+                  <Navigation size={ms(17)} color={accent} strokeWidth={2} />
+                </View>
+              )}
+            </Pressable>
+          );
+        })}
+      </View>
+    </MerchantSection>
   );
 }
 
-export default React.memo(MerchantLocations);
+const styles = StyleSheet.create({
+  flex: { flex: 1 },
+  count: { fontSize: ms(13) },
+  list: { marginTop: -hp(4) },
+  row: { flexDirection: 'row', alignItems: 'center', gap: wp(10), paddingVertical: hp(12) },
+  name: { fontSize: ms(14) },
+  address: { fontSize: ms(12), lineHeight: ms(17), marginTop: hp(2) },
+  distance: { fontSize: ms(12), marginTop: hp(4) },
+  action: { width: ms(40), height: ms(40), borderRadius: ms(14), alignItems: 'center', justifyContent: 'center' },
+});
+
+export default memo(MerchantLocations);

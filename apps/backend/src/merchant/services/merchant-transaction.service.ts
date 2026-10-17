@@ -13,7 +13,6 @@ import {
   TRANSACTION_REPOSITORY, type ITransactionRepository,
   TRANSACTION_RUNNER, type ITransactionRunner,
 } from '../../common/repositories';
-import { AuditLogService, AuditAction, AuditTargetType } from '../../admin/audit-log.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { EventsGateway } from '../../events';
 import { MerchantPlanService } from './merchant-plan.service';
@@ -40,7 +39,6 @@ export class MerchantTransactionService {
     private notifications: NotificationsService,
     private eventsGateway: EventsGateway,
     private planService: MerchantPlanService,
-    private auditLogService: AuditLogService,
   ) {}
 
   async createTransaction(
@@ -377,137 +375,6 @@ export class MerchantTransactionService {
       transactions: maskedTransactions,
       pagination: buildPagination(total, page, limit),
     };
-  }
-
-  async cancelTransaction(transactionId: string, merchantId: string) {
-    // Race-condition fix: all checks + mutations inside a Serializable transaction
-    const result = await withRetry(() =>
-      this.txRunner.run(async (prisma) => {
-        const transaction = await prisma.transaction.findUnique({
-          where: { id: transactionId },
-          select: { id: true, merchantId: true, clientId: true, type: true, stamps: true, status: true },
-        });
-
-        if (!transaction) throw new NotFoundException('Transaction non trouvée');
-        if (transaction.merchantId !== merchantId) {
-          throw new BadRequestException('Cette transaction ne vous appartient pas');
-        }
-        if (transaction.status === 'CANCELLED') {
-          throw new BadRequestException('Cette transaction est déjà annulée');
-        }
-        if (transaction.type === 'COUPON_REDEEM') {
-          throw new BadRequestException('Un coupon utilisé ne peut pas être annulé');
-        }
-        const cancelledTransaction = await prisma.transaction.update({
-          where: { id: transactionId },
-          data: { status: 'CANCELLED' },
-        });
-
-        const loyaltyCard = await prisma.loyaltyCard.findUnique({
-          where: { clientId_merchantId: { clientId: transaction.clientId, merchantId } },
-          select: { id: true, stamps: true },
-        });
-
-        if (!loyaltyCard) throw new NotFoundException('Carte de fidélité non trouvée');
-
-        let newStamps: number;
-        if (transaction.type === 'EARN_STAMPS') {
-          newStamps = Math.max(0, loyaltyCard.stamps - transaction.stamps);
-        } else if (transaction.type === 'REDEEM_REWARD') {
-          newStamps = loyaltyCard.stamps + transaction.stamps;
-        } else if (transaction.type === 'ADJUST_STAMPS') {
-          newStamps = Math.max(0, loyaltyCard.stamps - transaction.stamps);
-        } else {
-          throw new BadRequestException('Type de transaction invalide');
-        }
-
-        await prisma.loyaltyCard.update({
-          where: { clientId_merchantId: { clientId: transaction.clientId, merchantId } },
-          data: { stamps: newStamps },
-        });
-
-        return cancelledTransaction;
-      }, { isolationLevel: 'Serializable' }),
-    );
-
-    this.auditLogService.log({
-      ctx: { actorType: 'MERCHANT', merchantId },
-      action: AuditAction.CANCEL_TRANSACTION,
-      targetType: AuditTargetType.MERCHANT,
-      targetId: transactionId,
-      metadata: { transactionType: result.type },
-    });
-
-    return result;
-  }
-
-
-  async fulfillGift(transactionId: string, merchantId: string) {
-    return withRetry(() =>
-      this.txRunner.run(async (prisma) => {
-        const transaction = await prisma.transaction.findUnique({
-          where: { id: transactionId },
-          select: { id: true, merchantId: true, type: true, status: true, giftStatus: true },
-        });
-
-        if (!transaction) throw new NotFoundException('Transaction non trouvee');
-        if (transaction.merchantId !== merchantId) {
-          throw new BadRequestException('Cette transaction ne vous appartient pas');
-        }
-        if (transaction.type !== 'REDEEM_REWARD') {
-          throw new BadRequestException('Seules les transactions cadeau peuvent etre marquees comme remises');
-        }
-        if (transaction.status === 'CANCELLED') {
-          throw new BadRequestException('Cette transaction est annulee');
-        }
-        if (transaction.giftStatus === 'FULFILLED') {
-          throw new BadRequestException('Ce cadeau a deja ete remis');
-        }
-
-        return prisma.transaction.update({
-          where: { id: transactionId },
-          data: { giftStatus: 'FULFILLED', fulfilledAt: new Date() },
-        });
-      }, { isolationLevel: 'Serializable' }),
-    );
-  }
-
-  async getPendingGifts(merchantId: string) {
-    const transactions = await this.transactionRepoDelegate.findMany({
-      where: {
-        merchantId,
-        type: 'REDEEM_REWARD',
-        status: 'ACTIVE',
-        giftStatus: 'PENDING',
-      },
-      select: {
-        id: true,
-        clientId: true,
-        rewardId: true,
-        stamps: true,
-        giftStatus: true,
-        createdAt: true,
-        client: { select: { id: true, prenom: true, nom: true, email: true, shareInfoMerchants: true } },
-        reward: { select: { id: true, titre: true, cout: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 50,
-    });
-
-    return transactions.map((tx: any) => {
-      if (tx.client && tx.client.shareInfoMerchants === false) {
-        return {
-          ...tx,
-          client: {
-            ...tx.client,
-            prenom: maskName(tx.client.prenom),
-            nom: maskName(tx.client.nom),
-            email: null,
-          },
-        };
-      }
-      return tx;
-    });
   }
 
   // ─── Private: Transaction Notifications ──────────────────────────────────

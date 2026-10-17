@@ -1,156 +1,120 @@
-import React, { useEffect, useRef, useMemo } from 'react';
-import { View, Text, Animated, Easing } from 'react-native';
+import React, { memo } from 'react';
+import { View, Text, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Ticket, Trophy, Clock, ShoppingBag, Gift } from 'lucide-react-native';
-import { palette } from '@/contexts/ThemeContext';
-import { merchantStyles as styles } from './merchantStyles';
-import { hp, wp, ms } from '@/utils/responsive';
-import { StyleSheet } from 'react-native';
-import type { Merchant } from '@/types';
-import type { ThemeColors } from '@/contexts/ThemeContext';
+import { Ticket, Trophy, Clock, ShoppingBag, Gift, type LucideIcon } from 'lucide-react-native';
+import { brandGradientFull } from '@/contexts/ThemeContext';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { useAppFonts } from '@/utils/fonts';
+import { wp, hp, ms } from '@/utils/responsive';
+import type { MerchantActiveLuckyWheel } from '@/types';
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const DIAG_START = { x: 0, y: 0 } as const;
+const DIAG_END = { x: 1, y: 1 } as const;
+const MAX_PRIZES = 6;
 
 interface Props {
-  merchant: Merchant;
-  theme: ThemeColors;
-  t: (key: string, opts?: Record<string, unknown>) => string;
+  wheel: MerchantActiveLuckyWheel;
 }
 
-function MerchantLuckyWheel({ merchant, theme, t }: Props) {
-  const luckyWheel = merchant.activeLuckyWheel;
-  const pulse = useRef(new Animated.Value(0)).current;
+function MerchantLuckyWheel({ wheel }: Props) {
+  const { t } = useLanguage();
+  const fonts = useAppFonts();
 
-  useEffect(() => {
-    if (!luckyWheel) return;
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, { toValue: 1, duration: 1800, easing: Easing.inOut(Easing.ease), useNativeDriver: false }),
-        Animated.timing(pulse, { toValue: 0, duration: 1800, easing: Easing.inOut(Easing.ease), useNativeDriver: false }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [luckyWheel, pulse]);
-
-  // Memoize interpolations — stable refs, recalculated only when pulse changes
-  const borderColor = useMemo(() => pulse.interpolate({
-    inputRange: [0, 0.5, 1],
-    outputRange: [palette.violet, palette.gold, palette.violet],
-  }), [pulse]);
-  const glowBg = useMemo(() => pulse.interpolate({
-    inputRange: [0, 0.5, 1],
-    outputRange: [`${palette.violet}12`, `${palette.gold}18`, `${palette.violet}12`],
-  }), [pulse]);
-  const badgeBg = useMemo(() => pulse.interpolate({
-    inputRange: [0, 0.5, 1],
-    outputRange: [`${palette.violet}20`, `${palette.gold}25`, `${palette.violet}20`],
-  }), [pulse]);
-
-  if (!luckyWheel) return null;
-
-  const endsAt = new Date(luckyWheel.endsAt);
-  const now = new Date();
-  const daysLeft = Math.max(0, Math.ceil((endsAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
+  const daysLeft = Math.max(0, Math.ceil((new Date(wheel.endsAt).getTime() - Date.now()) / DAY_MS));
   const endsLabel = daysLeft === 0
     ? t('merchant.luckyWheelEndsToday')
     : daysLeft === 1
       ? t('merchant.luckyWheelEndsTomorrow')
       : t('merchant.luckyWheelEndsIn', { days: daysLeft });
 
+  const chips: { key: string; Icon: LucideIcon; label: string }[] = [
+    ...(wheel.globalWinRate > 0
+      ? [{ key: 'rate', Icon: Trophy, label: t('merchant.luckyWheelWinRate', { rate: Math.round(wheel.globalWinRate * 100) }) }]
+      : []),
+    ...(wheel.minSpendAmount > 0
+      ? [{ key: 'min', Icon: ShoppingBag, label: t('merchant.luckyWheelMinSpend', { amount: wheel.minSpendAmount }) }]
+      : []),
+    { key: 'ends', Icon: Clock, label: endsLabel },
+  ];
+  const prizes = wheel.prizes.slice(0, MAX_PRIZES);
+
   return (
-    <Animated.View style={[styles.loyaltyRewardCard, { backgroundColor: theme.bgCard, borderWidth: 1.5, borderColor }]}>
-      <LinearGradient
-        colors={[theme.bgCard, `${palette.violet}08`, `${palette.gold}10`]}
-        start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-        style={local.gradientInner}
-      >
-        {/* Header */}
-        <View style={local.header}>
-          <Animated.View style={[styles.cardIconBadge, { backgroundColor: badgeBg }]}>
-            <Ticket size={ms(16)} color={palette.gold} strokeWidth={1.5} />
-          </Animated.View>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.cardLabel, { color: palette.violet, fontWeight: '800' }]}>{t('merchant.luckyWheelLabel')}</Text>
-            <Text style={[styles.cardValue, { color: theme.text }]} numberOfLines={1}>{luckyWheel.name}</Text>
+    <LinearGradient colors={brandGradientFull} start={DIAG_START} end={DIAG_END} style={styles.card}>
+      <View pointerEvents="none" style={styles.watermark}>
+        <Ticket size={ms(130)} color="rgba(255,255,255,0.10)" strokeWidth={1.2} />
+      </View>
+
+      <View style={styles.header}>
+        <View style={styles.iconWrap}>
+          <Ticket size={ms(18)} color="#fff" strokeWidth={2} />
+        </View>
+        <View style={styles.flex}>
+          <Text style={[styles.overline, { fontFamily: fonts.semibold }]}>{t('merchant.luckyWheelLabel')}</Text>
+          <Text style={[styles.name, { fontFamily: fonts.bold }]} numberOfLines={2}>{wheel.name}</Text>
+        </View>
+      </View>
+
+      {!!wheel.description && (
+        <Text style={[styles.description, { fontFamily: fonts.regular }]} numberOfLines={3}>{wheel.description}</Text>
+      )}
+
+      <View style={styles.chips}>
+        {chips.map(({ key, Icon, label }) => (
+          <View key={key} style={styles.chip}>
+            <Icon size={ms(13)} color="#fff" strokeWidth={2} />
+            <Text style={[styles.chipText, { fontFamily: fonts.semibold }]} numberOfLines={1}>{label}</Text>
           </View>
-        </View>
+        ))}
+      </View>
 
-        {/* Description */}
-        {!!luckyWheel.description && (
-          <Text style={[local.description, { color: theme.textSecondary }]} numberOfLines={3}>
-            {luckyWheel.description}
-          </Text>
-        )}
+      {prizes.length > 0 && (
+        <>
+          <Text style={[styles.prizesTitle, { fontFamily: fonts.bold }]}>{t('merchant.luckyWheelPrizes')}</Text>
+          <View style={styles.prizes}>
+            {prizes.map((prize) => (
+              <View key={prize.id} style={styles.prize}>
+                <Gift size={ms(13)} color="#FDE68A" strokeWidth={2} />
+                <Text style={[styles.prizeText, { fontFamily: fonts.medium }]} numberOfLines={1}>{prize.label}</Text>
+              </View>
+            ))}
+          </View>
+        </>
+      )}
 
-        {/* Info chips */}
-        <View style={local.chipsRow}>
-          <Animated.View style={[local.chip, { backgroundColor: glowBg }]}>
-            <Trophy size={ms(13)} color={palette.gold} strokeWidth={1.5} />
-            <Text style={[local.chipText, { color: palette.gold }]} numberOfLines={1}>
-              {t('merchant.luckyWheelWinRate', { rate: Math.round((luckyWheel.globalWinRate ?? 0) * 100) })}
-            </Text>
-          </Animated.View>
-          {luckyWheel.minSpendAmount > 0 && (
-            <Animated.View style={[local.chip, { backgroundColor: glowBg }]}>
-              <ShoppingBag size={ms(13)} color={palette.gold} strokeWidth={1.5} />
-              <Text style={[local.chipText, { color: palette.gold }]} numberOfLines={1}>
-                {t('merchant.luckyWheelMinSpend', { amount: luckyWheel.minSpendAmount })}
-              </Text>
-            </Animated.View>
-          )}
-          <Animated.View style={[local.chip, { backgroundColor: glowBg }]}>
-            <Clock size={ms(13)} color={palette.gold} strokeWidth={1.5} />
-            <Text style={[local.chipText, { color: palette.gold }]} numberOfLines={1}>
-              {endsLabel}
-            </Text>
-          </Animated.View>
-        </View>
-
-        {/* Prizes */}
-        {luckyWheel.prizes.length > 0 && (
-          <>
-            <View style={[styles.loyaltyDivider, { backgroundColor: theme.borderLight }]} />
-            <View style={local.prizesHeader}>
-              <Animated.View style={[styles.cardIconBadge, { backgroundColor: badgeBg }]}>
-                <Trophy size={ms(16)} color={palette.gold} strokeWidth={1.5} />
-              </Animated.View>
-              <Text style={[styles.cardLabel, { color: palette.violet, marginBottom: 0, fontWeight: '700' }]}>
-                {t('merchant.luckyWheelPrizes')}
-              </Text>
-            </View>
-            <View style={local.prizesList}>
-              {luckyWheel.prizes.map((prize) => (
-                <View key={prize.id} style={[local.prizeItem, { backgroundColor: `${palette.violet}08`, borderColor: `${palette.gold}30` }]}>
-                  <Gift size={ms(14)} color={palette.gold} strokeWidth={1.5} />
-                  <Text style={[local.prizeLabel, { color: theme.text }]} numberOfLines={1}>{prize.label}</Text>
-                </View>
-              ))}
-            </View>
-          </>
-        )}
-      </LinearGradient>
-    </Animated.View>
+      <Text style={[styles.hint, { fontFamily: fonts.regular }]}>{t('merchant.luckyWheelHint')}</Text>
+    </LinearGradient>
   );
 }
 
-const local = StyleSheet.create({
-  gradientInner: { borderRadius: ms(16), padding: wp(16) },
+const styles = StyleSheet.create({
+  flex: { flex: 1 },
+  card: { borderRadius: ms(22), padding: wp(16), overflow: 'hidden' },
+  watermark: { position: 'absolute', top: -ms(20), right: -ms(24), transform: [{ rotate: '-18deg' }] },
   header: { flexDirection: 'row', alignItems: 'center', gap: wp(12) },
-  description: { fontSize: ms(13), lineHeight: ms(19), marginTop: hp(8) },
-  chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: wp(6), marginTop: hp(10) },
+  iconWrap: {
+    width: ms(40), height: ms(40), borderRadius: ms(13),
+    backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center',
+  },
+  overline: { color: 'rgba(255,255,255,0.8)', fontSize: ms(11), textTransform: 'uppercase', letterSpacing: 0.6 },
+  name: { color: '#fff', fontSize: ms(17), marginTop: hp(2) },
+  description: { color: 'rgba(255,255,255,0.88)', fontSize: ms(13), lineHeight: ms(19), marginTop: hp(10) },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: wp(6), marginTop: hp(12) },
   chip: {
-    flex: 1,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: wp(4),
-    paddingHorizontal: wp(6), paddingVertical: hp(5), borderRadius: ms(10),
-    overflow: 'hidden',
+    flexDirection: 'row', alignItems: 'center', gap: wp(5),
+    paddingHorizontal: wp(10), paddingVertical: hp(5), borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.16)',
   },
-  chipText: { fontSize: ms(11), fontWeight: '700', flexShrink: 1 },
-  prizesHeader: { flexDirection: 'row', alignItems: 'center', gap: wp(12), marginBottom: hp(8) },
-  prizesList: { gap: hp(6) },
-  prizeItem: {
-    flexDirection: 'row', alignItems: 'center', gap: wp(8),
-    paddingHorizontal: wp(12), paddingVertical: hp(8), borderRadius: ms(12), borderWidth: 1,
+  chipText: { color: '#fff', fontSize: ms(12) },
+  prizesTitle: { color: '#fff', fontSize: ms(13), marginTop: hp(16), marginBottom: hp(8) },
+  prizes: { flexDirection: 'row', flexWrap: 'wrap', gap: wp(6) },
+  prize: {
+    flexDirection: 'row', alignItems: 'center', gap: wp(6), maxWidth: '100%',
+    paddingHorizontal: wp(10), paddingVertical: hp(6), borderRadius: ms(12),
+    backgroundColor: 'rgba(15,23,42,0.22)',
   },
-  prizeLabel: { fontSize: ms(13), fontWeight: '600', flex: 1 },
+  prizeText: { color: '#fff', fontSize: ms(12), flexShrink: 1 },
+  hint: { color: 'rgba(255,255,255,0.78)', fontSize: ms(12), lineHeight: ms(17), marginTop: hp(14) },
 });
 
-export default React.memo(MerchantLuckyWheel);
+export default memo(MerchantLuckyWheel);

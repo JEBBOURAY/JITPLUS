@@ -14,6 +14,7 @@ import {
   Platform,
   NativeModules,
 } from 'react-native';
+import { requireOptionalNativeModule } from 'expo';
 import { MapPin, ExternalLink, Navigation } from 'lucide-react-native';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { palette } from '@/contexts/ThemeContext';
@@ -24,11 +25,39 @@ let RNMapView: React.ComponentType<any> | null = null;
 let RNMarker: React.ComponentType<any> | null = null;
 let RN_PROVIDER_GOOGLE: string | null = null;
 
+/**
+ * Google Maps on Android throws a native "API key not found" exception
+ * (uncatchable from JS, kills the app) when the manifest has no key. The
+ * react-native-maps config plugin deletes that key when it is listed without
+ * `androidGoogleMapsApiKey`. Read the app config embedded in the binary at
+ * build time: `Constants.expoConfig` comes from the OTA manifest instead, and
+ * strips `android.config`, so it cannot tell which binary is installed.
+ */
+function isAndroidMapsKeyMissing(): boolean {
+  if (Platform.OS !== 'android') return false;
+  try {
+    const raw = requireOptionalNativeModule<{ manifest?: string | Record<string, unknown> }>('ExponentConstants')?.manifest;
+    if (!raw) return false;
+    const embedded = (typeof raw === 'string' ? JSON.parse(raw) : raw) as { plugins?: unknown[] };
+    const entry = embedded.plugins?.find((p) => (Array.isArray(p) ? p[0] : p) === 'react-native-maps');
+    if (!entry) return false;
+    const options = Array.isArray(entry) ? (entry[1] as { androidGoogleMapsApiKey?: string } | undefined) : undefined;
+    return !options?.androidGoogleMapsApiKey;
+  } catch {
+    return false;
+  }
+}
+
 try {
   const maps = require('react-native-maps');
   RNMapView = maps.default;
   RNMarker = maps.Marker;
   RN_PROVIDER_GOOGLE = maps.PROVIDER_GOOGLE;
+  if (isAndroidMapsKeyMissing()) {
+    if (__DEV__) logWarn('SafeMapView', 'Android Google Maps API key missing — using fallback');
+    RNMapView = null;
+    RNMarker = null;
+  }
 } catch (e) {
   if (__DEV__) logWarn('SafeMapView', 'react-native-maps not available (Expo Go?):', e);
 }

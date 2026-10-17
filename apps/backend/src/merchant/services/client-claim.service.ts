@@ -1,6 +1,5 @@
 import {
   Injectable,
-  Logger,
   Inject,
   BadRequestException,
   NotFoundException,
@@ -45,8 +44,6 @@ export interface QuickAddInput {
 
 @Injectable()
 export class ClientClaimService {
-  private readonly logger = new Logger(ClientClaimService.name);
-
   constructor(
     @Inject(CLIENT_REPOSITORY) private clientRepo: IClientRepository,
     @Inject(MERCHANT_REPOSITORY) private merchantRepo: IMerchantRepository,
@@ -428,16 +425,6 @@ export class ClientClaimService {
       });
     }
     return out;
-  }
-
-  /**
-   * Back-compat: return only the most recent pending claim. Kept for callers
-   * that just need a single merchant reference.
-   */
-  async findPendingClaimForClient(clientId: string): Promise<{ merchantId: string; merchantName: string | null } | null> {
-    const all = await this.findPendingClaimsForClient(clientId);
-    if (all.length === 0) return null;
-    return { merchantId: all[0].merchantId, merchantName: all[0].merchantName };
   }
 
   /**

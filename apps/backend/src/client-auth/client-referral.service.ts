@@ -7,7 +7,6 @@ import {
   CLIENT_REPOSITORY, type IClientRepository,
   CLIENT_REFERRAL_REPOSITORY, type IClientReferralRepository,
   PAYOUT_REQUEST_REPOSITORY, type IPayoutRequestRepository,
-  MERCHANT_REPOSITORY, type IMerchantRepository,
   TRANSACTION_RUNNER,
 } from '../common/repositories';
 import { ITransactionRunner } from '../common/repositories/transaction-runner';
@@ -43,7 +42,6 @@ export class ClientReferralService {
     @Inject(CLIENT_REPOSITORY) private clientRepo: IClientRepository,
     @Inject(CLIENT_REFERRAL_REPOSITORY) private clientReferralRepo: IClientReferralRepository,
     @Inject(PAYOUT_REQUEST_REPOSITORY) private payoutReqRepo: IPayoutRequestRepository,
-    @Inject(MERCHANT_REPOSITORY) private merchantRepo: IMerchantRepository,
     @Inject(TRANSACTION_RUNNER) private readonly tx: ITransactionRunner,
     @Inject(CACHE_MANAGER) private readonly cache: Cache,
     @Inject(MAIL_PROVIDER) private readonly mailProvider: IMailProvider,
