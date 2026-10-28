@@ -44,7 +44,7 @@ export default React.memo(function CustomTabBar({ state, emitter, navigateToTab 
   const unreadCount = unreadData?.unreadCount ?? 0;
   const insets = useSafeAreaInsets();
 
-  const handleTabPress = useCallback((route: typeof state.routes[number], index: number) => {
+  const handleTabPress = useCallback((route: BottomTabBarProps['state']['routes'][number], index: number) => {
     haptic();
     const event = emitter.emit({
       type: 'tabPress',

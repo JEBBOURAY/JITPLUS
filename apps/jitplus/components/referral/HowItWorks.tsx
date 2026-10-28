@@ -1,4 +1,3 @@
-import React from 'react';
 import { View } from 'react-native';
 import { Text } from '@/components/AppText';
 import { Share2, Smartphone, BadgeCheck, CreditCard } from 'lucide-react-native';

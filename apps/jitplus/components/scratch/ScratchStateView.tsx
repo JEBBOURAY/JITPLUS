@@ -9,27 +9,25 @@ interface AppFonts { regular: string; medium: string; semibold: string; bold: st
 interface Props {
   icon: React.ReactNode;
   title: string;
-  action?: { label: string; onPress: () => void; icon?: React.ReactNode };
   onBack: () => void;
   fonts: AppFonts;
   t: (key: string, options?: Record<string, unknown>) => string;
 }
 
 /** Terminal state of the scratch screen (not found, expired, cancelled, unavailable). */
-export default React.memo(function ScratchStateView({ icon, title, action, onBack, fonts, t }: Props) {
+export default React.memo(function ScratchStateView({ icon, title, onBack, fonts, t }: Props) {
   return (
     <View style={shared.stateWrap}>
       <View style={styles.stateCard}>
         <View style={styles.stateIcon}>{icon}</View>
         <Text style={[styles.stateTitle, { fontFamily: fonts.bold }]}>{title}</Text>
         <TouchableOpacity
-          onPress={action?.onPress ?? onBack}
+          onPress={onBack}
           activeOpacity={0.8}
           style={shared.ghostBtn}
           accessibilityRole="button"
         >
-          {action?.icon}
-          <Text style={[shared.ghostBtnText, { fontFamily: fonts.semibold }]}>{action?.label ?? t('common.back')}</Text>
+          <Text style={[shared.ghostBtnText, { fontFamily: fonts.semibold }]}>{t('common.back')}</Text>
         </TouchableOpacity>
       </View>
     </View>

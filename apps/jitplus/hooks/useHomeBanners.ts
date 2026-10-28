@@ -14,8 +14,7 @@ export const WELCOME_FLAG_NEW = 'new';
 const REFERRAL_POPUP_TS_KEY = '@jitplus_referral_ts';
 
 export function useHomeBanners(
-  client: { prenom?: string | null } | null,
-  notifData: { pages: Array<{ notifications?: ClientNotification[] }> } | undefined,
+  notifData: { pages: { notifications?: ClientNotification[] }[] } | undefined,
   luckyWheelTickets: unknown[],
 ) {
   // ── Welcome banner ──
@@ -30,14 +29,13 @@ export function useHomeBanners(
 
   // ── LuckyWheel FAB animations ──
   const luckyWheelSpinAnim = useRef(new Animated.Value(0)).current;
-  const luckyWheelPulseAnim = useRef(new Animated.Value(1)).current;
 
   // ── Reward notification banner ──
   const [rewardBannerNotif, setRewardBannerNotif] = useState<ClientNotification | null>(null);
   const rewardBannerAnim = useRef(new Animated.Value(0)).current;
   const shownRewardIdsRef = useRef(new Set<string>());
 
-  // ── LuckyWheel FAB: periodic spin + pulse when tickets are available ──
+  // ── LuckyWheel FAB: periodic spin when tickets are available ──
   // Rotation runs for 1 turn then pauses ~4s to save battery on long idle sessions.
   useEffect(() => {
     if (luckyWheelTickets.length > 0) {
@@ -52,24 +50,12 @@ export function useHomeBanners(
           Animated.delay(4000),
         ]),
       );
-      const pulse = Animated.loop(
-        Animated.sequence([
-          Animated.timing(luckyWheelPulseAnim, {
-            toValue: 1.12, duration: 800, easing: Easing.inOut(Easing.ease), useNativeDriver: true,
-          }),
-          Animated.timing(luckyWheelPulseAnim, {
-            toValue: 1, duration: 800, easing: Easing.inOut(Easing.ease), useNativeDriver: true,
-          }),
-        ]),
-      );
       spin.start();
-      pulse.start();
-      return () => { spin.stop(); pulse.stop(); };
+      return () => { spin.stop(); };
     } else {
       luckyWheelSpinAnim.setValue(0);
-      luckyWheelPulseAnim.setValue(1);
     }
-  }, [luckyWheelTickets.length, luckyWheelSpinAnim, luckyWheelPulseAnim]);
+  }, [luckyWheelTickets.length, luckyWheelSpinAnim]);
 
   // ── Welcome banner on focus ──
   useFocusEffect(
@@ -141,7 +127,6 @@ export function useHomeBanners(
     showLuckyWheel,
     setShowLuckyWheel,
     luckyWheelSpinAnim,
-    luckyWheelPulseAnim,
     rewardBannerNotif,
     setRewardBannerNotif,
     rewardBannerAnim,

@@ -1,4 +1,4 @@
-import React, { createContext, forwardRef, useContext } from 'react';
+import { createContext, forwardRef, useContext } from 'react';
 import {
   StyleSheet,
   Text as RNText,

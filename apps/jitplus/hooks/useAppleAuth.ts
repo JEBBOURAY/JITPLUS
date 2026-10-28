@@ -28,13 +28,13 @@ interface UseAppleAuthOptions {
 
 export function useAppleAuth({ actionLabel, onCancel }: UseAppleAuthOptions) {
   const { appleLogin } = useAuth();
-  const auth = useAuthProvider({ actionLabel, onCancel });
+  const auth = useAuthProvider({ actionLabel });
 
   const promptApple = useCallback(async () => {
     auth.reset();
 
     if (!AppleAuthentication || Platform.OS !== 'ios') {
-      auth.handleError(null, 'appleAuth');
+      auth.handleError('appleAuth');
       return;
     }
 
@@ -57,7 +57,7 @@ export function useAppleAuth({ actionLabel, onCancel }: UseAppleAuthOptions) {
       });
 
       if (!credential.identityToken) {
-        auth.handleError(null, 'appleAuth');
+        auth.handleError('appleAuth');
         return;
       }
 
@@ -76,7 +76,7 @@ export function useAppleAuth({ actionLabel, onCancel }: UseAppleAuthOptions) {
         auth.setLoading(false);
         return;
       }
-      auth.handleError(e, 'appleAuth');
+      auth.handleError('appleAuth');
     }
   }, [appleLogin, auth, onCancel]);
 

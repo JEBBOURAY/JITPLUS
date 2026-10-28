@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { View, StyleSheet, ActivityIndicator, TouchableOpacity, BackHandler } from 'react-native';
 import { Text } from '@/components/AppText';
 import StarLoader from '@/components/StarLoader';
@@ -63,8 +63,8 @@ export default function ClaimScreen() {
       invalidateScratchCards(queryClient);
       queryClient.invalidateQueries({ queryKey: queryKeys.stamps });
       setScreen({ kind: 'success', result });
-    } catch (err: any) {
-      const status = err?.response?.status;
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
       if (status === 410) setScreen({ kind: 'error', messageKey: 'errorExpired' });
       else if (status === 403) setScreen({ kind: 'error', messageKey: 'errorAlreadyUsed' });
       else setScreen({ kind: 'error', messageKey: 'errorInvalid' });

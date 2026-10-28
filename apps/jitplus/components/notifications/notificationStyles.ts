@@ -2,7 +2,7 @@ import { StyleSheet } from 'react-native';
 import { palette } from '@/contexts/ThemeContext';
 import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
 
-export const CARD_GAP = hp(10);
+const CARD_GAP = hp(10);
 
 export const notificationStyles = StyleSheet.create({
   container: { flex: 1 },

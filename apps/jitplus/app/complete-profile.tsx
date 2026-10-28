@@ -2,7 +2,6 @@ import { useState, useRef, useCallback, useMemo } from 'react';
 import { View, KeyboardAvoidingView, Platform, Alert, ScrollView, Animated } from 'react-native';
 import { Text, TextInput } from '@/components/AppText';
 import { goHomeAfterLogin } from '@/services/pendingDeal';
-export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -22,6 +21,7 @@ import { PasswordStep } from '@/components/completeProfile/PasswordStep';
 import { BirthdayStep } from '@/components/completeProfile/BirthdayStep';
 import { BottomActionBar } from '@/components/completeProfile/BottomActionBar';
 import { s, ACTIVE_COLORS, GRAD_START, GRAD_END_DIAG, ICON_20 } from '@/components/completeProfile/styles';
+export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 
 const RE_NAME_STRIP = /[^\p{L}\p{M}\s'-]/gu;
 

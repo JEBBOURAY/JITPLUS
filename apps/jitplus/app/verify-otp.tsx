@@ -12,7 +12,6 @@ import {
 } from 'react-native';
 import { Text, TextInput } from '@/components/AppText';
 import { goHomeAfterLogin } from '@/services/pendingDeal';
-export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 import { router, useLocalSearchParams } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
@@ -25,6 +24,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { wp, hp, ms, fontSize, radius, SCREEN } from '@/utils/responsive';
 import FormError from '@/components/FormError';
 import StarLoader from '@/components/StarLoader';
+export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 
 const OTP_LENGTH = 6;
 const MAX_ATTEMPTS = 5;
@@ -75,7 +75,7 @@ export default function VerifyOtpScreen() {
       ]);
       if (lockStr) lockoutUntilRef.current = Number(lockStr);
       if (attStr) attemptCountRef.current = Number(attStr);
-    })();
+    })().catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -104,15 +104,15 @@ export default function VerifyOtpScreen() {
     if (attemptCountRef.current >= MAX_ATTEMPTS) {
       lockoutUntilRef.current = now + LOCKOUT_MS;
       attemptCountRef.current = 0; // reset counter for after lockout
-      SecureStore.setItemAsync(SS_LOCKOUT_UNTIL, String(lockoutUntilRef.current));
-      SecureStore.setItemAsync(SS_ATTEMPT_COUNT, '0');
+      SecureStore.setItemAsync(SS_LOCKOUT_UNTIL, String(lockoutUntilRef.current)).catch(() => {});
+      SecureStore.setItemAsync(SS_ATTEMPT_COUNT, '0').catch(() => {});
       setError(t('verifyOtp.tooManyAttempts'));
       setCode('');
       return;
     }
     attemptCountRef.current += 1;
     lastAttemptRef.current = now;
-    SecureStore.setItemAsync(SS_ATTEMPT_COUNT, String(attemptCountRef.current));
+    SecureStore.setItemAsync(SS_ATTEMPT_COUNT, String(attemptCountRef.current)).catch(() => {});
 
     verifyingRef.current = true;
     setIsLoading(true);
@@ -124,8 +124,8 @@ export default function VerifyOtpScreen() {
 
     if (result.success) {
       // Clear persisted lockout state on success
-      SecureStore.deleteItemAsync(SS_LOCKOUT_UNTIL);
-      SecureStore.deleteItemAsync(SS_ATTEMPT_COUNT);
+      SecureStore.deleteItemAsync(SS_LOCKOUT_UNTIL).catch(() => {});
+      SecureStore.deleteItemAsync(SS_ATTEMPT_COUNT).catch(() => {});
       if (isForgotPasswordFlow) {
         // Forgot password: user is now authenticated via OTP, go to set new password
         router.replace({ pathname: '/set-password', params: { isForgotPassword: '1' } });

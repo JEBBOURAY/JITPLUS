@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { Keyboard, TextInput, FlatList } from 'react-native';
+import { Keyboard, TextInput } from 'react-native';
 import { haptic } from '@/utils/haptics';
 import { useStampsOverview, useNotifications, useLuckyWheelAvailableDraws } from '@/hooks/useQueryHooks';
 import { prefetchImages } from '@/utils/imageCache';
@@ -10,7 +10,6 @@ export function useHomeData(client: { prenom?: string | null } | null) {
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const searchInputRef = useRef<TextInput>(null);
-  const flatListRef = useRef<FlatList>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchQuery), 150);
@@ -63,7 +62,6 @@ export function useHomeData(client: { prenom?: string | null } | null) {
     searchQuery,
     debouncedSearch,
     searchInputRef,
-    flatListRef,
 
     stampsData,
     isLoading,

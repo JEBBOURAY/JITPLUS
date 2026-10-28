@@ -5,9 +5,11 @@ import { Platform } from 'react-native';
 const IS_DEV = __DEV__;
 
 // ── Storage keys ──────────────────────────────────────────
-export const TOKEN_KEY = 'auth_token';
-export const REFRESH_TOKEN_KEY = 'refresh_token';
-export const QR_TOKEN_KEY = 'qr_permanent_token';export const PROFILE_CACHE_KEY = 'client_profile_cache';const REMEMBER_ME_KEY = 'rememberMe';
+const TOKEN_KEY = 'auth_token';
+const REFRESH_TOKEN_KEY = 'refresh_token';
+export const QR_TOKEN_KEY = 'qr_permanent_token';
+const PROFILE_CACHE_KEY = 'client_profile_cache';
+const REMEMBER_ME_KEY = 'rememberMe';
 const EMAIL_OTP_NEW_USER_KEY = 'email_otp_new_user';
 
 // ── SecureStore wrapper (falls back to memory on web) ──
@@ -19,7 +21,7 @@ const memoryTokens: Record<string, string | null> = {
 /** When false, tokens are kept in memory only (not persisted to SecureStore) */
 let _shouldPersist = true;
 
-export async function getStored(key: string): Promise<string | null> {
+async function getStored(key: string): Promise<string | null> {
   if (Platform.OS === 'web') return memoryTokens[key] ?? null;
   if (memoryTokens[key]) return memoryTokens[key];
   try {
@@ -32,7 +34,7 @@ export async function getStored(key: string): Promise<string | null> {
   }
 }
 
-export async function setStored(key: string, value: string): Promise<void> {
+async function setStored(key: string, value: string): Promise<void> {
   memoryTokens[key] = value;
   if (Platform.OS !== 'web' && _shouldPersist) {
     try { await SecureStore.setItemAsync(key, value); } catch (e) {
@@ -41,7 +43,7 @@ export async function setStored(key: string, value: string): Promise<void> {
   }
 }
 
-export async function removeStored(key: string): Promise<void> {
+async function removeStored(key: string): Promise<void> {
   memoryTokens[key] = null;
   if (Platform.OS !== 'web') {
     try { await SecureStore.deleteItemAsync(key); } catch (e) {

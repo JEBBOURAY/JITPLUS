@@ -4,15 +4,12 @@ import {
   TouchableOpacity, Platform, Share, Linking, Alert,
 } from 'react-native';
 import { Text } from '@/components/AppText';
-export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { ArrowLeft } from 'lucide-react-native';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useQuery } from '@tanstack/react-query';
 
-let Clipboard: typeof import('expo-clipboard') | null = null;
-try { Clipboard = require('expo-clipboard'); } catch { /* module not available */ }
 import { useLanguage } from '@/contexts/LanguageContext';
 import { api } from '@/services/api';
 import { wp, hp, ms, fontSize as FS, radius } from '@/utils/responsive';
@@ -27,6 +24,10 @@ import {
   MyReferralsList, PayoutHistoryList, ReferralContactCard,
 } from '@/components/referral';
 import Skeleton from '@/components/Skeleton';
+export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
+
+let Clipboard: typeof import('expo-clipboard') | null = null;
+try { Clipboard = require('expo-clipboard'); } catch { /* module not available */ }
 
 // ── JitPlus Pro store URLs (the merchant app being referred) ──────────────
 const PRO_ANDROID_URL = 'https://play.google.com/store/apps/details?id=com.jitplus.pro';
@@ -47,9 +48,9 @@ export default function ReferralScreen() {
     staleTime: 2 * 60 * 1000,
   });
 
-  const { data: payoutHistory = [], refetch: refetchHistory } = useQuery<Array<{
+  const { data: payoutHistory = [], refetch: refetchHistory } = useQuery<{
     id: string; amount: number; status: string; method: string; createdAt: string;
-  }>>({
+  }[]>({
     queryKey: ['payoutHistory'],
     queryFn: () => api.getPayoutHistory(),
     staleTime: 2 * 60 * 1000,

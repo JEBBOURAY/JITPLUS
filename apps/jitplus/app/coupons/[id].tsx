@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text } from '@/components/AppText';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -7,10 +7,6 @@ import QRCode from 'react-native-qrcode-svg';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { ArrowLeft, AlertCircle, Copy, Check, Ban, CircleCheck, Clock } from 'lucide-react-native';
 
-let Clipboard: typeof import('expo-clipboard') | null = null;
-try { Clipboard = require('expo-clipboard'); } catch { /* module not available */ }
-
-export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { wp, hp, ms } from '@/utils/responsive';
@@ -23,6 +19,10 @@ import { useTransientFlag } from '@/hooks/useTransientFlag';
 import {
   COUPON_QR_PREFIX, describeCouponConditions, formatCouponCode, formatRewardValue,
 } from '@jitplus/shared/src/scratch';
+export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
+
+let Clipboard: typeof import('expo-clipboard') | null = null;
+try { Clipboard = require('expo-clipboard'); } catch { /* module not available */ }
 
 const KEEP_AWAKE_TAG = 'jitplus-coupon';
 

@@ -1,4 +1,3 @@
-import React from 'react';
 import { View, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Text } from '@/components/AppText';
 import { Banknote } from 'lucide-react-native';

@@ -1,5 +1,4 @@
 export {
-  PRIZE_COLORS,
   LOST_COLOR,
   computeOddsBreakdown,
   prizeColor,

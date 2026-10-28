@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import { Alert, Keyboard, Linking } from 'react-native';
+import { Alert, Keyboard, Linking, type TextInput } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import { useLocalSearchParams } from 'expo-router';
@@ -31,7 +31,7 @@ export function useDiscoverMap(merchants: Merchant[]) {
   const [currentRegion, setCurrentRegion] = useState(DEFAULT_REGION);
   const currentRegionRef = useRef(DEFAULT_REGION);
   const mapRef = useRef<any>(null);
-  const searchInputRef = useRef<any>(null);
+  const searchInputRef = useRef<TextInput>(null);
   const lastFocusedMerchantIdRef = useRef<string | undefined>(undefined);
   const mountedRef = useRef(true);
   const initialLocationCheckRef = useRef(false);
@@ -134,13 +134,15 @@ export function useDiscoverMap(merchants: Merchant[]) {
     return getDistanceKm(userLocation.latitude, userLocation.longitude, selectedMerchant.latitude, selectedMerchant.longitude);
   }, [userLocation, selectedMerchant]);
 
-  const handleRegionChange = useCallback((_region: typeof DEFAULT_REGION) => {
-    currentRegionRef.current = _region;
-    const prev = currentRegion;
-    if (Math.abs(prev.latitudeDelta - _region.latitudeDelta) > 0.003 || Math.abs(prev.latitude - _region.latitude) > 0.003 || Math.abs(prev.longitude - _region.longitude) > 0.003) {
-      setCurrentRegion(_region);
-    }
-  }, [currentRegion]);
+  const handleRegionChange = useCallback((region: typeof DEFAULT_REGION) => {
+    currentRegionRef.current = region;
+    setCurrentRegion((prev) => (
+      Math.abs(prev.latitudeDelta - region.latitudeDelta) > 0.003
+      || Math.abs(prev.latitude - region.latitude) > 0.003
+      || Math.abs(prev.longitude - region.longitude) > 0.003
+        ? region : prev
+    ));
+  }, []);
 
   const handleCategoryPress = useCallback((id: string) => { setSelectedCategory(id); setSelectedMerchant(null); haptic(); }, []);
 
@@ -186,7 +188,7 @@ export function useDiscoverMap(merchants: Merchant[]) {
 
   return {
     searchQuery, setSearchQuery, debouncedSearch, selectedCategory, showSearch, setShowSearch, showFilters,
-    userLocation, mapReady, selectedMerchant, setSelectedMerchant, mapRef, searchInputRef,
+    userLocation, mapReady, selectedMerchant, mapRef, searchInputRef,
     filteredMerchants, mappableMerchants, mapItems, sortedMappableMerchants, selectedMerchantDistance,
     handleRegionChange, handleCategoryPress, handleClusterPress,
     centerOnUser, handleMapPress, handleMapReady,

@@ -7,7 +7,7 @@ import {
 type Translate = (key: string, params?: Record<string, unknown>) => string;
 type LatLng = { latitude: number; longitude: number };
 
-export const DEAL_ALERT_NEEDS_CITY = 'DEAL_ALERT_NEEDS_CITY';
+const DEAL_ALERT_NEEDS_CITY = 'DEAL_ALERT_NEEDS_CITY';
 export const DEAL_ALERT_CARD_DISMISSED_KEY = '@jitplus_deal_alert_card_dismissed_at';
 export const DEAL_ALERT_CARD_SNOOZE_MS = 30 * 24 * 60 * 60 * 1000;
 

@@ -4,7 +4,7 @@ import Constants from 'expo-constants';
 import * as Sentry from '@sentry/react-native';
 import { EXPECTED_AUTH_ERROR_RE, scrubSentryEvent } from '@/utils/piiScrub';
 
-export const SENTRY_OPT_OUT_KEY = 'sentry_opt_out';
+const SENTRY_OPT_OUT_KEY = 'sentry_opt_out';
 
 // GDPR / CNDP opt-out (Loi 09-08 art. 9): users may object to any processing.
 // Events wait for the stored choice, so nothing leaks before it is read.

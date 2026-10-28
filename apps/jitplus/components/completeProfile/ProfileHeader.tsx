@@ -11,7 +11,7 @@ import type { TranslateFn } from './types';
 
 type BorderTheme = { border: string };
 
-export const StepDot = memo(function StepDot({ index, current, theme }: { index: number; current: number; theme: BorderTheme }) {
+const StepDot = memo(function StepDot({ index, current, theme }: { index: number; current: number; theme: BorderTheme }) {
   const active = index <= current;
   return (
     <View style={[s.stepDot, { backgroundColor: active ? palette.violet : theme.border }]}>
@@ -21,7 +21,7 @@ export const StepDot = memo(function StepDot({ index, current, theme }: { index:
   );
 });
 
-export const StepLine = memo(function StepLine({ filled, theme }: { filled: boolean; theme: BorderTheme }) {
+const StepLine = memo(function StepLine({ filled, theme }: { filled: boolean; theme: BorderTheme }) {
   return <View style={[s.stepLine, { backgroundColor: filled ? palette.violet : theme.border }]} />;
 });
 

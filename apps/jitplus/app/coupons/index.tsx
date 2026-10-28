@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   FlatList, RefreshControl, StyleSheet, TouchableOpacity, View,
 } from 'react-native';
@@ -7,7 +7,6 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowLeft, Ticket } from 'lucide-react-native';
 
-export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { wp, hp, ms } from '@/utils/responsive';
@@ -18,6 +17,7 @@ import FadeInView from '@/components/FadeInView';
 import { useClientCoupons, type ClientCouponStatus } from '@/hooks/useScratchHooks';
 import { diffDaysYmd, formatRewardValue, toYmd } from '@jitplus/shared/src/scratch';
 import type { CouponDto } from '@jitplus/shared/src/scratch';
+export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 
 const TWO_DAYS_MS = 48 * 3600 * 1000;
 

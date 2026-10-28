@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   View, FlatList, RefreshControl, StyleSheet, Animated,
@@ -8,7 +8,6 @@ import {
 import { Text, TextInput } from '@/components/AppText';
 import { StatusBar } from 'expo-status-bar';
 import { getInitials, getProfileCompletion } from '@/utils/profileCompletion';
-export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   CreditCard, AlertCircle, Gift, Search, X, Bell,
@@ -39,6 +38,7 @@ import { usePendingScratchCards, useActiveCoupons } from '@/hooks/useScratchHook
 import { useLuckyWheelHistory } from '@/hooks/useQueryHooks';
 import type { CouponDto, ScratchCardDto } from '@jitplus/shared/src/scratch';
 import type { LuckyWheelDraw } from '@/types';
+export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 
 const NO_SCRATCH_CARDS: ScratchCardDto[] = [];
 const NO_COUPONS: CouponDto[] = [];
@@ -82,7 +82,7 @@ export default function HomeScreen() {
   useExitOnBack(true, t('common.pressBackToExit'));
 
   const homeData = useHomeData(client);
-  const banners = useHomeBanners(client, homeData.notifData, homeData.luckyWheelTickets);
+  const banners = useHomeBanners(homeData.notifData, homeData.luckyWheelTickets);
   const pendingScratch = usePendingScratchCards(!!client && !isGuest);
   const activeCoupons = useActiveCoupons(!!client && !isGuest);
   const wheelHistory = useLuckyWheelHistory(!!client && !isGuest);
@@ -138,14 +138,15 @@ export default function HomeScreen() {
     setSearchQuery('');
   }, [setSearchQuery]);
 
+  const { setShowLuckyWheel } = banners;
   const handleLuckyWheelOpen = useCallback(() => {
     haptic(HapticStyle.Medium);
-    banners.setShowLuckyWheel(true);
-  }, [banners.setShowLuckyWheel]);
+    setShowLuckyWheel(true);
+  }, [setShowLuckyWheel]);
 
   const handleLuckyWheelClose = useCallback(() => {
-    banners.setShowLuckyWheel(false);
-  }, [banners.setShowLuckyWheel]);
+    setShowLuckyWheel(false);
+  }, [setShowLuckyWheel]);
 
   const handleScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const scrolled = e.nativeEvent.contentOffset.y > SCROLLED_THRESHOLD;
@@ -277,7 +278,7 @@ export default function HomeScreen() {
     );
   }, [
     homeData.isLoading, homeData.loadError, homeData.debouncedSearch,
-    homeData.cards.length, refetch, allCards.length, theme, fonts, t, client, isFiltering,
+    refetch, allCards.length, theme, fonts, t, client, isFiltering,
     pendingScratchCards, activeCouponList, wonPrizes, homeData.luckyWheelTickets.length,
     banners.luckyWheelSpinAnim, handleLuckyWheelOpen,
     isWallet, toggleViewMode, homeData.cards, handleCardPress,
@@ -294,9 +295,7 @@ export default function HomeScreen() {
             : <CreditCard size={ms(34)} color={palette.goldDark} strokeWidth={1.6} />}
         </View>
         <Text style={[styles.emptyTitle, { color: theme.text, fontFamily: fonts.bold }]}>
-          {isFilterEmpty
-            ? (homeData.debouncedSearch ? t('home.noSearchResults', { query: homeData.debouncedSearch }) : t('home.noCards'))
-            : t('home.noCards')}
+          {isFilterEmpty ? t('home.noSearchResults', { query: homeData.debouncedSearch }) : t('home.noCards')}
         </Text>
         {!isFilterEmpty && (
           <Text style={[styles.emptyHint, { color: theme.textSecondary, fontFamily: fonts.regular }]}>{t('home.noCardsHint')}</Text>
@@ -363,7 +362,7 @@ export default function HomeScreen() {
                 autoFocus
               />
               {homeData.searchQuery.length > 0 && (
-                <Pressable onPress={() => homeData.setSearchQuery('')} hitSlop={10} accessibilityRole="button" accessibilityLabel={t('home.clearSearch')}>
+                <Pressable onPress={handleClearSearch} hitSlop={10} accessibilityRole="button" accessibilityLabel={t('home.clearSearch')}>
                   <View style={[styles.clearPill, { backgroundColor: theme.textMuted }]}>
                     <X size={ms(11)} color={theme.bg} strokeWidth={3} />
                   </View>
@@ -464,7 +463,6 @@ export default function HomeScreen() {
       )}
 
       <FlatList
-        ref={homeData.flatListRef}
         data={homeData.isLoading || isWallet ? NO_CARDS : homeData.cards}
         renderItem={renderCard}
         keyExtractor={keyExtractor}
@@ -482,13 +480,6 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
-        onScrollToIndexFailed={({ index, averageItemLength }) => {
-          // Guard against rare race when list hasn't finished layout yet
-          homeData.flatListRef.current?.scrollToOffset({
-            offset: index * (averageItemLength || 140),
-            animated: true,
-          });
-        }}
         removeClippedSubviews={Platform.OS === 'android'}
         maxToRenderPerBatch={8}
         windowSize={9}

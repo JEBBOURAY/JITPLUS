@@ -1,4 +1,4 @@
-import { getPasswordStrength, isValidPassword, type PasswordStrength } from '@/utils/passwordStrength';
+import { getPasswordStrength, isValidPassword } from '@/utils/passwordStrength';
 
 const mockT = (key: string) => key;
 

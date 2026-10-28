@@ -14,7 +14,6 @@ import {
   Keyboard,
 } from 'react-native';
 import { Text, TextInput } from '@/components/AppText';
-export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 import { router } from 'expo-router';
 import { ArrowRight, Mail, ChevronLeft, Check } from 'lucide-react-native';
 import { useTheme, palette } from '@/contexts/ThemeContext';
@@ -31,6 +30,7 @@ import { useAppleAuth } from '@/hooks/useAppleAuth';
 import { GoogleLogo } from '@/components/GoogleLogo';
 import { AppleLogo } from '@/components/AppleLogo';
 import { haptic } from '@/utils/haptics';
+export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 
 export default function RegisterScreen() {
   const theme = useTheme();
@@ -67,7 +67,6 @@ export default function RegisterScreen() {
   }, []);
 
   const emailValid = isValidEmail(email);
-  const inputValid = emailValid;
 
   const handleRegister = async () => {
     if (!termsAccepted) {
@@ -279,15 +278,15 @@ export default function RegisterScreen() {
                 disabled={isLoading}
                 activeOpacity={0.85}
                 style={[styles.button, {
-                  backgroundColor: inputValid ? palette.violet : '#D4D0E8',
+                  backgroundColor: emailValid ? palette.violet : '#D4D0E8',
                 }]}
               >
                 {isLoading ? <ActivityIndicator color="#fff" /> : (
                   <>
-                    <Text style={[styles.buttonText, { opacity: inputValid ? 1 : 0.5 }]}>
+                    <Text style={[styles.buttonText, { opacity: emailValid ? 1 : 0.5 }]}>
                       {t('register.signUpButton')}
                     </Text>
-                    <ArrowRight size={ms(18)} color={inputValid ? '#fff' : 'rgba(255,255,255,0.5)'} />
+                    <ArrowRight size={ms(18)} color={emailValid ? '#fff' : 'rgba(255,255,255,0.5)'} />
                   </>
                 )}
               </TouchableOpacity>

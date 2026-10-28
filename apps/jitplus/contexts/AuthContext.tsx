@@ -51,6 +51,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const sessionVersionRef = useRef(0);
   const methods = useAuthMethods(store, sessionVersionRef);
   const { clearLocalSession } = methods;
+  const { setClient, setLoading, setNeedsPasswordSetup, setGuest } = store;
 
   // ── Restore stored session on mount ──
   useEffect(() => {
@@ -65,8 +66,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           AsyncStorage.getItem(GUEST_MODE_KEY).catch(() => null),
         ]);
         if (cancelled || sessionVersionRef.current !== version) return;
-        if (storedNeedsPw) store.setNeedsPasswordSetup(true);
-        if (!token && storedGuest === '1') store.setGuest(true);
+        if (storedNeedsPw) setNeedsPasswordSetup(true);
+        if (!token && storedGuest === '1') setGuest(true);
 
         // Sessions always persist (like JitPlus Pro): a stored token is enough to
         // restore, including OTP logins that never wrote the rememberMe flag.
@@ -75,7 +76,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // sees their account (and QR) even with no network. The fetch below
           // will refresh it in the background.
           if (cachedProfile?.id) {
-            store.setClient(cachedProfile);
+            setClient(cachedProfile);
             logInfo('Auth', 'Profil restauré depuis le cache:', cachedProfile.prenom, cachedProfile.nom);
           }
 
@@ -89,7 +90,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const profile = await api.getProfile();
             if (cancelled || sessionVersionRef.current !== version) return;
             if (profile?.id) {
-              store.setClient(profile);
+              setClient(profile);
               logInfo('Auth', 'Profil restauré:', profile.prenom, profile.nom);
             } else if (!cachedProfile?.id) {
               await api.clearAuth();
@@ -116,14 +117,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } finally {
         if (!cancelled && sessionVersionRef.current === version) {
           logInfo('Auth', 'Chargement terminé');
-          store.setLoading(false);
+          setLoading(false);
         }
       }
     };
 
     loadStoredAuth();
     return () => { cancelled = true; };
-  }, []);
+  }, [clearLocalSession, setClient, setLoading, setNeedsPasswordSetup, setGuest]);
 
   // ── Keep offline profile cache in sync with the store ──
   // Writes the latest client snapshot (reduced to non-contact fields, see

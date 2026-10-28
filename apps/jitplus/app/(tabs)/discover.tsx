@@ -100,7 +100,7 @@ export default function DiscoverScreen() {
       default: `https://www.google.com/maps/search/?api=1&query=${m.latitude},${m.longitude}`,
     });
     Linking.openURL(url!).catch(() => {
-      Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${m.latitude},${m.longitude}`);
+      Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${m.latitude},${m.longitude}`).catch(() => {});
     });
   }, []);
 
@@ -136,7 +136,7 @@ export default function DiscoverScreen() {
             }
             const m = item.merchant;
             return (
-              <MerchantPin key={m.storeId ? `${m.id}-${m.storeId}` : m.id} merchant={m}
+              <MerchantPin key={item.id} merchant={m}
                 latitude={item.latitude} longitude={item.longitude} onPress={handleMerchantPress} />
             );
           })}

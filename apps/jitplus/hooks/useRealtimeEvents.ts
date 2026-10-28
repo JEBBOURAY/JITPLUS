@@ -240,7 +240,7 @@ export function pushStampsEventFromNotification(
 
 /**
  * Invalidate notification-related caches when the app returns to foreground
- * after being in background for more than 2 minutes.
+ * after being in background for more than 5 minutes.
  * Avoids unnecessary refetches for quick app switches (e.g. phone calls).
  */
 export function useAppForegroundRefresh() {

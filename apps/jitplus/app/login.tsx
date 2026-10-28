@@ -15,7 +15,6 @@ import {
   Keyboard,
 } from 'react-native';
 import { goHomeAfterLogin } from '@/services/pendingDeal';
-export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 import { router } from 'expo-router';
 import { ArrowRight, Mail, ChevronLeft, Lock, Eye, EyeOff, CheckCircle } from 'lucide-react-native';
 import { useTheme, palette } from '@/contexts/ThemeContext';
@@ -35,6 +34,7 @@ import FormError from '@/components/FormError';
 import StarLoader from '@/components/StarLoader';
 import { GoogleLogo } from '@/components/GoogleLogo';
 import { AppleLogo } from '@/components/AppleLogo';
+export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 
 const SHOW_WELCOME_KEY = 'showWelcome';
 const MAX_LOGIN_ATTEMPTS = 5;
@@ -85,7 +85,7 @@ export default function LoginScreen() {
       ]);
       if (lockStr) loginLockoutRef.current = Number(lockStr);
       if (attStr) loginAttemptsRef.current = Number(attStr);
-    })();
+    })().catch(() => {});
   }, []);
 
   const emailValid = isValidEmail(email);
@@ -138,14 +138,14 @@ export default function LoginScreen() {
     if (loginAttemptsRef.current >= MAX_LOGIN_ATTEMPTS) {
       loginLockoutRef.current = now + LOGIN_LOCKOUT_MS;
       loginAttemptsRef.current = 0;
-      SecureStore.setItemAsync(SS_LOGIN_LOCKOUT, String(loginLockoutRef.current));
-      SecureStore.setItemAsync(SS_LOGIN_ATTEMPTS, '0');
+      SecureStore.setItemAsync(SS_LOGIN_LOCKOUT, String(loginLockoutRef.current)).catch(() => {});
+      SecureStore.setItemAsync(SS_LOGIN_ATTEMPTS, '0').catch(() => {});
       setError(t('login.tooManyAttempts', { seconds: 120 }));
       return;
     }
     loginAttemptsRef.current += 1;
     lastLoginAttemptRef.current = now;
-    SecureStore.setItemAsync(SS_LOGIN_ATTEMPTS, String(loginAttemptsRef.current));
+    SecureStore.setItemAsync(SS_LOGIN_ATTEMPTS, String(loginAttemptsRef.current)).catch(() => {});
 
     Keyboard.dismiss();
     setIsLoading(true);
@@ -155,8 +155,8 @@ export default function LoginScreen() {
     const result = await loginWithEmail(normalizedEmail, password);
     setIsLoading(false);
     if (result.success) {
-      SecureStore.deleteItemAsync(SS_LOGIN_LOCKOUT);
-      SecureStore.deleteItemAsync(SS_LOGIN_ATTEMPTS);
+      SecureStore.deleteItemAsync(SS_LOGIN_LOCKOUT).catch(() => {});
+      SecureStore.deleteItemAsync(SS_LOGIN_ATTEMPTS).catch(() => {});
       await AsyncStorage.setItem(SHOW_WELCOME_KEY, '1');
       goHomeAfterLogin(router);
     } else {

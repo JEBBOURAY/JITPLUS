@@ -119,7 +119,7 @@ export default function WelcomeScreen() {
       <Text style={[styles.slideTitle, { color: theme.text, fontFamily: fonts.semibold }]}>{t(item.titleKey)}</Text>
       <Text style={[styles.slideDesc, { color: theme.textSecondary, fontFamily: fonts.regular }]}>{t(item.descKey)}</Text>
     </View>
-  ), [theme, t, screenWidth]);
+  ), [theme, t, screenWidth, fonts.semibold, fonts.regular]);
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>

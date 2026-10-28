@@ -1,4 +1,3 @@
-import React from 'react';
 import { View } from 'react-native';
 import { Text } from '@/components/AppText';
 import { Banknote, CheckCircle, AlertCircle, Clock } from 'lucide-react-native';
@@ -8,9 +7,9 @@ import { referralStyles as styles } from './referralStyles';
 import type { ThemeColors } from '@/contexts/ThemeContext';
 
 interface PayoutHistoryListProps {
-  payoutHistory: Array<{
+  payoutHistory: {
     id: string; amount: number; status: string; method: string; createdAt: string;
-  }>;
+  }[];
   theme: ThemeColors;
   t: (key: string, variables?: Record<string, string | number>) => string;
   formatDate: (dateStr: string | null | undefined) => string;

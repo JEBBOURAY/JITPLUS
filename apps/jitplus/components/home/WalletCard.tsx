@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { View, StyleSheet, Animated, Easing, I18nManager } from 'react-native';
 import { Text } from '@/components/AppText';
 import { Image } from 'expo-image';

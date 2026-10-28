@@ -1,4 +1,3 @@
-import React from 'react';
 import { View, Pressable } from 'react-native';
 import { Text } from '@/components/AppText';
 import { Copy, CheckCircle, Share2 } from 'lucide-react-native';

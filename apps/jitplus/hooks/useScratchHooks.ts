@@ -7,8 +7,8 @@ import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tansta
 import { api } from '@/services/api';
 import { isEntityId } from '@/utils/ids';
 import type { ClientCouponStatus, ScratchCardListStatus, ScratchResult } from '@/services/api/scratch';
-export type { ClientCouponStatus, ScratchCardListStatus, ScratchResult } from '@/services/api/scratch';
 import type { CouponDto, ScratchCardDto } from '@jitplus/shared/src/scratch';
+export type { ClientCouponStatus } from '@/services/api/scratch';
 
 export const scratchKeys = {
   cards: ['scratch', 'cards'] as const,

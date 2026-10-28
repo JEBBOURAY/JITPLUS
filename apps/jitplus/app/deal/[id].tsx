@@ -111,7 +111,7 @@ function DealDetail({ dealId }: { dealId?: string }) {
   const { width } = useWindowDimensions();
   const userLocation = useKnownLocation();
   const { data: deal, isLoading, error, refetch } = useDeal(dealId);
-  const report = useReportDeal(dealId ?? '');
+  const { mutateAsync: reportDeal, isPending: reportPending } = useReportDeal(dealId ?? '');
   const [sheet, setSheet] = useState(false);
 
   const stores = useMemo(() => dealStoresByDistance(deal?.stores, userLocation), [deal?.stores, userLocation]);
@@ -160,9 +160,9 @@ function DealDetail({ dealId }: { dealId?: string }) {
   }, [deal, router]);
 
   const submitReport = useCallback(async (reason: DealReportReason) => {
-    if (report.isPending) return;
+    if (reportPending) return;
     try {
-      const res = await report.mutateAsync({ reason });
+      const res = await reportDeal({ reason });
       haptic();
       if (res.alreadyReported) {
         Alert.alert(t('deals.report.title'), t('deals.report.already'));
@@ -172,7 +172,7 @@ function DealDetail({ dealId }: { dealId?: string }) {
     } catch {
       Alert.alert(t('common.error'), t('deals.report.error'));
     }
-  }, [report, t, goBack]);
+  }, [reportDeal, reportPending, t, goBack]);
 
   const reportOptions = useMemo<ActionSheetOption[]>(
     () => DEAL_REPORT_REASONS.map((reason) => ({

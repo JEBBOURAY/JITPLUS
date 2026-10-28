@@ -47,7 +47,7 @@ export function createMerchantMethods(http: AxiosInstance) {
       const { data } = await http.delete(`/client/merchants/${encodeURIComponent(merchantId)}/block`);
       return data;
     },
-    async getBlockedMerchants(): Promise<Array<{ merchantId: string; blockedAt: string; id: string; nom: string; logoUrl: string | null; categorie: string }>> {
+    async getBlockedMerchants(): Promise<{ merchantId: string; blockedAt: string; id: string; nom: string; logoUrl: string | null; categorie: string }[]> {
       const { data } = await http.get('/client/blocked-merchants');
       return Array.isArray(data) ? data : [];
     },

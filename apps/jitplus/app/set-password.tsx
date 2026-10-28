@@ -6,7 +6,6 @@ import {
 } from 'react-native';
 import { Text, TextInput } from '@/components/AppText';
 import { goHomeAfterLogin } from '@/services/pendingDeal';
-export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 import { router, useLocalSearchParams } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Lock, Eye, EyeOff, ArrowRight, CheckCircle2 } from 'lucide-react-native';
@@ -18,6 +17,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
 import { getPasswordStrength, isValidPassword as checkPassword, MAX_PASSWORD_LENGTH } from '@/utils/passwordStrength';
+export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 
 export default function SetPasswordScreen() {
   const theme = useTheme();

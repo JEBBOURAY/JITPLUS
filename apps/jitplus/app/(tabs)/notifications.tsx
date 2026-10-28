@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, FlatList, RefreshControl, TouchableOpacity, Pressable, Alert, Platform, Linking,
   AppState, LayoutAnimation, type NativeSyntheticEvent, type NativeScrollEvent,
@@ -10,6 +10,7 @@ import {
 } from 'lucide-react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { loadNotifications } from '@/utils/expoNotifications';
+import { registerForPushNotifications } from '@/utils/notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { haptic, hapticSuccess, HapticStyle } from '@/utils/haptics';
 import { useTheme, palette } from '@/contexts/ThemeContext';
@@ -142,7 +143,6 @@ export default function NotificationsScreen() {
       if (status === 'granted') {
         setPushPermission('granted');
         hapticSuccess();
-        const { registerForPushNotifications } = require('@/utils/notifications');
         const pushToken = await registerForPushNotifications();
         if (pushToken) await api.updatePushToken(pushToken);
       } else { handleOpenSettings(); }

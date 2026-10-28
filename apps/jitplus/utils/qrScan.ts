@@ -2,7 +2,7 @@ import type { LoyaltyCard } from '@/types';
 import type { StampsEvent } from '@/stores/wsStore';
 
 /** The same scan can arrive by WebSocket, push and polling: show it once. */
-export const SCAN_DEDUPE_MS = 30_000;
+const SCAN_DEDUPE_MS = 30_000;
 
 /**
  * Polling is only the fallback scan signal (the WebSocket event can be missed),

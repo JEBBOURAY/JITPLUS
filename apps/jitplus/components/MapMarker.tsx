@@ -1,4 +1,4 @@
-﻿/**
+/**
  * MapMarker — simple square marker with JitPlus logo.
  *
  * NOTE: we deliberately use the built-in RN <Image> (not expo-image) because

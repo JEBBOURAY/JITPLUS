@@ -1,4 +1,3 @@
-import React from 'react';
 import { View, Pressable, Linking } from 'react-native';
 import { Text } from '@/components/AppText';
 import { MessageCircle, Mail } from 'lucide-react-native';

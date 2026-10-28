@@ -2,7 +2,9 @@ import { useEffect } from 'react';
 import { Platform } from 'react-native';
 import { api } from '@/services/api';
 import { logInfo, logWarn } from '@/utils/devLogger';
-import { isNativePushRuntimeAvailable, registerForPushNotifications, setupAndroidChannel } from '@/utils/notifications';
+import {
+  getPermissionStatus, isNativePushRuntimeAvailable, registerForPushNotifications, setupAndroidChannel,
+} from '@/utils/notifications';
 
 /**
  * Register push notifications when a client is authenticated.
@@ -31,12 +33,7 @@ export function usePushRegistration(clientId: string | undefined) {
             logWarn('Push', 'Aucun token obtenu sur Android — notifications ne fonctionneront pas');
           }
         } else {
-          const alreadyGranted = await (async () => {
-            try {
-              const { getPermissionStatus } = require('@/utils/notifications') as typeof import('@/utils/notifications');
-              return await getPermissionStatus();
-            } catch { return false; }
-          })();
+          const alreadyGranted = await getPermissionStatus();
 
           if (alreadyGranted) {
             const pushToken = await registerForPushNotifications();
@@ -66,6 +63,5 @@ export function usePushRegistration(clientId: string | undefined) {
 
     registerPush();
     return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId]);
 }
