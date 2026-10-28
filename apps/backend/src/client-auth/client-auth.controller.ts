@@ -11,6 +11,7 @@ import {
   HttpCode,
   HttpStatus,
   Headers,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
@@ -22,7 +23,7 @@ import { ClientService } from './client.service';
 import { ClientReferralService } from './client-referral.service';
 import { ClientOnlyGuard } from '../common/guards/client-only.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
-import { JwtPayload } from '../common/interfaces/jwt-payload.interface';
+import { JwtPayload, JwtTokenPayload } from '../common/interfaces/jwt-payload.interface';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import { SendOtpEmailDto, VerifyOtpEmailDto, CompleteProfileDto, ClientUpdateProfileDto, UpdatePushTokenDto, GoogleLoginDto, AppleLoginDto, LoginEmailDto, SetPasswordDto, RefreshTokenDto, ClientDeleteAccountDto, ClientChangePasswordDto, SendChangeContactOtpDto, VerifyChangeContactOtpDto, RequestPayoutDto, ReportMerchantDto } from './dto';
 import { ConsumeClaimDto } from '../merchant/dto/quick-add.dto';
@@ -47,15 +48,16 @@ export class ClientAuthController {
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   async logout(@Headers('authorization') authHeader?: string) {
-    let userId: string | undefined;
+    let payload: JwtTokenPayload | undefined;
     try {
       const token = authHeader?.replace('Bearer ', '');
-      if (token) {
-        const payload = this.jwtService.decode(token) as JwtPayload | null;
-        userId = payload?.userId;
-      }
+      // Expired tokens are accepted (logout often follows a long idle period),
+      // but the signature is verified so nobody can revoke another client's sessions.
+      if (token) payload = this.jwtService.verify<JwtTokenPayload>(token, { ignoreExpiration: true });
     } catch { /* token invalide — on continue quand même */ }
-    if (userId) return this.clientAuthService.logout(userId);
+    if (payload?.type === 'client' && payload.sub) {
+      return this.clientAuthService.logout(payload.sub, payload.sid);
+    }
     return { success: true, message: 'Déconnecté' };
   }
 
@@ -99,14 +101,14 @@ export class ClientAuthController {
   @Throttle({ default: { ttl: 60000, limit: 5 } })
   @UseGuards(AuthGuard('jwt'), ClientOnlyGuard)
   async resetPasswordOtp(@CurrentUser() user: JwtPayload, @Body() dto: SetPasswordDto) {
-    return this.clientAuthService.resetPasswordOtp(user.userId, dto.password);
+    return this.clientAuthService.resetPasswordOtp(user.userId, dto.password, user.clientSessionId);
   }
 
   @Patch('change-password')
   @Throttle({ default: { ttl: 60000, limit: 5 } })
   @UseGuards(AuthGuard('jwt'), ClientOnlyGuard)
   async changePassword(@CurrentUser() user: JwtPayload, @Body() dto: ClientChangePasswordDto) {
-    return this.clientAuthService.changePassword(user.userId, dto.currentPassword, dto.newPassword);
+    return this.clientAuthService.changePassword(user.userId, dto.currentPassword, dto.newPassword, user.clientSessionId);
   }
 
   @Post('complete-profile')
@@ -190,6 +192,13 @@ export class ClientAuthController {
     @Query() { page, limit }: PaginationQueryDto,
   ) {
     return this.clientService.getMerchants(page, limit);
+  }
+
+  /** Public merchant profile — no auth required (guest mode), card fields are empty */
+  @Get('merchants/:id')
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 30 } })
+  async getPublicMerchantById(@Param('id', ParseUUIDPipe) id: string) {
+    return this.clientService.getMerchantById(id);
   }
 }
 

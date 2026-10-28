@@ -68,7 +68,7 @@ export function useProfileEditing(
   refreshProfile: (() => Promise<void>) | undefined,
   t: (key: string, options?: Record<string, unknown>) => string,
 ) {
-  const [initialFields] = useState<ProfileFields>(() => fieldsFromClient(client));
+  const [initialFields, setInitialFields] = useState<ProfileFields>(() => fieldsFromClient(client));
   const [fields, setFields] = useState<ProfileFields>(initialFields);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -101,6 +101,15 @@ export function useProfileEditing(
     fieldsRef.current = fields;
     isDirtyRef.current = isDirty;
   }, [fields, isDirty]);
+
+  // The offline profile cache has no contact details or birth date: reseed the
+  // form when the server profile arrives, unless the user already edited it.
+  useEffect(() => {
+    if (isDirtyRef.current) return;
+    const next = fieldsFromClient(client);
+    setInitialFields((prev) => (sameFields(prev, next) ? prev : next));
+    setFields((prev) => (sameFields(prev, next) ? prev : next));
+  }, [client]);
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -242,7 +251,8 @@ export function useProfileEditing(
         ...(phoneTrimmed
           ? { telephone: phoneTrimmed.startsWith('+') ? phoneTrimmed : `${phoneCountry.dial}${phoneTrimmed}` }
           : {}),
-        dateNaissance: dateNaissancePayload,
+        // Only when edited: a form seeded without the birth date must not erase it.
+        ...(dateNaissance !== initialFields.dateNaissance ? { dateNaissance: dateNaissancePayload } : {}),
       });
       await refreshProfile?.();
       discardDraft();
@@ -254,7 +264,7 @@ export function useProfileEditing(
     } finally {
       setIsSaving(false);
     }
-  }, [fields, refreshProfile, discardDraft, t]);
+  }, [fields, initialFields, refreshProfile, discardDraft, t]);
 
   return {
     fields,

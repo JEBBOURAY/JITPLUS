@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text } from 'react-native';
+import { View } from 'react-native';
+import { Text } from '@/components/AppText';
 import { Share2, Smartphone, BadgeCheck, CreditCard } from 'lucide-react-native';
 import { palette } from '@/contexts/ThemeContext';
 import { ms } from '@/utils/responsive';
@@ -14,12 +15,11 @@ const STEPS = [
 ];
 
 interface HowItWorksProps {
-  isRTL: boolean;
   theme: ThemeColors;
   t: (key: string) => string;
 }
 
-export default function HowItWorks({ isRTL, theme, t }: HowItWorksProps) {
+export default function HowItWorks({ theme, t }: HowItWorksProps) {
   return (
     <View style={[styles.howCard, { backgroundColor: theme.bgCard }]}>
       <Text style={[styles.howTitle, { color: theme.text }]}>{t('referral.howTitle')}</Text>
@@ -27,7 +27,7 @@ export default function HowItWorks({ isRTL, theme, t }: HowItWorksProps) {
         const Icon = step.icon;
         const isLast = i === STEPS.length - 1;
         return (
-          <View key={i} style={[styles.howStep, isRTL && styles.howStepRTL, isLast && { borderBottomWidth: 0, paddingBottom: 0 }]}>
+          <View key={i} style={[styles.howStep, isLast && { borderBottomWidth: 0, paddingBottom: 0 }]}>
             <View style={[styles.howStepIcon, { backgroundColor: `${palette.gold}12` }]}>
               <View style={styles.howStepNumber}><Text style={styles.howStepNumberText}>{i + 1}</Text></View>
               <Icon size={ms(16)} color={palette.gold} strokeWidth={1.5} />

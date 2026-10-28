@@ -3,7 +3,7 @@ import { MAX_STAMPS_PER_TX } from '@/constants/app';
 /** Purchase amount needed for 1 stamp when the merchant has no value yet (backend default). */
 export const DEFAULT_AMOUNT_PER_STAMP = 10;
 
-export interface StampsForAmount {
+interface StampsForAmount {
   stamps: number;
   /** True when the raw count exceeded MAX_STAMPS_PER_TX and was capped. */
   capped: boolean;

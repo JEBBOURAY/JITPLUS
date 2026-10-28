@@ -47,7 +47,7 @@ module.exports = ({ config }) => {
     description: 'Loyalty program management for local shops — scan QR codes, track customer visits, and set up stamp-based rewards.',
     version: '1.7.1',
     orientation: 'portrait',
-    icon: './assets/images/icon-white.png',
+    icon: './assets/images/icon.png',
     scheme: 'jitpluspro',
     userInterfaceStyle: 'automatic',
     updates: {
@@ -59,7 +59,7 @@ module.exports = ({ config }) => {
     // Required by both stores — must be a publicly accessible URL
     privacyPolicyUrl: PRIVACY_POLICY_URL,
     splash: {
-      image: './assets/images/jitplusprologo.png',
+      image: './assets/images/splash-logo.png',
       resizeMode: 'contain',
       backgroundColor: '#FFFFFF',
     },
@@ -120,7 +120,8 @@ module.exports = ({ config }) => {
     android: {
       versionCode: 37,
       adaptiveIcon: {
-        foregroundImage: './assets/images/adaptive-icon-white.png',
+        foregroundImage: './assets/images/adaptive-icon.png',
+        monochromeImage: './assets/images/adaptive-icon-monochrome.png',
         backgroundColor: '#FFFFFF',
       },
       config: {
@@ -179,6 +180,17 @@ module.exports = ({ config }) => {
     plugins: [
       'expo-router',
       'expo-secure-store',
+      'expo-font',
+      'expo-image',
+      'expo-sharing',
+      'expo-status-bar',
+      [
+        'expo-tracking-transparency',
+        {
+          userTrackingPermission:
+            'Cette autorisation permet a JitPlus Pro de mesurer les performances des campagnes publicitaires et d ameliorer l acquisition de clients.',
+        },
+      ],
       [
         'react-native-fbsdk-next',
         {
@@ -213,10 +225,10 @@ module.exports = ({ config }) => {
             deploymentTarget: '16.4',
           },
           android: {
-            compileSdkVersion: 36,
+            compileSdkVersion: 37,
             targetSdkVersion: 36,
             minSdkVersion: 24,
-            buildToolsVersion: '36.0.0',
+            buildToolsVersion: '37.0.0',
             enableMinifyInReleaseBuilds: ANDROID_ENABLE_R8,
             enableShrinkResourcesInReleaseBuilds: ANDROID_ENABLE_R8,
           },
@@ -225,12 +237,14 @@ module.exports = ({ config }) => {
       [
         'expo-splash-screen',
         {
-          image: './assets/images/jitplusprologo.png',
+          image: './assets/images/splash-logo.png',
           resizeMode: 'contain',
           backgroundColor: '#FFFFFF',
-          imageWidth: 220,
+          // Android 12+ masks the splash icon to a 192dp circle: at 170 the logo corners stay inside it.
+          // Keep in sync with LOGO_SIZE in components/SplashAnimated.tsx.
+          imageWidth: 170,
           dark: {
-            image: './assets/images/jitplusprologo.png',
+            image: './assets/images/splash-logo-dark.png',
             backgroundColor: '#0F172A',
           },
         },
@@ -282,7 +296,7 @@ module.exports = ({ config }) => {
       [
         'expo-notifications',
         {
-          icon: './assets/images/notification-icon.png',
+          icon: './assets/images/notification-icon-centered.png',
           // color removed: setting it here duplicates notification_icon_color
           // with the one already in expo-notifications AAR resources, causing
           // a Gradle mergeReleaseResources conflict. Color is set at runtime

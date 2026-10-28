@@ -12,7 +12,6 @@ import {
   ScrollView,
   Keyboard,
   Animated,
-  I18nManager,
 } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -21,7 +20,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTheme, palette, brandGradient } from '@/contexts/ThemeContext';
 import { getErrorMessage } from '@/utils/error';
 import { isValidEmail } from '@/utils/validation';
-import { Eye, EyeOff, Lock, Mail, ArrowRight, ChevronDown, WifiOff, TriangleAlert } from 'lucide-react-native';
+import { Eye, EyeOff, Mail, ArrowRight, ChevronDown, WifiOff, TriangleAlert } from 'lucide-react-native';
+import { JitLock } from '@/components/icons';
 import BrandName from '@/components/BrandName';
 import { useLanguage, LANGUAGES } from '@/contexts/LanguageContext';
 import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
@@ -29,6 +29,10 @@ import { useGoogleAuth } from '@/hooks/useGoogleAuth';
 import { useAppleAuth } from '@/hooks/useAppleAuth';
 import { AppleLogo } from '@/components/AppleLogo';
 import { LinearGradient } from 'expo-linear-gradient';
+import { GoogleLogo } from '@/components/GoogleLogo';
+import { ActionButton } from '@/components/ui/ActionButton';
+import { useDir } from '@/hooks/useDir';
+import { font, icon } from '@/constants/design';
 
 type LoginErrorType = 'none' | 'credentials' | 'generic';
 
@@ -109,7 +113,8 @@ export default function LoginScreen() {
   const { t, locale, setLocale } = useLanguage();
   const google = useGoogleAuth();
   const apple = useAppleAuth();
-  const isRTL = I18nManager.isRTL;
+  const dir = useDir();
+  const isRTL = dir.isRTL;
 
   const emailRef = useRef<TextInput>(null);
   const passwordRef = useRef<TextInput>(null);
@@ -226,6 +231,7 @@ export default function LoginScreen() {
   }, [formMounted, closeEmailForm, openEmailForm]);
 
   const submitDisabled = isLoading || !canSubmit || !isOnline || isRateLimited;
+  const submitIdle = submitDisabled && !isLoading;
 
   const handleLogin = useCallback(async () => {
     Keyboard.dismiss();
@@ -251,7 +257,7 @@ export default function LoginScreen() {
     try {
       // Keep session persistence enabled on mobile by default.
       await signIn({ email: trimmedEmail, password }, true);
-      router.replace('/(tabs)/activity');
+      router.replace('/(tabs)');
     } catch (err: unknown) {
       const axiosErr = err as {
         isAxiosError?: boolean;
@@ -305,20 +311,21 @@ export default function LoginScreen() {
     return [
       styles.inputWrapper,
       {
+        flexDirection: dir.row,
         backgroundColor: theme.inputBg,
         borderColor: withError ? theme.danger : isFocused ? palette.violet : theme.inputBorder,
       },
       isFocused && !withError && styles.inputFocus,
       withError && styles.inputError,
     ];
-  }, [focusedField, hasCredentialError, theme.inputBg, theme.inputBorder, theme.danger]);
+  }, [focusedField, hasCredentialError, dir.row, theme.inputBg, theme.inputBorder, theme.danger]);
 
   return (
     <View style={[styles.screen, { backgroundColor: theme.bg }]}>
       <View pointerEvents="none" style={styles.glowBg} />
 
-      <SafeAreaView edges={['top']} style={styles.langBar}>
-        <View style={[styles.langRow, isRTL && styles.langRowRtl]}>
+      <SafeAreaView edges={['top']} style={[styles.langBar, isRTL ? styles.langBarRtl : styles.langBarLtr]}>
+        <View style={[styles.langRow, { flexDirection: dir.row }]}>
           {LANGUAGES.map(({ code, flag }) => {
             const active = locale === code;
             return (
@@ -327,6 +334,7 @@ export default function LoginScreen() {
                 activeOpacity={0.75}
                 accessibilityRole="button"
                 accessibilityLabel={code}
+                accessibilityState={{ selected: active }}
                 onPress={async () => {
                   if (code !== locale) await setLocale(code);
                 }}
@@ -405,6 +413,7 @@ export default function LoginScreen() {
                 style={[
                   styles.socialBtn,
                   {
+                    flexDirection: dir.row,
                     backgroundColor: theme.bgCard,
                     borderColor: theme.inputBorder,
                   },
@@ -414,9 +423,7 @@ export default function LoginScreen() {
                   <ActivityIndicator color={palette.charbon} size="small" />
                 ) : (
                   <>
-                    <View style={styles.googleIconWrap}>
-                      <Text style={styles.googleG}>G</Text>
-                    </View>
+                    <GoogleLogo size={ms(20)} />
                     <Text style={[styles.socialBtnText, { color: theme.text }]}>{t('login.loginWithGoogle')}</Text>
                   </>
                 )}
@@ -429,14 +436,14 @@ export default function LoginScreen() {
                   activeOpacity={0.88}
                   accessibilityRole="button"
                   accessibilityLabel={t('login.loginWithApple')}
-                  style={[styles.socialBtn, styles.appleBtn]}
+                  style={[styles.socialBtn, styles.appleBtn, { flexDirection: dir.row }]}
                 >
                   {apple.isLoading ? (
                     <ActivityIndicator color="#fff" size="small" />
                   ) : (
                     <>
                       <AppleLogo size={ms(19)} color="#fff" />
-                      <Text style={[styles.socialBtnText, { color: '#fff' }]}>{t('login.loginWithApple')}</Text>
+                      <Text style={[styles.socialBtnText, styles.appleBtnText]}>{t('login.loginWithApple')}</Text>
                     </>
                   )}
                 </TouchableOpacity>
@@ -444,50 +451,40 @@ export default function LoginScreen() {
 
               {!!google.error && !google.noAccount && (
                 <View style={[styles.errorBanner, { backgroundColor: `${theme.danger}15`, borderColor: `${theme.danger}30` }]}>
-                  <Text style={[styles.errorText, { color: theme.danger }]}>{getErrorMessage(google.error, t('common.genericError'))}</Text>
+                  <Text style={[styles.errorText, { color: theme.danger, textAlign: dir.textAlign }]}>
+                    {getErrorMessage(google.error, t('common.genericError'))}
+                  </Text>
                 </View>
               )}
 
               {google.noAccount && (
-                <View style={[styles.noAccountBanner, { backgroundColor: `${palette.charbon}08`, borderColor: `${palette.charbon}25` }]}>
-                  <Text style={[styles.noAccountTitle, { color: theme.text }]}>{t('googleAuth.noAccountTitle')}</Text>
-                  <Text style={[styles.noAccountMsg, { color: theme.textMuted }]}>{t('googleAuth.noAccountAction')}</Text>
-                  <TouchableOpacity
-                    onPress={() => {
-                      google.dismissNoAccount();
-                      router.push('/register');
-                    }}
-                    activeOpacity={0.85}
-                    style={[styles.noAccountBtn, { backgroundColor: palette.charbon }]}
-                  >
-                    <Text style={styles.noAccountBtnText}>{t('googleAuth.goToRegister')}</Text>
-                    <ArrowRight size={ms(16)} color="#fff" strokeWidth={1.5} style={isRTL ? styles.flipArrow : undefined} />
-                  </TouchableOpacity>
-                </View>
+                <NoAccountBanner
+                  title={t('googleAuth.noAccountTitle')}
+                  message={t('googleAuth.noAccountAction')}
+                  actionLabel={t('googleAuth.goToRegister')}
+                  onPress={() => {
+                    google.dismissNoAccount();
+                    router.push('/register');
+                  }}
+                />
               )}
 
               {!!apple.error && !apple.noAccount && (
                 <View style={[styles.errorBanner, { backgroundColor: `${theme.danger}15`, borderColor: `${theme.danger}30` }]}>
-                  <Text style={[styles.errorText, { color: theme.danger }]}>{apple.error}</Text>
+                  <Text style={[styles.errorText, { color: theme.danger, textAlign: dir.textAlign }]}>{apple.error}</Text>
                 </View>
               )}
 
               {apple.noAccount && (
-                <View style={[styles.noAccountBanner, { backgroundColor: `${palette.charbon}08`, borderColor: `${palette.charbon}25` }]}>
-                  <Text style={[styles.noAccountTitle, { color: theme.text }]}>{t('appleAuth.noAccountTitle')}</Text>
-                  <Text style={[styles.noAccountMsg, { color: theme.textMuted }]}>{t('appleAuth.noAccountAction')}</Text>
-                  <TouchableOpacity
-                    onPress={() => {
-                      apple.dismissNoAccount();
-                      router.push('/register');
-                    }}
-                    activeOpacity={0.85}
-                    style={[styles.noAccountBtn, { backgroundColor: palette.charbon }]}
-                  >
-                    <Text style={styles.noAccountBtnText}>{t('appleAuth.goToRegister')}</Text>
-                    <ArrowRight size={ms(16)} color="#fff" strokeWidth={1.5} style={isRTL ? styles.flipArrow : undefined} />
-                  </TouchableOpacity>
-                </View>
+                <NoAccountBanner
+                  title={t('appleAuth.noAccountTitle')}
+                  message={t('appleAuth.noAccountAction')}
+                  actionLabel={t('appleAuth.goToRegister')}
+                  onPress={() => {
+                    apple.dismissNoAccount();
+                    router.push('/register');
+                  }}
+                />
               )}
 
               <View style={styles.dividerRow}>
@@ -502,20 +499,21 @@ export default function LoginScreen() {
                 accessibilityRole="button"
                 accessibilityState={{ expanded: formMounted }}
                 accessibilityLabel={t('login.continueWithEmail')}
-                style={[styles.emailDisclosure, { borderColor: palette.violet, backgroundColor: theme.bgCard }]}
+                style={[styles.emailDisclosure, { flexDirection: dir.row, borderColor: palette.violet, backgroundColor: theme.bgCard }]}
               >
                 <View style={styles.emailDisclosureIconWrap}>
-                  <Mail size={ms(16)} color={palette.violet} strokeWidth={1.8} />
+                  <Mail size={ms(16)} color={palette.violet} strokeWidth={icon.stroke} />
                 </View>
-                <Text style={[styles.emailDisclosureText, { color: theme.text }]}>{t('login.continueWithEmail')}</Text>
+                <Text style={[styles.emailDisclosureText, { color: theme.text, textAlign: dir.textAlign }]}>
+                  {t('login.continueWithEmail')}
+                </Text>
                 <Animated.View
-                  style={{
-                    transform: [{ rotate: emailFormAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] }) }],
-                    minWidth: ms(24),
-                    alignItems: 'center',
-                  }}
+                  style={[
+                    styles.chevronWrap,
+                    { transform: [{ rotate: emailFormAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] }) }] },
+                  ]}
                 >
-                  <ChevronDown size={ms(18)} color={palette.violet} strokeWidth={2.4} />
+                  <ChevronDown size={ms(18)} color={palette.violet} strokeWidth={icon.stroke} />
                 </Animated.View>
               </TouchableOpacity>
 
@@ -523,10 +521,11 @@ export default function LoginScreen() {
                 activeOpacity={0.75}
                 onPress={() => router.push('/register')}
                 style={styles.signupInlineWrap}
+                accessibilityRole="button"
               >
                 <Text style={styles.signupInlineText}>
-                  <Text style={{ color: theme.textMuted, fontFamily: 'Lexend_400Regular' }}>{t('login.noAccount')} </Text>
-                  <Text style={{ color: palette.violet, fontFamily: 'Lexend_600SemiBold' }}>{t('login.createAccount')}</Text>
+                  <Text style={[styles.signupMuted, { color: theme.textMuted }]}>{t('login.noAccount')} </Text>
+                  <Text style={[styles.signupLink, { color: palette.violet }]}>{t('login.createAccount')}</Text>
                 </Text>
               </TouchableOpacity>
             </Animated.View>
@@ -549,10 +548,12 @@ export default function LoginScreen() {
                   <View
                     accessibilityRole="alert"
                     accessibilityLiveRegion="polite"
-                    style={[styles.offlineBanner, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder }]}
+                    style={[styles.offlineBanner, { flexDirection: dir.row, backgroundColor: theme.inputBg, borderColor: theme.inputBorder }]}
                   >
-                    <WifiOff size={ms(15)} color={theme.textSecondary} strokeWidth={1.9} />
-                    <Text style={[styles.offlineText, { color: theme.textSecondary }]}>{t('login.offlineBanner')}</Text>
+                    <WifiOff size={ms(15)} color={theme.textSecondary} strokeWidth={icon.stroke} />
+                    <Text style={[styles.offlineText, { color: theme.textSecondary, textAlign: dir.textAlign }]}>
+                      {t('login.offlineBanner')}
+                    </Text>
                   </View>
                 )}
 
@@ -560,24 +561,23 @@ export default function LoginScreen() {
                   <View
                     accessibilityRole="alert"
                     accessibilityLiveRegion="polite"
-                    style={styles.rateLimitBanner}
+                    style={[styles.rateLimitBanner, { flexDirection: dir.row }]}
                   >
-                    <TriangleAlert size={ms(15)} color="#92400E" strokeWidth={2} />
-                    <Text style={styles.rateLimitText}>{t('login.rateLimitedBanner', { minutes: rateMinutesLabel })}</Text>
+                    <TriangleAlert size={ms(15)} color="#92400E" strokeWidth={icon.stroke} />
+                    <Text style={[styles.rateLimitText, { textAlign: dir.textAlign }]}>
+                      {t('login.rateLimitedBanner', { minutes: rateMinutesLabel })}
+                    </Text>
                   </View>
                 )}
 
                 <View style={styles.inputContainer}>
                   <View style={fieldStyle('email')}>
-                    <Mail size={ms(17)} color={palette.violet} strokeWidth={1.8} style={isRTL ? styles.rtlIcon : undefined} />
+                    <Mail size={ms(17)} color={palette.violet} strokeWidth={icon.stroke} />
                     <TextInput
                       ref={emailRef}
                       style={[
                         styles.inputField,
-                        {
-                          color: theme.text,
-                          textAlign: isRTL ? 'right' : 'left',
-                        },
+                        { color: theme.text, textAlign: dir.textAlign },
                         isRTL && styles.inputFieldRtl,
                       ]}
                       placeholder={t('login.emailPlaceholder')}
@@ -600,15 +600,12 @@ export default function LoginScreen() {
 
                 <View style={styles.inputContainer}>
                   <View style={fieldStyle('password')}>
-                    <Lock size={ms(17)} color={palette.violet} strokeWidth={1.8} style={isRTL ? styles.rtlIcon : undefined} />
+                    <JitLock size={ms(17)} color={palette.violet} strokeWidth={icon.stroke} />
                     <TextInput
                       ref={passwordRef}
                       style={[
                         styles.inputField,
-                        {
-                          color: theme.text,
-                          textAlign: isRTL ? 'right' : 'left',
-                        },
+                        { color: theme.text, textAlign: dir.textAlign },
                         isRTL && styles.inputFieldRtl,
                       ]}
                       placeholder={t('login.passwordPlaceholder')}
@@ -636,9 +633,9 @@ export default function LoginScreen() {
                       style={styles.eyeTap}
                     >
                       {showPassword ? (
-                        <EyeOff size={ms(19)} color={theme.inputPlaceholder} strokeWidth={1.7} />
+                        <EyeOff size={ms(19)} color={theme.inputPlaceholder} strokeWidth={icon.stroke} />
                       ) : (
-                        <Eye size={ms(19)} color={theme.inputPlaceholder} strokeWidth={1.7} />
+                        <Eye size={ms(19)} color={theme.inputPlaceholder} strokeWidth={icon.stroke} />
                       )}
                     </TouchableOpacity>
                   </View>
@@ -646,69 +643,66 @@ export default function LoginScreen() {
 
                 {showInlineError && (
                   <View
-                    style={styles.fieldErrorRow}
+                    style={[styles.fieldErrorRow, { flexDirection: dir.row }]}
                     accessibilityRole="alert"
                     accessibilityLiveRegion="polite"
                   >
-                    <TriangleAlert size={ms(13)} color={theme.danger} strokeWidth={2.2} />
-                    <Text style={[styles.fieldErrorText, { color: theme.danger }]}>{errorMessage}</Text>
+                    <TriangleAlert size={ms(13)} color={theme.danger} strokeWidth={icon.strokeSmall} />
+                    <Text style={[styles.fieldErrorText, { color: theme.danger, textAlign: dir.textAlign }]}>{errorMessage}</Text>
                   </View>
                 )}
 
-                <TouchableOpacity activeOpacity={0.7} onPress={() => router.push('/forgot-password')}>
-                  <Text style={[styles.forgotText, { color: palette.violet }]}>{t('login.forgotPassword')}</Text>
+                <TouchableOpacity activeOpacity={0.7} onPress={() => router.push('/forgot-password')} accessibilityRole="button">
+                  <Text style={[styles.forgotText, { color: palette.violet, textAlign: isRTL ? 'left' : 'right' }]}>
+                    {t('login.forgotPassword')}
+                  </Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity
+                <ActionButton
+                  label={t('login.loginBtn')}
+                  accessibilityLabel={isLoading ? t('login.connecting') : t('login.loginBtn')}
                   onPress={handleLogin}
                   disabled={submitDisabled}
-                  activeOpacity={0.85}
-                  accessibilityRole="button"
-                  accessibilityLabel={t('login.loginBtn')}
-                  accessibilityState={{ disabled: submitDisabled, busy: isLoading }}
-                >
-                  {submitDisabled && !isLoading ? (
-                    <View style={[styles.button, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder }]}> 
-                      <Text style={[styles.buttonText, { color: theme.textMuted, opacity: 0.8 }]}>{t('login.loginBtn')}</Text>
-                      <ArrowRight
-                        size={ms(17)}
-                        color={theme.textMuted}
-                        strokeWidth={1.8}
-                        style={isRTL ? styles.flipArrow : undefined}
-                      />
-                    </View>
-                  ) : (
-                    <LinearGradient
-                      colors={brandGradient}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={[styles.button, styles.buttonActiveShadow]}
-                    >
-                      {isLoading ? (
-                        <>
-                          <ActivityIndicator color="#fff" size="small" />
-                          <Text style={styles.buttonText}>{t('login.connecting')}</Text>
-                        </>
-                      ) : (
-                        <>
-                          <Text style={styles.buttonText}>{t('login.loginBtn')}</Text>
-                          <ArrowRight
-                            size={ms(17)}
-                            color="#fff"
-                            strokeWidth={1.8}
-                            style={isRTL ? styles.flipArrow : undefined}
-                          />
-                        </>
-                      )}
-                    </LinearGradient>
-                  )}
-                </TouchableOpacity>
+                  loading={isLoading}
+                  size="lg"
+                  icon={ArrowRight}
+                  iconPosition="end"
+                  flipIconInRTL
+                  gradient={submitIdle ? undefined : brandGradient}
+                  iconColor={submitIdle ? theme.textMuted : undefined}
+                  style={[styles.button, submitIdle ? { backgroundColor: theme.inputBg, borderColor: theme.inputBorder } : styles.buttonActiveShadow]}
+                  labelStyle={submitIdle ? [styles.buttonIdleText, { color: theme.textMuted }] : undefined}
+                />
               </Animated.View>
             )}
           </ScrollView>
         </KeyboardAvoidingView>
 
       </SafeAreaView>
+    </View>
+  );
+}
+
+function NoAccountBanner({ title, message, actionLabel, onPress }: {
+  title: string;
+  message: string;
+  actionLabel: string;
+  onPress: () => void;
+}) {
+  const theme = useTheme();
+  const dir = useDir();
+  return (
+    <View style={[styles.noAccountBanner, { backgroundColor: `${palette.charbon}08`, borderColor: `${palette.charbon}25` }]}>
+      <Text style={[styles.noAccountTitle, { color: theme.text, textAlign: dir.textAlign }]}>{title}</Text>
+      <Text style={[styles.noAccountMsg, { color: theme.textMuted, textAlign: dir.textAlign }]}>{message}</Text>
+      <ActionButton
+        label={actionLabel}
+        onPress={onPress}
+        icon={ArrowRight}
+        iconPosition="end"
+        flipIconInRTL
+        style={styles.noAccountBtn}
+      />
     </View>
   );
 }
@@ -732,17 +726,13 @@ const styles = StyleSheet.create({
   langBar: {
     position: 'absolute',
     top: 0,
-    right: 0,
     zIndex: 10,
-    paddingRight: wp(16),
   },
+  langBarLtr: { right: 0, paddingRight: wp(16) },
+  langBarRtl: { left: 0, paddingLeft: wp(16) },
   langRow: {
-    flexDirection: 'row',
     gap: wp(7),
     paddingTop: hp(4),
-  },
-  langRowRtl: {
-    flexDirection: 'row-reverse',
   },
   langBtn: {
     minWidth: ms(42),
@@ -775,7 +765,7 @@ const styles = StyleSheet.create({
     marginBottom: hp(28),
   },
   logoMarkShadow: {
-    borderRadius: ms(18),
+    borderRadius: radius.lg,
     marginBottom: hp(14),
     ...Platform.select({
       ios: {
@@ -790,7 +780,7 @@ const styles = StyleSheet.create({
   logoMark: {
     width: ms(60),
     height: ms(60),
-    borderRadius: ms(18),
+    borderRadius: radius.lg,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
@@ -798,22 +788,20 @@ const styles = StyleSheet.create({
   logoMarkImage: {
     width: '100%',
     height: '100%',
-    borderRadius: ms(18),
     zIndex: 1,
   },
   tagline: {
     marginTop: hp(5),
     fontSize: fontSize.sm,
-    fontFamily: 'Lexend_500Medium',
+    fontFamily: font.medium,
   },
 
   formSection: { paddingHorizontal: wp(4) },
 
   socialBtn: {
-    minHeight: ms(56),
-    borderRadius: radius.lg,
+    minHeight: ms(52),
+    borderRadius: radius.md,
     borderWidth: 1.5,
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: wp(10),
@@ -841,26 +829,10 @@ const styles = StyleSheet.create({
       android: { elevation: 4 },
     }),
   },
-  googleIconWrap: {
-    width: ms(20),
-    height: ms(20),
-    borderRadius: ms(10),
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  googleG: {
-    color: '#4285F4',
-    fontSize: ms(12),
-    fontWeight: '700',
-    fontFamily: 'Lexend_700Bold',
-  },
+  appleBtnText: { color: '#fff' },
   socialBtnText: {
     fontSize: fontSize.md,
-    fontWeight: '600',
-    fontFamily: 'Lexend_600SemiBold',
+    fontFamily: font.semibold,
   },
 
   dividerRow: {
@@ -869,25 +841,24 @@ const styles = StyleSheet.create({
     gap: wp(12),
     marginVertical: hp(16),
   },
-  dividerLine: { flex: 1, height: 1 },
+  dividerLine: { flex: 1, height: StyleSheet.hairlineWidth },
   dividerText: {
     fontSize: fontSize.xs,
-    fontFamily: 'Lexend_500Medium',
+    fontFamily: font.medium,
   },
 
   emailDisclosure: {
-    minHeight: ms(56),
-    borderRadius: radius.lg,
+    minHeight: ms(52),
+    borderRadius: radius.md,
     borderWidth: 1.5,
     paddingHorizontal: wp(14),
-    flexDirection: 'row',
     alignItems: 'center',
     gap: wp(10),
   },
   emailDisclosureIconWrap: {
-    width: ms(22),
-    height: ms(22),
-    borderRadius: ms(7),
+    width: ms(24),
+    height: ms(24),
+    borderRadius: 8,
     backgroundColor: 'rgba(124,58,237,0.1)',
     alignItems: 'center',
     justifyContent: 'center',
@@ -895,7 +866,11 @@ const styles = StyleSheet.create({
   emailDisclosureText: {
     flex: 1,
     fontSize: fontSize.md,
-    fontFamily: 'Lexend_600SemiBold',
+    fontFamily: font.semibold,
+  },
+  chevronWrap: {
+    minWidth: ms(24),
+    alignItems: 'center',
   },
 
   offlineBanner: {
@@ -903,14 +878,14 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     borderWidth: 1,
     paddingHorizontal: wp(12),
-    flexDirection: 'row',
     alignItems: 'center',
     gap: wp(8),
     marginBottom: hp(12),
   },
   offlineText: {
+    flex: 1,
     fontSize: fontSize.sm,
-    fontFamily: 'Lexend_600SemiBold',
+    fontFamily: font.semibold,
   },
 
   rateLimitBanner: {
@@ -920,24 +895,23 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(245,158,11,0.25)',
     backgroundColor: 'rgba(245,158,11,0.08)',
     paddingHorizontal: wp(12),
-    flexDirection: 'row',
     alignItems: 'center',
     gap: wp(8),
     marginBottom: hp(12),
   },
   rateLimitText: {
     color: '#92400E',
+    flex: 1,
     fontSize: fontSize.sm,
-    fontFamily: 'Lexend_600SemiBold',
+    fontFamily: font.semibold,
   },
 
   inputContainer: { marginBottom: hp(12) },
   inputWrapper: {
-    minHeight: ms(56),
-    borderRadius: radius.lg,
+    minHeight: ms(52),
+    borderRadius: radius.md,
     borderWidth: 1.5,
     paddingHorizontal: wp(14),
-    flexDirection: 'row',
     alignItems: 'center',
     gap: wp(10),
   },
@@ -955,13 +929,10 @@ const styles = StyleSheet.create({
   inputError: {
     backgroundColor: 'rgba(239,68,68,0.04)',
   },
-  rtlIcon: {
-    transform: [{ scaleX: -1 }],
-  },
   inputField: {
     flex: 1,
     fontSize: fontSize.md,
-    fontFamily: 'Lexend_500Medium',
+    fontFamily: font.medium,
   },
   inputFieldRtl: {
     marginRight: wp(2),
@@ -974,7 +945,6 @@ const styles = StyleSheet.create({
   },
 
   fieldErrorRow: {
-    flexDirection: 'row',
     alignItems: 'center',
     gap: wp(6),
     marginTop: hp(2),
@@ -982,27 +952,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: wp(2),
   },
   fieldErrorText: {
-    fontSize: ms(11.5),
-    fontFamily: 'Lexend_500Medium',
+    flex: 1,
+    fontSize: ms(12),
+    fontFamily: font.medium,
   },
 
   forgotText: {
     fontSize: fontSize.sm,
-    fontFamily: 'Lexend_600SemiBold',
-    textAlign: 'right',
+    fontFamily: font.semibold,
     marginBottom: hp(14),
   },
 
   button: {
-    minHeight: ms(56),
-    borderRadius: radius.lg,
-    borderWidth: 1.5,
-    paddingHorizontal: wp(20),
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: wp(8),
     marginTop: hp(4),
+    opacity: 1,
   },
   buttonActiveShadow: {
     borderWidth: 0,
@@ -1016,15 +979,7 @@ const styles = StyleSheet.create({
       android: { elevation: 8 },
     }),
   },
-  buttonText: {
-    color: '#fff',
-    fontSize: fontSize.md,
-    fontFamily: 'Lexend_700Bold',
-    letterSpacing: 0.3,
-  },
-  flipArrow: {
-    transform: [{ scaleX: -1 }],
-  },
+  buttonIdleText: { opacity: 0.8 },
 
   errorBanner: {
     borderWidth: 1,
@@ -1035,11 +990,11 @@ const styles = StyleSheet.create({
   },
   errorText: {
     fontSize: fontSize.xs,
-    fontFamily: 'Lexend_400Regular',
+    fontFamily: font.regular,
   },
 
   noAccountBanner: {
-    borderWidth: 1.5,
+    borderWidth: StyleSheet.hairlineWidth,
     borderRadius: radius.lg,
     paddingHorizontal: wp(16),
     paddingVertical: hp(14),
@@ -1048,35 +1003,27 @@ const styles = StyleSheet.create({
   },
   noAccountTitle: {
     fontSize: fontSize.md,
-    fontFamily: 'Lexend_700Bold',
+    fontFamily: font.bold,
   },
   noAccountMsg: {
     fontSize: fontSize.sm,
     lineHeight: ms(20),
-    fontFamily: 'Lexend_400Regular',
+    fontFamily: font.regular,
   },
   noAccountBtn: {
-    minHeight: ms(42),
-    borderRadius: radius.md,
     marginTop: hp(6),
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: wp(6),
+    backgroundColor: palette.charbon,
+    borderColor: palette.charbon,
   },
-  noAccountBtnText: {
-    color: '#fff',
-    fontSize: fontSize.sm,
-    fontFamily: 'Lexend_700Bold',
-  },
-
   signupInlineWrap: {
     marginTop: hp(10),
     marginBottom: hp(16),
   },
   signupInlineText: {
-    fontSize: ms(11),
+    fontSize: fontSize.sm,
     textAlign: 'center',
-    fontFamily: 'Lexend_400Regular',
+    fontFamily: font.regular,
   },
+  signupMuted: { fontFamily: font.regular },
+  signupLink: { fontFamily: font.semibold },
 });

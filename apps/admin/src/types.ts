@@ -774,3 +774,51 @@ export interface AdminInsights {
   trialsEnding: (InsightMerchantContact & { expiresAt: string })[];
   dormantMerchants: (InsightMerchantContact & { plan: string; lastActivityAt: string })[];
 }
+
+// ── Deals (bons plans) ───────────────────────────────────────────────────────
+
+export type AdminDealFilter = 'all' | 'live' | 'reported' | 'removed';
+export type AdminDealDisplayStatus = 'SCHEDULED' | 'LIVE' | 'ENDED' | 'REMOVED';
+
+export interface AdminDealRow {
+  id: string;
+  scope: 'LOCAL' | 'ONLINE';
+  type: string;
+  title: string;
+  description: string | null;
+  conditions: string | null;
+  imageUrl: string | null;
+  linkUrl: string | null;
+  cityKeys: string[];
+  startsAt: string;
+  endsAt: string;
+  status: 'ACTIVE' | 'ENDED' | 'REMOVED' | 'DELETED';
+  /** EXPIRED | STOPPED | AUTO_REPORTS | reason typed by an admin */
+  endedReason: string | null;
+  reportCount: number;
+  viewCount: number;
+  linkClickCount: number;
+  createdAt: string;
+  merchant: { id: string; nom: string; email: string };
+  displayStatus: AdminDealDisplayStatus;
+}
+
+export interface AdminDealsResponse {
+  deals: AdminDealRow[];
+  pagination: Pagination;
+}
+
+export interface AdminDealReport {
+  id: string;
+  reason: string;
+  comment: string | null;
+  createdAt: string;
+  client: { id: string; prenom: string | null; nom: string | null } | null;
+}
+
+export interface AdminDealListParams {
+  filter?: AdminDealFilter;
+  search?: string;
+  page?: number;
+  limit?: number;
+}

@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text } from 'react-native';
+import { View } from 'react-native';
+import { Text } from '@/components/AppText';
 import { Users, Gift, CheckCircle, Clock } from 'lucide-react-native';
 import { palette } from '@/contexts/ThemeContext';
 import { ms } from '@/utils/responsive';
@@ -9,16 +10,15 @@ import type { ClientReferralStats } from '@/types';
 
 interface MyReferralsListProps {
   stats: ClientReferralStats;
-  isRTL: boolean;
   theme: ThemeColors;
   t: (key: string, variables?: Record<string, string | number>) => string;
   formatDate: (dateStr: string | null | undefined) => string;
 }
 
-export default function MyReferralsList({ stats, isRTL, theme, t, formatDate }: MyReferralsListProps) {
+export default function MyReferralsList({ stats, theme, t, formatDate }: MyReferralsListProps) {
   return (
     <View style={styles.listSection}>
-      <View style={[styles.listHeader, isRTL && styles.listHeaderRTL]}>
+      <View style={styles.listHeader}>
         <View style={{ width: ms(36), height: ms(36), borderRadius: ms(12), backgroundColor: `${palette.gold}15`, alignItems: 'center', justifyContent: 'center' }}>
           <Users size={ms(16)} color={palette.gold} strokeWidth={1.5} />
         </View>
@@ -37,11 +37,11 @@ export default function MyReferralsList({ stats, isRTL, theme, t, formatDate }: 
       ) : (
         <View style={[styles.listCard, { backgroundColor: theme.bgCard }]}>
           {(stats.referrals ?? []).map((ref, idx, arr) => (
-            <View key={ref.id} style={[styles.referralRow, isRTL && styles.referralRowRTL, idx === arr.length - 1 && { borderBottomWidth: 0 }, { borderBottomColor: theme.border }]}>
+            <View key={ref.id} style={[styles.referralRow, idx === arr.length - 1 && { borderBottomWidth: 0 }, { borderBottomColor: theme.border }]}>
               <View style={[styles.statusDot, { backgroundColor: ref.status === 'VALIDATED' ? palette.emerald : palette.gold }]} />
               <View style={styles.referralInfo}>
-                <Text style={[styles.referralName, { color: theme.text }, isRTL && styles.textRTL]}>{ref.merchantName}</Text>
-                <Text style={[styles.referralMeta, { color: theme.textMuted }, isRTL && styles.textRTL]}>
+                <Text style={[styles.referralName, { color: theme.text }]}>{ref.merchantName}</Text>
+                <Text style={[styles.referralMeta, { color: theme.textMuted }]}>
                   {ref.status === 'VALIDATED' && ref.validatedAt ? t('referral.validatedOn', { date: formatDate(ref.validatedAt) }) : t('referral.referredOn', { date: formatDate(ref.createdAt) })}
                 </Text>
               </View>

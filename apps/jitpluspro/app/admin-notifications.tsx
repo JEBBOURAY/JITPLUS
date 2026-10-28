@@ -8,28 +8,28 @@ import {
   TouchableOpacity,
   RefreshControl,
   Platform,
-  I18nManager,
 } from 'react-native';
 import {
   ArrowLeft,
   ShieldAlert,
-  Crown,
   TrendingUp,
   Lightbulb,
   ListChecks,
   Gauge,
-  Gift,
-  Megaphone,
   CheckCheck,
   BellOff,
   ChevronRight,
   RefreshCw,
   type LucideIcon,
 } from 'lucide-react-native';
+import { JitGift, JitMessages, JitPremium } from '@/components/icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useDir } from '@/hooks/useDir';
+import { font, icon } from '@/constants/design';
+import { ActionButton } from '@/components/ui/ActionButton';
 import {
   useAdminNotifications,
   useMarkAdminNotifsRead,
@@ -46,13 +46,13 @@ import { logWarn } from '@/utils/devLogger';
 
 const CATEGORY_STYLE: Record<InboxCategory, { icon: LucideIcon; color: string; labelKey: string }> = {
   SECURITY: { icon: ShieldAlert, color: '#DC2626', labelKey: 'inbox.catSecurity' },
-  PLAN: { icon: Crown, color: '#D97706', labelKey: 'inbox.catPlan' },
+  PLAN: { icon: JitPremium, color: '#D97706', labelKey: 'inbox.catPlan' },
   ACTIVITY: { icon: TrendingUp, color: '#059669', labelKey: 'inbox.catActivity' },
   TIP: { icon: Lightbulb, color: '#0284C7', labelKey: 'inbox.catTip' },
   SETUP: { icon: ListChecks, color: '#4F46E5', labelKey: 'inbox.catSetup' },
   QUOTA: { icon: Gauge, color: '#EA580C', labelKey: 'inbox.catQuota' },
-  OFFER: { icon: Gift, color: '#DB2777', labelKey: 'inbox.catOffer' },
-  ADMIN: { icon: Megaphone, color: palette.violet, labelKey: 'inbox.catAdmin' },
+  OFFER: { icon: JitGift, color: '#DB2777', labelKey: 'inbox.catOffer' },
+  ADMIN: { icon: JitMessages, color: palette.violet, labelKey: 'inbox.catAdmin' },
 };
 
 const SECTION_LABEL_KEY: Record<InboxSectionKey, string> = {
@@ -79,6 +79,7 @@ export default function AdminNotificationsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { t, locale } = useLanguage();
+  const { isRTL, row, textAlign, flip } = useDir();
   const {
     data,
     isLoading,
@@ -171,6 +172,7 @@ export default function AdminNotificationsScreen() {
         style={[
           styles.card,
           {
+            flexDirection: row,
             backgroundColor: unread ? theme.bgCard : theme.bgElevated,
             borderColor: unread ? `${cat.color}33` : theme.borderLight,
           },
@@ -179,11 +181,11 @@ export default function AdminNotificationsScreen() {
         ]}
       >
         <View style={[styles.iconWrap, { backgroundColor: `${cat.color}${unread ? '1F' : '14'}` }]}>
-          <Icon size={ms(18)} color={unread ? cat.color : theme.textMuted} strokeWidth={1.8} />
+          <Icon size={ms(18)} color={unread ? cat.color : theme.textMuted} strokeWidth={icon.stroke} />
         </View>
 
         <View style={styles.cardBody}>
-          <View style={styles.metaRow}>
+          <View style={[styles.metaRow, { flexDirection: row }]}>
             <Text
               style={[styles.categoryLabel, { color: unread ? cat.color : theme.textMuted }]}
               numberOfLines={1}
@@ -195,13 +197,13 @@ export default function AdminNotificationsScreen() {
               {when}
             </Text>
             <View style={{ flex: 1 }} />
-            {unread && <View style={[styles.unreadDot, { backgroundColor: cat.color }]} />}
+            {unread && <View style={[styles.unreadDot, isRTL ? styles.unreadDotRtl : styles.unreadDotLtr, { backgroundColor: cat.color }]} />}
           </View>
 
           <Text
             style={[
               styles.cardTitle,
-              { color: unread ? theme.text : theme.textSecondary },
+              { color: unread ? theme.text : theme.textSecondary, textAlign },
               unread && styles.cardTitleUnread,
             ]}
             numberOfLines={2}
@@ -210,14 +212,14 @@ export default function AdminNotificationsScreen() {
           </Text>
 
           <Text
-            style={[styles.cardText, { color: unread ? theme.textSecondary : theme.textMuted }]}
+            style={[styles.cardText, { color: unread ? theme.textSecondary : theme.textMuted, textAlign }]}
             numberOfLines={isExpanded ? undefined : 3}
           >
             {item.body}
           </Text>
 
           {(isLong || hasLink) && (
-            <View style={styles.actionsRow}>
+            <View style={[styles.actionsRow, { flexDirection: row }]}>
               {isLong && (
                 <TouchableOpacity
                   onPress={() => toggleExpand(item)}
@@ -233,13 +235,13 @@ export default function AdminNotificationsScreen() {
               )}
               <View style={{ flex: 1 }} />
               {hasLink && (
-                <View style={[styles.openChip, { backgroundColor: `${cat.color}14` }]}>
+                <View style={[styles.openChip, isRTL ? styles.openChipRtl : styles.openChipLtr, { flexDirection: row, backgroundColor: `${cat.color}14` }]}>
                   <Text style={[styles.openChipText, { color: cat.color }]}>{t('inbox.open')}</Text>
                   <ChevronRight
                     size={ms(14)}
                     color={cat.color}
-                    strokeWidth={2.2}
-                    style={I18nManager.isRTL ? styles.flipX : undefined}
+                    strokeWidth={icon.strokeSmall}
+                    style={flip}
                   />
                 </View>
               )}
@@ -248,13 +250,13 @@ export default function AdminNotificationsScreen() {
         </View>
       </TouchableOpacity>
     );
-  }, [theme, locale, t, expandedIds, handlePress, toggleExpand]);
+  }, [theme, locale, t, expandedIds, handlePress, toggleExpand, isRTL, row, textAlign, flip]);
 
   const renderSectionHeader = useCallback(({ section }: { section: { key: InboxSectionKey } }) => (
-    <Text style={[styles.sectionHeader, { color: theme.textMuted, backgroundColor: theme.bg }]}>
+    <Text style={[styles.sectionHeader, { color: theme.textMuted, backgroundColor: theme.bg, textAlign }]}>
       {t(SECTION_LABEL_KEY[section.key])}
     </Text>
-  ), [theme, t]);
+  ), [theme, t, textAlign]);
 
   const subtitle = unreadCount === 0
     ? t('inbox.allRead')
@@ -264,23 +266,22 @@ export default function AdminNotificationsScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
-      <View style={[styles.headerBar, { paddingTop: insets.top + 12 }]}>
+      <View style={[styles.headerBar, { paddingTop: insets.top + 12, flexDirection: row }]}>
         <TouchableOpacity
           onPress={() => router.back()}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          style={styles.backBtn}
           accessibilityRole="button"
           accessibilityLabel={t('common.back')}
         >
-          <ArrowLeft size={22} color={theme.text} style={I18nManager.isRTL ? styles.flipX : undefined} />
+          <ArrowLeft size={22} color={theme.text} strokeWidth={icon.stroke} style={flip} />
         </TouchableOpacity>
         <View style={styles.headerTitles}>
-          <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>
+          <Text style={[styles.headerTitle, { color: theme.text, textAlign }]} numberOfLines={1}>
             {t('inbox.title')}
           </Text>
           {!isLoading && !isEmpty && (
             <Text
-              style={[styles.headerSubtitle, { color: unreadCount > 0 ? theme.primary : theme.textMuted }]}
+              style={[styles.headerSubtitle, { color: unreadCount > 0 ? theme.primary : theme.textMuted, textAlign }]}
               numberOfLines={1}
             >
               {subtitle}
@@ -297,11 +298,11 @@ export default function AdminNotificationsScreen() {
             accessibilityLabel={t('inbox.markAllReadA11y')}
             style={[
               styles.markAllBtn,
-              { backgroundColor: theme.primaryBg },
+              { backgroundColor: theme.primaryBg, flexDirection: row },
               markAllRead.isPending && { opacity: 0.5 },
             ]}
           >
-            <CheckCheck size={ms(15)} color={theme.primary} strokeWidth={2} />
+            <CheckCheck size={ms(16)} color={theme.primary} strokeWidth={icon.stroke} />
             <Text style={[styles.markAllText, { color: theme.primary }]}>{t('inbox.markAllRead')}</Text>
           </TouchableOpacity>
         )}
@@ -314,24 +315,21 @@ export default function AdminNotificationsScreen() {
       ) : isError && isEmpty ? (
         <View style={styles.center}>
           <View style={[styles.emptyIcon, { backgroundColor: `${palette.charbon}12` }]}>
-            <BellOff size={ms(34)} color={theme.textMuted} strokeWidth={1.5} />
+            <BellOff size={ms(34)} color={theme.textMuted} strokeWidth={icon.stroke} />
           </View>
           <Text style={[styles.emptyTitle, { color: theme.text }]}>{t('inbox.errorTitle')}</Text>
           <Text style={[styles.emptySubtitle, { color: theme.textMuted }]}>{t('inbox.errorHint')}</Text>
-          <TouchableOpacity
+          <ActionButton
+            label={t('common.retry')}
+            icon={RefreshCw}
             onPress={handleRefresh}
-            activeOpacity={0.8}
-            style={[styles.retryBtn, { backgroundColor: theme.primary }]}
-            accessibilityRole="button"
-          >
-            <RefreshCw size={ms(15)} color="#fff" strokeWidth={2} />
-            <Text style={styles.retryText}>{t('common.retry')}</Text>
-          </TouchableOpacity>
+            style={styles.retryBtn}
+          />
         </View>
       ) : isEmpty ? (
         <View style={styles.center}>
           <View style={[styles.emptyIcon, { backgroundColor: theme.primaryBg }]}>
-            <BellOff size={ms(34)} color={theme.primary} strokeWidth={1.5} />
+            <BellOff size={ms(34)} color={theme.primary} strokeWidth={icon.stroke} />
           </View>
           <Text style={[styles.emptyTitle, { color: theme.text }]}>{t('inbox.emptyTitle')}</Text>
           <Text style={[styles.emptySubtitle, { color: theme.textMuted }]}>{t('inbox.emptyHint')}</Text>
@@ -373,20 +371,16 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
     gap: 12,
   },
-  backBtn: {
-    marginRight: 2,
-  },
   headerTitles: {
     flex: 1,
   },
   headerTitle: {
     fontSize: 28,
-    fontWeight: '700',
-    fontFamily: 'Lexend_700Bold',
+    fontFamily: font.bold,
   },
   headerSubtitle: {
     fontSize: FS.sm,
-    fontFamily: 'Lexend_500Medium',
+    fontFamily: font.medium,
     marginTop: 2,
   },
   markAllBtn: {
@@ -399,7 +393,7 @@ const styles = StyleSheet.create({
   },
   markAllText: {
     fontSize: ms(12),
-    fontFamily: 'Lexend_600SemiBold',
+    fontFamily: font.semibold,
   },
   center: {
     flex: 1,
@@ -417,38 +411,26 @@ const styles = StyleSheet.create({
   },
   emptyTitle: {
     fontSize: FS.md,
-    fontFamily: 'Lexend_600SemiBold',
+    fontFamily: font.semibold,
     marginBottom: hp(6),
     textAlign: 'center',
   },
   emptySubtitle: {
     fontSize: FS.sm,
-    fontFamily: 'Lexend_400Regular',
+    fontFamily: font.regular,
     textAlign: 'center',
     lineHeight: ms(20),
   },
   retryBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
     marginTop: hp(20),
     paddingHorizontal: ms(18),
-    height: ms(42),
-    borderRadius: 999,
-  },
-  retryText: {
-    color: '#fff',
-    fontSize: FS.sm,
-    fontFamily: 'Lexend_600SemiBold',
   },
   listContent: {
     paddingHorizontal: wp(16),
   },
   sectionHeader: {
     fontSize: ms(12),
-    fontFamily: 'Lexend_600SemiBold',
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
+    fontFamily: font.semibold,
     paddingTop: hp(14),
     paddingBottom: hp(8),
     paddingHorizontal: wp(4),
@@ -459,6 +441,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: ms(14),
     marginBottom: hp(10),
+    gap: wp(12),
   },
   cardUnreadShadow: {
     shadowOpacity: 0.08,
@@ -472,7 +455,6 @@ const styles = StyleSheet.create({
     borderRadius: ms(12),
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: wp(12),
     flexShrink: 0,
   },
   cardBody: {
@@ -485,7 +467,7 @@ const styles = StyleSheet.create({
   },
   categoryLabel: {
     fontSize: ms(11),
-    fontFamily: 'Lexend_600SemiBold',
+    fontFamily: font.semibold,
     flexShrink: 1,
   },
   metaDot: {
@@ -494,25 +476,26 @@ const styles = StyleSheet.create({
   },
   cardTime: {
     fontSize: ms(11),
-    fontFamily: 'Lexend_400Regular',
+    fontFamily: font.regular,
   },
   unreadDot: {
     width: ms(8),
     height: ms(8),
-    borderRadius: ms(4),
-    marginLeft: 6,
+    borderRadius: 999,
   },
+  unreadDotLtr: { marginLeft: 6 },
+  unreadDotRtl: { marginRight: 6 },
   cardTitle: {
     fontSize: FS.md,
-    fontFamily: 'Lexend_500Medium',
+    fontFamily: font.medium,
     marginBottom: hp(3),
   },
   cardTitleUnread: {
-    fontFamily: 'Lexend_700Bold',
+    fontFamily: font.bold,
   },
   cardText: {
     fontSize: FS.sm,
-    fontFamily: 'Lexend_400Regular',
+    fontFamily: font.regular,
     lineHeight: ms(19),
   },
   actionsRow: {
@@ -522,25 +505,22 @@ const styles = StyleSheet.create({
   },
   linkText: {
     fontSize: ms(12),
-    fontFamily: 'Lexend_600SemiBold',
+    fontFamily: font.semibold,
   },
   openChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 2,
     borderRadius: 999,
-    paddingLeft: ms(12),
-    paddingRight: ms(8),
     paddingVertical: ms(5),
   },
+  openChipLtr: { paddingLeft: ms(12), paddingRight: ms(8) },
+  openChipRtl: { paddingLeft: ms(8), paddingRight: ms(12) },
   openChipText: {
     fontSize: ms(12),
-    fontFamily: 'Lexend_600SemiBold',
+    fontFamily: font.semibold,
   },
   footerLoader: {
     marginVertical: hp(16),
-  },
-  flipX: {
-    transform: [{ scaleX: -1 }],
   },
 });

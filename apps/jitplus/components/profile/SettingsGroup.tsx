@@ -1,5 +1,6 @@
 import { Children, Fragment, memo, type ReactNode } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { Text } from '@/components/AppText';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAppFonts } from '@/utils/fonts';
 import { fontSize as FS, hp, ms, radius, wp } from '@/utils/responsive';

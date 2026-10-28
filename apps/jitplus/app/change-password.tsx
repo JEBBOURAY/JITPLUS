@@ -1,9 +1,10 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet,
+  View, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform, ActivityIndicator, Alert,
   ScrollView, Keyboard,
 } from 'react-native';
+import { Text, TextInput } from '@/components/AppText';
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 import { router } from 'expo-router';
 import { Lock, Eye, EyeOff, ArrowLeft, CheckCircle2 } from 'lucide-react-native';

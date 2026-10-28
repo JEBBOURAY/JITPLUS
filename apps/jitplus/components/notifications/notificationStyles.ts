@@ -59,6 +59,7 @@ export const notificationStyles = StyleSheet.create({
   cardPressed: { transform: [{ scale: 0.985 }] },
   logoWrap: { width: ms(46), height: ms(46) },
   logo: { width: ms(46), height: ms(46), borderRadius: ms(14) },
+  dealsLogo: { alignItems: 'center', justifyContent: 'center' },
   logoUnreadDot: {
     position: 'absolute', top: -ms(2), right: -ms(2),
     width: ms(13), height: ms(13), borderRadius: ms(7), borderWidth: 2,

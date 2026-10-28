@@ -6,7 +6,6 @@ import { logError } from '@/utils/devLogger';
 let Sentry: typeof import('@sentry/react-native') | null = null;
 try { Sentry = require('@sentry/react-native'); } catch {}
 
-// ── PII scrubber for Sentry ────────────────────────────────────────
 const PII_KEYS = /email|phone|tel|password|token|secret|api_?key|auth|credit|card|ssn|birth|address/i;
 const PII_PATTERNS = [
   /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g, // emails
@@ -54,9 +53,9 @@ export default function ErrorBoundary({ children }: { children: React.ReactNode 
   return (
     <SharedErrorBoundary
       labels={{
-        title: i18n.t('errors.somethingWentWrong') ?? 'Une erreur est survenue',
-        body: i18n.t('errors.unexpectedError') ?? "L'application a rencontré un problème inattendu.\nVeuillez réessayer.",
-        retry: i18n.t('common.retry') ?? 'Réessayer',
+        title: i18n.t('errors.somethingWentWrong'),
+        body: i18n.t('errors.unexpectedError'),
+        retry: i18n.t('common.retry'),
       }}
       onError={(error, extra) => {
         logError('ErrorBoundary', 'Uncaught render error', error, extra as Record<string, unknown>);

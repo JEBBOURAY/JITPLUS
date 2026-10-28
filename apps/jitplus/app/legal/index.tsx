@@ -1,4 +1,5 @@
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Pressable, Platform } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, ScrollView, Pressable, Platform } from 'react-native';
+import { Text } from '@/components/AppText';
 import { useRouter } from 'expo-router';
 import { ArrowLeft, Shield, FileText, Gift, Code2, ChevronRight } from 'lucide-react-native';
 import { useTheme, palette } from '@/contexts/ThemeContext';

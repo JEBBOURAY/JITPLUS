@@ -4,11 +4,12 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import {
   CLIENT_REPOSITORY, type IClientRepository,
+  CLIENT_SESSION_REPOSITORY, type IClientSessionRepository,
   OTP_REPOSITORY, type IOtpRepository,
 } from '../common/repositories';
 import { randomInt, randomBytes, createHash, createHmac, randomUUID } from 'crypto';
 import * as bcrypt from 'bcryptjs';
-import { OTP_MIN, OTP_MAX, OTP_EXPIRY_MS, OTP_COOLDOWN_MS, BCRYPT_SALT_ROUNDS, CLIENT_REFRESH_TOKEN_DAYS, MS_PER_DAY } from '../common/constants';
+import { OTP_MIN, OTP_MAX, OTP_EXPIRY_MS, OTP_COOLDOWN_MS, BCRYPT_SALT_ROUNDS, CLIENT_REFRESH_TOKEN_DAYS, MAX_SESSIONS_PER_CLIENT, MS_PER_DAY } from '../common/constants';
 import { errMsg } from '../common/utils';
 import { checkLockout, handleFailedLogin, resetLoginAttempts, LockoutDbOps } from '../common/utils/login-lockout.helper';
 import { CLIENT_AUTH_SELECT, CLIENT_LOGIN_SELECT } from '../common/prisma-selects';
@@ -20,7 +21,7 @@ import * as jwt from 'jsonwebtoken';
 import { createPublicKey } from 'crypto';
 import { ClientClaimService } from '../merchant/services/client-claim.service';
 
-/** Shape returned by buildAuthResponse â€” access + refresh tokens + client data. */
+/** Shape returned by buildAuthResponse — access + refresh tokens + client data. */
 export interface ClientAuthResponse {
   access_token: string;
   refresh_token: string;
@@ -59,6 +60,7 @@ export class ClientAuthService {
 
   constructor(
     @Inject(CLIENT_REPOSITORY) private clientRepo: IClientRepository,
+    @Inject(CLIENT_SESSION_REPOSITORY) private clientSessionRepo: IClientSessionRepository,
     @Inject(OTP_REPOSITORY) private otpRepo: IOtpRepository,
     private jwtService: JwtService,
     private configService: ConfigService,
@@ -111,7 +113,7 @@ export class ClientAuthService {
 
   /**
    * Extract country code from a normalized phone number
-   * E.g., +212612345678 â†’ MA, +33612345678 â†’ FR, +441234567890 â†’ GB
+   * E.g., +212612345678 → MA, +33612345678 → FR, +441234567890 → GB
    */
   private extractCountryCode(normalizedPhone: string): string {
     // Map of phone prefixes to country codes
@@ -181,7 +183,7 @@ export class ClientAuthService {
       await handleOtpMismatch(otpRecord!, this.otpDbOps);
     }
     const errorMessage = error instanceof Error ? error.message : '';
-    if (otpRecord && (errorMessage.includes('expirÃ©') || errorMessage.includes('Trop de tentatives'))) {
+    if (otpRecord && (errorMessage.includes('expiré') || errorMessage.includes('Trop de tentatives'))) {
       await this.otpRepo.delete({ where: { id: otpRecord.id } }).catch((err: unknown) =>
         this.logger.warn('OTP cleanup failed', errMsg(err)),
       );
@@ -199,6 +201,62 @@ export class ClientAuthService {
   /** SHA-256 hash of the refresh token (stored in DB) */
   private hashRefreshToken(token: string): string {
     return createHash('sha256').update(token).digest('hex');
+  }
+
+  private refreshTokenExpiry(): Date {
+    return new Date(Date.now() + CLIENT_REFRESH_TOKEN_DAYS * MS_PER_DAY);
+  }
+
+  /** Access token bound to the device session (`sid`) so logout can target that device only. */
+  private signAccessToken(
+    client: { id: string; telephone: string | null; email: string | null },
+    sessionId: string,
+  ): string {
+    return this.jwtService.sign({
+      sub: client.id,
+      jti: randomUUID(),
+      sid: sessionId,
+      telephone: client.telephone,
+      email: client.email,
+      type: 'client' as const,
+      role: 'client' as const,
+    });
+  }
+
+  /**
+   * Opens a session for a new device login. Expired sessions are purged and
+   * the least recently used ones beyond MAX_SESSIONS_PER_CLIENT are evicted.
+   */
+  private async createSession(clientId: string): Promise<{ sessionId: string; refresh_token: string }> {
+    const refresh_token = this.generateRefreshToken();
+    const session = await this.clientSessionRepo.create({
+      data: {
+        clientId,
+        refreshTokenHash: this.hashRefreshToken(refresh_token),
+        expiresAt: this.refreshTokenExpiry(),
+      },
+      select: { id: true },
+    });
+
+    await this.clientSessionRepo.deleteMany({ where: { clientId, expiresAt: { lt: new Date() } } });
+    const evicted = await this.clientSessionRepo.findMany({
+      where: { clientId },
+      orderBy: { lastUsedAt: 'desc' },
+      skip: MAX_SESSIONS_PER_CLIENT,
+      select: { id: true },
+    });
+    if (evicted.length > 0) {
+      await this.clientSessionRepo.deleteMany({ where: { id: { in: evicted.map((s) => s.id) } } });
+    }
+
+    return { sessionId: session.id, refresh_token };
+  }
+
+  /** Revokes every session of the client except `keepSessionId` (the device making the change). */
+  private async revokeOtherSessions(clientId: string, keepSessionId?: string): Promise<void> {
+    await this.clientSessionRepo.deleteMany({
+      where: { clientId, ...(keepSessionId ? { id: { not: keepSessionId } } : {}) },
+    });
   }
 
   private async buildAuthResponse(
@@ -221,26 +279,8 @@ export class ClientAuthService {
     },
     isNewUser: boolean,
   ): Promise<ClientAuthResponse> {
-    const payload = {
-      sub: client.id,
-      jti: randomUUID(), // unique token ID for revocation support
-      telephone: client.telephone,
-      email: client.email,
-      type: 'client' as const,
-      role: 'client' as const,
-    };
-    const access_token = this.jwtService.sign(payload);
-
-    // Generate & persist hashed refresh token (rotation) with expiration
-    const refresh_token = this.generateRefreshToken();
-    const refreshTokenExpiresAt = new Date(Date.now() + CLIENT_REFRESH_TOKEN_DAYS * MS_PER_DAY);
-    await this.clientRepo.update({
-      where: { id: client.id },
-      data: {
-        refreshTokenHash: this.hashRefreshToken(refresh_token),
-        refreshTokenExpiresAt,
-      },
-    });
+    const { sessionId, refresh_token } = await this.createSession(client.id);
+    const access_token = this.signAccessToken(client, sessionId);
 
       return {
       access_token,
@@ -266,14 +306,18 @@ export class ClientAuthService {
   }
 
   /**
-   * Logout: invalidate the refresh token so it cannot be reused.
+   * Logout: revoke this device's session so its refresh token cannot be reused.
    */
-  async logout(clientId: string): Promise<{ success: boolean; message: string }> {
+  async logout(clientId: string, sessionId?: string): Promise<{ success: boolean; message: string }> {
+    // Tokens issued before multi-device sessions carry no sid: revoke them all.
+    await this.clientSessionRepo.deleteMany({
+      where: { clientId, ...(sessionId ? { id: sessionId } : {}) },
+    });
     await this.clientRepo.update({
       where: { id: clientId },
-      data: { refreshTokenHash: null, refreshTokenExpiresAt: null, pushToken: null },
+      data: { pushToken: null },
     });
-    return { success: true, message: 'DÃ©connexion rÃ©ussie' };
+    return { success: true, message: 'Déconnexion réussie' };
   }
 
   /**
@@ -283,46 +327,38 @@ export class ClientAuthService {
   async refreshAccessToken(refreshToken: string): Promise<Omit<ClientAuthResponse, 'isNewUser'> & { client: ClientAuthResponse['client'] }> {
     const hash = this.hashRefreshToken(refreshToken);
 
-    // Find the client that owns this refresh token
-    const client = await this.clientRepo.findFirst({
+    const session = await this.clientSessionRepo.findUnique({
       where: { refreshTokenHash: hash },
-      select: { ...CLIENT_AUTH_SELECT, refreshTokenExpiresAt: true },
+      select: { id: true, expiresAt: true, client: { select: CLIENT_AUTH_SELECT } },
     });
 
-    if (!client) {
+    if (!session) {
       throw new UnauthorizedException('error.auth.refreshInvalid');
     }
 
-    // Check expiration â€” reject tokens older than CLIENT_REFRESH_TOKEN_DAYS
-    if ((client as any).refreshTokenExpiresAt && new Date((client as any).refreshTokenExpiresAt) < new Date()) {
-      // Invalidate the expired token
-      await this.clientRepo.update({
-        where: { id: client.id },
-        data: { refreshTokenHash: null, refreshTokenExpiresAt: null },
-      });
+    if (session.expiresAt < new Date()) {
+      await this.clientSessionRepo.delete({ where: { id: session.id } }).catch(() => {});
       throw new UnauthorizedException('error.auth.refreshExpired');
     }
 
-    // Rotate: issue new access + refresh tokens
-    const payload = {
-      sub: client.id,
-      jti: randomUUID(),
-      telephone: client.telephone,
-      email: client.email,
-      type: 'client' as const,
-      role: 'client' as const,
-    };
-    const access_token = this.jwtService.sign(payload);
+    const client = session.client;
     const new_refresh_token = this.generateRefreshToken();
-    const newRefreshTokenExpiresAt = new Date(Date.now() + CLIENT_REFRESH_TOKEN_DAYS * MS_PER_DAY);
 
-    await this.clientRepo.update({
-      where: { id: client.id },
+    // Conditional on the old hash: if two refreshes race with the same token,
+    // only the first one rotates it.
+    const { count } = await this.clientSessionRepo.updateMany({
+      where: { id: session.id, refreshTokenHash: hash },
       data: {
         refreshTokenHash: this.hashRefreshToken(new_refresh_token),
-        refreshTokenExpiresAt: newRefreshTokenExpiresAt,
+        expiresAt: this.refreshTokenExpiry(),
+        lastUsedAt: new Date(),
       },
     });
+    if (count === 0) {
+      throw new UnauthorizedException('error.auth.refreshInvalid');
+    }
+
+    const access_token = this.signAccessToken(client, session.id);
 
     return {
       access_token,
@@ -346,7 +382,7 @@ export class ClientAuthService {
     };
   }
 
-  // Ã¢â€â‚¬Ã¢â€â‚¬ Email OTP Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+  // ── Email OTP ─────────────────────────────────────────
 
   /**
    * Send OTP to email address
@@ -358,7 +394,7 @@ export class ClientAuthService {
       throw new BadRequestException('error.auth.emailInvalid');
     }
 
-    // SECURITY: Anti-enumeration â€” return identical response regardless of account existence.
+    // SECURITY: Anti-enumeration — return identical response regardless of account existence.
     // Silently skip OTP when account state doesn't match intent (register vs login),
     // EXCEPT if the account exists but the profile was never completed (ghost account).
     const existingClient = await this.clientRepo.findUnique({
@@ -367,22 +403,22 @@ export class ClientAuthService {
     });
 
     const isGhostAccount = existingClient && (!existingClient.nom || !existingClient.prenom);
-    const GENERIC_OTP_MESSAGE = 'Si un compte correspond, un code a Ã©tÃ© envoyÃ© par email.';
+    const GENERIC_OTP_MESSAGE = 'Si un compte correspond, un code a été envoyé par email.';
 
     if (isRegister && existingClient && !isGhostAccount) {
-      // Valid account already exists â€” don't send OTP but return same success response
+      // Valid account already exists — don't send OTP but return same success response
       return { success: true, message: GENERIC_OTP_MESSAGE };
     }
 
     if (!isRegister && !existingClient) {
-      // No account found â€” don't send OTP but return same success response
+      // No account found — don't send OTP but return same success response
       return { success: true, message: GENERIC_OTP_MESSAGE };
     }
 
     // Daily OTP send limit per email
     checkDailyOtpLimit(normalizedEmail);
 
-    // Per-identifier cooldown â€” prevent OTP spam even if IP changes
+    // Per-identifier cooldown — prevent OTP spam even if IP changes
     const existingOtp = await this.otpRepo.findUnique({ where: { email: normalizedEmail } });
     if (existingOtp && existingOtp.expiresAt.getTime() - OTP_EXPIRY_MS + OTP_COOLDOWN_MS > Date.now()) {
       throw new HttpException('error.auth.otpWait', HttpStatus.TOO_MANY_REQUESTS);
@@ -392,7 +428,7 @@ export class ClientAuthService {
     const codeHash = hashOtp(code);
     const expiresAt = new Date(Date.now() + OTP_EXPIRY_MS);
 
-    // Upsert OTP by email (hash only â€” never store plaintext)
+    // Upsert OTP by email (hash only — never store plaintext)
     await this.otpRepo.upsert({
       where: { email: normalizedEmail },
       create: {
@@ -407,7 +443,7 @@ export class ClientAuthService {
       },
     });
 
-    // Send OTP email â€” client-facing branding (JitPlus, not JitPlus Pro)
+    // Send OTP email — client-facing branding (JitPlus, not JitPlus Pro)
     try {
       const existingClient = await this.clientRepo.findUnique({
         where: { email: normalizedEmail },
@@ -421,7 +457,7 @@ export class ClientAuthService {
       throw new HttpException('error.auth.emailFail', HttpStatus.SERVICE_UNAVAILABLE, { cause: error });
     }
 
-    this.logger.log(`OTP envoyÃ© Ã  ${normalizedEmail}`);
+    this.logger.log(`OTP envoyé à ${normalizedEmail}`);
 
     return { success: true, message: GENERIC_OTP_MESSAGE };
   }
@@ -438,7 +474,7 @@ export class ClientAuthService {
     });
 
     try {
-      validateOtp(otpRecord, code, 'Aucun code n\'a Ã©tÃ© envoyÃ© Ã  cet email');
+      validateOtp(otpRecord, code, 'Aucun code n\'a été envoyé à cet email');
     } catch (error) {
       await this.handleOtpError(error, otpRecord);
     }
@@ -454,7 +490,7 @@ export class ClientAuthService {
     if (!resolvedClient) {
       // Login mode: reject if no account exists
       if (!isRegister) {
-        throw new BadRequestException('Aucun compte n\'est associÃ© Ã  cet email. Veuillez vous inscrire.');
+        throw new BadRequestException('Aucun compte n\'est associé à cet email. Veuillez vous inscrire.');
       }
       try {
         resolvedClient = await this.clientRepo.create({
@@ -485,7 +521,7 @@ export class ClientAuthService {
     return this.buildAuthResponse(resolvedClient, isNewUser);
   }
 
-  // Ã¢â€â‚¬Ã¢â€â‚¬ Google Login Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+  // ── Google Login ──────────────────────────────────────
 
   /**
    * Login with Google ID token
@@ -513,7 +549,7 @@ export class ClientAuthService {
       }
 
       // Verify Google ID token using google-auth-library (cryptographic verification)
-      // expo-auth-session uses browser flow â†’ token audience is always the Web client ID
+      // expo-auth-session uses browser flow → token audience is always the Web client ID
       const webClientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
       const androidClientIds = (this.configService.get<string>('GOOGLE_ANDROID_CLIENT_ID') || '').split(',').map(s => s.trim()).filter(Boolean);
       const allowedAudiences = [webClientId, ...androidClientIds].filter(Boolean) as string[];
@@ -556,7 +592,7 @@ export class ClientAuthService {
 
       if (!client) {
         try {
-          // Google provides name + email â€” terms will be accepted during complete-profile step
+          // Google provides name + email — terms will be accepted during complete-profile step
           client = await this.clientRepo.create({
             data: {
               email: email.toLowerCase(),
@@ -587,7 +623,7 @@ export class ClientAuthService {
     }
   }
 
-  // â”€â”€ Apple Login â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Apple Login ────────────────────────────────────────
 
   /**
    * Fetch Apple's JWKS public keys (cached for 24 hours).
@@ -632,11 +668,16 @@ export class ClientAuthService {
 
     // APPLE_BUNDLE_IDS: comma-separated list of bundle IDs (e.g. "com.jitplus.client,com.jitplus.pro")
     const appleBundleIds = (this.configService.get<string>('APPLE_BUNDLE_IDS') || '').split(',').map(s => s.trim()).filter(Boolean);
+    // Without an audience check, a token minted for any other Apple app would be accepted.
+    if (appleBundleIds.length === 0) {
+      this.logger.error('Apple Sign-In misconfigured: APPLE_BUNDLE_IDS is empty');
+      throw new UnauthorizedException('error.auth.appleNotConfigured');
+    }
 
     const payload = jwt.verify(identityToken, publicKey, {
       algorithms: ['RS256'],
       issuer: 'https://appleid.apple.com',
-      ...(appleBundleIds.length > 0 && { audience: appleBundleIds as [string, ...string[]] }),
+      audience: appleBundleIds as [string, ...string[]],
     }) as jwt.JwtPayload & { sub: string; email?: string; email_verified?: string; nonce?: string; nonce_supported?: boolean };
 
     // Nonce validation — prevents replay attacks.
@@ -716,7 +757,7 @@ export class ClientAuthService {
   }
 
   /**
-   * Complete profile for new users (prÃ©nom + nom + terms acceptance + optional password)
+   * Complete profile for new users (prénom + nom + terms acceptance + optional password)
    */
   async completeProfile(clientId: string, prenom: string, nom: string, termsAccepted: boolean, telephone?: string, dateNaissance?: string, password?: string): Promise<ClientProfileResult> {
     if (!termsAccepted) {
@@ -728,7 +769,7 @@ export class ClientAuthService {
       prenom: prenom.trim(),
       nom: nom.trim(),
       termsAccepted: true,
-      shareInfoMerchants: false, // opt-out par dÃ©faut Ã  l'inscription
+      shareInfoMerchants: false, // opt-out par défaut à l'inscription
       ...(dateNaissance ? { dateNaissance: new Date(dateNaissance) } : {}),
     };
 
@@ -773,7 +814,7 @@ export class ClientAuthService {
       const name = client.prenom ?? 'cher client';
       this.smsProvider.sendWhatsAppMessage(
         client.telephone,
-        `Bienvenue ${name} sur JitPlus ! ðŸŽ‰ Vos cartes de fidÃ©litÃ©, partout avec vous.`,
+        `Bienvenue ${name} sur JitPlus ! 🎉 Vos cartes de fidélité, partout avec vous.`,
       ).catch((err) => this.logger.warn('Welcome WhatsApp failed', errMsg(err)));
     } else if (client.email) {
       const langRow = await this.clientRepo.findUnique({ where: { id: client.id }, select: { language: true } });
@@ -802,7 +843,7 @@ export class ClientAuthService {
     };
   }
 
-  // Ã¢â€â‚¬Ã¢â€â‚¬ Email + Password Login Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+  // ── Email + Password Login ───────────────────────────────
 
   /**
    * Login with email and password
@@ -817,7 +858,7 @@ export class ClientAuthService {
       select: CLIENT_LOGIN_SELECT,
     });
 
-    // Brute-force protection â€” check BEFORE bcrypt to avoid resource waste on locked accounts
+    // Brute-force protection — check BEFORE bcrypt to avoid resource waste on locked accounts
     if (client) {
       checkLockout(client);
     }
@@ -835,7 +876,7 @@ export class ClientAuthService {
       throw new BadRequestException(genericError);
     }
 
-    // Successful login â€” reset failed attempts
+    // Successful login — reset failed attempts
     await resetLoginAttempts(client, this.clientLockoutOps);
 
     return this.buildAuthResponse(client, false);
@@ -851,7 +892,7 @@ export class ClientAuthService {
       select: { password: true },
     });
     if (existing?.password) {
-      throw new BadRequestException('Un mot de passe existe dÃ©jÃ . Utilisez le changement de mot de passe.');
+      throw new BadRequestException('Un mot de passe existe déjà. Utilisez le changement de mot de passe.');
     }
 
     const hashedPassword = await bcrypt.hash(password, BCRYPT_SALT_ROUNDS);
@@ -887,7 +928,7 @@ export class ClientAuthService {
    * Reset password for a client who verified identity via OTP (forgot password flow).
    * Unlike setPassword(), this allows overwriting an existing password.
    */
-  async resetPasswordOtp(clientId: string, newPassword: string): Promise<ClientProfileResult> {
+  async resetPasswordOtp(clientId: string, newPassword: string, currentSessionId?: string): Promise<ClientProfileResult> {
     const client = await this.clientRepo.findUnique({
       where: { id: clientId },
       select: { id: true, password: true },
@@ -903,9 +944,10 @@ export class ClientAuthService {
     const hashedPassword = await bcrypt.hash(newPassword, BCRYPT_SALT_ROUNDS);
     const updated = await this.clientRepo.update({
       where: { id: clientId },
-      data: { password: hashedPassword, refreshTokenHash: null },
+      data: { password: hashedPassword },
       select: CLIENT_AUTH_SELECT,
     });
+    await this.revokeOtherSessions(clientId, currentSessionId);
 
     return {
       success: true,
@@ -932,7 +974,7 @@ export class ClientAuthService {
    * Change password for an authenticated client.
    * Google-only accounts can set an initial password without providing currentPassword.
    */
-  async changePassword(clientId: string, currentPassword: string | undefined, newPassword: string): Promise<ClientProfileResult> {
+  async changePassword(clientId: string, currentPassword: string | undefined, newPassword: string, currentSessionId?: string): Promise<ClientProfileResult> {
     const client = await this.clientRepo.findUnique({
       where: { id: clientId },
       select: { id: true, password: true, googleId: true },
@@ -955,9 +997,10 @@ export class ClientAuthService {
     const hashedPassword = await bcrypt.hash(newPassword, BCRYPT_SALT_ROUNDS);
     const updated = await this.clientRepo.update({
       where: { id: clientId },
-      data: { password: hashedPassword, refreshTokenHash: null },
+      data: { password: hashedPassword },
       select: CLIENT_AUTH_SELECT,
     });
+    await this.revokeOtherSessions(clientId, currentSessionId);
 
     return {
       success: true,
@@ -979,7 +1022,7 @@ export class ClientAuthService {
       },
     };
   }
-  // Ã¢â€â‚¬Ã¢â€â‚¬ QR Token Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+  // ── QR Token ──────────────────────────────────────────────
   /**
    * HMAC-signed permanent QR token for merchant scanning.
    *
@@ -1005,7 +1048,7 @@ export class ClientAuthService {
 
     return { qr_token, expiresAt: null };
   }
-  // â”€â”€ Change Contact OTP (profile update) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Change Contact OTP (profile update) ────────────────────────────
 
   /**
    * Send OTP to verify ownership of a new email or phone before applying the change.
@@ -1022,7 +1065,7 @@ export class ClientAuthService {
       }
       const existing = await this.clientRepo.findUnique({ where: { email: normalizedEmail }, select: { id: true } });
       if (existing && existing.id !== clientId) {
-        throw new ConflictException('Cette adresse email est dÃ©jÃ  utilisÃ©e par un autre compte.');
+        throw new ConflictException('Cette adresse email est déjà utilisée par un autre compte.');
       }
       checkDailyOtpLimit(normalizedEmail);
       const existingOtp = await this.otpRepo.findUnique({ where: { email: normalizedEmail } });
@@ -1052,7 +1095,7 @@ export class ClientAuthService {
         this.logger.error(`OTP email delivery failed for ${normalizedEmail}: ${err?.message}`, err?.stack);
         throw new HttpException('error.auth.emailFail', HttpStatus.SERVICE_UNAVAILABLE, { cause: error });
       }
-      return { success: true, message: 'Code envoyÃ© par email' };
+      return { success: true, message: 'Code envoyé par email' };
     } else {
       const normalizedPhone = this.normalizePhone(value);
       if (!this.isValidPhone(normalizedPhone)) {
@@ -1081,13 +1124,13 @@ export class ClientAuthService {
         update: { code: codeHash, expiresAt, attempts: 0 },
       });
       if (process.env.NODE_ENV === 'development') {
-        this.logger.debug(`[DEV] OTP changement tÃ©l ${normalizedPhone}: ${code}`);
+        this.logger.debug(`[DEV] OTP changement tél ${normalizedPhone}: ${code}`);
       }
       const sent = await this.smsProvider.sendWhatsAppOtp(normalizedPhone, code);
       if (!sent) {
         throw new HttpException('error.auth.whatsappFail', HttpStatus.SERVICE_UNAVAILABLE);
       }
-      return { success: true, message: 'Code envoyÃ© avec succÃ¨s' };
+      return { success: true, message: 'Code envoyé avec succès' };
     }
   }
 
@@ -1104,7 +1147,7 @@ export class ClientAuthService {
       const normalizedEmail = value.trim().toLowerCase();
       const otpRecord = await this.otpRepo.findUnique({ where: { email: normalizedEmail } });
       try {
-        validateOtp(otpRecord, code, "Aucun code n'a Ã©tÃ© envoyÃ© Ã  cet email");
+        validateOtp(otpRecord, code, "Aucun code n'a été envoyé à cet email");
       } catch (error) {
         await this.handleOtpError(error, otpRecord);
       }
@@ -1119,12 +1162,12 @@ export class ClientAuthService {
         where: { id: clientId },
         data: { emailVerified: true },
       });
-      return { success: true, message: 'Email vÃ©rifiÃ© avec succÃ¨s' };
+      return { success: true, message: 'Email vérifié avec succès' };
     } else {
       const normalizedPhone = this.normalizePhone(value);
       const otpRecord = await this.otpRepo.findUnique({ where: { telephone: normalizedPhone } });
       try {
-        validateOtp(otpRecord, code, "Aucun code n'a Ã©tÃ© envoyÃ© Ã  ce numÃ©ro");
+        validateOtp(otpRecord, code, "Aucun code n'a été envoyé à ce numéro");
       } catch (error) {
         await this.handleOtpError(error, otpRecord);
       }
@@ -1138,13 +1181,13 @@ export class ClientAuthService {
         where: { id: clientId },
         data: { telephoneVerified: true },
       });
-      return { success: true, message: 'NumÃ©ro de tÃ©lÃ©phone vÃ©rifiÃ© avec succÃ¨s' };
+      return { success: true, message: 'Numéro de téléphone vérifié avec succès' };
     }
   }
-  // Ã¢â€â‚¬Ã¢â€â‚¬ Loi 09-08 â€” Droit dâ€™accÃ¨s aux donnÃ©es personnelles Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+  // ── Loi 09-08 — Droit d’accès aux données personnelles ────────────────────────
   /**
-   * Export all personal data for a client as required by Loi nÃ‚Â°09-08
-   * (Protection des donnÃ©es personnelles au Maroc, supervisÃ©e par la CNDP).
+   * Export all personal data for a client as required by Loi n°09-08
+   * (Protection des données personnelles au Maroc, supervisée par la CNDP).
    * Sensitive fields (password hash, OTP, refresh token) are excluded.
    */
   async exportClientData(clientId: string) {

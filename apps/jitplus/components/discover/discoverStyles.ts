@@ -132,7 +132,7 @@ export const discoverStyles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', marginRight: wp(12), overflow: 'hidden',
   },
   fallbackName: { fontSize: FS.md, fontWeight: '700', color: '#1e293b', marginBottom: hp(2) },
-  fallbackAddr: { fontSize: FS.xs, color: '#94a3b8' },
+  fallbackAddr: { fontSize: FS.xs },
   fallbackNavBtn: {
     width: ms(40), height: ms(40), borderRadius: ms(14),
     alignItems: 'center', justifyContent: 'center', marginLeft: wp(8),

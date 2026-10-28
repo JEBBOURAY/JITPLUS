@@ -1,82 +1,90 @@
-import React, { memo, useMemo } from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
-import { Navigation, Phone, MessageCircle, Globe, type LucideIcon } from 'lucide-react-native';
+import { memo, useMemo } from 'react';
+import { ScrollView, Pressable, StyleSheet } from 'react-native';
+import { Text } from '@/components/AppText';
+import { Navigation, Phone, MessageCircle, Globe, Mail, type LucideIcon } from 'lucide-react-native';
+import { getFicheContacts, type FicheContact } from '@jitplus/shared';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAppFonts } from '@/utils/fonts';
 import { haptic } from '@/utils/haptics';
-import { getMerchantAccent } from '@/utils/merchantAccent';
-import { callPhone, openDirections, openFirst, toWebsite, toWhatsappUrl } from '@/utils/merchantLinks';
-import { hasCoords, type StoreWithDistance } from '@/utils/merchantStores';
+import { openDirections, openFirst } from '@jitplus/shared/src/openLinks';
+import type { StoreWithDistance } from '@/utils/merchantStores';
 import { wp, hp, ms } from '@/utils/responsive';
 import type { Merchant } from '@/types';
 
-interface Action {
-  key: string;
-  label: string;
-  Icon: LucideIcon;
-  onPress: () => void;
+const CONTACT_UI: Record<FicheContact['key'], { Icon: LucideIcon; labelKey: string }> = {
+  directions: { Icon: Navigation, labelKey: 'merchant.directions' },
+  call: { Icon: Phone, labelKey: 'merchant.call' },
+  whatsapp: { Icon: MessageCircle, labelKey: 'merchant.whatsapp' },
+  website: { Icon: Globe, labelKey: 'merchant.website' },
+  email: { Icon: Mail, labelKey: 'merchant.email' },
+};
+
+function openContact(contact: FicheContact) {
+  if (contact.key === 'directions') void openDirections(contact.latitude, contact.longitude, contact.label);
+  else void openFirst([contact.url]);
 }
 
 interface Props {
   merchant: Merchant;
-  /** Nearest store, used for directions and phone. */
-  store: StoreWithDistance | null;
+  /** Sorted nearest first: the first one is used for directions, phone and e-mail. */
+  stores: StoreWithDistance[];
 }
 
-/** One-tap contact row: directions, call, WhatsApp, website. */
-function MerchantQuickActions({ merchant, store }: Props) {
+/** Row of outlined contact buttons, scrolling sideways when they do not fit. */
+function MerchantQuickActions({ merchant, stores }: Props) {
   const theme = useTheme();
   const { t } = useLanguage();
   const fonts = useAppFonts();
-  const accent = getMerchantAccent(merchant.themeColor);
 
-  const actions = useMemo<Action[]>(() => {
-    const list: Action[] = [];
-    const target = store && hasCoords(store) ? store : hasCoords(merchant) ? merchant : null;
-    if (target) {
-      const label = store?.nom || merchant.nomBoutique;
-      list.push({ key: 'directions', label: t('merchant.directions'), Icon: Navigation, onPress: () => { void openDirections(target.latitude, target.longitude, label); } });
-    }
-    const phone = store?.telephone || merchant.stores?.find((s) => !!s.telephone)?.telephone;
-    if (phone) list.push({ key: 'call', label: t('merchant.call'), Icon: Phone, onPress: () => { void callPhone(phone); } });
-    const whatsapp = toWhatsappUrl(merchant.socialLinks?.whatsapp);
-    if (whatsapp) list.push({ key: 'whatsapp', label: t('merchant.whatsapp'), Icon: MessageCircle, onPress: () => { void openFirst([whatsapp]); } });
-    const website = toWebsite(merchant.socialLinks?.website);
-    if (website) list.push({ key: 'website', label: t('merchant.website'), Icon: Globe, onPress: () => { void openFirst([website]); } });
-    return list;
-  }, [merchant, store, t]);
+  const contacts = useMemo(() => getFicheContacts({
+    name: merchant.nomBoutique,
+    latitude: merchant.latitude,
+    longitude: merchant.longitude,
+    socialLinks: merchant.socialLinks,
+    stores,
+  }), [merchant.nomBoutique, merchant.latitude, merchant.longitude, merchant.socialLinks, stores]);
 
-  if (actions.length === 0) return null;
+  if (contacts.length === 0) return null;
 
   return (
-    <View style={styles.row}>
-      {actions.map(({ key, label, Icon, onPress }) => (
-        <Pressable
-          key={key}
-          onPress={() => { haptic(); onPress(); }}
-          style={({ pressed }) => [styles.action, { opacity: pressed ? 0.7 : 1 }]}
-          accessibilityRole="button"
-          accessibilityLabel={label}
-        >
-          <View style={[styles.iconWrap, { backgroundColor: theme.bgCard, borderColor: theme.border }]}>
-            <Icon size={ms(20)} color={accent} strokeWidth={2} />
-          </View>
-          <Text style={[styles.label, { color: theme.textSecondary, fontFamily: fonts.medium }]} numberOfLines={1}>{label}</Text>
-        </Pressable>
-      ))}
-    </View>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.row}
+      style={styles.scroll}
+    >
+      {contacts.map((contact) => {
+        const { Icon, labelKey } = CONTACT_UI[contact.key];
+        const label = t(labelKey);
+        return (
+          <Pressable
+            key={contact.key}
+            onPress={() => { haptic(); openContact(contact); }}
+            style={({ pressed }) => [
+              styles.pill,
+              { borderColor: theme.border, backgroundColor: pressed ? theme.bgInput : theme.bg },
+            ]}
+            accessibilityRole={contact.key === 'directions' ? 'button' : 'link'}
+            accessibilityLabel={label}
+          >
+            <Icon size={ms(16)} color={theme.text} strokeWidth={2} />
+            <Text style={[styles.label, { color: theme.text, fontFamily: fonts.semibold }]} numberOfLines={1}>{label}</Text>
+          </Pressable>
+        );
+      })}
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', justifyContent: 'center', gap: wp(8), paddingHorizontal: wp(16), marginTop: hp(18) },
-  action: { flex: 1, maxWidth: wp(88), alignItems: 'center', gap: hp(6) },
-  iconWrap: {
-    width: ms(52), height: ms(52), borderRadius: ms(18), borderWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center', justifyContent: 'center',
+  scroll: { marginTop: hp(16), flexGrow: 0 },
+  row: { gap: wp(8), paddingHorizontal: wp(16) },
+  pill: {
+    flexDirection: 'row', alignItems: 'center', gap: wp(6),
+    height: ms(38), paddingHorizontal: wp(14), borderRadius: 999, borderWidth: 1,
   },
-  label: { fontSize: ms(12) },
+  label: { fontSize: ms(14) },
 });
 
 export default memo(MerchantQuickActions);

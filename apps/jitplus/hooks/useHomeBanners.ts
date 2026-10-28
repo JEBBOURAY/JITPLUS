@@ -8,13 +8,18 @@ import {
   REWARD_BANNER_VISIBLE_MS, FRESH_REWARD_WINDOW_MS,
 } from '@/constants';
 
+const WELCOME_FLAG_KEY = 'showWelcome';
+/** Value of the welcome flag for a just-created account (any other '1' means a returning user). */
+export const WELCOME_FLAG_NEW = 'new';
+const REFERRAL_POPUP_TS_KEY = '@jitplus_referral_ts';
+
 export function useHomeBanners(
   client: { prenom?: string | null } | null,
   notifData: { pages: Array<{ notifications?: ClientNotification[] }> } | undefined,
   luckyWheelTickets: unknown[],
 ) {
   // ── Welcome banner ──
-  const [showWelcome, setShowWelcome] = useState(false);
+  const [welcomeKind, setWelcomeKind] = useState<'back' | 'new' | null>(null);
   const welcomeAnim = useRef(new Animated.Value(0)).current;
 
   // ── Referral popup ──
@@ -69,17 +74,17 @@ export function useHomeBanners(
   // ── Welcome banner on focus ──
   useFocusEffect(
     useCallback(() => {
-      AsyncStorage.getItem('showWelcome').then((val) => {
-        if (val === '1') {
-          AsyncStorage.removeItem('showWelcome');
-          setShowWelcome(true);
-          Animated.sequence([
-            Animated.timing(welcomeAnim, { toValue: 1, duration: BANNER_ANIM_DURATION_MS, useNativeDriver: true }),
-            Animated.delay(WELCOME_BANNER_VISIBLE_MS),
-            Animated.timing(welcomeAnim, { toValue: 0, duration: BANNER_ANIM_DURATION_MS, useNativeDriver: true }),
-          ]).start(() => setShowWelcome(false));
-        }
-      });
+      AsyncStorage.getItem(WELCOME_FLAG_KEY).then((val) => {
+        if (val !== '1' && val !== WELCOME_FLAG_NEW) return;
+        AsyncStorage.removeItem(WELCOME_FLAG_KEY).catch(() => {});
+        setWelcomeKind(val === WELCOME_FLAG_NEW ? 'new' : 'back');
+        welcomeAnim.setValue(0);
+        Animated.sequence([
+          Animated.timing(welcomeAnim, { toValue: 1, duration: BANNER_ANIM_DURATION_MS, useNativeDriver: true }),
+          Animated.delay(WELCOME_BANNER_VISIBLE_MS),
+          Animated.timing(welcomeAnim, { toValue: 0, duration: BANNER_ANIM_DURATION_MS, useNativeDriver: true }),
+        ]).start(() => setWelcomeKind(null));
+      }).catch(() => {});
     }, [welcomeAnim])
   );
 
@@ -88,10 +93,15 @@ export function useHomeBanners(
     useCallback(() => {
       let timer: ReturnType<typeof setTimeout>;
       (async () => {
-        const lastShown = await AsyncStorage.getItem('@jitplus_referral_ts');
+        const lastShown = await AsyncStorage.getItem(REFERRAL_POPUP_TS_KEY);
         const THREE_DAYS = 3 * 24 * 60 * 60 * 1000;
         if (lastShown && Date.now() - Number(lastShown) < THREE_DAYS) return;
-        timer = setTimeout(() => setShowReferral(true), 4000);
+        timer = setTimeout(() => {
+          setShowReferral(true);
+          // Stamped when shown, not when closed: leaving the screen or killing
+          // the app while it is open must not bring it back on the next visit.
+          AsyncStorage.setItem(REFERRAL_POPUP_TS_KEY, String(Date.now())).catch(() => {});
+        }, 4000);
       })();
       return () => { if (timer) clearTimeout(timer); };
     }, [])
@@ -120,13 +130,12 @@ export function useHomeBanners(
     }, [notifData, rewardBannerAnim])
   );
 
-  const dismissReferral = useCallback(async () => {
+  const dismissReferral = useCallback(() => {
     setShowReferral(false);
-    await AsyncStorage.setItem('@jitplus_referral_ts', String(Date.now()));
   }, []);
 
   return {
-    showWelcome,
+    welcomeKind,
     welcomeAnim,
     showReferral,
     showLuckyWheel,

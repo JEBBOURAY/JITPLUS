@@ -150,7 +150,7 @@ export class ClientReferralService {
         },
       });
       await this.invalidateCache(clientId);
-      this.logger.log(`Client referral created: client=${clientId} â†’ merchant=${merchantId}`);
+      this.logger.log(`Client referral created: client=${clientId} → merchant=${merchantId}`);
     } catch (err: any) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         this.logger.warn(`Client referral already exists for merchant=${merchantId}, skipping`);
@@ -216,7 +216,7 @@ export class ClientReferralService {
         where: { clientId, status: PayoutStatus.PENDING },
       });
       if (existingPending) {
-        throw new BadRequestException('Vous avez dÃ©jÃ  une demande de retrait en cours de traitement');
+        throw new BadRequestException('Vous avez déjà une demande de retrait en cours de traitement');
       }
 
       const client = await prisma.client.findUnique({

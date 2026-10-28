@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { Text } from '@/components/AppText';
 import { Gift } from 'lucide-react-native';
 import { palette } from '@/contexts/ThemeContext';
 import type { LuckyWheelPrize } from '@/types';

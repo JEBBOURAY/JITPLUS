@@ -25,6 +25,16 @@ import { computeEarnedStamps, computeRewardThreshold } from '../utils/loyalty.ut
 import { awardLuckyWheelTicketsInTx } from '../utils/lucky-wheel-tickets';
 import { getNotifTranslations } from '../../common/utils/notification-i18n';
 
+export interface CreateTransactionOptions {
+  /**
+   * Allow creating or reactivating the loyalty card. Only set when the caller
+   * proved the client agreed to join (scan ticket from a signed QR / exact
+   * phone match, or a merchant Quick-Add); otherwise an existing active card
+   * is required, so a bare clientId cannot enroll anyone.
+   */
+  allowEnroll?: boolean;
+}
+
 @Injectable()
 export class MerchantTransactionService {
   private readonly logger = new Logger(MerchantTransactionService.name);
@@ -51,6 +61,7 @@ export class MerchantTransactionService {
     teamMemberId?: string,
     performedByName?: string,
     idempotencyKey?: string,
+    options: CreateTransactionOptions = {},
   ) {
     // Idempotency: if a key was supplied and a transaction with the same
     // (merchantId, idempotencyKey) already exists, return it verbatim instead
@@ -160,12 +171,22 @@ export class MerchantTransactionService {
         });
 
         if (loyaltyCard?.deactivatedAt) {
-          throw new BadRequestException(
-            'Le client a quitté ce programme de fidélité. Il doit rejoindre à nouveau avant de pouvoir accumuler des tampons.',
-          );
+          if (!options.allowEnroll) {
+            throw new BadRequestException(
+              'Le client a quitté ce programme de fidélité. Il doit rejoindre à nouveau avant de pouvoir accumuler des tampons.',
+            );
+          }
+          // A reactivated card counts against the FREE plan limit like a new one.
+          await this.planService.assertCanAddClient(merchantId);
+          loyaltyCard = await prisma.loyaltyCard.update({
+            where: { id: loyaltyCard.id },
+            data: { deactivatedAt: null },
+            select: { id: true, stamps: true, deactivatedAt: true },
+          });
         }
 
         if (!loyaltyCard) {
+          if (!options.allowEnroll) throw new NotFoundException('Client non trouvé');
           // Enforce client limit for FREE plan before creating loyalty card
           await this.planService.assertCanAddClient(merchantId);
           loyaltyCard = await prisma.loyaltyCard.create({
@@ -455,36 +476,37 @@ export class MerchantTransactionService {
     const [client, merchant] = await Promise.all([
       this.clientRepo.findUnique({
         where: { id: clientId },
-        select: { id: true, language: true },
+        select: { id: true, language: true, deletedAt: true },
       }),
       this.merchantRepo.findUnique({
         where: { id: merchantId },
-        select: { nom: true, accumulationLimit: true },
+        select: { nom: true, accumulationLimit: true, isActive: true, deletedAt: true },
       }),
     ]);
-    if (!client) throw new NotFoundException('Client non trouvé');
-    if (!merchant) throw new NotFoundException('Commerce non trouvé');
+    if (!client || client.deletedAt) throw new NotFoundException('Client non trouvé');
+    if (!merchant || merchant.deletedAt || !merchant.isActive) throw new NotFoundException('Commerce non trouvé');
 
     const result = await withRetry(() =>
       this.txRunner.run(async (prisma) => {
-        let loyaltyCard = await prisma.loyaltyCard.findUnique({
+        // Re-check inside the transaction (TOCTOU on deletedAt / isActive).
+        const [clientTx, merchantTx] = await Promise.all([
+          prisma.client.findUnique({ where: { id: clientId }, select: { id: true, deletedAt: true } }),
+          prisma.merchant.findUnique({ where: { id: merchantId }, select: { id: true, isActive: true, deletedAt: true } }),
+        ]);
+        if (!clientTx || clientTx.deletedAt) throw new NotFoundException('Client non trouvé');
+        if (!merchantTx || merchantTx.deletedAt || !merchantTx.isActive) throw new NotFoundException('Commerce non trouvé');
+
+        // Adjustments only apply to existing members: they never enroll a client.
+        const loyaltyCard = await prisma.loyaltyCard.findUnique({
           where: { clientId_merchantId: { clientId, merchantId } },
           select: { id: true, stamps: true, deactivatedAt: true },
         });
+        if (!loyaltyCard) throw new NotFoundException('Client non trouvé');
 
-        if (loyaltyCard?.deactivatedAt) {
+        if (loyaltyCard.deactivatedAt) {
           throw new BadRequestException(
             'Le client a quitté ce programme de fidélité. Il doit rejoindre à nouveau.',
           );
-        }
-
-        if (!loyaltyCard) {
-          // Enforce client limit for FREE plan
-          await this.planService.assertCanAddClient(merchantId);
-          loyaltyCard = await prisma.loyaltyCard.create({
-            data: { clientId, merchantId, stamps: 0 },
-            select: { id: true, stamps: true, deactivatedAt: true },
-          });
         }
 
         let newStamps = loyaltyCard.stamps + stamps;

@@ -1,4 +1,4 @@
-import React, { memo, useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import { View, Pressable, StyleSheet, Animated, I18nManager, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowLeft, ArrowRight, Share2, MoreHorizontal, type LucideIcon } from 'lucide-react-native';
@@ -10,6 +10,13 @@ import { wp, hp, ms } from '@/utils/responsive';
 import { HERO_HEIGHT } from './MerchantHero';
 
 const BUTTON_SIZE = ms(40);
+const PAD_TOP = hp(4);
+const PAD_BOTTOM = hp(8);
+
+/** Height of the solid bar, where pinned content must stop. */
+export function getStickyHeaderHeight(insetTop: number): number {
+  return insetTop + PAD_TOP + BUTTON_SIZE + PAD_BOTTOM;
+}
 
 interface Props {
   title: string;
@@ -46,7 +53,7 @@ function MerchantStickyHeader({ title, scrollY, onBack, onShare, onMore }: Props
   );
 
   return (
-    <View style={[styles.wrap, { paddingTop: insets.top + hp(4) }]} pointerEvents="box-none">
+    <View style={[styles.wrap, { paddingTop: insets.top + PAD_TOP }]} pointerEvents="box-none">
       <Animated.View
         pointerEvents="none"
         style={[StyleSheet.absoluteFill, styles.bar, { backgroundColor: theme.bgCard, borderBottomColor: theme.border, opacity: barOpacity }]}
@@ -67,7 +74,7 @@ function MerchantStickyHeader({ title, scrollY, onBack, onShare, onMore }: Props
 }
 
 const styles = StyleSheet.create({
-  wrap: { position: 'absolute', top: 0, left: 0, right: 0, paddingBottom: hp(8) },
+  wrap: { position: 'absolute', top: 0, left: 0, right: 0, paddingBottom: PAD_BOTTOM },
   bar: {
     borderBottomWidth: StyleSheet.hairlineWidth,
     ...Platform.select({

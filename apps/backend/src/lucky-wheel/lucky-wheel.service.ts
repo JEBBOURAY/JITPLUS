@@ -6,6 +6,8 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { randomBytes, randomInt } from 'crypto';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import { Cache } from 'cache-manager';
 import {
   LUCKY_WHEEL_CAMPAIGN_REPOSITORY,
   LUCKY_WHEEL_PRIZE_REPOSITORY,
@@ -30,7 +32,13 @@ export class LuckyWheelService {
     @Inject(LUCKY_WHEEL_TICKET_REPOSITORY) private ticketRepo: ILuckyWheelTicketRepository,
     @Inject(LUCKY_WHEEL_DRAW_REPOSITORY) private drawRepo: ILuckyWheelDrawRepository,
     private prisma: PrismaService,
+    @Inject(CACHE_MANAGER) private cache: Cache,
   ) {}
+
+  /** The public merchant page embeds the active campaign. */
+  private invalidateMerchantPage(merchantId: string): Promise<unknown> {
+    return this.cache.del(`merchant:detail:${merchantId}`);
+  }
 
   // ── Merchant: CRUD Campaigns ───────────────────────────────
 
@@ -67,7 +75,7 @@ export class LuckyWheelService {
       throw new BadRequestException('Au moins un lot est requis');
     }
 
-    return this.campaignRepo.create({
+    const created = await this.campaignRepo.create({
       data: {
         merchantId,
         name: data.name,
@@ -91,6 +99,8 @@ export class LuckyWheelService {
       },
       include: { prizes: true },
     });
+    await this.invalidateMerchantPage(merchantId);
+    return created;
   }
 
   async getActiveLuckyWheelInfo(merchantId: string) {
@@ -150,7 +160,7 @@ export class LuckyWheelService {
 
     // If prizes are provided, sync them in a transaction
     if (data.prizes && data.prizes.length > 0) {
-      return this.prisma.$transaction(async (tx: any) => {
+      const updated = await this.prisma.$transaction(async (tx: any) => {
         // Update campaign metadata
         await tx.luckyWheelCampaign.update({
           where: { id: campaignId },
@@ -167,14 +177,16 @@ export class LuckyWheelService {
         const existingPrizes = (campaign as any).prizes as any[];
         const incomingIds = data.prizes!.filter((p) => p.id).map((p) => p.id!);
 
-        // Delete prizes that are no longer in the list (only if no draws reference them)
+        // Delete prizes that are no longer in the list. A prize already won is kept
+        // for the draw history, but emptied so it can no longer come out of the wheel.
         const toDelete = existingPrizes.filter((ep: any) => !incomingIds.includes(ep.id));
         for (const prize of toDelete) {
           const drawCount = await tx.luckyWheelDraw.count({ where: { prizeId: prize.id } });
           if (drawCount === 0) {
             await tx.luckyWheelPrize.delete({ where: { id: prize.id } });
+          } else {
+            await tx.luckyWheelPrize.update({ where: { id: prize.id }, data: { remaining: 0 } });
           }
-          // If draws exist, keep the prize but it won't appear (stock managed separately)
         }
 
         // Upsert prizes
@@ -215,10 +227,12 @@ export class LuckyWheelService {
           include: { prizes: true },
         });
       });
+      await this.invalidateMerchantPage(merchantId);
+      return updated;
     }
 
     // No prizes update — simple metadata update
-    return this.campaignRepo.update({
+    const updated = await this.campaignRepo.update({
       where: { id: campaignId },
       data: {
         ...(data.name != null && { name: data.name }),
@@ -230,6 +244,8 @@ export class LuckyWheelService {
       },
       include: { prizes: true },
     });
+    await this.invalidateMerchantPage(merchantId);
+    return updated;
   }
 
   async deleteCampaign(merchantId: string, campaignId: string) {
@@ -254,6 +270,7 @@ export class LuckyWheelService {
     }
     // Cascade: prizes, tickets, draws are all deleted via onDelete: Cascade
     await this.campaignRepo.delete({ where: { id: campaignId } });
+    await this.invalidateMerchantPage(merchantId);
     return { deleted: true };
   }
 
@@ -292,10 +309,12 @@ export class LuckyWheelService {
       }
     }
 
-    return this.campaignRepo.update({
+    const updated = await this.campaignRepo.update({
       where: { id: campaignId },
       data: { status },
     });
+    await this.invalidateMerchantPage(merchantId);
+    return updated;
   }
 
   async getMerchantCampaigns(merchantId: string) {
@@ -602,7 +621,7 @@ export class LuckyWheelService {
           select: {
             clientId: true,
             client: { select: { prenom: true, nom: true, telephone: true } },
-            campaign: { select: { name: true } },
+            campaign: { select: { id: true, name: true } },
           },
         },
       },
@@ -625,7 +644,7 @@ export class LuckyWheelService {
         ticket: {
           select: {
             client: { select: { prenom: true, nom: true } },
-            campaign: { select: { name: true } },
+            campaign: { select: { id: true, name: true } },
           },
         },
       },

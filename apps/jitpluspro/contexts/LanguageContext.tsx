@@ -5,7 +5,6 @@ import { createLanguageProvider } from '@jitplus/shared/src/createLanguageProvid
 
 export type { AppLocale };
 
-// ── Language metadata ──────────────────────────────────────
 export const LANGUAGES: { code: AppLocale; label: string; flag: string; nativeLabel: string }[] = [
   { code: 'fr', label: 'Français',   flag: '\u{1F1EB}\u{1F1F7}', nativeLabel: 'Français'  },
   { code: 'en', label: 'English',    flag: '\u{1F1EC}\u{1F1E7}', nativeLabel: 'English'   },

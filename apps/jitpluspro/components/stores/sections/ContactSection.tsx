@@ -7,6 +7,8 @@ import {
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useDir } from '@/hooks/useDir';
+import { icon } from '@/constants/design';
 import { useAuthActions } from '@/contexts/AuthContext';
 import { useUpdateMerchantProfile, useStores } from '@/hooks/useQueryHooks';
 import { getErrorMessage } from '@/utils/error';
@@ -39,29 +41,30 @@ function normalizeDraft(draft: Draft): Draft {
 function StoreContactRow({ store, onPress }: { store: Store; onPress: (s: Store) => void }) {
   const theme = useTheme();
   const { t } = useLanguage();
+  const dir = useDir();
   return (
     <TouchableOpacity
       onPress={() => onPress(store)}
       activeOpacity={0.75}
-      style={[styles.storeRow, { backgroundColor: fieldFill(theme) }]}
+      style={[styles.storeRow, { flexDirection: dir.row, backgroundColor: fieldFill(theme) }]}
       accessibilityRole="button"
     >
       <View style={styles.flex}>
-        <Text style={[ui.fieldLabel, { color: theme.text }]} numberOfLines={1}>{store.nom}</Text>
-        <View style={styles.storeMeta}>
-          <Phone size={12} color={theme.textMuted} strokeWidth={1.9} />
-          <Text style={[ui.caption, styles.flex, { color: store.telephone ? theme.textSecondary : theme.textMuted }]} numberOfLines={1}>
+        <Text style={[ui.fieldLabel, { color: theme.text, textAlign: dir.textAlign }]} numberOfLines={1}>{store.nom}</Text>
+        <View style={[styles.storeMeta, { flexDirection: dir.row }]}>
+          <Phone size={12} color={theme.textMuted} strokeWidth={icon.strokeSmall} />
+          <Text style={[ui.caption, styles.flex, { color: store.telephone ? theme.textSecondary : theme.textMuted, textAlign: dir.textAlign }]} numberOfLines={1}>
             {store.telephone || t('storesHub.notSet')}
           </Text>
         </View>
-        <View style={styles.storeMeta}>
-          <Mail size={12} color={theme.textMuted} strokeWidth={1.9} />
-          <Text style={[ui.caption, styles.flex, { color: store.email ? theme.textSecondary : theme.textMuted }]} numberOfLines={1}>
+        <View style={[styles.storeMeta, { flexDirection: dir.row }]}>
+          <Mail size={12} color={theme.textMuted} strokeWidth={icon.strokeSmall} />
+          <Text style={[ui.caption, styles.flex, { color: store.email ? theme.textSecondary : theme.textMuted, textAlign: dir.textAlign }]} numberOfLines={1}>
             {store.email || t('storesHub.notSet')}
           </Text>
         </View>
       </View>
-      <ChevronRight size={18} color={theme.textMuted} strokeWidth={2} />
+      <ChevronRight size={18} color={theme.textMuted} strokeWidth={icon.stroke} style={dir.flip} />
     </TouchableOpacity>
   );
 }
@@ -158,6 +161,6 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   fields: { gap: 14 },
   stores: { gap: 8 },
-  storeRow: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 13 },
+  storeRow: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 12 },
   storeMeta: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
 });

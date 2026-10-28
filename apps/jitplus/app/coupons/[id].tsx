@@ -1,9 +1,9 @@
-import React, { useCallback, useMemo, useState } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useMemo } from 'react';
+import { StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Text } from '@/components/AppText';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import QRCode from 'react-native-qrcode-svg';
-import * as Brightness from 'expo-brightness';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { ArrowLeft, AlertCircle, Copy, Check, Ban, CircleCheck, Clock } from 'lucide-react-native';
 
@@ -18,6 +18,8 @@ import { formatDate } from '@/utils/date';
 import { haptic } from '@/utils/haptics';
 import Skeleton from '@/components/Skeleton';
 import { useClientCoupon } from '@/hooks/useScratchHooks';
+import { useBrightnessBoost } from '@/hooks/useBrightnessBoost';
+import { useTransientFlag } from '@/hooks/useTransientFlag';
 import {
   COUPON_QR_PREFIX, describeCouponConditions, formatCouponCode, formatRewardValue,
 } from '@jitplus/shared/src/scratch';
@@ -32,34 +34,18 @@ export default function CouponDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const query = useClientCoupon(id);
   const coupon = query.data ?? null;
-  const [copied, setCopied] = useState(false);
+  const [copied, flashCopied] = useTransientFlag();
 
   const isActive = !!coupon && coupon.status === 'ACTIVE' && new Date(coupon.expiresAt).getTime() > Date.now();
   const qrShown = isActive && !!coupon?.qrToken;
 
   // Keep the screen awake and boost brightness while the QR is shown (same
   // pattern as the loyalty QR screen) so the cashier can scan first try.
+  useBrightnessBoost(qrShown);
   useFocusEffect(useCallback(() => {
     if (!qrShown) return undefined;
     activateKeepAwakeAsync(KEEP_AWAKE_TAG).catch(() => {});
-    let keepAlive: ReturnType<typeof setInterval> | null = null;
-    let applying = false;
-    const apply = async () => {
-      if (applying) return;
-      applying = true;
-      try {
-        const current = await Brightness.getBrightnessAsync().catch(() => 0);
-        if (current < 0.98) await Brightness.setBrightnessAsync(1);
-      } catch { /* non-fatal */ }
-      finally { applying = false; }
-    };
-    apply();
-    keepAlive = setInterval(apply, 8000);
-    return () => {
-      if (keepAlive) clearInterval(keepAlive);
-      Brightness.restoreSystemBrightnessAsync().catch(() => {});
-      deactivateKeepAwake(KEEP_AWAKE_TAG).catch(() => {});
-    };
+    return () => { deactivateKeepAwake(KEEP_AWAKE_TAG).catch(() => {}); };
   }, [qrShown]));
 
   const reward = coupon
@@ -76,10 +62,9 @@ export default function CouponDetailScreen() {
     haptic();
     try {
       if (Clipboard?.setStringAsync) await Clipboard.setStringAsync(coupon.code);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      flashCopied();
     } catch { /* non-fatal */ }
-  }, [coupon]);
+  }, [coupon, flashCopied]);
 
   const renderBody = () => {
     if (query.isLoading) {
@@ -184,7 +169,7 @@ export default function CouponDetailScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg, paddingTop: insets.top + hp(8) }]}>
-      <View style={[styles.header, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+      <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} hitSlop={12} accessibilityRole="button" accessibilityLabel={t('common.back')}>
           <ArrowLeft size={ms(24)} color={theme.text} style={isRTL ? { transform: [{ scaleX: -1 }] } : undefined} />
         </TouchableOpacity>
@@ -198,7 +183,7 @@ export default function CouponDetailScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, paddingHorizontal: wp(20) },
-  header: { alignItems: 'center', justifyContent: 'space-between', marginBottom: hp(10) },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: hp(10) },
   headerTitle: { fontSize: ms(19), fontWeight: '700' },
   body: { flex: 1, alignItems: 'center', gap: hp(12), paddingBottom: hp(30) },
   reward: { fontSize: ms(26), fontWeight: '800', textAlign: 'center' },

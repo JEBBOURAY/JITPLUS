@@ -168,6 +168,8 @@ export function handleFcmDataPayload(
     case 'feature_highlight':
     case 'friday_campaign':
     case 'admin_broadcast':
+    // The daily deals digest also writes an entry in the notifications tab.
+    case 'deals_digest':
       optimisticIncrementUnread(queryClient);
       queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
       break;

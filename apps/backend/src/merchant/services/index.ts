@@ -7,3 +7,4 @@ export { MerchantStoreService } from './merchant-store.service';
 export { MerchantPlanService } from './merchant-plan.service';
 export { MerchantReferralService } from './merchant-referral.service';
 export { ClientClaimService } from './client-claim.service';
+export { ScanTicketService, SCAN_TICKET_HEADER } from './scan-ticket.service';

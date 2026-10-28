@@ -2,8 +2,9 @@ import React, { createContext, useContext, useEffect, useCallback, useRef, useMe
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
+import { loadNotifications } from '@/utils/expoNotifications';
 import * as Device from 'expo-device';
-import * as Crypto from 'expo-crypto';
+import { randomUUID } from '@/utils/crypto';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useQueryClient } from '@tanstack/react-query';
 import { useShallow } from 'zustand/react/shallow';
@@ -15,25 +16,27 @@ import i18n from '@/i18n';
 import { Merchant, LoginCredentials, AuthResponse, TeamMember } from '@/types';
 import { useAuthStore } from '@/stores/authStore';
 
-// ── Lazy-load expo-notifications ──
-// Le require('expo-notifications') déclenche un side-effect (DevicePushTokenAutoRegistration)
-// qui crash dans Expo Go SDK 53+. On ne charge JAMAIS le module dans Expo Go.
-const isExpoGo = Constants.appOwnership === 'expo';
+const getNotifications = loadNotifications;
 
-let _notifications: typeof import('expo-notifications') | null = null;
-const getNotifications = () => {
-  if (isExpoGo) return null; // Ne jamais charger dans Expo Go
-  if (_notifications) return _notifications;
-  try {
-    _notifications = require('expo-notifications');
-    return _notifications;
-  } catch (e) {
-    logWarn('Push', 'expo-notifications unavailable', e);
-    return null;
+const isNetworkFailure = (e: unknown): boolean => {
+  const err = e as { isAxiosError?: boolean; response?: unknown } | null;
+  return !!err?.isAxiosError && !err.response;
+};
+
+// At boot the backend can be briefly unreachable (dev server restarting, radio
+// waking up); retry network failures instead of dropping the user to login.
+const PROFILE_BOOT_ATTEMPTS = 3;
+const loadProfileWithRetry = async (load: () => Promise<Merchant | null>): Promise<Merchant | null> => {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await load();
+    } catch (e) {
+      if (!isNetworkFailure(e) || attempt >= PROFILE_BOOT_ATTEMPTS) throw e;
+      await new Promise((r) => setTimeout(r, attempt * 1500));
+    }
   }
 };
 
-// ── Device info helpers ───────────────────────────────────────
 const getDeviceInfo = () => {
   let deviceName = 'Appareil inconnu';
   try {
@@ -50,7 +53,7 @@ const getDeviceInfo = () => {
 const getOrCreateDeviceId = async (): Promise<string> => {
   let deviceId = await SecureStore.getItemAsync('deviceId');
   if (!deviceId) {
-    deviceId = Crypto.randomUUID();
+    deviceId = randomUUID();
     await SecureStore.setItemAsync('deviceId', deviceId);
   }
   return deviceId;
@@ -104,7 +107,6 @@ const registerPushToken = async (promptIfNeeded = false) => {
       return;
     }
 
-    // Récupérer le projectId — essayer EAS config, sinon fallback
     const projectId =
       Constants.expoConfig?.extra?.eas?.projectId ??
       Constants.easConfig?.projectId ??
@@ -115,7 +117,6 @@ const registerPushToken = async (promptIfNeeded = false) => {
       return;
     }
 
-    // We now use Expo Push Tokens to uniformize pushes
     let pushToken: string;
     try {
       const expoToken = await Notif.getExpoPushTokenAsync({ projectId });
@@ -127,19 +128,15 @@ const registerPushToken = async (promptIfNeeded = false) => {
     }
     logInfo('Push', 'Token:', pushToken);
 
-    // Read the stored app language to sync with backend
     const language = await AsyncStorage.getItem('jitpluspro_language') || 'fr';
 
-    // Envoyer au backend (deduped — see services/merchantPushToken.ts)
+    // Deduped, see services/merchantPushToken.ts
     await sendMerchantPushToken(api, pushToken, language);
     logInfo('Push', 'Token enregistré sur le backend');
   } catch (error) {
     logWarn('Push', 'Erreur enregistrement token:', error);
   }
 };
-
-// Android notification channels are now set up in utils/notifications.ts
-// (imported and called from _layout.tsx's ThemedNavigator).
 
 interface AuthContextData {
   merchant: Merchant | null;
@@ -182,7 +179,7 @@ type AuthStateSlice = Pick<
 >;
 
 /** Shared business/store fields collected during any registration flow (email, Google, Apple). */
-export interface BusinessProfileData {
+interface BusinessProfileData {
   nomCommerce?: string;
   categorie?: string;
   ville?: string;
@@ -200,13 +197,13 @@ export interface BusinessProfileData {
 }
 
 /** Business info needed for Google-based merchant registration */
-export type GoogleRegisterData = BusinessProfileData;
+type GoogleRegisterData = BusinessProfileData;
 
 /** Business info needed for Apple-based merchant registration */
-export type AppleRegisterData = BusinessProfileData;
+type AppleRegisterData = BusinessProfileData;
 
 /** Data for standard email/password registration */
-export interface RegisterData extends BusinessProfileData {
+interface RegisterData extends BusinessProfileData {
   email: string;
   password: string;
 }
@@ -214,7 +211,8 @@ export interface RegisterData extends BusinessProfileData {
 interface RegisterResponse {
   merchant: Merchant;
   userType: 'merchant';
-  requiresEmailVerification: true;
+  /** Always false while email verification is disabled server-side. */
+  requiresEmailVerification: boolean;
   verificationSent: boolean;
 }
 
@@ -225,11 +223,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const queryClient = useQueryClient();
   const queryClientRef = useRef(queryClient);
   queryClientRef.current = queryClient;
-  const { merchant, token, loading, isTeamMember, teamMember, onboardingCompleted } = useAuthStore();
+  const { merchant, token, loading, isTeamMember, teamMember, onboardingCompleted } = useAuthState();
 
   const signOut = useCallback(async () => {
     try {
-      // Clear push token from backend so this device stops receiving notifications
+      // Clear the push token so this device stops receiving notifications.
       api.patch('/merchant/push-token', { pushToken: '' }).catch(() => {});
       resetMerchantPushTokenCache();
       // Fire-and-forget — don't block local cleanup on server response
@@ -262,15 +260,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       return response.data;
     } catch (error: unknown) {
       logError('Auth', 'Erreur profil:', error);
-      // Supprimé : signOut() aveugle. C'est le rôle de l'intercepteur API (401) de déconnecter proprement l'utilisateur.
-      // Un simple fail réseau ne doit pas déconnecter l'utilisateur actif.
+      // No signOut() here: the API interceptor handles 401s, and a network failure
+      // must not log out an active user.
       throw error;
     }
   }, []);
 
   useEffect(() => {
-    // Android notification channels are now set up in _layout.tsx via utils/notifications.ts
-
     const loadStoredAuth = async () => {
       const s = useAuthStore.getState();
       try {
@@ -313,7 +309,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           }
 
           try {
-            const profile = await loadProfile();
+            const profile = await loadProfileWithRetry(loadProfile);
             if (profile?.onboardingCompleted) {
               useAuthStore.getState().setOnboardingCompleted(true);
               await SecureStore.setItemAsync('onboardingCompleted', 'true');
@@ -323,7 +319,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
             registerPushToken(true).catch((err) => {
               logWarn('Auth', 'Push token registration failed:', err);
-              // Report to Sentry so we have visibility on push failures in production
               if (!__DEV__) {
                 try {
                   const Sentry = require('@sentry/react-native');
@@ -331,8 +326,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 } catch {}
               }
             });
-          } catch {
-            logWarn('Auth', 'Session expirée, retour à l\'écran de connexion');
+          } catch (e) {
+            logWarn(
+              'Auth',
+              isNetworkFailure(e)
+                ? 'Serveur injoignable, profil non chargé'
+                : 'Session expirée, retour à l\'écran de connexion',
+            );
             return;
           }
         } else if (storedToken) {

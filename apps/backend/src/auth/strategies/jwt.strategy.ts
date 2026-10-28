@@ -32,8 +32,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   /**
-   * Immediately remove a session from the standard cache.
-   * Called on logout to close the replay window across scaled cloud runs
+   * Drop the cached session validation on this instance (called on logout).
+   * The cache is in-memory: other instances may still accept the token until
+   * their own entry expires (SESSION_CACHE_TTL).
    */
   async invalidateSession(tokenId: string): Promise<void> {
     await this.cacheManager.del(`session:${tokenId}`);
@@ -66,7 +67,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
           throw new UnauthorizedException('Session expirée. Veuillez vous reconnecter.');
         }
 
-        // Cache this session validation for 30 seconds
+        // Cache this session validation for SESSION_CACHE_TTL (10 s)
         await this.cacheManager.set(`session:${payload.jti}`, now + JwtStrategy.CACHE_TTL, JwtStrategy.CACHE_TTL);
 
         // Mise à jour non-bloquante de lastActiveAt (throttle: toutes les 5 min)
@@ -87,6 +88,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       type: payload.type,
       role: payload.role,
       sessionId: payload.jti ?? undefined,
+      clientSessionId: payload.sid ?? undefined,
       teamMemberId: payload.teamMemberId ?? undefined,
       teamMemberName: payload.teamMemberName ?? undefined,
     };

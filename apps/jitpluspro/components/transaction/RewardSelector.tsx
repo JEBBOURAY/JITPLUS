@@ -1,8 +1,10 @@
 import { memo, useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator, Image, StyleSheet } from 'react-native';
-import { Check, ChevronDown, ChevronUp, Gift, Lock, Stamp } from 'lucide-react-native';
+import { Check, ChevronDown, ChevronUp } from 'lucide-react-native';
+import { JitGift, JitLock, JitStamp } from '@/components/icons';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { font, icon } from '@/constants/design';
 import { ms } from '@/utils/responsive';
 import { resolveImageUrl } from '@/utils/imageUrl';
 import { rewardAvailability, type RewardAvailability } from '@/utils/stampTransaction';
@@ -70,11 +72,11 @@ function RewardSelectorBase({ rewards, loading, selectedRewardId, onSelect, curr
           {reward.imageUrl ? (
             <Image source={{ uri: resolveImageUrl(reward.imageUrl) }} style={styles.thumbImage} />
           ) : (
-            <Gift size={ms(20)} color={isLocked ? theme.textMuted : theme.primary} strokeWidth={1.7} />
+            <JitGift size={ms(20)} color={isLocked ? theme.textMuted : theme.primary} strokeWidth={icon.stroke} />
           )}
           {isLocked && (
-            <View style={[styles.lockBadge, { backgroundColor: theme.bgCard, borderColor: theme.border }]}>
-              <Lock size={ms(10)} color={theme.textMuted} strokeWidth={2.2} />
+            <View style={[styles.lockBadge, isRTL ? styles.lockBadgeRtl : styles.lockBadgeLtr, { backgroundColor: theme.bgCard, borderColor: theme.border }]}>
+              <JitLock size={ms(10)} color={theme.textMuted} strokeWidth={icon.strokeSmall} />
             </View>
           )}
         </View>
@@ -84,9 +86,9 @@ function RewardSelectorBase({ rewards, loading, selectedRewardId, onSelect, curr
           </Text>
           <View style={[styles.metaRow, { flexDirection: row }]}>
             <View style={[styles.cost, { flexDirection: row }]}>
-              <Stamp size={ms(12)} color={theme.textSecondary} strokeWidth={2} />
+              <JitStamp size={ms(12)} color={theme.textSecondary} strokeWidth={icon.strokeSmall} />
               <Text style={[styles.costText, { color: theme.textSecondary }]}>
-                {t('stampScreen.rewardCost', { count: reward.cout })}
+                {t(reward.cout === 1 ? 'stampScreen.rewardCost_one' : 'stampScreen.rewardCost_other', { count: reward.cout })}
               </Text>
             </View>
             <View style={[styles.badge, { backgroundColor: `${badge.color}1A` }]}>
@@ -100,7 +102,7 @@ function RewardSelectorBase({ rewards, loading, selectedRewardId, onSelect, curr
             { borderColor: selected ? theme.primary : theme.border, backgroundColor: selected ? theme.primary : 'transparent' },
           ]}
         >
-          {selected && <Check size={ms(14)} color="#fff" strokeWidth={3} />}
+          {selected && <Check size={ms(14)} color="#fff" strokeWidth={icon.strokeSmall} />}
         </View>
       </TouchableOpacity>
     );
@@ -110,7 +112,7 @@ function RewardSelectorBase({ rewards, loading, selectedRewardId, onSelect, curr
     <View style={[cardStyles.card, cardSurface(theme), styles.card]}>
       <View style={[styles.header, { flexDirection: row }]}>
         <View style={[styles.headerIcon, { backgroundColor: theme.primaryBg }]}>
-          <Gift size={ms(18)} color={theme.primary} strokeWidth={1.8} />
+          <JitGift size={ms(18)} color={theme.primary} strokeWidth={icon.stroke} />
         </View>
         <Text style={[styles.title, { color: theme.text, textAlign }]}>{t('stampScreen.rewardsTitle')}</Text>
         <View style={[styles.optional, { backgroundColor: theme.bgInput }]}>
@@ -141,9 +143,9 @@ function RewardSelectorBase({ rewards, loading, selectedRewardId, onSelect, curr
                   {showLocked ? t('stampScreen.hideLocked') : t('stampScreen.showLocked', { count: locked.length })}
                 </Text>
                 {showLocked ? (
-                  <ChevronUp size={ms(16)} color={theme.textSecondary} strokeWidth={2} />
+                  <ChevronUp size={ms(16)} color={theme.textSecondary} strokeWidth={icon.stroke} />
                 ) : (
-                  <ChevronDown size={ms(16)} color={theme.textSecondary} strokeWidth={2} />
+                  <ChevronDown size={ms(16)} color={theme.textSecondary} strokeWidth={icon.stroke} />
                 )}
               </TouchableOpacity>
               {showLocked && <View style={styles.list}>{locked.map(renderItem)}</View>}
@@ -160,20 +162,21 @@ export const RewardSelector = memo(RewardSelectorBase);
 const styles = StyleSheet.create({
   card: { marginTop: 14, gap: 12 },
   header: { alignItems: 'center', gap: 10 },
-  headerIcon: { width: ms(34), height: ms(34), borderRadius: ms(10), alignItems: 'center', justifyContent: 'center' },
-  title: { flex: 1, fontSize: ms(15.5), fontFamily: 'Lexend_600SemiBold' },
+  headerIcon: { width: ms(34), height: ms(34), borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  title: { flex: 1, fontSize: ms(16), fontFamily: font.semibold },
   optional: { borderRadius: 999, paddingHorizontal: 9, paddingVertical: 3 },
-  optionalText: { fontSize: ms(11.5), fontFamily: 'Lexend_500Medium' },
+  optionalText: { fontSize: ms(12), fontFamily: font.medium },
   loading: { paddingVertical: 16 },
-  empty: { fontSize: ms(13), fontFamily: 'Lexend_400Regular', lineHeight: ms(19) },
+  empty: { fontSize: ms(13), fontFamily: font.regular, lineHeight: ms(19) },
   list: { gap: 8 },
   row: { alignItems: 'center', padding: 10, borderRadius: 16, borderWidth: 1.5, gap: 12, minHeight: ms(68) },
-  thumb: { width: THUMB, height: THUMB, borderRadius: ms(12), alignItems: 'center', justifyContent: 'center' },
-  thumbImage: { width: THUMB, height: THUMB, borderRadius: ms(12) },
+  thumb: { width: THUMB, height: THUMB, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  thumbImage: { width: THUMB, height: THUMB, borderRadius: 12 },
+  lockBadgeLtr: { right: -4 },
+  lockBadgeRtl: { left: -4 },
   lockBadge: {
     position: 'absolute',
     bottom: -4,
-    right: -4,
     width: ms(18),
     height: ms(18),
     borderRadius: ms(9),
@@ -182,13 +185,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   info: { flex: 1, gap: 5 },
-  name: { fontSize: ms(14.5), fontFamily: 'Lexend_600SemiBold' },
+  name: { fontSize: ms(15), fontFamily: font.semibold },
   metaRow: { alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   cost: { alignItems: 'center', gap: 4 },
-  costText: { fontSize: ms(12.5), fontFamily: 'Lexend_500Medium' },
+  costText: { fontSize: ms(13), fontFamily: font.medium },
   badge: { borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
-  badgeText: { fontSize: ms(11.5), fontFamily: 'Lexend_600SemiBold' },
+  badgeText: { fontSize: ms(12), fontFamily: font.semibold },
   radio: { width: 26, height: 26, borderRadius: 13, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
   toggle: { alignItems: 'center', justifyContent: 'center', gap: 4, borderRadius: 12, paddingVertical: 8, minHeight: 40 },
-  toggleText: { fontSize: ms(13), fontFamily: 'Lexend_600SemiBold' },
+  toggleText: { fontSize: ms(13), fontFamily: font.semibold },
 });

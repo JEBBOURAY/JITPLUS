@@ -2,22 +2,11 @@ import { Platform } from 'react-native';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 import i18n from '@/i18n';
+import { isExpoGo, loadNotifications } from '@/utils/expoNotifications';
 
-const isExpoGo = Constants.appOwnership === 'expo';
 let didLogPushSkip = false;
 
-// Only load expo-notifications outside of Expo Go — the module registers
-// push-token side-effects on import that crash in Expo Go SDK 53+.
-let Notifications: typeof import('expo-notifications') | null = null;
-
-if (!isExpoGo) {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    Notifications = require('expo-notifications');
-  } catch {
-    if (__DEV__) console.warn('[notifications] expo-notifications unavailable');
-  }
-}
+const Notifications = loadNotifications();
 
 /** True when native push APIs are available in the current runtime. */
 export function isNativePushRuntimeAvailable(): boolean {

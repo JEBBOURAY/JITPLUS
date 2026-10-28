@@ -2,7 +2,6 @@ import { create } from 'zustand';
 import { Merchant, TeamMember } from '@/types';
 
 interface AuthState {
-  // ── State ──
   merchant: Merchant | null;
   token: string | null;
   loading: boolean;
@@ -10,7 +9,6 @@ interface AuthState {
   teamMember: TeamMember | null;
   onboardingCompleted: boolean;
 
-  // ── Actions ──
   setMerchant: (merchant: Merchant | null) => void;
   updateMerchant: (data: Partial<Merchant>) => void;
   setToken: (token: string | null) => void;

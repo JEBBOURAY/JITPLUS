@@ -3,8 +3,6 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIn
 import { Image as ExpoImage } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
-  Store,
-  CreditCard,
   Palette as PaletteIcon,
   Shapes,
   ImagePlus,
@@ -12,11 +10,19 @@ import {
   Type,
   ChevronRight,
   Trash2,
-  Gift,
-  Stamp,
+  Check,
 } from 'lucide-react-native';
+import {
+  JitCard,
+  JitGift,
+  JitStamp,
+  JitStore,
+} from '@/components/icons';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useDir } from '@/hooks/useDir';
+import { font, icon as iconTokens } from '@/constants/design';
+import { usePlanStatus } from '@/hooks/usePlanStatus';
 import { useAuthActions } from '@/contexts/AuthContext';
 import {
   useUpdateMerchantProfile,
@@ -27,7 +33,8 @@ import {
 import { resolveImageUrl } from '@/utils/imageUrl';
 import { getErrorMessage } from '@/utils/error';
 import { MERCHANT_ICON_MAP } from '@/utils/merchantIcons';
-import { getCategoryLabel, CATEGORY_EMOJIS } from '@/constants/categories';
+import { getCategoryLabel, CATEGORY_ICONS } from '@/constants/categories';
+import { getCategoryEmoji } from '@jitplus/shared';
 import type { Merchant } from '@/types';
 import { PresetSwatches, IconGrid, CardColorRow, CardTextColorToggle } from '@/components/stores/FicheControls';
 import {
@@ -39,6 +46,8 @@ import { HEX_RE, PRESET_COLORS, brandColor } from '@/components/stores/brand';
 const CARD_BG_MAX_BYTES = 5 * 1024 * 1024;
 const STAMP_INDICES = Object.freeze([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
 const SAMPLE_EARNED = 3;
+const DIAG_START = { x: 0, y: 0 } as const;
+const DIAG_END = { x: 1, y: 1 } as const;
 
 type Part = 'fiche' | 'card';
 type TextMode = 'LIGHT' | 'DARK';
@@ -61,12 +70,13 @@ function savedTextMode(m: Merchant): TextMode {
 export default function AppearanceSection({ merchant }: { merchant: Merchant }) {
   const theme = useTheme();
   const { t } = useLanguage();
+  const dir = useDir();
   const { updateMerchant } = useAuthActions();
   const toast = useToast();
   const update = useUpdateMerchantProfile();
   const uploadCardBackground = useUploadMerchantCardBackground();
   const deleteCardBackground = useDeleteMerchantCardBackground();
-  const isPremium = merchant.plan === 'PREMIUM';
+  const { isPremium } = usePlanStatus(merchant);
   const scrollRef = useRef<ScrollView>(null);
 
   const [part, setPart] = useState<Part>('fiche');
@@ -88,8 +98,8 @@ export default function AppearanceSection({ merchant }: { merchant: Merchant }) 
   useDiscardGuard(dirty, update.isPending);
 
   const parts = useMemo<SegmentItem<Part>[]>(() => [
-    { key: 'fiche', label: t('storePreview.group1Title'), Icon: Store },
-    { key: 'card', label: t('storePreview.group2Title'), Icon: CreditCard },
+    { key: 'fiche', label: t('storePreview.group1Title'), Icon: JitStore },
+    { key: 'card', label: t('storePreview.group2Title'), Icon: JitCard },
   ], [t]);
 
   const selectPart = useCallback((next: Part) => {
@@ -164,6 +174,7 @@ export default function AppearanceSection({ merchant }: { merchant: Merchant }) 
   }, [changes, update, updateMerchant, showToast, t]);
 
   const IconCmp = icon ? MERCHANT_ICON_MAP[icon] : null;
+  const CategoryIcon = CATEGORY_ICONS[merchant.categorie] ?? JitStore;
   const logoSource = merchant.logoUrl ? resolveImageUrl(merchant.logoUrl) : null;
   const shadow = surfaceShadow(theme);
 
@@ -174,32 +185,32 @@ export default function AppearanceSection({ merchant }: { merchant: Merchant }) 
         <View style={styles.heroCover}>
           {merchant.coverUrl
             ? <ExpoImage source={resolveImageUrl(merchant.coverUrl)} style={StyleSheet.absoluteFill} contentFit="cover" cachePolicy="memory-disk" />
-            : <LinearGradient colors={[`${color}55`, `${color}14`]} style={StyleSheet.absoluteFill} />}
+            : <LinearGradient colors={[color, `${color}B3`, `${color}59`]} start={DIAG_START} end={DIAG_END} style={StyleSheet.absoluteFill} />}
           <LinearGradient colors={['transparent', theme.bgCard]} style={[StyleSheet.absoluteFill, styles.heroFade]} />
-          <View style={[styles.heroLogoRing, { backgroundColor: theme.bgCard }]}>
+          <View style={[styles.heroLogoRing, dir.isRTL ? styles.heroLogoRingRtl : styles.heroLogoRingLtr, { backgroundColor: theme.bgCard }]}>
             {logoSource ? (
               <ExpoImage source={logoSource} style={styles.heroLogo} contentFit="cover" cachePolicy="memory-disk" />
             ) : (
-              <View style={[styles.heroLogo, styles.center, { backgroundColor: `${color}20` }]}>
-                {IconCmp ? <IconCmp size={30} color={color} strokeWidth={1.75} /> : <Text style={styles.heroEmoji}>🏷️</Text>}
+              // Same fallback as the public page: theme icon, else the category emoji.
+              <View style={[styles.heroLogo, styles.center, styles.heroLogoEmpty, { backgroundColor: theme.bgCard, borderColor: `${color}30` }]}>
+                {IconCmp
+                  ? <IconCmp size={30} color={color} strokeWidth={iconTokens.stroke} />
+                  : <Text style={styles.heroEmoji}>{getCategoryEmoji(merchant.categorie)}</Text>}
               </View>
             )}
-            {logoSource && IconCmp ? (
-              <View style={[styles.heroIconBadge, { backgroundColor: color, borderColor: theme.bgCard }]}>
-                <IconCmp size={13} color="#FFFFFF" strokeWidth={2} />
-              </View>
-            ) : null}
           </View>
         </View>
         <View style={styles.heroBody}>
-          <Text style={[styles.heroName, { color: theme.text }]} numberOfLines={1}>{merchant.nom}</Text>
-          <View style={[styles.heroCategory, { backgroundColor: `${color}14` }]}>
-            <Text style={[styles.heroCategoryText, { color }]} numberOfLines={1}>{getCategoryLabel(merchant.categorie)}</Text>
+          <Text style={[styles.heroName, { color: theme.text, textAlign: dir.textAlign }]} numberOfLines={1}>{merchant.nom}</Text>
+          <View style={[styles.heroCategory, { alignSelf: dir.alignStart, backgroundColor: `${color}14` }]}>
+            <Text style={[styles.heroCategoryText, { color }]} numberOfLines={1}>
+              {[merchant.categorie, ...(merchant.secondaryCategories ?? [])].map((c) => getCategoryLabel(c)).join(' · ')}
+            </Text>
           </View>
-          <View style={[styles.heroReward, { backgroundColor: `${color}0D` }]}>
-            <View style={[styles.heroRewardIcon, { backgroundColor: `${color}1A` }]}><Stamp size={14} color={color} strokeWidth={1.8} /></View>
-            <Text style={[styles.heroRewardText, { color: theme.text }]} numberOfLines={1}>{t('storePreview.stampCard')}</Text>
-            <Gift size={14} color={color} strokeWidth={1.8} />
+          <View style={[styles.heroReward, { flexDirection: dir.row, backgroundColor: `${color}0D` }]}>
+            <View style={[styles.heroRewardIcon, { backgroundColor: `${color}1A` }]}><JitStamp size={14} color={color} strokeWidth={iconTokens.strokeSmall} /></View>
+            <Text style={[styles.heroRewardText, { color: theme.text, textAlign: dir.textAlign }]} numberOfLines={1}>{t('fiche.loyaltyProgram')}</Text>
+            <JitGift size={14} color={color} strokeWidth={iconTokens.strokeSmall} />
           </View>
         </View>
       </View>
@@ -211,20 +222,20 @@ export default function AppearanceSection({ merchant }: { merchant: Merchant }) 
   const cardSub = hasCardBg ? (textMode === 'DARK' ? '#374151' : '#E5E7EB') : theme.textMuted;
   const cardPreview = (
     <View style={[styles.cardShadow, shadow]}>
-      <View style={[styles.card, { backgroundColor: cardColor ?? theme.bgCard }]}>
+      <View style={[styles.card, dir.isRTL ? styles.cardRtl : styles.cardLtr, { flexDirection: dir.row, backgroundColor: cardColor ?? theme.bgCard }]}>
         {cardBgUrl ? <ExpoImage source={resolveImageUrl(cardBgUrl)} style={StyleSheet.absoluteFill} contentFit="cover" cachePolicy="memory-disk" /> : null}
         {hasCardBg ? (
           <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: textMode === 'DARK' ? 'rgba(255,255,255,0.22)' : 'rgba(0,0,0,0.28)' }]} />
         ) : null}
-        <LinearGradient colors={[color === palette.violet ? palette.violetDark : color, color]} style={styles.cardAccentBar} />
-        <View style={[styles.cardLogoWrap, { backgroundColor: theme.primaryBg }]}>
+        <LinearGradient colors={[color === palette.violet ? palette.violetDark : color, color]} style={[styles.cardAccentBar, dir.isRTL ? styles.cardAccentBarRtl : styles.cardAccentBarLtr]} />
+        <View style={[styles.cardLogoWrap, dir.isRTL ? styles.cardLogoWrapRtl : styles.cardLogoWrapLtr, { backgroundColor: theme.primaryBg }]}>
           {logoSource
             ? <ExpoImage source={logoSource} style={styles.cardLogo} contentFit="cover" cachePolicy="disk" />
-            : <Text style={styles.cardEmoji}>{CATEGORY_EMOJIS[merchant.categorie] ?? '🏷️'}</Text>}
+            : <CategoryIcon size={22} color={color} strokeWidth={iconTokens.stroke} />}
         </View>
         <View style={styles.flex}>
-          <Text style={[styles.cardName, { color: cardText }]} numberOfLines={1}>{merchant.nom}</Text>
-          <View style={styles.stamps}>
+          <Text style={[styles.cardName, { color: cardText, textAlign: dir.textAlign }]} numberOfLines={1}>{merchant.nom}</Text>
+          <View style={[styles.stamps, { flexDirection: dir.row }]}>
             {STAMP_INDICES.map((i) => {
               const filled = i < SAMPLE_EARNED;
               return (
@@ -240,15 +251,15 @@ export default function AppearanceSection({ merchant }: { merchant: Merchant }) 
                   {logoSource ? (
                     <ExpoImage source={logoSource} style={[styles.stampLogo, { opacity: filled ? 1 : 0.18 }]} contentFit="cover" cachePolicy="disk" />
                   ) : filled ? (
-                    <Text style={styles.stampCheck}>✓</Text>
+                    <Check size={12} color="#FFFFFF" strokeWidth={iconTokens.strokeSmall} />
                   ) : null}
                 </View>
               );
             })}
           </View>
-          <Text style={[styles.cardSub, { color: cardSub }]} numberOfLines={1}>{t('storePreview.cardDesignPreviewSub')}</Text>
+          <Text style={[styles.cardSub, { color: cardSub, textAlign: dir.textAlign }]} numberOfLines={1}>{t('storePreview.cardDesignPreviewSub')}</Text>
         </View>
-        <ChevronRight size={18} color={cardSub} strokeWidth={2} />
+        <ChevronRight size={18} color={cardSub} strokeWidth={iconTokens.stroke} style={dir.flip} />
       </View>
     </View>
   );
@@ -284,19 +295,19 @@ export default function AppearanceSection({ merchant }: { merchant: Merchant }) 
             caption={t('storePreview.cardBackgroundHint')}
             right={isPremium ? null : <ProPill />}
           >
-            <View style={styles.cardBgRow}>
+            <View style={[styles.cardBgRow, { flexDirection: dir.row }]}>
               <TouchableOpacity
                 onPress={pickCardBackground}
                 disabled={cardBgBusy}
                 activeOpacity={0.85}
-                style={[styles.cardBgBtn, { backgroundColor: `${color}14` }]}
+                style={[styles.cardBgBtn, { flexDirection: dir.row, backgroundColor: `${color}14` }]}
                 accessibilityRole="button"
               >
                 {uploadCardBackground.isPending ? (
                   <ActivityIndicator size="small" color={color} />
                 ) : (
                   <>
-                    <ImagePlus size={16} color={color} strokeWidth={2.2} />
+                    <ImagePlus size={16} color={color} strokeWidth={iconTokens.stroke} />
                     <Text style={[styles.cardBgBtnText, { color }]} numberOfLines={1}>
                       {cardBgUrl ? t('storePreview.cardBackgroundReplace') : t('storePreview.cardBackgroundAdd')}
                     </Text>
@@ -312,7 +323,7 @@ export default function AppearanceSection({ merchant }: { merchant: Merchant }) 
                   accessibilityRole="button"
                   accessibilityLabel={t('storePreview.cardBackgroundRemove')}
                 >
-                  <Trash2 size={16} color={theme.danger} strokeWidth={2} />
+                  <Trash2 size={16} color={theme.danger} strokeWidth={iconTokens.stroke} />
                 </TouchableOpacity>
               ) : null}
             </View>
@@ -338,37 +349,43 @@ const styles = StyleSheet.create({
   center: { alignItems: 'center', justifyContent: 'center' },
   switch: { marginHorizontal: 16, marginTop: 6 },
 
-  hero: { marginHorizontal: 16, marginTop: 16, borderRadius: 20 },
-  heroClip: { borderRadius: 20, overflow: 'hidden' },
+  hero: { marginHorizontal: 16, marginTop: 16, borderRadius: 16 },
+  heroClip: { borderRadius: 16, overflow: 'hidden' },
   heroCover: { height: 120, width: '100%' },
   heroFade: { top: '45%' },
-  heroLogoRing: { position: 'absolute', bottom: -30, left: 16, width: 72, height: 72, borderRadius: 36, padding: 3 },
+  heroLogoRing: { position: 'absolute', bottom: -30, width: 72, height: 72, borderRadius: 36, padding: 3 },
+  heroLogoRingLtr: { left: 16 },
+  heroLogoRingRtl: { right: 16 },
   heroLogo: { width: '100%', height: '100%', borderRadius: 33 },
-  heroEmoji: { fontSize: 28 },
-  heroIconBadge: { position: 'absolute', bottom: -2, right: -2, width: 26, height: 26, borderRadius: 13, borderWidth: 2, justifyContent: 'center', alignItems: 'center' },
+  heroLogoEmpty: { borderWidth: 1 },
+  heroEmoji: { fontSize: 30 },
   heroBody: { padding: 16, paddingTop: 40, gap: 8 },
-  heroName: { fontSize: 17, fontFamily: 'Lexend_600SemiBold', letterSpacing: -0.3 },
+  heroName: { fontSize: 17, fontFamily: font.semibold, letterSpacing: -0.3 },
   heroCategory: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
-  heroCategoryText: { fontSize: 11.5, fontFamily: 'Lexend_500Medium' },
-  heroReward: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, borderRadius: 13 },
+  heroCategoryText: { fontSize: 12, fontFamily: font.medium },
+  heroReward: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, borderRadius: 12 },
   heroRewardIcon: { width: 26, height: 26, borderRadius: 13, justifyContent: 'center', alignItems: 'center' },
-  heroRewardText: { flex: 1, fontSize: 12.5, fontFamily: 'Lexend_500Medium' },
+  heroRewardText: { flex: 1, fontSize: 13, fontFamily: font.medium },
 
-  cardShadow: { marginHorizontal: 16, marginTop: 16, borderRadius: 20 },
-  card: { flexDirection: 'row', alignItems: 'center', borderRadius: 20, padding: 14, paddingLeft: 12, overflow: 'hidden' },
-  cardAccentBar: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 4 },
-  cardLogoWrap: { width: 50, height: 50, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginLeft: 4, marginRight: 14, overflow: 'hidden' },
-  cardLogo: { width: 50, height: 50, borderRadius: 14 },
-  cardEmoji: { fontSize: 22 },
-  cardName: { fontSize: 15, fontFamily: 'Lexend_600SemiBold', letterSpacing: -0.2 },
+  cardShadow: { marginHorizontal: 16, marginTop: 16, borderRadius: 16 },
+  card: { flexDirection: 'row', alignItems: 'center', borderRadius: 16, padding: 14, overflow: 'hidden' },
+  cardLtr: { paddingLeft: 12 },
+  cardRtl: { paddingRight: 12 },
+  cardAccentBar: { position: 'absolute', top: 0, bottom: 0, width: 4 },
+  cardAccentBarLtr: { left: 0 },
+  cardAccentBarRtl: { right: 0 },
+  cardLogoWrap: { width: 50, height: 50, borderRadius: 12, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  cardLogoWrapLtr: { marginLeft: 4, marginRight: 14 },
+  cardLogoWrapRtl: { marginRight: 4, marginLeft: 14 },
+  cardLogo: { width: 50, height: 50, borderRadius: 12 },
+  cardName: { fontSize: 15, fontFamily: font.semibold, letterSpacing: -0.2 },
   stamps: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginVertical: 8 },
   stamp: { width: 24, height: 24, borderRadius: 12, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   stampLogo: { width: '100%', height: '100%', borderRadius: 12 },
-  stampCheck: { color: '#fff', fontSize: 11, fontWeight: '700' },
-  cardSub: { fontSize: 11, fontFamily: 'Lexend_500Medium', opacity: 0.8 },
+  cardSub: { fontSize: 11, fontFamily: font.medium, opacity: 0.8 },
 
   cardBgRow: { flexDirection: 'row', gap: 8 },
-  cardBgBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 46, borderRadius: 13 },
-  cardBgBtnText: { fontSize: 13.5, fontFamily: 'Lexend_600SemiBold' },
-  cardBgRemove: { width: 46, height: 46, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  cardBgBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 46, borderRadius: 12 },
+  cardBgBtnText: { fontSize: 14, fontFamily: font.semibold },
+  cardBgRemove: { width: 46, height: 46, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
 });

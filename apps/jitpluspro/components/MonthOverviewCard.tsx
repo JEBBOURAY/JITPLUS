@@ -1,41 +1,47 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { ChevronRight } from 'lucide-react-native';
+import { JitLock } from '@/components/icons';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { palette } from '@/contexts/ThemeContext';
 import { getIntlLocale } from '@/config/currency';
+import { font, icon } from '@/constants/design';
+import { useDir } from '@/hooks/useDir';
 
 const BAR_COUNT = 15;
-const BAR_MAX_HEIGHT = 44;
+const BAR_MAX_HEIGHT = 36;
 const BAR_MIN_HEIGHT = 3;
+const BAR_PAST = 'rgba(255,255,255,0.26)';
+const BAR_FUTURE = 'rgba(255,255,255,0.10)';
 
-export interface MonthOverviewData {
+interface MonthOverviewData {
   /** Per-day scan counts for the current month (index 0 = day 1). */
   daily: number[];
+  /** Shows a lock marker next to the chevron (statistics are premium-gated). */
+  locked?: boolean;
 }
 
 /**
- * Translucent "month overview" card shown inside the brand-gradient header.
- * Renders a mini bar chart of daily scans for the current month, computed
- * entirely from data already loaded on the Accueil (no new data source).
+ * Month overview on the Accueil header: mini bar chart of daily scans for the
+ * current month. Today's bucket is the only gold accent on the header.
  */
-function MonthOverviewCard({ daily }: MonthOverviewData) {
+function MonthOverviewCard({ daily, locked = false }: MonthOverviewData) {
   const { t, locale } = useLanguage();
+  const dir = useDir();
 
-  const { bars, total, activeIndex } = useMemo(() => {
-    const daysInMonth = daily.length || 1;
+  const { bars, total, todayIndex } = useMemo(() => {
+    const now = new Date();
+    const daysInMonth = daily.length || new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
     // Downsample the month into ~15 buckets spanning day 1..daysInMonth.
     const buckets: number[] = new Array(BAR_COUNT).fill(0);
     for (let d = 0; d < daysInMonth; d++) {
       const b = Math.min(BAR_COUNT - 1, Math.floor((d / daysInMonth) * BAR_COUNT));
       buckets[b] += daily[d] ?? 0;
     }
-    let max = 0;
-    let maxIdx = 0;
-    for (let i = 0; i < buckets.length; i++) {
-      if (buckets[i] > max) { max = buckets[i]; maxIdx = i; }
-    }
+    const todayDay = Math.min(daysInMonth, now.getDate()) - 1;
+    const todayBucket = Math.min(BAR_COUNT - 1, Math.floor((todayDay / daysInMonth) * BAR_COUNT));
     const sum = daily.reduce((acc, n) => acc + n, 0);
-    return { bars: buckets, total: sum, activeIndex: max > 0 ? maxIdx : -1 };
+    return { bars: buckets, total: sum, todayIndex: todayBucket };
   }, [daily]);
 
   const maxBar = Math.max(1, ...bars);
@@ -46,34 +52,22 @@ function MonthOverviewCard({ daily }: MonthOverviewData) {
         <Text style={styles.label} numberOfLines={1} maxFontSizeMultiplier={1.3}>
           {t('home.monthOverview')}
         </Text>
-        <Text style={styles.value} numberOfLines={1} maxFontSizeMultiplier={1.3}>
-          <Text style={styles.valueNumber}>{total.toLocaleString(getIntlLocale(locale))}</Text>
-          <Text style={styles.valueUnit}> {t('home.scans')}</Text>
-        </Text>
+        <View style={styles.trailing}>
+          <Text style={styles.value} numberOfLines={1} maxFontSizeMultiplier={1.3}>
+            <Text style={styles.valueNumber}>{total.toLocaleString(getIntlLocale(locale))}</Text>
+            <Text style={styles.valueUnit}> {t('home.scans')}</Text>
+          </Text>
+          {locked && <JitLock size={12} color={palette.heroMuted} strokeWidth={icon.strokeSmall} />}
+          <ChevronRight size={15} color={palette.heroMuted} strokeWidth={icon.strokeSmall} style={dir.flip} />
+        </View>
       </View>
 
       <View style={styles.chart} importantForAccessibility="no-hide-descendants">
         {bars.map((v, i) => {
           const h = BAR_MIN_HEIGHT + (v / maxBar) * (BAR_MAX_HEIGHT - BAR_MIN_HEIGHT);
-          const isActive = i === activeIndex;
-          return (
-            <View
-              key={i}
-              style={[
-                styles.bar,
-                { height: h, backgroundColor: isActive ? palette.gold : 'rgba(255,255,255,0.18)' },
-              ]}
-            />
-          );
+          const color = i === todayIndex ? palette.gold : i < todayIndex ? BAR_PAST : BAR_FUTURE;
+          return <View key={i} style={[styles.bar, { height: h, backgroundColor: color }]} />;
         })}
-      </View>
-
-      <View style={styles.axisRow} importantForAccessibility="no-hide-descendants">
-        <Text style={styles.axisLabel}>1</Text>
-        <Text style={styles.axisLabel}>8</Text>
-        <Text style={styles.axisLabel}>15</Text>
-        <Text style={styles.axisLabel}>22</Text>
-        <Text style={styles.axisLabel}>{t('activity.today')}</Text>
       </View>
     </View>
   );
@@ -83,7 +77,7 @@ export default React.memo(MonthOverviewCard);
 
 const styles = StyleSheet.create({
   card: {
-    marginTop: 16,
+    marginTop: 22,
     paddingHorizontal: 4,
   },
   topRow: {
@@ -95,41 +89,36 @@ const styles = StyleSheet.create({
   label: {
     flex: 1,
     fontSize: 13,
-    color: '#fff',
-    fontFamily: 'Lexend_600SemiBold',
-    letterSpacing: -0.2,
+    color: palette.heroMuted,
+    fontFamily: font.medium,
+  },
+  trailing: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    flexShrink: 0,
   },
   value: { flexShrink: 0 },
   valueNumber: {
-    fontSize: 16,
-    color: palette.gold,
-    fontFamily: 'Lexend_700Bold',
-    letterSpacing: -0.3,
+    fontSize: 14,
+    color: '#fff',
+    fontFamily: font.semibold,
+    letterSpacing: -0.2,
   },
   valueUnit: {
     fontSize: 13,
-    color: 'rgba(255,255,255,0.72)',
-    fontFamily: 'Lexend_500Medium',
+    color: palette.heroMuted,
+    fontFamily: font.medium,
   },
   chart: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     justifyContent: 'space-between',
     height: BAR_MAX_HEIGHT,
-    gap: 4,
+    gap: 6,
   },
   bar: {
     flex: 1,
-    borderRadius: 3,
-  },
-  axisRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 8,
-  },
-  axisLabel: {
-    fontSize: 10,
-    color: 'rgba(255,255,255,0.6)',
-    fontFamily: 'Lexend_500Medium',
+    borderRadius: 2,
   },
 });

@@ -1,8 +1,9 @@
 import { useEffect, useRef } from 'react';
 import { View, DimensionValue, StyleSheet, ViewStyle, useWindowDimensions, Animated } from 'react-native';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useDir } from '@/hooks/useDir';
 
-// ── Shared shimmer animation (ref-counted: runs only while at least one instance is mounted) ──────
+// Ref-counted: the shared loop runs only while at least one instance is mounted.
 const _shimmerProgress = new Animated.Value(0);
 let _shimmerMountCount = 0;
 let _shimmerAnimation: Animated.CompositeAnimation | null = null;
@@ -30,7 +31,6 @@ function stopShimmerLoop() {
   }
 }
 
-/** A single shimmering rectangle */
 function ShimmerBlock({
   width,
   height,
@@ -91,100 +91,51 @@ function ShimmerBlock({
   );
 }
 
-/** Skeleton placeholder for a client card */
-export function ClientCardSkeleton() {
+function RowSkeleton({ isFirst }: { isFirst: boolean }) {
   const theme = useTheme();
+  const dir = useDir();
   return (
     <View
       style={[
-        skStyles.card,
-        {
-          backgroundColor: theme.bgCard,
-          borderColor: theme.borderLight,
-        },
+        skStyles.row,
+        { flexDirection: dir.row },
+        !isFirst && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.borderLight },
       ]}
     >
-      <ShimmerBlock width={48} height={48} borderRadius={24} />
-      <View style={skStyles.flexMarginGap}>
-        <ShimmerBlock width="70%" height={14} />
-        <ShimmerBlock width="45%" height={12} />
-      </View>
-      <ShimmerBlock width={60} height={28} borderRadius={12} />
-    </View>
-  );
-}
-
-/** Skeleton list (multiple client cards) */
-export function ClientListSkeleton({ count = 6 }: { count?: number }) {
-  return (
-    <View style={skStyles.list}>
-      {Array.from({ length: count }).map((_, i) => (
-        <ClientCardSkeleton key={i} />
-      ))}
-    </View>
-  );
-}
-
-/** Skeleton placeholder for activity card */
-export function ActivityCardSkeleton() {
-  const theme = useTheme();
-  return (
-    <View
-      style={[
-        skStyles.actCard,
-        {
-          backgroundColor: theme.bgCard,
-          borderColor: theme.borderLight,
-        },
-      ]}
-    >
-      <ShimmerBlock width={38} height={38} borderRadius={19} />
-      <View style={skStyles.flexMarginGap}>
+      <ShimmerBlock width={40} height={40} borderRadius={12} />
+      <View style={skStyles.rowText}>
         <ShimmerBlock width="60%" height={14} />
         <ShimmerBlock width="40%" height={12} />
       </View>
-      <View style={skStyles.alignEndGap}>
-        <ShimmerBlock width={50} height={13} />
-        <ShimmerBlock width={40} height={14} />
-      </View>
+      <ShimmerBlock width={36} height={14} />
     </View>
   );
 }
 
-export function ActivityListSkeleton({ count = 5 }: { count?: number }) {
+/** Placeholder matching the grouped list cards (recent activity, history, clients). */
+export function ListSkeleton({ count = 5 }: { count?: number }) {
+  const theme = useTheme();
   return (
-    <View style={skStyles.list}>
+    <View style={[skStyles.card, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
       {Array.from({ length: count }).map((_, i) => (
-        <ActivityCardSkeleton key={i} />
+        <RowSkeleton key={i} isFirst={i === 0} />
       ))}
     </View>
   );
 }
 
 const skStyles = StyleSheet.create({
-  list: { paddingHorizontal: 16, paddingTop: 16, gap: 10 },
   card: {
-    flexDirection: 'row',
-    alignItems: 'center',
     borderRadius: 16,
-    padding: 14,
     borderWidth: 1,
+    overflow: 'hidden',
   },
-  actCard: {
-    flexDirection: 'row',
+  row: {
     alignItems: 'center',
-    borderRadius: 14,
-    padding: 14,
-    borderLeftWidth: 4,
-    borderColor: '#e2e8f0',
+    gap: 12,
+    minHeight: 64,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
   },
-  flexMarginGap: {
-    flex: 1,
-    marginLeft: 12,
-    gap: 8,
-  },
-  alignEndGap: {
-    alignItems: 'flex-end',
-    gap: 6,
-  },
+  rowText: { flex: 1, gap: 8 },
 });

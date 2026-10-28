@@ -1,7 +1,8 @@
 import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Animated, Easing } from 'react-native';
+import { View, StyleSheet, ScrollView, Animated, Easing } from 'react-native';
+import { Text } from '@/components/AppText';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
+import { useIsFocused, useRouter } from 'expo-router';
 import { Clock, Ticket, Trophy } from 'lucide-react-native';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -94,9 +95,11 @@ const GameTile = memo(function GameTile({
 
 /** Small scratch card drawing that wiggles when cards are waiting. */
 const ScratchArt = memo(function ScratchArt({ active }: { active: boolean }) {
+  // Paused while another tab is shown: tabs stay mounted.
+  const isFocused = useIsFocused();
   const wiggle = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    if (!active) { wiggle.setValue(0); return; }
+    if (!active || !isFocused) { wiggle.setValue(0); return; }
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(wiggle, { toValue: 1, duration: 140, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
@@ -107,7 +110,7 @@ const ScratchArt = memo(function ScratchArt({ active }: { active: boolean }) {
     );
     loop.start();
     return () => loop.stop();
-  }, [active, wiggle]);
+  }, [active, isFocused, wiggle]);
   const rotate = wiggle.interpolate({ inputRange: [-1, 0, 1], outputRange: ['-16deg', '-8deg', '0deg'] });
 
   return (

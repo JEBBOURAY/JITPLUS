@@ -1,8 +1,9 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
-  View, Text, ScrollView, RefreshControl, Pressable,
+  View, ScrollView, RefreshControl, Pressable,
   TouchableOpacity, Platform, Share, Linking, Alert,
 } from 'react-native';
+import { Text } from '@/components/AppText';
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -17,6 +18,7 @@ import { api } from '@/services/api';
 import { wp, hp, ms, fontSize as FS, radius } from '@/utils/responsive';
 import { haptic, HapticStyle } from '@/utils/haptics';
 import { extractErrorMessage } from '@/utils/errorMessage';
+import { useTransientFlag } from '@/hooks/useTransientFlag';
 import type { ClientReferralStats } from '@/types';
 import { useFocusEffect } from 'expo-router';
 import {
@@ -55,8 +57,9 @@ export default function ReferralScreen() {
 
   const loading = statsLoading;
   const error = statsError;
-  const [copied, setCopied] = useState(false);
+  const [copied, flashCopied] = useTransientFlag();
   const [requestingPayout, setRequestingPayout] = useState(false);
+  const payoutLockRef = useRef(false);
 
   useFocusEffect(useCallback(() => { refetchStats(); refetchHistory(); }, [refetchStats, refetchHistory]));
 
@@ -72,10 +75,9 @@ export default function ReferralScreen() {
     try {
       if (Clipboard?.setStringAsync) await Clipboard.setStringAsync(stats.referralCode);
       haptic(HapticStyle.Light);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      flashCopied();
     } catch { /* ignore */ }
-  }, [stats?.referralCode]);
+  }, [stats?.referralCode, flashCopied]);
 
   const handleShare = useCallback(async () => {
     if (!stats?.referralCode) return;
@@ -89,17 +91,24 @@ export default function ReferralScreen() {
   const canRequestPayout = (stats?.referralBalance ?? 0) >= 100;
 
   const handlePayoutRequest = useCallback(() => {
-    if (!stats || !canRequestPayout) return;
+    if (!stats || !canRequestPayout || payoutLockRef.current) return;
     const balance = (stats.referralBalance || 0).toFixed(0);
     const submitPayout = async (method: 'CASH' | 'BANK_TRANSFER') => {
+      // State updates are async: a ref is the only guard a fast double tap cannot slip past.
+      if (payoutLockRef.current) return;
+      payoutLockRef.current = true;
+      setRequestingPayout(true);
       try {
-        setRequestingPayout(true);
         await api.requestPayout(stats.referralBalance || 0, method);
         Alert.alert(t('common.success'), t('referral.payoutSuccess'));
-        refetchStats(); refetchHistory();
       } catch (err: unknown) {
         Alert.alert(t('common.error'), extractErrorMessage(err) || t('referral.payoutError'));
-      } finally { setRequestingPayout(false); }
+      } finally {
+        payoutLockRef.current = false;
+        setRequestingPayout(false);
+        // Also after a failure: a timed-out request may still have been created server-side.
+        refetchStats(); refetchHistory();
+      }
     };
     Alert.alert(t('referral.payoutTitle'), t('referral.payoutConfirm', { amount: balance }), [
       { text: t('common.cancel'), style: 'cancel' },
@@ -122,8 +131,8 @@ export default function ReferralScreen() {
   return (
     <View style={[styles.gradient, { backgroundColor: theme.bg }]}>
       <SafeAreaView style={styles.container}>
-        <View style={[styles.header, isRTL && styles.headerRTL]}>
-          <TouchableOpacity onPress={() => router.back()} hitSlop={12}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()} hitSlop={12} accessibilityRole="button" accessibilityLabel={t('common.back')}>
             <ArrowLeft size={ms(22)} color={theme.text} strokeWidth={2} style={isRTL ? { transform: [{ scaleX: -1 }] } : undefined} />
           </TouchableOpacity>
           <Text style={[styles.headerTitle, { color: theme.text }]}>{t('referral.title')}</Text>
@@ -141,15 +150,15 @@ export default function ReferralScreen() {
           ) : stats ? (
             <>
               <ReferralBalanceCard balance={stats.referralBalance ?? 0} canRequestPayout={canRequestPayout} requestingPayout={requestingPayout} onRequestPayout={handlePayoutRequest} t={t} />
-              <ReferralCodeCard code={stats.referralCode} copied={copied} isRTL={isRTL} onCopy={handleCopy} onShare={handleShare} theme={theme} t={t} />
+              <ReferralCodeCard code={stats.referralCode} copied={copied} onCopy={handleCopy} onShare={handleShare} theme={theme} t={t} />
 
-              <MyReferralsList stats={stats} isRTL={isRTL} theme={theme} t={t} formatDate={formatDate} />
+              <MyReferralsList stats={stats} theme={theme} t={t} formatDate={formatDate} />
               
-              <PayoutHistoryList payoutHistory={payoutHistory} isRTL={isRTL} theme={theme} t={t} formatDate={formatDate} />
+              <PayoutHistoryList payoutHistory={payoutHistory} theme={theme} t={t} formatDate={formatDate} />
 
-              <HowItWorks isRTL={isRTL} theme={theme} t={t} />
+              <HowItWorks theme={theme} t={t} />
 
-              <ReferralContactCard isRTL={isRTL} theme={theme} t={t} />
+              <ReferralContactCard theme={theme} t={t} />
               
               {/* Footer Terms & Disclaimer */}
               <View style={{ marginTop: hp(24), marginBottom: hp(40), paddingHorizontal: wp(24), alignItems: 'center' }}>
@@ -168,7 +177,7 @@ export default function ReferralScreen() {
           ) : error ? (
             <View style={{ alignItems: 'center', marginTop: hp(60), paddingHorizontal: wp(24) }}>
               <Text style={{ color: theme.text, fontSize: FS.md, fontWeight: '600', marginBottom: hp(8) }}>{t('common.genericError')}</Text>
-              <Pressable onPress={() => { refetchStats(); refetchHistory(); }} style={{ backgroundColor: palette.violet, paddingHorizontal: wp(24), paddingVertical: hp(10), borderRadius: radius.md }}>
+              <Pressable onPress={() => { refetchStats(); refetchHistory(); }} accessibilityRole="button" style={{ backgroundColor: palette.violet, paddingHorizontal: wp(24), paddingVertical: hp(10), borderRadius: radius.md }}>
                 <Text style={{ color: '#fff', fontWeight: '600', fontSize: FS.sm }}>{t('common.retry')}</Text>
               </Pressable>
             </View>

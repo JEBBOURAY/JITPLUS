@@ -14,9 +14,10 @@ import {
   ScrollView,
   Keyboard,
 } from 'react-native';
+import { goHomeAfterLogin } from '@/services/pendingDeal';
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 import { router } from 'expo-router';
-import { ArrowRight, Mail, ChevronLeft, Lock, Eye, EyeOff, Check, CheckCircle } from 'lucide-react-native';
+import { ArrowRight, Mail, ChevronLeft, Lock, Eye, EyeOff, CheckCircle } from 'lucide-react-native';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -31,6 +32,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import BrandText from '@/components/BrandText';
 import FormError from '@/components/FormError';
+import StarLoader from '@/components/StarLoader';
 import { GoogleLogo } from '@/components/GoogleLogo';
 import { AppleLogo } from '@/components/AppleLogo';
 
@@ -52,7 +54,6 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   // Client-side login rate limiting
@@ -151,19 +152,19 @@ export default function LoginScreen() {
     setError('');
     const normalizedEmail = email.trim().toLowerCase();
 
-    const result = await loginWithEmail(normalizedEmail, password, rememberMe);
+    const result = await loginWithEmail(normalizedEmail, password);
     setIsLoading(false);
     if (result.success) {
       SecureStore.deleteItemAsync(SS_LOGIN_LOCKOUT);
       SecureStore.deleteItemAsync(SS_LOGIN_ATTEMPTS);
       await AsyncStorage.setItem(SHOW_WELCOME_KEY, '1');
-      router.replace('/(tabs)/qr');
+      goHomeAfterLogin(router);
     } else {
       // Show Alert for network errors, inline error for others
       if (result.isNetworkError) Alert.alert(t('common.networkError'), result.error);
       else setError(result.error || t('common.genericError'));
     }
-  }, [emailValid, email, password, rememberMe, loginWithEmail, t]);
+  }, [emailValid, email, password, loginWithEmail, t]);
 
   // ── Forgot password flow ──
   const handleForgotPassword = useCallback(async () => {
@@ -377,17 +378,6 @@ export default function LoginScreen() {
       </TouchableOpacity>
 
       <TouchableOpacity
-        style={styles.rememberRow}
-        onPress={() => setRememberMe(!rememberMe)}
-        activeOpacity={0.7}
-      >
-        <View style={[styles.checkbox, { borderColor: rememberMe ? palette.violet : theme.inputBorder, backgroundColor: rememberMe ? palette.violet : 'transparent' }]}>
-          {rememberMe && <Check size={ms(14)} color="#fff" strokeWidth={3} />}
-        </View>
-        <Text style={[styles.rememberText, { color: theme.text }]}>{t('login.rememberMe')}</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
         onPress={handleEmailContinue}
         disabled={isLoading}
         activeOpacity={0.85}
@@ -426,7 +416,7 @@ export default function LoginScreen() {
         <Text style={[styles.cardTitle, { color: theme.text, textAlign: 'center' }]}>{t('login.googleLoginTitle')}</Text>
         {isLoading ? (
           <View style={{ alignItems: 'center', gap: hp(12), marginTop: hp(16) }}>
-            <ActivityIndicator size="large" color={palette.violet} />
+            <StarLoader size={88} />
             <Text style={[styles.cardSubtitle, { color: theme.textMuted, textAlign: 'center' }]}>{t('login.googleLoginInProgress')}</Text>
           </View>
         ) : google.isSuccess ? (
@@ -639,18 +629,7 @@ const styles = StyleSheet.create({
 
 
   // Forgot password
-  forgotPasswordText: { fontSize: fontSize.sm, fontWeight: '600', textAlign: 'right', marginBottom: hp(8) },
-
-  // Remember me
-  rememberRow: {
-    flexDirection: 'row', alignItems: 'center',
-    marginBottom: hp(16), gap: wp(8),
-  },
-  checkbox: {
-    width: ms(22), height: ms(22), borderRadius: radius.sm,
-    borderWidth: 2, alignItems: 'center', justifyContent: 'center',
-  },
-  rememberText: { fontSize: fontSize.sm, fontWeight: '500' },
+  forgotPasswordText: { fontSize: fontSize.sm, fontWeight: '600', textAlign: 'right', marginBottom: hp(20) },
 
   // Button
   button: {

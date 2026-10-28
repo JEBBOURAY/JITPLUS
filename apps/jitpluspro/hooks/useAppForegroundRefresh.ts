@@ -15,6 +15,7 @@ import { AppState, AppStateStatus } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { logPerf } from '@jitplus/shared/src/devLogger';
 import * as Sentry from '@sentry/react-native';
+import { queryKeys } from './useQueryHooks';
 
 const BACKGROUND_THRESHOLD_MS = 5 * 60 * 1000;
 
@@ -54,8 +55,8 @@ export function useAppForegroundRefresh() {
               { name: 'App Foreground Refresh', op: 'ui.load' },
               async () => {
                 await Promise.all([
-                  queryClient.invalidateQueries({ queryKey: ['admin-notif-unread-count'] }),
-                  queryClient.invalidateQueries({ queryKey: ['transactions', { page: 1 }] }),
+                  queryClient.invalidateQueries({ queryKey: queryKeys.adminNotifUnreadCount }),
+                  queryClient.invalidateQueries({ queryKey: queryKeys.transactions }),
                 ]);
                 const dt = Date.now() - t0;
                 logPerf('App', `foreground:done ${dt}ms`);

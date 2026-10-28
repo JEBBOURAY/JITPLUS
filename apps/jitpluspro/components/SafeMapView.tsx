@@ -15,7 +15,8 @@ import {
   NativeModules,
 } from 'react-native';
 import { requireOptionalNativeModule } from 'expo';
-import { MapPin, ExternalLink, Navigation } from 'lucide-react-native';
+import { ExternalLink, Navigation } from 'lucide-react-native';
+import { JitPin } from '@/components/icons';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { palette } from '@/contexts/ThemeContext';
 import { logInfo, logWarn } from '@/utils/devLogger';
@@ -111,7 +112,7 @@ function MapFallback({ style, markers, hasCoords }: FallbackProps) {
 
   return (
     <View style={[styles.fallback, style]}>
-      <MapPin size={32} color={palette.violet} />
+      <JitPin size={32} color={palette.violet} />
       <Text style={styles.fallbackTitle}>{t('safeMap.expoGoNotice')}</Text>
       <Text style={styles.fallbackText}>
         {t('safeMap.expoGoHint')}
@@ -219,12 +220,10 @@ const SafeMapView = forwardRef<SafeMapViewRef, SafeMapViewProps>((props, ref) =>
             const locale = Platform.OS === 'ios'
               ? NativeModules.SettingsManager?.settings?.AppleLocale ?? NativeModules.SettingsManager?.settings?.AppleLanguages?.[0]
               : NativeModules.I18nManager?.localeIdentifier;
-            logInfo('SafeMapView', `✓ Google Maps ready — device locale: ${locale}`);
-            logInfo('SafeMapView', `✓ Provider: ${rest.provider ?? 'default'}`);
-            if (Platform.OS === 'android' && configuredRenderer) {
-              logInfo('SafeMapView', `✓ Android renderer: ${configuredRenderer}`);
-            }
-            logInfo('SafeMapView', '✓ Region bias: MA (via withMoroccoRegion plugin)');
+            logInfo(
+              'SafeMapView',
+              `Map ready: locale=${locale}, provider=${rest.provider ?? 'default'}, renderer=${configuredRenderer || 'default'}, region bias=MA`,
+            );
           }
           onMapReadyProp?.();
         }}
@@ -268,7 +267,6 @@ const styles = StyleSheet.create({
   },
   fallbackTitle: {
     fontSize: 14,
-    fontWeight: '600',
     color: palette.gray500,
     marginTop: 8,
     textAlign: 'center',
@@ -300,7 +298,6 @@ const styles = StyleSheet.create({
   markerBtnText: {
     fontSize: 12,
     color: '#fff',
-    fontWeight: '600',
     fontFamily: 'Lexend_600SemiBold',
   },
 });

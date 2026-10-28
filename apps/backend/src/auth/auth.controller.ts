@@ -19,8 +19,14 @@ import { VerifyEmailDto } from './dto/verify-email.dto';
 import { CheckEmailDto } from './dto/check-email.dto';
 import { CheckPhoneDto } from './dto/check-phone.dto';
 import { JwtService } from '@nestjs/jwt';
-import { JwtPayload } from '../common/interfaces/jwt-payload.interface';
+import { JwtTokenPayload } from '../common/interfaces/jwt-payload.interface';
 import { Request } from 'express';
+
+const JWT_VERIFICATION_ERRORS = new Set(['JsonWebTokenError', 'TokenExpiredError', 'NotBeforeError']);
+
+function isJwtVerificationError(err: unknown): boolean {
+  return err instanceof Error && JWT_VERIFICATION_ERRORS.has(err.name);
+}
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -84,14 +90,18 @@ export class AuthController {
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   async logout(@Headers('authorization') authHeader?: string) {
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice('Bearer '.length).trim() : undefined;
     let sessionId: string | undefined;
-    try {
-      const token = authHeader?.replace('Bearer ', '');
-      if (token) {
-        const payload = this.jwtService.verify<JwtPayload>(token);
-        sessionId = payload?.sessionId;
+    if (token) {
+      try {
+        // The signature is still checked; an expired access token must not keep
+        // its device session (and refresh token) alive after logout.
+        sessionId = this.jwtService.verify<JwtTokenPayload>(token, { ignoreExpiration: true }).jti;
+      } catch (err) {
+        // Forged or malformed token: nothing to revoke, logout still succeeds.
+        if (!isJwtVerificationError(err)) throw err;
       }
-    } catch { /* token invalide ou expiré — on continue quand même */ }
+    }
     return this.authService.logout(sessionId);
   }
 

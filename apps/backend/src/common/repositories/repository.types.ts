@@ -13,6 +13,7 @@ export type ITransactionRepository = PrismaService['transaction'];
 export type IStoreRepository = PrismaService['store'];
 export type ITeamMemberRepository = PrismaService['teamMember'];
 export type IDeviceSessionRepository = PrismaService['deviceSession'];
+export type IClientSessionRepository = PrismaService['clientSession'];
 export type INotificationRepository = PrismaService['notification'];
 export type IClientNotificationStatusRepository = PrismaService['clientNotificationStatus'];
 export type IOtpRepository = PrismaService['otp'];

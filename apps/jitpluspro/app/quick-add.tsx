@@ -6,7 +6,6 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
-  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
@@ -18,15 +17,18 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as Clipboard from 'expo-clipboard';
-import * as Crypto from 'expo-crypto';
+import { randomUUID } from '@/utils/crypto';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, Phone, User, MessageCircle, CheckCircle, Copy, ShoppingBag } from 'lucide-react-native';
+import { ArrowLeft, Phone, User, MessageCircle, CheckCircle, Check, Copy, ShoppingBag } from 'lucide-react-native';
 
 import api from '@/services/api';
 import { useAuthStore } from '@/stores/authStore';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
+import { useDir } from '@/hooks/useDir';
+import { ActionButton } from '@/components/ui/ActionButton';
+import { font, icon } from '@/constants/design';
 import { getErrorMessage } from '@/utils/error';
 import { logPerf } from '@jitplus/shared/src/devLogger';
 import { normalizePhone } from '@/utils/normalizePhone';
@@ -49,10 +51,10 @@ export default function QuickAddScreen() {
   const insets = useSafeAreaInsets();
   const theme = useTheme();
   const { t } = useLanguage();
+  const dir = useDir();
   const merchant = useAuthStore((s) => s.merchant);
   const params = useLocalSearchParams<{ localPhone?: string; countryCode?: string; prenom?: string }>();
 
-  // ── Form state ──
   const [countryIndex, setCountryIndex] = useState<number>(() => {
     // Priority: countryCode passed by scan-qr (preserves user choice) > merchant default
     const preferredCode = params.countryCode ?? merchant?.countryCode ?? 'MA';
@@ -80,6 +82,13 @@ export default function QuickAddScreen() {
   // Used by the Modal `onShow` callback to fire `shareViaWhatsApp` exactly when
   // the animation completes, replacing the previous arbitrary 350ms setTimeout.
   const pendingShareRef = useRef<QuickAddResult | null>(null);
+  // Reused across retries of the same form so a retry after a lost response
+  // cannot credit the client twice; dropped when the form changes or succeeds.
+  const idempotencyKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    idempotencyKeyRef.current = null;
+  }, [phone, amount, prenom, countryIndex]);
 
   useEffect(() => {
     // Pre-warm canOpenURL so the share critical path doesn't pay its cost.
@@ -91,13 +100,11 @@ export default function QuickAddScreen() {
   const isPerVisit = (merchant?.stampEarningMode || 'PER_VISIT') === 'PER_VISIT';
   const amountPerStamp = merchant?.amountPerStamp;
 
-  // ── Computed stamps preview ──
   const { stamps: computedStamps, capped: stampsCapped } = useMemo(() => {
     if (isPerVisit) return { stamps: 1, capped: false };
     return computeStampsForAmount(parseFloat(amount.replace(',', '.')) || 0, amountPerStamp);
   }, [amount, isPerVisit, amountPerStamp]);
 
-  // ── Input handlers ──
   const handleAmountChange = useCallback((text: string) => {
     if (text.trim().startsWith('-')) return;
     const cleaned = text.replace(/[^0-9.,]/g, '').replace(',', '.');
@@ -112,7 +119,6 @@ export default function QuickAddScreen() {
     setPhone(cleaned);
   }, []);
 
-  // ── Submit ──
   const canSubmit = phone.length >= 6 && (isPerVisit || computedStamps > 0) && !loading;
 
   const handleSubmit = useCallback(async () => {
@@ -136,7 +142,8 @@ export default function QuickAddScreen() {
     const tSubmit = Date.now();
     logPerf('QuickAdd', 'submit:start');
     try {
-      const idempotencyKey = Crypto.randomUUID();
+      if (!idempotencyKeyRef.current) idempotencyKeyRef.current = randomUUID();
+      const idempotencyKey = idempotencyKeyRef.current;
       const tApi = Date.now();
       const res = await api.post(
         '/merchant/clients/quick-add',
@@ -152,6 +159,7 @@ export default function QuickAddScreen() {
       );
       logPerf('QuickAdd', `submit:api-done ${Date.now() - tApi}ms`);
       const data: QuickAddResult = res.data;
+      idempotencyKeyRef.current = null;
       // Defer share until Modal `onShow` fires (end of fade-in animation).
       // This replaces a 350ms setTimeout that used to add fixed latency.
       pendingShareRef.current = data;
@@ -169,7 +177,6 @@ export default function QuickAddScreen() {
     }
   }, [canSubmit, countryIndex, phone, amount, prenom, computedStamps, isPerVisit, t]);
 
-  // ── WhatsApp share ──
   const buildWaMessage = useCallback(
     (data: QuickAddResult): string => {
       const namePart = prenom.trim() ? t('quickAdd.waMessageHello', { name: prenom.trim() }) : '';
@@ -244,41 +251,51 @@ export default function QuickAddScreen() {
     else router.replace('/(tabs)');
   }, [router]);
 
-  // ── Render ──
   const country = COUNTRIES[countryIndex];
+  const labelStyle = [styles.label, { color: theme.text, textAlign: dir.textAlign }];
+  const inputStyle = [styles.input, { color: theme.text, textAlign: dir.textAlign }];
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg, paddingTop: insets.top }]}>
       <StatusBar style={theme.mode === 'dark' ? 'light' : 'dark'} />
-      <View style={[styles.header, { borderBottomColor: theme.border }]}>
-        <TouchableOpacity onPress={handleDone} style={styles.headerBtn} accessibilityLabel={t('common.back')}>
-          <ArrowLeft size={24} color={theme.text} />
+      <View style={[styles.header, { flexDirection: dir.row, borderBottomColor: theme.border }]}>
+        <TouchableOpacity
+          onPress={handleDone}
+          style={styles.headerBtn}
+          accessibilityRole="button"
+          accessibilityLabel={t('common.back')}
+        >
+          <ArrowLeft size={24} color={theme.text} strokeWidth={icon.stroke} style={dir.flip} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: theme.text }]}>{t('quickAdd.title')}</Text>
         <View style={styles.headerBtn} />
       </View>
 
       <KeyboardAvoidingView
-        style={{ flex: 1 }}
+        style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-          <Text style={[styles.subtitle, { color: theme.textMuted }]}>{t('quickAdd.subtitle')}</Text>
+          <Text style={[styles.subtitle, { color: theme.textMuted, textAlign: dir.textAlign }]}>{t('quickAdd.subtitle')}</Text>
 
-          {/* Phone */}
-          <Text style={[styles.label, { color: theme.text }]}>{t('quickAdd.phoneLabel')}</Text>
-          <View style={[styles.phoneRow, { backgroundColor: theme.bgElevated, borderColor: theme.border }]}>
+          <Text style={labelStyle}>{t('quickAdd.phoneLabel')}</Text>
+          <View style={[styles.phoneRow, { flexDirection: dir.row, backgroundColor: theme.bgElevated, borderColor: theme.border }]}>
             <TouchableOpacity
-              style={[styles.countryBtn, { borderRightColor: theme.border }]}
+              style={[
+                styles.countryBtn,
+                { flexDirection: dir.row, borderColor: theme.border },
+                dir.isRTL ? styles.countryBtnRtl : styles.countryBtnLtr,
+              ]}
               onPress={() => setShowCountryPicker(true)}
               accessibilityRole="button"
+              accessibilityLabel={t('common.selectCountry')}
             >
-              <Text style={[styles.countryFlag]}>{country.flag}</Text>
+              <Text style={styles.countryFlag}>{country.flag}</Text>
               <Text style={[styles.countryDial, { color: theme.text }]}>{country.dial}</Text>
             </TouchableOpacity>
-            <Phone size={18} color={theme.textMuted} style={{ marginLeft: 8 }} />
+            <Phone size={18} color={theme.textMuted} strokeWidth={icon.stroke} style={dir.isRTL ? styles.phoneIconRtl : styles.phoneIconLtr} />
             <TextInput
-              style={[styles.input, { color: theme.text }]}
+              style={inputStyle}
               value={phone}
               onChangeText={handlePhoneChange}
               placeholder="612345678"
@@ -289,12 +306,11 @@ export default function QuickAddScreen() {
             />
           </View>
 
-          {/* Prenom */}
-          <Text style={[styles.label, { color: theme.text }]}>{t('quickAdd.nameLabel')}</Text>
-          <View style={[styles.row, { backgroundColor: theme.bgElevated, borderColor: theme.border }]}>
-            <User size={18} color={theme.textMuted} />
+          <Text style={labelStyle}>{t('quickAdd.nameLabel')}</Text>
+          <View style={[styles.row, { flexDirection: dir.row, backgroundColor: theme.bgElevated, borderColor: theme.border }]}>
+            <User size={18} color={theme.textMuted} strokeWidth={icon.stroke} />
             <TextInput
-              style={[styles.input, { color: theme.text }]}
+              style={inputStyle}
               value={prenom}
               onChangeText={setPrenom}
               placeholder={t('quickAdd.namePlaceholder')}
@@ -305,14 +321,13 @@ export default function QuickAddScreen() {
             />
           </View>
 
-          {/* Amount */}
           {!isPerVisit && (
             <>
-              <Text style={[styles.label, { color: theme.text }]}>{t('quickAdd.amountLabel')}</Text>
-              <View style={[styles.row, { backgroundColor: theme.bgElevated, borderColor: theme.border }]}>
-                <ShoppingBag size={18} color={theme.textMuted} />
+              <Text style={labelStyle}>{t('quickAdd.amountLabel')}</Text>
+              <View style={[styles.row, { flexDirection: dir.row, backgroundColor: theme.bgElevated, borderColor: theme.border }]}>
+                <ShoppingBag size={18} color={theme.textMuted} strokeWidth={icon.stroke} />
                 <TextInput
-                  style={[styles.input, { color: theme.text, fontSize: 20, fontWeight: '600' }]}
+                  style={[inputStyle, styles.amountInput]}
                   value={amount}
                   onChangeText={handleAmountChange}
                   placeholder={t('quickAdd.amountPlaceholder')}
@@ -324,11 +339,10 @@ export default function QuickAddScreen() {
             </>
           )}
 
-          {/* Preview */}
           {computedStamps > 0 && (
             <View style={[styles.previewBox, { backgroundColor: theme.primaryBg }]}>
               <Text style={[styles.previewText, { color: theme.primary }]}>
-                {t('quickAdd.stampsPreview', { count: computedStamps })}
+                {t(computedStamps === 1 ? 'quickAdd.stampsPreview_one' : 'quickAdd.stampsPreview_other', { count: computedStamps })}
               </Text>
               {stampsCapped && (
                 <Text style={[styles.previewCapText, { color: theme.primary }]}>
@@ -338,31 +352,20 @@ export default function QuickAddScreen() {
             </View>
           )}
 
-          {/* Submit */}
           {!result && (
-            <TouchableOpacity
-              style={[
-                styles.submitBtn,
-                { backgroundColor: canSubmit ? theme.primary : theme.border },
-              ]}
+            <ActionButton
+              label={t('quickAdd.submit')}
+              icon={MessageCircle}
+              size="lg"
               onPress={handleSubmit}
               disabled={!canSubmit}
-              accessibilityRole="button"
-            >
-              {loading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <>
-                  <MessageCircle size={18} color="#fff" />
-                  <Text style={styles.submitBtnText}>{t('quickAdd.submit')}</Text>
-                </>
-              )}
-            </TouchableOpacity>
+              loading={loading}
+              style={[styles.submitBtn, !canSubmit && { backgroundColor: theme.border, borderColor: theme.border }]}
+            />
           )}
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* Country picker */}
       <CountryPickerModal
         visible={showCountryPicker}
         selectedCode={country.code}
@@ -374,7 +377,6 @@ export default function QuickAddScreen() {
         topInset={insets.top}
       />
 
-      {/* Success modal (with manual fallback if WhatsApp not installed) */}
       <Modal
         visible={!!result}
         transparent
@@ -390,51 +392,32 @@ export default function QuickAddScreen() {
       >
         <View style={styles.modalBackdrop}>
           <View style={[styles.modalCard, { backgroundColor: theme.bgCard }]}>
-            <CheckCircle size={48} color={theme.primary} />
+            <CheckCircle size={48} color={theme.primary} strokeWidth={icon.stroke} />
             <Text style={[styles.modalTitle, { color: theme.text }]}>
               {t('quickAdd.successTitle')}
             </Text>
             <Text style={[styles.modalBody, { color: theme.textMuted }]}>
               {showFallback ? t('quickAdd.waNotInstalled') : t('quickAdd.successBody')}
             </Text>
-            <View style={styles.modalActions}>
+            <View style={[styles.modalActions, { flexDirection: dir.row }]}>
               {result && (
-                <TouchableOpacity
-                  style={[styles.modalBtnSecondary, { borderColor: theme.border }]}
+                <ActionButton
+                  variant="secondary"
+                  label={copyConfirm ? t('quickAdd.linkCopied') : t('quickAdd.copyLink')}
+                  icon={copyConfirm ? Check : Copy}
+                  iconColor={copyConfirm ? theme.primary : undefined}
+                  labelStyle={copyConfirm ? { color: theme.primary } : undefined}
                   onPress={handleCopyLink}
-                >
-                  {copyConfirm ? (
-                    <>
-                      <CheckCircle size={16} color={theme.primary} />
-                      <Text style={[styles.modalBtnSecondaryText, { color: theme.primary }]}>
-                        {t('quickAdd.linkCopied')}
-                      </Text>
-                    </>
-                  ) : (
-                    <>
-                      <Copy size={16} color={theme.text} />
-                      <Text style={[styles.modalBtnSecondaryText, { color: theme.text }]}>
-                        {t('quickAdd.copyLink')}
-                      </Text>
-                    </>
-                  )}
-                </TouchableOpacity>
+                />
               )}
               {result && showFallback && (
-                <TouchableOpacity
-                  style={[styles.modalBtnPrimary, { backgroundColor: theme.primary }]}
+                <ActionButton
+                  label="WhatsApp"
+                  icon={MessageCircle}
                   onPress={() => shareViaWhatsApp(result)}
-                >
-                  <MessageCircle size={16} color="#fff" />
-                  <Text style={styles.modalBtnPrimaryText}>WhatsApp</Text>
-                </TouchableOpacity>
+                />
               )}
-              <TouchableOpacity
-                style={[styles.modalBtnPrimary, { backgroundColor: theme.primary }]}
-                onPress={handleDone}
-              >
-                <Text style={styles.modalBtnPrimaryText}>{t('quickAdd.done')}</Text>
-              </TouchableOpacity>
+              <ActionButton label={t('quickAdd.done')} onPress={handleDone} />
             </View>
           </View>
         </View>
@@ -445,8 +428,8 @@ export default function QuickAddScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  flex: { flex: 1 },
   header: {
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
@@ -454,12 +437,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   headerBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { fontSize: 18, fontWeight: '600' },
+  headerTitle: { fontSize: 18, fontFamily: font.semibold },
   scroll: { padding: 16, paddingBottom: 32 },
-  subtitle: { fontSize: 14, lineHeight: 20, marginBottom: 20 },
-  label: { fontSize: 13, fontWeight: '600', marginTop: 16, marginBottom: 8 },
+  subtitle: { fontSize: 14, lineHeight: 20, marginBottom: 20, fontFamily: font.regular },
+  label: { fontSize: 13, fontFamily: font.semibold, marginTop: 16, marginBottom: 8 },
   phoneRow: {
-    flexDirection: 'row',
     alignItems: 'center',
     borderRadius: 12,
     borderWidth: 1,
@@ -468,17 +450,18 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   countryBtn: {
-    flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
     paddingVertical: 10,
-    borderRightWidth: 1,
     gap: 6,
   },
+  countryBtnLtr: { borderRightWidth: StyleSheet.hairlineWidth },
+  countryBtnRtl: { borderLeftWidth: StyleSheet.hairlineWidth },
+  phoneIconLtr: { marginLeft: 8 },
+  phoneIconRtl: { marginRight: 8 },
   countryFlag: { fontSize: 18 },
-  countryDial: { fontSize: 14, fontWeight: '600' },
+  countryDial: { fontSize: 14, fontFamily: font.semibold },
   row: {
-    flexDirection: 'row',
     alignItems: 'center',
     borderRadius: 12,
     borderWidth: 1,
@@ -486,25 +469,17 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     gap: 10,
   },
-  input: { flex: 1, fontSize: 16, paddingVertical: 12 },
+  input: { flex: 1, fontSize: 16, paddingVertical: 12, fontFamily: font.regular },
+  amountInput: { fontSize: 20, fontFamily: font.semibold },
   previewBox: {
     marginTop: 16,
     borderRadius: 12,
     padding: 14,
     alignItems: 'center',
   },
-  previewText: { fontSize: 16, fontWeight: '700' },
-  previewCapText: { fontSize: 12, marginTop: 4, textAlign: 'center' },
-  submitBtn: {
-    marginTop: 24,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-    borderRadius: 14,
-    gap: 8,
-  },
-  submitBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  previewText: { fontSize: 16, fontFamily: font.bold },
+  previewCapText: { fontSize: 12, marginTop: 4, textAlign: 'center', fontFamily: font.regular },
+  submitBtn: { marginTop: 24 },
   modalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -519,26 +494,7 @@ const styles = StyleSheet.create({
     padding: 24,
     alignItems: 'center',
   },
-  modalTitle: { fontSize: 20, fontWeight: '700', marginTop: 12 },
-  modalBody: { fontSize: 14, lineHeight: 20, textAlign: 'center', marginTop: 8 },
-  modalActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 20, justifyContent: 'center' },
-  modalBtnPrimary: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-    borderRadius: 12,
-    gap: 6,
-  },
-  modalBtnPrimaryText: { color: '#fff', fontWeight: '700' },
-  modalBtnSecondary: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    gap: 6,
-  },
-  modalBtnSecondaryText: { fontWeight: '600' },
+  modalTitle: { fontSize: 20, fontFamily: font.bold, marginTop: 12, textAlign: 'center' },
+  modalBody: { fontSize: 14, lineHeight: 20, textAlign: 'center', marginTop: 8, fontFamily: font.regular },
+  modalActions: { flexWrap: 'wrap', gap: 10, marginTop: 20, justifyContent: 'center' },
 });

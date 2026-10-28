@@ -12,6 +12,7 @@ import AuditLogs from './pages/AuditLogs';
 import Notifications from './pages/Notifications';
 import SendNotification from './pages/SendNotification';
 import Referrals from './pages/Referrals';
+import Deals from './pages/Deals';
 
 // Cache token validation for 1 minute to avoid re-validating on every route change
 let _authValidUntil = 0;
@@ -60,6 +61,7 @@ export default function App() {
                   <Route path="/send-notification" element={<SendNotification />} />
                   <Route path="/audit-logs" element={<AuditLogs />} />
                   <Route path="/referrals" element={<Referrals />} />
+                  <Route path="/deals" element={<Deals />} />
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
               </Layout>

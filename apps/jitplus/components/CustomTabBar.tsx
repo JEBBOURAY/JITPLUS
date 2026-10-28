@@ -1,8 +1,9 @@
-import { View, TouchableOpacity, StyleSheet, Platform, Text } from 'react-native';
+import { View, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { Text } from '@/components/AppText';
 import React, { useCallback } from 'react';
 import { BlurView } from 'expo-blur';
 import { haptic } from '@/utils/haptics';
-import { CreditCard, Compass, User, Bell, QrCode } from 'lucide-react-native';
+import { CreditCard, Compass, BadgePercent, Bell, QrCode } from 'lucide-react-native';
 import type { LucideIcon } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import type { BottomTabBarProps } from 'expo-router/js-tabs';
@@ -15,18 +16,18 @@ import { useLanguage } from '@/contexts/LanguageContext';
 
 const ICONS: Record<string, LucideIcon> = {
   index: CreditCard,
-  discover: Compass,
+  deals: BadgePercent,
   qr: QrCode,
+  discover: Compass,
   notifications: Bell,
-  profile: User,
 };
 
 const LABEL_KEYS: Record<string, string> = {
   index: 'tabs.cards',
-  discover: 'tabs.discover',
+  deals: 'tabs.deals',
   qr: 'tabs.qr',
+  discover: 'tabs.discover',
   notifications: 'tabs.notifs',
-  profile: 'tabs.profile',
 };
 
 const QR_GRADIENT_ACTIVE = [palette.violet, palette.violetDark] as const;
@@ -35,7 +36,7 @@ const GRADIENT_START = { x: 0, y: 0 } as const;
 const GRADIENT_END = { x: 1, y: 1 } as const;
 const FOCUSED_ICON_BG = { backgroundColor: `${palette.violet}15` } as const;
 
-export default React.memo(function CustomTabBar({ state, navigation }: BottomTabBarProps) {
+export default React.memo(function CustomTabBar({ state, emitter, navigateToTab }: BottomTabBarProps) {
   const theme = useTheme();
   const { t } = useLanguage();
   const { client } = useAuth();
@@ -45,21 +46,21 @@ export default React.memo(function CustomTabBar({ state, navigation }: BottomTab
 
   const handleTabPress = useCallback((route: typeof state.routes[number], index: number) => {
     haptic();
-    const event = navigation.emit({
+    const event = emitter.emit({
       type: 'tabPress',
       target: route.key,
       canPreventDefault: true,
     });
     if (state.index !== index && !event.defaultPrevented) {
-      navigation.navigate(route.name);
+      navigateToTab(route.key);
     }
-  }, [state.index, navigation]);
+  }, [state.index, emitter, navigateToTab]);
 
   return (
     <View style={styles.wrapper}>
       <BlurView
         intensity={Platform.OS === 'ios' ? 80 : 120}
-        tint="light"
+        tint={theme.isDark ? 'dark' : 'light'}
         style={styles.blurContainer}
       >
         <View
@@ -105,6 +106,7 @@ export default React.memo(function CustomTabBar({ state, navigation }: BottomTab
                     />
                   </LinearGradient>
                   <Text
+                    maxFontSizeMultiplier={1.3}
                     style={[
                       styles.label,
                       {
@@ -141,14 +143,15 @@ export default React.memo(function CustomTabBar({ state, navigation }: BottomTab
                     strokeWidth={1.5}
                   />
                   {route.name === 'notifications' && unreadCount > 0 && (
-                    <View style={styles.badge} accessibilityLabel={`${unreadCount} ${unreadCount > 1 ? 'notifications' : 'notification'}`}>
-                      <Text style={styles.badgeText}>
+                    <View style={styles.badge} accessibilityLabel={t('notifications.unreadCount', { count: unreadCount })}>
+                      <Text style={styles.badgeText} maxFontSizeMultiplier={1.2}>
                         {unreadCount > 99 ? '99+' : unreadCount}
                       </Text>
                     </View>
                   )}
                 </View>
                 <Text
+                  maxFontSizeMultiplier={1.3}
                   style={[
                     styles.label,
                     {

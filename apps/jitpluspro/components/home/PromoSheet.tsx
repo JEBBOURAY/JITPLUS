@@ -52,7 +52,7 @@ export function SheetSectionLabel({ text, tone, Icon }: { text: string; tone: Pr
   );
 }
 
-export interface PromoSheetCta {
+interface PromoSheetCta {
   label: string;
   Icon: LucideIcon;
   onPress: () => void;

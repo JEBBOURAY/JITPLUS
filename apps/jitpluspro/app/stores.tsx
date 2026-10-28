@@ -1,17 +1,27 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, RefreshControl, I18nManager } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, RefreshControl } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-  BadgeInfo, MapPin, Share2, Clock, Sparkles, Palette, Eye, Check, ChevronRight,
+  BadgeInfo,
+  Share2,
+  Clock,
+  Award,
+  Palette,
+  Eye,
+  Check,
+  ChevronRight,
   type LucideIcon,
 } from 'lucide-react-native';
+import { JitPin } from '@/components/icons';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useDir } from '@/hooks/useDir';
+import { font, icon } from '@/constants/design';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { useStores, queryKeys } from '@/hooks/useQueryHooks';
 import FichePreviewModal from '@/components/FichePreviewModal';
@@ -22,8 +32,9 @@ import type { Merchant, MerchantCategory, Store } from '@/types';
 import {
   ScreenHeader, OwnerOnlyNotice, Toast, useToast, useQueuedToast, usePressGuard, surfaceShadow, fieldFill, ui,
 } from '@/components/stores/StoreUi';
+import { formatDaySlots } from '@jitplus/shared';
 import {
-  STORE_SECTIONS, brandColor, countSocials, hoursHasAny, normalizeHours, sectionDone, todayKey,
+  STORE_SECTIONS, brandColor, countSocials, hoursHasAny, sectionDone, todayKey,
   type StoreSection,
 } from '@/components/stores/brand';
 
@@ -31,10 +42,10 @@ type Translate = (key: string, opts?: Record<string, unknown>) => string;
 
 const SECTION_UI: Record<StoreSection, { Icon: LucideIcon; titleKey: string }> = {
   identity: { Icon: BadgeInfo, titleKey: 'storesHub.identityTitle' },
-  locations: { Icon: MapPin, titleKey: 'storesHub.locationsTitle' },
+  locations: { Icon: JitPin, titleKey: 'storesHub.locationsTitle' },
   contact: { Icon: Share2, titleKey: 'storesHub.contactTitle' },
   hours: { Icon: Clock, titleKey: 'storesHub.hoursTitle' },
-  services: { Icon: Sparkles, titleKey: 'storesHub.servicesTitle' },
+  services: { Icon: Award, titleKey: 'storesHub.servicesTitle' },
   appearance: { Icon: Palette, titleKey: 'storesHub.appearanceTitle' },
 };
 
@@ -54,11 +65,7 @@ function sectionSummary(section: StoreSection, merchant: Merchant, stores: Store
     }
     case 'hours': {
       if (!hoursHasAny(merchant.openingHours)) return t('storesHub.hoursEmpty');
-      const today = merchant.openingHours?.[todayKey()];
-      const slots = today?.closed ? [] : today?.slots ?? [];
-      const value = slots.length === 0
-        ? t('storePreview.hoursClosed')
-        : slots.map((s) => `${s.open} – ${s.close}`).join(', ');
+      const value = formatDaySlots(merchant.openingHours?.[todayKey()]) ?? t('fiche.dayClosed');
       return t('storesHub.hoursToday', { value });
     }
     case 'services':
@@ -81,33 +88,34 @@ const SectionRow = React.memo(function SectionRow({ section, summary, done, acce
 }) {
   const theme = useTheme();
   const { t } = useLanguage();
+  const dir = useDir();
   const { Icon, titleKey } = SECTION_UI[section];
   const title = t(titleKey);
   return (
     <TouchableOpacity
       onPress={() => onPress(section)}
       activeOpacity={0.7}
-      style={[styles.row, !last && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.borderLight }]}
+      style={[styles.row, { flexDirection: dir.row }, !last && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.borderLight }]}
       accessibilityRole="button"
       accessibilityLabel={`${title}, ${summary}`}
       accessibilityHint={done ? undefined : t('storesHub.toComplete')}
     >
       <View style={[styles.rowIcon, { backgroundColor: theme.primaryBg }]}>
-        <Icon size={18} color={theme.primary} strokeWidth={1.9} />
+        <Icon size={18} color={theme.primary} strokeWidth={icon.stroke} />
       </View>
       <View style={styles.rowText}>
-        <Text style={[styles.rowTitle, { color: theme.text }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>{title}</Text>
-        <Text style={[ui.caption, { color: theme.textMuted }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>{summary}</Text>
+        <Text style={[styles.rowTitle, { color: theme.text, textAlign: dir.textAlign }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>{title}</Text>
+        <Text style={[ui.caption, { color: theme.textMuted, textAlign: dir.textAlign }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>{summary}</Text>
       </View>
       {section === 'appearance' ? <View style={[styles.swatch, { backgroundColor: accent }]} /> : null}
       {done ? (
         <View style={[styles.doneDot, { backgroundColor: theme.success + '1F' }]}>
-          <Check size={12} color={theme.success} strokeWidth={3} />
+          <Check size={12} color={theme.success} strokeWidth={icon.strokeSmall} />
         </View>
       ) : (
         <View style={[styles.todoDot, { backgroundColor: theme.warning }]} />
       )}
-      <ChevronRight size={18} color={theme.textMuted} strokeWidth={2} style={I18nManager.isRTL ? ui.flipX : undefined} />
+      <ChevronRight size={18} color={theme.textMuted} strokeWidth={icon.stroke} style={dir.flip} />
     </TouchableOpacity>
   );
 });
@@ -124,6 +132,7 @@ export default function StoresScreen() {
   const insets = useSafeAreaInsets();
   const qc = useQueryClient();
   const { t } = useLanguage();
+  const dir = useDir();
   const { merchant, isTeamMember, loadProfile } = useAuth();
   const { data: stores = [] } = useStores();
   const toast = useToast();
@@ -153,16 +162,11 @@ export default function StoresScreen() {
     return { done, next, percent: Math.round((done.length / STORE_SECTIONS.length) * 100) };
   }, [merchant, stores]);
 
-  const previewMerchant = useMemo(() => (merchant ? { ...merchant, stores } : null), [merchant, stores]);
-  const previewDraft = useMemo(() => merchant && {
-    accent: brandColor(merchant.themeColor),
-    iconSlug: merchant.themeIcon ?? null,
-    tagline: merchant.tagline ?? '',
-    badges: merchant.badges ?? [],
-    hours: normalizeHours(merchant.openingHours),
-    gallery: merchant.gallery ?? [],
-    secondary: merchant.secondaryCategories ?? [],
-  }, [merchant]);
+  const closePreview = useCallback(() => setPreviewOpen(false), []);
+  const manageLocations = useCallback(() => {
+    setPreviewOpen(false);
+    openSection('locations');
+  }, [openSection]);
 
   if (shouldWait || !merchant || !status) return null;
   if (isTeamMember) return <OwnerOnlyNotice />;
@@ -180,7 +184,6 @@ export default function StoresScreen() {
       >
         <ScreenHeader title={t('stores.title')} caption={t('storesHub.caption')} />
 
-        {/* Brand card */}
         <View style={[styles.brandCard, { backgroundColor: theme.bgCard }, shadow]}>
           <TouchableOpacity
             onPress={() => openSection('identity')}
@@ -195,7 +198,7 @@ export default function StoresScreen() {
                 <LinearGradient colors={[`${accent}55`, `${accent}14`]} style={StyleSheet.absoluteFill} />
               )}
             </View>
-            <View style={[styles.logoRing, { backgroundColor: theme.bgCard }]}>
+            <View style={[styles.logoRing, dir.isRTL ? styles.logoRingRtl : styles.logoRingLtr, { backgroundColor: theme.bgCard }]}>
               {merchant.logoUrl ? (
                 <ExpoImage source={resolveImageUrl(merchant.logoUrl)} style={styles.logo} contentFit="cover" cachePolicy="memory-disk" />
               ) : (
@@ -204,9 +207,9 @@ export default function StoresScreen() {
                 </View>
               )}
             </View>
-            <View style={styles.brandText}>
-              <Text style={[styles.brandName, { color: theme.text }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>{merchant.nom}</Text>
-              <Text style={[ui.caption, { color: theme.textMuted }]} numberOfLines={1}>
+            <View style={[styles.brandText, dir.isRTL ? styles.brandTextRtl : styles.brandTextLtr]}>
+              <Text style={[styles.brandName, { color: theme.text, textAlign: dir.textAlign }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>{merchant.nom}</Text>
+              <Text style={[ui.caption, { color: theme.textMuted, textAlign: dir.textAlign }]} numberOfLines={1}>
                 {[merchant.categorie, ...(merchant.secondaryCategories ?? [])]
                   .map((c) => getCategoryLabel(c as MerchantCategory)).join(' · ')}
               </Text>
@@ -216,15 +219,14 @@ export default function StoresScreen() {
           <TouchableOpacity
             onPress={() => setPreviewOpen(true)}
             activeOpacity={0.85}
-            style={[styles.previewBtn, { backgroundColor: fieldFill(theme) }]}
+            style={[styles.previewBtn, { flexDirection: dir.row, backgroundColor: fieldFill(theme) }]}
             accessibilityRole="button"
           >
-            <Eye size={16} color={theme.primary} strokeWidth={2} />
+            <Eye size={16} color={theme.primary} strokeWidth={icon.stroke} />
             <Text style={[styles.previewText, { color: theme.primary }]} maxFontSizeMultiplier={1.2}>{t('storesHub.previewCta')}</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Completeness */}
         <TouchableOpacity
           disabled={complete}
           onPress={() => status.next && openSection(status.next)}
@@ -232,8 +234,8 @@ export default function StoresScreen() {
           style={[styles.progressCard, { backgroundColor: theme.bgCard }, shadow]}
           accessibilityRole={complete ? 'text' : 'button'}
         >
-          <View style={styles.progressHead}>
-            <Text style={[styles.progressTitle, { color: theme.text }]} maxFontSizeMultiplier={1.3}>
+          <View style={[styles.progressHead, { flexDirection: dir.row }]}>
+            <Text style={[styles.progressTitle, { color: theme.text, textAlign: dir.textAlign }]} maxFontSizeMultiplier={1.3}>
               {complete ? t('storesHub.completeTitle') : t('storesHub.progressTitle', { percent: status.percent })}
             </Text>
             <Text style={[styles.progressCount, { color: theme.textSecondary }]}>
@@ -241,20 +243,19 @@ export default function StoresScreen() {
             </Text>
           </View>
           <View
-            style={[styles.track, { backgroundColor: fieldFill(theme) }]}
+            style={[styles.track, { alignItems: dir.alignStart, backgroundColor: fieldFill(theme) }]}
             accessibilityRole="progressbar"
             accessibilityValue={{ min: 0, max: 100, now: status.percent }}
           >
             <View style={[styles.fill, { width: `${status.percent}%`, backgroundColor: complete ? theme.success : theme.primary }]} />
           </View>
-          <Text style={[ui.caption, styles.progressHint, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>
+          <Text style={[ui.caption, styles.progressHint, { color: theme.textMuted, textAlign: dir.textAlign }]} maxFontSizeMultiplier={1.3}>
             {status.next
               ? t('storesHub.nextStep', { section: t(SECTION_UI[status.next].titleKey) })
               : t('storesHub.completeCaption')}
           </Text>
         </TouchableOpacity>
 
-        {/* Sections */}
         <View style={[styles.list, { backgroundColor: theme.bgCard }, shadow]}>
           {STORE_SECTIONS.map((section, i) => (
             <SectionRow
@@ -272,45 +273,45 @@ export default function StoresScreen() {
 
       <Toast message={toast.message} bottom={insets.bottom + 24} />
 
-      {previewMerchant && previewDraft ? (
-        <FichePreviewModal
-          visible={previewOpen}
-          onClose={() => setPreviewOpen(false)}
-          merchant={previewMerchant}
-          draft={previewDraft}
-          theme={theme}
-          t={t}
-          getCategoryLabel={(c) => getCategoryLabel(c as MerchantCategory)}
-        />
-      ) : null}
+      <FichePreviewModal
+        visible={previewOpen}
+        onClose={closePreview}
+        merchant={merchant}
+        stores={stores}
+        onManageLocations={manageLocations}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  brandCard: { marginHorizontal: 16, marginTop: 8, borderRadius: 20, overflow: 'hidden' },
+  brandCard: { marginHorizontal: 16, marginTop: 8, borderRadius: 16, overflow: 'hidden' },
   cover: { height: 112 },
-  logoRing: { position: 'absolute', left: 16, top: 72, width: 76, height: 76, borderRadius: 38, padding: 3 },
+  logoRing: { position: 'absolute', top: 72, width: 76, height: 76, borderRadius: 38, padding: 3 },
+  logoRingLtr: { left: 16 },
+  logoRingRtl: { right: 16 },
   logo: { width: '100%', height: '100%', borderRadius: 35 },
   logoEmpty: { alignItems: 'center', justifyContent: 'center' },
-  brandText: { paddingTop: 10, paddingLeft: 104, paddingRight: 16, minHeight: 56, gap: 2 },
-  brandName: { fontSize: 17, fontFamily: 'Lexend_600SemiBold', letterSpacing: -0.3 },
-  previewBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, margin: 16, marginTop: 14, paddingVertical: 12, borderRadius: 13 },
-  previewText: { fontSize: 13.5, fontFamily: 'Lexend_600SemiBold' },
+  brandText: { paddingTop: 10, minHeight: 56, gap: 2 },
+  brandTextLtr: { paddingLeft: 104, paddingRight: 16 },
+  brandTextRtl: { paddingRight: 104, paddingLeft: 16 },
+  brandName: { fontSize: 17, fontFamily: font.semibold, letterSpacing: -0.3 },
+  previewBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, margin: 16, marginTop: 14, minHeight: 44, paddingVertical: 12, borderRadius: 12 },
+  previewText: { fontSize: 14, fontFamily: font.semibold },
 
-  progressCard: { marginHorizontal: 16, marginTop: 16, borderRadius: 20, padding: 16 },
+  progressCard: { marginHorizontal: 16, marginTop: 16, borderRadius: 16, padding: 16 },
   progressHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  progressTitle: { flex: 1, fontSize: 15, fontFamily: 'Lexend_600SemiBold', letterSpacing: -0.2 },
-  progressCount: { fontSize: 12.5, fontFamily: 'Lexend_600SemiBold' },
+  progressTitle: { flex: 1, fontSize: 15, fontFamily: font.semibold, letterSpacing: -0.2 },
+  progressCount: { fontSize: 13, fontFamily: font.semibold },
   track: { height: 8, borderRadius: 4, marginTop: 12, overflow: 'hidden' },
   fill: { height: '100%', borderRadius: 4 },
   progressHint: { marginTop: 10 },
 
-  list: { marginHorizontal: 16, marginTop: 16, borderRadius: 20, overflow: 'hidden' },
+  list: { marginHorizontal: 16, marginTop: 16, borderRadius: 16, overflow: 'hidden' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingHorizontal: 16 },
   rowIcon: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   rowText: { flex: 1, gap: 2 },
-  rowTitle: { fontSize: 14.5, fontFamily: 'Lexend_600SemiBold', letterSpacing: -0.2 },
+  rowTitle: { fontSize: 15, fontFamily: font.semibold, letterSpacing: -0.2 },
   swatch: { width: 16, height: 16, borderRadius: 8 },
   doneDot: { width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   todoDot: { width: 8, height: 8, borderRadius: 4, marginHorizontal: 7 },

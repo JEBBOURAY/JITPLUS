@@ -1,5 +1,16 @@
 import { create } from 'zustand';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Client } from '@/types';
+
+/** Persists guest mode so a relaunch doesn't send the guest back to the welcome screen. */
+export const GUEST_MODE_KEY = 'guest_mode';
+
+function persistGuestMode(isGuest: boolean) {
+  const op = isGuest
+    ? AsyncStorage.setItem(GUEST_MODE_KEY, '1')
+    : AsyncStorage.removeItem(GUEST_MODE_KEY);
+  op.catch(() => { /* non-fatal: guest mode just won't survive a relaunch */ });
+}
 
 export interface AuthState {
   // ── State ──
@@ -34,7 +45,11 @@ const initialState = {
 export const useAuthStore = create<AuthState>()((set) => ({
   ...initialState,
 
-  setClient: (client) => set({ client, isGuest: false }),
+  setClient: (client) =>
+    set((s) => {
+      if (client && s.isGuest) persistGuestMode(false);
+      return { client, isGuest: client ? false : s.isGuest };
+    }),
   updateClient: (data) =>
     set((s) => {
       if (!s.client) return { client: s.client };
@@ -63,7 +78,13 @@ export const useAuthStore = create<AuthState>()((set) => ({
     }),
   setLoading: (loading) => set({ loading }),
   setNeedsPasswordSetup: (needsPasswordSetup) => set({ needsPasswordSetup }),
-  setGuest: (isGuest) => set({ isGuest }),
+  setGuest: (isGuest) => {
+    persistGuestMode(isGuest);
+    set({ isGuest });
+  },
   // Keep loading=false on logout reset, otherwise SplashGate can block on logo screen.
-  reset: () => set({ ...initialState, loading: false }),
+  reset: () => {
+    persistGuestMode(false);
+    set({ ...initialState, loading: false });
+  },
 }));

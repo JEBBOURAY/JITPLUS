@@ -1,9 +1,11 @@
 import { memo, useState } from 'react';
 import { View, Text, TextInput, Switch, Pressable, StyleSheet } from 'react-native';
-import { Stamp, Trophy, AlertTriangle, CheckCircle2 } from 'lucide-react-native';
+import { AlertTriangle, CheckCircle2 } from 'lucide-react-native';
+import { JitGames, JitStamp } from '@/components/icons';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { ms } from '@/utils/responsive';
+import { font, icon } from '@/constants/design';
+import { ms, radius } from '@/utils/responsive';
 import { DEFAULT_CURRENCY } from '@/config/currency';
 import { MAX_AMOUNT_DIGITS, MAX_STAMPS_PER_TX } from '@/constants/app';
 import type { EarningMode, StampPlan } from '@/utils/stampTransaction';
@@ -71,7 +73,7 @@ function EarnSectionBase({
           accessibilityLabel={t('stampScreen.visitTitle')}
         >
           <View style={[styles.visitIcon, { backgroundColor: visitOn ? theme.primary : theme.bgCard }]}>
-            <Stamp size={ms(22)} color={visitOn ? '#fff' : theme.textMuted} strokeWidth={1.7} />
+            <JitStamp size={ms(22)} color={visitOn ? '#fff' : theme.textMuted} strokeWidth={icon.stroke} />
           </View>
           <View style={styles.visitText}>
             <Text style={[styles.title, { color: theme.text, textAlign }]}>{t('stampScreen.visitTitle')}</Text>
@@ -132,9 +134,9 @@ function EarnSectionBase({
           {isPerAmount &&
             (amountNum > 0 && plan.earnStamps > 0 ? (
               <View style={[styles.earnPill, { flexDirection: row, backgroundColor: `${theme.success}1A` }]}>
-                <Stamp size={ms(16)} color={theme.success} strokeWidth={2} />
+                <JitStamp size={ms(16)} color={theme.success} strokeWidth={icon.stroke} />
                 <Text style={[styles.earnPillText, { color: theme.success }]}>
-                  {t('stampScreen.stampsPreview', { count: plan.earnStamps })}
+                  {t(plan.earnStamps === 1 ? 'stampScreen.stampsPreview_one' : 'stampScreen.stampsPreview_other', { count: plan.earnStamps })}
                 </Text>
               </View>
             ) : plan.amountTooLow ? (
@@ -170,7 +172,7 @@ function EarnSectionBase({
       )}
       {plan.limitTrimmed && accumulationLimit != null && (
         <TintNotice
-          text={t('stampScreen.limitTrimmed', { limit: accumulationLimit, count: plan.creditedStamps })}
+          text={t(plan.creditedStamps === 1 ? 'stampScreen.limitTrimmed_one' : 'stampScreen.limitTrimmed_other', { limit: accumulationLimit, count: plan.creditedStamps })}
           color={theme.warning}
           icon={AlertTriangle}
           isRTL={isRTL}
@@ -184,7 +186,7 @@ function EarnSectionBase({
               : t('stampScreen.wheelHint', { amount: wheelMinSpendLabel })
           }
           color={amountNum >= wheelMinSpend ? theme.success : theme.primary}
-          icon={Trophy}
+          icon={JitGames}
           isRTL={isRTL}
         />
       )}
@@ -204,25 +206,25 @@ export const EarnSection = memo(EarnSectionBase);
 
 const styles = StyleSheet.create({
   card: { marginTop: 14, gap: 12 },
-  visitRow: { alignItems: 'center', gap: 12, borderRadius: 16, borderWidth: 1.5, padding: 12, minHeight: ms(68) },
+  visitRow: { alignItems: 'center', gap: 12, borderRadius: radius.lg, borderWidth: 1.5, padding: 12, minHeight: ms(68) },
   visitIcon: { width: ms(44), height: ms(44), borderRadius: ms(22), alignItems: 'center', justifyContent: 'center' },
   visitText: { flex: 1, gap: 2 },
-  title: { fontSize: ms(15), fontFamily: 'Lexend_600SemiBold' },
-  subtitle: { fontSize: ms(13), fontFamily: 'Lexend_600SemiBold' },
+  title: { fontSize: ms(15), fontFamily: font.semibold },
+  subtitle: { fontSize: ms(13), fontFamily: font.semibold },
   amountBlock: { gap: 10, alignItems: 'center' },
-  amountCaption: { fontSize: ms(13), fontFamily: 'Lexend_500Medium', textAlign: 'center' },
-  inputWrap: { alignSelf: 'stretch', justifyContent: 'center', borderRadius: 18, borderWidth: 2 },
+  amountCaption: { fontSize: ms(13), fontFamily: font.medium, textAlign: 'center' },
+  inputWrap: { alignSelf: 'stretch', justifyContent: 'center', borderRadius: radius.lg, borderWidth: 2 },
   inputWrapLarge: { minHeight: ms(84) },
   inputWrapSmall: { minHeight: ms(56) },
-  input: { fontFamily: 'Lexend_700Bold', textAlign: 'center', paddingHorizontal: ms(56), paddingVertical: 8 },
+  input: { fontFamily: font.bold, textAlign: 'center', paddingHorizontal: ms(56), paddingVertical: 8 },
   inputLarge: { fontSize: ms(42), letterSpacing: -0.5 },
   inputSmall: { fontSize: ms(22) },
-  currency: { position: 'absolute', fontFamily: 'Lexend_600SemiBold' },
+  currency: { position: 'absolute', fontFamily: font.semibold },
   currencyLarge: { fontSize: ms(18) },
   currencySmall: { fontSize: ms(15) },
   currencyLtr: { right: 18 },
   currencyRtl: { left: 18 },
   earnPill: { alignItems: 'center', gap: 6, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 7 },
-  earnPillText: { fontSize: ms(15), fontFamily: 'Lexend_700Bold' },
-  hint: { fontSize: ms(12.5), fontFamily: 'Lexend_400Regular', textAlign: 'center' },
+  earnPillText: { fontSize: ms(15), fontFamily: font.bold },
+  hint: { fontSize: ms(13), fontFamily: font.regular, textAlign: 'center' },
 });

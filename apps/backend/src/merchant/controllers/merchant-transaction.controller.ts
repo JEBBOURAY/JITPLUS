@@ -15,7 +15,7 @@ import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { CreateTransactionDto } from '../dto/create-transaction.dto';
 import { AdjustStampsDto } from '../dto/adjust-stamps.dto';
 import { DashboardQueryDto } from '../dto/dashboard-query.dto';
-import { MerchantTransactionService, MerchantDashboardService } from '../services';
+import { MerchantTransactionService, MerchantDashboardService, ScanTicketService, SCAN_TICKET_HEADER } from '../services';
 
 @ApiTags('Merchant – Transactions')
 @ApiBearerAuth()
@@ -25,6 +25,7 @@ export class MerchantTransactionController {
   constructor(
     private transactionService: MerchantTransactionService,
     private dashboardService: MerchantDashboardService,
+    private scanTickets: ScanTicketService,
   ) {}
 
   @Post('transactions')
@@ -33,6 +34,7 @@ export class MerchantTransactionController {
     @Body() dto: CreateTransactionDto,
     @CurrentUser() user: JwtPayload,
     @Headers('idempotency-key') idempotencyKey?: string,
+    @Headers(SCAN_TICKET_HEADER) scanTicket?: string,
   ) {
     const { clientId, type, amount, stamps, rewardId } = dto;
     // Normalize + validate idempotency key shape (printable ASCII, 1..64 chars).
@@ -54,6 +56,7 @@ export class MerchantTransactionController {
       user.teamMemberId ?? undefined,
       user.teamMemberName ?? undefined,
       normalizedKey,
+      { allowEnroll: this.scanTickets.verify(scanTicket, clientId, user.userId) },
     );
   }
 
@@ -63,6 +66,7 @@ export class MerchantTransactionController {
   }
 
   @Post('transactions/adjust')
+  @UseGuards(MerchantOwnerGuard)
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 20 } })
   async adjustStamps(
     @Body() dto: AdjustStampsDto,

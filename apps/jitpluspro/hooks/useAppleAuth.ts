@@ -5,7 +5,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
-import * as Crypto from 'expo-crypto';
+import { randomUUID, sha256Hex } from '@/utils/crypto';
 import { router } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -57,11 +57,8 @@ export function useAppleAuth({ onCancel }: UseAppleAuthOptions = {}) {
       // Generate a cryptographically secure raw nonce, send sha256(rawNonce) to Apple,
       // and forward the raw nonce to the backend so it can verify the JWT `nonce` claim.
       // Prevents replay attacks (Apple security recommendation).
-      const rawNonce = Crypto.randomUUID() + Crypto.randomUUID().replace(/-/g, '');
-      const hashedNonce = await Crypto.digestStringAsync(
-        Crypto.CryptoDigestAlgorithm.SHA256,
-        rawNonce,
-      );
+      const rawNonce = randomUUID() + randomUUID().replace(/-/g, '');
+      const hashedNonce = await sha256Hex(rawNonce);
 
       const credential = await AppleAuthentication.signInAsync({
         requestedScopes: [
@@ -87,7 +84,7 @@ export function useAppleAuth({ onCancel }: UseAppleAuthOptions = {}) {
 
       if (result.success) {
         navigatingOnSuccess = true;
-        router.replace('/(tabs)/activity');
+        router.replace('/(tabs)');
       } else {
         if (result.rawError && isNoAccountError(result.rawError)) {
           setNoAccount(true);

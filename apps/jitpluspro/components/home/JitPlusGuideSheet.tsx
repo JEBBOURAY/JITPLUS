@@ -1,42 +1,23 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, I18nManager } from 'react-native';
 import {
-  Stamp,
-  ImagePlus,
-  Palette,
-  QrCode,
-  ScanLine,
-  Gift,
-  Send,
   Check,
-  Lock,
   Clock,
   Compass,
   ChevronRight,
-  Sparkles,
 } from 'lucide-react-native';
+import { JitLock, JitStar } from '@/components/icons';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
-import PromoSheet, { SheetSectionLabel, useSheetColors, type LucideIcon } from '@/components/home/PromoSheet';
+import PromoSheet, { SheetSectionLabel, useSheetColors } from '@/components/home/PromoSheet';
 import { PROMO_TONES, type PromoTone } from '@/components/home/promoTones';
 import { useGuideProgress, type GuideStepId, type GuideStepState } from '@/components/home/useGuideProgress';
+import { GUIDE_STEP_META as STEP_META, guideStepKey, type GuideStepPart as StepPart } from '@/components/home/guideSteps';
 
 const TONE: PromoTone = 'violet';
 const ACCENT = PROMO_TONES[TONE].fill;
 const DONE = PROMO_TONES.emerald.fill;
 const GOLD = palette.gold;
-
-const STEP_META: Record<GuideStepId, { Icon: LucideIcon; tone: PromoTone; key: string }> = {
-  program: { Icon: Stamp, tone: 'violet', key: 'Program' },
-  logo: { Icon: ImagePlus, tone: 'blue', key: 'Logo' },
-  shop: { Icon: Palette, tone: 'orange', key: 'Shop' },
-  invite: { Icon: QrCode, tone: 'sky', key: 'Invite' },
-  scan: { Icon: ScanLine, tone: 'emerald', key: 'Scan' },
-  reward: { Icon: Gift, tone: 'amber', key: 'Reward' },
-  message: { Icon: Send, tone: 'pink', key: 'Message' },
-};
-
-type StepPart = 'Title' | 'Text' | 'Cta';
 
 interface JitPlusGuideSheetProps {
   visible: boolean;
@@ -78,7 +59,7 @@ function StepRow({ step, index, last, isNext, stepText, onAction }: StepRowProps
           {step.done ? (
             <Check size={13} color="#FFFFFF" strokeWidth={3} />
           ) : step.locked ? (
-            <Lock size={11} color={muted} strokeWidth={2.4} />
+            <JitLock size={11} color={muted} strokeWidth={2.4} />
           ) : (
             <Text style={[styles.stepDotText, { color: isNext ? '#FFFFFF' : muted }]} maxFontSizeMultiplier={1.1}>
               {index + 1}
@@ -127,7 +108,7 @@ function StepRow({ step, index, last, isNext, stepText, onAction }: StepRowProps
 
         {step.locked ? (
           <View style={[styles.lockedRow, isRTL && styles.rowRtl]}>
-            <Lock size={12} color={muted} strokeWidth={2.2} />
+            <JitLock size={12} color={muted} strokeWidth={2.2} />
             <Text style={[styles.lockedText, { color: muted }]} maxFontSizeMultiplier={1.3}>
               {t('home.guideLocked')}
             </Text>
@@ -172,7 +153,7 @@ function JitPlusGuideSheet({ visible, onClose, onStepAction, onStartTour }: JitP
   const ratio = progress.total > 0 ? progress.doneCount / progress.total : 0;
   const { nextId } = progress;
 
-  const stepText = (id: GuideStepId, part: StepPart) => t(`home.guideStep${STEP_META[id].key}${part}`);
+  const stepText = (id: GuideStepId, part: StepPart) => t(guideStepKey(id, part));
 
   const cta = nextId
     ? { label: t('home.guideNextCta', { action: stepText(nextId, 'Cta') }), Icon: STEP_META[nextId].Icon, onPress: () => onStepAction(nextId) }
@@ -185,7 +166,7 @@ function JitPlusGuideSheet({ visible, onClose, onStepAction, onStartTour }: JitP
       accessibilityValue={{ min: 0, max: progress.total, now: progress.doneCount }}
     >
       <View style={[styles.progressHead, isRTL && styles.rowRtl]}>
-        {progress.allDone ? <Sparkles size={14} color={GOLD} strokeWidth={2.2} /> : null}
+        {progress.allDone ? <JitStar size={14} color={GOLD} strokeWidth={2.2} /> : null}
         <Text style={styles.progressText} maxFontSizeMultiplier={1.25}>
           {progress.allDone
             ? t('home.guideAllDone')

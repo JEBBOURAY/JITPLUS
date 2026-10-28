@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { Alert } from 'react-native';
 import { Award, ImagePlus } from 'lucide-react-native';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { usePlanStatus } from '@/hooks/usePlanStatus';
 import { useAuthActions } from '@/contexts/AuthContext';
 import { useUpdateMerchantProfile, useUploadMerchantGalleryImage } from '@/hooks/useQueryHooks';
 import { getErrorMessage } from '@/utils/error';
@@ -28,7 +29,7 @@ export default function ServicesSection({ merchant }: { merchant: Merchant }) {
   const update = useUpdateMerchantProfile();
   const uploadGalleryImage = useUploadMerchantGalleryImage();
   const accent = brandColor(merchant.themeColor);
-  const isPremium = merchant.plan === 'PREMIUM';
+  const { isPremium } = usePlanStatus(merchant);
 
   const initialBadges = useMemo(() => savedBadges(merchant), [merchant]);
   const [badges, setBadges] = useState<MerchantBadge[]>(initialBadges);
@@ -120,7 +121,6 @@ export default function ServicesSection({ merchant }: { merchant: Merchant }) {
     saveGallery(next);
   }, [gallery, saveGallery]);
 
-  const setCover = useCallback((idx: number) => movePhoto(idx, 0), [movePhoto]);
 
   return (
     <SectionScreen
@@ -153,7 +153,6 @@ export default function ServicesSection({ merchant }: { merchant: Merchant }) {
           accent={accent}
           onAddPhotos={addPhotos}
           onRemove={removePhoto}
-          onSetCover={setCover}
           onMove={movePhoto}
         />
       </Panel>

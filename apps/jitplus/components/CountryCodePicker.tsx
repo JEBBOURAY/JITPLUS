@@ -1,16 +1,15 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   View,
-  Text,
   TouchableOpacity,
   Modal,
   FlatList,
-  TextInput,
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
   ListRenderItemInfo,
 } from 'react-native';
+import { Text, TextInput } from '@/components/AppText';
 import { X, Search } from 'lucide-react-native';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';

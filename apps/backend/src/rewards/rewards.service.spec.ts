@@ -39,8 +39,13 @@ const mockPlanService = {
   isPremium: jest.fn().mockResolvedValue(true),
 };
 
+const OWN_IMAGE = `https://storage.googleapis.com/bucket/rewards/${MERCHANT_ID}/cafe_1a2b3c4d.webp`;
+const LEGACY_IMAGE = 'https://storage.googleapis.com/bucket/rewards/cafe_9f8e7d6c.webp';
+const FOREIGN_IMAGE = 'https://storage.googleapis.com/bucket/rewards/other-merchant/the_1a2b3c4d.webp';
+
 const mockStorage = {
-  deleteFile: jest.fn(),
+  deleteFile: jest.fn().mockResolvedValue(undefined),
+  isOwnedBy: jest.fn((url: string, ownerId: string) => url.includes(`/rewards/${ownerId}/`)),
 };
 
 // ── Suite ─────────────────────────────────────────────────────────────────────
@@ -133,6 +138,21 @@ describe('RewardsService', () => {
         service.create(MERCHANT_ID, { titre: 'Gratuit', cout: -10 }),
       ).rejects.toThrow(BadRequestException);
     });
+
+    it('accepts an image uploaded by the merchant', async () => {
+      mockRewardRepo.create.mockResolvedValue({ ...mockReward, imageUrl: OWN_IMAGE });
+      await service.create(MERCHANT_ID, { titre: 'Café', cout: 5, imageUrl: OWN_IMAGE });
+      expect(mockRewardRepo.create).toHaveBeenCalled();
+    });
+
+    it('rejects an image that belongs to another merchant or to no one', async () => {
+      for (const imageUrl of [FOREIGN_IMAGE, LEGACY_IMAGE, 'https://evil.example/x.png']) {
+        await expect(
+          service.create(MERCHANT_ID, { titre: 'Café', cout: 5, imageUrl }),
+        ).rejects.toThrow(BadRequestException);
+      }
+      expect(mockRewardRepo.create).not.toHaveBeenCalled();
+    });
   });
 
   // ── update ─────────────────────────────────────────────────────────────────
@@ -179,6 +199,43 @@ describe('RewardsService', () => {
       const result = await service.update(REWARD_ID, MERCHANT_ID, { cout: 100 });
       expect(result.cout).toBe(100);
     });
+
+    it('rejects pointing the reward at a foreign image (nothing updated or deleted)', async () => {
+      mockRewardRepo.findOneByMerchant.mockResolvedValue({ ...mockReward, imageUrl: OWN_IMAGE });
+
+      await expect(
+        service.update(REWARD_ID, MERCHANT_ID, { imageUrl: FOREIGN_IMAGE }),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockRewardRepo.update).not.toHaveBeenCalled();
+      expect(mockStorage.deleteFile).not.toHaveBeenCalled();
+    });
+
+    it('keeps an unchanged legacy image without deleting it', async () => {
+      mockRewardRepo.findOneByMerchant.mockResolvedValue({ ...mockReward, imageUrl: LEGACY_IMAGE });
+      mockRewardRepo.update.mockResolvedValue({ ...mockReward, imageUrl: LEGACY_IMAGE });
+
+      await service.update(REWARD_ID, MERCHANT_ID, { imageUrl: LEGACY_IMAGE });
+      expect(mockRewardRepo.update).toHaveBeenCalled();
+      expect(mockStorage.deleteFile).not.toHaveBeenCalled();
+    });
+
+    it('deletes the replaced image only when it is under the merchant prefix, after the update', async () => {
+      mockRewardRepo.findOneByMerchant.mockResolvedValue({ ...mockReward, imageUrl: OWN_IMAGE });
+      mockRewardRepo.update.mockResolvedValue({ ...mockReward, imageUrl: null });
+
+      await service.update(REWARD_ID, MERCHANT_ID, { imageUrl: null });
+      expect(mockStorage.deleteFile).toHaveBeenCalledWith(OWN_IMAGE);
+      expect(mockRewardRepo.update.mock.invocationCallOrder[0])
+        .toBeLessThan(mockStorage.deleteFile.mock.invocationCallOrder[0]);
+    });
+
+    it('does not delete a legacy (un-prefixed) image when it is replaced', async () => {
+      mockRewardRepo.findOneByMerchant.mockResolvedValue({ ...mockReward, imageUrl: LEGACY_IMAGE });
+      mockRewardRepo.update.mockResolvedValue({ ...mockReward, imageUrl: OWN_IMAGE });
+
+      await service.update(REWARD_ID, MERCHANT_ID, { imageUrl: OWN_IMAGE });
+      expect(mockStorage.deleteFile).not.toHaveBeenCalled();
+    });
   });
 
   // ── remove ─────────────────────────────────────────────────────────────────
@@ -192,6 +249,18 @@ describe('RewardsService', () => {
 
       expect(mockRewardRepo.delete).toHaveBeenCalledWith(REWARD_ID);
       expect(result).toEqual(mockReward);
+    });
+
+    it('deletes the image of a removed reward only when the merchant owns it', async () => {
+      mockRewardRepo.findOneByMerchant.mockResolvedValue(mockReward);
+      mockRewardRepo.delete.mockResolvedValueOnce({ ...mockReward, imageUrl: OWN_IMAGE });
+      await service.remove(REWARD_ID, MERCHANT_ID);
+      expect(mockStorage.deleteFile).toHaveBeenCalledWith(OWN_IMAGE);
+
+      mockStorage.deleteFile.mockClear();
+      mockRewardRepo.delete.mockResolvedValueOnce({ ...mockReward, imageUrl: FOREIGN_IMAGE });
+      await service.remove(REWARD_ID, MERCHANT_ID);
+      expect(mockStorage.deleteFile).not.toHaveBeenCalled();
     });
 
     it('throws NotFoundException when reward not found', async () => {

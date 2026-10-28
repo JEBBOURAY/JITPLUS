@@ -187,6 +187,20 @@ export class DeeplinkController {
   }
 
   /**
+   * Smart redirect for shared deal ("bon plan") links — opens the client app
+   * on the deal screen. Deal ids share the merchant id format (Prisma uuid).
+   */
+  @Get('bp/:id')
+  @Header('Cache-Control', 'no-store')
+  handleDealLink(@Param('id') id: string, @Res() res: Response): void {
+    if (!MERCHANT_ID_RE.test(id)) {
+      res.status(400).send('Invalid link');
+      return;
+    }
+    res.type('html').send(renderSmartRedirect(VARIANT_CLIENT, `deal/${id}`));
+  }
+
+  /**
    * Referral campaign landing — opens the client app on the parrainage screen.
    */
   @Get('referral')
@@ -299,7 +313,7 @@ export class DeeplinkController {
         details: [
           {
             appID: `${IOS_TEAM_ID}.${IOS_BUNDLE_ID}`,
-            paths: ['/m/*', '/referral', '/app', '/d/claim'],
+            paths: ['/m/*', '/bp/*', '/referral', '/app', '/d/claim'],
           },
           {
             appID: `${IOS_TEAM_ID}.${IOS_PRO_BUNDLE_ID}`,

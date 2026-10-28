@@ -1,13 +1,11 @@
 import { useCallback, useMemo, MutableRefObject } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '@/services/api';
+import { clearLocalSession as clearLocalSessionData } from '@/services/localSession';
+import { notifyServerLogout } from '@/services/serverLogout';
 import { extractErrorMessage, isNetworkError as checkNetworkError } from '@/utils/errorMessage';
 import { logInfo, logError } from '@/utils/devLogger';
 import type { AuthState } from '@/stores/authStore';
-
-const LOGOUT_MAX_RETRIES = 2;
-const LOGOUT_RETRY_DELAY_MS = 1000;
 
 export function useAuthMethods(
   store: AuthState,
@@ -25,7 +23,9 @@ export function useAuthMethods(
   }, []);
 
   const verifyOtpEmail = useCallback(async (email: string, code: string, isRegister = false) => {
+    sessionVersionRef.current++;
     try {
+      await api.setRememberMe(true);
       const response = await api.verifyOtpEmail(email, code, isRegister);
       store.setClient(response.client);
       logInfo('Auth', 'OTP email vérifié:', response.client?.prenom, '| nouveau:', response.isNewUser);
@@ -65,10 +65,10 @@ export function useAuthMethods(
     }
   }, []);
 
-  const loginWithEmail = useCallback(async (email: string, password: string, rememberMe = true) => {
+  const loginWithEmail = useCallback(async (email: string, password: string) => {
     sessionVersionRef.current++;
     try {
-      await api.setRememberMe(rememberMe);
+      await api.setRememberMe(true);
       const response = await api.loginWithEmail(email, password);
       store.setClient(response.client);
       logInfo('Auth', 'Connexion email réussie:', response.client?.prenom);
@@ -114,31 +114,16 @@ export function useAuthMethods(
     }
   }, []);
 
+  const clearLocalSession = useCallback(
+    () => clearLocalSessionData(queryClient, store.reset),
+    [queryClient, store.reset],
+  );
+
   const logout = useCallback(async () => {
-    await api.updatePushToken('').catch((e) => { if (__DEV__) console.warn('Failed to clear push token on logout', e); });
-    let logoutSucceeded = false;
-    for (let attempt = 0; attempt < LOGOUT_MAX_RETRIES && !logoutSucceeded; attempt++) {
-      try {
-        await api.logout();
-        logoutSucceeded = true;
-      } catch {
-        if (attempt === 0) await new Promise((r) => setTimeout(r, LOGOUT_RETRY_DELAY_MS));
-      }
-    }
-    await api.clearAuth();
-    queryClient.clear();
-    await Promise.allSettled([
-      AsyncStorage.removeItem('jitplus-query-cache'),
-      AsyncStorage.removeItem('showWelcome'),
-      AsyncStorage.removeItem('showGuidBadge'),
-      import('expo-secure-store').then((ss) => ss.deleteItemAsync('qr_permanent_token')).catch(() => {}),
-      AsyncStorage.removeItem('profile_draft'),
-      // Legacy: drafts were stored in SecureStore before the 2048-byte limit fix
-      import('expo-secure-store').then((ss) => ss.deleteItemAsync('profile_draft')).catch(() => {}),
-    ]);
-    store.reset();
+    await notifyServerLogout();
+    await clearLocalSession();
     logInfo('Auth', 'Déconnexion terminée');
-  }, [queryClient]);
+  }, [clearLocalSession]);
 
   const refreshProfile = useCallback(async () => {
     try {
@@ -150,13 +135,12 @@ export function useAuthMethods(
       if (error instanceof Error && 'response' in error) {
         const axiosErr = error as import('axios').AxiosError;
         if (axiosErr.response?.status === 401) {
-          await api.clearAuth();
-          store.setClient(null);
+          await clearLocalSession();
         }
       }
       logError('Auth', 'Erreur rafraîchissement profil:', error);
     }
-  }, []);
+  }, [clearLocalSession]);
 
   const enterGuestMode = useCallback(() => {
     store.setGuest(true);
@@ -165,10 +149,10 @@ export function useAuthMethods(
   return useMemo(() => ({
     sendOtpEmail, verifyOtpEmail, googleLogin, appleLogin,
     loginWithEmail, setPassword, resetPasswordOtp, completeProfile,
-    logout, refreshProfile, enterGuestMode,
+    logout, refreshProfile, enterGuestMode, clearLocalSession,
   }), [
     sendOtpEmail, verifyOtpEmail, googleLogin, appleLogin,
     loginWithEmail, setPassword, resetPasswordOtp, completeProfile,
-    logout, refreshProfile, enterGuestMode,
+    logout, refreshProfile, enterGuestMode, clearLocalSession,
   ]);
 }

@@ -1,11 +1,17 @@
 import React, { useMemo, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { Zap, ChevronRight, Crown } from 'lucide-react-native';
+import { Clock, ChevronRight } from 'lucide-react-native';
+import { JitPremium } from '@/components/icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Card } from '@/components/ui/Card';
 import { palette } from '@/contexts/ThemeContext';
+import { ProBadge } from '@/components/ui/ProBadge';
+import { font, icon } from '@/constants/design';
+import { useDir } from '@/hooks/useDir';
 import { wp, hp, ms, fontSize as FS, radius } from '@/utils/responsive';
 import type { ImperativeRouter } from 'expo-router';
 import type { Merchant } from '@/types';
+import { usePlanStatus } from '@/hooks/usePlanStatus';
 
 interface Props {
   t: (key: string, opts?: Record<string, unknown>) => string;
@@ -16,43 +22,12 @@ interface Props {
   isTeamMember?: boolean;
 }
 
-/**
- * Standalone dark trial/plan card, mirrors the mockup's `.trial-card`.
- *
- * Design tokens (BRIEF-DESIGN.md):
- *  - dark gradient background (#0f031e → #1a0533)
- *  - PREMIUM gold badge (#FCD34D → #F59E0B) on charbon text
- *  - progress bar fills with ELAPSED time; caption reads "X jours restants sur N"
- *  - self-service CTA "Voir les plans" (translucent white on dark) → /plan
- *
- * Only rendered when the merchant is premium (trial or full). For FREE plan
- * the account screen doesn't render this card.
- */
+/** Current Pro plan and trial progress. Billing actions remain owner-only. */
 export default React.memo(function TrialCard({ t, locale, merchant, router, isTeamMember = false }: Props) {
-  const isPremium = merchant?.plan === 'PREMIUM';
-  const isAdminPremium = merchant?.planActivatedByAdmin === true;
+  const { isPremium, isAdminPremium, planExpiresAt, daysRemaining, isTrial, trialProgress, trialTotalDays } = usePlanStatus(merchant);
 
   const goToPlan = useCallback(() => router.push('/plan'), [router]);
-
-  const { planExpiresAt, daysRemaining, isTrial, trialProgress, trialTotalDays } = useMemo(() => {
-    const parseDate = (v: string | Date | null | undefined): Date | null => {
-      if (!v) return null;
-      const d = new Date(v);
-      return Number.isNaN(d.getTime()) ? null : d;
-    };
-    const pExp = parseDate(merchant?.planExpiresAt);
-    const tStart = parseDate(merchant?.trialStartedAt);
-    const days = pExp ? Math.max(0, Math.ceil((pExp.getTime() - Date.now()) / (1000 * 60 * 60 * 24))) : null;
-    const trial = isPremium && !isAdminPremium && tStart !== null && pExp !== null;
-    let progress: number | null = null;
-    let totalDays: number | null = null;
-    if (trial && tStart && pExp) {
-      const total = pExp.getTime() - tStart.getTime();
-      progress = total > 0 ? Math.min(1, Math.max(0, (Date.now() - tStart.getTime()) / total)) : 1;
-      totalDays = Math.max(1, Math.round(total / (1000 * 60 * 60 * 24)));
-    }
-    return { planExpiresAt: pExp, daysRemaining: days, isTrial: trial, trialProgress: progress, trialTotalDays: totalDays };
-  }, [merchant?.planExpiresAt, merchant?.trialStartedAt, isPremium, isAdminPremium]);
+  const dir = useDir();
 
   const formatDate = useMemo(() => {
     const loc = locale === 'ar' ? 'ar-MA' : locale === 'en' ? 'en-US' : 'fr-FR';
@@ -69,54 +44,42 @@ export default React.memo(function TrialCard({ t, locale, merchant, router, isTe
   if (!isPremium) return null;
 
   return (
-    <View style={styles.card}>
+    <Card style={styles.card}>
       <LinearGradient
         colors={['#0f031e', '#1a0533']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
-
-      {/* Top row: title + PREMIUM gold badge */}
-      <View style={styles.topRow}>
-        <View style={styles.titleRow}>
+      <View style={[styles.topRow, { flexDirection: dir.row }]}>
+        <View style={[styles.titleRow, { flexDirection: dir.row }]}>
           {isTrial ? (
-            <Zap size={ms(15)} color="#fff" strokeWidth={2} />
+            <Clock size={ms(15)} color="#fff" strokeWidth={icon.stroke} />
           ) : (
-            <Crown size={ms(15)} color="#FCD34D" strokeWidth={2} />
+            <JitPremium size={ms(15)} color={palette.gold} strokeWidth={icon.stroke} />
           )}
           <Text style={styles.title} maxFontSizeMultiplier={1.3} numberOfLines={1}>
-            {isTrial ? t('account.planTrial') : 'Premium'}
+            {isTrial ? t('account.planTrial') : t('account.planHeroTitlePro')}
           </Text>
         </View>
-        <LinearGradient
-          colors={['#FCD34D', '#F59E0B']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={styles.badge}
-        >
-          <Text style={styles.badgeText} maxFontSizeMultiplier={1.2} numberOfLines={1}>
-            {t('account.planPremiumBadge')}
-          </Text>
-        </LinearGradient>
+        <ProBadge variant="goldGradient" style={styles.badge} />
       </View>
 
-      {/* Expiry line — "Essai jusqu'au XX" (or "Plan par admin" when applicable) */}
       {isAdminPremium && !planExpiresAt ? (
-        <Text style={styles.expiryText} maxFontSizeMultiplier={1.3}>{t('account.planByAdmin')}</Text>
+        <Text style={[styles.expiryText, { textAlign: dir.textAlign }]} maxFontSizeMultiplier={1.3}>{t('account.planByAdmin')}</Text>
       ) : planExpiresAt ? (
-        <Text style={styles.expiryText} maxFontSizeMultiplier={1.3} numberOfLines={1}>
+        <Text style={[styles.expiryText, { textAlign: dir.textAlign }]} maxFontSizeMultiplier={1.3} numberOfLines={1}>
           {isTrial
             ? t('account.planTrialExpiry', { date: formatDate(planExpiresAt) })
             : t('account.planExpiry', { date: formatDate(planExpiresAt) })}
         </Text>
       ) : null}
 
-      {/* Progress bar — fills with ELAPSED time (0 = fresh trial, 1 = expired) */}
+      {/* Fills with elapsed time: 0 = fresh trial, 1 = expired. */}
       {isTrial && trialProgress !== null && (
-        <View style={styles.progressTrack} accessible accessibilityRole="progressbar">
+        <View style={[styles.progressTrack, dir.isRTL && styles.progressTrackRtl]} accessible accessibilityRole="progressbar" accessibilityLabel={t('account.planTrial')} accessibilityValue={{ min: 0, max: 100, now: Math.round(trialProgress * 100) }}>
           <LinearGradient
-            colors={['#FCD34D', '#7C3AED']}
+            colors={[palette.gold, palette.violet]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
             style={[styles.progressFill, { width: `${Math.round(trialProgress * 100)}%` }]}
@@ -124,33 +87,30 @@ export default React.memo(function TrialCard({ t, locale, merchant, router, isTe
         </View>
       )}
 
-      {/* Days-remaining caption — explicit "X jours restants sur N" */}
       {daysRemaining !== null && daysRemaining > 0 && (
-        <Text style={styles.daysText} maxFontSizeMultiplier={1.3}>
+        <Text style={[styles.daysText, { textAlign: dir.textAlign }]} maxFontSizeMultiplier={1.3}>
           {isTrial
-            ? t('account.planTrialDaysLeftTotal', { count: daysRemaining, total: trialTotalDays ?? 30 })
-            : t('account.planDaysLeft', { count: daysRemaining })}
+            ? t(daysRemaining === 1 ? 'account.planTrialDaysLeftTotal_one' : 'account.planTrialDaysLeftTotal_other', { count: daysRemaining, total: trialTotalDays ?? 30 })
+            : t(daysRemaining === 1 ? 'account.planDaysLeft_one' : 'account.planDaysLeft_other', { count: daysRemaining })}
         </Text>
       )}
 
-      {/* Self-service CTA — routes to /plan, no manual contact required.
-          Hidden for team members: they may view plan status but must not
-          reach the billing/upgrade screen. */}
+      {/* Team members may view plan status but must not reach billing. */}
       {!isTeamMember && (
         <TouchableOpacity
           onPress={goToPlan}
           activeOpacity={0.85}
-          style={styles.cta}
+          style={[styles.cta, { flexDirection: dir.row }]}
           accessibilityRole="button"
           accessibilityLabel={t('account.viewPlans')}
         >
           <Text style={styles.ctaText} maxFontSizeMultiplier={1.2} numberOfLines={1}>
             {t('account.viewPlans')}
           </Text>
-          <ChevronRight size={ms(14)} color="#fff" strokeWidth={2.4} />
+          <ChevronRight size={ms(14)} color="#fff" strokeWidth={icon.strokeSmall} style={dir.flip} />
         </TouchableOpacity>
       )}
-    </View>
+    </Card>
   );
 });
 
@@ -175,26 +135,19 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   title: {
-    fontSize: ms(13.5),
+    fontSize: ms(14),
     color: '#fff',
-    fontFamily: 'Lexend_700Bold',
+    fontFamily: font.bold,
     flexShrink: 1,
   },
   badge: {
-    paddingHorizontal: wp(9),
-    paddingVertical: hp(4),
-    borderRadius: ms(8),
-  },
-  badgeText: {
-    fontSize: ms(9.5),
-    color: palette.charbon,
-    letterSpacing: 0.3,
-    fontFamily: 'Lexend_700Bold',
+    alignSelf: 'center',
   },
   expiryText: {
     fontSize: FS.xs,
     color: 'rgba(255,255,255,0.55)',
     marginTop: hp(5),
+    fontFamily: font.regular,
   },
   progressTrack: {
     height: 6,
@@ -203,14 +156,16 @@ const styles = StyleSheet.create({
     marginTop: hp(14),
     overflow: 'hidden',
   },
+  progressTrackRtl: { flexDirection: 'row-reverse' },
   progressFill: {
     height: '100%',
     borderRadius: 6,
   },
   daysText: {
-    fontSize: ms(11.5),
+    fontSize: ms(12),
     color: 'rgba(255,255,255,0.75)',
     marginTop: hp(8),
+    fontFamily: font.regular,
   },
   cta: {
     marginTop: hp(14),
@@ -227,7 +182,7 @@ const styles = StyleSheet.create({
   },
   ctaText: {
     color: '#fff',
-    fontSize: ms(12.5),
-    fontFamily: 'Lexend_700Bold',
+    fontSize: ms(13),
+    fontFamily: font.semibold,
   },
 });

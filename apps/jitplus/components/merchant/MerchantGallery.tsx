@@ -1,20 +1,24 @@
-import React, { memo, useCallback, useState } from 'react';
+import { memo, useCallback, useState } from 'react';
 import {
-  View, Text, ScrollView, Pressable, Modal, FlatList, StyleSheet, useWindowDimensions,
+  View, Pressable, Modal, FlatList, StyleSheet, useWindowDimensions,
   type NativeSyntheticEvent, type NativeScrollEvent,
 } from 'react-native';
+import { Text } from '@/components/AppText';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Images, X } from 'lucide-react-native';
+import { X } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAppFonts } from '@/utils/fonts';
 import { haptic } from '@/utils/haptics';
 import { resolveImageUrl } from '@/utils/imageUrl';
 import { wp, hp, ms } from '@/utils/responsive';
-import MerchantSection from './MerchantSection';
+import FicheSection from './FicheSection';
 
-const THUMB_SIZE = wp(128);
+const COLUMNS = 3;
+const GRID_GAP = wp(4);
+/** Page side padding, on both sides. */
+const GRID_INSET = wp(16) * 2;
 
 interface ViewerProps {
   images: string[];
@@ -81,32 +85,28 @@ function GalleryViewer({ images, initialIndex, onClose }: ViewerProps) {
 
 interface Props {
   images: string[];
-  accent: string;
 }
 
-function MerchantGallery({ images, accent }: Props) {
+/** Photos tab: a grid of thumbnails opening a full-screen viewer. */
+function MerchantGallery({ images }: Props) {
   const theme = useTheme();
   const { t } = useLanguage();
-  const fonts = useAppFonts();
+  const { width } = useWindowDimensions();
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   const closeViewer = useCallback(() => setOpenIndex(null), []);
 
   if (images.length === 0) return null;
+  const size = Math.floor((width - GRID_INSET - GRID_GAP * (COLUMNS - 1)) / COLUMNS);
 
   return (
     <>
-      <MerchantSection
-        title={t('merchant.galleryTitle')}
-        icon={Images}
-        accent={accent}
-        right={<Text style={[styles.count, { color: theme.textMuted, fontFamily: fonts.semibold }]}>{images.length}</Text>}
-      >
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.thumbs}>
+      <FicheSection title={`${t('merchant.galleryTitle')} (${images.length})`}>
+        <View style={styles.grid}>
           {images.map((url, i) => (
             <Pressable
               key={`${url}-${i}`}
               onPress={() => { haptic(); setOpenIndex(i); }}
-              style={({ pressed }) => [styles.thumb, { backgroundColor: theme.bgSkeleton, opacity: pressed ? 0.85 : 1 }]}
+              style={({ pressed }) => [styles.thumb, { width: size, height: size, backgroundColor: theme.bgSkeleton, opacity: pressed ? 0.85 : 1 }]}
               accessibilityRole="imagebutton"
               accessibilityLabel={`${t('merchant.galleryTitle')} ${i + 1}/${images.length}`}
             >
@@ -120,17 +120,16 @@ function MerchantGallery({ images, accent }: Props) {
               />
             </Pressable>
           ))}
-        </ScrollView>
-      </MerchantSection>
+        </View>
+      </FicheSection>
       {openIndex !== null && <GalleryViewer images={images} initialIndex={openIndex} onClose={closeViewer} />}
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  count: { fontSize: ms(13) },
-  thumbs: { gap: wp(10) },
-  thumb: { width: THUMB_SIZE, height: THUMB_SIZE, borderRadius: ms(16), overflow: 'hidden' },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: GRID_GAP },
+  thumb: { borderRadius: ms(4), overflow: 'hidden' },
   viewer: { flex: 1, backgroundColor: 'rgba(0,0,0,0.96)' },
   viewerTop: {
     position: 'absolute', left: wp(16), right: wp(16),

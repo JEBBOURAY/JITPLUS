@@ -15,7 +15,7 @@ export interface StampPlanInput {
   reward?: { cout: number } | null;
 }
 
-export type StampPlanBlocker =
+type StampPlanBlocker =
   | 'enterAmount'
   | 'amountTooLow'
   | 'limitReached'

@@ -108,9 +108,27 @@ export async function clearEmailOtpNewUser(): Promise<void> {
 // even when the device is offline. Uses AsyncStorage: profile JSON regularly
 // exceeds SecureStore's 2048-byte limit (Android Keystore silently drops the
 // value today and will throw in a future SDK — seen in Sentry production).
+// AsyncStorage is unencrypted, so only the fields the app needs offline are
+// kept: contact details and birth date are refetched from the server.
+const CACHED_PROFILE_FIELDS = [
+  'id', 'prenom', 'nom', 'termsAccepted', 'hasPassword', 'language', 'countryCode',
+  'emailVerified', 'telephoneVerified', 'shareInfoMerchants',
+  'notifPush', 'notifEmail', 'notifWhatsapp', 'createdAt',
+] as const;
+
+export function pickCachedProfile(profile: unknown): Record<string, unknown> | null {
+  if (!profile || typeof profile !== 'object') return null;
+  const source = profile as Record<string, unknown>;
+  const picked: Record<string, unknown> = {};
+  for (const key of CACHED_PROFILE_FIELDS) {
+    if (source[key] !== undefined) picked[key] = source[key];
+  }
+  return picked;
+}
+
 export async function setCachedProfile(profile: unknown): Promise<void> {
   try {
-    const json = JSON.stringify(profile);
+    const json = JSON.stringify(pickCachedProfile(profile));
     if (Platform.OS === 'web') { memoryTokens[PROFILE_CACHE_KEY] = json; return; }
     await AsyncStorage.setItem(PROFILE_CACHE_KEY, json);
     // One-time cleanup of the legacy oversized SecureStore entry
@@ -124,7 +142,8 @@ export async function getCachedProfile<T = unknown>(): Promise<T | null> {
       ? (memoryTokens[PROFILE_CACHE_KEY] ?? null)
       : await AsyncStorage.getItem(PROFILE_CACHE_KEY);
     if (!raw) return null;
-    return JSON.parse(raw) as T;
+    // Older installs cached the full profile: never hand those fields back.
+    return pickCachedProfile(JSON.parse(raw)) as T | null;
   } catch { return null; }
 }
 

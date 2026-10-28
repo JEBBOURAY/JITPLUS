@@ -24,7 +24,7 @@ import api, { getServerBaseUrl } from '@/services/api';
 import { logError, logWarn, logInfo } from '@/utils/devLogger';
 import { routeForAction } from '@/utils/notificationRoutes';
 
-// ── GDPR opt-out (honours SENTRY_OPT_OUT AsyncStorage flag) ─────
+// GDPR opt-out (honours SENTRY_OPT_OUT AsyncStorage flag)
 // Sentry is configured as PII-free anonymous crash reporting (legitimate
 // interest under GDPR), but we still expose a way for users to opt out.
 // If the flag is set, we close the Sentry client so no events are sent.
@@ -34,7 +34,8 @@ import AsyncStorageForConsent from '@react-native-async-storage/async-storage';
 // in ThemedNavigator. I18nManager.forceRTL() persists the setting for
 // cold starts. No restart alert is needed.
 
-import { AuthProvider, useAuth } from '@/contexts/AuthContext';
+import { AuthProvider } from '@/contexts/AuthContext';
+import { useAuthStore } from '@/stores/authStore';
 import { ThemeProvider, useTheme } from '@/contexts/ThemeContext';
 import { LanguageProvider } from '@/contexts/LanguageContext';
 import { Notifications, isExpoGo, setupAndroidChannels } from '@/utils/notifications';
@@ -47,7 +48,7 @@ import { sendMerchantPushToken } from '@/services/merchantPushToken';
 import MetaAdsManager from '@/services/metaAdsManager';
 import SplashAnimated from '@/components/SplashAnimated';
 
-// ── Lazy-load Sentry to prevent native module crash on Android ──
+// Lazy-load Sentry to prevent native module crash on Android
 // The native @sentry/react-native module can crash during require() if the DSN
 // is missing or the native SDK is misconfigured. Lazy-loading ensures the app
 // still boots even if Sentry fails entirely.
@@ -73,7 +74,7 @@ onlineManager.setEventListener((setOnline) => {
   });
 });
 
-// ── Persist options (module-level to avoid re-creating on every render) ─────
+// Persist options (module-level to avoid re-creating on every render)
 // Keep the persisted surface SMALL — large lists (transactions, clients,
 // notification history) used to bloat the payload to several MB and block the
 // JS thread 500ms–2s on cold-start / OS kill during rehydration. SWR refetches
@@ -138,7 +139,7 @@ const queryClient = new QueryClient({
   },
 });
 
-// ── Sentry init (crash reporting) ──────────────────────────────
+// Sentry init (crash reporting)
 // SECURITY: DSN is bundled in the client. Configure inbound data filters in
 // Sentry project settings to reject invalid releases and apply rate limits.
 // Validate DSN format before init — an unresolved EAS secret (literal "$...") or
@@ -181,7 +182,7 @@ try {
       const msg = event.exception?.values?.[0]?.value ?? '';
       if (/No refresh (token|credentials)|Session expired/i.test(msg)) return null;
 
-      // ── PII scrubber (CNDP Loi 09-08 + App Store 5.1.1) ──
+      // PII scrubber (CNDP Loi 09-08 + App Store 5.1.1)
       // Strip emails, Moroccan phone numbers, bearer/JWT tokens from every field.
       const scrub = (s: string): string =>
         s
@@ -225,9 +226,8 @@ AsyncStorageForConsent.getItem('sentry_opt_out')
     }
   })
   .catch(() => { /* ignore */ });
-// ── End Sentry init ────────────────────────────────
 
-// ── Global unhandled promise rejection handler ──────────────────
+// Global unhandled promise rejection handler
 // Catches fire-and-forget .then() without .catch() and logs to Sentry.
 if (typeof globalThis !== 'undefined') {
   const originalHandler = (globalThis as any).onunhandledrejection;
@@ -244,7 +244,7 @@ if (typeof globalThis !== 'undefined') {
   };
 }
 
-// ── Env validation (warn in production — never crash the app) ───
+// Env validation (warn in production — never crash the app)
 if (!__DEV__ && !process.env.EXPO_PUBLIC_API_URL) {
   captureException(new Error('EXPO_PUBLIC_API_URL is missing in production'));
 }
@@ -255,7 +255,7 @@ export {
 } from 'expo-router';
 
 export const unstable_settings = {
-  initialRouteName: '(tabs)',
+  anchor: '(tabs)',
 };
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
@@ -306,7 +306,7 @@ export default function RootLayout() {
  * itself, right on its own mount — not before.
  */
 function SplashGate({ children }: { children: React.ReactNode }) {
-  const { loading } = useAuth();
+  const loading = useAuthStore((s) => s.loading);
   const [showApp, setShowApp] = useState(false);
 
   if (!showApp) {
@@ -351,7 +351,9 @@ const PUBLIC_ROUTES = new Set(['login', 'register', 'verify-email', 'forgot-pass
 function ThemedNavigator() {
   const theme = useTheme();
   const { isDark } = theme;
-  const { merchant, loading } = useAuth();
+  // Only the presence of a merchant matters here: profile edits must not re-render the navigator.
+  const hasMerchant = useAuthStore((s) => !!s.merchant);
+  const loading = useAuthStore((s) => s.loading);
   const { status, storeUrl } = useForceUpdate();
   const router = useRouter();
   const segments = useSegments();
@@ -384,37 +386,37 @@ function ThemedNavigator() {
   useEffect(() => {
     if (loading) return;
     const firstSegment = segments[0] ?? '';
-    if (!merchant && !PUBLIC_ROUTES.has(firstSegment)) {
+    if (!hasMerchant && !PUBLIC_ROUTES.has(firstSegment)) {
       router.replace('/login');
     }
-  }, [loading, merchant, segments, router]);
+  }, [loading, hasMerchant, segments, router]);
 
   // Warm heavy native modules in background so the FIRST navigation that
   // needs them is instant. Cold-parse of expo-camera (~200ms) is otherwise
   // paid by the user the first time they tap "Scanner".
   const didPreloadRef = useRef(false);
   useEffect(() => {
-    if (loading || !merchant || didPreloadRef.current) return;
+    if (loading || !hasMerchant || didPreloadRef.current) return;
     didPreloadRef.current = true;
     requestIdleCallback(() => {
       try { require('expo-camera'); } catch {}
       try { require('expo-image-picker'); } catch {}
     });
-  }, [loading, merchant]);
+  }, [loading, hasMerchant]);
   const notificationListener = useRef<{ remove(): void } | null>(null);
   const responseListener = useRef<{ remove(): void } | null>(null);
 
 
-  // ── Real-time WebSocket connection ────────────────────────
+  // Real-time WebSocket connection
   const socket = useRealtimeSocket({
     serverUrl: getServerBaseUrl(),
     getToken: () => SecureStore.getItemAsync('accessToken'),
-    enabled: !!merchant,
+    enabled: hasMerchant,
   });
   useRealtimeEvents(socket);
   useAppForegroundRefresh();
 
-  // ── Android notification channels + FCM listeners ─────────
+  // Android notification channels + FCM listeners
   useEffect(() => {
     setupAndroidChannels();
   }, []);
@@ -545,10 +547,6 @@ function ThemedNavigator() {
               contentStyle: { backgroundColor: theme.bg },
               animation: 'slide_from_right',
               gestureEnabled: true,
-              // freezeOnBlur retiré : cause un crash "wrong thread" dans
-              // react-native-screens@4.16 quand un écran gelé est retiré du Stack
-              // (Screen.startRemovalTransition sur le thread mqt_v_js au lieu du main).
-              // Conservé uniquement sur les Tabs où les écrans ne sont pas "removed".
             }}
           >
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
@@ -579,7 +577,7 @@ function ThemedNavigator() {
             <Stack.Screen name="settings" options={{ headerShown: false }} />
             <Stack.Screen name="dashboard" options={{ headerShown: false }} />
             <Stack.Screen name="security" options={{ headerShown: false }} />
-            <Stack.Screen name="team-management" options={{ headerShown: false }} />
+            <Stack.Screen name="account" options={{ headerShown: false }} />
             <Stack.Screen name="stores" options={{ headerShown: false }} />
             <Stack.Screen name="games" options={{ headerShown: false }} />
             <Stack.Screen name="referral" options={{ headerShown: false }} />

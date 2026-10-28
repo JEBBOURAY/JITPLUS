@@ -1,24 +1,14 @@
-import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Alert,
-  ActivityIndicator,
-  BackHandler,
-  KeyboardAvoidingView,
-  Platform,
-  useWindowDimensions,
-} from 'react-native';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Check, ChevronDown, ChevronUp, Clock, Pencil, Plus, Save, Send } from 'lucide-react-native';
+import { Clock, Layers, Plus, Save, Send, Tag, type LucideIcon } from 'lucide-react-native';
+import { JitStamp } from '@/components/icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
+import { usePlanStatus } from '@/hooks/usePlanStatus';
+import { useDir } from '@/hooks/useDir';
 import { useAuthStore } from '@/stores/authStore';
 import { useRewards } from '@/hooks/useQueryHooks';
 import {
@@ -32,6 +22,7 @@ import {
 import { getErrorMessage } from '@/utils/error';
 import { resolveImageUrl } from '@/utils/imageUrl';
 import { ms } from '@/utils/responsive';
+import { font } from '@/constants/design';
 import PremiumLockCard from '@/components/PremiumLockCard';
 import MerchantLogo from '@/components/MerchantLogo';
 import {
@@ -46,10 +37,24 @@ import {
   rewardDisplay,
   type ScratchAudienceType,
 } from '@jitplus/shared/src/scratch';
-import { ScratchCardCover, ScratchCardFace, scratchCardHeight } from '@jitplus/shared/src/scratch/ScratchCardFace';
-import { Button, Chip, ChipRow, FieldLabel, Input, Notice, ScreenHeader, Section } from '@/components/scratch/ScratchUI';
+import {
+  Button,
+  Chip,
+  ChipRow,
+  FieldLabel,
+  Input,
+  MoreOptions,
+  Notice,
+  OptionCard,
+  ScreenHeader,
+  Section,
+  useMoreOptions,
+} from '@/components/scratch/ScratchUI';
 import { DateField, formatYmd } from '@/components/scratch/DateField';
 import { RewardEditor } from '@/components/scratch/RewardEditor';
+import { ScratchPreview } from '@/components/scratch/ScratchPreview';
+import { HelpText, ReviewBlock, ReviewLine, WizardFooter, WizardShell, useGameWizard } from '@/components/games/GameWizard';
+import { digitsOnly } from '@/components/games/gameForm';
 import {
   AUDIENCE_DEFAULT_VALUES,
   CAMPAIGN_TEMPLATES,
@@ -78,101 +83,28 @@ import {
   validateStep,
   type CampaignForm,
   type CampaignTemplate,
-  type FormError,
   type RewardForm,
   type RewardLabelFn,
   type WizardStep,
 } from '@/components/scratch/campaignForm';
 
-const STEP_TITLES: Record<WizardStep, string> = {
-  gift: 'scratch.wizard.stepGift',
-  audience: 'scratch.wizard.stepWho',
-  review: 'scratch.wizard.stepReview',
-};
-
-const TEMPLATE_ICONS: Record<CampaignTemplate, string> = { simple: '🏷️', tiers: '🎁', stamps: '⭐' };
+const TEMPLATE_ICONS: Record<CampaignTemplate, LucideIcon> = { simple: Tag, tiers: Layers, stamps: JitStamp };
 
 type PreviewSide = 'before' | 'after';
-
-/** Big tappable choice with a title and a one-line explanation. */
-function OptionCard({ title, description, icon, selected, onPress }: {
-  title: string;
-  description: string;
-  icon?: string;
-  selected: boolean;
-  onPress: () => void;
-}) {
-  const theme = useTheme();
-  const { isRTL } = useLanguage();
-  const textAlign = isRTL ? 'right' : 'left';
-  return (
-    <TouchableOpacity
-      onPress={onPress}
-      activeOpacity={0.8}
-      accessibilityRole="radio"
-      accessibilityState={{ selected }}
-      accessibilityLabel={`${title}. ${description}`}
-      style={[
-        styles.option,
-        {
-          flexDirection: isRTL ? 'row-reverse' : 'row',
-          borderColor: selected ? theme.primary : theme.borderLight,
-          backgroundColor: selected ? theme.primaryBg : theme.bgElevated,
-        },
-      ]}
-    >
-      {icon ? <Text style={styles.optionIcon}>{icon}</Text> : null}
-      <View style={styles.flex}>
-        <Text style={[styles.optionTitle, { color: theme.text, textAlign }]} maxFontSizeMultiplier={1.3}>{title}</Text>
-        <Text style={[styles.optionDesc, { color: theme.textSecondary, textAlign }]} maxFontSizeMultiplier={1.4}>{description}</Text>
-      </View>
-      <View style={[styles.radio, { borderColor: selected ? theme.primary : theme.border, backgroundColor: selected ? theme.primary : 'transparent' }]}>
-        {selected && <Check size={14} color="#FFFFFF" strokeWidth={3} />}
-      </View>
-    </TouchableOpacity>
-  );
-}
-
-/** Collapsed-by-default block for the settings most merchants never need. */
-function MoreOptions({ open, onToggle, label, children }: {
-  open: boolean;
-  onToggle: () => void;
-  label: string;
-  children: React.ReactNode;
-}) {
-  const theme = useTheme();
-  const { isRTL } = useLanguage();
-  return (
-    <>
-      <TouchableOpacity
-        onPress={onToggle}
-        style={[styles.moreToggle, { borderTopColor: theme.borderLight, flexDirection: isRTL ? 'row-reverse' : 'row' }]}
-        accessibilityRole="button"
-        accessibilityState={{ expanded: open }}
-      >
-        <Text style={[styles.moreText, { color: theme.textSecondary, textAlign: isRTL ? 'right' : 'left' }]} maxFontSizeMultiplier={1.3}>
-          {label}
-        </Text>
-        {open ? <ChevronUp size={18} color={theme.textMuted} /> : <ChevronDown size={18} color={theme.textMuted} />}
-      </TouchableOpacity>
-      {open && <View style={styles.moreBody}>{children}</View>}
-    </>
-  );
-}
 
 export default function ScratchCampaignWizard() {
   const shouldWait = useRequireAuth();
   const theme = useTheme();
-  const { t, locale, isRTL } = useLanguage();
+  const { t, locale } = useLanguage();
+  const { row, textAlign } = useDir();
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const params = useLocalSearchParams<{ id?: string }>();
   const editId = typeof params.id === 'string' ? params.id : undefined;
 
   const merchant = useAuthStore((s) => s.merchant);
   const isTeamMember = useAuthStore((s) => s.isTeamMember);
-  const isPremium = merchant?.plan === 'PREMIUM';
+  const { isPremium } = usePlanStatus(merchant);
 
   const labelFor = useCallback<RewardLabelFn>((type, value) => formatRewardValue({ type, value, label: '' }, t), [t]);
 
@@ -181,18 +113,14 @@ export default function ScratchCampaignWizard() {
     ...initialCampaignForm(day),
     name: t('scratch.wizard.defaultName', { date: formatYmd(day, locale, false) }),
   }));
-  const [stepIndex, setStepIndex] = useState(0);
   const [campaignId, setCampaignId] = useState<string | undefined>(editId);
   const [dirty, setDirty] = useState(false);
   const [template, setTemplate] = useState<CampaignTemplate | null>(editId ? null : 'simple');
   const rewardsTouchedRef = useRef(false);
-  const [showAudienceOptions, setShowAudienceOptions] = useState(false);
-  const [showDateOptions, setShowDateOptions] = useState(false);
+  const audienceOptions = useMoreOptions(!MAIN_AUDIENCE_TYPES.includes(form.audienceType));
+  const dateOptions = useMoreOptions(form.durationDays == null);
   const [previewSide, setPreviewSide] = useState<PreviewSide>('after');
   const [previewRewardKey, setPreviewRewardKey] = useState<string | null>(null);
-  const scrollRef = useRef<ScrollView>(null);
-  const step = WIZARD_STEPS[stepIndex];
-  const isLast = stepIndex === WIZARD_STEPS.length - 1;
 
   const {
     data: existing,
@@ -209,14 +137,43 @@ export default function ScratchCampaignWizard() {
   }, [existing, today, labelFor]);
   const isScheduled = existing?.status === 'SCHEDULED';
 
-  const { data: catalog = [] } = useRewards(isPremium && !isTeamMember);
+  const leave = useCallback(() => {
+    if (router.canGoBack()) router.back();
+    else router.replace('/scratch-campaigns');
+  }, [router]);
+
+  const validate = useCallback((s: WizardStep) => validateStep(form, s, today), [form, today]);
+  const {
+    step,
+    index: stepIndex,
+    isLast,
+    stepLabels,
+    heading,
+    hint,
+    nextLabel,
+    scrollRef,
+    goTo,
+    next,
+    back,
+    ensureValid,
+    allowLeave,
+  } = useGameWizard({
+    steps: WIZARD_STEPS,
+    validate,
+    dirty,
+    onLeave: leave,
+    i18nPrefix: 'scratch.wizard',
+  });
+
+  const { data: catalogData } = useRewards(isPremium && !isTeamMember);
+  // A fresh [] on each render would re-render every memoised RewardEditor.
+  const catalog = useMemo(() => catalogData ?? [], [catalogData]);
   const createMutation = useCreateScratchCampaign();
   const updateMutation = useUpdateScratchCampaign();
   const scheduleMutation = useScheduleScratchCampaign();
   const unscheduleMutation = useUnscheduleScratchCampaign();
   const busy = createMutation.isPending || updateMutation.isPending || scheduleMutation.isPending || unscheduleMutation.isPending;
 
-  // ── Audience estimate (debounced) ──
   const audienceValue = form.audienceType === 'ALL_CLIENTS' ? null : parseInt(form.audienceValue, 10) || null;
   const [debouncedAudience, setDebouncedAudience] = useState<{ type: ScratchAudienceType; value: number | null }>({
     type: form.audienceType,
@@ -254,10 +211,15 @@ export default function ScratchCampaignWizard() {
     rewardsTouchedRef.current = true;
     dispatch({ type: 'REMOVE_REWARD', key });
   }, []);
+  const addReward = useCallback(() => {
+    setDirty(true);
+    rewardsTouchedRef.current = true;
+    dispatch({ type: 'ADD_REWARD' });
+  }, []);
 
-  const applyTemplate = useCallback((next: CampaignTemplate) => {
+  const applyTemplate = useCallback((nextTemplate: CampaignTemplate) => {
     const apply = () => {
-      const rewards = templateRewards(next);
+      const rewards = templateRewards(nextTemplate);
       // Pre-fill the free product with the first catalog reward when there is one.
       const product = rewards.find((r) => r.type === 'FREE_PRODUCT');
       if (product && catalog[0]) {
@@ -265,11 +227,11 @@ export default function ScratchCampaignWizard() {
         product.rewardId = catalog[0].id;
       }
       rewardsTouchedRef.current = false;
-      setTemplate(next);
+      setTemplate(nextTemplate);
       setDirty(true);
       dispatch({ type: 'SET_REWARDS', rewards });
     };
-    if (next === template) return;
+    if (nextTemplate === template) return;
     if (!rewardsTouchedRef.current) return apply();
     Alert.alert(t('scratch.wizard.templateReplaceTitle'), t('scratch.wizard.templateReplaceBody'), [
       { text: t('common.cancel'), style: 'cancel' },
@@ -280,58 +242,6 @@ export default function ScratchCampaignWizard() {
   const selectAudience = useCallback((type: ScratchAudienceType) => {
     set({ audienceType: type, audienceValue: type === 'ALL_CLIENTS' ? form.audienceValue : AUDIENCE_DEFAULT_VALUES[type] });
   }, [set, form.audienceValue]);
-
-  const showError = useCallback((err: FormError) => Alert.alert(t('common.error'), t(err.key, err.params)), [t]);
-
-  const goToStep = useCallback((index: number) => {
-    setStepIndex(Math.max(0, Math.min(index, WIZARD_STEPS.length - 1)));
-    scrollRef.current?.scrollTo({ y: 0, animated: false });
-  }, []);
-
-  const goNext = useCallback(() => {
-    const err = validateStep(form, step, today);
-    if (err) return showError(err);
-    goToStep(stepIndex + 1);
-  }, [form, step, today, stepIndex, showError, goToStep]);
-
-  const leave = useCallback(() => {
-    if (router.canGoBack()) router.back();
-    else router.replace('/scratch-campaigns');
-  }, [router]);
-
-  const handleBack = useCallback(() => {
-    if (stepIndex > 0) {
-      goToStep(stepIndex - 1);
-      return;
-    }
-    if (!dirty) return leave();
-    Alert.alert(t('scratch.wizard.discardTitle'), t('scratch.wizard.discardMessage'), [
-      { text: t('common.cancel'), style: 'cancel' },
-      { text: t('scratch.wizard.discardConfirm'), style: 'destructive', onPress: leave },
-    ]);
-  }, [stepIndex, dirty, leave, goToStep, t]);
-
-  // Android back button follows the wizard steps instead of leaving silently.
-  useEffect(() => {
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      handleBack();
-      return true;
-    });
-    return () => sub.remove();
-  }, [handleBack]);
-
-  /** Shows the first invalid step and its error; returns true when the form is valid. */
-  const ensureValid = useCallback(() => {
-    for (const [index, s] of WIZARD_STEPS.entries()) {
-      const err = validateStep(form, s, today);
-      if (err) {
-        goToStep(index);
-        showError(err);
-        return false;
-      }
-    }
-    return true;
-  }, [form, today, goToStep, showError]);
 
   /** Creates or replaces the campaign; returns its id. */
   const saveDraft = useCallback(async (): Promise<string> => {
@@ -353,11 +263,12 @@ export default function ScratchCampaignWizard() {
       if (isScheduled) await unscheduleMutation.mutateAsync(id);
       setDirty(false);
       Alert.alert(t('scratch.wizard.draftSaved'));
+      allowLeave();
       router.replace({ pathname: '/scratch-campaigns/[id]', params: { id } });
     } catch (e) {
       Alert.alert(t('common.error'), getErrorMessage(e, t('common.genericError')));
     }
-  }, [busy, ensureValid, saveDraft, isScheduled, unscheduleMutation, router, t]);
+  }, [busy, ensureValid, saveDraft, isScheduled, unscheduleMutation, allowLeave, router, t]);
 
   const doSend = useCallback(async () => {
     try {
@@ -365,11 +276,12 @@ export default function ScratchCampaignWizard() {
       setDirty(false);
       await scheduleMutation.mutateAsync({ id, sendAt: sendAtIso(form) });
       Alert.alert(form.sendMode === 'now' ? t('scratch.wizard.sentSuccess') : t('scratch.wizard.scheduledSuccess'));
+      allowLeave();
       router.replace({ pathname: '/scratch-campaigns/[id]', params: { id } });
     } catch (e) {
       Alert.alert(t('common.error'), getErrorMessage(e, t('common.genericError')));
     }
-  }, [saveDraft, scheduleMutation, form, router, t]);
+  }, [saveDraft, scheduleMutation, form, allowLeave, router, t]);
 
   const handleSend = useCallback(() => {
     if (busy || !ensureValid()) return;
@@ -384,7 +296,6 @@ export default function ScratchCampaignWizard() {
     ]);
   }, [busy, ensureValid, estimate.data?.total, form.sendMode, form.sendDay, form.sendSlot, locale, t, doSend]);
 
-  // ── Preview data (same rules as the JitPlus card screen) ──
   const merchantName = merchant?.nom ?? '';
   const logoUrl = merchant?.logoUrl ? resolveImageUrl(merchant.logoUrl) : null;
   const previewIndex = Math.max(0, form.rewards.findIndex((r) => r.key === previewRewardKey));
@@ -439,7 +350,7 @@ export default function ScratchCampaignWizard() {
     return (
       <View style={[styles.container, { backgroundColor: theme.bg }]}>
         <ScreenHeader title={title} onBack={leave} />
-        <View style={[styles.padded, styles.errorWrap]}>
+        <View style={[styles.padded, styles.gap]}>
           <Notice tone="danger" text={t('scratch.wizard.loadError')} />
           <Button label={t('common.retry')} onPress={() => void refetchExisting()} loading={refetchingExisting} />
         </View>
@@ -456,15 +367,11 @@ export default function ScratchCampaignWizard() {
     );
   }
 
-  const textAlign = isRTL ? 'right' : 'left';
-  const row = isRTL ? 'row-reverse' : 'row';
-  const previewWidth = Math.min(width - 64, 360);
+  const previewWidth = Math.min(width - 96, 360);
   const nowMs = Date.now();
   const sendYmd = sendYmdOf(form, today);
   const message = form.message.trim();
   const campaignName = form.name.trim();
-  const audienceOptionsOpen = showAudienceOptions || !MAIN_AUDIENCE_TYPES.includes(form.audienceType);
-  const dateOptionsOpen = showDateOptions || form.durationDays == null;
   const audienceDescription = (type: ScratchAudienceType) =>
     t(`scratch.wizard.audienceDesc.${type}`, { value: type === form.audienceType ? form.audienceValue : AUDIENCE_DEFAULT_VALUES[type] });
   const timingLine = t('scratch.wizard.durationSummary', {
@@ -474,91 +381,64 @@ export default function ScratchCampaignWizard() {
   const sendLine = form.sendMode === 'now'
     ? t('scratch.wizard.summarySendNow')
     : t('scratch.wizard.summarySendLater', { date: formatYmd(form.sendDay, locale), slot: form.sendSlot });
+  const reachLine = estimate.data ? t('scratch.wizard.reach', { count: estimate.data.total }) : t('scratch.wizard.estimateLoading');
 
-  const editLink = (index: number) => (
-    <TouchableOpacity
-      onPress={() => goToStep(index)}
-      hitSlop={10}
-      accessibilityRole="button"
-      accessibilityLabel={t('scratch.wizard.edit')}
-      style={[styles.editLink, { flexDirection: row }]}
-    >
-      <Pencil size={14} color={theme.primary} />
-      <Text style={[styles.editLinkText, { color: theme.primary }]} maxFontSizeMultiplier={1.3}>{t('scratch.wizard.edit')}</Text>
-    </TouchableOpacity>
-  );
+  let footer: ReactNode;
+  if (!isLast) {
+    footer = (
+      <WizardFooter onBack={stepIndex > 0 ? back : undefined} primary={{ label: nextLabel, onPress: next }} />
+    );
+  } else {
+    footer = (
+      <WizardFooter
+        secondary={{
+          icon: Save,
+          label: isScheduled ? t('scratch.wizard.unscheduleSave') : t('scratch.wizard.saveDraft'),
+          onPress: handleSaveDraft,
+          disabled: busy,
+        }}
+        primary={{
+          icon: form.sendMode === 'now' ? Send : Clock,
+          label: form.sendMode === 'now' ? t('scratch.wizard.sendBtn') : t('scratch.wizard.scheduleBtn'),
+          onPress: handleSend,
+          loading: busy,
+          disabled: estimate.data?.total === 0,
+        }}
+      />
+    );
+  }
 
   return (
-    <KeyboardAvoidingView style={[styles.container, { backgroundColor: theme.bg }]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScreenHeader title={title} onBack={handleBack} />
+    <WizardShell
+      title={title}
+      onBack={back}
+      stepLabels={stepLabels}
+      index={stepIndex}
+      heading={heading}
+      hint={hint}
+      scrollRef={scrollRef}
+      footer={footer}
+    >
+      {step === 'gift' && (
+        <>
+          {!editId && (
+            <Section title={t('scratch.wizard.templateTitle')}>
+              <HelpText text={t('scratch.wizard.templateHint')} />
+              {CAMPAIGN_TEMPLATES.map((tpl) => (
+                <OptionCard
+                  key={tpl}
+                  icon={TEMPLATE_ICONS[tpl]}
+                  title={t(`scratch.wizard.template.${tpl}.title`)}
+                  description={t(`scratch.wizard.template.${tpl}.desc`)}
+                  selected={template === tpl}
+                  onPress={() => applyTemplate(tpl)}
+                />
+              ))}
+            </Section>
+          )}
 
-      <View style={[styles.stepper, { flexDirection: row }]}>
-        {WIZARD_STEPS.map((s, i) => {
-          const done = i < stepIndex;
-          const current = i === stepIndex;
-          return (
-            <TouchableOpacity
-              key={s}
-              onPress={() => (i < stepIndex ? goToStep(i) : undefined)}
-              disabled={i >= stepIndex}
-              accessibilityRole="button"
-              accessibilityState={{ selected: current, disabled: i >= stepIndex }}
-              style={styles.stepItem}
-            >
-              <View
-                style={[
-                  styles.stepDot,
-                  { backgroundColor: done || current ? theme.primary : theme.bgInput, borderColor: current ? theme.primary : 'transparent' },
-                ]}
-              >
-                {done
-                  ? <Check size={13} color="#FFFFFF" strokeWidth={3} />
-                  : <Text style={[styles.stepNum, { color: current ? '#FFFFFF' : theme.textMuted }]}>{i + 1}</Text>}
-              </View>
-              <Text
-                style={[styles.stepName, { color: current ? theme.text : theme.textMuted }]}
-                numberOfLines={1}
-                maxFontSizeMultiplier={1.2}
-              >
-                {t(STEP_TITLES[s])}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-
-      <ScrollView
-        ref={scrollRef}
-        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 120 }]}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        {step === 'gift' && (
-          <>
-            {!editId && (
-              <Section title={t('scratch.wizard.templateTitle')}>
-                <Text style={[styles.muted, { color: theme.textMuted, textAlign }]} maxFontSizeMultiplier={1.4}>
-                  {t('scratch.wizard.templateHint')}
-                </Text>
-                {CAMPAIGN_TEMPLATES.map((tpl) => (
-                  <OptionCard
-                    key={tpl}
-                    icon={TEMPLATE_ICONS[tpl]}
-                    title={t(`scratch.wizard.template.${tpl}.title`)}
-                    description={t(`scratch.wizard.template.${tpl}.desc`)}
-                    selected={template === tpl}
-                    onPress={() => applyTemplate(tpl)}
-                  />
-                ))}
-              </Section>
-            )}
-
-            <Text style={[styles.blockTitle, { color: theme.text, textAlign }]} maxFontSizeMultiplier={1.3}>
-              {t('scratch.wizard.rewardsTitle')}
-            </Text>
-            <Text style={[styles.muted, { color: theme.textMuted, textAlign }]} maxFontSizeMultiplier={1.4}>
-              {t('scratch.wizard.rewardsHint')}
-            </Text>
+          <Section title={t('scratch.wizard.rewardsTitle')}>
+            <HelpText text={t('scratch.wizard.rewardsHint')} />
             {form.rewards.map((r, i) => (
               <RewardEditor
                 key={r.key}
@@ -573,405 +453,303 @@ export default function ScratchCampaignWizard() {
             ))}
             {form.rewards.length > 1 && assured < 1 && <Notice tone="danger" text={t('scratch.wizard.chancesTooHigh')} />}
             {form.rewards.length < SCRATCH_LIMITS.MAX_REWARDS && (
-              <Button
-                variant="secondary"
-                icon={Plus}
-                label={t('scratch.wizard.addReward')}
-                onPress={() => {
-                  setDirty(true);
-                  rewardsTouchedRef.current = true;
-                  dispatch({ type: 'ADD_REWARD' });
-                }}
-              />
+              <Button variant="secondary" icon={Plus} label={t('scratch.wizard.addReward')} onPress={addReward} />
             )}
-          </>
-        )}
+          </Section>
+        </>
+      )}
 
-        {step === 'audience' && (
-          <>
-            <Section title={t('scratch.wizard.audience')}>
-              {MAIN_AUDIENCE_TYPES.map((type) => (
-                <OptionCard
+      {step === 'audience' && (
+        <Section>
+          {MAIN_AUDIENCE_TYPES.map((type) => (
+            <OptionCard
+              key={type}
+              title={t(`scratch.wizard.audienceType.${type}`)}
+              description={audienceDescription(type)}
+              selected={form.audienceType === type}
+              onPress={() => selectAudience(type)}
+            />
+          ))}
+
+          <MoreOptions open={audienceOptions.open} onToggle={audienceOptions.toggle} label={t('scratch.wizard.audienceMore')}>
+            <ChipRow>
+              {SCRATCH_AUDIENCE_TYPES.filter((type) => !MAIN_AUDIENCE_TYPES.includes(type)).map((type) => (
+                <Chip
                   key={type}
-                  title={t(`scratch.wizard.audienceType.${type}`)}
-                  description={audienceDescription(type)}
+                  label={t(`scratch.wizard.audienceType.${type}`)}
                   selected={form.audienceType === type}
                   onPress={() => selectAudience(type)}
                 />
               ))}
+            </ChipRow>
+            {form.audienceType !== 'ALL_CLIENTS' && (
+              <>
+                <FieldLabel text={form.audienceType === 'MIN_STAMPS' ? t('scratch.wizard.audienceStamps') : t('scratch.wizard.audienceDays')} />
+                <Input
+                  value={form.audienceValue}
+                  onChangeText={(v) => set({ audienceValue: digitsOnly(v) })}
+                  keyboardType="number-pad"
+                  maxLength={4}
+                  accessibilityLabel={form.audienceType === 'MIN_STAMPS' ? t('scratch.wizard.audienceStamps') : t('scratch.wizard.audienceDays')}
+                />
+              </>
+            )}
+          </MoreOptions>
 
-              <View style={[styles.reach, { backgroundColor: theme.bgInput }]}>
-                {estimate.isFetching && !estimate.data ? (
-                  <Text style={[styles.muted, { color: theme.textMuted, textAlign }]}>{t('scratch.wizard.estimateLoading')}</Text>
-                ) : estimate.data ? (
-                  <>
-                    <Text style={[styles.reachMain, { color: theme.text, textAlign }]} maxFontSizeMultiplier={1.3}>
-                      {t('scratch.wizard.reach', { count: estimate.data.total })}
-                    </Text>
-                    <Text style={[styles.muted, { color: theme.textSecondary, textAlign }]} maxFontSizeMultiplier={1.4}>
-                      {t('scratch.wizard.reachPush', { count: estimate.data.reachableByPush })}
-                    </Text>
-                  </>
-                ) : null}
-              </View>
-              {estimate.data?.total === 0 && <Notice tone="warning" text={t('scratch.wizard.audienceEmpty')} />}
-              {!!estimate.data?.withoutApp && (
-                <Notice text={t('scratch.wizard.withoutApp', { count: estimate.data.withoutApp, date: formatYmd(form.cardExpiresOn, locale, false) })} />
-              )}
+          <View style={[styles.reach, { backgroundColor: theme.bgInput }]} accessibilityLiveRegion="polite">
+            {estimate.isFetching && !estimate.data ? (
+              <HelpText text={t('scratch.wizard.estimateLoading')} />
+            ) : estimate.data ? (
+              <>
+                <Text style={[styles.reachMain, { color: theme.text, textAlign }]} maxFontSizeMultiplier={1.3}>{reachLine}</Text>
+                <HelpText tone="secondary" text={t('scratch.wizard.reachPush', { count: estimate.data.reachableByPush })} />
+              </>
+            ) : null}
+          </View>
+          {estimate.data?.total === 0 && <Notice tone="warning" text={t('scratch.wizard.audienceEmpty')} />}
+          {!!estimate.data?.withoutApp && (
+            <Notice text={t('scratch.wizard.withoutApp', { count: estimate.data.withoutApp, date: formatYmd(form.cardExpiresOn, locale, false) })} />
+          )}
+        </Section>
+      )}
 
-              <MoreOptions
-                open={audienceOptionsOpen}
-                onToggle={() => setShowAudienceOptions((v) => !v)}
-                label={t('scratch.wizard.audienceMore')}
-              >
+      {step === 'sending' && (
+        <>
+          <Section title={t('scratch.wizard.sendWhen')}>
+            <ChipRow>
+              <Chip label={t('scratch.wizard.sendNow')} selected={form.sendMode === 'now'} onPress={() => set({ sendMode: 'now' })} />
+              <Chip
+                label={t('scratch.wizard.sendLater')}
+                selected={form.sendMode === 'later'}
+                onPress={() => set({ sendMode: 'later', sendSlot: pickSendSlot(form.sendDay, form.sendSlot) })}
+              />
+            </ChipRow>
+            {form.sendMode === 'later' && (
+              <>
+                <DateField
+                  label={t('scratch.wizard.sendDay')}
+                  value={form.sendDay}
+                  minYmd={today}
+                  maxYmd={addDaysYmd(today, MAX_SCHEDULE_DAYS)}
+                  onChange={(sendDay) => set({ sendDay, sendSlot: pickSendSlot(sendDay, form.sendSlot) })}
+                />
+                <FieldLabel text={t('scratch.wizard.sendSlot')} />
                 <ChipRow>
-                  {SCRATCH_AUDIENCE_TYPES.filter((type) => !MAIN_AUDIENCE_TYPES.includes(type)).map((type) => (
+                  {SCRATCH_SEND_SLOTS.map((slot) => (
                     <Chip
-                      key={type}
-                      label={t(`scratch.wizard.audienceType.${type}`)}
-                      selected={form.audienceType === type}
-                      onPress={() => selectAudience(type)}
+                      key={slot}
+                      label={slot}
+                      selected={form.sendSlot === slot}
+                      disabled={isSlotUnavailable(form.sendDay, slot, nowMs)}
+                      onPress={() => set({ sendSlot: slot })}
                     />
                   ))}
                 </ChipRow>
-                {form.audienceType !== 'ALL_CLIENTS' && (
-                  <>
-                    <FieldLabel text={form.audienceType === 'MIN_STAMPS' ? t('scratch.wizard.audienceStamps') : t('scratch.wizard.audienceDays')} />
-                    <Input
-                      value={form.audienceValue}
-                      onChangeText={(v) => set({ audienceValue: v.replace(/[^0-9]/g, '') })}
-                      keyboardType="number-pad"
-                      maxLength={4}
-                      accessibilityLabel={form.audienceType === 'MIN_STAMPS' ? t('scratch.wizard.audienceStamps') : t('scratch.wizard.audienceDays')}
-                    />
-                  </>
+                {isSlotPast(form.sendDay, form.sendSlot, nowMs) && <Notice tone="warning" text={t('scratch.wizard.slotPast')} />}
+                {isSlotQuiet(form.sendDay, form.sendSlot) && <Notice tone="warning" text={t('scratch.wizard.slotQuiet')} />}
+                {isSlotTooFar(form.sendDay, form.sendSlot, nowMs) && (
+                  <Notice tone="warning" text={t('scratch.wizard.slotTooFar', { days: MAX_SCHEDULE_DAYS })} />
                 )}
-              </MoreOptions>
-            </Section>
+              </>
+            )}
+          </Section>
 
-            <Section title={t('scratch.wizard.sendWhen')}>
-              <ChipRow>
-                <Chip label={t('scratch.wizard.sendNow')} selected={form.sendMode === 'now'} onPress={() => set({ sendMode: 'now' })} />
+          <Section title={t('scratch.wizard.durationTitle')}>
+            <ChipRow>
+              {DURATION_PRESETS.map((days) => (
                 <Chip
-                  label={t('scratch.wizard.sendLater')}
-                  selected={form.sendMode === 'later'}
-                  onPress={() => set({ sendMode: 'later', sendSlot: pickSendSlot(form.sendDay, form.sendSlot) })}
+                  key={days}
+                  label={t(`scratch.wizard.duration${days}`)}
+                  selected={form.durationDays === days}
+                  onPress={() => set({ durationDays: days })}
                 />
-              </ChipRow>
-              {form.sendMode === 'later' && (
-                <>
-                  <DateField
-                    label={t('scratch.wizard.sendDay')}
-                    value={form.sendDay}
-                    minYmd={today}
-                    maxYmd={addDaysYmd(today, MAX_SCHEDULE_DAYS)}
-                    onChange={(sendDay) => set({ sendDay, sendSlot: pickSendSlot(sendDay, form.sendSlot) })}
-                  />
-                  <FieldLabel text={t('scratch.wizard.sendSlot')} />
-                  <ChipRow>
-                    {SCRATCH_SEND_SLOTS.map((slot) => (
-                      <Chip
-                        key={slot}
-                        label={slot}
-                        selected={form.sendSlot === slot}
-                        disabled={isSlotUnavailable(form.sendDay, slot, nowMs)}
-                        onPress={() => set({ sendSlot: slot })}
-                      />
-                    ))}
-                  </ChipRow>
-                  {isSlotPast(form.sendDay, form.sendSlot, nowMs) && <Notice tone="warning" text={t('scratch.wizard.slotPast')} />}
-                  {isSlotQuiet(form.sendDay, form.sendSlot) && <Notice tone="warning" text={t('scratch.wizard.slotQuiet')} />}
-                  {isSlotTooFar(form.sendDay, form.sendSlot, nowMs) && (
-                    <Notice tone="warning" text={t('scratch.wizard.slotTooFar', { days: MAX_SCHEDULE_DAYS })} />
-                  )}
-                </>
-              )}
-            </Section>
-
-            <Section title={t('scratch.wizard.durationTitle')}>
-              <ChipRow>
-                {DURATION_PRESETS.map((days) => (
-                  <Chip
-                    key={days}
-                    label={t(`scratch.wizard.duration${days}`)}
-                    selected={form.durationDays === days}
-                    onPress={() => set({ durationDays: days })}
-                  />
-                ))}
-              </ChipRow>
-              <Text style={[styles.timeline, { color: theme.textSecondary, textAlign }]} maxFontSizeMultiplier={1.4}>
-                {timingLine}
-              </Text>
-              <MoreOptions
-                open={dateOptionsOpen}
-                onToggle={() => setShowDateOptions((v) => !v)}
-                label={t('scratch.wizard.customDates')}
-              >
-                <DateField
-                  label={t('scratch.wizard.cardDeadline')}
-                  value={form.cardExpiresOn}
-                  minYmd={addDaysYmd(sendYmd, 1)}
-                  maxYmd={addDaysYmd(sendYmd, SCRATCH_LIMITS.MAX_CARD_DAYS)}
-                  onChange={(cardExpiresOn) => set({ cardExpiresOn, durationDays: null })}
-                />
-                <DateField
-                  label={t('scratch.wizard.couponDeadline')}
-                  value={form.couponExpiresOn}
-                  minYmd={addDaysYmd(form.cardExpiresOn, SCRATCH_LIMITS.MIN_COUPON_AFTER_CARD_DAYS)}
-                  maxYmd={addDaysYmd(sendYmd, SCRATCH_LIMITS.MAX_COUPON_DAYS)}
-                  onChange={(couponExpiresOn) => set({ couponExpiresOn, durationDays: null })}
-                />
-                {couponGapIsShort(form) && <Notice tone="warning" text={t('scratch.wizard.gapWarning')} />}
-              </MoreOptions>
-            </Section>
-          </>
-        )}
-
-        {step === 'review' && (
-          <>
-            {/* 1. The card, with its theme */}
-            <Section title={t('scratch.wizard.previewCard')}>
-              <View style={[styles.designRow, { flexDirection: row }]}>
-                {SCRATCH_CARD_DESIGNS.map((d) => {
-                  const selected = d.id === form.designId;
-                  return (
-                    <TouchableOpacity
-                      key={d.id}
-                      onPress={() => set({ designId: d.id })}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected }}
-                      accessibilityLabel={t(d.nameKey)}
-                      style={[styles.designSwatch, { borderColor: selected ? theme.primary : 'transparent' }]}
-                    >
-                      <LinearGradient colors={[d.gradient[0], d.gradient[1]]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.designInner}>
-                        <Text style={styles.designMotif}>{d.motif}</Text>
-                      </LinearGradient>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-              <ChipRow>
-                <Chip label={t('scratch.wizard.previewBefore')} selected={previewSide === 'before'} onPress={() => setPreviewSide('before')} />
-                <Chip label={t('scratch.wizard.previewAfter')} selected={previewSide === 'after'} onPress={() => setPreviewSide('after')} />
-              </ChipRow>
-              {previewSide === 'after' && form.rewards.length > 1 && (
-                <ChipRow>
-                  {rewardInputs.map((input, i) => (
-                    <Chip
-                      key={form.rewards[i].key}
-                      label={rewardDisplay(input, t).headline || t('scratch.wizard.rewardN', { n: i + 1 })}
-                      selected={previewIndex === i}
-                      onPress={() => setPreviewRewardKey(form.rewards[i].key)}
-                    />
-                  ))}
-                </ChipRow>
-              )}
-
-              <View style={styles.previewWrap}>
-                {message ? (
-                  <Text style={[styles.previewMessage, { color: theme.textSecondary }]} numberOfLines={4} maxFontSizeMultiplier={1.3}>
-                    « {message} »
-                  </Text>
-                ) : null}
-                <View style={{ width: previewWidth, height: scratchCardHeight(previewWidth) }}>
-                  <ScratchCardFace
-                    designId={form.designId}
-                    width={previewWidth}
-                    merchantName={merchantName}
-                    logoUrl={logoUrl}
-                    caption={previewSide === 'before' ? t('scratch.card.alwaysWin') : t('scratch.card.youWon')}
-                    rewardText={previewDisplay?.headline}
-                    rewardDetail={previewDisplay?.detail}
-                    footer={campaignName || t('scratch.card.offeredBy', { merchant: merchantName })}
-                    isRTL={isRTL}
-                  />
-                  {previewSide === 'before' && (
-                    <ScratchCardCover designId={form.designId} width={previewWidth} label={t('scratch.card.scratchHere')} />
-                  )}
-                </View>
-                {previewSide === 'before' ? (
-                  <Text style={[styles.muted, styles.centerText, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>
-                    {t('scratch.card.expiresOn', { date: formatYmd(form.cardExpiresOn, locale, false) })}
-                  </Text>
-                ) : (
-                  <View style={[styles.conditionsBox, { backgroundColor: theme.bgInput, borderColor: theme.borderLight }]}>
-                    <Text style={[styles.conditionsTitle, { color: theme.textMuted, textAlign }]} maxFontSizeMultiplier={1.3}>
-                      {t('scratch.wizard.previewConditions')}
-                    </Text>
-                    {previewConditions.map((line, i) => (
-                      <Text key={i} style={[styles.conditionLine, { color: theme.textSecondary, textAlign }]} maxFontSizeMultiplier={1.3}>
-                        • {line}
-                      </Text>
-                    ))}
-                  </View>
-                )}
-              </View>
-              {!merchant?.logoUrl && <Notice tone="warning" text={t('scratch.wizard.previewNoLogo')} />}
-            </Section>
-
-            {/* 2. Name and message (pre-filled, optional to change) */}
-            <Section title={t('scratch.wizard.nameTitle')}>
-              <FieldLabel text={t('scratch.wizard.name')} hint={t('scratch.wizard.nameHint')} />
-              <Input
-                value={form.name}
-                onChangeText={(name) => set({ name })}
-                placeholder={t('scratch.wizard.namePlaceholder')}
-                maxLength={SCRATCH_LIMITS.NAME_MAX}
-                accessibilityLabel={t('scratch.wizard.name')}
+              ))}
+            </ChipRow>
+            <Text style={[styles.timeline, { color: theme.textSecondary, textAlign }]} maxFontSizeMultiplier={1.4}>
+              {timingLine}
+            </Text>
+            <MoreOptions open={dateOptions.open} onToggle={dateOptions.toggle} label={t('scratch.wizard.customDates')}>
+              <DateField
+                label={t('scratch.wizard.cardDeadline')}
+                value={form.cardExpiresOn}
+                minYmd={addDaysYmd(sendYmd, 1)}
+                maxYmd={addDaysYmd(sendYmd, SCRATCH_LIMITS.MAX_CARD_DAYS)}
+                onChange={(cardExpiresOn) => set({ cardExpiresOn, durationDays: null })}
               />
-              <FieldLabel text={t('scratch.wizard.message')} hint={t('scratch.wizard.messageHint')} />
-              <Input
-                value={form.message}
-                onChangeText={(msg) => set({ message: msg })}
-                placeholder={t('scratch.wizard.messagePlaceholder')}
-                maxLength={SCRATCH_LIMITS.MESSAGE_MAX}
-                multiline
-                accessibilityLabel={t('scratch.wizard.message')}
+              <DateField
+                label={t('scratch.wizard.couponDeadline')}
+                value={form.couponExpiresOn}
+                minYmd={addDaysYmd(form.cardExpiresOn, SCRATCH_LIMITS.MIN_COUPON_AFTER_CARD_DAYS)}
+                maxYmd={addDaysYmd(sendYmd, SCRATCH_LIMITS.MAX_COUPON_DAYS)}
+                onChange={(couponExpiresOn) => set({ couponExpiresOn, durationDays: null })}
               />
-            </Section>
+              {couponGapIsShort(form) && <Notice tone="warning" text={t('scratch.wizard.gapWarning')} />}
+            </MoreOptions>
+          </Section>
+        </>
+      )}
 
-            {/* 3. Notification as received by the customer */}
-            <Section title={t('scratch.wizard.previewPush')}>
-              <View style={[styles.push, { backgroundColor: theme.bgElevated, borderColor: theme.borderLight, flexDirection: row }]}>
-                <MerchantLogo logoUrl={merchant?.logoUrl} style={styles.pushLogo} />
-                <View style={styles.flex}>
-                  <Text style={[styles.pushApp, { color: theme.textMuted, textAlign }]} maxFontSizeMultiplier={1.2}>
-                    {t('scratch.wizard.previewPushApp')}
-                  </Text>
-                  <Text style={[styles.pushTitle, { color: theme.text, textAlign }]} numberOfLines={2} maxFontSizeMultiplier={1.3}>
-                    {t('scratch.wizard.pushTitle', { merchant: merchantName })}
-                  </Text>
-                  <Text style={[styles.pushBody, { color: theme.textSecondary, textAlign }]} numberOfLines={3} maxFontSizeMultiplier={1.3}>
-                    {message ? t('scratch.wizard.pushBody', { message }) : t('scratch.wizard.pushBodyDefault')}
-                  </Text>
-                </View>
-              </View>
-              <Text style={[styles.muted, { color: theme.textMuted, textAlign }]} maxFontSizeMultiplier={1.4}>
-                {t('scratch.wizard.previewPushHint')}
-              </Text>
-            </Section>
-
-            {/* 4. Summary, each block links back to its step */}
-            <Section title={t('scratch.wizard.summary')}>
-              <View style={[styles.summaryBlock, { borderBottomColor: theme.borderLight }]}>
-                <View style={[styles.summaryHead, { flexDirection: row }]}>
-                  <Text style={[styles.summaryLabel, { color: theme.textMuted, textAlign }]}>{t('scratch.wizard.stepGift')}</Text>
-                  {editLink(0)}
-                </View>
+      {step === 'look' && (
+        <>
+          <Section title={t('scratch.wizard.previewCard')}>
+            <View style={[styles.designRow, { flexDirection: row }]}>
+              {SCRATCH_CARD_DESIGNS.map((d) => {
+                const selected = d.id === form.designId;
+                return (
+                  <TouchableOpacity
+                    key={d.id}
+                    onPress={() => set({ designId: d.id })}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    accessibilityLabel={t(d.nameKey)}
+                    style={[styles.designSwatch, { borderColor: selected ? theme.primary : 'transparent' }]}
+                  >
+                    <LinearGradient colors={[d.gradient[0], d.gradient[1]]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.designInner}>
+                      <View style={[styles.designDot, { backgroundColor: d.gradient[1] }]} />
+                    </LinearGradient>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <ChipRow>
+              <Chip label={t('scratch.wizard.previewBefore')} selected={previewSide === 'before'} onPress={() => setPreviewSide('before')} />
+              <Chip label={t('scratch.wizard.previewAfter')} selected={previewSide === 'after'} onPress={() => setPreviewSide('after')} />
+            </ChipRow>
+            {previewSide === 'after' && form.rewards.length > 1 && (
+              <ChipRow>
                 {rewardInputs.map((input, i) => (
-                  <Text key={form.rewards[i].key} style={[styles.summaryLine, { color: theme.textSecondary, textAlign }]} numberOfLines={2}>
-                    • {rewardDisplay(input, t).headline} · {t('scratch.wizard.chance', { percent: i === 0 ? assured : input.weight })}
-                    {estimate.data?.total ? ` · ${t('scratch.wizard.expectedCount', { count: expected[i]?.expected ?? 0 })}` : ''}
+                  <Chip
+                    key={form.rewards[i].key}
+                    label={rewardDisplay(input, t).headline || t('scratch.wizard.rewardN', { n: i + 1 })}
+                    selected={previewIndex === i}
+                    onPress={() => setPreviewRewardKey(form.rewards[i].key)}
+                  />
+                ))}
+              </ChipRow>
+            )}
+
+            <ScratchPreview
+              designId={form.designId}
+              width={previewWidth}
+              merchantName={merchantName}
+              logoUrl={logoUrl}
+              side={previewSide}
+              rewardText={previewDisplay?.headline}
+              rewardDetail={previewDisplay?.detail}
+              footer={campaignName || t('scratch.card.offeredBy', { merchant: merchantName })}
+              message={message}
+              expiresLabel={t('scratch.card.expiresOn', { date: formatYmd(form.cardExpiresOn, locale, false) })}
+            />
+            {previewSide === 'after' && (
+              <View style={[styles.conditionsBox, { backgroundColor: theme.bgInput, borderColor: theme.borderLight }]}>
+                <Text style={[styles.conditionsTitle, { color: theme.textMuted, textAlign }]} maxFontSizeMultiplier={1.3}>
+                  {t('scratch.wizard.previewConditions')}
+                </Text>
+                {previewConditions.map((line, i) => (
+                  <Text key={i} style={[styles.conditionLine, { color: theme.textSecondary, textAlign }]} maxFontSizeMultiplier={1.3}>
+                    • {line}
                   </Text>
                 ))}
               </View>
+            )}
+            {!merchant?.logoUrl && <Notice tone="warning" text={t('scratch.wizard.previewNoLogo')} />}
+          </Section>
 
-              <View style={styles.summaryBlockLast}>
-                <View style={[styles.summaryHead, { flexDirection: row }]}>
-                  <Text style={[styles.summaryLabel, { color: theme.textMuted, textAlign }]}>{t('scratch.wizard.stepWho')}</Text>
-                  {editLink(1)}
-                </View>
-                <Text style={[styles.summaryMain, { color: theme.text, textAlign }]}>
-                  {estimate.data ? t('scratch.wizard.reach', { count: estimate.data.total }) : t('scratch.wizard.estimateLoading')}
+          <Section title={t('scratch.wizard.nameTitle')}>
+            <FieldLabel text={t('scratch.wizard.name')} hint={t('scratch.wizard.nameHint')} />
+            <Input
+              value={form.name}
+              onChangeText={(name) => set({ name })}
+              placeholder={t('scratch.wizard.namePlaceholder')}
+              maxLength={SCRATCH_LIMITS.NAME_MAX}
+              accessibilityLabel={t('scratch.wizard.name')}
+            />
+            <FieldLabel text={t('scratch.wizard.message')} hint={t('scratch.wizard.messageHint')} />
+            <Input
+              value={form.message}
+              onChangeText={(msg) => set({ message: msg })}
+              placeholder={t('scratch.wizard.messagePlaceholder')}
+              maxLength={SCRATCH_LIMITS.MESSAGE_MAX}
+              multiline
+              accessibilityLabel={t('scratch.wizard.message')}
+            />
+          </Section>
+
+          <Section title={t('scratch.wizard.previewPush')}>
+            <View style={[styles.push, { backgroundColor: theme.bgElevated, borderColor: theme.borderLight, flexDirection: row }]}>
+              <MerchantLogo logoUrl={merchant?.logoUrl} style={styles.pushLogo} />
+              <View style={styles.flex}>
+                <Text style={[styles.pushApp, { color: theme.textMuted, textAlign }]} maxFontSizeMultiplier={1.2}>
+                  {t('scratch.wizard.previewPushApp')}
                 </Text>
-                <Text style={[styles.summaryLine, { color: theme.textSecondary, textAlign }]}>
-                  {t(`scratch.wizard.audienceType.${form.audienceType}`)} · {audienceDescription(form.audienceType)}
+                <Text style={[styles.pushTitle, { color: theme.text, textAlign }]} numberOfLines={2} maxFontSizeMultiplier={1.3}>
+                  {t('scratch.wizard.pushTitle', { merchant: merchantName })}
                 </Text>
-                <Text style={[styles.summaryLine, { color: theme.textSecondary, textAlign }]}>{sendLine}</Text>
-                <Text style={[styles.summaryLine, { color: theme.textSecondary, textAlign }]}>{timingLine}</Text>
+                <Text style={[styles.pushBody, { color: theme.textSecondary, textAlign }]} numberOfLines={3} maxFontSizeMultiplier={1.3}>
+                  {message ? t('scratch.wizard.pushBody', { message }) : t('scratch.wizard.pushBodyDefault')}
+                </Text>
               </View>
-            </Section>
+            </View>
+            <HelpText text={t('scratch.wizard.previewPushHint')} />
+          </Section>
+        </>
+      )}
 
-            {expected.some((e) => e.stockShort) && <Notice tone="warning" text={t('scratch.wizard.stockShort')} />}
-            {estimate.data?.total === 0 && <Notice tone="danger" text={t('scratch.wizard.audienceEmpty')} />}
-            {isScheduled && <Notice text={t('scratch.wizard.scheduledEditNote')} />}
-          </>
-        )}
-      </ScrollView>
+      {step === 'review' && (
+        <>
+          <Section>
+            <ReviewBlock label={stepLabels[0]} onEdit={() => goTo(0)}>
+              {rewardInputs.map((input, i) => (
+                <ReviewLine
+                  key={form.rewards[i].key}
+                  text={`• ${rewardDisplay(input, t).headline} · ${t('scratch.wizard.chance', { percent: i === 0 ? assured : input.weight })}${
+                    estimate.data?.total ? ` · ${t('scratch.wizard.expectedCount', { count: expected[i]?.expected ?? 0 })}` : ''
+                  }`}
+                />
+              ))}
+            </ReviewBlock>
+            <ReviewBlock label={stepLabels[1]} onEdit={() => goTo(1)}>
+              <ReviewLine strong text={reachLine} />
+              <ReviewLine text={`${t(`scratch.wizard.audienceType.${form.audienceType}`)} · ${audienceDescription(form.audienceType)}`} />
+            </ReviewBlock>
+            <ReviewBlock label={stepLabels[2]} onEdit={() => goTo(2)}>
+              <ReviewLine strong text={sendLine} />
+              <ReviewLine text={timingLine} />
+            </ReviewBlock>
+            <ReviewBlock label={stepLabels[3]} onEdit={() => goTo(3)} last>
+              <ReviewLine strong text={campaignName} />
+              {message ? <ReviewLine text={`« ${message} »`} /> : null}
+            </ReviewBlock>
+          </Section>
 
-      <View style={[styles.footer, { paddingBottom: insets.bottom + 12, backgroundColor: theme.bg, borderTopColor: theme.borderLight }]}>
-        {isLast ? (
-          <View style={[styles.footerRow, { flexDirection: row }]}>
-            <Button
-              variant="secondary"
-              icon={Save}
-              label={isScheduled ? t('scratch.wizard.unscheduleSave') : t('scratch.wizard.saveDraft')}
-              onPress={handleSaveDraft}
-              disabled={busy}
-              style={styles.flex}
-            />
-            <Button
-              icon={form.sendMode === 'now' ? Send : Clock}
-              label={form.sendMode === 'now' ? t('scratch.wizard.sendBtn') : t('scratch.wizard.scheduleBtn')}
-              onPress={handleSend}
-              loading={busy}
-              disabled={estimate.data?.total === 0}
-              style={styles.flex}
-            />
-          </View>
-        ) : (
-          <View style={[styles.footerRow, { flexDirection: row }]}>
-            {stepIndex > 0 && <Button variant="secondary" label={t('scratch.wizard.back')} onPress={handleBack} style={styles.flex} />}
-            <Button
-              label={stepIndex === WIZARD_STEPS.length - 2 ? t('scratch.wizard.toPreview') : t('scratch.wizard.next')}
-              onPress={goNext}
-              style={styles.flex}
-            />
-          </View>
-        )}
-      </View>
-    </KeyboardAvoidingView>
+          {expected.some((e) => e.stockShort) && <Notice tone="warning" text={t('scratch.wizard.stockShort')} />}
+          {estimate.data?.total === 0 && <Notice tone="danger" text={t('scratch.wizard.audienceEmpty')} />}
+          {isScheduled && <Notice text={t('scratch.wizard.scheduledEditNote')} />}
+        </>
+      )}
+    </WizardShell>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { alignItems: 'center', justifyContent: 'center' },
-  centerText: { textAlign: 'center' },
   padded: { padding: 16 },
-  errorWrap: { gap: 12 },
+  gap: { gap: 12 },
   flex: { flex: 1 },
-  stepper: { paddingHorizontal: 16, paddingBottom: 10, gap: 6 },
-  stepItem: { flex: 1, alignItems: 'center', gap: 4 },
-  stepDot: { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', borderWidth: 2 },
-  stepNum: { fontSize: ms(12), fontFamily: 'Lexend_600SemiBold' },
-  stepName: { fontSize: ms(11.5), fontFamily: 'Lexend_500Medium' },
-  content: { paddingHorizontal: 16, paddingTop: 8, gap: 14 },
-  blockTitle: { fontSize: ms(16), fontFamily: 'Lexend_600SemiBold', marginTop: 4 },
-  option: { alignItems: 'center', gap: 12, borderWidth: 1.5, borderRadius: 16, padding: 14 },
-  optionIcon: { fontSize: 24 },
-  optionTitle: { fontSize: ms(14.5), fontFamily: 'Lexend_600SemiBold' },
-  optionDesc: { fontSize: ms(12.5), fontFamily: 'Lexend_400Regular', lineHeight: ms(18), marginTop: 2 },
-  radio: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
-  reach: { borderRadius: 14, padding: 14, gap: 2, minHeight: 56, justifyContent: 'center' },
-  reachMain: { fontSize: ms(17), fontFamily: 'Lexend_600SemiBold' },
-  moreToggle: { alignItems: 'center', gap: 8, borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 12, minHeight: 44 },
-  moreText: { flex: 1, fontSize: ms(13.5), fontFamily: 'Lexend_500Medium' },
-  moreBody: { gap: 10 },
+  reach: { borderRadius: 12, padding: 14, gap: 2, minHeight: 56, justifyContent: 'center' },
+  reachMain: { fontSize: ms(17), fontFamily: font.semibold },
+  timeline: { fontSize: ms(13), lineHeight: ms(20), fontFamily: font.medium },
   designRow: { flexWrap: 'wrap', gap: 10 },
-  designSwatch: { width: 56, borderWidth: 2, borderRadius: 14, padding: 3 },
-  designInner: { width: '100%', height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  designMotif: { color: '#FFFFFF', fontSize: 18 },
-  previewWrap: { alignItems: 'center', gap: 10 },
-  previewMessage: { fontSize: ms(13.5), fontFamily: 'Lexend_400Regular', fontStyle: 'italic', textAlign: 'center', lineHeight: ms(20) },
-  muted: { fontSize: ms(12), fontFamily: 'Lexend_400Regular', lineHeight: ms(18) },
-  timeline: { fontSize: ms(13), lineHeight: ms(20), fontFamily: 'Lexend_500Medium' },
+  designSwatch: { width: 56, borderWidth: 2, borderRadius: 12, padding: 3 },
+  designInner: { width: '100%', height: 40, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  designDot: { width: 16, height: 16, borderRadius: 999, borderWidth: 2, borderColor: 'rgba(255,255,255,0.7)' },
   push: { borderRadius: 16, borderWidth: 1, padding: 12, gap: 10, alignItems: 'flex-start' },
-  pushLogo: { width: 38, height: 38, borderRadius: 10 },
-  pushApp: { fontSize: ms(11), fontFamily: 'Lexend_500Medium', marginBottom: 2 },
-  pushTitle: { fontSize: ms(13.5), fontFamily: 'Lexend_600SemiBold', lineHeight: ms(19) },
-  pushBody: { fontSize: ms(12.5), fontFamily: 'Lexend_400Regular', lineHeight: ms(18), marginTop: 2 },
+  pushLogo: { width: 38, height: 38, borderRadius: 8 },
+  pushApp: { fontSize: ms(11), fontFamily: font.medium, marginBottom: 2 },
+  pushTitle: { fontSize: ms(14), fontFamily: font.semibold, lineHeight: ms(19) },
+  pushBody: { fontSize: ms(13), fontFamily: font.regular, lineHeight: ms(18), marginTop: 2 },
   conditionsBox: { alignSelf: 'stretch', borderRadius: 12, borderWidth: 1, padding: 12, gap: 3 },
-  conditionsTitle: { fontSize: ms(11), fontFamily: 'Lexend_600SemiBold', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 },
-  conditionLine: { fontSize: ms(12.5), fontFamily: 'Lexend_400Regular', lineHeight: ms(18) },
-  summaryBlock: { gap: 4, paddingBottom: 12, borderBottomWidth: StyleSheet.hairlineWidth },
-  summaryBlockLast: { gap: 4 },
-  summaryHead: { alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  summaryLabel: { flexShrink: 1, fontSize: ms(11.5), fontFamily: 'Lexend_600SemiBold', textTransform: 'uppercase', letterSpacing: 0.4 },
-  summaryMain: { fontSize: ms(14.5), fontFamily: 'Lexend_600SemiBold', lineHeight: ms(20) },
-  summaryLine: { fontSize: ms(13), fontFamily: 'Lexend_400Regular', lineHeight: ms(19) },
-  editLink: { alignItems: 'center', gap: 4, minHeight: 32 },
-  editLinkText: { fontSize: ms(12.5), fontFamily: 'Lexend_600SemiBold' },
-  footer: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 16, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth },
-  footerRow: { gap: 10 },
+  conditionsTitle: { fontSize: ms(12), fontFamily: font.semibold, marginBottom: 2 },
+  conditionLine: { fontSize: ms(13), fontFamily: font.regular, lineHeight: ms(18) },
 });

@@ -33,6 +33,19 @@ export class SearchPaginationQueryDto extends PaginationQueryDto {
   search?: string;
 }
 
+export const MERCHANT_CLIENT_VIEWS = ['reward', 'loyal', 'inactive'] as const;
+export type MerchantClientView = (typeof MERCHANT_CLIENT_VIEWS)[number];
+
+/**
+ * Merchant's own client list — search + optional view (omitted = newest first).
+ */
+export class MerchantClientsQueryDto extends SearchPaginationQueryDto {
+  @ApiPropertyOptional({ enum: MERCHANT_CLIENT_VIEWS })
+  @IsOptional()
+  @IsIn(MERCHANT_CLIENT_VIEWS)
+  view?: MerchantClientView;
+}
+
 /**
  * Merchant list query — search + plan/status/categorie filters.
  */

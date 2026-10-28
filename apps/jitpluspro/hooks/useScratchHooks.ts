@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient, useInfiniteQuery, type QueryClient } from '@tanstack/react-query';
-import * as Crypto from 'expo-crypto';
+import { randomUUID } from '@/utils/crypto';
 import api from '@/services/api';
 import type {
   AudienceEstimate,
@@ -44,7 +44,6 @@ function useInvalidateCampaign() {
   };
 }
 
-// ── Campaigns ───────────────────────────────────────────────────
 
 export function useScratchCampaigns(enabled = true) {
   return useQuery<ScratchCampaignListItem[]>({
@@ -192,7 +191,6 @@ export function useReshareClaim() {
   });
 }
 
-// ── Coupons at the till ─────────────────────────────────────────
 
 export function useCheckCoupon() {
   return useMutation({
@@ -225,7 +223,7 @@ export function useRedeemCoupon() {
       (await api.post<CouponRedeemResult>(
         `${BASE}/coupons/${couponId}/redeem`,
         { purchaseAmount },
-        { headers: { 'Idempotency-Key': idempotencyKey ?? Crypto.randomUUID() } },
+        { headers: { 'Idempotency-Key': idempotencyKey ?? randomUUID() } },
       )).data,
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: scratchKeys.couponsAll });

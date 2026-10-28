@@ -4,7 +4,8 @@
  * - Expo Go SDK 51+: react-native-maps n'est plus inclus → graceful fallback
  */
 import React, { forwardRef, useEffect, useState } from 'react';
-import { Platform, View, Text, StyleSheet, NativeModules } from 'react-native';
+import { Platform, View, StyleSheet, NativeModules } from 'react-native';
+import { Text } from '@/components/AppText';
 import { requireOptionalNativeModule } from 'expo';
 import type MapViewType from 'react-native-maps';
 import type { Marker as MarkerType, MapViewProps, MapMarkerProps } from 'react-native-maps';

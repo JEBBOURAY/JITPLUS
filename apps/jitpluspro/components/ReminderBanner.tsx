@@ -1,8 +1,8 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import { X, ChevronRight } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { usePersistedFlag } from '@/hooks/usePersistedFlag';
 import { I18nManager } from 'react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -25,7 +25,7 @@ interface ReminderBannerProps {
 /**
  * Discreet, dismissable contextual reminder for deferred configuration data
  * (e.g. missing logo / address). Non-blocking; hidden once the data exists or
- * the merchant dismisses it. Light-violet gradient per BRIEF-DESIGN tokens.
+ * the merchant dismisses it.
  */
 export const ReminderBanner = React.memo(function ReminderBanner({
   visible,
@@ -40,22 +40,11 @@ export const ReminderBanner = React.memo(function ReminderBanner({
   const { t } = useLanguage();
   const isDark = theme.mode === 'dark';
   const isRTL = I18nManager.isRTL;
-  const [dismissed, setDismissed] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    AsyncStorage.getItem(storageKey)
-      .then((v) => active && setDismissed(v === 'true'))
-      .catch(() => active && setDismissed(false));
-    return () => {
-      active = false;
-    };
-  }, [storageKey]);
+  const { value: dismissed, setValue: setDismissed } = usePersistedFlag(storageKey);
 
   const handleDismiss = useCallback(() => {
     setDismissed(true);
-    AsyncStorage.setItem(storageKey, 'true').catch(() => {});
-  }, [storageKey]);
+  }, [setDismissed]);
 
   if (!visible || dismissed === null || dismissed) return null;
 

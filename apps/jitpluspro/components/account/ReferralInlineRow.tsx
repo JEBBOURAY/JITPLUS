@@ -1,9 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
-import { Gift, Copy, Check } from 'lucide-react-native';
+import { Copy, Check } from 'lucide-react-native';
+import { JitGift } from '@/components/icons';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { wp, hp, ms, fontSize as FS, radius } from '@/utils/responsive';
+import { font, icon } from '@/constants/design';
+import { useDir } from '@/hooks/useDir';
 import type { ImperativeRouter } from 'expo-router';
 
 interface Props {
@@ -19,6 +22,7 @@ interface Props {
  * Only rendered when a `referralCode` is provided.
  */
 export default React.memo(function ReferralInlineRow({ theme, t, referralCode, router }: Props) {
+  const dir = useDir();
   const [codeCopied, setCodeCopied] = useState(false);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -47,20 +51,20 @@ export default React.memo(function ReferralInlineRow({ theme, t, referralCode, r
       onPress={goToReferral}
       style={({ pressed }) => [
         styles.row,
-        { backgroundColor: theme.bgCard, borderColor: theme.borderLight },
+        { flexDirection: dir.row, backgroundColor: theme.bgCard, borderColor: theme.borderLight },
         pressed && { opacity: 0.8 },
       ]}
       accessibilityRole="button"
       accessibilityLabel={t('account.referralActive')}
     >
       <View style={styles.icon}>
-        <Gift size={ms(17)} color={palette.violet} strokeWidth={1.8} />
+        <JitGift size={ms(17)} color={palette.violet} strokeWidth={icon.stroke} />
       </View>
       <View style={styles.body}>
-        <Text style={[styles.title, { color: theme.text }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>
+        <Text style={[styles.title, { color: theme.text, textAlign: dir.textAlign }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>
           {t('account.referralActive')}
         </Text>
-        <Text style={[styles.sub, { color: theme.textMuted }]} numberOfLines={2} maxFontSizeMultiplier={1.3}>
+        <Text style={[styles.sub, { color: theme.textMuted, textAlign: dir.textAlign }]} numberOfLines={2} maxFontSizeMultiplier={1.3}>
           {codeCopied ? t('referral.codeCopied') : t('account.referralInviteHint')}
         </Text>
       </View>
@@ -69,6 +73,7 @@ export default React.memo(function ReferralInlineRow({ theme, t, referralCode, r
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         style={({ pressed }) => [
           styles.codeChip,
+          { flexDirection: dir.row },
           pressed && { opacity: 0.7 },
         ]}
         accessibilityRole="button"
@@ -79,8 +84,8 @@ export default React.memo(function ReferralInlineRow({ theme, t, referralCode, r
           {referralCode}
         </Text>
         {codeCopied
-          ? <Check size={ms(12)} color={palette.violet} strokeWidth={2.5} />
-          : <Copy size={ms(12)} color={palette.violet} strokeWidth={2} />}
+          ? <Check size={ms(12)} color={palette.violet} strokeWidth={icon.strokeSmall} />
+          : <Copy size={ms(12)} color={palette.violet} strokeWidth={icon.strokeSmall} />}
       </Pressable>
     </Pressable>
   );
@@ -100,7 +105,7 @@ const styles = StyleSheet.create({
   icon: {
     width: ms(36),
     height: ms(36),
-    borderRadius: ms(11),
+    borderRadius: radius.md,
     backgroundColor: 'rgba(124,58,237,0.09)',
     alignItems: 'center',
     justifyContent: 'center',
@@ -111,12 +116,12 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: FS.sm,
-    fontFamily: 'Lexend_600SemiBold',
+    fontFamily: font.semibold,
   },
   sub: {
-    fontSize: ms(10.5),
+    fontSize: FS.xs,
     marginTop: hp(1),
-    fontFamily: 'Lexend_400Regular',
+    fontFamily: font.regular,
   },
   codeChip: {
     flexDirection: 'row',
@@ -124,13 +129,13 @@ const styles = StyleSheet.create({
     gap: wp(5),
     paddingHorizontal: wp(10),
     paddingVertical: hp(5),
-    borderRadius: ms(9),
+    borderRadius: radius.sm,
     backgroundColor: 'rgba(124,58,237,0.08)',
   },
   codeText: {
-    fontSize: ms(11.5),
+    fontSize: ms(12),
     color: palette.violet,
     letterSpacing: 0.6,
-    fontFamily: 'Lexend_700Bold',
+    fontFamily: font.semibold,
   },
 });

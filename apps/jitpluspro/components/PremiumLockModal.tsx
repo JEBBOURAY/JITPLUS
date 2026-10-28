@@ -1,16 +1,20 @@
 import {
-  View,
   Text,
   TouchableOpacity,
   StyleSheet,
   Modal,
   Pressable,
 } from 'react-native';
-import { Info, Sparkles, X, Crown } from 'lucide-react-native';
+import { X } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { PremiumLockContent } from '@/components/PremiumLockCard';
+import { font, icon } from '@/constants/design';
+import { radius } from '@/utils/responsive';
+
+const SHEET_GRADIENT = ['#120826', palette.premiumBg] as const;
 
 interface PremiumLockModalProps {
   visible: boolean;
@@ -20,7 +24,7 @@ interface PremiumLockModalProps {
 }
 
 export default function PremiumLockModal({ visible, onClose, titleKey, descKey }: PremiumLockModalProps) {
-  const { t } = useLanguage();
+  const { t, isRTL } = useLanguage();
   const router = useRouter();
 
   const handleUpgrade = () => {
@@ -37,61 +41,41 @@ export default function PremiumLockModal({ visible, onClose, titleKey, descKey }
       onRequestClose={onClose}
     >
       <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel={t('common.close')}>
-        <Pressable style={styles.sheetOuter} onPress={(e) => e.stopPropagation()} accessibilityRole="summary" accessibilityViewIsModal={true}>
-          {/* Sheet */}
+        <Pressable
+          style={styles.sheet}
+          onPress={(e) => e.stopPropagation()}
+          accessibilityRole="summary"
+          accessibilityViewIsModal={true}
+        >
           <LinearGradient
-            colors={['#120826', palette.premiumBg]}
+            colors={SHEET_GRADIENT}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
-            style={[styles.sheet, { borderColor: palette.premiumBorder }]}
+            style={StyleSheet.absoluteFill}
+          />
+          <TouchableOpacity
+            style={[styles.closeBtn, isRTL ? { left: 16 } : { right: 16 }]}
+            onPress={onClose}
+            activeOpacity={0.7}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel={t('common.close')}
           >
-            {/* Close button */}
-            <TouchableOpacity style={styles.closeBtn} onPress={onClose} activeOpacity={0.7} hitSlop={10}>
-              <X size={18} color={palette.charbonUltraLight} strokeWidth={2} />
-            </TouchableOpacity>
+            <X size={icon.md} color={palette.charbonUltraLight} strokeWidth={icon.stroke} />
+          </TouchableOpacity>
 
-            {/* Crown icon */}
-            <View style={styles.iconWrap}>
-              <LinearGradient
-                colors={[palette.violetDark, palette.violet]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.iconBg}
-              >
-                <Crown size={30} color={palette.gold} strokeWidth={1.8} />
-              </LinearGradient>
-            </View>
+          <PremiumLockContent
+            title={t(titleKey)}
+            description={t(descKey)}
+            ctaLabel={t('messages.discoverPremium')}
+            onPress={handleUpgrade}
+            ctaSize="lg"
+            tone="sheet"
+          />
 
-            {/* PRO badge */}
-            <View style={styles.proBadge}>
-              <Sparkles size={10} color={palette.gold} strokeWidth={2} />
-              <Text style={styles.proBadgeText}>PRO</Text>
-            </View>
-
-            {/* Title */}
-            <Text style={styles.title}>{t(titleKey)}</Text>
-
-            {/* Description */}
-            <Text style={[styles.desc, { color: palette.charbonUltraLight }]}>{t(descKey)}</Text>
-
-            {/* Info CTA */}
-            <TouchableOpacity onPress={handleUpgrade} activeOpacity={0.85} style={styles.ctaWrap}>
-              <LinearGradient
-                colors={[palette.violetDark, palette.violet]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.cta}
-              >
-                <Info size={16} color={palette.gold} strokeWidth={2} />
-                <Text style={styles.ctaText}>{t('messages.discoverPremium')}</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-
-            {/* Cancel */}
-            <TouchableOpacity onPress={onClose} activeOpacity={0.7} style={styles.cancelBtn}>
-              <Text style={[styles.cancelText, { color: palette.charbonSoft }]}>{t('common.cancel')}</Text>
-            </TouchableOpacity>
-          </LinearGradient>
+          <TouchableOpacity onPress={onClose} activeOpacity={0.7} style={styles.cancelBtn}>
+            <Text style={styles.cancelText}>{t('common.cancel')}</Text>
+          </TouchableOpacity>
         </Pressable>
       </Pressable>
     </Modal>
@@ -104,18 +88,15 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'flex-end',
   },
-  sheetOuter: {
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    overflow: 'hidden',
-  },
   sheet: {
     borderTopWidth: 1,
     borderLeftWidth: 1,
     borderRightWidth: 1,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    alignItems: 'center',
+    borderColor: palette.premiumBorder,
+    overflow: 'hidden',
+    borderTopLeftRadius: radius['2xl'],
+    borderTopRightRadius: radius['2xl'],
+    alignItems: 'stretch',
     paddingTop: 32,
     paddingBottom: 40,
     paddingHorizontal: 24,
@@ -124,78 +105,17 @@ const styles = StyleSheet.create({
   closeBtn: {
     position: 'absolute',
     top: 16,
-    right: 18,
     padding: 4,
-  },
-  iconWrap: {
-    marginBottom: 4,
-  },
-  iconBg: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  proBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: palette.premiumBadgeBg,
-    borderWidth: 1,
-    borderColor: palette.premiumBadgeBorder,
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-  },
-  proBadgeText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: palette.violetLight,
-    letterSpacing: 1.2,
-    fontFamily: 'Lexend_700Bold',
-  },
-  title: {
-    fontSize: 19,
-    fontWeight: '800',
-    color: '#fff',
-    textAlign: 'center',
-    marginTop: 2,
-    fontFamily: 'Lexend_700Bold',
-  },
-  desc: {
-    fontSize: 14,
-    textAlign: 'center',
-    lineHeight: 21,
-    paddingHorizontal: 8,
-  },
-  ctaWrap: {
-    width: '100%',
-    marginTop: 8,
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-  cta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 16,
-    borderRadius: 16,
-  },
-  ctaText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
-    fontFamily: 'Lexend_700Bold',
+    zIndex: 1,
   },
   cancelBtn: {
+    alignSelf: 'center',
     paddingVertical: 8,
     paddingHorizontal: 20,
   },
   cancelText: {
     fontSize: 14,
-    fontWeight: '500',
-    fontFamily: 'Lexend_500Medium',
+    color: palette.charbonSoft,
+    fontFamily: font.medium,
   },
 });

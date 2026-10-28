@@ -1,5 +1,6 @@
 import { memo, type ReactNode } from 'react';
-import { ActivityIndicator, I18nManager, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, I18nManager, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Text } from '@/components/AppText';
 import { ChevronRight, type LucideIcon } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAppFonts } from '@/utils/fonts';

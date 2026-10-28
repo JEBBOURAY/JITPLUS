@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, Easing, View, Text, Pressable, TouchableOpacity, StyleSheet } from 'react-native';
+import { Animated, Easing, View, Pressable, TouchableOpacity, StyleSheet } from 'react-native';
+import { Text } from '@/components/AppText';
 import { useReducedMotion } from 'react-native-reanimated';
 import { Check, Gift, Stamp } from 'lucide-react-native';
 import { palette, type ThemeColors } from '@/contexts/ThemeContext';

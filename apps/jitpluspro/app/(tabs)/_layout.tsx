@@ -1,6 +1,6 @@
-import { useEffect, useRef } from 'react';
-import { Tabs, useRouter, useSegments } from 'expo-router';
-import { useAuth } from '@/contexts/AuthContext';
+import { useEffect } from 'react';
+import { Tabs, useRouter } from 'expo-router';
+import { useAuthStore } from '@/stores/authStore';
 import { useTheme } from '@/contexts/ThemeContext';
 import { ActivityIndicator, View } from 'react-native';
 import CustomTabBar from '@/components/CustomTabBar';
@@ -9,13 +9,10 @@ import { GuidedTourProvider } from '@/components/GuidedTour';
 const renderTabBar = (props: any) => <CustomTabBar {...props} />;
 
 export default function TabLayout() {
-  const { merchant, loading } = useAuth();
+  const isAuthenticated = useAuthStore((s) => !!s.merchant);
+  const loading = useAuthStore((s) => s.loading);
   const theme = useTheme();
   const router = useRouter();
-  const segments = useSegments();
-  const didEnforceHomeRef = useRef(false);
-
-  const isAuthenticated = !!merchant;
 
   // Auth is the ONLY blocking gate: email verification and business setup are
   // never a forced tunnel.
@@ -27,21 +24,6 @@ export default function TabLayout() {
     }
   }, [loading, isAuthenticated, router]);
 
-  // Ensure cold start lands on Accueil (not Clients/index) when opening tabs root.
-  // Do not override explicit deep links like /(tabs)/messages or /(tabs)/scan.
-  useEffect(() => {
-    if (loading || !isAuthenticated || didEnforceHomeRef.current) return;
-
-    const inTabsGroup = segments[0] === '(tabs)';
-    const activeTab = segments.at(1);
-    const shouldRedirectToHome = inTabsGroup && (!activeTab || activeTab === 'index');
-
-    if (shouldRedirectToHome) {
-      didEnforceHomeRef.current = true;
-      router.replace('/(tabs)/activity');
-    }
-  }, [loading, isAuthenticated, segments, router]);
-
   if (loading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.bg }}>
@@ -50,29 +32,25 @@ export default function TabLayout() {
     );
   }
 
-  if (!merchant) return null;
+  if (!isAuthenticated) return null;
 
   return (
     <GuidedTourProvider>
       <Tabs
-        initialRouteName="activity"
         tabBar={renderTabBar}
         screenOptions={{
           headerShown: false,
           animation: 'fade',
           lazy: true,
-          freezeOnBlur: true,
           // Scene background = our token so tab screens never flash the stock
           // navigation background (white/grey) during a theme swap.
           sceneStyle: { backgroundColor: theme.bg },
         }}
       >
-        {/* ── 5 visible tabs: Accueil · Clients · Scan · Messages · Support ── */}
-        <Tabs.Screen name="activity" options={{ title: 'Accueil' }} />
-        <Tabs.Screen name="index" options={{ title: 'Clients' }} />
+        <Tabs.Screen name="index" />
+        <Tabs.Screen name="clients" />
         <Tabs.Screen
           name="scan"
-          options={{ title: 'Scan' }}
           listeners={() => ({
             tabPress: (e) => {
               e.preventDefault();
@@ -80,11 +58,8 @@ export default function TabLayout() {
             },
           })}
         />
-        <Tabs.Screen name="messages" options={{ title: 'Messages' }} />
-        <Tabs.Screen name="support" options={{ title: 'Support' }} />
-
-        {/* ── Hidden route: Compte is reachable only via the avatar on Accueil ── */}
-        <Tabs.Screen name="account" options={{ href: null }} />
+        <Tabs.Screen name="messages" />
+        <Tabs.Screen name="team" />
 
       </Tabs>
     </GuidedTourProvider>

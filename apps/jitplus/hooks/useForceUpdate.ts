@@ -32,6 +32,7 @@ export type ForceUpdateStatus =
 export interface ForceUpdateState {
   status: ForceUpdateStatus;
   storeUrl: string;
+  recheck: () => Promise<void>;
 }
 
 // ── Store URL helper ──────────────────────────────────────────────────────────
@@ -99,5 +100,5 @@ export function useForceUpdate(): ForceUpdateState {
     };
   }, [check]);
 
-  return { status, storeUrl };
+  return { status, storeUrl, recheck: check };
 }

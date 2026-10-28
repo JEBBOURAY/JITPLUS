@@ -1,9 +1,11 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet,
+  View, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform, ActivityIndicator, Alert,
   ScrollView, Animated, Image,
 } from 'react-native';
+import { Text, TextInput } from '@/components/AppText';
+import { goHomeAfterLogin } from '@/services/pendingDeal';
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 import { router, useLocalSearchParams } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -72,7 +74,7 @@ export default function SetPasswordScreen() {
 
     if (result.success) {
       await AsyncStorage.setItem('showWelcome', '1');
-      router.replace('/(tabs)/qr');
+      goHomeAfterLogin(router);
     } else {
       if (result.isNetworkError) {
         Alert.alert(t('common.networkError'), result.error);

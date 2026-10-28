@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { Text } from '@/components/AppText';
 import { Banknote } from 'lucide-react-native';
 import { palette } from '@/contexts/ThemeContext';
 import { wp, hp, ms, fontSize as FS, radius } from '@/utils/responsive';

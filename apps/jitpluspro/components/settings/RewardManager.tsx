@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,9 +8,9 @@ import {
   ActivityIndicator,
   Alert,
   Image,
-  I18nManager,
 } from 'react-native';
-import { ChevronRight, Gift, Camera, X, Plus, Trash2, Sparkles } from 'lucide-react-native';
+import { ChevronRight, Camera, X, Plus, Trash2, Lightbulb } from 'lucide-react-native';
+import { JitGift } from '@/components/icons';
 // expo-image-picker is lazy-loaded inside the reward image picker handler.
 import api from '@/services/api';
 import { getErrorMessage } from '@/utils/error';
@@ -18,8 +18,10 @@ import PremiumLockModal from '@/components/PremiumLockModal';
 import InfoHint from '@/components/settings/InfoHint';
 import { palette, type ThemeColors } from '@/contexts/ThemeContext';
 import { ms } from '@/utils/responsive';
+import { useDir } from '@/hooks/useDir';
+import { font, icon } from '@/constants/design';
 import { resolveImageUrl } from '@/utils/imageUrl';
-import { useUploadRewardImage, queryKeys } from '@/hooks/useQueryHooks';
+import { useRewards, useUploadRewardImage, queryKeys } from '@/hooks/useQueryHooks';
 import { useQueryClient } from '@tanstack/react-query';
 
 interface Reward {
@@ -29,6 +31,8 @@ interface Reward {
   description?: string;
   imageUrl?: string | null;
 }
+
+const EMPTY_REWARDS: Reward[] = [];
 
 interface Props {
   theme: ThemeColors;
@@ -48,8 +52,8 @@ function RewardManagerBase({
   theme, t, isPremium, hasAccumulationLimit, accumulationLimit, stampsForReward,
   onRewardsChange, reloadToken,
 }: Props) {
-  const [rewards, setRewards] = useState<Reward[]>([]);
-  const [loadingRewards, setLoadingRewards] = useState(false);
+  const { data: rewards = EMPTY_REWARDS, isLoading: loadingRewards, error: rewardsError, refetch } = useRewards();
+  const previousReloadToken = useRef(reloadToken);
   const [savingReward, setSavingReward] = useState(false);
   const [rewardTitle, setRewardTitle] = useState('');
   const [rewardCost, setRewardCost] = useState('');
@@ -60,12 +64,13 @@ function RewardManagerBase({
   const [premiumLockVisible, setPremiumLockVisible] = useState(false);
   const uploadRewardImage = useUploadRewardImage();
   const qc = useQueryClient();
+  const { isRTL, row, textAlign, flip } = useDir();
   const unit = t('common.stamps');
   const stampUnit = (n: number) => (n === 1 ? t('common.stamp') : t('common.stamps'));
   const isDark = theme.mode === 'dark';
   const fill = isDark ? 'rgba(255,255,255,0.06)' : theme.bgInput;
   const rowFill = isDark ? 'rgba(255,255,255,0.04)' : theme.bgElevated;
-  const shadow = isDark
+  const panelShadow = isDark
     ? null
     : { shadowColor: '#0F172A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 14, elevation: 2 };
 
@@ -75,22 +80,20 @@ function RewardManagerBase({
     { title: t('settingsPage.suggestFreeItem'), cost: stampsForReward },
   ];
 
-  const loadRewards = useCallback(async () => {
-    setLoadingRewards(true);
-    try {
-      const res = await api.get('/rewards');
-      setRewards(res.data);
-      onRewardsChange?.(res.data);
-    } catch {
-      Alert.alert(t('common.error'), t('settingsPage.loadRewardsError'));
-    } finally {
-      setLoadingRewards(false);
-    }
-  }, [onRewardsChange, t]);
+  useEffect(() => {
+    onRewardsChange?.(rewards);
+  }, [onRewardsChange, rewards]);
 
   useEffect(() => {
-    void loadRewards();
-  }, [loadRewards, reloadToken]);
+    if (rewardsError) Alert.alert(t('common.error'), t('settingsPage.loadRewardsError'));
+  }, [rewardsError, t]);
+
+  useEffect(() => {
+    if (previousReloadToken.current !== reloadToken) {
+      previousReloadToken.current = reloadToken;
+      void refetch();
+    }
+  }, [reloadToken, refetch]);
 
   const handlePickRewardImage = async () => {
     try {
@@ -134,8 +137,7 @@ function RewardManagerBase({
       });
       setRewardTitle(''); setRewardCost(''); setRewardDescription(''); setRewardImageUrl(null);
       setShowForm(false);
-      qc.invalidateQueries({ queryKey: queryKeys.rewards });
-      await loadRewards();
+      await qc.invalidateQueries({ queryKey: queryKeys.rewards });
     } catch (err: unknown) {
       Alert.alert(t('common.error'), getErrorMessage(err, t('settingsPage.saveError')));
     } finally {
@@ -217,8 +219,7 @@ function RewardManagerBase({
       setEditingRewardId(null);
       setRewardTitle(''); setRewardCost(''); setRewardDescription(''); setRewardImageUrl(null);
       setShowForm(false);
-      qc.invalidateQueries({ queryKey: queryKeys.rewards });
-      await loadRewards();
+      await qc.invalidateQueries({ queryKey: queryKeys.rewards });
     } catch (err: unknown) {
       Alert.alert(t('common.error'), getErrorMessage(err, t('settingsPage.editRewardError')));
     } finally {
@@ -261,8 +262,7 @@ function RewardManagerBase({
         onPress: async () => {
           try {
             await api.delete(`/rewards/${rewardId}`);
-            qc.invalidateQueries({ queryKey: queryKeys.rewards });
-            await loadRewards();
+            await qc.invalidateQueries({ queryKey: queryKeys.rewards });
           } catch {
             Alert.alert(t('common.error'), t('settingsPage.deleteRewardError'));
           }
@@ -273,26 +273,23 @@ function RewardManagerBase({
 
   return (
     <>
-      {/* ── Panel: Cadeaux (§9) ── */}
-      <View style={[styles.panel, { backgroundColor: theme.bgCard }, shadow]}>
-        <View style={styles.panelHeader}>
+      <View style={[styles.panel, { backgroundColor: theme.bgCard }, panelShadow]}>
+        <View style={[styles.panelHeader, { flexDirection: row }]}>
           <View style={[styles.panelIcon, { backgroundColor: theme.primaryBg }]}>
-            <Gift size={17} color={theme.primary} strokeWidth={1.9} />
+            <JitGift size={18} color={theme.primary} strokeWidth={icon.stroke} />
           </View>
-          <Text style={[styles.panelTitle, { color: theme.text }]} maxFontSizeMultiplier={1.3} accessibilityRole="header">
+          <Text style={[styles.panelTitle, { color: theme.text, textAlign }]} maxFontSizeMultiplier={1.3} accessibilityRole="header">
             {rewards.length > 0 ? t('settingsPage.giftsCount', { count: rewards.length }) : t('settingsPage.giftsSection')}
           </Text>
         </View>
 
         <View style={styles.panelBody}>
           {showForm ? (
-            /* ── Separate add / edit form (progressive disclosure) ── */
             <View style={styles.rewardForm}>
-              <Text style={[styles.formTitle, { color: theme.text }]} maxFontSizeMultiplier={1.3}>
+              <Text style={[styles.formTitle, { color: theme.text, textAlign }]} maxFontSizeMultiplier={1.3}>
                 {editingRewardId ? t('settingsPage.editGiftTitle') : t('settingsPage.newGiftTitle')}
               </Text>
-              {/* Image picker */}
-              <View style={styles.imagePickerRow}>
+              <View style={[styles.imagePickerRow, { flexDirection: row }]}>
                 <TouchableOpacity
                   style={[styles.imagePickerThumb, { backgroundColor: fill }]}
                   onPress={handlePickRewardImage}
@@ -306,11 +303,11 @@ function RewardManagerBase({
                   ) : rewardImageUrl ? (
                     <Image source={{ uri: resolveImageUrl(rewardImageUrl) as string }} style={styles.imagePickerImg} />
                   ) : (
-                    <Camera size={ms(22)} color={theme.textMuted} strokeWidth={1.8} />
+                    <Camera size={ms(22)} color={theme.textMuted} strokeWidth={icon.stroke} />
                   )}
                 </TouchableOpacity>
                 <View style={{ flex: 1 }}>
-                  <View style={styles.imagePickerLabelRow}>
+                  <View style={[styles.imagePickerLabelRow, { flexDirection: row }]}>
                     <Text style={[styles.imagePickerLabel, { color: theme.text }]} maxFontSizeMultiplier={1.3}>
                       {t('settingsPage.rewardImageLabel')}
                     </Text>
@@ -319,12 +316,12 @@ function RewardManagerBase({
                   {rewardImageUrl && (
                     <TouchableOpacity
                       onPress={() => setRewardImageUrl(null)}
-                      style={styles.imagePickerRemove}
+                      style={[styles.imagePickerRemove, { flexDirection: row }]}
                       hitSlop={8}
                       accessibilityRole="button"
                       accessibilityLabel={t('common.delete')}
                     >
-                      <X size={12} color={theme.danger} strokeWidth={2} />
+                      <X size={12} color={theme.danger} strokeWidth={icon.strokeSmall} />
                       <Text style={[styles.imagePickerRemoveText, { color: theme.danger }]} maxFontSizeMultiplier={1.3}>
                         {t('common.delete')}
                       </Text>
@@ -333,7 +330,7 @@ function RewardManagerBase({
                 </View>
               </View>
               <TextInput
-                style={[styles.input, { backgroundColor: fill, color: theme.text }]}
+                style={[styles.input, { backgroundColor: fill, color: theme.text, textAlign }]}
                 value={rewardTitle}
                 onChangeText={setRewardTitle}
                 placeholder={t('settingsPage.giftName')}
@@ -341,9 +338,9 @@ function RewardManagerBase({
                 maxLength={80}
                 maxFontSizeMultiplier={1.3}
               />
-              <View style={styles.inputRow}>
+              <View style={[styles.inputRow, { flexDirection: row }]}>
                 <TextInput
-                  style={[styles.input, { backgroundColor: fill, color: theme.text }]}
+                  style={[styles.input, { backgroundColor: fill, color: theme.text, textAlign }]}
                   value={rewardCost}
                   onChangeText={setRewardCost}
                   keyboardType="numeric"
@@ -352,12 +349,12 @@ function RewardManagerBase({
                   maxLength={9}
                   maxFontSizeMultiplier={1.3}
                 />
-                <Text style={[styles.inputSuffix, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>
+                <Text style={[styles.inputSuffix, isRTL ? styles.inputSuffixRtl : styles.inputSuffixLtr, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>
                   {stampUnit(parseInt(rewardCost, 10))}
                 </Text>
               </View>
               <TextInput
-                style={[styles.input, { backgroundColor: fill, color: theme.text }]}
+                style={[styles.input, { backgroundColor: fill, color: theme.text, textAlign }]}
                 value={rewardDescription}
                 onChangeText={setRewardDescription}
                 placeholder={t('settingsPage.giftDesc')}
@@ -365,7 +362,7 @@ function RewardManagerBase({
                 maxLength={200}
                 maxFontSizeMultiplier={1.3}
               />
-              <View style={styles.formActions}>
+              <View style={[styles.formActions, { flexDirection: row }]}>
                 <TouchableOpacity
                   style={[styles.addRewardBtn, { backgroundColor: fill, flex: 1 }]}
                   onPress={handleCancelEdit}
@@ -399,26 +396,25 @@ function RewardManagerBase({
               <ActivityIndicator size="small" color={theme.primary} />
             </View>
           ) : rewards.length === 0 ? (
-            /* ── Empty state (§9) ── */
             <>
               <View style={[styles.giftEmpty, { backgroundColor: rowFill }]}>
                 <View style={[styles.giftEmptyIcon, { backgroundColor: theme.primaryBg }]}>
-                  <Gift size={20} color={theme.primary} strokeWidth={1.8} />
+                  <JitGift size={20} color={theme.primary} strokeWidth={icon.stroke} />
                 </View>
-                <View style={styles.giftEmptyTitleRow}>
+                <View style={[styles.giftEmptyTitleRow, { flexDirection: row }]}>
                   <Text style={[styles.giftEmptyTitle, { color: theme.text }]} maxFontSizeMultiplier={1.3}>
                     {t('settingsPage.noGiftsConfigured')}
                   </Text>
                   <InfoHint text={t('settingsPage.giftEmptyInfo')} />
                 </View>
               </View>
-              <View style={styles.suggestHeader}>
-                <Sparkles size={13} color={theme.textMuted} strokeWidth={2} />
+              <View style={[styles.suggestHeader, { flexDirection: row }]}>
+                <Lightbulb size={14} color={theme.textMuted} strokeWidth={icon.strokeSmall} />
                 <Text style={[styles.suggestTitle, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>
                   {t('settingsPage.suggestionsTitle')}
                 </Text>
               </View>
-              <View style={styles.suggestRow}>
+              <View style={[styles.suggestRow, { flexDirection: row }]}>
                 {suggestions.map((s) => {
                   const label = t(s.cost === 1 ? 'settingsPage.suggestionLabel_one' : 'settingsPage.suggestionLabel_other', {
                     title: s.title,
@@ -427,13 +423,13 @@ function RewardManagerBase({
                   return (
                     <TouchableOpacity
                       key={s.title}
-                      style={[styles.suggestChip, { backgroundColor: theme.primaryBg }]}
+                      style={[styles.suggestChip, { backgroundColor: theme.primaryBg, flexDirection: row }]}
                       onPress={() => handleUseSuggestion(s.title, s.cost)}
                       activeOpacity={0.75}
                       accessibilityRole="button"
                       accessibilityLabel={label}
                     >
-                      <Plus size={13} color={theme.primary} strokeWidth={2.4} />
+                      <Plus size={14} color={theme.primary} strokeWidth={icon.strokeSmall} />
                       <Text style={[styles.suggestChipText, { color: theme.primary }]} maxFontSizeMultiplier={1.2}>{label}</Text>
                     </TouchableOpacity>
                   );
@@ -442,22 +438,21 @@ function RewardManagerBase({
               <TouchableOpacity
                 onPress={handleOpenAddForm}
                 activeOpacity={0.85}
-                style={[styles.addGiftBtn, styles.solidBtn]}
+                style={[styles.addGiftBtn, styles.solidBtn, { flexDirection: row }]}
                 accessibilityRole="button"
                 accessibilityLabel={t('settingsPage.addGiftButton')}
               >
-                <Plus size={16} color="#fff" strokeWidth={2.3} />
+                <Plus size={16} color="#fff" strokeWidth={icon.stroke} />
                 <Text style={styles.addGiftBtnText} maxFontSizeMultiplier={1.2}>{t('settingsPage.addGiftButton')}</Text>
               </TouchableOpacity>
             </>
           ) : (
-            /* ── List state (§9) ── */
             <>
               <View style={styles.rewardList}>
                 {rewards.map((reward) => (
                   <TouchableOpacity
                     key={reward.id}
-                    style={[styles.rewardRow, { backgroundColor: rowFill }]}
+                    style={[styles.rewardRow, { backgroundColor: rowFill, flexDirection: row }]}
                     onPress={() => handleEditReward(reward)}
                     activeOpacity={0.7}
                     accessibilityRole="button"
@@ -467,14 +462,14 @@ function RewardManagerBase({
                       <Image source={{ uri: resolveImageUrl(reward.imageUrl) as string }} style={styles.rewardRowThumb} />
                     ) : (
                       <View style={[styles.rewardRowThumb, styles.rewardRowThumbFallback, { backgroundColor: theme.primaryBg }]}>
-                        <Gift size={ms(20)} color={theme.primary} strokeWidth={1.6} />
+                        <JitGift size={ms(20)} color={theme.primary} strokeWidth={icon.stroke} />
                       </View>
                     )}
                     <View style={styles.rewardRowInfo}>
-                      <Text style={[styles.rewardRowTitle, { color: theme.text }]} maxFontSizeMultiplier={1.3} numberOfLines={1}>
+                      <Text style={[styles.rewardRowTitle, { color: theme.text, textAlign }]} maxFontSizeMultiplier={1.3} numberOfLines={1}>
                         {reward.titre}
                       </Text>
-                      <Text style={[styles.rewardRowMeta, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>
+                      <Text style={[styles.rewardRowMeta, { color: theme.textMuted, textAlign }]} maxFontSizeMultiplier={1.3}>
                         {reward.cout} {stampUnit(reward.cout)}
                       </Text>
                     </View>
@@ -486,15 +481,15 @@ function RewardManagerBase({
                       accessibilityLabel={t('settingsPage.deleteGift')}
                       hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     >
-                      <Trash2 size={15} color={theme.danger} strokeWidth={2} />
+                      <Trash2 size={16} color={theme.danger} strokeWidth={icon.stroke} />
                     </TouchableOpacity>
-                    <ChevronRight size={16} color={theme.textMuted} style={I18nManager.isRTL ? { transform: [{ scaleX: -1 }] } : undefined} />
+                    <ChevronRight size={16} color={theme.textMuted} strokeWidth={icon.stroke} style={flip} />
                   </TouchableOpacity>
                 ))}
               </View>
               <TouchableOpacity onPress={handleOpenAddForm} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel={t('settingsPage.addGiftButton')}>
-                <View style={[styles.addGiftBtn, { backgroundColor: theme.primaryBg }]}>
-                  <Plus size={16} color={theme.primary} strokeWidth={2.3} />
+                <View style={[styles.addGiftBtn, { backgroundColor: theme.primaryBg, flexDirection: row }]}>
+                  <Plus size={16} color={theme.primary} strokeWidth={icon.stroke} />
                   <Text style={[styles.addGiftBtnText, { color: theme.primary }]} maxFontSizeMultiplier={1.2}>{t('settingsPage.addGiftButton')}</Text>
                 </View>
               </TouchableOpacity>
@@ -516,15 +511,13 @@ function RewardManagerBase({
 export const RewardManager = React.memo(RewardManagerBase);
 
 const styles = StyleSheet.create({
-  // ── Panel (§9) ──
-  // Same scale as app/settings.tsx: panel title 15/SemiBold, label 13.5/Medium, caption 12/Regular.
-  panel: { marginHorizontal: 16, marginTop: 18, borderRadius: 20 },
-  panelHeader: { flexDirection: 'row', alignItems: 'center', gap: 11, paddingTop: 16, paddingHorizontal: 16 },
-  panelIcon: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
-  panelTitle: { flex: 1, fontSize: 15, fontFamily: 'Lexend_600SemiBold', letterSpacing: -0.2 },
+  panel: { marginHorizontal: 16, marginTop: 18, borderRadius: 16 },
+  panelHeader: { alignItems: 'center', gap: 11, paddingTop: 16, paddingHorizontal: 16 },
+  panelIcon: { width: 34, height: 34, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  panelTitle: { flex: 1, fontSize: 15, fontFamily: font.semibold, letterSpacing: -0.2 },
   panelBody: { padding: 16, paddingTop: 14 },
-  formTitle: { fontSize: 13.5, fontFamily: 'Lexend_600SemiBold', marginBottom: 2 },
-  imagePickerLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  formTitle: { fontSize: 14, fontFamily: font.semibold, marginBottom: 2 },
+  imagePickerLabelRow: { alignItems: 'center', gap: 6 },
   solidBtn: {
     backgroundColor: palette.violet,
     borderBottomWidth: 3,
@@ -536,14 +529,12 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
 
-  // ── Suggestions (empty state) ──
-  suggestHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
-  suggestTitle: { fontSize: 12, fontFamily: 'Lexend_400Regular' },
-  suggestRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 },
-  suggestChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 20 },
-  suggestChipText: { fontSize: 12.5, fontFamily: 'Lexend_500Medium' },
+  suggestHeader: { alignItems: 'center', gap: 6, marginBottom: 8 },
+  suggestTitle: { fontSize: 12, fontFamily: font.regular },
+  suggestRow: { flexWrap: 'wrap', gap: 8, marginBottom: 14 },
+  suggestChip: { alignItems: 'center', gap: 5, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 999 },
+  suggestChipText: { fontSize: 13, fontFamily: font.medium },
 
-  // ── Empty state (§9) ──
   giftEmpty: {
     alignItems: 'center',
     paddingVertical: 24,
@@ -551,16 +542,15 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     marginBottom: 14,
   },
-  giftEmptyIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
-  giftEmptyTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  giftEmptyTitle: { fontSize: 13.5, fontFamily: 'Lexend_500Medium' },
+  giftEmptyIcon: { width: 44, height: 44, borderRadius: 999, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
+  giftEmptyTitleRow: { alignItems: 'center', gap: 6 },
+  giftEmptyTitle: { fontSize: 14, fontFamily: font.medium },
 
-  // ── Add button (§9) ──
-  addGiftBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingVertical: 13, borderRadius: 14 },
-  addGiftBtnText: { color: '#fff', fontSize: 14, fontFamily: 'Lexend_600SemiBold' },
+  addGiftBtn: { alignItems: 'center', justifyContent: 'center', gap: 7, paddingVertical: 13, borderRadius: 12 },
+  addGiftBtnText: { color: '#fff', fontSize: 14, fontFamily: font.semibold },
 
   rewardForm: { gap: 10, marginBottom: 12 },
-  imagePickerRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  imagePickerRow: { alignItems: 'center', gap: 12 },
   imagePickerThumb: {
     width: ms(64),
     height: ms(64),
@@ -570,28 +560,30 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   imagePickerImg: { width: '100%', height: '100%' },
-  imagePickerLabel: { fontSize: 14, fontFamily: 'Lexend_500Medium', marginBottom: 2 },
-  imagePickerRemove: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
-  imagePickerRemoveText: { fontSize: 12, fontFamily: 'Lexend_500Medium' },
+  imagePickerLabel: { fontSize: 14, fontFamily: font.medium, marginBottom: 2 },
+  imagePickerRemove: { alignItems: 'center', gap: 4, marginTop: 6 },
+  imagePickerRemoveText: { fontSize: 12, fontFamily: font.medium },
   input: {
     flex: 1,
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 15,
-    fontFamily: 'Lexend_500Medium',
+    fontFamily: font.medium,
   },
-  inputRow: { flexDirection: 'row', alignItems: 'center' },
-  inputSuffix: { marginLeft: 12, fontSize: 12, fontFamily: 'Lexend_500Medium' },
-  formActions: { flexDirection: 'row', gap: 8 },
+  inputRow: { alignItems: 'center' },
+  inputSuffix: { fontSize: 12, fontFamily: font.medium },
+  inputSuffixLtr: { marginLeft: 12 },
+  inputSuffixRtl: { marginRight: 12 },
+  formActions: { gap: 8 },
   addRewardBtn: { paddingVertical: 12, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  addRewardBtnText: { color: '#fff', fontSize: 14, fontFamily: 'Lexend_600SemiBold' },
+  addRewardBtnText: { color: '#fff', fontSize: 14, fontFamily: font.semibold },
   rewardList: { gap: 10 },
-  rewardRow: { borderRadius: 16, paddingVertical: 12, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  rewardRow: { borderRadius: 16, paddingVertical: 12, paddingHorizontal: 14, alignItems: 'center', gap: 10 },
   rewardRowThumb: { width: ms(44), height: ms(44), borderRadius: ms(12), overflow: 'hidden' },
   rewardRowThumbFallback: { alignItems: 'center', justifyContent: 'center' },
   rewardRowInfo: { flex: 1, minWidth: 0 },
-  rewardRowTitle: { fontSize: 13.5, fontFamily: 'Lexend_500Medium' },
-  rewardRowMeta: { fontSize: 12, marginTop: 2, fontFamily: 'Lexend_400Regular' },
-  rewardDeleteBtn: { width: 30, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  rewardRowTitle: { fontSize: 14, fontFamily: font.medium },
+  rewardRowMeta: { fontSize: 12, marginTop: 2, fontFamily: font.regular },
+  rewardDeleteBtn: { width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
 });

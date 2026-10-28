@@ -16,6 +16,9 @@ export const DEFAULT_PAGE_SIZE = 20;
 /** Milliseconds in a day */
 export const MS_PER_DAY = 86_400_000;
 
+/** A merchant's client is "inactive" after this many days without a visit */
+export const INACTIVE_CLIENT_DAYS = 30;
+
 /** OTP maximum attempts before lockout (reduced from 5 to harden brute-force resistance) */
 export const MAX_OTP_ATTEMPTS = 3;
 
@@ -88,8 +91,10 @@ export const ADMIN_STATS_CACHE_TTL = 2 * 60_000;
 export const REFERRAL_STATS_CACHE_TTL = 5 * 60_000;
 
 // ── Client refresh token ────────────────────────────────────
-/** Client refresh token lifetime in days */
-export const CLIENT_REFRESH_TOKEN_DAYS = 30;
+/** Client refresh token lifetime in days (sliding: renewed on every refresh) */
+export const CLIENT_REFRESH_TOKEN_DAYS = 365;
+/** Devices a client can stay signed in on at once (least recently used evicted) */
+export const MAX_SESSIONS_PER_CLIENT = 10;
 
 // ── Referral ────────────────────────────────────────────────
 /** Characters allowed in referral codes (no ambiguous chars like 0/O, I/1) */

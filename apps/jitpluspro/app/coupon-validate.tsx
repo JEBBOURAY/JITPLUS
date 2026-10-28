@@ -8,8 +8,9 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { CheckCircle2, XCircle, MinusCircle, QrCode, Ticket, CircleUser } from 'lucide-react-native';
-import * as Crypto from 'expo-crypto';
+import { CheckCircle2, XCircle, MinusCircle, CircleUser } from 'lucide-react-native';
+import { JitScan, JitTicket } from '@/components/icons';
+import { randomUUID } from '@/utils/crypto';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -18,6 +19,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useCheckCoupon, useRedeemCoupon } from '@/hooks/useScratchHooks';
 import { getErrorMessage } from '@/utils/error';
 import { ms } from '@/utils/responsive';
+import { font, icon } from '@/constants/design';
 import { MAX_AMOUNT_DIGITS } from '@/constants/app';
 import { computeStampsForAmount } from '@/utils/stamps';
 import { formatDateTime } from '@/utils/date';
@@ -55,14 +57,14 @@ export default function CouponValidateScreen() {
   const checkCoupon = useCheckCoupon();
   const redeemCoupon = useRedeemCoupon();
   // One key per coupon checked: a retry after a network failure replays safely.
-  const idemKeyRef = useRef(Crypto.randomUUID());
+  const idemKeyRef = useRef(randomUUID());
   const autoCheckRef = useRef(false);
 
   const runCheck = useCallback(
     (input: { token?: string; code?: string }) => {
       checkCoupon.mutate(input, {
         onSuccess: (data) => {
-          idemKeyRef.current = Crypto.randomUUID();
+          idemKeyRef.current = randomUUID();
           setCheckResult(data);
           setAmount('');
           setRedeemResult(null);
@@ -145,7 +147,7 @@ export default function CouponValidateScreen() {
     setCheckResult(null);
     setRedeemResult(null);
     setFromScan(false);
-    idemKeyRef.current = Crypto.randomUUID();
+    idemKeyRef.current = randomUUID();
   }, []);
 
   const checkLine = useCallback(
@@ -207,7 +209,6 @@ export default function CouponValidateScreen() {
   const rowDir = isRTL ? 'row-reverse' : 'row';
   const textAlign = isRTL ? 'right' : 'left';
 
-  // ── Success view ──
   if (redeemResult) {
     const totalStamps = redeemResult.stampsEarned + redeemResult.bonusStamps;
     return (
@@ -215,7 +216,7 @@ export default function CouponValidateScreen() {
         <ScreenHeader title={t('scratch.validate.title')} onBack={() => router.back()} />
         <View style={styles.successWrap}>
           <View style={[styles.successIcon, { backgroundColor: `${theme.success}14` }]}>
-            <CheckCircle2 size={ms(48)} color={theme.success} strokeWidth={1.5} />
+            <CheckCircle2 size={ms(48)} color={theme.success} strokeWidth={icon.stroke} />
           </View>
           <Text style={[styles.successTitle, { color: theme.text }]} maxFontSizeMultiplier={1.3}>
             {t('scratch.validate.successTitle')}
@@ -258,7 +259,6 @@ export default function CouponValidateScreen() {
       >
         {fromScan ? <Notice text={t('scratch.validate.detected')} /> : null}
 
-        {/* ── Code entry ── */}
         {!checkResult && (
           <Section>
             <FieldLabel text={t('scratch.validate.codeLabel')} />
@@ -271,10 +271,10 @@ export default function CouponValidateScreen() {
               autoFocus={!fromScan}
               style={styles.codeInput}
             />
-            <View style={styles.entryActions}>
+            <View style={[styles.entryActions, { flexDirection: rowDir }]}>
               <Button
                 label={t('scratch.validate.scan')}
-                icon={QrCode}
+                icon={JitScan}
                 variant="secondary"
                 onPress={() => router.replace({ pathname: '/scan-qr', params: { from: 'coupon' } })}
                 style={styles.entryButton}
@@ -290,21 +290,20 @@ export default function CouponValidateScreen() {
           </Section>
         )}
 
-        {/* ── Check result ── */}
         {checkResult && coupon && (
           <>
             <Section>
               <View style={[styles.clientRow, { flexDirection: rowDir }]}>
-                <CircleUser size={ms(20)} color={theme.textSecondary} strokeWidth={1.5} />
-                <Text style={[styles.clientName, { color: theme.text }]} maxFontSizeMultiplier={1.3}>
+                <CircleUser size={ms(20)} color={theme.textSecondary} strokeWidth={icon.stroke} />
+                <Text style={[styles.clientName, { color: theme.text, textAlign }]} maxFontSizeMultiplier={1.3}>
                   {[checkResult.client.prenom, checkResult.client.nom].filter(Boolean).join(' ') ||
                     t('transaction.defaultClient')}
                 </Text>
                 <Text style={[styles.codeChip, { color: theme.textMuted }]}>{formatCouponCode(coupon.code)}</Text>
               </View>
               <View style={[styles.clientRow, { flexDirection: rowDir }]}>
-                <Ticket size={ms(20)} color={theme.primary} strokeWidth={1.5} />
-                <Text style={[styles.rewardLabel, { color: theme.text }]} maxFontSizeMultiplier={1.3}>
+                <JitTicket size={ms(20)} color={theme.primary} strokeWidth={icon.stroke} />
+                <Text style={[styles.rewardLabel, { color: theme.text, textAlign }]} maxFontSizeMultiplier={1.3}>
                   {coupon.label}
                 </Text>
                 <Text style={[styles.rewardValue, { color: theme.primary }]}>
@@ -321,7 +320,7 @@ export default function CouponValidateScreen() {
                 const color = line.state === 'ok' ? theme.success : line.state === 'ko' ? theme.danger : theme.textMuted;
                 return (
                   <View key={check.key} style={[styles.checkRow, { flexDirection: rowDir }]}>
-                    <Icon size={ms(18)} color={color} strokeWidth={1.8} />
+                    <Icon size={ms(18)} color={color} strokeWidth={icon.stroke} />
                     <Text style={[styles.checkText, { color, textAlign }]} maxFontSizeMultiplier={1.4}>
                       {line.label}
                     </Text>
@@ -331,7 +330,6 @@ export default function CouponValidateScreen() {
               {anonymousBlocked ? <Notice tone="warning" text={t('scratch.validate.anonymous')} /> : null}
             </Section>
 
-            {/* ── Amount + preview ── */}
             {checkResult.canRedeem && (
               <Section>
                 <FieldLabel
@@ -389,9 +387,8 @@ export default function CouponValidateScreen() {
         )}
       </ScrollView>
 
-      {/* ── Bottom actions ── */}
       {checkResult && (
-        <View style={[styles.footer, { borderTopColor: theme.borderLight, backgroundColor: theme.bg }]}>
+        <View style={[styles.footer, { flexDirection: rowDir, borderTopColor: theme.borderLight, backgroundColor: theme.bg }]}>
           <Button label={t('scratch.validate.another')} variant="secondary" onPress={resetAll} style={styles.footerBtn} />
           {checkResult.canRedeem && (
             <Button
@@ -412,35 +409,34 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   content: { flex: 1 },
   contentInner: { padding: 16, gap: 14, paddingBottom: 24 },
-  codeInput: { fontSize: ms(22), fontFamily: 'Lexend_700Bold', letterSpacing: 4, textAlign: 'center' },
-  entryActions: { flexDirection: 'row', gap: 10 },
+  codeInput: { fontSize: ms(22), fontFamily: font.bold, letterSpacing: 4, textAlign: 'center' },
+  entryActions: { gap: 10 },
   entryButton: { flex: 1 },
   clientRow: { alignItems: 'center', gap: 10 },
-  clientName: { flex: 1, fontSize: ms(15), fontFamily: 'Lexend_600SemiBold' },
-  codeChip: { fontSize: ms(13), fontFamily: 'Lexend_500Medium', letterSpacing: 1 },
-  rewardLabel: { flex: 1, fontSize: ms(15), fontFamily: 'Lexend_600SemiBold' },
-  rewardValue: { fontSize: ms(15), fontFamily: 'Lexend_700Bold' },
+  clientName: { flex: 1, fontSize: ms(15), fontFamily: font.semibold },
+  codeChip: { fontSize: ms(13), fontFamily: font.medium, letterSpacing: 1 },
+  rewardLabel: { flex: 1, fontSize: ms(15), fontFamily: font.semibold },
+  rewardValue: { fontSize: ms(15), fontFamily: font.bold },
   checkRow: { alignItems: 'center', gap: 10 },
-  checkText: { flex: 1, fontSize: ms(13.5), fontFamily: 'Lexend_500Medium' },
+  checkText: { flex: 1, fontSize: ms(14), fontFamily: font.medium },
   previewBox: { gap: 8 },
   previewRow: { alignItems: 'center', justifyContent: 'space-between' },
-  previewLabel: { fontSize: ms(13.5), fontFamily: 'Lexend_500Medium' },
-  previewValue: { fontSize: ms(16), fontFamily: 'Lexend_700Bold' },
-  previewStamps: { fontSize: ms(13.5), fontFamily: 'Lexend_600SemiBold' },
-  previewHint: { fontSize: ms(11.5), fontFamily: 'Lexend_400Regular' },
+  previewLabel: { fontSize: ms(14), fontFamily: font.medium },
+  previewValue: { fontSize: ms(16), fontFamily: font.bold },
+  previewStamps: { fontSize: ms(14), fontFamily: font.semibold },
+  previewHint: { fontSize: ms(12), fontFamily: font.regular },
   footer: {
-    flexDirection: 'row',
     gap: 12,
     paddingHorizontal: 16,
     paddingTop: 12,
     paddingBottom: 16,
-    borderTopWidth: 1,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
   footerBtn: { flex: 1 },
   successWrap: { flex: 1, padding: 24, alignItems: 'center', justifyContent: 'center', gap: 18 },
   successIcon: { width: 96, height: 96, borderRadius: 48, alignItems: 'center', justifyContent: 'center' },
-  successTitle: { fontSize: ms(22), fontFamily: 'Lexend_700Bold' },
+  successTitle: { fontSize: ms(22), fontFamily: font.bold, textAlign: 'center' },
   successCard: { alignSelf: 'stretch' },
-  successLine: { fontSize: ms(15), fontFamily: 'Lexend_500Medium' },
+  successLine: { fontSize: ms(15), fontFamily: font.medium },
   successActions: { alignSelf: 'stretch', gap: 10 },
 });

@@ -6,10 +6,11 @@ export const MIN_PASSWORD_LENGTH = 8;
 
 /** Search input debounce delay in milliseconds */
 export const SEARCH_DEBOUNCE_MS = 350;
+/** Days without a visit before a client counts as inactive (mirrors the backend). */
+export const INACTIVE_CLIENT_DAYS = 30;
 // AsyncStorage keys
 export const ASYNC_STORAGE_KEYS = {
-  ACTIVITY_BANNER_DISMISSED: 'activity_banner_dismissed',
-  CLIENTS_BANNER_DISMISSED: 'clients_banner_dismissed',
+  WELCOME_SEEN: 'welcome_seen',
   // Contextual reminder banner (messages) dismissal.
   MESSAGES_LOGO_BANNER_DISMISSED: 'messages_logo_banner_dismissed',
   // Premium trial-end reminder (Accueil): stores the YYYY-MM-DD it was dismissed
@@ -21,36 +22,29 @@ export const ASYNC_STORAGE_KEYS = {
   // already detected as done, so they stay checked once older data leaves the
   // first loaded page (e.g. the first reward given).
   GUIDE_STEPS_DONE: 'guide_steps_done',
-  // Guided tour (Accueil): set to 'true' once the tour has been auto-proposed,
-  // so it is never proposed automatically again (still relaunchable via "?").
-  TOUR_AUTO_SHOWN: 'tour_auto_shown',
   // When set to 'true', disables anonymous crash diagnostics (Sentry).
   // Required so EU/GDPR users can opt out of diagnostic data collection,
   // even though it contains no PII.
   SENTRY_OPT_OUT: 'sentry_opt_out',
-  // Custom animated splash (SplashAnimated.tsx): set to '1' once the full
-  // sequence (shops scene + text) has been played on this install. Every
-  // launch after that plays the reduced ~250ms logo fade instead so returning
-  // users aren't slowed down.
-  SPLASH_SHOWN: 'splash_shown',
   // Lucky wheel screen: intro/hero card permanently hidden once dismissed.
   LUCKY_WHEEL_INTRO_DISMISSED: 'lucky_wheel_intro_dismissed',
-  // Accueil: one-time ecosystem poster ("how loyalty flows") shown after login.
-  WELCOME_POSTER_DISMISSED: 'welcome_poster_dismissed_v3',
+  // Scanner: first-visit guide modal, and the older "how it works" banner it replaces.
+  FIRST_SCAN_GUIDE_DONE: '@jitpluspro_first_scan_guide',
+  SCAN_HOW_IT_WORKS_DISMISSED: '@jitpluspro_scan_how_it_works_v2',
 };
 
 // Upload validation
 export const ALLOWED_LOGO_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif']);
-export const MAX_LOGO_SIZE_MB = 10; // aligned with backend MAX_FILE_SIZE (sharp optimizes server-side)
+const MAX_LOGO_SIZE_MB = 10; // aligned with backend MAX_FILE_SIZE (sharp optimizes server-side)
 export const MAX_LOGO_SIZE_BYTES = MAX_LOGO_SIZE_MB * 1024 * 1024;
 /** QR scan area ratio relative to screen width */
 export const SCAN_AREA_RATIO = 0.68;
 
-/** Navigation delay after QR scan detection (ms) */
-export const NAVIGATION_DELAY_MS = 600;
+/** Navigation delay after QR scan detection (ms): just long enough to see the "found" state */
+export const NAVIGATION_DELAY_MS = 150;
 
-/** Success modal display duration (ms) */
-export const SUCCESS_DISPLAY_MS = 2500;
+/** Success modal display duration (ms); the modal also closes on tap */
+export const SUCCESS_DISPLAY_MS = 1500;
 
 /** Maximum digits for amount input */
 export const MAX_AMOUNT_DIGITS = 8;

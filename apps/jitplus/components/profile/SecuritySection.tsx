@@ -1,13 +1,14 @@
-import { memo, useCallback, useState } from 'react';
+import { memo, useCallback, useEffect, useState } from 'react';
 import { Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
-import { FileDown, Lock, Share2 } from 'lucide-react-native';
+import { Bug, FileDown, Lock, Share2 } from 'lucide-react-native';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuthStore } from '@/stores/authStore';
 import { usePreferenceToggle } from '@/hooks/usePreferenceToggle';
 import { api } from '@/services/api';
+import { isCrashReportingEnabled, setCrashReportingEnabled } from '@/services/sentry';
 import { haptic, HapticStyle } from '@/utils/haptics';
 import SettingsGroup from './SettingsGroup';
 import SettingsRow from './SettingsRow';
@@ -19,9 +20,22 @@ function SecuritySection() {
   const shareInfo = useAuthStore((s) => s.client?.shareInfoMerchants ?? true);
   const { toggle, savingKey } = usePreferenceToggle();
   const [isExporting, setIsExporting] = useState(false);
+  const [crashReports, setCrashReports] = useState(true);
+
+  useEffect(() => {
+    let alive = true;
+    isCrashReportingEnabled().then((v) => { if (alive) setCrashReports(v); });
+    return () => { alive = false; };
+  }, []);
 
   const openPassword = useCallback(() => router.push('/change-password'), [router]);
   const toggleShare = useCallback(() => toggle('shareInfoMerchants'), [toggle]);
+  const toggleCrashReports = useCallback(() => {
+    haptic(HapticStyle.Light);
+    const next = !crashReports;
+    setCrashReports(next);
+    setCrashReportingEnabled(next).catch(() => {});
+  }, [crashReports]);
 
   const exportData = useCallback(() => {
     const run = async () => {
@@ -68,6 +82,14 @@ function SecuritySection() {
         checked={shareInfo}
         disabled={savingKey === 'shareInfoMerchants'}
         onPress={toggleShare}
+      />
+      <SettingsRow
+        icon={Bug}
+        title={t('profile.crashReports')}
+        subtitle={t('profile.crashReportsDesc')}
+        accessory="switch"
+        checked={crashReports}
+        onPress={toggleCrashReports}
       />
       <SettingsRow
         icon={FileDown}

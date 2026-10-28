@@ -8,12 +8,11 @@ import {
   KeyboardAvoidingView,
   Platform,
   BackHandler,
-  TouchableOpacity,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as Crypto from 'expo-crypto';
-import * as Haptics from 'expo-haptics';
+import { randomUUID } from '@/utils/crypto';
+import { hapticSuccess, safeSelection } from '@/utils/haptics';
 import { AlertTriangle } from 'lucide-react-native';
 
 import { useAuthStore } from '@/stores/authStore';
@@ -21,7 +20,9 @@ import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { getErrorMessage } from '@/utils/error';
-import { ms } from '@/utils/responsive';
+import { ms, radius } from '@/utils/responsive';
+import { font, icon } from '@/constants/design';
+import { ActionButton } from '@/components/ui/ActionButton';
 import { formatCurrency, DEFAULT_CURRENCY, getIntlLocale } from '@/config/currency';
 import { SUCCESS_DISPLAY_MS } from '@/constants/app';
 import {
@@ -63,31 +64,27 @@ interface SuccessState {
 }
 
 function haptic(kind: 'success' | 'selection') {
-  const p = kind === 'success'
-    ? Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
-    : Haptics.selectionAsync();
-  p.catch(() => undefined);
+  if (kind === 'success') hapticSuccess();
+  else safeSelection();
 }
 
 export default function TransactionAmountScreen() {
   const shouldWait = useRequireAuth();
   const router = useRouter();
-  const { clientId } = useLocalSearchParams<{ clientId: string }>();
+  const { clientId, scanTicket } = useLocalSearchParams<{ clientId: string; scanTicket?: string }>();
   const validClientId = clientId && isValidUUID(clientId) ? clientId : undefined;
   const merchant = useAuthStore((s) => s.merchant);
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { t, locale } = useLanguage();
 
-  // ── Data ──
-  const status = useClientStatus(validClientId);
+  const status = useClientStatus(validClientId, true, scanTicket);
   const { data: rewardsData, isLoading: loadingRewards } = useRewards();
   const { data: wheelInfo } = useLuckyWheelActiveInfo();
   const { data: clientPrizes = NO_PRIZES, isLoading: loadingPrizes } = useLuckyWheelClientPrizes(validClientId);
   const { data: clientCoupons = NO_COUPONS, isLoading: loadingCoupons } = useClientCouponsAtTill(validClientId);
   const recordTransaction = useRecordTransaction();
 
-  // ── Draft ──
   const mode: EarningMode = merchant?.stampEarningMode === 'PER_AMOUNT' ? 'PER_AMOUNT' : 'PER_VISIT';
   const [amount, setAmount] = useState('');
   const [countVisit, setCountVisit] = useState(true);
@@ -97,8 +94,8 @@ export default function TransactionAmountScreen() {
   const [success, setSuccess] = useState<SuccessState | null>(null);
 
   // One key per draft: a retry after a network failure is replayed, never doubled.
-  const earnKeyRef = useRef(Crypto.randomUUID());
-  const redeemKeyRef = useRef(Crypto.randomUUID());
+  const earnKeyRef = useRef(randomUUID());
+  const redeemKeyRef = useRef(randomUUID());
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const leavingRef = useRef(false);
 
@@ -115,7 +112,6 @@ export default function TransactionAmountScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per client id
   }, [validClientId]);
 
-  // ── Derived ──
   const customer = status.data;
   const currentStamps = customer?.stamps ?? 0;
   const rewards = rewardsData ?? NO_REWARDS;
@@ -154,25 +150,24 @@ export default function TransactionAmountScreen() {
   const winningsCount = clientPrizes.length + clientCoupons.length;
   const isDirty = amount !== '' || selectedRewardId !== null;
 
-  // ── Handlers ──
   const handleAmountChange = useCallback((text: string) => {
     const next = sanitizeAmountInput(text);
     if (next === null) return;
     setAmount(next);
     setPurchaseRecordedByCoupon(false);
-    earnKeyRef.current = Crypto.randomUUID();
+    earnKeyRef.current = randomUUID();
   }, []);
 
   const handleCountVisitChange = useCallback((value: boolean) => {
     setCountVisit(value);
     setPurchaseRecordedByCoupon(false);
-    earnKeyRef.current = Crypto.randomUUID();
+    earnKeyRef.current = randomUUID();
   }, []);
 
   const handleSelectReward = useCallback((id: string | null) => {
     haptic('selection');
     setSelectedRewardId(id);
-    redeemKeyRef.current = Crypto.randomUUID();
+    redeemKeyRef.current = randomUUID();
   }, []);
 
   const handleCouponRedeemed = useCallback((purchaseAmount: number) => {
@@ -181,7 +176,7 @@ export default function TransactionAmountScreen() {
     setAmount('');
     setCountVisit(false);
     setPurchaseRecordedByCoupon(true);
-    earnKeyRef.current = Crypto.randomUUID();
+    earnKeyRef.current = randomUUID();
   }, []);
 
   const leave = useCallback(() => {
@@ -234,6 +229,7 @@ export default function TransactionAmountScreen() {
             amount: amountNum,
             stamps: plan.earnStamps,
             idempotencyKey: earnKeyRef.current,
+            scanTicket,
           });
           credited = typeof tx?.stamps === 'number' ? tx.stamps : plan.creditedStamps;
         } else if (reward) {
@@ -244,6 +240,7 @@ export default function TransactionAmountScreen() {
             stamps: reward.cout,
             rewardId: reward.id,
             idempotencyKey: redeemKeyRef.current,
+            scanTicket,
           });
         }
         done.add(step);
@@ -252,7 +249,7 @@ export default function TransactionAmountScreen() {
       haptic('success');
       const balance = plan.balanceAfter - plan.creditedStamps + credited;
       const lines: string[] = [];
-      if (credited > 0) lines.push(t('stampScreen.successStamps', { count: credited }));
+      if (credited > 0) lines.push(t(credited === 1 ? 'stampScreen.successStamps_one' : 'stampScreen.successStamps_other', { count: credited }));
       if (done.has('redeem') && reward) lines.push(t('stampScreen.successReward', { title: reward.titre }));
       lines.push(t('stampScreen.successBalance', { count: balance }));
       setSuccess({
@@ -270,11 +267,11 @@ export default function TransactionAmountScreen() {
       if (done.has('earn')) {
         setAmount('');
         setCountVisit(false);
-        earnKeyRef.current = Crypto.randomUUID();
+        earnKeyRef.current = randomUUID();
       }
       if (done.has('redeem')) {
         setSelectedRewardId(null);
-        redeemKeyRef.current = Crypto.randomUUID();
+        redeemKeyRef.current = randomUUID();
       }
       const partial = done.has('redeem')
         ? t('stampScreen.partialRedeemDone')
@@ -288,7 +285,7 @@ export default function TransactionAmountScreen() {
     } finally {
       setSubmitting(false);
     }
-  }, [plan, submitting, validClientId, selectedReward, recordTransaction, amountNum, leave, t]);
+  }, [plan, submitting, validClientId, scanTicket, selectedReward, recordTransaction, amountNum, leave, t]);
 
   if (shouldWait) return null;
 
@@ -297,7 +294,7 @@ export default function TransactionAmountScreen() {
       return (
         <View style={styles.skeletonWrap}>
           {[ms(190), ms(120), ms(150)].map((height, i) => (
-            <View key={i} style={[styles.skeleton, { height, borderRadius: i === 0 ? 22 : 18, backgroundColor: theme.bgSkeleton }]} />
+            <View key={i} style={[styles.skeleton, { height, backgroundColor: theme.bgSkeleton }]} />
           ))}
         </View>
       );
@@ -305,15 +302,9 @@ export default function TransactionAmountScreen() {
     if (status.isError || !customer) {
       return (
         <View style={[cardStyles.card, cardSurface(theme), styles.errorCard]}>
-          <AlertTriangle size={ms(28)} color={theme.danger} strokeWidth={1.6} />
+          <AlertTriangle size={ms(28)} color={theme.danger} strokeWidth={icon.stroke} />
           <Text style={[styles.errorText, { color: theme.text }]}>{t('stampScreen.loadError')}</Text>
-          <TouchableOpacity
-            style={[styles.retry, { backgroundColor: theme.primary }]}
-            onPress={() => status.refetch()}
-            accessibilityRole="button"
-          >
-            <Text style={styles.retryText}>{t('common.retry')}</Text>
-          </TouchableOpacity>
+          <ActionButton label={t('common.retry')} onPress={() => status.refetch()} />
         </View>
       );
     }
@@ -410,9 +401,7 @@ const styles = StyleSheet.create({
   content: { flex: 1 },
   contentInner: { paddingTop: 4, paddingBottom: 28 },
   skeletonWrap: { gap: 14, paddingTop: 8 },
-  skeleton: { marginHorizontal: 16 },
+  skeleton: { marginHorizontal: 16, borderRadius: radius.lg },
   errorCard: { marginTop: 24, padding: 24, alignItems: 'center', gap: 12 },
-  errorText: { fontSize: ms(15), textAlign: 'center', fontFamily: 'Lexend_500Medium' },
-  retry: { borderRadius: 12, paddingHorizontal: 20, paddingVertical: 12, minHeight: 44, justifyContent: 'center' },
-  retryText: { color: '#fff', fontSize: ms(14), fontFamily: 'Lexend_700Bold' },
+  errorText: { fontSize: ms(15), textAlign: 'center', fontFamily: font.medium },
 });

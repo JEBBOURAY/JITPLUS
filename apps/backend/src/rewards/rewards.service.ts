@@ -6,6 +6,7 @@ import { IRewardRepository, REWARD_REPOSITORY } from './reward.repository.interf
 import { REWARDS_CACHE_TTL } from '../common/constants';
 import { MerchantPlanService } from '../merchant/services/merchant-plan.service';
 import { IStorageProvider, STORAGE_PROVIDER } from '../common/interfaces';
+import { assertImageAssignable } from '../storage/image-ownership';
 
 @Injectable()
 export class RewardsService {
@@ -18,8 +19,9 @@ export class RewardsService {
     @Inject(STORAGE_PROVIDER) private storage: IStorageProvider,
   ) {}
 
-  private async safeDeleteImage(url?: string | null): Promise<void> {
-    if (!url) return;
+  /** Only files stored under this merchant's prefix are deleted (see image-ownership). */
+  private async safeDeleteImage(merchantId: string, url?: string | null): Promise<void> {
+    if (!url || !this.storage.isOwnedBy(url, merchantId)) return;
     try {
       await this.storage.deleteFile(url);
     } catch (err) {
@@ -49,6 +51,7 @@ export class RewardsService {
 
   async create(merchantId: string, data: { titre: string; cout: number; description?: string; imageUrl?: string }): Promise<Reward> {
     if (data.cout <= 0) throw new BadRequestException('Le coût en tampons doit être supérieur à 0');
+    assertImageAssignable(this.storage, merchantId, data.imageUrl);
 
     // FREE plan: maximum 1 reward allowed
     const isPremium = await this.planService.isPremium(merchantId);
@@ -70,10 +73,11 @@ export class RewardsService {
     if (data.cout !== undefined && data.cout <= 0) throw new BadRequestException('Le coût en tampons doit être supérieur à 0');
     const reward = await this.rewardRepo.findOneByMerchant(id, merchantId);
     if (!reward) throw new NotFoundException('Récompense non trouvée ou ne vous appartient pas');
+    assertImageAssignable(this.storage, merchantId, data.imageUrl, [reward.imageUrl]);
     const updated = await this.rewardRepo.update(id, data);
     // Cleanup previous image if replaced or cleared
     if (data.imageUrl !== undefined && reward.imageUrl && reward.imageUrl !== data.imageUrl) {
-      await this.safeDeleteImage(reward.imageUrl);
+      await this.safeDeleteImage(merchantId, reward.imageUrl);
     }
     await this.invalidateCache(merchantId);
     return updated;
@@ -83,7 +87,7 @@ export class RewardsService {
     const reward = await this.rewardRepo.findOneByMerchant(id, merchantId);
     if (!reward) throw new NotFoundException('Récompense non trouvée ou ne vous appartient pas');
     const deleted = await this.rewardRepo.delete(id);
-    await this.safeDeleteImage(deleted.imageUrl);
+    await this.safeDeleteImage(merchantId, deleted.imageUrl);
     await this.invalidateCache(merchantId);
     return deleted;
   }

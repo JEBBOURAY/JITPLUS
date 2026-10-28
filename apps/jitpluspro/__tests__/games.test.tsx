@@ -20,6 +20,10 @@ jest.mock('@/contexts/LanguageContext', () => ({
   useLanguage: jest.fn(() => ({ t: (key: string) => key, isRTL: false })),
 }));
 jest.mock('@/contexts/ThemeContext', () => ({
+  palette: {
+    gold: '#FCD34D', charbon: '#1F2937', violetLight: '#A78BFA',
+    premiumBadgeBg: '#7C3AED28', premiumBadgeBorder: '#7C3AED55',
+  },
   useTheme: () => ({
     bg: '#fff', bgCard: '#fff', bgElevated: '#f8fafc', bgInput: '#f1f5f9',
     text: '#0f172a', textSecondary: '#334155', textMuted: '#64748b',

@@ -2,7 +2,7 @@ import * as Location from 'expo-location';
 import { getServerBaseUrl } from '@/services/api';
 import { logWarn } from '@/utils/devLogger';
 
-// ── Google Geocoding API response types ──
+// Google Geocoding API response shape.
 interface GeoLatLng {
   lat: number;
   lng: number;
@@ -25,7 +25,7 @@ interface GeoResult {
 }
 
 const CACHE_MAX = 50;
-const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+const CACHE_TTL_MS = 30 * 60 * 1000;
 
 interface CacheEntry<V> {
   value: V;
@@ -49,7 +49,6 @@ function lruGet<K, V>(cache: Map<K, CacheEntry<V>>, key: K): V | undefined {
 
 /** LRU eviction: remove the oldest entry (first inserted) when at capacity */
 function lruSet<K, V>(cache: Map<K, CacheEntry<V>>, key: K, value: V): void {
-  // Proactive sweep: remove all expired entries before inserting
   const now = Date.now();
   for (const [k, entry] of cache) {
     if (now > entry.expiresAt) cache.delete(k);
@@ -61,12 +60,11 @@ function lruSet<K, V>(cache: Map<K, CacheEntry<V>>, key: K, value: V): void {
   cache.set(key, { value, expiresAt: now + CACHE_TTL_MS });
 }
 
-// ── Reverse geocode via backend proxy ──
+/** Reverse geocode through the backend proxy to the Google API. */
 async function googleReverseGeocode(
   lat: number,
   lng: number,
 ): Promise<Location.LocationGeocodedAddress[]> {
-  // Validate coordinate ranges
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) return [];
   const url = `${getServerBaseUrl()}/geocode/reverse?lat=${lat}&lng=${lng}`;
   const res = await fetch(url);
@@ -94,7 +92,6 @@ async function googleReverseGeocode(
   return [];
 }
 
-// ── Reverse geocode cache (coords → address) ──
 const reverseCache = new Map<string, CacheEntry<Location.LocationGeocodedAddress[]>>();
 
 function coordKey(lat: number, lng: number): string {
@@ -108,7 +105,6 @@ export async function reverseGeocodeAsync(
   const cached = lruGet(reverseCache, key);
   if (cached) return cached;
 
-  // 1. Try Google Reverse Geocoding API
   try {
     const googleResults = await googleReverseGeocode(location.latitude, location.longitude);
     if (googleResults.length > 0) {
@@ -117,7 +113,7 @@ export async function reverseGeocodeAsync(
     }
   } catch (e) { logWarn('geocode', 'Google reverse geocode failed:', e); }
 
-  // 2. Fallback: device native geocoder
+  // Fallback: device native geocoder
   try {
     const results = await Location.reverseGeocodeAsync(location);
     if (results.length > 0) {

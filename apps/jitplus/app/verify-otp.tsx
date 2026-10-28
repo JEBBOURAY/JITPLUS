@@ -1,17 +1,17 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
-  Text,
-  TextInput,
+  
   TouchableOpacity,
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
-  ActivityIndicator,
   Animated,
   Image,
   ScrollView,
 } from 'react-native';
+import { Text, TextInput } from '@/components/AppText';
+import { goHomeAfterLogin } from '@/services/pendingDeal';
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 import { router, useLocalSearchParams } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -24,6 +24,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { wp, hp, ms, fontSize, radius, SCREEN } from '@/utils/responsive';
 import FormError from '@/components/FormError';
+import StarLoader from '@/components/StarLoader';
 
 const OTP_LENGTH = 6;
 const MAX_ATTEMPTS = 5;
@@ -135,7 +136,7 @@ export default function VerifyOtpScreen() {
         });
       } else {
         await AsyncStorage.setItem('showWelcome', '1');
-        router.replace('/(tabs)/qr');
+        goHomeAfterLogin(router);
       }
     } else {
       // Server returns remaining attempts in the error message
@@ -254,7 +255,7 @@ export default function VerifyOtpScreen() {
 
             {isLoading && (
               <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color={theme.primary} />
+                <StarLoader size={88} />
                 <Text style={[styles.loadingText, { color: theme.textSecondary }]}>
                   {t('verifyOtp.verifying')}
                 </Text>

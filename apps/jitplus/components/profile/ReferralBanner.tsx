@@ -1,5 +1,6 @@
 import { memo } from 'react';
-import { I18nManager, Pressable, StyleSheet, Text, View } from 'react-native';
+import { I18nManager, Pressable, StyleSheet, View } from 'react-native';
+import { Text } from '@/components/AppText';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ChevronRight, Gift } from 'lucide-react-native';
 import { palette } from '@/contexts/ThemeContext';

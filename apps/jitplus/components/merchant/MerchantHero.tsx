@@ -1,51 +1,41 @@
-import React, { memo, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, Animated, Platform } from 'react-native';
+import { memo, useMemo, useState } from 'react';
+import { View, StyleSheet, Animated } from 'react-native';
+import { Text } from '@/components/AppText';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { MapPin } from 'lucide-react-native';
+import {
+  MIN_MEMBERS_SHOWN, describeOpenStatus, formatCompactCount, getCategoryEmoji, type OpenStatus,
+} from '@jitplus/shared';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAppFonts } from '@/utils/fonts';
 import { resolveImageUrl } from '@/utils/imageUrl';
-import { getMerchantAccent } from '@/utils/merchantAccent';
 import { MERCHANT_ICON_MAP } from '@/utils/merchantIcons';
-import { getCategoryEmoji } from '@/utils/categories';
 import { formatDistance } from '@/utils/distance';
-import { describeOpenStatus, type OpenStatus } from '@/utils/openingHours';
 import { wp, hp, ms } from '@/utils/responsive';
 import type { Merchant } from '@/types';
 
-export const HERO_HEIGHT = hp(240);
-const LOGO_SIZE = ms(96);
-const TOP_SCRIM = ['rgba(0,0,0,0.38)', 'rgba(0,0,0,0)'] as const;
-const DIAG_START = { x: 0, y: 0 } as const;
-const DIAG_END = { x: 1, y: 1 } as const;
-
-function formatCount(n: number): string {
-  if (n < 1000) return String(n);
-  if (n < 1_000_000) {
-    const k = n / 1000;
-    return `${k >= 10 ? Math.round(k) : k.toFixed(1).replace(/\.0$/, '')}k`;
-  }
-  return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
-}
+export const HERO_HEIGHT = hp(170);
+const LOGO_SIZE = ms(84);
+const LOGO_BORDER = 3;
+const TOP_SCRIM = ['rgba(0,0,0,0.30)', 'rgba(0,0,0,0)'] as const;
 
 interface Props {
   merchant: Merchant;
   scrollY: Animated.Value;
-  pageBg: string;
   openStatus: OpenStatus | null;
   distanceKm: number | null;
 }
 
-function MerchantHero({ merchant, scrollY, pageBg, openStatus, distanceKm }: Props) {
+/** Cover, logo and the key facts, laid out like a social or maps profile. */
+function MerchantHero({ merchant, scrollY, openStatus, distanceKm }: Props) {
   const theme = useTheme();
   const { t } = useLanguage();
   const fonts = useAppFonts();
   const [coverError, setCoverError] = useState(false);
   const [logoError, setLogoError] = useState(false);
-  const accent = getMerchantAccent(merchant.themeColor);
   const ThemeIcon = merchant.themeIcon ? MERCHANT_ICON_MAP[merchant.themeIcon] : undefined;
+  const coverUrl = coverError ? null : merchant.coverUrl;
 
   // Stretches the cover on pull-down (iOS bounce) so no gap opens above it; native driver only.
   const coverMotion = useMemo(() => ({
@@ -62,49 +52,38 @@ function MerchantHero({ merchant, scrollY, pageBg, openStatus, distanceKm }: Pro
   }), [scrollY]);
 
   const subtitle = useMemo(() => {
-    const categories = [merchant.categorie, ...(merchant.secondaryCategories ?? [])]
-      .filter(Boolean)
-      .map((c) => t(`categories.${c}`, { defaultValue: c }))
-      .join(' · ');
-    return [categories, merchant.ville].filter(Boolean).join('  •  ');
-  }, [merchant.categorie, merchant.secondaryCategories, merchant.ville, t]);
+    const category = merchant.categorie ? t(`categories.${merchant.categorie}`, { defaultValue: merchant.categorie }) : null;
+    return [category, merchant.ville].filter(Boolean).join(' · ');
+  }, [merchant.categorie, merchant.ville, t]);
 
-  const rewardCount = merchant.rewards?.length ?? 0;
-  const stats = [
-    { key: 'clients', value: merchant.clientCount ?? 0, label: t('merchant.clients') },
-    ...(rewardCount > 0 ? [{ key: 'rewards', value: rewardCount, label: t('merchant.rewardsLabel') }] : []),
-    { key: 'views', value: merchant.profileViews ?? 0, label: t('merchant.views') },
-  ];
-
-  const statusColor = openStatus?.isOpen ? theme.success : theme.danger;
+  const members = merchant.clientCount ?? 0;
+  const facts = [
+    distanceKm != null ? formatDistance(distanceKm) : null,
+    members >= MIN_MEMBERS_SHOWN ? t('merchant.members', { count: formatCompactCount(members) }) : null,
+  ].filter(Boolean).join(' · ');
 
   return (
     <View>
-      <View style={styles.cover}>
-        <Animated.View style={[StyleSheet.absoluteFill, coverMotion]}>
-          {merchant.coverUrl && !coverError ? (
+      <View style={[styles.cover, { backgroundColor: theme.bgInput }]}>
+        {!!coverUrl && (
+          <Animated.View style={[StyleSheet.absoluteFill, coverMotion]}>
             <Image
-              source={resolveImageUrl(merchant.coverUrl)}
+              source={resolveImageUrl(coverUrl)}
               style={StyleSheet.absoluteFill}
               contentFit="cover"
               cachePolicy="memory-disk"
-              recyclingKey={merchant.coverUrl}
+              recyclingKey={coverUrl}
               transition={200}
               onError={() => setCoverError(true)}
             />
-          ) : (
-            <LinearGradient colors={[accent, `${accent}B3`, `${accent}59`]} start={DIAG_START} end={DIAG_END} style={StyleSheet.absoluteFill}>
-              <View style={[styles.orb, styles.orbA]} />
-              <View style={[styles.orb, styles.orbB]} />
-            </LinearGradient>
-          )}
-        </Animated.View>
-        <LinearGradient pointerEvents="none" colors={TOP_SCRIM} style={styles.topScrim} />
-        <LinearGradient pointerEvents="none" colors={[`${pageBg}00`, pageBg]} style={styles.bottomFade} />
+          </Animated.View>
+        )}
+        {/* Keeps the floating header buttons readable over a photo. */}
+        {!!coverUrl && <LinearGradient pointerEvents="none" colors={TOP_SCRIM} style={styles.topScrim} />}
       </View>
 
       <View style={styles.identity}>
-        <View style={[styles.logoFrame, { backgroundColor: pageBg }]}>
+        <View style={[styles.logoFrame, { backgroundColor: theme.bg }]}>
           {merchant.logoUrl && !logoError ? (
             <Image
               source={resolveImageUrl(merchant.logoUrl)}
@@ -116,9 +95,9 @@ function MerchantHero({ merchant, scrollY, pageBg, openStatus, distanceKm }: Pro
               accessibilityLabel={merchant.nomBoutique}
             />
           ) : (
-            <View style={[styles.logo, styles.logoFallback, { backgroundColor: theme.bgCard, borderColor: `${accent}30` }]}>
+            <View style={[styles.logo, styles.logoFallback, { backgroundColor: theme.bgInput, borderColor: theme.border }]}>
               {ThemeIcon
-                ? <ThemeIcon size={ms(44)} color={accent} strokeWidth={1.75} />
+                ? <ThemeIcon size={ms(36)} color={theme.textSecondary} strokeWidth={1.75} />
                 : <Text style={styles.emoji}>{getCategoryEmoji(merchant.categorie)}</Text>}
             </View>
           )}
@@ -128,91 +107,50 @@ function MerchantHero({ merchant, scrollY, pageBg, openStatus, distanceKm }: Pro
           {merchant.nomBoutique}
         </Text>
         {!!subtitle && (
-          <Text style={[styles.subtitle, { color: theme.textMuted, fontFamily: fonts.medium }]} numberOfLines={1}>
+          <Text style={[styles.line, { color: theme.textMuted, fontFamily: fonts.regular }]} numberOfLines={1}>
             {subtitle}
           </Text>
         )}
         {!!merchant.tagline && (
-          <Text style={[styles.tagline, { color: theme.textSecondary, fontFamily: fonts.regular }]} numberOfLines={2}>
+          <Text style={[styles.tagline, { color: theme.textSecondary, fontFamily: fonts.regular }]} numberOfLines={3}>
             {merchant.tagline}
           </Text>
         )}
-
-        {(openStatus || distanceKm != null) && (
-          <View style={styles.chips}>
+        {/* Last, right above the directions/call buttons it goes with. */}
+        {(openStatus || !!facts) && (
+          <Text style={[styles.line, { color: theme.textMuted, fontFamily: fonts.regular }]} numberOfLines={2}>
             {openStatus && (
-              <View style={[styles.chip, { backgroundColor: `${statusColor}14` }]}>
-                <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
-                <Text style={[styles.chipText, { color: statusColor, fontFamily: fonts.semibold }]} numberOfLines={1}>
-                  {describeOpenStatus(openStatus, t)}
-                </Text>
-              </View>
+              <Text style={{ color: openStatus.isOpen ? theme.success : theme.danger, fontFamily: fonts.semibold }}>
+                {describeOpenStatus(openStatus, t, 'merchant')}
+              </Text>
             )}
-            {distanceKm != null && (
-              <View style={[styles.chip, { backgroundColor: theme.bgCard, borderColor: theme.border, borderWidth: StyleSheet.hairlineWidth }]}>
-                <MapPin size={ms(12)} color={theme.textSecondary} strokeWidth={2} />
-                <Text style={[styles.chipText, { color: theme.textSecondary, fontFamily: fonts.semibold }]}>
-                  {formatDistance(distanceKm)}
-                </Text>
-              </View>
-            )}
-          </View>
+            {openStatus && !!facts ? ' · ' : ''}
+            {facts}
+          </Text>
         )}
-
-        <View style={[styles.stats, { backgroundColor: theme.bgCard, borderColor: theme.border }]}>
-          {stats.map((s, i) => (
-            <View key={s.key} style={[styles.stat, i > 0 && { borderStartWidth: StyleSheet.hairlineWidth, borderColor: theme.border }]}>
-              <Text style={[styles.statValue, { color: theme.text, fontFamily: fonts.bold }]}>{formatCount(s.value)}</Text>
-              <Text style={[styles.statLabel, { color: theme.textMuted, fontFamily: fonts.medium }]} numberOfLines={1}>{s.label}</Text>
-            </View>
-          ))}
-        </View>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  cover: { height: HERO_HEIGHT },
-  topScrim: { position: 'absolute', top: 0, left: 0, right: 0, height: hp(120) },
-  bottomFade: { position: 'absolute', bottom: 0, left: 0, right: 0, height: hp(90) },
-  orb: { position: 'absolute', borderRadius: 9999, backgroundColor: 'rgba(255,255,255,0.10)' },
-  orbA: { width: HERO_HEIGHT * 1.2, height: HERO_HEIGHT * 1.2, top: -HERO_HEIGHT * 0.5, right: -HERO_HEIGHT * 0.4 },
-  orbB: { width: HERO_HEIGHT * 0.7, height: HERO_HEIGHT * 0.7, bottom: -HERO_HEIGHT * 0.3, left: -HERO_HEIGHT * 0.2 },
+  cover: { height: HERO_HEIGHT, overflow: 'hidden' },
+  topScrim: { position: 'absolute', top: 0, left: 0, right: 0, height: hp(100) },
 
-  identity: { alignItems: 'center', paddingHorizontal: wp(20) },
+  identity: { paddingHorizontal: wp(16) },
   logoFrame: {
-    marginTop: -LOGO_SIZE / 2 - 4,
-    padding: 4,
-    borderRadius: ms(30),
-    ...Platform.select({
-      ios: { shadowColor: '#0F172A', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.16, shadowRadius: 18 },
-      android: { elevation: 8 },
-    }),
+    alignSelf: 'flex-start',
+    marginTop: -LOGO_SIZE / 2,
+    padding: LOGO_BORDER,
+    borderRadius: ms(18) + LOGO_BORDER,
   },
-  logo: { width: LOGO_SIZE, height: LOGO_SIZE, borderRadius: ms(26) },
-  logoFallback: { alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
-  emoji: { fontSize: ms(40) },
+  logo: { width: LOGO_SIZE, height: LOGO_SIZE, borderRadius: ms(18) },
+  logoFallback: { alignItems: 'center', justifyContent: 'center', borderWidth: StyleSheet.hairlineWidth },
+  emoji: { fontSize: ms(34) },
 
-  name: { fontSize: ms(25), letterSpacing: -0.5, textAlign: 'center', marginTop: hp(14) },
-  subtitle: { fontSize: ms(13), textAlign: 'center', marginTop: hp(4) },
-  tagline: { fontSize: ms(14), lineHeight: ms(20), textAlign: 'center', marginTop: hp(8), maxWidth: '92%' },
-
-  chips: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: wp(8), marginTop: hp(14) },
-  chip: {
-    flexDirection: 'row', alignItems: 'center', gap: wp(6),
-    paddingHorizontal: wp(12), paddingVertical: hp(6), borderRadius: 999,
-  },
-  statusDot: { width: ms(7), height: ms(7), borderRadius: ms(4) },
-  chipText: { fontSize: ms(12) },
-
-  stats: {
-    flexDirection: 'row', alignSelf: 'stretch', marginTop: hp(18),
-    borderRadius: ms(18), borderWidth: StyleSheet.hairlineWidth, paddingVertical: hp(12),
-  },
-  stat: { flex: 1, alignItems: 'center', paddingHorizontal: wp(6) },
-  statValue: { fontSize: ms(17) },
-  statLabel: { fontSize: ms(11), marginTop: hp(2) },
+  name: { fontSize: ms(22), lineHeight: ms(28), letterSpacing: -0.4, marginTop: hp(10) },
+  line: { fontSize: ms(14), lineHeight: ms(20), marginTop: hp(3) },
+  tagline: { fontSize: ms(14), lineHeight: ms(20), marginTop: hp(6) },
 });
 
 export default memo(MerchantHero);

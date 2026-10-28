@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator, BackHandler, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity,
+  ActivityIndicator, BackHandler, ScrollView, StatusBar, StyleSheet, TouchableOpacity,
   useWindowDimensions, View,
 } from 'react-native';
+import { Text } from '@/components/AppText';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';

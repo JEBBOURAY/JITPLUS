@@ -1,5 +1,6 @@
 import { memo, useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, View } from 'react-native';
+import { Text } from '@/components/AppText';
 import { useRouter } from 'expo-router';
 import { LogOut } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';

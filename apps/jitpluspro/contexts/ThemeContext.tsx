@@ -4,7 +4,6 @@ import { createThemeProvider } from '@jitplus/shared/src/createThemeProvider';
 
 const THEME_STORAGE_KEY = 'jitplus_theme_mode';
 
-// ── Palette ───────────────────────────────────────────────
 export const palette = {
   // Primary violet spectrum
   violet: '#7C3AED',
@@ -26,7 +25,11 @@ export const palette = {
   premiumBorder: '#7C3AED30',
   premiumBadgeBg: '#7C3AED28',
   premiumBadgeBorder: '#7C3AED55',
-  gold: '#FCD34D',
+  // Brass rather than bright yellow: reads premium on violet, keeps dark text legible.
+  gold: '#D4A64A',
+  goldDeep: '#A87B2D',
+  // Secondary text and icons on the violet Accueil hero.
+  heroMuted: 'rgba(255,255,255,0.65)',
   // Aliases kept for compat
   cyan: '#6B7280',
   // Neutral spectrum

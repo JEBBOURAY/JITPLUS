@@ -1,8 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import {
   View,
-  Text,
-  TextInput,
+  
   TouchableOpacity,
   StyleSheet,
   KeyboardAvoidingView,
@@ -14,6 +13,7 @@ import {
   ScrollView,
   Keyboard,
 } from 'react-native';
+import { Text, TextInput } from '@/components/AppText';
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 import { router } from 'expo-router';
 import { ArrowRight, Mail, ChevronLeft, Check } from 'lucide-react-native';
@@ -392,6 +392,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row', justifyContent: 'center', alignItems: 'center',
     paddingTop: hp(12), paddingBottom: hp(32),
   },
-  footerText: { fontSize: fontSize.sm, color: palette.gray400 },
+  footerText: { fontSize: fontSize.sm, color: palette.gray500 },
   footerLink: { fontSize: fontSize.sm, color: palette.violet, fontWeight: '700' },
 });

@@ -1,12 +1,14 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, I18nManager, Platform } from 'react-native';
-import { Camera, Edit3, ChevronLeft } from 'lucide-react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Platform } from 'react-native';
+import { Camera, Edit3, ArrowLeft } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Image as ExpoImage } from 'expo-image';
 import { palette } from '@/contexts/ThemeContext';
 import MerchantLogo from '@/components/MerchantLogo';
 import { resolveImageUrl } from '@/utils/imageUrl';
-import { wp, hp, ms, fontSize as FS } from '@/utils/responsive';
+import { wp, hp, ms, fontSize as FS, radius } from '@/utils/responsive';
+import { font, icon } from '@/constants/design';
+import { useDir } from '@/hooks/useDir';
 import type { Merchant } from '@/types';
 
 interface Props {
@@ -23,7 +25,7 @@ interface Props {
 }
 
 /**
- * Full-width gradient header (or ExpoImage if merchant.coverUrl is set).
+ * Full-width header: the merchant cover photo, or the brand gradient.
  * Hosts the back button, the "Changer la couverture" pill, the avatar with a
  * discreet camera badge, and the merchant name with an optional edit affordance.
  * Renders edge-to-edge so the body below can overlap with a negative marginTop
@@ -33,6 +35,7 @@ export default React.memo(function CoverHeader({
   t, merchant, uploadIsPending, coverUploadIsPending = false,
   onLogoPress, onCoverPress, onBackPress, onEditName, topInset,
 }: Props) {
+  const dir = useDir();
   const initials = useMemo(
     () => (merchant?.nom
       ? merchant.nom.split(' ').map((w: string) => w.charAt(0)).join('').slice(0, 2).toUpperCase()
@@ -42,7 +45,6 @@ export default React.memo(function CoverHeader({
 
   return (
     <View style={styles.cover}>
-      {/* -- Background: real cover image OR the brand gradient -- */}
       {coverUploadIsPending ? (
         <View style={[styles.coverBg, styles.coverUploadPending]}>
           <ActivityIndicator size="small" color="#fff" />
@@ -66,8 +68,7 @@ export default React.memo(function CoverHeader({
         />
       )}
 
-      {/* -- Top row: back button (LTR left / RTL right) + "Changer la couverture" pill -- */}
-      <View style={[styles.coverTop, { paddingTop: topInset + hp(8) }]}>
+      <View style={[styles.coverTop, { flexDirection: dir.row, paddingTop: topInset + hp(8) }]}>
         <TouchableOpacity
           onPress={onBackPress}
           activeOpacity={0.7}
@@ -76,11 +77,11 @@ export default React.memo(function CoverHeader({
           accessibilityRole="button"
           accessibilityLabel={t('common.back')}
         >
-          <ChevronLeft
+          <ArrowLeft
             size={ms(18)}
             color="#fff"
-            strokeWidth={2}
-            style={I18nManager.isRTL ? { transform: [{ scaleX: -1 }] } : undefined}
+            strokeWidth={icon.stroke}
+            style={dir.flip}
           />
         </TouchableOpacity>
 
@@ -88,12 +89,12 @@ export default React.memo(function CoverHeader({
           <TouchableOpacity
             onPress={onCoverPress}
             activeOpacity={0.8}
-            style={styles.coverEditBtn}
+            style={[styles.coverEditBtn, { flexDirection: dir.row }]}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             accessibilityRole="button"
             accessibilityLabel={t('account.changeCover')}
           >
-            <Camera size={ms(13)} color="#fff" strokeWidth={2} />
+            <Camera size={ms(13)} color="#fff" strokeWidth={icon.strokeSmall} />
             <Text style={styles.coverEditBtnText} numberOfLines={1} maxFontSizeMultiplier={1.2}>
               {t('account.changeCover')}
             </Text>
@@ -101,7 +102,6 @@ export default React.memo(function CoverHeader({
         )}
       </View>
 
-      {/* -- Avatar with discreet white/violet camera badge -- */}
       <View style={styles.avatarBlock}>
         <TouchableOpacity
           onPress={onLogoPress}
@@ -119,12 +119,12 @@ export default React.memo(function CoverHeader({
               <Text style={styles.avatarInitials} maxFontSizeMultiplier={1.3}>{initials}</Text>
             )}
           </View>
-          <View style={styles.avatarCam}>
-            <Camera size={ms(12)} color={palette.violet} strokeWidth={2.4} />
+          <View style={[styles.avatarCam, dir.isRTL ? styles.avatarCamRtl : styles.avatarCamLtr]}>
+            <Camera size={ms(12)} color={palette.violet} strokeWidth={icon.strokeSmall} />
           </View>
         </TouchableOpacity>
 
-        <View style={styles.merchantNameRow}>
+        <View style={[styles.merchantNameRow, { flexDirection: dir.row }]}>
           <Text
             style={styles.merchantName}
             numberOfLines={1}
@@ -140,7 +140,7 @@ export default React.memo(function CoverHeader({
               accessibilityRole="button"
               accessibilityLabel={t('profileView.editProfileName')}
             >
-              <Edit3 size={ms(13)} color="rgba(255,255,255,0.7)" strokeWidth={2} />
+              <Edit3 size={ms(13)} color="rgba(255,255,255,0.7)" strokeWidth={icon.strokeSmall} />
             </TouchableOpacity>
           )}
         </View>
@@ -173,7 +173,7 @@ const styles = StyleSheet.create({
   backBtn: {
     width: ms(38),
     height: ms(38),
-    borderRadius: ms(12),
+    borderRadius: radius.md,
     backgroundColor: 'rgba(255,255,255,0.14)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.20)',
@@ -186,7 +186,7 @@ const styles = StyleSheet.create({
     gap: wp(6),
     paddingHorizontal: wp(12),
     height: ms(34),
-    borderRadius: ms(12),
+    borderRadius: radius.md,
     backgroundColor: 'rgba(255,255,255,0.14)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.20)',
@@ -194,7 +194,7 @@ const styles = StyleSheet.create({
   coverEditBtnText: {
     fontSize: FS.xs,
     color: '#fff',
-    fontFamily: 'Lexend_600SemiBold',
+    fontFamily: font.semibold,
   },
   avatarBlock: {
     alignItems: 'center',
@@ -221,13 +221,11 @@ const styles = StyleSheet.create({
   avatarInitials: {
     fontSize: ms(30),
     color: '#fff',
-    letterSpacing: 1,
-    fontFamily: 'Lexend_700Bold',
+    fontFamily: font.bold,
   },
   avatarCam: {
     position: 'absolute',
     bottom: 0,
-    [I18nManager.isRTL ? 'left' : 'right']: 0,
     width: ms(28),
     height: ms(28),
     borderRadius: ms(14),
@@ -246,6 +244,8 @@ const styles = StyleSheet.create({
       android: { elevation: 3 },
     }),
   },
+  avatarCamLtr: { right: 0 },
+  avatarCamRtl: { left: 0 },
   merchantNameRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -256,6 +256,6 @@ const styles = StyleSheet.create({
   merchantName: {
     fontSize: ms(17),
     color: '#fff',
-    fontFamily: 'Lexend_700Bold',
+    fontFamily: font.bold,
   },
 });

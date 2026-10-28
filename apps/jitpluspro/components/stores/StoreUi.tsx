@@ -1,7 +1,7 @@
 /**
  * Shared building blocks of the "Ma boutique" hub and its section screens.
  * They follow the visual language of the loyalty settings screen: borderless
- * surfaces separated by a soft shadow, filled fields, 20px radius panels with
+ * surfaces separated by a soft shadow, filled fields, 16px radius panels with
  * an icon header.
  */
 import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
@@ -13,7 +13,6 @@ import {
   TextInput,
   ActivityIndicator,
   Alert,
-  I18nManager,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -22,17 +21,19 @@ import {
   type ViewStyle,
   type TextInputProps,
 } from 'react-native';
-import { useFocusEffect, useNavigation, useRouter } from 'expo-router';
+import { useFocusEffect, usePreventRemove, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as Haptics from 'expo-haptics';
-import { ArrowLeft, Check, Lock, Save, Shield } from 'lucide-react-native';
+import { hapticLight } from '@/utils/haptics';
+import { ArrowLeft, Check, Save, Shield } from 'lucide-react-native';
 import type { LucideIcon } from 'lucide-react-native';
 import { palette, useTheme, type ThemeColors } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useDir } from '@/hooks/useDir';
+import { font, icon as iconTokens } from '@/constants/design';
+import { ActionButton } from '@/components/ui/ActionButton';
+import { ProBadge } from '@/components/ui/ProBadge';
 
-export function haptic() {
-  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-}
+export const haptic = hapticLight;
 
 /** Light elevation used instead of borders for surfaces. */
 export function surfaceShadow(theme: ThemeColors) {
@@ -59,19 +60,20 @@ interface PanelProps {
 
 export function Panel({ Icon, title, caption, right, style, children }: PanelProps) {
   const theme = useTheme();
+  const dir = useDir();
   return (
     <View style={[ui.panel, { backgroundColor: theme.bgCard }, surfaceShadow(theme), style]}>
-      <View style={ui.panelHeader}>
+      <View style={[ui.panelHeader, { flexDirection: dir.row }]}>
         <View style={[ui.panelIcon, { backgroundColor: theme.primaryBg }]}>
-          <Icon size={17} color={theme.primary} strokeWidth={1.9} />
+          <Icon size={18} color={theme.primary} strokeWidth={iconTokens.stroke} />
         </View>
-        <Text style={[ui.panelTitle, { color: theme.text }]} numberOfLines={1} maxFontSizeMultiplier={1.3} accessibilityRole="header">
+        <Text style={[ui.panelTitle, { color: theme.text, textAlign: dir.textAlign }]} numberOfLines={1} maxFontSizeMultiplier={1.3} accessibilityRole="header">
           {title}
         </Text>
         {right}
       </View>
       {caption ? (
-        <Text style={[ui.caption, ui.panelCaption, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>
+        <Text style={[ui.caption, ui.panelCaption, { color: theme.textMuted, textAlign: dir.textAlign }]} maxFontSizeMultiplier={1.3}>
           {caption}
         </Text>
       ) : null}
@@ -80,14 +82,9 @@ export function Panel({ Icon, title, caption, right, style, children }: PanelPro
   );
 }
 
+/** Marks a Pro feature that is locked on the current plan. */
 export function ProPill() {
-  const { t } = useLanguage();
-  return (
-    <View style={[ui.proPill, { backgroundColor: palette.gold + '2E' }]}>
-      <Lock size={11} color="#B45309" strokeWidth={2.4} />
-      <Text style={ui.proPillText} maxFontSizeMultiplier={1.2}>{t('settingsPage.proBadge')}</Text>
-    </View>
-  );
+  return <ProBadge locked style={ui.proPill} />;
 }
 
 /** Small rounded counter shown at the right of a panel header ("2/5"). */
@@ -116,8 +113,9 @@ interface SegmentedProps<K extends string> {
 
 function SegmentedInner<K extends string>({ items, value, onChange, role = 'tablist', style }: SegmentedProps<K>) {
   const theme = useTheme();
+  const dir = useDir();
   return (
-    <View style={[ui.segmented, { backgroundColor: fieldFill(theme) }, style]} accessibilityRole={role}>
+    <View style={[ui.segmented, { backgroundColor: fieldFill(theme), flexDirection: dir.row }, style]} accessibilityRole={role}>
       {items.map(({ key, label, Icon }) => {
         const selected = key === value;
         const color = selected ? theme.primary : theme.textMuted;
@@ -126,11 +124,11 @@ function SegmentedInner<K extends string>({ items, value, onChange, role = 'tabl
             key={key}
             onPress={() => onChange(key)}
             activeOpacity={0.8}
-            style={[ui.segment, selected && [ui.segmentActive, { backgroundColor: theme.bgCard }]]}
+            style={[ui.segment, { flexDirection: dir.row }, selected && [ui.segmentActive, { backgroundColor: theme.bgCard }]]}
             accessibilityRole={role === 'tablist' ? 'tab' : 'radio'}
             accessibilityState={{ selected }}
           >
-            {Icon ? <Icon size={15} color={color} strokeWidth={2} /> : null}
+            {Icon ? <Icon size={iconTokens.sm} color={color} strokeWidth={iconTokens.stroke} /> : null}
             <Text style={[ui.segmentText, { color }]} numberOfLines={1} maxFontSizeMultiplier={1.2}>{label}</Text>
           </TouchableOpacity>
         );
@@ -174,12 +172,19 @@ export function useQueuedToast(show: (message: string) => void) {
 
 export function Toast({ message, bottom = 24 }: { message: string | null; bottom?: number }) {
   const theme = useTheme();
+  const dir = useDir();
   if (!message) return null;
   return (
     <View style={[ui.toastWrap, { bottom }]} pointerEvents="none" accessibilityLiveRegion="polite">
-      <View style={[ui.toast, { backgroundColor: theme.mode === 'dark' ? theme.bgCard : '#0F172A' }]}>
+      <View
+        style={[
+          ui.toast,
+          dir.isRTL ? ui.toastRtl : ui.toastLtr,
+          { flexDirection: dir.row, backgroundColor: theme.mode === 'dark' ? theme.bgCard : '#0F172A' },
+        ]}
+      >
         <View style={[ui.toastIcon, { backgroundColor: palette.violet }]}>
-          <Check size={12} color="#fff" strokeWidth={3} />
+          <Check size={12} color="#fff" strokeWidth={iconTokens.strokeSmall} />
         </View>
         <Text style={ui.toastText} maxFontSizeMultiplier={1.3}>{message}</Text>
       </View>
@@ -191,6 +196,7 @@ function BackButton({ onPress }: { onPress?: () => void }) {
   const theme = useTheme();
   const router = useRouter();
   const { t } = useLanguage();
+  const dir = useDir();
   return (
     <TouchableOpacity
       onPress={onPress ?? (() => router.back())}
@@ -199,7 +205,7 @@ function BackButton({ onPress }: { onPress?: () => void }) {
       accessibilityLabel={t('common.back')}
     >
       <View style={[ui.iconBtn, { backgroundColor: fieldFill(theme) }]}>
-        <ArrowLeft size={20} color={theme.text} style={I18nManager.isRTL ? ui.flipX : undefined} />
+        <ArrowLeft size={iconTokens.md} color={theme.text} strokeWidth={iconTokens.stroke} style={dir.flip} />
       </View>
     </TouchableOpacity>
   );
@@ -209,17 +215,18 @@ function BackButton({ onPress }: { onPress?: () => void }) {
 export function ScreenHeader({ title, caption, onBack, right }: { title: string; caption?: string; onBack?: () => void; right?: React.ReactNode }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+  const dir = useDir();
   return (
     <View style={[ui.header, { paddingTop: insets.top + 12 }]}>
-      <View style={ui.headerRow}>
+      <View style={[ui.headerRow, { flexDirection: dir.row }]}>
         <BackButton onPress={onBack} />
-        <Text style={[ui.headerTitle, { color: theme.text }]} numberOfLines={1} maxFontSizeMultiplier={1.3} accessibilityRole="header">
+        <Text style={[ui.headerTitle, { color: theme.text, textAlign: dir.textAlign }]} numberOfLines={1} maxFontSizeMultiplier={1.3} accessibilityRole="header">
           {title}
         </Text>
         {right}
       </View>
       {caption ? (
-        <Text style={[ui.caption, ui.headerCaption, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>{caption}</Text>
+        <Text style={[ui.caption, ui.headerCaption, { color: theme.textMuted, textAlign: dir.textAlign }]} maxFontSizeMultiplier={1.3}>{caption}</Text>
       ) : null}
     </View>
   );
@@ -230,6 +237,7 @@ export function SaveBar({ dirty, saving, onSave, label }: { dirty: boolean; savi
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { t } = useLanguage();
+  const dir = useDir();
   const text = label ?? t('storePreview.save');
   return (
     <View
@@ -240,7 +248,7 @@ export function SaveBar({ dirty, saving, onSave, label }: { dirty: boolean; savi
       ]}
     >
       {dirty ? (
-        <View style={ui.unsavedRow} accessibilityLiveRegion="polite">
+        <View style={[ui.unsavedRow, { flexDirection: dir.row }]} accessibilityLiveRegion="polite">
           <View style={[ui.unsavedDot, { backgroundColor: theme.warning }]} />
           <Text style={[ui.caption, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.3}>
             {t('settingsPage.unsavedChanges')}
@@ -253,6 +261,7 @@ export function SaveBar({ dirty, saving, onSave, label }: { dirty: boolean; savi
         activeOpacity={0.85}
         style={[
           ui.saveBtn,
+          { flexDirection: dir.row },
           dirty
             ? [ui.saveBtnRaised, { backgroundColor: palette.violet, borderBottomColor: palette.violetDark }]
             : { backgroundColor: fieldFill(theme), borderBottomColor: 'transparent' },
@@ -265,7 +274,7 @@ export function SaveBar({ dirty, saving, onSave, label }: { dirty: boolean; savi
           <ActivityIndicator size="small" color="#fff" />
         ) : (
           <>
-            <Save size={18} color={dirty ? '#fff' : theme.textMuted} strokeWidth={2} />
+            <Save size={18} color={dirty ? '#fff' : theme.textMuted} strokeWidth={iconTokens.stroke} />
             <Text style={[ui.saveBtnText, { color: dirty ? '#fff' : theme.textMuted }]} maxFontSizeMultiplier={1.2}>{text}</Text>
           </>
         )}
@@ -300,22 +309,13 @@ export function usePressGuard(delayMs = 600) {
  * a successful save, before the cleared draft has re-rendered).
  */
 export function useDiscardGuard(dirty: boolean, busy = false) {
-  const navigation = useNavigation();
   const { t } = useLanguage();
-  const dirtyRef = useRef(dirty);
-  const bypassRef = useRef(false);
-  useEffect(() => { dirtyRef.current = dirty && !busy; }, [dirty, busy]);
-  useEffect(() => {
-    return navigation.addListener('beforeRemove', (e) => {
-      if (!dirtyRef.current || bypassRef.current) return;
-      e.preventDefault();
-      Alert.alert(t('storePreview.discardTitle'), t('storePreview.discardBody'), [
-        { text: t('common.cancel'), style: 'cancel' },
-        { text: t('storePreview.discardConfirm'), style: 'destructive', onPress: () => navigation.dispatch(e.data.action) },
-      ]);
-    });
-  }, [navigation, t]);
-  return useCallback(() => { bypassRef.current = true; }, []);
+  return usePreventRemove(dirty && !busy, ({ repeat }) => {
+    Alert.alert(t('storePreview.discardTitle'), t('storePreview.discardBody'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      { text: t('storePreview.discardConfirm'), style: 'destructive', onPress: repeat },
+    ]);
+  });
 }
 
 interface TextFieldProps extends TextInputProps {
@@ -330,31 +330,32 @@ interface TextFieldProps extends TextInputProps {
 /** Labelled filled text input (single line or multiline). */
 export function TextField({ label, Icon, iconColor, hint, error, counter, multiline, style, ...input }: TextFieldProps) {
   const theme = useTheme();
+  const dir = useDir();
   const length = typeof input.value === 'string' ? input.value.length : 0;
   return (
     <View style={ui.field}>
-      <Text style={[ui.fieldLabel, { color: theme.text }]} maxFontSizeMultiplier={1.3}>{label}</Text>
+      <Text style={[ui.fieldLabel, { color: theme.text, textAlign: dir.textAlign }]} maxFontSizeMultiplier={1.3}>{label}</Text>
       <View
         style={[
           ui.input,
           multiline && ui.inputMultiline,
-          { backgroundColor: fieldFill(theme) },
+          { backgroundColor: fieldFill(theme), flexDirection: dir.row },
           error ? { borderColor: theme.danger, borderWidth: 1 } : null,
         ]}
       >
-        {Icon ? <Icon size={17} color={iconColor ?? theme.textMuted} strokeWidth={1.9} style={multiline ? ui.inputIconTop : undefined} /> : null}
+        {Icon ? <Icon size={iconTokens.sm} color={iconColor ?? theme.textMuted} strokeWidth={iconTokens.stroke} style={multiline ? ui.inputIconTop : undefined} /> : null}
         <TextInput
           placeholderTextColor={theme.textMuted}
           maxFontSizeMultiplier={1.3}
           multiline={multiline}
           textAlignVertical={multiline ? 'top' : 'center'}
-          style={[ui.inputText, multiline && ui.inputTextMultiline, { color: theme.text }, style]}
+          style={[ui.inputText, multiline && ui.inputTextMultiline, { color: theme.text, textAlign: dir.textAlign }, style]}
           {...input}
         />
       </View>
       {error || hint || (counter && input.maxLength) ? (
-        <View style={ui.fieldFooter}>
-          <Text style={[ui.caption, ui.fieldHint, { color: error ? theme.danger : theme.textMuted }]} maxFontSizeMultiplier={1.3}>
+        <View style={[ui.fieldFooter, { flexDirection: dir.row }]}>
+          <Text style={[ui.caption, ui.fieldHint, { color: error ? theme.danger : theme.textMuted, textAlign: dir.textAlign }]} maxFontSizeMultiplier={1.3}>
             {error ?? hint ?? ''}
           </Text>
           {counter && input.maxLength ? (
@@ -416,18 +417,11 @@ export function OwnerOnlyNotice() {
       <ScreenHeader title="" />
       <View style={ui.ownerOnly}>
         <View style={[ui.ownerOnlyIcon, { backgroundColor: theme.primaryBg }]}>
-          <Shield size={34} color={theme.primary} strokeWidth={1.6} />
+          <Shield size={32} color={theme.primary} strokeWidth={iconTokens.stroke} />
         </View>
         <Text style={[ui.ownerOnlyTitle, { color: theme.text }]}>{t('common.ownerOnly')}</Text>
         <Text style={[ui.ownerOnlyMsg, { color: theme.textMuted }]}>{t('common.ownerOnlyMsg')}</Text>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          activeOpacity={0.85}
-          style={[ui.ownerOnlyBtn, { backgroundColor: palette.violet, borderBottomColor: palette.violetDark }]}
-          accessibilityRole="button"
-        >
-          <Text style={ui.ownerOnlyBtnText}>{t('common.back')}</Text>
-        </TouchableOpacity>
+        <ActionButton label={t('common.back')} onPress={() => router.back()} style={ui.ownerOnlyBtn} />
       </View>
     </View>
   );
@@ -435,60 +429,59 @@ export function OwnerOnlyNotice() {
 
 export const ui = StyleSheet.create({
   flex: { flex: 1 },
-  flipX: { transform: [{ scaleX: -1 }] },
-  iconBtn: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  iconBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   header: { paddingHorizontal: 20, paddingBottom: 10 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  headerTitle: { flex: 1, fontSize: 26, fontFamily: 'Lexend_700Bold', letterSpacing: -0.5 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  headerTitle: { flex: 1, fontSize: 24, fontFamily: font.bold, letterSpacing: -0.5 },
   headerCaption: { marginTop: 8 },
 
-  field: { gap: 7 },
-  input: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 48, paddingHorizontal: 14, borderRadius: 13 },
+  field: { gap: 8 },
+  input: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 48, paddingHorizontal: 14, borderRadius: 12 },
   inputMultiline: { alignItems: 'flex-start', paddingVertical: 12 },
   inputIconTop: { marginTop: 2 },
-  inputText: { flex: 1, fontSize: 14.5, fontFamily: 'Lexend_400Regular', paddingVertical: 10 },
+  inputText: { flex: 1, fontSize: 15, fontFamily: font.regular, paddingVertical: 10 },
   inputTextMultiline: { minHeight: 96, paddingVertical: 0 },
   fieldFooter: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   fieldHint: { flex: 1 },
 
   saveBar: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 20, paddingTop: 12 },
   saveBarShadow: { shadowColor: '#0F172A', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 8 },
-  unsavedRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, marginBottom: 10 },
+  unsavedRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 10 },
   unsavedDot: { width: 7, height: 7, borderRadius: 4 },
-  saveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 15, borderRadius: 15, borderBottomWidth: 3 },
+  saveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 52, paddingVertical: 14, borderRadius: 12, borderBottomWidth: 3 },
   saveBtnRaised: { shadowColor: palette.violet, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.28, shadowRadius: 10, elevation: 4 },
-  saveBtnText: { fontSize: 14.5, fontFamily: 'Lexend_600SemiBold' },
+  saveBtnText: { fontSize: 15, fontFamily: font.semibold },
 
   ownerOnly: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32, paddingBottom: 60 },
-  ownerOnlyIcon: { width: 76, height: 76, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  ownerOnlyTitle: { fontSize: 17, marginTop: 18, fontFamily: 'Lexend_600SemiBold', textAlign: 'center' },
-  ownerOnlyMsg: { fontSize: 13.5, lineHeight: 20, textAlign: 'center', marginTop: 8, fontFamily: 'Lexend_400Regular' },
-  ownerOnlyBtn: { marginTop: 22, paddingHorizontal: 28, paddingVertical: 13, borderRadius: 14, borderBottomWidth: 3 },
-  ownerOnlyBtnText: { color: '#fff', fontSize: 14.5, fontFamily: 'Lexend_600SemiBold' },
+  ownerOnlyIcon: { width: 72, height: 72, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  ownerOnlyTitle: { fontSize: 17, marginTop: 18, fontFamily: font.semibold, textAlign: 'center' },
+  ownerOnlyMsg: { fontSize: 14, lineHeight: 20, textAlign: 'center', marginTop: 8, fontFamily: font.regular },
+  ownerOnlyBtn: { marginTop: 22, paddingHorizontal: 28, backgroundColor: palette.violet, borderColor: palette.violet, borderBottomWidth: 3, borderBottomColor: palette.violetDark },
 
-  // Typography scale: panel title 15/SemiBold · field label 13.5/Medium · caption 12/Regular
-  fieldLabel: { fontSize: 13.5, fontFamily: 'Lexend_500Medium' },
-  caption: { fontSize: 12, lineHeight: 17, fontFamily: 'Lexend_400Regular' },
+  // Typography scale: panel title 15/SemiBold · field label 14/Medium · caption 12/Regular
+  fieldLabel: { fontSize: 14, fontFamily: font.medium },
+  caption: { fontSize: 12, lineHeight: 17, fontFamily: font.regular },
 
-  panel: { marginHorizontal: 16, marginTop: 16, borderRadius: 20 },
-  panelHeader: { flexDirection: 'row', alignItems: 'center', gap: 11, paddingTop: 16, paddingHorizontal: 16 },
-  panelIcon: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
-  panelTitle: { flex: 1, fontSize: 15, fontFamily: 'Lexend_600SemiBold', letterSpacing: -0.2 },
+  panel: { marginHorizontal: 16, marginTop: 16, borderRadius: 16 },
+  panelHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingTop: 16, paddingHorizontal: 16 },
+  panelIcon: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  panelTitle: { flex: 1, fontSize: 15, fontFamily: font.semibold, letterSpacing: -0.2 },
   panelCaption: { paddingHorizontal: 16, marginTop: 10 },
   panelBody: { padding: 16, paddingTop: 14 },
 
-  proPill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4, paddingHorizontal: 9, borderRadius: 9 },
-  proPillText: { fontSize: 11, color: '#B45309', fontFamily: 'Lexend_600SemiBold' },
-  countPill: { paddingVertical: 4, paddingHorizontal: 9, borderRadius: 9 },
-  countPillText: { fontSize: 11.5, fontFamily: 'Lexend_600SemiBold' },
+  proPill: { alignSelf: 'center' },
+  countPill: { paddingVertical: 4, paddingHorizontal: 9, borderRadius: 999 },
+  countPillText: { fontSize: 12, fontFamily: font.semibold },
 
-  segmented: { flexDirection: 'row', borderRadius: 14, padding: 4, gap: 4 },
-  segment: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingVertical: 10, borderRadius: 11 },
+  segmented: { flexDirection: 'row', borderRadius: 12, padding: 4, gap: 4 },
+  segment: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 40, paddingVertical: 8, borderRadius: 8 },
   segmentActive: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 1 },
-  segmentText: { fontSize: 13, fontFamily: 'Lexend_600SemiBold' },
+  segmentText: { fontSize: 13, fontFamily: font.semibold },
 
   toastWrap: { position: 'absolute', left: 0, right: 0, alignItems: 'center', zIndex: 999 },
-  toast: { flexDirection: 'row', alignItems: 'center', gap: 9, paddingVertical: 10, paddingLeft: 10, paddingRight: 16, borderRadius: 999 },
+  toast: { flexDirection: 'row', alignItems: 'center', gap: 9, paddingVertical: 10, borderRadius: 999 },
+  toastLtr: { paddingLeft: 10, paddingRight: 16 },
+  toastRtl: { paddingLeft: 16, paddingRight: 10 },
   toastIcon: { width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
-  toastText: { color: '#fff', fontSize: 13, fontFamily: 'Lexend_500Medium' },
+  toastText: { color: '#fff', fontSize: 13, fontFamily: font.medium },
 });

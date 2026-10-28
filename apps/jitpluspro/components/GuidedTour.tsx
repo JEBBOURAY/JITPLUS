@@ -23,11 +23,10 @@ import {
 import Svg, { Rect, Mask, Defs } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ShieldCheck } from 'lucide-react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, palette, brandGradient } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { ASYNC_STORAGE_KEYS } from '@/constants/app';
+import { useOnboardingStore } from '@/stores/onboardingStore';
 
 /**
  * Optional guided tour for the Accueil screen.
@@ -49,6 +48,7 @@ export type TourTargetKey =
   | 'stores'
   | 'loyalty'
   | 'games'
+  | 'deals'
   | 'team'
   | 'dashboard'
   | 'clients'
@@ -65,31 +65,31 @@ interface StepDef { key: TourTargetKey; shape: Shape; titleKey: string; textKey:
 
 const STEP_DEFS: StepDef[] = [
   { key: 'avatar', shape: 'circle', titleKey: 'tour.avatarTitle', textKey: 'tour.avatarText' },
+  { key: 'dashboard', shape: 'rect', titleKey: 'tour.dashboardTitle', textKey: 'tour.dashboardText' },
   { key: 'stores', shape: 'circle', titleKey: 'tour.storesTitle', textKey: 'tour.storesText' },
   { key: 'loyalty', shape: 'circle', titleKey: 'tour.loyaltyTitle', textKey: 'tour.loyaltyText' },
   { key: 'games', shape: 'circle', titleKey: 'tour.gamesTitle', textKey: 'tour.gamesText' },
-  { key: 'team', shape: 'circle', titleKey: 'tour.teamTitle', textKey: 'tour.teamText' },
-  { key: 'dashboard', shape: 'circle', titleKey: 'tour.dashboardTitle', textKey: 'tour.dashboardText' },
+  { key: 'deals', shape: 'circle', titleKey: 'tour.dealsTitle', textKey: 'tour.dealsText' },
   { key: 'clients', shape: 'rect', titleKey: 'tour.clientsTitle', textKey: 'tour.clientsText' },
   { key: 'scan', shape: 'circle', titleKey: 'tour.scanTitle', textKey: 'tour.scanText' },
   { key: 'messages', shape: 'rect', titleKey: 'tour.messagesTitle', textKey: 'tour.messagesText' },
-  { key: 'support', shape: 'rect', titleKey: 'tour.supportTitle', textKey: 'tour.supportText' },
+  { key: 'team', shape: 'rect', titleKey: 'tour.teamTitle', textKey: 'tour.teamText' },
+  { key: 'support', shape: 'circle', titleKey: 'tour.supportTitle', textKey: 'tour.supportText' },
 ];
 
 // ── Context ───────────────────────────────────────────────
 interface TourContextValue {
   register: (key: TourTargetKey, node: MeasurableNode) => void;
   start: () => void;
-  requestAutoStart: () => void;
 }
 
 const TourContext = createContext<TourContextValue | null>(null);
 
-/** Access the tour controls (start / auto-start). Returns null outside the provider. */
-export function useTour(): Pick<TourContextValue, 'start' | 'requestAutoStart'> | null {
+/** Access the tour controls. Returns null outside the provider. */
+export function useTour(): Pick<TourContextValue, 'start'> | null {
   const ctx = useContext(TourContext);
   if (!ctx) return null;
-  return { start: ctx.start, requestAutoStart: ctx.requestAutoStart };
+  return { start: ctx.start };
 }
 
 /**
@@ -140,23 +140,19 @@ export function GuidedTourProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const start = useCallback(() => setPhase('intro'), []);
-
-  const requestAutoStart = useCallback(async () => {
-    try {
-      const shown = await AsyncStorage.getItem(ASYNC_STORAGE_KEYS.TOUR_AUTO_SHOWN);
-      if (shown === 'true') return;
-      await AsyncStorage.setItem(ASYNC_STORAGE_KEYS.TOUR_AUTO_SHOWN, 'true');
-      setPhase((p) => (p === 'idle' ? 'intro' : p));
-    } catch {
-      /* ignore storage errors */
-    }
+  // The tour only runs on demand (welcome card, guide sheet) and never on top
+  // of another full-screen onboarding surface.
+  const start = useCallback(() => {
+    if (!useOnboardingStore.getState().request('tour')) return;
+    setPhase('intro');
   }, []);
 
-  const value = useMemo<TourContextValue>(
-    () => ({ register, start, requestAutoStart }),
-    [register, start, requestAutoStart],
-  );
+  useEffect(() => {
+    if (phase === 'idle') useOnboardingStore.getState().release('tour');
+  }, [phase]);
+  useEffect(() => () => useOnboardingStore.getState().release('tour'), []);
+
+  const value = useMemo<TourContextValue>(() => ({ register, start }), [register, start]);
 
   return (
     <TourContext.Provider value={value}>

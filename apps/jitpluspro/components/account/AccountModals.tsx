@@ -7,10 +7,12 @@ import { Camera, Trash2 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { palette, type ThemeColors } from '@/contexts/ThemeContext';
 import MerchantLogo from '@/components/MerchantLogo';
-import { hp, ms, fontSize as FS } from '@/utils/responsive';
+import { ActionButton } from '@/components/ui/ActionButton';
+import { hp, ms, fontSize as FS, radius } from '@/utils/responsive';
+import { font, icon } from '@/constants/design';
 import type { Merchant } from '@/types';
 
-/* ── Logo Edit Bottom Sheet ── */
+const PICK_BTN_GRADIENT = [palette.violet, palette.violetDark] as const;
 
 interface LogoModalProps {
   visible: boolean;
@@ -90,24 +92,15 @@ export function LogoEditModal({
             {merchant?.logoUrl ? t('account.profilePhotoEditHint') : t('account.profilePhotoAddHint')}
           </Text>
 
-          <TouchableOpacity
-            style={styles.logoModalBtn}
-            activeOpacity={0.85}
-            accessibilityRole="button"
+          <ActionButton
+            label={merchant?.logoUrl ? t('account.changeProfilePhoto') : t('account.addProfilePhoto')}
+            icon={Camera}
+            size="lg"
             onPress={handlePickPress}
-          >
-            <LinearGradient
-              colors={['#7C3AED', '#5B21B6']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.logoModalBtnGradient}
-            >
-              <Camera size={ms(18)} color="#fff" strokeWidth={2} />
-              <Text style={styles.logoModalBtnText}>
-                {merchant?.logoUrl ? t('account.changeProfilePhoto') : t('account.addProfilePhoto')}
-              </Text>
-            </LinearGradient>
-          </TouchableOpacity>
+            gradient={PICK_BTN_GRADIENT}
+            gradientDirection="horizontal"
+            style={styles.logoModalBtn}
+          />
 
           {!!merchant?.logoUrl && (
             <TouchableOpacity
@@ -117,7 +110,7 @@ export function LogoEditModal({
               accessibilityRole="button"
               accessibilityLabel={t('account.deleteProfilePhoto')}
             >
-              <Trash2 size={ms(16)} color="#EF4444" strokeWidth={1.5} />
+              <Trash2 size={ms(16)} color="#EF4444" strokeWidth={icon.stroke} />
               <Text style={[styles.logoModalOutlineBtnText, { color: '#EF4444' }]}>{t('account.deleteProfilePhoto')}</Text>
             </TouchableOpacity>
           )}
@@ -136,8 +129,6 @@ export function LogoEditModal({
     </Modal>
   );
 }
-
-/* ── Cover Edit Bottom Sheet ── */
 
 export function CoverEditModal({
   visible, onClose, theme, t, merchant, onPickPhoto, onDelete,
@@ -170,29 +161,20 @@ export function CoverEditModal({
         >
           <View style={[styles.sheetHandle, { backgroundColor: `${palette.charbon}20` }]} />
 
-          <Text style={[styles.logoModalTitle, { color: theme.text, marginTop: hp(16) }]}>{t('account.coverPhoto')}</Text>
+          <Text style={[styles.logoModalTitle, styles.coverModalTitle, { color: theme.text }]}>{t('account.coverPhoto')}</Text>
           <Text style={[styles.logoModalSubtitle, { color: theme.textMuted }]}>
             {merchant?.coverUrl ? t('account.coverPhotoEditHint') : t('account.coverPhotoAddHint')}
           </Text>
 
-          <TouchableOpacity
-            style={styles.logoModalBtn}
-            activeOpacity={0.85}
-            accessibilityRole="button"
+          <ActionButton
+            label={merchant?.coverUrl ? t('account.changeCoverPhoto') : t('account.addCoverPhoto')}
+            icon={Camera}
+            size="lg"
             onPress={handlePickPress}
-          >
-            <LinearGradient
-              colors={['#7C3AED', '#5B21B6']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.logoModalBtnGradient}
-            >
-              <Camera size={ms(18)} color="#fff" strokeWidth={2} />
-              <Text style={styles.logoModalBtnText}>
-                {merchant?.coverUrl ? t('account.changeCoverPhoto') : t('account.addCoverPhoto')}
-              </Text>
-            </LinearGradient>
-          </TouchableOpacity>
+            gradient={PICK_BTN_GRADIENT}
+            gradientDirection="horizontal"
+            style={styles.logoModalBtn}
+          />
 
           {!!merchant?.coverUrl && (
             <TouchableOpacity
@@ -202,7 +184,7 @@ export function CoverEditModal({
               accessibilityRole="button"
               accessibilityLabel={t('account.deleteCoverPhoto')}
             >
-              <Trash2 size={ms(16)} color="#EF4444" strokeWidth={1.5} />
+              <Trash2 size={ms(16)} color="#EF4444" strokeWidth={icon.stroke} />
               <Text style={[styles.logoModalOutlineBtnText, { color: '#EF4444' }]}>{t('account.deleteCoverPhoto')}</Text>
             </TouchableOpacity>
           )}
@@ -223,15 +205,14 @@ export function CoverEditModal({
 }
 
 const styles = StyleSheet.create({
-  // Logo bottom sheet
   bottomSheetOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.55)',
     justifyContent: 'flex-end',
   },
   logoModalSheet: {
-    borderTopLeftRadius: ms(24),
-    borderTopRightRadius: ms(24),
+    borderTopLeftRadius: radius['2xl'],
+    borderTopRightRadius: radius['2xl'],
     paddingTop: hp(14),
     paddingHorizontal: ms(24),
     alignItems: 'center',
@@ -266,38 +247,26 @@ const styles = StyleSheet.create({
   },
   logoModalInitials: {
     fontSize: ms(32),
-    fontWeight: '700',
     color: '#fff',
-    letterSpacing: 1,
+    fontFamily: font.bold,
   },
   logoModalTitle: {
     fontSize: FS.lg,
-    fontWeight: '700',
+    fontFamily: font.bold,
     marginBottom: hp(6),
   },
+  coverModalTitle: { marginTop: hp(16) },
   logoModalSubtitle: {
     fontSize: FS.sm,
+    fontFamily: font.regular,
     textAlign: 'center',
     marginBottom: hp(24),
     lineHeight: FS.sm * 1.5,
   },
   logoModalBtn: {
     width: '100%',
-    borderRadius: ms(14),
-    overflow: 'hidden',
     marginBottom: hp(10),
-  },
-  logoModalBtnGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: ms(8),
-    paddingVertical: hp(15),
-  },
-  logoModalBtnText: {
-    color: '#fff',
-    fontSize: FS.md,
-    fontWeight: '700',
+    borderWidth: 0,
   },
   logoModalOutlineBtn: {
     flexDirection: 'row',
@@ -306,12 +275,12 @@ const styles = StyleSheet.create({
     gap: ms(8),
     width: '100%',
     paddingVertical: hp(14),
-    borderRadius: ms(14),
+    borderRadius: radius.md,
     borderWidth: 1,
     marginBottom: hp(10),
   },
   logoModalOutlineBtnText: {
     fontSize: FS.md,
-    fontWeight: '600',
+    fontFamily: font.semibold,
   },
 });

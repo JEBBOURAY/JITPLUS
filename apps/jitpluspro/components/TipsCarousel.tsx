@@ -7,20 +7,29 @@ import {
   type NativeSyntheticEvent,
   type NativeScrollEvent,
 } from 'react-native';
-import { Bell, Share2, Compass, Store, FerrisWheel } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useTour } from '@/components/GuidedTour';
 import { useRouter } from 'expo-router';
-import PromoBanner from '@/components/home/PromoBanner';
+import PromoBanner, { PROMO_BANNER_OVERFLOW } from '@/components/home/PromoBanner';
 import WhyLoyaltySheet from '@/components/home/WhyLoyaltySheet';
 import ClientAppPitchSheet from '@/components/home/ClientAppPitchSheet';
 import ClientShareSheet from '@/components/home/ClientShareSheet';
 import JitPlusGuideSheet from '@/components/home/JitPlusGuideSheet';
 import GamesGuideSheet from '@/components/home/GamesGuideSheet';
-import type { GuideStepId } from '@/components/home/useGuideProgress';
-import type { LucideIcon } from '@/components/home/PromoSheet';
+import DealsGuideSheet from '@/components/home/DealsGuideSheet';
+import SetupChecklistCard from '@/components/home/SetupChecklistCard';
+import { useGuideProgress, type GuideStepId } from '@/components/home/useGuideProgress';
+import {
+  GateIcon,
+  LanternIcon,
+  StarBadgeIcon,
+  TajineIcon,
+  TeapotIcon,
+  WheelIcon,
+  type PromoIcon,
+} from '@/components/home/PromoIcons';
 import { PROMO_TONES, type PromoTone } from '@/components/home/promoTones';
 import { ASYNC_STORAGE_KEYS } from '@/constants/app';
 import { useAuthStore } from '@/stores/authStore';
@@ -34,10 +43,9 @@ interface PromoCardDef {
   labelKey: string;
   titleKey: string;
   ctaKey: string;
-  durationMin: number;
   colors: readonly [string, string];
   tint: string;
-  Icon: LucideIcon;
+  Icon: PromoIcon;
   pattern?: 'zellige';
 }
 
@@ -57,9 +65,8 @@ const PROMO_CARDS: readonly PromoCardDef[] = [
     labelKey: 'home.promoWhyLabel',
     titleKey: 'home.promoWhyTitle',
     ctaKey: 'home.promoWhyCta',
-    durationMin: 3,
     ...toneColors('orange'),
-    Icon: Store,
+    Icon: LanternIcon,
     pattern: 'zellige',
   },
   {
@@ -67,45 +74,50 @@ const PROMO_CARDS: readonly PromoCardDef[] = [
     labelKey: 'home.promoGuideLabel',
     titleKey: 'home.promoGuideTitle',
     ctaKey: 'home.promoGuideCta',
-    durationMin: 5,
     ...toneColors('violet'),
-    Icon: Compass,
+    Icon: GateIcon,
   },
   {
     key: 'client',
     labelKey: 'home.promoClientLabel',
     titleKey: 'home.promoClientTitle',
     ctaKey: 'home.promoClientCta',
-    durationMin: 2,
     ...toneColors('emerald'),
-    Icon: Bell,
+    Icon: TeapotIcon,
   },
   {
     key: 'share',
     labelKey: 'home.promoShareLabel',
     titleKey: 'home.promoShareTitle',
     ctaKey: 'home.promoShareCta',
-    durationMin: 2,
     ...toneColors('sky'),
-    Icon: Share2,
+    Icon: TajineIcon,
   },
   {
     key: 'games',
     labelKey: 'home.promoGamesLabel',
     titleKey: 'home.promoGamesTitle',
     ctaKey: 'home.promoGamesCta',
-    durationMin: 3,
     ...toneColors('pink'),
-    Icon: FerrisWheel,
+    Icon: WheelIcon,
+  },
+  {
+    key: 'deals',
+    labelKey: 'home.promoDealsLabel',
+    titleKey: 'home.promoDealsTitle',
+    ctaKey: 'home.promoDealsCta',
+    ...toneColors('red'),
+    Icon: StarBadgeIcon,
   },
 ];
 
 /**
- * Promo-banner carousel on the Accueil: why-loyalty article, 5-minute guide,
- * client-app pitch, client sharing tools and games guide (lucky wheel vs
- * scratch card), as illustrated gradient banners with snap scrolling.
+ * Help carousel with snap scrolling.
  * Opened cards are remembered (AsyncStorage) and move to the end of the
  * carousel.
+ *
+ * Until an owner finishes the setup guide, a single "Démarrage x/7" card takes
+ * the carousel's place so new merchants get one clear next step.
  */
 function TipsCarousel() {
   const theme = useTheme();
@@ -114,6 +126,10 @@ function TipsCarousel() {
   const { width: winW } = useWindowDimensions();
   const tour = useTour();
   const isTeamMember = useAuthStore((s) => s.isTeamMember);
+  const setup = useGuideProgress(!isTeamMember);
+  const showSetup = !isTeamMember && setup.ready && !setup.allDone;
+  // Avoids flashing the carousel before swapping it for the checklist.
+  const setupPending = !isTeamMember && !setup.ready;
 
   const [activeIndex, setActiveIndex] = useState(0);
   const [readKeys, setReadKeys] = useState<ReadonlySet<string>>(() => new Set());
@@ -122,6 +138,7 @@ function TipsCarousel() {
   const [clientBenefitsVisible, setClientBenefitsVisible] = useState(false);
   const [clientShareVisible, setClientShareVisible] = useState(false);
   const [gamesVisible, setGamesVisible] = useState(false);
+  const [dealsVisible, setDealsVisible] = useState(false);
 
   const cardW = winW - H_PAD * 2 - NEXT_PEEK;
   const interval = cardW + CARD_GAP;
@@ -163,13 +180,21 @@ function TipsCarousel() {
     router.push('/games' as never);
   }, [router]);
 
+  const openDeals = useCallback(() => setDealsVisible(true), []);
+  const closeDeals = useCallback(() => setDealsVisible(false), []);
+  const handleCreateDeal = useCallback(() => {
+    setDealsVisible(false);
+    router.push('/deals/create' as never);
+  }, [router]);
+
   const openers = useMemo<Record<string, () => void>>(() => ({
     guide: openGuide,
     why: openWhy,
     games: openGames,
     client: openClientBenefits,
     share: openClientShare,
-  }), [openGuide, openWhy, openGames, openClientBenefits, openClientShare]);
+    deals: openDeals,
+  }), [openGuide, openWhy, openGames, openClientBenefits, openClientShare, openDeals]);
 
   const markRead = useCallback((key: string) => {
     setReadKeys((prev) => {
@@ -261,6 +286,50 @@ function TipsCarousel() {
     [interval, orderedCards.length],
   );
 
+  const sheets = (
+    <>
+      <JitPlusGuideSheet
+        visible={guideVisible}
+        onClose={closeGuide}
+        onStepAction={handleGuideStep}
+        onStartTour={handleGuideTour}
+      />
+
+      <WhyLoyaltySheet
+        visible={whyVisible}
+        onClose={closeWhy}
+        onConfigure={isTeamMember ? undefined : handleConfigureWhy}
+      />
+
+      <GamesGuideSheet visible={gamesVisible} onClose={closeGames} onStart={handleStartGames} />
+
+      <ClientAppPitchSheet
+        visible={clientBenefitsVisible}
+        onClose={closeClientBenefits}
+        onShare={handlePitchShare}
+      />
+
+      <ClientShareSheet visible={clientShareVisible} onClose={closeClientShare} />
+
+      <DealsGuideSheet
+        visible={dealsVisible}
+        onClose={closeDeals}
+        onCreate={isTeamMember ? undefined : handleCreateDeal}
+      />
+    </>
+  );
+
+  if (setupPending) return null;
+
+  if (showSetup) {
+    return (
+      <View>
+        <SetupChecklistCard progress={setup} onOpen={openGuide} onStepAction={handleGuideStep} />
+        {sheets}
+      </View>
+    );
+  }
+
   return (
     <View style={styles.wrap}>
       <ScrollView
@@ -281,10 +350,9 @@ function TipsCarousel() {
               label={t(c.labelKey)}
               title={t(c.titleKey)}
               cta={t(c.ctaKey)}
-              duration={t('home.promoReadTime', { min: c.durationMin })}
               colors={c.colors}
               tint={c.tint}
-              FallbackIcon={c.Icon}
+              Icon={c.Icon}
               pattern={c.pattern}
               read={readKeys.has(c.key)}
               readA11yLabel={t('home.promoReadA11y')}
@@ -309,28 +377,7 @@ function TipsCarousel() {
         ))}
       </View>
 
-      <JitPlusGuideSheet
-        visible={guideVisible}
-        onClose={closeGuide}
-        onStepAction={handleGuideStep}
-        onStartTour={handleGuideTour}
-      />
-
-      <WhyLoyaltySheet
-        visible={whyVisible}
-        onClose={closeWhy}
-        onConfigure={isTeamMember ? undefined : handleConfigureWhy}
-      />
-
-      <GamesGuideSheet visible={gamesVisible} onClose={closeGames} onStart={handleStartGames} />
-
-      <ClientAppPitchSheet
-        visible={clientBenefitsVisible}
-        onClose={closeClientBenefits}
-        onShare={handlePitchShare}
-      />
-
-      <ClientShareSheet visible={clientShareVisible} onClose={closeClientShare} />
+      {sheets}
     </View>
   );
 }
@@ -339,7 +386,7 @@ export default React.memo(TipsCarousel);
 
 const styles = StyleSheet.create({
   wrap: { marginHorizontal: -H_PAD },
-  track: { paddingHorizontal: H_PAD, paddingTop: 14, paddingBottom: 4 },
+  track: { paddingHorizontal: H_PAD, paddingTop: PROMO_BANNER_OVERFLOW + 4, paddingBottom: 4 },
   cardSlot: { marginRight: CARD_GAP },
   dots: { flexDirection: 'row', justifyContent: 'center', gap: 5, marginTop: 12 },
   dot: { height: 6, borderRadius: 3 },

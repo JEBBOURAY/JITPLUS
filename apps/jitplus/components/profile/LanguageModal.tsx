@@ -1,4 +1,5 @@
-import { View, Text, Pressable, Modal, Platform } from 'react-native';
+import { View, Pressable, Modal, Platform } from 'react-native';
+import { Text } from '@/components/AppText';
 import { Globe, Check } from 'lucide-react-native';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';

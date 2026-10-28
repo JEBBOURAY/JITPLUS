@@ -19,6 +19,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ClientClaimService } from '../merchant/services/client-claim.service';
 import { withRetry } from '../common/utils/retry-transaction.helper';
 import { computeStampsExpiry } from '../merchant/utils/loyalty.utils';
+import { DealsClientService, type MerchantDealBadge } from '../deals/deals-client.service';
+import { DEAL_DIGEST_AUDIENCE } from '../deals/deal-limits';
 
 @Injectable()
 export class ClientService {
@@ -36,7 +38,18 @@ export class ClientService {
     private mailService: MailService,
     private prisma: PrismaService,
     private clientClaimService: ClientClaimService,
+    private deals: DealsClientService,
   ) {}
+
+  /** Live-deal badges; a failure only hides the badges, never the merchants. */
+  private async dealBadges(): Promise<Record<string, MerchantDealBadge>> {
+    try {
+      return await this.deals.merchantBadges();
+    } catch (err) {
+      this.logger.warn(`Deal badges unavailable: ${err instanceof Error ? err.message : String(err)}`);
+      return {};
+    }
+  }
 
   async getProfile(clientId: string) {
     const client = await this.clientRepo.findUnique({
@@ -244,6 +257,8 @@ export class ClientService {
         },
       });
 
+      await tx.clientSession.deleteMany({ where: { clientId } });
+
       // 2. Deactivate all loyalty cards (cannot delete — Transaction references with Restrict)
       await tx.loyaltyCard.updateMany({
         where: { clientId, deactivatedAt: null },
@@ -381,13 +396,16 @@ export class ClientService {
     };
   }
 
-  async getMerchantById(id: string, clientId: string) {
+  /** Without `clientId` (guest mode) the profile is returned with empty card fields. */
+  async getMerchantById(id: string, clientId?: string) {
     // Apple 1.2 — a blocked merchant must be invisible to the client.
-    const blocked = await this.prisma.clientMerchantBlock.findUnique({
-      where: { clientId_merchantId: { clientId, merchantId: id } },
-      select: { id: true },
-    });
-    if (blocked) throw new NotFoundException('Commerce introuvable');
+    if (clientId) {
+      const blocked = await this.prisma.clientMerchantBlock.findUnique({
+        where: { clientId_merchantId: { clientId, merchantId: id } },
+        select: { id: true },
+      });
+      if (blocked) throw new NotFoundException('Commerce introuvable');
+    }
 
     // Cache the merchant data (shared across all clients)
     const merchantCacheKey = `merchant:detail:${id}`;
@@ -428,6 +446,8 @@ export class ClientService {
           profileViews: true,
           stores: {
             where: { isActive: true },
+            // Same order as the merchant's store list in JitPlus Pro.
+            orderBy: { createdAt: 'asc' },
             select: {
               id: true,
               nom: true,
@@ -472,31 +492,36 @@ export class ClientService {
       await this.cache.set(merchantCacheKey, m, MERCHANT_DETAIL_CACHE_TTL);
     }
 
-    // Record unique view: one per client per merchant per day
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    this.profileViewRepo.create({
-      data: { merchantId: id, clientId, viewDate: today },
-    })
-    .then(() =>
-      // New view today → increment the denormalized counter
-      this.merchantRepo.update({
-        where: { id },
-        data: { profileViews: { increment: 1 } },
-      }),
-    )
-    .catch((err: any) => {
-      // P2002 = unique constraint violation → already viewed today, skip
-      if (err?.code !== 'P2002') {
-        this.logger.warn('Profile view tracking failed', err);
-      }
-    });
+    if (clientId) {
+      // Record unique view: one per client per merchant per day
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      this.profileViewRepo.create({
+        data: { merchantId: id, clientId, viewDate: today },
+      })
+      .then(() =>
+        // New view today → increment the denormalized counter
+        this.merchantRepo.update({
+          where: { id },
+          data: { profileViews: { increment: 1 } },
+        }),
+      )
+      .catch((err: any) => {
+        // P2002 = unique constraint violation → already viewed today, skip
+        if (err?.code !== 'P2002') {
+          this.logger.warn('Profile view tracking failed', err);
+        }
+      });
+    }
 
     // Check if the client already has a loyalty card with this merchant
-    const existingCard = await this.loyaltyCardRepo.findUnique({
-      where: { clientId_merchantId: { clientId, merchantId: id } },
-      select: { id: true, stamps: true, deactivatedAt: true, lastVisitAt: true },
-    });
+    const existingCard = clientId
+      ? await this.loyaltyCardRepo.findUnique({
+          where: { clientId_merchantId: { clientId, merchantId: id } },
+          select: { id: true, stamps: true, deactivatedAt: true, lastVisitAt: true },
+        })
+      : null;
+    const activeDealCount = (await this.dealBadges())[id]?.activeDealCount ?? 0;
     const cardStampsExpireAt =
       existingCard && !existingCard.deactivatedAt && existingCard.stamps > 0
         ? computeStampsExpiry(
@@ -539,6 +564,7 @@ export class ClientService {
       cardBalance: existingCard?.stamps ?? 0,
       cardStampsExpireAt,
       stores: m.stores ?? [],
+      activeDealCount,
       rewards: m.rewards.map((r: any) => ({
         id: r.id,
         titre: r.titre,
@@ -799,11 +825,23 @@ export class ClientService {
     // Per-client filter for blocked merchants. Apple 1.2 requires blocked
     // users to be invisible to the blocker. We filter after the shared cache
     // to keep the hot path cheap for anonymous / non-blocking clients.
-    if (!clientId) return baseResult;
-    const blockedIds = await this.getBlockedMerchantIds(clientId);
-    if (blockedIds.size === 0) return baseResult;
-    const filtered = (baseResult as any).merchants.filter((m: any) => !blockedIds.has(m.id));
-    return { ...baseResult, merchants: filtered };
+    const blockedIds = clientId ? await this.getBlockedMerchantIds(clientId) : new Set<string>();
+    const visible = blockedIds.size === 0
+      ? baseResult.merchants
+      : baseResult.merchants.filter((m: any) => !blockedIds.has(m.id));
+
+    // Deal badges change faster than the merchant list: merged after its cache.
+    // Guests only get the count (the content of a deal requires an account).
+    const badges = await this.dealBadges();
+    const merchants = visible.map((m: any) => {
+      const badge = badges[m.id];
+      return {
+        ...m,
+        activeDealCount: badge?.activeDealCount ?? 0,
+        topDeal: clientId ? badge?.topDeal ?? null : null,
+      };
+    });
+    return { ...baseResult, merchants };
   }
 
   private formatMerchantList(merchants: any[], total: number, page: number, limit: number) {
@@ -863,6 +901,37 @@ export class ClientService {
   }
 
   /**
+   * Notifications a client can see: those of the merchants they hold a card
+   * of, plus their own deal digests (no merchant, addressed through a
+   * ClientNotificationStatus row).
+   */
+  private notificationVisibility(clientId: string, cards: { merchantId: string; createdAt: Date }[]) {
+    const digests = { audience: DEAL_DIGEST_AUDIENCE, clientStatuses: { some: { clientId } } };
+    if (cards.length === 0) return digests;
+    return {
+      OR: [
+        {
+          AND: [
+            // Only notifications created after the client joined each merchant
+            { OR: cards.map((card) => ({ merchantId: card.merchantId, createdAt: { gte: card.createdAt } })) },
+            // Either it's a broadcast (visible to every client of that merchant)
+            // or it's a personal notification explicitly addressed to this client
+            // via a ClientNotificationStatus row created at send time.
+            { OR: [{ isBroadcast: true }, { clientStatuses: { some: { clientId } } }] },
+            // In-app notification feed only surfaces PUSH-channel broadcasts.
+            // Email/WhatsApp blasts are stored for the merchant's history but must
+            // NOT appear in the client's notifications page (the client already
+            // got them through the chosen channel — duplicating in-app is wrong).
+            // Legacy rows with channel=null are kept (they predate channel tagging).
+            { OR: [{ channel: 'PUSH' }, { channel: null }] },
+          ],
+        },
+        digests,
+      ],
+    };
+  }
+
+  /**
    * Get notifications relevant to the client.
    * Returns notifications from merchants where the client holds a loyalty card,
    * excluding dismissed ones, with per-client read status.
@@ -880,42 +949,10 @@ export class ClientService {
       }),
     ]);
 
-    if (cards.length === 0) {
-      return { notifications: [], pagination: buildPagination(0, page, limit) };
-    }
-
     const dismissedIds = dismissedStatuses.map((s: any) => s.notificationId);
 
-    // Only show notifications created after the client joined each merchant
-    const merchantFilters = cards.map((card: any) => ({
-      merchantId: card.merchantId,
-      createdAt: { gte: card.createdAt },
-    }));
-
     const where = {
-      AND: [
-        { OR: merchantFilters },
-        // Either it's a broadcast (visible to every client of that merchant)
-        // or it's a personal notification explicitly addressed to this client
-        // via a ClientNotificationStatus row created at send time.
-        {
-          OR: [
-            { isBroadcast: true },
-            { clientStatuses: { some: { clientId } } },
-          ],
-        },
-        // In-app notification feed only surfaces PUSH-channel broadcasts.
-        // Email/WhatsApp blasts are stored for the merchant's history but must
-        // NOT appear in the client's notifications page (the client already
-        // got them through the chosen channel — duplicating in-app is wrong).
-        // Legacy rows with channel=null are kept (they predate channel tagging).
-        {
-          OR: [
-            { channel: 'PUSH' },
-            { channel: null },
-          ],
-        },
-      ],
+      ...this.notificationVisibility(clientId, cards),
       ...(dismissedIds.length > 0 ? { id: { notIn: dismissedIds } } : {}),
     };
 
@@ -928,6 +965,7 @@ export class ClientService {
           title: true,
           body: true,
           createdAt: true,
+          audience: true,
           merchant: { select: { id: true, nom: true, categorie: true, logoUrl: true } },
           clientStatuses: {
             where: { clientId },
@@ -949,7 +987,7 @@ export class ClientService {
           id: n.id,
           title: n.title,
           body: n.body,
-          type: 'promo' as const,
+          type: n.audience === DEAL_DIGEST_AUDIENCE ? ('deals_digest' as const) : ('promo' as const),
           merchantName: n.merchant?.nom ?? null,
           merchantCategory: n.merchant?.categorie ?? null,
           merchantLogoUrl: n.merchant?.logoUrl || EMAIL_LOGO_JITPLUS,
@@ -975,34 +1013,7 @@ export class ClientService {
       select: { merchantId: true, createdAt: true },
     });
 
-    if (cards.length === 0) return { unreadCount: 0 };
-
-    // Only count notifications created after the client joined each merchant
-    const merchantFilters = cards.map((card: any) => ({
-      merchantId: card.merchantId,
-      createdAt: { gte: card.createdAt },
-    }));
-
-    // Personal notifications must only count for their recipient — match either
-    // a broadcast or a notification with an explicit ClientNotificationStatus row.
-    // Also exclude EMAIL/WHATSAPP-channel rows (those are merchant history only).
-    const visibilityFilter = {
-      AND: [
-        { OR: merchantFilters },
-        {
-          OR: [
-            { isBroadcast: true },
-            { clientStatuses: { some: { clientId } } },
-          ],
-        },
-        {
-          OR: [
-            { channel: 'PUSH' },
-            { channel: null },
-          ],
-        },
-      ],
-    };
+    const visibilityFilter = this.notificationVisibility(clientId, cards);
 
     // Parallelize the two independent counts
     const [totalNotifs, readOrDismissedCount] = await Promise.all([

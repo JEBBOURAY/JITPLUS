@@ -2,16 +2,18 @@ import React, { useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, I18nManager, Share, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
-  QrCode,
   Send,
-  Megaphone,
-  Store,
   MessageCircle,
   Globe,
   Lightbulb,
   ChevronRight,
-  Sparkles,
 } from 'lucide-react-native';
+import {
+  JitMessages,
+  JitScan,
+  JitStar,
+  JitStore,
+} from '@/components/icons';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuthStore } from '@/stores/authStore';
@@ -28,9 +30,9 @@ const PREVIEW_ANDROID = 'play.google.com/…';
 const PREVIEW_IOS = 'apps.apple.com/…';
 
 const HERO_STEPS: readonly { Icon: LucideIcon; labelKey: string }[] = [
-  { Icon: QrCode, labelKey: 'home.clientShareStoreSection' },
+  { Icon: JitScan, labelKey: 'home.clientShareStoreSection' },
   { Icon: Send, labelKey: 'home.clientShareMessageSection' },
-  { Icon: Megaphone, labelKey: 'home.clientShareSocialSection' },
+  { Icon: JitMessages, labelKey: 'home.clientShareSocialSection' },
 ];
 
 interface ClientShareSheetProps {
@@ -76,7 +78,7 @@ function ChannelCard({ Icon, tone, title, text, tags, cta, onPress, badge, prima
         <View style={styles.flex1}>
           {badge ? (
             <View style={[styles.badge, { backgroundColor: tint }, isRTL && styles.selfEnd]}>
-              <Sparkles size={10} color="#FFFFFF" strokeWidth={2.4} />
+              <JitStar size={10} color="#FFFFFF" strokeWidth={2.4} />
               <Text style={styles.badgeText} maxFontSizeMultiplier={1.15}>{badge.toUpperCase()}</Text>
             </View>
           ) : null}
@@ -205,13 +207,13 @@ function ClientShareSheet({ visible, onClose }: ClientShareSheetProps) {
       heroLabel={t('home.clientShareHeroLabel')}
       title={t('home.clientShareSheetTitle')}
       subtitle={t('home.clientShareSheetSubtitle')}
-      heroBadge={<Megaphone size={20} color={ACCENT} strokeWidth={2.2} />}
+      heroBadge={<JitMessages size={20} color={ACCENT} strokeWidth={2.2} />}
       heroFooter={heroFooter}
     >
       {/* ── 1. En magasin ── */}
-      <SheetSectionLabel Icon={Store} text={t('home.clientShareStoreSection')} tone={TONE} />
+      <SheetSectionLabel Icon={JitStore} text={t('home.clientShareStoreSection')} tone={TONE} />
       <ChannelCard
-        Icon={QrCode}
+        Icon={JitScan}
         tone={TONE}
         title={t('home.clientSharePlvTitle')}
         text={t('home.clientSharePlvText')}
@@ -242,7 +244,7 @@ function ClientShareSheet({ visible, onClose }: ClientShareSheetProps) {
       {/* ── 3. Sur les réseaux ── */}
       <SheetSectionLabel Icon={Globe} text={t('home.clientShareSocialSection')} tone={TONE} />
       <ChannelCard
-        Icon={Megaphone}
+        Icon={JitMessages}
         tone="pink"
         title={t('home.clientShareSocialTitle')}
         text={t('home.clientShareSocialText')}

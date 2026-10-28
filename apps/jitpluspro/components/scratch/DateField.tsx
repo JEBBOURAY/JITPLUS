@@ -7,17 +7,27 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { getIntlLocale } from '@/config/currency';
 import { ms } from '@/utils/responsive';
+import { font, icon } from '@/constants/design';
 import { diffDaysYmd, toYmd } from '@jitplus/shared/src/scratch';
+
+// One formatter per language and style: building an Intl formatter costs far more than using it.
+const ymdFormatters = new Map<string, Intl.DateTimeFormat>();
 
 /** 'YYYY-MM-DD' → '17 oct. 2026' in the app language */
 export function formatYmd(ymd: string, locale: string, withYear = true): string {
   const [y, m, d] = (ymd || '').split('-').map(Number);
   if (!y || !m || !d) return ymd;
-  return new Date(y, m - 1, d).toLocaleDateString(getIntlLocale(locale), {
-    day: 'numeric',
-    month: 'short',
-    ...(withYear ? { year: 'numeric' } : {}),
-  });
+  const key = `${locale}|${withYear}`;
+  let formatter = ymdFormatters.get(key);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat(getIntlLocale(locale), {
+      day: 'numeric',
+      month: 'short',
+      ...(withYear ? { year: 'numeric' } : {}),
+    });
+    ymdFormatters.set(key, formatter);
+  }
+  return formatter.format(new Date(y, m - 1, d));
 }
 
 interface DateFieldProps {
@@ -46,7 +56,7 @@ export function DateField({ label, value, onChange, minYmd, maxYmd, disabled }: 
           { backgroundColor: theme.inputBg, borderColor: theme.inputBorder, flexDirection: isRTL ? 'row-reverse' : 'row', opacity: disabled ? 0.55 : 1 },
         ]}
       >
-        <Calendar size={18} color={theme.primary} />
+        <Calendar size={18} color={theme.primary} strokeWidth={icon.stroke} />
         <View style={styles.fieldText}>
           <Text style={[styles.fieldLabel, { color: theme.textMuted, textAlign: isRTL ? 'right' : 'left' }]} maxFontSizeMultiplier={1.3}>{label}</Text>
           <Text style={[styles.fieldValue, { color: theme.text, textAlign: isRTL ? 'right' : 'left' }]} maxFontSizeMultiplier={1.3}>
@@ -80,7 +90,7 @@ interface DatePickerModalProps {
   onClose: () => void;
 }
 
-export function DatePickerModal({ visible, title, value, minYmd, maxYmd, onSelect, onClose }: DatePickerModalProps) {
+function DatePickerModal({ visible, title, value, minYmd, maxYmd, onSelect, onClose }: DatePickerModalProps) {
   const theme = useTheme();
   const { t, locale, isRTL } = useLanguage();
   const initial = useMemo(() => {
@@ -128,11 +138,11 @@ export function DatePickerModal({ visible, title, value, minYmd, maxYmd, onSelec
           <Text style={[styles.title, { color: theme.text }]} maxFontSizeMultiplier={1.3}>{title}</Text>
           <View style={[styles.monthRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
             <TouchableOpacity onPress={() => shift(-1)} disabled={!canPrev} style={[styles.navBtn, { opacity: canPrev ? 1 : 0.3 }]} accessibilityRole="button" accessibilityLabel={t('scratch.wizard.prevMonth')}>
-              <PrevIcon size={20} color={theme.text} />
+              <PrevIcon size={20} color={theme.text} strokeWidth={icon.stroke} />
             </TouchableOpacity>
             <Text style={[styles.monthTitle, { color: theme.text }]} maxFontSizeMultiplier={1.3}>{monthTitle}</Text>
             <TouchableOpacity onPress={() => shift(1)} disabled={!canNext} style={[styles.navBtn, { opacity: canNext ? 1 : 0.3 }]} accessibilityRole="button" accessibilityLabel={t('scratch.wizard.nextMonth')}>
-              <NextIcon size={20} color={theme.text} />
+              <NextIcon size={20} color={theme.text} strokeWidth={icon.stroke} />
             </TouchableOpacity>
           </View>
           <View style={[styles.grid, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
@@ -177,18 +187,18 @@ export function DatePickerModal({ visible, title, value, minYmd, maxYmd, onSelec
 const styles = StyleSheet.create({
   field: { alignItems: 'center', gap: 12, borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, minHeight: 54 },
   fieldText: { flex: 1, gap: 2 },
-  fieldLabel: { fontSize: ms(11.5), fontFamily: 'Lexend_400Regular' },
-  fieldValue: { fontSize: ms(15), fontFamily: 'Lexend_600SemiBold' },
+  fieldLabel: { fontSize: ms(12), fontFamily: font.regular },
+  fieldValue: { fontSize: ms(15), fontFamily: font.semibold },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
-  sheet: { borderRadius: 20, padding: 18, gap: 10 },
-  title: { fontSize: ms(16), fontFamily: 'Lexend_600SemiBold', textAlign: 'center' },
+  sheet: { borderRadius: 24, padding: 18, gap: 10 },
+  title: { fontSize: ms(16), fontFamily: font.semibold, textAlign: 'center' },
   monthRow: { alignItems: 'center', justifyContent: 'space-between' },
   navBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  monthTitle: { fontSize: ms(15), fontFamily: 'Lexend_600SemiBold', textTransform: 'capitalize' },
+  monthTitle: { fontSize: ms(15), fontFamily: font.semibold, textTransform: 'capitalize' },
   grid: { flexWrap: 'wrap' },
-  weekday: { width: `${100 / 7}%`, textAlign: 'center', fontSize: ms(11), fontFamily: 'Lexend_500Medium', paddingVertical: 4 },
+  weekday: { width: `${100 / 7}%`, textAlign: 'center', fontSize: ms(11), fontFamily: font.medium, paddingVertical: 4 },
   cell: { width: `${100 / 7}%`, aspectRatio: 1, alignItems: 'center', justifyContent: 'center' },
-  day: { fontSize: ms(14), fontFamily: 'Lexend_500Medium' },
+  day: { fontSize: ms(14), fontFamily: font.medium },
   cancel: { alignSelf: 'center', paddingVertical: 10, paddingHorizontal: 20 },
-  cancelText: { fontSize: ms(14), fontFamily: 'Lexend_600SemiBold' },
+  cancelText: { fontSize: ms(14), fontFamily: font.semibold },
 });

@@ -1,18 +1,20 @@
-import React, { memo, useState } from 'react';
-import { View, Text, Pressable, StyleSheet, LayoutAnimation } from 'react-native';
+import { memo, useState } from 'react';
+import { View, Pressable, StyleSheet, LayoutAnimation } from 'react-native';
+import { Text } from '@/components/AppText';
 import {
-  Info, Wifi, ParkingSquare, TreePine, Snowflake, CreditCard, Truck, ShoppingBag,
+  Wifi, ParkingSquare, TreePine, Snowflake, CreditCard, Truck, ShoppingBag,
   Utensils, Leaf, Accessibility, Dog, Baby, CalendarCheck, type LucideIcon,
 } from 'lucide-react-native';
+import { getKnownBadges } from '@jitplus/shared';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAppFonts } from '@/utils/fonts';
 import { haptic } from '@/utils/haptics';
-import { getMerchantAccent } from '@/utils/merchantAccent';
 import { wp, hp, ms } from '@/utils/responsive';
 import type { Merchant, MerchantBadge } from '@/types';
-import MerchantSection from './MerchantSection';
-import MerchantSocialLinks, { useSocialItems } from './MerchantSocialLinks';
+import FicheSection from './FicheSection';
+import MerchantSocialLinks, { useSocialProfiles } from './MerchantSocialLinks';
+import LinkifiedText from './LinkifiedText';
 
 const BADGE_ICONS: Record<MerchantBadge, LucideIcon> = {
   WIFI: Wifi,
@@ -34,22 +36,17 @@ const COLLAPSED_LINES = 4;
 /** Rough length past which the description no longer fits in the collapsed lines. */
 const COLLAPSIBLE_LENGTH = 180;
 
-function isKnownBadge(code: string): code is MerchantBadge {
-  return code in BADGE_ICONS;
-}
-
-/** Description, amenities and social profiles in a single card. */
+/** Description, amenities and social profiles. */
 function MerchantAbout({ merchant }: { merchant: Merchant }) {
   const theme = useTheme();
   const { t } = useLanguage();
   const fonts = useAppFonts();
-  const accent = getMerchantAccent(merchant.themeColor);
-  const socialItems = useSocialItems(merchant);
+  const profiles = useSocialProfiles(merchant);
   const [expanded, setExpanded] = useState(false);
 
   const description = merchant.description?.trim();
-  const badges = (merchant.badges ?? []).filter(isKnownBadge);
-  if (!description && badges.length === 0 && socialItems.length === 0) return null;
+  const badges = getKnownBadges(merchant.badges);
+  if (!description && badges.length === 0 && profiles.length === 0) return null;
 
   const collapsible = !!description && description.length > COLLAPSIBLE_LENGTH;
   const toggle = () => {
@@ -59,66 +56,60 @@ function MerchantAbout({ merchant }: { merchant: Merchant }) {
   };
 
   return (
-    <MerchantSection title={t('merchant.aboutUs')} icon={Info} accent={accent}>
+    <>
       {!!description && (
-        <>
-          <Text
+        <FicheSection title={t('merchant.aboutUs')}>
+          <LinkifiedText
+            text={description}
+            linkColor={theme.primary}
             style={[styles.description, { color: theme.textSecondary, fontFamily: fonts.regular }]}
             numberOfLines={collapsible && !expanded ? COLLAPSED_LINES : undefined}
-          >
-            {description}
-          </Text>
+          />
           {collapsible && (
             <Pressable onPress={toggle} hitSlop={6} accessibilityRole="button" style={styles.readMore}>
-              <Text style={[styles.readMoreText, { color: accent, fontFamily: fonts.semibold }]}>
+              <Text style={[styles.readMoreText, { color: theme.text, fontFamily: fonts.semibold }]}>
                 {expanded ? t('merchant.showLess') : t('merchant.readMore')}
               </Text>
             </Pressable>
           )}
-        </>
+        </FicheSection>
       )}
 
       {badges.length > 0 && (
-        <View style={description ? styles.block : undefined}>
-          <Text style={[styles.subheading, { color: theme.text, fontFamily: fonts.bold }]}>{t('merchant.badgesTitle')}</Text>
+        <FicheSection title={t('merchant.badgesTitle')}>
           <View style={styles.badges}>
             {badges.map((code) => {
               const Icon = BADGE_ICONS[code];
               return (
-                <View key={code} style={[styles.badge, { backgroundColor: theme.bgInput, borderColor: theme.border }]}>
-                  <Icon size={ms(14)} color={accent} strokeWidth={2} />
-                  <Text style={[styles.badgeText, { color: theme.textSecondary, fontFamily: fonts.medium }]} numberOfLines={1}>
+                <View key={code} style={styles.badge}>
+                  <Icon size={ms(18)} color={theme.textSecondary} strokeWidth={1.8} />
+                  <Text style={[styles.badgeText, { color: theme.text, fontFamily: fonts.regular }]} numberOfLines={1}>
                     {t(`merchant.badges.${code}`)}
                   </Text>
                 </View>
               );
             })}
           </View>
-        </View>
+        </FicheSection>
       )}
 
-      {socialItems.length > 0 && (
-        <View style={description || badges.length ? styles.block : undefined}>
-          <Text style={[styles.subheading, { color: theme.text, fontFamily: fonts.bold }]}>{t('merchant.followUs')}</Text>
-          <MerchantSocialLinks items={socialItems} />
-        </View>
+      {profiles.length > 0 && (
+        <FicheSection title={t('merchant.followUs')}>
+          <MerchantSocialLinks profiles={profiles} />
+        </FicheSection>
       )}
-    </MerchantSection>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
-  description: { fontSize: ms(14), lineHeight: ms(22) },
+  description: { fontSize: ms(15), lineHeight: ms(22) },
   readMore: { alignSelf: 'flex-start', marginTop: hp(6) },
-  readMoreText: { fontSize: ms(13) },
-  block: { marginTop: hp(18) },
-  subheading: { fontSize: ms(14), marginBottom: hp(10) },
-  badges: { flexDirection: 'row', flexWrap: 'wrap', gap: wp(8) },
-  badge: {
-    flexDirection: 'row', alignItems: 'center', gap: wp(6),
-    paddingHorizontal: wp(12), paddingVertical: hp(7), borderRadius: 999, borderWidth: StyleSheet.hairlineWidth,
-  },
-  badgeText: { fontSize: ms(12) },
+  readMoreText: { fontSize: ms(14) },
+  // Two columns, like the amenities list of a maps listing.
+  badges: { flexDirection: 'row', flexWrap: 'wrap', rowGap: hp(12) },
+  badge: { width: '50%', flexDirection: 'row', alignItems: 'center', gap: wp(10), paddingRight: wp(8) },
+  badgeText: { flexShrink: 1, fontSize: ms(14) },
 });
 
 export default memo(MerchantAbout);

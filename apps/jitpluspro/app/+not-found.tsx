@@ -1,18 +1,26 @@
-import { Link, Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useTheme, palette } from '@/contexts/ThemeContext';
+import { ActionButton } from '@/components/ui/ActionButton';
+import { typography } from '@/constants/design';
 
 export default function NotFoundScreen() {
   const { t } = useLanguage();
+  const theme = useTheme();
+  const router = useRouter();
   return (
     <>
       <Stack.Screen options={{ title: t('notFound.title') }} />
-      <View style={styles.container}>
-        <Text style={styles.title}>{t('notFound.message')}</Text>
-
-        <Link href="/" style={styles.link}>
-          <Text style={styles.linkText}>{t('notFound.backHome')}</Text>
-        </Link>
+      <View style={[styles.container, { backgroundColor: theme.bg }]}>
+        <Text style={[styles.title, { color: theme.text }]}>{t('notFound.message')}</Text>
+        <ActionButton
+          label={t('notFound.backHome')}
+          onPress={() => router.navigate('/')}
+          variant="ghost"
+          style={styles.button}
+          labelStyle={styles.buttonText}
+        />
       </View>
     </>
   );
@@ -26,17 +34,14 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   title: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    fontFamily: 'Lexend_700Bold',
+    ...typography.title,
+    textAlign: 'center',
   },
-  link: {
-    marginTop: 15,
-    paddingVertical: 15,
+  button: {
+    marginTop: 24,
+    minWidth: 200,
   },
-  linkText: {
-    fontSize: 14,
-    color: '#7C3AED',
-    fontFamily: 'Lexend_400Regular',
+  buttonText: {
+    color: palette.violet,
   },
 });

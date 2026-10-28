@@ -82,10 +82,11 @@ const lightTheme: ThemeColors = {
   bgTabBarBorder: 'rgba(0,0,0,0.06)',
   bgInput: '#F7F8FA',
   bgSkeleton: '#F1F2F4',
-  bgSkeletonHighlight: '#E8E9EB',
+  bgSkeletonHighlight: '#FAFAFB',
   text: '#0F172A',
   textSecondary: '#334155',
-  textMuted: '#94A3B8',
+  // #94A3B8 failed WCAG AA on white (2.6:1); this one passes (4.8:1).
+  textMuted: '#64748B',
   textInverse: '#FFFFFF',
   primary: '#7C3AED',
   primaryLight: '#8B5CF6',

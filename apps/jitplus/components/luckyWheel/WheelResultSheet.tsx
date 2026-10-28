@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Animated, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, Pressable, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Text } from '@/components/AppText';
 import { LinearGradient } from 'expo-linear-gradient';
 import { CalendarClock, Gift, RotateCcw, Store, Trophy } from 'lucide-react-native';
 import { palette } from '@/contexts/ThemeContext';

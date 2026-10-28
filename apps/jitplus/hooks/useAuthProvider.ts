@@ -4,6 +4,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { router } from 'expo-router';
+import { goHomeAfterLogin } from '@/services/pendingDeal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { haptic } from '@/utils/haptics';
 import { isNoAccountError } from '@/utils/authErrors';
@@ -69,7 +70,7 @@ export function useAuthProvider({ actionLabel, onCancel }: AuthProviderOptions):
       } else {
         await AsyncStorage.setItem(SHOW_WELCOME_KEY, '1');
         setTimeout(() => {
-          if (mountedRef.current) router.replace('/(tabs)/qr');
+          if (mountedRef.current) goHomeAfterLogin(router);
         }, 600);
       }
     } else {

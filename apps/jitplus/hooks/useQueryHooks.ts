@@ -32,7 +32,10 @@ const isNotificationsQuery = (q: { queryKey: readonly unknown[] }) => {
 
 // ── Stamps / loyalty cards ──
 
-export function useStampsOverview(enabled = true, refetchInterval: number | false = false) {
+export function useStampsOverview(
+  enabled = true,
+  refetchInterval: number | false | (() => number | false) = false,
+) {
   return useQuery<StampsOverview>({
     queryKey: queryKeys.stamps,
     queryFn: () => api.getStampsOverview(),

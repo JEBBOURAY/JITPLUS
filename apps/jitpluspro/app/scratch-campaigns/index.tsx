@@ -1,16 +1,20 @@
 import { useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator } from 'react-native';
-import { ChevronRight, Plus, ScanLine, Ticket } from 'lucide-react-native';
+import { View, StyleSheet, FlatList, RefreshControl, ActivityIndicator, useWindowDimensions } from 'react-native';
+import { Plus } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
+import { usePlanStatus } from '@/hooks/usePlanStatus';
 import { useAuthStore } from '@/stores/authStore';
 import { useScratchCampaigns } from '@/hooks/useScratchHooks';
 import { ms } from '@/utils/responsive';
+import { resolveImageUrl } from '@/utils/imageUrl';
 import PremiumLockCard from '@/components/PremiumLockCard';
 import { Button, CampaignStatusPill, Notice, ScreenHeader } from '@/components/scratch/ScratchUI';
+import { CampaignRow, GameEmptyState, HeaderAddButton, ListSeparator } from '@/components/games/GameList';
+import { ScratchPreview, ScratchTile } from '@/components/scratch/ScratchPreview';
 import { formatYmd } from '@/components/scratch/DateField';
 import { moroccoYmdOf } from '@/components/scratch/campaignForm';
 import type { ScratchCampaignListItem } from '@jitplus/shared/src/scratch';
@@ -18,15 +22,14 @@ import type { ScratchCampaignListItem } from '@jitplus/shared/src/scratch';
 export default function ScratchCampaignsScreen() {
   const shouldWait = useRequireAuth();
   const theme = useTheme();
-  const { t, locale, isRTL } = useLanguage();
+  const { t, locale } = useLanguage();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const merchant = useAuthStore((s) => s.merchant);
   const isTeamMember = useAuthStore((s) => s.isTeamMember);
-  const isPremium = merchant?.plan === 'PREMIUM';
+  const { isPremium } = usePlanStatus(merchant);
   const canManage = isPremium && !isTeamMember;
-  const row = isRTL ? 'row-reverse' : 'row';
-  const textAlign = isRTL ? 'right' : 'left';
 
   const { data: campaigns = [], isLoading, isError, refetch, isRefetching } = useScratchCampaigns(!shouldWait);
 
@@ -41,55 +44,28 @@ export default function ScratchCampaignsScreen() {
       : item.sentAt
         ? t('scratch.list.sentAt', { date: formatYmd(moroccoYmdOf(new Date(item.sentAt)), locale, false) })
         : t('scratch.list.cardUntil', { date: formatYmd(item.cardExpiresOn, locale, false) });
+    const lines = [{ text: dateLine }];
+    if (item.recipientCount > 0) {
+      lines.push({
+        text: `${t('scratch.list.recipients', { count: item.recipientCount })} · ${t('scratch.list.scratched', { count: item.scratchedCount })} · ${t('scratch.list.redeemed', { count: item.redeemedCount })}`,
+      });
+    }
     return (
-      <TouchableOpacity
+      <CampaignRow
+        leading={<ScratchTile designId={item.designId} size={ms(52)} />}
+        title={item.name}
+        status={<CampaignStatusPill status={item.status} />}
+        lines={lines}
         onPress={() => openCampaign(item.id)}
-        activeOpacity={0.75}
-        accessibilityRole="button"
         accessibilityLabel={`${item.name}, ${t(`scratch.campaignStatus.${item.status}`)}`}
-        style={[styles.card, { backgroundColor: theme.bgCard, borderColor: theme.borderLight, flexDirection: row }]}
-      >
-        <View style={styles.cardBody}>
-          <View style={[styles.cardTop, { flexDirection: row }]}>
-            <Text style={[styles.cardTitle, { color: theme.text, textAlign }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>
-              {item.name}
-            </Text>
-            <CampaignStatusPill status={item.status} />
-          </View>
-          <Text style={[styles.cardMeta, { color: theme.textMuted, textAlign }]} maxFontSizeMultiplier={1.3}>{dateLine}</Text>
-          {item.recipientCount > 0 && (
-            <Text style={[styles.cardMeta, { color: theme.textSecondary, textAlign }]} maxFontSizeMultiplier={1.3}>
-              {t('scratch.list.recipients', { count: item.recipientCount })} · {t('scratch.list.scratched', { count: item.scratchedCount })} ·{' '}
-              {t('scratch.list.redeemed', { count: item.redeemedCount })}
-            </Text>
-          )}
-        </View>
-        <ChevronRight size={18} color={theme.textMuted} style={isRTL ? { transform: [{ scaleX: -1 }] } : undefined} />
-      </TouchableOpacity>
+      />
     );
-  }, [theme, t, locale, row, textAlign, isRTL, openCampaign]);
+  }, [t, locale, openCampaign]);
 
   if (shouldWait) return null;
 
   const header = (
     <View style={styles.headerContent}>
-      <TouchableOpacity
-        onPress={() => router.push('/coupon-validate')}
-        activeOpacity={0.8}
-        accessibilityRole="button"
-        accessibilityLabel={t('scratch.list.validateCoupon')}
-        style={[styles.validateCard, { backgroundColor: theme.primaryBg, flexDirection: row }]}
-      >
-        <View style={[styles.validateIcon, { backgroundColor: theme.primary }]}>
-          <ScanLine size={22} color="#FFFFFF" />
-        </View>
-        <View style={styles.cardBody}>
-          <Text style={[styles.validateTitle, { color: theme.text, textAlign }]} maxFontSizeMultiplier={1.3}>{t('scratch.list.validateCoupon')}</Text>
-          <Text style={[styles.cardMeta, { color: theme.textSecondary, textAlign }]} maxFontSizeMultiplier={1.3}>{t('scratch.list.validateCouponHint')}</Text>
-        </View>
-        <ChevronRight size={18} color={theme.primary} style={isRTL ? { transform: [{ scaleX: -1 }] } : undefined} />
-      </TouchableOpacity>
-
       {!isPremium && campaigns.length === 0 && (
         <PremiumLockCard titleKey="scratch.list.premiumTitle" descriptionKey="scratch.list.premiumDesc" />
       )}
@@ -100,13 +76,22 @@ export default function ScratchCampaignsScreen() {
       )}
 
       {campaigns.length === 0 && isPremium && !isLoading && (
-        <View style={[styles.empty, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
-          <Ticket size={ms(36)} color={theme.primary} strokeWidth={1.6} />
-          <Text style={[styles.emptyTitle, { color: theme.text }]} maxFontSizeMultiplier={1.3}>{t('scratch.list.empty')}</Text>
-          <Text style={[styles.emptyHint, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.4}>{t('scratch.list.intro')}</Text>
-          <Text style={[styles.emptyHint, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>{t('scratch.list.emptyHint')}</Text>
-          {canManage && <Button icon={Plus} label={t('scratch.list.create')} onPress={() => router.push('/scratch-campaigns/create')} />}
-        </View>
+        <GameEmptyState
+          visual={
+            <ScratchPreview
+              width={Math.min(width - 116, 300)}
+              merchantName={merchant?.nom ?? ''}
+              logoUrl={merchant?.logoUrl ? resolveImageUrl(merchant.logoUrl) : null}
+              side="before"
+            />
+          }
+          title={t('scratch.list.emptyTitle')}
+          text={t('scratch.list.intro')}
+          steps={[t('scratch.list.how1'), t('scratch.list.how2'), t('scratch.list.how3')]}
+          action={canManage ? (
+            <Button icon={Plus} label={t('scratch.list.create')} onPress={() => router.push('/scratch-campaigns/create')} style={styles.stretch} />
+          ) : undefined}
+        />
       )}
       {isError && <Notice tone="danger" text={t('scratch.list.loadError')} />}
     </View>
@@ -118,14 +103,7 @@ export default function ScratchCampaignsScreen() {
         title={t('scratch.list.title')}
         onBack={() => (router.canGoBack() ? router.back() : router.replace('/games'))}
         right={canManage && campaigns.length > 0 ? (
-          <TouchableOpacity
-            onPress={() => router.push('/scratch-campaigns/create')}
-            style={[styles.addBtn, { backgroundColor: theme.primary }]}
-            accessibilityRole="button"
-            accessibilityLabel={t('scratch.list.create')}
-          >
-            <Plus size={20} color="#FFFFFF" />
-          </TouchableOpacity>
+          <HeaderAddButton label={t('scratch.list.create')} onPress={() => router.push('/scratch-campaigns/create')} />
         ) : undefined}
       />
       {isLoading ? (
@@ -137,7 +115,7 @@ export default function ScratchCampaignsScreen() {
           renderItem={renderItem}
           ListHeaderComponent={header}
           contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 24 }]}
-          ItemSeparatorComponent={() => <View style={styles.separator} />}
+          ItemSeparatorComponent={ListSeparator}
           refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={theme.primary} />}
         />
       )}
@@ -150,17 +128,5 @@ const styles = StyleSheet.create({
   loader: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   list: { paddingHorizontal: 16, paddingTop: 4 },
   headerContent: { gap: 14, marginBottom: 14 },
-  separator: { height: 10 },
-  addBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  validateCard: { alignItems: 'center', gap: 12, borderRadius: 18, padding: 14 },
-  validateIcon: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  validateTitle: { fontSize: ms(15), fontFamily: 'Lexend_600SemiBold' },
-  card: { alignItems: 'center', gap: 10, borderRadius: 16, borderWidth: 1, padding: 14 },
-  cardBody: { flex: 1, gap: 4 },
-  cardTop: { alignItems: 'center', gap: 8 },
-  cardTitle: { flex: 1, fontSize: ms(15), fontFamily: 'Lexend_600SemiBold' },
-  cardMeta: { fontSize: ms(12), fontFamily: 'Lexend_400Regular', lineHeight: ms(18) },
-  empty: { alignItems: 'center', gap: 10, borderRadius: 18, borderWidth: 1, padding: 22 },
-  emptyTitle: { fontSize: ms(17), fontFamily: 'Lexend_600SemiBold' },
-  emptyHint: { fontSize: ms(13), lineHeight: ms(20), fontFamily: 'Lexend_400Regular', textAlign: 'center' },
+  stretch: { alignSelf: 'stretch' },
 });

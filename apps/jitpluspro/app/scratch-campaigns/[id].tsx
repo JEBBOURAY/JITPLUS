@@ -20,6 +20,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
+import { usePlanStatus } from '@/hooks/usePlanStatus';
 import { useAuthStore } from '@/stores/authStore';
 import {
   fetchCancelPreview,
@@ -38,6 +39,7 @@ import { getErrorMessage } from '@/utils/error';
 import { formatDateTime } from '@/utils/date';
 import { formatCurrency, DEFAULT_CURRENCY, getIntlLocale } from '@/config/currency';
 import { ms } from '@/utils/responsive';
+import { font, icon } from '@/constants/design';
 import {
   formatRewardValue,
   rewardProbabilities,
@@ -62,7 +64,7 @@ export default function ScratchCampaignDetail() {
   const merchant = useAuthStore((s) => s.merchant);
   const isTeamMember = useAuthStore((s) => s.isTeamMember);
   const isOwner = !isTeamMember;
-  const isPremium = merchant?.plan === 'PREMIUM';
+  const { isPremium } = usePlanStatus(merchant);
   const textAlign = isRTL ? 'right' : 'left';
   const row = isRTL ? 'row-reverse' : 'row';
 
@@ -339,7 +341,7 @@ export default function ScratchCampaignDetail() {
                   >
                     {sharingClientId === entry.client.id
                       ? <ActivityIndicator color="#FFFFFF" size="small" />
-                      : <MessageCircle size={16} color="#FFFFFF" />}
+                      : <MessageCircle size={16} color="#FFFFFF" strokeWidth={icon.stroke} />}
                     <Text style={styles.waText}>{t('scratch.detail.sendWhatsApp')}</Text>
                   </TouchableOpacity>
                 )}
@@ -561,30 +563,30 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   content: { paddingHorizontal: 16, paddingTop: 4, gap: 14 },
   actions: { gap: 10 },
-  info: { fontSize: ms(13.5), lineHeight: ms(20), fontFamily: 'Lexend_400Regular' },
-  hint: { fontSize: ms(12.5), lineHeight: ms(19), fontFamily: 'Lexend_400Regular' },
+  info: { fontSize: ms(14), lineHeight: ms(20), fontFamily: font.regular },
+  hint: { fontSize: ms(13), lineHeight: ms(19), fontFamily: font.regular },
   kpiRow: { gap: 8 },
   kpi: { flex: 1, borderRadius: 12, padding: 10, gap: 4 },
-  kpiValue: { fontSize: ms(15), fontFamily: 'Lexend_700Bold' },
-  kpiLabel: { fontSize: ms(11), fontFamily: 'Lexend_400Regular' },
+  kpiValue: { fontSize: ms(15), fontFamily: font.bold },
+  kpiLabel: { fontSize: ms(11), fontFamily: font.regular },
   funnel: { gap: 10 },
   funnelStep: { gap: 4 },
   funnelHeader: { justifyContent: 'space-between' },
-  funnelLabel: { fontSize: ms(12.5), fontFamily: 'Lexend_500Medium' },
-  funnelValue: { fontSize: ms(12.5), fontFamily: 'Lexend_600SemiBold' },
-  funnelTrack: { height: 10, borderRadius: 5, overflow: 'hidden' },
-  funnelFill: { height: 10, borderRadius: 5 },
+  funnelLabel: { fontSize: ms(13), fontFamily: font.medium },
+  funnelValue: { fontSize: ms(13), fontFamily: font.semibold },
+  funnelTrack: { height: 10, borderRadius: 999, overflow: 'hidden' },
+  funnelFill: { height: 10, borderRadius: 999 },
   rewardRow: { gap: 4, paddingBottom: 10, borderBottomWidth: StyleSheet.hairlineWidth },
   rewardTop: { alignItems: 'center', gap: 8 },
-  rewardLabel: { flex: 1, fontSize: ms(14), fontFamily: 'Lexend_600SemiBold' },
-  rewardValue: { fontSize: ms(13), fontFamily: 'Lexend_600SemiBold' },
-  rewardMeta: { fontSize: ms(12), fontFamily: 'Lexend_400Regular' },
+  rewardLabel: { flex: 1, fontSize: ms(14), fontFamily: font.semibold },
+  rewardValue: { fontSize: ms(13), fontFamily: font.semibold },
+  rewardMeta: { fontSize: ms(12), fontFamily: font.regular },
   clientRow: { alignItems: 'center', gap: 10, paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth },
-  clientName: { fontSize: ms(14), fontFamily: 'Lexend_500Medium' },
+  clientName: { fontSize: ms(14), fontFamily: font.medium },
   waBtn: { alignItems: 'center', gap: 6, backgroundColor: '#25D366', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8, minHeight: 36 },
-  waText: { color: '#FFFFFF', fontSize: ms(12.5), fontFamily: 'Lexend_600SemiBold' },
+  waText: { color: '#FFFFFF', fontSize: ms(13), fontFamily: font.semibold },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', padding: 20 },
-  modal: { borderRadius: 20, padding: 20, gap: 12 },
-  modalTitle: { fontSize: ms(17), fontFamily: 'Lexend_700Bold', textAlign: 'center' },
-  modalBody: { fontSize: ms(13.5), lineHeight: ms(20), fontFamily: 'Lexend_400Regular', textAlign: 'center' },
+  modal: { borderRadius: 24, padding: 20, gap: 12 },
+  modalTitle: { fontSize: ms(17), fontFamily: font.bold, textAlign: 'center' },
+  modalBody: { fontSize: ms(14), lineHeight: ms(20), fontFamily: font.regular, textAlign: 'center' },
 });

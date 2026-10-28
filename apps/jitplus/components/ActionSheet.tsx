@@ -1,5 +1,6 @@
 import React, { memo, useEffect, useState } from 'react';
-import { Modal, View, Text, Pressable, StyleSheet, Animated, Easing, Platform } from 'react-native';
+import { Modal, View, Pressable, StyleSheet, Animated, Easing, Platform } from 'react-native';
+import { Text } from '@/components/AppText';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { LucideIcon } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';

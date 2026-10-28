@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import {
   View,
   Text,
@@ -7,890 +7,867 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
-  I18nManager,
-  Animated,
+  type GestureResponderEvent,
+  type StyleProp,
+  type ViewStyle,
 } from 'react-native';
-import * as Haptics from 'expo-haptics';
-import {
-  ArrowLeft,
-  Shield,
-  ChevronDown,
-  ChevronRight,
-  AlertCircle,
-  Users,
-  ScanLine,
-  Stamp,
-  Gift,
-  Eye,
-  Ticket,
-  FerrisWheel,
-  Clock,
-  CircleCheck,
-  Trophy,
-} from 'lucide-react-native';
-import type { LucideIcon } from 'lucide-react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
-import PremiumLockCard from '@/components/PremiumLockCard';
-import { useAuth } from '@/contexts/AuthContext';
-import { useRequireAuth } from '@/hooks/useRequireAuth';
-import { useTheme, palette, brandGradient } from '@/contexts/ThemeContext';
-import type { ThemeColors } from '@/contexts/ThemeContext';
 import { useRouter } from 'expo-router';
-import { ms } from '@/utils/responsive';
-import { useLanguage } from '@/contexts/LanguageContext';
-import { DEFAULT_CURRENCY, formatCurrency, getIntlLocale } from '@/config/currency';
-
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useQueryClient } from '@tanstack/react-query';
+import { BlurView } from 'expo-blur';
+import Svg, { Circle, Defs, Line, LinearGradient as SvgGradient, Path, Stop } from 'react-native-svg';
+import { ArrowLeft, ChevronRight, Eye } from 'lucide-react-native';
+import { JitClients, JitGames, JitGift, JitScan, JitStamp, JitTicket } from '@/components/icons';
+import type { LucideIcon } from 'lucide-react-native';
+import PremiumLockCard from '@/components/PremiumLockCard';
+import { ActionButton } from '@/components/ui/ActionButton';
+import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { useRequireAuth } from '@/hooks/useRequireAuth';
+import { usePlanStatus } from '@/hooks/usePlanStatus';
+import { useGuardedCallback } from '@/hooks/useGuardedCallback';
+import { useDir } from '@/hooks/useDir';
 import {
+  queryKeys,
   useDashboardKpis,
   useDashboardTrends,
   useDashboardDistribution,
   useDashboardGames,
 } from '@/hooks/useQueryHooks';
-import { useGuardedCallback } from '@/hooks/useGuardedCallback';
-import { useQueryClient } from '@tanstack/react-query';
-import type { DashboardGames, TrendPoint } from '@/types';
+import { DEFAULT_CURRENCY, formatCurrency, getIntlLocale } from '@/config/currency';
+import { font, icon, shadow } from '@/constants/design';
+import { hapticLight } from '@/utils/haptics';
+import type { DashboardGames, DashboardKpis, RewardDistribution, TrendPoint, TrendResponse } from '@/types';
 
 type TrendPeriod = 'day' | 'week' | 'month' | 'year';
 type TrendMetric = 'transactions' | 'newClients' | 'rewardsGiven';
+type PeriodTotals = Record<TrendMetric, number>;
 
-const LOCALE_MAP = { ar: 'ar-MA', en: 'en-US', fr: 'fr-FR' } as const;
-const getLocaleTag = (locale: string) => LOCALE_MAP[locale as keyof typeof LOCALE_MAP] ?? 'fr-FR';
+const PERIODS: { id: TrendPeriod; labelKey: string; captionKey: string }[] = [
+  { id: 'day', labelKey: 'dashboard.period7Days', captionKey: 'dashboard.caption7Days' },
+  { id: 'week', labelKey: 'dashboard.period8Weeks', captionKey: 'dashboard.caption8Weeks' },
+  { id: 'month', labelKey: 'dashboard.period6Months', captionKey: 'dashboard.caption6Months' },
+  { id: 'year', labelKey: 'dashboard.period12Months', captionKey: 'dashboard.caption12Months' },
+];
+
+const METRICS: { id: TrendMetric; labelKey: string }[] = [
+  { id: 'transactions', labelKey: 'dashboard.transactions' },
+  { id: 'newClients', labelKey: 'dashboard.trendNewClients' },
+  { id: 'rewardsGiven', labelKey: 'dashboard.trendGifts' },
+];
+
 const HIT_SLOP = { top: 10, bottom: 10, left: 10, right: 10 };
-const TREND_BAR_MAX_HEIGHT = 110;
-const TREND_BAR_MIN_HEIGHT = 6;
-const ROUNDED_CURRENCY = { ...DEFAULT_CURRENCY, decimals: 0 };
-const RTL_FLIP = I18nManager.isRTL ? { transform: [{ scaleX: -1 }] } : undefined;
-const hapticLight = () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}); };
+const WHOLE_CURRENCY = { ...DEFAULT_CURRENCY, decimals: 0 };
 
-const percent = (part: number, total: number) =>
-  total > 0 ? Math.max(0, Math.min(100, Math.round((part / total) * 100))) : 0;
+const CHART_HEIGHT = 180;
+const PLOT_TOP = 40;
+const PLOT_BOTTOM = CHART_HEIGHT - 1;
+const PLOT_INSET = 14;
+const X_LABEL_WIDTH = 48;
+const RING_SIZE = 84;
+const RING_STROKE = 9;
 
-// ── Small building blocks ─────────────────────────────────────
+const ratio = (part: number, total: number) => (total > 0 ? Math.max(0, Math.min(1, part / total)) : 0);
+const sumCounts = (points: TrendPoint[]) => points.reduce((sum, p) => sum + p.count, 0);
 
-const SectionLabel = React.memo(function SectionLabel({ label, color }: { label: string; color: string }) {
+/** Rounds the chart ceiling up to 1, 2, 2.5 or 5 × 10ⁿ so the axis label reads as a round number. */
+function niceMax(value: number) {
+  if (value <= 4) return 4;
+  const magnitude = 10 ** Math.floor(Math.log10(value));
+  const step = [1, 2, 2.5, 5, 10].find((s) => s * magnitude >= value) ?? 10;
+  return step * magnitude;
+}
+
+/** Horizontal-midpoint cubic curve: smooth, and never overshoots the data vertically. */
+function curvePath(coords: { x: number; y: number }[]) {
+  return coords.reduce((d, point, i) => {
+    if (i === 0) return `M${point.x},${point.y}`;
+    const prev = coords[i - 1];
+    const cx = (prev.x + point.x) / 2;
+    return `${d} C${cx},${prev.y} ${cx},${point.y} ${point.x},${point.y}`;
+  }, '');
+}
+
+function useFormatters() {
+  const { locale } = useLanguage();
+  return useMemo(() => {
+    const intlLocale = getIntlLocale(locale);
+    return {
+      intlLocale,
+      num: (n: number | undefined) => (n ?? 0).toLocaleString(intlLocale),
+      pct: (fraction: number) => fraction.toLocaleString(intlLocale, { style: 'percent', maximumFractionDigits: 0 }),
+      money: (n: number) => formatCurrency(n, WHOLE_CURRENCY, intlLocale),
+    };
+  }, [locale]);
+}
+
+/** Buckets are UTC calendar dates ("YYYY-MM-DD"); read the parts directly so the device timezone cannot shift them. */
+function formatBucket(bucket: string, period: TrendPeriod, intlLocale: string, withYear = false) {
+  const [year, month, day] = bucket.split('-').map(Number);
+  if (!year || !month || !day) return bucket;
+  if (period === 'day' || period === 'week') return `${day}/${month}`;
+  return new Date(year, month - 1, 1).toLocaleDateString(intlLocale, withYear ? { month: 'short', year: 'numeric' } : { month: 'short' });
+}
+
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  const theme = useTheme();
+  const dir = useDir();
   return (
-    <Text style={[styles.sectionLabel, { color }]} accessibilityRole="header" maxFontSizeMultiplier={1.3}>
-      {label}
-    </Text>
-  );
-});
-
-const IconBadge = React.memo(function IconBadge({
-  Icon, color, bg, size = 36,
-}: { Icon: LucideIcon; color: string; bg: string; size?: number }) {
-  return (
-    <View style={[styles.iconBadge, { width: size, height: size, borderRadius: size * 0.32, backgroundColor: bg }]}>
-      <Icon size={size * 0.5} color={color} strokeWidth={1.9} />
+    <View style={styles.section}>
+      <Text
+        style={[styles.sectionTitle, { color: theme.text, textAlign: dir.textAlign }]}
+        accessibilityRole="header"
+        maxFontSizeMultiplier={1.3}
+      >
+        {title}
+      </Text>
+      {children}
     </View>
   );
-});
+}
 
-const AnimatedChevron = React.memo(function AnimatedChevron({ expanded, color }: { expanded: boolean; color: string }) {
-  const [anim] = useState(() => new Animated.Value(expanded ? 1 : 0));
-  useEffect(() => {
-    Animated.timing(anim, { toValue: expanded ? 1 : 0, duration: 220, useNativeDriver: true }).start();
-  }, [expanded, anim]);
-  const rotate = anim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] });
+function Card({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
+  const theme = useTheme();
   return (
-    <Animated.View style={{ transform: [{ rotate }] }}>
-      <ChevronDown size={20} color={color} />
-    </Animated.View>
+    <View style={[styles.card, { backgroundColor: theme.bgCard, borderColor: theme.border }, style]}>
+      {children}
+    </View>
   );
-});
+}
 
-const StatTile = React.memo(function StatTile({
-  Icon, label, value, caption, accent, accentBg, theme,
+function LoadingCard() {
+  const theme = useTheme();
+  return (
+    <Card style={styles.centered}>
+      <ActivityIndicator size="small" color={theme.textMuted} />
+    </Card>
+  );
+}
+
+function MessageCard({ message, actionLabel, onAction }: { message: string; actionLabel?: string; onAction?: () => void }) {
+  const theme = useTheme();
+  return (
+    <Card style={styles.centered}>
+      <Text style={[styles.message, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>{message}</Text>
+      {actionLabel && onAction ? (
+        <TouchableOpacity onPress={onAction} hitSlop={HIT_SLOP} accessibilityRole="button">
+          <Text style={[styles.link, { color: theme.primary }]} maxFontSizeMultiplier={1.3}>{actionLabel}</Text>
+        </TouchableOpacity>
+      ) : null}
+    </Card>
+  );
+}
+
+/** Track + fill that grows from the reading start, so it mirrors in Arabic. */
+function ProgressBar({ fraction, color, height = 6, style }: { fraction: number; color: string; height?: number; style?: StyleProp<ViewStyle> }) {
+  const theme = useTheme();
+  const dir = useDir();
+  return (
+    <View style={[styles.track, { height, borderRadius: height / 2, flexDirection: dir.row, backgroundColor: theme.bgInput }, style]}>
+      <View style={{ width: `${Math.round(fraction * 100)}%`, borderRadius: height / 2, backgroundColor: color }} />
+    </View>
+  );
+}
+
+function PeriodSelector({ value, onChange }: { value: TrendPeriod; onChange: (period: TrendPeriod) => void }) {
+  const theme = useTheme();
+  const dir = useDir();
+  const { t } = useLanguage();
+  return (
+    <View style={[styles.segment, { flexDirection: dir.row, backgroundColor: theme.bgInput }]}>
+      {PERIODS.map(({ id, labelKey }) => {
+        const active = id === value;
+        return (
+          <TouchableOpacity
+            key={id}
+            style={[styles.segmentItem, active && [shadow.sm, { backgroundColor: theme.bgCard }]]}
+            onPress={() => { hapticLight(); onChange(id); }}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityState={{ selected: active }}
+          >
+            <Text
+              style={[styles.segmentText, { color: active ? theme.text : theme.textMuted }]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.8}
+              maxFontSizeMultiplier={1.3}
+            >
+              {t(labelKey)}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
+function StatTile({
+  Icon, label, value, note, noteHighlighted, style,
 }: {
   Icon: LucideIcon;
   label: string;
   value: string;
-  caption?: string;
-  accent: string;
-  accentBg: string;
-  theme: ThemeColors;
+  note?: string;
+  noteHighlighted?: boolean;
+  style?: StyleProp<ViewStyle>;
 }) {
+  const theme = useTheme();
+  const dir = useDir();
   return (
     <View
-      style={styles.statTile}
+      style={[styles.statTile, { alignItems: dir.alignStart }, style]}
       accessible
-      accessibilityLabel={caption ? `${label}: ${value}. ${caption}` : `${label}: ${value}`}
+      accessibilityLabel={[label, value, note].filter(Boolean).join(', ')}
     >
-      <IconBadge Icon={Icon} color={accent} bg={accentBg} size={32} />
+      <View style={[styles.statLabelRow, { flexDirection: dir.row }]}>
+        <Icon size={15} color={theme.textMuted} strokeWidth={icon.stroke} />
+        <Text style={[styles.statLabel, { color: theme.textMuted, textAlign: dir.textAlign }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>
+          {label}
+        </Text>
+      </View>
       <Text
         style={[styles.statValue, { color: theme.text }]}
         numberOfLines={1}
         adjustsFontSizeToFit
         minimumFontScale={0.6}
-        maxFontSizeMultiplier={1.3}
+        maxFontSizeMultiplier={1.2}
       >
         {value}
       </Text>
-      <Text style={[styles.statLabel, { color: theme.textSecondary }]} numberOfLines={2} maxFontSizeMultiplier={1.3}>
-        {label}
-      </Text>
-      {caption ? (
-        <Text style={[styles.statCaption, { color: theme.textMuted }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>
-          {caption}
+      {note ? (
+        <Text
+          style={[styles.statNote, { color: noteHighlighted ? theme.primary : theme.textMuted, textAlign: dir.textAlign }]}
+          numberOfLines={1}
+          maxFontSizeMultiplier={1.3}
+        >
+          {note}
         </Text>
       ) : null}
     </View>
   );
-});
+}
 
-/** Big number + label, used inside the game cards. */
-const Figure = React.memo(function Figure({
-  value, label, theme, hairline, first,
-}: { value: string; label: string; theme: ThemeColors; hairline: string; first?: boolean }) {
+function OverviewCard({ kpis, periodTotals }: { kpis: DashboardKpis | undefined; periodTotals: PeriodTotals | undefined }) {
+  const theme = useTheme();
+  const dir = useDir();
+  const { t } = useLanguage();
+  const { num } = useFormatters();
+  const delta = (metric: TrendMetric) =>
+    periodTotals ? t('dashboard.deltaOnPeriod', { count: num(periodTotals[metric]) }) : undefined;
+  const divider = dir.isRTL
+    ? { borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: theme.border }
+    : { borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: theme.border };
+
   return (
-    <View
-      style={[styles.figure, !first && { borderLeftWidth: 1, borderLeftColor: hairline }]}
-      accessible
-      accessibilityLabel={`${label}: ${value}`}
-    >
-      <Text
-        style={[styles.figureValue, { color: theme.text }]}
-        numberOfLines={1}
-        adjustsFontSizeToFit
-        minimumFontScale={0.6}
-        maxFontSizeMultiplier={1.3}
+    <Card style={styles.flushCard}>
+      <View style={{ flexDirection: dir.row }}>
+        <StatTile
+          Icon={JitClients}
+          label={t('dashboard.statClients')}
+          value={num(kpis?.totalClients)}
+          note={delta('newClients')}
+          noteHighlighted={!!periodTotals?.newClients}
+          style={divider}
+        />
+        <StatTile
+          Icon={JitScan}
+          label={t('dashboard.transactions')}
+          value={num(kpis?.totalTransactions)}
+          note={delta('transactions')}
+          noteHighlighted={!!periodTotals?.transactions}
+        />
+      </View>
+      <View style={{ flexDirection: dir.row, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.border }}>
+        <StatTile
+          Icon={JitStamp}
+          label={t('dashboard.statStamps')}
+          value={num(kpis?.totalStamps)}
+          note={t('dashboard.statStampsUsed', { count: num(kpis?.totalRedeemedStamps) })}
+          style={divider}
+        />
+        <StatTile
+          Icon={JitGift}
+          label={t('dashboard.trendGifts')}
+          value={num(kpis?.totalRewardsGiven)}
+          note={delta('rewardsGiven')}
+          noteHighlighted={!!periodTotals?.rewardsGiven}
+        />
+      </View>
+      <View style={[styles.overviewFooter, { flexDirection: dir.row, backgroundColor: theme.bgElevated, borderTopColor: theme.border }]}>
+        <Eye size={15} color={theme.textMuted} strokeWidth={icon.stroke} />
+        <Text style={[styles.caption, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.3}>
+          {t('dashboard.profileViewsLine', { count: num(kpis?.profileViews) })}
+        </Text>
+      </View>
+    </Card>
+  );
+}
+
+function AreaChart({ points, period, accessibilityLabel }: { points: TrendPoint[]; period: TrendPeriod; accessibilityLabel: string }) {
+  const theme = useTheme();
+  const { num, intlLocale } = useFormatters();
+  const [width, setWidth] = useState(0);
+  const [selected, setSelected] = useState(points.length - 1);
+  const [tooltipWidth, setTooltipWidth] = useState(0);
+
+  const max = niceMax(points.reduce((acc, p) => Math.max(acc, p.count), 0));
+  const step = points.length > 1 ? (width - PLOT_INSET * 2) / (points.length - 1) : 0;
+  const coords = points.map((p, i) => ({
+    x: points.length > 1 ? PLOT_INSET + i * step : width / 2,
+    y: PLOT_BOTTOM - (p.count / max) * (PLOT_BOTTOM - PLOT_TOP),
+  }));
+  const line = curvePath(coords);
+  const first = coords[0];
+  const last = coords[coords.length - 1];
+  const active = coords[selected];
+  const midY = (PLOT_TOP + PLOT_BOTTOM) / 2;
+
+  const selectAt = (event: GestureResponderEvent) => {
+    if (step <= 0) return;
+    const index = Math.round((event.nativeEvent.locationX - PLOT_INSET) / step);
+    const clamped = Math.max(0, Math.min(points.length - 1, index));
+    if (clamped !== selected) setSelected(clamped);
+  };
+
+  const showXLabel = (i: number) => points.length <= 8 || (points.length - 1 - i) % 2 === 0;
+
+  return (
+    <View>
+      <View
+        style={styles.chartArea}
+        onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
+        onStartShouldSetResponder={() => true}
+        onResponderGrant={selectAt}
+        onResponderMove={selectAt}
+        onResponderTerminationRequest={() => true}
+        accessible
+        accessibilityLabel={accessibilityLabel}
       >
-        {value}
-      </Text>
-      <Text style={[styles.figureLabel, { color: theme.textMuted }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>
-        {label}
-      </Text>
+        {width > 0 && first && last ? (
+          <Svg width={width} height={CHART_HEIGHT}>
+            <Defs>
+              <SvgGradient id="dashboardAreaFill" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0" stopColor={theme.primary} stopOpacity={0.18} />
+                <Stop offset="1" stopColor={theme.primary} stopOpacity={0} />
+              </SvgGradient>
+            </Defs>
+            <Line x1={0} x2={width} y1={PLOT_TOP} y2={PLOT_TOP} stroke={theme.border} strokeWidth={1} strokeDasharray="3 5" />
+            <Line x1={0} x2={width} y1={midY} y2={midY} stroke={theme.border} strokeWidth={1} strokeDasharray="3 5" />
+            <Line x1={0} x2={width} y1={PLOT_BOTTOM} y2={PLOT_BOTTOM} stroke={theme.border} strokeWidth={1} />
+            <Path d={`${line} L${last.x},${PLOT_BOTTOM} L${first.x},${PLOT_BOTTOM} Z`} fill="url(#dashboardAreaFill)" />
+            <Path d={line} stroke={theme.primary} strokeWidth={2.25} fill="none" strokeLinejoin="round" strokeLinecap="round" />
+            {active ? (
+              <>
+                <Line x1={active.x} x2={active.x} y1={active.y} y2={PLOT_BOTTOM} stroke={theme.primary} strokeOpacity={0.35} strokeWidth={1} />
+                <Circle cx={active.x} cy={active.y} r={5} fill={theme.bgCard} stroke={theme.primary} strokeWidth={2.5} />
+              </>
+            ) : null}
+          </Svg>
+        ) : null}
+
+        <Text style={[styles.axisLabel, styles.axisMax, { color: theme.textMuted }]} pointerEvents="none" maxFontSizeMultiplier={1.2}>
+          {num(max)}
+        </Text>
+
+        {active && width > 0 ? (
+          <View
+            pointerEvents="none"
+            onLayout={(e) => setTooltipWidth(e.nativeEvent.layout.width)}
+            style={[
+              styles.tooltip,
+              {
+                backgroundColor: theme.text,
+                left: Math.max(0, Math.min(width - tooltipWidth, active.x - tooltipWidth / 2)),
+                top: Math.max(0, active.y - 38),
+              },
+            ]}
+          >
+            <Text style={[styles.tooltipValue, { color: theme.bg }]} maxFontSizeMultiplier={1.2}>{num(points[selected].count)}</Text>
+            <Text style={[styles.tooltipDate, { color: theme.bg }]} maxFontSizeMultiplier={1.2}>
+              {formatBucket(points[selected].bucket, period, intlLocale, true)}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+
+      <View style={styles.xAxis}>
+        {coords.map((c, i) => (showXLabel(i) ? (
+          <Text
+            key={points[i].bucket}
+            style={[styles.axisLabel, styles.xLabel, { left: c.x - X_LABEL_WIDTH / 2, color: i === selected ? theme.text : theme.textMuted }]}
+            numberOfLines={1}
+            maxFontSizeMultiplier={1.2}
+          >
+            {formatBucket(points[i].bucket, period, intlLocale)}
+          </Text>
+        ) : null))}
+      </View>
     </View>
   );
-});
+}
 
-const Pill = React.memo(function Pill({
-  Icon, text, color, bg,
-}: { Icon?: LucideIcon; text: string; color: string; bg: string }) {
+function ActivityCard({
+  data, period, loading, stale,
+}: { data: TrendResponse | undefined; period: TrendPeriod; loading: boolean; stale: boolean }) {
+  const theme = useTheme();
+  const dir = useDir();
+  const { t } = useLanguage();
+  const { num } = useFormatters();
+  const [metric, setMetric] = useState<TrendMetric>('transactions');
+
+  const points = data?.[metric] ?? [];
+  const metricLabel = t(METRICS.find((m) => m.id === metric)?.labelKey ?? '');
+  const caption = t(PERIODS.find((p) => p.id === period)?.captionKey ?? '');
+  const total = num(sumCounts(points));
+
   return (
-    <View style={[styles.pill, { backgroundColor: bg }]}>
-      {Icon ? <Icon size={14} color={color} strokeWidth={2} /> : null}
-      <Text style={[styles.pillText, { color }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>
-        {text}
-      </Text>
-    </View>
-  );
-});
+    <Card>
+      <View style={[styles.tabs, { flexDirection: dir.row }]} accessibilityRole="tablist">
+        {METRICS.map(({ id, labelKey }) => {
+          const active = id === metric;
+          return (
+            <TouchableOpacity
+              key={id}
+              style={[styles.tab, { backgroundColor: active ? theme.primaryBg : 'transparent' }]}
+              onPress={() => { hapticLight(); setMetric(id); }}
+              activeOpacity={0.7}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: active }}
+            >
+              <Text
+                style={[styles.tabText, { color: active ? theme.primary : theme.textMuted }]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.8}
+                maxFontSizeMultiplier={1.3}
+              >
+                {t(labelKey)}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
 
-const GameCard = React.memo(function GameCard({
-  Icon, title, badge, onPress, accessibilityLabel, theme, hairline, iconBg, children,
-}: {
-  Icon: LucideIcon;
-  title: string;
-  badge?: string;
-  onPress: () => void;
-  accessibilityLabel: string;
-  theme: ThemeColors;
-  hairline: string;
-  iconBg: string;
-  children: React.ReactNode;
-}) {
+      {loading ? (
+        <View style={styles.chartPlaceholder}>
+          <ActivityIndicator size="small" color={theme.textMuted} />
+        </View>
+      ) : points.length === 0 ? (
+        <View style={styles.chartPlaceholder}>
+          <Text style={[styles.message, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>{t('dashboard.noData')}</Text>
+        </View>
+      ) : (
+        <View style={stale && styles.stale}>
+          <View style={{ alignItems: dir.alignStart }}>
+            <Text style={[styles.totalValue, { color: theme.text }]} maxFontSizeMultiplier={1.2}>{total}</Text>
+            <Text style={[styles.caption, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>{caption}</Text>
+          </View>
+          <AreaChart
+            key={`${period}-${metric}`}
+            points={points}
+            period={period}
+            accessibilityLabel={`${metricLabel}, ${total}, ${caption}`}
+          />
+        </View>
+      )}
+    </Card>
+  );
+}
+
+function GameCard({
+  Icon, title, active, onPress, children,
+}: { Icon: LucideIcon; title: string; active?: string; onPress: () => void; children: ReactNode }) {
+  const theme = useTheme();
+  const dir = useDir();
   return (
     <TouchableOpacity
       onPress={onPress}
-      activeOpacity={0.8}
-      style={[styles.card, { backgroundColor: theme.bgCard, borderColor: hairline }]}
+      activeOpacity={0.85}
+      style={[styles.card, { backgroundColor: theme.bgCard, borderColor: theme.border }]}
       accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
+      accessibilityLabel={active ? `${title}, ${active}` : title}
     >
-      <View style={styles.gameHeader}>
-        <IconBadge Icon={Icon} color={theme.primary} bg={iconBg} size={40} />
-        <View style={styles.gameHeaderText}>
-          <Text style={[styles.gameTitle, { color: theme.text }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>
-            {title}
-          </Text>
-          {badge ? (
-            <View style={styles.liveRow}>
-              <View style={[styles.liveDot, { backgroundColor: theme.success }]} />
-              <Text style={[styles.liveText, { color: theme.success }]} maxFontSizeMultiplier={1.3}>{badge}</Text>
-            </View>
-          ) : null}
-        </View>
-        <ChevronRight size={20} color={theme.textMuted} style={RTL_FLIP} />
+      <View style={[styles.gameHeader, { flexDirection: dir.row }]}>
+        <Icon size={icon.md} color={theme.text} strokeWidth={icon.stroke} />
+        <Text style={[styles.gameTitle, { color: theme.text, textAlign: dir.textAlign }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>
+          {title}
+        </Text>
+        {active ? (
+          <View style={[styles.liveRow, { flexDirection: dir.row }]}>
+            <View style={[styles.dot, { backgroundColor: theme.success }]} />
+            <Text style={[styles.caption, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.3}>{active}</Text>
+          </View>
+        ) : null}
+        <ChevronRight size={18} color={theme.textMuted} strokeWidth={icon.stroke} style={dir.flip} />
       </View>
       {children}
     </TouchableOpacity>
   );
-});
+}
 
-const EmptyGame = React.memo(function EmptyGame({
-  text, cta, theme,
-}: { text: string; cta: string; theme: ThemeColors }) {
+function EmptyGame({ text, cta }: { text: string; cta: string }) {
+  const theme = useTheme();
+  const dir = useDir();
   return (
-    <View style={styles.emptyGame}>
-      <Text style={[styles.emptyGameText, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.4}>{text}</Text>
-      <Text style={[styles.emptyGameCta, { color: theme.primary }]} maxFontSizeMultiplier={1.3}>{cta}</Text>
+    <View style={styles.gameBody}>
+      <Text style={[styles.body, { color: theme.textSecondary, textAlign: dir.textAlign }]} maxFontSizeMultiplier={1.4}>{text}</Text>
+      <Text style={[styles.link, styles.emptyCta, { color: theme.primary, textAlign: dir.textAlign }]} maxFontSizeMultiplier={1.3}>{cta}</Text>
     </View>
   );
-});
+}
 
-// ── Games section ─────────────────────────────────────────────
-
-const GamesSection = React.memo(function GamesSection({
-  games, loading, error, onRetry, onOpenScratch, onOpenWheel, theme, hairline, iconBg, localeTag, currencyLocale, t,
-}: {
-  games: DashboardGames | undefined;
-  loading: boolean;
-  error: boolean;
-  onRetry: () => void;
-  onOpenScratch: () => void;
-  onOpenWheel: () => void;
-  theme: ThemeColors;
-  hairline: string;
-  iconBg: string;
-  localeTag: string;
-  currencyLocale: string;
-  t: (key: string, options?: Record<string, unknown>) => string;
-}) {
-  if (loading) {
-    return (
-      <View style={[styles.card, styles.centered, { backgroundColor: theme.bgCard, borderColor: hairline }]}>
-        <ActivityIndicator size="small" color={theme.primary} />
-      </View>
-    );
-  }
-
-  if (error || !games) {
-    return (
-      <View style={[styles.card, styles.centered, { backgroundColor: theme.bgCard, borderColor: hairline }]}>
-        <Text style={[styles.mutedText, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>
-          {t('dashboard.gamesError')}
+function FunnelStep({ label, value, share, fraction, opacity }: { label: string; value: string; share?: string; fraction: number; opacity: number }) {
+  const theme = useTheme();
+  const dir = useDir();
+  return (
+    <View style={styles.funnelStep} accessible accessibilityLabel={[label, value, share].filter(Boolean).join(', ')}>
+      <View style={[styles.spaced, { flexDirection: dir.row }]}>
+        <Text style={[styles.rowLabel, { color: theme.textSecondary }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>{label}</Text>
+        <Text style={[styles.rowValue, { color: theme.text }]} maxFontSizeMultiplier={1.3}>
+          {value}
+          {share ? <Text style={[styles.rowShare, { color: theme.textMuted }]}>{`  ${share}`}</Text> : null}
         </Text>
-        <TouchableOpacity onPress={onRetry} hitSlop={HIT_SLOP} accessibilityRole="button" accessibilityLabel={t('common.retry')}>
-          <Text style={[styles.linkText, { color: theme.primary }]} maxFontSizeMultiplier={1.3}>{t('common.retry')}</Text>
-        </TouchableOpacity>
       </View>
-    );
-  }
+      <ProgressBar fraction={fraction} color={theme.primary} height={8} style={{ opacity }} />
+    </View>
+  );
+}
 
+function ValueRow({ label, value }: { label: string; value: string }) {
+  const theme = useTheme();
+  const dir = useDir();
+  return (
+    <View style={[styles.valueRow, styles.spaced, { flexDirection: dir.row, borderTopColor: theme.border }]} accessible accessibilityLabel={`${label}, ${value}`}>
+      <Text style={[styles.rowLabel, { color: theme.textSecondary }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>{label}</Text>
+      <Text style={[styles.rowValue, { color: theme.text }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>{value}</Text>
+    </View>
+  );
+}
+
+function Ring({ fraction, label }: { fraction: number; label: string }) {
+  const theme = useTheme();
+  const radius = (RING_SIZE - RING_STROKE) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const center = RING_SIZE / 2;
+  return (
+    <View style={styles.ring}>
+      <Svg width={RING_SIZE} height={RING_SIZE}>
+        <Circle cx={center} cy={center} r={radius} stroke={theme.bgInput} strokeWidth={RING_STROKE} fill="none" />
+        {fraction > 0 ? (
+          <Circle
+            cx={center}
+            cy={center}
+            r={radius}
+            stroke={theme.primary}
+            strokeWidth={RING_STROKE}
+            fill="none"
+            strokeLinecap="round"
+            strokeDasharray={`${circumference * fraction} ${circumference}`}
+            rotation={-90}
+            origin={`${center}, ${center}`}
+          />
+        ) : null}
+      </Svg>
+      <Text style={[styles.ringLabel, { color: theme.text }]} maxFontSizeMultiplier={1.1}>{label}</Text>
+    </View>
+  );
+}
+
+function LegendItem({ color, label }: { color: string; label: string }) {
+  const theme = useTheme();
+  const dir = useDir();
+  return (
+    <View style={[styles.legendItem, { flexDirection: dir.row }]}>
+      <View style={[styles.dot, { backgroundColor: color }]} />
+      <Text style={[styles.caption, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.3}>{label}</Text>
+    </View>
+  );
+}
+
+function ScratchStats({ scratch }: { scratch: DashboardGames['scratch'] }) {
+  const { t } = useLanguage();
+  const { num, pct, money } = useFormatters();
+  const scratchedShare = ratio(scratch.scratched, scratch.sent);
+  const redeemedShare = ratio(scratch.redeemed, scratch.sent);
+  return (
+    <View style={styles.gameBody}>
+      <FunnelStep label={t('dashboard.scratchSent')} value={num(scratch.sent)} fraction={scratch.sent > 0 ? 1 : 0} opacity={1} />
+      <FunnelStep label={t('dashboard.scratchScratched')} value={num(scratch.scratched)} share={pct(scratchedShare)} fraction={scratchedShare} opacity={0.65} />
+      <FunnelStep label={t('dashboard.scratchRedeemed')} value={num(scratch.redeemed)} share={pct(redeemedShare)} fraction={redeemedShare} opacity={0.4} />
+      <View style={styles.valueRows}>
+        <ValueRow label={t('dashboard.scratchRevenue')} value={money(scratch.revenue)} />
+        <ValueRow label={t('dashboard.scratchDiscount')} value={money(scratch.discountGiven)} />
+      </View>
+    </View>
+  );
+}
+
+function WheelStats({ wheel }: { wheel: DashboardGames['wheel'] }) {
+  const theme = useTheme();
+  const dir = useDir();
+  const { t } = useLanguage();
+  const { num, pct } = useFormatters();
+  const winShare = ratio(wheel.wins, wheel.plays);
+  const handedOut = wheel.pending + wheel.fulfilled;
+  return (
+    <View style={styles.gameBody}>
+      <View style={[styles.wheelSummary, { flexDirection: dir.row }]}>
+        <Ring fraction={winShare} label={pct(winShare)} />
+        <View style={styles.wheelFigures}>
+          <Text style={[styles.caption, { color: theme.textMuted, textAlign: dir.textAlign }]} maxFontSizeMultiplier={1.3}>
+            {t('dashboard.wheelWinRate')}
+          </Text>
+          <View style={[styles.wheelFigureRow, { flexDirection: dir.row }]}>
+            <View style={{ alignItems: dir.alignStart }}>
+              <Text style={[styles.figureValue, { color: theme.text }]} maxFontSizeMultiplier={1.2}>{num(wheel.plays)}</Text>
+              <Text style={[styles.caption, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>{t('dashboard.wheelPlays')}</Text>
+            </View>
+            <View style={{ alignItems: dir.alignStart }}>
+              <Text style={[styles.figureValue, { color: theme.text }]} maxFontSizeMultiplier={1.2}>{num(wheel.wins)}</Text>
+              <Text style={[styles.caption, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>{t('dashboard.wheelWins')}</Text>
+            </View>
+          </View>
+        </View>
+      </View>
+      {handedOut > 0 ? (
+        <View style={styles.fulfilment}>
+          <View style={[styles.track, styles.splitBar, { flexDirection: dir.row, backgroundColor: theme.bgInput }]}>
+            <View style={{ flex: wheel.fulfilled, backgroundColor: theme.primary }} />
+            <View style={{ flex: wheel.pending, backgroundColor: theme.warning }} />
+          </View>
+          <View style={[styles.legend, { flexDirection: dir.row }]}>
+            <LegendItem color={theme.primary} label={t('dashboard.wheelFulfilled', { count: num(wheel.fulfilled) })} />
+            <LegendItem color={theme.warning} label={t('dashboard.wheelPending', { count: num(wheel.pending) })} />
+          </View>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function GamesCards({ games }: { games: DashboardGames }) {
+  const router = useRouter();
+  const { t } = useLanguage();
   const { scratch, wheel } = games;
-  const fmt = (n: number) => n.toLocaleString(localeTag);
-  const money = (n: number) => formatCurrency(n, ROUNDED_CURRENCY, currencyLocale);
-  const useRate = percent(scratch.redeemed, scratch.sent);
-  const warningBg = theme.mode === 'dark' ? 'rgba(245,158,11,0.16)' : 'rgba(245,158,11,0.12)';
-  const successBg = theme.mode === 'dark' ? 'rgba(16,185,129,0.16)' : 'rgba(16,185,129,0.10)';
-  const neutralBg = theme.mode === 'dark' ? 'rgba(255,255,255,0.06)' : theme.bgInput;
+  const activeLabel = (count: number) => (count > 0 ? t('dashboard.activeCount', { count }) : undefined);
 
   return (
     <View style={styles.stack}>
-      {/* Scratch cards */}
       <GameCard
-        Icon={Ticket}
+        Icon={JitTicket}
         title={t('dashboard.scratchTitle')}
-        badge={scratch.activeCampaigns > 0 ? t('dashboard.activeCount', { count: scratch.activeCampaigns }) : undefined}
-        onPress={onOpenScratch}
-        accessibilityLabel={t('dashboard.scratchTitle')}
-        theme={theme}
-        hairline={hairline}
-        iconBg={iconBg}
+        active={activeLabel(scratch.activeCampaigns)}
+        onPress={() => { hapticLight(); router.push('/scratch-campaigns'); }}
       >
-        {scratch.campaigns === 0 ? (
-          <EmptyGame text={t('dashboard.scratchEmpty')} cta={t('dashboard.createCampaign')} theme={theme} />
-        ) : (
-          <>
-            <View style={[styles.figuresRow, { borderColor: hairline }]}>
-              <Figure first value={fmt(scratch.sent)} label={t('dashboard.scratchSent')} theme={theme} hairline={hairline} />
-              <Figure value={fmt(scratch.scratched)} label={t('dashboard.scratchScratched')} theme={theme} hairline={hairline} />
-              <Figure value={fmt(scratch.redeemed)} label={t('dashboard.scratchRedeemed')} theme={theme} hairline={hairline} />
-            </View>
-
-            <View style={styles.rateBlock}>
-              <View style={[styles.rateTrack, { backgroundColor: neutralBg }]}>
-                <View style={[styles.rateFill, { width: `${useRate}%`, backgroundColor: theme.primary }]} />
-              </View>
-              <Text style={[styles.rateText, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                {t('dashboard.scratchUseRate', { pct: useRate })}
-              </Text>
-            </View>
-
-            <View style={styles.moneyRow}>
-              <View style={[styles.moneyBox, { backgroundColor: successBg }]}>
-                <Text style={[styles.moneyLabel, { color: theme.textSecondary }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>
-                  {t('dashboard.scratchRevenue')}
-                </Text>
-                <Text style={[styles.moneyValue, { color: theme.text }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} maxFontSizeMultiplier={1.3}>
-                  {money(scratch.revenue)}
-                </Text>
-              </View>
-              <View style={[styles.moneyBox, { backgroundColor: neutralBg }]}>
-                <Text style={[styles.moneyLabel, { color: theme.textSecondary }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>
-                  {t('dashboard.scratchDiscount')}
-                </Text>
-                <Text style={[styles.moneyValue, { color: theme.text }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} maxFontSizeMultiplier={1.3}>
-                  {money(scratch.discountGiven)}
-                </Text>
-              </View>
-            </View>
-          </>
-        )}
+        {scratch.campaigns === 0
+          ? <EmptyGame text={t('dashboard.scratchEmpty')} cta={t('dashboard.createCampaign')} />
+          : <ScratchStats scratch={scratch} />}
       </GameCard>
 
-      {/* Lucky wheel */}
       <GameCard
-        Icon={FerrisWheel}
+        Icon={JitGames}
         title={t('dashboard.wheelTitle')}
-        badge={wheel.activeCampaigns > 0 ? t('dashboard.activeCount', { count: wheel.activeCampaigns }) : undefined}
-        onPress={onOpenWheel}
-        accessibilityLabel={t('dashboard.wheelTitle')}
-        theme={theme}
-        hairline={hairline}
-        iconBg={iconBg}
+        active={activeLabel(wheel.activeCampaigns)}
+        onPress={() => { hapticLight(); router.push('/lucky-wheel'); }}
       >
-        {wheel.campaigns === 0 ? (
-          <EmptyGame text={t('dashboard.wheelEmpty')} cta={t('dashboard.createWheel')} theme={theme} />
-        ) : (
-          <>
-            <View style={[styles.figuresRow, { borderColor: hairline }]}>
-              <Figure first value={fmt(wheel.plays)} label={t('dashboard.wheelPlays')} theme={theme} hairline={hairline} />
-              <Figure value={fmt(wheel.wins)} label={t('dashboard.wheelWins')} theme={theme} hairline={hairline} />
-            </View>
-            <View style={styles.pillsRow}>
-              <Pill
-                Icon={Clock}
-                text={t('dashboard.wheelPending', { count: fmt(wheel.pending) })}
-                color={wheel.pending > 0 ? theme.warning : theme.textMuted}
-                bg={wheel.pending > 0 ? warningBg : neutralBg}
-              />
-              <Pill
-                Icon={CircleCheck}
-                text={t('dashboard.wheelFulfilled', { count: fmt(wheel.fulfilled) })}
-                color={theme.success}
-                bg={successBg}
-              />
-            </View>
-          </>
-        )}
+        {wheel.campaigns === 0
+          ? <EmptyGame text={t('dashboard.wheelEmpty')} cta={t('dashboard.createWheel')} />
+          : <WheelStats wheel={wheel} />}
       </GameCard>
     </View>
   );
-});
+}
 
-const TopPrizesSection = React.memo(function TopPrizesSection({
-  prizes, theme, hairline, localeTag, t,
-}: {
-  prizes: DashboardGames['topPrizes'];
-  theme: ThemeColors;
-  hairline: string;
-  localeTag: string;
-  t: (key: string, options?: Record<string, unknown>) => string;
-}) {
-  if (!prizes.length) {
-    return (
-      <View style={[styles.card, styles.centered, { backgroundColor: theme.bgCard, borderColor: hairline }]}>
-        <Trophy size={22} color={theme.textMuted} strokeWidth={1.6} />
-        <Text style={[styles.mutedText, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>
-          {t('dashboard.noPrizes')}
-        </Text>
-      </View>
-    );
-  }
+type BarRow = { key: string; label: string; detail?: string; count: number; value: string };
 
-  const max = prizes.reduce((acc, p) => (p.count > acc ? p.count : acc), 1);
-  const barBg = theme.mode === 'dark' ? 'rgba(167,139,250,0.12)' : 'rgba(124,58,237,0.07)';
-
+function BarList({ rows, emptyText }: { rows: BarRow[]; emptyText: string }) {
+  const theme = useTheme();
+  const dir = useDir();
+  if (!rows.length) return <MessageCard message={emptyText} />;
+  const max = rows.reduce((acc, row) => Math.max(acc, row.count), 1);
   return (
-    <View style={[styles.card, styles.listCard, { backgroundColor: theme.bgCard, borderColor: hairline }]}>
-      {prizes.map((prize, index) => {
-        const isWheel = prize.source === 'WHEEL';
-        const sourceLabel = isWheel ? t('dashboard.sourceWheel') : t('dashboard.sourceScratch');
-        const count = prize.count.toLocaleString(localeTag);
-        return (
-          <View
-            key={`${prize.source}-${prize.label}`}
-            style={[styles.prizeRow, index > 0 && { borderTopWidth: 1, borderTopColor: hairline }]}
-            accessible
-            accessibilityLabel={`${index + 1}. ${prize.label}, ${sourceLabel}, ${count}`}
-          >
-            <View style={[styles.prizeBar, { width: `${percent(prize.count, max)}%`, backgroundColor: barBg }]} />
-            <Text style={[styles.prizeRank, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>{index + 1}</Text>
-            <View style={styles.prizeBody}>
-              <Text style={[styles.prizeLabel, { color: theme.text }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>
-                {prize.label}
-              </Text>
-              <View style={styles.prizeSource}>
-                {isWheel
-                  ? <FerrisWheel size={12} color={theme.textMuted} strokeWidth={2} />
-                  : <Ticket size={12} color={theme.textMuted} strokeWidth={2} />}
-                <Text style={[styles.prizeSourceText, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>{sourceLabel}</Text>
-              </View>
-            </View>
-            <Text style={[styles.prizeCount, { color: theme.text }]} maxFontSizeMultiplier={1.3}>
-              {t('dashboard.prizeCount', { count })}
-            </Text>
-          </View>
-        );
-      })}
-    </View>
-  );
-});
-
-// ── Collapsible sections ──────────────────────────────────────
-
-const CollapsibleHeader = React.memo(function CollapsibleHeader({
-  title, expanded, onToggle, theme, hairline,
-}: { title: string; expanded: boolean; onToggle: () => void; theme: ThemeColors; hairline: string }) {
-  return (
-    <TouchableOpacity
-      style={[styles.collapsibleHeader, { backgroundColor: theme.bgCard, borderColor: hairline }]}
-      onPress={onToggle}
-      activeOpacity={0.75}
-      accessibilityRole="button"
-      accessibilityLabel={title}
-      accessibilityState={{ expanded }}
-    >
-      <Text style={[styles.collapsibleTitle, { color: theme.text }]} maxFontSizeMultiplier={1.4}>{title}</Text>
-      <AnimatedChevron expanded={expanded} color={theme.textSecondary} />
-    </TouchableOpacity>
-  );
-});
-
-const Chip = React.memo(function Chip({
-  label, active, onPress, theme, hairline,
-}: { label: string; active: boolean; onPress: () => void; theme: ThemeColors; hairline: string }) {
-  return (
-    <TouchableOpacity
-      style={[
-        styles.chip,
-        { backgroundColor: active ? theme.primary : theme.bgCard, borderColor: active ? theme.primary : hairline },
-      ]}
-      onPress={onPress}
-      activeOpacity={0.8}
-      hitSlop={HIT_SLOP}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ selected: active }}
-    >
-      <Text style={[styles.chipText, { color: active ? '#fff' : theme.textSecondary }]} maxFontSizeMultiplier={1.3}>
-        {label}
-      </Text>
-    </TouchableOpacity>
-  );
-});
-
-const TrendChart = React.memo(function TrendChart({
-  data, color, formatLabel, theme, hairline,
-}: {
-  data: TrendPoint[];
-  color: string;
-  formatLabel: (bucket: string) => string;
-  theme: ThemeColors;
-  hairline: string;
-}) {
-  const maxCount = data.reduce((acc, item) => (item.count > acc ? item.count : acc), 1);
-  return (
-    <View style={styles.trendChart}>
-      <View style={[styles.trendBars, { borderBottomColor: hairline }]}>
-        {data.map((item) => {
-          const height = Math.max(TREND_BAR_MIN_HEIGHT, Math.round((item.count / maxCount) * TREND_BAR_MAX_HEIGHT));
-          return (
-            <View key={item.bucket} style={styles.trendBarCol}>
-              <View style={[styles.trendBar, { height, backgroundColor: item.count > 0 ? color : hairline }]} />
-            </View>
-          );
-        })}
-      </View>
-      <View style={styles.trendLabels}>
-        {data.map((item) => (
-          <Text
-            key={item.bucket}
-            style={[styles.trendLabelCell, { color: theme.textMuted }]}
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.7}
-            maxFontSizeMultiplier={1.3}
-          >
-            {formatLabel(item.bucket)}
-          </Text>
-        ))}
-      </View>
-    </View>
-  );
-});
-
-const LoyaltyGiftsList = React.memo(function LoyaltyGiftsList({
-  distribution, theme, hairline, noGiftsLabel, giftCountFn,
-}: {
-  distribution: { rewardId: string | null; title: string; count: number }[];
-  theme: ThemeColors;
-  hairline: string;
-  noGiftsLabel: string;
-  giftCountFn: (count: number) => string;
-}) {
-  if (!distribution.length) {
-    return (
-      <View style={[styles.card, styles.centered, { backgroundColor: theme.bgCard, borderColor: hairline }]}>
-        <Text style={[styles.mutedText, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>{noGiftsLabel}</Text>
-      </View>
-    );
-  }
-
-  const max = distribution.reduce((acc, r) => (r.count > acc ? r.count : acc), 1);
-  const barBg = theme.mode === 'dark' ? 'rgba(167,139,250,0.12)' : 'rgba(124,58,237,0.07)';
-
-  return (
-    <View style={[styles.card, styles.listCard, { backgroundColor: theme.bgCard, borderColor: hairline }]}>
-      {distribution.map((reward, index) => (
+    <Card style={styles.barList}>
+      {rows.map((row, index) => (
         <View
-          key={reward.rewardId ?? `dist-${index}`}
-          style={[styles.prizeRow, index > 0 && { borderTopWidth: 1, borderTopColor: hairline }]}
+          key={row.key}
+          style={styles.barRow}
+          accessible
+          accessibilityLabel={[row.label, row.detail, row.value].filter(Boolean).join(', ')}
         >
-          <View style={[styles.prizeBar, { width: `${percent(reward.count, max)}%`, backgroundColor: barBg }]} />
-          <Gift size={16} color={theme.primary} strokeWidth={1.9} />
-          <Text style={[styles.prizeLabel, styles.prizeBody, { color: theme.text }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>
-            {reward.title}
-          </Text>
-          <Text style={[styles.prizeCount, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.3}>
-            {giftCountFn(reward.count)}
-          </Text>
+          <View style={[styles.spaced, { flexDirection: dir.row }]}>
+            <Text style={[styles.barLabel, { color: theme.text, textAlign: dir.textAlign }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>
+              {row.label}
+              {row.detail ? <Text style={[styles.barDetail, { color: theme.textMuted }]}>{`  ·  ${row.detail}`}</Text> : null}
+            </Text>
+            <Text style={[styles.rowValue, { color: theme.text }]} maxFontSizeMultiplier={1.3}>{row.value}</Text>
+          </View>
+          <ProgressBar fraction={row.count / max} color={theme.primary} style={{ opacity: index === 0 ? 1 : 0.55 }} />
         </View>
       ))}
+    </Card>
+  );
+}
+
+function TopPrizesList({ prizes }: { prizes: DashboardGames['topPrizes'] }) {
+  const { t } = useLanguage();
+  const { num } = useFormatters();
+  const rows = prizes.map((prize) => ({
+    key: `${prize.source}-${prize.label}`,
+    label: prize.label,
+    detail: t(prize.source === 'WHEEL' ? 'dashboard.sourceWheel' : 'dashboard.sourceScratch'),
+    count: prize.count,
+    value: t('dashboard.prizeCount', { count: num(prize.count) }),
+  }));
+  return <BarList rows={rows} emptyText={t('dashboard.noPrizes')} />;
+}
+
+function LoyaltyGiftsList({ distribution }: { distribution: RewardDistribution }) {
+  const { t } = useLanguage();
+  const rows = distribution.map((reward, index) => ({
+    key: reward.rewardId ?? `reward-${index}`,
+    label: reward.title,
+    count: reward.count,
+    value: t(reward.count === 1 ? 'dashboard.giftCount_one' : 'dashboard.giftCount_other', { count: reward.count }),
+  }));
+  return <BarList rows={rows} emptyText={t('dashboard.noGifts')} />;
+}
+
+function StateScreen({ title, message, children }: { title: string; message?: string; children?: ReactNode }) {
+  const theme = useTheme();
+  return (
+    <View style={[styles.stateContainer, { backgroundColor: theme.bg }]}>
+      <Text style={[styles.stateTitle, { color: theme.text }]} maxFontSizeMultiplier={1.4}>{title}</Text>
+      {message ? <Text style={[styles.stateText, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>{message}</Text> : null}
+      {children}
     </View>
   );
-});
-
-// ── Screen ────────────────────────────────────────────────────
+}
 
 export default function DashboardScreen() {
   const shouldWait = useRequireAuth();
   const { merchant, isTeamMember } = useAuth();
+  const { isPremium } = usePlanStatus(merchant);
   const theme = useTheme();
+  const dir = useDir();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { t, locale } = useLanguage();
+  const { t } = useLanguage();
   const queryClient = useQueryClient();
+  const [period, setPeriod] = useState<TrendPeriod>('day');
 
-  const isPremium = merchant?.plan === 'PREMIUM';
+  // Every dashboard endpoint is owner + premium only; skip the requests the backend would reject.
+  const canView = isPremium && !isTeamMember;
+  const kpis = useDashboardKpis(canView);
+  const trends = useDashboardTrends(period, canView);
+  const games = useDashboardGames(canView);
+  const distribution = useDashboardDistribution(canView);
 
-  const [showTrends, setShowTrends] = useState(false);
-  const [showDistribution, setShowDistribution] = useState(false);
-  const [trendPeriod, setTrendPeriod] = useState<TrendPeriod>('day');
-  const [trendMetric, setTrendMetric] = useState<TrendMetric>('transactions');
-
-  const periodTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const debouncedSetPeriod = useCallback((p: TrendPeriod) => {
-    hapticLight();
-    clearTimeout(periodTimerRef.current);
-    periodTimerRef.current = setTimeout(() => setTrendPeriod(p), 300);
-  }, []);
-
-  useEffect(() => () => clearTimeout(periodTimerRef.current), []);
-
-  const {
-    data: kpis,
-    isLoading: loadingKpis,
-    isRefetching: refreshingKpis,
-    isError: kpiError,
-  } = useDashboardKpis();
-
-  const {
-    data: games,
-    isLoading: loadingGames,
-    isError: gamesError,
-  } = useDashboardGames(isPremium && !isTeamMember);
-
-  const { data: trendResponse, isLoading: loadingTrends } = useDashboardTrends(trendPeriod, showTrends);
-  const { data: distribution, isLoading: loadingDistribution } = useDashboardDistribution(showDistribution);
+  const periodTotals = useMemo<PeriodTotals | undefined>(() => {
+    if (!trends.data) return undefined;
+    return {
+      transactions: sumCounts(trends.data.transactions),
+      newClients: sumCounts(trends.data.newClients),
+      rewardsGiven: sumCounts(trends.data.rewardsGiven),
+    };
+  }, [trends.data]);
 
   const onRefresh = useGuardedCallback(async () => {
     hapticLight();
-    const promises = [
-      queryClient.invalidateQueries({ queryKey: ['dashboard-kpis'] }),
-      queryClient.invalidateQueries({ queryKey: ['dashboard-games'] }),
-    ];
-    if (showTrends) promises.push(queryClient.invalidateQueries({ queryKey: ['dashboard-trends', trendPeriod] }));
-    if (showDistribution) promises.push(queryClient.invalidateQueries({ queryKey: ['dashboard-distribution'] }));
-    await Promise.all(promises);
-  }, [trendPeriod, showTrends, showDistribution, queryClient]);
-
-  const retryGames = useCallback(() => {
-    hapticLight();
-    queryClient.invalidateQueries({ queryKey: ['dashboard-games'] });
+    await Promise.all(
+      [queryKeys.dashboardKpis, queryKeys.dashboardGames, queryKeys.dashboardDistribution, ['dashboard-trends']].map(
+        (queryKey) => queryClient.invalidateQueries({ queryKey }),
+      ),
+    );
   }, [queryClient]);
-
-  const openScratch = useCallback(() => { hapticLight(); router.push('/scratch-campaigns'); }, [router]);
-  const openWheel = useCallback(() => { hapticLight(); router.push('/lucky-wheel'); }, [router]);
-
-  const localeTag = useMemo(() => getLocaleTag(locale), [locale]);
-  const currencyLocale = useMemo(() => getIntlLocale(locale), [locale]);
-  const fmt = useCallback((n: number | undefined) => (n ?? 0).toLocaleString(localeTag), [localeTag]);
-
-  const hairline = theme.mode === 'dark' ? 'rgba(255,255,255,0.12)' : '#ECEEF2';
-  const iconBg = theme.mode === 'dark' ? 'rgba(167,139,250,0.14)' : palette.violetUltraLight;
-  const goldBg = theme.mode === 'dark' ? 'rgba(252,211,77,0.14)' : '#FEF7DC';
-  const charbonBg = theme.mode === 'dark' ? 'rgba(255,255,255,0.08)' : '#F1F2F4';
-  const charbonFg = theme.mode === 'dark' ? palette.charbonUltraLight : palette.charbon;
-  const goldFg = theme.mode === 'dark' ? palette.gold : '#B45309';
-
-  const formatTrendLabel = useCallback((bucket: string) => {
-    const date = new Date(bucket);
-    if (isNaN(date.getTime())) return bucket;
-    const day = date.getDate();
-    const month = date.getMonth() + 1;
-    const year = String(date.getFullYear()).slice(2);
-    if (trendPeriod === 'day' || trendPeriod === 'week') return `${day}/${month}`;
-    if (trendPeriod === 'month') return `${month}/${year}`;
-    return date.toLocaleDateString(localeTag, { month: 'short' });
-  }, [trendPeriod, localeTag]);
-
-  const periodOptions = useMemo(() => ([
-    { id: 'day', label: t('dashboard.periodDay') },
-    { id: 'week', label: t('dashboard.periodWeek') },
-    { id: 'month', label: t('dashboard.periodMonth') },
-    { id: 'year', label: t('dashboard.periodYear') },
-  ] as const), [t]);
-
-  const metricOptions = useMemo(() => ([
-    { id: 'transactions', label: t('dashboard.transactions') },
-    { id: 'newClients', label: t('dashboard.trendNewClients') },
-    { id: 'rewardsGiven', label: t('dashboard.trendGifts') },
-  ] as const), [t]);
-
-  const trendData = useMemo<TrendPoint[]>(
-    () => (trendResponse ? trendResponse[trendMetric] ?? [] : []),
-    [trendResponse, trendMetric],
-  );
-  const trendTotal = useMemo(() => trendData.reduce((sum, p) => sum + p.count, 0), [trendData]);
-
-  const giftCountFn = useCallback((count: number) => t('dashboard.giftCount', { count }), [t]);
 
   if (shouldWait) return null;
 
   if (isTeamMember) {
     return (
+      <StateScreen title={t('common.ownerOnly')} message={t('common.ownerOnlyMsg')}>
+        <ActionButton label={t('common.back')} variant="secondary" onPress={() => router.back()} style={styles.stateButton} />
+      </StateScreen>
+    );
+  }
+
+  if (kpis.isLoading) {
+    return (
       <View style={[styles.stateContainer, { backgroundColor: theme.bg }]}>
-        <View style={[styles.stateIconCircle, { backgroundColor: theme.mode === 'dark' ? 'rgba(255,255,255,0.06)' : `${palette.charbon}0F` }]}>
-          <Shield size={ms(34)} color={charbonFg} strokeWidth={1.6} />
-        </View>
-        <Text style={[styles.stateTitle, { color: theme.text }]} maxFontSizeMultiplier={1.4}>{t('common.ownerOnly')}</Text>
-        <Text style={[styles.stateText, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>{t('common.ownerOnlyMsg')}</Text>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={[styles.secondaryBtn, { backgroundColor: theme.bgInput, borderColor: hairline }]}
-          hitSlop={HIT_SLOP}
-          accessibilityRole="button"
-          accessibilityLabel={t('common.back')}
-        >
-          <Text style={[styles.secondaryBtnText, { color: theme.text }]} maxFontSizeMultiplier={1.3}>{t('common.back')}</Text>
-        </TouchableOpacity>
+        <ActivityIndicator size="large" color={theme.textMuted} accessibilityLabel={t('common.loading')} />
       </View>
     );
   }
 
-  if (loadingKpis) {
+  if (kpis.isError) {
     return (
-      <View style={[styles.stateContainer, { backgroundColor: theme.bg }]}>
-        <ActivityIndicator size="large" color={theme.primary} />
-        <Text style={[styles.stateText, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>{t('common.loading')}</Text>
-      </View>
-    );
-  }
-
-  if (kpiError) {
-    return (
-      <View style={[styles.stateContainer, { backgroundColor: theme.bg }]}>
-        <View style={[styles.stateIconCircle, { backgroundColor: theme.mode === 'dark' ? 'rgba(248,113,113,0.14)' : 'rgba(239,68,68,0.10)' }]}>
-          <AlertCircle size={ms(34)} color={theme.danger} strokeWidth={1.6} />
-        </View>
-        <Text style={[styles.stateTitle, { color: theme.text }]} maxFontSizeMultiplier={1.4}>{t('common.error')}</Text>
-        <TouchableOpacity
-          onPress={() => { hapticLight(); queryClient.invalidateQueries({ queryKey: ['dashboard-kpis'] }); }}
-          style={styles.gradientBtnWrap}
-          hitSlop={HIT_SLOP}
-          activeOpacity={0.85}
-          accessibilityRole="button"
-          accessibilityLabel={t('common.retry')}
-        >
-          <LinearGradient colors={brandGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.gradientBtn}>
-            <Text style={styles.gradientBtnText} maxFontSizeMultiplier={1.3}>{t('common.retry')}</Text>
-          </LinearGradient>
-        </TouchableOpacity>
-      </View>
+      <StateScreen title={t('common.error')}>
+        <ActionButton label={t('common.retry')} onPress={() => { hapticLight(); kpis.refetch(); }} style={styles.stateButton} />
+      </StateScreen>
     );
   }
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
-      <View style={[styles.headerBar, { paddingTop: insets.top + 12 }]}>
+      <View style={[styles.header, { flexDirection: dir.row, paddingTop: insets.top + 8 }]}>
         <TouchableOpacity
           onPress={() => router.back()}
-          style={styles.backBtn}
+          style={styles.backButton}
           hitSlop={HIT_SLOP}
           accessibilityRole="button"
           accessibilityLabel={t('common.back')}
         >
-          <ArrowLeft size={22} color={theme.text} style={RTL_FLIP} />
+          <ArrowLeft size={icon.lg} color={theme.text} strokeWidth={icon.stroke} style={dir.flip} />
         </TouchableOpacity>
-        <View style={styles.headerText}>
-          <Text style={[styles.headerTitle, { color: theme.text }]} accessibilityRole="header" maxFontSizeMultiplier={1.4}>
-            {t('dashboard.title')}
-          </Text>
-          <Text style={[styles.headerSubtitle, { color: theme.textMuted }]} numberOfLines={2} maxFontSizeMultiplier={1.3}>
-            {t('dashboard.guideText')}
-          </Text>
-        </View>
+        <Text style={[styles.headerTitle, { color: theme.text, textAlign: dir.textAlign }]} accessibilityRole="header" maxFontSizeMultiplier={1.3}>
+          {t('dashboard.title')}
+        </Text>
       </View>
 
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 32 }]}
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 40 }]}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshingKpis} onRefresh={onRefresh} tintColor={theme.primary} />}
+        refreshControl={<RefreshControl refreshing={kpis.isRefetching} onRefresh={onRefresh} tintColor={theme.textMuted} />}
       >
-        {/* ── 1. Key numbers ── */}
-        <SectionLabel label={t('dashboard.sectionProgram')} color={theme.textMuted} />
-        <View style={[styles.card, styles.statsCard, { backgroundColor: theme.bgCard, borderColor: hairline }]}>
-          <View style={styles.statsRow}>
-            <StatTile Icon={Users} label={t('dashboard.statClients')} value={fmt(kpis?.totalClients)} accent={theme.primary} accentBg={iconBg} theme={theme} />
-            <View style={[styles.vDivider, { backgroundColor: hairline }]} />
-            <StatTile Icon={ScanLine} label={t('dashboard.transactions')} value={fmt(kpis?.totalTransactions)} accent={charbonFg} accentBg={charbonBg} theme={theme} />
-          </View>
-          <View style={[styles.hDivider, { backgroundColor: hairline }]} />
-          <View style={styles.statsRow}>
-            <StatTile
-              Icon={Stamp}
-              label={t('dashboard.statStamps')}
-              value={fmt(kpis?.totalStamps)}
-              caption={t('dashboard.statStampsUsed', { count: fmt(kpis?.totalRedeemedStamps) })}
-              accent={theme.primary}
-              accentBg={iconBg}
-              theme={theme}
-            />
-            <View style={[styles.vDivider, { backgroundColor: hairline }]} />
-            <StatTile Icon={Gift} label={t('dashboard.trendGifts')} value={fmt(kpis?.totalRewardsGiven)} accent={goldFg} accentBg={goldBg} theme={theme} />
-          </View>
-          <View style={[styles.statsFooter, { borderTopColor: hairline }]}>
-            <Eye size={14} color={theme.textMuted} strokeWidth={1.9} />
-            <Text style={[styles.statsFooterText, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>
-              {t('dashboard.profileViewsLine', { count: fmt(kpis?.profileViews) })}
-            </Text>
-          </View>
-        </View>
+        <PeriodSelector value={period} onChange={setPeriod} />
 
-        {/* ── 2. Games ── */}
-        <SectionLabel label={t('dashboard.sectionGames')} color={theme.textMuted} />
-        <GamesSection
-          games={games}
-          loading={loadingGames}
-          error={gamesError}
-          onRetry={retryGames}
-          onOpenScratch={openScratch}
-          onOpenWheel={openWheel}
-          theme={theme}
-          hairline={hairline}
-          iconBg={iconBg}
-          localeTag={localeTag}
-          currencyLocale={currencyLocale}
-          t={t}
-        />
+        <Section title={t('dashboard.sectionProgram')}>
+          <OverviewCard kpis={kpis.data} periodTotals={periodTotals} />
+        </Section>
 
-        {/* ── 3. Top prizes won (scratch + wheel) ── */}
-        {games ? (
-          <>
-            <SectionLabel label={t('dashboard.topPrizes')} color={theme.textMuted} />
-            <TopPrizesSection prizes={games.topPrizes} theme={theme} hairline={hairline} localeTag={localeTag} t={t} />
-          </>
+        <Section title={t('dashboard.evolution')}>
+          <ActivityCard data={trends.data} period={period} loading={trends.isLoading} stale={trends.isPlaceholderData} />
+        </Section>
+
+        {canView ? (
+          <Section title={t('dashboard.sectionGames')}>
+            {games.isLoading ? (
+              <LoadingCard />
+            ) : games.data ? (
+              <GamesCards games={games.data} />
+            ) : (
+              <MessageCard
+                message={t('dashboard.gamesError')}
+                actionLabel={t('common.retry')}
+                onAction={() => { hapticLight(); games.refetch(); }}
+              />
+            )}
+          </Section>
         ) : null}
 
-        {/* ── 4. Details (loaded on demand) ── */}
-        <SectionLabel label={t('dashboard.sectionDetails')} color={theme.textMuted} />
-        <View style={styles.stack}>
-          <CollapsibleHeader
-            title={t('dashboard.evolution')}
-            expanded={showTrends}
-            onToggle={() => { hapticLight(); setShowTrends((v) => !v); }}
-            theme={theme}
-            hairline={hairline}
-          />
-          {showTrends && (
-            <View style={[styles.card, { backgroundColor: theme.bgCard, borderColor: hairline }]}>
-              <View style={styles.chipsRow}>
-                {metricOptions.map((m) => (
-                  <Chip
-                    key={m.id}
-                    label={m.label}
-                    active={trendMetric === m.id}
-                    onPress={() => { hapticLight(); setTrendMetric(m.id); }}
-                    theme={theme}
-                    hairline={hairline}
-                  />
-                ))}
-              </View>
-              <View style={[styles.segment, { backgroundColor: theme.bgInput }]}>
-                {periodOptions.map((p) => {
-                  const active = trendPeriod === p.id;
-                  return (
-                    <TouchableOpacity
-                      key={p.id}
-                      style={[styles.segmentItem, active && { backgroundColor: theme.bgCard, borderColor: hairline }]}
-                      onPress={() => debouncedSetPeriod(p.id)}
-                      activeOpacity={0.8}
-                      accessibilityRole="button"
-                      accessibilityLabel={p.label}
-                      accessibilityState={{ selected: active }}
-                    >
-                      <Text style={[styles.segmentText, { color: active ? theme.text : theme.textMuted }]} maxFontSizeMultiplier={1.3}>
-                        {p.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
+        <Section title={t('dashboard.giftDistribution')}>
+          {distribution.isLoading ? <LoadingCard /> : <LoyaltyGiftsList distribution={distribution.data ?? []} />}
+        </Section>
 
-              {loadingTrends ? (
-                <View style={styles.centeredInline}>
-                  <ActivityIndicator size="small" color={theme.primary} />
-                </View>
-              ) : trendData.length === 0 ? (
-                <View style={styles.centeredInline}>
-                  <Text style={[styles.mutedText, { color: theme.textMuted }]}>{t('dashboard.noData')}</Text>
-                </View>
-              ) : (
-                <>
-                  <View style={styles.trendTotalRow}>
-                    <Text style={[styles.trendTotalValue, { color: theme.text }]} maxFontSizeMultiplier={1.3}>
-                      {trendTotal.toLocaleString(localeTag)}
-                    </Text>
-                    <Text style={[styles.trendTotalLabel, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>
-                      {t('dashboard.trendOnPeriod')}
-                    </Text>
-                  </View>
-                  <TrendChart data={trendData} color={theme.primary} formatLabel={formatTrendLabel} theme={theme} hairline={hairline} />
-                </>
-              )}
-            </View>
-          )}
-
-          <CollapsibleHeader
-            title={t('dashboard.giftDistribution')}
-            expanded={showDistribution}
-            onToggle={() => { hapticLight(); setShowDistribution((v) => !v); }}
-            theme={theme}
-            hairline={hairline}
-          />
-          {showDistribution && (
-            loadingDistribution ? (
-              <View style={styles.centeredInline}>
-                <ActivityIndicator size="small" color={theme.primary} />
-              </View>
-            ) : (
-              <LoyaltyGiftsList
-                distribution={distribution ?? []}
-                theme={theme}
-                hairline={hairline}
-                noGiftsLabel={t('dashboard.noGifts')}
-                giftCountFn={giftCountFn}
-              />
-            )
-          )}
-        </View>
+        {games.data ? (
+          <Section title={t('dashboard.topPrizes')}>
+            <TopPrizesList prizes={games.data.topPrizes} />
+          </Section>
+        ) : null}
       </ScrollView>
 
-      {/* Premium lock overlay (content stays softly visible behind) */}
+      {/* Blur rather than hide: the locked content stays softly visible behind. */}
       {!isPremium && (
         <BlurView
           intensity={theme.mode === 'dark' ? 22 : 16}
@@ -909,252 +886,87 @@ export default function DashboardScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  content: { paddingHorizontal: 20, paddingTop: 4 },
+  content: { paddingHorizontal: 20, paddingTop: 8 },
   stack: { gap: 12 },
+  spaced: { alignItems: 'center', justifyContent: 'space-between', gap: 12 },
 
-  // Header
-  headerBar: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingHorizontal: 20,
-    paddingBottom: 8,
-    gap: 10,
-  },
-  backBtn: { width: 36, height: 40, justifyContent: 'center' },
-  headerText: { flex: 1 },
-  headerTitle: {
-    fontSize: 28,
-    fontWeight: '700',
-    fontFamily: 'Lexend_700Bold',
-    letterSpacing: -0.5,
-  },
-  headerSubtitle: {
-    fontSize: 13,
-    lineHeight: 19,
-    marginTop: 2,
-    fontFamily: 'Lexend_400Regular',
-  },
+  header: { alignItems: 'center', gap: 12, paddingHorizontal: 20, paddingBottom: 8 },
+  backButton: { width: 32, height: 40, justifyContent: 'center' },
+  headerTitle: { flex: 1, fontSize: 26, fontFamily: font.bold, letterSpacing: -0.5 },
 
-  sectionLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    fontFamily: 'Lexend_700Bold',
-    marginTop: 24,
-    marginBottom: 10,
-  },
+  section: { marginTop: 28 },
+  sectionTitle: { fontSize: 16, fontFamily: font.semibold, marginBottom: 12 },
 
-  // Generic card
-  card: {
-    borderRadius: 18,
-    borderWidth: 1,
-    padding: 16,
-  },
-  centered: { alignItems: 'center', justifyContent: 'center', paddingVertical: 24, gap: 8 },
-  centeredInline: { alignItems: 'center', justifyContent: 'center', paddingVertical: 20 },
-  mutedText: { fontSize: 13, fontFamily: 'Lexend_400Regular', textAlign: 'center' },
-  linkText: { fontSize: 13, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
-  iconBadge: { alignItems: 'center', justifyContent: 'center' },
+  card: { borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, padding: 18 },
+  flushCard: { padding: 0, overflow: 'hidden' },
+  centered: { alignItems: 'center', justifyContent: 'center', minHeight: 96, gap: 8 },
 
-  // Key numbers
-  statsCard: { padding: 0, overflow: 'hidden' },
-  statsRow: { flexDirection: 'row' },
-  vDivider: { width: 1 },
-  hDivider: { height: 1 },
-  statTile: { flex: 1, padding: 16, gap: 4 },
-  statValue: {
-    fontSize: 26,
-    fontWeight: '700',
-    letterSpacing: -0.6,
-    fontFamily: 'Lexend_700Bold',
-    fontVariant: ['tabular-nums'],
-    marginTop: 8,
-  },
-  statLabel: { fontSize: 13, lineHeight: 17, fontFamily: 'Lexend_400Regular' },
-  statCaption: { fontSize: 11.5, fontFamily: 'Lexend_400Regular' },
-  statsFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 16,
-    paddingVertical: 11,
-    borderTopWidth: 1,
-  },
-  statsFooterText: { fontSize: 12.5, fontFamily: 'Lexend_400Regular' },
+  body: { fontSize: 14, lineHeight: 20, fontFamily: font.regular },
+  caption: { fontSize: 12, lineHeight: 16, fontFamily: font.regular },
+  message: { fontSize: 13, lineHeight: 19, fontFamily: font.regular, textAlign: 'center' },
+  link: { fontSize: 14, fontFamily: font.semibold },
 
-  // Game cards
-  gameHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  gameHeaderText: { flex: 1, gap: 2 },
-  gameTitle: { fontSize: 16, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
-  liveRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  liveDot: { width: 6, height: 6, borderRadius: 3 },
-  liveText: { fontSize: 12, fontFamily: 'Lexend_600SemiBold' },
-  figuresRow: {
-    flexDirection: 'row',
-    marginTop: 16,
-    paddingTop: 14,
-    borderTopWidth: 1,
-  },
-  figure: { flex: 1, paddingHorizontal: 8, alignItems: 'center' },
-  figureValue: {
-    fontSize: 22,
-    fontWeight: '700',
-    letterSpacing: -0.5,
-    fontFamily: 'Lexend_700Bold',
-    fontVariant: ['tabular-nums'],
-  },
-  figureLabel: { fontSize: 12, marginTop: 2, fontFamily: 'Lexend_400Regular' },
-  rateBlock: { marginTop: 16, gap: 8 },
-  rateTrack: { height: 8, borderRadius: 4, overflow: 'hidden' },
-  rateFill: { height: '100%', borderRadius: 4 },
-  rateText: { fontSize: 12.5, lineHeight: 17, fontFamily: 'Lexend_400Regular' },
-  moneyRow: { flexDirection: 'row', gap: 10, marginTop: 14 },
-  moneyBox: { flex: 1, borderRadius: 12, paddingVertical: 10, paddingHorizontal: 12, gap: 2 },
-  moneyLabel: { fontSize: 11.5, fontFamily: 'Lexend_400Regular' },
-  moneyValue: {
-    fontSize: 16,
-    fontWeight: '700',
-    fontFamily: 'Lexend_700Bold',
-    fontVariant: ['tabular-nums'],
-  },
-  pillsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 },
-  pill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-  },
-  pillText: { fontSize: 12.5, fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
-  emptyGame: { marginTop: 12, gap: 8 },
-  emptyGameText: { fontSize: 13, lineHeight: 19, fontFamily: 'Lexend_400Regular' },
-  emptyGameCta: { fontSize: 13, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
+  segment: { borderRadius: 12, padding: 4 },
+  segmentItem: { flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: 9 },
+  segmentText: { fontSize: 13, fontFamily: font.semibold },
 
-  // Ranked lists (top prizes, loyalty gifts)
-  listCard: { padding: 0, overflow: 'hidden' },
-  prizeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 13,
-  },
-  prizeBar: { position: 'absolute', left: 0, top: 0, bottom: 0 },
-  prizeRank: {
-    width: 16,
-    fontSize: 13,
-    fontWeight: '700',
-    fontFamily: 'Lexend_700Bold',
-    textAlign: 'center',
-  },
-  prizeBody: { flex: 1, gap: 2 },
-  prizeLabel: { fontSize: 14, fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
-  prizeSource: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  prizeSourceText: { fontSize: 11.5, fontFamily: 'Lexend_400Regular' },
-  prizeCount: {
-    fontSize: 13,
-    fontWeight: '700',
-    fontFamily: 'Lexend_700Bold',
-    fontVariant: ['tabular-nums'],
-  },
+  statTile: { flex: 1, minWidth: 0, paddingHorizontal: 16, paddingVertical: 16, gap: 6 },
+  statLabelRow: { alignItems: 'center', gap: 6 },
+  statLabel: { flexShrink: 1, fontSize: 12, fontFamily: font.medium },
+  statValue: { fontSize: 26, fontFamily: font.bold, letterSpacing: -0.6, fontVariant: ['tabular-nums'] },
+  statNote: { fontSize: 12, fontFamily: font.medium },
+  overviewFooter: { alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 12, borderTopWidth: StyleSheet.hairlineWidth },
 
-  // Collapsible sections
-  collapsibleHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderRadius: 14,
-    borderWidth: 1,
-    paddingHorizontal: 16,
-    paddingVertical: 15,
-    minHeight: 48,
-  },
-  collapsibleTitle: { fontSize: 15, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
-  chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, borderWidth: 1 },
-  chipText: { fontSize: 12.5, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
-  segment: { flexDirection: 'row', borderRadius: 12, padding: 3, marginTop: 12 },
-  segmentItem: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  segmentText: { fontSize: 12.5, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
-  trendTotalRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8, marginTop: 16 },
-  trendTotalValue: {
-    fontSize: 24,
-    fontWeight: '700',
-    letterSpacing: -0.5,
-    fontFamily: 'Lexend_700Bold',
-    fontVariant: ['tabular-nums'],
-  },
-  trendTotalLabel: { fontSize: 12.5, fontFamily: 'Lexend_400Regular' },
-  trendChart: { marginTop: 12 },
-  trendBars: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    height: TREND_BAR_MAX_HEIGHT,
-    borderBottomWidth: 1,
-  },
-  trendBarCol: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    minWidth: 0,
-    paddingHorizontal: 3,
-  },
-  trendBar: { width: '100%', borderTopLeftRadius: 4, borderTopRightRadius: 4 },
-  trendLabels: { flexDirection: 'row', marginTop: 6 },
-  trendLabelCell: {
-    flex: 1,
-    minWidth: 0,
-    textAlign: 'center',
-    fontSize: 10,
-    fontFamily: 'Lexend_400Regular',
-  },
+  tabs: { gap: 6, marginBottom: 18 },
+  tab: { flex: 1, alignItems: 'center', paddingVertical: 8, paddingHorizontal: 6, borderRadius: 999 },
+  tabText: { fontSize: 13, fontFamily: font.semibold },
+  totalValue: { fontSize: 32, fontFamily: font.bold, letterSpacing: -0.8, fontVariant: ['tabular-nums'] },
+  stale: { opacity: 0.5 },
+  chartPlaceholder: { height: CHART_HEIGHT + 72, alignItems: 'center', justifyContent: 'center' },
+  chartArea: { height: CHART_HEIGHT, marginTop: 8 },
+  axisLabel: { fontSize: 11, fontFamily: font.regular, fontVariant: ['tabular-nums'] },
+  axisMax: { position: 'absolute', left: 0, top: PLOT_TOP - 16 },
+  xAxis: { height: 18, marginTop: 8 },
+  xLabel: { position: 'absolute', width: X_LABEL_WIDTH, textAlign: 'center' },
+  tooltip: { position: 'absolute', flexDirection: 'row', alignItems: 'baseline', gap: 6, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 },
+  tooltipValue: { fontSize: 13, fontFamily: font.bold, fontVariant: ['tabular-nums'] },
+  tooltipDate: { fontSize: 11, fontFamily: font.regular, opacity: 0.75 },
 
-  // Full-screen states
-  stateContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 },
-  stateIconCircle: {
-    width: ms(72),
-    height: ms(72),
-    borderRadius: ms(20),
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  stateTitle: {
-    marginTop: 12,
-    fontSize: 17,
-    fontWeight: '700',
-    fontFamily: 'Lexend_700Bold',
-    textAlign: 'center',
-  },
-  stateText: { marginTop: 8, fontSize: 15, fontFamily: 'Lexend_400Regular', textAlign: 'center' },
-  secondaryBtn: {
-    marginTop: 18,
-    paddingHorizontal: 24,
-    paddingVertical: 11,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  secondaryBtnText: { fontWeight: '700', fontSize: 14, fontFamily: 'Lexend_700Bold' },
-  gradientBtnWrap: { marginTop: 18, borderRadius: 12, overflow: 'hidden' },
-  gradientBtn: {
-    paddingHorizontal: 26,
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  gradientBtnText: { color: '#fff', fontWeight: '700', fontSize: 14, fontFamily: 'Lexend_700Bold' },
+  gameHeader: { alignItems: 'center', gap: 10 },
+  gameTitle: { flex: 1, fontSize: 16, fontFamily: font.semibold },
+  liveRow: { alignItems: 'center', gap: 6 },
+  dot: { width: 8, height: 8, borderRadius: 4 },
+  gameBody: { marginTop: 18 },
+  emptyCta: { marginTop: 10 },
+  funnelStep: { gap: 8, marginBottom: 14 },
+  rowLabel: { flex: 1, fontSize: 14, fontFamily: font.regular },
+  rowValue: { fontSize: 15, fontFamily: font.semibold, fontVariant: ['tabular-nums'] },
+  rowShare: { fontSize: 12, fontFamily: font.regular },
+  track: { overflow: 'hidden' },
+  valueRows: { marginTop: 4 },
+  valueRow: { paddingVertical: 12, borderTopWidth: StyleSheet.hairlineWidth },
 
-  // Premium lock overlay
+  wheelSummary: { alignItems: 'center', gap: 18 },
+  ring: { width: RING_SIZE, height: RING_SIZE, alignItems: 'center', justifyContent: 'center' },
+  ringLabel: { position: 'absolute', fontSize: 17, fontFamily: font.bold, fontVariant: ['tabular-nums'] },
+  wheelFigures: { flex: 1, gap: 10 },
+  wheelFigureRow: { gap: 28 },
+  figureValue: { fontSize: 22, fontFamily: font.bold, letterSpacing: -0.4, fontVariant: ['tabular-nums'] },
+  fulfilment: { marginTop: 18, gap: 10 },
+  splitBar: { height: 8, borderRadius: 4, gap: 2 },
+  legend: { flexWrap: 'wrap', gap: 16 },
+  legendItem: { alignItems: 'center', gap: 6 },
+
+  barList: { paddingVertical: 6 },
+  barRow: { gap: 8, paddingVertical: 10 },
+  barLabel: { flex: 1, fontSize: 14, fontFamily: font.medium },
+  barDetail: { fontSize: 12, fontFamily: font.regular },
+
+  stateContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32 },
+  stateTitle: { fontSize: 17, fontFamily: font.semibold, textAlign: 'center' },
+  stateText: { marginTop: 8, fontSize: 14, lineHeight: 20, fontFamily: font.regular, textAlign: 'center' },
+  stateButton: { marginTop: 20, paddingHorizontal: 28 },
+
   premiumOverlay: {
     ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(6,4,16,0.42)',

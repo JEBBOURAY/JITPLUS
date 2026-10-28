@@ -1,23 +1,12 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { Keyboard, TextInput, FlatList } from 'react-native';
-import * as Location from 'expo-location';
 import { haptic } from '@/utils/haptics';
 import { useStampsOverview, useNotifications, useLuckyWheelAvailableDraws } from '@/hooks/useQueryHooks';
-import { getDistanceSafe } from '@/utils/distance';
 import { prefetchImages } from '@/utils/imageCache';
 import { FOCUS_DELAY_MS } from '@/constants';
 
-type SortMode = 'recent' | 'closest' | 'stamps' | 'random';
-
-export { type SortMode };
-
 export function useHomeData(client: { prenom?: string | null } | null) {
-  const [sortMode, setSortMode] = useState<SortMode>('recent');
-  const [selectedCategory, setSelectedCategory] = useState('all');
-  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
-  const [randomSeed, setRandomSeed] = useState(1);
   const [showSearch, setShowSearch] = useState(false);
-  const [showFilters, setShowFilters] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const searchInputRef = useRef<TextInput>(null);
@@ -27,16 +16,6 @@ export function useHomeData(client: { prenom?: string | null } | null) {
     const timer = setTimeout(() => setDebouncedSearch(searchQuery), 150);
     return () => clearTimeout(timer);
   }, [searchQuery]);
-
-  // Simple seeded PRNG (mulberry32)
-  const seededRandom = useCallback((seed: number) => {
-    let t = seed + 0x6D2B79F5;
-    return () => {
-      t = Math.imul(t ^ (t >>> 15), t | 1);
-      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-    };
-  }, []);
 
   // ── React Query ──
   const {
@@ -57,40 +36,6 @@ export function useHomeData(client: { prenom?: string | null } | null) {
     }
   }, [stampsData]);
 
-  // Request location when "closest" is selected
-  useEffect(() => {
-    if (sortMode !== 'closest') return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (cancelled) return;
-        if (status !== 'granted') {
-          // Permission denied: revert to 'recent' so the sort chip doesn't
-          // stay "stuck" on an unusable state (Play Store UX / A11y best practice).
-          setSortMode('recent');
-          return;
-        }
-        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        if (!cancelled) setUserLocation({ lat: loc.coords.latitude, lng: loc.coords.longitude });
-      } catch {
-        if (!cancelled) setSortMode('recent');
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [sortMode]);
-
-  const handleSortChange = useCallback((mode: SortMode) => {
-    haptic();
-    if (mode === 'random') setRandomSeed((s) => s + 1);
-    setSortMode(mode);
-  }, []);
-
-  const handleCategoryChange = useCallback((id: string) => {
-    haptic();
-    setSelectedCategory(id);
-  }, []);
-
   const toggleSearch = useCallback(() => {
     haptic();
     setShowSearch((v) => {
@@ -100,119 +45,26 @@ export function useHomeData(client: { prenom?: string | null } | null) {
     });
   }, []);
 
-  const toggleFilters = useCallback(() => {
-    haptic();
-    setShowFilters((v) => !v);
-  }, []);
-
-  const activeFilterCount = selectedCategory !== 'all' ? 1 : 0;
-
-  // ── Predictive search suggestions ──
-  const searchSuggestions = useMemo(() => {
-    if (!debouncedSearch || debouncedSearch.length < 1) return [];
-    const q = debouncedSearch.toLowerCase();
-    const rawCards = stampsData?.cards ?? [];
-    const seen = new Set<string>();
-    return rawCards
-      .filter((c) => {
-        const name = c.merchant?.nomBoutique;
-        if (!name || seen.has(name)) return false;
-        const match = name.toLowerCase().includes(q) ||
-          c.merchant?.categorie?.toLowerCase().includes(q);
-        if (match) seen.add(name);
-        return match;
-      })
-      .slice(0, 5)
-      .map((c) => ({ id: c.merchantId, name: c.merchant!.nomBoutique, category: c.merchant?.categorie }));
-  }, [debouncedSearch, stampsData?.cards]);
-
-  // ── Filter cards ──
-  const filteredCards = useMemo(() => {
-    const rawCards = stampsData?.cards ?? [];
-    return rawCards.filter((c) => {
-      const matchesCategory = selectedCategory === 'all' || c.merchant?.categorie === selectedCategory;
-      const matchesSearch = !debouncedSearch ||
-        c.merchant?.nomBoutique?.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
-        c.merchant?.categorie?.toLowerCase().includes(debouncedSearch.toLowerCase());
-      return matchesCategory && matchesSearch;
-    });
-  }, [stampsData?.cards, selectedCategory, debouncedSearch]);
-
-  // ── Category counts ──
-  const categoryCounts = useMemo(() => {
-    const rawCards = stampsData?.cards ?? [];
-    const counts: Record<string, number> = { all: rawCards.length };
-    for (const c of rawCards) {
-      const cat = c.merchant?.categorie;
-      if (cat) counts[cat] = (counts[cat] || 0) + 1;
-    }
-    return counts;
-  }, [stampsData?.cards]);
-
-  // ── Sort cards ──
+  // ── Search, most recently used first ──
   const cards = useMemo(() => {
-    if (!filteredCards.length) return filteredCards;
-    const sorted = [...filteredCards];
-
-    switch (sortMode) {
-      case 'recent':
-        sorted.sort((a, b) => {
-          const dateA = new Date(a.updatedAt || a.createdAt).getTime();
-          const dateB = new Date(b.updatedAt || b.createdAt).getTime();
-          return dateB - dateA;
-        });
-        break;
-      case 'closest':
-        if (userLocation) {
-          sorted.sort((a, b) => {
-            const distA = getDistanceSafe(userLocation.lat, userLocation.lng, a.merchant?.latitude, a.merchant?.longitude);
-            const distB = getDistanceSafe(userLocation.lat, userLocation.lng, b.merchant?.latitude, b.merchant?.longitude);
-            return distA - distB;
-          });
-        }
-        break;
-      case 'stamps':
-        sorted.sort((a, b) => b.balance - a.balance);
-        break;
-      case 'random':
-        {
-          const rng = seededRandom(randomSeed);
-          for (let i = sorted.length - 1; i > 0; i--) {
-            const j = Math.floor(rng() * (i + 1));
-            [sorted[i], sorted[j]] = [sorted[j], sorted[i]];
-          }
-        }
-        break;
-    }
-    return sorted;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filteredCards, sortMode, userLocation, randomSeed]);
-
-  const handleSuggestionTap = useCallback((name: string) => {
-    haptic();
-    setSearchQuery(name);
-    setDebouncedSearch(name);
-    Keyboard.dismiss();
-    const idx = cards.findIndex((c) => c.merchant?.nomBoutique === name);
-    if (idx >= 0 && flatListRef.current) {
-      flatListRef.current.scrollToIndex({ index: idx, animated: true, viewOffset: 80 });
-    }
-  }, [cards]);
+    const rawCards = stampsData?.cards ?? [];
+    const q = debouncedSearch.toLowerCase();
+    const filtered = q
+      ? rawCards.filter((c) =>
+        c.merchant?.nomBoutique?.toLowerCase().includes(q) ||
+        c.merchant?.categorie?.toLowerCase().includes(q))
+      : [...rawCards];
+    return filtered.sort((a, b) =>
+      new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime());
+  }, [stampsData?.cards, debouncedSearch]);
 
   return {
-    // State
-    sortMode,
-    selectedCategory,
-    userLocation,
     showSearch,
-    showFilters,
     searchQuery,
     debouncedSearch,
     searchInputRef,
     flatListRef,
-    activeFilterCount,
 
-    // Data
     stampsData,
     isLoading,
     loadError,
@@ -220,18 +72,9 @@ export function useHomeData(client: { prenom?: string | null } | null) {
     luckyWheelTickets,
     notifData,
     cards,
-    categoryCounts,
-    searchSuggestions,
 
-    // Setters
     setSearchQuery,
-
-    // Actions
     refetch,
-    handleSortChange,
-    handleCategoryChange,
     toggleSearch,
-    toggleFilters,
-    handleSuggestionTap,
   };
 }

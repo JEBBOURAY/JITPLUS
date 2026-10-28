@@ -9,12 +9,13 @@ import {
   TEAM_MEMBER_REPOSITORY, type ITeamMemberRepository,
   MERCHANT_REPOSITORY, type IMerchantRepository,
   TRANSACTION_RUNNER, type ITransactionRunner,
+  DEVICE_SESSION_REPOSITORY, type IDeviceSessionRepository,
 } from '../../common/repositories';
 import { AuditLogService, AuditAction, AuditTargetType } from '../../admin/audit-log.service';
 import { CreateTeamMemberDto } from '../dto/create-team-member.dto';
 import { UpdateTeamMemberDto } from '../dto/update-team-member.dto';
 import * as bcrypt from 'bcryptjs';
-import { BCRYPT_SALT_ROUNDS } from '../../common/constants';
+import { BCRYPT_SALT_ROUNDS, USER_TYPE_TEAM_MEMBER } from '../../common/constants';
 import { stripUndefined } from '../../common/utils';
 import { withRetry } from '../../common/utils/retry-transaction.helper';
 
@@ -24,8 +25,16 @@ export class MerchantTeamService {
     @Inject(TEAM_MEMBER_REPOSITORY) private teamMemberRepo: ITeamMemberRepository,
     @Inject(MERCHANT_REPOSITORY) private merchantRepo: IMerchantRepository,
     @Inject(TRANSACTION_RUNNER) private txRunner: ITransactionRunner,
+    @Inject(DEVICE_SESSION_REPOSITORY) private deviceSessionRepo: IDeviceSessionRepository,
     private auditLogService: AuditLogService,
   ) {}
+
+  /** Signs the member out of every device (sessions are keyed by the email used at login). */
+  private async revokeMemberSessions(merchantId: string, email: string) {
+    await this.deviceSessionRepo.deleteMany({
+      where: { merchantId, userType: USER_TYPE_TEAM_MEMBER, userEmail: email },
+    });
+  }
 
   async getTeamMembers(merchantId: string) {
     const members = await this.teamMemberRepo.findMany({
@@ -146,7 +155,7 @@ export class MerchantTeamService {
       data.password = await bcrypt.hash(dto.password, BCRYPT_SALT_ROUNDS);
     }
 
-    return this.teamMemberRepo.update({
+    const updated = await this.teamMemberRepo.update({
       where: { id: memberId },
       data,
       select: {
@@ -159,12 +168,19 @@ export class MerchantTeamService {
         updatedAt: true,
       },
     });
+
+    const emailChanged = !!dto.email && dto.email !== member.email;
+    if (dto.isActive === false || !!dto.password || emailChanged) {
+      await this.revokeMemberSessions(merchantId, member.email);
+    }
+
+    return updated;
   }
 
   async deleteTeamMember(merchantId: string, memberId: string) {
     const member = await this.teamMemberRepo.findUnique({
       where: { id: memberId },
-      select: { id: true, merchantId: true },
+      select: { id: true, merchantId: true, email: true },
     });
 
     if (!member || member.merchantId !== merchantId) {
@@ -172,6 +188,7 @@ export class MerchantTeamService {
     }
 
     await this.teamMemberRepo.delete({ where: { id: memberId } });
+    await this.revokeMemberSessions(merchantId, member.email);
 
     this.auditLogService.log({
       ctx: { actorType: 'MERCHANT', merchantId },

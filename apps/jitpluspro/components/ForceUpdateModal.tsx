@@ -2,7 +2,6 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
   Linking,
   Platform,
 } from 'react-native';
@@ -11,6 +10,8 @@ import { Download, AlertTriangle, Wrench } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, brandGradient, brandGradientFull, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { ActionButton } from '@/components/ui/ActionButton';
+import { font, icon } from '@/constants/design';
 import { ForceUpdateStatus } from '@/hooks/useForceUpdate';
 
 interface Props {
@@ -55,7 +56,6 @@ export default function ForceUpdateModal({ status, storeUrl }: Props) {
 
   return (
     <View style={[styles.root, { backgroundColor: theme.bg }]}>
-      {/* Top gradient strip */}
       <LinearGradient
         colors={brandGradientFull}
         style={[styles.topStrip, { height: insets.top + 8 }]}
@@ -64,7 +64,6 @@ export default function ForceUpdateModal({ status, storeUrl }: Props) {
       />
 
       <View style={[styles.content, { paddingBottom: insets.bottom + 32 }]}>
-        {/* Icon */}
         <LinearGradient
           colors={isUpdate ? brandGradient : [palette.violet, palette.charbonDark]}
           style={styles.iconBg}
@@ -72,27 +71,24 @@ export default function ForceUpdateModal({ status, storeUrl }: Props) {
           end={{ x: 1, y: 1 }}
         >
           {isUpdate ? (
-            <Download color={palette.white} size={48} strokeWidth={1.5} />
+            <Download color={palette.white} size={44} strokeWidth={icon.stroke} />
           ) : (
-            <Wrench color={palette.white} size={48} strokeWidth={1.5} />
+            <Wrench color={palette.white} size={44} strokeWidth={icon.stroke} />
           )}
         </LinearGradient>
 
-        {/* Title */}
         <Text style={[styles.title, { color: theme.text }]}>
           {isUpdate
             ? t('forceUpdate.updateTitle')
             : t('forceUpdate.maintenanceTitle')}
         </Text>
 
-        {/* Description */}
         <Text style={[styles.desc, { color: theme.textMuted }]}>
           {isUpdate
             ? t('forceUpdate.updateDesc')
             : t('forceUpdate.maintenanceDesc')}
         </Text>
 
-        {/* Version badge (update only) */}
         {isUpdate && (
           <View
             style={[
@@ -100,32 +96,23 @@ export default function ForceUpdateModal({ status, storeUrl }: Props) {
               { backgroundColor: palette.cyan + '12', borderColor: palette.cyan + '30' },
             ]}
           >
-            <AlertTriangle color={palette.cyan} size={14} strokeWidth={1.5} />
+            <AlertTriangle color={palette.cyan} size={14} strokeWidth={icon.strokeSmall} />
             <Text style={[styles.badgeText, { color: palette.cyan }]}>
               {t('forceUpdate.versionRequired')}
             </Text>
           </View>
         )}
 
-        {/* CTA button */}
         {isUpdate && (
-          <TouchableOpacity
-            style={[styles.ctaWrap, { backgroundColor: palette.violet }]}
+          <ActionButton
+            label={Platform.OS === 'ios' ? t('forceUpdate.ctaIos') : t('forceUpdate.ctaAndroid')}
+            icon={Download}
+            size="lg"
             onPress={handleCta}
-            activeOpacity={0.85}
-          >
-            <View style={styles.ctaGradient}>
-              <Download color={palette.white} size={20} strokeWidth={1.5} />
-              <Text style={styles.ctaText}>
-                {Platform.OS === 'ios'
-                  ? t('forceUpdate.ctaIos')
-                  : t('forceUpdate.ctaAndroid')}
-              </Text>
-            </View>
-          </TouchableOpacity>
+            style={styles.cta}
+          />
         )}
 
-        {/* Maintenance hint */}
         {!isUpdate && (
           <View
             style={[
@@ -139,7 +126,6 @@ export default function ForceUpdateModal({ status, storeUrl }: Props) {
           </View>
         )}
 
-        {/* Bottom branding */}
         <Text style={[styles.brand, { color: theme.textMuted }]}>
           JitPlus Pro
         </Text>
@@ -165,9 +151,9 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   iconBg: {
-    width: 112,
-    height: 112,
-    borderRadius: 32,
+    width: 96,
+    height: 96,
+    borderRadius: 48,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 8,
@@ -179,13 +165,13 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 24,
-    fontFamily: 'Lexend_700Bold',
+    fontFamily: font.bold,
     textAlign: 'center',
     lineHeight: 32,
   },
   desc: {
     fontSize: 15,
-    fontFamily: 'Lexend_400Regular',
+    fontFamily: font.regular,
     textAlign: 'center',
     lineHeight: 23,
     maxWidth: 320,
@@ -196,35 +182,22 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: 14,
     paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   badgeText: {
     fontSize: 13,
-    fontFamily: 'Lexend_500Medium',
+    fontFamily: font.medium,
   },
-  ctaWrap: {
-    width: '100%',
-    borderRadius: 14,
-    overflow: 'hidden',
+  cta: {
+    alignSelf: 'stretch',
     marginTop: 8,
-  },
-  ctaGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 17,
-    paddingHorizontal: 20,
-    gap: 10,
-  },
-  ctaText: {
-    color: palette.white,
-    fontSize: 16,
-    fontFamily: 'Lexend_600SemiBold',
+    backgroundColor: palette.violet,
+    borderColor: palette.violet,
   },
   maintenanceHint: {
     borderRadius: 12,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: 16,
     paddingVertical: 12,
     marginTop: 8,
@@ -232,13 +205,13 @@ const styles = StyleSheet.create({
   },
   maintenanceHintText: {
     fontSize: 14,
-    fontFamily: 'Lexend_400Regular',
+    fontFamily: font.regular,
     textAlign: 'center',
     lineHeight: 20,
   },
   brand: {
     fontSize: 13,
-    fontFamily: 'Lexend_400Regular',
+    fontFamily: font.regular,
     marginTop: 24,
     opacity: 0.5,
   },

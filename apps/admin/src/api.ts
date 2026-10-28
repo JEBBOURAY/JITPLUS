@@ -25,6 +25,9 @@ import type {
   ClientActivity,
   NotificationStats,
   AdminAlerts,
+  AdminDealsResponse,
+  AdminDealReport,
+  AdminDealListParams,
 } from './types';
 
 /** Query string from a params object, dropping empty values. */
@@ -298,3 +301,19 @@ export const updatePayoutRequestStatus = (id: string, status: PayoutStatus) =>
     method: 'PATCH',
     body: JSON.stringify({ status }),
   });
+
+// ── Deals (bons plans) moderation ──────────────────────────────────────────
+export const getAdminDeals = (params: AdminDealListParams = {}) =>
+  req<AdminDealsResponse>(`/admin/deals?${qs({ page: 1, limit: 20, ...params })}`);
+
+export const getDealReports = (id: string) =>
+  req<{ reports: AdminDealReport[] }>(`/admin/deals/${encodeURIComponent(id)}/reports`);
+
+export const removeDeal = (id: string, reason: string) =>
+  req<{ success: boolean }>(`/admin/deals/${encodeURIComponent(id)}/remove`, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  });
+
+export const restoreDeal = (id: string) =>
+  req<{ success: boolean }>(`/admin/deals/${encodeURIComponent(id)}/restore`, { method: 'POST' });

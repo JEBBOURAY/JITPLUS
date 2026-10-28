@@ -1,9 +1,10 @@
 import { View, Text, StyleSheet, type ViewStyle } from 'react-native';
 import type { LucideIcon } from 'lucide-react-native';
 import type { ThemeColors } from '@/contexts/ThemeContext';
-import { ms } from '@/utils/responsive';
+import { font, icon } from '@/constants/design';
+import { ms, radius } from '@/utils/responsive';
 
-/** Soft card used by every block of the stamps screen. */
+/** Card used by every block of the stamps screen. */
 export function cardSurface(theme: ThemeColors): ViewStyle {
   return {
     backgroundColor: theme.bgCard,
@@ -22,7 +23,7 @@ export function TintNotice({ text, color, icon: Icon, isRTL }: {
 }) {
   return (
     <View style={[styles.notice, { flexDirection: isRTL ? 'row-reverse' : 'row', backgroundColor: `${color}14` }]}>
-      <Icon size={ms(15)} color={color} strokeWidth={1.9} />
+      <Icon size={ms(15)} color={color} strokeWidth={icon.stroke} />
       <Text style={[styles.noticeText, { color, textAlign: isRTL ? 'right' : 'left' }]}>{text}</Text>
     </View>
   );
@@ -31,8 +32,8 @@ export function TintNotice({ text, color, icon: Icon, isRTL }: {
 export const cardStyles = StyleSheet.create({
   card: {
     marginHorizontal: 16,
-    borderRadius: 18,
-    borderWidth: 1,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
     padding: 16,
     shadowOffset: { width: 0, height: 4 },
     shadowRadius: 12,
@@ -41,6 +42,6 @@ export const cardStyles = StyleSheet.create({
 });
 
 const styles = StyleSheet.create({
-  notice: { alignItems: 'center', gap: 8, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10 },
-  noticeText: { flex: 1, fontSize: ms(12.5), lineHeight: ms(18), fontFamily: 'Lexend_500Medium' },
+  notice: { alignItems: 'center', gap: 8, borderRadius: radius.md, paddingHorizontal: 12, paddingVertical: 10 },
+  noticeText: { flex: 1, fontSize: ms(13), lineHeight: ms(18), fontFamily: font.medium },
 });

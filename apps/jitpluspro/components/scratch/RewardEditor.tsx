@@ -4,8 +4,10 @@ import { ChevronDown, ChevronUp, ShieldCheck, Trash2 } from 'lucide-react-native
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { ms } from '@/utils/responsive';
+import { font, icon } from '@/constants/design';
 import { COUPON_REWARD_TYPES, SCRATCH_LIMITS, type CouponRewardType } from '@jitplus/shared/src/scratch';
 import type { Reward } from '@/types';
+import { digitsOnly } from '@/components/games/gameForm';
 import { Chip, ChipRow, FieldLabel, Input } from './ScratchUI';
 import { countRewardOptions, type DelayHours, type RewardForm } from './campaignForm';
 
@@ -27,7 +29,6 @@ const DELAYS: { hours: DelayHours; key: string }[] = [
   { hours: 48, key: 'scratch.wizard.delay48' },
 ];
 
-const digitsOnly = (s: string) => s.replace(/[^0-9]/g, '');
 const decimal = (s: string) => {
   const cleaned = s.replace(',', '.').replace(/[^0-9.]/g, '');
   const [int, ...rest] = cleaned.split('.');
@@ -74,13 +75,13 @@ export const RewardEditor = React.memo(function RewardEditor({
   return (
     <View style={[styles.card, { backgroundColor: theme.bgElevated, borderColor: isAssured ? theme.primary : theme.borderLight }]}>
       <View style={[styles.headerRow, { flexDirection: row }]}>
-        {isAssured && <ShieldCheck size={18} color={theme.primary} />}
+        {isAssured && <ShieldCheck size={18} color={theme.primary} strokeWidth={icon.stroke} />}
         <Text style={[styles.title, { color: theme.text, textAlign }]} maxFontSizeMultiplier={1.3}>
           {isAssured ? t('scratch.wizard.assuredTitle') : t('scratch.wizard.rewardN', { n: index + 1 })}
         </Text>
         {canRemove && !isAssured && (
           <TouchableOpacity onPress={() => onRemove(reward.key)} style={styles.iconBtn} accessibilityRole="button" accessibilityLabel={t('scratch.wizard.removeReward')}>
-            <Trash2 size={18} color={theme.danger} />
+            <Trash2 size={18} color={theme.danger} strokeWidth={icon.stroke} />
           </TouchableOpacity>
         )}
       </View>
@@ -171,9 +172,9 @@ export const RewardEditor = React.memo(function RewardEditor({
         accessibilityState={{ expanded: showOptions }}
       >
         <Text style={[styles.optionsTitle, { color: theme.text, textAlign }]} maxFontSizeMultiplier={1.3}>
-          {optionCount > 0 ? t('scratch.wizard.moreOptionsCount', { count: optionCount }) : t('scratch.wizard.moreOptions')}
+          {optionCount > 0 ? t(optionCount === 1 ? 'scratch.wizard.moreOptionsCount_one' : 'scratch.wizard.moreOptionsCount_other', { count: optionCount }) : t('scratch.wizard.moreOptions')}
         </Text>
-        {showOptions ? <ChevronUp size={18} color={theme.textMuted} /> : <ChevronDown size={18} color={theme.textMuted} />}
+        {showOptions ? <ChevronUp size={18} color={theme.textMuted} strokeWidth={icon.stroke} /> : <ChevronDown size={18} color={theme.textMuted} strokeWidth={icon.stroke} />}
       </TouchableOpacity>
 
       {showOptions && (
@@ -292,15 +293,15 @@ export const RewardEditor = React.memo(function RewardEditor({
 const styles = StyleSheet.create({
   card: { borderRadius: 16, borderWidth: 1, padding: 14, gap: 10 },
   headerRow: { alignItems: 'center', gap: 8, minHeight: 32 },
-  title: { flex: 1, fontSize: ms(15), fontFamily: 'Lexend_600SemiBold' },
-  hint: { fontSize: ms(12), fontFamily: 'Lexend_400Regular', lineHeight: ms(18), marginTop: -4 },
+  title: { flex: 1, fontSize: ms(15), fontFamily: font.semibold },
+  hint: { fontSize: ms(12), fontFamily: font.regular, lineHeight: ms(18), marginTop: -4 },
   iconBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   twoCols: { gap: 12 },
   col: { flex: 1, gap: 8 },
   colWide: { flex: 2, gap: 8 },
   assuredChance: { minHeight: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  assuredChanceText: { fontSize: ms(16), fontFamily: 'Lexend_600SemiBold' },
+  assuredChanceText: { fontSize: ms(16), fontFamily: font.semibold },
   optionsToggle: { alignItems: 'center', gap: 8, borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 12, minHeight: 44 },
-  optionsTitle: { flex: 1, fontSize: ms(13.5), fontFamily: 'Lexend_500Medium' },
+  optionsTitle: { flex: 1, fontSize: ms(14), fontFamily: font.medium },
   options: { gap: 10 },
 });

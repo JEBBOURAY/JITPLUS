@@ -101,6 +101,8 @@ module.exports = ({ config }) => {
       },
       // Prevents unexpected back gesture from killing auth/OTP flows
       predictiveBackGestureEnabled: false,
+      // Keeps the cached profile and query cache out of Google Drive backups.
+      allowBackup: false,
       package: 'com.jitplus.client',
       googleServicesFile: process.env.GOOGLE_SERVICES_JSON || './google-services.json',
       config: {
@@ -126,7 +128,7 @@ module.exports = ({ config }) => {
         'android.permission.READ_MEDIA_AUDIO',
         'android.permission.RECORD_AUDIO',
       ],
-      // Deep links: open /m/:id merchant share URLs directly in the app
+      // Deep links: open /m/:id merchant and /bp/:id deal share URLs directly in the app
       intentFilters: [
         {
           action: 'VIEW',
@@ -136,6 +138,11 @@ module.exports = ({ config }) => {
               scheme: 'https',
               host: 'jitplus-api-290470991104.europe-west9.run.app',
               pathPrefix: '/m/',
+            },
+            {
+              scheme: 'https',
+              host: 'jitplus-api-290470991104.europe-west9.run.app',
+              pathPrefix: '/bp/',
             },
           ],
           category: ['BROWSABLE', 'DEFAULT'],
@@ -164,6 +171,11 @@ module.exports = ({ config }) => {
     plugins: [
       'expo-router',
       'expo-secure-store',
+      'expo-asset',
+      'expo-font',
+      'expo-image',
+      'expo-sharing',
+      'expo-status-bar',
       '@react-native-google-signin/google-signin',
       'expo-apple-authentication',
       // Adds `react-native-maps/Google` to the Podfile and the GMSServices init.
@@ -184,10 +196,10 @@ module.exports = ({ config }) => {
             deploymentTarget: '16.4',
           },
           android: {
-            compileSdkVersion: 36,
+            compileSdkVersion: 37,
             targetSdkVersion: 36,
             minSdkVersion: 24,
-            buildToolsVersion: '36.0.0',
+            buildToolsVersion: '37.0.0',
             // R8: strips unused Java/Kotlin code and resources from release
             // builds. Native stack traces become obfuscated — upload
             // android/app/build/outputs/mapping/release/mapping.txt to Sentry

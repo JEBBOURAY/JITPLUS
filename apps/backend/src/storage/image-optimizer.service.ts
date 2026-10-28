@@ -13,6 +13,8 @@ const PROFILES: Record<string, ImageProfile> = {
   cardBg: { maxWidth: 800, maxHeight: 500, quality: 78 },
   gallery: { maxWidth: 1200, maxHeight: 1200, quality: 82 },
   reward: { maxWidth: 600, maxHeight: 600, quality: 80 },
+  // Shown as a ~88 px square in lists and full width on the detail screen
+  deal: { maxWidth: 900, maxHeight: 900, quality: 78 },
   default: { maxWidth: 1024, maxHeight: 1024, quality: 80 },
 };
 

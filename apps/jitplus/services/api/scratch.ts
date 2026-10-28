@@ -16,20 +16,20 @@ export function createScratchMethods(http: AxiosInstance) {
       return data;
     },
     async getScratchCard(cardId: string): Promise<ScratchCardDto> {
-      const { data } = await http.get(`/scratch/client/cards/${cardId}`);
+      const { data } = await http.get(`/scratch/client/cards/${encodeURIComponent(cardId)}`);
       return data;
     },
     async getScratchCardByCampaign(campaignId: string): Promise<ScratchCardDto> {
-      const { data } = await http.get(`/scratch/client/cards/by-campaign/${campaignId}`);
+      const { data } = await http.get(`/scratch/client/cards/by-campaign/${encodeURIComponent(campaignId)}`);
       return data;
     },
     async markScratchCardOpened(cardId: string): Promise<{ ok: true }> {
-      const { data } = await http.post(`/scratch/client/cards/${cardId}/open`);
+      const { data } = await http.post(`/scratch/client/cards/${encodeURIComponent(cardId)}/open`);
       return data;
     },
     /** Idempotent: a retry after a network failure returns the same coupon. */
     async scratchCard(cardId: string): Promise<ScratchResult> {
-      const { data } = await http.post(`/scratch/client/cards/${cardId}/scratch`);
+      const { data } = await http.post(`/scratch/client/cards/${encodeURIComponent(cardId)}/scratch`, undefined, { idempotent: true });
       return data;
     },
     async getClientCoupons(status?: ClientCouponStatus): Promise<CouponDto[]> {
@@ -38,7 +38,7 @@ export function createScratchMethods(http: AxiosInstance) {
     },
     /** The owner gets `qrToken` on this route (needed to show the QR in store). */
     async getClientCoupon(couponId: string): Promise<CouponDto> {
-      const { data } = await http.get(`/scratch/client/coupons/${couponId}`);
+      const { data } = await http.get(`/scratch/client/coupons/${encodeURIComponent(couponId)}`);
       return data;
     },
   };

@@ -16,6 +16,9 @@ import { ArrowLeft, Mail, ShieldCheck, RefreshCw } from 'lucide-react-native';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useDir } from '@/hooks/useDir';
+import { ActionButton } from '@/components/ui/ActionButton';
+import { font, icon } from '@/constants/design';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import api from '@/services/api';
@@ -24,6 +27,7 @@ import { wp, hp, ms, fontSize as fs, radius } from '@/utils/responsive';
 
 const OTP_LENGTH = 6;
 const RESEND_COOLDOWN = 60;
+const VIOLET_GRADIENT = [palette.violet, palette.violetDark] as const;
 
 // Module-level guard: prevents duplicate sends across remounts (ref resets on
 // unmount, but the module variable persists). Keyed by email so switching
@@ -35,6 +39,7 @@ export default function VerifyEmailScreen() {
   const router = useRouter();
   const theme = useTheme();
   const { t } = useLanguage();
+  const dir = useDir();
   const { merchant, updateMerchant } = useAuth();
   const { email, fromRegister } = useLocalSearchParams<{ email: string; fromRegister?: string }>();
   const isLoggedIn = !!merchant;
@@ -64,7 +69,7 @@ export default function VerifyEmailScreen() {
   // If already verified (e.g. came back after verifying), skip this screen
   useEffect(() => {
     if (isLoggedIn && merchant?.emailVerified) {
-      router.replace('/(tabs)/activity');
+      router.replace('/(tabs)');
     }
   }, [isLoggedIn, merchant?.emailVerified, router]);
 
@@ -129,7 +134,7 @@ export default function VerifyEmailScreen() {
       });
       if (isLoggedIn) {
         updateMerchant({ emailVerified: true });
-        router.replace('/(tabs)/activity');
+        router.replace('/(tabs)');
       } else {
         Alert.alert(
           t('verifyEmail.successTitle'),
@@ -183,17 +188,17 @@ export default function VerifyEmailScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
       >
-        {/* Back button */}
         <TouchableOpacity
-          style={styles.backBtn}
+          style={[styles.backBtn, { alignSelf: dir.alignStart }]}
           onPress={() => router.canGoBack() ? router.back() : router.replace('/login')}
           activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={t('common.back')}
         >
-          <ArrowLeft size={22} color={theme.text} />
+          <ArrowLeft size={22} color={theme.text} strokeWidth={icon.stroke} style={dir.flip} />
         </TouchableOpacity>
 
         <View style={styles.content}>
-          {/* Icon */}
           <Animated.View
             style={[
               styles.iconWrap,
@@ -204,16 +209,15 @@ export default function VerifyEmailScreen() {
             ]}
           >
             <LinearGradient
-              colors={[palette.violet, palette.violetDark ?? '#4c1d95']}
+              colors={VIOLET_GRADIENT}
               style={styles.iconCircle}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
             >
-              <Mail color="#fff" size={40} strokeWidth={2} />
+              <Mail color="#fff" size={36} strokeWidth={icon.stroke} />
             </LinearGradient>
           </Animated.View>
 
-          {/* Heading */}
           <Text style={[styles.title, { color: theme.text }]}>
             {t('verifyEmail.title')}
           </Text>
@@ -221,13 +225,12 @@ export default function VerifyEmailScreen() {
             {t('verifyEmail.subtitle', { email: maskedEmail })}
           </Text>
 
-          {/* Code input card */}
           <Animated.View
             style={[
               styles.card,
               {
-                backgroundColor: theme.bgCard ?? theme.bg,
-                borderColor: theme.borderLight ?? theme.border,
+                backgroundColor: theme.bgCard,
+                borderColor: theme.borderLight,
                 opacity: cardAnim,
                 transform: [{ translateY: cardAnim.interpolate({ inputRange: [0, 1], outputRange: [30, 0] }) }],
               },
@@ -239,8 +242,8 @@ export default function VerifyEmailScreen() {
                 styles.codeInput,
                 {
                   color: theme.text,
-                  borderColor: error ? theme.danger : (theme.inputBorder ?? theme.border),
-                  backgroundColor: theme.bgInput ?? theme.bg,
+                  borderColor: error ? theme.danger : theme.inputBorder,
+                  backgroundColor: theme.bgInput,
                 },
               ]}
               value={code}
@@ -252,12 +255,11 @@ export default function VerifyEmailScreen() {
               keyboardType="number-pad"
               maxLength={OTP_LENGTH}
               placeholder="000000"
-              placeholderTextColor={theme.textMuted ?? '#9ca3af'}
+              placeholderTextColor={theme.textMuted}
               textAlign="center"
               autoFocus
             />
 
-            {/* Display the code digits */}
             <View style={styles.dotsRow}>
               {Array.from({ length: OTP_LENGTH }, (_, i) => (
                 <View
@@ -265,64 +267,45 @@ export default function VerifyEmailScreen() {
                   style={[
                     styles.dot,
                     {
-                      backgroundColor: code[i]
-                        ? palette.violet
-                        : (theme.borderLight ?? theme.border),
+                      backgroundColor: code[i] ? palette.violet : theme.borderLight,
                     },
                   ]}
                 />
               ))}
             </View>
 
-            {/* Error */}
             {error ? (
               <Text style={[styles.errorText, { color: theme.danger }]}>{error}</Text>
             ) : null}
 
-            {/* Verify button */}
-            <TouchableOpacity
-              style={[
-                styles.verifyBtn,
-                { opacity: code.length === OTP_LENGTH && !isVerifying ? 1 : 0.5 },
-              ]}
+            <ActionButton
+              label={t('verifyEmail.verifyBtn')}
+              icon={ShieldCheck}
               onPress={handleVerify}
-              disabled={code.length !== OTP_LENGTH || isVerifying}
-              activeOpacity={0.85}
-            >
-              <LinearGradient
-                colors={[palette.violet, palette.violetDark ?? '#4c1d95']}
-                style={styles.verifyBtnGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-              >
-                {isVerifying ? (
-                  <ActivityIndicator color="#fff" size="small" />
-                ) : (
-                  <>
-                    <ShieldCheck color="#fff" size={20} strokeWidth={2} />
-                    <Text style={styles.verifyBtnText}>{t('verifyEmail.verifyBtn')}</Text>
-                  </>
-                )}
-              </LinearGradient>
-            </TouchableOpacity>
+              disabled={code.length !== OTP_LENGTH}
+              loading={isVerifying}
+              size="lg"
+              gradient={VIOLET_GRADIENT}
+              gradientDirection="horizontal"
+              style={styles.verifyBtn}
+            />
           </Animated.View>
 
-          {/* Resend */}
           <View style={styles.resendRow}>
             <Text style={[styles.resendLabel, { color: theme.textSecondary }]}>
               {t('verifyEmail.noCode')}
             </Text>
             {resendTimer > 0 ? (
-              <Text style={[styles.resendTimer, { color: theme.textMuted ?? '#9ca3af' }]}>
+              <Text style={[styles.resendTimer, { color: theme.textMuted }]}>
                 {t('verifyEmail.resendIn', { seconds: resendTimer })}
               </Text>
             ) : (
-              <TouchableOpacity onPress={handleResend} disabled={isResending}>
+              <TouchableOpacity onPress={handleResend} disabled={isResending} accessibilityRole="button">
                 {isResending ? (
                   <ActivityIndicator color={palette.violet} size="small" />
                 ) : (
-                  <View style={styles.resendBtnRow}>
-                    <RefreshCw color={palette.violet} size={16} strokeWidth={2} />
+                  <View style={[styles.resendBtnRow, { flexDirection: dir.row }]}>
+                    <RefreshCw color={palette.violet} size={16} strokeWidth={icon.stroke} />
                     <Text style={[styles.resendBtnText, { color: palette.violet }]}>
                       {t('verifyEmail.resendBtn')}
                     </Text>
@@ -342,7 +325,7 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   backBtn: {
     marginTop: hp(8),
-    marginLeft: wp(16),
+    marginHorizontal: wp(16),
     width: ms(40),
     height: ms(40),
     borderRadius: ms(20),
@@ -366,12 +349,13 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: ms(24),
-    fontWeight: '700',
+    fontFamily: font.bold,
     textAlign: 'center',
     marginBottom: hp(8),
   },
   subtitle: {
     fontSize: fs.sm,
+    fontFamily: font.regular,
     textAlign: 'center',
     lineHeight: ms(22),
     marginBottom: hp(32),
@@ -390,7 +374,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     borderWidth: 1.5,
     fontSize: ms(28),
-    fontWeight: '700',
+    fontFamily: font.bold,
     letterSpacing: 12,
     paddingHorizontal: wp(16),
   },
@@ -407,28 +391,15 @@ const styles = StyleSheet.create({
   },
   errorText: {
     fontSize: fs.xs,
-    textAlign: 'center' as const,
+    fontFamily: font.medium,
+    textAlign: 'center',
     marginTop: hp(8),
     marginBottom: hp(4),
   },
   verifyBtn: {
-    width: '100%',
+    alignSelf: 'stretch',
     marginTop: hp(20),
-    borderRadius: radius.md,
-    overflow: 'hidden',
-  },
-  verifyBtnGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: wp(8),
-    paddingVertical: hp(14),
-    borderRadius: radius.md,
-  },
-  verifyBtnText: {
-    color: '#fff',
-    fontSize: fs.md,
-    fontWeight: '700',
+    borderWidth: 0,
   },
   resendRow: {
     marginTop: hp(24),
@@ -437,18 +408,18 @@ const styles = StyleSheet.create({
   },
   resendLabel: {
     fontSize: fs.sm,
+    fontFamily: font.regular,
   },
   resendTimer: {
     fontSize: fs.sm,
-    fontWeight: '600',
+    fontFamily: font.semibold,
   },
   resendBtnRow: {
-    flexDirection: 'row',
     alignItems: 'center',
     gap: wp(6),
   },
   resendBtnText: {
     fontSize: fs.sm,
-    fontWeight: '700',
+    fontFamily: font.bold,
   },
 });

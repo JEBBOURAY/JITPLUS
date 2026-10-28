@@ -3,6 +3,7 @@ import WhyLoyaltySheet from '@/components/home/WhyLoyaltySheet';
 import ClientAppPitchSheet from '@/components/home/ClientAppPitchSheet';
 import ClientShareSheet from '@/components/home/ClientShareSheet';
 import GamesGuideSheet from '@/components/home/GamesGuideSheet';
+import DealsGuideSheet from '@/components/home/DealsGuideSheet';
 
 const mockPush = jest.fn();
 
@@ -66,6 +67,20 @@ describe('Accueil promo sheets', () => {
     expect(getByLabelText('home.gamesGuideChoice3 : home.gamesGuidePickScratch')).toBeTruthy();
     fireEvent.press(getByLabelText('home.gamesGuideCta'));
     expect(onStart).toHaveBeenCalledTimes(1);
+  });
+
+  it('deals guide: shows an example deal and the CTA opens the creation', () => {
+    const onCreate = jest.fn();
+    const { getByLabelText, getByText } = render(<DealsGuideSheet visible onClose={jest.fn()} onCreate={onCreate} />);
+    expect(getByText('home.dealsGuidePreviewExample')).toBeTruthy();
+    fireEvent.press(getByLabelText('home.dealsGuideCta'));
+    expect(onCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it('deals guide: without the right to create, only offers to close', () => {
+    const { getByLabelText, queryByLabelText } = render(<DealsGuideSheet visible onClose={jest.fn()} />);
+    expect(queryByLabelText('home.dealsGuideCta')).toBeNull();
+    expect(getByLabelText('common.gotIt')).toBeTruthy();
   });
 
   it('share: poster card closes the sheet and opens the PLV screen', () => {

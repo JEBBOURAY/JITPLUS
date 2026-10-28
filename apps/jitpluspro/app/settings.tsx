@@ -10,18 +10,23 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
-  I18nManager,
 } from 'react-native';
-import { Save, ArrowLeft, Stamp, HelpCircle, Shield, Lock, Minus, Plus, Clock, ShieldCheck, Crown } from 'lucide-react-native';
+import { Save, ArrowLeft, HelpCircle, Shield, Minus, Plus, Clock, ShieldCheck } from 'lucide-react-native';
+import { JitStamp } from '@/components/icons';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme, palette, type ThemeColors } from '@/contexts/ThemeContext';
 import { useRouter } from 'expo-router';
 import api from '@/services/api';
 import { useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/hooks/useQueryHooks';
+import { usePlanStatus } from '@/hooks/usePlanStatus';
 import { getErrorMessage } from '@/utils/error';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { ms } from '@/utils/responsive';
+import { useDir } from '@/hooks/useDir';
+import { font, icon as iconTokens } from '@/constants/design';
+import { ActionButton } from '@/components/ui/ActionButton';
+import { ProBadge } from '@/components/ui/ProBadge';
 import PremiumLockModal from '@/components/PremiumLockModal';
 import { RewardManager } from '@/components/settings/RewardManager';
 import InfoHint from '@/components/settings/InfoHint';
@@ -52,7 +57,6 @@ interface Reward {
   description?: string;
 }
 
-// ── Settings reducer ──
 interface SettingsState {
   stampEarningMode: 'PER_VISIT' | 'PER_AMOUNT';
   amountPerStamp: string;
@@ -143,9 +147,10 @@ interface SwitchRowProps {
 
 function SwitchRow({ theme, label, caption, value, locked, icon, onPress }: SwitchRowProps) {
   const on = value && !locked;
+  const { isRTL, row, textAlign } = useDir();
   return (
     <TouchableOpacity
-      style={[styles.switchRow, { backgroundColor: on ? theme.primaryBg : fieldFill(theme) }]}
+      style={[styles.switchRow, { flexDirection: row, backgroundColor: on ? theme.primaryBg : fieldFill(theme) }]}
       onPress={onPress}
       activeOpacity={0.8}
       accessibilityRole={locked ? 'button' : 'switch'}
@@ -155,16 +160,14 @@ function SwitchRow({ theme, label, caption, value, locked, icon, onPress }: Swit
     >
       {icon}
       <View style={styles.switchRowText}>
-        <Text style={[styles.fieldLabel, { color: theme.text }]} maxFontSizeMultiplier={1.3}>{label}</Text>
-        <Text style={[styles.caption, { color: on ? theme.primary : theme.textMuted }]} maxFontSizeMultiplier={1.3}>{caption}</Text>
+        <Text style={[styles.fieldLabel, { color: theme.text, textAlign }]} maxFontSizeMultiplier={1.3}>{label}</Text>
+        <Text style={[styles.caption, { color: on ? theme.primary : theme.textMuted, textAlign }]} maxFontSizeMultiplier={1.3}>{caption}</Text>
       </View>
       {locked ? (
-        <View style={[styles.lockPill, { backgroundColor: palette.gold + '2E' }]}>
-          <Lock size={13} color="#B45309" strokeWidth={2.2} />
-        </View>
+        <ProBadge locked />
       ) : (
         <View style={[styles.switchTrack, { backgroundColor: value ? theme.primary : theme.border }]}>
-          <View style={[styles.switchKnob, value ? styles.switchKnobOn : styles.switchKnobOff]} />
+          <View style={[styles.switchKnob, value !== isRTL ? styles.switchKnobEnd : styles.switchKnobStart]} />
         </View>
       )}
     </TouchableOpacity>
@@ -173,10 +176,12 @@ function SwitchRow({ theme, label, caption, value, locked, icon, onPress }: Swit
 
 export default function SettingsScreen() {
   const { merchant, loading: authLoading, updateMerchant, isTeamMember } = useAuth();
+  const { isPremium } = usePlanStatus(merchant);
   const theme = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { t } = useLanguage();
+  const { row, textAlign, flip } = useDir();
   const qc = useQueryClient();
 
   const [state, dispatch] = useReducer(settingsReducer, initialSettingsState);
@@ -222,7 +227,6 @@ export default function SettingsScreen() {
     [t],
   );
 
-  // ── Save all loyalty settings ──
   const doSave = useCallback(async (forceCapClients: boolean) => {
     const payload: Record<string, unknown> = {
       stampEarningMode,
@@ -288,7 +292,7 @@ export default function SettingsScreen() {
         if (affected > 0) {
           const proceed = await confirmAsync(
             t('settingsPage.limitConfirmTitle'),
-            t('settingsPage.limitConfirmMessage', { count: affected, limit: limitVal, unit }),
+            t(affected === 1 ? 'settingsPage.limitConfirmMessage_one' : 'settingsPage.limitConfirmMessage_other', { count: affected, limit: limitVal, unit }),
             cancel,
             ok,
           );
@@ -333,18 +337,11 @@ export default function SettingsScreen() {
     return (
       <View style={[styles.centered, { backgroundColor: theme.bg }]}>
         <View style={styles.ownerOnlyIcon}>
-          <Shield size={ms(36)} color={palette.violet} strokeWidth={1.5} />
+          <Shield size={ms(36)} color={palette.violet} strokeWidth={iconTokens.stroke} />
         </View>
         <Text style={[styles.ownerOnlyTitle, { color: theme.text }]} maxFontSizeMultiplier={1.3} accessibilityRole="header">{t('common.ownerOnly')}</Text>
         <Text style={[styles.ownerOnlyMsg, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>{t('common.ownerOnlyMsg')}</Text>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={[styles.ownerOnlyBtn, { backgroundColor: theme.primary }]}
-          accessibilityRole="button"
-          accessibilityLabel={t('common.back')}
-        >
-          <Text style={styles.ownerOnlyBtnText} maxFontSizeMultiplier={1.3}>{t('common.back')}</Text>
-        </TouchableOpacity>
+        <ActionButton label={t('common.back')} onPress={() => router.back()} style={styles.ownerOnlyBtn} />
       </View>
     );
   }
@@ -357,7 +354,6 @@ export default function SettingsScreen() {
     );
   }
 
-  const isPremium = merchant.plan === 'PREMIUM';
   const locked = !isPremium;
   const savedAmountPerStamp = String(merchant.amountPerStamp ?? DEFAULT_AMOUNT_PER_STAMP);
   const hasChanges =
@@ -388,15 +384,13 @@ export default function SettingsScreen() {
     ? scaledRewards.filter((r) => r.scaled !== r.cout).slice(0, 2)
     : [];
 
-  const shadow = surfaceShadow(theme);
+  const surface = surfaceShadow(theme);
   const fill = fieldFill(theme);
-  const rtlFlip = I18nManager.isRTL ? { transform: [{ scaleX: -1 as number }] } : undefined;
   const guard = (fn: () => void) => () => (locked ? openProOffer() : fn());
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
-      {/* ── Topbar ── */}
-      <View style={[styles.headerBar, { paddingTop: insets.top + 12 }]}>
+      <View style={[styles.headerBar, { flexDirection: row, paddingTop: insets.top + 12 }]}>
         <TouchableOpacity
           onPress={() => router.back()}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -404,11 +398,11 @@ export default function SettingsScreen() {
           accessibilityLabel={t('common.back')}
         >
           <View style={[styles.iconBtn, { backgroundColor: fill }]}>
-            <ArrowLeft size={20} color={theme.text} style={rtlFlip} />
+            <ArrowLeft size={20} color={theme.text} strokeWidth={iconTokens.stroke} style={flip} />
           </View>
         </TouchableOpacity>
         <Text
-          style={[styles.headerTitle, { color: theme.text }]}
+          style={[styles.headerTitle, { color: theme.text, textAlign }]}
           numberOfLines={1}
           maxFontSizeMultiplier={1.3}
           accessibilityRole="header"
@@ -422,7 +416,7 @@ export default function SettingsScreen() {
           accessibilityLabel={t('settingsPage.helpButton')}
         >
           <View style={[styles.iconBtn, { backgroundColor: fill }]}>
-            <HelpCircle size={20} color={theme.textSecondary} strokeWidth={2} />
+            <HelpCircle size={20} color={theme.textSecondary} strokeWidth={iconTokens.stroke} />
           </View>
         </TouchableOpacity>
       </View>
@@ -437,7 +431,6 @@ export default function SettingsScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* ── Live card preview ── */}
         <LoyaltyCardPreview
           theme={theme}
           t={t}
@@ -447,24 +440,22 @@ export default function SettingsScreen() {
           validityText={hasValidity && !locked ? t('settingsPage.validityPreview', { days: validityDays }) : null}
         />
 
-        {/* ── Panel: Carte de tampons ── */}
-        <View style={[styles.panel, { backgroundColor: theme.bgCard }, shadow]}>
-          <View style={styles.panelHeader}>
+        <View style={[styles.panel, { backgroundColor: theme.bgCard }, surface]}>
+          <View style={[styles.panelHeader, { flexDirection: row }]}>
             <View style={[styles.panelIcon, { backgroundColor: theme.primaryBg }]}>
-              <Stamp size={17} color={theme.primary} strokeWidth={1.9} />
+              <JitStamp size={18} color={theme.primary} strokeWidth={iconTokens.stroke} />
             </View>
-            <Text style={[styles.panelTitle, { color: theme.text }]} maxFontSizeMultiplier={1.3} accessibilityRole="header">
+            <Text style={[styles.panelTitle, { color: theme.text, textAlign }]} maxFontSizeMultiplier={1.3} accessibilityRole="header">
               {t('settingsPage.loyaltyMode')}
             </Text>
             {locked ? (
               <TouchableOpacity
                 onPress={openProOffer}
-                style={[styles.proPill, { backgroundColor: palette.gold + '2E' }]}
+                hitSlop={8}
                 accessibilityRole="button"
                 accessibilityLabel={t('settingsPage.proUnlockCta')}
               >
-                <Lock size={11} color="#B45309" strokeWidth={2.4} />
-                <Text style={styles.proPillText} maxFontSizeMultiplier={1.2}>{t('settingsPage.proBadge')}</Text>
+                <ProBadge locked />
               </TouchableOpacity>
             ) : (
               <InfoHint text={t('settingsPage.loyaltyModeInfo')} />
@@ -472,15 +463,14 @@ export default function SettingsScreen() {
           </View>
 
           <View style={styles.panelBody}>
-            {/* Earning mode */}
             <View>
-              <View style={styles.labelRow}>
+              <View style={[styles.labelRow, { flexDirection: row }]}>
                 <Text style={[styles.fieldLabel, { color: theme.text }]} maxFontSizeMultiplier={1.3}>
                   {t('settingsPage.stampEarningMode')}
                 </Text>
                 <InfoHint text={t('settingsPage.stampEarningModeInfo')} />
               </View>
-              <View style={[styles.subToggle, { backgroundColor: fill }]}>
+              <View style={[styles.subToggle, { flexDirection: row, backgroundColor: fill }]}>
                 {(['PER_VISIT', 'PER_AMOUNT'] as const).map((mode) => {
                   const active = stampEarningMode === mode;
                   const label = mode === 'PER_VISIT' ? t('settingsPage.perVisit') : t('settingsPage.perAmount');
@@ -503,18 +493,17 @@ export default function SettingsScreen() {
               </View>
             </View>
 
-            {/* Purchase amount per stamp */}
             {isPerAmount && (
               <View style={styles.fieldBlock}>
-                <View style={styles.labelRow}>
+                <View style={[styles.labelRow, { flexDirection: row }]}>
                   <Text style={[styles.fieldLabel, { color: theme.text }]} maxFontSizeMultiplier={1.3}>
                     {t('settingsPage.accumulationRate')}
                   </Text>
                   <InfoHint text={t('settingsPage.accumulationRateInfo')} />
                 </View>
-                <View style={[styles.rateWrap, { backgroundColor: fill }]}>
+                <View style={[styles.rateWrap, { flexDirection: row, backgroundColor: fill }]}>
                   <TextInput
-                    style={[styles.rateInput, { color: theme.text }]}
+                    style={[styles.rateInput, { color: theme.text, textAlign }]}
                     value={amountPerStamp}
                     onChangeText={(v) => set({ amountPerStamp: v })}
                     editable={!locked}
@@ -532,73 +521,71 @@ export default function SettingsScreen() {
               </View>
             )}
 
-            {/* Simulation */}
-            <View style={[styles.simCard, { backgroundColor: theme.primaryBg }]}>
+            <View style={[styles.simCard, { flexDirection: row, backgroundColor: theme.primaryBg }]}>
               <View style={[styles.simIcon, { backgroundColor: theme.primary }]}>
-                <Stamp size={18} color="#fff" strokeWidth={2} />
+                <JitStamp size={18} color="#fff" strokeWidth={iconTokens.stroke} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.caption, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>
+                <Text style={[styles.caption, { color: theme.textMuted, textAlign }]} maxFontSizeMultiplier={1.3}>
                   {isPerAmount
                     ? t('settingsPage.simLabel', { amount: SIM_AMOUNT, currency: DEFAULT_CURRENCY.symbol })
                     : t('settingsPage.simLabelVisit')}
                 </Text>
                 {isPerAmount ? (
-                  <Text style={[styles.simValue, { color: theme.text }]} maxFontSizeMultiplier={1.2}>
+                  <Text style={[styles.simValue, { color: theme.text, textAlign }]} maxFontSizeMultiplier={1.2}>
                     {sim.stamps}{' '}
                     <Text style={[styles.simUnit, { color: theme.primary }]}>
                       {t(sim.stamps === 1 ? 'settingsPage.simStampsEarned_one' : 'settingsPage.simStampsEarned_other')}
                     </Text>
                   </Text>
                 ) : (
-                  <Text style={[styles.simValue, { color: theme.text }]} maxFontSizeMultiplier={1.2}>
+                  <Text style={[styles.simValue, { color: theme.text, textAlign }]} maxFontSizeMultiplier={1.2}>
                     {t('settingsPage.simPerVisit')}
                   </Text>
                 )}
                 {sim.capped && (
-                  <Text style={[styles.caption, { color: theme.textMuted, marginTop: 2 }]} maxFontSizeMultiplier={1.3}>
+                  <Text style={[styles.caption, { color: theme.textMuted, marginTop: 2, textAlign }]} maxFontSizeMultiplier={1.3}>
                     {t('transaction.maxStampsPerTxHint', { max: MAX_STAMPS_PER_TX })}
                   </Text>
                 )}
               </View>
             </View>
 
-            {/* Card slots */}
             <View style={styles.fieldBlock}>
-              <View style={styles.labelRow}>
+              <View style={[styles.labelRow, { flexDirection: row }]}>
                 <Text style={[styles.fieldLabel, { color: theme.text }]} maxFontSizeMultiplier={1.3}>
                   {t('settingsPage.cardSlots')}
                 </Text>
                 <InfoHint text={t('settingsPage.cardSlotsInfo')} />
               </View>
-              <View style={[styles.stepper, { backgroundColor: fill }]}>
+              <View style={[styles.stepper, { flexDirection: row, backgroundColor: fill }]}>
                 <TouchableOpacity
-                  style={[styles.stepperBtn, { backgroundColor: theme.bgCard }, shadow]}
+                  style={[styles.stepperBtn, { backgroundColor: theme.bgCard }, surface]}
                   onPress={guard(() => set({ stampsForReward: Math.max(minSlots, stampsForReward - 1) }))}
                   disabled={!locked && stampsForReward <= minSlots}
                   activeOpacity={0.7}
                   accessibilityRole="button"
                   accessibilityLabel={t('settingsPage.cardSlotsDecrease')}
                 >
-                  <Minus size={18} color={!locked && stampsForReward <= minSlots ? theme.textMuted : theme.text} strokeWidth={2.2} />
+                  <Minus size={18} color={!locked && stampsForReward <= minSlots ? theme.textMuted : theme.text} strokeWidth={iconTokens.stroke} />
                 </TouchableOpacity>
                 <View style={styles.stepperValueWrap} accessibilityLiveRegion="polite">
                   <Text style={[styles.stepperValue, { color: theme.text }]} maxFontSizeMultiplier={1.2}>{stampsForReward}</Text>
                   <Text style={[styles.caption, { color: theme.textMuted }]} maxFontSizeMultiplier={1.2}>{stampUnit(stampsForReward)}</Text>
                 </View>
                 <TouchableOpacity
-                  style={[styles.stepperBtn, { backgroundColor: theme.bgCard }, shadow]}
+                  style={[styles.stepperBtn, { backgroundColor: theme.bgCard }, surface]}
                   onPress={guard(() => set({ stampsForReward: Math.min(maxSlots, stampsForReward + 1) }))}
                   disabled={!locked && stampsForReward >= maxSlots}
                   activeOpacity={0.7}
                   accessibilityRole="button"
                   accessibilityLabel={t('settingsPage.cardSlotsIncrease')}
                 >
-                  <Plus size={18} color={!locked && stampsForReward >= maxSlots ? theme.textMuted : theme.text} strokeWidth={2.2} />
+                  <Plus size={18} color={!locked && stampsForReward >= maxSlots ? theme.textMuted : theme.text} strokeWidth={iconTokens.stroke} />
                 </TouchableOpacity>
               </View>
               {rescaledPreview.length > 0 && (
-                <Text style={[styles.caption, styles.fieldHint, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>
+                <Text style={[styles.caption, styles.fieldHint, { color: theme.textMuted, textAlign }]} maxFontSizeMultiplier={1.3}>
                   {t('settingsPage.slotsRescaleHint', {
                     rewards: rescaledPreview.map((r) => `${r.titre} ${r.cout} → ${r.scaled}`).join(' · '),
                   })}
@@ -606,7 +593,6 @@ export default function SettingsScreen() {
               )}
             </View>
 
-            {/* Stamp validity */}
             <View style={styles.fieldBlock}>
               <SwitchRow
                 theme={theme}
@@ -620,12 +606,12 @@ export default function SettingsScreen() {
                 }
                 value={hasValidity}
                 locked={locked}
-                icon={<Clock size={18} color={hasValidity && !locked ? theme.primary : theme.textMuted} strokeWidth={1.8} />}
+                icon={<Clock size={18} color={hasValidity && !locked ? theme.primary : theme.textMuted} strokeWidth={iconTokens.stroke} />}
                 onPress={guard(() => set({ hasValidity: !hasValidity }))}
               />
               {hasValidity && !locked && (
                 <>
-                  <View style={styles.chipRow}>
+                  <View style={[styles.chipRow, { flexDirection: row }]}>
                     {validityPresets.map((days) => {
                       const active = days === validityDays;
                       return (
@@ -645,8 +631,8 @@ export default function SettingsScreen() {
                       );
                     })}
                   </View>
-                  <View style={styles.hintRow}>
-                    <Text style={[styles.caption, { color: theme.textMuted, flex: 1 }]} maxFontSizeMultiplier={1.3}>
+                  <View style={[styles.hintRow, { flexDirection: row }]}>
+                    <Text style={[styles.caption, { color: theme.textMuted, flex: 1, textAlign }]} maxFontSizeMultiplier={1.3}>
                       {t('settingsPage.validityReminderHint')}
                     </Text>
                     <InfoHint text={t('settingsPage.stampValidityInfo')} />
@@ -655,7 +641,6 @@ export default function SettingsScreen() {
               )}
             </View>
 
-            {/* Accumulation limit */}
             <View style={styles.fieldBlock}>
               <SwitchRow
                 theme={theme}
@@ -669,16 +654,16 @@ export default function SettingsScreen() {
                 }
                 value={hasAccumulationLimit}
                 locked={locked}
-                icon={<ShieldCheck size={18} color={hasAccumulationLimit && !locked ? theme.primary : theme.textMuted} strokeWidth={1.8} />}
+                icon={<ShieldCheck size={18} color={hasAccumulationLimit && !locked ? theme.primary : theme.textMuted} strokeWidth={iconTokens.stroke} />}
                 onPress={guard(() =>
                   set(hasAccumulationLimit ? { hasAccumulationLimit: false, accumulationLimit: '' } : { hasAccumulationLimit: true }),
                 )}
               />
               {hasAccumulationLimit && !locked && (
                 <>
-                  <View style={[styles.rateWrap, { backgroundColor: fill, marginTop: 10 }]}>
+                  <View style={[styles.rateWrap, { flexDirection: row, backgroundColor: fill, marginTop: 10 }]}>
                     <TextInput
-                      style={[styles.rateInput, { color: theme.text }]}
+                      style={[styles.rateInput, { color: theme.text, textAlign }]}
                       value={accumulationLimit}
                       onChangeText={(v) => set({ accumulationLimit: v })}
                       keyboardType="numeric"
@@ -692,8 +677,8 @@ export default function SettingsScreen() {
                       {t('common.stamps')}
                     </Text>
                   </View>
-                  <View style={styles.hintRow}>
-                    <Text style={[styles.caption, { color: theme.textMuted, flex: 1 }]} maxFontSizeMultiplier={1.3}>
+                  <View style={[styles.hintRow, { flexDirection: row }]}>
+                    <Text style={[styles.caption, { color: theme.textMuted, flex: 1, textAlign }]} maxFontSizeMultiplier={1.3}>
                       {t('settingsPage.limitHint')}
                     </Text>
                     <InfoHint text={t('settingsPage.accumulationLimitInfo')} />
@@ -703,21 +688,11 @@ export default function SettingsScreen() {
             </View>
 
             {locked && (
-              <TouchableOpacity
-                style={[styles.unlockBtn, { backgroundColor: palette.charbon }]}
-                onPress={openProOffer}
-                activeOpacity={0.85}
-                accessibilityRole="button"
-                accessibilityLabel={t('settingsPage.proUnlockCta')}
-              >
-                <Crown size={16} color={palette.gold} strokeWidth={2} />
-                <Text style={styles.unlockBtnText} maxFontSizeMultiplier={1.2}>{t('settingsPage.proUnlockCta')}</Text>
-              </TouchableOpacity>
+              <ActionButton label={t('settingsPage.proUnlockCta')} onPress={openProOffer} style={styles.unlockBtn} />
             )}
           </View>
         </View>
 
-        {/* ── Panel: Cadeaux ── */}
         <RewardManager
           theme={theme}
           t={t}
@@ -731,7 +706,7 @@ export default function SettingsScreen() {
       </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* ── Sticky save bar — loyalty rules only (rewards save on their own) ── */}
+      {/* Loyalty rules only; rewards save on their own. */}
       {isPremium && (
         <View
           style={[
@@ -741,7 +716,7 @@ export default function SettingsScreen() {
           ]}
         >
           {hasChanges && (
-            <View style={styles.unsavedRow} accessibilityLiveRegion="polite">
+            <View style={[styles.unsavedRow, { flexDirection: row }]} accessibilityLiveRegion="polite">
               <View style={[styles.unsavedDot, { backgroundColor: theme.warning }]} />
               <Text style={[styles.caption, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.3}>
                 {t('settingsPage.unsavedChanges')}
@@ -754,6 +729,7 @@ export default function SettingsScreen() {
             activeOpacity={0.85}
             style={[
               styles.saveBtn,
+              { flexDirection: row },
               hasChanges
                 ? [styles.saveBtnRaised, { backgroundColor: palette.violet, borderBottomColor: palette.violetDark }]
                 : { backgroundColor: fill, borderBottomColor: 'transparent' },
@@ -766,7 +742,7 @@ export default function SettingsScreen() {
               <ActivityIndicator size="small" color="#fff" />
             ) : (
               <>
-                <Save size={18} color={hasChanges ? '#fff' : theme.textMuted} strokeWidth={2} />
+                <Save size={18} color={hasChanges ? '#fff' : theme.textMuted} strokeWidth={iconTokens.stroke} />
                 <Text style={[styles.saveBtnText, { color: hasChanges ? '#fff' : theme.textMuted }]} maxFontSizeMultiplier={1.2}>
                   {t('settingsPage.saveBtn')}
                 </Text>
@@ -791,93 +767,73 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
-  // ── Typography scale (shared by every block on this screen) ──
-  //   header 28/Bold · panel title 15/SemiBold · field label 13.5/Medium
-  //   value 15–22/SemiBold–Bold · caption 12/Regular
-  fieldLabel: { fontSize: 13.5, fontFamily: 'Lexend_500Medium' },
-  caption: { fontSize: 12, lineHeight: 17, fontFamily: 'Lexend_400Regular' },
+  fieldLabel: { fontSize: 14, fontFamily: font.medium },
+  caption: { fontSize: 12, lineHeight: 17, fontFamily: font.regular },
 
-  // ── Topbar ──
   iconBtn: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  headerBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingBottom: 14, gap: 10 },
-  headerTitle: { flex: 1, fontSize: 28, fontFamily: 'Lexend_700Bold', letterSpacing: -0.5 },
+  headerBar: { alignItems: 'center', paddingHorizontal: 20, paddingBottom: 14, gap: 10 },
+  headerTitle: { flex: 1, fontSize: 28, fontFamily: font.bold, letterSpacing: -0.5 },
 
-  // ── Panel ──
-  panel: { marginHorizontal: 16, marginTop: 18, borderRadius: 20 },
-  panelHeader: { flexDirection: 'row', alignItems: 'center', gap: 11, paddingTop: 16, paddingHorizontal: 16 },
-  panelIcon: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
-  panelTitle: { flex: 1, fontSize: 15, fontFamily: 'Lexend_600SemiBold', letterSpacing: -0.2 },
+  panel: { marginHorizontal: 16, marginTop: 18, borderRadius: 16 },
+  panelHeader: { alignItems: 'center', gap: 11, paddingTop: 16, paddingHorizontal: 16 },
+  panelIcon: { width: 34, height: 34, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  panelTitle: { flex: 1, fontSize: 15, fontFamily: font.semibold, letterSpacing: -0.2 },
   panelBody: { padding: 16, paddingTop: 14 },
-  proPill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4, paddingHorizontal: 9, borderRadius: 9 },
-  proPillText: { fontSize: 11, color: '#B45309', fontFamily: 'Lexend_600SemiBold' },
 
-  // ── Field blocks ──
   fieldBlock: { marginTop: 18 },
-  labelRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
+  labelRow: { alignItems: 'center', gap: 6, marginBottom: 8 },
   fieldHint: { marginTop: 8 },
-  hintRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
+  hintRow: { alignItems: 'center', gap: 8, marginTop: 8 },
 
-  // ── Inputs ──
-  rateWrap: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 13, paddingVertical: 13, paddingHorizontal: 14 },
-  rateInput: { flex: 1, fontSize: 15, fontFamily: 'Lexend_600SemiBold', padding: 0 },
-  rateSuffix: { fontSize: 12, fontFamily: 'Lexend_500Medium' },
+  rateWrap: { alignItems: 'center', gap: 8, borderRadius: 12, paddingVertical: 13, paddingHorizontal: 14 },
+  rateInput: { flex: 1, fontSize: 15, fontFamily: font.semibold, padding: 0 },
+  rateSuffix: { fontSize: 12, fontFamily: font.medium },
 
-  // ── Sub-toggle ──
-  subToggle: { flexDirection: 'row', borderRadius: 12, padding: 3, gap: 3 },
-  subToggleBtn: { flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 9 },
+  subToggle: { borderRadius: 12, padding: 3, gap: 3 },
+  subToggleBtn: { flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 8 },
   subToggleBtnActive: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 1 },
-  subToggleText: { fontSize: 12.5, fontFamily: 'Lexend_500Medium' },
+  subToggleText: { fontSize: 13, fontFamily: font.medium },
 
-  // ── Simulation ──
-  simCard: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 16, borderRadius: 16, padding: 14 },
-  simIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  simValue: { fontSize: 20, fontFamily: 'Lexend_700Bold', letterSpacing: -0.3, marginTop: 1 },
-  simUnit: { fontSize: 13, fontFamily: 'Lexend_500Medium' },
+  simCard: { alignItems: 'center', gap: 12, marginTop: 16, borderRadius: 16, padding: 14 },
+  simIcon: { width: 40, height: 40, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
+  simValue: { fontSize: 20, fontFamily: font.bold, letterSpacing: -0.3, marginTop: 1 },
+  simUnit: { fontSize: 13, fontFamily: font.medium },
 
-  // ── Slots stepper ──
-  stepper: { flexDirection: 'row', alignItems: 'center', borderRadius: 14, padding: 6 },
-  stepperBtn: { width: 42, height: 42, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  stepper: { alignItems: 'center', borderRadius: 12, padding: 6 },
+  stepperBtn: { width: 42, height: 42, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   stepperValueWrap: { flex: 1, alignItems: 'center' },
-  stepperValue: { fontSize: 20, fontFamily: 'Lexend_700Bold', lineHeight: 24 },
+  stepperValue: { fontSize: 20, fontFamily: font.bold, lineHeight: 24 },
 
-  // ── Switch rows ──
-  switchRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 14 },
+  switchRow: { alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 12 },
   switchRowText: { flex: 1, gap: 1 },
-  switchTrack: { width: 40, height: 24, borderRadius: 12, padding: 2, justifyContent: 'center' },
-  switchKnob: { width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff' },
-  switchKnobOn: { alignSelf: 'flex-end' },
-  switchKnobOff: { alignSelf: 'flex-start' },
-  lockPill: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  switchTrack: { width: 40, height: 24, borderRadius: 999, padding: 2, justifyContent: 'center' },
+  switchKnob: { width: 20, height: 20, borderRadius: 999, backgroundColor: '#fff' },
+  switchKnobEnd: { alignSelf: 'flex-end' },
+  switchKnobStart: { alignSelf: 'flex-start' },
 
-  // ── Validity chips ──
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
-  chip: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 20 },
-  chipText: { fontSize: 12.5, fontFamily: 'Lexend_500Medium' },
+  chipRow: { flexWrap: 'wrap', gap: 8, marginTop: 10 },
+  chip: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999 },
+  chipText: { fontSize: 13, fontFamily: font.medium },
 
-  // ── Free plan CTA ──
-  unlockBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 20, paddingVertical: 13, borderRadius: 14 },
-  unlockBtnText: { color: '#fff', fontSize: 14, fontFamily: 'Lexend_600SemiBold' },
+  unlockBtn: { marginTop: 20, backgroundColor: palette.charbon, borderColor: palette.charbon },
 
-  // ── Sticky save bar ──
   saveBar: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 20, paddingTop: 12 },
   saveBarShadow: { shadowColor: '#0F172A', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 8 },
-  unsavedRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, marginBottom: 10 },
-  unsavedDot: { width: 7, height: 7, borderRadius: 4 },
-  saveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 15, borderRadius: 15, borderBottomWidth: 3 },
+  unsavedRow: { alignItems: 'center', justifyContent: 'center', gap: 7, marginBottom: 10 },
+  unsavedDot: { width: 8, height: 8, borderRadius: 999 },
+  saveBtn: { alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 15, borderRadius: 12, borderBottomWidth: 3 },
   saveBtnRaised: { shadowColor: palette.violet, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.28, shadowRadius: 10, elevation: 4 },
-  saveBtnText: { fontSize: 14.5, fontFamily: 'Lexend_600SemiBold' },
+  saveBtnText: { fontSize: 15, fontFamily: font.semibold },
 
-  // ── Owner-only guard ──
   ownerOnlyIcon: {
     width: ms(88),
     height: ms(88),
-    borderRadius: ms(24),
+    borderRadius: 24,
     backgroundColor: `${palette.violet}18`,
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
   },
-  ownerOnlyTitle: { fontSize: 16, marginTop: 16, fontFamily: 'Lexend_600SemiBold' },
-  ownerOnlyMsg: { textAlign: 'center' as const, marginTop: 8, paddingHorizontal: 32, fontFamily: 'Lexend_400Regular' },
-  ownerOnlyBtn: { marginTop: 16, paddingHorizontal: 24, paddingVertical: 10, borderRadius: 8 },
-  ownerOnlyBtnText: { color: '#fff', fontFamily: 'Lexend_600SemiBold' },
+  ownerOnlyTitle: { fontSize: 16, marginTop: 16, fontFamily: font.semibold },
+  ownerOnlyMsg: { textAlign: 'center' as const, marginTop: 8, paddingHorizontal: 32, fontFamily: font.regular },
+  ownerOnlyBtn: { marginTop: 16, paddingHorizontal: 24 },
 });

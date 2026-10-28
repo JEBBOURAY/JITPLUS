@@ -12,7 +12,7 @@ if (!IS_DEV && ENV_URL && !ENV_URL.startsWith('https://')) {
   logApiError('api', new Error(`EXPO_PUBLIC_API_URL must use HTTPS in production. Current: ${ENV_URL}`));
 }
 
-// ── Event emitter for signaling 401 to consumers (AuthContext) ──
+// Signals a 401 to consumers (AuthContext).
 type AuthEventListener = () => void;
 const authListeners: AuthEventListener[] = [];
 export const onUnauthorized = (listener: AuthEventListener) => {
@@ -80,7 +80,7 @@ const api = createApiClient({
     const refreshToken = await SecureStore.getItemAsync('refreshToken');
     const sessionId = await SecureStore.getItemAsync('sessionId');
     if (!refreshToken || !sessionId) {
-      // Missing credentials → treat as auth failure (session expired), not a crash
+      // Treated as an expired session, not a crash.
       throw Object.assign(new Error('No refresh credentials'), { isAuthExpired: true, response: { status: 401 } });
     }
 
@@ -111,7 +111,6 @@ export const resetApiTokenCache = (): void => {
   clearCachedToken();
 };
 
-// ── Dev-mode request/response logging ──
 if (IS_DEV) {
   logInfo('API', 'Base URL: ' + resolveApiUrl(ENV_URL, IS_DEV));
   if (!ENV_URL) {

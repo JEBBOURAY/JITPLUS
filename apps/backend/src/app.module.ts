@@ -21,6 +21,7 @@ import { GeocodeModule } from './geocode/geocode.module';
 import { LuckyWheelModule } from './lucky-wheel/lucky-wheel.module';
 import { DeeplinkModule } from './deeplink/deeplink.module';
 import { ScratchCardModule } from './scratch-card/scratch-card.module';
+import { DealsModule } from './deals/deals.module';
 import { MerchantInboxModule } from './merchant-inbox/merchant-inbox.module';
 import { RequestLoggerMiddleware } from './common/middleware/request-logger.middleware';
 import { OtpCleanupService } from './common/tasks/otp-cleanup.service';
@@ -51,10 +52,13 @@ import { jwtModuleFactory } from './common/jwt/jwt-module.factory';
         JWT_SECRET: Joi.string().min(32).required(),
         NODE_ENV: Joi.string().valid('development', 'production', 'test').default('development'),
         PORT: Joi.number().default(3000),
+        // Number of reverse proxies in front of the app (Cloud Run = 1, + external HTTPS LB = 2)
+        TRUST_PROXY_HOPS: Joi.number().integer().min(0).max(10).default(1),
         CORS_ORIGINS: Joi.when('NODE_ENV', { is: 'production', then: Joi.string().required(), otherwise: Joi.string().optional() }),
         GOOGLE_CLIENT_ID: Joi.string().optional(),
         GOOGLE_ANDROID_CLIENT_ID: Joi.string().optional(),
-        APPLE_BUNDLE_IDS: Joi.string().optional(),
+        // Apple identity tokens are rejected when no audience is configured
+        APPLE_BUNDLE_IDS: Joi.when('NODE_ENV', { is: 'production', then: Joi.string().required(), otherwise: Joi.string().optional() }),
         GOOGLE_MAPS_API_KEY: Joi.string().optional(),
         BACKEND_URL: Joi.string().uri().optional(),
         // ── Google Cloud Platform ──────────────────────────────────────────
@@ -120,6 +124,7 @@ import { jwtModuleFactory } from './common/jwt/jwt-module.factory';
     LuckyWheelModule,
     DeeplinkModule,
     ScratchCardModule,
+    DealsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: UserThrottlerGuard },

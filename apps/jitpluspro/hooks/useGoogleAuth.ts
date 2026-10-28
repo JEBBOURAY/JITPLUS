@@ -67,7 +67,7 @@ export function useGoogleAuth({ onCancel }: UseGoogleAuthOptions = {}) {
 
       setIsLoading(false);
       if (result.success) {
-        router.replace('/(tabs)/activity');
+        router.replace('/(tabs)');
       } else {
         if (result.rawError && isNoAccountError(result.rawError)) {
           setNoAccount(true);

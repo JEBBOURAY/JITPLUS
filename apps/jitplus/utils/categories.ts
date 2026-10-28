@@ -5,6 +5,7 @@ import {
   Smartphone, Wrench, Car, BedDouble, SprayCan, ChefHat, CarFront, Gamepad2,
 } from 'lucide-react-native';
 import type { LucideIcon } from 'lucide-react-native';
+import { CATEGORY_EMOJI } from '@jitplus/shared';
 
 /** Shared category filter list used by Cartes (index) and Discover pages.
  *  Labels are resolved at call-time so they respect the current locale. */
@@ -41,40 +42,7 @@ export const CATEGORIES: { id: string; labelKey: string; icon: LucideIcon }[] = 
   { id: 'AUTRE', labelKey: 'categories.AUTRE', icon: MoreHorizontal },
 ];
 
-/**
- * Shared category emoji mapping used across the app.
- */
-export const CATEGORY_EMOJI: Record<string, string> = {
-  CAFE: '☕',
-  RESTAURANT: '🍽️',
-  EPICERIE: '🛒',
-  BOULANGERIE: '🥖',
-  PHARMACIE: '💊',
-  LIBRAIRIE: '📚',
-  VETEMENTS: '👗',
-  ELECTRONIQUE: '📱',
-  COIFFURE: '💇',
-  BEAUTE: '💄',
-  SPORT: '⚽',
-  SUPERMARCHE: '🏪',
-  BOUCHERIE: '🥩',
-  PATISSERIE: '🍰',
-  FASTFOOD: '🍔',
-  HAMMAM: '🧖',
-  ANIMALERIE: '🐾',
-  FLEURISTE: '💐',
-  BIJOUTERIE: '💍',
-  OPTIQUE: '👓',
-  TELEPHONE: '📱',
-  BRICOLAGE: '🔧',
-  AUTO: '🚗',
-  HOTEL: '🏨',
-  PARFUMERIE: '🌸',
-  TRAITEUR: '🍱',
-  LOCATION_VOITURE: '🚙',
-  SALLE_JEU: '🎮',
-  AUTRE: '🏷️',
-};
+export { CATEGORY_EMOJI };
 
 /** Fuzzy keyword → emoji lookup used when exact key match fails. */
 const FUZZY_EMOJI: [string[], string][] = [

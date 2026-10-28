@@ -12,13 +12,18 @@ import { isNativePushRuntimeAvailable, registerForPushNotifications, setupAndroi
 export function usePushRegistration(clientId: string | undefined) {
   useEffect(() => {
     if (!clientId) return;
+    // Retries back off for several seconds; a logout or account switch meanwhile
+    // must not register the token for the session that just ended.
+    let cancelled = false;
 
-    const registerPush = async (retries = 5) => {
+    const registerPush = async (retries = 5): Promise<void> => {
+      if (cancelled) return;
       try {
         await setupAndroidChannel();
 
         if (Platform.OS === 'android') {
           const pushToken = await registerForPushNotifications();
+          if (cancelled) return;
           if (pushToken) {
             const result = await api.updatePushToken(pushToken);
             logInfo('Push', 'Token envoyé au backend (Android):', pushToken.substring(0, 12), result);
@@ -35,6 +40,7 @@ export function usePushRegistration(clientId: string | undefined) {
 
           if (alreadyGranted) {
             const pushToken = await registerForPushNotifications();
+            if (cancelled) return;
             if (pushToken) {
               await api.updatePushToken(pushToken);
               logInfo('Push', 'Token envoyé au backend (iOS)');
@@ -44,6 +50,7 @@ export function usePushRegistration(clientId: string | undefined) {
           }
         }
       } catch (error) {
+        if (cancelled) return;
         if (retries > 0) {
           const backoff = 2000 * Math.pow(1.5, 5 - retries) + Math.random() * 500;
           await new Promise((r) => setTimeout(r, backoff));
@@ -58,6 +65,7 @@ export function usePushRegistration(clientId: string | undefined) {
     };
 
     registerPush();
+    return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId]);
 }

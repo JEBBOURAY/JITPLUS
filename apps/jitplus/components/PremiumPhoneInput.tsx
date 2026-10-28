@@ -1,12 +1,12 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import {
   View,
-  Text,
-  TextInput,
+  
   StyleSheet,
   Animated,
   type TextInputProps,
 } from 'react-native';
+import { Text, TextInput } from '@/components/AppText';
 import { Phone } from 'lucide-react-native';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';

@@ -1,5 +1,6 @@
 import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Animated, Easing, I18nManager } from 'react-native';
+import { View, StyleSheet, Animated, Easing, I18nManager } from 'react-native';
+import { Text } from '@/components/AppText';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { AlertCircle, Gift } from 'lucide-react-native';

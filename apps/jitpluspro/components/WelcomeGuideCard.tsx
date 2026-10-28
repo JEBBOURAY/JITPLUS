@@ -15,26 +15,32 @@ import { useIsFocused } from 'expo-router/react-navigation';
 import { LinearGradient as ExpoLinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Path, Pattern, Rect, Stop } from 'react-native-svg';
+import { Download, X } from 'lucide-react-native';
 import {
-  BarChart3,
-  Bell,
-  Download,
-  Gift,
-  Megaphone,
-  QrCode,
-  ScanLine,
-  Settings2,
-  X,
-} from 'lucide-react-native';
+  JitBell,
+  JitGift,
+  JitMessages,
+  JitScan,
+  JitSettings,
+  JitStats,
+} from '@/components/icons';
 import { useAuthStore } from '@/stores/authStore';
+import { useOnboardingStore } from '@/stores/onboardingStore';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useTheme, palette } from '@/contexts/ThemeContext';
+import { useTour } from '@/components/GuidedTour';
 import api from '@/services/api';
+import { ASYNC_STORAGE_KEYS } from '@/constants/app';
+import { usePersistedFlag } from '@/hooks/usePersistedFlag';
 
 const jitPlusLogo = require('@/assets/images/jitpluslogo.png');
 const jitPlusProLogo = require('@/assets/images/jitplusprologo.png');
+const posterImage = require('@/assets/images/welcome-poster.webp');
+// Intrinsic ratio of welcome-poster.webp (1290×2796).
+const POSTER_RATIO = 1290 / 2796;
 
 type JourneyMode = 'merchant' | 'client';
+type Page = 'poster' | 'journey';
 
 type JourneyStep = {
   title: string;
@@ -65,15 +71,23 @@ const STEP_Y_REGULAR = [8, 86, 164, 242];
 export default function WelcomeGuideCard() {
   const merchant = useAuthStore((s) => s.merchant);
   const updateMerchant = useAuthStore((s) => s.updateMerchant);
+  const isTeamMember = useAuthStore((s) => s.isTeamMember);
   const theme = useTheme();
   const { t, locale } = useLanguage();
   const { width, height } = useWindowDimensions();
   const isFocused = useIsFocused();
+  const tour = useTour();
+  const welcomeClosedFor = useOnboardingStore((s) => s.welcomeClosedFor);
+  const activeSurface = useOnboardingStore((s) => s.active);
+  const requestSurface = useOnboardingStore((s) => s.request);
+  const releaseSurface = useOnboardingStore((s) => s.release);
+  const closeWelcome = useOnboardingStore((s) => s.closeWelcome);
+  const { value: welcomeSeen, setValue: setWelcomeSeen } = usePersistedFlag(`${ASYNC_STORAGE_KEYS.WELCOME_SEEN}:${merchant?.id ?? ''}`);
   const rtl = I18nManager.isRTL || locale === 'ar';
   const reduceMotionRef = useRef(false);
   const [reduceMotion, setReduceMotion] = useState(false);
   const [activeMode, setActiveMode] = useState<JourneyMode>('merchant');
-  const [closedThisFocus, setClosedThisFocus] = useState(false);
+  const [page, setPage] = useState<Page>('poster');
   const [dontShowAgain, setDontShowAgain] = useState(false);
   const cardScale = useRef(new Animated.Value(0.92)).current;
   const cardOpacity = useRef(new Animated.Value(0)).current;
@@ -85,12 +99,18 @@ export default function WelcomeGuideCard() {
   const toggleAnim = useRef(new Animated.Value(0)).current;
   const runningAnimationRef = useRef<Animated.CompositeAnimation | null>(null);
 
-  const showGuide = !!merchant?.welcomeGuideVisible && isFocused && !closedThisFocus;
+  const wantsGuide =
+    !!merchant?.welcomeGuideVisible && welcomeSeen === false && isFocused && welcomeClosedFor !== merchant?.id;
+  const showGuide = wantsGuide && activeSurface === 'welcome';
+  // The tour spotlights owner-only shortcuts, so team members are not offered it.
+  const canTour = !!tour && !isTeamMember;
   const compact = height < 760;
   const cardWidth = Math.min(width - 16, 480);
   const cardMaxHeight = Math.round(height * 0.86);
   // contentWrap has 16px horizontal padding on each side — the roadmap must size to that inner width, not the full card.
   const roadmapWidth = cardWidth - 32;
+  // Header + footer take ~170px of the card; the poster fills the rest.
+  const posterHeight = Math.round(Math.min(cardMaxHeight - 170, roadmapWidth / POSTER_RATIO));
   const roadmapHeight = compact ? 266 : 308;
   const nodeSize = compact ? 46 : 50;
   const stepY = compact ? STEP_Y_COMPACT : STEP_Y_REGULAR;
@@ -116,26 +136,25 @@ export default function WelcomeGuideCard() {
     };
   }, []);
 
+  // Waits for the screen to be free (e.g. a running tour) before showing.
   useEffect(() => {
-    if (!isFocused) {
-      setClosedThisFocus(false);
-      setDontShowAgain(false);
-      toggleAnim.setValue(0);
-    }
-  }, [isFocused, toggleAnim]);
+    if (wantsGuide && activeSurface === null) requestSurface('welcome');
+    else if (!wantsGuide && activeSurface === 'welcome') releaseSurface('welcome');
+  }, [wantsGuide, activeSurface, requestSurface, releaseSurface]);
+  useEffect(() => () => releaseSurface('welcome'), [releaseSurface]);
 
   const journeys = useMemo<Record<JourneyMode, JourneyStep[]>>(() => ({
     merchant: [
-      { title: t('home.welcomeGuideMerchantStep1Title'), desc: t('home.welcomeGuideMerchantStep1Desc'), Icon: Settings2, accent: 'violet' },
-      { title: t('home.welcomeGuideMerchantStep2Title'), desc: t('home.welcomeGuideMerchantStep2Desc'), Icon: ScanLine, accent: 'violet' },
-      { title: t('home.welcomeGuideMerchantStep3Title'), desc: t('home.welcomeGuideMerchantStep3Desc'), Icon: Megaphone, accent: 'violet' },
-      { title: t('home.welcomeGuideMerchantStep4Title'), desc: t('home.welcomeGuideMerchantStep4Desc'), Icon: BarChart3, accent: 'deep' },
+      { title: t('home.welcomeGuideMerchantStep1Title'), desc: t('home.welcomeGuideMerchantStep1Desc'), Icon: JitSettings, accent: 'violet' },
+      { title: t('home.welcomeGuideMerchantStep2Title'), desc: t('home.welcomeGuideMerchantStep2Desc'), Icon: JitScan, accent: 'violet' },
+      { title: t('home.welcomeGuideMerchantStep3Title'), desc: t('home.welcomeGuideMerchantStep3Desc'), Icon: JitMessages, accent: 'violet' },
+      { title: t('home.welcomeGuideMerchantStep4Title'), desc: t('home.welcomeGuideMerchantStep4Desc'), Icon: JitStats, accent: 'deep' },
     ],
     client: [
       { title: t('home.welcomeGuideClientStep1Title'), desc: t('home.welcomeGuideClientStep1Desc'), Icon: Download, accent: 'violet' },
-      { title: t('home.welcomeGuideClientStep2Title'), desc: t('home.welcomeGuideClientStep2Desc'), Icon: QrCode, accent: 'violet' },
-      { title: t('home.welcomeGuideClientStep3Title'), desc: t('home.welcomeGuideClientStep3Desc'), Icon: Gift, accent: 'gold' },
-      { title: t('home.welcomeGuideClientStep4Title'), desc: t('home.welcomeGuideClientStep4Desc'), Icon: Bell, accent: 'deep' },
+      { title: t('home.welcomeGuideClientStep2Title'), desc: t('home.welcomeGuideClientStep2Desc'), Icon: JitScan, accent: 'violet' },
+      { title: t('home.welcomeGuideClientStep3Title'), desc: t('home.welcomeGuideClientStep3Desc'), Icon: JitGift, accent: 'gold' },
+      { title: t('home.welcomeGuideClientStep4Title'), desc: t('home.welcomeGuideClientStep4Desc'), Icon: JitBell, accent: 'deep' },
     ],
   }), [t]);
 
@@ -152,18 +171,20 @@ export default function WelcomeGuideCard() {
   const pathStrokeLength = 1000;
   const pathDashOffset = pathProgress.interpolate({ inputRange: [0, 1], outputRange: [pathStrokeLength, 0] });
 
-  const playAnimations = useCallback(() => {
+  // `includeCard` replays the card entrance; page or mode switches only replay the roadmap.
+  const playAnimations = useCallback((includeCard: boolean) => {
     runningAnimationRef.current?.stop();
-    cardScale.stopAnimation();
-    cardOpacity.stopAnimation();
-    contentProgress.stopAnimation();
     pathProgress.stopAnimation();
     stepProgress.forEach((anim) => anim.stopAnimation());
     labelProgress.forEach((anim) => anim.stopAnimation());
-
-    cardScale.setValue(0.92);
-    cardOpacity.setValue(0);
-    contentProgress.setValue(0);
+    if (includeCard) {
+      cardScale.stopAnimation();
+      cardOpacity.stopAnimation();
+      contentProgress.stopAnimation();
+      cardScale.setValue(0.92);
+      cardOpacity.setValue(0);
+      contentProgress.setValue(0);
+    }
     pathProgress.setValue(0);
     stepProgress.forEach((anim) => anim.setValue(0));
     labelProgress.forEach((anim) => anim.setValue(0));
@@ -180,25 +201,30 @@ export default function WelcomeGuideCard() {
     }
 
     // Étape A (carte) + B (tracé) + C (points) + D (texte) jouées en parallèle, chacune avec son propre délai.
+    const cardAnimations = includeCard
+      ? [
+          Animated.timing(cardScale, {
+            toValue: 1,
+            duration: CARD_SCALE_DURATION,
+            easing: CARD_SCALE_EASING,
+            useNativeDriver: true,
+          }),
+          Animated.timing(cardOpacity, {
+            toValue: 1,
+            duration: CARD_OPACITY_DURATION,
+            easing: Easing.ease,
+            useNativeDriver: true,
+          }),
+          Animated.timing(contentProgress, {
+            toValue: 1,
+            duration: CONTENT_DURATION,
+            easing: Easing.ease,
+            useNativeDriver: true,
+          }),
+        ]
+      : [];
     runningAnimationRef.current = Animated.parallel([
-      Animated.timing(cardScale, {
-        toValue: 1,
-        duration: CARD_SCALE_DURATION,
-        easing: CARD_SCALE_EASING,
-        useNativeDriver: true,
-      }),
-      Animated.timing(cardOpacity, {
-        toValue: 1,
-        duration: CARD_OPACITY_DURATION,
-        easing: Easing.ease,
-        useNativeDriver: true,
-      }),
-      Animated.timing(contentProgress, {
-        toValue: 1,
-        duration: CONTENT_DURATION,
-        easing: Easing.ease,
-        useNativeDriver: true,
-      }),
+      ...cardAnimations,
       Animated.timing(pathProgress, {
         toValue: 1,
         duration: PATH_DURATION,
@@ -231,18 +257,17 @@ export default function WelcomeGuideCard() {
     }).start();
   }, [activeMode, cardOpacity, cardScale, contentProgress, dotProgress, labelProgress, pathProgress, stepProgress]);
 
+  const cardShownRef = useRef(false);
   useEffect(() => {
     if (!showGuide) {
+      cardShownRef.current = false;
       runningAnimationRef.current?.stop();
       return;
     }
-    playAnimations();
+    playAnimations(!cardShownRef.current);
+    cardShownRef.current = true;
     return () => runningAnimationRef.current?.stop();
-  }, [playAnimations, showGuide, activeMode]);
-
-  const closeLocally = useCallback(() => {
-    setClosedThisFocus(true);
-  }, []);
+  }, [playAnimations, showGuide, page]);
 
   const handleToggleDontShow = useCallback(() => {
     setDontShowAgain((prev) => {
@@ -258,23 +283,25 @@ export default function WelcomeGuideCard() {
   }, [toggleAnim]);
 
   const persistDontShow = useCallback(async () => {
-    if (!merchant?.id) return;
     try {
       await api.patch('/merchant/profile', { welcomeGuideVisible: false });
       updateMerchant({ welcomeGuideVisible: false });
-      setClosedThisFocus(true);
     } catch {
-      // Keep it open if persistence fails; the user can retry.
+      // The local preference still prevents another automatic display offline.
     }
-  }, [merchant?.id, updateMerchant]);
+  }, [updateMerchant]);
 
   const commitClose = useCallback(() => {
-    if (dontShowAgain) {
-      void persistDontShow();
-      return;
-    }
-    closeLocally();
-  }, [closeLocally, dontShowAgain, persistDontShow]);
+    if (!merchant?.id) return;
+    setWelcomeSeen(true);
+    if (dontShowAgain) void persistDontShow();
+    closeWelcome(merchant.id);
+  }, [merchant?.id, dontShowAgain, persistDontShow, closeWelcome, setWelcomeSeen]);
+
+  const startTour = useCallback(() => {
+    commitClose();
+    tour?.start();
+  }, [commitClose, tour]);
 
   if (!showGuide || !merchant) return null;
 
@@ -342,6 +369,15 @@ export default function WelcomeGuideCard() {
             },
           ]}
         >
+          {page === 'poster' ? (
+            <Image
+              source={posterImage}
+              style={{ width: roadmapWidth, height: posterHeight }}
+              contentFit="contain"
+              accessibilityIgnoresInvertColors
+            />
+          ) : (
+          <>
           <View style={styles.lockupWrap}>
             <View style={[styles.brandRow, rtl && styles.brandRowRtl]}>
               <TouchableOpacity
@@ -389,7 +425,7 @@ export default function WelcomeGuideCard() {
                 <SvgLinearGradient id="guideRoad" x1="0" y1="0" x2="0" y2="1">
                   <Stop offset="0%" stopColor="#C4B5FD" />
                   <Stop offset="65%" stopColor="#8B5CF6" />
-                  <Stop offset="100%" stopColor={activeMode === 'client' ? '#FCD34D' : '#4C1D95'} />
+                  <Stop offset="100%" stopColor={activeMode === 'client' ? palette.gold : '#4C1D95'} />
                 </SvgLinearGradient>
               </Defs>
               <AnimatedPath
@@ -481,9 +517,11 @@ export default function WelcomeGuideCard() {
               ]}
             />
           </View>
+          </>
+          )}
         </Animated.View>
 
-        <View style={[styles.footer, rtl && styles.footerRtl, { borderTopColor: `${theme.border}AA` }]}>
+        <View style={[styles.footer, { borderTopColor: `${theme.border}AA` }]}>
           <TouchableOpacity
             style={[styles.hideRow, rtl && styles.hideRowRtl]}
             onPress={handleToggleDontShow}
@@ -512,14 +550,46 @@ export default function WelcomeGuideCard() {
             </Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.primaryBtn, { backgroundColor: palette.charbon, shadowColor: '#000' }]}
-            onPress={commitClose}
-            accessibilityRole="button"
-            hitSlop={12}
-          >
-            <Text style={styles.primaryBtnText}>{t('common.gotIt')}</Text>
-          </TouchableOpacity>
+          <View style={[styles.actionsRow, rtl && styles.footerRtl]}>
+            {page === 'poster' ? (
+              <TouchableOpacity
+                style={[styles.primaryBtn, styles.flex1, { backgroundColor: palette.charbon, shadowColor: '#000' }]}
+                onPress={() => setPage('journey')}
+                accessibilityRole="button"
+                hitSlop={12}
+              >
+                <Text style={styles.primaryBtnText}>{t('tour.next')}</Text>
+              </TouchableOpacity>
+            ) : canTour ? (
+              <>
+                <TouchableOpacity
+                  style={[styles.secondaryBtn, { borderColor: theme.border }]}
+                  onPress={commitClose}
+                  accessibilityRole="button"
+                  hitSlop={12}
+                >
+                  <Text style={[styles.secondaryBtnText, { color: theme.text }]}>{t('common.gotIt')}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.primaryBtn, styles.flex1, { backgroundColor: palette.charbon, shadowColor: '#000' }]}
+                  onPress={startTour}
+                  accessibilityRole="button"
+                  hitSlop={12}
+                >
+                  <Text style={styles.primaryBtnText}>{t('home.welcomeTourCta')}</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <TouchableOpacity
+                style={[styles.primaryBtn, styles.flex1, { backgroundColor: palette.charbon, shadowColor: '#000' }]}
+                onPress={commitClose}
+                accessibilityRole="button"
+                hitSlop={12}
+              >
+                <Text style={styles.primaryBtnText}>{t('common.gotIt')}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
       </Animated.View>
     </View>
@@ -654,13 +724,12 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     paddingBottom: 14,
     borderTopWidth: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
+    gap: 10,
   },
   footerRtl: { flexDirection: 'row-reverse' },
-  hideRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
+  actionsRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  flex1: { flex: 1 },
+  hideRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   hideRowRtl: { flexDirection: 'row-reverse', justifyContent: 'flex-end' },
   hideLabel: { fontSize: 11, fontWeight: '600' },
   toggleTrack: {
@@ -701,4 +770,13 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   primaryBtnText: { color: '#fff', fontSize: 13, fontWeight: '800', letterSpacing: 0.1 },
+  secondaryBtn: {
+    minHeight: 42,
+    paddingHorizontal: 16,
+    borderRadius: 13,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  secondaryBtnText: { fontSize: 13, fontWeight: '700' },
 });

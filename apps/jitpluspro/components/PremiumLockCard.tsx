@@ -1,56 +1,84 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { Crown, Sparkles } from 'lucide-react-native';
+import { View, Text, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
+import { JitLock } from '@/components/icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { ProBadge } from '@/components/ui/ProBadge';
+import { ActionButton } from '@/components/ui/ActionButton';
+import { font, icon } from '@/constants/design';
+import { radius } from '@/utils/responsive';
+
+interface PremiumLockContentProps {
+  title: string;
+  description: string;
+  ctaLabel?: string;
+  onPress?: () => void;
+  ctaSize?: 'md' | 'lg';
+  /** Surface the content sits on: the inline card or the bottom sheet. */
+  tone?: 'card' | 'sheet';
+}
+
+const CARD_BG_GRADIENT = [palette.premiumBg, palette.premiumBgMid, palette.premiumBg] as const;
+const CARD_ICON_GRADIENT = [palette.gold, palette.goldDeep] as const;
+const VIOLET_GRADIENT = [palette.violetDark, palette.violet] as const;
+const DIAGONAL_START = { x: 0, y: 0 };
+const DIAGONAL_END = { x: 1, y: 1 };
+
+/** Shared body of every Pro lock surface (inline card and bottom sheet). */
+export function PremiumLockContent({ title, description, ctaLabel, onPress, ctaSize = 'md', tone = 'card' }: PremiumLockContentProps) {
+  const theme = useTheme();
+  const isSheet = tone === 'sheet';
+  return (
+    <View style={styles.content}>
+      <LinearGradient
+        colors={isSheet ? VIOLET_GRADIENT : CARD_ICON_GRADIENT}
+        start={DIAGONAL_START}
+        end={DIAGONAL_END}
+        style={styles.iconTile}
+      >
+        <JitLock size={icon.lg} color={isSheet ? palette.gold : palette.premiumBg} strokeWidth={icon.stroke} />
+      </LinearGradient>
+      <ProBadge variant="premium" style={[styles.badge, !isSheet && styles.badgeCard]} />
+      <Text style={styles.title} maxFontSizeMultiplier={1.4}>
+        {title}
+      </Text>
+      <Text style={[styles.desc, { color: isSheet ? palette.charbonUltraLight : theme.textSecondary }]} maxFontSizeMultiplier={1.6}>
+        {description}
+      </Text>
+      {ctaLabel && onPress && (
+        <ActionButton label={ctaLabel} onPress={onPress} size={ctaSize} gradient={VIOLET_GRADIENT} style={styles.cta} />
+      )}
+    </View>
+  );
+}
 
 interface PremiumLockCardProps {
   descriptionKey: string;
   titleKey?: string;
+  /** Adds an upgrade button when given together with `onPress`. */
+  ctaLabelKey?: string;
+  onPress?: () => void;
+  style?: StyleProp<ViewStyle>;
 }
 
-export default React.memo(function PremiumLockCard({ descriptionKey, titleKey }: PremiumLockCardProps) {
-  const theme = useTheme();
+export default React.memo(function PremiumLockCard({ descriptionKey, titleKey, ctaLabelKey, onPress, style }: PremiumLockCardProps) {
   const { t } = useLanguage();
 
   return (
-    <View style={[styles.wrapper, { borderColor: palette.premiumBorder }]}>
-      {/* Dark premium card */}
+    <View style={[styles.wrapper, style]}>
       <LinearGradient
-        colors={[palette.premiumBg, palette.premiumBgMid, palette.premiumBg]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.container}
-      >
-        {/* Crown icon with glow */}
-        <View style={styles.iconWrap}>
-          <LinearGradient
-            colors={[palette.gold, '#F59E0B']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.iconBg}
-          >
-            <Crown size={26} color={palette.premiumBg} strokeWidth={2} />
-          </LinearGradient>
-        </View>
-
-        {/* PRO badge */}
-        <View style={styles.proBadge}>
-          <Sparkles size={10} color={palette.gold} strokeWidth={2} />
-          <Text style={styles.proBadgeText}>PRO</Text>
-        </View>
-
-        {/* Title */}
-        <Text style={styles.title}>
-          {t(titleKey ?? 'messages.premiumFeatureTitle')}
-        </Text>
-
-        {/* Description */}
-        <Text style={[styles.desc, { color: theme.textSecondary }]}>
-          {t(descriptionKey)}
-        </Text>
-      </LinearGradient>
+        colors={CARD_BG_GRADIENT}
+        start={DIAGONAL_START}
+        end={DIAGONAL_END}
+        style={StyleSheet.absoluteFill}
+      />
+      <PremiumLockContent
+        title={t(titleKey ?? 'messages.premiumFeatureTitle')}
+        description={t(descriptionKey)}
+        ctaLabel={ctaLabelKey ? t(ctaLabelKey) : undefined}
+        onPress={onPress}
+      />
     </View>
   );
 });
@@ -59,75 +87,46 @@ const styles = StyleSheet.create({
   wrapper: {
     marginHorizontal: 16,
     marginVertical: 12,
-    borderRadius: 20,
+    borderRadius: radius.lg,
     borderWidth: 1,
+    borderColor: palette.premiumBorder,
     overflow: 'hidden',
-  },
-  container: {
-    alignItems: 'center',
-    paddingVertical: 28,
+    paddingVertical: 24,
     paddingHorizontal: 20,
+  },
+  content: {
+    alignItems: 'center',
     gap: 10,
   },
-  iconWrap: {
-    marginBottom: 2,
-  },
-  iconBg: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+  iconTile: {
+    width: 48,
+    height: 48,
+    borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 2,
   },
-  proBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
+  badge: {
+    alignSelf: 'center',
+  },
+  badgeCard: {
     backgroundColor: palette.premiumBorder,
-    borderWidth: 1,
-    borderColor: palette.premiumBadgeBorder,
-    borderRadius: 20,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-  },
-  proBadgeText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: palette.violetLight,
-    letterSpacing: 1,
-    fontFamily: 'Lexend_700Bold',
   },
   title: {
     fontSize: 17,
-    fontWeight: '800',
     color: '#fff',
+    fontFamily: font.bold,
     textAlign: 'center',
-    marginTop: 2,
-    fontFamily: 'Lexend_700Bold',
   },
   desc: {
     fontSize: 13,
+    fontFamily: font.regular,
     textAlign: 'center',
     lineHeight: 19,
-    paddingHorizontal: 12,
+    paddingHorizontal: 8,
   },
-  btnWrap: {
+  cta: {
+    alignSelf: 'stretch',
     marginTop: 6,
-    borderRadius: 14,
-    overflow: 'hidden',
-  },
-  btn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    paddingHorizontal: 22,
-    paddingVertical: 13,
-    borderRadius: 14,
-  },
-  btnText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '700',
-    fontFamily: 'Lexend_700Bold',
   },
 });

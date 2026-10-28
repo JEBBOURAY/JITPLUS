@@ -24,19 +24,16 @@ export function useStoresCRUD() {
 
   const saving = createMutation.isPending || updateMutation.isPending;
 
-  // ── Refresh ──
   const onRefresh = useGuardedCallback(async () => {
     await qc.invalidateQueries({ queryKey: queryKeys.stores });
   }, [qc]);
 
-  // ── Can create? ──
   const canCreateStore = stores.length < MAX_STORES;
 
   const alertMaxStores = () => {
     Alert.alert(t('storesCrud.limitTitle'), t('storesCrud.limitMsg', { max: MAX_STORES }));
   };
 
-  // ── Save (create or update) ──
   const saveStore = async (
     payload: CreateStorePayload,
     editingStoreId?: string,
@@ -58,9 +55,7 @@ export function useStoresCRUD() {
     }
   };
 
-  // ── Delete ──
   // No confirmation here: the caller drives its own confirmation UI.
-  // Returns whether the deletion succeeded.
   const deleteStoreDirect = async (store: StoreType): Promise<boolean> => {
     try {
       await deleteMutation.mutateAsync(store.id);
@@ -71,7 +66,6 @@ export function useStoresCRUD() {
     }
   };
 
-  // ── Toggle active ──
   const toggleActive = async (store: StoreType): Promise<boolean> => {
     try {
       await updateMutation.mutateAsync({ id: store.id, payload: { isActive: !store.isActive } });

@@ -19,6 +19,8 @@ const ACTIONS = [
   { value: 'ADMIN_SEND_NOTIFICATION', label: 'Notification' },
   { value: 'UPDATE_PLAN_DURATION', label: 'Modifier plan' },
   { value: 'UPDATE_PAYOUT', label: 'Modifier retrait' },
+  { value: 'REMOVE_DEAL', label: 'Retirer bon plan' },
+  { value: 'RESTORE_DEAL', label: 'Rétablir bon plan' },
 ];
 
 const TARGET_TYPES = [

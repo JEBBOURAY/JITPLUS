@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Platform, View, Linking, Text, TextInput } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Platform, View } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
@@ -15,12 +15,10 @@ import { Cairo_500Medium } from '@expo-google-fonts/cairo/500Medium';
 import { Cairo_600SemiBold } from '@expo-google-fonts/cairo/600SemiBold';
 import { Cairo_700Bold } from '@expo-google-fonts/cairo/700Bold';
 import * as SplashScreen from 'expo-splash-screen';
-import { QueryClient, QueryCache, MutationCache, onlineManager, useQueryClient } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
-import { asyncStoragePersister } from '@/utils/queryPersister';
-import NetInfo from '@react-native-community/netinfo';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { asyncStoragePersister, shouldPersistQuery } from '@/utils/queryPersister';
 import * as SecureStore from 'expo-secure-store';
+import * as Sentry from '@sentry/react-native';
 
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -30,239 +28,47 @@ import { LanguageProvider, useLanguage } from '@/contexts/LanguageContext';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import OfflineBanner from '@/components/OfflineBanner';
 import { useRealtimeSocket } from '@jitplus/shared/src/useRealtimeSocket';
-import {
-  useRealtimeEvents, handleFcmDataPayload, pushStampsEventFromNotification, useAppForegroundRefresh,
-} from '@/hooks/useRealtimeEvents';
+import { useRealtimeEvents, useAppForegroundRefresh } from '@/hooks/useRealtimeEvents';
+import { useNotificationListeners } from '@/hooks/useNotificationListeners';
 import { api, getServerBaseUrl } from '@/services/api';
-import Constants from 'expo-constants';
-import * as Sentry from '@sentry/react-native';
+import { initSentry } from '@/services/sentry';
+import { queryClient, CACHE_MAX_AGE } from '@/services/queryClient';
 import { setupAndroidChannel } from '@/utils/notifications';
 import { useForceUpdate } from '@/hooks/useForceUpdate';
 import ForceUpdateModal from '@/components/ForceUpdateModal';
+import LaunchSplash from '@/components/launch/LaunchSplash';
+import { takePendingClaim } from '@/services/pendingClaim';
 
-// ── Sentry init (crash reporting) ──────────────────────────────
-// SECURITY: DSN is bundled in the client. Configure inbound data filters in
-// Sentry project settings to reject invalid releases and apply rate limits.
-// Validate DSN format before init — an unresolved EAS secret (literal "$...") or
-// empty string would make the native SDK crash on Android.
-const _sentryDsn = process.env.EXPO_PUBLIC_SENTRY_DSN ?? '';
-const _sentryEnabled =
-  !__DEV__ &&
-  !!_sentryDsn &&
-  _sentryDsn.startsWith('https://') &&
-  _sentryDsn.includes('.sentry.io');
-Sentry.init({
-  dsn: _sentryEnabled ? _sentryDsn : '',
-  enabled: _sentryEnabled,
-  environment: __DEV__ ? 'development' : 'production',
-  release: Constants.expoConfig?.version,
-  dist: String(
-    Platform.OS === 'ios'
-      ? Constants.expoConfig?.ios?.buildNumber ?? '0'
-      : Constants.expoConfig?.android?.versionCode ?? '0'
-  ),
-  tracesSampleRate: 0.02,
-  maxBreadcrumbs: 10,
-  attachScreenshot: false, // Disabled: screenshots can capture PII (names, cards, balances)
-  attachViewHierarchy: false,
-  ignoreErrors: [
-    'No refresh token',
-    'Session expired',
-    'Network Error',
-    'ECONNABORTED',
-  ],
-  beforeSend(event) {
-    // Suppress expected auth-failure errors that are already handled by the app
-    const msg = event.exception?.values?.[0]?.value ?? '';
-    if (/No refresh token|Session expired/i.test(msg)) return null;
-
-    // ── PII scrubber (CNDP Loi 09-08 + App Store 5.1.1) ──
-    // Strip emails, Moroccan phone numbers, bearer tokens from error messages,
-    // breadcrumb data and extras. Sentry is declared "anonymous crash diagnostics"
-    // in the privacy manifest — any PII leak would invalidate that claim.
-    const scrub = (s: string): string =>
-      s
-        .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '[email]')
-        .replace(/(\+?212|0)[\s-]?[5-7](?:[\s-]?\d){8}/g, '[phone]')
-        .replace(/(?:Bearer\s+)?[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g, '[token]');
-
-    if (event.exception?.values) {
-      for (const v of event.exception.values) {
-        if (v.value) v.value = scrub(v.value);
-      }
-    }
-    if (event.message) event.message = scrub(event.message);
-    if (event.breadcrumbs) {
-      for (const b of event.breadcrumbs) {
-        if (typeof b.message === 'string') b.message = scrub(b.message);
-        if (b.data) {
-          for (const k of Object.keys(b.data)) {
-            const val = (b.data as Record<string, unknown>)[k];
-            if (typeof val === 'string') (b.data as Record<string, unknown>)[k] = scrub(val);
-          }
-        }
-      }
-    }
-    // Never send user identifiers
-    if (event.user) {
-      delete event.user.email;
-      delete event.user.username;
-      delete event.user.ip_address;
-    }
-    return event;
-  },
-});
-
-// ── GDPR / CNDP opt-out (honours sentry_opt_out AsyncStorage flag) ─────
-// Sentry is declared as PII-free anonymous crash reporting, but users retain
-// the right to object to any processing under Loi 09-08 art. 9.
-AsyncStorage.getItem('sentry_opt_out')
-  .then((v) => {
-    if (v === 'true') {
-      try { Sentry.close(); } catch { /* ignore */ }
-    }
-  })
-  .catch(() => { /* ignore */ });
-
-// ── End Sentry init ────────────────────────────────
-
-// ── Global unhandled promise rejection handler ──────────────────
-// Catches fire-and-forget .then() without .catch() and logs to Sentry.
-if (typeof globalThis !== 'undefined') {
-  const g = globalThis as typeof globalThis & {
-    onunhandledrejection?: (event: { reason?: unknown }) => void;
-  };
-  const originalHandler = g.onunhandledrejection;
-  g.onunhandledrejection = (event: { reason?: unknown }) => {
-    const error = event?.reason;
-    if (!__DEV__ && error) {
-      // Skip expected auth failures — already handled by onAuthFailure / onUnauthorized
-      const msg = error instanceof Error ? error.message : '';
-      if (!/No refresh token|Session expired/i.test(msg)) {
-        Sentry.captureException(error, { tags: { source: 'unhandled-promise' } });
-      }
-    }
-    if (originalHandler) originalHandler(event);
-  };
-}
-
-// ── Env validation (warn in production — never crash the app) ───
-if (!__DEV__ && !process.env.EXPO_PUBLIC_API_URL) {
-  Sentry.captureMessage('EXPO_PUBLIC_API_URL is missing in production', 'error');
-}
-
-const isExpoGo = Constants.appOwnership === 'expo';
-
-// Only load expo-notifications outside Expo Go — importing it triggers
-// push-token side-effects that crash in Expo Go SDK 53+.
-let Notifications: typeof import('expo-notifications') | null = null;
-if (!isExpoGo) {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    Notifications = require('expo-notifications');
-  } catch (e) { if (__DEV__) console.warn('expo-notifications unavailable', e); }
-}
-
+initSentry();
 SplashScreen.preventAutoHideAsync();
-
-// Sync React Query's online state with NetInfo — pauses mutations offline
-// and auto-replays them on reconnect.
-onlineManager.setEventListener((setOnline) => {
-  return NetInfo.addEventListener((state) => {
-    setOnline(!!state.isConnected);
-  });
-});
-
-// SECURITY: Reduced from 24h to 4h to limit data exposure window if device is
-// seized/rooted. AsyncStorage is unencrypted — shorter TTL = less recoverable data.
-const CACHE_MAX_AGE = 4 * 60 * 60 * 1000; // 4 hours
-
-// Skip expected HTTP 4xx errors (business/validation failures) from Sentry.
-// Only report 5xx, network errors, and non-HTTP errors.
-function isServerOrNetworkError(error: unknown): boolean {
-  const status = (error as { response?: { status?: number } })?.response?.status;
-  return !status || status >= 500;
-}
-
-const queryClient = new QueryClient({
-  queryCache: new QueryCache({
-    onError: (error) => {
-      if (!__DEV__ && isServerOrNetworkError(error)) {
-        Sentry.captureException(error, { tags: { source: 'react-query' } });
-      }
-    },
-  }),
-  mutationCache: new MutationCache({
-    onError: (error) => {
-      if (!__DEV__ && isServerOrNetworkError(error)) {
-        Sentry.captureException(error, { tags: { source: 'react-query-mutation' } });
-      }
-    },
-  }),
-  defaultOptions: {
-    queries: {
-      retry: (failureCount, error) => {
-        const status = (error as { response?: { status?: number } })?.response?.status
-          ?? (error as { status?: number })?.status;
-        if (status && status >= 400 && status < 500) return false;
-        return failureCount < 2;
-      },
-      retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 30_000),
-      refetchOnWindowFocus: false,
-      // Must be >= persister maxAge so the in-memory cache isn't garbage-
-      // collected before the persister considers it valid.
-      gcTime: CACHE_MAX_AGE,
-      // Re-fetch stale queries after a network reconnection (e.g. offline → 4G).
-      // 'stale' avoids re-fetching all queries — only stale ones are refreshed.
-      refetchOnReconnect: true,
-    },
-  },
-});
 
 function RootLayoutNav() {
   const theme = useTheme();
   const router = useRouter();
-  const { client } = useAuth();
-  const queryClient = useQueryClient();
-  const notificationListener = useRef<{ remove(): void } | null>(null);
-  const responseListener = useRef<{ remove(): void } | null>(null);
-  const { status: forceUpdateStatus, storeUrl: forceUpdateStoreUrl } = useForceUpdate();
-  const { locale, isRTL } = useLanguage();
+  const { client, isGuest } = useAuth();
+  const { status: forceUpdateStatus, storeUrl: forceUpdateStoreUrl, recheck: recheckForceUpdate } = useForceUpdate();
+  const { locale } = useLanguage();
 
-  // ── Global font: use Cairo for Arabic, Lexend otherwise ──
+  // Redirect to welcome screen whenever the user logs out (client becomes null).
+  // Guests keep browsing: they reach auth-only screens through GuestGuard.
   useEffect(() => {
-    const fontFamily = locale === 'ar' ? 'Cairo_400Regular' : 'Lexend_400Regular';
-    const defaultStyle = { fontFamily };
-    (Text as any).defaultProps = (Text as any).defaultProps || {};
-    (Text as any).defaultProps.style = defaultStyle;
-    (TextInput as any).defaultProps = (TextInput as any).defaultProps || {};
-    (TextInput as any).defaultProps.style = defaultStyle;
-  }, [locale]);
-
-  // Redirect to welcome screen whenever the user logs out (client becomes null)
-  useEffect(() => {
-    if (!client) {
+    if (!client && !isGuest) {
       router.replace('/welcome');
     }
-  }, [client, router]);
+  }, [client, isGuest, router]);
 
   // After authentication, if a Quick-Add claim token was stashed (because the
-  // user landed on /claim while logged-out), route back to /claim to consume it.
+  // user landed on /claim while logged-out), route back to /claim to confirm it.
   useEffect(() => {
     if (!client) return;
-    (async () => {
-      try {
-        const pending = await SecureStore.getItemAsync('pendingClaimToken');
-        if (pending && /^[A-Za-z0-9_-]{16,64}$/.test(pending)) {
-          router.replace({ pathname: '/claim', params: { token: pending } });
-        }
-      } catch {/* ignore */}
-    })();
+    takePendingClaim().then((pending) => {
+      if (pending) router.replace({ pathname: '/claim', params: { token: pending } });
+    }).catch(() => {});
   }, [client?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sync local language preference to backend once when client is authenticated
   useEffect(() => {
-    if (client && locale) {
+    if (client && locale && client.language !== locale) {
       api.updateProfile({ language: locale }).catch((e) => { if (__DEV__) console.warn('Failed to sync language', e); });
     }
   }, [client?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -283,232 +89,16 @@ function RootLayoutNav() {
   // Invalidate notification caches when app returns from background
   useAppForegroundRefresh();
 
-  // ── Deep link handler (shared merchant URLs + custom scheme) ──
-  useEffect(() => {
-    // Merchant ids are Prisma `@default(uuid())` (RFC 4122) — we also accept
-    // legacy CUIDs for backwards compatibility with old share links.
-    const MERCHANT_ID_RE = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|c[a-z0-9]{24})$/i;
-    // Match either jitplus://merchant/:id or https://<any-host>/m/:id.
-    // Stripping query/fragment up-front avoids edge cases with the URL polyfill
-    // on Hermes (custom schemes occasionally mis-parse hostnames on Android).
-    const SHARE_LINK_RE = /^(?:jitplus:\/\/merchant\/|https?:\/\/[^/]+\/m\/)([^/?#]+)/i;
-    // Claim links (Quick-Add WhatsApp magic link). Either custom scheme
-    // jitplus://claim?token=... or https://<host>/d/claim?token=...
-    const CLAIM_LINK_RE = /^(?:jitplus:\/\/claim|https?:\/\/[^/]+\/d\/claim)(?:\?(.*))?$/i;
-    const CLAIM_TOKEN_RE = /^[A-Za-z0-9_-]{16,64}$/;
-
-    // Dedup guard: on cold start with a deep link, both `getInitialURL()` and
-    // `addEventListener('url')` can fire for the same URL on iOS / some Android
-    // OEM launchers. Without this, the claim/share handler would push the same
-    // route twice and re-trigger the same backend call (e.g. POST /claim).
-    let lastUrl: string | null = null;
-    let lastUrlAt = 0;
-    const DEDUP_WINDOW_MS = 1500;
-
-    const handleUrl = (url: string) => {
-      const now = Date.now();
-      if (url === lastUrl && now - lastUrlAt < DEDUP_WINDOW_MS) return;
-      lastUrl = url;
-      lastUrlAt = now;
-
-      // 1. Claim link?
-      const c = CLAIM_LINK_RE.exec(url);
-      if (c) {
-        const query = c[1] || '';
-        const tokenMatch = /(?:^|&)token=([^&]+)/i.exec(query);
-        const token = tokenMatch ? decodeURIComponent(tokenMatch[1]) : '';
-        if (!CLAIM_TOKEN_RE.test(token)) {
-          if (__DEV__) console.warn('Ignoring claim link with invalid token shape');
-          return;
-        }
-        router.push({ pathname: '/claim', params: { token } });
-        return;
-      }
-
-      // 2. Share link?
-      const m = SHARE_LINK_RE.exec(url);
-      if (!m) return;
-      const merchantId = decodeURIComponent(m[1]).toLowerCase();
-      if (!MERCHANT_ID_RE.test(merchantId)) {
-        if (__DEV__) console.warn('Ignoring share link with invalid merchant id:', url);
-        return;
-      }
-      router.push({ pathname: '/merchant/[id]', params: { id: merchantId } });
-    };
-
-    // Handle URL that launched the app (cold start)
-    Linking.getInitialURL().then((url) => { if (url) handleUrl(url); });
-
-    // Handle URL while app is already running
-    const sub = Linking.addEventListener('url', ({ url }) => handleUrl(url));
-    return () => sub.remove();
-  }, [router]);
-
-
-
-  useEffect(() => {
-    // Skip notification listeners in Expo Go (SDK 53+ removed push support)
-    if (!Notifications || isExpoGo) return;
-
-    // Route notification tap to the correct screen based on event type.
-    // The same logic runs on Android (FCM data) and iOS (APNs `data` payload),
-    // ensuring uniform deep-link behaviour across both platforms.
-    const navigateByAction = (data?: Record<string, string>) => {
-      try {
-        const event = data?.event;
-        const action = data?.action;
-        const merchantId = data?.merchantId;
-
-        // SECURITY: Validate merchantId format (UUID v4 OR legacy CUID) from FCM
-        // payload to prevent injection. Backend uses `@default(uuid())` since
-        // schema migration; older share links may still embed CUIDs.
-        const MERCHANT_ID_RE = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|c[a-z0-9]{24})$/i;
-        const validMerchantId = merchantId && MERCHANT_ID_RE.test(merchantId) ? merchantId : undefined;
-
-        // Handle action-based deep links from automated campaigns
-        if (action) {
-          switch (action) {
-            case 'open_explore':
-              router.push('/(tabs)/discover');
-              return;
-            case 'open_scan':
-              router.push('/(tabs)/qr');
-              return;
-            case 'open_referral':
-              router.push('/referral');
-              return;
-            case 'open_cards':
-              router.push('/(tabs)');
-              return;
-            case 'open_card':
-              if (validMerchantId) {
-                router.push({ pathname: '/merchant/[id]', params: { id: validMerchantId } });
-                return;
-              }
-              router.push('/(tabs)/notifications');
-              return;
-            case 'open_notifications':
-              router.push('/(tabs)/notifications');
-              return;
-            case 'open_scratch': {
-              const cardId = data?.cardId;
-              const campaignId = data?.campaignId;
-              if (cardId && MERCHANT_ID_RE.test(cardId)) {
-                router.push({ pathname: '/scratch/[id]', params: { id: cardId } });
-              } else if (campaignId && MERCHANT_ID_RE.test(campaignId)) {
-                // The initial "card received" push only carries the campaign id
-                router.push({ pathname: '/scratch/[id]', params: { id: campaignId, mode: 'campaign' } });
-              } else {
-                router.push('/(tabs)');
-              }
-              return;
-            }
-            case 'open_coupon': {
-              const couponId = data?.couponId;
-              if (couponId && MERCHANT_ID_RE.test(couponId)) {
-                router.push({ pathname: '/coupons/[id]', params: { id: couponId } });
-              } else {
-                router.push('/coupons');
-              }
-              return;
-            }
-            case 'open_coupons':
-              router.push('/coupons');
-              return;
-            default:
-              if (__DEV__) console.warn('Unknown FCM action:', action);
-              break;
-          }
-        }
-
-        // Handle event-based navigation (transactional & broadcast notifications)
-        switch (event) {
-          case 'stamps_updated':
-          case 'reward_available':
-          case 'reward_redeemed':
-          case 'reward_reminder':
-          case 'notification_new':
-            if (validMerchantId) {
-              router.push({ pathname: '/merchant/[id]', params: { id: validMerchantId } });
-            } else {
-              router.push('/(tabs)/notifications');
-            }
-            break;
-          case 'admin_broadcast':
-          case 'weekly_digest':
-          case 'feature_highlight':
-          case 'reengagement':
-            router.push('/(tabs)/notifications');
-            break;
-          default:
-            // Unknown payloads still land on the in-app feed rather than the
-            // generic home — the user can find the message there.
-            router.push('/(tabs)/notifications');
-            break;
-        }
-      } catch (e) { if (__DEV__) console.warn('Navigation failed', e); }
-    };
-
-    // Listen for push token changes — re-fetch the Expo push token so the
-    // backend keeps a valid ExponentPushToken[…] (raw APNs tokens are rejected
-    // by Firebase Admin SDK on iOS).
-    const tokenSub = Notifications.addPushTokenListener(async () => {
-      if (__DEV__) console.log('Push token rotated, re-registering');
-      try {
-        const projectId = Constants.expoConfig?.extra?.eas?.projectId;
-        const expoTokenData = await Notifications!.getExpoPushTokenAsync({ projectId });
-        await api.updatePushToken(String(expoTokenData.data));
-      } catch (e) {
-        if (__DEV__) console.warn('Failed to refresh Expo Push Token on rotation', e);
-      }
-    });
-
-    // Reset iOS badge count on app open
-    Notifications.setBadgeCountAsync(0).catch(() => {});
-
-    // Listen for incoming notifications while app is in foreground
-    notificationListener.current = Notifications.addNotificationReceivedListener((notification) => {
-      if (__DEV__) console.log('Notification received:', notification.request.content);
-      // Instantly invalidate cache from FCM data payload (fallback for when WS is offline)
-      const data = notification.request.content.data as Record<string, string> | undefined;
-      handleFcmDataPayload(data, queryClient);
-      pushStampsEventFromNotification(data, queryClient);
-    });
-
-    // Listen for notification taps (user interacted with the notification)
-    responseListener.current = Notifications.addNotificationResponseReceivedListener((response) => {
-      if (__DEV__) console.log('Notification tapped:', response.notification.request.content);
-      Notifications!.setBadgeCountAsync(0).catch(() => {});
-      // Invalidate caches from FCM data payload for instant feed update
-      const tapData = response.notification.request.content.data as Record<string, string> | undefined;
-      handleFcmDataPayload(tapData, queryClient);
-      navigateByAction(tapData);
-    });
-
-    // Handle cold-start: app was killed, user tapped a notification to launch it
-    Notifications.getLastNotificationResponseAsync().then((response) => {
-      if (response) {
-        const coldData = response.notification.request.content.data as Record<string, string> | undefined;
-        handleFcmDataPayload(coldData, queryClient);
-        navigateByAction(coldData);
-      }
-    });
-
-    return () => {
-      tokenSub.remove();
-      notificationListener.current?.remove();
-      responseListener.current?.remove();
-    };
-  }, [router, queryClient]);
-
+  // Incoming links (claim, merchant share) are routed by app/+native-intent.tsx.
+  useNotificationListeners();
   const isDark = theme.mode === 'dark';
 
   return (
     <NavThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
-      <View style={{ flex: 1, direction: isRTL ? 'rtl' : 'ltr' }}>
+      <View style={{ flex: 1 }}>
       <OfflineBanner />
       {(forceUpdateStatus === 'update' || forceUpdateStatus === 'maintenance') && (
-        <ForceUpdateModal status={forceUpdateStatus} storeUrl={forceUpdateStoreUrl} />
+        <ForceUpdateModal status={forceUpdateStatus} storeUrl={forceUpdateStoreUrl} onRetry={recheckForceUpdate} />
       )}
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <ErrorBoundary>
@@ -518,7 +108,6 @@ function RootLayoutNav() {
             contentStyle: { backgroundColor: theme.bg },
             animation: 'slide_from_right',
             gestureEnabled: true,
-            freezeOnBlur: true,
           }}
         >
           <Stack.Screen name="(tabs)" />
@@ -530,12 +119,15 @@ function RootLayoutNav() {
           <Stack.Screen name="set-password" options={{ animation: 'slide_from_right', contentStyle: { backgroundColor: '#fff' } }} />
           <Stack.Screen name="change-password" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="edit-profile" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="profile" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="referral" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="legal" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="scratch/index" options={{ animation: 'slide_from_bottom' }} />
           <Stack.Screen name="scratch/[id]" options={{ animation: 'slide_from_bottom' }} />
           <Stack.Screen name="coupons/index" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="coupons/[id]" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="deal/[id]" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="deal-alerts" options={{ animation: 'slide_from_right' }} />
         </Stack>
       </ErrorBoundary>
       </View>
@@ -543,18 +135,22 @@ function RootLayoutNav() {
   );
 }
 
-/** Hides splash once auth state is ready (fonts are already guaranteed loaded by the parent guard). */
+/**
+ * Plays the launch animation over the app (it takes over from the native
+ * splash, which it hides) and mounts the app once the session is restored.
+ * Fonts are already guaranteed loaded by the parent guard.
+ */
 function SplashGate({ children }: { children: React.ReactNode }) {
   const { isLoading: authLoading } = useAuth();
+  const [launchDone, setLaunchDone] = useState(false);
+  const finishLaunch = useCallback(() => setLaunchDone(true), []);
 
-  useEffect(() => {
-    if (!authLoading) {
-      SplashScreen.hideAsync();
-    }
-  }, [authLoading]);
-
-  if (authLoading) return null;
-  return <>{children}</>;
+  return (
+    <>
+      {!authLoading && children}
+      {!launchDone && <LaunchSplash ready={!authLoading} onFinish={finishLaunch} />}
+    </>
+  );
 }
 
 export default function RootLayout() {
@@ -593,7 +189,7 @@ export default function RootLayout() {
     setupAndroidChannel().catch(() => {});
   }, []);
 
-  // Don't render anything until fonts are loaded — SplashGate handles hideAsync
+  // Don't render anything until fonts are loaded — LaunchSplash handles hideAsync
   if (!loaded && !fontTimeout && !error) {
     return null;
   }
@@ -608,14 +204,7 @@ export default function RootLayout() {
           persister: asyncStoragePersister,
           maxAge: CACHE_MAX_AGE,
           dehydrateOptions: {
-            shouldDehydrateQuery: (query) =>
-              query.state.status === 'success' &&
-              // Geo queries change with every map pan — not worth persisting
-              !query.queryKey.includes('merchants-nearby') &&
-              // Never persist sensitive data (profile, auth, tokens, etc.)
-              !['profile', 'auth', 'token', 'otp', 'password'].includes(
-                String(query.queryKey[0] ?? '').toLowerCase(),
-              ),
+            shouldDehydrateQuery: shouldPersistQuery,
             // Never persist mutations: their mutationFn cannot be serialized,
             // so resuming them on next launch throws "No mutationFn found"
             // (Sentry JITPLUS-MOBILE-6, source: react-query-mutation).

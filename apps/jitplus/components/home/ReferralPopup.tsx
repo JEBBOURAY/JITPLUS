@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Text, Pressable, Animated, Easing, Share, StyleSheet } from 'react-native';
+import { View, Pressable, Animated, Easing, Share, StyleSheet } from 'react-native';
+import { Text } from '@/components/AppText';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Gift, X, Share2, Users } from 'lucide-react-native';
 import { useTheme, palette } from '@/contexts/ThemeContext';

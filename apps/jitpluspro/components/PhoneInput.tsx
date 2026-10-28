@@ -3,13 +3,15 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, StyleProp, ViewSty
 import { ChevronDown, Phone } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useDir } from '@/hooks/useDir';
+import { font, icon } from '@/constants/design';
 import CountryPickerModal from '@/components/CountryPickerModal';
 import { COUNTRIES, DEFAULT_COUNTRY } from '@/constants/Countries';
 import { isValidPhoneForCountry, formatPhoneLocal } from '@jitplus/shared';
 import type { CountryCode } from '@jitplus/shared';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-export interface PhoneInputProps extends Omit<TextInputProps, 'onChangeText' | 'value' | 'style'> {
+interface PhoneInputProps extends Omit<TextInputProps, 'onChangeText' | 'value' | 'style'> {
   value: string;
   onChangeText: (value: string) => void;
   style?: StyleProp<ViewStyle>;
@@ -41,6 +43,7 @@ const PhoneInput = forwardRef<TextInput, PhoneInputProps>(
   ({ value, onChangeText, placeholder, showValidation = true, style, ...rest }, ref) => {
     const theme = useTheme();
     const { t } = useLanguage();
+    const dir = useDir();
     const insets = useSafeAreaInsets();
     const [showPicker, setShowPicker] = useState(false);
     const [touched, setTouched] = useState(false);
@@ -59,7 +62,6 @@ const PhoneInput = forwardRef<TextInput, PhoneInputProps>(
     const showError = touched && hasContent && !isPhoneValid && showValidation;
     const showSuccess = hasContent && isPhoneValid;
 
-    // ── Border animation ──────────────────────────────────────────────────
     const borderAnim = useRef(new Animated.Value(0)).current;
 
     useEffect(() => {
@@ -139,24 +141,33 @@ const PhoneInput = forwardRef<TextInput, PhoneInputProps>(
 
     return (
       <>
-        <Animated.View style={[styles.container, { backgroundColor: theme.bgInput, borderColor, borderWidth }, style]}>
+        <Animated.View
+          style={[styles.container, { flexDirection: dir.row, backgroundColor: theme.bgInput, borderColor, borderWidth }, style]}
+        >
           <TouchableOpacity
             activeOpacity={0.7}
-            style={styles.countryBtn}
+            style={[styles.countryBtn, { flexDirection: dir.row }]}
             onPress={() => setShowPicker(true)}
+            accessibilityRole="button"
+            accessibilityLabel={t('common.selectCountry')}
           >
             <Text style={styles.flag}>{selectedCountry.flag}</Text>
             <Text style={[styles.dialCode, { color: theme.textSecondary }]}>{selectedCountry.dial}</Text>
-            <ChevronDown size={14} color={theme.textMuted} />
+            <ChevronDown size={14} color={theme.textMuted} strokeWidth={icon.strokeSmall} />
           </TouchableOpacity>
 
           <View style={[styles.divider, { backgroundColor: theme.borderLight }]} />
 
-          <View style={styles.inputWrapper}>
-            <Phone size={18} color={showSuccess ? theme.success : showError ? theme.danger : theme.textMuted} style={styles.icon} />
+          <View style={[styles.inputWrapper, { flexDirection: dir.row }, dir.isRTL ? styles.inputWrapperRtl : styles.inputWrapperLtr]}>
+            <Phone
+              size={18}
+              color={showSuccess ? theme.success : showError ? theme.danger : theme.textMuted}
+              strokeWidth={icon.stroke}
+              style={dir.isRTL ? styles.iconRtl : styles.icon}
+            />
             <TextInput
               ref={ref}
-              style={[styles.input, { color: theme.text }]}
+              style={[styles.input, { color: theme.text, textAlign: dir.textAlign }]}
               value={parsed.localPart}
               onChangeText={handleLocalChange}
               onFocus={handleFocus}
@@ -170,11 +181,11 @@ const PhoneInput = forwardRef<TextInput, PhoneInputProps>(
             />
           </View>
 
-          {/* Validation indicator dot */}
           {hasContent && (
             <View
               style={[
                 styles.validationDot,
+                dir.isRTL ? styles.validationDotRtl : styles.validationDotLtr,
                 {
                   backgroundColor: showSuccess ? theme.success : showError ? theme.danger : theme.border,
                 },
@@ -183,17 +194,16 @@ const PhoneInput = forwardRef<TextInput, PhoneInputProps>(
           )}
         </Animated.View>
 
-        {/* Digit counter + validation hint */}
-        <View style={styles.hintRow}>
+        <View style={[styles.hintRow, { flexDirection: dir.row }]}>
           {showValidation && hasContent && showError && (
-            <Text style={[styles.hintText, { color: theme.danger }]}>
+            <Text style={[styles.hintText, { color: theme.danger, textAlign: dir.textAlign }]}>
               {selectedCountry.code === 'MA'
                 ? t('phoneInput.maFormat')
                 : t('phoneInput.digitCount', { count: digitCount, max: maxDigits })}
             </Text>
           )}
           {showValidation && hasContent && showSuccess && (
-            <Text style={[styles.hintText, { color: theme.success }]}>
+            <Text style={[styles.hintText, { color: theme.success, textAlign: dir.textAlign }]}>
               {selectedCountry.dial} {formatPhoneLocal(parsed.localPart)}
             </Text>
           )}
@@ -202,6 +212,7 @@ const PhoneInput = forwardRef<TextInput, PhoneInputProps>(
               style={[
                 styles.digitCounterText,
                 {
+                  textAlign: dir.isRTL ? 'left' : 'right',
                   color: showSuccess
                     ? theme.success
                     : digitCount >= maxDigits
@@ -233,27 +244,23 @@ export default PhoneInput;
 
 const styles = StyleSheet.create({
   container: {
-    flexDirection: 'row',
     alignItems: 'center',
     borderRadius: 12,
     borderWidth: 1,
     height: 52,
   },
   countryBtn: {
-    flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
     height: '100%',
+    gap: 6,
   },
   flag: {
     fontSize: 18,
-    marginRight: 6,
   },
   dialCode: {
     fontSize: 15,
-    fontWeight: '600',
-    marginRight: 6,
-    fontFamily: 'Lexend_600SemiBold',
+    fontFamily: font.semibold,
   },
   divider: {
     width: 1,
@@ -261,44 +268,45 @@ const styles = StyleSheet.create({
   },
   inputWrapper: {
     flex: 1,
-    flexDirection: 'row',
     alignItems: 'center',
-    paddingLeft: 12,
     height: '100%',
   },
+  inputWrapperLtr: { paddingLeft: 12 },
+  inputWrapperRtl: { paddingRight: 12 },
   icon: {
     marginRight: 10,
+  },
+  iconRtl: {
+    marginLeft: 10,
   },
   input: {
     flex: 1,
     fontSize: 15,
     height: '100%',
     letterSpacing: 0.5,
+    fontFamily: font.regular,
   },
   validationDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    marginRight: 14,
   },
+  validationDotLtr: { marginRight: 14 },
+  validationDotRtl: { marginLeft: 14 },
   hintRow: {
     marginTop: 4,
     paddingHorizontal: 4,
-    flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     minHeight: 18,
   },
   hintText: {
     fontSize: 12,
-    fontWeight: '500',
     flex: 1,
-    fontFamily: 'Lexend_500Medium',
+    fontFamily: font.medium,
   },
   digitCounterText: {
     fontSize: 11,
-    fontWeight: '500',
-    textAlign: 'right',
-    fontFamily: 'Lexend_500Medium',
+    fontFamily: font.medium,
   },
 });

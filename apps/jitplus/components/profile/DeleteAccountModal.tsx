@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, Modal,
+  View, TouchableOpacity, Modal,
 } from 'react-native';
+import { Text, TextInput } from '@/components/AppText';
 import { AlertTriangle } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';

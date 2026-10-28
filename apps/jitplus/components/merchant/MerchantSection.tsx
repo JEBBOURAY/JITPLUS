@@ -1,8 +1,10 @@
-import React, { type ReactNode } from 'react';
-import { View, Text, StyleSheet, Platform, type StyleProp, type ViewStyle } from 'react-native';
+import { type ReactNode } from 'react';
+import { View, Pressable, StyleSheet, Platform, type StyleProp, type ViewStyle } from 'react-native';
+import { Text } from '@/components/AppText';
 import type { LucideIcon } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAppFonts } from '@/utils/fonts';
+import { haptic } from '@/utils/haptics';
 import { wp, hp, ms } from '@/utils/responsive';
 
 interface Props {
@@ -11,12 +13,14 @@ interface Props {
   accent: string;
   /** Rendered at the end of the title row (count, status pill…). */
   right?: ReactNode;
+  /** Link at the end of the title row, e.g. "Voir tout" toward a tab. */
+  action?: { label: string; onPress: () => void };
   children: ReactNode;
   style?: StyleProp<ViewStyle>;
 }
 
 /** Card shell shared by every section of the merchant page. */
-export default function MerchantSection({ title, icon: Icon, accent, right, children, style }: Props) {
+export default function MerchantSection({ title, icon: Icon, accent, right, action, children, style }: Props) {
   const theme = useTheme();
   const fonts = useAppFonts();
 
@@ -33,6 +37,11 @@ export default function MerchantSection({ title, icon: Icon, accent, right, chil
             {title}
           </Text>
           {right}
+          {action && (
+            <Pressable onPress={() => { haptic(); action.onPress(); }} hitSlop={10} accessibilityRole="button">
+              <Text style={[styles.action, { color: accent, fontFamily: fonts.semibold }]}>{action.label}</Text>
+            </Pressable>
+          )}
         </View>
       )}
       {children}
@@ -53,4 +62,5 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', gap: wp(10), marginBottom: hp(14) },
   icon: { width: ms(32), height: ms(32), borderRadius: ms(10), alignItems: 'center', justifyContent: 'center' },
   title: { flex: 1, fontSize: ms(16), letterSpacing: -0.2 },
+  action: { fontSize: ms(13) },
 });

@@ -74,6 +74,7 @@ const mockPrismaService = {
     create: jest.fn(),
     findUnique: jest.fn(),
     update: jest.fn(),
+    delete: jest.fn(),
     deleteMany: jest.fn(),
   },
 };
@@ -291,8 +292,82 @@ describe('AuthService', () => {
     });
   });
 
-  // ── register ───────────────────────────────────────────────────────────────
+  // ── refreshWithToken ───────────────────────────────────────────────────────
 
+  describe('refreshWithToken()', () => {
+    const { createHash } = jest.requireActual<typeof import('crypto')>('crypto');
+    const RT = 'refresh-token-plain';
+    const RT_HASH = createHash('sha256').update(RT).digest('hex');
+    const baseSession = {
+      id: 'session-row-1',
+      merchantId: mockMerchant.id,
+      refreshTokenHash: RT_HASH,
+      userType: 'merchant',
+      userEmail: mockMerchant.email,
+      userName: mockMerchant.nom,
+    };
+
+    it('rotates the session conditioned on the previous refresh hash', async () => {
+      mockPrismaService.deviceSession.findUnique.mockResolvedValueOnce(baseSession);
+      mockPrismaService.merchant.findUnique.mockResolvedValueOnce(mockMerchant);
+      mockPrismaService.deviceSession.updateMany.mockResolvedValueOnce({ count: 1 });
+
+      const result = await service.refreshWithToken(RT, 'old-session-id');
+
+      expect(mockPrismaService.deviceSession.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: baseSession.id, refreshTokenHash: RT_HASH } }),
+      );
+      expect(result.refresh_token).toBeDefined();
+      expect(result.session_id).not.toBe('old-session-id');
+    });
+
+    it('rejects when a concurrent refresh already rotated the session', async () => {
+      mockPrismaService.deviceSession.findUnique.mockResolvedValueOnce(baseSession);
+      mockPrismaService.merchant.findUnique.mockResolvedValueOnce(mockMerchant);
+      mockPrismaService.deviceSession.updateMany.mockResolvedValueOnce({ count: 0 });
+
+      await expect(service.refreshWithToken(RT, 'old-session-id')).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('keeps the team member identity in the refreshed token', async () => {
+      mockPrismaService.deviceSession.findUnique.mockResolvedValueOnce({
+        ...baseSession,
+        userType: 'team_member',
+        userEmail: 'alice@jitplus.com',
+      });
+      mockPrismaService.merchant.findUnique.mockResolvedValueOnce(mockMerchant);
+      mockPrismaService.teamMember.findUnique.mockResolvedValueOnce({
+        id: 'member-1', nom: 'Alice', isActive: true, merchantId: mockMerchant.id,
+      });
+      mockPrismaService.deviceSession.updateMany.mockResolvedValueOnce({ count: 1 });
+
+      await service.refreshWithToken(RT, 'old-session-id');
+
+      expect(mockJwtService.sign).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'team_member', teamMemberId: 'member-1', teamMemberName: 'Alice' }),
+      );
+    });
+
+    it('revokes the session of a deactivated team member instead of refreshing it', async () => {
+      mockPrismaService.deviceSession.findUnique.mockResolvedValueOnce({
+        ...baseSession,
+        userType: 'team_member',
+        userEmail: 'alice@jitplus.com',
+      });
+      mockPrismaService.merchant.findUnique.mockResolvedValueOnce(mockMerchant);
+      mockPrismaService.teamMember.findUnique.mockResolvedValueOnce({
+        id: 'member-1', nom: 'Alice', isActive: false, merchantId: mockMerchant.id,
+      });
+      mockPrismaService.deviceSession.delete.mockResolvedValueOnce({});
+
+      await expect(service.refreshWithToken(RT, 'old-session-id')).rejects.toThrow(UnauthorizedException);
+      expect(mockPrismaService.deviceSession.delete).toHaveBeenCalledWith({ where: { id: baseSession.id } });
+      expect(mockPrismaService.deviceSession.updateMany).not.toHaveBeenCalled();
+      expect(mockJwtService.sign).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── register ───────────────────────────────────────────────────────────────
   describe('register()', () => {
     it('throws ConflictException when the DB raises P2002 on email uniqueness', async () => {
       // Uniqueness is now enforced solely by the DB unique constraint (P2002 catch);

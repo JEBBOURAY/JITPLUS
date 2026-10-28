@@ -1,10 +1,15 @@
 export { default as MerchantHero, HERO_HEIGHT } from './MerchantHero';
-export { default as MerchantStickyHeader } from './MerchantStickyHeader';
+export { default as MerchantStickyHeader, getStickyHeaderHeight } from './MerchantStickyHeader';
 export { default as MerchantQuickActions } from './MerchantQuickActions';
+export { default as MerchantTabs, TAB_BAR_HEIGHT } from './MerchantTabs';
+export { default as MerchantLoyaltySummary } from './MerchantLoyaltySummary';
+export { default as MerchantInfoSummary } from './MerchantInfoSummary';
 export { default as MerchantLoyaltyCard } from './MerchantLoyaltyCard';
+export { default as MerchantDeals } from './MerchantDeals';
 export { default as MerchantLuckyWheel } from './MerchantLuckyWheel';
 export { default as MerchantAbout } from './MerchantAbout';
 export { default as MerchantGallery } from './MerchantGallery';
 export { default as MerchantOpeningHours } from './MerchantOpeningHours';
 export { default as MerchantLocations } from './MerchantLocations';
 export { default as MerchantBottomBar } from './MerchantBottomBar';
+export { useMerchantLoyalty } from './useMerchantLoyalty';

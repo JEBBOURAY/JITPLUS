@@ -17,6 +17,7 @@ import {
   RequestMethod,
 } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
+import { ConfigService } from '@nestjs/config';
 import { ValidationError } from 'class-validator';
 import helmet from 'helmet';
 import compression from 'compression';
@@ -29,9 +30,11 @@ import { flattenValidationErrors } from './common/utils/validation-i18n';
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
-  // Trust proxy (required for correct IP behind load balancer / reverse proxy)
-  // Cloud Run may involve multiple proxies; use 'true' to trust the leftmost X-Forwarded-For
-  app.set('trust proxy', true);
+  // Trust exactly TRUST_PROXY_HOPS proxies (Cloud Run front end = 1). req.ip is then
+  // the address appended by the last trusted hop, not the client-controlled
+  // leftmost X-Forwarded-For entry that rate limiting would otherwise key on.
+  // Number() matters: Express reads a string value as a list of trusted IPs.
+  app.set('trust proxy', Number(app.get(ConfigService).get('TRUST_PROXY_HOPS', 1)));
 
   // Compress HTTP responses (reduces JSON payload size by 60-80%)
   app.use(compression());

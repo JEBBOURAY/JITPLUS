@@ -1,10 +1,12 @@
 import { memo } from 'react';
 import {
-  View, Text, Pressable, TouchableOpacity,
+  View, Pressable, TouchableOpacity,
 } from 'react-native';
+import { Text } from '@/components/AppText';
 import {
-  MapPin, ChevronRight, Navigation, ExternalLink,
+  MapPin, ChevronRight, Navigation, ExternalLink, BadgePercent,
 } from 'lucide-react-native';
+import { pluralKey } from '@jitplus/shared';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Merchant } from '@/types';
@@ -71,16 +73,20 @@ export const MerchantCallout = memo(function MerchantCallout({
   distance,
   onPress,
   onNavigate,
+  onDealPress,
   style,
 }: {
   merchant: Merchant;
   distance: number | null;
   onPress: () => void;
   onNavigate: () => void;
+  /** Shown when the merchant has live deals */
+  onDealPress?: () => void;
   style?: import('react-native').ViewStyle;
 }) {
   const theme = useTheme();
   const { t } = useLanguage();
+  const dealCount = merchant.activeDealCount ?? 0;
   return (
     <View style={[styles.calloutWrapper, style]}>
       <Pressable style={[styles.calloutCard, { backgroundColor: theme.bgCard }]} onPress={onPress}>
@@ -108,6 +114,23 @@ export const MerchantCallout = memo(function MerchantCallout({
                 {formatDistance(distance)}
               </Text>
             </View>
+          )}
+          {dealCount > 0 && !!onDealPress && (
+            <Pressable
+              onPress={onDealPress}
+              hitSlop={6}
+              style={({ pressed }) => [
+                { flexDirection: 'row', alignItems: 'center', gap: wp(4), marginTop: hp(6), alignSelf: 'flex-start' },
+                { paddingHorizontal: wp(8), paddingVertical: hp(3), borderRadius: ms(8), backgroundColor: `${theme.danger}14` },
+                pressed && { opacity: 0.7 },
+              ]}
+              accessibilityRole="button"
+            >
+              <BadgePercent size={ms(12)} color={theme.danger} strokeWidth={2.2} />
+              <Text style={{ flexShrink: 1, fontSize: FS.xs, fontWeight: '700', color: theme.danger }} numberOfLines={1}>
+                {merchant.topDeal?.title ?? t(pluralKey('deals.map.count', dealCount), { count: dealCount })}
+              </Text>
+            </Pressable>
           )}
         </View>
         <View style={styles.calloutActions}>
