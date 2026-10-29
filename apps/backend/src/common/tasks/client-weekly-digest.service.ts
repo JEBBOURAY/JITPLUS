@@ -2,7 +2,6 @@ import { Injectable, Logger, Inject } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import {
   CLIENT_REPOSITORY, type IClientRepository,
-  LOYALTY_CARD_REPOSITORY, type ILoyaltyCardRepository,
   TRANSACTION_REPOSITORY, type ITransactionRepository,
   MERCHANT_REPOSITORY, type IMerchantRepository,
   CAMPAIGN_SENT_TRACKER_REPOSITORY, type ICampaignSentTrackerRepository,
@@ -110,11 +109,9 @@ function lang(v?: string | null): Lang {
 @Injectable()
 export class ClientWeeklyDigestService {
   private readonly logger = new Logger(ClientWeeklyDigestService.name);
-  private static readonly BATCH_SIZE = 1000;
 
   constructor(
     @Inject(CLIENT_REPOSITORY) private readonly clientRepo: IClientRepository,
-    @Inject(LOYALTY_CARD_REPOSITORY) private readonly loyaltyCardRepo: ILoyaltyCardRepository,
     @Inject(TRANSACTION_REPOSITORY) private readonly txRepo: ITransactionRepository,
     @Inject(MERCHANT_REPOSITORY) private readonly merchantRepo: IMerchantRepository,
     @Inject(CAMPAIGN_SENT_TRACKER_REPOSITORY) private readonly campaignTrackerRepo: ICampaignSentTrackerRepository,

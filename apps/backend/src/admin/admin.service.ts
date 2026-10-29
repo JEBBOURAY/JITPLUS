@@ -11,7 +11,6 @@ import {
   CLIENT_REPOSITORY, type IClientRepository,
   CLIENT_REFERRAL_REPOSITORY, type IClientReferralRepository,
   PAYOUT_REQUEST_REPOSITORY, type IPayoutRequestRepository,
-  TRANSACTION_REPOSITORY, type ITransactionRepository,
   REWARD_REPOSITORY, type IRewardRepository,
   NOTIFICATION_REPOSITORY, type INotificationRepository,
   AUDIT_LOG_REPOSITORY, type IAuditLogRepository,
@@ -21,7 +20,7 @@ import {
 } from '../common/repositories';
 import { checkLockout, handleFailedLogin, resetLoginAttempts, LockoutDbOps } from '../common/utils/login-lockout.helper';
 import { IMailProvider, MAIL_PROVIDER } from '../common/interfaces';
-import { pickEmailLang, EmailLang } from '../mail/transactional-i18n';
+import { pickEmailLang } from '../mail/transactional-i18n';
 import { formatPayoutAmount, formatPayoutMethod } from '../client-auth/client-referral.service';
 
 import { ADMIN_STATS_CACHE_TTL } from '../common/constants';
@@ -40,7 +39,6 @@ export class AdminAuthService {
     @Inject(CLIENT_REPOSITORY) private clientRepo: IClientRepository,
     @Inject(CLIENT_REFERRAL_REPOSITORY) private clientReferralRepo: IClientReferralRepository,
     @Inject(PAYOUT_REQUEST_REPOSITORY) private payoutReqRepo: IPayoutRequestRepository,
-    @Inject(TRANSACTION_REPOSITORY) private transactionRepo: ITransactionRepository,
     @Inject(REWARD_REPOSITORY) private rewardRepo: IRewardRepository,
     @Inject(NOTIFICATION_REPOSITORY) private notificationRepo: INotificationRepository,
     @Inject(AUDIT_LOG_REPOSITORY) private auditLogRepo: IAuditLogRepository,

@@ -1,23 +1,37 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { ArrowUpRight, ArrowDownLeft, RefreshCw, Gift, Aperture, Ticket } from 'lucide-react-native';
-import { getTransactionConfig } from '@/constants/transactions';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import {
+  ArrowUpRight,
+  RefreshCw,
+  SlidersHorizontal,
+  type LucideIcon,
+} from 'lucide-react-native';
+import {
+  JitGames,
+  JitGift,
+  JitStamp,
+  JitTicket,
+} from '@/components/icons';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useDir } from '@/hooks/useDir';
 import { formatCurrency, DEFAULT_CURRENCY, getIntlLocale } from '@/config/currency';
-import { formatDateTime } from '@/utils/date';
-import type { Transaction } from '@/types';
+import { font, icon } from '@/constants/design';
+import type { ClientDetailTransaction, Transaction, TransactionType } from '@/types';
 
-// ── Home/history list row: either a date-group header or a transaction ──
+/** Fields the activity rows read; the client-detail endpoint omits the client and staff info. */
+export type ActivityItem = ClientDetailTransaction & Partial<Pick<Transaction, 'client' | 'performedByName' | 'teamMember'>>;
+
+// Home/history list row: either a date-group header or a transaction.
+// isFirst/isLast mark the row's position inside its date group so the list can draw one card per group.
 export type HomeRow =
   | { kind: 'header'; id: string; label: string }
-  | { kind: 'tx'; id: string; tx: Transaction };
+  | { kind: 'tx'; id: string; tx: ActivityItem; isFirst: boolean; isLast: boolean };
 
-/** Removes emojis from text to let the custom icons shine (bounded LRU cache for 60fps scrolling). */
+/** Strips emojis from user-entered text (bounded LRU cache for smooth scrolling). */
 const EMOJI_CACHE_LIMIT = 500;
 const emojiCache = new Map<string, string>();
-export const stripEmojis = (str: string | null | undefined) => {
+const stripEmojis = (str: string | null | undefined) => {
   if (!str) return '';
   const hit = emojiCache.get(str);
   if (hit !== undefined) {
@@ -34,273 +48,314 @@ export const stripEmojis = (str: string | null | undefined) => {
   return stripped;
 };
 
+/** Local-midnight timestamps for today and yesterday. */
+function dayBounds() {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  return { today, yesterday: today - 86_400_000 };
+}
+
 /**
  * Groups transactions into date sections (Today / Yesterday / full date) and
  * flattens them into a single list of rows for a FlatList.
  */
 export function buildHomeRows(
-  transactions: Transaction[],
+  transactions: readonly ActivityItem[],
   t: (key: string) => string,
   locale: string,
 ): HomeRow[] {
   const rows: HomeRow[] = [];
-  const now = new Date();
-  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const startYesterday = startToday - 86_400_000;
+  const { today, yesterday } = dayBounds();
+  const intlLocale = getIntlLocale(locale);
+  // Intl formatting is slow on Hermes and the whole list is rebuilt on every page load.
+  const dayLabels = new Map<string, string>();
   let lastLabel: string | null = null;
+  let prevTx: Extract<HomeRow, { kind: 'tx' }> | null = null;
 
   for (const tx of transactions) {
-    const ts = new Date(tx.createdAt).getTime();
+    const date = new Date(tx.createdAt);
+    const ts = date.getTime();
     let label: string;
-    if (ts >= startToday) label = t('activity.today');
-    else if (ts >= startYesterday) label = t('activity.yesterday');
+    if (ts >= today) label = t('activity.today');
+    else if (ts >= yesterday) label = t('activity.yesterday');
     else {
-      label = new Date(tx.createdAt).toLocaleDateString(getIntlLocale(locale), {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric',
-      });
+      const dayKey = date.toDateString();
+      label = dayLabels.get(dayKey) ?? date.toLocaleDateString(intlLocale, { day: 'numeric', month: 'long', year: 'numeric' });
+      dayLabels.set(dayKey, label);
     }
-    if (label !== lastLabel) {
+    const isNewGroup = label !== lastLabel;
+    if (isNewGroup) {
+      if (prevTx) prevTx.isLast = true;
       rows.push({ kind: 'header', id: `h-${label}`, label });
       lastLabel = label;
     }
-    rows.push({ kind: 'tx', id: tx.id, tx });
+    const row: Extract<HomeRow, { kind: 'tx' }> = { kind: 'tx', id: tx.id, tx, isFirst: isNewGroup, isLast: false };
+    rows.push(row);
+    prevTx = row;
   }
+  if (prevTx) prevTx.isLast = true;
   return rows;
 }
 
-/* ── Memoized rich transaction row (full history) ── */
+const ACTIVITY_ICONS: Record<TransactionType, LucideIcon> = {
+  EARN_STAMPS: ArrowUpRight,
+  REDEEM_REWARD: JitGift,
+  ADJUST_STAMPS: SlidersHorizontal,
+  LOYALTY_PROGRAM_CHANGE: RefreshCw,
+  LUCKY_WHEEL_WIN: JitGames,
+  COUPON_REDEEM: JitTicket,
+};
+
+const TYPE_LABEL_KEYS: Record<TransactionType, string> = {
+  EARN_STAMPS: 'clientDetail.txEarned',
+  REDEEM_REWARD: 'clientDetail.txRedeemed',
+  ADJUST_STAMPS: 'clientDetail.txAdjustment',
+  LOYALTY_PROGRAM_CHANGE: 'clientDetail.txProgramChange',
+  LUCKY_WHEEL_WIN: 'common.luckyWheelWin',
+  COUPON_REDEEM: 'clientDetail.txCoupon',
+};
+
+function formatTime(date: Date): string {
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+/** Compact "Aujourd'hui, 16:35" / "Hier, 18:47" / "12 oct., 09:10" formatter. */
+function formatRelativeTime(date: Date, t: (k: string) => string, locale: string): string {
+  const { today, yesterday } = dayBounds();
+  const ts = date.getTime();
+  const time = formatTime(date);
+  if (ts >= today) return `${t('activity.today')}, ${time}`;
+  if (ts >= yesterday) return `${t('activity.yesterday')}, ${time}`;
+  const d = date.toLocaleDateString(getIntlLocale(locale), { day: 'numeric', month: 'short' });
+  return `${d}, ${time}`;
+}
+
+/**
+ * Shared activity row for the home "Recent activity" card, the full history and the client profile.
+ * `detailed` (history, client profile) shows only the time, since rows sit under a date header,
+ * plus a muted line with the amount, staff member, reward or note.
+ * `showType` titles the row with the transaction type instead of the client name (client profile).
+ */
 export const TransactionRow = React.memo(function TransactionRow({
   item,
+  isFirst = false,
+  detailed = false,
+  showType = false,
+  onPress,
 }: {
-  item: Transaction;
+  item: ActivityItem;
+  isFirst?: boolean;
+  detailed?: boolean;
+  showType?: boolean;
+  onPress?: () => void;
 }) {
   const theme = useTheme();
   const { t, locale } = useLanguage();
-  const isDark = theme.mode === 'dark';
-  const isEarned = item.type === 'EARN_STAMPS';
-  const isCancelled = item.status === 'CANCELLED';
-  const isProgramChange = item.type === 'LOYALTY_PROGRAM_CHANGE';
-  const isLuckyWheelWin = item.type === 'LUCKY_WHEEL_WIN';
+  const dir = useDir();
+  const isEarn = item.type === 'EARN_STAMPS';
+  const isReward = item.type === 'REDEEM_REWARD';
+  const isAdjust = item.type === 'ADJUST_STAMPS';
+  const isProgram = item.type === 'LOYALTY_PROGRAM_CHANGE';
+  const isWheel = item.type === 'LUCKY_WHEEL_WIN';
   const isCoupon = item.type === 'COUPON_REDEEM';
-  const isGain = isEarned || isCoupon;
-  const { icon: IconComp, color } = getTransactionConfig(item.type, isCancelled, theme);
-  const flowColor = isCancelled ? theme.danger : isGain ? theme.primary : theme.accent;
-  const flowBg = isCancelled
-    ? `${theme.danger}14`
-    : isGain
-      ? (isDark ? 'rgba(167,139,250,0.12)' : 'rgba(124,58,237,0.08)')
-      : (isDark ? 'rgba(156,163,175,0.12)' : 'rgba(31,41,55,0.06)');
-  const performerName = item.performedByName || item.teamMember?.nom || null;
-  const isReward = item.type === 'REDEEM_REWARD' && !isCancelled;
+  const isCancelled = item.status === 'CANCELLED';
 
+  // Single brand color for every activity type; cancelled rows fade to muted instead of turning red.
+  const color = isCancelled ? theme.textMuted : theme.primary;
+  const IconComp = ACTIVITY_ICONS[item.type] ?? ArrowUpRight;
+  const title = showType
+    ? t(TYPE_LABEL_KEYS[item.type])
+    : [item.client?.prenom, item.client?.nom].filter(Boolean).join(' ') || '?';
+
+  let amountText: string | null = null;
+  let amountColor = theme.textMuted;
+  let withStamp = false;
+  if (isReward && showType && item.stamps > 0) {
+    // The title already says "reward redeemed", so show the stamps it cost.
+    amountText = `−${item.stamps}`;
+    withStamp = true;
+  } else if (isReward) {
+    amountText = t('home.redeemed');
+  } else if (isProgram) {
+    amountText = showType ? null : t('home.programChanged');
+  } else if (item.stamps) {
+    amountText = `${item.stamps < 0 ? '−' : '+'}${Math.abs(item.stamps)}`;
+    amountColor = isCancelled ? theme.textMuted : theme.text;
+    withStamp = true;
+  }
+
+  const date = new Date(item.createdAt);
+  const when = isNaN(date.getTime()) ? null : detailed ? formatTime(date) : formatRelativeTime(date, t, locale);
+  const performerName = item.performedByName || item.teamMember?.nom || null;
+  const subLine = [
+    when,
+    detailed && item.amount > 0 ? formatCurrency(item.amount, DEFAULT_CURRENCY, getIntlLocale(locale)) : null,
+    detailed && performerName ? t('activity.by', { name: performerName }) : null,
+    isCancelled ? t('activity.cancelled') : null,
+  ].filter(Boolean).join(' · ');
+
+  const detailLine = detailed
+    ? [
+        (isAdjust || isProgram || isWheel || isCoupon) && item.note ? stripEmojis(item.note) : null,
+        !isEarn && !isProgram && item.reward ? stripEmojis(item.reward.titre) : null,
+        isReward && !isCancelled && item.giftStatus === 'FULFILLED' ? t('gift.fulfilled') : null,
+      ].filter(Boolean).join(' · ')
+    : '';
+
+  const rowStyle = [
+    styles.row,
+    { flexDirection: dir.row },
+    isFirst ? styles.rowFirstNoBorder : { borderTopColor: theme.borderLight },
+  ];
+  const a11yLabel = [title, amountText, subLine, detailLine].filter(Boolean).join(', ');
+
+  const content = (
+    <>
+      <View style={[styles.icon, { backgroundColor: `${color}1A` }]} importantForAccessibility="no">
+        <IconComp size={18} color={color} strokeWidth={icon.stroke} />
+      </View>
+      <View style={styles.info}>
+        <Text
+          style={[styles.title, { color: theme.text, textAlign: dir.textAlign }, isCancelled && styles.strike]}
+          numberOfLines={1}
+          maxFontSizeMultiplier={1.5}
+        >
+          {title}
+        </Text>
+        <Text style={[styles.sub, { color: theme.textMuted, textAlign: dir.textAlign }]} numberOfLines={1} maxFontSizeMultiplier={1.5}>
+          {subLine}
+        </Text>
+        {detailLine ? (
+          <Text style={[styles.sub, { color: theme.textSecondary, textAlign: dir.textAlign }]} numberOfLines={1} maxFontSizeMultiplier={1.5}>
+            {detailLine}
+          </Text>
+        ) : null}
+      </View>
+      {amountText ? (
+        <View style={[styles.amountRow, { flexDirection: dir.row }]}>
+          <Text
+            style={[styles.amount, { color: amountColor }, isCancelled && styles.strike]}
+            numberOfLines={1}
+            maxFontSizeMultiplier={1.3}
+          >
+            {amountText}
+          </Text>
+          {withStamp && <JitStamp size={13} color={amountColor} strokeWidth={icon.strokeSmall} />}
+        </View>
+      ) : null}
+    </>
+  );
+
+  if (onPress) {
+    return (
+      <TouchableOpacity
+        style={rowStyle}
+        activeOpacity={0.6}
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={a11yLabel}
+        accessibilityHint={t('home.viewAll')}
+      >
+        {content}
+      </TouchableOpacity>
+    );
+  }
+  return (
+    <View style={rowStyle} accessible accessibilityLabel={a11yLabel}>
+      {content}
+    </View>
+  );
+});
+
+/** One item of a date-grouped history: a date label, or a row inside its group's card. */
+export const HistoryListItem = React.memo(function HistoryListItem({
+  row,
+  showType = false,
+}: {
+  row: HomeRow;
+  showType?: boolean;
+}) {
+  const theme = useTheme();
+  const dir = useDir();
+  if (row.kind === 'header') {
+    return (
+      <Text style={[styles.groupLabel, { color: theme.textMuted, textAlign: dir.textAlign }]} maxFontSizeMultiplier={1.4}>
+        {row.label}
+      </Text>
+    );
+  }
   return (
     <View
-      style={[styles.txCard, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}
-      accessible
-      accessibilityRole="summary"
+      style={[
+        styles.groupCard,
+        { backgroundColor: theme.bgCard, borderColor: theme.borderLight },
+        row.isFirst && styles.groupCardFirst,
+        row.isLast && styles.groupCardLast,
+      ]}
     >
-      <View style={[styles.flowBar, { backgroundColor: flowColor }]} importantForAccessibility="no" />
-
-      {(isReward || (isGain && !isCancelled) || (isLuckyWheelWin && !isCancelled)) ? (
-        <View style={[styles.txIconShadowWrapper, isReward && styles.giftShadow]} importantForAccessibility="no">
-          <View style={[styles.txIcon, { overflow: 'hidden', borderWidth: 1, borderColor: `${color}40`, marginRight: 0 }]}>
-            <LinearGradient
-              colors={[color + '30', color + '05']}
-              style={StyleSheet.absoluteFill}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            />
-            <IconComp size={isReward ? 22 : 20} color={color} strokeWidth={isReward ? 2.5 : 2} />
-          </View>
-        </View>
-      ) : (
-        <View style={[styles.txIcon, { backgroundColor: color + '14', borderWidth: 1, borderColor: 'transparent' }]} importantForAccessibility="no">
-          <IconComp size={18} color={color} strokeWidth={1.8} />
-        </View>
-      )}
-
-      <View style={styles.txInfo}>
-        <Text
-          style={[styles.txName, { color: theme.text }, isCancelled && styles.cancelled]}
-          numberOfLines={1}
-          maxFontSizeMultiplier={1.6}
-        >
-          {[item.client?.prenom, item.client?.nom].filter(Boolean).join(' ') || '?'}
-        </Text>
-        <Text style={[styles.txDate, { color: theme.textMuted }]} maxFontSizeMultiplier={1.6}>
-          {formatDateTime(item.createdAt, locale)}
-        </Text>
-        {isProgramChange && item.note && (
-          <View style={styles.inlineIconRow}>
-            <RefreshCw size={11} color={theme.primary} strokeWidth={2} />
-            <Text style={[styles.txMeta, { color: theme.primary, flex: 1 }]} numberOfLines={1} maxFontSizeMultiplier={1.6}>
-              {stripEmojis(item.note)}
-            </Text>
-          </View>
-        )}
-        {isLuckyWheelWin && item.note && (
-          <View style={styles.rewardRow}>
-            <Aperture size={11} color={theme.accent} strokeWidth={2} />
-            <Text style={[styles.txMeta, { color: theme.accent, flex: 1 }]} numberOfLines={1} maxFontSizeMultiplier={1.6}>
-              {stripEmojis(item.note)}
-            </Text>
-          </View>
-        )}
-        {isCoupon && item.note && (
-          <View style={styles.rewardRow}>
-            <Ticket size={11} color={theme.accent} strokeWidth={2} />
-            <Text style={[styles.txMeta, { color: theme.accent, flex: 1 }]} numberOfLines={1} maxFontSizeMultiplier={1.6}>
-              {stripEmojis(item.note)}
-            </Text>
-          </View>
-        )}
-        {!isEarned && !isProgramChange && item.reward && (
-          <View style={styles.rewardRow}>
-            <Gift size={13} color={theme.accent} strokeWidth={2.5} />
-            <Text style={[styles.txMeta, { color: theme.accent, flex: 1, fontWeight: '700' }]} numberOfLines={1} maxFontSizeMultiplier={1.6}>
-              {stripEmojis(item.reward.titre)}
-            </Text>
-            {isReward && item.giftStatus === 'FULFILLED' && (
-              <View style={[styles.giftBadge, { backgroundColor: `${theme.accent}15`, borderColor: `${theme.accent}30` }]}>
-                <Text style={[styles.giftBadgeText, { color: theme.accent }]} maxFontSizeMultiplier={1.4}>{t('gift.fulfilled')}</Text>
-              </View>
-            )}
-          </View>
-        )}
-        {performerName && (
-          <Text style={[styles.txPerformer, { color: theme.textMuted }]} numberOfLines={1} maxFontSizeMultiplier={1.6}>
-            {t('activity.by', { name: performerName })}
-          </Text>
-        )}
-        {isCancelled && <Text style={styles.cancelLabel} maxFontSizeMultiplier={1.4}>{t('activity.cancelled')}</Text>}
-      </View>
-
-      {!isProgramChange && !isLuckyWheelWin && (
-        <View style={styles.txRight}>
-          {item.amount > 0 && (
-            <Text style={[styles.txAmount, { color: theme.textMuted }, isCancelled && styles.cancelled]} maxFontSizeMultiplier={1.4}>
-              {formatCurrency(item.amount, DEFAULT_CURRENCY, getIntlLocale(locale))}
-            </Text>
-          )}
-          <View style={[styles.flowPill, { backgroundColor: flowBg }]}>
-            {isGain
-              ? <ArrowUpRight size={11} color={flowColor} strokeWidth={2.5} />
-              : <ArrowDownLeft size={11} color={flowColor} strokeWidth={2.5} />}
-            <Text style={[styles.flowPillText, { color: flowColor }, isCancelled && styles.cancelled]} maxFontSizeMultiplier={1.4}>
-              {isGain ? '+' : '−'}{item.stamps} {t('common.stampsAbbr')}
-            </Text>
-          </View>
-        </View>
-      )}
+      <TransactionRow item={row.tx} isFirst={row.isFirst} detailed showType={showType} />
     </View>
   );
 });
 
 const styles = StyleSheet.create({
-  txCard: {
-    flexDirection: 'row',
+  row: {
     alignItems: 'center',
-    paddingVertical: 14,
+    gap: 12,
+    minHeight: 60,
     paddingHorizontal: 14,
-    paddingLeft: 0,
-    borderRadius: 14,
-    borderWidth: 1,
-    overflow: 'hidden',
+    paddingVertical: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
-  flowBar: {
-    width: 3,
-    borderRadius: 2,
-    alignSelf: 'stretch',
-    marginRight: 12,
-  },
-  txIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
+  rowFirstNoBorder: { borderTopWidth: 0 },
+  icon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 14,
   },
-  txIconShadowWrapper: {
-    marginRight: 14,
-    borderRadius: 14,
-    backgroundColor: 'transparent',
-  },
-  giftShadow: {
-    shadowColor: '#8B5CF6',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  txInfo: { flex: 1, marginRight: 8 },
-  txName: {
+  info: { flex: 1 },
+  title: {
     fontSize: 15,
-    fontWeight: '600',
-    fontFamily: 'Lexend_600SemiBold',
+    fontFamily: font.semibold,
     letterSpacing: -0.2,
   },
-  txDate: {
-    fontSize: 11,
-    marginTop: 3,
-    fontFamily: 'Lexend_400Regular',
-    letterSpacing: 0.1,
+  sub: {
+    fontSize: 12,
+    marginTop: 2,
+    fontFamily: font.regular,
   },
-  txPerformer: {
-    fontSize: 10,
-    marginTop: 3,
-    fontStyle: 'italic',
-    fontFamily: 'Lexend_400Regular',
-    letterSpacing: 0.1,
-  },
-  txMeta: {
-    fontSize: 11,
-    marginTop: 3,
-    fontWeight: '500',
-    fontFamily: 'Lexend_500Medium',
-    letterSpacing: -0.1,
-  },
-  rewardRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 3 },
-  inlineIconRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 3 },
-  giftBadge: {
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 6,
-    borderWidth: 1,
-  },
-  giftBadgeText: { fontSize: 9, fontWeight: '700', fontFamily: 'Lexend_600SemiBold' },
-  cancelLabel: {
-    fontSize: 10,
-    color: '#ef4444',
-    fontWeight: '600',
-    marginTop: 3,
-    fontFamily: 'Lexend_500Medium',
-    letterSpacing: -0.1,
-  },
-  cancelled: { textDecorationLine: 'line-through', opacity: 0.45 },
-  txRight: { alignItems: 'flex-end', minWidth: 88 },
-  txAmount: {
-    fontSize: 11,
-    fontWeight: '500',
-    fontFamily: 'Lexend_400Regular',
+  amount: {
+    fontSize: 14,
+    fontFamily: font.bold,
     letterSpacing: -0.2,
-    textAlign: 'right',
-    marginBottom: 4,
   },
-  flowPill: {
-    flexDirection: 'row',
+  strike: { textDecorationLine: 'line-through', opacity: 0.5 },
+  amountRow: {
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 20,
+    gap: 3,
   },
-  flowPillText: {
+  groupLabel: {
     fontSize: 13,
-    fontWeight: '700',
-    fontFamily: 'Lexend_700Bold',
-    letterSpacing: -0.3,
+    fontFamily: font.semibold,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  // A date group spans several list items: side borders on each, top/bottom borders and corners on the ends.
+  groupCard: {
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    overflow: 'hidden',
+  },
+  groupCardFirst: {
+    borderTopWidth: 1,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+  },
+  groupCardLast: {
+    borderBottomWidth: 1,
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
   },
 });

@@ -3,7 +3,6 @@ import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
 import { ConfigService } from '@nestjs/config';
 import {
-  LOYALTY_CARD_REPOSITORY, type ILoyaltyCardRepository,
   MERCHANT_REPOSITORY, type IMerchantRepository,
   CLIENT_REPOSITORY, type IClientRepository,
   NOTIFICATION_REPOSITORY, type INotificationRepository,
@@ -25,7 +24,6 @@ export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
 
   constructor(
-    @Inject(LOYALTY_CARD_REPOSITORY) private loyaltyCardRepo: ILoyaltyCardRepository,
     @Inject(MERCHANT_REPOSITORY) private merchantRepo: IMerchantRepository,
     @Inject(CLIENT_REPOSITORY) private clientRepo: IClientRepository,
     @Inject(NOTIFICATION_REPOSITORY) private notificationRepo: INotificationRepository,
@@ -540,31 +538,6 @@ export class NotificationsService {
   }
 
   /**
-   * Record a WhatsApp marketing blast in the notification history.
-   * Legacy: kept for backward compatibility with older app versions.
-   */
-  async recordWhatsappBlast(
-    merchantId: string,
-    body: string,
-    recipientCount: number,
-    sentCount: number,
-  ): Promise<{ id: string; createdAt: Date }> {
-    const notification = await this.notificationRepo.create({
-      data: {
-        merchantId,
-        title: 'WhatsApp',
-        body,
-        recipientCount,
-        successCount: sentCount,
-        failureCount: recipientCount - sentCount,
-        isBroadcast: true,
-        channel: 'WHATSAPP',
-      },
-    });
-    return { id: notification.id, createdAt: notification.createdAt };
-  }
-
-  /**
    * Get the current email quota for a merchant (read-only helper).
    */
   async getEmailQuota(merchantId: string): Promise<{
@@ -705,11 +678,13 @@ export class NotificationsService {
 
     // 3. Persist notification record
     const allClientIds = allClients.map((c) => c.id);
+    // Clients without a push token still get the in-app feed entry, so they count as delivered.
+    const successCount = allClientIds.length - tokens.length + fcmSuccessCount;
     const notification = await this.notificationRepo.create({
       data: {
         title, body,
         recipientCount: allClientIds.length,
-        successCount: allClientIds.length,
+        successCount,
         failureCount: fcmFailureCount,
         isBroadcast: true,
         channel: 'PUSH',
@@ -766,7 +741,7 @@ export class NotificationsService {
       }).catch((e: any) => this.logger.warn(`Failed to clean stale client tokens: ${e}`));
     }
 
-    return { recipientCount: allClientIds.length, successCount: allClientIds.length, failureCount: fcmFailureCount };
+    return { recipientCount: allClientIds.length, successCount, failureCount: fcmFailureCount };
   }
 
   // ── Admin broadcast: email to all merchants ───────────────────────────────

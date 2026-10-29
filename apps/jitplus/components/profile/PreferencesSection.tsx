@@ -1,8 +1,11 @@
 import { memo, useCallback, useState } from 'react';
-import { Bell, Globe, Mail, Palette } from 'lucide-react-native';
+import { useRouter } from 'expo-router';
+import { BadgePercent, Bell, Globe, Mail, Palette } from 'lucide-react-native';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuthStore } from '@/stores/authStore';
+import { useDealAlerts } from '@/hooks/useDealHooks';
 import { usePreferenceToggle } from '@/hooks/usePreferenceToggle';
+import { dealAlertStatusLabel } from '@/utils/dealAlerts';
 import { haptic, HapticStyle } from '@/utils/haptics';
 import SettingsGroup from './SettingsGroup';
 import SettingsRow from './SettingsRow';
@@ -20,6 +23,9 @@ function PreferencesSection() {
   const closeLanguage = useCallback(() => setShowLanguage(false), []);
   const togglePush = useCallback(() => toggle('notifPush'), [toggle]);
   const toggleEmail = useCallback(() => toggle('notifEmail'), [toggle]);
+  const router = useRouter();
+  const { data: dealAlerts } = useDealAlerts();
+  const openDealAlerts = useCallback(() => { haptic(HapticStyle.Light); router.push('/deal-alerts'); }, [router]);
 
   return (
     <>
@@ -44,6 +50,12 @@ function PreferencesSection() {
           checked={notifPush}
           disabled={savingKey === 'notifPush'}
           onPress={togglePush}
+        />
+        <SettingsRow
+          icon={BadgePercent}
+          title={t('deals.alerts.title')}
+          subtitle={dealAlerts ? dealAlertStatusLabel(dealAlerts, locale, t) : undefined}
+          onPress={openDealAlerts}
         />
         <SettingsRow
           icon={Mail}

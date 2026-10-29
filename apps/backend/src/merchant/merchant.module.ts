@@ -14,6 +14,7 @@ import {
   MerchantTeamService,
   MerchantStoreService,
   ClientClaimService,
+  ScanTicketService,
 } from './services';
 import { AuditLogService } from '../admin/audit-log.service';
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -41,6 +42,7 @@ import { EventsModule } from '../events/events.module';
     MerchantTeamService,
     MerchantStoreService,
     ClientClaimService,
+    ScanTicketService,
     AuditLogService,
   ],
   exports: [MerchantProfileService, MerchantPlanModule, ClientClaimService],

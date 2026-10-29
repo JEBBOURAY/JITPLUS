@@ -1,306 +1,99 @@
-import { useRef, useCallback, useState, useEffect, useMemo } from 'react';
+import { useCallback, useState, useEffect, useRef } from 'react';
 import {
-  View, Text, StyleSheet, Platform, TouchableOpacity, Alert, ScrollView, Image,
-  ActivityIndicator, Modal, Animated, Pressable,
+  View, StyleSheet, TouchableOpacity, ScrollView, Image,
+  Animated,
   type NativeSyntheticEvent, type NativeScrollEvent,
 } from 'react-native';
+import { Text } from '@/components/AppText';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import QRCode from 'react-native-qrcode-svg';
 import {
-  Share2, X, Download, ShieldCheck, Sun, WifiOff, RotateCcw, QrCode, ScanLine, Stamp, TriangleAlert,
+  Share2, X, ShieldCheck, Sun, WifiOff, RotateCcw, QrCode, ScanLine, Stamp, TriangleAlert,
 } from 'lucide-react-native';
-import * as Sharing from 'expo-sharing';
 import { useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as SecureStore from 'expo-secure-store';
-import * as Brightness from 'expo-brightness';
 import * as ScreenCapture from 'expo-screen-capture';
 import { useKeepAwake } from 'expo-keep-awake';
-import NetInfo from '@react-native-community/netinfo';
-import { haptic, hapticSuccess, HapticStyle } from '@/utils/haptics';
+import { haptic, HapticStyle } from '@/utils/haptics';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { api } from '@/services/api';
 import FadeInView from '@/components/FadeInView';
+import StarLoader from '@/components/StarLoader';
 import GuestGuard from '@/components/GuestGuard';
+import QrActionSheet from '@/components/qr/QrActionSheet';
 import QrRefreshBar from '@/components/qr/QrRefreshBar';
 import QrSuccessOverlay from '@/components/qr/QrSuccessOverlay';
-import { useStampsOverview } from '@/hooks/useQueryHooks';
-import { useWsStore, type StampsEvent } from '@/stores/wsStore';
+import { useBrightnessBoost } from '@/hooks/useBrightnessBoost';
+import { useQrCardExport, ViewShot } from '@/hooks/useQrCardExport';
+import { useQrToken } from '@/hooks/useQrToken';
+import { useScanDetection } from '@/hooks/useScanDetection';
+import type { StampsEvent } from '@/stores/wsStore';
+import type { LoyaltyCard } from '@/types';
 import { useAppFonts } from '@/utils/fonts';
 import { getCardProgress } from '@/utils/cardProgress';
-import type { LoyaltyCard } from '@/types';
 import { preloadSounds } from '@/utils/sounds';
 import { wp, hp, ms, fontSize, radius, SCREEN } from '@/utils/responsive';
 
-// react-native-view-shot is NOT available in Expo Go SDK 51+
-import type ViewShotType from 'react-native-view-shot';
-import type { ViewShotRef } from 'react-native-view-shot';
-
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 
-let ViewShot: typeof ViewShotType | null = null;
-try {
-  ViewShot = require('react-native-view-shot').default as typeof ViewShotType;
-} catch {
-  // Not available in Expo Go — share QR will be disabled
-}
-
-// expo-media-library is a NATIVE module. It must be loaded lazily: an eager
-// top-level `import` runs requireNativeModule() at module-eval time, which THROWS
-// on binaries that don't contain the native code (e.g. an OTA/EAS update shipped
-// to an older build). That throw makes the whole route module fail to load, so
-// expo-router receives `undefined` from loadRoute() and crashes in fromImport
-// with "Cannot read property 'ErrorBoundary' of undefined". Loading it in a
-// try/catch keeps the QR screen working; save-to-gallery just degrades gracefully.
-let MediaLibrary: typeof import('expo-media-library') | null = null;
-try {
-  MediaLibrary = require('expo-media-library');
-} catch {
-  // Native module not present in this binary — save-to-gallery will be disabled
-}
-
 const QR_SIZE = Math.min(SCREEN.width - wp(120), wp(250));
-const QR_TOKEN_STORAGE_KEY = 'qr_permanent_token';
 const GRADIENT_CARD = [palette.violetDeep, palette.violetDark, palette.violet] as const;
 const GRADIENT_START = { x: 0, y: 0 } as const;
 const GRADIENT_END = { x: 1, y: 1 } as const;
 const SCROLLED_THRESHOLD = 4;
-const SCAN_POLL_MS = 4000;
-/** The same scan can arrive by WebSocket, push and polling: show it once. */
-const SCAN_DEDUPE_MS = 30_000;
-
-type QrErrorKind = 'offline' | 'server' | null;
-
-function toBalanceMap(cards: LoyaltyCard[]): Map<string, number> {
-  return new Map(cards.map((c) => [c.merchantId, c.balance ?? 0]));
-}
-
-/** Seconds until a v2 token should be refreshed (~10s before expiry, never < 5s). */
-function getRefreshDelayS(expiresAt: number): number {
-  const nowS = Math.floor(Date.now() / 1000);
-  return Math.max(5, expiresAt - nowS - 10);
-}
 
 export default function QRScreen() {
   const theme = useTheme();
   const isDark = theme.mode === 'dark';
   const { client, isGuest } = useAuth();
   const { t } = useLanguage();
-  const { regular, medium, semibold, bold } = useAppFonts();
-  const fonts = useMemo(() => ({ regular, medium, semibold, bold }), [regular, medium, semibold, bold]);
+  const fonts = useAppFonts();
   const insets = useSafeAreaInsets();
 
   // iOS HIG + Material: keep screen on while a scannable code is visible.
   // Auto-released on unmount — no cleanup needed.
   useKeepAwake('jitplus-qr');
 
-  const qrViewRef = useRef<ViewShotRef | null>(null);
-  const [qrValue, setQrValue] = useState<string | null>(null);
-  const [qrLoading, setQrLoading] = useState(true);
-  // v2 tokens expire (~60s). Null for v1 permanent tokens.
-  const [qrExpiresAt, setQrExpiresAt] = useState<number | null>(null);
-  const [qrError, setQrError] = useState<QrErrorKind>(null);
-  const qrErrorRef = useRef<QrErrorKind>(null);
-  // Read by the NetInfo listener without re-subscribing it on every change.
-  useEffect(() => { qrErrorRef.current = qrError; }, [qrError]);
-  const [isOffline, setIsOffline] = useState(false);
-  const isFocusedRef = useRef(false);
-  const focusedAtRef = useRef(0);
-  const fetchingQrRef = useRef(false);
+  const { qrValue, qrLoading, qrExpiresAt, qrError, isOffline, refreshDelayMs, fetchQrToken, retry } = useQrToken(client?.id);
+  const brightnessBoosted = useBrightnessBoost(!isGuest);
+  const { viewShotRef: qrViewRef, share, saveToGallery } = useQrCardExport(t);
 
   const [showGuidBadge, setShowGuidBadge] = useState(false);
   const [showActionMenu, setShowActionMenu] = useState(false);
-  const [brightnessBoosted, setBrightnessBoosted] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
   const [successEvent, setSuccessEvent] = useState<StampsEvent | null>(null);
   const [successGoal, setSuccessGoal] = useState<number | null>(null);
-  const [isFocused, setIsFocused] = useState(false);
-
-  // Keeps the cards query observed so a scan received while the QR is shown
-  // refetches balances immediately instead of only marking them stale.
-  // Also polled while the QR is visible: the WebSocket event can be missed
-  // (expired token, or emitted by another Cloud Run instance than the one
-  // holding this socket), so a balance change is the fallback scan signal.
-  const { data: stampsOverview, refetch: refetchStamps } = useStampsOverview(
-    !isGuest,
-    isFocused && !isGuest ? SCAN_POLL_MS : false,
-  );
-  const cardsRef = useRef(stampsOverview?.cards);
-  useEffect(() => { cardsRef.current = stampsOverview?.cards; }, [stampsOverview]);
-  const refetchStampsRef = useRef(refetchStamps);
-  useEffect(() => { refetchStampsRef.current = refetchStamps; }, [refetchStamps]);
-  const isGuestRef = useRef(isGuest);
-  useEffect(() => { isGuestRef.current = isGuest; }, [isGuest]);
-  // Last known balance per merchant, compared against each poll to detect a scan.
-  const balancesRef = useRef<Map<string, number> | null>(null);
-  const balancesReadyRef = useRef(false);
 
   useEffect(() => { preloadSounds('stamp', 'reward'); }, []);
 
-  /** Fetch a fresh QR token.
-   *  - v2 tokens are short-lived (~60s) + single-use → never cached, refreshed periodically
-   *  - v1 legacy permanent tokens → cached in SecureStore for offline display
-   */
-  const fetchQrToken = useCallback(async () => {
-    if (!client?.id) return;
-    if (fetchingQrRef.current) return; // Prevent concurrent fetches (focus + timer race)
-    fetchingQrRef.current = true;
+  useFocusEffect(useCallback(() => {
+    // Anti-exfiltration: no screenshots/recordings of the QR token. Sharing
+    // goes through the in-app button, which captures the card deliberately.
+    ScreenCapture.preventScreenCaptureAsync('jitplus-qr').catch(() => {});
+    AsyncStorage.getItem('showGuidBadge')
+      .then((val) => { if (val === '1') setShowGuidBadge(true); })
+      .catch(() => {});
+    return () => { ScreenCapture.allowScreenCaptureAsync('jitplus-qr').catch(() => {}); };
+  }, []));
 
-    let showedCached = false;
-    // Try cached v1 token first (SecureStore — encrypted on-device)
-    try {
-      const cached = Platform.OS === 'web'
-        ? null // Web has no SecureStore — always fetch fresh
-        : await SecureStore.getItemAsync(QR_TOKEN_STORAGE_KEY);
-      // Only accept legacy v1 tokens from cache (v2 are too short-lived to cache)
-      if (cached && cached.startsWith('v1.')) {
-        setQrValue(`jitplus://scan/${cached}`);
-        setQrLoading(false);
-        showedCached = true;
-        // Continue to fetch fresh in background (server may have upgraded to v2)
-      }
-    } catch { /* ignore cache miss */ }
-
-    // Skip fetch when offline
-    const netState = await NetInfo.fetch();
-    if (!netState.isConnected) {
-      setIsOffline(true);
-      // Only a cached v1 token is still valid offline; a leftover v2 token is
-      // about to expire (or already has), so don't show a code that won't scan.
-      if (!showedCached) { setQrValue(null); setQrError('offline'); setQrLoading(false); }
-      fetchingQrRef.current = false;
-      return;
-    }
-    setIsOffline(false);
-    setQrError(null);
-    try {
-      const resp = await api.getQrToken();
-      const qr_token = resp.qr_token;
-      const expiresAt = (resp as { expiresAt?: number }).expiresAt;
-      // Only persist v1 permanent tokens; v2 are too short-lived to cache.
-      if (Platform.OS !== 'web') {
-        if (qr_token.startsWith('v1.')) {
-          await SecureStore.setItemAsync(QR_TOKEN_STORAGE_KEY, qr_token);
-        } else {
-          // Drop any stale v1 cache once backend starts returning v2
-          await SecureStore.deleteItemAsync(QR_TOKEN_STORAGE_KEY).catch(() => {});
-        }
-      }
-      setQrValue(`jitplus://scan/${qr_token}`);
-      setQrExpiresAt(typeof expiresAt === 'number' ? expiresAt : null);
-    } catch (e) {
-      if (__DEV__) console.warn('QR token error:', e);
-      setQrValue(null);
-      setQrError('server');
-    } finally {
-      setQrLoading(false);
-      fetchingQrRef.current = false;
-    }
-  }, [client?.id]);
+  // ── Real-time scan confirmation ──
+  const qrExpiresAtRef = useRef<number | null>(null);
+  useEffect(() => { qrExpiresAtRef.current = qrExpiresAt; }, [qrExpiresAt]);
+  const handleScan = useCallback((ev: StampsEvent, card: LoyaltyCard | undefined) => {
+    setShowActionMenu(false);
+    setSuccessGoal(card ? getCardProgress(card).goal : null);
+    setSuccessEvent(ev);
+    // v2 tokens are single-use: get the next one ready straight away.
+    if (qrExpiresAtRef.current) fetchQrToken();
+  }, [fetchQrToken]);
+  useScanDetection({ enabled: !isGuest, onScan: handleScan });
 
   const handleRetry = useCallback(() => {
     haptic(HapticStyle.Light);
-    setQrError(null);
-    setQrLoading(true);
-    fetchQrToken();
-  }, [fetchQrToken]);
-
-  // Fetch QR token on focus. For v2 (short-lived), always refresh on focus.
-  // For v1 (legacy), re-use cached value.
-  useFocusEffect(
-    useCallback(() => {
-      isFocusedRef.current = true;
-      focusedAtRef.current = Date.now();
-      setIsFocused(true);
-      fetchQrToken();
-
-      // The cached balances may predate this visit: baseline on a fresh fetch
-      // so changes made while away aren't replayed as a live scan.
-      balancesReadyRef.current = false;
-      if (!isGuestRef.current) {
-        refetchStampsRef.current()
-          .then((res) => { if (res.data) balancesRef.current = toBalanceMap(res.data.cards); })
-          .catch(() => {})
-          .finally(() => { balancesReadyRef.current = true; });
-      }
-
-      // ── Brightness boost ── maximize screen brightness for QR readability
-      // (HIG / Material best practice for scannable codes). Restore on blur.
-      // We override the WINDOW brightness (not system), then release it on blur
-      // via restoreSystemBrightnessAsync so the OS auto-brightness takes over again.
-      // A keep-alive re-applies max brightness if Android resets it (some OEMs
-      // revert window brightness when a system dialog/notification briefly takes
-      // focus). Throttled to every 8s with a concurrency guard to keep the JS↔native
-      // bridge idle and avoid frame drops while the user views the QR.
-      let brightnessKeepAlive: ReturnType<typeof setInterval> | null = null;
-      let brightnessApplying = false;
-      const applyBrightness = async () => {
-        if (brightnessApplying) return;
-        brightnessApplying = true;
-        try {
-          const current = await Brightness.getBrightnessAsync().catch(() => 0);
-          if (current < 0.98) await Brightness.setBrightnessAsync(1);
-          setBrightnessBoosted(true);
-        } catch { /* non-fatal */ }
-        finally { brightnessApplying = false; }
-      };
-      applyBrightness();
-      brightnessKeepAlive = setInterval(applyBrightness, 8000);
-
-      // ── Screen capture protection ── prevent screenshots/recordings of the
-      // QR token (anti-exfiltration). User can still share via the in-app
-      // button which generates a signed image deliberately.
-      ScreenCapture.preventScreenCaptureAsync('jitplus-qr').catch(() => {});
-
-      // Recover automatically when the connection comes back.
-      const unsubscribeNet = NetInfo.addEventListener((state) => {
-        const offline = state.isConnected === false;
-        setIsOffline(offline);
-        if (!offline && qrErrorRef.current === 'offline') {
-          setQrLoading(true);
-          fetchQrToken();
-        }
-      });
-
-      // Show GUID badge only if new-user flag is set
-      AsyncStorage.getItem('showGuidBadge').then((val) => {
-        if (val === '1') setShowGuidBadge(true);
-      });
-
-      return () => {
-        isFocusedRef.current = false;
-        setIsFocused(false);
-        unsubscribeNet();
-        // Stop the brightness keep-alive loop
-        if (brightnessKeepAlive) clearInterval(brightnessKeepAlive);
-        // Release the window brightness override → the OS auto-brightness /
-        // user-set system brightness immediately takes over again. This is
-        // more reliable than restoring a captured numeric value (which can
-        // fail to read on some Android OEMs).
-        Brightness.restoreSystemBrightnessAsync().catch(() => {});
-        setBrightnessBoosted(false);
-        ScreenCapture.allowScreenCaptureAsync('jitplus-qr').catch(() => {});
-      };
-    }, [fetchQrToken])
-  );
-
-  // Auto-refresh v2 tokens ~10s before expiry while the screen is focused.
-  // `qrValue` is a dependency so every new token restarts the countdown bar too.
-  const refreshDelayMs = useMemo(
-    () => (qrExpiresAt ? getRefreshDelayS(qrExpiresAt) * 1000 : 0),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [qrExpiresAt, qrValue],
-  );
-  useEffect(() => {
-    if (!qrExpiresAt) return; // v1 permanent token → no refresh needed
-    const timer = setTimeout(() => {
-      if (isFocusedRef.current) fetchQrToken();
-    }, refreshDelayMs);
-    return () => clearTimeout(timer);
-  }, [qrExpiresAt, refreshDelayMs, fetchQrToken]);
+    retry();
+  }, [retry]);
 
   // Soft cross-fade when the code is renewed, so the change is visible but calm.
   const [qrOpacity] = useState(() => new Animated.Value(1));
@@ -313,59 +106,6 @@ export default function QRScreen() {
     prevQrRef.current = qrValue;
   }, [qrValue, qrOpacity]);
 
-  // ── Real-time scan confirmation ──
-  const qrExpiresAtRef = useRef<number | null>(null);
-  useEffect(() => { qrExpiresAtRef.current = qrExpiresAt; }, [qrExpiresAt]);
-  const recentScansRef = useRef(new Map<string, number>());
-
-  const showScanEvent = useCallback((ev: StampsEvent) => {
-    balancesRef.current?.set(ev.merchantId, ev.newBalance);
-    const key = `${ev.merchantId}:${ev.type}:${ev.newBalance}`;
-    const now = Date.now();
-    const seenAt = recentScansRef.current.get(key);
-    if (seenAt && now - seenAt < SCAN_DEDUPE_MS) return;
-    recentScansRef.current.set(key, now);
-
-    const card = cardsRef.current?.find((c) => c.merchantId === ev.merchantId);
-    setShowActionMenu(false);
-    setSuccessGoal(card ? getCardProgress(card).goal : null);
-    setSuccessEvent({ ...ev, merchantName: ev.merchantName || card?.merchant?.nomBoutique || '' });
-    // v2 tokens are single-use: get the next one ready straight away.
-    if (qrExpiresAtRef.current) fetchQrToken();
-  }, [fetchQrToken]);
-
-  // Source 1: WebSocket / foreground push (both land in the ws store).
-  useEffect(() => useWsStore.subscribe((state, prev) => {
-    const ev = state.lastStampsEvent;
-    if (!ev || ev === prev.lastStampsEvent || !isFocusedRef.current) return;
-    if (ev.receivedAt < focusedAtRef.current) return;
-    // Manual balance corrections from the merchant back-office aren't a scan.
-    if (ev.type === 'ADJUST_STAMPS') return;
-    showScanEvent(ev);
-  }), [showScanEvent]);
-
-  // Source 2: a card balance changed in the polled overview.
-  useEffect(() => {
-    const cards = stampsOverview?.cards;
-    if (!cards) return;
-    const previous = balancesRef.current;
-    balancesRef.current = toBalanceMap(cards);
-    if (!previous || !balancesReadyRef.current || !isFocusedRef.current) return;
-    const changed = cards.find((c) => (c.balance ?? 0) !== (previous.get(c.merchantId) ?? 0));
-    if (!changed) return;
-    const before = previous.get(changed.merchantId) ?? 0;
-    const after = changed.balance ?? 0;
-    showScanEvent({
-      clientId: changed.clientId,
-      merchantId: changed.merchantId,
-      merchantName: changed.merchant?.nomBoutique ?? '',
-      stamps: Math.abs(after - before),
-      newBalance: after,
-      type: after > before ? 'EARN_STAMPS' : 'REDEEM_REWARD',
-      receivedAt: Date.now(),
-    });
-  }, [stampsOverview, showScanEvent]);
-
   const handleDismissSuccess = useCallback(() => setSuccessEvent(null), []);
 
   const handleScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -373,72 +113,15 @@ export default function QRScreen() {
     setIsScrolled((prev) => (prev === scrolled ? prev : scrolled));
   }, []);
 
-  /** Capture the loyalty card as a PNG tmpfile via ViewShot. Returns null on failure.
-   *  Silent: each caller shows its own message when capture is impossible. */
-  const captureCard = useCallback(async (): Promise<string | null> => {
-    if (!ViewShot) return null;
-    try {
-      const uri = await qrViewRef.current?.capture?.();
-      if (!uri) { Alert.alert(t('common.error'), t('qr.captureError')); return null; }
-      return uri;
-    } catch (error) {
-      if (__DEV__) console.error('Capture error:', error);
-      Alert.alert(t('common.error'), t('qr.captureError'));
-      return null;
-    }
-  }, [t]);
-
-  const handleShareQR = useCallback(async () => {
-    setShowActionMenu(false);
-    haptic(HapticStyle.Medium);
-    if (!ViewShot) {
-      Alert.alert(t('qr.sharingUnavailable'), t('qr.sharingUnavailableMsg'));
-      return;
-    }
-    const uri = await captureCard();
-    if (!uri) return;
-    try {
-      const isAvailable = await Sharing.isAvailableAsync();
-      if (!isAvailable) { Alert.alert(t('qr.sharingUnavailable'), t('qr.sharingUnavailableMsg')); return; }
-      await Sharing.shareAsync(uri, { mimeType: 'image/png', dialogTitle: t('qr.shareDialogTitle'), UTI: 'public.png' });
-    } catch (error) {
-      if (__DEV__) console.error('Share error:', error);
-      Alert.alert(t('common.error'), t('qr.shareError'));
-    }
-  }, [captureCard, t]);
-
-  /** Save the captured loyalty card to the device photo gallery (Android + iOS).
-   *  Uses add-only (writeOnly) permission — the app never reads the library. */
-  const handleSaveToGallery = useCallback(async () => {
-    setShowActionMenu(false);
-    haptic(HapticStyle.Medium);
-    if (!MediaLibrary || !ViewShot) {
-      Alert.alert(t('qr.saveUnavailable'), t('qr.saveUnavailableMsg'));
-      return;
-    }
-    const uri = await captureCard();
-    if (!uri) return;
-    try {
-      const perm = await MediaLibrary.requestPermissionsAsync(true);
-      if (!perm.granted) {
-        Alert.alert(t('qr.permissionDeniedTitle'), t('qr.permissionDeniedMsg'));
-        return;
-      }
-      await MediaLibrary.saveToLibraryAsync(uri);
-      hapticSuccess();
-      Alert.alert(t('qr.savedTitle'), t('qr.savedMsg'));
-    } catch (error) {
-      if (__DEV__) console.error('Save to gallery error:', error);
-      Alert.alert(t('common.error'), t('qr.saveError'));
-    }
-  }, [captureCard, t]);
+  const closeActionMenu = useCallback(() => setShowActionMenu(false), []);
+  const handleShareQR = useCallback(() => { setShowActionMenu(false); share(); }, [share]);
+  const handleSaveToGallery = useCallback(() => { setShowActionMenu(false); saveToGallery(); }, [saveToGallery]);
 
   const handleCloseGuidBadge = useCallback(() => {
     haptic(HapticStyle.Light);
     setShowGuidBadge(false);
-    AsyncStorage.setItem('showGuidBadge', '0');
+    AsyncStorage.setItem('showGuidBadge', '0').catch(() => {});
   }, []);
-
   if (isGuest) return <GuestGuard />;
 
   const fullName = client ? `${client.prenom || ''} ${client.nom || ''}`.trim() || t('qr.client') : t('qr.client');
@@ -451,7 +134,7 @@ export default function QRScreen() {
     if (qrLoading) {
       return (
         <View style={styles.qrState}>
-          <ActivityIndicator size="large" color={palette.violet} />
+          <StarLoader size={88} tone="light" />
           <Text style={[styles.qrStateHint, { fontFamily: fonts.medium }]}>{t('qr.generating')}</Text>
         </View>
       );
@@ -655,55 +338,16 @@ export default function QRScreen() {
           </View>
         </FadeInView>
       </ScrollView>
-
-      {/* Action menu — Share + Save to gallery (bottom sheet) */}
-      <Modal
+      <QrActionSheet
         visible={showActionMenu}
-        transparent
-        animationType="fade"
-        statusBarTranslucent
-        onRequestClose={() => setShowActionMenu(false)}
-      >
-        <View style={styles.menuOverlay}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowActionMenu(false)} accessibilityRole="button" accessibilityLabel={t('common.close')} />
-          <View style={[styles.menuSheet, { backgroundColor: theme.bgCard, paddingBottom: insets.bottom + hp(16) }]}>
-            <View style={[styles.menuHandle, { backgroundColor: theme.border }]} />
-            <Text style={[styles.menuTitle, { color: theme.text, fontFamily: fonts.bold }]}>{t('qr.actionsTitle')}</Text>
-
-            <TouchableOpacity
-              style={[styles.menuRow, { backgroundColor: theme.bgInput }]}
-              onPress={handleShareQR}
-              activeOpacity={0.75}
-              accessibilityRole="button"
-              accessibilityLabel={t('qr.shareAccessibility')}
-            >
-              <View style={[styles.menuIcon, { backgroundColor: theme.primaryBg }]}>
-                <Share2 size={ms(18)} color={theme.primary} strokeWidth={2} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.menuRowTitle, { color: theme.text, fontFamily: fonts.semibold }]}>{t('qr.shareTitle')}</Text>
-                <Text style={[styles.menuRowSub, { color: theme.textMuted, fontFamily: fonts.regular }]}>{t('qr.shareSubtitle')}</Text>
-              </View>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.menuRow, { backgroundColor: theme.bgInput }]}
-              onPress={handleSaveToGallery}
-              activeOpacity={0.75}
-              accessibilityRole="button"
-              accessibilityLabel={t('qr.saveAccessibility')}
-            >
-              <View style={[styles.menuIcon, { backgroundColor: theme.primaryBg }]}>
-                <Download size={ms(18)} color={theme.primary} strokeWidth={2} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.menuRowTitle, { color: theme.text, fontFamily: fonts.semibold }]}>{t('qr.saveTitle')}</Text>
-                <Text style={[styles.menuRowSub, { color: theme.textMuted, fontFamily: fonts.regular }]}>{t('qr.saveSubtitle')}</Text>
-              </View>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+        bottomInset={insets.bottom}
+        theme={theme}
+        fonts={fonts}
+        t={t}
+        onClose={closeActionMenu}
+        onShare={handleShareQR}
+        onSave={handleSaveToGallery}
+      />
 
       <QrSuccessOverlay event={successEvent} goal={successGoal} onDismiss={handleDismissSuccess} theme={theme} fonts={fonts} t={t} />
     </View>
@@ -803,19 +447,4 @@ const styles = StyleSheet.create({
   stepNumText: { color: '#fff', fontSize: ms(9) },
   stepLabel: { fontSize: ms(11), textAlign: 'center', lineHeight: ms(15) },
 
-  // Action menu (bottom sheet)
-  menuOverlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.5)', justifyContent: 'flex-end' },
-  menuSheet: {
-    borderTopLeftRadius: radius['2xl'], borderTopRightRadius: radius['2xl'],
-    paddingHorizontal: wp(20), paddingTop: hp(10), gap: hp(10),
-  },
-  menuHandle: { width: wp(40), height: ms(5), borderRadius: 999, alignSelf: 'center', marginBottom: hp(6) },
-  menuTitle: { fontSize: fontSize.lg, marginBottom: hp(4), letterSpacing: -0.2 },
-  menuRow: {
-    flexDirection: 'row', alignItems: 'center', gap: wp(14),
-    paddingVertical: hp(12), paddingHorizontal: wp(12), borderRadius: radius.lg,
-  },
-  menuIcon: { width: ms(42), height: ms(42), borderRadius: ms(13), alignItems: 'center', justifyContent: 'center' },
-  menuRowTitle: { fontSize: fontSize.md },
-  menuRowSub: { fontSize: fontSize.xs, marginTop: hp(2) },
 });

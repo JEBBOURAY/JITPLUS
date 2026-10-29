@@ -40,6 +40,8 @@ const none: GuideDoneState = {
   reward: false,
   message: false,
 };
+const state = (done: GuideDoneState, isTeamMember: boolean) => ({ ...computeGuideProgress(done, isTeamMember), ready: true });
+
 const all: GuideDoneState = {
   program: true,
   logo: true,
@@ -81,7 +83,7 @@ describe('JitPlusGuideSheet', () => {
   beforeEach(() => jest.clearAllMocks());
 
   it('shows the progress and sends the footer to the next step', () => {
-    jest.mocked(useGuideProgress).mockReturnValue(computeGuideProgress({ ...none, program: true, logo: true, shop: true }, false));
+    jest.mocked(useGuideProgress).mockReturnValue(state({ ...none, program: true, logo: true, shop: true }, false));
     const { getByText, getByLabelText } = render(<JitPlusGuideSheet {...props} />);
     expect(getByText('home.guideProgress(3,7)')).toBeTruthy();
     fireEvent.press(getByLabelText('home.guideNextCta(home.guideStepInviteCta)'));
@@ -89,14 +91,14 @@ describe('JitPlusGuideSheet', () => {
   });
 
   it('runs a step action from its card', () => {
-    jest.mocked(useGuideProgress).mockReturnValue(computeGuideProgress(none, false));
+    jest.mocked(useGuideProgress).mockReturnValue(state(none, false));
     const { getByLabelText } = render(<JitPlusGuideSheet {...props} />);
     fireEvent.press(getByLabelText('home.guideStepMessageCta'));
     expect(props.onStepAction).toHaveBeenCalledWith('message');
   });
 
   it('offers the guided tour once everything is done', () => {
-    jest.mocked(useGuideProgress).mockReturnValue(computeGuideProgress(all, false));
+    jest.mocked(useGuideProgress).mockReturnValue(state(all, false));
     const { getByText, getByLabelText } = render(<JitPlusGuideSheet {...props} />);
     expect(getByText('home.guideAllDone')).toBeTruthy();
     fireEvent.press(getByLabelText('home.guideTourCta'));
@@ -104,7 +106,7 @@ describe('JitPlusGuideSheet', () => {
   });
 
   it('hides actions of owner-only steps for a team member', () => {
-    jest.mocked(useGuideProgress).mockReturnValue(computeGuideProgress(none, true));
+    jest.mocked(useGuideProgress).mockReturnValue(state(none, true));
     const { queryByLabelText, getAllByText } = render(<JitPlusGuideSheet {...props} />);
     expect(queryByLabelText('home.guideStepProgramCta')).toBeNull();
     expect(queryByLabelText('home.guideStepLogoCta')).toBeNull();

@@ -1,8 +1,9 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, BackHandler } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { View, StyleSheet, ActivityIndicator, TouchableOpacity, BackHandler } from 'react-native';
+import { Text } from '@/components/AppText';
+import StarLoader from '@/components/StarLoader';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as SecureStore from 'expo-secure-store';
 import { CheckCircle2, AlertCircle, Clock, Ticket } from 'lucide-react-native';
 
 import { useTheme } from '@/contexts/ThemeContext';
@@ -12,15 +13,15 @@ import { api } from '@/services/api';
 import { useQueryClient } from '@tanstack/react-query';
 import { invalidateScratchCards, usePendingScratchCards } from '@/hooks/useScratchHooks';
 import { queryKeys } from '@/hooks/useQueryHooks';
-
-const PENDING_CLAIM_KEY = 'pendingClaimToken';
-const TOKEN_RE = /^[A-Za-z0-9_-]{16,64}$/;
+import { clearPendingClaim, savePendingClaim } from '@/services/pendingClaim';
+import { isClaimToken } from '@/utils/ids';
 
 type ConsumeResult = { success: true; alreadyConsumed: boolean; mergedCards: number; pendingScratchCards?: number; merchant: { id: string; nom: string | null } };
 
 type Screen =
   | { kind: 'loading' }
   | { kind: 'login-required' }
+  | { kind: 'confirm' }
   | { kind: 'success'; result: ConsumeResult }
   | { kind: 'error'; messageKey: 'errorExpired' | 'errorInvalid' | 'errorAlreadyUsed' };
 
@@ -35,7 +36,7 @@ export default function ClaimScreen() {
   const [screen, setScreen] = useState<Screen>({ kind: 'loading' });
 
   const token = typeof params.token === 'string' ? params.token : '';
-  const tokenValid = TOKEN_RE.test(token);
+  const tokenValid = isClaimToken(token);
   // Guards against duplicate consume calls. Without this, an unrelated client
   // reference change (e.g. Zustand store re-emit after a profile refetch) would
   // re-run the consume effect, hit the backend a second time and fall into the
@@ -58,14 +59,12 @@ export default function ClaimScreen() {
     setScreen({ kind: 'loading' });
     try {
       const result = await api.consumeClaim(token);
-      // Clean up the stored pending token (may have been stashed before login).
-      try { await SecureStore.deleteItemAsync(PENDING_CLAIM_KEY); } catch {}
       // The merge moved cards and scratch cards onto this account; cached lists predate it.
       invalidateScratchCards(queryClient);
       queryClient.invalidateQueries({ queryKey: queryKeys.stamps });
       setScreen({ kind: 'success', result });
-    } catch (err: any) {
-      const status = err?.response?.status;
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
       if (status === 410) setScreen({ kind: 'error', messageKey: 'errorExpired' });
       else if (status === 403) setScreen({ kind: 'error', messageKey: 'errorAlreadyUsed' });
       else setScreen({ kind: 'error', messageKey: 'errorInvalid' });
@@ -75,7 +74,9 @@ export default function ClaimScreen() {
     }
   }, [token, tokenValid, queryClient]);
 
-  // Stash token + bounce to welcome if not authenticated; otherwise consume.
+  // Stash the token if not authenticated; otherwise ask before merging. Any app
+  // or web page can open jitplus://claim, and on a shared phone the account
+  // logged in now may not be the one the link was sent to.
   useEffect(() => {
     if (!tokenValid) {
       setScreen({ kind: 'error', messageKey: 'errorInvalid' });
@@ -83,15 +84,22 @@ export default function ClaimScreen() {
     }
     if (!client) {
       (async () => {
-        try { await SecureStore.setItemAsync(PENDING_CLAIM_KEY, token); } catch {}
+        await savePendingClaim(token);
         setScreen({ kind: 'login-required' });
       })();
       return;
     }
-    void consume();
+    // The token now lives in this screen's params: a declined or failed claim
+    // must not reopen on the next login.
+    void clearPendingClaim();
+    if (consumedRef.current !== token) setScreen({ kind: 'confirm' });
     // Depend on client?.id (not the whole object) so unrelated store mutations
-    // don't re-trigger the consume effect.
-  }, [client?.id, consume, token, tokenValid]);
+    // don't reset the screen.
+  }, [client?.id, token, tokenValid]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const accountName = client
+    ? `${client.prenom ?? ''} ${client.nom ?? ''}`.trim() || t('qr.client')
+    : '';
 
   const goHome = useCallback(() => {
     router.replace('/(tabs)');
@@ -121,7 +129,7 @@ export default function ClaimScreen() {
       case 'loading':
         return (
           <>
-            <ActivityIndicator size="large" color={theme.primary} />
+            <StarLoader />
             <Text style={[styles.body, { color: theme.textMuted }]}>{t('claim.loading')}</Text>
           </>
         );
@@ -137,6 +145,26 @@ export default function ClaimScreen() {
               accessibilityRole="button"
             >
               <Text style={styles.btnPrimaryText}>{t('claim.loginPromptCta')}</Text>
+            </TouchableOpacity>
+          </>
+        );
+      case 'confirm':
+        return (
+          <>
+            <Ticket size={56} color={theme.primary} />
+            <Text style={[styles.title, { color: theme.text }]}>{t('claim.confirmTitle')}</Text>
+            <Text style={[styles.body, { color: theme.textMuted }]}>
+              {t('claim.confirmBody', { name: accountName })}
+            </Text>
+            <TouchableOpacity
+              style={[styles.btnPrimary, { backgroundColor: theme.primary }]}
+              onPress={() => { void consume(); }}
+              accessibilityRole="button"
+            >
+              <Text style={styles.btnPrimaryText}>{t('claim.confirmCta')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.btnSecondary} onPress={goHome} accessibilityRole="button">
+              <Text style={[styles.btnSecondaryText, { color: theme.textMuted }]}>{t('common.cancel')}</Text>
             </TouchableOpacity>
           </>
         );
@@ -217,6 +245,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   btnPrimaryText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  btnSecondary: { paddingHorizontal: 28, paddingVertical: 10 },
+  btnSecondaryText: { fontWeight: '600', fontSize: 15 },
   scratchNote: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12, borderWidth: 1,

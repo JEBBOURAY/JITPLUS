@@ -168,6 +168,8 @@ export function handleFcmDataPayload(
     case 'feature_highlight':
     case 'friday_campaign':
     case 'admin_broadcast':
+    // The daily deals digest also writes an entry in the notifications tab.
+    case 'deals_digest':
       optimisticIncrementUnread(queryClient);
       queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
       break;
@@ -238,7 +240,7 @@ export function pushStampsEventFromNotification(
 
 /**
  * Invalidate notification-related caches when the app returns to foreground
- * after being in background for more than 2 minutes.
+ * after being in background for more than 5 minutes.
  * Avoids unnecessary refetches for quick app switches (e.g. phone calls).
  */
 export function useAppForegroundRefresh() {

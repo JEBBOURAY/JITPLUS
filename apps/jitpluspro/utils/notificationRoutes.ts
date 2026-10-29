@@ -9,14 +9,15 @@ const ACTION_ROUTES: Record<string, Href> = {
   open_referral: '/referral',
   open_settings: '/settings',
   open_security: '/security',
-  open_logo: '/(tabs)/account',
+  open_logo: '/account',
   open_scan: '/(tabs)/scan',
   open_plan: '/plan',
   open_dashboard: '/(tabs)',
-  open_clients: '/(tabs)/activity',
+  open_clients: '/(tabs)/clients',
   open_messages: '/(tabs)/messages',
   open_notifications: '/admin-notifications',
   open_admin_notifications: '/admin-notifications',
+  open_deals: '/deals',
 };
 
 export function routeForAction(action: string | null | undefined): Href | null {

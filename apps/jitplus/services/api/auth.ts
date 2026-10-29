@@ -6,6 +6,12 @@ import { persistTokens } from './storage';
 let _lastPushToken: string | null = null;
 let _lastPushTokenAt = 0;
 
+/** Must run on every logout: the dedup state belongs to the session, not the device. */
+export function resetPushTokenDedup(): void {
+  _lastPushToken = null;
+  _lastPushTokenAt = 0;
+}
+
 export function createAuthMethods(http: AxiosInstance) {
   return {
     async sendOtpEmail(email: string, isRegister = false): Promise<OtpResponse> {
@@ -65,8 +71,14 @@ export function createAuthMethods(http: AxiosInstance) {
       // loop that spams /push-token and triggers backend throttling (429).
       // Skip if same token was just sent (any time) or if a different one
       // was sent in the last 10s (collapse burst on app resume / re-renders).
+      // An empty token unregisters the device and must always reach the backend.
+      if (!pushToken) {
+        resetPushTokenDedup();
+        const { data } = await http.patch('/client-auth/push-token', { pushToken });
+        return data;
+      }
       const now = Date.now();
-      if (pushToken && pushToken === _lastPushToken) {
+      if (pushToken === _lastPushToken) {
         return { success: true };
       }
       if (now - _lastPushTokenAt < 10_000) {
@@ -74,8 +86,14 @@ export function createAuthMethods(http: AxiosInstance) {
       }
       _lastPushToken = pushToken;
       _lastPushTokenAt = now;
-      const { data } = await http.patch('/client-auth/push-token', { pushToken });
-      return data;
+      try {
+        const { data } = await http.patch('/client-auth/push-token', { pushToken });
+        return data;
+      } catch (error) {
+        // Forget the failed attempt so a retry is not swallowed as a duplicate.
+        if (_lastPushToken === pushToken) resetPushTokenDedup();
+        throw error;
+      }
     },
     /**
      * Consume a Quick-Add claim token (WhatsApp magic link). Merges the

@@ -4,7 +4,9 @@
  * - Expo Go SDK 51+: react-native-maps n'est plus inclus → graceful fallback
  */
 import React, { forwardRef, useEffect, useState } from 'react';
-import { Platform, View, Text, StyleSheet, NativeModules } from 'react-native';
+import { Platform, View, StyleSheet, NativeModules } from 'react-native';
+import { Text } from '@/components/AppText';
+import { requireOptionalNativeModule } from 'expo';
 import type MapViewType from 'react-native-maps';
 import type { Marker as MarkerType, MapViewProps, MapMarkerProps } from 'react-native-maps';
 import { wp, ms } from '@/utils/responsive';
@@ -15,6 +17,29 @@ let RNMarker: typeof MarkerType | null = null;
 let RN_PROVIDER_GOOGLE: 'google' | null = null;
 export let MAPS_AVAILABLE = false;
 
+/**
+ * Google Maps on Android throws a native "API key not found" exception
+ * (uncatchable from JS, kills the app) when the manifest has no key. The
+ * react-native-maps config plugin deletes that key when it is listed without
+ * `androidGoogleMapsApiKey`. Read the app config embedded in the binary at
+ * build time: `Constants.expoConfig` comes from the OTA manifest instead, and
+ * strips `android.config`, so it cannot tell which binary is installed.
+ */
+function isAndroidMapsKeyMissing(): boolean {
+  if (Platform.OS !== 'android') return false;
+  try {
+    const raw = requireOptionalNativeModule<{ manifest?: string | Record<string, unknown> }>('ExponentConstants')?.manifest;
+    if (!raw) return false;
+    const embedded = (typeof raw === 'string' ? JSON.parse(raw) : raw) as { plugins?: unknown[] };
+    const entry = embedded.plugins?.find((p) => (Array.isArray(p) ? p[0] : p) === 'react-native-maps');
+    if (!entry) return false;
+    const options = Array.isArray(entry) ? (entry[1] as { androidGoogleMapsApiKey?: string } | undefined) : undefined;
+    return !options?.androidGoogleMapsApiKey;
+  } catch {
+    return false;
+  }
+}
+
 try {
   const Maps = require('react-native-maps') as typeof import('react-native-maps');
   RNMapView = Maps.default;
@@ -22,7 +47,7 @@ try {
   RN_PROVIDER_GOOGLE = Maps.PROVIDER_GOOGLE;
   // Only mark as available if the actual components exist —
   // Expo Go SDK 53+ may partially resolve the module without throwing.
-  MAPS_AVAILABLE = !!RNMapView && !!RNMarker;
+  MAPS_AVAILABLE = !!RNMapView && !!RNMarker && !isAndroidMapsKeyMissing();
 } catch {
   // react-native-maps unavailable (Expo Go SDK 51+)
   MAPS_AVAILABLE = false;

@@ -2,21 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Storage } from '@google-cloud/storage';
 import { extname } from 'path';
-import { randomBytes } from 'crypto';
 import { IStorageProvider } from '../common/interfaces';
-
-/** Sanitize a filename: keep only safe chars, strip path separators */
-function safeFilename(original: string): string {
-  const ext = extname(original).toLowerCase();
-  const base = original
-    .slice(0, original.length - ext.length)
-    .replace(/[^a-z0-9_\-]/gi, '_')
-    .replace(/_+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(0, 80) || 'file';
-  const suffix = randomBytes(4).toString('hex');
-  return `${base}_${suffix}${ext}`;
-}
+import { buildUploadKey, isKeyOwnedBy } from './storage-keys';
 
 @Injectable()
 export class StorageService implements IStorageProvider {
@@ -33,20 +20,14 @@ export class StorageService implements IStorageProvider {
     this.bucketName = this.configService.get<string>('GCP_STORAGE_BUCKET_NAME', '');
   }
 
-  private static readonly ALLOWED_FOLDERS = new Set(['logos', 'products', 'stores', 'covers', 'gallery', 'rewards', 'card-backgrounds']);
-
   /**
    * Upload un fichier vers Google Cloud Storage
    * @param file Le fichier uploadé via Multer (buffer, mimetype, originalname)
    * @param folder Le dossier de destination dans le bucket (ex: 'logos', 'products')
+   * @param ownerId Identifiant du commerçant propriétaire (préfixe de la clé)
    * @returns L'URL publique du fichier
    */
-  async uploadFile(file: Express.Multer.File, folder: string): Promise<string> {
-    // Prevent path traversal — only allow known folder names
-    if (!StorageService.ALLOWED_FOLDERS.has(folder)) {
-      throw new Error(`Dossier non autorisé : ${folder}`);
-    }
-
+  async uploadFile(file: Express.Multer.File, folder: string, ownerId: string): Promise<string> {
     const bucket = this.storage.bucket(this.bucketName);
     
     // Build a safe, human-readable filename from originalname + short random suffix
@@ -55,7 +36,8 @@ export class StorageService implements IStorageProvider {
     if (!ALLOWED_EXT.has(extension)) {
       throw new Error(`Extension de fichier non autorisée : ${extension}`);
     }
-    const fileName = `${folder}/${safeFilename(file.originalname)}`;
+    // Validates the folder (no path traversal) and the owner segment.
+    const fileName = buildUploadKey(folder, ownerId, file.originalname);
     const fileUpload = bucket.file(fileName);
 
     const stream = fileUpload.createWriteStream({
@@ -87,6 +69,16 @@ export class StorageService implements IStorageProvider {
 
       stream.end(file.buffer);
     });
+  }
+
+  private get publicUrlPrefix(): string {
+    return `https://storage.googleapis.com/${this.bucketName}/`;
+  }
+
+  isOwnedBy(fileUrl: string, ownerId: string): boolean {
+    const prefix = this.publicUrlPrefix;
+    return typeof fileUrl === 'string' && fileUrl.startsWith(prefix)
+      && isKeyOwnedBy(fileUrl.slice(prefix.length), ownerId);
   }
 
   async deleteFile(fileUrl: string): Promise<void> {

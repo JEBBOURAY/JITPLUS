@@ -2,17 +2,20 @@ import React from 'react';
 import { View, Text, StyleSheet, Image, type TextProps } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import QRCode from 'react-native-qrcode-svg';
-import { Gift, ScanLine, Stamp, Ticket, Clock } from 'lucide-react-native';
+import { Clock } from 'lucide-react-native';
+import { JitGames, JitGift, JitScan, JitStamp } from '@/components/icons';
 import MerchantLogo from '@/components/MerchantLogo';
 import { palette } from '@/contexts/ThemeContext';
 import type { useLanguage } from '@/contexts/LanguageContext';
 import type { PlvProgram } from '@/components/plv/usePlvProgram';
 import { CLIENT_APP_ANDROID_URL, CLIENT_APP_IOS_URL } from '@/constants/app';
+import { font } from '@/constants/design';
+import { HEX_RE } from '@/components/stores/brand';
 import type { LucideIcon } from '@/components/home/PromoSheet';
 
 export type PlvTemplateId = 'classic' | 'window' | 'reward' | 'counter';
 
-export interface PlvTemplateDef {
+interface PlvTemplateDef {
   id: PlvTemplateId;
   nameKey: string;
   useKey: string;
@@ -33,7 +36,7 @@ export const PLV_TEMPLATES: readonly PlvTemplateDef[] = [
   { id: 'counter', nameKey: 'home.clientPlvTplCounterName', useKey: 'home.clientPlvTplCounterUse', swatch: ['#FFFFFF', palette.violet], ratio: 1 },
 ];
 
-export interface PlvPosterProps {
+interface PlvPosterProps {
   template: PlvTemplateId;
   width: number;
   merchantName: string;
@@ -43,9 +46,6 @@ export interface PlvPosterProps {
   program: PlvProgram;
   t: ReturnType<typeof useLanguage>['t'];
 }
-
-
-const HEX_RE = /^#[0-9a-f]{6}$/i;
 
 function shade(hex: string, amount: number): string {
   const n = parseInt(hex.slice(1), 16);
@@ -181,7 +181,7 @@ function StampTrack({ count, available, k }: { count: number; available: number;
               isGift && styles.trackGift,
             ]}
           >
-            {isGift && d >= 12 ? <Gift size={d * 0.6} color="#78350F" strokeWidth={2.4} /> : null}
+            {isGift && d >= 12 ? <JitGift size={d * 0.6} color="#78350F" strokeWidth={2.4} /> : null}
           </View>
         );
       })}
@@ -210,9 +210,9 @@ function PlvPoster({ template, width, merchantName, logoUrl, brandColor, program
 
   if (template === 'window') {
     const rules = [
-      { Icon: Stamp, text: program.earnLine },
-      { Icon: Gift, text: program.rewardHeadline },
-      ...(program.wheelLine ? [{ Icon: Ticket, text: program.wheelLine }] : []),
+      { Icon: JitStamp, text: program.earnLine },
+      { Icon: JitGift, text: program.rewardHeadline },
+      ...(program.wheelLine ? [{ Icon: JitGames, text: program.wheelLine }] : []),
     ];
     return (
       <LinearGradient
@@ -264,7 +264,7 @@ function PlvPoster({ template, width, merchantName, logoUrl, brandColor, program
           style={[styles.rewardBlock, { padding: blockPad, borderRadius: 18 * k, marginTop: 10 * k }]}
         >
           <View style={[styles.rewardLabelRow, { gap: 5 * k }]}>
-            <Gift size={12 * k} color={brandAccent} strokeWidth={2.4} />
+            <JitGift size={12 * k} color={brandAccent} strokeWidth={2.4} />
             <PText style={[styles.rewardLabel, { color: brandAccent, fontSize: 9.5 * k }]}>{t('home.clientPlvRewardLabel').toUpperCase()}</PText>
           </View>
           <PText style={[styles.bigTitle, { color: '#FFFFFF', fontSize: 20 * k, lineHeight: 25 * k, marginTop: 6 * k }]} numberOfLines={2}>
@@ -283,10 +283,10 @@ function PlvPoster({ template, width, merchantName, logoUrl, brandColor, program
               <PText style={[styles.extrasLabel, { fontSize: 9 * k }]}>{t('home.clientPlvAlsoLabel').toUpperCase()}</PText>
             ) : null}
             {extras.map((r, i) => (
-              <RuleLine key={i} Icon={Gift} text={r.label} color="#78350F" iconColor="#D97706" k={k} />
+              <RuleLine key={i} Icon={JitGift} text={r.label} color="#78350F" iconColor="#D97706" k={k} />
             ))}
             {program.wheelLine ? (
-              <RuleLine Icon={Ticket} text={program.wheelLine} color="#78350F" iconColor="#B45309" k={k} bold />
+              <RuleLine Icon={JitGames} text={program.wheelLine} color="#78350F" iconColor="#B45309" k={k} bold />
             ) : null}
           </View>
         ) : null}
@@ -302,7 +302,7 @@ function PlvPoster({ template, width, merchantName, logoUrl, brandColor, program
     return (
       <View style={[styles.poster, styles.posterBordered, { width, minHeight, paddingBottom: 14 * k }]}>
         <View style={[styles.counterBand, { backgroundColor: brand, paddingVertical: 12 * k, paddingHorizontal: 16 * k }]}>
-          <ScanLine size={20 * k} color="#FFFFFF" strokeWidth={2.4} />
+          <JitScan size={20 * k} color="#FFFFFF" strokeWidth={2.4} />
           <PText style={[styles.counterBandText, { fontSize: 20 * k }]}>{t('home.clientPlvCounterBand').toUpperCase()}</PText>
         </View>
         <QrPair size={Math.floor(qrSize * 0.9)} labelColor="#334155" borderColor="#E2E8F0" marginV={10 * k} />
@@ -346,7 +346,7 @@ function PlvPoster({ template, width, merchantName, logoUrl, brandColor, program
           </View>
         ))}
         {program.wheelLine ? (
-          <RuleLine Icon={Ticket} text={program.wheelLine} color="#334155" iconColor={brand} k={k} bold />
+          <RuleLine Icon={JitGames} text={program.wheelLine} color="#334155" iconColor={brand} k={k} bold />
         ) : null}
       </View>
       <View style={[styles.classicFooter, { gap: 5 * k, marginTop: 8 * k }]}>
@@ -379,26 +379,26 @@ const styles = StyleSheet.create({
   },
   logoBoxOnDark: { borderColor: 'rgba(255,255,255,0.25)' },
   logoFill: { width: '100%', height: '100%' },
-  cross: { fontFamily: 'Lexend_700Bold' },
+  cross: { fontFamily: font.bold },
 
   qrRow: { flexDirection: 'row', justifyContent: 'center', gap: 16 },
   qrCol: { alignItems: 'center' },
   qrTile: { borderWidth: 1, backgroundColor: '#FFFFFF' },
-  qrLabel: { marginTop: 5, fontFamily: 'Lexend_600SemiBold', textAlign: 'center' },
+  qrLabel: { marginTop: 5, fontFamily: font.semibold, textAlign: 'center' },
 
-  bigTitle: { alignSelf: 'stretch', fontFamily: 'Lexend_700Bold', textAlign: 'center', letterSpacing: -0.4 },
-  sub: { alignSelf: 'stretch', fontFamily: 'Lexend_400Regular', textAlign: 'center' },
-  merchantName: { alignSelf: 'stretch', fontFamily: 'Lexend_700Bold' },
-  footer: { fontFamily: 'Lexend_500Medium', textAlign: 'center', marginTop: 4 },
+  bigTitle: { alignSelf: 'stretch', fontFamily: font.bold, textAlign: 'center', letterSpacing: -0.4 },
+  sub: { alignSelf: 'stretch', fontFamily: font.regular, textAlign: 'center' },
+  merchantName: { alignSelf: 'stretch', fontFamily: font.bold },
+  footer: { fontFamily: font.medium, textAlign: 'center', marginTop: 4 },
   footerInline: { marginTop: 0, flexShrink: 1 },
 
   badge: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
-  badgeText: { color: '#1F2937', letterSpacing: 1.2, fontFamily: 'Lexend_700Bold' },
+  badgeText: { color: '#1F2937', letterSpacing: 1.2, fontFamily: font.bold },
 
   ruleLine: { flexDirection: 'row', alignItems: 'center', alignSelf: 'stretch' },
   // flex: 1 (not flexShrink) so Android never measures the text at zero width.
-  ruleText: { flex: 1, fontFamily: 'Lexend_500Medium' },
-  ruleTextBold: { fontFamily: 'Lexend_600SemiBold' },
+  ruleText: { flex: 1, fontFamily: font.medium },
+  ruleTextBold: { fontFamily: font.semibold },
 
   // Window
   windowPill: { borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.12)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)' },
@@ -406,17 +406,17 @@ const styles = StyleSheet.create({
   // Classic
   classicTopBar: { position: 'absolute', top: 0, left: 0, right: 0 },
   howBlock: { borderWidth: 1 },
-  howLabel: { letterSpacing: 1, fontFamily: 'Lexend_700Bold' },
+  howLabel: { letterSpacing: 1, fontFamily: font.bold },
   howRow: { flexDirection: 'row', alignItems: 'center' },
-  howText: { flex: 1, color: '#1F2937', fontFamily: 'Lexend_600SemiBold' },
+  howText: { flex: 1, color: '#1F2937', fontFamily: font.semibold },
   stepNum: { alignItems: 'center', justifyContent: 'center' },
-  stepNumText: { color: '#FFFFFF', fontFamily: 'Lexend_700Bold' },
+  stepNumText: { color: '#FFFFFF', fontFamily: font.bold },
   classicFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
 
   // Reward
   rewardBlock: { alignItems: 'center' },
   rewardLabelRow: { flexDirection: 'row', alignItems: 'center' },
-  rewardLabel: { letterSpacing: 1.2, fontFamily: 'Lexend_700Bold' },
+  rewardLabel: { letterSpacing: 1.2, fontFamily: font.bold },
   trackRow: { flexDirection: 'row', justifyContent: 'center' },
   trackSlot: {
     borderWidth: 1.5,
@@ -427,12 +427,12 @@ const styles = StyleSheet.create({
   },
   trackGift: { backgroundColor: palette.gold, borderColor: palette.gold },
   extrasBlock: { backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#FDE68A' },
-  extrasLabel: { color: '#B45309', letterSpacing: 1, fontFamily: 'Lexend_700Bold' },
+  extrasLabel: { color: '#B45309', letterSpacing: 1, fontFamily: font.bold },
 
   // Counter
   counterBand: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  counterBandText: { color: '#FFFFFF', fontFamily: 'Lexend_700Bold', letterSpacing: 1.5 },
+  counterBandText: { color: '#FFFFFF', fontFamily: font.bold, letterSpacing: 1.5 },
   counterFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
-  counterText: { color: '#1F2937', fontFamily: 'Lexend_700Bold' },
-  counterSub: { color: '#64748B', fontFamily: 'Lexend_500Medium', marginTop: 1 },
+  counterText: { color: '#1F2937', fontFamily: font.bold },
+  counterSub: { color: '#64748B', fontFamily: font.medium, marginTop: 1 },
 });

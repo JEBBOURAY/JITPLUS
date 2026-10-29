@@ -5,9 +5,10 @@
  */
 import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { api } from '@/services/api';
+import { isEntityId } from '@/utils/ids';
 import type { ClientCouponStatus, ScratchCardListStatus, ScratchResult } from '@/services/api/scratch';
-export type { ClientCouponStatus, ScratchCardListStatus, ScratchResult } from '@/services/api/scratch';
 import type { CouponDto, ScratchCardDto } from '@jitplus/shared/src/scratch';
+export type { ClientCouponStatus } from '@/services/api/scratch';
 
 export const scratchKeys = {
   cards: ['scratch', 'cards'] as const,
@@ -45,7 +46,8 @@ export function useScratchCard(cardId: string | undefined, enabled = true) {
   return useQuery<ScratchCardDto>({
     queryKey: scratchKeys.card(cardId ?? ''),
     queryFn: () => api.getScratchCard(cardId!),
-    enabled: enabled && !!cardId,
+    // Ids come from route params (links, notifications): never send a malformed one.
+    enabled: enabled && isEntityId(cardId),
     staleTime: 10 * 1000,
   });
 }
@@ -54,7 +56,7 @@ export function useScratchCardByCampaign(campaignId: string | undefined, enabled
   return useQuery<ScratchCardDto>({
     queryKey: scratchKeys.cardByCampaign(campaignId ?? ''),
     queryFn: () => api.getScratchCardByCampaign(campaignId!),
-    enabled: enabled && !!campaignId,
+    enabled: enabled && isEntityId(campaignId),
     staleTime: 10 * 1000,
     retry: false,
   });
@@ -101,7 +103,7 @@ export function useClientCoupon(couponId: string | undefined, enabled = true) {
   return useQuery<CouponDto>({
     queryKey: scratchKeys.coupon(couponId ?? ''),
     queryFn: () => api.getClientCoupon(couponId!),
-    enabled: enabled && !!couponId,
+    enabled: enabled && isEntityId(couponId),
     staleTime: 15 * 1000,
   });
 }

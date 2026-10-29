@@ -8,15 +8,23 @@ import {
   View, Text, TextInput, TouchableOpacity,
   ActivityIndicator, StyleSheet, Keyboard, Platform,
 } from 'react-native';
-import { Search, MapPin, X, Info } from 'lucide-react-native';
+import { Search, X, Info } from 'lucide-react-native';
+import { JitPin } from '@/components/icons';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useDir } from '@/hooks/useDir';
+import { font, icon } from '@/constants/design';
 import { getServerBaseUrl } from '@/services/api';
 import { logWarn } from '@/utils/devLogger';
 
 const DEBOUNCE_MS = 350;
 
-// ── Google Places Autocomplete types ──
+/** Pseudo-random Google Places session token: groups autocomplete + details calls for billing. */
+function newSessionToken(): string {
+  return Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
+}
+
+// Google Places Autocomplete types
 interface PlacePrediction {
   place_id: string;
   description: string;
@@ -58,6 +66,7 @@ export default function AddressAutocomplete({
 }: Props) {
   const theme = useTheme();
   const { t } = useLanguage();
+  const dir = useDir();
   const [predictions, setPredictions] = useState<PlacePrediction[]>([]);
   const [loading, setLoading] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
@@ -65,20 +74,15 @@ export default function AddressAutocomplete({
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const abortRef = useRef<AbortController | null>(null);
   const mountedRef = useRef(true);
-
-  // V4 UUID style pseudo-token for Google Places API Session Token (FinOps billing proxy)
-  const sessionTokenRef = useRef(Math.random().toString(36).substring(2, 15) + Date.now().toString(36));
+  // Created on first use, and renewed once a search ends with a place lookup.
+  const sessionTokenRef = useRef<string | null>(null);
+  const userLat = userLocation?.latitude;
+  const userLng = userLocation?.longitude;
 
   // Store geocode fallback results so we can retrieve coords on select
   const geoFallbackRef = useRef<Map<string, { lat: number; lng: number; address: string; city?: string; district?: string }>>(new Map());
 
   const fetchPredictions = useCallback(async (input: string) => {
-    if (input.trim().length < 3) {
-      setPredictions([]);
-      setShowDropdown(false);
-      return;
-    }
-
     // Cancel previous request
     abortRef.current?.abort();
     const controller = new AbortController();
@@ -88,16 +92,16 @@ export default function AddressAutocomplete({
     try {
       const params = new URLSearchParams({ input });
       if (ville) params.set('ville', ville);
-      if (userLocation?.latitude != null && userLocation?.longitude != null) {
-        params.set('lat', String(userLocation.latitude));
-        params.set('lng', String(userLocation.longitude));
+      if (userLat != null && userLng != null) {
+        params.set('lat', String(userLat));
+        params.set('lng', String(userLng));
       }
-      params.set('sessionToken', sessionTokenRef.current);
+      params.set('sessionToken', sessionTokenRef.current ??= newSessionToken());
       const url = `${getServerBaseUrl()}/geocode/autocomplete?${params}`;
       const res = await fetch(url, { signal: controller.signal });
       const json = await res.json();
 
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || controller.signal.aborted) return;
 
       if (json.predictions?.length > 0) {
         geoFallbackRef.current.clear();
@@ -111,7 +115,7 @@ export default function AddressAutocomplete({
         const geoRes = await fetch(geoUrl, { signal: controller.signal });
         const geoJson = await geoRes.json();
 
-        if (!mountedRef.current) return;
+        if (!mountedRef.current || controller.signal.aborted) return;
 
         if (geoJson.results?.length > 0) {
           // Convert geocode results to prediction-like items for the dropdown
@@ -156,9 +160,10 @@ export default function AddressAutocomplete({
         logWarn('AddressAutocomplete', 'fetch error:', e);
       }
     } finally {
-      if (mountedRef.current) setLoading(false);
+      // An aborted search was superseded: its successor owns the spinner.
+      if (mountedRef.current && !controller.signal.aborted) setLoading(false);
     }
-  }, [ville, userLocation, onNotFound]);
+  }, [ville, userLat, userLng, onNotFound]);
 
   // Debounced input handler
   const handleChangeText = useCallback((text: string) => {
@@ -173,7 +178,16 @@ export default function AddressAutocomplete({
     debounceRef.current = setTimeout(() => fetchPredictions(text), DEBOUNCE_MS);
   }, [onChangeText, fetchPredictions]);
 
+  // A pending debounce or in-flight search must not reopen the dropdown
+  // after a selection or a clear.
+  const cancelSearch = useCallback(() => {
+    clearTimeout(debounceRef.current);
+    abortRef.current?.abort();
+    setLoading(false);
+  }, []);
+
   const handleSelectPrediction = useCallback(async (prediction: PlacePrediction) => {
+    cancelSearch();
     Keyboard.dismiss();
     setShowDropdown(false);
     setPredictions([]);
@@ -196,12 +210,11 @@ export default function AddressAutocomplete({
 
     setLoading(true);
     try {
-      const url = `${getServerBaseUrl()}/geocode/place-details?placeId=${encodeURIComponent(prediction.place_id)}&sessionToken=${encodeURIComponent(sessionTokenRef.current)}`;
+      const url = `${getServerBaseUrl()}/geocode/place-details?placeId=${encodeURIComponent(prediction.place_id)}&sessionToken=${encodeURIComponent(sessionTokenRef.current ??= newSessionToken())}`;
       const res = await fetch(url);
       const json = await res.json();
 
-      // Regenerate session token after finalizing the search flow (FinOps)
-      sessionTokenRef.current = Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
+      sessionTokenRef.current = newSessionToken();
 
       if (!mountedRef.current) return;
 
@@ -230,10 +243,10 @@ export default function AddressAutocomplete({
     } finally {
       if (mountedRef.current) setLoading(false);
     }
-  }, [onChangeText, onSelect, onNotFound]);
+  }, [cancelSearch, onChangeText, onSelect, onNotFound]);
 
-  // Cleanup
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
       mountedRef.current = false;
       clearTimeout(debounceRef.current);
@@ -243,17 +256,17 @@ export default function AddressAutocomplete({
 
   return (
     <View style={styles.container}>
-      {/* Search input */}
       <View style={[
         styles.inputWrapper,
         {
+          flexDirection: dir.row,
           backgroundColor: theme.bgInput,
-          borderColor: showDropdown ? theme.primary : value ? theme.primary : theme.border,
+          borderColor: showDropdown || value ? theme.primary : theme.border,
         },
       ]}>
-        <Search size={18} color={theme.textMuted} />
+        <Search size={18} color={theme.textMuted} strokeWidth={icon.stroke} />
         <TextInput
-          style={[styles.input, { color: theme.text }]}
+          style={[styles.input, { color: theme.text, textAlign: dir.textAlign }]}
           value={value}
           onChangeText={handleChangeText}
           placeholder={placeholder}
@@ -266,45 +279,45 @@ export default function AddressAutocomplete({
         ) : value.length > 0 ? (
           <TouchableOpacity
             onPress={() => {
+              cancelSearch();
               onChangeText('');
               setPredictions([]);
               setShowDropdown(false);
               setShowNotFound(false);
             }}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
           >
-            <X size={18} color={theme.textMuted} />
+            <X size={18} color={theme.textMuted} strokeWidth={icon.stroke} />
           </TouchableOpacity>
         ) : null}
       </View>
 
-      {/* Address hint */}
       {!showDropdown && !showNotFound && (
-        <View style={styles.hintBanner}>
-          <Info size={14} color={theme.textMuted} style={{ marginTop: 1 }} />
-          <Text style={[styles.hintText, { color: theme.textMuted }]}>
+        <View style={[styles.hintBanner, { flexDirection: dir.row }]}>
+          <Info size={14} color={theme.textMuted} strokeWidth={icon.strokeSmall} style={styles.hintIcon} />
+          <Text style={[styles.hintText, { color: theme.textMuted, textAlign: dir.textAlign }]}>
             {t('stores.addressSearchTip')}
           </Text>
         </View>
       )}
 
-      {/* Dropdown */}
       {showDropdown && predictions.length > 0 && (
         <View style={[styles.dropdown, { backgroundColor: theme.bgCard, borderColor: theme.border }]}>
           {predictions.map((item) => (
             <TouchableOpacity
               key={item.place_id}
-              style={[styles.predictionRow, { borderBottomColor: theme.border }]}
+              style={[styles.predictionRow, { flexDirection: dir.row, borderBottomColor: theme.border }]}
               onPress={() => handleSelectPrediction(item)}
               activeOpacity={0.7}
             >
-              <MapPin size={16} color={theme.primary} style={{ marginTop: 2 }} />
+              <JitPin size={16} color={theme.primary} strokeWidth={icon.stroke} style={styles.pinIcon} />
               <View style={styles.predictionText}>
-                <Text style={[styles.mainText, { color: theme.text }]} numberOfLines={1}>
+                <Text style={[styles.mainText, { color: theme.text, textAlign: dir.textAlign }]} numberOfLines={1}>
                   {item.structured_formatting.main_text}
                 </Text>
-                {item.structured_formatting.secondary_text && (
-                  <Text style={[styles.secondaryText, { color: theme.textMuted }]} numberOfLines={1}>
+                {!!item.structured_formatting.secondary_text && (
+                  <Text style={[styles.secondaryText, { color: theme.textMuted, textAlign: dir.textAlign }]} numberOfLines={1}>
                     {item.structured_formatting.secondary_text}
                   </Text>
                 )}
@@ -314,11 +327,10 @@ export default function AddressAutocomplete({
         </View>
       )}
 
-      {/* Not-found banner */}
       {showNotFound && !showDropdown && value.trim().length >= 3 && (
-        <View style={[styles.notFoundBanner, { backgroundColor: '#FEF2F2', borderColor: '#FECACA' }]}>
-          <MapPin size={16} color="#EF4444" />
-          <Text style={styles.notFoundText}>
+        <View style={[styles.notFoundBanner, { flexDirection: dir.row, backgroundColor: '#FEF2F2', borderColor: '#FECACA' }]}>
+          <JitPin size={16} color="#EF4444" strokeWidth={icon.stroke} />
+          <Text style={[styles.notFoundText, { textAlign: dir.textAlign }]}>
             {notFoundMessage || t('stores.addressNotFoundManual')}
           </Text>
         </View>
@@ -333,7 +345,6 @@ const styles = StyleSheet.create({
     zIndex: 1000,
   },
   inputWrapper: {
-    flexDirection: 'row',
     alignItems: 'center',
     borderRadius: 12,
     borderWidth: 1.5,
@@ -345,6 +356,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     paddingVertical: 0,
+    fontFamily: font.regular,
   },
   dropdown: {
     position: 'absolute',
@@ -367,7 +379,6 @@ const styles = StyleSheet.create({
     }),
   },
   predictionRow: {
-    flexDirection: 'row',
     alignItems: 'flex-start',
     paddingVertical: 12,
     paddingHorizontal: 14,
@@ -377,18 +388,17 @@ const styles = StyleSheet.create({
   predictionText: {
     flex: 1,
   },
+  pinIcon: { marginTop: 2 },
   mainText: {
     fontSize: 14,
-    fontWeight: '600',
-    fontFamily: 'Lexend_600SemiBold',
+    fontFamily: font.semibold,
   },
   secondaryText: {
     fontSize: 12,
     marginTop: 2,
-    fontFamily: 'Lexend_400Regular',
+    fontFamily: font.regular,
   },
   notFoundBanner: {
-    flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     marginTop: 8,
@@ -400,21 +410,21 @@ const styles = StyleSheet.create({
   notFoundText: {
     flex: 1,
     fontSize: 12,
-    fontWeight: '500',
+    fontFamily: font.medium,
     color: '#DC2626',
     lineHeight: 17,
   },
   hintBanner: {
-    flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 6,
     marginTop: 6,
     paddingHorizontal: 4,
   },
+  hintIcon: { marginTop: 1 },
   hintText: {
     flex: 1,
-    fontSize: 11.5,
+    fontSize: 12,
     lineHeight: 16,
-    fontFamily: 'Lexend_400Regular',
+    fontFamily: font.regular,
   },
 });

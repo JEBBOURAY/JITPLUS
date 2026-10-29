@@ -1,13 +1,15 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  View, Text, TouchableOpacity, Modal, ScrollView, Animated, PanResponder, Dimensions, Pressable,
+  View, TouchableOpacity, Modal, ScrollView, Animated, PanResponder, Dimensions, Pressable,
 } from 'react-native';
+import { Text } from '@/components/AppText';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { X, Trash2, BadgeCheck } from 'lucide-react-native';
+import { X, Trash2, BadgeCheck, BadgePercent } from 'lucide-react-native';
 import { hp, ms } from '@/utils/responsive';
 import { palette, type ThemeColors } from '@/contexts/ThemeContext';
 import MerchantLogo from '@/components/MerchantLogo';
 import { ClientNotification } from '@/types';
+import { notificationKind } from '@/utils/notificationKind';
 import { notificationStyles as styles } from './notificationStyles';
 
 interface AppFonts { regular: string; medium: string; semibold: string; bold: string }
@@ -92,8 +94,9 @@ export default React.memo(function NotificationDetailModal({
 
   const isDark = theme.mode === 'dark';
   const accent = isDark ? palette.violetLight : palette.violet;
-  const isOfficial = !shown.merchantName;
-  const sender = shown.merchantName || 'JitPlus';
+  const kind = notificationKind(shown);
+  const isOfficial = kind !== 'merchant';
+  const sender = kind === 'deals' ? t('deals.notification.sender') : shown.merchantName || 'JitPlus';
 
   return (
     <Modal visible transparent animationType="none" statusBarTranslucent onRequestClose={handleClose}>
@@ -112,7 +115,13 @@ export default React.memo(function NotificationDetailModal({
         <View style={styles.modalGrabZone} {...panResponder.panHandlers}>
           <View style={[styles.modalHandle, { backgroundColor: theme.border }]} />
           <View style={styles.modalHeader}>
-            <MerchantLogo logoUrl={shown.merchantLogoUrl} style={[styles.modalLogo, { backgroundColor: theme.bgInput }]} merchantName={sender} />
+            {kind === 'deals' ? (
+              <View style={[styles.modalLogo, styles.dealsLogo, { backgroundColor: `${palette.violet}${isDark ? '33' : '18'}` }]}>
+                <BadgePercent size={ms(24)} color={accent} strokeWidth={2} />
+              </View>
+            ) : (
+              <MerchantLogo logoUrl={shown.merchantLogoUrl} style={[styles.modalLogo, { backgroundColor: theme.bgInput }]} merchantName={sender} />
+            )}
             <View style={styles.modalHeaderText}>
               <View style={styles.modalSenderRow}>
                 <Text style={[styles.modalSender, { color: theme.text, fontFamily: fonts.bold }]} numberOfLines={1}>{sender}</Text>

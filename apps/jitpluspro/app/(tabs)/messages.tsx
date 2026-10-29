@@ -1,11 +1,10 @@
-import React, { useState, useRef, useCallback, useEffect, memo, useReducer } from 'react';
+import React, { useState, useCallback, useEffect, memo, useReducer, useMemo, useRef } from 'react';
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
@@ -14,50 +13,48 @@ import {
   UIManager,
   Keyboard,
   ScrollView,
+  type LayoutChangeEvent,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
+import { safeImpact, safeSelection, safeNotification } from '@/utils/haptics';
+import { usePlanStatus } from '@/hooks/usePlanStatus';
 import {
   Send,
-  Clock,
   Mail,
   Shield,
   Lightbulb,
-  X,
-  Zap,
   Info,
-  Lock,
-  Crown,
+  Check,
+  History,
+  Eraser,
+  Percent,
+  PenLine,
+  CalendarDays,
+  Heart,
   Image as ImageIcon,
+  type LucideIcon,
 } from 'lucide-react-native';
+import { JitBell, JitClients } from '@/components/icons';
 import { useRouter } from 'expo-router';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthState } from '@/contexts/AuthContext';
-import { useTheme, palette } from '@/contexts/ThemeContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { getErrorMessage } from '@/utils/error';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusFade } from '@/hooks/useFocusFade';
-import { ms } from '@/utils/responsive';
 import { useEmailQuota, useSendPushNotification, useSendEmail } from '@/hooks/useQueryHooks';
 import { ReminderBanner } from '@/components/ReminderBanner';
+import SendConfirmSheet from '@/components/marketing/SendConfirmSheet';
+import SendButton, { SEND_COOLDOWN_MS } from '@/components/marketing/SendButton';
+import { PushPreview, EmailPreview } from '@/components/marketing/MessagePreview';
+import PremiumLockCard from '@/components/PremiumLockCard';
+import { ProBadge } from '@/components/ui/ProBadge';
 import { ASYNC_STORAGE_KEYS } from '@/constants/app';
+import { font, icon } from '@/constants/design';
+import { radius } from '@/utils/responsive';
 
-// ── Accessibility helpers ──
-const HIT_SLOP_LARGE = { top: 12, bottom: 12, left: 12, right: 12 };
 const HIT_SLOP_MED = { top: 8, bottom: 8, left: 8, right: 8 };
-const safeImpact = (style: Haptics.ImpactFeedbackStyle) => {
-  Haptics.impactAsync(style).catch(() => {});
-};
-const safeSelection = () => {
-  Haptics.selectionAsync().catch(() => {});
-};
-const safeNotification = (type: Haptics.NotificationFeedbackType) => {
-  Haptics.notificationAsync(type).catch(() => {});
-};
-
 // Enable LayoutAnimation on Android (old arch only — New Architecture supports it natively).
-// On New Architecture (Fabric), LayoutAnimation works out of the box.
 if (
   Platform.OS === 'android' &&
   UIManager.setLayoutAnimationEnabledExperimental &&
@@ -66,68 +63,21 @@ if (
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-// ── Channel color constants ──
-const CHANNEL_COLORS = {
-  NOTIF: '#7C3AED',
-  EMAIL: '#EA4335',
+// Must match backend DTO validation.
+const LIMITS = {
+  title: 100,
+  body: 500,
+  emailSubject: 150,
+  emailBody: 2000,
 } as const;
-// Darker shades used for send-button gradients / borders
-const NOTIF_COLOR_DARK = '#6D28D9';
-const EMAIL_COLOR_DARK = '#C5221F';
 
-// ── Cooldown duration after a successful send (ms) ──
-const SEND_COOLDOWN_MS = 30_000;
-
-const BANNER_DISMISSED_KEY = 'messages_banner_dismissed';
-
-/* ── Tip banner — dismissable with "don't show again" ── */
-const MessagesBanner = React.memo(function MessagesBanner({
-  onDismiss,
-  onDismissForever,
-}: {
-  onDismiss: () => void;
-  onDismissForever: () => void;
-}) {
-  const theme = useTheme();
-  const { t } = useLanguage();
-  const isDark = theme.mode === 'dark';
-
-  return (
-    <View style={[bannerStyles.wrapper, { backgroundColor: isDark ? 'rgba(124,58,237,0.12)' : 'rgba(124,58,237,0.06)', borderColor: isDark ? 'rgba(124,58,237,0.25)' : 'rgba(124,58,237,0.15)' }]}>
-      <LinearGradient
-        colors={['rgba(124,58,237,0.08)', 'transparent']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={StyleSheet.absoluteFill}
-      />
-      <TouchableOpacity
-        style={bannerStyles.closeBtn}
-        onPress={onDismiss}
-        hitSlop={HIT_SLOP_LARGE}
-        accessibilityRole="button"
-        accessibilityLabel={t('common.close')}
-      >
-        <X size={16} color={theme.textMuted} strokeWidth={2} />
-      </TouchableOpacity>
-      <View style={bannerStyles.content}>
-        <Zap size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
-        <View style={bannerStyles.textWrap}>
-          <Text style={[bannerStyles.title, { color: theme.text }]} maxFontSizeMultiplier={1.6}>{t('messages.bannerTitle')}</Text>
-          <Text style={[bannerStyles.desc, { color: theme.textMuted }]} maxFontSizeMultiplier={1.6}>{t('messages.bannerDesc')}</Text>
-        </View>
-      </View>
-      <TouchableOpacity
-        onPress={onDismissForever}
-        style={bannerStyles.hideBtn}
-        hitSlop={HIT_SLOP_MED}
-        accessibilityRole="button"
-        accessibilityLabel={t('messages.bannerHide')}
-      >
-        <Text style={[bannerStyles.hideText, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>{t('messages.bannerHide')}</Text>
-      </TouchableOpacity>
-    </View>
-  );
-});
+type TemplateKey = 'Promo' | 'New' | 'Event' | 'Comeback';
+const TEMPLATES: { key: TemplateKey; Icon: LucideIcon }[] = [
+  { key: 'Promo', Icon: Percent },
+  { key: 'New', Icon: PenLine },
+  { key: 'Event', Icon: CalendarDays },
+  { key: 'Comeback', Icon: Heart },
+];
 
 /**
  * Handle 400/403/429 errors from notification endpoints.
@@ -164,21 +114,313 @@ function handlePremiumError(
   Alert.alert(t('common.error'), getErrorMessage(err, t('common.genericError')));
 }
 
-// ── Smooth accordion transition ──
 const animateAccordion = () =>
   LayoutAnimation.configureNext(LayoutAnimation.create(250, 'easeInEaseOut', 'opacity'));
 
-// ── Char count color helper ──
 const charCountColor = (len: number, max: number, muted: string, warn: string, danger: string) =>
   len >= max ? danger : len >= max * 0.85 ? warn : muted;
 
-// ── Legal note shown below each Send button (CGU + CNDP transparency) ──
-const LegalNote = React.memo(function LegalNote() {
+const MessagesHeader = memo(function MessagesHeader({
+  topInset,
+  onOpenHistory,
+}: {
+  topInset: number;
+  onOpenHistory?: () => void;
+}) {
+  const theme = useTheme();
+  const { t } = useLanguage();
+  return (
+    <View style={[styles.headerBar, { paddingTop: topInset + 12 }]}>
+      <View style={styles.headerTextCol}>
+        <Text style={[styles.headerTitle, { color: theme.text }]} maxFontSizeMultiplier={1.4} accessibilityRole="header" numberOfLines={1}>
+          {t('messages.title')}
+        </Text>
+        <Text style={[styles.headerSubtitle, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4} numberOfLines={2}>
+          {t('messages.subtitle')}
+        </Text>
+      </View>
+      {onOpenHistory && (
+        <TouchableOpacity
+          onPress={onOpenHistory}
+          activeOpacity={0.8}
+          style={[styles.historyHeaderBtn, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}
+          accessibilityRole="button"
+          accessibilityLabel={t('messages.showHistory')}
+          accessibilityHint={t('messages.showHistoryHint')}
+          hitSlop={HIT_SLOP_MED}
+        >
+          <History size={16} color={theme.textMuted} strokeWidth={icon.stroke} />
+          <Text style={[styles.historyHeaderBtnText, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>
+            {t('messages.historyShort')}
+          </Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+});
+
+const SectionHeader = memo(function SectionHeader({
+  title,
+  right,
+}: {
+  title: string;
+  right?: React.ReactNode;
+}) {
+  const theme = useTheme();
+  return (
+    <View style={styles.sectionHeader}>
+      <Text style={[styles.sectionTitle, { color: theme.text }]} maxFontSizeMultiplier={1.4} accessibilityRole="header" numberOfLines={1}>
+        {title}
+      </Text>
+      {right}
+    </View>
+  );
+});
+
+const ClearButton = memo(function ClearButton({ onPress }: { onPress: () => void }) {
+  const theme = useTheme();
+  const { t } = useLanguage();
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      hitSlop={HIT_SLOP_MED}
+      style={[styles.clearBtn, { borderColor: theme.border }]}
+      accessibilityRole="button"
+      accessibilityLabel={t('messages.clearForm')}
+    >
+      <Eraser size={13} color={theme.textMuted} strokeWidth={2} />
+      <Text style={[styles.clearBtnText, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>{t('messages.clearForm')}</Text>
+    </TouchableOpacity>
+  );
+});
+
+const ChannelCard = memo(function ChannelCard({
+  channel,
+  selected,
+  Icon,
+  name,
+  desc,
+  locked,
+  onSelect,
+}: {
+  channel: ActiveChannel;
+  selected: boolean;
+  Icon: LucideIcon;
+  name: string;
+  desc: string;
+  locked?: boolean;
+  onSelect: (channel: ActiveChannel) => void;
+}) {
+  const theme = useTheme();
+  const color = theme.primary;
+  const handlePress = useCallback(() => onSelect(channel), [onSelect, channel]);
+  return (
+    <TouchableOpacity
+      onPress={handlePress}
+      activeOpacity={0.85}
+      style={[
+        styles.channelCard,
+        {
+          backgroundColor: selected ? color + '18' : theme.bgCard,
+          borderColor: selected ? color : theme.borderLight,
+        },
+      ]}
+      accessibilityRole="radio"
+      accessibilityLabel={`${name}, ${desc}`}
+      accessibilityState={{ selected, checked: selected }}
+    >
+      <View style={styles.channelCardTop}>
+        <View style={[styles.channelIcon, { backgroundColor: theme.bgInput }]}>
+          <Icon size={icon.md} color={selected ? color : theme.textMuted} strokeWidth={icon.stroke} />
+        </View>
+        {selected ? (
+          <View style={[styles.channelCheck, { backgroundColor: color }]}>
+            <Check size={12} color="#fff" strokeWidth={icon.strokeSmall} />
+          </View>
+        ) : locked ? (
+          <ProBadge locked />
+        ) : (
+          <View style={[styles.channelRadio, { borderColor: theme.border }]} />
+        )}
+      </View>
+      <Text style={[styles.channelName, { color: selected ? color : theme.text }]} maxFontSizeMultiplier={1.4} numberOfLines={1}>{name}</Text>
+      <Text style={[styles.channelDesc, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4} numberOfLines={2}>{desc}</Text>
+    </TouchableOpacity>
+  );
+});
+
+// Focus state stays local so typing does not re-render the whole screen.
+const ComposeField = memo(function ComposeField({
+  name,
+  label,
+  value,
+  onChangeField,
+  placeholder,
+  multiline,
+  minHeight = 80,
+  inputRef,
+  onSubmitEditing,
+}: {
+  name: FieldName;
+  label: string;
+  value: string;
+  onChangeField: (name: FieldName, value: string) => void;
+  placeholder: string;
+  multiline?: boolean;
+  minHeight?: number;
+  inputRef?: React.Ref<TextInput>;
+  /** Single-line only: keeps the keyboard open and runs this on "Next". */
+  onSubmitEditing?: () => void;
+}) {
+  const theme = useTheme();
+  const [focused, setFocused] = useState(false);
+  const handleFocus = useCallback(() => setFocused(true), []);
+  const handleBlur = useCallback(() => setFocused(false), []);
+  const handleChange = useCallback((v: string) => onChangeField(name, v), [onChangeField, name]);
+  const maxLength = LIMITS[name];
+  const labelId = `${name}-label`;
+  return (
+    <View style={styles.field}>
+      <View style={styles.fieldLabelRow}>
+        <Text style={[styles.fieldLabel, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.4} nativeID={labelId}>
+          {label}
+        </Text>
+        <Text
+          style={[styles.charCount, { color: charCountColor(value.length, maxLength, theme.textMuted, theme.warning, theme.danger) }]}
+          maxFontSizeMultiplier={1.4}
+          accessibilityLiveRegion="polite"
+        >
+          {value.length}/{maxLength}
+        </Text>
+      </View>
+      <View
+        style={[
+          styles.inputWrapper,
+          { backgroundColor: theme.bgInput, borderColor: focused ? theme.primary : theme.border },
+          multiline && { minHeight: minHeight + 20, alignItems: 'flex-start' },
+          focused && styles.inputFocused,
+        ]}
+      >
+        <TextInput
+          ref={inputRef}
+          style={[
+            styles.input,
+            { color: theme.text },
+            multiline && { textAlignVertical: 'top', minHeight },
+          ]}
+          value={value}
+          onChangeText={handleChange}
+          placeholder={placeholder}
+          placeholderTextColor={theme.textMuted}
+          multiline={multiline}
+          maxLength={maxLength}
+          returnKeyType={multiline ? 'default' : 'next'}
+          submitBehavior={onSubmitEditing && !multiline ? 'submit' : undefined}
+          onSubmitEditing={onSubmitEditing}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
+          accessibilityLabel={label}
+          accessibilityLabelledBy={labelId}
+          maxFontSizeMultiplier={1.4}
+        />
+      </View>
+    </View>
+  );
+});
+
+const TemplateChips = memo(function TemplateChips({
+  onPick,
+}: {
+  onPick: (key: TemplateKey) => void;
+}) {
+  const theme = useTheme();
+  const { t } = useLanguage();
+  const sectionLabel = t('messages.templatesLabel');
+  return (
+    <View style={styles.templatesBlock}>
+      <Text style={[styles.overline, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>
+        {sectionLabel}
+      </Text>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.templatesRow}
+        keyboardShouldPersistTaps="handled"
+      >
+        {TEMPLATES.map(({ key, Icon }) => {
+          const label = t(`messages.template${key}`);
+          return (
+            <TouchableOpacity
+              key={key}
+              onPress={() => onPick(key)}
+              activeOpacity={0.8}
+              style={[styles.templateChip, { backgroundColor: theme.bgCard, borderColor: theme.border }]}
+              accessibilityRole="button"
+              accessibilityLabel={`${sectionLabel} : ${label}`}
+            >
+              <Icon size={14} color={theme.textMuted} strokeWidth={icon.strokeSmall} />
+              <Text style={[styles.templateChipText, { color: theme.text }]} maxFontSizeMultiplier={1.3}>
+                {label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+});
+
+const AudienceRow = memo(function AudienceRow({ text }: { text: string }) {
+  const theme = useTheme();
+  const { t } = useLanguage();
+  return (
+    <View style={[styles.audienceRow, { backgroundColor: theme.bgElevated, borderColor: theme.borderLight }]}>
+      <JitClients size={icon.sm} color={theme.textMuted} strokeWidth={icon.stroke} />
+      <View style={styles.flex1}>
+        <Text style={[styles.overline, styles.audienceLabel, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>
+          {t('messages.audienceLabel')}
+        </Text>
+        <Text style={[styles.audienceText, { color: theme.text }]} maxFontSizeMultiplier={1.4}>{text}</Text>
+      </View>
+    </View>
+  );
+});
+
+const EmailQuotaBar = memo(function EmailQuotaBar({ used, max }: { used: number; max: number }) {
+  const theme = useTheme();
+  const { t } = useLanguage();
+  const reached = used >= max;
+  const fraction = max > 0 ? Math.min(1, used / max) : 1;
+  const barColor = reached ? theme.danger : theme.primary;
+  return (
+    <View style={styles.quotaBlock} accessible accessibilityLiveRegion="polite">
+      <View style={styles.fieldLabelRow}>
+        <Text style={[styles.overline, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>
+          {t('messages.emailQuotaLabel')}
+        </Text>
+        <Text style={[styles.quotaValue, { color: reached ? theme.danger : theme.text }]} maxFontSizeMultiplier={1.3}>
+          {used}/{max}
+        </Text>
+      </View>
+      <View style={[styles.quotaTrack, { backgroundColor: theme.border }]}>
+        <View style={[styles.quotaFill, { backgroundColor: barColor, width: `${Math.round(fraction * 100)}%` }]} />
+      </View>
+      <Text style={[styles.quotaHint, { color: reached ? theme.danger : theme.textMuted }]} maxFontSizeMultiplier={1.4}>
+        {reached
+          ? t('messages.emailQuotaReached')
+          : t('messages.emailQuotaRemaining', { remaining: max - used })}
+      </Text>
+    </View>
+  );
+});
+
+// CGU + CNDP transparency, shown below each Send button.
+const LegalNote = memo(function LegalNote() {
   const theme = useTheme();
   const { t } = useLanguage();
   return (
     <View style={styles.legalNoteRow} accessible accessibilityRole="text">
-      <Info size={12} color={theme.textMuted} strokeWidth={1.8} />
+      <Info size={12} color={theme.textMuted} strokeWidth={icon.strokeSmall} />
       <Text style={[styles.legalNoteText, { color: theme.textMuted }]} maxFontSizeMultiplier={1.6}>
         {t('messages.legalNote')}
       </Text>
@@ -186,160 +428,23 @@ const LegalNote = React.memo(function LegalNote() {
   );
 });
 
-// ── Indeterminate progress bar (shown while a campaign is being sent) ──
-const IndeterminateBar = memo(function IndeterminateBar({ color }: { color: string }) {
-  const theme = useTheme();
-  const x = useRef(new Animated.Value(0)).current;
-  const [w, setW] = useState(0);
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.timing(x, { toValue: 1, duration: 900, useNativeDriver: true }),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [x]);
-  return (
-    <View
-      style={[styles.progressTrack, { backgroundColor: theme.border }]}
-      onLayout={(e) => setW(e.nativeEvent.layout.width)}
-      importantForAccessibility="no"
-    >
-      <Animated.View
-        style={[
-          styles.progressIndet,
-          { backgroundColor: color, transform: [{ translateX: x.interpolate({ inputRange: [0, 1], outputRange: [-w * 0.4, w] }) }] },
-        ]}
-      />
-    </View>
-  );
-});
-
-// ── Send button with 3 states: normal / sending / cooldown ──
-const SendButton = memo(function SendButton({
-  channelColor,
-  channelColorDark,
-  label,
-  Icon,
-  canSend,
-  isSending,
-  cooldownRemaining,
-  onPress,
-}: {
-  channelColor: string;
-  channelColorDark: string;
-  label: string;
-  Icon: React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
-  canSend: boolean;
-  isSending: boolean;
-  cooldownRemaining: number;
-  onPress: () => void;
-}) {
-  const theme = useTheme();
-  const { t } = useLanguage();
-  const cooling = cooldownRemaining > 0;
-  const disabled = !canSend || isSending || cooling;
-  const totalSec = SEND_COOLDOWN_MS / 1000;
-  const coolFraction = cooling ? Math.min(1, Math.max(0, (totalSec - cooldownRemaining) / totalSec)) : 0;
-  return (
-    <View>
-      <TouchableOpacity
-        onPress={onPress}
-        disabled={disabled}
-        activeOpacity={0.85}
-        accessibilityRole="button"
-        accessibilityLabel={cooling ? t('messages.cooldownWait', { s: cooldownRemaining }) : label}
-        accessibilityState={{ disabled, busy: isSending }}
-      >
-        {cooling ? (
-          <View style={[styles.sendBtn, { backgroundColor: theme.border, borderColor: theme.border }]}>
-            <ActivityIndicator size="small" color={theme.textMuted} />
-            <Text style={[styles.sendBtnText, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>
-              {t('messages.cooldownWait', { s: cooldownRemaining })}
-            </Text>
-          </View>
-        ) : isSending ? (
-          <View style={[styles.sendBtn, { backgroundColor: channelColor, borderColor: channelColorDark }]}>
-            <ActivityIndicator size="small" color="#fff" />
-            <Text style={styles.sendBtnText} maxFontSizeMultiplier={1.4}>{t('messages.sendingShort')}</Text>
-          </View>
-        ) : canSend ? (
-          <LinearGradient
-            colors={[channelColor, channelColorDark]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={[styles.sendBtn, { borderColor: channelColorDark }]}
-          >
-            <Icon size={18} color="#fff" strokeWidth={2} />
-            <Text style={styles.sendBtnText} maxFontSizeMultiplier={1.4}>{label}</Text>
-          </LinearGradient>
-        ) : (
-          <View style={[styles.sendBtn, { backgroundColor: theme.border, borderColor: theme.border }]}>
-            <Icon size={18} color={theme.textMuted} strokeWidth={2} />
-            <Text style={[styles.sendBtnText, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>{label}</Text>
-          </View>
-        )}
-      </TouchableOpacity>
-      {isSending && <IndeterminateBar color={channelColor} />}
-      {cooling && (
-        <View style={[styles.progressTrack, { backgroundColor: theme.border }]} importantForAccessibility="no">
-          <View style={[styles.progressFill, { backgroundColor: theme.textMuted, width: `${Math.round(coolFraction * 100)}%` }]} />
-        </View>
-      )}
-    </View>
-  );
-});
-
-// ── Per-channel Premium lock card (E-mail reserved for Pro plan) ──
 const EmailLockCard = memo(function EmailLockCard({ onUpgrade }: { onUpgrade: () => void }) {
-  const { t } = useLanguage();
   return (
-    <View style={styles.lockWrapper}>
-      <LinearGradient
-        colors={['#0f031e', '#1a0533']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.lockCard}
-      >
-        <LinearGradient
-          colors={[palette.gold, '#F59E0B']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.lockIconBg}
-        >
-          <Crown size={26} color="#1a0533" strokeWidth={2} />
-        </LinearGradient>
-        <Text style={styles.lockTitle} maxFontSizeMultiplier={1.4}>{t('messages.emailLockedTitle')}</Text>
-        <Text style={styles.lockDesc} maxFontSizeMultiplier={1.6}>{t('messages.emailLockedDesc')}</Text>
-        <TouchableOpacity
-          onPress={onUpgrade}
-          activeOpacity={0.85}
-          style={styles.lockCtaWrap}
-          accessibilityRole="button"
-          accessibilityLabel={t('messages.upgradeToPro')}
-        >
-          <LinearGradient
-            colors={[palette.gold, '#F59E0B']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.lockCta}
-          >
-            <Crown size={16} color="#1a0533" strokeWidth={2.2} />
-            <Text style={styles.lockCtaText} maxFontSizeMultiplier={1.3}>{t('messages.upgradeToPro')}</Text>
-          </LinearGradient>
-        </TouchableOpacity>
-      </LinearGradient>
-    </View>
+    <PremiumLockCard
+      titleKey="messages.emailLockedTitle"
+      descriptionKey="messages.emailLockedDesc"
+      ctaLabelKey="messages.upgradeToPro"
+      onPress={onUpgrade}
+      style={styles.lockCard}
+    />
   );
 });
 
-// ── Messages reducer ──
 type ActiveChannel = 'NOTIF' | 'EMAIL';
+type FieldName = keyof typeof LIMITS;
+type CooldownKey = 'pushCooldownUntil' | 'emailCooldownUntil';
 
-interface MsgState {
-  title: string;
-  body: string;
-  emailSubject: string;
-  emailBody: string;
+interface MsgState extends Record<FieldName, string> {
   activeChannel: ActiveChannel;
   pushCooldownUntil: number | null;
   emailCooldownUntil: number | null;
@@ -355,213 +460,208 @@ const initialMsgState: MsgState = {
   emailCooldownUntil: null,
 };
 
-type CooldownKey = 'pushCooldownUntil' | 'emailCooldownUntil';
-
 type MsgAction =
-  | { type: 'SET'; payload: Partial<MsgState> }
+  | { type: 'SET_FIELDS'; payload: Partial<Record<FieldName, string>> }
   | { type: 'SET_CHANNEL'; channel: ActiveChannel }
-  | { type: 'START_COOLDOWN'; key: CooldownKey; until: number }
-  | { type: 'END_COOLDOWN'; key: CooldownKey }
+  | { type: 'START_COOLDOWN'; key: CooldownKey }
   | { type: 'RESET_FORM'; form: 'push' | 'email' };
 
 function msgReducer(state: MsgState, action: MsgAction): MsgState {
   switch (action.type) {
-    case 'SET':
+    case 'SET_FIELDS':
       return { ...state, ...action.payload };
     case 'SET_CHANNEL':
       return { ...state, activeChannel: action.channel };
     case 'START_COOLDOWN':
-      return { ...state, [action.key]: action.until };
-    case 'END_COOLDOWN':
-      return { ...state, [action.key]: null };
+      return { ...state, [action.key]: Date.now() + SEND_COOLDOWN_MS };
     case 'RESET_FORM':
       if (action.form === 'push') return { ...state, title: '', body: '' };
       return { ...state, emailSubject: '', emailBody: '' };
   }
 }
 
+interface SheetState {
+  isEmail: boolean;
+  heading: string;
+  body: string;
+  successMessage: string | null;
+}
+const EMPTY_SHEET: SheetState = { isEmail: false, heading: '', body: '', successMessage: null };
+
 export default function MessagesScreen() {
   const { merchant, isTeamMember } = useAuthState();
-  const isPremium = merchant?.plan === 'PREMIUM';
-  const isOwner = !isTeamMember;
+  const { isPremium } = usePlanStatus(merchant);
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { focusStyle } = useFocusFade();
   const { t } = useLanguage();
-
-  // ── Banner dismiss state ──
-  const [bannerVisible, setBannerVisible] = useState(false);
-
-  useEffect(() => {
-    AsyncStorage.getItem(BANNER_DISMISSED_KEY).then((val) => {
-      if (val !== 'true') setBannerVisible(true);
-    });
-  }, []);
-
-  const dismissBanner = useCallback(() => {
-    setBannerVisible(false);
-  }, []);
-
-  const dismissBannerForever = useCallback(() => {
-    setBannerVisible(false);
-    AsyncStorage.setItem(BANNER_DISMISSED_KEY, 'true');
-  }, []);
+  const router = useRouter();
+  const merchantName = merchant?.nom?.trim() || 'JitPlus';
+  const logoUrl = merchant?.logoUrl;
 
   const [state, dispatch] = useReducer(msgReducer, initialMsgState);
   const { title, body, emailSubject, emailBody, activeChannel, pushCooldownUntil, emailCooldownUntil } = state;
-  const set = useCallback((payload: Partial<MsgState>) => dispatch({ type: 'SET', payload }), []);
-  const router = useRouter();
+
   const goToPlan = useCallback(() => { safeSelection(); router.push('/plan'); }, [router]);
+  const goToHistory = useCallback(() => { safeSelection(); router.push('/messages-history'); }, [router]);
+  const goToProfile = useCallback(() => router.push('/profile'), [router]);
 
-  // ── React Query mutations ──
-  const pushMutation = useSendPushNotification();
-  const emailMutation = useSendEmail();
+  const selectChannel = useCallback((channel: ActiveChannel) => {
+    animateAccordion();
+    safeSelection();
+    dispatch({ type: 'SET_CHANNEL', channel });
+  }, []);
 
-  // ── React Query hooks (disabled for team members — backend requires owner) ──
-  const { data: emailQuota } = useEmailQuota(isOwner && isPremium && activeChannel === 'EMAIL');
+  const setField = useCallback((name: FieldName, value: string) => {
+    dispatch({ type: 'SET_FIELDS', payload: { [name]: value } });
+  }, []);
 
-  const [focusedField, setFocusedField] = useState<'title' | 'body' | null>(null);
+  const { mutateAsync: sendPush, isPending: isPushSending } = useSendPushNotification();
+  const { mutateAsync: sendEmail, isPending: isEmailSending } = useSendEmail();
 
-  // Cooldown timer refs — cleaned up on unmount to prevent memory leaks
-  const cooldownTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
-  useEffect(() => {
-    return () => {
-      cooldownTimers.current.forEach(clearTimeout);
+  const isEmail = activeChannel === 'EMAIL';
+  const formHeading = isEmail ? emailSubject : title;
+  const formBody = isEmail ? emailBody : body;
+  const formHasContent = formHeading.length > 0 || formBody.length > 0;
+  const formComplete = !!formHeading.trim() && !!formBody.trim();
+
+  // Backend requires the owner role, so team members never fetch the quota.
+  const { data: emailQuota } = useEmailQuota(!isTeamMember && isPremium && isEmail);
+
+  const scrollRef = useRef<ScrollView>(null);
+  const headingRef = useRef<TextInput>(null);
+  const bodyRef = useRef<TextInput>(null);
+  const composeY = useRef(0);
+  const previewY = useRef(0);
+  const scrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (scrollTimer.current) clearTimeout(scrollTimer.current);
+  }, []);
+
+  const onComposeLayout = useCallback((e: LayoutChangeEvent) => { composeY.current = e.nativeEvent.layout.y; }, []);
+  const onPreviewLayout = useCallback((e: LayoutChangeEvent) => { previewY.current = e.nativeEvent.layout.y; }, []);
+  const scrollToY = useCallback((y: number) => {
+    scrollRef.current?.scrollTo({ y: Math.max(0, y - 8), animated: true });
+  }, []);
+  const scrollToPreviewSoon = useCallback(() => {
+    if (scrollTimer.current) clearTimeout(scrollTimer.current);
+    // Waits for the layout animation so the preview offset reflects the filled form.
+    scrollTimer.current = setTimeout(() => scrollToY(previewY.current), 300);
+  }, [scrollToY]);
+
+  const focusBody = useCallback(() => bodyRef.current?.focus(), []);
+  const focusMissingField = useCallback(() => {
+    safeSelection();
+    scrollToY(composeY.current);
+    (formHeading.trim() ? bodyRef : headingRef).current?.focus();
+  }, [formHeading, scrollToY]);
+
+  const sendHint = !formHeading.trim()
+    ? t(isEmail ? 'messages.missingSubject' : 'messages.missingTitle')
+    : !formBody.trim()
+      ? t('messages.missingBody')
+      : undefined;
+
+  // Sheet data outlives `sheetVisible` so the closing animation keeps its content.
+  const [sheet, setSheet] = useState<SheetState>(EMPTY_SHEET);
+  const [sheetVisible, setSheetVisible] = useState(false);
+  const clearForm = useCallback(() => {
+    safeSelection();
+    dispatch({ type: 'RESET_FORM', form: isEmail ? 'email' : 'push' });
+  }, [isEmail]);
+
+  // Asks before overwriting typed text.
+  const applyTemplate = useCallback((key: TemplateKey) => {
+    const heading = t(`messages.tpl${key}Title`, { name: merchantName });
+    const content = t(`messages.tpl${key}Body`, { name: merchantName });
+    const apply = () => {
+      animateAccordion();
+      safeSelection();
+      dispatch({
+        type: 'SET_FIELDS',
+        payload: isEmail
+          ? { emailSubject: heading.slice(0, LIMITS.emailSubject), emailBody: content.slice(0, LIMITS.emailBody) }
+          : { title: heading.slice(0, LIMITS.title), body: content.slice(0, LIMITS.body) },
+      });
+      Keyboard.dismiss();
+      scrollToPreviewSoon();
     };
-  }, []);
-  const startCooldown = useCallback((key: CooldownKey) => {
-    dispatch({ type: 'START_COOLDOWN', key, until: Date.now() + SEND_COOLDOWN_MS });
-    const timer = setTimeout(() => {
-      dispatch({ type: 'END_COOLDOWN', key });
-      cooldownTimers.current = cooldownTimers.current.filter((t) => t !== timer);
-    }, SEND_COOLDOWN_MS);
-    cooldownTimers.current.push(timer);
-  }, []);
+    if (!formHasContent) {
+      apply();
+      return;
+    }
+    Alert.alert(
+      t('messages.templateReplaceTitle'),
+      t('messages.templateReplaceMsg'),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('messages.templateReplaceConfirm'), onPress: apply },
+      ],
+    );
+  }, [t, merchantName, isEmail, formHasContent, scrollToPreviewSoon]);
 
-  // ── Live countdown while a cooldown is active (re-enables the button automatically) ──
-  const [nowTick, setNowTick] = useState(() => Date.now());
-  useEffect(() => {
-    if (pushCooldownUntil == null && emailCooldownUntil == null) return;
-    const id = setInterval(() => setNowTick(Date.now()), 500);
-    return () => clearInterval(id);
-  }, [pushCooldownUntil, emailCooldownUntil]);
-  const pushRemaining = pushCooldownUntil ? Math.max(0, Math.ceil((pushCooldownUntil - nowTick) / 1000)) : 0;
-  const emailRemaining = emailCooldownUntil ? Math.max(0, Math.ceil((emailCooldownUntil - nowTick) / 1000)) : 0;
-
-  // ── Handle WhatsApp send ──
-  // NOTE: WhatsApp broadcast UI is disabled (not yet approved). Intentionally removed.
-
-  // ── Handle Email send ──
-  const handleSendEmail = useCallback(() => {
-    if (!emailSubject.trim() || !emailBody.trim()) {
-      Alert.alert(t('messages.notifEmptyFieldsTitle'), t('messages.emailEmptyMsg'));
+  // Send flow: tap "Send", then recap sheet, then success state.
+  const handleSendPress = useCallback(() => {
+    safeImpact(Haptics.ImpactFeedbackStyle.Medium);
+    if (!formComplete) {
+      focusMissingField();
       return;
     }
     Keyboard.dismiss();
+    setSheet({ isEmail, heading: formHeading.trim(), body: formBody.trim(), successMessage: null });
+    setSheetVisible(true);
+  }, [formComplete, focusMissingField, isEmail, formHeading, formBody]);
 
-    Alert.alert(
-      t('messages.emailConfirmTitle'),
-      t('messages.emailConfirmBody', {
-        subject: emailSubject.trim(),
-      }),
-      [
-        { text: t('common.cancel'), style: 'cancel' },
-        {
-          text: t('messages.send'),
-          style: 'default',
-          onPress: async () => {
-            try {
-              const { recipientCount, successCount, failureCount } = await emailMutation.mutateAsync({
-                subject: emailSubject.trim(),
-                body: emailBody.trim(),
-              });
-
-              safeNotification(Haptics.NotificationFeedbackType.Success);
-              Alert.alert(
-                t('messages.emailSuccessTitle'),
-                t('messages.emailSuccessBody', {
-                  success: successCount,
-                  total: recipientCount,
-                  failures: failureCount > 0 ? t('messages.emailFailureSuffix', { count: failureCount }) : '',
-                }),
-              );
-
-              dispatch({ type: 'RESET_FORM', form: 'email' });
-              startCooldown('emailCooldownUntil');
-            } catch (err: unknown) {
-              safeNotification(Haptics.NotificationFeedbackType.Error);
-              handlePremiumError(err, t);
-            }
-          },
-        },
-      ],
-    );
-  }, [emailSubject, emailBody, emailMutation, startCooldown, t]);
-
-  // ── Send notification ──
-  const handleSend = useCallback(() => {
-    if (!title.trim() || !body.trim()) {
-      Alert.alert(t('messages.notifEmptyFieldsTitle'), t('messages.notifEmptyFields'));
-      return;
+  const confirmSend = useCallback(async () => {
+    if (sheet.successMessage != null) return;
+    try {
+      let message: string;
+      if (sheet.isEmail) {
+        const { recipientCount, successCount, failureCount } = await sendEmail({ subject: sheet.heading, body: sheet.body });
+        message = t('messages.emailSuccessBody', {
+          success: successCount,
+          total: recipientCount,
+          failures: failureCount > 0 ? t('messages.emailFailureSuffix', { count: failureCount }) : '',
+        });
+        dispatch({ type: 'RESET_FORM', form: 'email' });
+        dispatch({ type: 'START_COOLDOWN', key: 'emailCooldownUntil' });
+      } else {
+        const { recipientCount } = await sendPush({ title: sheet.heading, body: sheet.body });
+        message = t(recipientCount === 1 ? 'messages.pushSuccessBody_one' : 'messages.pushSuccessBody_other', { count: recipientCount });
+        dispatch({ type: 'RESET_FORM', form: 'push' });
+        dispatch({ type: 'START_COOLDOWN', key: 'pushCooldownUntil' });
+      }
+      safeNotification(Haptics.NotificationFeedbackType.Success);
+      setSheet((s) => ({ ...s, successMessage: message }));
+    } catch (err: unknown) {
+      // Sheet stays open so the merchant can go back and edit (e.g. blocked content).
+      safeNotification(Haptics.NotificationFeedbackType.Error);
+      handlePremiumError(err, t);
     }
-    Keyboard.dismiss();
+  }, [sheet, sendEmail, sendPush, t]);
 
-    Alert.alert(
-      t('messages.notifConfirmTitle'),
-      t('messages.notifConfirmBody', {
-        title: title.trim(),
-        body: body.trim(),
-      }),
-      [
-        { text: t('common.cancel'), style: 'cancel' },
-        {
-          text: t('messages.send'),
-          style: 'default',
-          onPress: async () => {
-            try {
-              const { recipientCount } = await pushMutation.mutateAsync({
-                title: title.trim(),
-                body: body.trim(),
-              });
+  const closeSheet = useCallback(() => setSheetVisible(false), []);
+  const viewHistoryFromSheet = useCallback(() => {
+    setSheetVisible(false);
+    goToHistory();
+  }, [goToHistory]);
+  const clearButton = useMemo(
+    () => (formHasContent ? <ClearButton onPress={clearForm} /> : null),
+    [formHasContent, clearForm],
+  );
 
-              safeNotification(Haptics.NotificationFeedbackType.Success);
-              Alert.alert(
-                t('messages.pushSuccessTitle'),
-                t('messages.pushSuccessBody', { count: recipientCount }),
-              );
-
-              dispatch({ type: 'RESET_FORM', form: 'push' });
-              startCooldown('pushCooldownUntil');
-            } catch (err: unknown) {
-              safeNotification(Haptics.NotificationFeedbackType.Error);
-              handlePremiumError(err, t);
-            }
-          },
-        },
-      ],
-    );
-  }, [title, body, pushMutation, startCooldown, t]);
-
-  // focusStyle is provided by useFocusFade()
-
-  // focusStyle is provided by useFocusFade()
   if (isTeamMember) {
     return (
       <Animated.View style={[styles.container, { backgroundColor: theme.bg }, focusStyle]}>
-        <View style={[styles.headerBar, { paddingTop: insets.top + 12 }]}>
-          <Text style={[styles.headerTitle, { color: theme.text }]} maxFontSizeMultiplier={1.4} accessibilityRole="header">{t('messages.title')}</Text>
-        </View>
-        {bannerVisible && (
-          <View style={{ paddingHorizontal: 16, paddingTop: 8 }}>
-            <MessagesBanner onDismiss={dismissBanner} onDismissForever={dismissBannerForever} />
+        <MessagesHeader topInset={insets.top} />
+        <View style={styles.ownerOnly} accessible accessibilityRole="alert">
+          <View style={[styles.ownerIconWrap, { backgroundColor: theme.primaryBg }]}>
+            <Shield size={36} color={theme.textMuted} strokeWidth={icon.stroke} />
           </View>
-        )}
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32 }} accessible accessibilityRole="alert">
-          <Shield size={48} color={theme.textMuted} strokeWidth={1.5} />
-          <Text style={{ color: theme.text, fontSize: 18, fontWeight: '700', marginTop: 16, textAlign: 'center' }} maxFontSizeMultiplier={1.6}>
+          <Text style={[styles.ownerTitle, { color: theme.text }]} maxFontSizeMultiplier={1.6}>
             {t('messages.ownerOnly')}
           </Text>
-          <Text style={{ color: theme.textMuted, fontSize: 14, marginTop: 8, textAlign: 'center', lineHeight: 20 }} maxFontSizeMultiplier={1.6}>
+          <Text style={[styles.ownerMsg, { color: theme.textMuted }]} maxFontSizeMultiplier={1.6}>
             {t('messages.ownerOnlyMsg')}
           </Text>
         </View>
@@ -576,338 +676,186 @@ export default function MessagesScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
       >
-        {/* ── Simple header ── */}
-        <View style={[styles.headerBar, { paddingTop: insets.top + 12 }]}>
-          <Text style={[styles.headerTitle, { color: theme.text }]} maxFontSizeMultiplier={1.4} accessibilityRole="header">{t('messages.title')}</Text>
-          <TouchableOpacity
-            onPress={() => {
-              safeSelection();
-              router.push('/messages-history');
-            }}
-            activeOpacity={0.8}
-            style={[
-              styles.historyHeaderBtn,
-              {
-                backgroundColor: theme.bgCard,
-                borderColor: theme.borderLight,
-              },
-            ]}
-            accessibilityRole="button"
-            accessibilityLabel={t('messages.showHistory')}
-            accessibilityHint={t('messages.showHistoryHint')}
-          >
-            <Clock size={14} color={theme.textMuted} strokeWidth={2} />
-            <Text
-              style={[
-                styles.historyHeaderBtnText,
-                { color: theme.textMuted },
-              ]}
-              maxFontSizeMultiplier={1.3}
-            >
-              {t('messages.showHistory')}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* ── Dismissable tip banner ── */}
-        {bannerVisible && (
-          <View style={{ paddingHorizontal: 16, paddingTop: 8 }}>
-            <MessagesBanner onDismiss={dismissBanner} onDismissForever={dismissBannerForever} />
-          </View>
-        )}
+        <MessagesHeader topInset={insets.top} onOpenHistory={goToHistory} />
 
         <ScrollView
-          contentContainerStyle={{ paddingBottom: insets.bottom + 116, paddingHorizontal: 16 }}
+          ref={scrollRef}
+          contentContainerStyle={[styles.screenPadding, { paddingBottom: insets.bottom + 116 }]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
         >
-          {!isTeamMember && (
-            <ReminderBanner
-              visible={!merchant?.logoUrl}
-              Icon={ImageIcon}
-              title={t('reminders.logoTitle')}
-              message={t('reminders.logoMessage')}
-              actionLabel={t('reminders.logoAction')}
-              onPress={() => router.push('/profile')}
-              storageKey={ASYNC_STORAGE_KEYS.MESSAGES_LOGO_BANNER_DISMISSED}
-            />
-          )}
-              {/* ── Channel segmented control (Notif / E-mail) ── */}
-              <View style={styles.segmentRow}>
-                <TouchableOpacity
-                  onPress={() => { animateAccordion(); safeSelection(); dispatch({ type: 'SET_CHANNEL', channel: 'NOTIF' }); }}
-                  activeOpacity={0.85}
-                  style={[
-                    styles.segmentTab,
-                    { backgroundColor: activeChannel === 'NOTIF' ? CHANNEL_COLORS.NOTIF + '18' : theme.bgCard, borderColor: activeChannel === 'NOTIF' ? CHANNEL_COLORS.NOTIF : theme.borderLight },
-                  ]}
-                  accessibilityRole="button"
-                  accessibilityLabel={t('messages.channelNotif')}
-                  accessibilityState={{ selected: activeChannel === 'NOTIF' }}
-                  hitSlop={HIT_SLOP_MED}
-                >
-                  <Send size={16} color={activeChannel === 'NOTIF' ? CHANNEL_COLORS.NOTIF : theme.textMuted} />
-                  <Text style={[styles.segmentText, { color: activeChannel === 'NOTIF' ? CHANNEL_COLORS.NOTIF : theme.text }]} maxFontSizeMultiplier={1.4} numberOfLines={1}>
-                    {t('messages.channelNotif')}
-                  </Text>
-                </TouchableOpacity>
+          <ReminderBanner
+            visible={!logoUrl}
+            Icon={ImageIcon}
+            title={t('reminders.logoTitle')}
+            message={t('reminders.logoMessage')}
+            actionLabel={t('reminders.logoAction')}
+            onPress={goToProfile}
+            storageKey={ASYNC_STORAGE_KEYS.MESSAGES_LOGO_BANNER_DISMISSED}
+          />
 
-                <TouchableOpacity
-                  onPress={() => { animateAccordion(); safeSelection(); dispatch({ type: 'SET_CHANNEL', channel: 'EMAIL' }); }}
-                  activeOpacity={0.85}
-                  style={[
-                    styles.segmentTab,
-                    { backgroundColor: activeChannel === 'EMAIL' ? CHANNEL_COLORS.EMAIL + '18' : theme.bgCard, borderColor: activeChannel === 'EMAIL' ? CHANNEL_COLORS.EMAIL : theme.borderLight },
-                  ]}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${t('messages.channelEmail')}${!isPremium ? ` — ${t('messages.premiumOnly')}` : ''}`}
-                  accessibilityState={{ selected: activeChannel === 'EMAIL' }}
-                  hitSlop={HIT_SLOP_MED}
-                >
-                  <Mail size={16} color={activeChannel === 'EMAIL' ? CHANNEL_COLORS.EMAIL : theme.textMuted} />
-                  <Text style={[styles.segmentText, { color: activeChannel === 'EMAIL' ? CHANNEL_COLORS.EMAIL : theme.text }]} maxFontSizeMultiplier={1.4} numberOfLines={1}>
-                    {t('messages.channelEmail')}
+          <SectionHeader title={t('messages.step1Title')} />
+          <View style={styles.channelRow} accessibilityRole="radiogroup">
+            <ChannelCard
+              channel="NOTIF"
+              selected={!isEmail}
+              Icon={JitBell}
+              name={t('messages.channelPushName')}
+              desc={t('messages.channelPushDesc')}
+              onSelect={selectChannel}
+            />
+            <ChannelCard
+              channel="EMAIL"
+              selected={isEmail}
+              Icon={Mail}
+              name={t('messages.channelEmailName')}
+              desc={isPremium ? t('messages.channelEmailDesc') : t('messages.premiumOnly')}
+              locked={!isPremium}
+              onSelect={selectChannel}
+            />
+          </View>
+
+          {isEmail && !isPremium ? (
+            <EmailLockCard onUpgrade={goToPlan} />
+          ) : (
+            <>
+              <View onLayout={onComposeLayout}>
+                <SectionHeader title={t('messages.step2Title')} right={clearButton} />
+              </View>
+              <View style={[styles.card, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
+                <TemplateChips onPick={applyTemplate} />
+                {isEmail ? (
+                  <>
+                    <ComposeField
+                      name="emailSubject"
+                      label={t('messages.emailSubject')}
+                      value={emailSubject}
+                      onChangeField={setField}
+                      placeholder={t('messages.emailSubjectPlaceholder')}
+                      inputRef={headingRef}
+                      onSubmitEditing={focusBody}
+                    />
+                    <ComposeField
+                      name="emailBody"
+                      label={t('messages.emailBody')}
+                      value={emailBody}
+                      onChangeField={setField}
+                      placeholder={t('messages.emailBodyPlaceholder')}
+                      multiline
+                      minHeight={120}
+                      inputRef={bodyRef}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <ComposeField
+                      name="title"
+                      label={t('messages.messageTitle')}
+                      value={title}
+                      onChangeField={setField}
+                      placeholder={t('messages.messageTitlePlaceholder')}
+                      inputRef={headingRef}
+                      onSubmitEditing={focusBody}
+                    />
+                    <ComposeField
+                      name="body"
+                      label={t('messages.messageBody')}
+                      value={body}
+                      onChangeField={setField}
+                      placeholder={t('messages.messageBodyPlaceholder')}
+                      multiline
+                      minHeight={90}
+                      inputRef={bodyRef}
+                    />
+                  </>
+                )}
+                <View style={styles.composeTip}>
+                  <Lightbulb size={14} color={theme.textMuted} strokeWidth={icon.strokeSmall} />
+                  <Text style={[styles.composeTipText, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.6}>
+                    {t('messages.composeTip')}
                   </Text>
-                  {!isPremium && <Lock size={13} color={activeChannel === 'EMAIL' ? CHANNEL_COLORS.EMAIL : theme.textMuted} strokeWidth={2.2} />}
-                </TouchableOpacity>
+                </View>
               </View>
 
-              {activeChannel === 'NOTIF' && (
-                <View
-                  style={[styles.composeCard, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}
-                >
-                  {/* Tip */}
-                  <View style={[styles.composeTip, { backgroundColor: theme.primary + '0D' }]}>
-                    <Lightbulb size={14} color={theme.primary} />
-                    <Text style={[styles.composeTipText, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.6}>
-                      {t('messages.composeTip')}
-                    </Text>
-                  </View>
-
-                  {/* Title input */}
-                  <Text style={[styles.fieldLabel, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.4} nativeID="push-title-label">
-                    {t('messages.messageTitle')}
-                  </Text>
-                  <View
-                    style={[
-                      styles.inputWrapper,
-                      { backgroundColor: theme.bgInput, borderColor: focusedField === 'title' ? theme.primary : theme.border },
-                    ]}
-                  >
-                    <TextInput
-                      style={[styles.input, { color: theme.text }]}
-                      value={title}
-                      onChangeText={(v) => set({ title: v })}
-                      placeholder={t('messages.messageTitlePlaceholder')}
-                      placeholderTextColor={theme.textMuted}
-                      maxLength={100}
-                      returnKeyType="next"
-                      onFocus={() => setFocusedField('title')}
-                      onBlur={() => setFocusedField((f) => f === 'title' ? null : f)}
-                      accessibilityLabel={t('messages.messageTitle')}
-                      accessibilityLabelledBy="push-title-label"
-                      maxFontSizeMultiplier={1.4}
-                    />
-                  </View>
-                  <Text
-                    style={[styles.charCount, { color: charCountColor(title.length, 100, theme.textMuted, theme.warning ?? '#F59E0B', theme.danger) }]}
-                    maxFontSizeMultiplier={1.6}
-                    accessibilityLiveRegion="polite"
-                  >
-                    {title.length}/100
-                  </Text>
-
-                  {/* Body input */}
-                  <Text style={[styles.fieldLabel, { color: theme.textSecondary, marginTop: 12 }]} maxFontSizeMultiplier={1.4} nativeID="push-body-label">
-                    {t('messages.messageBody')}
-                  </Text>
-                  <View
-                    style={[
-                      styles.inputWrapper,
-                      {
-                        backgroundColor: theme.bgInput,
-                        borderColor: focusedField === 'body' ? theme.primary : theme.border,
-                        minHeight: 100,
-                        alignItems: 'flex-start',
-                      },
-                    ]}
-                  >
-                    <TextInput
-                      style={[
-                        styles.input,
-                        { color: theme.text, textAlignVertical: 'top', minHeight: 80 },
-                      ]}
-                      value={body}
-                      onChangeText={(v) => set({ body: v })}
-                      placeholder={t('messages.messageBodyPlaceholder')}
-                      placeholderTextColor={theme.textMuted}
-                      multiline
-                      maxLength={500}
-                      onFocus={() => setFocusedField('body')}
-                      onBlur={() => setFocusedField((f) => f === 'body' ? null : f)}
-                      accessibilityLabel={t('messages.messageBody')}
-                      accessibilityLabelledBy="push-body-label"
-                      maxFontSizeMultiplier={1.4}
-                    />
-                  </View>
-                  <Text
-                    style={[styles.charCount, { color: charCountColor(body.length, 500, theme.textMuted, theme.warning ?? '#F59E0B', theme.danger) }]}
-                    maxFontSizeMultiplier={1.6}
-                    accessibilityLiveRegion="polite"
-                  >
-                    {body.length}/500
-                  </Text>
-
-                  <SendButton
-                    channelColor={CHANNEL_COLORS.NOTIF}
-                    channelColorDark={NOTIF_COLOR_DARK}
-                    label={t('messages.sendToAll')}
-                    Icon={Send}
-                    canSend={!!title.trim() && !!body.trim()}
-                    isSending={pushMutation.isPending}
-                    cooldownRemaining={pushRemaining}
-                    onPress={() => {
-                      safeImpact(Haptics.ImpactFeedbackStyle.Medium);
-                      handleSend();
-                    }}
-                  />
-                  <LegalNote />
-                </View>
-              )}
-
-              {/* ── Email Compose Card ─────────────── */}
-              {activeChannel === 'EMAIL' && (
-                !isPremium ? (
-                  <EmailLockCard onUpgrade={goToPlan} />
+              <View onLayout={onPreviewLayout}>
+                <SectionHeader title={t('messages.step3Title')} />
+              </View>
+              <View style={[styles.card, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
+                <Text style={[styles.overline, styles.previewLabel, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>
+                  {t('messages.previewLabel')}
+                </Text>
+                {isEmail ? (
+                  <EmailPreview subject={emailSubject} body={emailBody} senderName={merchantName} logoUrl={logoUrl} />
                 ) : (
-                <View
-                  style={[styles.composeCard, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}
-                >
-                  <>
-                  <Text style={[styles.fieldLabel, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.4} nativeID="email-subject-label">
-                    {t('messages.emailSubject')}
-                  </Text>
-                  <View
-                    style={[
-                      styles.inputWrapper,
-                      { backgroundColor: theme.bgInput, borderColor: theme.border },
-                    ]}
-                  >
-                    <TextInput
-                      style={[styles.input, { color: theme.text }]}
-                      value={emailSubject}
-                      onChangeText={(v) => set({ emailSubject: v })}
-                      placeholder={t('messages.emailSubjectPlaceholder')}
-                      placeholderTextColor={theme.textMuted}
-                      maxLength={150}
-                      returnKeyType="next"
-                      accessibilityLabel={t('messages.emailSubject')}
-                      accessibilityLabelledBy="email-subject-label"
-                      maxFontSizeMultiplier={1.4}
-                    />
-                  </View>
-                  <Text
-                    style={[styles.charCount, { color: charCountColor(emailSubject.length, 150, theme.textMuted, theme.warning ?? '#F59E0B', theme.danger) }]}
-                    maxFontSizeMultiplier={1.6}
-                    accessibilityLiveRegion="polite"
-                  >
-                    {emailSubject.length}/150
-                  </Text>
+                  <PushPreview title={title} body={body} logoUrl={logoUrl} />
+                )}
 
-                  <Text style={[styles.fieldLabel, { color: theme.textSecondary, marginTop: 12 }]} maxFontSizeMultiplier={1.4} nativeID="email-body-label">
-                    {t('messages.emailBody')}
-                  </Text>
-                  <View
-                    style={[
-                      styles.inputWrapper,
-                      {
-                        backgroundColor: theme.bgInput,
-                        borderColor: theme.border,
-                        minHeight: 120,
-                        alignItems: 'flex-start',
-                      },
-                    ]}
-                  >
-                    <TextInput
-                      style={[
-                        styles.input,
-                        { color: theme.text, textAlignVertical: 'top', minHeight: 100 },
-                      ]}
-                      value={emailBody}
-                      onChangeText={(v) => set({ emailBody: v })}
-                      placeholder={t('messages.emailBodyPlaceholder')}
-                      placeholderTextColor={theme.textMuted}
-                      multiline
-                      maxLength={2000}
-                      accessibilityLabel={t('messages.emailBody')}
-                      accessibilityLabelledBy="email-body-label"
-                      maxFontSizeMultiplier={1.4}
-                    />
-                  </View>
-                  <Text
-                    style={[styles.charCount, { color: charCountColor(emailBody.length, 2000, theme.textMuted, theme.warning ?? '#F59E0B', theme.danger) }]}
-                    maxFontSizeMultiplier={1.6}
-                    accessibilityLiveRegion="polite"
-                  >
-                    {emailBody.length}/2000
-                  </Text>
+                <AudienceRow text={isEmail ? t('messages.audienceEmail') : t('messages.audiencePush')} />
 
-                  {emailQuota && (
-                    <Text
-                      style={[styles.charCount, {
-                        color: emailQuota.used >= emailQuota.max ? theme.danger : theme.textMuted,
-                        marginTop: 4,
-                        marginBottom: 16,
-                      }]}
-                      maxFontSizeMultiplier={1.6}
-                      accessibilityLiveRegion="polite"
-                    >
-                      {t('messages.emailQuota', { used: emailQuota.used, max: emailQuota.max })}
-                      {emailQuota.used >= emailQuota.max
-                        ? t('messages.quotaReached')
-                        : t('messages.quotaLeft', { remaining: emailQuota.max - emailQuota.used })}
-                    </Text>
-                  )}
-                  {!emailQuota && <View style={{ marginBottom: 16 }} />}
+                {isEmail && emailQuota && <EmailQuotaBar used={emailQuota.used} max={emailQuota.max} />}
 
-                  <SendButton
-                    channelColor={CHANNEL_COLORS.EMAIL}
-                    channelColorDark={EMAIL_COLOR_DARK}
-                    label={t('messages.sendEmail')}
-                    Icon={Mail}
-                    canSend={!!emailSubject.trim() && !!emailBody.trim()}
-                    isSending={emailMutation.isPending}
-                    cooldownRemaining={emailRemaining}
-                    onPress={() => { safeImpact(Haptics.ImpactFeedbackStyle.Medium); handleSendEmail(); }}
-                  />
-                  <LegalNote />
-                  </>
-                </View>
-                )
-              )}
+                <SendButton
+                  label={isEmail ? t('messages.sendEmail') : t('messages.sendToAll')}
+                  Icon={isEmail ? Mail : Send}
+                  canSend={formComplete}
+                  isSending={isEmail ? isEmailSending : isPushSending}
+                  cooldownUntil={isEmail ? emailCooldownUntil : pushCooldownUntil}
+                  hint={sendHint}
+                  onPress={handleSendPress}
+                />
+                <LegalNote />
+              </View>
+            </>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <SendConfirmSheet
+        visible={sheetVisible}
+        isEmail={sheet.isEmail}
+        heading={sheet.heading}
+        body={sheet.body}
+        audience={sheet.isEmail ? t('messages.audienceEmail') : t('messages.audiencePush')}
+        isSending={sheet.isEmail ? isEmailSending : isPushSending}
+        successMessage={sheet.successMessage}
+        onConfirm={confirmSend}
+        onClose={closeSheet}
+        onViewHistory={viewHistoryFromSheet}
+      />
     </Animated.View>
   );
 }
 
-// ── Styles ─────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  flex1: { flex: 1 },
+  screenPadding: { paddingHorizontal: 16 },
+  previewLabel: { marginBottom: 10 },
+  audienceLabel: { marginBottom: 2 },
+  ownerOnly: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32 },
+  ownerTitle: { fontSize: 18, fontFamily: font.bold, marginTop: 16, textAlign: 'center' },
+  ownerMsg: { fontSize: 14, fontFamily: font.regular, marginTop: 8, textAlign: 'center', lineHeight: 20 },
 
-  /* Header bar — simple title */
   headerBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 24,
-    paddingBottom: 12,
+    gap: 12,
+    paddingHorizontal: 20,
+    paddingBottom: 8,
   },
+  headerTextCol: { flex: 1 },
   headerTitle: {
     fontSize: 28,
-    fontWeight: '700',
-    fontFamily: 'Lexend_700Bold',
+    fontFamily: font.bold,
     letterSpacing: -0.5,
+  },
+  headerSubtitle: {
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 2,
+    fontFamily: font.regular,
   },
   historyHeaderBtn: {
     flexDirection: 'row',
@@ -915,208 +863,166 @@ const styles = StyleSheet.create({
     gap: 6,
     borderWidth: 1,
     borderRadius: 999,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    minHeight: 34,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    minHeight: 38,
   },
   historyHeaderBtnText: {
     fontSize: 12,
-    fontWeight: '700',
-    fontFamily: 'Lexend_600SemiBold',
+    fontFamily: font.semibold,
   },
 
-  // Channel segmented control
-  segmentRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 16,
-  },
-  segmentTab: {
-    flex: 1,
+  sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    minHeight: 48,
-    paddingVertical: 12,
+    gap: 10,
+    marginTop: 22,
+    marginBottom: 10,
+    minHeight: 28,
+  },
+  sectionTitle: {
+    flex: 1,
+    fontSize: 16,
+    fontFamily: font.bold,
+    letterSpacing: -0.3,
+  },
+  clearBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingVertical: 5,
     paddingHorizontal: 10,
-    borderRadius: 14,
+  },
+  clearBtnText: { fontSize: 12, fontFamily: font.medium },
+
+  channelRow: { flexDirection: 'row', gap: 10 },
+  channelCard: {
+    flex: 1,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    padding: 14,
+    minHeight: 112,
+  },
+  channelCardTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  channelIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  channelCheck: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  channelRadio: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     borderWidth: 1.5,
   },
-  segmentText: { fontSize: 14, fontWeight: '700', fontFamily: 'Lexend_600SemiBold' },
+  channelName: { fontSize: 14, fontFamily: font.semibold },
+  channelDesc: { fontSize: 12, lineHeight: 16, marginTop: 2, fontFamily: font.regular },
 
-  // Send button progress bars
-  progressTrack: {
-    height: 3,
-    borderRadius: 2,
-    marginTop: 8,
-    overflow: 'hidden',
-  },
-  progressFill: { height: 3, borderRadius: 2 },
-  progressIndet: { width: '40%', height: 3, borderRadius: 2 },
-
-  // E-mail premium lock card
-  lockWrapper: {
-    marginTop: 8,
-    borderRadius: 18,
-    overflow: 'hidden',
+  card: {
+    borderRadius: 16,
+    padding: 16,
     borderWidth: 1,
-    borderColor: 'rgba(252,211,77,0.25)',
   },
-  lockCard: {
-    alignItems: 'center',
-    paddingVertical: 28,
-    paddingHorizontal: 22,
-    gap: 12,
+  overline: {
+    fontSize: 11,
+    fontFamily: font.semibold,
   },
-  lockIconBg: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  lockTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#fff',
-    textAlign: 'center',
-    fontFamily: 'Lexend_700Bold',
-  },
-  lockDesc: {
-    fontSize: 13,
-    lineHeight: 19,
-    color: 'rgba(255,255,255,0.72)',
-    textAlign: 'center',
-    paddingHorizontal: 6,
-    fontFamily: 'Lexend_500Medium',
-  },
-  lockCtaWrap: {
-    marginTop: 6,
-    borderRadius: 14,
-    overflow: 'hidden',
-    minHeight: 48,
-  },
-  lockCta: {
+
+  templatesBlock: { marginBottom: 14 },
+  templatesRow: { gap: 8, paddingTop: 8, paddingRight: 4 },
+  templateChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-  },
-  lockCtaText: { fontSize: 15, fontWeight: '800', color: '#1a0533', fontFamily: 'Lexend_700Bold' },
-
-  // Compose card
-  composeCard: {
-    marginTop: 8,
-    borderRadius: 14,
-    padding: 18,
-    elevation: 3,
-    shadowColor: '#1F2937',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
+    gap: 6,
     borderWidth: 1,
+    borderRadius: 999,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    minHeight: 36,
   },
-  fieldLabel: { fontSize: 13, fontWeight: '600', marginBottom: 6, fontFamily: 'Lexend_600SemiBold' },
+  templateChipText: { fontSize: 13, fontFamily: font.medium },
+
+  field: { marginBottom: 12 },
+  fieldLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  fieldLabel: { fontSize: 13, fontFamily: font.semibold },
+  charCount: { fontSize: 11, fontFamily: font.medium },
   inputWrapper: {
     borderWidth: 1,
-    borderRadius: 14,
+    borderRadius: radius.md,
     paddingHorizontal: 14,
   },
-  input: { fontSize: 15, paddingVertical: 12, fontFamily: 'Lexend_500Medium' },
-  charCount: { fontSize: 11, textAlign: 'right', marginTop: 2, fontFamily: 'Lexend_500Medium' },
+  inputFocused: { borderWidth: 1.5 },
+  input: { fontSize: 15, paddingVertical: 12, fontFamily: font.medium },
 
   composeTip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 12,
-    marginBottom: 14,
+    marginTop: 2,
   },
-  composeTipText: { flex: 1, fontSize: 12, lineHeight: 17, fontFamily: 'Lexend_500Medium' },
+  composeTipText: { flex: 1, fontSize: 12, lineHeight: 17, fontFamily: font.medium },
 
-  sendBtn: {
+  audienceRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 15,
-    borderRadius: 14,
-    marginTop: 16,
-    gap: 10,
-    overflow: 'hidden',
+    gap: 12,
     borderWidth: 1,
+    borderRadius: radius.md,
+    padding: 12,
+    marginTop: 14,
   },
-  sendBtnText: { color: '#fff', fontSize: 15, fontWeight: '700', fontFamily: 'Lexend_600SemiBold' },
+
+  audienceText: { fontSize: 13, lineHeight: 18, fontFamily: font.medium },
+
+  quotaBlock: { marginTop: 14 },
+  quotaValue: { fontSize: 12, fontFamily: font.semibold },
+  quotaTrack: { height: 6, borderRadius: 3, overflow: 'hidden' },
+  quotaFill: { height: 6, borderRadius: 3 },
+  quotaHint: { fontSize: 11, marginTop: 6, fontFamily: font.medium },
+
   legalNoteRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 6,
-    marginTop: 10,
+    marginTop: 12,
     paddingHorizontal: 4,
   },
   legalNoteText: {
     flex: 1,
     fontSize: 11,
     lineHeight: 15,
-    fontFamily: 'Lexend_500Medium',
+    fontFamily: font.medium,
     opacity: 0.85,
   },
-});
 
-const bannerStyles = StyleSheet.create({
-  wrapper: {
-    borderRadius: 14,
-    borderWidth: 1,
-    padding: 14,
-    overflow: 'hidden',
-  },
-  closeBtn: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-    zIndex: 1,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+  lockCard: { marginHorizontal: 0, marginVertical: 0, marginTop: 16 },
+
+  ownerIconWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  content: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-    paddingRight: 24,
-  },
-  textWrap: {
-    flex: 1,
-  },
-  title: {
-    fontSize: 14,
-    fontWeight: '600',
-    fontFamily: 'Lexend_600SemiBold',
-    letterSpacing: -0.2,
-  },
-  desc: {
-    fontSize: 12,
-    fontFamily: 'Lexend_400Regular',
-    lineHeight: 18,
-    marginTop: 3,
-    letterSpacing: 0.1,
-  },
-  hideBtn: {
-    alignSelf: 'flex-end',
-    marginTop: 8,
-    paddingVertical: 4,
-    paddingHorizontal: 2,
-  },
-  hideText: {
-    fontSize: 11,
-    fontFamily: 'Lexend_500Medium',
-    textDecorationLine: 'underline',
-    letterSpacing: 0.1,
   },
 });

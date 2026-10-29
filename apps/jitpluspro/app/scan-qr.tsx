@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  TextInput,
   Keyboard,
   Platform,
   ActivityIndicator,
@@ -12,7 +11,6 @@ import {
   Modal,
   FlatList,
   ViewStyle,
-  I18nManager,
   useWindowDimensions,
   Animated,
   AppState,
@@ -22,13 +20,12 @@ import { logError } from '@/utils/devLogger';
 import { CameraView, useCameraPermissions, type BarcodeSettings } from 'expo-camera';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
+import { safeImpact, safeNotification } from '@/utils/haptics';
 import {
-  Search,
   X,
-  Zap,
+  Flashlight,
   ArrowRight,
   Camera,
-  ChevronDown,
   AlertCircle,
   ArrowLeft,
   Check,
@@ -37,183 +34,49 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useFocusEffect } from 'expo-router/react-navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import api from '@/services/api';
+import { prefetchClientStatus, prefetchTillData } from '@/hooks/useQueryHooks';
 import { getErrorMessage } from '@/utils/error';
 import { normalizePhone } from '@/utils/normalizePhone';
-import { isValidUUID } from '@/utils/validation';
-import { SCAN_AREA_RATIO, NAVIGATION_DELAY_MS } from '@/constants/app';
+import { parseScanPayload } from '@/utils/parseScanPayload';
+import { SCAN_AREA_RATIO, NAVIGATION_DELAY_MS, ASYNC_STORAGE_KEYS } from '@/constants/app';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { useTheme } from '@/contexts/ThemeContext';
+import { useTheme, palette } from '@/contexts/ThemeContext';
+import { useDir } from '@/hooks/useDir';
+import { font, icon as iconTokens } from '@/constants/design';
 
 import { COUNTRIES } from '@/constants/Countries';
 import FirstScanGuide from '@/components/FirstScanGuide';
+import { ActionButton } from '@/components/ui/ActionButton';
+import { AnimatedSearchBar } from '@/components/scan/AnimatedSearchBar';
+import { ScanLine } from '@/components/scan/ScanLine';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { COUPON_QR_PREFIX } from '@jitplus/shared/src/scratch';
 
-// Safe haptic wrappers — no-op on devices without haptic engine
-const safeNotification = (type: Haptics.NotificationFeedbackType) => {
-  Haptics.notificationAsync(type).catch(() => {});
-};
-const safeImpact = (style: Haptics.ImpactFeedbackStyle) => {
-  Haptics.impactAsync(style).catch(() => {});
-};
-
-// ── Module constants ─────────────────────────────────────
 /** Cooldown between two identical scans (ms) */
 const SCAN_COOLDOWN_MS = 5_000;
+/** Show "verifying" only when the server lookup is noticeably slow */
+const VERIFYING_OVERLAY_DELAY_MS = 300;
 /** Max phone length accepted by the search */
 const MAX_PHONE_LENGTH = 15;
-/** Allow-list of hostnames accepted when the QR encodes an http(s) URL.
- * Any other host is rejected to block QR-phishing. Lowercase compare. */
-const QR_ALLOWED_HOSTS = new Set<string>([
-  'jitplus.com',
-  'www.jitplus.com',
-  'jitplus.app',
-  'yams.app',
-  'www.yams.app',
-]);
 /** Stable barcode-scanner settings (kept module-level so the CameraView prop
  * identity never changes — avoids re-configuring the native scanner). */
 const BARCODE_SCANNER_SETTINGS: BarcodeSettings = { barcodeTypes: ['qr'] };
+// The camera screen stays dark in both themes: these colors sit on the live preview
+// or on solid success/danger surfaces.
+const CAMERA_BG = '#0B0F14';
+const ON_CAMERA = '#FFFFFF';
+const OVERLAY_COLOR = 'rgba(0,0,0,0.55)';
 
-// ── Animated Search Bar ───────────────────────────────────
-const FloatingSearchBar = React.memo(function FloatingSearchBar({
-  value,
-  onChangeText,
-  onSubmit,
-  onFocus,
-  onBlur,
-  isFocused,
-  isSearching,
-  inputRef,
-  insetTop,
-  countryIndex,
-  onToggleCountry,
-}: {
-  value: string;
-  onChangeText: (t: string) => void;
-  onSubmit: () => void;
-  onFocus: () => void;
-  onBlur: () => void;
-  isFocused: boolean;
-  isSearching: boolean;
-  inputRef: React.RefObject<TextInput | null>;
-  insetTop: number;
-  countryIndex: number;
-  onToggleCountry: () => void;
-}) {
-  const { t } = useLanguage();
-  const barScale = useRef(new Animated.Value(1)).current;
-  const country = COUNTRIES[countryIndex];
+// A live blur over the camera preview drops frames (and QR detection speed) on
+// mid-range Android devices, so Android gets a flat translucent backdrop instead.
+function GlassBackdrop() {
+  if (Platform.OS === 'ios') {
+    return <BlurView intensity={18} tint="dark" style={StyleSheet.absoluteFill} />;
+  }
+  return <View style={[StyleSheet.absoluteFill, styles.glassFallback]} />;
+}
 
-  const animatedBar = useMemo(() => ({
-    transform: [{ scale: barScale }],
-  }), [barScale]);
-
-  const handleFocus = () => {
-    Animated.spring(barScale, { toValue: 1.02, useNativeDriver: true, speed: 25, bounciness: 4 }).start();
-    onFocus();
-  };
-
-  const handleBlur = () => {
-    Animated.spring(barScale, { toValue: 1, useNativeDriver: true, speed: 25, bounciness: 4 }).start();
-    onBlur();
-  };
-
-  return (
-    <Animated.View
-      style={[
-        styles.searchContainer,
-        { top: insetTop + 12 },
-        animatedBar,
-      ]}
-    >
-      <View style={[styles.searchBar, isFocused && styles.searchBarFocused]}>
-        <Search size={18} color="rgba(255,255,255,0.6)" strokeWidth={2} />
-        <TouchableOpacity style={styles.prefixContainer} onPress={onToggleCountry} activeOpacity={0.7}>
-          <Text style={styles.prefixText}>{country.flag} {country.dial}</Text>
-          <ChevronDown size={12} color="#C4B5FD" strokeWidth={2} style={{ marginLeft: 2 }} />
-        </TouchableOpacity>
-        <TextInput
-          ref={inputRef}
-          style={styles.searchInput}
-          value={value}
-          onChangeText={onChangeText}
-          onSubmitEditing={onSubmit}
-          onFocus={handleFocus}
-          onBlur={handleBlur}
-          placeholder={t('scan.phonePlaceholder')}
-          placeholderTextColor="rgba(255,255,255,0.45)"
-          keyboardType="phone-pad"
-          returnKeyType="search"
-          selectionColor="#A78BFA"
-          autoCorrect={false}
-        />
-        {value.length > 0 && (
-          <TouchableOpacity
-            onPress={() => onChangeText('')}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <X size={18} color="rgba(255,255,255,0.6)" />
-          </TouchableOpacity>
-        )}
-        {value.length >= 6 && (
-          <TouchableOpacity
-            style={styles.submitBtn}
-            onPress={onSubmit}
-            activeOpacity={0.7}
-          >
-            {isSearching ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <ArrowRight size={18} color="#fff" strokeWidth={2} />
-            )}
-          </TouchableOpacity>
-        )}
-      </View>
-    </Animated.View>
-  );
-});
-
-// ── Animated Scan Line ────────────────────────────────────
-const ScanLine = React.memo(function ScanLine({ scanSize, active }: { scanSize: number; active: boolean }) {
-  const translateY = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    if (!active) {
-      translateY.setValue(0);
-      return;
-    }
-    const anim = Animated.loop(
-      Animated.sequence([
-        Animated.timing(translateY, {
-          toValue: scanSize - 4,
-          duration: 2200,
-          useNativeDriver: true,
-        }),
-        Animated.timing(translateY, {
-          toValue: 0,
-          duration: 2200,
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-    anim.start();
-    return () => anim.stop();
-  }, [active, scanSize, translateY]);
-
-  const lineStyle = {
-    transform: [{ translateY }],
-  };
-
-  return (
-    <Animated.View style={[styles.scanLine, lineStyle]}>
-      <View style={styles.scanLineGradient} />
-    </Animated.View>
-  );
-});
-
-// ── Corner Component ──────────────────────────────────────
 const ViewfinderCorner = React.memo(function ViewfinderCorner({ position }: { position: 'tl' | 'tr' | 'bl' | 'br' }) {
   const borderStyle: ViewStyle = {};
   if (position.includes('t')) borderStyle.top = 0;
@@ -225,18 +88,9 @@ const ViewfinderCorner = React.memo(function ViewfinderCorner({ position }: { po
   if (position.includes('l')) borderStyle.borderLeftWidth = 3;
   if (position.includes('r')) borderStyle.borderRightWidth = 3;
 
-  return (
-    <View
-      style={[
-        styles.corner,
-        borderStyle,
-        { borderColor: '#A78BFA' },
-      ]}
-    />
-  );
+  return <View style={[styles.corner, borderStyle]} />;
 });
 
-// ── Detection Feedback Overlay ────────────────────────────
 type ScanOverlayState = {
   phase: 'idle' | 'detected' | 'verifying' | 'found' | 'error';
   message: string | null;
@@ -245,6 +99,7 @@ type ScanOverlayState = {
 
 const DetectedOverlay = React.memo(function DetectedOverlay({ overlayState, onRetry }: { overlayState: ScanOverlayState; onRetry?: () => void }) {
   const { t } = useLanguage();
+  const dir = useDir();
 
   if (overlayState.phase === 'idle') return null;
 
@@ -254,18 +109,23 @@ const DetectedOverlay = React.memo(function DetectedOverlay({ overlayState, onRe
   return (
     <View style={styles.detectedOverlay} pointerEvents="box-none">
       <View style={[styles.detectedCard, isError ? styles.detectedCardError : isSuccess ? styles.detectedCardSuccess : styles.detectedCardNeutral]}>
-        <View style={styles.detectedRow}>
+        <View style={[styles.detectedRow, { flexDirection: dir.row }]}>
           {overlayState.phase === 'verifying' ? (
-            <ActivityIndicator size="small" color={isError ? '#fff' : '#7C3AED'} />
+            <ActivityIndicator size="small" color="#7C3AED" />
           ) : isError ? (
-            <AlertCircle size={18} color="#fff" strokeWidth={2.2} />
+            <AlertCircle size={18} color={ON_CAMERA} strokeWidth={iconTokens.stroke} />
           ) : (
-            <Check size={18} color={isSuccess ? '#ffffff' : '#7C3AED'} strokeWidth={2.6} />
+            <Check size={18} color={isSuccess ? ON_CAMERA : '#7C3AED'} strokeWidth={iconTokens.stroke} />
           )}
           <View style={styles.detectedTextWrap}>
-            <Text style={[styles.detectedText, isError && styles.detectedTextError]}>{overlayState.message}</Text>
+            <Text style={[styles.detectedText, isError && styles.detectedTextError, { textAlign: dir.textAlign }]}>{overlayState.message}</Text>
             {isError && onRetry ? (
-              <TouchableOpacity style={styles.detectedRetryBtn} onPress={onRetry} activeOpacity={0.8}>
+              <TouchableOpacity
+                style={[styles.detectedRetryBtn, { alignSelf: dir.alignStart }]}
+                onPress={onRetry}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+              >
                 <Text style={styles.detectedRetryText}>{t('common.retry')}</Text>
               </TouchableOpacity>
             ) : null}
@@ -276,30 +136,24 @@ const DetectedOverlay = React.memo(function DetectedOverlay({ overlayState, onRe
   );
 });
 
-// Versioned key: bump the suffix to re-show the banner after copy/design changes.
-const HOW_IT_WORKS_STORAGE_KEY = '@jitpluspro_scan_how_it_works_v2';
-
 const HowItWorksBanner = React.memo(function HowItWorksBanner({
   visible,
   onDismiss,
-  theme,
-  t,
-  isRTL,
   insetTop,
 }: {
   visible: boolean;
   onDismiss: () => void;
-  theme: ReturnType<typeof useTheme>;
-  t: (key: string, params?: Record<string, unknown>) => string;
-  isRTL: boolean;
   insetTop: number;
 }) {
+  const { t } = useLanguage();
+  const theme = useTheme();
+  const dir = useDir();
   const [shouldRender, setShouldRender] = useState(visible);
-  const collapse = useRef(new Animated.Value(visible ? 1 : 0)).current;
+  const [collapse] = useState(() => new Animated.Value(visible ? 1 : 0));
+  if (visible && !shouldRender) setShouldRender(true);
 
   useEffect(() => {
     if (visible) {
-      setShouldRender(true);
       Animated.timing(collapse, { toValue: 1, duration: 220, useNativeDriver: false }).start();
       return;
     }
@@ -308,46 +162,55 @@ const HowItWorksBanner = React.memo(function HowItWorksBanner({
     });
   }, [collapse, visible]);
 
-  if (!shouldRender) return null;
-
-  const animatedStyle = {
+  const animatedStyle = useMemo(() => ({
     opacity: collapse,
     maxHeight: collapse.interpolate({ inputRange: [0, 1], outputRange: [0, 140] }),
     transform: [{ translateY: collapse.interpolate({ inputRange: [0, 1], outputRange: [-10, 0] }) }],
-  };
+  }), [collapse]);
+
+  if (!shouldRender) return null;
 
   return (
     <Animated.View
-      style={[styles.infoBanner, { top: insetTop + 76 }, animatedStyle, isRTL && styles.infoBannerRTL]}
+      style={[
+        styles.infoBanner,
+        { top: insetTop + 76, flexDirection: dir.row },
+        animatedStyle,
+      ]}
     >
-      <BlurView
-        intensity={18}
-        tint="dark"
-        blurMethod="dimezisBlurView"
-        style={StyleSheet.absoluteFill}
-      />
+      <GlassBackdrop />
       <View style={styles.infoBannerTint} />
       <View style={[styles.infoBannerIcon, { backgroundColor: `${theme.primary}20` }]}>
-        <Info size={16} color={theme.primary} strokeWidth={2.2} />
+        <Info size={16} color={theme.primary} strokeWidth={iconTokens.stroke} />
       </View>
       <View style={styles.infoBannerBody}>
-        <Text style={[styles.infoBannerTitle, { color: theme.text }]}>{t('scan.howItWorksTitle')}</Text>
-        <Text style={[styles.infoBannerText, { color: theme.textMuted }]}>{t('scan.howItWorksBody')}</Text>
+        <Text style={[styles.infoBannerTitle, { color: theme.text, textAlign: dir.textAlign }]}>{t('scan.howItWorksTitle')}</Text>
+        <Text style={[styles.infoBannerText, { color: theme.textMuted, textAlign: dir.textAlign }]}>{t('scan.howItWorksBody')}</Text>
       </View>
       <TouchableOpacity
         style={styles.infoBannerClose}
         onPress={onDismiss}
         activeOpacity={0.8}
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        accessibilityRole="button"
+        accessibilityLabel={t('common.close')}
       >
-        <X size={16} color={theme.textMuted} strokeWidth={2.2} />
+        <X size={16} color={theme.textMuted} strokeWidth={iconTokens.stroke} />
       </TouchableOpacity>
     </Animated.View>
   );
 });
+type MatchedClient = { id: string; nom: string; telephone?: string; email?: string; scanTicket?: string };
 
-// ── Scan state reducer ────────────────────────────────────
-type MatchedClient = { id: string; nom: string; telephone?: string; email?: string };
+/** "Prénom Nom" from a verify-qr / verify-client response; undefined when the client has no last name. */
+function verifiedClientName(client: { prenom?: string | null; nom?: string | null } | null | undefined): string | undefined {
+  return client?.nom ? [client.prenom, client.nom].filter(Boolean).join(' ') : undefined;
+}
+
+/** The scan ticket is only present for non-members; it lets the next screen enroll them. */
+function transactionParams(clientId: string, scanTicket?: string) {
+  return scanTicket ? { clientId, scanTicket } : { clientId };
+}
 
 interface ScanState {
   phoneInput: string;
@@ -385,7 +248,6 @@ function scanReducer(state: ScanState, action: ScanAction): ScanState {
   }
 }
 
-// ── Memoized UI blocks ───────────────────────────────────
 const CameraOverlay = React.memo(function CameraOverlay({
   screenHeight,
   scanSize,
@@ -404,7 +266,7 @@ const CameraOverlay = React.memo(function CameraOverlay({
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
       <View style={[styles.overlayTop, { height: Math.max((screenHeight - scanSize) / 2 - 40, 100) }]} />
-      <View style={[styles.overlayMiddle, { height: scanSize }]}> 
+      <View style={[styles.overlayMiddle, { height: scanSize }]}>
         <View style={styles.overlaySide} />
         <Animated.View style={[styles.scanArea, { width: scanSize, height: scanSize }, pulseStyle]}>
           <ViewfinderCorner position="tl" />
@@ -434,12 +296,13 @@ const BottomControls = React.memo(function BottomControls({
   onClose: () => void;
   t: (key: string, params?: Record<string, unknown>) => string;
 }) {
+  const dir = useDir();
   return (
     <Animated.View
       style={[styles.bottomControls, { paddingBottom: Math.max(insetBottom, 26) }]}
       pointerEvents="box-none"
     >
-      <View style={styles.actionsRow}>
+      <View style={[styles.actionsRow, { flexDirection: dir.row }]}>
         <TouchableOpacity
           style={styles.actionBtn}
           onPress={onToggleFlash}
@@ -451,18 +314,13 @@ const BottomControls = React.memo(function BottomControls({
         >
           {isFlashOn ? (
             <View style={[styles.actionCircle, styles.actionCircleActive]}>
-              <Zap size={22} color="#1F2937" strokeWidth={2.2} fill="#1F2937" />
+              <Flashlight size={22} color="#1F2937" strokeWidth={iconTokens.stroke} fill="#1F2937" />
             </View>
           ) : (
             <View style={styles.actionCircle}>
-              <BlurView
-                intensity={18}
-                tint="dark"
-                blurMethod="dimezisBlurView"
-                style={StyleSheet.absoluteFill}
-              />
+              <GlassBackdrop />
               <View style={styles.actionCircleTint} />
-              <Zap size={22} color="#FFFFFF" strokeWidth={2} />
+              <Flashlight size={22} color={ON_CAMERA} strokeWidth={iconTokens.stroke} />
             </View>
           )}
           <Text style={[styles.actionBtnLabel, isFlashOn && styles.actionBtnLabelActive]}>
@@ -479,14 +337,9 @@ const BottomControls = React.memo(function BottomControls({
           accessibilityLabel={t('common.close')}
         >
           <View style={styles.actionCircle}>
-            <BlurView
-              intensity={18}
-              tint="dark"
-              blurMethod="dimezisBlurView"
-              style={StyleSheet.absoluteFill}
-            />
+            <GlassBackdrop />
             <View style={styles.actionCircleTint} />
-            <X size={22} color="#FFFFFF" strokeWidth={2} />
+            <X size={22} color={ON_CAMERA} strokeWidth={iconTokens.stroke} />
           </View>
           <Text style={styles.actionBtnLabel}>{t('common.close')}</Text>
         </TouchableOpacity>
@@ -495,20 +348,19 @@ const BottomControls = React.memo(function BottomControls({
   );
 });
 
-// ── Main Screen ───────────────────────────────────────────
 export default function ScanQRScreen() {
   const router = useRouter();
   // Opened from the coupon screen (which replaced itself): replace again so the stack stays list → coupon-validate.
   const { from } = useLocalSearchParams<{ from?: string }>();
   const openedFromCoupon = from === 'coupon';
   const insets = useSafeAreaInsets();
-  const inputRef = useRef<TextInput | null>(null);
   const { t } = useLanguage();
   const theme = useTheme();
+  const queryClient = useQueryClient();
   const [permission, requestPermission] = useCameraPermissions();
   const { width: SCREEN_W, height: SCREEN_H } = useWindowDimensions();
   const SCAN_SIZE = SCREEN_W * SCAN_AREA_RATIO;
-  const isRTL = I18nManager.isRTL;
+  const dir = useDir();
 
   // State
   const [scan, dispatch] = useReducer(scanReducer, initialScanState);
@@ -522,50 +374,51 @@ export default function ScanQRScreen() {
   // Navigation mutex: prevents QR scan and phone search from navigating simultaneously
   const isNavigatingRef = useRef(false);
 
-  // ── First-scan guide popup ──
   const [showGuide, setShowGuide] = useState(false);
   const [showHowItWorks, setShowHowItWorks] = useState(false);
   const [showCountrySheet, setShowCountrySheet] = useState(false);
   const [overlayState, setOverlayState] = useState<ScanOverlayState>({ phase: 'idle', message: null });
   const overlayPhaseRef = useRef(overlayState.phase);
-  overlayPhaseRef.current = overlayState.phase;
-
   useEffect(() => {
-    (async () => {
-      try {
-        const done = await AsyncStorage.getItem('@jitpluspro_first_scan_guide');
-        if (!done) setShowGuide(true);
-      } catch (e) { logError('scan-guide', 'load', e); }
-    })();
+    overlayPhaseRef.current = overlayState.phase;
+  }, [overlayState.phase]);
+
+  // The first-scan guide and the "how it works" banner tell the same thing, so
+  // a merchant only ever gets one of them: the guide on the first visit, the
+  // banner only for installs that saw the guide before it replaced the banner.
+  useEffect(() => {
+    let cancelled = false;
+    AsyncStorage.multiGet([ASYNC_STORAGE_KEYS.FIRST_SCAN_GUIDE_DONE, ASYNC_STORAGE_KEYS.SCAN_HOW_IT_WORKS_DISMISSED])
+      .then(([[, guideDone], [, howDismissed]]) => {
+        if (cancelled) return;
+        setShowGuide(!guideDone);
+        setShowHowItWorks(!!guideDone && howDismissed !== 'dismissed');
+      })
+      .catch((e) => logError('scan-guide', 'load', e));
+    return () => { cancelled = true; };
   }, []);
 
   const dismissGuide = useCallback(() => {
     setShowGuide(false);
-    AsyncStorage.setItem('@jitpluspro_first_scan_guide', '1').catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const dismissed = await AsyncStorage.getItem(HOW_IT_WORKS_STORAGE_KEY);
-        if (!cancelled) setShowHowItWorks(dismissed !== 'dismissed');
-      } catch (e) {
-        logError('scan-how-it-works', 'load', e);
-        if (!cancelled) setShowHowItWorks(true);
-      }
-    })();
-    return () => { cancelled = true; };
+    AsyncStorage.multiSet([
+      [ASYNC_STORAGE_KEYS.FIRST_SCAN_GUIDE_DONE, '1'],
+      [ASYNC_STORAGE_KEYS.SCAN_HOW_IT_WORKS_DISMISSED, 'dismissed'],
+    ]).catch(() => {});
   }, []);
 
   const dismissHowItWorks = useCallback(() => {
     setShowHowItWorks(false);
-    AsyncStorage.setItem(HOW_IT_WORKS_STORAGE_KEY, 'dismissed').catch(() => {});
+    AsyncStorage.setItem(ASYNC_STORAGE_KEYS.SCAN_HOW_IT_WORKS_DISMISSED, 'dismissed').catch(() => {});
   }, []);
 
   const resetScanUi = useCallback(() => {
     setOverlayState({ phase: 'idle', message: null });
   }, []);
+
+  // Rewards and wheel info are merchant-wide: load them while the camera warms up.
+  useEffect(() => {
+    prefetchTillData(queryClient);
+  }, [queryClient]);
 
   // Cleanup navigation timeouts on unmount
   useEffect(() => {
@@ -576,8 +429,8 @@ export default function ScanQRScreen() {
   }, []);
 
   // Animations — only run when actively scanning to save CPU/battery
-  const pulseScale = useRef(new Animated.Value(1)).current;
-  const pulseOpacity = useRef(new Animated.Value(1)).current;
+  const [pulseScale] = useState(() => new Animated.Value(1));
+  const [pulseOpacity] = useState(() => new Animated.Value(1));
 
   useEffect(() => {
     if (!isScanning) {
@@ -606,7 +459,6 @@ export default function ScanQRScreen() {
     opacity: pulseOpacity,
   }), [pulseOpacity, pulseScale]);
 
-  // ── Permission request ──
   useEffect(() => {
     if (permission && !permission.granted && permission.canAskAgain) {
       requestPermission();
@@ -615,26 +467,26 @@ export default function ScanQRScreen() {
 
   const renderMatchedClient = useCallback(({ item }: { item: MatchedClient }) => (
     <TouchableOpacity
-      style={[styles.cpRow, { borderBottomColor: theme.borderLight }]}
+      style={[styles.cpRow, { flexDirection: dir.row, borderBottomColor: theme.borderLight }]}
       onPress={() => {
         set({ matchedClients: [] });
         router.push({
           pathname: '/transaction-amount',
-          params: { clientId: item.id },
+          params: transactionParams(item.id, item.scanTicket),
         });
       }}
       activeOpacity={0.6}
       delayPressIn={0}
     >
       <View style={styles.flexMain}>
-        <Text style={[styles.cpCountryName, { color: theme.text }]}>{item.nom}</Text>
-        <Text style={[styles.clientSubtitle, { color: theme.textMuted }]}>
+        <Text style={[styles.cpCountryName, { color: theme.text, textAlign: dir.textAlign }]}>{item.nom}</Text>
+        <Text style={[styles.clientSubtitle, { color: theme.textMuted, textAlign: dir.textAlign }]}>
           {item.telephone || item.email || ''}
         </Text>
       </View>
-      <ArrowRight size={18} color={theme.primary} />
+      <ArrowRight size={18} color={theme.primary} strokeWidth={iconTokens.stroke} style={dir.flip} />
     </TouchableOpacity>
-  ), [router, theme, set]);
+  ), [router, theme, set, dir]);
 
   // cameraMounted gates the CameraView's actual mount in the tree. We must
   // fully unmount (not just `active={false}`) to release the Camera2 session;
@@ -684,8 +536,7 @@ export default function ScanQRScreen() {
     return () => sub.remove();
   }, [syncCameraMount]);
 
-  // ── Navigate to transaction after resolving clientId ──
-  const navigateToTransaction = useCallback((clientId: string, clientName?: string) => {
+  const navigateToTransaction = useCallback((clientId: string, clientName?: string, scanTicket?: string) => {
     if (isNavigatingRef.current) return;
     isNavigatingRef.current = true;
     setOverlayState({
@@ -693,17 +544,17 @@ export default function ScanQRScreen() {
       message: clientName ? t('scan.clientFound', { name: clientName }) : t('scan.clientFoundFallback'),
       name: clientName ?? null,
     });
+    prefetchClientStatus(queryClient, clientId, scanTicket).catch(() => {});
     if (navTimeoutRef.current) clearTimeout(navTimeoutRef.current);
     navTimeoutRef.current = setTimeout(() => {
       navTimeoutRef.current = null;
       router.push({
         pathname: '/transaction-amount',
-        params: { clientId },
+        params: transactionParams(clientId, scanTicket),
       });
     }, NAVIGATION_DELAY_MS);
-  }, [router, t]);
+  }, [router, t, queryClient]);
 
-  // ── QR Code handler ──
   const handleBarCodeScanned = useCallback(
     async ({ data }: { type: string; data: string }) => {
       if (!isScanning || isNavigatingRef.current) return;
@@ -720,91 +571,63 @@ export default function ScanQRScreen() {
       if (overlayTimeoutRef.current) clearTimeout(overlayTimeoutRef.current);
       overlayTimeoutRef.current = setTimeout(() => {
         setOverlayState({ phase: 'verifying', message: t('scan.verifying') });
-      }, 1100);
+      }, VERIFYING_OVERLAY_DELAY_MS);
 
       // Haptic feedback
       safeNotification(Haptics.NotificationFeedbackType.Success);
 
-      // ── Coupon QR: jitplus://coupon/{token} (or bare c1.… token) → coupon validation screen
-      if (data.startsWith(COUPON_QR_PREFIX) || data.startsWith('c1.')) {
+      const showScanError = (message: string) => {
+        if (overlayTimeoutRef.current) clearTimeout(overlayTimeoutRef.current);
+        setOverlayState({ phase: 'error', message });
+        safeNotification(Haptics.NotificationFeedbackType.Error);
+      };
+
+      const payload = parseScanPayload(data);
+
+      if (payload.kind === 'coupon') {
+        const couponToken = payload.token;
         if (overlayTimeoutRef.current) clearTimeout(overlayTimeoutRef.current);
         isNavigatingRef.current = true;
         navTimeoutRef.current = setTimeout(() => {
           navTimeoutRef.current = null;
-          const target = { pathname: '/coupon-validate', params: { token: data } } as const;
+          const target = { pathname: '/coupon-validate', params: { token: couponToken } } as const;
           if (openedFromCoupon) router.replace(target);
           else router.push(target);
         }, NAVIGATION_DELAY_MS);
         return;
       }
 
-      // ── Format 1: jitplus://scan/{JWT_TOKEN} (signed QR from client app)
-      if (data.startsWith('jitplus://scan/')) {
-        const token = data.replace('jitplus://scan/', '').trim();
-        if (!token) {
-          if (overlayTimeoutRef.current) clearTimeout(overlayTimeoutRef.current);
-          setOverlayState({ phase: 'error', message: t('scan.tokenMissing') });
-          safeNotification(Haptics.NotificationFeedbackType.Error);
-          return;
-        }
+      if (payload.kind === 'missingToken') {
+        showScanError(t('scan.tokenMissing'));
+        return;
+      }
+
+      if (payload.kind === 'signed') {
         try {
-          const res = await api.post('/merchant/verify-qr', { token });
+          const res = await api.post('/merchant/verify-qr', { token: payload.token });
           const clientId = res.data?.clientId;
-          const clientName = res.data?.client?.nom ? [res.data.client.prenom, res.data.client.nom].filter(Boolean).join(' ') : undefined;
           if (!clientId) throw new Error('no clientId');
-          navigateToTransaction(clientId, clientName);
+          const scanTicket = typeof res.data?.scanTicket === 'string' ? res.data.scanTicket : undefined;
+          navigateToTransaction(clientId, verifiedClientName(res.data?.client), scanTicket);
         } catch (err: unknown) {
-          if (overlayTimeoutRef.current) clearTimeout(overlayTimeoutRef.current);
-          setOverlayState({ phase: 'error', message: getErrorMessage(err, t('scan.qrExpiredFallback')) });
-          safeNotification(Haptics.NotificationFeedbackType.Error);
+          showScanError(getErrorMessage(err, t('scan.qrExpiredFallback')));
         }
         return;
       }
 
-      // ── Format 2: jitplus://client/{UUID} (legacy — DEPRECATED, must verify server-side)
-      let clientId: string | undefined;
-      if (data.startsWith('jitplus://client/')) {
-        clientId = data.replace('jitplus://client/', '').trim();
-      } else if (data.startsWith('http://') || data.startsWith('https://')) {
-        // Restrict http(s) QR payloads to an allow-list of trusted hosts to block QR-phishing.
-        try {
-          const url = new URL(data);
-          if (!QR_ALLOWED_HOSTS.has(url.hostname.toLowerCase())) {
-            if (overlayTimeoutRef.current) clearTimeout(overlayTimeoutRef.current);
-            setOverlayState({ phase: 'error', message: t('scan.invalidQR') });
-            safeNotification(Haptics.NotificationFeedbackType.Error);
-            return;
-          }
-          clientId = (url.searchParams.get('clientId') || url.pathname.split('/').pop() || '').trim();
-        } catch {
-          // invalid URL — fall through to UUID validation (which will reject)
-        }
-      } else if (data.includes('clientId=')) {
-        const match = data.match(/clientId=([^&]+)/);
-        clientId = match?.[1]?.trim();
-      } else {
-        clientId = data.trim();
-      }
-
-      // Validate that extracted value is a proper UUID
-      if (!clientId || !isValidUUID(clientId)) {
-        if (overlayTimeoutRef.current) clearTimeout(overlayTimeoutRef.current);
-        setOverlayState({ phase: 'error', message: t('scan.invalidQR') });
-        safeNotification(Haptics.NotificationFeedbackType.Error);
+      if (payload.kind === 'invalid') {
+        showScanError(t('scan.invalidQR'));
         return;
       }
 
-      // Verify legacy clientId server-side to prevent IDOR
+      // Legacy unsigned client id: verify it server-side to prevent IDOR.
       try {
-        const res = await api.post('/merchant/verify-client', { clientId });
+        const res = await api.post('/merchant/verify-client', { clientId: payload.clientId });
         const verifiedClientId = res.data?.clientId;
-        const clientName = res.data?.client?.nom ? [res.data.client.prenom, res.data.client.nom].filter(Boolean).join(' ') : undefined;
         if (!verifiedClientId) throw new Error('Client not verified');
-        navigateToTransaction(verifiedClientId, clientName);
+        navigateToTransaction(verifiedClientId, verifiedClientName(res.data?.client));
       } catch (err: unknown) {
-        if (overlayTimeoutRef.current) clearTimeout(overlayTimeoutRef.current);
-        setOverlayState({ phase: 'error', message: getErrorMessage(err, t('scan.clientNotFoundFallback')) });
-        safeNotification(Haptics.NotificationFeedbackType.Error);
+        showScanError(getErrorMessage(err, t('scan.clientNotFoundFallback')));
       }
     },
     [isScanning, navigateToTransaction, set, t, router, openedFromCoupon],
@@ -814,7 +637,6 @@ export default function ScanQRScreen() {
   // identity (or `undefined` while paused) without recomputing the callback.
   const scannerHandler = isScanning ? handleBarCodeScanned : undefined;
 
-  // ── Phone search handler ──
   const handlePhoneSearch = useCallback(async () => {
     if (phoneInput.length < 6 || isSearching || isNavigatingRef.current) return;
 
@@ -834,7 +656,7 @@ export default function ScanQRScreen() {
       const res = await api.get('/merchant/clients/scan', {
         params: { search: normalizedPhone },
       });
-      const clients = res.data;
+      const clients: MatchedClient[] = res.data;
 
       safeImpact(Haptics.ImpactFeedbackStyle.Medium);
 
@@ -842,11 +664,12 @@ export default function ScanQRScreen() {
         // Exactly one match → go to transaction
         if (navTimeoutRef.current) clearTimeout(navTimeoutRef.current);
         isNavigatingRef.current = true;
+        prefetchClientStatus(queryClient, clients[0].id, clients[0].scanTicket).catch(() => {});
         navTimeoutRef.current = setTimeout(() => {
           navTimeoutRef.current = null;
           router.push({
             pathname: '/transaction-amount',
-            params: { clientId: clients[0].id },
+            params: transactionParams(clients[0].id, clients[0].scanTicket),
           });
         }, NAVIGATION_DELAY_MS);
       } else if (clients.length > 1) {
@@ -883,9 +706,8 @@ export default function ScanQRScreen() {
     } finally {
       set({ isSearching: false });
     }
-  }, [phoneInput, isSearching, router, countryIndex, t, set]);
+  }, [phoneInput, isSearching, router, countryIndex, t, set, queryClient]);
 
-  // ── Close handler ──
   const handleClose = useCallback(() => {
     safeImpact(Haptics.ImpactFeedbackStyle.Light);
     if (router.canGoBack()) {
@@ -900,7 +722,29 @@ export default function ScanQRScreen() {
     set({ isScanning: true });
   }, [set]);
 
-  // ── Permission states ──
+  // Stable handlers so the memoised search bar and bottom controls skip re-renders.
+  const handlePhoneChange = useCallback((v: string) => set({ phoneInput: v }), [set]);
+  const handleSearchFocus = useCallback(() => set({ isSearchFocused: true }), [set]);
+  const handleSearchBlur = useCallback(() => set({ isSearchFocused: false }), [set]);
+  const openCountrySheet = useCallback(() => setShowCountrySheet(true), []);
+  const closeMatchedClients = useCallback(() => set({ matchedClients: [] }), [set]);
+  const handleToggleFlash = useCallback(() => {
+    safeImpact(Haptics.ImpactFeedbackStyle.Light);
+    dispatch({ type: 'TOGGLE_FLASH' });
+  }, []);
+
+  const handleCameraMountError = useCallback((error: unknown) => {
+    logError('CameraView', 'Mount error:', error);
+    Alert.alert(
+      t('scan.cameraErrorTitle'),
+      t('scan.cameraErrorMsg'),
+      [
+        { text: t('common.back'), onPress: handleClose, style: 'cancel' },
+        { text: t('common.retry'), onPress: () => router.replace('/scan-qr') },
+      ],
+    );
+  }, [t, handleClose, router]);
+
   if (!permission) {
     return (
       <View style={[styles.permissionContainer, { backgroundColor: theme.bg }]}>
@@ -917,35 +761,28 @@ export default function ScanQRScreen() {
         <StatusBar style={theme.mode === 'dark' ? 'light' : 'dark'} />
         <Animated.View style={styles.permissionContent}>
           <View style={[styles.permissionIconCircle, { backgroundColor: theme.primaryBg, borderColor: theme.primary + '40' }]}>
-            <Camera size={48} color={theme.primary} strokeWidth={2} />
+            <Camera size={48} color={theme.primary} strokeWidth={iconTokens.stroke} />
           </View>
           <Text style={[styles.permissionTitle, { color: theme.text }]}>{t('scan.cameraPermission')}</Text>
           <Text style={[styles.permissionDesc, { color: theme.textMuted }]}>
             {t('scan.cameraPermissionMsg')}
           </Text>
           {permission.canAskAgain ? (
-            <TouchableOpacity
-              style={[styles.permissionBtn, { backgroundColor: theme.primary }]}
+            <ActionButton
+              label={t('scan.allowCamera')}
+              size="lg"
               onPress={requestPermission}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.permissionBtnText}>{t('scan.allowCamera')}</Text>
-            </TouchableOpacity>
+              style={styles.permissionBtn}
+            />
           ) : (
-            <View style={styles.permissionDenied}>
-              <AlertCircle size={20} color={theme.danger} />
-              <Text style={[styles.permissionDeniedText, { color: theme.danger }]}>
+            <View style={[styles.permissionDenied, { flexDirection: dir.row }]}>
+              <AlertCircle size={20} color={theme.danger} strokeWidth={iconTokens.stroke} />
+              <Text style={[styles.permissionDeniedText, { color: theme.danger, textAlign: dir.textAlign }]}>
                 {t('scan.cameraDenied')}
               </Text>
             </View>
           )}
-          <TouchableOpacity
-            style={styles.permissionBack}
-            onPress={handleClose}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.permissionBackText, { color: theme.primary }]}>{t('common.back')}</Text>
-          </TouchableOpacity>
+          <ActionButton label={t('common.back')} variant="ghost" onPress={handleClose} />
         </Animated.View>
       </View>
     );
@@ -955,7 +792,6 @@ export default function ScanQRScreen() {
     <View style={styles.container}>
       <StatusBar style="light" />
 
-      {/* ── Camera (conditionally mounted to release Camera2 on blur/background) ── */}
       {cameraMounted && (
         <CameraView
           style={StyleSheet.absoluteFill}
@@ -964,21 +800,10 @@ export default function ScanQRScreen() {
           enableTorch={isFlashOn}
           barcodeScannerSettings={BARCODE_SCANNER_SETTINGS}
           onBarcodeScanned={scannerHandler}
-          onMountError={(error) => {
-            logError('CameraView', 'Mount error:', error);
-            Alert.alert(
-              t('scan.cameraErrorTitle'),
-              t('scan.cameraErrorMsg'),
-              [
-                { text: t('common.back'), onPress: handleClose, style: 'cancel' },
-                { text: t('common.retry'), onPress: () => router.replace('/scan-qr') },
-              ],
-            );
-          }}
+          onMountError={handleCameraMountError}
         />
       )}
 
-      {/* ── Dark overlay with cutout ── */}
       <CameraOverlay
         screenHeight={SCREEN_H}
         scanSize={SCAN_SIZE}
@@ -991,55 +816,50 @@ export default function ScanQRScreen() {
       <HowItWorksBanner
         visible={showHowItWorks}
         onDismiss={dismissHowItWorks}
-        theme={theme}
-        t={t}
-        isRTL={isRTL}
         insetTop={insets.top}
       />
 
-      {/* ── Floating search bar ── */}
-      <FloatingSearchBar
+      <AnimatedSearchBar
         value={phoneInput}
-        onChangeText={(v) => set({ phoneInput: v })}
+        onChangeText={handlePhoneChange}
         onSubmit={handlePhoneSearch}
-        onFocus={() => set({ isSearchFocused: true })}
-        onBlur={() => set({ isSearchFocused: false })}
+        onFocus={handleSearchFocus}
+        onBlur={handleSearchBlur}
         isFocused={isSearchFocused}
         isSearching={isSearching}
-        inputRef={inputRef}
         insetTop={insets.top}
         countryIndex={countryIndex}
-        onToggleCountry={() => setShowCountrySheet(true)}
+        onToggleCountry={openCountrySheet}
       />
 
-      {/* ── Bottom controls ── */}
       <BottomControls
         insetBottom={insets.bottom}
         isFlashOn={isFlashOn}
-        onToggleFlash={() => {
-          safeImpact(Haptics.ImpactFeedbackStyle.Light);
-          dispatch({ type: 'TOGGLE_FLASH' });
-        }}
+        onToggleFlash={handleToggleFlash}
         onClose={handleClose}
         t={t}
       />
 
-      {/* ── Client Picker Modal (multiple matches) ─── */}
       <Modal
         visible={matchedClients.length > 0}
         animationType="slide"
         transparent={false}
-        onRequestClose={() => set({ matchedClients: [] })}
+        onRequestClose={closeMatchedClients}
       >
         <View style={[styles.cpContainer, { paddingTop: insets.top, backgroundColor: theme.bg }]}>
-          <View style={[styles.cpHeader, { borderBottomColor: theme.borderLight }]}>
-            <TouchableOpacity onPress={() => set({ matchedClients: [] })} style={styles.iconPadding}>
-              <ArrowLeft size={24} color={theme.text} />
+          <View style={[styles.cpHeader, { flexDirection: dir.row, borderBottomColor: theme.borderLight }]}>
+            <TouchableOpacity
+              onPress={closeMatchedClients}
+              style={styles.iconPadding}
+              accessibilityRole="button"
+              accessibilityLabel={t('common.back')}
+            >
+              <ArrowLeft size={24} color={theme.text} strokeWidth={iconTokens.stroke} style={dir.flip} />
             </TouchableOpacity>
-            <Text style={[styles.cpTitle, { color: theme.text }]}>{t('scan.clientsFound', { count: matchedClients.length })}</Text>
+            <Text style={[styles.cpTitle, { color: theme.text, textAlign: dir.textAlign }]}>{t('scan.clientsFound', { count: matchedClients.length })}</Text>
             <View style={styles.spacerWidth32} />
           </View>
-          <Text style={[styles.selectClientText, { color: theme.textMuted }]}>
+          <Text style={[styles.selectClientText, { color: theme.textMuted, textAlign: dir.textAlign }]}>
             {t('scan.selectClient')}
           </Text>
           <FlatList
@@ -1057,25 +877,27 @@ export default function ScanQRScreen() {
 
       <Modal visible={showCountrySheet} animationType="slide" transparent>
         <TouchableOpacity style={styles.sheetOverlay} activeOpacity={1} onPress={() => setShowCountrySheet(false)}>
-          <View style={[styles.sheetCard, { backgroundColor: theme.bgCard, maxHeight: SCREEN_H * 0.7 }]}> 
+          <View style={[styles.sheetCard, { backgroundColor: theme.bgCard, maxHeight: SCREEN_H * 0.7 }]}>
             <View style={[styles.sheetHandle, { backgroundColor: `${theme.textMuted}30` }]} />
-            <Text style={[styles.sheetTitle, { color: theme.text }]}>{t('scan.countryPickerTitle')}</Text>
+            <Text style={[styles.sheetTitle, { color: theme.text, textAlign: dir.textAlign }]}>{t('scan.countryPickerTitle')}</Text>
             <FlatList
               data={COUNTRIES}
               keyExtractor={(item) => item.code}
               contentContainerStyle={styles.countryList}
               renderItem={({ item, index }) => (
                 <TouchableOpacity
-                  style={[styles.countryRow, countryIndex === index && { backgroundColor: `${theme.primary}16` }]}
+                  style={[styles.countryRow, { flexDirection: dir.row }, countryIndex === index && { backgroundColor: `${theme.primary}16` }]}
                   onPress={() => {
                     set({ countryIndex: index });
                     setShowCountrySheet(false);
                   }}
                   activeOpacity={0.8}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: countryIndex === index }}
                 >
                   <Text style={styles.countryRowFlag}>{item.flag}</Text>
-                  <Text style={[styles.countryRowText, { color: theme.text }]}>{item.name} · {item.dial}</Text>
-                  {countryIndex === index ? <Check size={18} color={theme.primary} strokeWidth={2.5} /> : null}
+                  <Text style={[styles.countryRowText, { color: theme.text, textAlign: dir.textAlign }]}>{item.name} · {item.dial}</Text>
+                  {countryIndex === index ? <Check size={18} color={theme.primary} strokeWidth={iconTokens.stroke} /> : null}
                 </TouchableOpacity>
               )}
             />
@@ -1083,90 +905,17 @@ export default function ScanQRScreen() {
         </TouchableOpacity>
       </Modal>
 
-      {/* ── First scan guide ─── */}
       <FirstScanGuide visible={showGuide} onClose={dismissGuide} />
     </View>
   );
 }
 
-// ── Styles ────────────────────────────────────────────────
-const OVERLAY_COLOR = 'rgba(0,0,0,0.55)';
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0B0F14',
+    backgroundColor: CAMERA_BG,
   },
 
-  // ── Search bar ──
-  searchContainer: {
-    position: 'absolute',
-    left: 16,
-    right: 16,
-    zIndex: 100,
-  },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(26,23,38,0.7)',
-    borderRadius: 24,
-    paddingHorizontal: 14,
-    paddingVertical: Platform.OS === 'ios' ? 12 : 8,
-    borderWidth: 1,
-    borderColor: 'rgba(139,92,246,0.25)',
-    gap: 8,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#1F2937',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.08,
-        shadowRadius: 6,
-      },
-      android: { elevation: 3 },
-    }),
-  },
-  searchBarFocused: {
-    borderColor: '#A78BFA',
-    backgroundColor: 'rgba(26,23,38,0.85)',
-  },
-  prefixContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(139,92,246,0.22)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 10,
-  },
-  prefixText: {
-    color: '#C4B5FD',
-    fontSize: 14,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-    fontFamily: 'Lexend_600SemiBold',
-  },
-  searchInput: {
-    flex: 1,
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '500',
-    paddingVertical: 0,
-    letterSpacing: 0.3,
-    fontFamily: 'Lexend_500Medium',
-  },
-  submitBtn: {
-    backgroundColor: '#7C3AED',
-    width: 34,
-    height: 34,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#1F2937',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-  },
-
-  // ── Overlay ──
   overlayTop: {
     backgroundColor: OVERLAY_COLOR,
   },
@@ -1182,7 +931,6 @@ const styles = StyleSheet.create({
     backgroundColor: OVERLAY_COLOR,
   },
 
-  // ── Scan area ──
   scanArea: {
     position: 'relative',
   },
@@ -1190,110 +938,15 @@ const styles = StyleSheet.create({
     position: 'absolute',
     width: 28,
     height: 28,
-    borderRadius: 2,
-  },
-  scanLine: {
-    position: 'absolute',
-    left: 10,
-    right: 10,
-    height: 3,
-    top: 0,
-  },
-  scanLineGradient: {
-    flex: 1,
-    borderRadius: 2,
-    backgroundColor: '#A78BFA',
-    opacity: 0.7,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#1F2937',
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.08,
-        shadowRadius: 4,
-      },
-    }),
+    borderColor: '#A78BFA',
   },
 
-  // ── Detected overlay ──
   detectedOverlay: {
     ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(34,211,238,0.12)',
-    borderRadius: 4,
   },
-  detectedRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  detectedText: {
-    color: '#0F0D1A',
-    fontSize: 16,
-    fontWeight: '700',
-    fontFamily: 'Lexend_600SemiBold',
-  },
-
-  // ── Bottom controls ──
-  bottomControls: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingHorizontal: 20,
-    paddingTop: 16,
-  },
-  actionsRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'flex-start',
-    gap: 48,
-  },
-  actionBtn: {
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    gap: 7,
-    minWidth: 64,
-    minHeight: 44,
-    paddingHorizontal: 4,
-  },
-  actionCircle: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.28)',
-  },
-  actionCircleTint: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(255,255,255,0.14)',
-  },
-  actionCircleActive: {
-    backgroundColor: '#FCD34D',
-    borderColor: '#FCD34D',
-  },
-  actionBtnLabel: {
-    color: '#FFFFFF',
-    fontSize: 11.5,
-    fontWeight: '700',
-    fontFamily: 'Lexend_700Bold',
-  },
-  actionBtnLabelActive: {
-    color: '#FCD34D',
-  },
-
-  // ── Permission screen ──
-  permissionContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 32,
-  },
-
-  // ── Scan feedback / sheet UI ──
   detectedCard: {
     alignSelf: 'center',
     minWidth: 220,
@@ -1313,30 +966,87 @@ const styles = StyleSheet.create({
   detectedCardError: {
     backgroundColor: 'rgba(239,68,68,0.95)',
   },
+  detectedRow: {
+    alignItems: 'center',
+    gap: 12,
+  },
   detectedTextWrap: {
     flex: 1,
-    marginLeft: 8,
+  },
+  detectedText: {
+    color: '#0F0D1A',
+    fontSize: 16,
+    fontFamily: font.semibold,
   },
   detectedTextError: {
-    color: '#fff',
+    color: ON_CAMERA,
   },
   detectedRetryBtn: {
     marginTop: 6,
-    alignSelf: 'flex-start',
     paddingVertical: 4,
   },
   detectedRetryText: {
-    color: '#fff',
+    color: ON_CAMERA,
     fontSize: 13,
-    fontWeight: '700',
-    fontFamily: 'Lexend_600SemiBold',
+    fontFamily: font.semibold,
   },
+
+  bottomControls: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+  },
+  actionsRow: {
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+    gap: 48,
+  },
+  actionBtn: {
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    gap: 8,
+    minWidth: 64,
+    minHeight: 44,
+    paddingHorizontal: 4,
+  },
+  actionCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.28)',
+  },
+  glassFallback: {
+    backgroundColor: 'rgba(15,15,20,0.55)',
+  },
+  actionCircleTint: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+  },
+  actionCircleActive: {
+    backgroundColor: palette.gold,
+    borderColor: palette.gold,
+  },
+  actionBtnLabel: {
+    color: ON_CAMERA,
+    fontSize: 12,
+    fontFamily: font.semibold,
+  },
+  actionBtnLabelActive: {
+    color: palette.gold,
+  },
+
   infoBanner: {
     position: 'absolute',
     left: 16,
     right: 16,
     zIndex: 90,
-    flexDirection: 'row',
     alignItems: 'flex-start',
     borderRadius: 16,
     padding: 12,
@@ -1345,9 +1055,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(124,58,237,0.16)',
     overflow: 'hidden',
   },
-  infoBannerRTL: {
-    flexDirection: 'row-reverse',
-  },
   infoBannerTint: {
     ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(124,58,237,0.16)',
@@ -1355,7 +1062,7 @@ const styles = StyleSheet.create({
   infoBannerIcon: {
     width: 32,
     height: 32,
-    borderRadius: 16,
+    borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1365,22 +1072,22 @@ const styles = StyleSheet.create({
   },
   infoBannerTitle: {
     fontSize: 14,
-    fontWeight: '700',
-    fontFamily: 'Lexend_600SemiBold',
+    fontFamily: font.semibold,
   },
   infoBannerText: {
-    fontSize: 12.5,
+    fontSize: 13,
     lineHeight: 18,
     marginTop: 4,
-    fontFamily: 'Lexend_400Regular',
+    fontFamily: font.regular,
   },
   infoBannerClose: {
     padding: 2,
   },
+
   sheetOverlay: {
     flex: 1,
     justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.55)',
+    backgroundColor: OVERLAY_COLOR,
   },
   sheetCard: {
     borderTopLeftRadius: 24,
@@ -1398,28 +1105,33 @@ const styles = StyleSheet.create({
   },
   sheetTitle: {
     fontSize: 20,
-    fontWeight: '700',
-    fontFamily: 'Lexend_700Bold',
+    fontFamily: font.bold,
     marginBottom: 6,
   },
   countryList: {
     paddingBottom: 4,
   },
   countryRow: {
-    flexDirection: 'row',
     alignItems: 'center',
+    gap: 10,
     paddingVertical: 12,
     paddingHorizontal: 4,
     borderRadius: 12,
   },
   countryRowFlag: {
     fontSize: 18,
-    marginRight: 10,
   },
   countryRowText: {
     flex: 1,
     fontSize: 14,
-    fontFamily: 'Lexend_400Regular',
+    fontFamily: font.regular,
+  },
+
+  permissionContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 32,
   },
   permissionContent: {
     alignItems: 'center',
@@ -1427,7 +1139,7 @@ const styles = StyleSheet.create({
   permissionIconCircle: {
     width: 100,
     height: 100,
-    borderRadius: 50,
+    borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 24,
@@ -1436,37 +1148,27 @@ const styles = StyleSheet.create({
   permissionText: {
     fontSize: 15,
     marginTop: 16,
-    fontFamily: 'Lexend_500Medium',
+    fontFamily: font.medium,
   },
   permissionTitle: {
     fontSize: 28,
-    fontWeight: '700',
     marginBottom: 10,
-    fontFamily: 'Lexend_700Bold',
+    fontFamily: font.bold,
     letterSpacing: -0.5,
+    textAlign: 'center',
   },
   permissionDesc: {
     fontSize: 14,
     textAlign: 'center',
     lineHeight: 22,
     marginBottom: 28,
-    fontFamily: 'Lexend_400Regular',
-    letterSpacing: 0.1,
+    fontFamily: font.regular,
   },
   permissionBtn: {
     paddingHorizontal: 32,
-    paddingVertical: 14,
-    borderRadius: 14,
     marginBottom: 16,
   },
-  permissionBtnText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
-    fontFamily: 'Lexend_600SemiBold',
-  },
   permissionDenied: {
-    flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     marginBottom: 16,
@@ -1475,39 +1177,28 @@ const styles = StyleSheet.create({
   permissionDeniedText: {
     fontSize: 14,
     flex: 1,
-    fontFamily: 'Lexend_500Medium',
-  },
-  permissionBack: {
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-  },
-  permissionBackText: {
-    fontSize: 15,
-    fontWeight: '600',
-    fontFamily: 'Lexend_600SemiBold',
+    fontFamily: font.medium,
   },
 
-  // ── Country Picker Modal ──
   cpContainer: { flex: 1 },
   cpHeader: {
-    flexDirection: 'row',
     alignItems: 'center',
+    gap: 12,
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderBottomWidth: 1,
   },
-  cpTitle: { flex: 1, fontSize: 22, fontWeight: '700', marginLeft: 12, fontFamily: 'Lexend_700Bold', letterSpacing: -0.3 },
+  cpTitle: { flex: 1, fontSize: 22, fontFamily: font.bold, letterSpacing: -0.3 },
   cpRow: {
-    flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 14,
     paddingHorizontal: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  cpCountryName: { fontSize: 15, fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
+  cpCountryName: { fontSize: 15, fontFamily: font.semibold },
   flexMain: { flex: 1 },
-  clientSubtitle: { fontSize: 12, marginTop: 3, fontFamily: 'Lexend_400Regular' },
+  clientSubtitle: { fontSize: 12, marginTop: 3, fontFamily: font.regular },
   iconPadding: { padding: 4 },
   spacerWidth32: { width: 32 },
-  selectClientText: { fontSize: 13, paddingHorizontal: 24, paddingVertical: 12, fontFamily: 'Lexend_400Regular' },
+  selectClientText: { fontSize: 13, paddingHorizontal: 24, paddingVertical: 12, fontFamily: font.regular },
 });

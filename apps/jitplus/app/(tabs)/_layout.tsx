@@ -3,7 +3,8 @@ import { useAuthStore } from '@/stores/authStore';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import CustomTabBar from '@/components/CustomTabBar';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import StarLoader from '@/components/StarLoader';
+import { View, StyleSheet } from 'react-native';
 
 // Module-level stable ref so TabLayout re-renders don't recreate the prop
 // (which would force the entire bottom navigator to remount).
@@ -24,7 +25,7 @@ export default function TabLayout() {
   if (isLoading) {
     return (
       <View style={[styles.loading, { backgroundColor: theme.bg }]}>
-        <ActivityIndicator size="large" color={theme.primary} />
+        <StarLoader />
       </View>
     );
   }
@@ -46,7 +47,6 @@ export default function TabLayout() {
       screenOptions={{
         headerShown: false,
         lazy: true,
-        freezeOnBlur: true,
       }}
     >
       <Tabs.Screen
@@ -54,20 +54,20 @@ export default function TabLayout() {
         options={{ title: t('tabs.cards') }}
       />
       <Tabs.Screen
-        name="discover"
-        options={{ title: t('tabs.discover') }}
+        name="deals"
+        options={{ title: t('tabs.deals') }}
       />
       <Tabs.Screen
         name="qr"
         options={{ title: t('tabs.qr') }}
       />
       <Tabs.Screen
-        name="notifications"
-        options={{ title: t('tabs.notifications') }}
+        name="discover"
+        options={{ title: t('tabs.discover') }}
       />
       <Tabs.Screen
-        name="profile"
-        options={{ title: t('tabs.profile') }}
+        name="notifications"
+        options={{ title: t('tabs.notifications') }}
       />
     </Tabs>
   );

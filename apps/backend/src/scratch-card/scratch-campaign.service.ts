@@ -36,7 +36,7 @@ import {
   scratchQuietHoursIgnored,
 } from './scratch-limits';
 import { ScratchPushService } from './scratch-push.service';
-import { getScratchTexts } from './scratch-notif-i18n';
+import { getScratchTexts, legacyCardReceivedTexts } from './scratch-notif-i18n';
 import { ScratchDispatchService } from './scratch-dispatch.service';
 import { nextAllowedSendTime } from '../common/tasks/cron-utils';
 
@@ -545,13 +545,14 @@ export class ScratchCampaignService {
     if (!r.sentAt || r.pendingCardClientIds.length === 0) return;
     const locales = ['fr', 'en', 'ar'] as const;
     const texts = locales.map((l) => getScratchTexts(l));
+    const legacy = legacyCardReceivedTexts(r.merchant.nom, r.message);
     const notifications = await this.prisma.notification.findMany({
       where: {
         merchantId: r.merchant.id,
         channel: 'PUSH',
         createdAt: { gte: r.sentAt, lt: new Date(r.sentAt.getTime() + SCRATCH_DISMISS_WINDOW_DAYS * DAY_MS) },
-        title: { in: texts.map((t) => t.cardReceivedTitle(r.merchant.nom).slice(0, 255)) },
-        body: { in: texts.map((t) => t.cardReceivedBody(r.message).slice(0, 2000)) },
+        title: { in: [...texts.map((t) => t.cardReceivedTitle(r.merchant.nom)), ...legacy.titles].map((s) => s.slice(0, 255)) },
+        body: { in: [...texts.map((t) => t.cardReceivedBody(r.message)), ...legacy.bodies].map((s) => s.slice(0, 2000)) },
       },
       select: { id: true },
     });

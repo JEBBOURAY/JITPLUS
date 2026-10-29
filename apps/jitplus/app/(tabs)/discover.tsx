@@ -1,9 +1,10 @@
 import { useCallback, useEffect } from 'react';
 import {
-  View, Text, TextInput, StyleSheet, ScrollView, FlatList, Pressable,
-  Platform, TouchableOpacity, Linking, Keyboard, I18nManager,
-  ActivityIndicator, useWindowDimensions,
+  View, StyleSheet, ScrollView, FlatList, Pressable,
+  Platform, TouchableOpacity, Linking, Keyboard,
+  useWindowDimensions, Alert,
 } from 'react-native';
+import { Text, TextInput } from '@/components/AppText';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
@@ -16,6 +17,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Merchant } from '@/types';
 import SafeMapView, { MAPS_AVAILABLE } from '@/components/SafeMapView';
+import StarLoader from '@/components/StarLoader';
 import { CATEGORIES, getCategoryEmoji } from '@/utils/categories';
 import { getDistanceKm } from '@/utils/distance';
 import { wp, hp, ms, fontSize as FS } from '@/utils/responsive';
@@ -24,16 +26,17 @@ import { useMerchants } from '@/hooks/useQueryHooks';
 import { prefetchImages } from '@/utils/imageCache';
 import { Image } from 'expo-image';
 import { resolveImageUrl } from '@/utils/imageUrl';
-import MapMarker from '@/components/MapMarker';
-import ClusterMarker from '@/components/ClusterMarker';
 import { COMPACT_SCREEN_HEIGHT } from '@/constants';
 import {
   FallbackMerchantCard, MerchantCallout, discoverStyles as styles,
-  TrackedMarker, MAP_STYLE, DEFAULT_REGION,
+  MerchantPin, ClusterPin, MAP_STYLE, DEFAULT_REGION,
 } from '@/components/discover';
 import { useDiscoverMap } from '@/hooks/useDiscoverMap';
+import { isEntityId } from '@/utils/ids';
 
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
+
+const MAX_PREFETCHED_LOGOS = 30;
 
 export default function DiscoverScreen() {
   const theme = useTheme();
@@ -47,24 +50,46 @@ export default function DiscoverScreen() {
 
   const { data: merchants = [], isLoading, isError, refetch } = useMerchants(!!client || isGuest);
 
-  useEffect(() => {
-    if (merchants.length > 0) prefetchImages(merchants.map((m) => m.logoUrl).filter(Boolean));
-  }, [merchants]);
-
   const {
     searchQuery, setSearchQuery, debouncedSearch, selectedCategory,
     showSearch, setShowSearch, showFilters, userLocation, mapReady,
     selectedMerchant, mapRef, searchInputRef,
     filteredMerchants, mappableMerchants, mapItems, sortedMappableMerchants,
     selectedMerchantDistance, handleRegionChange, handleCategoryPress,
-    handleMarkerPress, handleClusterPress, centerOnUser, handleMapPress,
+    handleClusterPress, centerOnUser, handleMapPress,
     handleMapReady, toggleSearch, toggleFilters, activeFilterCount,
   } = useDiscoverMap(merchants);
+
+  // Warm the logos shown by the callout on tap, only for the pins on screen.
+  useEffect(() => {
+    const visible: (string | null | undefined)[] = [];
+    for (const item of mapItems) {
+      if (item.type !== 'cluster') visible.push(item.merchant.logoUrl);
+      if (visible.length >= MAX_PREFETCHED_LOGOS) break;
+    }
+    if (visible.length > 0) prefetchImages(visible);
+  }, [mapItems]);
 
   const handleMerchantPress = useCallback((merchant: Merchant) => {
     haptic(HapticStyle.Medium);
     router.push({ pathname: '/merchant/[id]', params: { id: merchant.id } });
   }, [router]);
+
+  // Guests get the count only (topDeal is null for them): the deal itself needs an account.
+  const handleDealPress = useCallback((merchant: Merchant) => {
+    haptic();
+    if (!client) {
+      Alert.alert(t('guest.loginRequired'), t('guest.loginRequiredDesc'), [
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('welcome.createAccount'), onPress: () => router.push('/register') },
+        { text: t('welcome.login'), onPress: () => router.push('/login') },
+      ], { cancelable: true });
+      return;
+    }
+    const dealId = merchant.topDeal?.id;
+    if (isEntityId(dealId)) router.push({ pathname: '/deal/[id]', params: { id: dealId } });
+    else router.push({ pathname: '/merchant/[id]', params: { id: merchant.id } });
+  }, [client, router, t]);
 
   const openInMaps = useCallback((m: Merchant) => {
     if (!m.latitude || !m.longitude) return;
@@ -75,7 +100,7 @@ export default function DiscoverScreen() {
       default: `https://www.google.com/maps/search/?api=1&query=${m.latitude},${m.longitude}`,
     });
     Linking.openURL(url!).catch(() => {
-      Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${m.latitude},${m.longitude}`);
+      Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${m.latitude},${m.longitude}`).catch(() => {});
     });
   }, []);
 
@@ -105,16 +130,14 @@ export default function DiscoverScreen() {
           {mapItems.map((item) => {
             if (item.type === 'cluster') {
               return (
-                <TrackedMarker key={item.id} coordinate={{ latitude: item.latitude, longitude: item.longitude }} onPress={() => handleClusterPress(item.latitude, item.longitude, item.expansionZoom)} anchor={{ x: 0.5, y: 0.5 }}>
-                  <ClusterMarker count={item.count} />
-                </TrackedMarker>
+                <ClusterPin key={item.id} count={item.count} latitude={item.latitude} longitude={item.longitude}
+                  expansionZoom={item.expansionZoom} onPress={handleClusterPress} />
               );
             }
             const m = item.merchant;
             return (
-              <TrackedMarker key={m.storeId ? `${m.id}-${m.storeId}` : m.id} coordinate={{ latitude: item.latitude, longitude: item.longitude }} onPress={() => handleMarkerPress(m)} anchor={{ x: 0.5, y: 0.5 }}>
-                <MapMarker />
-              </TrackedMarker>
+              <MerchantPin key={item.id} merchant={m}
+                latitude={item.latitude} longitude={item.longitude} onPress={handleMerchantPress} />
             );
           })}
         </SafeMapView>
@@ -145,7 +168,7 @@ export default function DiscoverScreen() {
             <View style={[styles.searchBarExpanded, { backgroundColor: theme.bgCard, height: isVeryCompact ? ms(46) : ms(52), paddingHorizontal: isVeryCompact ? wp(14) : wp(18) }]}>
               <Search size={isVeryCompact ? ms(16) : ms(18)} color={theme.textMuted} strokeWidth={2} />
               <TextInput ref={searchInputRef} style={[styles.searchInput, { color: theme.text, fontSize: isVeryCompact ? FS.sm : FS.md }]} placeholder={t('discover.searchPlaceholder')} placeholderTextColor={theme.inputPlaceholder} value={searchQuery} onChangeText={setSearchQuery} returnKeyType="search" autoFocus />
-              <Pressable onPress={toggleSearch} hitSlop={8} accessibilityRole="button" accessibilityLabel={t('discover.searchPlaceholder')}>
+              <Pressable onPress={toggleSearch} hitSlop={8} accessibilityRole="button" accessibilityLabel={t('common.close')}>
                 <View style={[styles.closePill, { backgroundColor: theme.bgInput, width: isVeryCompact ? ms(26) : ms(30), height: isVeryCompact ? ms(26) : ms(30), borderRadius: isVeryCompact ? ms(13) : ms(15) }]}>
                   <X size={isVeryCompact ? ms(12) : ms(14)} color={theme.textMuted} strokeWidth={2} />
                 </View>
@@ -190,7 +213,7 @@ export default function DiscoverScreen() {
               <MapPin size={isVeryCompact ? ms(12) : ms(13)} color={palette.violet} strokeWidth={2} />
               <Text style={[styles.counterText, { color: theme.text, fontSize: isVeryCompact ? FS.xs : FS.sm }]}>{t('discover.merchantCount', { count: mappableMerchants.length })}</Text>
             </View>
-            <TouchableOpacity style={[styles.floatingBtn, { backgroundColor: theme.bgCard, width: isVeryCompact ? ms(42) : ms(48), height: isVeryCompact ? ms(42) : ms(48), borderRadius: isVeryCompact ? ms(21) : ms(24) }, showFilters && { backgroundColor: palette.violet }]} activeOpacity={0.8} onPress={toggleFilters} accessibilityRole="button" accessibilityState={{ expanded: showFilters }}>
+            <TouchableOpacity style={[styles.floatingBtn, { backgroundColor: theme.bgCard, width: isVeryCompact ? ms(42) : ms(48), height: isVeryCompact ? ms(42) : ms(48), borderRadius: isVeryCompact ? ms(21) : ms(24) }, showFilters && { backgroundColor: palette.violet }]} activeOpacity={0.8} onPress={toggleFilters} accessibilityRole="button" accessibilityLabel={t('discover.filters')} accessibilityState={{ expanded: showFilters }}>
               <SlidersHorizontal size={isVeryCompact ? ms(18) : ms(20)} color={showFilters ? '#fff' : theme.text} strokeWidth={2} />
               {activeFilterCount > 0 && <View style={styles.filterDot} />}
             </TouchableOpacity>
@@ -200,7 +223,7 @@ export default function DiscoverScreen() {
 
       {showFilters && (
         <View style={[styles.filterBar, { top: filterTop }]}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.filterScroll, { paddingHorizontal: isVeryCompact ? wp(12) : wp(16), paddingVertical: isVeryCompact ? hp(2) : hp(4), gap: isVeryCompact ? wp(4) : wp(6) }, I18nManager.isRTL && { flexDirection: 'row-reverse' }]}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.filterScroll, { paddingHorizontal: isVeryCompact ? wp(12) : wp(16), paddingVertical: isVeryCompact ? hp(2) : hp(4), gap: isVeryCompact ? wp(4) : wp(6) }]}>
             {CATEGORIES.map((cat) => {
               const isActive = selectedCategory === cat.id;
               const Icon = cat.icon;
@@ -217,22 +240,23 @@ export default function DiscoverScreen() {
         </View>
       )}
 
-      {MAPS_AVAILABLE && userLocation && (
-        <TouchableOpacity style={[styles.locateBtn, { backgroundColor: theme.bgCard, bottom: locateBottom, right: isVeryCompact ? wp(12) : wp(16), width: isVeryCompact ? ms(42) : ms(48), height: isVeryCompact ? ms(42) : ms(48), borderRadius: isVeryCompact ? ms(21) : ms(24) }]} activeOpacity={0.8} onPress={centerOnUser} accessibilityRole="button" accessibilityLabel={t('discover.positionAvailable')}>
-          <LocateFixed size={isVeryCompact ? ms(17) : ms(20)} color={palette.violet} strokeWidth={2} />
+      {MAPS_AVAILABLE && (
+        <TouchableOpacity style={[styles.locateBtn, { backgroundColor: theme.bgCard, bottom: locateBottom, right: isVeryCompact ? wp(12) : wp(16), width: isVeryCompact ? ms(42) : ms(48), height: isVeryCompact ? ms(42) : ms(48), borderRadius: isVeryCompact ? ms(21) : ms(24) }]} activeOpacity={0.8} onPress={centerOnUser} accessibilityRole="button" accessibilityLabel={userLocation ? t('discover.locateMe') : t('discover.locationPromptTitle')}>
+          <LocateFixed size={isVeryCompact ? ms(17) : ms(20)} color={userLocation ? palette.violet : theme.textMuted} strokeWidth={2} />
         </TouchableOpacity>
       )}
 
       {selectedMerchant && (
         <MerchantCallout key={selectedMerchant.id} merchant={selectedMerchant} distance={selectedMerchantDistance}
           onPress={() => handleMerchantPress(selectedMerchant)} onNavigate={() => openInMaps(selectedMerchant)}
+          onDealPress={() => handleDealPress(selectedMerchant)}
           style={{ top: calloutTop, bottom: undefined, left: isVeryCompact ? wp(12) : wp(16), right: isVeryCompact ? wp(12) : wp(16) }} />
       )}
 
       {isLoading && MAPS_AVAILABLE && (
         <View style={styles.emptyOverlay} pointerEvents="box-none">
           <View style={[styles.emptyCard, { backgroundColor: theme.bgCard }]}>
-            <ActivityIndicator size="large" color={palette.violet} />
+            <StarLoader size={88} />
             <Text style={[styles.emptyTitle, { color: theme.text }]}>{t('discover.searching')}</Text>
           </View>
         </View>
@@ -240,7 +264,7 @@ export default function DiscoverScreen() {
 
       {isError && !isLoading && MAPS_AVAILABLE && (
         <View style={styles.emptyOverlay} pointerEvents="box-none">
-          <TouchableOpacity style={[styles.emptyCard, { backgroundColor: theme.bgCard }]} activeOpacity={0.7} onPress={() => refetch()} accessibilityRole="button">
+          <TouchableOpacity style={[styles.emptyCard, { backgroundColor: theme.bgCard }]} activeOpacity={0.7} onPress={() => refetch()} accessibilityRole="button" accessibilityLabel={t('common.retry')}>
             <MapPin size={ms(32)} color={theme.textMuted} strokeWidth={2} />
             <Text style={[styles.emptyTitle, { color: theme.text }]}>{t('discover.noMerchantFound')}</Text>
             <Text style={[styles.emptyText, { color: palette.violet }]}>{t('common.retry')}</Text>

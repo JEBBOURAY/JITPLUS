@@ -1,5 +1,6 @@
 import React from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Text } from '@/components/AppText';
 import { Clock, Gift } from 'lucide-react-native';
 import { palette } from '@/contexts/ThemeContext';
 import { formatDate } from '@/utils/date';

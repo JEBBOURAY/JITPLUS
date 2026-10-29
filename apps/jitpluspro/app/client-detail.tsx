@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useGuardedCallback } from '@/hooks/useGuardedCallback';
 import {
   View,
@@ -17,148 +17,80 @@ import {
 } from 'react-native';
 import {
   ArrowLeft,
-  Star,
-  Stamp,
   Phone,
   Mail,
-  Calendar,
-  Gift,
-  Clock,
   X,
   CheckCircle2,
   Circle,
   PlusCircle,
   MinusCircle,
-  RefreshCw,
-  FileText,
   MessageCircle,
-  Ticket,
+  type LucideIcon,
 } from 'lucide-react-native';
-import { getTransactionConfig } from '@/constants/transactions';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuthStore } from '@/stores/authStore';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
-import { useTheme, palette } from '@/contexts/ThemeContext';
-import { ms } from '@/utils/responsive';
+import { useTheme } from '@/contexts/ThemeContext';
+import { ActionButton } from '@/components/ui/ActionButton';
+import { font, icon } from '@/constants/design';
+import { useDir } from '@/hooks/useDir';
 import { useLanguage } from '@/contexts/LanguageContext';
 import StampGrid from '@/components/StampGrid';
-import { formatDate, formatDateTime } from '@/utils/date';
+import { formatDate } from '@/utils/date';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { formatCurrency, DEFAULT_CURRENCY, getIntlLocale } from '@/config/currency';
 import { useClientDetail, useAdjustStamps } from '@/hooks/useQueryHooks';
 import { isValidUUID } from '@/utils/validation';
 import api from '@/services/api';
 import { getErrorMessage } from '@/utils/error';
-import { stripEmojis } from '@/components/TransactionRow';
+import { HistoryListItem, buildHomeRows } from '@/components/TransactionRow';
 
-// Type import for transactions
-import type { ClientDetailTransaction } from '@/types';
+const HIT_SLOP_LARGE = { top: 12, bottom: 12, left: 12, right: 12 };
+// The profile is a ScrollView (no virtualization), so cap the mounted transaction rows.
+// The backend returns the most recent first.
+const MAX_VISIBLE_TX = 50;
 
-/* ── Memoized transaction row — avoids re-render of every row on parent updates ── */
-const TransactionItem = React.memo(function TransactionItem({
-  tx,
+function ContactRow({
+  Icon,
+  text,
+  muted = false,
+  iconColor,
+  isFirst = false,
 }: {
-  tx: ClientDetailTransaction;
+  Icon: LucideIcon;
+  text: string;
+  muted?: boolean;
+  iconColor?: string;
+  isFirst?: boolean;
 }) {
   const theme = useTheme();
-  const { t, locale } = useLanguage();
-
-  const isEarned = tx.type === 'EARN_STAMPS';
-  const isAdjust = tx.type === 'ADJUST_STAMPS';
-  const isProgramChange = tx.type === 'LOYALTY_PROGRAM_CHANGE';
-  const isLuckyWheelWin = tx.type === 'LUCKY_WHEEL_WIN';
-  const isCoupon = tx.type === 'COUPON_REDEEM';
-  const isCancelled = tx.status === 'CANCELLED';
-  const { icon: IconComp, color } = getTransactionConfig(tx.type, isCancelled, theme);
-
+  const dir = useDir();
   return (
-    <View style={[styles.txRow, { borderBottomColor: theme.borderLight }]}>
-      <View style={[styles.txIcon, { backgroundColor: color + '15' }]}>
-        <IconComp size={14} color={color} strokeWidth={1.5} />
-      </View>
-      <View style={styles.txInfo}>
-        <Text style={[styles.txType, { color: theme.text }, isCancelled && styles.cancelled]}>
-          {isProgramChange
-            ? t('clientDetail.txProgramChange')
-            : isAdjust
-              ? t('clientDetail.txAdjustment')
-              : isEarned
-                ? t('clientDetail.txEarned')
-                : isCoupon
-                  ? t('clientDetail.txCoupon')
-                  : isLuckyWheelWin
-                    ? t('common.luckyWheelWin', { defaultValue: 'Roue de la chance' })
-                    : t('clientDetail.txRedeemed')}
-        </Text>
-        {isProgramChange && tx.note && (
-          <View style={styles.txInlineRow}>
-            <RefreshCw size={10} color={theme.primary} strokeWidth={2} />
-            <Text style={[styles.txNote, { color: theme.primary, flex: 1 }]} numberOfLines={2}>
-              {stripEmojis(tx.note)}
-            </Text>
-          </View>
-        )}
-        {isAdjust && tx.note ? (
-          <View style={styles.txInlineRow}>
-            <FileText size={10} color={theme.textMuted} strokeWidth={2} />
-            <Text style={[styles.txNote, { color: theme.textMuted, flex: 1 }]} numberOfLines={2}>
-              {stripEmojis(tx.note)}
-            </Text>
-          </View>
-        ) : null}
-        {isLuckyWheelWin && tx.note && (
-          <View style={styles.txInlineRow}>
-            <Star size={10} color={theme.accent} strokeWidth={2} />
-            <Text style={[styles.txNote, { color: theme.accent, flex: 1 }]} numberOfLines={2}>
-              {stripEmojis(tx.note)}
-            </Text>
-          </View>
-        )}
-        {isCoupon && tx.note && (
-          <View style={styles.txInlineRow}>
-            <Ticket size={10} color={theme.accent} strokeWidth={2} />
-            <Text style={[styles.txNote, { color: theme.accent, flex: 1 }]} numberOfLines={2}>
-              {stripEmojis(tx.note)}
-            </Text>
-          </View>
-        )}
-        {!isEarned && !isAdjust && !isProgramChange && !isLuckyWheelWin && !isCoupon && tx.reward && (
-          <View style={styles.txRewardRow}>
-            <Gift size={10} color={theme.primary} strokeWidth={2} />
-            <Text style={[styles.txRewardName, { color: theme.primary, flex: 1 }]}>{stripEmojis(tx.reward.titre)}</Text>
-            {tx.type === 'REDEEM_REWARD' && !isCancelled && tx.giftStatus === 'FULFILLED' && (
-              <View style={[styles.txGiftBadge, { backgroundColor: theme.accentBg }]}>
-                <Text style={[styles.txGiftBadgeText, { color: theme.accent }]}>{t('gift.fulfilled')}</Text>
-              </View>
-            )}
-          </View>
-        )}
-
-        <Text style={[styles.txDate, { color: theme.textMuted }]}>{formatDateTime(tx.createdAt, locale)}</Text>
-        {isCancelled && <Text style={[styles.txCancelLabel, { color: theme.danger }]}>{t('clientDetail.txCancelled')}</Text>}
-      </View>
-      {!isProgramChange && !isLuckyWheelWin && (
-        <View style={styles.txRight}>
-          {tx.amount > 0 && (
-            <Text style={[styles.txAmount, { color: theme.textSecondary }, isCancelled && styles.cancelled]}>
-              {formatCurrency(tx.amount, DEFAULT_CURRENCY, getIntlLocale(locale))}
-            </Text>
-          )}
-          <Text style={[styles.txStamps, { color }, isCancelled && styles.cancelled]}>
-            {isAdjust ? (tx.stamps >= 0 ? '+' : '') : isEarned || isCoupon ? '+' : '-'}{tx.stamps} {t('common.stampsAbbr')}
-          </Text>
-        </View>
-      )}
+    <View
+      style={[
+        styles.contactRow,
+        { flexDirection: dir.row },
+        !isFirst && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.borderLight },
+      ]}
+    >
+      <Icon size={16} color={iconColor ?? theme.textMuted} strokeWidth={icon.stroke} />
+      <Text
+        style={[styles.contactText, { color: muted ? theme.textMuted : theme.textSecondary, textAlign: dir.textAlign }]}
+        numberOfLines={1}
+      >
+        {text}
+      </Text>
     </View>
   );
-});
-
+}
 export default function ClientDetailScreen() {
   const shouldWait = useRequireAuth();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const merchant = useAuthStore((s) => s.merchant);
+  // Manual stamp adjustments are owner-only on the server.
+  const isTeamMember = useAuthStore((s) => s.isTeamMember);
   const theme = useTheme();
+  const dir = useDir();
   const insets = useSafeAreaInsets();
 
   const [adjustModalVisible, setAdjustModalVisible] = useState(false);
@@ -195,12 +127,9 @@ export default function ClientDetailScreen() {
     setAdjustModalVisible(true);
   }, []);
 
-  // Cap the rendered transactions to avoid mounting hundreds of rows inside a
-  // ScrollView (no virtualization). Backend returns the most recent first.
-  const MAX_VISIBLE_TX = 50;
-  const visibleTransactions = useMemo(
-    () => (client?.transactions ?? []).slice(0, MAX_VISIBLE_TX),
-    [client?.transactions],
+  const txRows = useMemo(
+    () => buildHomeRows((client?.transactions ?? []).slice(0, MAX_VISIBLE_TX), t, locale),
+    [client?.transactions, t, locale],
   );
   const hiddenTxCount = Math.max(0, (client?.transactions?.length ?? 0) - MAX_VISIBLE_TX);
 
@@ -212,14 +141,12 @@ export default function ClientDetailScreen() {
     }
 
     const signedStamps = adjustMode === 'remove' ? -count : count;
-    const unit = t('common.stamps');
-    const action = adjustMode === 'add' ? t('clientDetail.adjustActionAdd') : t('clientDetail.adjustActionRemove');
-    const direction = adjustMode === 'add' ? t('clientDetail.adjustDirAdd') : t('clientDetail.adjustDirRemove');
+    const unit = count === 1 ? t('common.stamp') : t('common.stamps');
     const displayName = [client?.prenom, client?.nom].filter(Boolean).join(' ');
 
     Alert.alert(
       t('common.confirm'),
-      t('clientDetail.adjustConfirmMsg', { action, count, unit, direction, name: displayName }),
+      t(adjustMode === 'add' ? 'clientDetail.adjustConfirmAdd' : 'clientDetail.adjustConfirmRemove', { count, unit, name: displayName }),
       [
         { text: t('common.cancel'), style: 'cancel' },
         {
@@ -232,8 +159,10 @@ export default function ClientDetailScreen() {
                 note: adjustNote.trim() || undefined,
               });
               setAdjustModalVisible(false);
-              const result = adjustMode === 'add' ? t('clientDetail.adjustResultAdd') : t('clientDetail.adjustResultRemove');
-              Alert.alert(t('common.confirm'), t('clientDetail.adjustSuccessMsg', { count, unit, result }));
+              Alert.alert(
+                t('common.success'),
+                t(adjustMode === 'add' ? 'clientDetail.adjustSuccessAdd' : 'clientDetail.adjustSuccessRemove', { count }),
+              );
             } catch (err: unknown) {
               const msg = getErrorMessage(err, t('clientDetail.adjustDefaultError'));
               Alert.alert(t('common.error'), msg);
@@ -244,13 +173,16 @@ export default function ClientDetailScreen() {
     );
   }, [adjustStamps, adjustMode, adjustNote, adjustMutation, id, client, t]);
 
-  // ── Reshare WhatsApp claim link (anonymous Quick-Add clients only) ──
+  // Reshare the WhatsApp claim link (anonymous Quick-Add clients only).
   const [resharing, setResharing] = useState(false);
+  const clientId = client?.id;
+  const isAnonymous = client?.isAnonymous;
+  const merchantName = merchant?.nom;
   const handleReshareClaim = useCallback(async () => {
-    if (!client?.id || !client.isAnonymous || resharing) return;
+    if (!clientId || !isAnonymous || resharing) return;
     setResharing(true);
     try {
-      const res = await api.post(`/merchant/clients/${client.id}/reshare-claim`);
+      const res = await api.post(`/merchant/clients/${clientId}/reshare-claim`);
       const data = res.data as {
         claim: { url: string; expiresAt: string };
         client: { telephone: string | null; prenom: string | null };
@@ -261,7 +193,7 @@ export default function ClientDetailScreen() {
         : '';
       const message = t('quickAdd.reshareWaMessage', {
         name: namePart,
-        merchant: merchant?.nom ?? 'JitPlus',
+        merchant: merchantName ?? 'JitPlus',
         url: data.claim.url,
       });
       const waUrl = phoneDigits
@@ -278,8 +210,8 @@ export default function ClientDetailScreen() {
       } catch {
         Alert.alert(t('quickAdd.waNotInstalled'), data.claim.url);
       }
-    } catch (err: any) {
-      const status = err?.response?.status;
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } } | null)?.response?.status;
       if (status === 409) {
         Alert.alert(t('common.error'), t('clientDetail.reshareAlreadyRegistered'));
       } else {
@@ -288,10 +220,9 @@ export default function ClientDetailScreen() {
     } finally {
       setResharing(false);
     }
-  }, [client?.id, client?.isAnonymous, resharing, merchant?.nom, t]);
+  }, [clientId, isAnonymous, resharing, merchantName, t]);
 
-  // Use the dynamically computed threshold from the backend (client.stampsForReward / client.rewardThreshold)
-  // rather than the merchant's static database field, as there might be custom rewards.
+  // Prefer the per-client threshold computed by the backend (custom rewards) over the merchant's static field.
   const stampsForReward = client?.stampsForReward || merchant?.stampsForReward || 10;
 
   // Guard: auth not ready
@@ -314,30 +245,36 @@ export default function ClientDetailScreen() {
   if (!client) {
     return (
       <View style={[styles.centered, { backgroundColor: theme.bg }]}>
-        <Text style={{ color: theme.textMuted }}>{t('clientDetail.notFound')}</Text>
+        <Text style={[styles.notFound, { color: theme.textMuted }]}>{t('clientDetail.notFound')}</Text>
       </View>
     );
   }
 
   const displayName = [client.prenom, client.nom].filter(Boolean).join(' ') || '?';
   const initial = (client.prenom || client.nom || '?').charAt(0).toUpperCase();
-  // Show phone as-is — the backend stores the normalized full number (e.g. +212612345678)
-  const phoneDisplay = client.telephone || null;
+  const adjustTitle = t(adjustMode === 'add' ? 'clientDetail.adjustAddTitle' : 'clientDetail.adjustRemoveTitle', { unit: t('common.stamps') });
+  const cardStyle = [styles.card, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }];
+  const sectionTitleStyle = [styles.sectionTitle, { color: theme.text, textAlign: dir.textAlign }];
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
-      {/* ── Simple header ── */}
-      <View style={[styles.headerBar, { paddingTop: insets.top + 12 }]}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-          <ArrowLeft size={22} color={theme.text} />
+      <View style={[styles.headerBar, { flexDirection: dir.row, paddingTop: insets.top + 12 }]}>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          hitSlop={HIT_SLOP_LARGE}
+          accessibilityRole="button"
+          accessibilityLabel={t('common.back')}
+        >
+          <ArrowLeft size={22} color={theme.text} strokeWidth={icon.stroke} style={dir.flip} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.text }]}>{t('clientDetail.title')}</Text>
-        <View style={{ width: 40 }} />
+        <Text style={[styles.headerTitle, { color: theme.text }]} maxFontSizeMultiplier={1.4}>
+          {t('clientDetail.title')}
+        </Text>
       </View>
 
       <ScrollView
         style={styles.body}
-        contentContainerStyle={{ paddingBottom: 40 }}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 24 }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -348,174 +285,98 @@ export default function ClientDetailScreen() {
           />
         }
       >
-        {/* ── Profile card ── */}
-        <View style={[styles.card, { backgroundColor: theme.bgCard, borderColor: theme.borderLight, shadowColor: theme.shadowColor }]}>
-          <View style={styles.profileSection}>
-            <View style={[styles.avatarLarge, { backgroundColor: theme.primary + '14' }]}>
-              <Text style={[styles.avatarLargeText, { color: theme.primary }]}>{initial}</Text>
-            </View>
-            <Text style={[styles.profileName, { color: theme.text }]}>{displayName}</Text>
-            <Text style={[styles.memberSince, { color: theme.textMuted }]}>
-              {t('clientDetail.memberSince', { date: formatDate(client.memberSince, locale) })}
+        <View style={[cardStyle, styles.profileCard]}>
+          <View style={[styles.avatar, { backgroundColor: `${theme.primary}1A` }]} importantForAccessibility="no">
+            <Text style={[styles.avatarText, { color: theme.primary }]}>{initial}</Text>
+          </View>
+          <Text style={[styles.profileName, { color: theme.text }]} numberOfLines={1}>{displayName}</Text>
+          <Text style={[styles.memberSince, { color: theme.textMuted }]}>
+            {t('clientDetail.memberSince', { date: formatDate(client.memberSince, locale) })}
+          </Text>
+          <View style={[styles.stampsRow, { flexDirection: dir.row }]}>
+            <Text style={[styles.stampsValue, { color: theme.text }]}>{client.stamps}</Text>
+            <Text style={[styles.stampsLabel, { color: theme.textMuted }]}>
+              {client.stamps === 1 ? t('common.stamp') : t('common.stamps')}
             </Text>
+          </View>
 
-            <View style={[styles.stampsHero, { backgroundColor: `${palette.charbon}12` }]}>
-              <View style={{ width: ms(36), height: ms(36), borderRadius: ms(12), backgroundColor: `${palette.charbon}12`, justifyContent: 'center', alignItems: 'center' }}>
-                <Stamp size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
-              </View>
-              <Text style={[styles.stampsHeroValue, { color: theme.text }]}>{client.stamps}</Text>
-              <Text style={[styles.stampsHeroLabel, { color: theme.textMuted }]}>{t('common.stamps')}</Text>
+          {!isTeamMember && (
+            <View style={[styles.adjustButtons, { flexDirection: dir.row }]}>
+              <ActionButton
+                label={t('clientDetail.addBtn')}
+                icon={PlusCircle}
+                onPress={() => openAdjustModal('add')}
+                style={styles.flex1}
+              />
+              <ActionButton
+                label={t('clientDetail.removeBtn')}
+                icon={MinusCircle}
+                variant="secondary"
+                onPress={() => openAdjustModal('remove')}
+                style={styles.flex1}
+              />
             </View>
-          </View>
-
-          {/* Adjust stamps buttons */}
-          <View style={styles.adjustButtons}>
-            <TouchableOpacity
-              style={[styles.adjustBtn, { backgroundColor: theme.primary }]}
-              onPress={() => openAdjustModal('add')}
-            >
-              <PlusCircle size={16} color="#fff" />
-              <Text style={styles.adjustBtnText}>{t('clientDetail.addBtn')}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.adjustBtn, { backgroundColor: theme.isDark ? palette.charbon : '#374151' }]}
-              onPress={() => openAdjustModal('remove')}
-            >
-              <MinusCircle size={16} color="#fff" />
-              <Text style={styles.adjustBtnText}>{t('clientDetail.removeBtn')}</Text>
-            </TouchableOpacity>
-          </View>
+          )}
         </View>
 
-        {/* ── Anonymous client: reshare WhatsApp claim link ── */}
         {client.isAnonymous && (
-          <View style={[styles.card, { backgroundColor: theme.bgCard, borderColor: theme.borderLight, shadowColor: theme.shadowColor }]}>
-            <Text style={[styles.anonBadgeText, { color: theme.textMuted }]}>
+          <View style={[cardStyle, styles.cardSpaced]}>
+            <Text style={[styles.anonText, { color: theme.textMuted }]}>
               {t('clientDetail.anonymousBadge')}
             </Text>
-            <TouchableOpacity
-              style={[styles.reshareBtn, { backgroundColor: '#25D366', opacity: resharing ? 0.6 : 1 }]}
+            <ActionButton
+              label={resharing ? t('clientDetail.reshareSending') : t('clientDetail.reshareBtn')}
+              icon={MessageCircle}
+              variant="secondary"
+              loading={resharing}
               onPress={handleReshareClaim}
-              disabled={resharing}
-              accessibilityRole="button"
-            >
-              {resharing ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <MessageCircle size={18} color="#fff" />
-              )}
-              <Text style={styles.reshareBtnText}>
-                {resharing ? t('clientDetail.reshareSending') : t('clientDetail.reshareBtn')}
-              </Text>
-            </TouchableOpacity>
+            />
           </View>
         )}
-        {/* ── Progress to reward ── */}
-        <View style={[styles.card, { backgroundColor: theme.bgCard, borderColor: theme.borderLight, shadowColor: theme.shadowColor }]}>
-          <View style={styles.cardHeader}>
-            <View style={{ width: ms(36), height: ms(36), borderRadius: ms(12), backgroundColor: `${palette.charbon}12`, justifyContent: 'center', alignItems: 'center' }}>
-              <Gift size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
-            </View>
-            <Text style={[styles.cardTitle, { color: theme.text }]}>
-              {t('clientDetail.loyaltyCard')}
-            </Text>
-          </View>
 
+        <Text style={sectionTitleStyle}>{t('clientDetail.loyaltyCard')}</Text>
+        <View style={cardStyle}>
           <StampGrid current={client.stamps} total={stampsForReward} size={38} />
         </View>
 
-        {/* ── Contact info ── */}
-        <View style={[styles.card, { backgroundColor: theme.bgCard, borderColor: theme.borderLight, shadowColor: theme.shadowColor }]}>
-          <View style={styles.cardHeader}>
-            <View style={{ width: ms(36), height: ms(36), borderRadius: ms(12), backgroundColor: `${palette.charbon}12`, justifyContent: 'center', alignItems: 'center' }}>
-              <Mail size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
-            </View>
-            <Text style={[styles.cardTitle, { color: theme.text }]}>{t('clientDetail.contact')}</Text>
-          </View>
-
-          {client.email ? (
-            <View style={[styles.contactRow, { borderBottomColor: theme.borderLight }]}>
-              <Mail size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
-              <Text style={[styles.contactText, { color: theme.textSecondary }]}>{client.email}</Text>
-            </View>
-          ) : (
-            <View style={[styles.contactRow, { borderBottomColor: theme.borderLight }]}>
-              <Mail size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
-              <Text style={[styles.contactText, { color: theme.textMuted, fontStyle: 'italic' }]}>{t('clientDetail.notShared')}</Text>
-            </View>
-          )}
-
-          {phoneDisplay ? (
-            <View style={[styles.contactRow, { borderBottomColor: theme.borderLight }]}>
-              <Phone size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
-              <Text style={[styles.contactText, { color: theme.textSecondary }]}>{phoneDisplay}</Text>
-            </View>
-          ) : !client.telephone ? (
-            <View style={[styles.contactRow, { borderBottomColor: theme.borderLight }]}>
-              <Phone size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
-              <Text style={[styles.contactText, { color: theme.textMuted, fontStyle: 'italic' }]}>{t('clientDetail.notShared')}</Text>
-            </View>
-          ) : null}
-
-          <View style={[styles.contactRow, { borderBottomColor: theme.borderLight }]}>
-            <Calendar size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
-            <Text style={[styles.contactText, { color: theme.textSecondary }]}>{t('clientDetail.memberSince', { date: formatDate(client.memberSince, locale) })}</Text>
-          </View>
+        <Text style={sectionTitleStyle}>{t('clientDetail.contact')}</Text>
+        <View style={[cardStyle, styles.listCard]}>
+          <ContactRow
+            isFirst
+            Icon={Mail}
+            text={client.email || t('clientDetail.notShared')}
+            muted={!client.email}
+          />
+          {/* The backend stores the normalized full number (e.g. +212612345678), so it is shown as-is. */}
+          <ContactRow
+            Icon={Phone}
+            text={client.telephone || t('clientDetail.notShared')}
+            muted={!client.telephone}
+          />
+          <ContactRow
+            Icon={client.termsAccepted ? CheckCircle2 : Circle}
+            iconColor={client.termsAccepted ? theme.primary : undefined}
+            text={t(client.termsAccepted ? 'clientDetail.termsAccepted' : 'clientDetail.termsNotAccepted')}
+            muted={!client.termsAccepted}
+          />
         </View>
 
-        {/* ── Status badge ── */}
-        <View style={[styles.card, { backgroundColor: theme.bgCard, borderColor: theme.borderLight, shadowColor: theme.shadowColor }]}>
-          <View style={styles.statusBadgeContainer}>
-            {client.termsAccepted ? (
-              <>
-                <View style={[styles.statusBadge, { backgroundColor: theme.primaryBg, borderColor: theme.primary }]}>
-                  <CheckCircle2 size={16} color={theme.primary} strokeWidth={1.5} />
-                  <Text style={[styles.statusBadgeText, { color: theme.primary }]}>
-                    {t('clientDetail.termsAccepted')}
-                  </Text>
-                </View>
-              </>
-            ) : (
-              <>
-                <View style={[styles.statusBadge, { backgroundColor: theme.isDark ? 'rgba(239,68,68,0.12)' : '#fef2f2', borderColor: theme.danger }]}>
-                  <Circle size={16} color={theme.danger} strokeWidth={1.5} />
-                  <Text style={[styles.statusBadgeText, { color: theme.danger }]}>
-                    {t('clientDetail.termsNotAccepted')}
-                  </Text>
-                </View>
-              </>
-            )}
-          </View>
-        </View>
-
-        {/* ── Transactions ── */}
-        <View style={[styles.card, { backgroundColor: theme.bgCard, borderColor: theme.borderLight, shadowColor: theme.shadowColor }]}>
-          <View style={styles.cardHeader}>
-            <View style={{ width: ms(36), height: ms(36), borderRadius: ms(12), backgroundColor: `${palette.charbon}12`, justifyContent: 'center', alignItems: 'center' }}>
-              <Clock size={ms(16)} color={palette.charbon} strokeWidth={1.5} />
-            </View>
-            <Text style={[styles.cardTitle, { color: theme.text }]}>{t('clientDetail.lastTransactions')}</Text>
-            <Text style={[styles.cardCount, { color: theme.primary, backgroundColor: theme.primaryBg }]}>{client.transactions.length}</Text>
-          </View>
-
-          {client.transactions.length === 0 ? (
-            <Text style={[styles.noTx, { color: theme.textMuted }]}>{t('clientDetail.noTransactions')}</Text>
-          ) : (
-            <>
-              {visibleTransactions.map((tx) => (
-                <TransactionItem key={tx.id} tx={tx} />
-              ))}
-              {hiddenTxCount > 0 && (
-                <Text style={[styles.noTx, { color: theme.textMuted, paddingVertical: 12 }]}>
-                  + {hiddenTxCount} {t('common.older', { defaultValue: 'plus anciennes' })}
-                </Text>
-              )}
-            </>
-          )}
-        </View>
+        <Text style={sectionTitleStyle}>
+          {t('clientDetail.lastTransactions')}
+          <Text style={{ color: theme.textMuted }}>{`  ${client.transactions.length}`}</Text>
+        </Text>
+        {txRows.length === 0 ? (
+          <Text style={[styles.noTx, { color: theme.textMuted }]}>{t('clientDetail.noTransactions')}</Text>
+        ) : (
+          txRows.map((row) => <HistoryListItem key={row.id} row={row} showType />)
+        )}
+        {hiddenTxCount > 0 && (
+          <Text style={[styles.noTx, { color: theme.textMuted }]}>
+            + {hiddenTxCount} {t('common.older')}
+          </Text>
+        )}
       </ScrollView>
 
-      {/* ── Adjust Stamps Modal ── */}
       <Modal
         visible={adjustModalVisible}
         transparent
@@ -528,33 +389,38 @@ export default function ClientDetailScreen() {
           keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
         >
           <View style={[styles.modalContent, { backgroundColor: theme.bgCard }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: theme.text }]}>
-                {t(adjustMode === 'add' ? 'clientDetail.adjustAddTitle' : 'clientDetail.adjustRemoveTitle', { unit: t('common.stamps') })}
+            <View style={[styles.modalHeader, { flexDirection: dir.row }]}>
+              <Text style={[styles.modalTitle, { color: theme.text, textAlign: dir.textAlign }]}>
+                {adjustTitle}
               </Text>
-              <TouchableOpacity onPress={() => setAdjustModalVisible(false)}>
-                <X size={22} color={theme.textMuted} />
+              <TouchableOpacity
+                onPress={() => setAdjustModalVisible(false)}
+                hitSlop={HIT_SLOP_LARGE}
+                accessibilityRole="button"
+                accessibilityLabel={t('common.close')}
+              >
+                <X size={22} color={theme.textMuted} strokeWidth={icon.stroke} />
               </TouchableOpacity>
             </View>
 
-            <Text style={[styles.modalLabel, { color: theme.textSecondary }]}>
+            <Text style={[styles.modalLabel, { color: theme.textSecondary, textAlign: dir.textAlign }]}>
               {t('clientDetail.adjustCountLabel', { unit: t('common.stamps') })}
             </Text>
             <TextInput
-              style={[styles.modalInput, { backgroundColor: theme.bgElevated, color: theme.text, borderColor: theme.borderLight }]}
+              style={[styles.modalInput, { backgroundColor: theme.bgElevated, color: theme.text, borderColor: theme.borderLight, textAlign: dir.textAlign }]}
               keyboardType="number-pad"
-              placeholder="Ex: 2"
+              placeholder={t('clientDetail.adjustCountPlaceholder')}
               placeholderTextColor={theme.textMuted}
               value={adjustStamps}
-              onChangeText={(t) => setAdjustStamps(t.replace(/[^0-9]/g, ''))}
+              onChangeText={(v) => setAdjustStamps(v.replace(/[^0-9]/g, ''))}
               autoFocus
             />
 
-            <Text style={[styles.modalLabel, { color: theme.textSecondary }]}>
+            <Text style={[styles.modalLabel, { color: theme.textSecondary, textAlign: dir.textAlign }]}>
               {t('clientDetail.adjustReasonLabel')}
             </Text>
             <TextInput
-              style={[styles.modalInput, styles.modalInputMultiline, { backgroundColor: theme.bgElevated, color: theme.text, borderColor: theme.borderLight }]}
+              style={[styles.modalInput, styles.modalInputMultiline, { backgroundColor: theme.bgElevated, color: theme.text, borderColor: theme.borderLight, textAlign: dir.textAlign }]}
               placeholder={t('clientDetail.adjustReasonPlaceholder')}
               placeholderTextColor={theme.textMuted}
               value={adjustNote}
@@ -563,23 +429,13 @@ export default function ClientDetailScreen() {
               maxLength={255}
             />
 
-            <TouchableOpacity
-              style={[
-                styles.modalConfirmBtn,
-                { backgroundColor: adjustMode === 'add' ? palette.violet : palette.charbon },
-                adjustMutation.isPending && { opacity: 0.6 },
-              ]}
+            <ActionButton
+              label={adjustTitle}
+              size="lg"
+              loading={adjustMutation.isPending}
               onPress={handleAdjustStamps}
-              disabled={adjustMutation.isPending}
-            >
-              {adjustMutation.isPending ? (
-                <ActivityIndicator color="#fff" size="small" />
-              ) : (
-                <Text style={styles.modalConfirmText}>
-                  {t(adjustMode === 'add' ? 'clientDetail.adjustAddTitle' : 'clientDetail.adjustRemoveTitle', { unit: t('common.stamps') })}
-                </Text>
-              )}
-            </TouchableOpacity>
+              style={styles.modalConfirmBtn}
+            />
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -590,177 +446,72 @@ export default function ClientDetailScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  notFound: { fontSize: 14, fontFamily: font.regular },
+  flex1: { flex: 1 },
 
-  // ── Header bar ──
   headerBar: {
-    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 24,
+    gap: 14,
+    paddingHorizontal: 18,
     paddingBottom: 12,
   },
   headerTitle: {
-    fontSize: 28,
-    fontWeight: '700',
-    fontFamily: 'Lexend_700Bold',
-    letterSpacing: -0.5,
+    fontSize: 18,
+    fontFamily: font.bold,
+    letterSpacing: -0.3,
   },
-  backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  profileSection: {
-    alignItems: 'center',
-    paddingBottom: 8,
-  },
-  avatarLarge: {
-    width: 72,
-    height: 72,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  avatarLargeText: { fontSize: 28, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
-  profileName: { fontSize: 22, fontWeight: '700', fontFamily: 'Lexend_700Bold', letterSpacing: -0.3 },
-  memberSince: { fontSize: 13, marginTop: 4, fontFamily: 'Lexend_400Regular' },
-  stampsHero: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginTop: 14,
-    gap: 6,
-  },
-  stampsHeroValue: { fontSize: 20, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
-  stampsHeroLabel: { fontSize: 13, fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
 
-  // ── Body ──
-  body: { flex: 1, paddingHorizontal: 16, paddingTop: 20 },
+  body: { flex: 1 },
+  scrollContent: { paddingHorizontal: 16, paddingTop: 8 },
 
-  // ── Card ──
   card: {
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 12,
+    borderRadius: 16,
     borderWidth: 1,
+    padding: 16,
   },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 16,
-  },
-  cardTitle: { fontSize: 16, fontWeight: '700', flex: 1, fontFamily: 'Lexend_700Bold' },
-  cardCount: {
-    fontSize: 13,
-    fontWeight: '700',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
-    overflow: 'hidden',
-    fontFamily: 'Lexend_700Bold',
+  cardSpaced: { marginTop: 12 },
+  listCard: { paddingVertical: 0 },
+  sectionTitle: {
+    fontSize: 16,
+    fontFamily: font.bold,
+    letterSpacing: -0.3,
+    marginTop: 20,
+    marginBottom: 10,
   },
 
-  // ── Contact ──
-  contactRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-  },
-  contactText: { fontSize: 14, flex: 1, fontFamily: 'Lexend_400Regular' },
-
-  // ── Status Badge ──
-  statusBadgeContainer: {
-    paddingVertical: 8,
-  },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    gap: 8,
-  },
-  statusBadgeText: {
-    fontSize: 13,
-    fontWeight: '600',
-    fontFamily: 'Lexend_600SemiBold',
-  },
-
-  // ── Transactions ──
-  noTx: { fontSize: 14, textAlign: 'center', paddingVertical: 20, fontFamily: 'Lexend_400Regular' },
-  txRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-  },
-  txIcon: {
-    width: 32,
-    height: 32,
+  profileCard: { alignItems: 'center' },
+  avatar: {
+    width: 64,
+    height: 64,
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 10,
+    marginBottom: 12,
   },
-  txInfo: { flex: 1 },
-  txType: { fontSize: 14, fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
-  txRewardName: { fontSize: 12, fontWeight: '600', marginTop: 1, fontFamily: 'Lexend_600SemiBold' },
-  txRewardRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  txInlineRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 },
-  txGiftBadge: { paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4 },
-  txGiftBadgeText: { fontSize: 9, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
-  txDate: { fontSize: 12, marginTop: 2, fontFamily: 'Lexend_400Regular' },
-  txCancelLabel: { fontSize: 11, fontWeight: '600', marginTop: 1, fontFamily: 'Lexend_600SemiBold' },
-  cancelled: { textDecorationLine: 'line-through', opacity: 0.5 },
-  txRight: { alignItems: 'flex-end' },
-  txAmount: { fontSize: 13, fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
-  txStamps: { fontSize: 14, fontWeight: '700', marginTop: 2, fontFamily: 'Lexend_700Bold' },
-  txNote: { fontSize: 12, marginTop: 2, fontStyle: 'italic', fontFamily: 'Lexend_400Regular' },
+  avatarText: { fontSize: 24, fontFamily: font.bold },
+  profileName: { fontSize: 20, fontFamily: font.bold, letterSpacing: -0.3 },
+  memberSince: { fontSize: 13, marginTop: 4, fontFamily: font.regular },
+  stampsRow: { alignItems: 'baseline', gap: 6, marginTop: 12 },
+  stampsValue: { fontSize: 22, fontFamily: font.bold, letterSpacing: -0.4 },
+  stampsLabel: { fontSize: 13, fontFamily: font.medium },
+  adjustButtons: { alignSelf: 'stretch', gap: 10, marginTop: 16 },
 
-  // ── Adjust Buttons ──
-  adjustButtons: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 12,
-  },
-  adjustBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 10,
-    borderRadius: 12,
-    gap: 6,
-  },
-  adjustBtnText: { color: '#fff', fontSize: 14, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
-
-  // ── Reshare WhatsApp claim link (anonymous Quick-Add) ──
-  anonBadgeText: {
+  anonText: {
     fontSize: 13,
-    fontFamily: 'Lexend_500Medium',
+    fontFamily: font.medium,
     marginBottom: 12,
     textAlign: 'center',
   },
-  reshareBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    borderRadius: 12,
-    gap: 8,
-  },
-  reshareBtnText: { color: '#fff', fontSize: 15, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
 
-  // ── Modal ──
+  contactRow: {
+    alignItems: 'center',
+    gap: 10,
+    minHeight: 48,
+  },
+  contactText: { flex: 1, fontSize: 14, fontFamily: font.regular },
+
+  noTx: { fontSize: 14, textAlign: 'center', paddingVertical: 16, fontFamily: font.regular },
+
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -773,31 +524,23 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   modalHeader: {
-    flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 20,
   },
-  modalTitle: { fontSize: 20, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
-  modalLabel: { fontSize: 14, fontWeight: '600', marginBottom: 6, marginTop: 12, fontFamily: 'Lexend_600SemiBold' },
+  modalTitle: { fontSize: 20, fontFamily: font.bold },
+  modalLabel: { fontSize: 14, marginBottom: 6, marginTop: 12, fontFamily: font.semibold },
   modalInput: {
     fontSize: 16,
     paddingHorizontal: 14,
     paddingVertical: 12,
     borderRadius: 12,
     borderWidth: 1,
-    fontFamily: 'Lexend_500Medium',
+    fontFamily: font.medium,
   },
   modalInputMultiline: {
     minHeight: 80,
     textAlignVertical: 'top',
   },
-  modalConfirmBtn: {
-    marginTop: 24,
-    paddingVertical: 14,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalConfirmText: { color: '#fff', fontSize: 16, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
+  modalConfirmBtn: { marginTop: 24 },
 });

@@ -5,9 +5,11 @@ import { Platform } from 'react-native';
 const IS_DEV = __DEV__;
 
 // ── Storage keys ──────────────────────────────────────────
-export const TOKEN_KEY = 'auth_token';
-export const REFRESH_TOKEN_KEY = 'refresh_token';
-export const QR_TOKEN_KEY = 'qr_permanent_token';export const PROFILE_CACHE_KEY = 'client_profile_cache';const REMEMBER_ME_KEY = 'rememberMe';
+const TOKEN_KEY = 'auth_token';
+const REFRESH_TOKEN_KEY = 'refresh_token';
+export const QR_TOKEN_KEY = 'qr_permanent_token';
+const PROFILE_CACHE_KEY = 'client_profile_cache';
+const REMEMBER_ME_KEY = 'rememberMe';
 const EMAIL_OTP_NEW_USER_KEY = 'email_otp_new_user';
 
 // ── SecureStore wrapper (falls back to memory on web) ──
@@ -19,7 +21,7 @@ const memoryTokens: Record<string, string | null> = {
 /** When false, tokens are kept in memory only (not persisted to SecureStore) */
 let _shouldPersist = true;
 
-export async function getStored(key: string): Promise<string | null> {
+async function getStored(key: string): Promise<string | null> {
   if (Platform.OS === 'web') return memoryTokens[key] ?? null;
   if (memoryTokens[key]) return memoryTokens[key];
   try {
@@ -32,7 +34,7 @@ export async function getStored(key: string): Promise<string | null> {
   }
 }
 
-export async function setStored(key: string, value: string): Promise<void> {
+async function setStored(key: string, value: string): Promise<void> {
   memoryTokens[key] = value;
   if (Platform.OS !== 'web' && _shouldPersist) {
     try { await SecureStore.setItemAsync(key, value); } catch (e) {
@@ -41,7 +43,7 @@ export async function setStored(key: string, value: string): Promise<void> {
   }
 }
 
-export async function removeStored(key: string): Promise<void> {
+async function removeStored(key: string): Promise<void> {
   memoryTokens[key] = null;
   if (Platform.OS !== 'web') {
     try { await SecureStore.deleteItemAsync(key); } catch (e) {
@@ -108,9 +110,27 @@ export async function clearEmailOtpNewUser(): Promise<void> {
 // even when the device is offline. Uses AsyncStorage: profile JSON regularly
 // exceeds SecureStore's 2048-byte limit (Android Keystore silently drops the
 // value today and will throw in a future SDK — seen in Sentry production).
+// AsyncStorage is unencrypted, so only the fields the app needs offline are
+// kept: contact details and birth date are refetched from the server.
+const CACHED_PROFILE_FIELDS = [
+  'id', 'prenom', 'nom', 'termsAccepted', 'hasPassword', 'language', 'countryCode',
+  'emailVerified', 'telephoneVerified', 'shareInfoMerchants',
+  'notifPush', 'notifEmail', 'notifWhatsapp', 'createdAt',
+] as const;
+
+export function pickCachedProfile(profile: unknown): Record<string, unknown> | null {
+  if (!profile || typeof profile !== 'object') return null;
+  const source = profile as Record<string, unknown>;
+  const picked: Record<string, unknown> = {};
+  for (const key of CACHED_PROFILE_FIELDS) {
+    if (source[key] !== undefined) picked[key] = source[key];
+  }
+  return picked;
+}
+
 export async function setCachedProfile(profile: unknown): Promise<void> {
   try {
-    const json = JSON.stringify(profile);
+    const json = JSON.stringify(pickCachedProfile(profile));
     if (Platform.OS === 'web') { memoryTokens[PROFILE_CACHE_KEY] = json; return; }
     await AsyncStorage.setItem(PROFILE_CACHE_KEY, json);
     // One-time cleanup of the legacy oversized SecureStore entry
@@ -124,7 +144,8 @@ export async function getCachedProfile<T = unknown>(): Promise<T | null> {
       ? (memoryTokens[PROFILE_CACHE_KEY] ?? null)
       : await AsyncStorage.getItem(PROFILE_CACHE_KEY);
     if (!raw) return null;
-    return JSON.parse(raw) as T;
+    // Older installs cached the full profile: never hand those fields back.
+    return pickCachedProfile(JSON.parse(raw)) as T | null;
   } catch { return null; }
 }
 

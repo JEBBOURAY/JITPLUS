@@ -1,9 +1,10 @@
 import React, { createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  View, Text, StyleSheet, Animated, FlatList, AccessibilityInfo, Easing,
+  View, StyleSheet, Animated, FlatList, AccessibilityInfo, Easing,
   useWindowDimensions, type NativeSyntheticEvent, type NativeScrollEvent, type AccessibilityActionEvent,
   type GestureResponderEvent, type LayoutChangeEvent, type StyleProp, type ViewStyle,
 } from 'react-native';
+import { Text } from '@/components/AppText';
 import { ChevronsLeftRight } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -50,6 +51,71 @@ function CarouselCell({ index, style, children, onLayout }: {
   );
 }
 
+interface CarouselCardProps {
+  item: LoyaltyCard;
+  index: number;
+  snap: number;
+  itemW: number;
+  itemH: number;
+  scrollX: Animated.Value;
+  pressAnim: Animated.Value;
+  isCenter: boolean;
+  /** More than one step away from the focused card (hidden when motion is reduced). */
+  isFar: boolean;
+  reduceMotion: boolean;
+  t: (key: string, options?: Record<string, unknown>) => string;
+  locale: string;
+}
+
+/**
+ * Memoised so a swipe only re-renders the cells whose focus state changed;
+ * the scroll-driven animation itself runs natively.
+ */
+const CarouselCard = memo(function CarouselCard({
+  item, index, snap, itemW, itemH, scrollX, pressAnim, isCenter, isFar, reduceMotion, t, locale,
+}: CarouselCardProps) {
+  const anim = useMemo(() => {
+    const r = [(index - 2) * snap, (index - 1) * snap, index * snap, (index + 1) * snap, (index + 2) * snap];
+    return {
+      scale: scrollX.interpolate({ inputRange: r, outputRange: [0.66, 0.8, 1, 0.8, 0.66], extrapolate: 'clamp' }),
+      opacity: scrollX.interpolate({ inputRange: r, outputRange: [0, 0.9, 1, 0.9, 0], extrapolate: 'clamp' }),
+      rotateY: scrollX.interpolate({ inputRange: r, outputRange: ['32deg', '24deg', '0deg', '-24deg', '-32deg'], extrapolate: 'clamp' }),
+      translateY: scrollX.interpolate({ inputRange: r, outputRange: [hp(10), hp(6), 0, hp(6), hp(10)], extrapolate: 'clamp' }),
+      dim: scrollX.interpolate({ inputRange: r, outputRange: [0.35, 0.22, 0, 0.22, 0.35], extrapolate: 'clamp' }),
+    };
+  }, [scrollX, index, snap]);
+
+  const animatedStyle = useMemo(() => (reduceMotion
+    ? { opacity: isFar ? 0 : 1, transform: [{ scale: isCenter ? 1 : 0.8 }] }
+    : {
+        opacity: anim.opacity,
+        transform: [
+          { perspective: 900 },
+          { translateY: anim.translateY },
+          { rotateY: anim.rotateY },
+          { scale: isCenter ? Animated.multiply(anim.scale, pressAnim) : anim.scale },
+        ],
+      }), [reduceMotion, isFar, isCenter, anim, pressAnim]);
+
+  return (
+    <View style={{ width: snap, alignItems: 'center' }} pointerEvents="none">
+      <Animated.View style={animatedStyle}>
+        <WalletCard
+          card={item}
+          width={itemW}
+          height={itemH}
+          t={t}
+          locale={locale}
+          isActive={isCenter}
+          reduceMotion={reduceMotion}
+        />
+        {!reduceMotion && (
+          <Animated.View pointerEvents="none" style={[styles.dim, { opacity: anim.dim }]} />
+        )}
+      </Animated.View>
+    </View>
+  );
+});
 interface Props {
   cards: LoyaltyCard[];
   onCardPress: (merchantId: string) => void;
@@ -161,46 +227,22 @@ export default memo(function CardCarousel({ cards, onCardPress }: Props) {
   const getItemLayout = useCallback((_: unknown, index: number) => ({ length: snap, offset: snap * index, index }), [snap]);
   const keyExtractor = useCallback((c: LoyaltyCard) => c.id, []);
 
-  const renderItem = useCallback(({ item, index }: { item: LoyaltyCard; index: number }) => {
-    const r = [(index - 2) * snap, (index - 1) * snap, index * snap, (index + 1) * snap, (index + 2) * snap];
-    const scale = scrollX.interpolate({ inputRange: r, outputRange: [0.66, 0.8, 1, 0.8, 0.66], extrapolate: 'clamp' });
-    const opacity = scrollX.interpolate({ inputRange: r, outputRange: [0, 0.9, 1, 0.9, 0], extrapolate: 'clamp' });
-    const rotateY = scrollX.interpolate({ inputRange: r, outputRange: ['32deg', '24deg', '0deg', '-24deg', '-32deg'], extrapolate: 'clamp' });
-    const translateY = scrollX.interpolate({ inputRange: r, outputRange: [hp(10), hp(6), 0, hp(6), hp(10)], extrapolate: 'clamp' });
-    const dim = scrollX.interpolate({ inputRange: r, outputRange: [0.35, 0.22, 0, 0.22, 0.35], extrapolate: 'clamp' });
-    const isCenter = index === active;
-
-    return (
-      <View style={{ width: snap, alignItems: 'center' }} pointerEvents="none">
-        <Animated.View
-          style={reduceMotion
-            ? { opacity: Math.abs(index - active) > 1 ? 0 : 1, transform: [{ scale: isCenter ? 1 : 0.8 }] }
-            : {
-                opacity,
-                transform: [
-                  { perspective: 900 },
-                  { translateY },
-                  { rotateY },
-                  { scale: isCenter ? Animated.multiply(scale, pressAnim) : scale },
-                ],
-              }}
-        >
-          <WalletCard
-            card={item}
-            width={itemW}
-            height={itemH}
-            t={t}
-            locale={locale}
-            isActive={isCenter}
-            reduceMotion={reduceMotion}
-          />
-          {!reduceMotion && (
-            <Animated.View pointerEvents="none" style={[styles.dim, { opacity: dim }]} />
-          )}
-        </Animated.View>
-      </View>
-    );
-  }, [snap, scrollX, itemW, itemH, t, locale, active, reduceMotion, pressAnim]);
+  const renderItem = useCallback(({ item, index }: { item: LoyaltyCard; index: number }) => (
+    <CarouselCard
+      item={item}
+      index={index}
+      snap={snap}
+      itemW={itemW}
+      itemH={itemH}
+      scrollX={scrollX}
+      pressAnim={pressAnim}
+      isCenter={index === active}
+      isFar={Math.abs(index - active) > 1}
+      reduceMotion={reduceMotion}
+      t={t}
+      locale={locale}
+    />
+  ), [snap, scrollX, itemW, itemH, t, locale, active, reduceMotion, pressAnim]);
 
   const activeCard = cards[Math.min(active, lastIndex)];
   if (!activeCard) return null;

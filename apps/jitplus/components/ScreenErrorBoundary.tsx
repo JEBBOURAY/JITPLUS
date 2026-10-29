@@ -1,16 +1,18 @@
 import { useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, useColorScheme } from 'react-native';
+import { View, TouchableOpacity, StyleSheet } from 'react-native';
+import { Text } from '@/components/AppText';
 import { AlertTriangle, RotateCcw } from 'lucide-react-native';
 import * as Sentry from '@sentry/react-native';
 import i18n from '@/i18n';
+import { useTheme } from '@/contexts/ThemeContext';
 import { wp, hp, ms } from '@/utils/responsive';
 
 const darkColors = {
-  bg: '#1A1A2E', iconBg: '#3B1C1C', title: '#F3F4F6', body: '#9CA3AF',
+  iconBg: '#3B1C1C', title: '#F3F4F6', body: '#9CA3AF',
   devBg: '#3B1C1C', brand: '#7C3AED', danger: '#EF4444',
 };
 const lightColors = {
-  bg: '#FAFAFA', iconBg: '#FEE2E2', title: '#111827', body: '#6B7280',
+  iconBg: '#FEE2E2', title: '#111827', body: '#6B7280',
   devBg: '#FEE2E2', brand: '#7C3AED', danger: '#EF4444',
 };
 
@@ -20,8 +22,9 @@ const lightColors = {
  * within that screen — the parent layout (tab bar, stack) stays visible.
  */
 export function ScreenErrorBoundary({ error, retry }: { error: Error; retry: () => void }) {
-  const scheme = useColorScheme();
-  const c = scheme === 'dark' ? darkColors : lightColors;
+  // The app theme can differ from the system one (forced light/dark in Profile).
+  const theme = useTheme();
+  const c = theme.isDark ? darkColors : lightColors;
 
   // Report per-screen crashes to Sentry (production only)
   useEffect(() => {
@@ -29,7 +32,7 @@ export function ScreenErrorBoundary({ error, retry }: { error: Error; retry: () 
   }, [error]);
 
   return (
-    <View style={[styles.container, { backgroundColor: c.bg }]} accessibilityRole="alert" accessibilityLiveRegion="polite">
+    <View style={[styles.container, { backgroundColor: theme.bg }]} accessibilityRole="alert" accessibilityLiveRegion="polite">
       <View style={[styles.iconCircle, { backgroundColor: c.iconBg }]}>
         <AlertTriangle size={36} color={c.danger} strokeWidth={1.5} />
       </View>
@@ -40,7 +43,7 @@ export function ScreenErrorBoundary({ error, retry }: { error: Error; retry: () 
           {error.message}
         </Text>
       )}
-      <TouchableOpacity style={[styles.button, { backgroundColor: c.brand }]} onPress={retry} activeOpacity={0.8}>
+      <TouchableOpacity style={[styles.button, { backgroundColor: c.brand }]} onPress={retry} activeOpacity={0.8} accessibilityRole="button">
         <RotateCcw size={18} color="#fff" strokeWidth={1.5} />
         <Text style={styles.buttonText}>{i18n.t('common.retry')}</Text>
       </TouchableOpacity>

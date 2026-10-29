@@ -10,6 +10,8 @@ export interface JwtPayload {
   type: 'merchant' | 'team_member' | 'client' | 'qr' | 'admin';
   role?: 'owner' | 'team_member' | 'client' | 'admin';
   sessionId?: string;
+  /** ClientSession id of the device that owns the token (client tokens only) */
+  clientSessionId?: string;
   teamMemberId?: string;
   teamMemberName?: string;
 }
@@ -25,6 +27,8 @@ export interface JwtTokenPayload {
   type: 'merchant' | 'team_member' | 'client' | 'qr' | 'admin';
   role?: 'owner' | 'team_member' | 'client' | 'admin';
   jti?: string;
+  /** ClientSession id (client tokens only) */
+  sid?: string;
   teamMemberId?: string;
   teamMemberName?: string;
   /** Standard JWT fields */

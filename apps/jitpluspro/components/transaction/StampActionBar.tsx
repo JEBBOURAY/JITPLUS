@@ -1,9 +1,11 @@
 import { memo } from 'react';
-import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { ArrowRight, ArrowLeft, CheckCircle, Gift } from 'lucide-react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { ArrowRight, ArrowLeft, CheckCircle } from 'lucide-react-native';
+import { JitGift } from '@/components/icons';
 import { brandGradient, palette, useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { ActionButton } from '@/components/ui/ActionButton';
+import { font, icon } from '@/constants/design';
 import { ms } from '@/utils/responsive';
 import type { StampPlan } from '@/utils/stampTransaction';
 
@@ -16,12 +18,12 @@ interface Props {
   onSubmit: () => void;
 }
 
-export function actionLabelKey(plan: StampPlan): { key: string; count?: number } {
+function actionLabelKey(plan: StampPlan): { key: string; count?: number } {
   switch (plan.kind) {
     case 'earn':
-      return { key: 'stampScreen.ctaEarn', count: plan.creditedStamps };
+      return { key: plan.creditedStamps === 1 ? 'stampScreen.ctaEarn_one' : 'stampScreen.ctaEarn_other', count: plan.creditedStamps };
     case 'earnAndRedeem':
-      return { key: 'stampScreen.ctaEarnAndRedeem', count: plan.creditedStamps };
+      return { key: plan.creditedStamps === 1 ? 'stampScreen.ctaEarnAndRedeem_one' : 'stampScreen.ctaEarnAndRedeem_other', count: plan.creditedStamps };
     case 'redeem':
       return { key: 'stampScreen.ctaRedeem' };
     default:
@@ -52,21 +54,6 @@ function StampActionBarBase({ plan, currentStamps, rewardTitle, loading, bottomI
   const showReward = !!rewardTitle && (plan.kind === 'redeem' || plan.kind === 'earnAndRedeem');
   const labelText = t(label.key, label.count != null ? { count: label.count } : undefined);
 
-  const content = loading ? (
-    <ActivityIndicator color="#fff" />
-  ) : (
-    <>
-      {enabled && <CheckCircle size={ms(19)} color="#fff" strokeWidth={2} />}
-      <Text
-        style={[styles.buttonText, { color: enabled ? '#fff' : theme.textMuted }]}
-        numberOfLines={1}
-        maxFontSizeMultiplier={1.3}
-      >
-        {labelText}
-      </Text>
-    </>
-  );
-
   return (
     <View
       style={[
@@ -86,14 +73,14 @@ function StampActionBarBase({ plan, currentStamps, rewardTitle, loading, bottomI
             <Text style={[styles.balanceFrom, { color: changes ? theme.textMuted : theme.text }]}>{currentStamps}</Text>
             {changes && (
               <>
-                <Arrow size={ms(13)} color={theme.textMuted} strokeWidth={2.2} />
+                <Arrow size={ms(13)} color={theme.textMuted} strokeWidth={icon.strokeSmall} />
                 <Text style={[styles.balanceTo, { color: theme.primary }]}>{plan.balanceAfter}</Text>
               </>
             )}
           </View>
           {showReward && (
             <View style={[styles.reward, { flexDirection: row, backgroundColor: theme.primaryBg }]}>
-              <Gift size={ms(13)} color={theme.primary} strokeWidth={2} />
+              <JitGift size={ms(13)} color={theme.primary} strokeWidth={icon.strokeSmall} />
               <Text style={[styles.rewardText, { color: theme.primary }]} numberOfLines={1}>
                 {rewardTitle}
               </Text>
@@ -101,28 +88,18 @@ function StampActionBarBase({ plan, currentStamps, rewardTitle, loading, bottomI
           )}
         </View>
       )}
-      <TouchableOpacity
-        style={[styles.buttonShadow, enabled && styles.buttonShadowOn]}
+      <ActionButton
+        label={labelText}
         onPress={onSubmit}
         disabled={!enabled}
-        activeOpacity={0.88}
-        accessibilityRole="button"
-        accessibilityLabel={labelText}
-        accessibilityState={{ disabled: !enabled, busy: loading }}
-      >
-        {enabled || loading ? (
-          <LinearGradient
-            colors={[...brandGradient]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={[styles.button, { flexDirection: row }]}
-          >
-            {content}
-          </LinearGradient>
-        ) : (
-          <View style={[styles.button, { flexDirection: row, backgroundColor: theme.bgInput }]}>{content}</View>
-        )}
-      </TouchableOpacity>
+        loading={loading}
+        variant={enabled || loading ? 'primary' : 'secondary'}
+        size="lg"
+        icon={enabled ? CheckCircle : undefined}
+        gradient={enabled || loading ? brandGradient : undefined}
+        style={[styles.button, enabled && styles.buttonShadowOn, !enabled && !loading && { backgroundColor: theme.bgInput, borderColor: theme.bgInput }]}
+        labelStyle={enabled || loading ? undefined : { color: theme.textMuted }}
+      />
     </View>
   );
 }
@@ -133,7 +110,7 @@ const styles = StyleSheet.create({
   bar: {
     paddingHorizontal: 16,
     paddingTop: 12,
-    borderTopWidth: 1,
+    borderTopWidth: StyleSheet.hairlineWidth,
     gap: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -4 },
@@ -141,13 +118,12 @@ const styles = StyleSheet.create({
     elevation: 12,
   },
   summary: { alignItems: 'center', gap: 8 },
-  summaryLabel: { fontSize: ms(13), fontFamily: 'Lexend_500Medium' },
+  summaryLabel: { fontSize: ms(13), fontFamily: font.medium },
   balance: { alignItems: 'center', gap: 5, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3 },
-  balanceFrom: { fontSize: ms(14), fontFamily: 'Lexend_600SemiBold' },
-  balanceTo: { fontSize: ms(16), fontFamily: 'Lexend_700Bold' },
+  balanceFrom: { fontSize: ms(14), fontFamily: font.semibold },
+  balanceTo: { fontSize: ms(16), fontFamily: font.bold },
   reward: { flexShrink: 1, alignItems: 'center', gap: 5, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
-  rewardText: { flexShrink: 1, fontSize: ms(12.5), fontFamily: 'Lexend_600SemiBold' },
-  buttonShadow: { borderRadius: 16 },
+  rewardText: { flexShrink: 1, fontSize: ms(13), fontFamily: font.semibold },
   buttonShadowOn: {
     shadowColor: palette.violet,
     shadowOffset: { width: 0, height: 6 },
@@ -155,13 +131,5 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 6,
   },
-  button: {
-    minHeight: 56,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingHorizontal: 16,
-  },
-  buttonText: { fontSize: ms(16), fontFamily: 'Lexend_700Bold', flexShrink: 1 },
+  button: { minHeight: 56, borderWidth: 0 },
 });

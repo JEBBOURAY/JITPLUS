@@ -1,10 +1,12 @@
 import React, { useCallback } from 'react';
-import { View, Text, Pressable } from 'react-native';
-import { BadgeCheck } from 'lucide-react-native';
+import { View, Pressable } from 'react-native';
+import { Text } from '@/components/AppText';
+import { BadgeCheck, BadgePercent } from 'lucide-react-native';
 import { ms } from '@/utils/responsive';
 import { palette, type ThemeColors } from '@/contexts/ThemeContext';
 import MerchantLogo from '@/components/MerchantLogo';
 import { ClientNotification } from '@/types';
+import { notificationKind } from '@/utils/notificationKind';
 import SwipeableNotifCard from './SwipeableNotifCard';
 import { notificationStyles as styles } from './notificationStyles';
 
@@ -25,8 +27,9 @@ export default React.memo(function NotificationCard({
 }: NotificationCardProps) {
   const isDark = theme.mode === 'dark';
   const isUnread = !notif.isRead;
-  const isOfficial = !notif.merchantName;
-  const sender = notif.merchantName || 'JitPlus';
+  const kind = notificationKind(notif);
+  const isOfficial = kind !== 'merchant';
+  const sender = kind === 'deals' ? t('deals.notification.sender') : notif.merchantName || 'JitPlus';
   const accent = isDark ? palette.violetLight : palette.violet;
   // Opaque tints (not rgba) so the unread dot's border reads as a clean cut-out.
   const cardBg = isUnread ? (isDark ? '#1E2340' : '#F7F3FF') : theme.bgCard;
@@ -57,7 +60,13 @@ export default React.memo(function NotificationCard({
         onAccessibilityAction={(e) => { if (e.nativeEvent.actionName === 'dismiss') handleDismiss(); }}
       >
         <View style={styles.logoWrap}>
-          <MerchantLogo logoUrl={notif.merchantLogoUrl} style={[styles.logo, { backgroundColor: theme.bgInput }]} merchantName={sender} />
+          {kind === 'deals' ? (
+            <View style={[styles.logo, styles.dealsLogo, { backgroundColor: `${palette.violet}${isDark ? '33' : '18'}` }]}>
+              <BadgePercent size={ms(22)} color={accent} strokeWidth={2} />
+            </View>
+          ) : (
+            <MerchantLogo logoUrl={notif.merchantLogoUrl} style={[styles.logo, { backgroundColor: theme.bgInput }]} merchantName={sender} />
+          )}
           {isUnread && <View style={[styles.logoUnreadDot, { backgroundColor: accent, borderColor: cardBg }]} />}
         </View>
 

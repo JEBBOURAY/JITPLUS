@@ -1,4 +1,5 @@
 import type { SocialLinks, Pagination, OpeningHours } from '@jitplus/shared';
+import type { MerchantDealBadge } from '@jitplus/shared/src/deals';
 
 export type { SocialLinks, Pagination, OpeningHours, MerchantBadge } from '@jitplus/shared';
 
@@ -58,6 +59,9 @@ export interface Merchant {
   latitude?: number | null;
   longitude?: number | null;
   stampsForReward?: number;
+  /** PER_VISIT: 1 stamp per visit. PER_AMOUNT: 1 stamp per `amountPerStamp` spent. */
+  stampEarningMode?: 'PER_VISIT' | 'PER_AMOUNT';
+  amountPerStamp?: number | null;
   /** Stamps reset after this many days without a visit; null = never expire. */
   stampValidityDays?: number | null;
   /** When the client's current stamps expire if they do not come back (ISO). */
@@ -76,6 +80,10 @@ export interface Merchant {
   rewards?: MerchantReward[];
   /** Active luckyWheel campaign for this merchant */
   activeLuckyWheel?: MerchantActiveLuckyWheel | null;
+  /** Live deals (« Bons plans »), also sent to guests */
+  activeDealCount?: number;
+  /** Best live deal, list endpoint only; null for guests */
+  topDeal?: MerchantDealBadge['topDeal'];
   /** Whether the client already has a loyalty card with this merchant */
   hasCard?: boolean;
   /** Whether the client's card is deactivated */
@@ -137,7 +145,8 @@ export interface ClientNotification {
   id: string;
   title: string;
   body: string;
-  type: 'reward' | 'promo' | 'info';
+  /** `deals_digest` entries have no merchant (merchantName and merchantCategory are null). */
+  type: 'reward' | 'promo' | 'info' | 'deals_digest';
   merchantName: string | null;
   merchantCategory: string | null;
   merchantLogoUrl: string | null;

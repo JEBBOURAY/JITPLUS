@@ -1,7 +1,9 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import { Keyboard } from 'react-native';
+import { Alert, Keyboard, Linking, type TextInput } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import { useLocalSearchParams } from 'expo-router';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { haptic, HapticStyle } from '@/utils/haptics';
 import { getDistanceKm } from '@/utils/distance';
 import { useMapClustering } from '@/utils/mapClustering';
@@ -13,7 +15,10 @@ import {
 } from '@/constants';
 import { DEFAULT_REGION } from '@/components/discover/mapConstants';
 
+const LOCATION_PROMPT_SHOWN_KEY = 'location_prompt_shown';
+
 export function useDiscoverMap(merchants: Merchant[]) {
+  const { t } = useLanguage();
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -26,25 +31,67 @@ export function useDiscoverMap(merchants: Merchant[]) {
   const [currentRegion, setCurrentRegion] = useState(DEFAULT_REGION);
   const currentRegionRef = useRef(DEFAULT_REGION);
   const mapRef = useRef<any>(null);
-  const searchInputRef = useRef<any>(null);
+  const searchInputRef = useRef<TextInput>(null);
   const lastFocusedMerchantIdRef = useRef<string | undefined>(undefined);
+  const mountedRef = useRef(true);
+  const initialLocationCheckRef = useRef(false);
 
   const { focusMerchantId } = useLocalSearchParams<{ focusMerchantId?: string }>();
 
-  // Request user location
   useEffect(() => {
-    let mounted = true;
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  const fetchPosition = useCallback(async () => {
+    try {
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced, timeInterval: 10000 });
+      if (mountedRef.current) setUserLocation({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
+    } catch (e) { if (__DEV__) console.log('Could not get location:', e); }
+  }, []);
+
+  // The OS dialog is only shown after our own explanation: a refusal there can
+  // be permanent, while "Later" on ours keeps the option open.
+  const askForLocation = useCallback(async () => {
+    try {
+      const perm = await Location.getForegroundPermissionsAsync();
+      if (perm.status === 'granted') { await fetchPosition(); return; }
+      if (!perm.canAskAgain) {
+        Alert.alert(t('discover.locationPromptTitle'), t('discover.locationBlockedBody'), [
+          { text: t('common.cancel'), style: 'cancel' },
+          { text: t('profile.openSettings'), onPress: () => { Linking.openSettings().catch(() => {}); } },
+        ]);
+        return;
+      }
+      Alert.alert(t('discover.locationPromptTitle'), t('discover.locationPromptBody'), [
+        { text: t('notifications.later'), style: 'cancel' },
+        {
+          text: t('discover.locationAllow'),
+          onPress: () => {
+            Location.requestForegroundPermissionsAsync()
+              .then(({ status }) => (status === 'granted' ? fetchPosition() : undefined))
+              .catch(() => {});
+          },
+        },
+      ]);
+    } catch (e) { if (__DEV__) console.log('Could not check location permission:', e); }
+  }, [t, fetchPosition]);
+
+  // Silent when already granted; the explanation pops up by itself only once.
+  useEffect(() => {
+    if (initialLocationCheckRef.current) return;
+    initialLocationCheckRef.current = true;
     (async () => {
       try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status === 'granted') {
-          const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced, timeInterval: 10000 });
-          if (mounted) setUserLocation({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
-        }
+        const perm = await Location.getForegroundPermissionsAsync();
+        if (perm.status === 'granted') { await fetchPosition(); return; }
+        if (perm.status !== 'undetermined' || !perm.canAskAgain) return;
+        if (await AsyncStorage.getItem(LOCATION_PROMPT_SHOWN_KEY)) return;
+        await AsyncStorage.setItem(LOCATION_PROMPT_SHOWN_KEY, '1');
+        if (mountedRef.current) await askForLocation();
       } catch (e) { if (__DEV__) console.log('Could not get location:', e); }
     })();
-    return () => { mounted = false; };
-  }, []);
+  }, [fetchPosition, askForLocation]);
 
   // Debounce search
   useEffect(() => {
@@ -87,16 +134,17 @@ export function useDiscoverMap(merchants: Merchant[]) {
     return getDistanceKm(userLocation.latitude, userLocation.longitude, selectedMerchant.latitude, selectedMerchant.longitude);
   }, [userLocation, selectedMerchant]);
 
-  const handleRegionChange = useCallback((_region: typeof DEFAULT_REGION) => {
-    currentRegionRef.current = _region;
-    const prev = currentRegion;
-    if (Math.abs(prev.latitudeDelta - _region.latitudeDelta) > 0.003 || Math.abs(prev.latitude - _region.latitude) > 0.003 || Math.abs(prev.longitude - _region.longitude) > 0.003) {
-      setCurrentRegion(_region);
-    }
-  }, [currentRegion]);
+  const handleRegionChange = useCallback((region: typeof DEFAULT_REGION) => {
+    currentRegionRef.current = region;
+    setCurrentRegion((prev) => (
+      Math.abs(prev.latitudeDelta - region.latitudeDelta) > 0.003
+      || Math.abs(prev.latitude - region.latitude) > 0.003
+      || Math.abs(prev.longitude - region.longitude) > 0.003
+        ? region : prev
+    ));
+  }, []);
 
   const handleCategoryPress = useCallback((id: string) => { setSelectedCategory(id); setSelectedMerchant(null); haptic(); }, []);
-  const handleMarkerPress = useCallback((merchant: Merchant) => { setSelectedMerchant(merchant); haptic(); }, []);
 
   const handleClusterPress = useCallback((latitude: number, longitude: number, expansionZoom?: number) => {
     haptic(HapticStyle.Medium);
@@ -129,19 +177,20 @@ export function useDiscoverMap(merchants: Merchant[]) {
   }, [mapReady, userLocation, mappableMerchants]);
 
   const centerOnUser = useCallback(() => {
-    if (!userLocation || !mapRef.current) return;
     haptic();
+    if (!userLocation) { askForLocation(); return; }
+    if (!mapRef.current) return;
     mapRef.current.animateToRegion({ ...userLocation, latitudeDelta: USER_CENTER_ZOOM_DELTA, longitudeDelta: USER_CENTER_ZOOM_DELTA }, MAP_ANIMATE_DURATION_MS);
-  }, [userLocation]);
+  }, [userLocation, askForLocation]);
 
   const handleMapPress = useCallback(() => { setSelectedMerchant(null); setShowSearch(false); Keyboard.dismiss(); }, []);
   const handleMapReady = useCallback(() => setMapReady(true), []);
 
   return {
     searchQuery, setSearchQuery, debouncedSearch, selectedCategory, showSearch, setShowSearch, showFilters,
-    userLocation, mapReady, selectedMerchant, setSelectedMerchant, mapRef, searchInputRef,
+    userLocation, mapReady, selectedMerchant, mapRef, searchInputRef,
     filteredMerchants, mappableMerchants, mapItems, sortedMappableMerchants, selectedMerchantDistance,
-    handleRegionChange, handleCategoryPress, handleMarkerPress, handleClusterPress,
+    handleRegionChange, handleCategoryPress, handleClusterPress,
     centerOnUser, handleMapPress, handleMapReady,
     toggleSearch: useCallback(() => {
       haptic();

@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '@/components/AppText';
 import { Clock, Trophy } from 'lucide-react-native';
 import { palette } from '@/contexts/ThemeContext';
 import type { LuckyWheelDraw } from '@/types';

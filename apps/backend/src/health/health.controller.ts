@@ -42,7 +42,6 @@ export class HealthController {
     // Check critical env vars presence (without exposing values)
     const envCheck = {
       smtp: !!this.config.get('SMTP_HOST'),
-      twilio: !!this.config.get('TWILIO_ACCOUNT_SID'),
       storage: !!this.config.get('GCP_STORAGE_BUCKET_NAME'),
     };
 

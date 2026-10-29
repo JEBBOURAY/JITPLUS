@@ -5,7 +5,7 @@ import { useRewards, useLuckyWheelActiveInfo } from '@/hooks/useQueryHooks';
 import { DEFAULT_CURRENCY } from '@/config/currency';
 import { DEFAULT_AMOUNT_PER_STAMP, DEFAULT_STAMPS_FOR_REWARD, cardSlots } from '@/utils/stamps';
 
-export interface PlvRewardLine {
+interface PlvRewardLine {
   title: string;
   cost: number;
   /** "12 tampons · Menu offert" */

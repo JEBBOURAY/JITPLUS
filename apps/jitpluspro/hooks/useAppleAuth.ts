@@ -5,7 +5,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
-import * as Crypto from 'expo-crypto';
+import { randomUUID, sha256Hex } from '@/utils/crypto';
 import { router } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -15,26 +15,20 @@ import { isNoAccountError } from '@/utils/authErrors';
 let AppleAuthentication: typeof import('expo-apple-authentication') | null = null;
 if (Platform.OS === 'ios') {
   try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     AppleAuthentication = require('expo-apple-authentication');
   } catch {
     // Not available
   }
 }
 
-interface UseAppleAuthOptions {
-  /** Optional callback when the flow is cancelled */
-  onCancel?: () => void;
-}
-
-export function useAppleAuth({ onCancel }: UseAppleAuthOptions = {}) {
+export function useAppleAuth() {
   const { appleLogin } = useAuth();
   const { t } = useLanguage();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [noAccount, setNoAccount] = useState(false);
   const mountedRef = useRef(true);
-  const onCancelRef = useRef(onCancel);
-  onCancelRef.current = onCancel;
 
   useEffect(() => {
     return () => { mountedRef.current = false; };
@@ -57,11 +51,8 @@ export function useAppleAuth({ onCancel }: UseAppleAuthOptions = {}) {
       // Generate a cryptographically secure raw nonce, send sha256(rawNonce) to Apple,
       // and forward the raw nonce to the backend so it can verify the JWT `nonce` claim.
       // Prevents replay attacks (Apple security recommendation).
-      const rawNonce = Crypto.randomUUID() + Crypto.randomUUID().replace(/-/g, '');
-      const hashedNonce = await Crypto.digestStringAsync(
-        Crypto.CryptoDigestAlgorithm.SHA256,
-        rawNonce,
-      );
+      const rawNonce = randomUUID() + randomUUID().replace(/-/g, '');
+      const hashedNonce = await sha256Hex(rawNonce);
 
       const credential = await AppleAuthentication.signInAsync({
         requestedScopes: [
@@ -87,7 +78,7 @@ export function useAppleAuth({ onCancel }: UseAppleAuthOptions = {}) {
 
       if (result.success) {
         navigatingOnSuccess = true;
-        router.replace('/(tabs)/activity');
+        router.replace('/(tabs)');
       } else {
         if (result.rawError && isNoAccountError(result.rawError)) {
           setNoAccount(true);
@@ -95,16 +86,12 @@ export function useAppleAuth({ onCancel }: UseAppleAuthOptions = {}) {
         } else {
           setError(result.error || t('appleAuth.error'));
         }
-        onCancelRef.current?.();
       }
     } catch (e: unknown) {
       if (!mountedRef.current) return;
 
       const code = (e as { code?: string } | null)?.code;
-      if (code === 'ERR_REQUEST_CANCELED') {
-        onCancelRef.current?.();
-        return;
-      }
+      if (code === 'ERR_REQUEST_CANCELED') return;
       setError(t('appleAuth.error'));
     } finally {
       // Keep the spinner during navigation to avoid a brief re-enable flicker
@@ -122,5 +109,5 @@ export function useAppleAuth({ onCancel }: UseAppleAuthOptions = {}) {
   /** True when Apple Sign-In is available on this device */
   const isAvailable = Platform.OS === 'ios' && !!AppleAuthentication;
 
-  return { promptApple, isLoading, isSuccess: false, error, isAvailable, noAccount, dismissNoAccount };
+  return { promptApple, isLoading, error, isAvailable, noAccount, dismissNoAccount };
 }

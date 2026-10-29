@@ -1,22 +1,23 @@
 import React from 'react';
 import { View, Text, StyleSheet, I18nManager } from 'react-native';
 import {
-  FerrisWheel,
-  Ticket,
-  Gift,
-  ScanLine,
   Trophy,
-  Users,
-  BellRing,
   Repeat,
   ShoppingBasket,
   PartyPopper,
   Lightbulb,
   ShieldCheck,
-  BarChart3,
-  Sparkles,
-  Gamepad2,
 } from 'lucide-react-native';
+import {
+  JitBell,
+  JitClients,
+  JitGames,
+  JitGift,
+  JitScan,
+  JitStar,
+  JitStats,
+  JitTicket,
+} from '@/components/icons';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import PromoSheet, { SheetSectionLabel, useSheetColors, type LucideIcon } from '@/components/home/PromoSheet';
@@ -43,11 +44,7 @@ interface Step {
   text: string;
 }
 
-interface Benefit {
-  Icon: LucideIcon;
-  title: string;
-  text: string;
-}
+type Benefit = Step;
 
 /** Numbered 3-step "how it works" timeline, in the colour of one game. */
 function StepsCard({ steps, tone }: { steps: Step[]; tone: PromoTone }) {
@@ -137,7 +134,7 @@ function GamesGuideSheet({ visible, onClose, onStart }: GamesGuideSheetProps) {
   const games: { tone: PromoTone; Icon: LucideIcon; name: string; tagline: string; text: string; tags: string }[] = [
     {
       tone: WHEEL,
-      Icon: FerrisWheel,
+      Icon: JitGames,
       name: t('home.gamesGuideWheelName'),
       tagline: t('home.gamesGuideWheelTagline'),
       text: t('home.gamesGuideWheelText'),
@@ -145,7 +142,7 @@ function GamesGuideSheet({ visible, onClose, onStart }: GamesGuideSheetProps) {
     },
     {
       tone: SCRATCH,
-      Icon: Ticket,
+      Icon: JitTicket,
       name: t('home.gamesGuideScratchName'),
       tagline: t('home.gamesGuideScratchTagline'),
       text: t('home.gamesGuideScratchText'),
@@ -154,8 +151,8 @@ function GamesGuideSheet({ visible, onClose, onStart }: GamesGuideSheetProps) {
   ];
 
   const wheelSteps: Step[] = [
-    { Icon: FerrisWheel, title: t('home.gamesGuideWheelStep1Title'), text: t('home.gamesGuideWheelStep1Text') },
-    { Icon: ScanLine, title: t('home.gamesGuideWheelStep2Title'), text: t('home.gamesGuideWheelStep2Text') },
+    { Icon: JitGames, title: t('home.gamesGuideWheelStep1Title'), text: t('home.gamesGuideWheelStep1Text') },
+    { Icon: JitScan, title: t('home.gamesGuideWheelStep2Title'), text: t('home.gamesGuideWheelStep2Text') },
     { Icon: Trophy, title: t('home.gamesGuideWheelStep3Title'), text: t('home.gamesGuideWheelStep3Text') },
   ];
 
@@ -166,15 +163,15 @@ function GamesGuideSheet({ visible, onClose, onStart }: GamesGuideSheetProps) {
   ];
 
   const scratchSteps: Step[] = [
-    { Icon: Gift, title: t('home.gamesGuideScratchStep1Title'), text: t('home.gamesGuideScratchStep1Text') },
-    { Icon: Users, title: t('home.gamesGuideScratchStep2Title'), text: t('home.gamesGuideScratchStep2Text') },
-    { Icon: ScanLine, title: t('home.gamesGuideScratchStep3Title'), text: t('home.gamesGuideScratchStep3Text') },
+    { Icon: JitGift, title: t('home.gamesGuideScratchStep1Title'), text: t('home.gamesGuideScratchStep1Text') },
+    { Icon: JitClients, title: t('home.gamesGuideScratchStep2Title'), text: t('home.gamesGuideScratchStep2Text') },
+    { Icon: JitScan, title: t('home.gamesGuideScratchStep3Title'), text: t('home.gamesGuideScratchStep3Text') },
   ];
 
   const scratchBenefits: Benefit[] = [
-    { Icon: BellRing, title: t('home.gamesGuideScratchBenefit1Title'), text: t('home.gamesGuideScratchBenefit1Text') },
+    { Icon: JitBell, title: t('home.gamesGuideScratchBenefit1Title'), text: t('home.gamesGuideScratchBenefit1Text') },
     { Icon: ShieldCheck, title: t('home.gamesGuideScratchBenefit2Title'), text: t('home.gamesGuideScratchBenefit2Text') },
-    { Icon: BarChart3, title: t('home.gamesGuideScratchBenefit3Title'), text: t('home.gamesGuideScratchBenefit3Text') },
+    { Icon: JitStats, title: t('home.gamesGuideScratchBenefit3Title'), text: t('home.gamesGuideScratchBenefit3Text') },
   ];
 
   const picks: { goal: string; pick: Pick }[] = [
@@ -200,8 +197,8 @@ function GamesGuideSheet({ visible, onClose, onStart }: GamesGuideSheetProps) {
       heroLabel={t('home.gamesGuideHeroLabel')}
       title={t('home.gamesGuideTitle')}
       subtitle={t('home.gamesGuideSubtitle')}
-      heroBadge={<Gamepad2 size={22} color={ACCENT} strokeWidth={2} />}
-      cta={{ label: t('home.gamesGuideCta'), Icon: Sparkles, onPress: onStart }}
+      heroBadge={<JitGames size={22} color={ACCENT} strokeWidth={2} />}
+      cta={{ label: t('home.gamesGuideCta'), Icon: JitStar, onPress: onStart }}
     >
       {/* ── 1. Les deux jeux en un coup d'œil ── */}
       <SheetSectionLabel text={t('home.gamesGuideCompareLabel')} tone={TONE} />
@@ -232,13 +229,13 @@ function GamesGuideSheet({ visible, onClose, onStart }: GamesGuideSheetProps) {
       </View>
 
       {/* ── 2. La roue de la chance ── */}
-      <SheetSectionLabel text={t('home.gamesGuideWheelStepsLabel')} tone={WHEEL} Icon={FerrisWheel} />
+      <SheetSectionLabel text={t('home.gamesGuideWheelStepsLabel')} tone={WHEEL} Icon={JitGames} />
       <StepsCard steps={wheelSteps} tone={WHEEL} />
       <SheetSectionLabel text={t('home.gamesGuideWheelBenefitsLabel')} tone={WHEEL} />
       <BenefitsCard benefits={wheelBenefits} tone={WHEEL} />
 
       {/* ── 3. La carte à gratter ── */}
-      <SheetSectionLabel text={t('home.gamesGuideScratchStepsLabel')} tone={SCRATCH} Icon={Ticket} />
+      <SheetSectionLabel text={t('home.gamesGuideScratchStepsLabel')} tone={SCRATCH} Icon={JitTicket} />
       <StepsCard steps={scratchSteps} tone={SCRATCH} />
       <SheetSectionLabel text={t('home.gamesGuideScratchBenefitsLabel')} tone={SCRATCH} />
       <BenefitsCard benefits={scratchBenefits} tone={SCRATCH} />

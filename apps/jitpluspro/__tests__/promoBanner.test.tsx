@@ -1,7 +1,7 @@
 import { render, fireEvent } from '@testing-library/react-native';
-import { QrCode } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import PromoBanner from '@/components/home/PromoBanner';
+import { GateIcon } from '@/components/home/PromoIcons';
 
 jest.mock('expo-haptics', () => ({
   impactAsync: jest.fn(() => Promise.resolve()),
@@ -10,12 +10,9 @@ jest.mock('expo-haptics', () => ({
 
 const baseProps = {
   label: 'Guide',
-  title: 'Maîtrisez JitPlus en 5 minutes',
+  title: 'Prendre en main JitPlus',
   cta: 'Voir le guide',
-  duration: '5 min',
-  colors: ['#7C3AED', '#4C1D95'] as const,
-  tint: '#7C3AED',
-  FallbackIcon: QrCode,
+  Icon: GateIcon,
   width: 320,
   onPress: jest.fn(),
 };
@@ -23,18 +20,17 @@ const baseProps = {
 describe('PromoBanner', () => {
   beforeEach(() => jest.clearAllMocks());
 
-  it('renders the label in uppercase, the title, the CTA and the duration', () => {
+  it('renders the label, the title and the action', () => {
     const { getByText } = render(<PromoBanner {...baseProps} />);
-    expect(getByText('GUIDE')).toBeTruthy();
-    expect(getByText('Maîtrisez JitPlus en 5 minutes')).toBeTruthy();
+    expect(getByText('Guide')).toBeTruthy();
+    expect(getByText('Prendre en main JitPlus')).toBeTruthy();
     expect(getByText('Voir le guide')).toBeTruthy();
-    expect(getByText('5 min')).toBeTruthy();
   });
 
   it('is a button with an accessible label combining label, title and CTA', () => {
     const { getByRole } = render(<PromoBanner {...baseProps} />);
     expect(
-      getByRole('button', { name: 'Guide. Maîtrisez JitPlus en 5 minutes. Voir le guide' }),
+      getByRole('button', { name: 'Guide. Prendre en main JitPlus. Voir le guide' }),
     ).toBeTruthy();
   });
 

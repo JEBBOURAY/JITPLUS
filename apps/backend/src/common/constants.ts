@@ -4,9 +4,6 @@ export const BCRYPT_SALT_ROUNDS = 12;
 /** Default HTTP port when PORT env var is not set */
 export const DEFAULT_PORT = 3000;
 
-/** Max results returned by getClients */
-export const MAX_CLIENT_RESULTS = 100;
-
 /** Max results returned by getClientsForScan */
 export const MAX_SCAN_RESULTS = 50;
 
@@ -18,6 +15,9 @@ export const DEFAULT_PAGE_SIZE = 20;
 
 /** Milliseconds in a day */
 export const MS_PER_DAY = 86_400_000;
+
+/** A merchant's client is "inactive" after this many days without a visit */
+export const INACTIVE_CLIENT_DAYS = 30;
 
 /** OTP maximum attempts before lockout (reduced from 5 to harden brute-force resistance) */
 export const MAX_OTP_ATTEMPTS = 3;
@@ -44,9 +44,6 @@ export const MAX_STAMP_VALIDITY_DAYS = 730;
 
 /** How long before expiry the client gets the "stamps expire soon" push */
 export const STAMP_EXPIRY_REMINDER_DAYS = 7;
-
-/** QR v2 token TTL in seconds (short-lived, replayable only within this window) */
-export const QR_TOKEN_TTL_SECONDS = 60;
 
 /** Max stores per merchant (by plan) */
 export const FREE_MAX_STORES = 1;
@@ -92,12 +89,12 @@ export const UNREAD_COUNT_CACHE_TTL = 30_000;
 export const ADMIN_STATS_CACHE_TTL = 2 * 60_000;
 /** Referral stats cache (5 min) */
 export const REFERRAL_STATS_CACHE_TTL = 5 * 60_000;
-/** Client profile stats (scans/rewards count) cache (30 s) */
-export const PROFILE_STATS_CACHE_TTL = 30_000;
 
 // ── Client refresh token ────────────────────────────────────
-/** Client refresh token lifetime in days */
-export const CLIENT_REFRESH_TOKEN_DAYS = 30;
+/** Client refresh token lifetime in days (sliding: renewed on every refresh) */
+export const CLIENT_REFRESH_TOKEN_DAYS = 365;
+/** Devices a client can stay signed in on at once (least recently used evicted) */
+export const MAX_SESSIONS_PER_CLIENT = 10;
 
 // ── Referral ────────────────────────────────────────────────
 /** Characters allowed in referral codes (no ambiguous chars like 0/O, I/1) */

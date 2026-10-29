@@ -2,10 +2,13 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import * as Location from 'expo-location';
 import { Redirect, useRouter } from 'expo-router';
-import { Check, Mail, MapPin, Navigation, Phone, Store } from 'lucide-react-native';
+import { Check, Mail, Navigation, Phone } from 'lucide-react-native';
+import { JitPin, JitStore } from '@/components/icons';
 import { useAuth, useAuthActions } from '@/contexts/AuthContext';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useDir } from '@/hooks/useDir';
+import { font, icon } from '@/constants/design';
 import { useStoresCRUD } from '@/hooks/useStoresCRUD';
 import PhoneInput, { parsePhone } from '@/components/PhoneInput';
 import { isValidPhoneForCountry, normalizePhone } from '@jitplus/shared';
@@ -16,12 +19,11 @@ import type { CreateStorePayload, Store as StoreType } from '@/types';
 import {
   Panel, SaveBar, SectionScreen, TextField, OwnerOnlyNotice, useDiscardGuard, queueToast, haptic, fieldFill, ui,
 } from '@/components/stores/StoreUi';
-import { MAP_STYLE } from '@/components/stores/brand';
+import { DEFAULT_MAP_CENTER, MAP_STYLE } from '@/components/stores/brand';
 
 const NAME_MIN = 2;
 const NAME_MAX = 100;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-const CASABLANCA = { latitude: 33.5731, longitude: -7.5898 };
 const MAP_DELTA = { latitudeDelta: 0.045, longitudeDelta: 0.045 };
 
 type StoreForm = {
@@ -74,6 +76,7 @@ export default function StoreFormScreen({ mode, storeId }: Props) {
   const router = useRouter();
   const theme = useTheme();
   const { t } = useLanguage();
+  const dir = useDir();
   const { isTeamMember } = useAuth();
   const { updateMerchant } = useAuthActions();
   const { stores, loading, saving, canCreateStore, alertMaxStores, saveStore } = useStoresCRUD();
@@ -184,6 +187,10 @@ export default function StoreFormScreen({ mode, storeId }: Props) {
     }
   }, [placePin, t]);
 
+  const alertAddressNotFound = useCallback(() => {
+    Alert.alert(t('common.error'), t('stores.addressNotFound'));
+  }, [t]);
+
   // Re-entrancy guard: a double-tap in the same frame as the mutation starting
   // must not create the store twice (isPending only disables the button after
   // the next render).
@@ -232,8 +239,8 @@ export default function StoreFormScreen({ mode, storeId }: Props) {
 
   const hasPin = form.latitude != null && form.longitude != null;
   const region = {
-    latitude: form.latitude ?? CASABLANCA.latitude,
-    longitude: form.longitude ?? CASABLANCA.longitude,
+    latitude: form.latitude ?? DEFAULT_MAP_CENTER.latitude,
+    longitude: form.longitude ?? DEFAULT_MAP_CENTER.longitude,
     ...MAP_DELTA,
   };
 
@@ -254,7 +261,7 @@ export default function StoreFormScreen({ mode, storeId }: Props) {
         <ActivityIndicator size="large" color={theme.primary} style={styles.loader} />
       ) : (
         <>
-          <Panel Icon={Store} title={t('stores.sectionInfo')}>
+          <Panel Icon={JitStore} title={t('stores.sectionInfo')}>
             <TextField
               label={t('stores.nameLabel')}
               value={form.nom}
@@ -270,27 +277,27 @@ export default function StoreFormScreen({ mode, storeId }: Props) {
             />
           </Panel>
 
-          <Panel Icon={MapPin} title={t('stores.sectionLocation')} caption={t('stores.stepLocationDesc')}>
+          <Panel Icon={JitPin} title={t('stores.sectionLocation')} caption={t('stores.stepLocationDesc')}>
             <TouchableOpacity
               onPress={locateMe}
               disabled={locating}
               activeOpacity={0.8}
-              style={[styles.locateBtn, { backgroundColor: theme.primaryBg }]}
+              style={[styles.locateBtn, { flexDirection: dir.row, backgroundColor: theme.primaryBg }]}
               accessibilityRole="button"
               accessibilityState={{ busy: locating }}
             >
               {locating
                 ? <ActivityIndicator size="small" color={theme.primary} />
-                : <Navigation size={16} color={theme.primary} strokeWidth={2} />}
+                : <Navigation size={16} color={theme.primary} strokeWidth={icon.stroke} />}
               <Text style={[styles.locateText, { color: theme.primary }]} maxFontSizeMultiplier={1.2}>{t('stores.locateMe')}</Text>
             </TouchableOpacity>
 
-            <Text style={[ui.fieldLabel, styles.label, { color: theme.text }]}>{t('stores.searchAddress')}</Text>
+            <Text style={[ui.fieldLabel, styles.label, { color: theme.text, textAlign: dir.textAlign }]}>{t('stores.searchAddress')}</Text>
             <AddressAutocomplete
               value={addressQuery}
               onChangeText={setAddressQuery}
               onSelect={selectAddress}
-              onNotFound={() => Alert.alert(t('common.error'), t('stores.addressNotFound'))}
+              onNotFound={alertAddressNotFound}
               notFoundMessage={t('stores.addressNotFoundManual')}
               placeholder={t('stores.addressSearchPlaceholder')}
               ville={form.ville}
@@ -322,19 +329,19 @@ export default function StoreFormScreen({ mode, storeId }: Props) {
               </SafeMapView>
             </View>
             {hasPin ? (
-              <View style={[styles.pinRow, { backgroundColor: theme.primaryBg }]}>
-                <Check size={14} color={theme.primary} strokeWidth={2.5} />
-                <Text style={[ui.caption, styles.pinText, { color: theme.primary }]} numberOfLines={2}>
+              <View style={[styles.pinRow, { flexDirection: dir.row, backgroundColor: theme.primaryBg }]}>
+                <Check size={14} color={theme.primary} strokeWidth={icon.strokeSmall} />
+                <Text style={[ui.caption, styles.pinText, { color: theme.primary, textAlign: dir.textAlign }]} numberOfLines={2}>
                   {form.adresse || `${form.latitude!.toFixed(5)}, ${form.longitude!.toFixed(5)}`}
                 </Text>
               </View>
             ) : (
-              <Text style={[ui.caption, styles.mapHint, { color: theme.textMuted }]}>{t('stores.mapHint')}</Text>
+              <Text style={[ui.caption, styles.mapHint, { color: theme.textMuted, textAlign: dir.textAlign }]}>{t('stores.mapHint')}</Text>
             )}
           </Panel>
 
           <Panel Icon={Phone} title={t('stores.sectionContact')} caption={t('storesHub.storeContactCaption')}>
-            <Text style={[ui.fieldLabel, styles.phoneLabel, { color: theme.text }]}>{t('stores.phoneLabel')}</Text>
+            <Text style={[ui.fieldLabel, styles.phoneLabel, { color: theme.text, textAlign: dir.textAlign }]}>{t('stores.phoneLabel')}</Text>
             <PhoneInput
               value={form.telephone}
               onChangeText={(telephone) => patch({ telephone })}
@@ -343,7 +350,7 @@ export default function StoreFormScreen({ mode, storeId }: Props) {
             />
             {phoneError ? (
               <View style={ui.fieldFooter}>
-                <Text style={[ui.caption, ui.fieldHint, { color: theme.danger }]} maxFontSizeMultiplier={1.3}>{phoneError}</Text>
+                <Text style={[ui.caption, ui.fieldHint, { color: theme.danger, textAlign: dir.textAlign }]} maxFontSizeMultiplier={1.3}>{phoneError}</Text>
               </View>
             ) : null}
             <View style={styles.gap} />
@@ -372,9 +379,9 @@ const styles = StyleSheet.create({
   label: { marginTop: 16, marginBottom: 7 },
   phoneLabel: { marginBottom: 7 },
   gap: { height: 14 },
-  locateBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, borderRadius: 13 },
-  locateText: { fontSize: 13.5, fontFamily: 'Lexend_600SemiBold' },
-  mapWrap: { height: 220, borderRadius: 16, overflow: 'hidden', marginTop: 14 },
+  locateBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 44, paddingVertical: 12, borderRadius: 12 },
+  locateText: { fontSize: 14, fontFamily: font.semibold },
+  mapWrap: { height: 220, borderRadius: 12, overflow: 'hidden', marginTop: 14 },
   mapHint: { marginTop: 8 },
   pinRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10, paddingVertical: 9, paddingHorizontal: 11, borderRadius: 12 },
   pinText: { flex: 1 },

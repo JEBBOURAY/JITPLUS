@@ -17,4 +17,16 @@ export class ChangePasswordDto {
   @IsBoolean()
   @IsOptional()
   logoutOthers?: boolean;
+
+  /** Google ID token: replaces currentPassword for Google accounts. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(4096)
+  idToken?: string;
+
+  /** Apple identity token: replaces currentPassword for Apple accounts. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(4096)
+  appleIdentityToken?: string;
 }

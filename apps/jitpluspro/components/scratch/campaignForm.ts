@@ -18,15 +18,16 @@ import {
   type ScratchCampaignInput,
   type ScratchRewardInput,
 } from '@jitplus/shared/src/scratch';
+import type { FormError } from '@/components/games/gameForm';
 
-export const WIZARD_STEPS = ['gift', 'audience', 'review'] as const;
+export const WIZARD_STEPS = ['gift', 'audience', 'sending', 'look', 'review'] as const;
 export type WizardStep = (typeof WIZARD_STEPS)[number];
 
 export type DelayHours = 0 | 24 | 48;
 
 /** Scratch period presets (days after sending); coupons stay valid COUPON_DAYS_AFTER_CARD more days. */
 export const DURATION_PRESETS = [7, 14, 30] as const;
-export type DurationDays = (typeof DURATION_PRESETS)[number];
+type DurationDays = (typeof DURATION_PRESETS)[number];
 
 export const CAMPAIGN_TEMPLATES = ['simple', 'tiers', 'stamps'] as const;
 export type CampaignTemplate = (typeof CAMPAIGN_TEMPLATES)[number];
@@ -85,11 +86,6 @@ export interface CampaignForm {
   sendSlot: string;
 }
 
-export interface FormError {
-  key: string;
-  params?: Record<string, unknown>;
-}
-
 const ALL_DAYS = [1, 2, 3, 4, 5, 6, 7];
 let keySeq = 0;
 const nextKey = () => `r${Date.now().toString(36)}${(keySeq++).toString(36)}`;
@@ -114,7 +110,7 @@ export function emptyReward(type: CouponRewardType = 'PERCENT_DISCOUNT', weight 
   };
 }
 
-export function durationDates(sendYmd: string, days: DurationDays): Pick<CampaignForm, 'cardExpiresOn' | 'couponExpiresOn'> {
+function durationDates(sendYmd: string, days: DurationDays): Pick<CampaignForm, 'cardExpiresOn' | 'couponExpiresOn'> {
   return {
     cardExpiresOn: addDaysYmd(sendYmd, days),
     couponExpiresOn: addDaysYmd(sendYmd, days + SCRATCH_DEFAULTS.COUPON_DAYS_AFTER_CARD),
@@ -383,7 +379,7 @@ export function validateDates(form: CampaignForm, today: string, nowMs: number =
   if (form.sendMode === 'later' && isSlotTooFar(form.sendDay, form.sendSlot, nowMs)) {
     return { key: 'scratch.wizard.slotTooFar', params: { days: MAX_SCHEDULE_DAYS } };
   }
-  const sendYmd = form.sendMode === 'later' ? form.sendDay : today;
+  const sendYmd = sendYmdOf(form, today);
   const cardDays = diffDaysYmd(sendYmd, form.cardExpiresOn);
   if (cardDays < 1) return { key: 'scratch.wizard.cardBeforeSend' };
   if (cardDays > SCRATCH_LIMITS.MAX_CARD_DAYS) {
@@ -398,7 +394,7 @@ export function validateDates(form: CampaignForm, today: string, nowMs: number =
   return null;
 }
 
-export function validateAudience(form: CampaignForm): FormError | null {
+function validateAudience(form: CampaignForm): FormError | null {
   if (form.audienceType === 'ALL_CLIENTS') return null;
   const v = parseInteger(form.audienceValue);
   const max = form.audienceType === 'MIN_STAMPS' ? SCRATCH_LIMITS.MAX_AUDIENCE_STAMPS : SCRATCH_LIMITS.MAX_AUDIENCE_DAYS;
@@ -410,8 +406,10 @@ export function validateStep(form: CampaignForm, step: WizardStep, today: string
     case 'gift':
       return validateRewards(form.rewards);
     case 'audience':
-      return validateAudience(form) ?? validateDates(form, today);
-    case 'review':
+      return validateAudience(form);
+    case 'sending':
+      return validateDates(form, today);
+    case 'look':
       return form.name.trim() ? null : { key: 'scratch.wizard.nameRequired' };
     default:
       return null;
@@ -422,9 +420,7 @@ export function couponGapIsShort(form: CampaignForm): boolean {
   return diffDaysYmd(form.cardExpiresOn, form.couponExpiresOn) < SCRATCH_DEFAULTS.WARN_COUPON_GAP_DAYS;
 }
 
-// ── Reducer ─────────────────────────────────────────────────────
-
-export type CampaignFormAction =
+type CampaignFormAction =
   | { type: 'SET'; patch: Partial<CampaignForm>; today?: string }
   | { type: 'SET_REWARD'; key: string; patch: Partial<RewardForm> }
   | { type: 'SET_REWARDS'; rewards: RewardForm[] }
@@ -475,11 +471,14 @@ export function campaignFormReducer(state: CampaignForm, action: CampaignFormAct
   }
 }
 
-// ── Morocco wall clock (sending slots are in Morocco time) ──────
+// Morocco wall clock (sending slots are in Morocco time)
+
+// Built once: creating an Intl formatter costs far more than using it, and lists format many dates.
+let moroccoFormatter: Intl.DateTimeFormat | undefined;
 
 function moroccoParts(date: Date): { y: number; m: number; d: number; h: number; mi: number } | null {
   try {
-    const parts = new Intl.DateTimeFormat('en-US', {
+    moroccoFormatter ??= new Intl.DateTimeFormat('en-US', {
       timeZone: 'Africa/Casablanca',
       hourCycle: 'h23',
       year: 'numeric',
@@ -487,7 +486,8 @@ function moroccoParts(date: Date): { y: number; m: number; d: number; h: number;
       day: '2-digit',
       hour: '2-digit',
       minute: '2-digit',
-    }).formatToParts(date);
+    });
+    const parts = moroccoFormatter.formatToParts(date);
     const get = (type: string) => Number(parts.find((p) => p.type === type)?.value);
     const res = { y: get('year'), m: get('month'), d: get('day'), h: get('hour') % 24, mi: get('minute') };
     return Object.values(res).every(Number.isFinite) ? res : null;

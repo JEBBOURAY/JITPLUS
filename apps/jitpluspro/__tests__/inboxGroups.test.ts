@@ -49,6 +49,7 @@ describe('routeForAction', () => {
     expect(routeForAction('open_plan')).toBe('/plan');
     expect(routeForAction('open_messages')).toBe('/(tabs)/messages');
     expect(routeForAction('open_notifications')).toBe('/admin-notifications');
+    expect(routeForAction('open_deals')).toBe('/deals');
   });
 
   it('returns null for unknown or empty actions', () => {

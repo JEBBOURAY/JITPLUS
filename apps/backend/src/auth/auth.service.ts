@@ -45,11 +45,14 @@ export interface AuthResult {
   teamMember?: { id: string; nom: string; email: string; role: string };
 }
 
-/** Email/password registration result before OTP verification. */
+/**
+ * Email/password registration result. Email verification is currently disabled:
+ * both flags are false. They stay in the contract for already-installed apps.
+ */
 export interface PendingRegistrationResult {
   merchant: MerchantResponse;
   userType: string;
-  requiresEmailVerification: true;
+  requiresEmailVerification: boolean;
   verificationSent: boolean;
 }
 
@@ -281,7 +284,7 @@ export class AuthService implements OnApplicationBootstrap {
     throw new UnauthorizedException('Identifiants invalides');
   }
 
-  // â”€â”€ Gestion des sessions d'appareils â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Gestion des sessions d'appareils ────────────────────
 
   private async registerDeviceSession(
     merchantId: string,
@@ -477,16 +480,6 @@ export class AuthService implements OnApplicationBootstrap {
       throw new UnauthorizedException('Token de rafraîchissement invalide.');
     }
 
-    // Rotate: generate new access token session ID + new refresh token
-    const newSessionId = randomUUID();
-    const newRefreshToken = randomBytes(40).toString('hex');
-    const newRefreshHash = createHash('sha256').update(newRefreshToken).digest('hex');
-
-    await this.deviceSessionRepo.update({
-      where: { id: session.id },
-      data: { tokenId: newSessionId, lastActiveAt: new Date(), refreshTokenHash: newRefreshHash },
-    });
-
     const merchant = await this.merchantRepo.findUnique({
       where: { id: session.merchantId },
       select: MERCHANT_OWNER_SELECT,
@@ -496,15 +489,48 @@ export class AuthService implements OnApplicationBootstrap {
       throw new UnauthorizedException('Compte commerçant inactif ou introuvable.');
     }
 
+    const userType = (session.userType as string) || USER_TYPE_MERCHANT;
+
+    let teamMember: { id: string; nom: string } | null = null;
+    if (userType === USER_TYPE_TEAM_MEMBER) {
+      const member = session.userEmail
+        ? await this.teamMemberRepo.findUnique({
+            where: { email: session.userEmail },
+            select: { id: true, nom: true, isActive: true, merchantId: true },
+          })
+        : null;
+      if (!member || !member.isActive || member.merchantId !== session.merchantId) {
+        await this.deviceSessionRepo.delete({ where: { id: session.id } })
+          .catch((err) => this.logger.error(`Failed to revoke team member session ${session.id}`, errMsg(err)));
+        throw new UnauthorizedException("Compte membre d'équipe désactivé ou introuvable.");
+      }
+      teamMember = { id: member.id, nom: member.nom };
+    }
+
+    // Rotate: generate new access token session ID + new refresh token
+    const newSessionId = randomUUID();
+    const newRefreshToken = randomBytes(40).toString('hex');
+    const newRefreshHash = createHash('sha256').update(newRefreshToken).digest('hex');
+
+    // Conditioned on the old hash so two concurrent refreshes with the same
+    // token cannot both rotate the session.
+    const { count } = await this.deviceSessionRepo.updateMany({
+      where: { id: session.id, refreshTokenHash: session.refreshTokenHash },
+      data: { tokenId: newSessionId, lastActiveAt: new Date(), refreshTokenHash: newRefreshHash },
+    });
+    if (count === 0) {
+      throw new UnauthorizedException('Token de rafraîchissement invalide.');
+    }
+
     const { pushToken: _pt, ...merchantData } = merchant;
 
-    const userType = (session.userType as string) || USER_TYPE_MERCHANT;
     const payload: Record<string, unknown> = {
       sub: session.merchantId,
       email: session.userEmail,
       type: userType,
       role: userType === USER_TYPE_TEAM_MEMBER ? 'team_member' : 'owner',
       jti: newSessionId,
+      ...(teamMember ? { teamMemberId: teamMember.id, teamMemberName: teamMember.nom } : {}),
     };
 
     return {
@@ -532,76 +558,19 @@ export class AuthService implements OnApplicationBootstrap {
   }
 
   /**
-   * Refresh a merchant/team-member access token.
-   * Verifies the current session (via jti) is still valid,
-   * issues a new JWT with a fresh expiry, keeping the same session.
+   * Check if an email is already registered. This answer is an enumeration
+   * oracle by design (registration UX); it is only slowed down by the route
+   * throttle (per IP and per email).
    */
-  async refreshToken(user: {
-    userId: string;
-    email?: string;
-    type: string;
-    role?: string;
-    sessionId?: string;
-    teamMemberId?: string;
-    teamMemberName?: string;
-  }): Promise<AuthResult> {
-    // Parallelize: verify session + re-fetch merchant in a single round-trip
-    const [session, merchant] = await Promise.all([
-      user.sessionId
-        ? this.deviceSessionRepo.findUnique({
-            where: { tokenId: user.sessionId },
-            select: { id: true },
-          })
-        : Promise.resolve(null),
-      this.merchantRepo.findUnique({
-        where: { id: user.userId },
-        select: MERCHANT_OWNER_SELECT,
-      }),
-    ]);
-
-    if (user.sessionId && !session) {
-      throw new UnauthorizedException('Session expirée. Veuillez vous reconnecter.');
-    }
-    if (!merchant) {
-      throw new UnauthorizedException('Compte introuvable');
-    }
-    if (!merchant.isActive) {
-      throw new UnauthorizedException('Ce compte commerce n\'existe plus');
-    }
-
-    const { pushToken: _pt, ...merchantData } = merchant;
-
-    const payload: Record<string, unknown> = {
-      sub: user.userId,
-      email: user.email,
-      type: user.type,
-      role: user.role ?? 'owner',
-      jti: user.sessionId,
-    };
-
-    if (user.teamMemberId) {
-      payload.teamMemberId = user.teamMemberId;
-      payload.teamMemberName = user.teamMemberName;
-    }
-
-    return {
-      access_token: this.jwtService.sign(payload),
-      merchant: merchantData,
-      userType: user.type,
-    };
-  }
-
-  /** Check if an email is already registered (timing-safe: always queries DB). */
   async checkEmailExists(email: string): Promise<{ exists: boolean }> {
     const merchant = await this.merchantRepo.findUnique({
       where: { email: email.trim().toLowerCase() },
       select: { id: true },
     });
-    // Constant-time: always return after same delay to prevent timing enumeration
     return { exists: !!merchant };
   }
 
-  /** Check if a phone number is already registered (timing-safe: always queries DB). */
+  /** Check if a phone number is already registered (same enumeration caveat as checkEmailExists). */
   async checkPhoneExists(phoneNumber: string): Promise<{ exists: boolean }> {
     const merchant = await this.merchantRepo.findFirst({
       where: { phoneNumber: phoneNumber.trim() },
@@ -626,7 +595,7 @@ export class AuthService implements OnApplicationBootstrap {
     const storeNom = nom;
     const categorie = registerDto.categorie ?? ('AUTRE' as any);
 
-    // â”€â”€ Valider le code de parrainage si fourni â”€â”€
+    // ── Valider le code de parrainage si fourni ──
     let referredById: string | undefined;
     let referredByClientId: string | undefined;
     const referralCode = registerDto.referralCode?.trim().toLowerCase();
@@ -740,8 +709,8 @@ export class AuthService implements OnApplicationBootstrap {
     return {
       merchant,
       userType: USER_TYPE_MERCHANT,
-      requiresEmailVerification: true,
-      verificationSent: true,
+      requiresEmailVerification: false,
+      verificationSent: false,
     };
   }
 
@@ -1137,11 +1106,16 @@ export class AuthService implements OnApplicationBootstrap {
 
     // APPLE_BUNDLE_IDS: comma-separated list of bundle IDs (e.g. "com.jitplus.client,com.jitplus.pro")
     const appleBundleIds = (this.configService.get<string>('APPLE_BUNDLE_IDS') || '').split(',').map(s => s.trim()).filter(Boolean);
+    // Without an audience check, a token minted for any other Apple app would be accepted.
+    if (appleBundleIds.length === 0) {
+      this.logger.error('Apple Sign-In misconfigured: APPLE_BUNDLE_IDS is empty');
+      throw new UnauthorizedException('Connexion Apple non configurée');
+    }
 
     const payload = jwt.verify(identityToken, publicKey, {
       algorithms: ['RS256'],
       issuer: 'https://appleid.apple.com',
-      ...(appleBundleIds.length > 0 && { audience: appleBundleIds as [string, ...string[]] }),
+      audience: appleBundleIds as [string, ...string[]],
     }) as jwt.JwtPayload & { sub: string; email?: string; email_verified?: string; nonce?: string };
 
     // If a raw nonce was provided, verify it matches the JWT nonce claim (replay-attack protection).
@@ -1535,23 +1509,23 @@ export class AuthService implements OnApplicationBootstrap {
 
   async sendVerificationEmail(email: string): Promise<{ success: boolean; message: string }> {
     const normalizedEmail = email.trim().toLowerCase();
+    // Same answer whatever the account state, so this endpoint cannot tell
+    // whether an email is registered or already verified.
+    const genericResponse = { success: true, message: 'Si un compte existe avec cet email, un code a été envoyé.' };
 
     const merchant = await this.merchantRepo.findUnique({
       where: { email: normalizedEmail },
       select: { id: true, emailVerified: true },
     });
 
-    if (!merchant) {
-      return { success: true, message: 'Si un compte existe avec cet email, un code a été envoyé.' };
+    if (merchant && !merchant.emailVerified) {
+      // Not awaited: cooldown / delivery errors and the SMTP latency would
+      // otherwise reveal that the account exists.
+      this.sendOtpForEmail(normalizedEmail, 'Verification')
+        .catch((err) => this.logger.warn(`Verification OTP not sent: ${errMsg(err)}`));
     }
 
-    if (merchant.emailVerified) {
-      return { success: true, message: 'Email déjà vérifié.' };
-    }
-
-    await this.sendOtpForEmail(normalizedEmail, 'Verification');
-
-    return { success: true, message: 'Code de vérification envoyé.' };
+    return genericResponse;
   }
 
   async verifyEmail(email: string, code: string): Promise<{ success: boolean; message: string }> {

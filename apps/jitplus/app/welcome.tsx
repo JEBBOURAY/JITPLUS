@@ -1,7 +1,6 @@
 import React, { useRef, useCallback, useState, useMemo, useEffect } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   TouchableOpacity,
   FlatList,
@@ -9,6 +8,7 @@ import {
   NativeScrollEvent,
   useWindowDimensions,
 } from 'react-native';
+import { Text } from '@/components/AppText';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -119,7 +119,7 @@ export default function WelcomeScreen() {
       <Text style={[styles.slideTitle, { color: theme.text, fontFamily: fonts.semibold }]}>{t(item.titleKey)}</Text>
       <Text style={[styles.slideDesc, { color: theme.textSecondary, fontFamily: fonts.regular }]}>{t(item.descKey)}</Text>
     </View>
-  ), [theme, t, screenWidth]);
+  ), [theme, t, screenWidth, fonts.semibold, fonts.regular]);
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>

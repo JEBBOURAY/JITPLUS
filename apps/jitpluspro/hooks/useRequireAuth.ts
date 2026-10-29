@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useRouter } from 'expo-router';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuthStore } from '@/stores/authStore';
 
 /**
  * Auth guard hook for protected screens.
@@ -10,14 +10,16 @@ import { useAuth } from '@/contexts/AuthContext';
  * @returns `true` while auth is loading or merchant is missing (screen should render null).
  */
 export function useRequireAuth(): boolean {
-  const { merchant, loading } = useAuth();
+  // Store selectors instead of useAuth(): profile edits must not re-render every guarded screen.
+  const hasMerchant = useAuthStore((s) => !!s.merchant);
+  const loading = useAuthStore((s) => s.loading);
   const router = useRouter();
 
   useEffect(() => {
-    if (!loading && !merchant) {
+    if (!loading && !hasMerchant) {
       router.replace('/login');
     }
-  }, [loading, merchant, router]);
+  }, [loading, hasMerchant, router]);
 
-  return loading || !merchant;
+  return loading || !hasMerchant;
 }

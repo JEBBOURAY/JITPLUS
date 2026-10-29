@@ -20,6 +20,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
+import { usePlanStatus } from '@/hooks/usePlanStatus';
+import { useDir } from '@/hooks/useDir';
 import { useAuthStore } from '@/stores/authStore';
 import {
   fetchCancelPreview,
@@ -38,7 +40,10 @@ import { getErrorMessage } from '@/utils/error';
 import { formatDateTime } from '@/utils/date';
 import { formatCurrency, DEFAULT_CURRENCY, getIntlLocale } from '@/config/currency';
 import { ms } from '@/utils/responsive';
+import { font, icon } from '@/constants/design';
 import {
+  SCRATCH_LIMITS,
+  addDaysYmd,
   formatRewardValue,
   rewardProbabilities,
   type CancelPreview,
@@ -54,7 +59,8 @@ const CANCEL_DELAY_S = 3;
 export default function ScratchCampaignDetail() {
   const shouldWait = useRequireAuth();
   const theme = useTheme();
-  const { t, locale, isRTL } = useLanguage();
+  const { t, locale } = useLanguage();
+  const { row, textAlign } = useDir();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const qc = useQueryClient();
@@ -62,9 +68,8 @@ export default function ScratchCampaignDetail() {
   const merchant = useAuthStore((s) => s.merchant);
   const isTeamMember = useAuthStore((s) => s.isTeamMember);
   const isOwner = !isTeamMember;
-  const isPremium = merchant?.plan === 'PREMIUM';
-  const textAlign = isRTL ? 'right' : 'left';
-  const row = isRTL ? 'row-reverse' : 'row';
+  const { isPremium } = usePlanStatus(merchant);
+  const merchantName = merchant?.nom;
 
   const campaignQuery = useScratchCampaign(id);
   const campaign = campaignQuery.data;
@@ -89,14 +94,19 @@ export default function ScratchCampaignDetail() {
   const [loadingPreview, setLoadingPreview] = useState(false);
   const loadingPreviewRef = useRef(false);
 
+  // refetch functions are stable, unlike the query result objects.
+  const { refetch: refetchCampaign } = campaignQuery;
+  const { refetch: refetchStats } = statsQuery;
+  const { refetch: refetchCoupons } = couponsQuery;
+  const { refetch: refetchWithoutApp } = withoutAppQuery;
   const onRefresh = useCallback(() => {
-    campaignQuery.refetch();
+    refetchCampaign();
     if (sent) {
-      statsQuery.refetch();
-      couponsQuery.refetch();
-      withoutAppQuery.refetch();
+      refetchStats();
+      refetchCoupons();
+      refetchWithoutApp();
     }
-  }, [campaignQuery, statsQuery, couponsQuery, withoutAppQuery, sent]);
+  }, [refetchCampaign, refetchStats, refetchCoupons, refetchWithoutApp, sent]);
 
   const fail = useCallback((e: unknown) => Alert.alert(t('common.error'), getErrorMessage(e, t('common.genericError'))), [t]);
 
@@ -176,7 +186,7 @@ export default function ScratchCampaignDetail() {
       const res = await reshareMutation.mutateAsync(entry.client.id);
       const message = t('scratch.detail.whatsAppMessage', {
         name: res.client.prenom?.trim() || entry.client.prenom?.trim() || '',
-        merchant: merchant?.nom ?? 'JitPlus',
+        merchant: merchantName ?? 'JitPlus',
         url: res.claim.url,
       });
       const phone = (res.client.telephone || '').replace(/[^\d]/g, '');
@@ -193,7 +203,7 @@ export default function ScratchCampaignDetail() {
     } finally {
       setSharingClientId(null);
     }
-  }, [sharingClientId, reshareMutation, merchant?.nom, t, fail]);
+  }, [sharingClientId, reshareMutation, merchantName, t, fail]);
 
   if (shouldWait) return null;
 
@@ -339,7 +349,7 @@ export default function ScratchCampaignDetail() {
                   >
                     {sharingClientId === entry.client.id
                       ? <ActivityIndicator color="#FFFFFF" size="small" />
-                      : <MessageCircle size={16} color="#FFFFFF" />}
+                      : <MessageCircle size={16} color="#FFFFFF" strokeWidth={icon.stroke} />}
                     <Text style={styles.waText}>{t('scratch.detail.sendWhatsApp')}</Text>
                   </TouchableOpacity>
                 )}
@@ -402,9 +412,9 @@ export default function ScratchCampaignDetail() {
 
 function InfoLine({ text, muted }: { text: string; muted?: boolean }) {
   const theme = useTheme();
-  const { isRTL } = useLanguage();
+  const { textAlign } = useDir();
   return (
-    <Text style={[styles.info, { color: muted ? theme.textMuted : theme.textSecondary, textAlign: isRTL ? 'right' : 'left' }]} maxFontSizeMultiplier={1.4}>
+    <Text style={[styles.info, { color: muted ? theme.textMuted : theme.textSecondary, textAlign }]} maxFontSizeMultiplier={1.4}>
       {text}
     </Text>
   );
@@ -422,7 +432,7 @@ function Kpi({ label, value }: { label: string; value: string }) {
 
 function Funnel({ steps }: { steps: { label: string; value: number }[] }) {
   const theme = useTheme();
-  const { isRTL } = useLanguage();
+  const { row, alignStart } = useDir();
   const max = Math.max(1, steps[0]?.value ?? 1);
   return (
     <View style={styles.funnel}>
@@ -430,11 +440,11 @@ function Funnel({ steps }: { steps: { label: string; value: number }[] }) {
         const pct = Math.round((s.value / max) * 100);
         return (
           <View key={s.label} style={styles.funnelStep}>
-            <View style={[styles.funnelHeader, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+            <View style={[styles.funnelHeader, { flexDirection: row }]}>
               <Text style={[styles.funnelLabel, { color: theme.textSecondary }]}>{s.label}</Text>
               <Text style={[styles.funnelValue, { color: theme.text }]}>{s.value} · {pct} %</Text>
             </View>
-            <View style={[styles.funnelTrack, { backgroundColor: theme.bgInput, alignItems: isRTL ? 'flex-end' : 'flex-start' }]}>
+            <View style={[styles.funnelTrack, { backgroundColor: theme.bgInput, alignItems: alignStart }]}>
               <View style={[styles.funnelFill, { backgroundColor: theme.primary, width: `${Math.max(2, pct)}%` }]} />
             </View>
           </View>
@@ -455,9 +465,15 @@ function FinalCancelModal({ visible, preview, loading, onConfirm, onClose }: {
   const { t } = useLanguage();
   const [remaining, setRemaining] = useState(CANCEL_DELAY_S);
 
+  // Restart the countdown each time the modal opens.
+  const [wasVisible, setWasVisible] = useState(visible);
+  if (visible !== wasVisible) {
+    setWasVisible(visible);
+    if (visible) setRemaining(CANCEL_DELAY_S);
+  }
+
   useEffect(() => {
     if (!visible) return;
-    setRemaining(CANCEL_DELAY_S);
     const timer = setInterval(() => setRemaining((s) => (s <= 1 ? 0 : s - 1)), 1000);
     return () => clearInterval(timer);
   }, [visible]);
@@ -498,16 +514,22 @@ function ExtendDatesModal({ visible, campaign, loading, onClose, onSave }: {
   const { t } = useLanguage();
   const [card, setCard] = useState(campaign.cardExpiresOn);
   const [coupon, setCoupon] = useState(campaign.couponExpiresOn);
-  useEffect(() => {
-    if (visible) {
+
+  // Start from the saved dates on each opening (and when they change while open).
+  const syncKey = visible ? `${campaign.cardExpiresOn}|${campaign.couponExpiresOn}` : null;
+  const [syncedKey, setSyncedKey] = useState(syncKey);
+  if (syncKey !== syncedKey) {
+    setSyncedKey(syncKey);
+    if (syncKey) {
       setCard(campaign.cardExpiresOn);
       setCoupon(campaign.couponExpiresOn);
     }
-  }, [visible, campaign.cardExpiresOn, campaign.couponExpiresOn]);
+  }
 
   const today = moroccoToday();
   const cardMin = campaign.cardExpiresOn > today ? campaign.cardExpiresOn : today;
   const sentYmd = campaign.sentAt ? moroccoYmdOf(new Date(campaign.sentAt)) : today;
+  const couponMin = addDaysYmd(card, SCRATCH_LIMITS.MIN_COUPON_AFTER_CARD_DAYS);
   const changed = card !== campaign.cardExpiresOn || coupon !== campaign.couponExpiresOn;
 
   return (
@@ -520,17 +542,18 @@ function ExtendDatesModal({ visible, campaign, loading, onClose, onSave }: {
             label={t('scratch.wizard.cardDeadline')}
             value={card}
             minYmd={cardMin}
-            maxYmd={addDays(sentYmd, 60)}
+            maxYmd={addDaysYmd(sentYmd, SCRATCH_LIMITS.MAX_CARD_DAYS)}
             onChange={(v) => {
               setCard(v);
-              if (addDays(v, 1) > coupon) setCoupon(addDays(v, 1));
+              const minCoupon = addDaysYmd(v, SCRATCH_LIMITS.MIN_COUPON_AFTER_CARD_DAYS);
+              if (minCoupon > coupon) setCoupon(minCoupon);
             }}
           />
           <DateField
             label={t('scratch.wizard.couponDeadline')}
             value={coupon}
-            minYmd={addDays(card, 1) > campaign.couponExpiresOn ? addDays(card, 1) : campaign.couponExpiresOn}
-            maxYmd={addDays(sentYmd, 120)}
+            minYmd={couponMin > campaign.couponExpiresOn ? couponMin : campaign.couponExpiresOn}
+            maxYmd={addDaysYmd(sentYmd, SCRATCH_LIMITS.MAX_COUPON_DAYS)}
             onChange={setCoupon}
           />
           <Button
@@ -549,42 +572,36 @@ function ExtendDatesModal({ visible, campaign, loading, onClose, onSave }: {
   );
 }
 
-function addDays(ymd: string, days: number): string {
-  const [y, m, d] = ymd.split('-').map(Number);
-  const date = new Date(y, m - 1, d + days);
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-}
-
 const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { alignItems: 'center', justifyContent: 'center' },
   flex: { flex: 1 },
   content: { paddingHorizontal: 16, paddingTop: 4, gap: 14 },
   actions: { gap: 10 },
-  info: { fontSize: ms(13.5), lineHeight: ms(20), fontFamily: 'Lexend_400Regular' },
-  hint: { fontSize: ms(12.5), lineHeight: ms(19), fontFamily: 'Lexend_400Regular' },
+  info: { fontSize: ms(14), lineHeight: ms(20), fontFamily: font.regular },
+  hint: { fontSize: ms(13), lineHeight: ms(19), fontFamily: font.regular },
   kpiRow: { gap: 8 },
   kpi: { flex: 1, borderRadius: 12, padding: 10, gap: 4 },
-  kpiValue: { fontSize: ms(15), fontFamily: 'Lexend_700Bold' },
-  kpiLabel: { fontSize: ms(11), fontFamily: 'Lexend_400Regular' },
+  kpiValue: { fontSize: ms(15), fontFamily: font.bold },
+  kpiLabel: { fontSize: ms(11), fontFamily: font.regular },
   funnel: { gap: 10 },
   funnelStep: { gap: 4 },
   funnelHeader: { justifyContent: 'space-between' },
-  funnelLabel: { fontSize: ms(12.5), fontFamily: 'Lexend_500Medium' },
-  funnelValue: { fontSize: ms(12.5), fontFamily: 'Lexend_600SemiBold' },
-  funnelTrack: { height: 10, borderRadius: 5, overflow: 'hidden' },
-  funnelFill: { height: 10, borderRadius: 5 },
+  funnelLabel: { fontSize: ms(13), fontFamily: font.medium },
+  funnelValue: { fontSize: ms(13), fontFamily: font.semibold },
+  funnelTrack: { height: 10, borderRadius: 999, overflow: 'hidden' },
+  funnelFill: { height: 10, borderRadius: 999 },
   rewardRow: { gap: 4, paddingBottom: 10, borderBottomWidth: StyleSheet.hairlineWidth },
   rewardTop: { alignItems: 'center', gap: 8 },
-  rewardLabel: { flex: 1, fontSize: ms(14), fontFamily: 'Lexend_600SemiBold' },
-  rewardValue: { fontSize: ms(13), fontFamily: 'Lexend_600SemiBold' },
-  rewardMeta: { fontSize: ms(12), fontFamily: 'Lexend_400Regular' },
+  rewardLabel: { flex: 1, fontSize: ms(14), fontFamily: font.semibold },
+  rewardValue: { fontSize: ms(13), fontFamily: font.semibold },
+  rewardMeta: { fontSize: ms(12), fontFamily: font.regular },
   clientRow: { alignItems: 'center', gap: 10, paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth },
-  clientName: { fontSize: ms(14), fontFamily: 'Lexend_500Medium' },
+  clientName: { fontSize: ms(14), fontFamily: font.medium },
   waBtn: { alignItems: 'center', gap: 6, backgroundColor: '#25D366', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8, minHeight: 36 },
-  waText: { color: '#FFFFFF', fontSize: ms(12.5), fontFamily: 'Lexend_600SemiBold' },
+  waText: { color: '#FFFFFF', fontSize: ms(13), fontFamily: font.semibold },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', padding: 20 },
-  modal: { borderRadius: 20, padding: 20, gap: 12 },
-  modalTitle: { fontSize: ms(17), fontFamily: 'Lexend_700Bold', textAlign: 'center' },
-  modalBody: { fontSize: ms(13.5), lineHeight: ms(20), fontFamily: 'Lexend_400Regular', textAlign: 'center' },
+  modal: { borderRadius: 24, padding: 20, gap: 12 },
+  modalTitle: { fontSize: ms(17), fontFamily: font.bold, textAlign: 'center' },
+  modalBody: { fontSize: ms(14), lineHeight: ms(20), fontFamily: font.regular, textAlign: 'center' },
 });

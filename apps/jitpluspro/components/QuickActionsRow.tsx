@@ -3,23 +3,22 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
 } from 'react-native';
 import type { LucideIcon } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
-import { palette } from '@/contexts/ThemeContext';
-import { pokeInteraction } from '@/utils/interaction';
 import { useTourTarget, type TourTargetKey } from '@/components/GuidedTour';
+import { useDir } from '@/hooks/useDir';
+import { font, icon } from '@/constants/design';
+
+const HIT_SLOP = { top: 6, bottom: 6, left: 4, right: 4 };
 
 /**
- * Horizontally-scrollable row of store-management shortcuts, designed to sit on
- * the brand-gradient Accueil header (translucent circles + white icons).
+ * Row of store-management shortcuts spread evenly across the full width,
+ * designed to sit on the dark Accueil header (translucent circles + white icons).
  *
- * Data-driven: pass a list of {@link QuickAction} items (icon, label, optional
- * premium badge, destination route). Premium items still navigate on tap — the
- * locked/upsell state is handled by the destination screen, not here — unless
- * the item provides its own `onPress` (e.g. to show an upsell modal first).
+ * Data-driven: pass a list of {@link QuickAction} items (icon, label,
+ * destination route).
  */
 export interface QuickAction {
   key: string;
@@ -27,37 +26,24 @@ export interface QuickAction {
   Icon: LucideIcon;
   /** expo-router path pushed on tap. */
   route: string;
-  /** Custom tap handler; replaces the default `route` navigation when set. */
-  onPress?: () => void;
-  /** Shows a gold Premium dot; does NOT block navigation. */
-  premium?: boolean;
-  /** Screen-reader label. Falls back to `label`. */
-  accessibilityLabel?: string;
   /** Optional guided-tour target key so the tour can spotlight this item. */
   tourKey?: TourTargetKey;
 }
 
 interface Props {
   items: QuickAction[];
-  /**
-   * Color of the header behind the row — used as the ring around the gold
-   * Premium dot so it reads on the gradient. Defaults to the deep brand violet.
-   */
-  headerColor?: string;
 }
 
 /** Single shortcut. Split out so each item can register its own tour target. */
 const QuickActionItem = React.memo(function QuickActionItem({
   item,
-  headerColor,
   onPress,
 }: {
   item: QuickAction;
-  headerColor: string;
   onPress: (item: QuickAction) => void;
 }) {
   const tourRef = useTourTarget(item.tourKey);
-  const { label, Icon, premium, accessibilityLabel } = item;
+  const { label, Icon } = item;
   return (
     <TouchableOpacity
       ref={tourRef}
@@ -65,17 +51,11 @@ const QuickActionItem = React.memo(function QuickActionItem({
       activeOpacity={0.75}
       onPress={() => onPress(item)}
       accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel ?? label}
-      hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+      accessibilityLabel={label}
+      hitSlop={HIT_SLOP}
     >
       <View style={styles.circle}>
-        <Icon size={21} color="#fff" strokeWidth={1.9} />
-        {premium && (
-          <View
-            style={[styles.premiumDot, { borderColor: headerColor }]}
-            importantForAccessibility="no"
-          />
-        )}
+        <Icon size={icon.md} color="#fff" strokeWidth={icon.stroke} />
       </View>
       <Text style={styles.label} numberOfLines={2} maxFontSizeMultiplier={1.3}>
         {label}
@@ -84,16 +64,12 @@ const QuickActionItem = React.memo(function QuickActionItem({
   );
 });
 
-function QuickActionsRow({ items, headerColor = palette.violetDeep }: Props) {
+function QuickActionsRow({ items }: Props) {
   const router = useRouter();
+  const dir = useDir();
 
   const handlePress = useCallback(
     (item: QuickAction) => {
-      pokeInteraction();
-      if (item.onPress) {
-        item.onPress();
-        return;
-      }
       router.push(item.route as never);
     },
     [router],
@@ -103,42 +79,21 @@ function QuickActionsRow({ items, headerColor = palette.violetDeep }: Props) {
     <QuickActionItem
       key={item.key}
       item={item}
-      headerColor={headerColor}
       onPress={handlePress}
     />
-  )), [headerColor, handlePress, items]);
+  )), [handlePress, items]);
 
-  return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      // Keep the horizontal pan gesture confined to this row so it never fights
-      // the screen's vertical scroll.
-      directionalLockEnabled
-      contentContainerStyle={styles.content}
-      style={styles.row}
-    >
-      {content}
-    </ScrollView>
-  );
+  return <View style={[styles.row, { flexDirection: dir.row }]}>{content}</View>;
 }
 
 const styles = StyleSheet.create({
   row: {
     marginTop: 18,
-    marginHorizontal: -18, // bleed to the header edges so items can scroll off-screen
-  },
-  content: {
-    paddingHorizontal: 18,
-    gap: 10,
-    // Horizontal ScrollViews are mirrored natively by RN in RTL, so the row
-    // and its scroll direction flip automatically in Arabic.
+    gap: 8,
     alignItems: 'flex-start',
   },
   item: {
-    width: 64,
-    flexGrow: 0,
-    flexShrink: 0,
+    flex: 1,
     alignItems: 'center',
     // ≥44px touch target: circle (48) + label region comfortably exceeds it.
     paddingVertical: 2,
@@ -153,27 +108,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  premiumDot: {
-    position: 'absolute',
-    top: -1,
-    right: -1,
-    width: 9,
-    height: 9,
-    borderRadius: 4.5,
-    backgroundColor: palette.gold,
-    borderWidth: 1.5,
-  },
+
   label: {
     marginTop: 6,
-    fontSize: 10.5,
-    lineHeight: 13,
-    fontWeight: '700',
-    fontFamily: 'Lexend_700Bold',
+    fontSize: 12,
+    lineHeight: 15,
+    fontFamily: font.medium,
     color: 'rgba(255,255,255,0.85)',
     textAlign: 'center',
-    textShadowColor: 'rgba(0,0,0,0.18)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
   },
 });
 

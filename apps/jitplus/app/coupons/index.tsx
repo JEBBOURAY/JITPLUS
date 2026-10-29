@@ -1,12 +1,12 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
-  FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View,
+  FlatList, RefreshControl, StyleSheet, TouchableOpacity, View,
 } from 'react-native';
+import { Text } from '@/components/AppText';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowLeft, Ticket } from 'lucide-react-native';
 
-export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { wp, hp, ms } from '@/utils/responsive';
@@ -17,6 +17,7 @@ import FadeInView from '@/components/FadeInView';
 import { useClientCoupons, type ClientCouponStatus } from '@/hooks/useScratchHooks';
 import { diffDaysYmd, formatRewardValue, toYmd } from '@jitplus/shared/src/scratch';
 import type { CouponDto } from '@jitplus/shared/src/scratch';
+export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 
 const TWO_DAYS_MS = 48 * 3600 * 1000;
 
@@ -96,7 +97,7 @@ export default function CouponsScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg, paddingTop: insets.top + hp(8) }]}>
-      <View style={[styles.header, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+      <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} hitSlop={12} accessibilityRole="button" accessibilityLabel={t('common.back')}>
           <ArrowLeft size={ms(24)} color={theme.text} style={isRTL ? { transform: [{ scaleX: -1 }] } : undefined} />
         </TouchableOpacity>
@@ -105,7 +106,7 @@ export default function CouponsScreen() {
       </View>
 
       {/* Segmented tabs: Actifs / Utilisés / Expirés */}
-      <View style={[styles.tabs, { backgroundColor: theme.bgCard, flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+      <View style={[styles.tabs, { backgroundColor: theme.bgCard }]}>
         {TABS.map((tb) => {
           const active = tab === tb.key;
           return (
@@ -169,9 +170,9 @@ export default function CouponsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, paddingHorizontal: wp(20) },
-  header: { alignItems: 'center', justifyContent: 'space-between', marginBottom: hp(14) },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: hp(14) },
   headerTitle: { fontSize: ms(19), fontWeight: '700' },
-  tabs: { borderRadius: 12, padding: 4, marginBottom: hp(12) },
+  tabs: { flexDirection: 'row', borderRadius: 12, padding: 4, marginBottom: hp(12) },
   tab: { flex: 1, alignItems: 'center', paddingVertical: hp(8), borderRadius: 9 },
   tabText: { fontSize: ms(13), fontWeight: '700' },
   listContent: { paddingBottom: hp(24), gap: hp(10) },

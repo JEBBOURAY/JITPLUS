@@ -11,22 +11,25 @@ import {
   Platform,
   Image as RNImage,
 } from 'react-native';
+import { Image as ExpoImage } from 'expo-image';
 import {
-  Store,
   Plus,
-  Lock,
   Trash2,
   Edit3,
-  MapPin,
   Phone,
   Mail,
   Power,
   Shield,
   AlertTriangle,
 } from 'lucide-react-native';
-import MapView, { Marker, SafeMapViewRef } from '@/components/SafeMapView';
+import { JitLock, JitPin, JitStore } from '@/components/icons';
+import MapView, { Marker, type SafeMapViewRef } from '@/components/SafeMapView';
 import { useTheme, palette, type ThemeColors } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useDir } from '@/hooks/useDir';
+import { font, icon } from '@/constants/design';
+import { ActionButton } from '@/components/ui/ActionButton';
+import { usePlanStatus } from '@/hooks/usePlanStatus';
 import { useRouter } from 'expo-router';
 import type { Store as StoreType, Merchant, MerchantCategory } from '@/types';
 import MerchantCategoryIcon from '@/components/MerchantCategoryIcon';
@@ -34,14 +37,15 @@ import { useStoresCRUD, MAX_STORES } from '@/hooks/useStoresCRUD';
 import PremiumLockModal from '@/components/PremiumLockModal';
 import { resolveImageUrl } from '@/utils/imageUrl';
 import { Panel, CountPill, SectionScreen, usePressGuard, useToast, surfaceShadow, fieldFill, ui } from '@/components/stores/StoreUi';
-import { MAP_STYLE } from '@/components/stores/brand';
+import { DEFAULT_MAP_CENTER, MAP_STYLE } from '@/components/stores/brand';
 
 const JITPRO_LOGO = require('@/assets/images/jitplusprologo.png');
 
 const FREE_MAX_STORES = 1;
 const MARKER_SIZE = 38;
 const MARKER_LOGO = 26;
-const DEFAULT_REGION = { latitude: 33.5731, longitude: -7.5898, latitudeDelta: 0.5, longitudeDelta: 0.5 };
+const LOCKED_GOLD = '#B45309';
+const DEFAULT_REGION = { ...DEFAULT_MAP_CENTER, latitudeDelta: 0.5, longitudeDelta: 0.5 };
 
 function formatAddress(store: StoreType): string {
   return [store.adresse, store.quartier, store.ville].filter(Boolean).join(', ');
@@ -52,13 +56,16 @@ const TrackedStoreMarker = React.memo(function TrackedStoreMarker({
   store, logoUrl,
 }: { store: StoreType; logoUrl?: string | null }) {
   const [error, setError] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const [tracking, setTracking] = useState(Platform.OS === 'android');
 
+  // Stop re-rendering the Android marker bitmap shortly after the logo has
+  // loaded, or after 800 ms at the latest.
   useEffect(() => {
     if (!tracking) return;
-    const timer = setTimeout(() => setTracking(false), 800);
+    const timer = setTimeout(() => setTracking(false), loaded ? 100 : 800);
     return () => clearTimeout(timer);
-  }, [tracking]);
+  }, [tracking, loaded]);
 
   const source = logoUrl && !error ? { uri: resolveImageUrl(logoUrl) } : JITPRO_LOGO;
 
@@ -75,7 +82,7 @@ const TrackedStoreMarker = React.memo(function TrackedStoreMarker({
           source={source}
           style={markerStyles.logo}
           resizeMode="cover"
-          onLoad={() => { if (tracking) setTimeout(() => setTracking(false), 100); }}
+          onLoad={() => setLoaded(true)}
           onError={() => setError(true)}
         />
       </View>
@@ -101,11 +108,12 @@ const markerStyles = StyleSheet.create({
   logo: { width: MARKER_LOGO, height: MARKER_LOGO, borderRadius: 7 },
 });
 
-function DetailRow({ Icon, text, theme }: { Icon: typeof MapPin; text: string; theme: ThemeColors }) {
+function DetailRow({ Icon, text, theme }: { Icon: typeof JitPin; text: string; theme: ThemeColors }) {
+  const dir = useDir();
   return (
-    <View style={styles.detailRow}>
-      <Icon size={13} color={theme.textMuted} strokeWidth={1.8} />
-      <Text style={[ui.caption, styles.detailText, { color: theme.textSecondary }]} numberOfLines={1}>{text}</Text>
+    <View style={[styles.detailRow, { flexDirection: dir.row }]}>
+      <Icon size={13} color={theme.textMuted} strokeWidth={icon.strokeSmall} />
+      <Text style={[ui.caption, styles.detailText, { color: theme.textSecondary, textAlign: dir.textAlign }]} numberOfLines={1}>{text}</Text>
     </View>
   );
 }
@@ -121,6 +129,7 @@ const StoreCard = React.memo(function StoreCard({ store, category, logoUrl, isRe
 }) {
   const theme = useTheme();
   const { t } = useLanguage();
+  const dir = useDir();
   const fill = fieldFill(theme);
   const address = formatAddress(store);
 
@@ -133,17 +142,17 @@ const StoreCard = React.memo(function StoreCard({ store, category, logoUrl, isRe
         accessibilityRole="button"
         accessibilityLabel={`${store.nom}, ${t('stores.editBtn')}`}
       >
-        <View style={styles.cardTopRow}>
+        <View style={[styles.cardTopRow, { flexDirection: dir.row }]}>
           <View style={[styles.cardAvatar, { backgroundColor: theme.primaryBg }, !store.isActive && styles.dimmed]}>
             {logoUrl
-              ? <RNImage source={{ uri: resolveImageUrl(logoUrl) }} style={styles.cardAvatarLogo} />
+              ? <ExpoImage source={resolveImageUrl(logoUrl)} style={styles.cardAvatarLogo} contentFit="cover" cachePolicy="memory-disk" />
               : <MerchantCategoryIcon category={category} size={24} />}
           </View>
           <View style={styles.cardInfo}>
-            <Text style={[styles.cardName, { color: theme.text }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>{store.nom}</Text>
+            <Text style={[styles.cardName, { color: theme.text, textAlign: dir.textAlign }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>{store.nom}</Text>
             {isReference ? (
-              <View style={styles.metaRow}>
-                <Shield size={11} color={theme.textMuted} strokeWidth={2} />
+              <View style={[styles.metaRow, { flexDirection: dir.row }]}>
+                <Shield size={11} color={theme.textMuted} strokeWidth={icon.strokeSmall} />
                 <Text style={[ui.caption, { color: theme.textMuted }]} numberOfLines={1}>{t('stores.referenceLabel')}</Text>
               </View>
             ) : null}
@@ -151,7 +160,7 @@ const StoreCard = React.memo(function StoreCard({ store, category, logoUrl, isRe
           <View
             style={[
               styles.statusPill,
-              { backgroundColor: store.isActive ? theme.success + '1F' : fill },
+              { flexDirection: dir.row, backgroundColor: store.isActive ? theme.success + '1F' : fill },
             ]}
           >
             <View style={[styles.statusDot, { backgroundColor: store.isActive ? theme.success : theme.textMuted }]} />
@@ -163,30 +172,30 @@ const StoreCard = React.memo(function StoreCard({ store, category, logoUrl, isRe
 
         {address || store.telephone || store.email ? (
           <View style={styles.details}>
-            {address ? <DetailRow Icon={MapPin} text={address} theme={theme} /> : null}
+            {address ? <DetailRow Icon={JitPin} text={address} theme={theme} /> : null}
             {store.telephone ? <DetailRow Icon={Phone} text={store.telephone} theme={theme} /> : null}
             {store.email ? <DetailRow Icon={Mail} text={store.email} theme={theme} /> : null}
           </View>
         ) : null}
       </TouchableOpacity>
 
-      <View style={[styles.cardFooter, { borderTopColor: theme.borderLight }]}>
+      <View style={[styles.cardFooter, { flexDirection: dir.row, borderTopColor: theme.borderLight }]}>
         <TouchableOpacity
-          style={[styles.actionBtn, { backgroundColor: theme.primaryBg }]}
+          style={[styles.actionBtn, { flexDirection: dir.row, backgroundColor: theme.primaryBg }]}
           onPress={() => onEdit(store)}
           activeOpacity={0.8}
           accessibilityRole="button"
         >
-          <Edit3 size={15} color={theme.primary} strokeWidth={2} />
+          <Edit3 size={16} color={theme.primary} strokeWidth={icon.stroke} />
           <Text style={[styles.actionText, { color: theme.primary }]} maxFontSizeMultiplier={1.2}>{t('stores.editBtn')}</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.actionBtn, { backgroundColor: fill }]}
+          style={[styles.actionBtn, { flexDirection: dir.row, backgroundColor: fill }]}
           onPress={() => onToggle(store)}
           activeOpacity={0.8}
           accessibilityRole="button"
         >
-          <Power size={15} color={theme.textSecondary} strokeWidth={2} />
+          <Power size={16} color={theme.textSecondary} strokeWidth={icon.stroke} />
           <Text style={[styles.actionText, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.2}>
             {store.isActive ? t('stores.toggleDeactivate') : t('stores.activateBtn')}
           </Text>
@@ -198,7 +207,7 @@ const StoreCard = React.memo(function StoreCard({ store, category, logoUrl, isRe
           accessibilityRole="button"
           accessibilityLabel={t('stores.deleteBtn')}
         >
-          <Trash2 size={16} color={theme.danger} strokeWidth={2} />
+          <Trash2 size={16} color={theme.danger} strokeWidth={icon.stroke} />
         </TouchableOpacity>
       </View>
     </View>
@@ -213,9 +222,10 @@ export default function LocationsSection({ merchant }: { merchant: Merchant }) {
   const theme = useTheme();
   const router = useRouter();
   const { t } = useLanguage();
+  const dir = useDir();
   const toast = useToast();
 
-  const isPremium = merchant.plan === 'PREMIUM';
+  const { isPremium } = usePlanStatus(merchant);
   const effectiveMax = isPremium ? MAX_STORES : FREE_MAX_STORES;
 
   const [premiumModalVisible, setPremiumModalVisible] = useState(false);
@@ -329,24 +339,15 @@ export default function LocationsSection({ merchant }: { merchant: Merchant }) {
   const shadow = surfaceShadow(theme);
 
   const addButton = canAdd ? (
-    <TouchableOpacity
+    <ActionButton
       onPress={openCreate}
-      activeOpacity={0.85}
-      style={[
-        styles.addBtn,
-        lockedByPlan
-          ? { backgroundColor: palette.gold + '2E', borderBottomColor: 'transparent' }
-          : [styles.addBtnRaised, { backgroundColor: palette.violet, borderBottomColor: palette.violetDark }],
-      ]}
-      accessibilityRole="button"
-    >
-      {lockedByPlan
-        ? <Lock size={16} color="#B45309" strokeWidth={2.2} />
-        : <Plus size={18} color="#fff" strokeWidth={2.4} />}
-      <Text style={[styles.addBtnText, { color: lockedByPlan ? '#B45309' : '#fff' }]} maxFontSizeMultiplier={1.2}>
-        {lockedByPlan ? t('stores.unlockMoreStores') : t('stores.addStoreFull')}
-      </Text>
-    </TouchableOpacity>
+      variant={lockedByPlan ? 'secondary' : 'primary'}
+      icon={lockedByPlan ? JitLock : Plus}
+      label={lockedByPlan ? t('stores.unlockMoreStores') : t('stores.addStoreFull')}
+      style={lockedByPlan ? styles.addBtnLocked : styles.addBtnRaised}
+      labelStyle={lockedByPlan ? styles.addBtnLockedText : undefined}
+      iconColor={lockedByPlan ? LOCKED_GOLD : undefined}
+    />
   ) : (
     <Text style={[ui.caption, styles.limitText, { color: theme.textMuted }]}>
       {t('stores.maxReached', { max: MAX_STORES })}
@@ -365,7 +366,7 @@ export default function LocationsSection({ merchant }: { merchant: Merchant }) {
       ) : stores.length === 0 ? (
         <View style={[styles.empty, { backgroundColor: theme.bgCard }, shadow]}>
           <View style={[styles.emptyIcon, { backgroundColor: theme.primaryBg }]}>
-            <Store size={32} color={theme.primary} strokeWidth={1.7} />
+            <JitStore size={32} color={theme.primary} strokeWidth={icon.stroke} />
           </View>
           <Text style={[styles.emptyTitle, { color: theme.text }]}>{t('stores.noStores')}</Text>
           <Text style={[styles.emptyText, { color: theme.textMuted }]}>{t('stores.noStoresHint')}</Text>
@@ -374,7 +375,7 @@ export default function LocationsSection({ merchant }: { merchant: Merchant }) {
       ) : (
         <>
           <Panel
-            Icon={Store}
+            Icon={JitStore}
             title={t('stores.locationsTitle')}
             right={<CountPill value={`${stores.length}/${effectiveMax}`} />}
           >
@@ -433,8 +434,8 @@ export default function LocationsSection({ merchant }: { merchant: Merchant }) {
           <View style={[styles.deleteSheet, { backgroundColor: theme.bgCard }]}>
             <View style={[styles.deleteIconWrap, { backgroundColor: theme.danger + '14' }]}>
               {isOnlyStore
-                ? <Shield size={26} color={theme.danger} strokeWidth={2} />
-                : <AlertTriangle size={26} color={theme.danger} strokeWidth={2} />}
+                ? <Shield size={26} color={theme.danger} strokeWidth={icon.stroke} />
+                : <AlertTriangle size={26} color={theme.danger} strokeWidth={icon.stroke} />}
             </View>
             <Text style={[styles.deleteSheetTitle, { color: theme.text }]}>
               {isOnlyStore ? t('stores.deleteBlockedTitle') : t('stores.deleteConfirmTitle')}
@@ -453,34 +454,28 @@ export default function LocationsSection({ merchant }: { merchant: Merchant }) {
             )}
 
             {isOnlyStore ? (
-              <TouchableOpacity
-                style={[styles.sheetBtn, styles.sheetBtnFull, { backgroundColor: palette.violet }]}
+              <ActionButton
+                label={t('stores.deleteGotIt')}
                 onPress={() => setDeleteTarget(null)}
-                accessibilityRole="button"
-              >
-                <Text style={[styles.sheetBtnText, { color: '#fff' }]}>{t('stores.deleteGotIt')}</Text>
-              </TouchableOpacity>
+                style={styles.sheetBtnFull}
+              />
             ) : (
-              <View style={styles.sheetActions}>
-                <TouchableOpacity
-                  style={[styles.sheetBtn, { backgroundColor: fieldFill(theme) }]}
+              <View style={[styles.sheetActions, { flexDirection: dir.row }]}>
+                <ActionButton
+                  label={t('common.cancel')}
+                  variant="secondary"
                   onPress={() => setDeleteTarget(null)}
                   disabled={deleting}
-                  accessibilityRole="button"
-                >
-                  <Text style={[styles.sheetBtnText, { color: theme.text }]}>{t('common.cancel')}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.sheetBtn, { backgroundColor: theme.danger, opacity: deleting ? 0.6 : 1 }]}
+                  style={[styles.sheetBtn, styles.sheetBtnCancel, { backgroundColor: fieldFill(theme) }]}
+                />
+                <ActionButton
+                  label={t('common.delete')}
+                  variant="danger"
+                  icon={Trash2}
                   onPress={confirmDelete}
-                  disabled={deleting}
-                  accessibilityRole="button"
-                >
-                  {deleting
-                    ? <ActivityIndicator size="small" color="#fff" />
-                    : <Trash2 size={15} color="#fff" strokeWidth={2} />}
-                  <Text style={[styles.sheetBtnText, { color: '#fff' }]}>{t('common.delete')}</Text>
-                </TouchableOpacity>
+                  loading={deleting}
+                  style={styles.sheetBtn}
+                />
               </View>
             )}
           </View>
@@ -501,50 +496,46 @@ const styles = StyleSheet.create({
   loader: { marginTop: 48 },
   dimmed: { opacity: 0.5 },
 
-  // Overview panel
-  mapWrap: { height: 168, borderRadius: 16, overflow: 'hidden', marginBottom: 14 },
-  addBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 13, borderRadius: 14, borderBottomWidth: 3 },
-  addBtnRaised: { shadowColor: palette.violet, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.24, shadowRadius: 10, elevation: 3 },
-  addBtnText: { fontSize: 14, fontFamily: 'Lexend_600SemiBold' },
+  mapWrap: { height: 168, borderRadius: 12, overflow: 'hidden', marginBottom: 14 },
+  addBtnRaised: { backgroundColor: palette.violet, borderColor: palette.violet, borderBottomWidth: 3, borderBottomColor: palette.violetDark, shadowColor: palette.violet, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.24, shadowRadius: 10, elevation: 3 },
+  addBtnLocked: { backgroundColor: palette.gold + '2E', borderColor: 'transparent', borderBottomWidth: 3 },
+  addBtnLockedText: { color: LOCKED_GOLD },
   limitText: { textAlign: 'center' },
 
-  // Store cards
   list: { paddingHorizontal: 16, paddingTop: 16, gap: 12 },
-  card: { borderRadius: 20 },
+  card: { borderRadius: 16 },
   cardMain: { padding: 16, paddingBottom: 14 },
   cardTopRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  cardAvatar: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  cardAvatar: { width: 48, height: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   cardAvatarLogo: { width: '100%', height: '100%' },
   cardInfo: { flex: 1, gap: 3 },
-  cardName: { fontSize: 15.5, fontFamily: 'Lexend_600SemiBold', letterSpacing: -0.2 },
+  cardName: { fontSize: 16, fontFamily: font.semibold, letterSpacing: -0.2 },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  statusPill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 5, paddingHorizontal: 10, borderRadius: 10 },
+  statusPill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 5, paddingHorizontal: 10, borderRadius: 999 },
   statusDot: { width: 6, height: 6, borderRadius: 3 },
-  statusText: { fontSize: 11.5, fontFamily: 'Lexend_600SemiBold' },
+  statusText: { fontSize: 12, fontFamily: font.semibold },
   details: { marginTop: 14, gap: 7 },
   detailRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   detailText: { flex: 1 },
   cardFooter: { flexDirection: 'row', gap: 8, paddingHorizontal: 12, paddingVertical: 12, borderTopWidth: StyleSheet.hairlineWidth },
-  actionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, height: 40, borderRadius: 12 },
-  actionText: { fontSize: 12.5, fontFamily: 'Lexend_600SemiBold' },
-  iconAction: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  actionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, height: 44, borderRadius: 12 },
+  actionText: { fontSize: 13, fontFamily: font.semibold },
+  iconAction: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
 
-  // Empty state
-  empty: { marginHorizontal: 16, marginTop: 16, borderRadius: 20, padding: 24, alignItems: 'center' },
-  emptyIcon: { width: 72, height: 72, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  emptyTitle: { fontSize: 17, marginTop: 16, fontFamily: 'Lexend_600SemiBold', textAlign: 'center' },
-  emptyText: { fontSize: 13.5, lineHeight: 20, textAlign: 'center', marginTop: 6, fontFamily: 'Lexend_400Regular' },
+  empty: { marginHorizontal: 16, marginTop: 16, borderRadius: 16, padding: 24, alignItems: 'center' },
+  emptyIcon: { width: 72, height: 72, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  emptyTitle: { fontSize: 17, marginTop: 16, fontFamily: font.semibold, textAlign: 'center' },
+  emptyText: { fontSize: 14, lineHeight: 20, textAlign: 'center', marginTop: 6, fontFamily: font.regular },
   emptyAction: { alignSelf: 'stretch', marginTop: 20 },
 
-  // Delete sheet
   deleteOverlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.55)', justifyContent: 'center', paddingHorizontal: 28 },
-  deleteSheet: { borderRadius: 22, padding: 22, alignItems: 'center' },
-  deleteIconWrap: { width: 56, height: 56, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
-  deleteSheetTitle: { fontSize: 17, textAlign: 'center', fontFamily: 'Lexend_600SemiBold', letterSpacing: -0.2 },
-  deleteSheetBody: { fontSize: 13.5, lineHeight: 20, textAlign: 'center', marginTop: 8, fontFamily: 'Lexend_400Regular' },
+  deleteSheet: { borderRadius: 16, padding: 22, alignItems: 'center' },
+  deleteIconWrap: { width: 56, height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
+  deleteSheetTitle: { fontSize: 17, textAlign: 'center', fontFamily: font.semibold, letterSpacing: -0.2 },
+  deleteSheetBody: { fontSize: 14, lineHeight: 20, textAlign: 'center', marginTop: 8, fontFamily: font.regular },
   deleteWarning: { marginTop: 12, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 12, alignSelf: 'stretch' },
   sheetActions: { flexDirection: 'row', gap: 10, marginTop: 20, alignSelf: 'stretch' },
-  sheetBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingVertical: 13, borderRadius: 14 },
-  sheetBtnFull: { flex: 0, alignSelf: 'stretch', marginTop: 20 },
-  sheetBtnText: { fontSize: 14, fontFamily: 'Lexend_600SemiBold' },
+  sheetBtn: { flex: 1 },
+  sheetBtnCancel: { borderColor: 'transparent' },
+  sheetBtnFull: { alignSelf: 'stretch', marginTop: 20, backgroundColor: palette.violet, borderColor: palette.violet },
 });

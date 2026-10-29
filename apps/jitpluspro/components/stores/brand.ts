@@ -1,7 +1,10 @@
 /**
  * Pure helpers shared by the "Ma boutique" hub and its section screens.
  */
-import { DEFAULT_COUNTRY, isValidPhoneForCountry, normalizePhone } from '@jitplus/shared';
+import {
+  DEFAULT_COUNTRY, WEEK_DAYS, isValidPhoneForCountry, normalizePhone, validateOpeningHours, weekDayOf,
+  type WeekDay,
+} from '@jitplus/shared';
 import { palette } from '@/contexts/ThemeContext';
 import type { Merchant, OpeningHours, SocialLinks, Store } from '@/types';
 import type { ColorPreset } from '@/components/stores/FicheControls';
@@ -14,8 +17,6 @@ export function parseSection(value?: string | string[]): StoreSection | null {
   const v = Array.isArray(value) ? value[0] : value;
   return (STORE_SECTIONS as readonly string[]).includes(v ?? '') ? (v as StoreSection) : null;
 }
-
-// ── Colors ─────────────────────────────────────────────────────
 
 export const HEX_RE = /^#[0-9A-Fa-f]{6}$/;
 const DEFAULT_COLOR = palette.violet;
@@ -33,6 +34,9 @@ export const PRESET_COLORS: readonly ColorPreset[] = [
 export function brandColor(input?: string | null): string {
   return input && HEX_RE.test(input) ? input : DEFAULT_COLOR;
 }
+
+/** Map center used when no location is known yet (Casablanca). */
+export const DEFAULT_MAP_CENTER = { latitude: 33.5731, longitude: -7.5898 } as const;
 
 /** Warm ivory map with violet-tinted water, matching the jitplus Discover map. */
 export const MAP_STYLE = [
@@ -62,11 +66,8 @@ export const MAP_STYLE = [
   { featureType: 'administrative.land_parcel', elementType: 'labels.text.fill', stylers: [{ color: '#D6D3D1' }] },
 ];
 
-// ── Opening hours ──────────────────────────────────────────────
-
-export const WEEK_DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
-export type WeekDayKey = (typeof WEEK_DAYS)[number];
-const HHMM_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+export { WEEK_DAYS };
+export type WeekDayKey = WeekDay;
 
 /** Every day present, with copied slots so the draft can be edited freely. */
 export function normalizeHours(input?: OpeningHours | null): OpeningHours {
@@ -85,24 +86,30 @@ export function hoursHasAny(h?: OpeningHours | null): boolean {
   return !!h && WEEK_DAYS.some((d) => h[d]?.closed || (h[d]?.slots?.length ?? 0) > 0);
 }
 
-/** i18n key of the first validation error, or null when the hours are valid. */
+/**
+ * i18n key of the first validation error, or null when the hours are valid.
+ * Same rules as the public page: a slot may close after midnight (18:00 – 02:00).
+ */
 export function validateHours(h: OpeningHours): string | null {
-  for (const d of WEEK_DAYS) {
-    const day = h[d];
-    if (!day || day.closed) continue;
-    for (const s of day.slots ?? []) {
-      if (!HHMM_RE.test(s.open) || !HHMM_RE.test(s.close)) return 'storePreview.hoursInvalidFormat';
-      if (s.open >= s.close) return 'storePreview.hoursInvalidRange';
-    }
-  }
+  const error = validateOpeningHours(h);
+  if (error === 'format') return 'storePreview.hoursInvalidFormat';
+  if (error === 'empty') return 'storePreview.hoursInvalidRange';
   return null;
 }
 
-export function todayKey(): WeekDayKey {
-  return WEEK_DAYS[(new Date().getDay() + 6) % 7];
+/** An open day without any slot reads "Fermé" on the page: store it as closed. */
+export function finalizeHours(h: OpeningHours): OpeningHours {
+  const out = {} as OpeningHours;
+  for (const d of WEEK_DAYS) {
+    const slots = h[d]?.closed ? [] : h[d]?.slots ?? [];
+    out[d] = { closed: slots.length === 0, slots };
+  }
+  return out;
 }
 
-// ── Social networks ────────────────────────────────────────────
+export function todayKey(): WeekDayKey {
+  return weekDayOf(new Date());
+}
 
 export type SocialKey = keyof Required<SocialLinks>;
 
@@ -140,8 +147,6 @@ export function isValidSocial(key: SocialKey, value: string): boolean {
 export function countSocials(links?: SocialLinks | null): number {
   return links ? SOCIAL_KEYS.filter((k) => !!links[k]).length : 0;
 }
-
-// ── Completeness ───────────────────────────────────────────────
 
 export function sectionDone(section: StoreSection, merchant: Merchant, stores: Store[]): boolean {
   switch (section) {

@@ -1,14 +1,17 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  View, Text, FlatList, RefreshControl, TouchableOpacity, Pressable, Alert, Platform, Linking,
+  View, FlatList, RefreshControl, TouchableOpacity, Pressable, Alert, Platform, Linking,
   AppState, LayoutAnimation, type NativeSyntheticEvent, type NativeScrollEvent,
 } from 'react-native';
+import { Text } from '@/components/AppText';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Bell, BellRing, CheckCheck, Trash2, X, Compass, WifiOff, RotateCcw, ArrowLeftRight,
 } from 'lucide-react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
-import Constants from 'expo-constants';
+import { loadNotifications } from '@/utils/expoNotifications';
+import { registerForPushNotifications } from '@/utils/notifications';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { haptic, hapticSuccess, HapticStyle } from '@/utils/haptics';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -27,6 +30,7 @@ import {
 } from '@/hooks/useQueryHooks';
 import { api } from '@/services/api';
 import { STAGGER_DELAY_MS, MAX_STAGGER_DELAY_MS } from '@/constants';
+import { notificationTapRoute } from '@/utils/notificationKind';
 import {
   getNotifSection, getRelativeAge, groupNotificationsBySection,
   type NotifListItem, type NotifSection,
@@ -52,6 +56,8 @@ const SECTION_LABEL_KEYS: Record<NotifSection, string> = {
 const SCROLLED_THRESHOLD = 4;
 const NOW_TICK_MS = 60_000;
 const STAGGERED_ITEMS = 6;
+const PUSH_BANNER_DISMISSED_KEY = 'push_banner_dismissed_at';
+const PUSH_BANNER_SNOOZE_MS = 7 * 24 * 60 * 60 * 1000;
 
 function getDateFormatters(locale: string) {
   const tag = LOCALE_TAGS[locale] || 'fr-FR';
@@ -88,17 +94,26 @@ export default function NotificationsScreen() {
 
   // ── Push permission ──
   const [pushPermission, setPushPermission] = useState<'granted' | 'denied' | 'unknown'>('unknown');
-  const [bannerDismissed, setBannerDismissed] = useState(false);
-  const isExpoGo = Constants.appOwnership === 'expo';
+  // Hidden until the stored "Later" is read, so a snoozed banner never flashes.
+  const [bannerDismissed, setBannerDismissed] = useState(true);
+
+  useEffect(() => {
+    AsyncStorage.getItem(PUSH_BANNER_DISMISSED_KEY)
+      .then((v) => {
+        const at = Number(v);
+        setBannerDismissed(!!v && Number.isFinite(at) && Date.now() - at < PUSH_BANNER_SNOOZE_MS);
+      })
+      .catch(() => setBannerDismissed(false));
+  }, []);
 
   const checkPushPermission = useCallback(async () => {
-    if (isExpoGo) { setPushPermission('unknown'); return; }
+    const Notifs = loadNotifications();
+    if (!Notifs) { setPushPermission('unknown'); return; }
     try {
-      const Notifs = require('expo-notifications');
       const { status } = await Notifs.getPermissionsAsync();
       setPushPermission(status === 'granted' ? 'granted' : 'denied');
     } catch { setPushPermission('unknown'); }
-  }, [isExpoGo]);
+  }, []);
 
   useFocusEffect(useCallback(() => {
     checkPushPermission();
@@ -121,21 +136,25 @@ export default function NotificationsScreen() {
 
   const handleRequestPermission = useCallback(async () => {
     haptic();
-    if (isExpoGo) { handleOpenSettings(); return; }
+    const Notifs = loadNotifications();
+    if (!Notifs) { handleOpenSettings(); return; }
     try {
-      const Notifs = require('expo-notifications');
       const { status } = await Notifs.requestPermissionsAsync();
       if (status === 'granted') {
         setPushPermission('granted');
         hapticSuccess();
-        const { registerForPushNotifications } = require('@/utils/notifications');
         const pushToken = await registerForPushNotifications();
         if (pushToken) await api.updatePushToken(pushToken);
       } else { handleOpenSettings(); }
     } catch { handleOpenSettings(); }
-  }, [isExpoGo, handleOpenSettings]);
+  }, [handleOpenSettings]);
 
-  const handleDismissBanner = useCallback(() => { haptic(); smoothLayout(); setBannerDismissed(true); }, []);
+  const handleDismissBanner = useCallback(() => {
+    haptic();
+    smoothLayout();
+    setBannerDismissed(true);
+    AsyncStorage.setItem(PUSH_BANNER_DISMISSED_KEY, String(Date.now())).catch(() => {});
+  }, []);
   const showPushBanner = pushPermission === 'denied' && !bannerDismissed;
 
   // ── Data ──
@@ -189,8 +208,10 @@ export default function NotificationsScreen() {
   const handleOpenNotif = useCallback((notif: ClientNotification) => {
     haptic();
     if (!notif.isRead) markAsRead.mutate(notif.id);
-    setSelectedNotif(notif);
-  }, [markAsRead]);
+    const route = notificationTapRoute(notif);
+    if (route) router.push(route);
+    else setSelectedNotif(notif);
+  }, [markAsRead, router]);
 
   const handleCloseModal = useCallback(() => setSelectedNotif(null), []);
 

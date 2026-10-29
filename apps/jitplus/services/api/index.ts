@@ -15,6 +15,7 @@ import { createNotificationMethods } from './notifications';
 import { createReferralMethods } from './referral';
 import { createLuckyWheelMethods } from './lucky-wheel';
 import { createScratchMethods } from './scratch';
+import { createDealMethods } from './deals';
 
 const ENV_URL = process.env.EXPO_PUBLIC_API_URL;
 const IS_DEV = __DEV__;
@@ -48,7 +49,8 @@ const http = createApiClient({
     const rt = await getRefreshToken();
     if (!rt) throw new Error('No refresh token');
     const baseURL = resolveApiUrl(ENV_URL, IS_DEV);
-    const { data } = await axios.post(`${baseURL}/client-auth/refresh`, { refresh_token: rt });
+    // Without a timeout a stalled network would block every queued 401 forever.
+    const { data } = await axios.post(`${baseURL}/client-auth/refresh`, { refresh_token: rt }, { timeout: 15000 });
     if (data.refresh_token) await setRefreshToken(data.refresh_token);
     if (!data.access_token) throw new Error('No access token in refresh response');
     return data.access_token;
@@ -88,4 +90,5 @@ export const api = {
   ...createReferralMethods(http),
   ...createLuckyWheelMethods(http),
   ...createScratchMethods(http),
+  ...createDealMethods(http),
 };

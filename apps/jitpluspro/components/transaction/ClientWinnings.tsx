@@ -1,15 +1,17 @@
 import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet, Alert } from 'react-native';
-import { Check, ChevronDown, ChevronUp, Gift, Lock, Ticket, Trophy } from 'lucide-react-native';
+import { Check, ChevronDown, ChevronUp } from 'lucide-react-native';
+import { JitGames, JitGift, JitLock, JitTicket } from '@/components/icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as Crypto from 'expo-crypto';
+import { randomUUID } from '@/utils/crypto';
 import { palette, useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuthStore } from '@/stores/authStore';
 import { useFulfilLuckyWheelPrize, type LuckyWheelPendingDraw } from '@/hooks/useQueryHooks';
 import { useRedeemCoupon } from '@/hooks/useScratchHooks';
 import { getErrorMessage } from '@/utils/error';
-import { ms } from '@/utils/responsive';
+import { font, icon } from '@/constants/design';
+import { ms, radius } from '@/utils/responsive';
 import { formatDate, formatDateTime } from '@/utils/date';
 import { MAX_AMOUNT_DIGITS } from '@/constants/app';
 import { computeStampsForAmount } from '@/utils/stamps';
@@ -42,7 +44,7 @@ interface Props {
 type Translate = (key: string, opts?: Record<string, unknown>) => string;
 
 /** Why a coupon cannot be used right now, from the first failed server check. */
-export function couponBlockedReason(checks: CouponCheck[], t: Translate, locale: string): string | null {
+function couponBlockedReason(checks: CouponCheck[], t: Translate, locale: string): string | null {
   const failed = checks.find((c) => c.ok === false);
   if (!failed) return null;
   const d = failed.detail ?? {};
@@ -75,7 +77,9 @@ function ClientWinningsBase({ prizes, coupons, loading, clientId, defaultAmount 
   const [selection, setSelection] = useState<Selection>(null);
   const [amount, setAmount] = useState(defaultAmount);
   // One key per selected coupon: a retry after a network failure replays safely.
-  const idemKeyRef = useRef(Crypto.randomUUID());
+  // Lazy initial key: randomUUID() is a native call and the amount field re-renders on every keystroke.
+  const [initialIdemKey] = useState(randomUUID);
+  const idemKeyRef = useRef(initialIdemKey);
 
   const fulfil = useFulfilLuckyWheelPrize();
   const redeem = useRedeemCoupon();
@@ -90,7 +94,7 @@ function ClientWinningsBase({ prizes, coupons, loading, clientId, defaultAmount 
     (next: Selection) => {
       if (busy) return;
       setSelection((prev) => (prev && next && prev.kind === next.kind && prev.id === next.id ? null : next));
-      idemKeyRef.current = Crypto.randomUUID();
+      idemKeyRef.current = randomUUID();
       setAmount(defaultAmount);
     },
     [busy, defaultAmount],
@@ -126,7 +130,7 @@ function ClientWinningsBase({ prizes, coupons, loading, clientId, defaultAmount 
           fulfil.mutate(selectedPrize.id, {
             onSuccess: () => {
               setSelection(null);
-              Alert.alert('', t('transactionAmount.givenPrizeSuccess'));
+              Alert.alert(t('transactionAmount.givenPrizeTitle'), t('transactionAmount.givenPrizeSuccess'));
             },
             onError: (err) => Alert.alert(t('common.error'), getErrorMessage(err, t('transactionAmount.giveError'))),
           }),
@@ -148,14 +152,14 @@ function ClientWinningsBase({ prizes, coupons, loading, clientId, defaultAmount 
               onSuccess: (res) => {
                 setSelection(null);
                 onCouponRedeemed?.(amountNum);
-                const lines = [t('transactionAmount.givenCouponSuccess')];
+                const lines: string[] = [];
                 if (res.discountAmount > 0) {
                   lines.push(t('scratch.validate.successDiscount', { amount: money(res.discountAmount) }));
                 }
                 const stamps = res.stampsEarned + res.bonusStamps;
                 if (stamps > 0) lines.push(t('scratch.validate.successStamps', { count: stamps }));
                 lines.push(t('scratch.validate.successBalance', { count: res.newBalance }));
-                Alert.alert('', lines.join('\n'));
+                Alert.alert(t('transactionAmount.givenCouponTitle'), lines.join('\n'));
               },
               onError: (err) => Alert.alert(t('common.error'), getErrorMessage(err, t('transactionAmount.giveError'))),
             },
@@ -174,14 +178,14 @@ function ClientWinningsBase({ prizes, coupons, loading, clientId, defaultAmount 
         { borderColor: selected ? theme.primary : theme.border, backgroundColor: selected ? theme.primary : 'transparent' },
       ]}
     >
-      {selected && <Check size={ms(13)} color="#fff" strokeWidth={3} />}
+      {selected && <Check size={ms(13)} color="#fff" strokeWidth={icon.strokeSmall} />}
     </View>
   );
 
-  const renderGroupTitle = (Icon: typeof Trophy, color: string, text: string) => (
+  const renderGroupTitle = (Icon: typeof JitTicket, color: string, text: string) => (
     <View style={[styles.groupHeader, { flexDirection: row }]}>
-      <Icon size={ms(13)} color={color} strokeWidth={2} />
-      <Text style={[styles.groupTitle, { color: theme.textMuted }]}>{text.toUpperCase()}</Text>
+      <Icon size={ms(13)} color={color} strokeWidth={icon.strokeSmall} />
+      <Text style={[styles.groupTitle, { color: theme.textMuted }]}>{text}</Text>
     </View>
   );
 
@@ -198,11 +202,11 @@ function ClientWinningsBase({ prizes, coupons, loading, clientId, defaultAmount 
         accessibilityState={{ expanded: open }}
       >
         <LinearGradient colors={[palette.gold, theme.warning]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.headerIcon}>
-          <Trophy size={ms(20)} color={palette.charbonDark} strokeWidth={1.9} />
+          <JitGift size={ms(20)} color={palette.charbonDark} strokeWidth={icon.stroke} />
         </LinearGradient>
         <View style={styles.info}>
           <Text style={[styles.title, { color: theme.text, textAlign }]}>
-            {loading && count === 0 ? t('stampScreen.winningsLoading') : t('stampScreen.winningsTitle', { count })}
+            {loading && count === 0 ? t('stampScreen.winningsLoading') : t(count === 1 ? 'stampScreen.winningsTitle_one' : 'stampScreen.winningsTitle_other', { count })}
           </Text>
           <Text style={[styles.meta, { color: theme.textMuted, textAlign }]}>{t('stampScreen.winningsSubtitle')}</Text>
         </View>
@@ -210,7 +214,7 @@ function ClientWinningsBase({ prizes, coupons, loading, clientId, defaultAmount 
           <ActivityIndicator size="small" color={theme.warning} />
         ) : (
           <View style={[styles.chevron, { backgroundColor: `${theme.warning}1A` }]}>
-            <Chevron size={ms(18)} color={theme.warning} strokeWidth={2.2} />
+            <Chevron size={ms(18)} color={theme.warning} strokeWidth={icon.stroke} />
           </View>
         )}
       </TouchableOpacity>
@@ -221,7 +225,7 @@ function ClientWinningsBase({ prizes, coupons, loading, clientId, defaultAmount 
         </View>
       ) : prizes.length === 0 && coupons.length === 0 ? (
         <View style={styles.empty}>
-          <Gift size={ms(32)} color={theme.textMuted} strokeWidth={1.5} />
+          <JitGift size={ms(32)} color={theme.textMuted} strokeWidth={icon.stroke} />
           <Text style={[styles.emptyText, { color: theme.textMuted }]}>{t('transactionAmount.winningsEmpty')}</Text>
         </View>
       ) : (
@@ -230,7 +234,7 @@ function ClientWinningsBase({ prizes, coupons, loading, clientId, defaultAmount 
           <Text style={[styles.hint, { color: theme.textMuted, textAlign }]}>{t('transactionAmount.winningsHint')}</Text>
           {prizes.length > 0 && (
             <View style={styles.group}>
-              {renderGroupTitle(Trophy, theme.warning, t('transactionAmount.wheelSection'))}
+              {renderGroupTitle(JitGames, theme.warning, t('transactionAmount.wheelSection'))}
               {prizes.map((draw) => {
                 const selected = selection?.kind === 'prize' && selection.id === draw.id;
                 const meta = [
@@ -257,7 +261,7 @@ function ClientWinningsBase({ prizes, coupons, loading, clientId, defaultAmount 
                       accessibilityState={{ selected }}
                     >
                       <View style={[styles.itemIcon, { backgroundColor: `${theme.warning}1A` }]}>
-                        <Trophy size={ms(18)} color={theme.warning} strokeWidth={1.8} />
+                        <JitGames size={ms(18)} color={theme.warning} strokeWidth={icon.stroke} />
                       </View>
                       <View style={styles.info}>
                         <Text style={[styles.name, { color: theme.text, textAlign }]}>{draw.prize?.label ?? ''}</Text>
@@ -272,7 +276,7 @@ function ClientWinningsBase({ prizes, coupons, loading, clientId, defaultAmount 
                       <View style={styles.panel}>
                         <Button
                           label={t('transactionAmount.giveAction')}
-                          icon={Gift}
+                          icon={JitGift}
                           onPress={givePrize}
                           loading={fulfil.isPending}
                           disabled={busy}
@@ -287,7 +291,7 @@ function ClientWinningsBase({ prizes, coupons, loading, clientId, defaultAmount 
 
           {coupons.length > 0 && (
             <View style={styles.group}>
-              {renderGroupTitle(Ticket, theme.primary, t('transactionAmount.scratchSection'))}
+              {renderGroupTitle(JitTicket, theme.primary, t('transactionAmount.scratchSection'))}
               {coupons.map((item) => {
                 const { coupon } = item;
                 const selected = selection?.kind === 'coupon' && selection.id === coupon.id;
@@ -315,7 +319,7 @@ function ClientWinningsBase({ prizes, coupons, loading, clientId, defaultAmount 
                       accessibilityState={{ selected, disabled: !!blocked }}
                     >
                       <View style={[styles.itemIcon, { backgroundColor: theme.primaryBg }]}>
-                        <Ticket size={ms(18)} color={theme.primary} strokeWidth={1.8} />
+                        <JitTicket size={ms(18)} color={theme.primary} strokeWidth={icon.stroke} />
                       </View>
                       <View style={styles.info}>
                         <Text style={[styles.name, { color: theme.text, textAlign }]}>{value}</Text>
@@ -327,8 +331,8 @@ function ClientWinningsBase({ prizes, coupons, loading, clientId, defaultAmount 
                           {t('transactionAmount.couponExpires', { date: formatDate(coupon.expiresAt, locale) })}
                         </Text>
                         {!!blocked && (
-                          <View style={[styles.blocked, { flexDirection: row, backgroundColor: `${theme.danger}14` }]}>
-                            <Lock size={ms(11)} color={theme.danger} strokeWidth={2.2} />
+                          <View style={[styles.blocked, { flexDirection: row, alignSelf: isRTL ? 'flex-end' : 'flex-start', backgroundColor: `${theme.danger}14` }]}>
+                            <JitLock size={ms(11)} color={theme.danger} strokeWidth={icon.strokeSmall} />
                             <Text style={[styles.blockedText, { color: theme.danger, textAlign }]}>{blocked}</Text>
                           </View>
                         )}
@@ -395,7 +399,7 @@ function ClientWinningsBase({ prizes, coupons, loading, clientId, defaultAmount 
                         <Notice text={t('transactionAmount.couponRecordsPurchase')} />
                         <Button
                           label={t('transactionAmount.giveAction')}
-                          icon={Ticket}
+                          icon={JitTicket}
                           onPress={giveCoupon}
                           loading={redeem.isPending}
                           disabled={busy || !couponRules.ok}
@@ -420,32 +424,32 @@ const styles = StyleSheet.create({
   header: { alignItems: 'center', gap: 12, minHeight: 48 },
   headerIcon: { width: ms(42), height: ms(42), borderRadius: ms(21), alignItems: 'center', justifyContent: 'center' },
   chevron: { width: ms(32), height: ms(32), borderRadius: ms(16), alignItems: 'center', justifyContent: 'center' },
-  title: { fontSize: ms(15), fontFamily: 'Lexend_600SemiBold' },
-  divider: { height: 1, marginVertical: 2 },
-  hint: { fontSize: ms(12.5), lineHeight: ms(18), fontFamily: 'Lexend_400Regular' },
+  title: { fontSize: ms(15), fontFamily: font.semibold },
+  divider: { height: StyleSheet.hairlineWidth, marginVertical: 2 },
+  hint: { fontSize: ms(13), lineHeight: ms(18), fontFamily: font.regular },
   loading: { paddingVertical: 20, alignItems: 'center' },
   empty: { alignItems: 'center', gap: 8, paddingVertical: 16 },
-  emptyText: { fontSize: ms(14), textAlign: 'center', fontFamily: 'Lexend_500Medium' },
+  emptyText: { fontSize: ms(14), textAlign: 'center', fontFamily: font.medium },
   group: { gap: 8, marginTop: 4 },
   groupHeader: { alignItems: 'center', gap: 6, marginTop: 2 },
-  groupTitle: { fontSize: ms(11), letterSpacing: 1, fontFamily: 'Lexend_600SemiBold' },
-  item: { borderRadius: 16, borderWidth: 1.5, overflow: 'hidden' },
+  groupTitle: { fontSize: ms(12), fontFamily: font.semibold },
+  item: { borderRadius: radius.lg, borderWidth: 1.5, overflow: 'hidden' },
   row: { alignItems: 'center', padding: 12, gap: 12 },
-  itemIcon: { width: ms(40), height: ms(40), borderRadius: ms(12), alignItems: 'center', justifyContent: 'center' },
+  itemIcon: { width: ms(40), height: ms(40), borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   info: { flex: 1, gap: 2 },
-  name: { fontSize: ms(14.5), fontFamily: 'Lexend_600SemiBold' },
-  meta: { fontSize: ms(12.5), fontFamily: 'Lexend_400Regular' },
-  blocked: { alignSelf: 'flex-start', alignItems: 'center', gap: 5, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, marginTop: 4 },
-  blockedText: { flexShrink: 1, fontSize: ms(12), fontFamily: 'Lexend_500Medium' },
+  name: { fontSize: ms(15), fontFamily: font.semibold },
+  meta: { fontSize: ms(13), fontFamily: font.regular },
+  blocked: { alignItems: 'center', gap: 5, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, marginTop: 4 },
+  blockedText: { flexShrink: 1, fontSize: ms(12), fontFamily: font.medium },
   indicator: { width: 26, height: 26, borderRadius: 13, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
   panel: { paddingHorizontal: 12, paddingBottom: 12 },
   couponPanel: { gap: 10 },
   receipt: { borderRadius: 12, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 10, gap: 6 },
   previewRow: { alignItems: 'center', justifyContent: 'space-between' },
-  previewLabel: { fontSize: ms(13.5), fontFamily: 'Lexend_500Medium' },
-  previewValue: { fontSize: ms(15), fontFamily: 'Lexend_700Bold' },
+  previewLabel: { fontSize: ms(14), fontFamily: font.medium },
+  previewValue: { fontSize: ms(15), fontFamily: font.bold },
   previewTotal: { fontSize: ms(18) },
   stampChips: { flexWrap: 'wrap', gap: 6 },
   stampChip: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
-  stampChipText: { fontSize: ms(12.5), fontFamily: 'Lexend_600SemiBold' },
+  stampChipText: { fontSize: ms(13), fontFamily: font.semibold },
 });

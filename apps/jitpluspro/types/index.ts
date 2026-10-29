@@ -1,7 +1,7 @@
 import type { MerchantCategory, MerchantPlan, SocialLinks, OpeningHours } from '@jitplus/shared';
-export { MerchantCategory, MERCHANT_BADGE_CODES, type MerchantPlan, type SocialLinks, type OpeningHours, type MerchantBadge } from '@jitplus/shared';
+export { MerchantCategory, MERCHANT_BADGE_CODES, type SocialLinks, type OpeningHours, type MerchantBadge } from '@jitplus/shared';
 
-export interface PlanLimits {
+interface PlanLimits {
   maxClients: number;
   maxStores: number;
   maxLoyaltyPrograms: number;
@@ -21,8 +21,6 @@ export interface PlanInfo {
   daysRemaining: number | null;
   limits: PlanLimits;
 }
-
-// SocialLinks re-exported from @jitplus/shared above
 
 export interface Merchant {
   id: string;
@@ -118,8 +116,6 @@ export interface AuthResponse {
   teamMember?: TeamMember;
 }
 
-// ── API response types (centralized from useQueryHooks) ─────────
-
 export interface Reward {
   id: string;
   titre: string;
@@ -129,7 +125,7 @@ export interface Reward {
 }
 
 export type TransactionType = 'EARN_STAMPS' | 'REDEEM_REWARD' | 'ADJUST_STAMPS' | 'LOYALTY_PROGRAM_CHANGE' | 'LUCKY_WHEEL_WIN' | 'COUPON_REDEEM';
-export type GiftStatus = 'PENDING' | 'FULFILLED';
+type GiftStatus = 'PENDING' | 'FULFILLED';
 
 export interface DashboardKpis {
   totalClients: number;
@@ -239,7 +235,7 @@ export interface TransactionsPage {
   transactions: Transaction[];
 }
 
-export interface ReferredMerchant {
+interface ReferredMerchant {
   id: string;
   nom: string;
   categorie: string;
@@ -267,6 +263,15 @@ export interface ClientListItem {
   memberSince: string;
 }
 
+export type ClientListView = 'all' | 'reward' | 'loyal' | 'inactive';
+
+export interface ClientsPage {
+  clients: ClientListItem[];
+  pagination: { page: number; limit: number; total: number; totalPages: number };
+  /** Stamps needed for the cheapest reward; absent on older API versions. */
+  rewardThreshold?: number;
+}
+
 export interface NotificationRecord {
   id: string;
   title: string;
@@ -279,8 +284,6 @@ export interface NotificationRecord {
   readCount: number;
   createdAt: string;
 }
-
-// ── Mutation payloads (typed replacements for Record<string, any>) ──
 
 export interface CreateStorePayload {
   nom: string;
@@ -308,4 +311,6 @@ export interface RecordTransactionPayload {
   note?: string;
   /** Optional: supply to override auto-generated Idempotency-Key (advanced). */
   idempotencyKey?: string;
+  /** Ticket returned by QR verification / phone search; required to enroll a non-member. */
+  scanTicket?: string;
 }

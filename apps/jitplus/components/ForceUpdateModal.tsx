@@ -1,15 +1,16 @@
-import React from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   TouchableOpacity,
   Linking,
   Platform,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
+import { Text } from '@/components/AppText';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Download, AlertTriangle, Wrench } from 'lucide-react-native';
+import { Download, AlertTriangle, Wrench, RotateCcw } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, brandGradient, brandGradientFull, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -19,15 +20,23 @@ import { ForceUpdateStatus } from '@/hooks/useForceUpdate';
 interface Props {
   status: ForceUpdateStatus;
   storeUrl: string;
+  onRetry?: () => Promise<void>;
 }
 
-export default React.memo(function ForceUpdateModal({ status, storeUrl }: Props) {
+export default React.memo(function ForceUpdateModal({ status, storeUrl, onRetry }: Props) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { t } = useLanguage();
   const fonts = useAppFonts();
+  const [retrying, setRetrying] = useState(false);
 
   const isUpdate = status === 'update';
+
+  const handleRetry = useCallback(async () => {
+    if (!onRetry || retrying) return;
+    setRetrying(true);
+    try { await onRetry(); } finally { setRetrying(false); }
+  }, [onRetry, retrying]);
 
   const handleCta = async () => {
     if (!isUpdate) return;
@@ -135,6 +144,25 @@ export default React.memo(function ForceUpdateModal({ status, storeUrl }: Props)
               {t('forceUpdate.maintenanceRetry')}
             </Text>
           </View>
+        )}
+
+        {!isUpdate && !!onRetry && (
+          <TouchableOpacity
+            style={[styles.ctaWrap, { backgroundColor: palette.violet }]}
+            onPress={handleRetry}
+            disabled={retrying}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel={t('common.retry')}
+            accessibilityState={{ busy: retrying, disabled: retrying }}
+          >
+            <View style={styles.ctaGradient}>
+              {retrying
+                ? <ActivityIndicator color={palette.white} />
+                : <RotateCcw color={palette.white} size={20} strokeWidth={1.5} />}
+              <Text style={styles.ctaText}>{t('common.retry')}</Text>
+            </View>
+          </TouchableOpacity>
         )}
 
         <Text style={[styles.brand, { color: theme.textMuted }]}>

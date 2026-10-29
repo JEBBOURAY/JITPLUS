@@ -1,5 +1,6 @@
 import React, { useRef } from 'react';
-import { Animated, PanResponder, Dimensions, View, Text } from 'react-native';
+import { Animated, PanResponder, Dimensions, View } from 'react-native';
+import { Text } from '@/components/AppText';
 import { Trash2 } from 'lucide-react-native';
 import { ms } from '@/utils/responsive';
 import { haptic, HapticStyle } from '@/utils/haptics';

@@ -1,17 +1,19 @@
 import React from 'react';
 import { View, Text, StyleSheet, I18nManager } from 'react-native';
 import {
-  ScanLine,
-  Gift,
   ShoppingBag,
   RotateCcw,
   Repeat,
   ShoppingBasket,
-  Megaphone,
   Leaf,
-  Store,
-  Stamp,
 } from 'lucide-react-native';
+import {
+  JitGift,
+  JitMessages,
+  JitScan,
+  JitStamp,
+  JitStore,
+} from '@/components/icons';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import PromoSheet, { SheetSectionLabel, useSheetColors, type LucideIcon } from '@/components/home/PromoSheet';
@@ -66,15 +68,15 @@ function WhyLoyaltySheet({ visible, onClose, onConfigure }: WhyLoyaltySheetProps
 
   const steps: { Icon: LucideIcon; title: string; text: string }[] = [
     { Icon: ShoppingBag, title: t('home.whyCycleStep1Title'), text: t('home.whyCycleStep1Text') },
-    { Icon: ScanLine, title: t('home.whyCycleStep2Title'), text: t('home.whyCycleStep2Text') },
-    { Icon: Gift, title: t('home.whyCycleStep3Title'), text: t('home.whyCycleStep3Text') },
+    { Icon: JitScan, title: t('home.whyCycleStep2Title'), text: t('home.whyCycleStep2Text') },
+    { Icon: JitGift, title: t('home.whyCycleStep3Title'), text: t('home.whyCycleStep3Text') },
     { Icon: RotateCcw, title: t('home.whyCycleStep4Title'), text: t('home.whyCycleStep4Text') },
   ];
 
   const benefits: { Icon: LucideIcon; tone: PromoTone; title: string; text: string }[] = [
     { Icon: Repeat, tone: 'violet', title: t('home.whyBenefit1Title'), text: t('home.whyBenefit1Text') },
     { Icon: ShoppingBasket, tone: 'blue', title: t('home.whyBenefit2Title'), text: t('home.whyBenefit2Text') },
-    { Icon: Megaphone, tone: 'amber', title: t('home.whyBenefit3Title'), text: t('home.whyBenefit3Text') },
+    { Icon: JitMessages, tone: 'amber', title: t('home.whyBenefit3Title'), text: t('home.whyBenefit3Text') },
     { Icon: Leaf, tone: 'emerald', title: t('home.whyBenefit4Title'), text: t('home.whyBenefit4Text') },
   ];
 
@@ -87,7 +89,7 @@ function WhyLoyaltySheet({ visible, onClose, onConfigure }: WhyLoyaltySheetProps
       title={t('home.tipWhyTitle')}
       subtitle={t('home.whyHeroSubtitle')}
       heroBackground={<ZelligePattern cells={24} spacing={12} />}
-      cta={onConfigure ? { label: t('home.whyCta'), Icon: Stamp, onPress: onConfigure } : undefined}
+      cta={onConfigure ? { label: t('home.whyCta'), Icon: JitStamp, onPress: onConfigure } : undefined}
       showClose={false}
     >
       {/* ── 1. Le constat : schéma comparatif ── */}
@@ -147,7 +149,7 @@ function WhyLoyaltySheet({ visible, onClose, onConfigure }: WhyLoyaltySheetProps
       <SheetSectionLabel text={t('home.whyMoroccoLabel')} tone={TONE} />
       <View style={[styles.callout, isRTL && styles.rowRtl]}>
         <View style={styles.calloutIcon}>
-          <Store size={17} color={accentInk} strokeWidth={2} />
+          <JitStore size={17} color={accentInk} strokeWidth={2} />
         </View>
         <Text style={[styles.calloutText, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.45}>
           {t('home.whyCompetitionText')}

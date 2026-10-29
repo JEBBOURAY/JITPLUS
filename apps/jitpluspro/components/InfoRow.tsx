@@ -1,7 +1,9 @@
 import React from 'react';
 import { Platform, Pressable, StyleSheet, Text, View, type AccessibilityState, type AccessibilityRole } from 'react-native';
 import { useTheme, palette } from '@/contexts/ThemeContext';
-import { ms, wp, hp, fontSize as FS } from '@/utils/responsive';
+import { useDir } from '@/hooks/useDir';
+import { font } from '@/constants/design';
+import { ms, wp, hp, radius, fontSize as FS } from '@/utils/responsive';
 
 interface InfoRowProps {
   /** Lucide icon element */
@@ -39,6 +41,7 @@ export default React.memo(function InfoRow({
   accessibilityRole,
 }: InfoRowProps) {
   const theme = useTheme();
+  const dir = useDir();
 
   return (
     <Pressable
@@ -49,7 +52,7 @@ export default React.memo(function InfoRow({
       accessibilityState={accessibilityState}
       style={({ pressed }) => [
         styles.row,
-        { borderBottomColor: theme.borderLight },
+        { flexDirection: dir.row, borderBottomColor: theme.borderLight },
         noBorder && { borderBottomWidth: 0 },
         pressed && onPress && Platform.OS === 'ios' && { opacity: 0.7 },
       ]}
@@ -58,9 +61,9 @@ export default React.memo(function InfoRow({
         {icon}
       </View>
       <View style={styles.content}>
-        <Text style={[styles.value, { color: labelColor ?? theme.text }]}>{label}</Text>
+        <Text style={[styles.value, { color: labelColor ?? theme.text, textAlign: dir.textAlign }]}>{label}</Text>
         {subtitle ? (
-          <Text style={[styles.label, { color: theme.textMuted }]}>{subtitle}</Text>
+          <Text style={[styles.label, { color: theme.textMuted, textAlign: dir.textAlign }]}>{subtitle}</Text>
         ) : null}
       </View>
       {right}
@@ -70,7 +73,6 @@ export default React.memo(function InfoRow({
 
 const styles = StyleSheet.create({
   row: {
-    flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: wp(16),
     paddingVertical: hp(14),
@@ -81,11 +83,11 @@ const styles = StyleSheet.create({
   iconBox: {
     width: ms(36),
     height: ms(36),
-    borderRadius: ms(12),
+    borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
   },
   content: { flex: 1 },
-  label: { fontSize: FS.xs, marginBottom: hp(2), fontFamily: 'Lexend_400Regular' },
-  value: { fontSize: FS.md, fontWeight: '500', fontFamily: 'Lexend_500Medium' },
+  label: { fontSize: FS.xs, marginBottom: hp(2), fontFamily: font.regular },
+  value: { fontSize: FS.md, fontFamily: font.medium },
 });

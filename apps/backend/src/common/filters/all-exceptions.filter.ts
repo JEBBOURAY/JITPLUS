@@ -21,6 +21,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
     let message: string | object = 'Internal server error';
+    // Machine-readable reason (e.g. DEAL_LIMIT_ACTIVE) the apps can branch on.
+    let code: string | undefined;
+    let meta: Record<string, unknown> | undefined;
 
     // ── NestJS / HTTP exceptions ──
     if (exception instanceof HttpException) {
@@ -30,6 +33,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
         message = res;
       } else if (typeof res === 'object' && res !== null) {
         const body = res as Record<string, unknown>;
+        if (typeof body.code === 'string') code = body.code;
+        if (body.meta && typeof body.meta === 'object') meta = body.meta as Record<string, unknown>;
         // Preserve validation error arrays so clients can show field-level errors
         if (Array.isArray(body.message)) {
           message = body.message;
@@ -104,6 +109,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
     response.status(status).json({
       statusCode: status,
       message,
+      ...(code && { code }),
+      ...(meta && { meta }),
       timestamp: new Date().toISOString(),
     });
   }

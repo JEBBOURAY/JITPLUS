@@ -1,8 +1,10 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { Gift, Check } from 'lucide-react-native';
+import { Check } from 'lucide-react-native';
+import { JitGift } from '@/components/icons';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { font } from '@/constants/design';
 
 interface StampGridProps {
   /** Current number of collected stamps */
@@ -56,7 +58,7 @@ export default React.memo(function StampGrid({
               {filled ? (
                 <Check size={size * 0.45} color="#fff" strokeWidth={1.5} />
               ) : isLast ? (
-                <Gift size={size * 0.4} color={theme.primary} strokeWidth={1.5} />
+                <JitGift size={size * 0.4} color={theme.primary} strokeWidth={1.5} />
               ) : null}
             </View>
           );
@@ -90,8 +92,7 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 14,
-    fontWeight: '600',
     marginTop: 14,
-    fontFamily: 'Lexend_600SemiBold',
+    fontFamily: font.semibold,
   },
 });

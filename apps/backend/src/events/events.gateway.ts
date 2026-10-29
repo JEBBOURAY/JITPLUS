@@ -5,10 +5,12 @@ import {
   OnGatewayDisconnect,
   OnGatewayInit,
 } from '@nestjs/websockets';
-import { Logger, OnModuleDestroy } from '@nestjs/common';
+import { Inject, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { JwtService } from '@nestjs/jwt';
+import { JwtService, JwtVerifyOptions } from '@nestjs/jwt';
 import { Server, Socket } from 'socket.io';
+import { DEVICE_SESSION_REPOSITORY, type IDeviceSessionRepository } from '../common/repositories';
+import { USER_TYPE_MERCHANT, USER_TYPE_TEAM_MEMBER } from '../common/constants';
 import {
   WS_EVENTS,
   StampsUpdatedPayload,
@@ -18,6 +20,19 @@ import {
   ScratchCardsChangedPayload,
   CouponRedeemedPayload,
 } from './events.types';
+
+// React Native's Android WebSocket sends the server's own URL as Origin, e.g.
+// http://localhost:3000 through `adb reverse` or http://192.168.x.x:3000 on the LAN.
+const DEV_ORIGIN_HOST = /^(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)$/;
+
+function isDevOrigin(origin: string): boolean {
+  if (process.env.NODE_ENV === 'production') return false;
+  try {
+    return DEV_ORIGIN_HOST.test(new URL(origin).hostname);
+  } catch {
+    return false;
+  }
+}
 
 /**
  * WebSocket gateway for real-time bidirectional communication.
@@ -36,6 +51,7 @@ import {
       // React Native / native WebSocket clients commonly send the literal
       // string "null" as the Origin header rather than omitting it entirely.
       if (!origin || origin === 'null') return cb(null, true);
+      if (isDevOrigin(origin)) return cb(null, true);
       const corsOrigins = process.env.CORS_ORIGINS;
       if (!corsOrigins) {
         // Reject all browser origins when CORS_ORIGINS is not configured
@@ -62,23 +78,46 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect, 
   server: Server;
 
   private readonly logger = new Logger(EventsGateway.name);
-  /** Re-verify tokens periodically to disconnect revoked sessions (1h — JWT strategy already validates per-request) */
-  private static readonly TOKEN_RECHECK_MS = 60 * 60 * 1000;
+  /** Re-verify tokens and device sessions periodically to disconnect expired/revoked ones */
+  private static readonly TOKEN_RECHECK_MS = 10 * 60 * 1000;
+  private static readonly SESSION_QUERY_CHUNK = 500;
   private recheckInterval: ReturnType<typeof setInterval> | null = null;
-  private jwtSecret: string;
+  private verifyOptions: JwtVerifyOptions;
 
   constructor(
     private jwtService: JwtService,
     private config: ConfigService,
+    @Inject(DEVICE_SESSION_REPOSITORY) private deviceSessionRepo: IDeviceSessionRepository,
   ) {}
 
   afterInit() {
-    // Cache JWT secret once to avoid repeated config lookups
-    this.jwtSecret = this.config.getOrThrow<string>('JWT_SECRET');
-    // Periodically re-verify all connected sockets' tokens
+    // Same constraints as the HTTP JwtStrategy, restricted to the audiences
+    // that actually join rooms on this gateway.
+    this.verifyOptions = {
+      secret: this.config.getOrThrow<string>('JWT_SECRET'),
+      algorithms: ['HS256'],
+      issuer: 'jitplus-api',
+      audience: ['jitplus-merchant', 'jitplus-client'],
+    };
     this.recheckInterval = setInterval(() => {
-      this.recheckConnectedTokens();
+      this.recheckConnectedTokens().catch((err) =>
+        this.logger.warn(`WS recheck failed: ${err instanceof Error ? err.message : 'unknown'}`),
+      );
     }, EventsGateway.TOKEN_RECHECK_MS);
+  }
+
+  private static extractToken(socket: Socket): string | undefined {
+    return socket.handshake.auth?.token ||
+      socket.handshake.headers?.authorization?.replace('Bearer ', '');
+  }
+
+  private static isMerchantSide(type: unknown): boolean {
+    return type === USER_TYPE_MERCHANT || type === USER_TYPE_TEAM_MEMBER;
+  }
+
+  private kick(socket: Socket, message: string) {
+    socket.emit('auth_error', { message });
+    socket.disconnect(true);
   }
 
   onModuleDestroy() {
@@ -88,50 +127,74 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect, 
     }
   }
 
-  /** Re-verify JWT for every connected socket; disconnect expired/revoked ones */
-  private recheckConnectedTokens() {
+  /** Re-verify JWT + device session for every connected socket; disconnect expired/revoked ones */
+  private async recheckConnectedTokens() {
     const sockets = this.server?.sockets?.sockets;
     if (!sockets) return;
 
+    const bySession = new Map<string, Socket[]>();
     for (const [, socket] of sockets) {
-      const token =
-        socket.handshake.auth?.token ||
-        socket.handshake.headers?.authorization?.replace('Bearer ', '');
+      const token = EventsGateway.extractToken(socket);
       if (!token) {
-        socket.emit('auth_error', { message: 'Token missing' });
-        socket.disconnect(true);
+        this.kick(socket, 'Token missing');
         continue;
       }
       try {
-        this.jwtService.verify(token, {
-          secret: this.jwtSecret,
-        });
+        const payload = this.jwtService.verify(token, this.verifyOptions);
+        if (payload.jti && EventsGateway.isMerchantSide(payload.type)) {
+          const list = bySession.get(payload.jti) ?? [];
+          list.push(socket);
+          bySession.set(payload.jti, list);
+        }
       } catch {
         this.logger.debug(`WS token expired/revoked for ${socket.data.userId}, disconnecting ${socket.id}`);
-        socket.emit('auth_error', { message: 'Token expired or revoked' });
-        socket.disconnect(true);
+        this.kick(socket, 'Token expired or revoked');
+      }
+    }
+
+    const tokenIds = [...bySession.keys()];
+    for (let i = 0; i < tokenIds.length; i += EventsGateway.SESSION_QUERY_CHUNK) {
+      const chunk = tokenIds.slice(i, i + EventsGateway.SESSION_QUERY_CHUNK);
+      const alive = await this.deviceSessionRepo.findMany({
+        where: { tokenId: { in: chunk } },
+        select: { tokenId: true },
+      });
+      const aliveIds = new Set(alive.map((s) => s.tokenId));
+      for (const tokenId of chunk) {
+        if (aliveIds.has(tokenId)) continue;
+        for (const socket of bySession.get(tokenId) ?? []) {
+          this.kick(socket, 'Session revoked');
+        }
       }
     }
   }
 
   async handleConnection(client: Socket) {
     try {
-      const token =
-        client.handshake.auth?.token ||
-        client.handshake.headers?.authorization?.replace('Bearer ', '');
+      const token = EventsGateway.extractToken(client);
 
       if (!token) {
-        client.emit('auth_error', { message: 'No token provided' });
-        client.disconnect(true);
+        this.kick(client, 'No token provided');
         return;
       }
 
-      const payload = this.jwtService.verify(token, {
-        secret: this.jwtSecret,
-      });
+      const payload = this.jwtService.verify(token, this.verifyOptions);
 
       const userId = payload.sub;
       const userType = payload.type as string;
+
+      // Mirrors JwtStrategy: merchant-side tokens carrying a jti must map to a
+      // live DeviceSession, otherwise the user logged out or was revoked.
+      if (payload.jti && EventsGateway.isMerchantSide(userType)) {
+        const session = await this.deviceSessionRepo.findUnique({
+          where: { tokenId: payload.jti },
+          select: { id: true },
+        });
+        if (!session) {
+          this.kick(client, 'Session revoked');
+          return;
+        }
+      }
 
       // Store user info on the socket for later use
       client.data.userId = userId;
@@ -145,11 +208,10 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect, 
         await client.join(`merchant:${userId}`);
       }
 
-      this.logger.log(`WS connected: ${userType}:${userId} (${client.id})`);
+      this.logger.debug(`WS connected: ${userType}:${userId} (${client.id})`);
     } catch (err) {
       this.logger.warn(`WS auth failed for ${client.id}: ${err instanceof Error ? err.message : 'unknown'}`);
-      client.emit('auth_error', { message: 'Invalid or expired token' });
-      client.disconnect(true);
+      this.kick(client, 'Invalid or expired token');
     }
   }
 

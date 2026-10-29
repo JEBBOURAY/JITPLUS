@@ -7,7 +7,7 @@ import { sectionDone } from '@/components/stores/brand';
 
 export type GuideStepId = 'program' | 'logo' | 'shop' | 'invite' | 'scan' | 'reward' | 'message';
 
-export const GUIDE_STEP_ORDER: readonly GuideStepId[] = ['program', 'logo', 'shop', 'invite', 'scan', 'reward', 'message'];
+const GUIDE_STEP_ORDER: readonly GuideStepId[] = ['program', 'logo', 'shop', 'invite', 'scan', 'reward', 'message'];
 
 /** Steps only the account owner can act on (team members cannot open these screens). */
 const OWNER_ONLY: ReadonlySet<GuideStepId> = new Set(['program', 'logo', 'shop', 'message']);
@@ -30,6 +30,11 @@ export interface GuideProgress {
 }
 
 export type GuideDoneState = Record<GuideStepId, boolean>;
+
+interface GuideProgressState extends GuideProgress {
+  /** False until the saved steps and the live data needed to tick steps are loaded. */
+  ready: boolean;
+}
 
 export function computeGuideProgress(done: GuideDoneState, isTeamMember: boolean): GuideProgress {
   const steps = GUIDE_STEP_ORDER.map((id) => {
@@ -54,24 +59,45 @@ function isStepId(v: unknown): v is GuideStepId {
 
 /**
  * Progress of the "Maîtrisez JitPlus" guide, detected from the merchant's real
- * data. Queries only run while the guide is open.
+ * data. Queries only run while `active`, and stop for good once every step is
+ * saved as done.
  */
-export function useGuideProgress(active: boolean): GuideProgress {
+export function useGuideProgress(active: boolean): GuideProgressState {
   const merchant = useAuthStore((s) => s.merchant);
   const isTeamMember = useAuthStore((s) => s.isTeamMember);
   const merchantId = merchant?.id;
-  const enabled = active && !!merchantId;
-  const ownerEnabled = enabled && !isTeamMember;
-
-  const { data: rewards } = useRewards(ownerEnabled);
-  const { data: clients } = useClients('', enabled);
-  const { data: transactions } = useTransactions(enabled);
-  const { data: notifications } = useNotificationHistory(ownerEnabled);
 
   const storageKey = merchantId ? `${ASYNC_STORAGE_KEYS.GUIDE_STEPS_DONE}:${merchantId}` : null;
   const [stored, setStored] = useState<ReadonlySet<GuideStepId>>(() => new Set());
   // Key whose stored steps are loaded; writing before that would erase them.
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
+  const loaded = !!storageKey && loadedKey === storageKey;
+  const storedComplete = useMemo(
+    () =>
+      loaded &&
+      computeGuideProgress(
+        Object.fromEntries(GUIDE_STEP_ORDER.map((id) => [id, stored.has(id)])) as GuideDoneState,
+        isTeamMember,
+      ).allDone,
+    [loaded, stored, isTeamMember],
+  );
+
+  const enabled = active && loaded && !storedComplete;
+  const ownerEnabled = enabled && !isTeamMember;
+
+  const rewardsQuery = useRewards(ownerEnabled);
+  const clientsQuery = useClients('', enabled);
+  const transactionsQuery = useTransactions(enabled);
+  const notificationsQuery = useNotificationHistory(ownerEnabled);
+  const rewards = rewardsQuery.data;
+  const clients = clientsQuery.data;
+  const transactions = transactionsQuery.data;
+  const notifications = notificationsQuery.data;
+  const liveFetched =
+    (!ownerEnabled || (rewardsQuery.isFetched && notificationsQuery.isFetched)) &&
+    clientsQuery.isFetched &&
+    transactionsQuery.isFetched;
+  const ready = loaded && (storedComplete || liveFetched);
 
   useEffect(() => {
     if (!active || !storageKey || loadedKey === storageKey) return;
@@ -126,6 +152,6 @@ export function useGuideProgress(active: boolean): GuideProgress {
     const done = Object.fromEntries(
       GUIDE_STEP_ORDER.map((id) => [id, live[id] || own.has(id)]),
     ) as GuideDoneState;
-    return computeGuideProgress(done, isTeamMember);
-  }, [live, stored, loadedKey, storageKey, isTeamMember]);
+    return { ...computeGuideProgress(done, isTeamMember), ready };
+  }, [live, stored, loadedKey, storageKey, isTeamMember, ready]);
 }

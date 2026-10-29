@@ -1,5 +1,6 @@
 import { memo } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
+import { Text } from '@/components/AppText';
 import { useTheme } from '@/contexts/ThemeContext';
 import { wp, hp, radius } from '@/utils/responsive';
 

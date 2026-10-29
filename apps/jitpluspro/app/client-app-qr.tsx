@@ -6,17 +6,20 @@ import {
   TouchableOpacity,
   Alert,
   ScrollView,
-  I18nManager,
   type LayoutChangeEvent,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, Share2, ChevronRight, Check, Printer, Stamp, Gift, Ticket, Clock, Settings2 } from 'lucide-react-native';
+import { ArrowLeft, Share2, Check, Printer, Clock } from 'lucide-react-native';
+import { JitGames, JitGift, JitSettings, JitStamp } from '@/components/icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Sharing from 'expo-sharing';
 import { captureRef } from 'react-native-view-shot';
 import { useTheme, brandGradient } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useDir } from '@/hooks/useDir';
+import { font, icon } from '@/constants/design';
+import { ActionButton } from '@/components/ui/ActionButton';
 import { useAuthStore } from '@/stores/authStore';
 import PlvPoster, { PLV_TEMPLATES, type PlvTemplateId } from '@/components/plv/PlvPoster';
 import { usePlvProgram } from '@/components/plv/usePlvProgram';
@@ -32,15 +35,15 @@ export default function ClientAppQrScreen() {
   const [exporting, setExporting] = useState(false);
   const [templateId, setTemplateId] = useState<PlvTemplateId>('classic');
   const [posterW, setPosterW] = useState(0);
-  const isRTL = I18nManager.isRTL;
+  const { row, textAlign, alignEnd, flip } = useDir();
 
   const program = usePlvProgram();
   const programRows = useMemo(
     () => [
-      { Icon: Stamp, text: program.earnLine },
-      { Icon: Gift, text: program.rewardHeadline },
-      ...program.otherRewards.map((r) => ({ Icon: Gift, text: r.label })),
-      ...(program.wheelLine ? [{ Icon: Ticket, text: program.wheelLine }] : []),
+      { Icon: JitStamp, text: program.earnLine },
+      { Icon: JitGift, text: program.rewardHeadline },
+      ...program.otherRewards.map((r) => ({ Icon: JitGift, text: r.label })),
+      ...(program.wheelLine ? [{ Icon: JitGames, text: program.wheelLine }] : []),
       ...(program.validityLine ? [{ Icon: Clock, text: program.validityLine }] : []),
     ],
     [program],
@@ -84,7 +87,7 @@ export default function ClientAppQrScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
-      <View style={[styles.header, isRTL && styles.rowRtl, { paddingTop: insets.top + 12 }]}>
+      <View style={[styles.header, { flexDirection: row, paddingTop: insets.top + 12 }]}>
         <TouchableOpacity
           onPress={() => router.back()}
           hitSlop={{ top: 12, right: 12, bottom: 12, left: 12 }}
@@ -94,11 +97,11 @@ export default function ClientAppQrScreen() {
           <ArrowLeft
             size={22}
             color={theme.text}
-            strokeWidth={2}
-            style={isRTL ? { transform: [{ scaleX: -1 }] } : undefined}
+            strokeWidth={icon.stroke}
+            style={flip}
           />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.text }]} maxFontSizeMultiplier={1.3}>
+        <Text style={[styles.headerTitle, { color: theme.text, textAlign }]} maxFontSizeMultiplier={1.3}>
           {t('home.clientQrHeader')}
         </Text>
       </View>
@@ -108,15 +111,15 @@ export default function ClientAppQrScreen() {
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 26 }]}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={[styles.title, { color: theme.text }]} maxFontSizeMultiplier={1.3}>
+        <Text style={[styles.title, { color: theme.text, textAlign }]} maxFontSizeMultiplier={1.3}>
           {t('home.clientQrTitle')}
         </Text>
-        <Text style={[styles.subtitle, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>
+        <Text style={[styles.subtitle, { color: theme.textMuted, textAlign }]} maxFontSizeMultiplier={1.4}>
           {t('home.clientQrSubtitle')}
         </Text>
 
-        <Text style={[styles.sectionLabel, { color: theme.primary }]} maxFontSizeMultiplier={1.2}>
-          {t('home.clientPlvPickerLabel').toUpperCase()}
+        <Text style={[styles.sectionLabel, { color: theme.primary, textAlign }]} maxFontSizeMultiplier={1.2}>
+          {t('home.clientPlvPickerLabel')}
         </Text>
         <ScrollView
           horizontal
@@ -144,18 +147,18 @@ export default function ClientAppQrScreen() {
                   colors={[tpl.swatch[0], tpl.swatch[1]]}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 1 }}
-                  style={[styles.swatch, { aspectRatio: 1 / Math.min(tpl.ratio, 1.2), borderColor: hairline }]}
+                  style={[styles.swatch, { aspectRatio: 1 / Math.min(tpl.ratio, 1.2), borderColor: hairline, alignItems: alignEnd }]}
                 >
                   {active ? (
                     <View style={[styles.swatchCheck, { backgroundColor: theme.primary }]}>
-                      <Check size={12} color="#FFFFFF" strokeWidth={3} />
+                      <Check size={12} color="#FFFFFF" strokeWidth={icon.strokeSmall} />
                     </View>
                   ) : null}
                 </LinearGradient>
-                <Text style={[styles.pickerName, { color: theme.text }]} maxFontSizeMultiplier={1.25} numberOfLines={1}>
+                <Text style={[styles.pickerName, { color: theme.text, textAlign }]} maxFontSizeMultiplier={1.25} numberOfLines={1}>
                   {t(tpl.nameKey)}
                 </Text>
-                <Text style={[styles.pickerUse, { color: theme.textMuted }]} maxFontSizeMultiplier={1.25} numberOfLines={2}>
+                <Text style={[styles.pickerUse, { color: theme.textMuted, textAlign }]} maxFontSizeMultiplier={1.25} numberOfLines={2}>
                   {t(tpl.useKey)}
                 </Text>
               </TouchableOpacity>
@@ -186,14 +189,14 @@ export default function ClientAppQrScreen() {
         </View>
 
         <View style={[styles.programCard, { backgroundColor: theme.bgCard, borderColor: hairline }]}>
-          <Text style={[styles.programLabel, { color: theme.primary }]} maxFontSizeMultiplier={1.2}>
-            {t('home.clientPlvProgramLabel').toUpperCase()}
+          <Text style={[styles.programLabel, { color: theme.primary, textAlign }]} maxFontSizeMultiplier={1.2}>
+            {t('home.clientPlvProgramLabel')}
           </Text>
-          {programRows.map((row, i) => (
-            <View key={i} style={[styles.programRow, isRTL && styles.rowRtl]}>
-              <row.Icon size={15} color={theme.primary} strokeWidth={2.2} />
-              <Text style={[styles.programText, { color: theme.text }]} maxFontSizeMultiplier={1.3}>
-                {row.text}
+          {programRows.map((item, i) => (
+            <View key={i} style={[styles.programRow, { flexDirection: row }]}>
+              <item.Icon size={16} color={theme.primary} strokeWidth={icon.stroke} />
+              <Text style={[styles.programText, { color: theme.text, textAlign }]} maxFontSizeMultiplier={1.3}>
+                {item.text}
               </Text>
             </View>
           ))}
@@ -202,11 +205,11 @@ export default function ClientAppQrScreen() {
             <TouchableOpacity
               onPress={() => router.push('/settings')}
               activeOpacity={0.7}
-              style={[styles.programEdit, isRTL && styles.rowRtl]}
+              style={[styles.programEdit, { flexDirection: row }]}
               accessibilityRole="button"
               accessibilityLabel={t('home.clientPlvProgramEdit')}
             >
-              <Settings2 size={14} color={theme.textMuted} strokeWidth={2} />
+              <JitSettings size={14} color={theme.textMuted} strokeWidth={icon.strokeSmall} />
               <Text style={[styles.programEditText, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>
                 {t('home.clientPlvProgramEdit')}
               </Text>
@@ -214,39 +217,25 @@ export default function ClientAppQrScreen() {
           ) : null}
         </View>
 
-        <View style={[styles.useRow, isRTL && styles.rowRtl]}>
-          <Printer size={14} color={theme.textMuted} strokeWidth={2} />
+        <View style={[styles.useRow, { flexDirection: row }]}>
+          <Printer size={14} color={theme.textMuted} strokeWidth={icon.strokeSmall} />
           <Text style={[styles.useText, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.3}>
             {t(selected.useKey)}
           </Text>
         </View>
 
-        <LinearGradient
-          colors={[brandGradient[0], brandGradient[1]]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={styles.ctaGradient}
-        >
-          <TouchableOpacity
-            onPress={exportPosterImage}
-            activeOpacity={0.85}
-            style={[styles.ctaButton, isRTL ? styles.rowRtl : styles.rowLtr]}
-            accessibilityRole="button"
-            accessibilityLabel={t('home.clientQrExportCta')}
-            disabled={exporting || posterW === 0}
-          >
-            <Share2 size={16} color="#FFFFFF" strokeWidth={2} />
-            <Text style={styles.ctaText} maxFontSizeMultiplier={1.25}>
-              {exporting ? t('common.loading') : t('home.clientQrExportCta')}
-            </Text>
-            <ChevronRight
-              size={16}
-              color="#FFFFFF"
-              strokeWidth={2}
-              style={isRTL ? { transform: [{ scaleX: -1 }] } : undefined}
-            />
-          </TouchableOpacity>
-        </LinearGradient>
+        <ActionButton
+          label={t('home.clientQrExportCta')}
+          icon={Share2}
+          size="lg"
+          onPress={exportPosterImage}
+          loading={exporting}
+          disabled={posterW === 0}
+          accessibilityLabel={t('home.clientQrExportCta')}
+          gradient={brandGradient}
+          gradientDirection="horizontal"
+          style={styles.cta}
+        />
 
         <Text style={[styles.hint, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>
           {t('home.clientQrHint')}
@@ -267,15 +256,15 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 17,
-    fontFamily: 'Lexend_700Bold',
+    fontFamily: font.bold,
     letterSpacing: -0.2,
     flex: 1,
   },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: 16, paddingTop: 4 },
-  title: { fontSize: 19, lineHeight: 25, fontFamily: 'Lexend_700Bold', letterSpacing: -0.3 },
-  subtitle: { marginTop: 4, fontSize: 12.5, lineHeight: 18, fontFamily: 'Lexend_400Regular' },
-  sectionLabel: { fontSize: 11, letterSpacing: 1, fontFamily: 'Lexend_700Bold', marginTop: 18, marginBottom: 8 },
+  title: { fontSize: 19, lineHeight: 25, fontFamily: font.bold, letterSpacing: -0.3 },
+  subtitle: { marginTop: 4, fontSize: 13, lineHeight: 18, fontFamily: font.regular },
+  sectionLabel: { fontSize: 12, fontFamily: font.semibold, marginTop: 18, marginBottom: 8 },
 
   picker: { marginHorizontal: -16 },
   pickerTrack: { paddingHorizontal: 16, gap: 10 },
@@ -287,15 +276,15 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 3,
   },
-  swatch: { width: '100%', borderRadius: 10, borderWidth: 1, alignItems: 'flex-end', padding: 6 },
-  swatchCheck: { width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  pickerName: { marginTop: 8, fontSize: 13, fontFamily: 'Lexend_700Bold' },
-  pickerUse: { marginTop: 2, fontSize: 10.5, lineHeight: 14, fontFamily: 'Lexend_400Regular' },
+  swatch: { width: '100%', borderRadius: 8, borderWidth: 1, padding: 6, overflow: 'hidden' },
+  swatchCheck: { width: 20, height: 20, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
+  pickerName: { marginTop: 8, fontSize: 13, fontFamily: font.bold },
+  pickerUse: { marginTop: 2, fontSize: 11, lineHeight: 14, fontFamily: font.regular },
 
-  previewFrame: { marginTop: 16, borderRadius: 20, padding: 16 },
+  previewFrame: { marginTop: 16, borderRadius: 16, padding: 16 },
   previewInner: { width: '100%', alignItems: 'center' },
   posterShadow: {
-    borderRadius: 14,
+    borderRadius: 12,
     backgroundColor: '#FFFFFF',
     shadowColor: '#0F172A',
     shadowOffset: { width: 0, height: 6 },
@@ -305,27 +294,15 @@ const styles = StyleSheet.create({
   },
 
   programCard: { marginTop: 14, borderWidth: 1, borderRadius: 16, padding: 14, gap: 9 },
-  programLabel: { fontSize: 11, letterSpacing: 1, fontFamily: 'Lexend_700Bold' },
+  programLabel: { fontSize: 12, fontFamily: font.semibold },
   programRow: { flexDirection: 'row', alignItems: 'center', gap: 9 },
-  programText: { flex: 1, fontSize: 13, lineHeight: 18, fontFamily: 'Lexend_500Medium' },
+  programText: { flex: 1, fontSize: 13, lineHeight: 18, fontFamily: font.medium },
   programEdit: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
-  programEditText: { fontSize: 11.5, fontFamily: 'Lexend_500Medium', flexShrink: 1 },
+  programEditText: { fontSize: 12, fontFamily: font.medium, flexShrink: 1 },
 
   useRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 12 },
-  useText: { fontSize: 12, fontFamily: 'Lexend_500Medium', textAlign: 'center', flexShrink: 1 },
+  useText: { fontSize: 12, fontFamily: font.medium, textAlign: 'center', flexShrink: 1 },
 
-  ctaGradient: { width: '100%', marginTop: 14, borderRadius: 14, overflow: 'hidden' },
-  ctaButton: {
-    width: '100%',
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  ctaText: { color: '#FFFFFF', fontSize: 13.5, fontFamily: 'Lexend_700Bold', textAlign: 'center', flexShrink: 1 },
-  hint: { marginTop: 10, fontSize: 11, lineHeight: 16, textAlign: 'center', fontFamily: 'Lexend_400Regular' },
-  rowLtr: { flexDirection: 'row' },
-  rowRtl: { flexDirection: 'row-reverse' },
+  cta: { width: '100%', marginTop: 14, borderWidth: 0 },
+  hint: { marginTop: 10, fontSize: 11, lineHeight: 16, textAlign: 'center', fontFamily: font.regular },
 });

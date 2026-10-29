@@ -1,7 +1,9 @@
 import React, { useEffect, useRef, useMemo, useCallback, useState } from 'react';
-import { View, Text, StyleSheet, Animated, Easing, I18nManager } from 'react-native';
+import { View, StyleSheet, Animated, Easing, I18nManager } from 'react-native';
+import { Text } from '@/components/AppText';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useIsFocused } from 'expo-router';
 import { AlertCircle, ChevronRight, Gift } from 'lucide-react-native';
 import { palette, type ThemeColors } from '@/contexts/ThemeContext';
 import { LoyaltyCard } from '@/types';
@@ -28,7 +30,6 @@ const CardItem = React.memo(function CardItem({
   card,
   onPress,
   t,
-  isClosest,
   locale,
   searchHighlight,
   theme,
@@ -36,7 +37,6 @@ const CardItem = React.memo(function CardItem({
   card: LoyaltyCard;
   onPress: (merchantId: string) => void;
   t: (scope: string, options?: Record<string, unknown>) => string;
-  isClosest?: boolean;
   locale?: string;
   searchHighlight?: string;
   theme: ThemeColors;
@@ -58,9 +58,11 @@ const CardItem = React.memo(function CardItem({
   const useDots = goal <= MAX_DOT_STAMPS;
 
   // Gentle pulse on the reward pill only — the card itself stays calm.
+  // Paused while another tab is shown: tabs stay mounted.
+  const isFocused = useIsFocused();
   const pulseAnim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    if (!isComplete) { pulseAnim.setValue(0); return; }
+    if (!isComplete || !isFocused) { pulseAnim.setValue(0); return; }
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, { toValue: 1, duration: 1100, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
@@ -69,7 +71,7 @@ const CardItem = React.memo(function CardItem({
     );
     loop.start();
     return () => loop.stop();
-  }, [isComplete, pulseAnim]);
+  }, [isComplete, isFocused, pulseAnim]);
   const pulseScale = pulseAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.05] });
 
   const lastVisitLabel = useMemo(
@@ -154,7 +156,6 @@ const CardItem = React.memo(function CardItem({
     : hasCustomBg ? 'transparent' : theme.border;
 
   const fontBold = getFontFamily(locale ?? 'fr', 'bold');
-  const fontSemi = getFontFamily(locale ?? 'fr', 'semibold');
   const fontMedium = getFontFamily(locale ?? 'fr', 'medium');
 
   return (
@@ -204,11 +205,6 @@ const CardItem = React.memo(function CardItem({
                   <Text style={[styles.meta, { color: colors.secondary, fontFamily: fontMedium }]} numberOfLines={1}>
                     {categoryLabel}
                   </Text>
-                )}
-                {isClosest && (
-                  <View style={[styles.nearPill, { backgroundColor: hasCustomBg ? 'rgba(255,255,255,0.9)' : `${palette.emerald}18` }]}>
-                    <Text style={[styles.nearText, { fontFamily: fontSemi }]} numberOfLines={1}>{t('home.nearestBadge')}</Text>
-                  </View>
                 )}
               </View>
             </View>
@@ -337,8 +333,6 @@ const styles = StyleSheet.create({
   name: { fontSize: fontSize.md, letterSpacing: -0.2 },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: wp(6), marginTop: hp(3) },
   meta: { fontSize: fontSize.xs, flexShrink: 1 },
-  nearPill: { paddingHorizontal: wp(7), paddingVertical: hp(2), borderRadius: ms(8) },
-  nearText: { fontSize: ms(10), color: '#047857' },
   countWrap: { flexDirection: 'row', alignItems: 'center', gap: wp(2) },
   countValue: { fontSize: fontSize.xl, letterSpacing: -0.5 },
   countTotal: { fontSize: fontSize.sm, letterSpacing: 0 },

@@ -1,25 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { extname, join } from 'path';
-import { randomBytes } from 'crypto';
+import { join, resolve, sep } from 'path';
 import { writeFile, mkdir, unlink } from 'fs/promises';
 import { IStorageProvider } from '../common/interfaces';
+import { buildUploadKey, isKeyOwnedBy } from './storage-keys';
 
-/** Sanitize a filename: keep only safe chars, strip path separators */
-function safeFilename(original: string): string {
-  const ext = extname(original).toLowerCase();
-  const base = original
-    .slice(0, original.length - ext.length)
-    .replace(/[^a-z0-9_\-]/gi, '_')
-    .replace(/_+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(0, 80) || 'file';
-  const suffix = randomBytes(4).toString('hex'); // 8-char uniqueness suffix
-  return `${base}_${suffix}${ext}`;
-}
+const PUBLIC_PREFIX = '/uploads/';
 
 /**
  * Local disk storage — used in development when GCP credentials are unavailable.
- * Files are saved to <project>/uploads/<folder>/<uuid>.<ext>
+ * Files are saved to <project>/uploads/<folder>/<ownerId>/<file>
  * and served via express.static at /uploads.
  */
 @Injectable()
@@ -27,24 +16,32 @@ export class LocalStorageService implements IStorageProvider {
   private readonly logger = new Logger(LocalStorageService.name);
   private readonly uploadsRoot = join(process.cwd(), 'uploads');
 
-  async uploadFile(file: Express.Multer.File, folder: string): Promise<string> {
-    const fileName = safeFilename(file.originalname);
-    const dirPath = join(this.uploadsRoot, folder);
+  async uploadFile(file: Express.Multer.File, folder: string, ownerId: string): Promise<string> {
+    const key = buildUploadKey(folder, ownerId, file.originalname);
+    const filePath = join(this.uploadsRoot, key);
 
-    await mkdir(dirPath, { recursive: true });
-
-    const filePath = join(dirPath, fileName);
+    await mkdir(join(filePath, '..'), { recursive: true });
     await writeFile(filePath, file.buffer);
 
-    const publicPath = `/uploads/${folder}/${fileName}`;
+    const publicPath = `${PUBLIC_PREFIX}${key}`;
     this.logger.log(`Fichier sauvegardé localement: ${publicPath}`);
     return publicPath;
   }
 
+  isOwnedBy(fileUrl: string, ownerId: string): boolean {
+    return typeof fileUrl === 'string' && fileUrl.startsWith(PUBLIC_PREFIX)
+      && isKeyOwnedBy(fileUrl.slice(PUBLIC_PREFIX.length), ownerId);
+  }
+
   async deleteFile(fileUrl: string): Promise<void> {
-    if (!fileUrl || !fileUrl.startsWith('/uploads/')) return;
+    if (!fileUrl || !fileUrl.startsWith(PUBLIC_PREFIX)) return;
+    const filePath = resolve(this.uploadsRoot, fileUrl.slice(PUBLIC_PREFIX.length));
+    // Stored URLs are user-influenced: never let "../" escape the uploads folder.
+    if (!filePath.startsWith(resolve(this.uploadsRoot) + sep)) {
+      this.logger.warn(`Suppression refusée hors du dossier uploads: ${fileUrl}`);
+      return;
+    }
     try {
-      const filePath = join(process.cwd(), fileUrl);
       await unlink(filePath);
       this.logger.log(`Fichier supprimé: ${fileUrl}`);
     } catch {

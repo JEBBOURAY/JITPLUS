@@ -3,6 +3,10 @@ import { Platform } from 'react-native';
 
 // ── Extend Axios config for retry metadata ──
 declare module 'axios' {
+  interface AxiosRequestConfig {
+    /** Opt a write into auto-retry when the backend guarantees replaying it is harmless. */
+    idempotent?: boolean;
+  }
   interface InternalAxiosRequestConfig {
     _retry?: boolean;
     __retryCount?: number;
@@ -66,11 +70,62 @@ export function resolveServerBaseUrl(envUrl: string | undefined, isDev: boolean)
 const MAX_RETRIES = 1;
 const RETRY_BASE_MS = 1000;
 
+const SAFE_METHODS = new Set(['get', 'head', 'options']);
+
+type RetryCandidate = {
+  method?: string;
+  idempotent?: boolean;
+  headers?: unknown;
+};
+
+function hasIdempotencyKey(headers: unknown): boolean {
+  if (!headers || typeof headers !== 'object') return false;
+  const h = headers as { get?: (name: string) => unknown } & Record<string, unknown>;
+  const value = typeof h.get === 'function'
+    ? h.get('Idempotency-Key')
+    : h['Idempotency-Key'] ?? h['idempotency-key'];
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+/**
+ * Whether a failed request may be replayed automatically.
+ *
+ * A timeout or a 5xx does not prove the server did nothing (Cloud Run can
+ * return 502/504 after the handler committed), so writes are only replayed
+ * when the backend de-duplicates them (Idempotency-Key header or an explicit
+ * `idempotent` flag). A 429 is rejected before the handler runs, so it is
+ * always safe to retry.
+ */
+export function shouldAutoRetry(cfg: RetryCandidate, status: number | undefined): boolean {
+  const transient = !status || status >= 500 || status === 429;
+  if (!transient) return false;
+  if (status === 429) return true;
+  if (SAFE_METHODS.has((cfg.method ?? 'get').toLowerCase())) return true;
+  return cfg.idempotent === true || hasIdempotencyKey(cfg.headers);
+}
+
+/**
+ * Whether a failed refresh means the session is really gone (so the user
+ * must be logged out), as opposed to a transient failure where the stored
+ * refresh token is still valid and a later request can refresh again.
+ *
+ * Network errors, timeouts, 429 (refresh is throttled) and 5xx (e.g. a Cloud
+ * Run 504) keep the session. Non-HTTP errors (missing stored credentials, a
+ * malformed refresh response) and 4xx rejections end it.
+ */
+function isRefreshRejected(error: unknown): boolean {
+  const err = error as { isAxiosError?: boolean; response?: { status?: number } } | null;
+  const status = err?.response?.status;
+  if (status) return status >= 400 && status < 500 && status !== 429;
+  return !err?.isAxiosError;
+}
+
 /**
  * Create a pre-configured Axios instance with:
  * - Auth header injection
  * - Automatic retry on network/5xx/429 errors (single retry with backoff;
- *   React Query handles additional retries at the query level)
+ *   React Query handles additional retries at the query level). Writes are
+ *   only replayed when idempotent, see `shouldAutoRetry`.
  * - 401 handling with token refresh + request queue
  */
 export function createApiClient(config: ApiFactoryConfig): AxiosInstance {
@@ -99,10 +154,9 @@ export function createApiClient(config: ApiFactoryConfig): AxiosInstance {
     if (!cfg) return Promise.reject(error);
 
     const status = error.response?.status ?? 0;
-    const isRetryable = !error.response || status >= 500 || status === 429;
     cfg.__retryCount = cfg.__retryCount ?? 0;
 
-    if (isRetryable && cfg.__retryCount < MAX_RETRIES) {
+    if (shouldAutoRetry(cfg, error.response?.status) && cfg.__retryCount < MAX_RETRIES) {
       cfg.__retryCount += 1;
       // Use Retry-After header if available (429), otherwise exponential backoff
       let delay: number;
@@ -164,14 +218,11 @@ export function createApiClient(config: ApiFactoryConfig): AxiosInstance {
         return client(original);
       } catch (refreshError) {
         processQueue(null, refreshError);
-        
-        // Ensure we only log out on real HTTP errors, not transient network drops
-        const ax = refreshError as any;
-        const isNetworkError = ax?.isAxiosError && (ax?.code === 'ECONNABORTED' || ax?.code === 'ERR_NETWORK' || !ax?.response);
-        if (!isNetworkError) {
+
+        if (isRefreshRejected(refreshError)) {
           config.onAuthFailure();
         }
-        
+
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;

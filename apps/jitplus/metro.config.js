@@ -79,6 +79,11 @@ const FORCE_PREFIX = [
 ];
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {
+  // @sentry/react-native optionally requires this path (inside try/catch); it no
+  // longer exists in expo-router 58, so Metro spams "invalid package.json" warnings.
+  if (moduleName === 'expo-router/build/global-state/router-store') {
+    return { type: 'empty' };
+  }
   if (
     FORCE_PREFIX.some((p) => moduleName === p || moduleName.startsWith(p + '/'))
   ) {

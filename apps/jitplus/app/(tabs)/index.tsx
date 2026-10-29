@@ -1,16 +1,17 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
-  View, Text, FlatList, RefreshControl, StyleSheet, Animated,
-  TouchableOpacity, TextInput, Keyboard, Pressable, Platform,
+  View, FlatList, RefreshControl, StyleSheet, Animated,
+  TouchableOpacity, Keyboard, Pressable, Platform,
   type NativeSyntheticEvent, type NativeScrollEvent,
 } from 'react-native';
+import { Text, TextInput } from '@/components/AppText';
 import { StatusBar } from 'expo-status-bar';
-export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
+import { getInitials, getProfileCompletion } from '@/utils/profileCompletion';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   CreditCard, AlertCircle, Gift, Search, X, Bell,
-  QrCode, Compass, RotateCcw, GalleryHorizontal, LayoutList,
+  QrCode, Compass, RotateCcw, GalleryHorizontal, LayoutList, Sparkles,
 } from 'lucide-react-native';
 import { haptic, HapticStyle } from '@/utils/haptics';
 import { useTheme, palette } from '@/contexts/ThemeContext';
@@ -37,6 +38,7 @@ import { usePendingScratchCards, useActiveCoupons } from '@/hooks/useScratchHook
 import { useLuckyWheelHistory } from '@/hooks/useQueryHooks';
 import type { CouponDto, ScratchCardDto } from '@jitplus/shared/src/scratch';
 import type { LuckyWheelDraw } from '@/types';
+export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 
 const NO_SCRATCH_CARDS: ScratchCardDto[] = [];
 const NO_COUPONS: CouponDto[] = [];
@@ -80,7 +82,7 @@ export default function HomeScreen() {
   useExitOnBack(true, t('common.pressBackToExit'));
 
   const homeData = useHomeData(client);
-  const banners = useHomeBanners(client, homeData.notifData, homeData.luckyWheelTickets);
+  const banners = useHomeBanners(homeData.notifData, homeData.luckyWheelTickets);
   const pendingScratch = usePendingScratchCards(!!client && !isGuest);
   const activeCoupons = useActiveCoupons(!!client && !isGuest);
   const wheelHistory = useLuckyWheelHistory(!!client && !isGuest);
@@ -125,36 +127,42 @@ export default function HomeScreen() {
     router.push('/(tabs)/discover');
   }, [router]);
 
+  const openProfile = useCallback(() => {
+    haptic(HapticStyle.Light);
+    router.push('/profile');
+  }, [router]);
+  const profileIncomplete = useMemo(() => !!client && getProfileCompletion(client, t).percent < 100, [client, t]);
+
   const { setSearchQuery, refetch } = homeData;
   const handleClearSearch = useCallback(() => {
     setSearchQuery('');
   }, [setSearchQuery]);
 
+  const { setShowLuckyWheel } = banners;
   const handleLuckyWheelOpen = useCallback(() => {
     haptic(HapticStyle.Medium);
-    banners.setShowLuckyWheel(true);
-  }, [banners.setShowLuckyWheel]);
+    setShowLuckyWheel(true);
+  }, [setShowLuckyWheel]);
 
   const handleLuckyWheelClose = useCallback(() => {
-    banners.setShowLuckyWheel(false);
-  }, [banners.setShowLuckyWheel]);
+    setShowLuckyWheel(false);
+  }, [setShowLuckyWheel]);
 
   const handleScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const scrolled = e.nativeEvent.contentOffset.y > SCROLLED_THRESHOLD;
     setIsScrolled((prev) => (prev === scrolled ? prev : scrolled));
   }, []);
 
-  const renderCard = useCallback(({ item: card, index }: { item: LoyaltyCard; index: number }) => (
+  const renderCard = useCallback(({ item: card }: { item: LoyaltyCard }) => (
     <CardItem
       card={card}
       t={t}
       locale={locale}
       searchHighlight={homeData.debouncedSearch}
-      isClosest={homeData.sortMode === 'closest' && index === 0 && !!homeData.userLocation}
       theme={theme}
       onPress={handleCardPress}
     />
-  ), [handleCardPress, t, locale, homeData.debouncedSearch, homeData.sortMode, homeData.userLocation, theme]);
+  ), [handleCardPress, t, locale, homeData.debouncedSearch, theme]);
 
   const keyExtractor = useCallback((item: LoyaltyCard) => item.id, []);
 
@@ -270,7 +278,7 @@ export default function HomeScreen() {
     );
   }, [
     homeData.isLoading, homeData.loadError, homeData.debouncedSearch,
-    homeData.cards.length, refetch, allCards.length, theme, fonts, t, client, isFiltering,
+    refetch, allCards.length, theme, fonts, t, client, isFiltering,
     pendingScratchCards, activeCouponList, wonPrizes, homeData.luckyWheelTickets.length,
     banners.luckyWheelSpinAnim, handleLuckyWheelOpen,
     isWallet, toggleViewMode, homeData.cards, handleCardPress,
@@ -287,9 +295,7 @@ export default function HomeScreen() {
             : <CreditCard size={ms(34)} color={palette.goldDark} strokeWidth={1.6} />}
         </View>
         <Text style={[styles.emptyTitle, { color: theme.text, fontFamily: fonts.bold }]}>
-          {isFilterEmpty
-            ? (homeData.debouncedSearch ? t('home.noSearchResults', { query: homeData.debouncedSearch }) : t('home.noCards'))
-            : t('home.noCards')}
+          {isFilterEmpty ? t('home.noSearchResults', { query: homeData.debouncedSearch }) : t('home.noCards')}
         </Text>
         {!isFilterEmpty && (
           <Text style={[styles.emptyHint, { color: theme.textSecondary, fontFamily: fonts.regular }]}>{t('home.noCardsHint')}</Text>
@@ -356,7 +362,7 @@ export default function HomeScreen() {
                 autoFocus
               />
               {homeData.searchQuery.length > 0 && (
-                <Pressable onPress={() => homeData.setSearchQuery('')} hitSlop={10} accessibilityRole="button" accessibilityLabel={t('home.clearSearch')}>
+                <Pressable onPress={handleClearSearch} hitSlop={10} accessibilityRole="button" accessibilityLabel={t('home.clearSearch')}>
                   <View style={[styles.clearPill, { backgroundColor: theme.textMuted }]}>
                     <X size={ms(11)} color={theme.bg} strokeWidth={3} />
                   </View>
@@ -371,6 +377,18 @@ export default function HomeScreen() {
           </View>
         ) : (
           <View style={styles.titleRow}>
+            <TouchableOpacity
+              style={[styles.avatar, { backgroundColor: isDark ? `${palette.violet}30` : `${palette.violet}14`, borderColor: theme.border }]}
+              activeOpacity={0.8}
+              onPress={openProfile}
+              accessibilityRole="button"
+              accessibilityLabel={t('tabs.profile')}
+            >
+              <Text style={[styles.avatarText, { color: isDark ? palette.violetLight : palette.violet, fontFamily: fonts.bold }]} maxFontSizeMultiplier={1.2}>
+                {getInitials(client)}
+              </Text>
+              {profileIncomplete && <View style={[styles.avatarDot, { backgroundColor: theme.danger, borderColor: theme.bg }]} />}
+            </TouchableOpacity>
             <View style={styles.titleBlock}>
               {!!firstName && (
                 <Text style={[styles.greeting, { color: theme.textSecondary, fontFamily: fonts.medium }]} numberOfLines={1}>
@@ -422,8 +440,29 @@ export default function HomeScreen() {
         </Animated.View>
       )}
 
+      {/* ── Welcome toast ── */}
+      {banners.welcomeKind && !!firstName && !banners.rewardBannerNotif && (
+        <Animated.View
+          style={[styles.rewardNotifBanner, {
+            top: insets.top + hp(8),
+            opacity: banners.welcomeAnim,
+            transform: [{ translateY: banners.welcomeAnim.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }],
+          }]}
+          pointerEvents="none"
+          accessibilityLiveRegion="polite"
+        >
+          <LinearGradient colors={GRADIENT_VIOLET} start={GRADIENT_H_START} end={GRADIENT_H_END} style={[styles.rewardNotifGradient, styles.welcomeGradient]}>
+            <View style={styles.rewardNotifIcon}>
+              <Sparkles size={ms(15)} color="#fff" strokeWidth={2} />
+            </View>
+            <Text style={[styles.rewardNotifText, { fontFamily: fonts.bold }]} numberOfLines={1}>
+              {t(banners.welcomeKind === 'new' ? 'home.welcomeNew' : 'home.welcomeBack', { name: firstName })}
+            </Text>
+          </LinearGradient>
+        </Animated.View>
+      )}
+
       <FlatList
-        ref={homeData.flatListRef}
         data={homeData.isLoading || isWallet ? NO_CARDS : homeData.cards}
         renderItem={renderCard}
         keyExtractor={keyExtractor}
@@ -441,13 +480,6 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
-        onScrollToIndexFailed={({ index, averageItemLength }) => {
-          // Guard against rare race when list hasn't finished layout yet
-          homeData.flatListRef.current?.scrollToOffset({
-            offset: index * (averageItemLength || 140),
-            animated: true,
-          });
-        }}
         removeClippedSubviews={Platform.OS === 'android'}
         maxToRenderPerBatch={8}
         windowSize={9}
@@ -477,6 +509,14 @@ const styles = StyleSheet.create({
   },
   titleRow: { flexDirection: 'row', alignItems: 'center', minHeight: ms(46) },
   titleBlock: { flex: 1 },
+  avatar: {
+    width: ms(44), height: ms(44), borderRadius: ms(22), borderWidth: 1, marginEnd: wp(12),
+    alignItems: 'center', justifyContent: 'center',
+  },
+  avatarText: { fontSize: ms(15), letterSpacing: 0.4 },
+  avatarDot: {
+    position: 'absolute', top: 0, end: 0, width: ms(12), height: ms(12), borderRadius: ms(6), borderWidth: 2,
+  },
   title: { fontSize: fontSize['3xl'], letterSpacing: -0.6 },
   greeting: { fontSize: fontSize.md, marginBottom: hp(1) },
   iconBtn: {
@@ -557,4 +597,5 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center',
   },
   rewardNotifText: { color: '#fff', fontSize: fontSize.sm, flex: 1 },
+  welcomeGradient: { shadowColor: palette.violetDark },
 });

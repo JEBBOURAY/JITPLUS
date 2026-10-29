@@ -1,4 +1,5 @@
-import { ScrollView, View, Text, StyleSheet, TouchableOpacity, Linking } from 'react-native';
+import { ScrollView, View, StyleSheet, TouchableOpacity, Linking } from 'react-native';
+import { Text } from '@/components/AppText';
 import { useRouter } from 'expo-router';
 import { ArrowLeft } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';

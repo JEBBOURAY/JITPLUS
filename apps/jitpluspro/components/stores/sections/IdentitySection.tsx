@@ -2,15 +2,19 @@ import { useCallback, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Camera, ImagePlus, Store, Tags, Sparkles, AlignLeft } from 'lucide-react-native';
+import { Camera, ImagePlus, Tags, Quote, AlignLeft } from 'lucide-react-native';
+import { JitStore } from '@/components/icons';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useDir } from '@/hooks/useDir';
+import { font, icon } from '@/constants/design';
 import { useAuthActions } from '@/contexts/AuthContext';
 import { useUpdateMerchantProfile, type MerchantProfilePayload } from '@/hooks/useQueryHooks';
 import { useMerchantMedia } from '@/hooks/useMerchantMedia';
+import { usePlanStatus } from '@/hooks/usePlanStatus';
 import { resolveImageUrl } from '@/utils/imageUrl';
 import { getErrorMessage } from '@/utils/error';
-import { getCategoryLabel, CATEGORY_EMOJIS } from '@/constants/categories';
+import { getCategoryLabel, CATEGORY_ICONS } from '@/constants/categories';
 import type { Merchant, MerchantCategory } from '@/types';
 import { PrimaryCategoryChips, SecondaryChips } from '@/components/stores/FicheControls';
 import {
@@ -31,12 +35,13 @@ function initialSecondary(m: Merchant): MerchantCategory[] {
 export default function IdentitySection({ merchant }: { merchant: Merchant }) {
   const theme = useTheme();
   const { t } = useLanguage();
+  const dir = useDir();
   const { updateMerchant } = useAuthActions();
   const toast = useToast();
   const media = useMerchantMedia();
   const update = useUpdateMerchantProfile();
   const accent = brandColor(merchant.themeColor);
-  const isPremium = merchant.plan === 'PREMIUM';
+  const { isPremium } = usePlanStatus(merchant);
 
   const [nom, setNom] = useState(merchant.nom);
   const [categorie, setCategorie] = useState<MerchantCategory>(merchant.categorie);
@@ -87,6 +92,8 @@ export default function IdentitySection({ merchant }: { merchant: Merchant }) {
     }
   }, [changes, update, updateMerchant, showToast, t]);
 
+  const CategoryIcon = CATEGORY_ICONS[categorie] ?? JitStore;
+
   return (
     <SectionScreen
       title={t('storesHub.identityTitle')}
@@ -99,7 +106,7 @@ export default function IdentitySection({ merchant }: { merchant: Merchant }) {
           <TouchableOpacity
             onPress={media.openCover}
             activeOpacity={0.85}
-            style={styles.cover}
+            style={[styles.cover, { alignItems: dir.alignEnd }]}
             accessibilityRole="button"
             accessibilityLabel={t('storesHub.editCover')}
           >
@@ -108,8 +115,8 @@ export default function IdentitySection({ merchant }: { merchant: Merchant }) {
             ) : (
               <LinearGradient colors={[`${accent}55`, `${accent}14`]} style={StyleSheet.absoluteFill} />
             )}
-            <View style={styles.coverAction}>
-              {media.coverUploading ? <ActivityIndicator size="small" color="#fff" /> : <ImagePlus size={14} color="#fff" strokeWidth={2.2} />}
+            <View style={[styles.coverAction, { flexDirection: dir.row }]}>
+              {media.coverUploading ? <ActivityIndicator size="small" color="#fff" /> : <ImagePlus size={14} color="#fff" strokeWidth={icon.strokeSmall} />}
               <Text style={styles.coverActionText} numberOfLines={1}>
                 {merchant.coverUrl ? t('storesHub.editCover') : t('storesHub.addCover')}
               </Text>
@@ -118,7 +125,7 @@ export default function IdentitySection({ merchant }: { merchant: Merchant }) {
           <TouchableOpacity
             onPress={media.openLogo}
             activeOpacity={0.85}
-            style={[styles.logoRing, { backgroundColor: theme.bgCard }]}
+            style={[styles.logoRing, dir.isRTL ? styles.logoRingRtl : styles.logoRingLtr, { backgroundColor: theme.bgCard }]}
             accessibilityRole="button"
             accessibilityLabel={t('storesHub.editLogo')}
           >
@@ -126,21 +133,21 @@ export default function IdentitySection({ merchant }: { merchant: Merchant }) {
               <ExpoImage source={resolveImageUrl(merchant.logoUrl)} style={styles.logo} contentFit="cover" cachePolicy="memory-disk" />
             ) : (
               <View style={[styles.logo, styles.logoEmpty, { backgroundColor: `${accent}1A` }]}>
-                <Camera size={22} color={accent} strokeWidth={1.8} />
+                <Camera size={22} color={accent} strokeWidth={icon.stroke} />
               </View>
             )}
             {media.logoUploading ? (
               <View style={styles.logoBusy}><ActivityIndicator size="small" color="#fff" /></View>
             ) : null}
           </TouchableOpacity>
-          <View style={styles.logoMeta}>
+          <View style={[styles.logoMeta, dir.isRTL ? styles.logoMetaRtl : styles.logoMetaLtr, { flexDirection: dir.row }]}>
             <Text style={[ui.fieldLabel, { color: theme.text }]}>{t('storesHub.logoLabel')}</Text>
             {isPremium ? null : <ProPill />}
           </View>
         </View>
       </Panel>
 
-      <Panel Icon={Store} title={t('storesHub.nameTitle')}>
+      <Panel Icon={JitStore} title={t('storesHub.nameTitle')}>
         <TextField
           label={t('storesHub.nameLabel')}
           value={nom}
@@ -159,7 +166,7 @@ export default function IdentitySection({ merchant }: { merchant: Merchant }) {
         title={t('storesHub.categoriesTitle')}
         caption={t('storePreview.secondaryCategoriesHint', { max: SECONDARY_MAX })}
       >
-        <Text style={[ui.fieldLabel, { color: theme.text }]}>{t('storesHub.primaryCategory')}</Text>
+        <Text style={[ui.fieldLabel, { color: theme.text, textAlign: dir.textAlign }]}>{t('storesHub.primaryCategory')}</Text>
         {pickingPrimary ? (
           <View style={styles.block}>
             <PrimaryCategoryChips selected={categorie} accent={accent} onSelect={selectPrimary} />
@@ -168,17 +175,17 @@ export default function IdentitySection({ merchant }: { merchant: Merchant }) {
           <TouchableOpacity
             onPress={() => setPickingPrimary(true)}
             activeOpacity={0.8}
-            style={[styles.primaryRow, { backgroundColor: `${accent}12` }]}
+            style={[styles.primaryRow, { flexDirection: dir.row, backgroundColor: `${accent}12` }]}
             accessibilityRole="button"
             accessibilityHint={t('storesHub.changeCategory')}
           >
-            <Text style={styles.primaryEmoji}>{CATEGORY_EMOJIS[categorie] ?? '🏷️'}</Text>
-            <Text style={[styles.primaryLabel, { color: accent }]} numberOfLines={1}>{getCategoryLabel(categorie)}</Text>
+            <CategoryIcon size={18} color={accent} strokeWidth={icon.stroke} />
+            <Text style={[styles.primaryLabel, { color: accent, textAlign: dir.textAlign }]} numberOfLines={1}>{getCategoryLabel(categorie)}</Text>
             <Text style={[ui.caption, { color: theme.textSecondary }]}>{t('storesHub.changeCategory')}</Text>
           </TouchableOpacity>
         )}
-        <View style={styles.secondaryHeader}>
-          <Text style={[ui.fieldLabel, styles.flex, { color: theme.text }]}>{t('storePreview.secondaryCategoriesTitle')}</Text>
+        <View style={[styles.secondaryHeader, { flexDirection: dir.row }]}>
+          <Text style={[ui.fieldLabel, styles.flex, { color: theme.text, textAlign: dir.textAlign }]}>{t('storePreview.secondaryCategoriesTitle')}</Text>
           <CountPill value={`${secondary.length}/${SECONDARY_MAX}`} />
         </View>
         <SecondaryChips primaryCategory={categorie} selected={secondary} max={SECONDARY_MAX} accent={accent} onToggle={toggleSecondary} />
@@ -188,7 +195,7 @@ export default function IdentitySection({ merchant }: { merchant: Merchant }) {
         <View style={styles.fields}>
           <TextField
             label={t('storePreview.taglineTitle')}
-            Icon={Sparkles}
+            Icon={Quote}
             value={tagline}
             onChangeText={setTagline}
             maxLength={TAGLINE_MAX}
@@ -220,14 +227,17 @@ const styles = StyleSheet.create({
   block: { marginTop: 10 },
   cover: { height: 132, borderRadius: 16, overflow: 'hidden', justifyContent: 'flex-end', alignItems: 'flex-end', padding: 10 },
   coverAction: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 7, paddingHorizontal: 12, borderRadius: 999, backgroundColor: 'rgba(15,23,42,0.6)' },
-  coverActionText: { color: '#fff', fontSize: 12, fontFamily: 'Lexend_600SemiBold' },
-  logoRing: { position: 'absolute', left: 14, bottom: -34, width: 76, height: 76, borderRadius: 38, padding: 3 },
+  coverActionText: { color: '#fff', fontSize: 12, fontFamily: font.semibold },
+  logoRing: { position: 'absolute', bottom: -34, width: 76, height: 76, borderRadius: 38, padding: 3 },
+  logoRingLtr: { left: 14 },
+  logoRingRtl: { right: 14 },
   logo: { width: '100%', height: '100%', borderRadius: 35 },
   logoEmpty: { alignItems: 'center', justifyContent: 'center' },
   logoBusy: { ...StyleSheet.absoluteFill, margin: 3, borderRadius: 35, backgroundColor: 'rgba(15,23,42,0.45)', alignItems: 'center', justifyContent: 'center' },
-  logoMeta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginLeft: 102, marginTop: 10, minHeight: 28 },
-  primaryRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8, paddingVertical: 11, paddingHorizontal: 14, borderRadius: 13 },
-  primaryEmoji: { fontSize: 16 },
-  primaryLabel: { flex: 1, fontSize: 14, fontFamily: 'Lexend_600SemiBold' },
+  logoMeta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10, minHeight: 28 },
+  logoMetaLtr: { marginLeft: 102 },
+  logoMetaRtl: { marginRight: 102 },
+  primaryRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8, paddingVertical: 11, paddingHorizontal: 14, borderRadius: 12 },
+  primaryLabel: { flex: 1, fontSize: 14, fontFamily: font.semibold },
   secondaryHeader: { flexDirection: 'row', alignItems: 'center', marginTop: 18, marginBottom: 10 },
 });

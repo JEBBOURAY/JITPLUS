@@ -3,6 +3,7 @@ import { Alert } from 'react-native';
 import { useAuthState, useAuthActions } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { usePlanStatus } from '@/hooks/usePlanStatus';
 import { getErrorMessage } from '@/utils/error';
 import {
   useUploadMerchantLogo,
@@ -29,7 +30,7 @@ export function useMerchantMedia() {
   const [sheet, setSheet] = useState<'logo' | 'cover' | 'logoLocked' | null>(null);
   const closeSheet = useCallback(() => setSheet(null), []);
 
-  const isPremium = merchant?.plan === 'PREMIUM';
+  const { isPremium } = usePlanStatus(merchant);
   const merchantName = merchant?.nom;
 
   const pickLogo = useCallback(async () => {

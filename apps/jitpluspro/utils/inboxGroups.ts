@@ -1,6 +1,6 @@
 export type InboxSectionKey = 'today' | 'yesterday' | 'week' | 'older';
 
-export interface InboxSection<T> {
+interface InboxSection<T> {
   key: InboxSectionKey;
   data: T[];
 }

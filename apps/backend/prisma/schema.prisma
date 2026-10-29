@@ -2,14 +2,16 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider      = "prisma-client-js"
-  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+  provider        = "prisma-client-js"
+  binaryTargets   = ["native", "linux-musl-openssl-3.0.x"]
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
   provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_DATABASE_URL")
+  url        = env("DATABASE_URL")
+  directUrl  = env("DIRECT_DATABASE_URL")
+  extensions = [pg_trgm]
 }
 
 model Merchant {
@@ -127,6 +129,9 @@ model Merchant {
   scratchCampaigns ScratchCampaign[]
   coupons          Coupon[]
 
+  // Public promotions ("bons plans")
+  deals Deal[]
+
   @@index([isActive])
   @@index([deletedAt])
   // Discovery queries filter by category + city — composite index avoids full table scans
@@ -168,7 +173,8 @@ model Store {
   createdAt   DateTime          @default(now()) @map("created_at")
   updatedAt   DateTime          @updatedAt @map("updated_at")
 
-  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  merchant   Merchant    @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  dealStores DealStore[]
 
   @@index([merchantId])
   // Active store lookups by merchant (discovery + nearby)
@@ -260,6 +266,9 @@ enum AuditAction {
   CREATE_SCRATCH_CAMPAIGN
   CANCEL_SCRATCH_CAMPAIGN
   REDEEM_COUPON
+  CREATE_DEAL
+  REMOVE_DEAL
+  RESTORE_DEAL
   // Future-proof slots
   RESET_PASSWORD
   UPDATE_PLAN_DURATION
@@ -353,6 +362,13 @@ model Client {
   updatedAt             DateTime  @updatedAt @map("updated_at")
   deletedAt             DateTime? @map("deleted_at")
 
+  // ── Alertes bons plans ──
+  dealAlertsEnabled   Boolean            @default(false) @map("deal_alerts_enabled")
+  /// MOROCCO_CITIES key; only the city is stored, never the position (loi 09-08)
+  dealAlertCityKey    String?            @map("deal_alert_city_key") @db.VarChar(40)
+  dealAlertCategories MerchantCategory[] @default([]) @map("deal_alert_categories")
+  dealOnlineAlerts    Boolean            @default(true) @map("deal_online_alerts")
+
   // ── Programme de parrainage client ──
   referralCode    String? @unique @map("referral_code")
   referralBalance Float   @default(0) @map("referral_balance")
@@ -370,10 +386,17 @@ model Client {
   clientClaims         ClientClaim[]
   scratchCards         ScratchCard[]
   coupons              Coupon[]
+  sessions             ClientSession[]
+  dealReports          DealReport[]
 
   @@index([nom])
   @@index([email])
   @@index([telephone])
+  // Client search is ILIKE '%term%' (buildClientSearchFilter): only trigram indexes serve it
+  @@index([prenom(ops: raw("gin_trgm_ops"))], type: Gin, map: "clients_prenom_trgm_idx")
+  @@index([nom(ops: raw("gin_trgm_ops"))], type: Gin, map: "clients_nom_trgm_idx")
+  @@index([email(ops: raw("gin_trgm_ops"))], type: Gin, map: "clients_email_trgm_idx")
+  @@index([telephone(ops: raw("gin_trgm_ops"))], type: Gin, map: "clients_telephone_trgm_idx")
   @@index([deletedAt, createdAt])
   @@index([countryCode])
   // refreshTokenHash is @unique — implicit index
@@ -383,6 +406,8 @@ model Client {
   @@index([notifPush, deletedAt, pushToken])
   @@index([googleId])
   @@index([appleId])
+  // Daily deal digest: subscribers of a city, read in id order batch by batch
+  @@index([dealAlertsEnabled, dealAlertCityKey, id])
   @@map("clients")
 }
 
@@ -495,7 +520,8 @@ model Transaction {
 
   @@index([merchantId, status, createdAt])
   @@index([clientId, status, createdAt])
-  @@index([clientId, merchantId])
+  // Lucky-wheel "every N visits" count: client + merchant + type + date
+  @@index([clientId, merchantId, type, createdAt])
   @@index([merchantId, type, status, createdAt])
   @@index([rewardId])
   // Activity feed per team member ("who scanned what")
@@ -710,6 +736,22 @@ model DeviceSession {
   // Active sessions list: "ORDER BY lastActiveAt DESC" per merchant
   @@index([merchantId, lastActiveAt(sort: Desc)])
   @@map("device_sessions")
+}
+
+// One row per logged-in client device, so several devices can stay signed in
+// at once. The refresh token is rotated in place on every refresh.
+model ClientSession {
+  id               String   @id @default(uuid())
+  clientId         String   @map("client_id")
+  refreshTokenHash String   @unique @map("refresh_token_hash")
+  expiresAt        DateTime @map("expires_at")
+  lastUsedAt       DateTime @default(now()) @map("last_used_at")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId, lastUsedAt(sort: Desc)])
+  @@map("client_sessions")
 }
 
 // ── Profile view tracking (one view per client per merchant per day) ──
@@ -1080,6 +1122,7 @@ model ScratchCard {
   @@index([clientId, status])
   @@index([campaignId, status])
   @@index([status, expiresAt])
+  @@index([merchantId, status])
   @@map("scratch_cards")
 }
 
@@ -1120,7 +1163,116 @@ model Coupon {
 
   @@index([clientId, status])
   @@index([merchantId, status])
+  @@index([merchantId, source, status])
   @@index([merchantId, code])
   @@index([status, expiresAt])
   @@map("coupons")
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── Bons plans (public promotions, independent of the loyalty programme) ─────
+// ══════════════════════════════════════════════════════════════════════════════
+
+enum DealType {
+  BUY_X_GET_Y
+  PERCENT_OFF
+  PRICE_DROP
+  FREE_ITEM
+  OTHER
+}
+
+enum DealScope {
+  /// In store, found "near me" through the stores it applies to
+  LOCAL
+  /// E-commerce: a mandatory https link, visible in the whole country
+  ONLINE
+}
+
+enum DealStatus {
+  /// Published; visible while startsAt <= now < endsAt
+  ACTIVE
+  ENDED
+  /// Taken down by moderation (admin or too many reports)
+  REMOVED
+  /// Deleted by the merchant (kept until the purge for moderation history)
+  DELETED
+}
+
+model Deal {
+  id              String     @id @default(uuid())
+  merchantId      String     @map("merchant_id")
+  scope           DealScope  @default(LOCAL)
+  type            DealType
+  title           String     @db.VarChar(60)
+  description     String?    @db.VarChar(300)
+  conditions      String?    @db.VarChar(200)
+  imageUrl        String?    @map("image_url") @db.VarChar(500)
+  linkUrl         String?    @map("link_url") @db.VarChar(500)
+  originalPrice   Decimal?   @map("original_price") @db.Decimal(10, 2)
+  dealPrice       Decimal?   @map("deal_price") @db.Decimal(10, 2)
+  /// Given for PERCENT_OFF, computed for PRICE_DROP (used to rank alerts)
+  percentOff      Int?       @map("percent_off")
+  buyQty          Int?       @map("buy_qty")
+  freeQty         Int?       @map("free_qty")
+  /// true = every active store of the merchant, now and later
+  allStores       Boolean    @default(true) @map("all_stores")
+  /// MOROCCO_CITIES keys of the stores concerned (empty for ONLINE)
+  cityKeys        String[]   @default([]) @map("city_keys")
+  startsAt        DateTime   @map("starts_at")
+  /// End of the last day, Morocco time
+  endsAt          DateTime   @map("ends_at")
+  status          DealStatus @default(ACTIVE)
+  /// EXPIRED | STOPPED | AUTO_REPORTS | moderation reason typed by an admin
+  endedReason     String?    @map("ended_reason") @db.VarChar(200)
+  alertSentAt     DateTime?  @map("alert_sent_at")
+  /// Recomputed every 15 min by DealsMaintenanceService
+  isPopular       Boolean    @default(false) @map("is_popular")
+  reportCount     Int        @default(0) @map("report_count")
+  viewCount       Int        @default(0) @map("view_count")
+  linkClickCount  Int        @default(0) @map("link_click_count")
+  directionsCount Int        @default(0) @map("directions_count")
+  shareCount      Int        @default(0) @map("share_count")
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+
+  merchant Merchant     @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  stores   DealStore[]
+  reports  DealReport[]
+
+  @@index([status, endsAt])
+  @@index([scope, status, endsAt])
+  @@index([status, startsAt])
+  @@index([merchantId, status])
+  @@index([cityKeys], type: Gin)
+  @@map("deals")
+}
+
+/// Stores a deal applies to when allStores = false
+model DealStore {
+  dealId  String @map("deal_id")
+  storeId String @map("store_id")
+
+  deal  Deal  @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@id([dealId, storeId])
+  @@index([storeId])
+  @@map("deal_stores")
+}
+
+model DealReport {
+  id        String   @id @default(uuid())
+  dealId    String   @map("deal_id")
+  clientId  String   @map("client_id")
+  /// INAPPROPRIATE | MISLEADING | OFF_TOPIC | EXPIRED | OTHER
+  reason    String   @db.VarChar(40)
+  comment   String?  @db.VarChar(300)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  deal   Deal   @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([dealId, clientId])
+  @@index([clientId])
+  @@map("deal_reports")
 }

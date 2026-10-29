@@ -10,6 +10,7 @@ import {
   templateRewards,
   validateRewards,
   validateStep,
+  WIZARD_STEPS,
 } from '@/components/scratch/campaignForm';
 import type { ScratchCampaignDto } from '@jitplus/shared/src/scratch';
 
@@ -23,9 +24,15 @@ describe('scratch wizard: ready to send with defaults', () => {
     expect(form.rewards[0]).toMatchObject({ type: 'PERCENT_DISCOUNT', value: '10', weight: '100', unlimited: true });
     expect(form.cardExpiresOn).toBe('2026-10-17');
     expect(form.couponExpiresOn).toBe('2026-10-24');
-    expect(validateStep(form, 'gift', TODAY)).toBeNull();
-    expect(validateStep(form, 'audience', TODAY)).toBeNull();
-    expect(validateStep(form, 'review', TODAY)).toBeNull();
+    for (const step of WIZARD_STEPS) {
+      expect(validateStep(form, step, TODAY)).toBeNull();
+    }
+  });
+
+  it('asks for the name on the look step only', () => {
+    const form = initialCampaignForm(TODAY);
+    expect(validateStep(form, 'sending', TODAY)).toBeNull();
+    expect(validateStep(form, 'look', TODAY)).toEqual({ key: 'scratch.wizard.nameRequired' });
   });
 
   it('fills an empty discount label with the automatic text', () => {

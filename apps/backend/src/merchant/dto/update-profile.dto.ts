@@ -161,4 +161,22 @@ export class UpdateProfileDto {
   @IsBoolean({ message: 'Valeur invalide pour la visibilité du guide de bienvenue' })
   @IsOptional()
   welcomeGuideVisible?: boolean;
+
+  /** Current password: required to change the email of a password account. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  currentPassword?: string;
+
+  /** Google ID token: re-authentication for Google accounts (email change). */
+  @IsOptional()
+  @IsString()
+  @MaxLength(4096)
+  idToken?: string;
+
+  /** Apple identity token: re-authentication for Apple accounts (email change). */
+  @IsOptional()
+  @IsString()
+  @MaxLength(4096)
+  appleIdentityToken?: string;
 }

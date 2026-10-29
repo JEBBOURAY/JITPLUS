@@ -14,4 +14,3 @@ export * from './update-team-member.dto';
 export * from './upload-logo.dto';
 export * from './verify-client.dto';
 export * from './verify-qr.dto';
-export * from './record-whatsapp-usage.dto';

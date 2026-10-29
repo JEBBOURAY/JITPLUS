@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet,
+  View, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform, ActivityIndicator, Alert,
   ScrollView, Animated, Image,
 } from 'react-native';
-export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
+import { Text, TextInput } from '@/components/AppText';
+import { goHomeAfterLogin } from '@/services/pendingDeal';
 import { router, useLocalSearchParams } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Lock, Eye, EyeOff, ArrowRight, CheckCircle2 } from 'lucide-react-native';
@@ -16,6 +17,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
 import { getPasswordStrength, isValidPassword as checkPassword, MAX_PASSWORD_LENGTH } from '@/utils/passwordStrength';
+export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 
 export default function SetPasswordScreen() {
   const theme = useTheme();
@@ -72,7 +74,7 @@ export default function SetPasswordScreen() {
 
     if (result.success) {
       await AsyncStorage.setItem('showWelcome', '1');
-      router.replace('/(tabs)/qr');
+      goHomeAfterLogin(router);
     } else {
       if (result.isNetworkError) {
         Alert.alert(t('common.networkError'), result.error);

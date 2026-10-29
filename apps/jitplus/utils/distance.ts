@@ -20,20 +20,6 @@ export function getDistanceKm(
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-/**
- * Haversine distance in km — returns Infinity when target coords are missing.
- * Convenient overload for nullable merchant coordinates.
- */
-export function getDistanceSafe(
-  userLat: number,
-  userLng: number,
-  lat?: number | null,
-  lng?: number | null,
-): number {
-  if (lat == null || lng == null) return Infinity;
-  return getDistanceKm(userLat, userLng, lat, lng);
-}
-
 /** Format a distance for display (e.g. "350 m" or "2.1 km") */
 export function formatDistance(km: number): string {
   return km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1)} km`;

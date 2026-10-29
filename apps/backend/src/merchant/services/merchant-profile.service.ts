@@ -16,10 +16,6 @@ import {
   LOYALTY_CARD_REPOSITORY, type ILoyaltyCardRepository,
   TRANSACTION_REPOSITORY, type ITransactionRepository,
   TRANSACTION_RUNNER, type ITransactionRunner,
-  RAW_QUERY_RUNNER, type IRawQueryRunner,
-  REWARD_REPOSITORY, type IRewardRepository,
-  TEAM_MEMBER_REPOSITORY, type ITeamMemberRepository,
-  STORE_REPOSITORY, type IStoreRepository,
 } from '../../common/repositories';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { UpdateProfileDto } from '../dto/update-profile.dto';
@@ -51,10 +47,6 @@ export class MerchantProfileService {
     @Inject(LOYALTY_CARD_REPOSITORY) private loyaltyCardRepo: ILoyaltyCardRepository,
     @Inject(TRANSACTION_REPOSITORY) private transactionRepoDelegate: ITransactionRepository,
     @Inject(TRANSACTION_RUNNER) private txRunner: ITransactionRunner,
-    @Inject(RAW_QUERY_RUNNER) private rawQuery: IRawQueryRunner,
-    @Inject(REWARD_REPOSITORY) private rewardRepo: IRewardRepository,
-    @Inject(TEAM_MEMBER_REPOSITORY) private teamMemberRepo: ITeamMemberRepository,
-    @Inject(STORE_REPOSITORY) private storeRepo: IStoreRepository,
     @Inject(CACHE_MANAGER) private cache: Cache,
     private notifications: NotificationsService,
     private configService: ConfigService,
@@ -64,7 +56,7 @@ export class MerchantProfileService {
     this.googleClient = new OAuth2Client(this.configService.get<string>('GOOGLE_CLIENT_ID'));
   }
 
-  // â”€â”€ Profile â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Profile ──────────────────────────────────────────────
 
   async getProfile(merchantId: string): Promise<MerchantProfileData> {
     const cacheKey = `merchant:profile:${merchantId}`;
@@ -110,7 +102,8 @@ export class MerchantProfileService {
       'socialLinks.website': dto.socialLinks?.website,
     });
 
-    const { socialLinks, ...rest } = stripUndefined(dto);
+    // Re-authentication fields are checked below and never written to the merchant row.
+    const { socialLinks, currentPassword, idToken, appleIdentityToken, ...rest } = stripUndefined(dto);
     const data: Record<string, unknown> = { ...rest };
     if (socialLinks !== undefined) {
       // The object replaces the stored links entirely: a missing or blank key removes that link.
@@ -119,13 +112,21 @@ export class MerchantProfileService {
       ) as Prisma.InputJsonObject;
     }
 
-    // If email is being changed, reset emailVerified so merchant must re-verify
+    // The email is a login identifier and the password-reset channel: changing
+    // it with a stolen access token alone would hand over the account, so the
+    // owner must prove their identity (password, or Google/Apple re-auth).
     if (data.email) {
       const current = await this.merchantRepo.findUnique({
         where: { id: merchantId },
-        select: { email: true },
+        select: { email: true, password: true, googleId: true, appleId: true },
       });
-      if (current && current.email !== data.email) {
+      if (!current) throw new NotFoundException('Commerçant non trouvé');
+      if (current.email !== data.email) {
+        await this.assertReauthenticated(current, { password: currentPassword, idToken, appleIdentityToken }, {
+          missing: 'Confirmez votre identité (mot de passe actuel ou Google/Apple) pour changer d\'adresse email',
+          wrongPassword: 'Mot de passe actuel incorrect',
+        });
+        // Flag only: the new address is shown as unverified, login is not blocked.
         data.emailVerified = false;
       }
     }
@@ -145,18 +146,22 @@ export class MerchantProfileService {
   async changePassword(merchantId: string, dto: ChangePasswordDto, currentTokenId?: string): Promise<{ message: string; devicesDisconnected: number }> {
     const merchant = await this.merchantRepo.findUnique({
       where: { id: merchantId },
-      select: { id: true, password: true, googleId: true },
+      select: { id: true, password: true, googleId: true, appleId: true },
     });
     if (!merchant) throw new NotFoundException('Commerçant non trouvé');
 
-    // Google-only accounts can set a password without providing the current one
-    if (merchant.googleId && !dto.currentPassword) {
-      // Allow setting initial password for Google accounts
-    } else {
-      if (!dto.currentPassword) throw new BadRequestException('Le mot de passe actuel est requis');
-      const isValid = await bcrypt.compare(dto.currentPassword, merchant.password);
-      if (!isValid) throw new UnauthorizedException('Mot de passe actuel incorrect');
-    }
+    // Google/Apple accounts have no password they know: they re-authenticate
+    // with their provider instead. A bare access token is never enough.
+    await this.assertReauthenticated(
+      merchant,
+      { password: dto.currentPassword, idToken: dto.idToken, appleIdentityToken: dto.appleIdentityToken },
+      {
+        missing: merchant.googleId || merchant.appleId
+          ? 'Le mot de passe actuel ou la réauthentification Google/Apple est requis'
+          : 'Le mot de passe actuel est requis',
+        wrongPassword: 'Mot de passe actuel incorrect',
+      },
+    );
 
     // Prevent reusing the same password
     if (merchant.password) {
@@ -199,7 +204,7 @@ export class MerchantProfileService {
     });
   }
 
-  // â”€â”€ Device Sessions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Device Sessions ──────────────────────────────────────
 
   async getDeviceSessions(merchantId: string, currentTokenId?: string) {
     const sessions = await this.deviceSessionRepo.findMany({
@@ -274,7 +279,7 @@ export class MerchantProfileService {
     return { message: 'Appareil déconnecté' };
   }
 
-  // â”€â”€ Settings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Settings ─────────────────────────────────────────────
 
   async previewAccumulationLimit(merchantId: string, limit: number): Promise<{ affectedClients: number }> {
     const count = await this.loyaltyCardRepo.count({
@@ -513,16 +518,18 @@ export class MerchantProfileService {
     );
   }
 
-  // ── Delete Account (soft delete) ─────────────────────────────
-
-  async deleteAccount(merchantId: string, password?: string, idToken?: string, appleIdentityToken?: string): Promise<{ message: string }> {
-    const merchant = await this.merchantRepo.findUnique({
-      where: { id: merchantId },
-      select: { id: true, password: true, nom: true, email: true, googleId: true, appleId: true, language: true },
-    });
-    if (!merchant) throw new NotFoundException('Commerçant non trouvé');
-
-    // ── Identity verification ──────────────────────────────────
+  // ── Re-authentication (sensitive account changes) ────────────
+  /**
+   * Proves the caller is the account owner, not just a holder of its access
+   * token: a Google/Apple identity token for the linked account, or the
+   * current password.
+   */
+  private async assertReauthenticated(
+    merchant: { password: string; googleId: string | null; appleId: string | null },
+    credentials: { password?: string; idToken?: string; appleIdentityToken?: string },
+    messages: { missing: string; wrongPassword: string },
+  ): Promise<void> {
+    const { password, idToken, appleIdentityToken } = credentials;
     if (merchant.googleId && idToken) {
       try {
         const webClientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
@@ -553,10 +560,26 @@ export class MerchantProfileService {
       }
     } else if (password) {
       const isValid = await bcrypt.compare(password, merchant.password);
-      if (!isValid) throw new UnauthorizedException('Mot de passe incorrect');
+      if (!isValid) throw new UnauthorizedException(messages.wrongPassword);
     } else {
-      throw new BadRequestException('Le mot de passe ou la réauthentification Google/Apple est requis');
+      throw new BadRequestException(messages.missing);
     }
+  }
+
+  // ── Delete Account (soft delete) ─────────────────────────────
+
+  async deleteAccount(merchantId: string, password?: string, idToken?: string, appleIdentityToken?: string): Promise<{ message: string }> {
+    const merchant = await this.merchantRepo.findUnique({
+      where: { id: merchantId },
+      select: { id: true, password: true, nom: true, email: true, googleId: true, appleId: true, language: true },
+    });
+    if (!merchant) throw new NotFoundException('Commerçant non trouvé');
+
+    // ── Identity verification ──────────────────────────────────
+    await this.assertReauthenticated(merchant, { password, idToken, appleIdentityToken }, {
+      missing: 'Le mot de passe ou la réauthentification Google/Apple est requis',
+      wrongPassword: 'Mot de passe incorrect',
+    });
 
     // ── Atomic soft-delete inside a transaction ────────────────
     const now = new Date();
@@ -683,11 +706,16 @@ export class MerchantProfileService {
 
     const publicKey = createPublicKey({ key: matchingKey, format: 'jwk' });
     const appleBundleIds = (this.configService.get<string>('APPLE_BUNDLE_IDS') || '').split(',').map(s => s.trim()).filter(Boolean);
+    // Without an audience check, a token minted for any other Apple app would be accepted.
+    if (appleBundleIds.length === 0) {
+      this.logger.error('Apple Sign-In misconfigured: APPLE_BUNDLE_IDS is empty');
+      throw new UnauthorizedException('Connexion Apple non configurée');
+    }
 
     const payload = jwt.verify(identityToken, publicKey, {
       algorithms: ['RS256'],
       issuer: 'https://appleid.apple.com',
-      ...(appleBundleIds.length > 0 && { audience: appleBundleIds as [string, ...string[]] }),
+      audience: appleBundleIds as [string, ...string[]],
     }) as jwt.JwtPayload & { sub: string };
 
     return payload;

@@ -18,15 +18,17 @@ export function createMerchantMethods(http: AxiosInstance) {
       return [];
     },
     async getMerchantById(id: string): Promise<Merchant> {
-      const { data } = await http.get(`/client/merchants/${id}`);
+      const token = await getToken();
+      const base = token ? '/client/merchants' : '/client-auth/merchants';
+      const { data } = await http.get(`${base}/${encodeURIComponent(id)}`);
       return data;
     },
     async joinMerchant(merchantId: string): Promise<{ success: boolean; card: { id: string; stamps: number; createdAt: string } }> {
-      const { data } = await http.post(`/client/merchants/${merchantId}/join`);
+      const { data } = await http.post(`/client/merchants/${encodeURIComponent(merchantId)}/join`);
       return data;
     },
     async leaveMerchant(merchantId: string): Promise<{ success: boolean }> {
-      const { data } = await http.delete(`/client/merchants/${merchantId}/leave`);
+      const { data } = await http.delete(`/client/merchants/${encodeURIComponent(merchantId)}/leave`);
       return data;
     },
     async reportMerchant(
@@ -34,18 +36,18 @@ export function createMerchantMethods(http: AxiosInstance) {
       reason: 'inappropriate' | 'spam' | 'fraud' | 'closed' | 'wrong_info' | 'other',
       details?: string,
     ): Promise<{ success: boolean; message: string }> {
-      const { data } = await http.post(`/client/merchants/${merchantId}/report`, { reason, details });
+      const { data } = await http.post(`/client/merchants/${encodeURIComponent(merchantId)}/report`, { reason, details });
       return data;
     },
     async blockMerchant(merchantId: string): Promise<{ success: boolean }> {
-      const { data } = await http.post(`/client/merchants/${merchantId}/block`);
+      const { data } = await http.post(`/client/merchants/${encodeURIComponent(merchantId)}/block`);
       return data;
     },
     async unblockMerchant(merchantId: string): Promise<{ success: boolean }> {
-      const { data } = await http.delete(`/client/merchants/${merchantId}/block`);
+      const { data } = await http.delete(`/client/merchants/${encodeURIComponent(merchantId)}/block`);
       return data;
     },
-    async getBlockedMerchants(): Promise<Array<{ merchantId: string; blockedAt: string; id: string; nom: string; logoUrl: string | null; categorie: string }>> {
+    async getBlockedMerchants(): Promise<{ merchantId: string; blockedAt: string; id: string; nom: string; logoUrl: string | null; categorie: string }[]> {
       const { data } = await http.get('/client/blocked-merchants');
       return Array.isArray(data) ? data : [];
     },

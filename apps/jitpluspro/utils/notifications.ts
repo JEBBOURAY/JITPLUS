@@ -1,21 +1,9 @@
 import { Platform } from 'react-native';
-import Constants from 'expo-constants';
+import i18n from '@/i18n';
 import { logWarn } from '@/utils/devLogger';
+import { isExpoGo, loadNotifications } from '@/utils/expoNotifications';
 
-const isExpoGo = Constants.appOwnership === 'expo';
-
-// Only load expo-notifications outside of Expo Go — the module registers
-// push-token side-effects on import that crash in Expo Go SDK 53+.
-let Notifications: typeof import('expo-notifications') | null = null;
-
-if (!isExpoGo) {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    Notifications = require('expo-notifications');
-  } catch {
-    logWarn('notifications', 'expo-notifications unavailable');
-  }
-}
+const Notifications = loadNotifications();
 
 export { Notifications, isExpoGo };
 
@@ -46,14 +34,14 @@ export async function setupAndroidChannels() {
   try {
     await Promise.all([
       Notifications.setNotificationChannelAsync('jitpro-default', {
-        name: 'Notifications générales',
+        name: i18n.t('notifications.channelDefault'),
         importance: Notifications.AndroidImportance.HIGH,
         sound: 'default',
         vibrationPattern: [0, 250, 250, 250],
         showBadge: true,
       }),
       Notifications.setNotificationChannelAsync('login-alerts', {
-        name: 'Alertes de connexion',
+        name: i18n.t('notifications.channelLoginAlerts'),
         importance: Notifications.AndroidImportance.HIGH,
         vibrationPattern: [0, 250, 250, 250],
         showBadge: true,

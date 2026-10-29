@@ -1,6 +1,7 @@
 import {
-  View, Text, TextInput, TouchableOpacity, Modal, Pressable, ActivityIndicator,
+  View, TouchableOpacity, Modal, Pressable, ActivityIndicator,
 } from 'react-native';
+import { Text, TextInput } from '@/components/AppText';
 import { ShieldCheck } from 'lucide-react-native';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';

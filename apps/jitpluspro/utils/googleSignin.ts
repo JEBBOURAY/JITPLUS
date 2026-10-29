@@ -9,6 +9,7 @@ let isErrorWithCode: typeof import('@react-native-google-signin/google-signin').
 let statusCodes: typeof import('@react-native-google-signin/google-signin').statusCodes | null = null;
 
 try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const mod = require('@react-native-google-signin/google-signin');
   GoogleSignin = mod.GoogleSignin;
   isErrorWithCode = mod.isErrorWithCode;

@@ -1,19 +1,18 @@
 import { useCallback, useMemo, MutableRefObject } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '@/services/api';
+import { clearLocalSession as clearLocalSessionData } from '@/services/localSession';
+import { notifyServerLogout } from '@/services/serverLogout';
 import { extractErrorMessage, isNetworkError as checkNetworkError } from '@/utils/errorMessage';
 import { logInfo, logError } from '@/utils/devLogger';
 import type { AuthState } from '@/stores/authStore';
-
-const LOGOUT_MAX_RETRIES = 2;
-const LOGOUT_RETRY_DELAY_MS = 1000;
 
 export function useAuthMethods(
   store: AuthState,
   sessionVersionRef: MutableRefObject<number>,
 ) {
   const queryClient = useQueryClient();
+  const { setClient, setNeedsPasswordSetup, setGuest, reset } = store;
 
   const sendOtpEmail = useCallback(async (email: string, isRegister = false) => {
     try {
@@ -25,150 +24,136 @@ export function useAuthMethods(
   }, []);
 
   const verifyOtpEmail = useCallback(async (email: string, code: string, isRegister = false) => {
+    sessionVersionRef.current++;
     try {
+      await api.setRememberMe(true);
       const response = await api.verifyOtpEmail(email, code, isRegister);
-      store.setClient(response.client);
+      setClient(response.client);
       logInfo('Auth', 'OTP email vérifié:', response.client?.prenom, '| nouveau:', response.isNewUser);
       if (response.isNewUser && isRegister) {
         await api.setEmailOtpNewUser();
-        store.setNeedsPasswordSetup(true);
+        setNeedsPasswordSetup(true);
       }
       return { success: true, isNewUser: response.isNewUser };
     } catch (error: unknown) {
       return { success: false, error: extractErrorMessage(error), isNetworkError: checkNetworkError(error) };
     }
-  }, []);
+  }, [setClient, setNeedsPasswordSetup, sessionVersionRef]);
 
   const googleLogin = useCallback(async (idToken: string) => {
     sessionVersionRef.current++;
     try {
       await api.setRememberMe(true);
       const response = await api.googleLogin(idToken);
-      store.setClient(response.client);
+      setClient(response.client);
       logInfo('Auth', 'Google login réussi:', response.client?.prenom, '| nouveau:', response.isNewUser);
       return { success: true, isNewUser: response.isNewUser };
     } catch (error: unknown) {
       return { success: false, error: extractErrorMessage(error), isNetworkError: checkNetworkError(error), rawError: error };
     }
-  }, []);
+  }, [setClient, sessionVersionRef]);
 
   const appleLogin = useCallback(async (identityToken: string, givenName?: string, familyName?: string, rawNonce?: string) => {
     sessionVersionRef.current++;
     try {
       await api.setRememberMe(true);
       const response = await api.appleLogin(identityToken, givenName, familyName, rawNonce);
-      store.setClient(response.client);
+      setClient(response.client);
       logInfo('Auth', 'Apple login réussi:', response.client?.prenom, '| nouveau:', response.isNewUser);
       return { success: true, isNewUser: response.isNewUser };
     } catch (error: unknown) {
       return { success: false, error: extractErrorMessage(error), isNetworkError: checkNetworkError(error), rawError: error };
     }
-  }, []);
+  }, [setClient, sessionVersionRef]);
 
-  const loginWithEmail = useCallback(async (email: string, password: string, rememberMe = true) => {
+  const loginWithEmail = useCallback(async (email: string, password: string) => {
     sessionVersionRef.current++;
     try {
-      await api.setRememberMe(rememberMe);
+      await api.setRememberMe(true);
       const response = await api.loginWithEmail(email, password);
-      store.setClient(response.client);
+      setClient(response.client);
       logInfo('Auth', 'Connexion email réussie:', response.client?.prenom);
       return { success: true };
     } catch (error: unknown) {
       return { success: false, error: extractErrorMessage(error), isNetworkError: checkNetworkError(error) };
     }
-  }, []);
+  }, [setClient, sessionVersionRef]);
 
   const setPassword = useCallback(async (password: string) => {
     try {
       const response = await api.setPassword(password);
-      store.setClient(response.client);
+      setClient(response.client);
       await api.clearEmailOtpNewUser();
-      store.setNeedsPasswordSetup(false);
+      setNeedsPasswordSetup(false);
       return { success: true };
     } catch (error: unknown) {
       return { success: false, error: extractErrorMessage(error), isNetworkError: checkNetworkError(error) };
     }
-  }, []);
+  }, [setClient, setNeedsPasswordSetup]);
 
   const resetPasswordOtp = useCallback(async (password: string) => {
     try {
       const response = await api.resetPasswordOtp(password);
-      store.setClient(response.client);
+      setClient(response.client);
       return { success: true };
     } catch (error: unknown) {
       return { success: false, error: extractErrorMessage(error), isNetworkError: checkNetworkError(error) };
     }
-  }, []);
+  }, [setClient]);
 
   const completeProfile = useCallback(async (prenom: string, nom: string, termsAccepted: boolean, telephone?: string, dateNaissance?: string, password?: string) => {
     try {
       const response = await api.completeProfile(prenom, nom, termsAccepted, telephone, dateNaissance, password);
-      store.setClient(response.client);
+      setClient(response.client);
       if (password) {
         await api.clearEmailOtpNewUser();
-        store.setNeedsPasswordSetup(false);
+        setNeedsPasswordSetup(false);
       }
       return { success: true };
     } catch (error: unknown) {
       return { success: false, error: extractErrorMessage(error), isNetworkError: checkNetworkError(error) };
     }
-  }, []);
+  }, [setClient, setNeedsPasswordSetup]);
+
+  const clearLocalSession = useCallback(
+    () => clearLocalSessionData(queryClient, reset),
+    [queryClient, reset],
+  );
 
   const logout = useCallback(async () => {
-    await api.updatePushToken('').catch((e) => { if (__DEV__) console.warn('Failed to clear push token on logout', e); });
-    let logoutSucceeded = false;
-    for (let attempt = 0; attempt < LOGOUT_MAX_RETRIES && !logoutSucceeded; attempt++) {
-      try {
-        await api.logout();
-        logoutSucceeded = true;
-      } catch {
-        if (attempt === 0) await new Promise((r) => setTimeout(r, LOGOUT_RETRY_DELAY_MS));
-      }
-    }
-    await api.clearAuth();
-    queryClient.clear();
-    await Promise.allSettled([
-      AsyncStorage.removeItem('jitplus-query-cache'),
-      AsyncStorage.removeItem('showWelcome'),
-      AsyncStorage.removeItem('showGuidBadge'),
-      import('expo-secure-store').then((ss) => ss.deleteItemAsync('qr_permanent_token')).catch(() => {}),
-      AsyncStorage.removeItem('profile_draft'),
-      // Legacy: drafts were stored in SecureStore before the 2048-byte limit fix
-      import('expo-secure-store').then((ss) => ss.deleteItemAsync('profile_draft')).catch(() => {}),
-    ]);
-    store.reset();
+    await notifyServerLogout();
+    await clearLocalSession();
     logInfo('Auth', 'Déconnexion terminée');
-  }, [queryClient]);
+  }, [clearLocalSession]);
 
   const refreshProfile = useCallback(async () => {
     try {
       const token = await api.getStoredToken();
       if (!token) return;
       const profile = await api.getProfile();
-      store.setClient(profile);
+      setClient(profile);
     } catch (error: unknown) {
       if (error instanceof Error && 'response' in error) {
         const axiosErr = error as import('axios').AxiosError;
         if (axiosErr.response?.status === 401) {
-          await api.clearAuth();
-          store.setClient(null);
+          await clearLocalSession();
         }
       }
       logError('Auth', 'Erreur rafraîchissement profil:', error);
     }
-  }, []);
+  }, [clearLocalSession, setClient]);
 
   const enterGuestMode = useCallback(() => {
-    store.setGuest(true);
-  }, []);
+    setGuest(true);
+  }, [setGuest]);
 
   return useMemo(() => ({
     sendOtpEmail, verifyOtpEmail, googleLogin, appleLogin,
     loginWithEmail, setPassword, resetPasswordOtp, completeProfile,
-    logout, refreshProfile, enterGuestMode,
+    logout, refreshProfile, enterGuestMode, clearLocalSession,
   }), [
     sendOtpEmail, verifyOtpEmail, googleLogin, appleLogin,
     loginWithEmail, setPassword, resetPasswordOtp, completeProfile,
-    logout, refreshProfile, enterGuestMode,
+    logout, refreshProfile, enterGuestMode, clearLocalSession,
   ]);
 }

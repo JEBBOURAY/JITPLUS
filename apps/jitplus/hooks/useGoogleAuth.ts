@@ -7,7 +7,6 @@ import { useCallback } from 'react';
 import Constants from 'expo-constants';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAuthProvider } from './useAuthProvider';
-import i18n from '@/i18n';
 
 // Lazy-load the native SDK so Expo Go doesn't crash at module evaluation time.
 let GoogleSignin: typeof import('@react-native-google-signin/google-signin').GoogleSignin | null = null;
@@ -44,7 +43,7 @@ interface UseGoogleAuthOptions {
 
 export function useGoogleAuth({ actionLabel, onCancel }: UseGoogleAuthOptions) {
   const { googleLogin } = useAuth();
-  const auth = useAuthProvider({ actionLabel, onCancel });
+  const auth = useAuthProvider({ actionLabel });
 
   /** Launch the Google prompt */
   const promptGoogle = useCallback(async () => {
@@ -52,13 +51,13 @@ export function useGoogleAuth({ actionLabel, onCancel }: UseGoogleAuthOptions) {
 
     if (!GoogleSignin || !isErrorWithCode || !statusCodes) {
       auth.setLoading(false);
-      auth.handleError(null, 'googleAuth');
+      auth.handleError('googleAuth');
       return;
     }
 
     if (!WEB_CLIENT_ID) {
       auth.setLoading(false);
-      auth.handleError(null, 'googleAuth');
+      auth.handleError('googleAuth');
       return;
     }
 
@@ -82,7 +81,7 @@ export function useGoogleAuth({ actionLabel, onCancel }: UseGoogleAuthOptions) {
 
       if (!idToken) {
         auth.setLoading(false);
-        auth.handleError(null, 'googleAuth');
+        auth.handleError('googleAuth');
         return;
       }
 
@@ -99,32 +98,16 @@ export function useGoogleAuth({ actionLabel, onCancel }: UseGoogleAuthOptions) {
           onCancel?.();
           return;
         }
-
-        if (err.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
-          auth.handleError(err, 'googleAuth');
-          return;
-        }
       }
 
-      // Show user-friendly message; include native details only in development
-      const nativeMsg = err instanceof Error ? err.message : String(err);
-      const code = isErrorWithCode && isErrorWithCode(err) ? (err as { code: string }).code : '';
-      const userMessage = i18n.t('googleAuth.launchError', { action: actionLabel });
-      if (__DEV__) {
-        const detail = code ? `[${code}] ${nativeMsg}` : nativeMsg;
-        auth.handleError(new Error(`${userMessage}\n${detail}`), 'googleAuth');
-      } else {
-        auth.handleError(err, 'googleAuth');
-      }
+      auth.handleError('googleAuth');
     }
-  }, [actionLabel, googleLogin, onCancel, auth]);
+  }, [googleLogin, onCancel, auth]);
 
   return {
     isLoading: auth.isLoading,
     isSuccess: auth.isSuccess,
     error: auth.error,
-    setError: (e: string) => auth.handleError(new Error(e), 'googleAuth'),
-    setIsLoading: auth.setLoading,
     promptGoogle,
     noAccount: auth.noAccount,
     dismissNoAccount: auth.dismissNoAccount,

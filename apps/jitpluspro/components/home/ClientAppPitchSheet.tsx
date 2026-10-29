@@ -2,10 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, Image, I18nManager } from 'react-native';
 import {
   Smartphone,
-  Bell,
-  Ticket,
   History,
-  Store,
   Repeat,
   MessageCircle,
   Leaf,
@@ -13,6 +10,7 @@ import {
   Share2,
   Check,
 } from 'lucide-react-native';
+import { JitBell, JitStore, JitTicket } from '@/components/icons';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import PromoSheet, { SheetSectionLabel, useSheetColors, type LucideIcon } from '@/components/home/PromoSheet';
@@ -44,8 +42,8 @@ function ClientAppPitchSheet({ visible, onClose, onShare }: ClientAppPitchSheetP
 
   const customerBenefits: { Icon: LucideIcon; tone: PromoTone; title: string; text: string }[] = [
     { Icon: Smartphone, tone: 'emerald', title: t('home.clientBenefitsItem1Title'), text: t('home.clientBenefitsItem1Text') },
-    { Icon: Bell, tone: 'blue', title: t('home.clientBenefitsItem2Title'), text: t('home.clientBenefitsItem2Text') },
-    { Icon: Ticket, tone: 'amber', title: t('home.clientBenefitsItem3Title'), text: t('home.clientBenefitsItem3Text') },
+    { Icon: JitBell, tone: 'blue', title: t('home.clientBenefitsItem2Title'), text: t('home.clientBenefitsItem2Text') },
+    { Icon: JitTicket, tone: 'amber', title: t('home.clientBenefitsItem3Title'), text: t('home.clientBenefitsItem3Text') },
     { Icon: History, tone: 'violet', title: t('home.clientBenefitsItem4Title'), text: t('home.clientBenefitsItem4Text') },
   ];
 
@@ -80,7 +78,7 @@ function ClientAppPitchSheet({ visible, onClose, onShare }: ClientAppPitchSheetP
       <View style={[styles.appsRow, isRTL && styles.rowRtl]}>
         <View style={[styles.appCard, { backgroundColor: softFill, borderColor: hairline }]}>
           <View style={[styles.appIcon, { backgroundColor: theme.mode === 'dark' ? 'rgba(255,255,255,0.08)' : '#EEF2F7' }]}>
-            <Store size={16} color={theme.textSecondary} strokeWidth={2} />
+            <JitStore size={16} color={theme.textSecondary} strokeWidth={2} />
           </View>
           <Text style={[styles.appRole, { color: muted }]} maxFontSizeMultiplier={1.2}>
             {t('home.clientPitchProRole').toUpperCase()}

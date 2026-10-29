@@ -4,6 +4,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Info } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useDir } from '@/hooks/useDir';
+import { font, icon } from '@/constants/design';
 
 interface InfoHintProps {
   /** Explanation shown in the bottom sheet when tapped. */
@@ -23,6 +25,7 @@ interface InfoHintProps {
 function InfoHint({ text, title, size = 16, accessibilityLabel }: InfoHintProps) {
   const theme = useTheme();
   const { t } = useLanguage();
+  const { textAlign } = useDir();
   const insets = useSafeAreaInsets();
   const [visible, setVisible] = useState(false);
 
@@ -39,7 +42,7 @@ function InfoHint({ text, title, size = 16, accessibilityLabel }: InfoHintProps)
         accessibilityRole="button"
         accessibilityLabel={accessibilityLabel ?? t('common.moreInfo')}
       >
-        <Info size={size} color={theme.textMuted} strokeWidth={1.8} />
+        <Info size={size} color={theme.textMuted} strokeWidth={size <= 14 ? icon.strokeSmall : icon.stroke} />
       </TouchableOpacity>
 
       <Modal visible={visible} transparent animationType="slide" statusBarTranslucent onRequestClose={close}>
@@ -54,11 +57,11 @@ function InfoHint({ text, title, size = 16, accessibilityLabel }: InfoHintProps)
           >
             <View style={[styles.grabber, { backgroundColor: theme.border }]} />
             {title ? (
-              <Text style={[styles.title, { color: theme.text }]} maxFontSizeMultiplier={1.3} accessibilityRole="header">
+              <Text style={[styles.title, { color: theme.text, textAlign }]} maxFontSizeMultiplier={1.3} accessibilityRole="header">
                 {title}
               </Text>
             ) : null}
-            <Text style={[styles.body, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.6}>
+            <Text style={[styles.body, { color: theme.textSecondary, textAlign }]} maxFontSizeMultiplier={1.6}>
               {text}
             </Text>
             <TouchableOpacity onPress={close} activeOpacity={0.7} style={styles.closeBtn} accessibilityRole="button">
@@ -84,9 +87,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 22,
     paddingTop: 12,
   },
-  grabber: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
-  title: { fontSize: 16, fontWeight: '700', fontFamily: 'Lexend_700Bold', marginBottom: 8, letterSpacing: -0.2 },
-  body: { fontSize: 14, lineHeight: 21, fontFamily: 'Lexend_400Regular' },
+  grabber: { width: 40, height: 4, borderRadius: 999, alignSelf: 'center', marginBottom: 16 },
+  title: { fontSize: 16, fontFamily: font.bold, marginBottom: 8, letterSpacing: -0.2 },
+  body: { fontSize: 14, lineHeight: 21, fontFamily: font.regular },
   closeBtn: { alignSelf: 'center', paddingVertical: 12, marginTop: 14 },
-  closeText: { fontSize: 14, fontWeight: '700', fontFamily: 'Lexend_700Bold' },
+  closeText: { fontSize: 14, fontFamily: font.semibold },
 });

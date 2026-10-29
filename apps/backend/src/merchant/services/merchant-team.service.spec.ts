@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException, ConflictException } from '@nestjs/common';
 import { MerchantTeamService } from './merchant-team.service';
-import { TEAM_MEMBER_REPOSITORY, MERCHANT_REPOSITORY, TRANSACTION_RUNNER } from '../../common/repositories';
+import { TEAM_MEMBER_REPOSITORY, MERCHANT_REPOSITORY, TRANSACTION_RUNNER, DEVICE_SESSION_REPOSITORY } from '../../common/repositories';
 import { AuditLogService } from '../../admin/audit-log.service';
 import * as bcrypt from 'bcryptjs';
 
@@ -37,6 +37,10 @@ const mockTeamMemberRepo = {
   delete: jest.fn(),
 };
 
+const mockDeviceSessionRepo = {
+  deleteMany: jest.fn(),
+};
+
 const mockTxRunner = {
   run: jest.fn((fn: (tx: unknown) => unknown) =>
     fn({ merchant: mockMerchantRepo, teamMember: mockTeamMemberRepo }),
@@ -55,6 +59,7 @@ describe('MerchantTeamService', () => {
         { provide: TEAM_MEMBER_REPOSITORY, useValue: mockTeamMemberRepo },
         { provide: MERCHANT_REPOSITORY, useValue: mockMerchantRepo },
         { provide: TRANSACTION_RUNNER, useValue: mockTxRunner },
+        { provide: DEVICE_SESSION_REPOSITORY, useValue: mockDeviceSessionRepo },
         { provide: AuditLogService, useValue: { log: jest.fn() } },
       ],
     }).compile();
@@ -211,6 +216,51 @@ describe('MerchantTeamService', () => {
       await expect(
         service.updateTeamMember(MERCHANT_ID, MEMBER_ID, { email: 'taken@jitplus.com' }),
       ).rejects.toThrow(ConflictException);
+    });
+  });
+
+  // ── session revocation ─────────────────────────────────────────────────────
+
+  describe('session revocation', () => {
+    const owned = { id: MEMBER_ID, merchantId: MERCHANT_ID, email: mockMember.email };
+    const revokeCall = {
+      where: { merchantId: MERCHANT_ID, userType: 'team_member', userEmail: mockMember.email },
+    };
+
+    it('signs the member out everywhere when deactivated', async () => {
+      mockTeamMemberRepo.findUnique.mockResolvedValue(owned);
+      mockTeamMemberRepo.update.mockResolvedValue({ ...mockMember, isActive: false });
+
+      await service.updateTeamMember(MERCHANT_ID, MEMBER_ID, { isActive: false });
+
+      expect(mockDeviceSessionRepo.deleteMany).toHaveBeenCalledWith(revokeCall);
+    });
+
+    it('signs the member out everywhere when the password changes', async () => {
+      mockTeamMemberRepo.findUnique.mockResolvedValue(owned);
+      mockTeamMemberRepo.update.mockResolvedValue(mockMember);
+
+      await service.updateTeamMember(MERCHANT_ID, MEMBER_ID, { password: 'Another1!pass' });
+
+      expect(mockDeviceSessionRepo.deleteMany).toHaveBeenCalledWith(revokeCall);
+    });
+
+    it('keeps sessions when only the name changes', async () => {
+      mockTeamMemberRepo.findUnique.mockResolvedValue(owned);
+      mockTeamMemberRepo.update.mockResolvedValue(mockMember);
+
+      await service.updateTeamMember(MERCHANT_ID, MEMBER_ID, { nom: 'Alice M.' });
+
+      expect(mockDeviceSessionRepo.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('signs the member out everywhere when deleted', async () => {
+      mockTeamMemberRepo.findUnique.mockResolvedValue(owned);
+      mockTeamMemberRepo.delete.mockResolvedValue(mockMember);
+
+      await service.deleteTeamMember(MERCHANT_ID, MEMBER_ID);
+
+      expect(mockDeviceSessionRepo.deleteMany).toHaveBeenCalledWith(revokeCall);
     });
   });
 });

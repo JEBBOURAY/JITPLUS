@@ -21,9 +21,8 @@ import { GeocodeModule } from './geocode/geocode.module';
 import { LuckyWheelModule } from './lucky-wheel/lucky-wheel.module';
 import { DeeplinkModule } from './deeplink/deeplink.module';
 import { ScratchCardModule } from './scratch-card/scratch-card.module';
+import { DealsModule } from './deals/deals.module';
 import { MerchantInboxModule } from './merchant-inbox/merchant-inbox.module';
-// GoogleWalletModule temporarily disabled for Play Store compliance
-// import { GoogleWalletModule } from './google-wallet/google-wallet.module';
 import { RequestLoggerMiddleware } from './common/middleware/request-logger.middleware';
 import { OtpCleanupService } from './common/tasks/otp-cleanup.service';
 import { AccountPurgeService } from './common/tasks/account-purge.service';
@@ -36,9 +35,6 @@ import { ClientReengagementService } from './common/tasks/client-reengagement.se
 import { ClientRewardReminderService } from './common/tasks/client-reward-reminder.service';
 import { ClientWeeklyDigestService } from './common/tasks/client-weekly-digest.service';
 import { StampExpiryService } from './common/tasks/stamp-expiry.service';
-// Email campaign crons disabled to reduce cost (Cloud Run compute + email volume).
-// import { ClientEmailCampaignService } from './common/tasks/client-email-campaign.service';
-// import { MerchantEmailCampaignService } from './common/tasks/merchant-email-campaign.service';
 import { UserThrottlerGuard } from './common/guards/user-throttler.guard';
 import { RepositoryModule } from './common/repositories';
 import { EventsModule } from './events';
@@ -56,10 +52,13 @@ import { jwtModuleFactory } from './common/jwt/jwt-module.factory';
         JWT_SECRET: Joi.string().min(32).required(),
         NODE_ENV: Joi.string().valid('development', 'production', 'test').default('development'),
         PORT: Joi.number().default(3000),
+        // Number of reverse proxies in front of the app (Cloud Run = 1, + external HTTPS LB = 2)
+        TRUST_PROXY_HOPS: Joi.number().integer().min(0).max(10).default(1),
         CORS_ORIGINS: Joi.when('NODE_ENV', { is: 'production', then: Joi.string().required(), otherwise: Joi.string().optional() }),
         GOOGLE_CLIENT_ID: Joi.string().optional(),
         GOOGLE_ANDROID_CLIENT_ID: Joi.string().optional(),
-        APPLE_BUNDLE_IDS: Joi.string().optional(),
+        // Apple identity tokens are rejected when no audience is configured
+        APPLE_BUNDLE_IDS: Joi.when('NODE_ENV', { is: 'production', then: Joi.string().required(), otherwise: Joi.string().optional() }),
         GOOGLE_MAPS_API_KEY: Joi.string().optional(),
         BACKEND_URL: Joi.string().uri().optional(),
         // ── Google Cloud Platform ──────────────────────────────────────────
@@ -76,9 +75,9 @@ import { jwtModuleFactory } from './common/jwt/jwt-module.factory';
         SMTP_USER: Joi.when('NODE_ENV', { is: 'production', then: Joi.string().required(), otherwise: Joi.string().optional() }),
         SMTP_PASS: Joi.when('NODE_ENV', { is: 'production', then: Joi.string().required(), otherwise: Joi.string().optional() }),
         SMTP_FROM: Joi.when('NODE_ENV', { is: 'production', then: Joi.string().required(), otherwise: Joi.string().optional() }),
-        TWILIO_ACCOUNT_SID: Joi.when('NODE_ENV', { is: 'production', then: Joi.string().required(), otherwise: Joi.string().optional() }),
-        TWILIO_AUTH_TOKEN: Joi.when('NODE_ENV', { is: 'production', then: Joi.string().required(), otherwise: Joi.string().optional() }),
-        TWILIO_WHATSAPP_FROM: Joi.when('NODE_ENV', { is: 'production', then: Joi.string().required(), otherwise: Joi.string().optional() }),
+        TWILIO_ACCOUNT_SID: Joi.string().optional(),
+        TWILIO_AUTH_TOKEN: Joi.string().optional(),
+        TWILIO_WHATSAPP_FROM: Joi.string().optional(),
 
         // Firebase — required in production for push notifications
         FIREBASE_PROJECT_ID: Joi.when('NODE_ENV', { is: 'production', then: Joi.string().required(), otherwise: Joi.string().optional() }),
@@ -125,7 +124,7 @@ import { jwtModuleFactory } from './common/jwt/jwt-module.factory';
     LuckyWheelModule,
     DeeplinkModule,
     ScratchCardModule,
-    // GoogleWalletModule, // temporarily disabled for Play Store compliance
+    DealsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: UserThrottlerGuard },
@@ -140,9 +139,6 @@ import { jwtModuleFactory } from './common/jwt/jwt-module.factory';
     ClientRewardReminderService,
     ClientWeeklyDigestService,
     StampExpiryService,
-    // Email campaign crons disabled to reduce cost:
-    // ClientEmailCampaignService,
-    // MerchantEmailCampaignService,
   ],
 })
 export class AppModule implements NestModule {

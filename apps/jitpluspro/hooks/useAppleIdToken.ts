@@ -8,13 +8,14 @@
  */
 import { useCallback, useState } from 'react';
 import { Platform } from 'react-native';
-import * as Crypto from 'expo-crypto';
+import { randomUUID, sha256Hex } from '@/utils/crypto';
 import { useLanguage } from '@/contexts/LanguageContext';
 
 // Lazy-load so Android/web doesn't crash
 let AppleAuthentication: typeof import('expo-apple-authentication') | null = null;
 if (Platform.OS === 'ios') {
   try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     AppleAuthentication = require('expo-apple-authentication');
   } catch {
     // Not available
@@ -56,11 +57,8 @@ export function useAppleIdToken(onToken: (data: AppleTokenData) => void): UseApp
       // Generate a cryptographically secure raw nonce, send sha256(rawNonce) to Apple,
       // and forward the raw nonce to the backend so it can verify the JWT `nonce` claim.
       // Prevents replay attacks during the 10-minute Apple identity token validity window.
-      const rawNonce = Crypto.randomUUID() + Crypto.randomUUID().replace(/-/g, '');
-      const hashedNonce = await Crypto.digestStringAsync(
-        Crypto.CryptoDigestAlgorithm.SHA256,
-        rawNonce,
-      );
+      const rawNonce = randomUUID() + randomUUID().replace(/-/g, '');
+      const hashedNonce = await sha256Hex(rawNonce);
 
       const credential = await AppleAuthentication.signInAsync({
         requestedScopes: [

@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient, useInfiniteQuery, type QueryClient } from '@tanstack/react-query';
-import * as Crypto from 'expo-crypto';
+import { randomUUID } from '@/utils/crypto';
 import api from '@/services/api';
 import type {
   AudienceEstimate,
@@ -15,7 +15,7 @@ import type {
   ScratchCampaignStats,
   ScratchClientWithoutApp,
 } from '@jitplus/shared/src/scratch';
-import { queryKeys } from './useQueryHooks';
+import { queryKeys, STALE } from './queries/keys';
 
 export const scratchKeys = {
   campaigns: ['scratch', 'campaigns'] as const,
@@ -44,8 +44,6 @@ function useInvalidateCampaign() {
   };
 }
 
-// ── Campaigns ───────────────────────────────────────────────────
-
 export function useScratchCampaigns(enabled = true) {
   return useQuery<ScratchCampaignListItem[]>({
     queryKey: scratchKeys.campaigns,
@@ -53,7 +51,7 @@ export function useScratchCampaigns(enabled = true) {
       const res = await api.get(`${BASE}/campaigns`);
       return Array.isArray(res.data) ? res.data : [];
     },
-    staleTime: 60 * 1000,
+    staleTime: STALE.SHORT,
     enabled,
   });
 }
@@ -66,7 +64,7 @@ export function useScratchCampaign(id: string | undefined) {
     queryKey: scratchKeys.campaign(id ?? ''),
     queryFn: async () => (await api.get(`${BASE}/campaigns/${id}`)).data,
     enabled: !!id,
-    staleTime: 30 * 1000,
+    staleTime: STALE.FAST,
     refetchInterval: (query) => (query.state.data?.status === 'SENDING' ? SENDING_POLL_MS : false),
   });
 }
@@ -76,7 +74,7 @@ export function useScratchCampaignStats(id: string | undefined, enabled = true, 
     queryKey: scratchKeys.stats(id ?? ''),
     queryFn: async () => (await api.get(`${BASE}/campaigns/${id}/stats`)).data,
     enabled: !!id && enabled,
-    staleTime: 30 * 1000,
+    staleTime: STALE.FAST,
     refetchInterval: polling ? SENDING_POLL_MS : false,
   });
 }
@@ -89,7 +87,7 @@ export function useScratchClientsWithoutApp(id: string | undefined, enabled = tr
       return Array.isArray(res.data) ? res.data : [];
     },
     enabled: !!id && enabled,
-    staleTime: 60 * 1000,
+    staleTime: STALE.SHORT,
   });
 }
 
@@ -99,7 +97,7 @@ export function useScratchAudienceEstimate(type: ScratchAudienceType, value: num
     queryFn: async () =>
       (await api.post(`${BASE}/audience/estimate`, { audienceType: type, audienceValue: value ?? undefined })).data,
     enabled,
-    staleTime: 60 * 1000,
+    staleTime: STALE.SHORT,
   });
 }
 
@@ -192,8 +190,6 @@ export function useReshareClaim() {
   });
 }
 
-// ── Coupons at the till ─────────────────────────────────────────
-
 export function useCheckCoupon() {
   return useMutation({
     mutationFn: async (input: { token?: string; code?: string }) =>
@@ -225,7 +221,7 @@ export function useRedeemCoupon() {
       (await api.post<CouponRedeemResult>(
         `${BASE}/coupons/${couponId}/redeem`,
         { purchaseAmount },
-        { headers: { 'Idempotency-Key': idempotencyKey ?? Crypto.randomUUID() } },
+        { headers: { 'Idempotency-Key': idempotencyKey ?? randomUUID() } },
       )).data,
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: scratchKeys.couponsAll });
@@ -248,6 +244,6 @@ export function useMerchantCoupons(status: 'REDEEMED' | 'ACTIVE' | 'EXPIRED' | '
     initialPageParam: 1,
     getNextPageParam: (last) => (last.hasMore ? last.page + 1 : undefined),
     enabled,
-    staleTime: 30 * 1000,
+    staleTime: STALE.FAST,
   });
 }

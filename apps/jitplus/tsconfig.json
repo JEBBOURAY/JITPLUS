@@ -3,6 +3,7 @@
   "compilerOptions": {
     "strict": true,
     "skipLibCheck": true,
+    "customConditions": ["react-native", "react-native-legacy-deep-imports"],
     "typeRoots": ["./node_modules/@types"],
     "paths": {
       "@/*": ["./*"]

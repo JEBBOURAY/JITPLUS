@@ -1,8 +1,10 @@
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { QrCode } from 'lucide-react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { JitScan } from '@/components/icons';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { ms } from '@/utils/responsive';
+import { ActionButton } from '@/components/ui/ActionButton';
+import { font, icon } from '@/constants/design';
+import { ms, radius } from '@/utils/responsive';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 
@@ -18,27 +20,25 @@ export default function ScanScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
-      {/* ── Header matching activity style ── */}
       <View style={[styles.headerBar, { paddingTop: insets.top + 12 }]}>
         <Text style={[styles.headerTitle, { color: theme.text }]}>{t('scanTab.title')}</Text>
       </View>
 
       <View style={styles.content}>
         <View style={[styles.card, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
-          <View style={[styles.iconCircle, { backgroundColor: `${palette.charbon}12` }]}>
-            <QrCode size={ms(36)} color={palette.charbon} strokeWidth={1.5} />
+          <View style={styles.iconCircle}>
+            <JitScan size={40} color={palette.charbon} strokeWidth={icon.stroke} />
           </View>
           <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
             {t('scanTab.desc')}
           </Text>
-          <TouchableOpacity
-            style={[styles.button, { backgroundColor: theme.primary }]}
+          <ActionButton
+            label={t('scanTab.openBtn')}
+            icon={JitScan}
+            size="lg"
             onPress={() => router.push('/scan-qr')}
-            activeOpacity={0.8}
-          >
-            <QrCode size={20} color="#fff" strokeWidth={2} />
-            <Text style={styles.buttonText}>{t('scanTab.openBtn')}</Text>
-          </TouchableOpacity>
+            style={styles.button}
+          />
         </View>
       </View>
     </View>
@@ -58,8 +58,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 28,
-    fontWeight: '700',
-    fontFamily: 'Lexend_700Bold',
+    fontFamily: font.bold,
     letterSpacing: -0.5,
   },
   content: {
@@ -69,7 +68,7 @@ const styles = StyleSheet.create({
     paddingBottom: 80,
   },
   card: {
-    borderRadius: 14,
+    borderRadius: radius.lg,
     borderWidth: 1,
     padding: 32,
     alignItems: 'center',
@@ -80,23 +79,17 @@ const styles = StyleSheet.create({
     borderRadius: ms(24),
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 24,
+    marginBottom: 20,
+    backgroundColor: `${palette.charbon}12`,
   },
   subtitle: {
     fontSize: 14,
     textAlign: 'center',
     lineHeight: 22,
     marginBottom: 28,
-    fontFamily: 'Lexend_400Regular',
-    letterSpacing: 0.1,
+    fontFamily: font.regular,
   },
   button: {
-    flexDirection: 'row',
-    alignItems: 'center',
     paddingHorizontal: 28,
-    paddingVertical: 14,
-    borderRadius: 14,
-    gap: 10,
   },
-  buttonText: { fontSize: 16, fontWeight: '700', color: '#fff', fontFamily: 'Lexend_700Bold' },
 });

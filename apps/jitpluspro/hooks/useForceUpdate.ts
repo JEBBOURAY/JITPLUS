@@ -4,8 +4,6 @@ import Constants from 'expo-constants';
 import axios from 'axios';
 import { getServerBaseUrl } from '@/services/api';
 
-// ── Semantic version helpers ──────────────────────────────────────────────────
-
 /**
  * Parse a semver string into [major, minor, patch] integers.
  * Any non-numeric segment defaults to 0.
@@ -28,21 +26,17 @@ function isBelow(current: string, minimum: string): boolean {
   return cPatch < mPatch;
 }
 
-// ── Types ─────────────────────────────────────────────────────────────────────
-
 export type ForceUpdateStatus =
   | 'checking'   // initial request in progress
   | 'ok'         // version is acceptable
   | 'update'     // hard update required
   | 'maintenance'; // server-side maintenance mode
 
-export interface ForceUpdateState {
+interface ForceUpdateState {
   status: ForceUpdateStatus;
   /** Store URL to open for the update CTA */
   storeUrl: string;
 }
-
-// ── Store URL helpers ─────────────────────────────────────────────────────────
 
 const ANDROID_PACKAGE = 'com.jitplus.pro';
 const IOS_APP_ID = process.env.EXPO_PUBLIC_IOS_APP_ID ?? ''; // Set in .env
@@ -58,9 +52,6 @@ function getStoreUrl(): string {
   return `https://apps.apple.com/search?term=jitplus+pro`;
 }
 
-// ── Hook ──────────────────────────────────────────────────────────────────────
-
-/** Re-check interval: 30 minutes (version/maintenance changes are rare) */
 const RECHECK_INTERVAL_MS = 30 * 60 * 1000;
 
 /**
@@ -70,7 +61,7 @@ const RECHECK_INTERVAL_MS = 30 * 60 * 1000;
  * - In __DEV__ mode, `version` checks are skipped (status → 'ok').
  * - Maintenance mode is always respected regardless of __DEV__.
  * - Network errors are silently swallowed — the app always opens.
- * - Re-checks every 5 minutes so maintenance mode is detected while app is open.
+ * - Re-checks every 30 minutes so maintenance mode is detected while app is open.
  */
 export function useForceUpdate(): ForceUpdateState {
   const [status, setStatus] = useState<ForceUpdateStatus>('checking');

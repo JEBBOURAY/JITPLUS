@@ -5,7 +5,6 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
@@ -19,13 +18,20 @@ import { getErrorMessage } from '@/utils/error';
 import { isValidEmail } from '@/utils/validation';
 import { MIN_PASSWORD_LENGTH } from '@/constants/app';
 import { isValidPassword } from '@/utils/passwordStrength';
-import { Mail, ArrowRight, ArrowLeft, Lock, KeyRound, Eye, EyeOff } from 'lucide-react-native';
+import { Mail, ArrowRight, ArrowLeft, KeyRound, Eye, EyeOff } from 'lucide-react-native';
+import { JitLock } from '@/components/icons';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useDir } from '@/hooks/useDir';
+import { ActionButton } from '@/components/ui/ActionButton';
+import { font, icon } from '@/constants/design';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
 import api from '@/services/api';
 
 type Step = 'email' | 'otp' | 'password';
+
+const OTP_LENGTH = 6;
+const RESEND_COOLDOWN = 60;
 
 export default function ForgotPasswordScreen() {
   const [step, setStep] = useState<Step>('email');
@@ -41,8 +47,16 @@ export default function ForgotPasswordScreen() {
   const router = useRouter();
   const theme = useTheme();
   const { t } = useLanguage();
+  const dir = useDir();
+  const inputRow = { flexDirection: dir.row };
+  const inputText = [styles.inputField, dir.isRTL ? styles.inputFieldRtl : styles.inputFieldLtr, { color: theme.text, textAlign: dir.textAlign }];
+  const errorBanner = !!error && (
+    <View style={[styles.errorBanner, { backgroundColor: `${theme.danger}15`, borderColor: `${theme.danger}30` }]}>
+      <Text style={[styles.errorText, { color: theme.danger, textAlign: dir.textAlign }]}>{error}</Text>
+    </View>
+  );
 
-  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const [fadeAnim] = useState(() => new Animated.Value(0));
   const otpInputRef = useRef<TextInput>(null);
   const passwordInputRef = useRef<TextInput>(null);
 
@@ -66,6 +80,10 @@ export default function ForgotPasswordScreen() {
   }, [step]);
 
   const emailValid = isValidEmail(email);
+  const codeComplete = code.length === OTP_LENGTH;
+  const newPasswordLongEnough = newPassword.length >= MIN_PASSWORD_LENGTH;
+  // Equal strings share a length, so this also implies confirmPassword meets the minimum.
+  const passwordsMatch = newPasswordLongEnough && confirmPassword === newPassword;
 
   const handleSendCode = useCallback(async () => {
     Keyboard.dismiss();
@@ -85,7 +103,7 @@ export default function ForgotPasswordScreen() {
     try {
       await api.post('/auth/forgot-password', { email: trimmedEmail });
       setStep('otp');
-      setCooldown(60);
+      setCooldown(RESEND_COOLDOWN);
     } catch (err: unknown) {
       setError(getErrorMessage(err, t('common.genericError')));
     } finally {
@@ -99,7 +117,7 @@ export default function ForgotPasswordScreen() {
     setIsLoading(true);
     try {
       await api.post('/auth/forgot-password', { email: email.trim().toLowerCase() });
-      setCooldown(60);
+      setCooldown(RESEND_COOLDOWN);
       setCode('');
     } catch (err: unknown) {
       setError(getErrorMessage(err, t('common.genericError')));
@@ -108,17 +126,17 @@ export default function ForgotPasswordScreen() {
     }
   }, [email, cooldown, t]);
 
-  const handleVerifyAndReset = useCallback(async () => {
+  const handleVerifyAndReset = useCallback(() => {
     Keyboard.dismiss();
     setError('');
 
-    if (code.length !== 6) {
+    if (!codeComplete) {
       setError(t('forgotPassword.invalidCode'));
       return;
     }
 
     setStep('password');
-  }, [code, t]);
+  }, [codeComplete, t]);
 
   const handleResetPassword = useCallback(async () => {
     Keyboard.dismiss();
@@ -167,7 +185,7 @@ export default function ForgotPasswordScreen() {
       <SafeAreaView style={styles.container}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={{ flex: 1 }}
+          style={styles.flex}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
         >
           <ScrollView
@@ -175,16 +193,20 @@ export default function ForgotPasswordScreen() {
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
-            {/* Back button */}
-            <TouchableOpacity onPress={handleBack} style={styles.backButton} activeOpacity={0.7}>
-              <ArrowLeft size={ms(22)} color={theme.text} strokeWidth={2} />
+            <TouchableOpacity
+              onPress={handleBack}
+              style={[styles.backButton, dir.isRTL ? styles.backButtonRtl : styles.backButtonLtr]}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={t('common.back')}
+            >
+              <ArrowLeft size={ms(22)} color={theme.text} strokeWidth={icon.stroke} style={dir.flip} />
             </TouchableOpacity>
 
             <Animated.View style={[styles.formSection, { opacity: fadeAnim }]}>
-              {/* Header */}
               <View style={styles.header}>
                 <View style={[styles.iconCircle, { backgroundColor: `${palette.charbon}12` }]}>
-                  <KeyRound size={ms(28)} color={palette.charbon} strokeWidth={2} />
+                  <KeyRound size={ms(28)} color={palette.charbon} strokeWidth={icon.stroke} />
                 </View>
                 <Text style={[styles.title, { color: theme.text }]}>
                   {step === 'email' && t('forgotPassword.title')}
@@ -198,18 +220,17 @@ export default function ForgotPasswordScreen() {
                 </Text>
               </View>
 
-              {/* ── Step 1: Email ── */}
               {step === 'email' && (
                 <>
                   <View style={styles.inputContainer}>
-                    <View style={[styles.inputWrapper, {
+                    <View style={[styles.inputWrapper, inputRow, {
                       backgroundColor: theme.inputBg,
                       borderColor: error ? theme.danger : emailValid ? palette.charbon : theme.inputBorder,
                       borderWidth: emailValid ? 2 : 1.5,
                     }]}>
-                      <Mail size={ms(18)} color={emailValid ? palette.charbon : theme.inputPlaceholder} strokeWidth={2} />
+                      <Mail size={ms(18)} color={emailValid ? palette.charbon : theme.inputPlaceholder} strokeWidth={icon.stroke} />
                       <TextInput
-                        style={[styles.inputField, { color: theme.text }]}
+                        style={inputText}
                         placeholder={t('login.emailPlaceholder')}
                         placeholderTextColor={theme.inputPlaceholder}
                         value={email}
@@ -224,49 +245,40 @@ export default function ForgotPasswordScreen() {
                     </View>
                   </View>
 
-                  {!!error && (
-                    <View style={[styles.errorBanner, { backgroundColor: `${theme.danger}15`, borderColor: `${theme.danger}30` }]}>
-                      <Text style={[styles.errorText, { color: theme.danger }]}>{error}</Text>
-                    </View>
-                  )}
+                  {errorBanner}
 
-                  <TouchableOpacity
+                  <ActionButton
+                    label={t('forgotPassword.sendCode')}
                     onPress={handleSendCode}
-                    disabled={isLoading}
-                    activeOpacity={0.85}
-                    style={[styles.button, { backgroundColor: emailValid ? palette.charbon : '#D4D0E8' }]}
-                  >
-                    {isLoading ? <ActivityIndicator color="#fff" /> : (
-                      <>
-                        <Text style={[styles.buttonText, { opacity: emailValid ? 1 : 0.5 }]}>
-                          {t('forgotPassword.sendCode')}
-                        </Text>
-                        <ArrowRight size={ms(18)} color={emailValid ? '#fff' : 'rgba(255,255,255,0.5)'} strokeWidth={2} />
-                      </>
-                    )}
-                  </TouchableOpacity>
+                    loading={isLoading}
+                    size="lg"
+                    icon={ArrowRight}
+                    iconPosition="end"
+                    flipIconInRTL
+                    style={emailValid ? styles.buttonActive : styles.buttonInactive}
+                    labelStyle={emailValid ? undefined : styles.buttonTextMuted}
+                  />
                 </>
               )}
 
-              {/* ── Step 2: OTP ── */}
               {step === 'otp' && (
                 <>
                   <View style={styles.inputContainer}>
-                    <View style={[styles.inputWrapper, {
+                    <View style={[styles.inputWrapper, inputRow, {
                       backgroundColor: theme.inputBg,
-                      borderColor: error ? theme.danger : code.length === 6 ? palette.charbon : theme.inputBorder,
-                      borderWidth: code.length === 6 ? 2 : 1.5,
+                      borderColor: error ? theme.danger : codeComplete ? palette.charbon : theme.inputBorder,
+                      borderWidth: codeComplete ? 2 : 1.5,
                     }]}>
-                      <KeyRound size={ms(18)} color={code.length === 6 ? palette.charbon : theme.inputPlaceholder} strokeWidth={2} />
+                      <KeyRound size={ms(18)} color={codeComplete ? palette.charbon : theme.inputPlaceholder} strokeWidth={icon.stroke} />
                       <TextInput
                         ref={otpInputRef}
-                        style={[styles.inputField, { color: theme.text, letterSpacing: 8, textAlign: 'center' }]}
+                        style={[inputText, styles.otpField]}
                         placeholder="000000"
                         placeholderTextColor={theme.inputPlaceholder}
                         value={code}
-                        onChangeText={(v) => { setCode(v.replace(/\D/g, '').slice(0, 6)); setError(''); }}
+                        onChangeText={(v) => { setCode(v.replace(/\D/g, '').slice(0, OTP_LENGTH)); setError(''); }}
                         keyboardType="number-pad"
-                        maxLength={6}
+                        maxLength={OTP_LENGTH}
                         returnKeyType="done"
                         onSubmitEditing={handleVerifyAndReset}
                         editable={!isLoading}
@@ -274,29 +286,21 @@ export default function ForgotPasswordScreen() {
                     </View>
                   </View>
 
-                  {!!error && (
-                    <View style={[styles.errorBanner, { backgroundColor: `${theme.danger}15`, borderColor: `${theme.danger}30` }]}>
-                      <Text style={[styles.errorText, { color: theme.danger }]}>{error}</Text>
-                    </View>
-                  )}
+                  {errorBanner}
 
-                  <TouchableOpacity
+                  <ActionButton
+                    label={t('forgotPassword.verify')}
                     onPress={handleVerifyAndReset}
-                    disabled={isLoading || code.length !== 6}
-                    activeOpacity={0.85}
-                    style={[styles.button, { backgroundColor: code.length === 6 ? palette.charbon : '#D4D0E8' }]}
-                  >
-                    {isLoading ? <ActivityIndicator color="#fff" /> : (
-                      <>
-                        <Text style={[styles.buttonText, { opacity: code.length === 6 ? 1 : 0.5 }]}>
-                          {t('forgotPassword.verify')}
-                        </Text>
-                        <ArrowRight size={ms(18)} color={code.length === 6 ? '#fff' : 'rgba(255,255,255,0.5)'} strokeWidth={2} />
-                      </>
-                    )}
-                  </TouchableOpacity>
+                    loading={isLoading}
+                    disabled={!codeComplete}
+                    size="lg"
+                    icon={ArrowRight}
+                    iconPosition="end"
+                    flipIconInRTL
+                    style={codeComplete ? styles.buttonActive : styles.buttonInactive}
+                    labelStyle={codeComplete ? undefined : styles.buttonTextMuted}
+                  />
 
-                  {/* Resend */}
                   <TouchableOpacity
                     onPress={handleResendCode}
                     disabled={cooldown > 0 || isLoading}
@@ -312,19 +316,18 @@ export default function ForgotPasswordScreen() {
                 </>
               )}
 
-              {/* ── Step 3: New Password ── */}
               {step === 'password' && (
                 <>
                   <View style={styles.inputContainer}>
-                    <View style={[styles.inputWrapper, {
+                    <View style={[styles.inputWrapper, inputRow, {
                       backgroundColor: theme.inputBg,
-                      borderColor: error ? theme.danger : newPassword.length >= MIN_PASSWORD_LENGTH ? palette.charbon : theme.inputBorder,
-                      borderWidth: newPassword.length >= MIN_PASSWORD_LENGTH ? 2 : 1.5,
+                      borderColor: error ? theme.danger : newPasswordLongEnough ? palette.charbon : theme.inputBorder,
+                      borderWidth: newPasswordLongEnough ? 2 : 1.5,
                     }]}>
-                      <Lock size={ms(18)} color={newPassword.length >= MIN_PASSWORD_LENGTH ? palette.charbon : theme.inputPlaceholder} strokeWidth={2} />
+                      <JitLock size={ms(18)} color={newPasswordLongEnough ? palette.charbon : theme.inputPlaceholder} strokeWidth={icon.stroke} />
                       <TextInput
                         ref={passwordInputRef}
-                        style={[styles.inputField, { color: theme.text }]}
+                        style={inputText}
                         placeholder={t('forgotPassword.newPasswordPlaceholder')}
                         placeholderTextColor={theme.inputPlaceholder}
                         value={newPassword}
@@ -338,23 +341,24 @@ export default function ForgotPasswordScreen() {
                         onPress={() => setShowPassword((p) => !p)}
                         activeOpacity={0.7}
                         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        accessibilityRole="button"
                       >
                         {showPassword
-                          ? <EyeOff size={ms(20)} color={theme.inputPlaceholder} strokeWidth={2} />
-                          : <Eye size={ms(20)} color={theme.inputPlaceholder} strokeWidth={2} />}
+                          ? <EyeOff size={ms(20)} color={theme.inputPlaceholder} strokeWidth={icon.stroke} />
+                          : <Eye size={ms(20)} color={theme.inputPlaceholder} strokeWidth={icon.stroke} />}
                       </TouchableOpacity>
                     </View>
                   </View>
 
                   <View style={styles.inputContainer}>
-                    <View style={[styles.inputWrapper, {
+                    <View style={[styles.inputWrapper, inputRow, {
                       backgroundColor: theme.inputBg,
-                      borderColor: error ? theme.danger : confirmPassword.length >= MIN_PASSWORD_LENGTH && confirmPassword === newPassword ? palette.charbon : theme.inputBorder,
-                      borderWidth: confirmPassword === newPassword && confirmPassword.length >= MIN_PASSWORD_LENGTH ? 2 : 1.5,
+                      borderColor: error ? theme.danger : passwordsMatch ? palette.charbon : theme.inputBorder,
+                      borderWidth: passwordsMatch ? 2 : 1.5,
                     }]}>
-                      <Lock size={ms(18)} color={confirmPassword === newPassword && confirmPassword.length >= MIN_PASSWORD_LENGTH ? palette.charbon : theme.inputPlaceholder} strokeWidth={2} />
+                      <JitLock size={ms(18)} color={passwordsMatch ? palette.charbon : theme.inputPlaceholder} strokeWidth={icon.stroke} />
                       <TextInput
-                        style={[styles.inputField, { color: theme.text }]}
+                        style={inputText}
                         placeholder={t('forgotPassword.confirmPasswordPlaceholder')}
                         placeholderTextColor={theme.inputPlaceholder}
                         value={confirmPassword}
@@ -368,35 +372,19 @@ export default function ForgotPasswordScreen() {
                     </View>
                   </View>
 
-                  {!!error && (
-                    <View style={[styles.errorBanner, { backgroundColor: `${theme.danger}15`, borderColor: `${theme.danger}30` }]}>
-                      <Text style={[styles.errorText, { color: theme.danger }]}>{error}</Text>
-                    </View>
-                  )}
+                  {errorBanner}
 
-                  <TouchableOpacity
+                  <ActionButton
+                    label={t('forgotPassword.resetBtn')}
                     onPress={handleResetPassword}
-                    disabled={isLoading}
-                    activeOpacity={0.85}
-                    style={[styles.button, {
-                      backgroundColor: newPassword.length >= MIN_PASSWORD_LENGTH && confirmPassword === newPassword
-                        ? palette.charbon : '#D4D0E8',
-                    }]}
-                  >
-                    {isLoading ? <ActivityIndicator color="#fff" /> : (
-                      <>
-                        <Text style={[styles.buttonText, {
-                          opacity: newPassword.length >= MIN_PASSWORD_LENGTH && confirmPassword === newPassword ? 1 : 0.5,
-                        }]}>
-                          {t('forgotPassword.resetBtn')}
-                        </Text>
-                        <ArrowRight size={ms(18)} color={
-                          newPassword.length >= MIN_PASSWORD_LENGTH && confirmPassword === newPassword
-                            ? '#fff' : 'rgba(255,255,255,0.5)'
-                        } strokeWidth={2} />
-                      </>
-                    )}
-                  </TouchableOpacity>
+                    loading={isLoading}
+                    size="lg"
+                    icon={ArrowRight}
+                    iconPosition="end"
+                    flipIconInRTL
+                    style={passwordsMatch ? styles.buttonActive : styles.buttonInactive}
+                    labelStyle={passwordsMatch ? undefined : styles.buttonTextMuted}
+                  />
                 </>
               )}
             </Animated.View>
@@ -410,6 +398,7 @@ export default function ForgotPasswordScreen() {
 const styles = StyleSheet.create({
   gradient: { flex: 1 },
   container: { flex: 1 },
+  flex: { flex: 1 },
   scrollContent: {
     flexGrow: 1,
     justifyContent: 'center',
@@ -419,13 +408,13 @@ const styles = StyleSheet.create({
   backButton: {
     position: 'absolute',
     top: hp(12),
-    left: 0,
     padding: ms(8),
     zIndex: 10,
   },
+  backButtonLtr: { left: 0 },
+  backButtonRtl: { right: 0 },
   formSection: { paddingHorizontal: wp(4) },
 
-  // Header
   header: { alignItems: 'center', marginBottom: hp(32) },
   iconCircle: {
     width: ms(64),
@@ -437,61 +426,42 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: fontSize.xl,
-    fontWeight: '700',
-    letterSpacing: 0.3,
+    fontFamily: font.bold,
+    textAlign: 'center',
     marginBottom: hp(8),
   },
   subtitle: {
     fontSize: fontSize.sm,
-    fontWeight: '500',
+    fontFamily: font.medium,
     textAlign: 'center',
     lineHeight: ms(20),
   },
-
-  // Input
   inputContainer: { marginBottom: hp(16) },
   inputWrapper: {
-    flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
     paddingHorizontal: wp(14),
-    height: hp(58),
+    height: hp(56),
   },
   inputField: {
     flex: 1,
     fontSize: fontSize.md,
-    fontWeight: '500',
-    marginLeft: wp(10),
+    fontFamily: font.medium,
   },
-
-  // Error
+  inputFieldLtr: { marginLeft: wp(10) },
+  inputFieldRtl: { marginRight: wp(10) },
+  otpField: { letterSpacing: 8, textAlign: 'center' },
   errorBanner: {
     borderWidth: 1,
-    borderRadius: 14,
+    borderRadius: radius.md,
     paddingHorizontal: 14,
     paddingVertical: 10,
     marginBottom: hp(12),
   },
-  errorText: { fontSize: 13 },
-
-  // Button
-  button: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: radius.lg,
-    height: hp(56),
-    gap: wp(8),
-    paddingHorizontal: wp(20),
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: fontSize.lg,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-
-  // Resend
+  errorText: { fontSize: 13, fontFamily: font.regular },
+  buttonActive: { backgroundColor: palette.charbon, borderColor: palette.charbon },
+  buttonInactive: { backgroundColor: '#D4D0E8', borderColor: '#D4D0E8' },
+  buttonTextMuted: { opacity: 0.5 },
   resendRow: {
     alignItems: 'center',
     marginTop: hp(16),
@@ -499,6 +469,6 @@ const styles = StyleSheet.create({
   },
   resendText: {
     fontSize: fontSize.sm,
-    fontWeight: '600',
+    fontFamily: font.semibold,
   },
 });

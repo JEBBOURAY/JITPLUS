@@ -1,83 +1,48 @@
-import React, { useMemo } from 'react';
-import { View, Text } from 'react-native';
-import { Clock } from 'lucide-react-native';
-import { merchantStyles as styles } from './merchantStyles';
-import { getMerchantAccent } from '@/utils/merchantAccent';
-import type { Merchant, OpeningHours } from '@/types';
-
-const DAYS: Array<keyof OpeningHours> = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+import { memo } from 'react';
+import { View, StyleSheet } from 'react-native';
+import { Text } from '@/components/AppText';
+import { useTheme } from '@/contexts/ThemeContext';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { useAppFonts } from '@/utils/fonts';
+import { WEEK_DAYS, formatDaySlots, weekDayOf } from '@jitplus/shared';
+import { wp, hp, ms } from '@/utils/responsive';
+import type { OpeningHours } from '@/types';
+import FicheSection from './FicheSection';
 
 interface Props {
-  merchant: Merchant;
-  theme: { bgCard: string; text: string; textSecondary: string; textMuted: string };
-  t: (key: string, opts?: Record<string, unknown>) => string;
+  hours: OpeningHours;
 }
 
-function toMinutes(hhmm: string): number {
-  const [h, m] = hhmm.split(':').map(Number);
-  return h * 60 + m;
-}
-
-function MerchantOpeningHours({ merchant, theme, t }: Props) {
-  const hours = merchant.openingHours;
-  const hasAny = !!hours && DAYS.some((d) => hours[d]);
-  const todayKey = useMemo<keyof OpeningHours>(() => {
-    // JS Date: 0 = Sunday, 1 = Monday, ...
-    const idx = new Date().getDay();
-    return (DAYS[(idx + 6) % 7]);
-  }, []);
-
-  const todayStatus = useMemo(() => {
-    if (!hours) return null;
-    const day = hours[todayKey];
-    if (!day || day.closed || !day.slots || day.slots.length === 0) {
-      return { open: false, label: t('merchant.closedNow') };
-    }
-    const now = new Date();
-    const cur = now.getHours() * 60 + now.getMinutes();
-    const isOpen = day.slots.some((s) => cur >= toMinutes(s.open) && cur <= toMinutes(s.close));
-    return { open: isOpen, label: isOpen ? t('merchant.openNow') : t('merchant.closedNow') };
-  }, [hours, todayKey, t]);
-
-  if (!hasAny) return null;
-  const accent = getMerchantAccent(merchant.themeColor);
+/** The whole week, today in bold. The open/closed status is already in the hero. */
+function MerchantOpeningHours({ hours }: Props) {
+  const theme = useTheme();
+  const { t } = useLanguage();
+  const fonts = useAppFonts();
+  const today = weekDayOf(new Date());
 
   return (
-    <View style={[styles.hoursCard, { backgroundColor: theme.bgCard }]}>
-      <View style={styles.hoursHeader}>
-        <View style={[styles.hoursIconBadge, { backgroundColor: `${accent}15` }]}>
-          <Clock size={18} color={accent} strokeWidth={2} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.sectionTitle, { color: theme.text, marginBottom: 0 }]}>{t('merchant.hoursTitle')}</Text>
-          {todayStatus && (
-            <Text style={[styles.hoursStatus, { color: todayStatus.open ? '#10b981' : '#ef4444' }]}>
-              {todayStatus.label}
+    <FicheSection title={t('merchant.hoursTitle')}>
+      {WEEK_DAYS.map((day) => {
+        const isToday = day === today;
+        const slots = formatDaySlots(hours[day]);
+        const font = isToday ? fonts.semibold : fonts.regular;
+        return (
+          <View key={day} style={styles.row}>
+            <Text style={[styles.day, { color: theme.text, fontFamily: font }]}>{t(`merchant.days.${day}`)}</Text>
+            <Text style={[styles.slots, { color: slots ? theme.text : theme.textMuted, fontFamily: font }]}>
+              {slots ?? t('merchant.dayClosed')}
             </Text>
-          )}
-        </View>
-      </View>
-      <View style={styles.hoursList}>
-        {DAYS.map((d) => {
-          const day = hours?.[d];
-          const isToday = d === todayKey;
-          const label = day && !day.closed && day.slots && day.slots.length > 0
-            ? day.slots.map((s) => `${s.open} – ${s.close}`).join(', ')
-            : t('merchant.dayClosed');
-          return (
-            <View key={d} style={styles.hoursRow}>
-              <Text style={[styles.hoursDay, { color: isToday ? accent : theme.textSecondary, fontWeight: isToday ? '700' : '500' }]}>
-                {t(`merchant.days.${d}`)}
-              </Text>
-              <Text style={[styles.hoursValue, { color: isToday ? accent : theme.text, fontWeight: isToday ? '700' : '500' }]}>
-                {label}
-              </Text>
-            </View>
-          );
-        })}
-      </View>
-    </View>
+          </View>
+        );
+      })}
+    </FicheSection>
   );
 }
 
-export default React.memo(MerchantOpeningHours);
+const styles = StyleSheet.create({
+  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: wp(12), paddingVertical: hp(6) },
+  day: { fontSize: ms(14) },
+  slots: { flexShrink: 1, fontSize: ms(14), textAlign: 'right' },
+});
+
+export default memo(MerchantOpeningHours);

@@ -24,6 +24,12 @@ export interface LanguageProviderConfig<L extends string> {
   validLocales: readonly L[];
   defaultLocale: L;
   rtlLocales: readonly L[];
+  /**
+   * Called after the layout direction was switched with forceRTL, which only
+   * applies after a reload. When set, the direction is also synced at launch
+   * for the default locale, not only for a saved one.
+   */
+  onDirectionChange?: (rtl: boolean) => void;
 }
 
 export function createLanguageProvider<L extends string>(config: LanguageProviderConfig<L>) {
@@ -41,6 +47,14 @@ export function createLanguageProvider<L extends string>(config: LanguageProvide
     isRTL: false,
   });
 
+  function applyDirection(locale: L) {
+    const rtl = config.rtlLocales.includes(locale);
+    if (config.rtl.isRTL === rtl) return;
+    config.rtl.allowRTL(rtl);
+    config.rtl.forceRTL(rtl);
+    config.onDirectionChange?.(rtl);
+  }
+
   function LanguageProvider({ children }: { children: React.ReactNode }) {
     const [locale, setLocaleState] = useState<L>(config.defaultLocale);
     const [ready, setReady] = useState(false);
@@ -51,11 +65,9 @@ export function createLanguageProvider<L extends string>(config: LanguageProvide
           if (saved && config.validLocales.includes(saved as L)) {
             config.i18n.locale = saved;
             setLocaleState(saved as L);
-            const rtl = config.rtlLocales.includes(saved as L);
-            if (config.rtl.isRTL !== rtl) {
-              config.rtl.allowRTL(rtl);
-              config.rtl.forceRTL(rtl);
-            }
+            applyDirection(saved as L);
+          } else if (config.onDirectionChange) {
+            applyDirection(config.defaultLocale);
           }
         })
         .catch(() => {})
@@ -66,12 +78,7 @@ export function createLanguageProvider<L extends string>(config: LanguageProvide
       config.i18n.locale = newLocale;
       setLocaleState(newLocale);
       await config.storage.setItem(config.storageKey, newLocale).catch(() => {});
-
-      const rtl = config.rtlLocales.includes(newLocale);
-      if (config.rtl.isRTL !== rtl) {
-        config.rtl.allowRTL(rtl);
-        config.rtl.forceRTL(rtl);
-      }
+      applyDirection(newLocale);
     }, []);
 
     const t = useCallback(

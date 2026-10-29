@@ -12,7 +12,7 @@ import {
   CouponRedeemedPayload,
 } from '@jitplus/shared/src/realtime';
 import { logInfo, logWarn } from '@/utils/devLogger';
-import { queryKeys } from './useQueryHooks';
+import { queryKeys, isLocalTransactionEcho } from './useQueryHooks';
 import { scratchKeys } from './useScratchHooks';
 import { useAuthStore } from '@/stores/authStore';
 
@@ -31,36 +31,37 @@ export function useRealtimeEvents(socket: Socket | null) {
     // enough that the merchant sees activity feel "live" while still
     // collapsing bursts.
     let txDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-    const debouncedInvalidateTx = () => {
+    let txListStale = false;
+    const debouncedInvalidateTx = (refreshList: boolean) => {
+      txListStale = txListStale || refreshList;
       if (txDebounceTimer) clearTimeout(txDebounceTimer);
       txDebounceTimer = setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: queryKeys.transactions });
+        if (txListStale) queryClient.invalidateQueries({ queryKey: queryKeys.transactions });
+        txListStale = false;
         queryClient.invalidateQueries({ queryKey: queryKeys.homeStats });
-        queryClient.invalidateQueries({ queryKey: ['dashboard-stats'], refetchType: 'none' });
         queryClient.invalidateQueries({ queryKey: ['dashboard-trends'], refetchType: 'none' });
       }, 500);
     };
 
-    // ── Transaction recorded (by any team member / device) ───
     const onTransactionRecorded = (payload: TransactionRecordedPayload) => {
-      // SECURITY: Verify the event belongs to the current merchant
       const currentMerchant = useAuthStore.getState().merchant;
       if (currentMerchant && payload.merchantId !== currentMerchant.id) {
         logWarn('RT', 'Ignoring event for different merchant:', payload.merchantId);
         return;
       }
-      // Targeted invalidation: only the affected client's detail & status
-      queryClient.invalidateQueries({ queryKey: queryKeys.clientDetail(payload.clientId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.clientStatus(payload.clientId) });
-      // Debounce: batch transactions + dashboard invalidation (2s window)
-      debouncedInvalidateTx();
+      // useRecordTransaction already refreshed the client and the list for this device's own transactions.
+      const isEcho = isLocalTransactionEcho(payload.clientId);
+      if (!isEcho) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.clientDetail(payload.clientId) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.clientStatus(payload.clientId) });
+      }
+      debouncedInvalidateTx(!isEcho);
 
       if (__DEV__) {
         logInfo('RT', 'Transaction recorded:', payload.type, payload.stamps, 'stamps for client', payload.clientId);
       }
     };
 
-    // ── Coupon redeemed at another till ───
     const onCouponRedeemed = (payload: CouponRedeemedPayload) => {
       const currentMerchant = useAuthStore.getState().merchant;
       if (currentMerchant && payload.merchantId !== currentMerchant.id) return;

@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
+import { Text } from '@/components/AppText';
 import Svg, { G, Path, Circle, Line, Defs, RadialGradient, Stop, Polygon } from 'react-native-svg';
 import { palette } from '@/contexts/ThemeContext';
 import { useAppFonts } from '@/utils/fonts';

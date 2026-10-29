@@ -15,6 +15,7 @@ import {
 import { MailService } from '../mail/mail.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ClientClaimService } from '../merchant/services/client-claim.service';
+import { DealsClientService } from '../deals/deals-client.service';
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -49,6 +50,8 @@ const mockCache = {
   del: jest.fn(),
 };
 
+const mockDeals = { merchantBadges: jest.fn() };
+
 const noop = { findUnique: jest.fn(), findMany: jest.fn(), findFirst: jest.fn(), create: jest.fn(), update: jest.fn(), updateMany: jest.fn(), delete: jest.fn(), count: jest.fn() };
 
 // ── Suite ───────────────────────────────────────────────────────────────────
@@ -72,11 +75,13 @@ describe('ClientService — block / unblock / filter', () => {
         { provide: MailService, useValue: { sendContentReport: jest.fn() } },
         { provide: PrismaService, useValue: mockPrisma },
         { provide: ClientClaimService, useValue: {} },
+        { provide: DealsClientService, useValue: mockDeals },
       ],
     }).compile();
 
     service = module.get<ClientService>(ClientService);
     jest.clearAllMocks();
+    mockDeals.merchantBadges.mockResolvedValue({});
   });
 
   // ── blockMerchant ────────────────────────────────────────────────────────
@@ -151,6 +156,36 @@ describe('ClientService — block / unblock / filter', () => {
       expect(mockCache.get).not.toHaveBeenCalled();
       expect(mockMerchantRepo.findFirst).not.toHaveBeenCalled();
     });
+
+    it('returns the public profile without block, card or view lookups when clientId is omitted', async () => {
+      mockCache.get.mockResolvedValue({
+        id: MERCHANT_ID,
+        nom: 'Café',
+        ville: 'Rabat',
+        profileViews: 7,
+        stampValidityDays: null,
+        stampValiditySince: null,
+        stores: [],
+        rewards: [],
+        luckyWheelCampaigns: [],
+        _count: { loyaltyCards: 3 },
+      });
+
+      const result = await service.getMerchantById(MERCHANT_ID);
+
+      expect(result).toMatchObject({
+        id: MERCHANT_ID,
+        nomBoutique: 'Café',
+        clientCount: 3,
+        hasCard: false,
+        cardDeactivated: false,
+        cardBalance: 0,
+        cardStampsExpireAt: null,
+      });
+      expect(mockPrisma.clientMerchantBlock.findUnique).not.toHaveBeenCalled();
+      expect(mockLoyaltyCardRepo.findUnique).not.toHaveBeenCalled();
+      expect(noop.create).not.toHaveBeenCalled();
+    });
   });
 
   // ── getMerchants filters blocked ─────────────────────────────────────────
@@ -164,13 +199,15 @@ describe('ClientService — block / unblock / filter', () => {
       { id: 'm3', nom: 'C', stores: [] },
     ];
 
-    it('returns the cached list unchanged when clientId is omitted', async () => {
+    const noBadge = { activeDealCount: 0, topDeal: null };
+
+    it('returns the cached list without block lookup when clientId is omitted', async () => {
       const cached = { merchants: sampleMerchants, pagination: { total: 3 } };
       mockCache.get.mockResolvedValue(cached);
 
       const result = await service.getMerchants(page, limit);
 
-      expect(result).toBe(cached);
+      expect(result).toEqual({ ...cached, merchants: sampleMerchants.map((m) => ({ ...m, ...noBadge })) });
       expect(mockPrisma.clientMerchantBlock.findMany).not.toHaveBeenCalled();
     });
 
@@ -189,14 +226,38 @@ describe('ClientService — block / unblock / filter', () => {
       expect(result.pagination).toEqual(cached.pagination);
     });
 
-    it('returns the cached list untouched when the client has no blocks', async () => {
+    it('returns every cached merchant when the client has no blocks', async () => {
       const cached = { merchants: sampleMerchants, pagination: { total: 3 } };
       mockCache.get.mockResolvedValue(cached);
       mockPrisma.clientMerchantBlock.findMany.mockResolvedValue([]);
 
       const result = await service.getMerchants(page, limit, CLIENT_ID);
 
-      expect(result).toBe(cached);
+      expect(result).toEqual({ ...cached, merchants: sampleMerchants.map((m) => ({ ...m, ...noBadge })) });
+    });
+
+    it('adds deal badges, without the deal content for guests', async () => {
+      const topDeal = { id: 'd1', title: '-20 %', type: 'PERCENT_OFF', percentOff: 20, buyQty: null, freeQty: null };
+      mockCache.get.mockResolvedValue({ merchants: sampleMerchants, pagination: { total: 3 } });
+      mockPrisma.clientMerchantBlock.findMany.mockResolvedValue([]);
+      mockDeals.merchantBadges.mockResolvedValue({ m1: { activeDealCount: 2, topDeal } });
+
+      const guest = (await service.getMerchants(page, limit)) as any;
+      const client = (await service.getMerchants(page, limit, CLIENT_ID)) as any;
+
+      expect(guest.merchants[0]).toMatchObject({ id: 'm1', activeDealCount: 2, topDeal: null });
+      expect(client.merchants[0]).toMatchObject({ id: 'm1', activeDealCount: 2, topDeal });
+      expect(client.merchants[1]).toMatchObject({ id: 'm2', ...noBadge });
+    });
+
+    it('still lists merchants when the deal badges fail', async () => {
+      mockCache.get.mockResolvedValue({ merchants: sampleMerchants, pagination: { total: 3 } });
+      mockDeals.merchantBadges.mockRejectedValue(new Error('db down'));
+
+      const result = (await service.getMerchants(page, limit)) as any;
+
+      expect(result.merchants).toHaveLength(3);
+      expect(result.merchants[0]).toMatchObject(noBadge);
     });
   });
 });

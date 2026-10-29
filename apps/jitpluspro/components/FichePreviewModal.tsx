@@ -1,910 +1,448 @@
 /**
- * FichePreviewModal — Aperçu pixel-perfect de la fiche telle qu'affichée
- * sur l'application cliente JitPlus (apps/jitplus/app/merchant/[id].tsx).
- * Toutes les sections sont reproduites à l'identique : hero, identité,
- * réseaux sociaux, description, badges, galerie, horaires, fidélité,
- * autres adresses et barre d'action.
+ * Full-screen preview of the public merchant page, as the jitplus app shows
+ * it to a customer who has no card yet (apps/jitplus/app/merchant/[id].tsx).
+ * Same tabs, rules (@jitplus/shared merchantFiche) and wording (`fiche.*`).
+ * Contact buttons and links really open, so the merchant can check them.
  */
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
-  Modal, View, Text, StyleSheet, ScrollView, Pressable, TouchableOpacity,
-  StatusBar, I18nManager, Dimensions, Platform,
+  Modal, View, Text, StyleSheet, Pressable, StatusBar, Platform, Animated, useWindowDimensions,
+  type ScrollView, type LayoutChangeEvent, type NativeSyntheticEvent, type NativeScrollEvent,
 } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import {
-  X as XIcon, ArrowLeft, Send, Flag, Eye, Users, Clock, Gift, Stamp,
-  MapPin, Phone, ChevronRight, Wallet,
-  Instagram, Music2, Mail, Globe, Facebook, Ghost, Youtube, MessageCircle,
-  Wifi, ParkingSquare, TreePine, Snowflake, CreditCard, Truck, ShoppingBag,
-  Utensils, Leaf, Accessibility, Dog, Baby, CalendarCheck,
-  type LucideIcon,
-} from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { wp, hp, ms } from '@/utils/responsive';
+import {
+  ArrowLeft, Navigation, Phone, MessageCircle, Globe, Mail, Wallet, EyeOff, type LucideIcon,
+} from 'lucide-react-native';
+import {
+  getCategoryEmoji, getFicheContacts, getFicheRewards, getFicheTabs, getKnownBadges, getOpenStatus, getSocialProfiles,
+  describeOpenStatus, hasOpeningHours, type FicheContact,
+} from '@jitplus/shared';
+import { openDirections, openFirst } from '@jitplus/shared/src/openLinks';
+import { palette, useTheme } from '@/contexts/ThemeContext';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { useDir } from '@/hooks/useDir';
+import { usePlanStatus } from '@/hooks/usePlanStatus';
+import { useLuckyWheelCampaigns, useRewards } from '@/hooks/useQueryHooks';
+import { font } from '@/constants/design';
+import { getCategoryLabel } from '@/constants/categories';
+import { hapticLight } from '@/utils/haptics';
 import { resolveImageUrl } from '@/utils/imageUrl';
 import { MERCHANT_ICON_MAP } from '@/utils/merchantIcons';
-import { palette } from '@/contexts/ThemeContext';
-import { useRewards } from '@/hooks/useQueryHooks';
-import { hoursHasAny } from '@/components/stores/brand';
-import type { Merchant, MerchantCategory, Reward } from '@/types';
-import type { OpeningHours } from '@jitplus/shared';
+import { wp, hp, ms } from '@/utils/responsive';
+import { brandColor } from '@/components/stores/brand';
+import type { Merchant, Store } from '@/types';
+import {
+  FicheAbout, FicheGallery, FicheHours, FicheInfoSummary, FicheLocations, FicheLoyalty, FicheLoyaltySummary,
+  FicheLuckyWheel, FicheTabs, TAB_BAR_HEIGHT, type FicheWheel, type PreviewTab,
+} from '@/components/fichePreview/FicheSections';
 
-// ─── Helpers identiques à la fiche client ────────────────────────────────
-const BADGE_ICONS: Record<string, LucideIcon> = {
-  WIFI: Wifi, PARKING: ParkingSquare, TERRASSE: TreePine, CLIMATISE: Snowflake,
-  CARTE_BANCAIRE: CreditCard, LIVRAISON: Truck, TAKEAWAY: ShoppingBag,
-  HALAL: Utensils, VEGETARIEN: Leaf, ACCESS_PMR: Accessibility,
-  PETS_OK: Dog, KID_FRIENDLY: Baby, RESERVATION: CalendarCheck,
+const HERO_HEIGHT = hp(190);
+const LOGO_SIZE = ms(84);
+const HEADER_BUTTON = ms(40);
+const HEADER_PAD_TOP = hp(6);
+const HEADER_PAD_BOTTOM = hp(8);
+const TOP_SCRIM = ['rgba(0,0,0,0.38)', 'rgba(0,0,0,0)'] as const;
+const DIAG_START = { x: 0, y: 0 } as const;
+const DIAG_END = { x: 1, y: 1 } as const;
+const BOTTOM_BAR_SPACE = hp(96);
+/** jitplus light page background (palette.gray50). */
+const LIGHT_PAGE_BG = '#F8FAFC';
+
+const CONTACT_UI: Record<FicheContact['key'], { Icon: LucideIcon; labelKey: string }> = {
+  directions: { Icon: Navigation, labelKey: 'fiche.directions' },
+  call: { Icon: Phone, labelKey: 'fiche.call' },
+  whatsapp: { Icon: MessageCircle, labelKey: 'fiche.whatsapp' },
+  website: { Icon: Globe, labelKey: 'fiche.website' },
+  email: { Icon: Mail, labelKey: 'fiche.email' },
 };
 
-const WEEK_DAYS: ('mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun')[] =
-  ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+type Campaigns = ReturnType<typeof useLuckyWheelCampaigns>['data'];
 
-const EMERALD = '#10b981';
-const RED = '#ef4444';
-
-function toMinutes(hhmm: string): number {
-  const [h, m] = hhmm.split(':').map((n) => parseInt(n, 10));
-  if (Number.isNaN(h) || Number.isNaN(m)) return -1;
-  return h * 60 + m;
+/** The campaign running right now, with only the prizes still available. */
+function findActiveWheel(campaigns: Campaigns): FicheWheel | null {
+  const now = Date.now();
+  const active = campaigns?.find((c) => c.status === 'ACTIVE'
+    && new Date(c.startsAt).getTime() <= now && new Date(c.endsAt).getTime() >= now);
+  if (!active) return null;
+  return {
+    ...active,
+    prizes: active.prizes.filter((p) => p.remaining > 0).sort((a, b) => b.weight - a.weight),
+  };
 }
 
-function getTodayKey(): typeof WEEK_DAYS[number] {
-  const js = new Date().getDay();
-  return WEEK_DAYS[(js + 6) % 7];
+function openContact(contact: FicheContact) {
+  if (contact.key === 'directions') void openDirections(contact.latitude, contact.longitude, contact.label);
+  else void openFirst([contact.url]);
 }
-
-function isOpenNow(hours: OpeningHours | null | undefined): boolean {
-  if (!hours) return false;
-  const today = hours[getTodayKey()];
-  if (!today || today.closed || !today.slots?.length) return false;
-  const now = new Date();
-  const cur = now.getHours() * 60 + now.getMinutes();
-  return today.slots.some((s) => {
-    const o = toMinutes(s.open);
-    const c = toMinutes(s.close);
-    return o >= 0 && c >= 0 && cur >= o && cur <= c;
-  });
-}
-
-type PreviewState = {
-  accent: string;
-  iconSlug: string | null;
-  tagline: string;
-  badges: string[];
-  hours: OpeningHours;
-  gallery: string[];
-  secondary: MerchantCategory[];
-};
-
-type Theme = {
-  bg: string; bgCard: string; text: string; textSecondary: string;
-  textMuted: string; borderLight: string;
-};
 
 interface Props {
   visible: boolean;
   onClose: () => void;
   merchant: Merchant;
-  draft: PreviewState;
-  theme: Theme;
-  t: (key: string, opts?: Record<string, unknown>) => string;
-  getCategoryLabel: (c: string) => string;
+  /** Every store of the merchant; only the active ones appear on the page. */
+  stores: Store[];
+  /** Opens the locations editor, offered when the page is not public yet. */
+  onManageLocations?: () => void;
 }
 
-const SCREEN_W = Dimensions.get('window').width;
-
-function FichePreviewModalInner({
-  onClose, merchant, draft, theme, t, getCategoryLabel,
-}: Omit<Props, 'visible'>) {
+function FichePreview({ onClose, merchant, stores, onManageLocations }: Omit<Props, 'visible'>) {
+  const theme = useTheme();
+  const { t } = useLanguage();
+  const dir = useDir();
   const insets = useSafeAreaInsets();
-  const [galleryIdx, setGalleryIdx] = useState<number | null>(null);
+  const { isPremium } = usePlanStatus(merchant);
   const { data: rewardsData } = useRewards(true);
+  const { data: campaigns } = useLuckyWheelCampaigns(isPremium);
 
-  const accent = draft.accent || palette.violet;
-  const IconCmp = draft.iconSlug ? MERCHANT_ICON_MAP[draft.iconSlug] : null;
-  const open = useMemo(() => isOpenNow(draft.hours), [draft.hours]);
-  const todayKey = getTodayKey();
-  const allCategoriesLabel = useMemo(() => {
-    const list = [merchant.categorie, ...(draft.secondary || [])].filter(Boolean) as string[];
-    return list.map((c) => getCategoryLabel(c)).join(' · ');
-  }, [merchant.categorie, draft.secondary, getCategoryLabel]);
+  const accent = brandColor(merchant.themeColor);
+  const pageBg = theme.mode === 'dark' ? theme.bg : LIGHT_PAGE_BG;
+  const ThemeIcon = merchant.themeIcon ? MERCHANT_ICON_MAP[merchant.themeIcon] : undefined;
 
-  const hasAnyHours = hoursHasAny(draft.hours);
-  const hasGallery = draft.gallery.length > 0;
-  const hasBadges = draft.badges.length > 0;
-  const hasDescription = !!merchant.description && merchant.description.trim().length > 0;
-  const hasStores = !!merchant.stores && merchant.stores.length > 0;
+  // The client endpoint only returns active stores, and hides the page without any.
+  const activeStores = useMemo(() => stores.filter((s) => s.isActive !== false), [stores]);
+  const isPublic = merchant.isActive !== false && activeStores.length > 0;
 
-  // Fallback : si pas de stores créés, on synthétise une "adresse" depuis le merchant
-  // pour que la section Localisation reste visible en preview comme côté client.
-  const fallbackStore = useMemo(() => {
-    if (hasStores) return null;
-    const hasAnyAddress = !!merchant.adresse
-      || !!merchant.quartier
-      || !!merchant.ville
-      || (merchant.latitude != null && merchant.longitude != null);
-    if (!hasAnyAddress) return null;
-    return {
-      id: 'preview-primary',
-      nom: merchant.nom,
-      adresse: merchant.adresse,
-      quartier: merchant.quartier,
-      ville: merchant.ville,
-      latitude: merchant.latitude,
-      longitude: merchant.longitude,
-      telephone: merchant.phoneNumber,
-    };
-  }, [hasStores, merchant.adresse, merchant.quartier, merchant.ville, merchant.latitude, merchant.longitude, merchant.nom, merchant.phoneNumber]);
-
-  const displayedStores = hasStores
-    ? merchant.stores!
-    : (fallbackStore ? [fallbackStore] : []);
-  const showLocations = displayedStores.length > 0;
-
-  // Réseaux sociaux : même ordre que MerchantSocialLinks côté client.
-  const socialIcons = useMemo(() => {
-    const links = merchant.socialLinks;
-    const email = merchant.stores?.find((st) => !!st.email)?.email;
-    const icons: { key: string; Icon: LucideIcon; color: string; bg: string }[] = [];
-    const add = (on: unknown, key: string, Icon: LucideIcon, color: string, bg = `${color}12`) => {
-      if (on) icons.push({ key, Icon, color, bg });
-    };
-    add(links?.whatsapp, 'whatsapp', MessageCircle, '#25D366');
-    add(links?.instagram, 'instagram', Instagram, '#E1306C');
-    add(links?.tiktok, 'tiktok', Music2, palette.gray900, `${palette.gray900}08`);
-    add(links?.facebook, 'facebook', Facebook, '#1877F2');
-    add(links?.snapchat, 'snapchat', Ghost, '#C9A400');
-    add(links?.youtube, 'youtube', Youtube, '#FF0000');
-    add(email, 'email', Mail, '#EA4335');
-    add(links?.website, 'website', Globe, accent, `${accent}10`);
-    return icons;
-  }, [merchant.socialLinks, merchant.stores, accent]);
-
-  // Rewards : on combine les vrais rewards + fallback tampons (comme la fiche client)
-  const rewardsList: Reward[] = useMemo(() => {
-    if (rewardsData && rewardsData.length > 0) return rewardsData;
-    return [{
-      id: 'default-stamp',
-      titre: t('common.gift'),
-      cout: merchant.stampsForReward || 10,
-    }];
-  }, [rewardsData, merchant.stampsForReward, t]);
-
-  const body = (
-      <View style={[s.root, { backgroundColor: theme.bg }]}>
-        <ScrollView
-          contentContainerStyle={s.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
-          {/* ── Hero ──────────────────────────────────────────────── */}
-          <View style={s.heroSection}>
-            {merchant.coverUrl ? (
-              <ExpoImage
-                source={resolveImageUrl(merchant.coverUrl)}
-                style={s.coverImage}
-                contentFit="cover"
-                cachePolicy="disk"
-              />
-            ) : (
-              <LinearGradient
-                colors={[`${accent}18`, `${accent}08`, theme.bg]}
-                style={s.coverImage}
-              />
-            )}
-            <LinearGradient
-              colors={['transparent', theme.bg]}
-              style={s.coverFade}
-            />
-
-            {/* Floating header (réplique exacte : back / share / flag) */}
-            <View style={[s.floatingHeader, { paddingTop: insets.top + 4 }]}>
-              <Pressable
-                onPress={onClose}
-                style={s.floatingBtn}
-                hitSlop={8}
-                accessibilityLabel={t('common.back')}
-              >
-                <ArrowLeft
-                  size={20}
-                  color={palette.gray900}
-                  strokeWidth={2}
-                  style={I18nManager.isRTL ? { transform: [{ scaleX: -1 }] } : undefined}
-                />
-              </Pressable>
-
-              {/* Badge APERÇU au centre — spécifique au preview */}
-              <View style={s.previewBadge}>
-                <Text style={s.previewBadgeText} numberOfLines={1}>
-                  {t('storePreview.previewBadge')}
-                </Text>
-              </View>
-
-              <View style={{ flexDirection: 'row', gap: wp(8) }}>
-                <View style={s.floatingBtn}>
-                  <Send size={18} color={palette.gray900} strokeWidth={2} />
-                </View>
-                <View style={s.floatingBtn}>
-                  <Flag size={18} color={palette.gray900} strokeWidth={2} />
-                </View>
-                <Pressable
-                  onPress={onClose}
-                  style={s.floatingBtn}
-                  hitSlop={8}
-                  accessibilityLabel={t('common.close')}
-                >
-                  <XIcon size={20} color={palette.gray900} strokeWidth={2} />
-                </Pressable>
-              </View>
-            </View>
-
-            {/* Logo ring */}
-            <View style={s.logoContainer}>
-              <View style={[s.logoRing, { backgroundColor: theme.bg }]}>
-                {merchant.logoUrl ? (
-                  <ExpoImage
-                    source={resolveImageUrl(merchant.logoUrl)}
-                    style={s.logo}
-                    contentFit="cover"
-                    cachePolicy="disk"
-                  />
-                ) : IconCmp ? (
-                  <View style={[s.emojiWrap, { backgroundColor: `${accent}15` }]}>
-                    <IconCmp size={ms(44)} color={accent} strokeWidth={1.75} />
-                  </View>
-                ) : (
-                  <View style={[s.emojiWrap, { backgroundColor: `${accent}10` }]}>
-                    <Text style={s.emoji}>🏪</Text>
-                  </View>
-                )}
-              </View>
-            </View>
-          </View>
-
-          {/* ── Identity ─────────────────────────────────────────── */}
-          <View style={s.identitySection}>
-            <Text style={[s.merchantName, { color: theme.text }]} numberOfLines={2}>
-              {merchant.nom}
-            </Text>
-            {draft.tagline.trim().length > 0 && (
-              <Text style={[s.tagline, { color: theme.textMuted }]} numberOfLines={3}>
-                {draft.tagline.trim()}
-              </Text>
-            )}
-            <View style={[s.categoryBadge, { backgroundColor: `${accent}10` }]}>
-              {IconCmp ? (
-                <IconCmp size={14} color={accent} strokeWidth={2} />
-              ) : null}
-              <Text
-                style={[s.categoryText, { color: accent }]}
-                numberOfLines={1}
-              >
-                {allCategoriesLabel}
-              </Text>
-            </View>
-            <View style={s.statsRow}>
-              <View style={[s.statChip, { backgroundColor: theme.bgCard }]}>
-                <Eye size={15} color={accent} strokeWidth={2} />
-                <Text style={[s.statValue, { color: theme.text }]}>0</Text>
-                <Text style={[s.statLabel, { color: theme.textMuted }]}>
-                  {t('storePreview.previewViews')}
-                </Text>
-              </View>
-              <View style={s.statDivider} />
-              <View style={[s.statChip, { backgroundColor: theme.bgCard }]}>
-                <Users size={15} color={accent} strokeWidth={2} />
-                <Text style={[s.statValue, { color: theme.text }]}>0</Text>
-                <Text style={[s.statLabel, { color: theme.textMuted }]}>
-                  {t('storePreview.previewClients')}
-                </Text>
-              </View>
-            </View>
-          </View>
-
-          {/* ── Réseaux sociaux ──────────────────────────────────── */}
-          {socialIcons.length > 0 && (
-            <View style={s.socialRow}>
-              {socialIcons.map(({ key, Icon, color, bg }) => (
-                <View key={key} style={[s.socialIconBtn, { backgroundColor: bg }]}>
-                  <Icon size={18} color={color} strokeWidth={2} />
-                </View>
-              ))}
-            </View>
-          )}
-
-          {/* ── Contenu ──────────────────────────────────────────── */}
-          <View style={s.contentArea}>
-            {/* Description */}
-            {hasDescription && (
-              <LinearGradient
-                colors={[theme.bgCard, `${accent}10`, `${accent}18`]}
-                start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-                style={[s.descriptionCard, { backgroundColor: theme.bgCard }]}
-              >
-                <Text style={[s.sectionTitle, { color: theme.text }]}>
-                  {t('storePreview.previewAboutUs')}
-                </Text>
-                <Text style={[s.descriptionText, { color: theme.textSecondary }]}>
-                  {merchant.description}
-                </Text>
-              </LinearGradient>
-            )}
-
-            {/* Badges */}
-            {hasBadges && (
-              <View style={[s.card, { backgroundColor: theme.bgCard }]}>
-                <Text style={[s.sectionTitle, { color: theme.text }]}>
-                  {t('storePreview.badgesTitle')}
-                </Text>
-                <View style={s.badgesWrap}>
-                  {draft.badges.map((code) => {
-                    const Icon = BADGE_ICONS[code];
-                    return (
-                      <View
-                        key={code}
-                        style={[s.badgePill, { backgroundColor: `${accent}12`, borderColor: `${accent}30` }]}
-                      >
-                        {Icon && <Icon size={14} color={accent} strokeWidth={2} />}
-                        <Text
-                          style={[s.badgePillText, { color: accent }]}
-                          numberOfLines={1}
-                        >
-                          {t(`storePreview.badges.${code}`)}
-                        </Text>
-                      </View>
-                    );
-                  })}
-                </View>
-              </View>
-            )}
-
-            {/* Galerie */}
-            {hasGallery && (
-              <View style={s.galleryCard}>
-                <Text style={[s.sectionTitle, { color: theme.text, paddingHorizontal: wp(16) }]}>
-                  {t('storePreview.galleryTitle')}
-                </Text>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={[s.galleryScrollContent, { paddingHorizontal: wp(16) }]}
-                >
-                  {draft.gallery.map((url, idx) => (
-                    <Pressable
-                      key={`${url}-${idx}`}
-                      onPress={() => setGalleryIdx(idx)}
-                      style={s.galleryThumbBtn}
-                    >
-                      <ExpoImage
-                        source={resolveImageUrl(url)}
-                        style={s.galleryThumb}
-                        contentFit="cover"
-                        cachePolicy="disk"
-                      />
-                    </Pressable>
-                  ))}
-                </ScrollView>
-              </View>
-            )}
-
-            {/* Horaires */}
-            {hasAnyHours && (
-              <View style={[s.card, { backgroundColor: theme.bgCard }]}>
-                <View style={s.hoursHeader}>
-                  <View style={[s.hoursIconBadge, { backgroundColor: `${accent}15` }]}>
-                    <Clock size={18} color={accent} strokeWidth={2} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[s.sectionTitle, { color: theme.text, marginBottom: 0 }]}>
-                      {t('storePreview.hoursTitle')}
-                    </Text>
-                    <Text style={[s.hoursStatus, { color: open ? EMERALD : RED }]}>
-                      {open ? t('storePreview.hoursOpen') : t('storePreview.hoursClosed')}
-                    </Text>
-                  </View>
-                </View>
-                <View style={s.hoursList}>
-                  {WEEK_DAYS.map((d) => {
-                    const day = draft.hours[d];
-                    const isToday = d === todayKey;
-                    const label = day && !day.closed && day.slots?.length
-                      ? day.slots.map((sl) => `${sl.open} – ${sl.close}`).join(', ')
-                      : t('storePreview.previewDayClosed');
-                    return (
-                      <View key={d} style={s.hoursRow}>
-                        <Text style={[
-                          s.hoursDay,
-                          {
-                            color: isToday ? accent : theme.textSecondary,
-                            fontWeight: isToday ? '700' : '500',
-                          },
-                        ]}>
-                          {t(`storePreview.days.${d}`)}
-                        </Text>
-                        <Text style={[
-                          s.hoursValue,
-                          {
-                            color: isToday ? accent : theme.text,
-                            fontWeight: isToday ? '700' : '500',
-                          },
-                        ]}>
-                          {label}
-                        </Text>
-                      </View>
-                    );
-                  })}
-                </View>
-              </View>
-            )}
-
-            {/* Fidélité + cadeaux */}
-            <LinearGradient
-              colors={[theme.bgCard, `${palette.gold}10`, `${palette.gold}18`]}
-              start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-              style={[s.loyaltyCard, { backgroundColor: theme.bgCard }]}
-            >
-              <View style={s.loyaltyRow}>
-                <View style={[s.cardIconBadge, { backgroundColor: `${accent}15` }]}>
-                  <Stamp size={ms(16)} color={accent} strokeWidth={1.5} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[s.cardLabel, { color: theme.textMuted }]}>
-                    {t('storePreview.previewLoyaltyProgram')}
-                  </Text>
-                  <Text style={[s.cardValue, { color: theme.text }]} numberOfLines={1}>
-                    {t('storePreview.stampCard')}
-                  </Text>
-                </View>
-              </View>
-
-              {rewardsList.length > 0 && (
-                <>
-                  <View style={[s.loyaltyDivider, { backgroundColor: theme.borderLight }]} />
-                  <View style={s.rewardsSectionHeader}>
-                    <View style={[s.cardIconBadge, { backgroundColor: `${accent}15` }]}>
-                      <Gift size={ms(16)} color={accent} strokeWidth={1.5} />
-                    </View>
-                    <Text style={[s.cardLabel, { color: theme.textMuted, marginBottom: 0 }]}>
-                      {t('storePreview.previewRewardsSection')}
-                    </Text>
-                  </View>
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={s.rewardsScrollContent}
-                  >
-                    {rewardsList.map((reward) => (
-                      <View
-                        key={reward.id}
-                        style={[s.rewardCard, { backgroundColor: `${accent}08`, borderColor: `${accent}20` }]}
-                      >
-                        {reward.imageUrl ? (
-                          <ExpoImage
-                            source={resolveImageUrl(reward.imageUrl)}
-                            style={{ width: ms(48), height: ms(48), borderRadius: ms(10) }}
-                            contentFit="cover"
-                            cachePolicy="disk"
-                            recyclingKey={reward.imageUrl}
-                          />
-                        ) : (
-                          <Gift size={ms(22)} color={accent} strokeWidth={1.5} />
-                        )}
-                        <Text style={[s.rewardCardTitle, { color: theme.text }]} numberOfLines={2}>
-                          {reward.titre}
-                        </Text>
-                        <View style={[s.rewardCostBadge, { backgroundColor: `${accent}15` }]}>
-                          <Text style={[s.rewardCost, { color: accent }]} numberOfLines={1}>
-                            {t('storePreview.previewStampsCost', { count: reward.cout })}
-                          </Text>
-                        </View>
-                      </View>
-                    ))}
-                  </ScrollView>
-                </>
-              )}
-            </LinearGradient>
-
-            {/* Autres adresses */}
-            {showLocations && (
-              <LinearGradient
-                colors={[theme.bgCard, `${accent}10`, `${accent}18`]}
-                start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-                style={[s.locationsCard, { backgroundColor: theme.bgCard }]}
-              >
-                <View style={s.locationsHeader}>
-                  <View style={[s.cardIconBadge, { backgroundColor: `${palette.gold}12` }]}>
-                    <MapPin size={ms(16)} color={palette.gold} strokeWidth={1.5} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[s.sectionTitle, { color: theme.text, marginBottom: 0 }]}>
-                      {displayedStores.length > 1
-                        ? t('storePreview.previewOtherLocationsTitle')
-                        : t('storePreview.previewLocationTitle')}
-                    </Text>
-                    {displayedStores.length > 1 && (
-                      <Text style={[s.locationsCount, { color: theme.textMuted }]}>
-                        {t('storePreview.previewOtherLocationsCount', { count: displayedStores.length })}
-                      </Text>
-                    )}
-                  </View>
-                </View>
-                {displayedStores.map((store, idx) => (
-                  <View
-                    key={store.id}
-                    style={[s.storeItem, idx === 0 && { borderTopWidth: 0 }]}
-                  >
-                    <View style={[s.storeItemDot, { backgroundColor: palette.gold }]} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={[s.storeItemName, { color: theme.text }]} numberOfLines={1}>
-                        {store.nom}
-                      </Text>
-                      {(store.adresse || store.quartier || store.ville) && (
-                        <Text style={[s.storeAddress, { color: theme.textMuted }]} numberOfLines={1}>
-                          {store.adresse || [store.quartier, store.ville].filter(Boolean).join(', ')}
-                        </Text>
-                      )}
-                      {!!store.telephone && (
-                        <View style={s.storePhoneRow}>
-                          <Phone size={13} color={EMERALD} strokeWidth={2} />
-                          <Text style={[s.storePhone, { color: EMERALD }]} numberOfLines={1}>
-                            {store.telephone}
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-                    {(store.latitude != null && store.longitude != null) && (
-                      <ChevronRight size={16} color={palette.gold} strokeWidth={2} />
-                    )}
-                  </View>
-                ))}
-              </LinearGradient>
-            )}
-          </View>
-
-          <View style={{ height: hp(20) }} />
-          <Text style={[s.footerHint, { color: theme.textMuted }]}>
-            {t('storePreview.previewFooter')}
-          </Text>
-          <View style={{ height: hp(80) + insets.bottom }} />
-        </ScrollView>
-
-        {/* ── Barre d'action bas (réplique du bouton "Obtenir ma carte") ── */}
-        <View style={[
-          s.bottomBar,
-          {
-            backgroundColor: theme.bg,
-            borderTopColor: theme.borderLight,
-            paddingBottom: insets.bottom || hp(10),
-          },
-        ]}>
-          <View style={[
-            s.joinBtn,
-            { backgroundColor: palette.violet },
-          ]}>
-            <Wallet size={18} color="#fff" strokeWidth={2} />
-            <Text style={s.joinBtnText} numberOfLines={1}>
-              {t('storePreview.previewGetCard')}
-            </Text>
-          </View>
-        </View>
-
-        {/* ── Lightbox galerie ─────────────────────────────────────── */}
-        {galleryIdx !== null && (
-          <Modal visible transparent animationType="fade" onRequestClose={() => setGalleryIdx(null)}>
-            <View style={s.lightbox}>
-              <TouchableOpacity
-                style={[s.lightboxClose, { top: insets.top + 12 }]}
-                onPress={() => setGalleryIdx(null)}
-                hitSlop={10}
-              >
-                <XIcon size={22} color="#fff" />
-              </TouchableOpacity>
-              <ScrollView
-                horizontal
-                pagingEnabled
-                showsHorizontalScrollIndicator={false}
-                contentOffset={{ x: galleryIdx * SCREEN_W, y: 0 }}
-              >
-                {draft.gallery.map((url, i) => (
-                  <View
-                    key={i}
-                    style={{ width: SCREEN_W, height: '100%', alignItems: 'center', justifyContent: 'center' }}
-                  >
-                    <ExpoImage
-                      source={resolveImageUrl(url)}
-                      style={{ width: SCREEN_W, height: '80%' }}
-                      contentFit="contain"
-                      cachePolicy="disk"
-                      recyclingKey={url}
-                    />
-                  </View>
-                ))}
-              </ScrollView>
-            </View>
-          </Modal>
-        )}
-      </View>
+  const openStatus = useMemo(() => getOpenStatus(merchant.openingHours), [merchant.openingHours]);
+  const contacts = useMemo(() => getFicheContacts({
+    name: merchant.nom,
+    latitude: merchant.latitude,
+    longitude: merchant.longitude,
+    socialLinks: merchant.socialLinks,
+    stores: activeStores,
+  }), [merchant.nom, merchant.latitude, merchant.longitude, merchant.socialLinks, activeStores]);
+  const profiles = useMemo(() => getSocialProfiles(merchant.socialLinks), [merchant.socialLinks]);
+  const badges = useMemo(() => getKnownBadges(merchant.badges), [merchant.badges]);
+  const rewards = useMemo(
+    () => getFicheRewards(rewardsData, merchant.stampsForReward, t('fiche.defaultReward')),
+    [rewardsData, merchant.stampsForReward, t],
   );
 
+  const wheel = useMemo(() => findActiveWheel(campaigns), [campaigns]);
+
+  const subtitle = useMemo(() => {
+    const categories = [merchant.categorie, ...(merchant.secondaryCategories ?? [])]
+      .filter(Boolean)
+      .map((c) => getCategoryLabel(c))
+      .join(' · ');
+    return [categories, merchant.ville].filter(Boolean).join('  •  ');
+  }, [merchant.categorie, merchant.secondaryCategories, merchant.ville]);
+
+  const earnLine = merchant.stampEarningMode === 'PER_AMOUNT' && merchant.amountPerStamp
+    ? t('fiche.earnPerAmount', { amount: merchant.amountPerStamp })
+    : t('fiche.earnPerVisit');
+  const statusColor = openStatus?.isOpen ? theme.success : theme.danger;
+  const tagline = merchant.tagline?.trim();
+  const gallery = merchant.gallery ?? [];
+
+  const tabs = useMemo(
+    () => getFicheTabs({ hasDeals: false, photoCount: gallery.length }).filter((k): k is PreviewTab => k !== 'deals'),
+    [gallery.length],
+  );
+  const [tab, setTab] = useState<PreviewTab>('overview');
+  const activeTab = tabs.includes(tab) ? tab : 'overview';
+
+  // Same pinned tab bar as the client page (translateY on the native driver).
+  const { height: windowHeight } = useWindowDimensions();
+  const [scrollY] = useState(() => new Animated.Value(0));
+  const onScroll = useMemo(
+    () => Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true }),
+    [scrollY],
+  );
+  const scrollRef = useRef<ScrollView>(null);
+  const offsetRef = useRef(0);
+  const [tabsY, setTabsY] = useState<number | null>(null);
+  const pinOffset = insets.top + HEADER_PAD_TOP + HEADER_BUTTON + HEADER_PAD_BOTTOM;
+  const pinAt = tabsY == null ? null : Math.max(0, tabsY - pinOffset);
+  const tabsMotion = useMemo(() => (pinAt == null ? undefined : {
+    transform: [{
+      translateY: scrollY.interpolate({ inputRange: [pinAt, pinAt + 1], outputRange: [0, 1], extrapolateLeft: 'clamp' }),
+    }],
+  }), [scrollY, pinAt]);
+  const headerBarOpacity = useMemo(() => {
+    const end = HERO_HEIGHT - pinOffset;
+    return scrollY.interpolate({ inputRange: [end - hp(50), end], outputRange: [0, 1], extrapolate: 'clamp' });
+  }, [scrollY, pinOffset]);
+
+  const onTabsLayout = useCallback((e: LayoutChangeEvent) => setTabsY(e.nativeEvent.layout.y), []);
+  const recordOffset = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    offsetRef.current = e.nativeEvent.contentOffset.y;
+  }, []);
+  const selectTab = useCallback((next: PreviewTab) => {
+    setTab(next);
+    if (pinAt != null && offsetRef.current > pinAt) {
+      scrollRef.current?.scrollTo({ y: pinAt, animated: false });
+      offsetRef.current = pinAt;
+    }
+  }, [pinAt]);
+  const openLoyaltyTab = useCallback(() => selectTab('loyalty'), [selectTab]);
+  const openInfoTab = useCallback(() => selectTab('info'), [selectTab]);
+
   return (
-    <Modal
-      visible={true}
-      animationType="slide"
-      presentationStyle="fullScreen"
-      onRequestClose={onClose}
-      statusBarTranslucent
-    >
+    <View style={[s.root, { backgroundColor: pageBg }]}>
+      <Animated.ScrollView
+        ref={scrollRef}
+        onScroll={onScroll}
+        onScrollEndDrag={recordOffset}
+        onMomentumScrollEnd={recordOffset}
+        scrollEventThrottle={16}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: insets.bottom + BOTTOM_BAR_SPACE }}
+      >
+        <View style={s.cover}>
+          {merchant.coverUrl ? (
+            <ExpoImage source={resolveImageUrl(merchant.coverUrl)} style={StyleSheet.absoluteFill} contentFit="cover" cachePolicy="memory-disk" />
+          ) : (
+            <LinearGradient colors={[accent, `${accent}B3`, `${accent}59`]} start={DIAG_START} end={DIAG_END} style={StyleSheet.absoluteFill}>
+              <View style={[s.orb, s.orbA]} />
+              <View style={[s.orb, s.orbB]} />
+            </LinearGradient>
+          )}
+          <LinearGradient pointerEvents="none" colors={TOP_SCRIM} style={s.topScrim} />
+          <LinearGradient pointerEvents="none" colors={[`${pageBg}00`, pageBg]} style={s.bottomFade} />
+        </View>
+
+        <View style={s.identity}>
+          <View style={[s.logoFrame, { backgroundColor: pageBg }]}>
+            {merchant.logoUrl ? (
+              <ExpoImage source={resolveImageUrl(merchant.logoUrl)} style={s.logo} contentFit="cover" cachePolicy="memory-disk" />
+            ) : (
+              <View style={[s.logo, s.logoFallback, { backgroundColor: theme.bgCard, borderColor: `${accent}30` }]}>
+                {ThemeIcon
+                  ? <ThemeIcon size={ms(38)} color={accent} strokeWidth={1.75} />
+                  : <Text style={s.emoji}>{getCategoryEmoji(merchant.categorie)}</Text>}
+              </View>
+            )}
+          </View>
+          <Text style={[s.name, { color: theme.text }]} numberOfLines={2} accessibilityRole="header">{merchant.nom}</Text>
+          {!!subtitle && <Text style={[s.subtitle, { color: theme.textMuted }]} numberOfLines={1}>{subtitle}</Text>}
+          {!!tagline && <Text style={[s.tagline, { color: theme.textSecondary }]} numberOfLines={2}>{tagline}</Text>}
+          {openStatus && (
+            <View style={[s.meta, { flexDirection: dir.row }]}>
+              <View style={[s.statusDot, { backgroundColor: statusColor }]} />
+              <Text style={[s.metaText, { color: statusColor }]} numberOfLines={1}>{describeOpenStatus(openStatus, t, 'fiche')}</Text>
+            </View>
+          )}
+        </View>
+
+        {contacts.length > 0 && (
+          <View style={[s.actions, { flexDirection: dir.row }]}>
+            {contacts.map((contact) => {
+              const { Icon, labelKey } = CONTACT_UI[contact.key];
+              const label = t(labelKey);
+              return (
+                <Pressable
+                  key={contact.key}
+                  onPress={() => { hapticLight(); openContact(contact); }}
+                  style={({ pressed }) => [s.action, { opacity: pressed ? 0.7 : 1 }]}
+                  accessibilityRole={contact.key === 'directions' ? 'button' : 'link'}
+                  accessibilityLabel={label}
+                >
+                  <View style={[s.actionIcon, { backgroundColor: theme.bgCard, borderColor: theme.border }]}>
+                    <Icon size={ms(20)} color={accent} strokeWidth={2} />
+                  </View>
+                  <Text style={[s.actionLabel, { color: theme.textSecondary }]} numberOfLines={1}>{label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
+
+        {!isPublic && (
+          <View style={s.hiddenWrap}>
+            <View style={[s.hidden, { backgroundColor: `${theme.warning}14`, borderColor: `${theme.warning}40` }]}>
+              <View style={[s.hiddenHead, { flexDirection: dir.row }]}>
+                <EyeOff size={ms(18)} color={theme.warning} strokeWidth={2} />
+                <Text style={[s.hiddenTitle, { color: theme.text, textAlign: dir.textAlign }]}>{t('storePreview.previewHiddenTitle')}</Text>
+              </View>
+              <Text style={[s.hiddenBody, { color: theme.textSecondary, textAlign: dir.textAlign }]}>
+                {t('storePreview.previewHiddenBody')}
+              </Text>
+              {onManageLocations && (
+                <Pressable onPress={onManageLocations} style={[s.hiddenCta, { alignSelf: dir.alignStart, backgroundColor: theme.warning }]} accessibilityRole="button">
+                  <Text style={s.hiddenCtaText}>{t('storePreview.previewHiddenCta')}</Text>
+                </Pressable>
+              )}
+            </View>
+          </View>
+        )}
+
+        <Animated.View
+          onLayout={onTabsLayout}
+          style={[s.tabs, { backgroundColor: pageBg, borderBottomColor: theme.border }, tabsMotion]}
+        >
+          <FicheTabs tabs={tabs} active={activeTab} accent={accent} onChange={selectTab} />
+        </Animated.View>
+
+        <View style={[s.sections, { minHeight: windowHeight - pinOffset - TAB_BAR_HEIGHT }]}>
+          {activeTab === 'overview' && (
+            <>
+              <FicheLoyaltySummary
+                accent={accent}
+                rewards={rewards}
+                earnLine={earnLine}
+                wheelEndsAt={wheel?.endsAt}
+                onOpen={openLoyaltyTab}
+              />
+              <FicheInfoSummary
+                hours={merchant.openingHours}
+                status={openStatus}
+                store={activeStores[0]}
+                merchantName={merchant.nom}
+                accent={accent}
+                onOpen={openInfoTab}
+              />
+            </>
+          )}
+          {activeTab === 'loyalty' && (
+            <>
+              <FicheLoyalty accent={accent} rewards={rewards} earnLine={earnLine} validityDays={merchant.stampValidityDays} />
+              {wheel && <FicheLuckyWheel wheel={wheel} />}
+            </>
+          )}
+          {activeTab === 'info' && (
+            <>
+              {hasOpeningHours(merchant.openingHours) && (
+                <FicheHours hours={merchant.openingHours} status={openStatus} accent={accent} />
+              )}
+              <FicheLocations stores={activeStores} merchantName={merchant.nom} accent={accent} />
+              <FicheAbout
+                accent={accent}
+                description={merchant.description?.trim() ?? ''}
+                badges={badges}
+                profiles={profiles}
+              />
+            </>
+          )}
+          {activeTab === 'photos' && <FicheGallery images={gallery} accent={accent} />}
+
+          <Text style={[s.footer, { color: theme.textMuted }]}>{t('storePreview.previewFooter')}</Text>
+        </View>
+      </Animated.ScrollView>
+
+      <View style={[s.header, { paddingTop: insets.top + HEADER_PAD_TOP }]} pointerEvents="box-none">
+        <Animated.View
+          pointerEvents="none"
+          style={[StyleSheet.absoluteFill, s.headerBar, { backgroundColor: theme.bgCard, borderBottomColor: theme.border, opacity: headerBarOpacity }]}
+        />
+        <View style={[s.headerRow, { flexDirection: dir.row }]} pointerEvents="box-none">
+          <Pressable onPress={onClose} style={s.headerBtn} hitSlop={8} accessibilityRole="button" accessibilityLabel={t('common.back')}>
+            <ArrowLeft size={ms(20)} color={palette.gray900} strokeWidth={2} style={dir.flip} />
+          </Pressable>
+          <View style={s.previewPill}>
+            <Text style={s.previewPillText} numberOfLines={1}>{t('storePreview.previewBadge')}</Text>
+          </View>
+          <View style={s.headerSpacer} />
+        </View>
+      </View>
+
+      <View style={[s.bar, { backgroundColor: theme.bgCard, borderTopColor: theme.border, paddingBottom: Math.max(insets.bottom, hp(12)) }]}>
+        <View style={[s.cta, { flexDirection: dir.row }]} accessibilityLabel={t('fiche.getLoyaltyCard')}>
+          <Wallet size={ms(18)} color="#fff" strokeWidth={2} />
+          <View>
+            <Text style={s.ctaText} numberOfLines={1}>{t('fiche.getLoyaltyCard')}</Text>
+            <Text style={s.ctaCaption} numberOfLines={1}>{t('fiche.joinFree')}</Text>
+          </View>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+export default function FichePreviewModal({ visible, ...props }: Props) {
+  if (!visible) return null;
+  return (
+    <Modal visible animationType="slide" presentationStyle="fullScreen" onRequestClose={props.onClose} statusBarTranslucent>
       <StatusBar barStyle="light-content" />
-      {body}
+      <FichePreview {...props} />
     </Modal>
   );
 }
 
-export default function FichePreviewModal(props: Props) {
-  if (!props.visible) return null;
-  return <FichePreviewModalInner {...props} />;
-}
-
-// ─── Styles (identiques à apps/jitplus/components/merchant/merchantStyles.ts) ─
 const s = StyleSheet.create({
   root: { flex: 1 },
-  scrollContent: { paddingBottom: hp(20) },
+  cover: { height: HERO_HEIGHT, overflow: 'hidden' },
+  topScrim: { position: 'absolute', top: 0, left: 0, right: 0, height: hp(120) },
+  bottomFade: { position: 'absolute', bottom: 0, left: 0, right: 0, height: hp(90) },
+  orb: { position: 'absolute', borderRadius: 9999, backgroundColor: 'rgba(255,255,255,0.10)' },
+  orbA: { width: HERO_HEIGHT * 1.2, height: HERO_HEIGHT * 1.2, top: -HERO_HEIGHT * 0.5, right: -HERO_HEIGHT * 0.4 },
+  orbB: { width: HERO_HEIGHT * 0.7, height: HERO_HEIGHT * 0.7, bottom: -HERO_HEIGHT * 0.3, left: -HERO_HEIGHT * 0.2 },
 
-  // Hero
-  heroSection: {
-    position: 'relative',
-    height: hp(220),
-    marginBottom: hp(40),
-  },
-  coverImage: { width: '100%', height: '100%' },
-  coverFade: {
-    position: 'absolute', bottom: 0, left: 0, right: 0,
-    height: hp(80),
-  },
-  floatingHeader: {
-    position: 'absolute', top: 0, left: 0, right: 0,
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: wp(16),
-  },
-  floatingBtn: {
-    width: ms(40), height: ms(40), borderRadius: ms(20),
-    backgroundColor: 'rgba(255,255,255,0.85)',
-    alignItems: 'center', justifyContent: 'center',
+  identity: { alignItems: 'center', paddingHorizontal: wp(20) },
+  logoFrame: {
+    marginTop: -LOGO_SIZE / 2 - 4,
+    padding: 4,
+    borderRadius: ms(26),
     ...Platform.select({
-      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8 },
-      android: { elevation: 4 },
-    }),
-  },
-  previewBadge: {
-    backgroundColor: 'rgba(0,0,0,0.65)',
-    paddingHorizontal: wp(12), paddingVertical: hp(6),
-    borderRadius: 999,
-  },
-  previewBadgeText: {
-    color: '#fff', fontSize: ms(12), fontWeight: '700', letterSpacing: 0.4,
-  },
-  logoContainer: {
-    position: 'absolute', bottom: -ms(40), alignSelf: 'center',
-    left: 0, right: 0, alignItems: 'center',
-  },
-  logoRing: {
-    width: ms(92), height: ms(92), borderRadius: ms(46),
-    alignItems: 'center', justifyContent: 'center',
-    ...Platform.select({
-      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 12 },
+      ios: { shadowColor: '#0F172A', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.16, shadowRadius: 18 },
       android: { elevation: 8 },
     }),
   },
-  logo: { width: ms(84), height: ms(84), borderRadius: ms(42) },
-  emojiWrap: {
-    width: ms(84), height: ms(84), borderRadius: ms(42),
+  logo: { width: LOGO_SIZE, height: LOGO_SIZE, borderRadius: ms(22) },
+  logoFallback: { alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
+  emoji: { fontSize: ms(36) },
+  name: { fontSize: ms(23), fontFamily: font.bold, letterSpacing: -0.5, textAlign: 'center', marginTop: hp(10) },
+  subtitle: { fontSize: ms(13), fontFamily: font.medium, textAlign: 'center', marginTop: hp(4) },
+  tagline: { fontSize: ms(14), lineHeight: ms(20), fontFamily: font.regular, textAlign: 'center', marginTop: hp(6), maxWidth: '92%' },
+  meta: { alignItems: 'center', gap: wp(5), marginTop: hp(10) },
+  statusDot: { width: ms(7), height: ms(7), borderRadius: ms(4) },
+  metaText: { fontSize: ms(13), fontFamily: font.semibold },
+
+  actions: { justifyContent: 'center', gap: wp(8), paddingHorizontal: wp(16), marginTop: hp(18) },
+  action: { flex: 1, maxWidth: wp(88), alignItems: 'center', gap: hp(6) },
+  actionIcon: {
+    width: ms(52), height: ms(52), borderRadius: ms(18), borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center', justifyContent: 'center',
   },
-  emoji: { fontSize: ms(38) },
+  actionLabel: { fontSize: ms(12), fontFamily: font.medium },
 
-  // Identity
-  identitySection: {
-    alignItems: 'center',
-    paddingHorizontal: wp(20),
-    paddingBottom: hp(20),
+  tabs: {
+    marginTop: hp(16),
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    zIndex: 2,
+    // Above the cards' Android elevation once pinned over them.
+    ...Platform.select({ android: { elevation: 2 } }),
   },
-  merchantName: {
-    fontSize: ms(26), fontWeight: '800',
-    letterSpacing: -0.5, maxWidth: '92%',
-    marginBottom: hp(8), textAlign: 'center',
-  },
-  tagline: {
-    fontSize: ms(14), fontWeight: '500',
-    fontStyle: 'italic', textAlign: 'center',
-    marginTop: hp(-4), marginBottom: hp(10),
-    paddingHorizontal: wp(20), maxWidth: '92%',
-  },
-  categoryBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: wp(6),
-    paddingHorizontal: wp(14), paddingVertical: hp(5),
-    borderRadius: ms(20), marginBottom: hp(14),
-    maxWidth: '95%',
-  },
-  categoryText: { fontSize: ms(12), fontWeight: '600' },
-  statsRow: {
-    flexDirection: 'row', alignItems: 'center', gap: wp(6),
-  },
-  statChip: {
-    flexDirection: 'row', alignItems: 'center', gap: wp(6),
-    borderRadius: ms(12),
-    paddingHorizontal: wp(14), paddingVertical: hp(8),
-  },
-  statValue: { fontSize: ms(14), fontWeight: '800' },
-  statLabel: { fontSize: ms(11), fontWeight: '500' },
-  statDivider: { width: 1, height: ms(20), backgroundColor: '#00000010' },
+  sections: { paddingHorizontal: wp(16), paddingTop: hp(16), gap: hp(14) },
+  hiddenWrap: { paddingHorizontal: wp(16), marginTop: hp(18) },
+  hidden: { borderRadius: ms(18), borderWidth: 1, padding: wp(14), gap: hp(8) },
+  hiddenHead: { alignItems: 'center', gap: wp(8) },
+  hiddenTitle: { flex: 1, fontSize: ms(14), fontFamily: font.bold },
+  hiddenBody: { fontSize: ms(13), lineHeight: ms(19), fontFamily: font.regular },
+  hiddenCta: { paddingHorizontal: wp(14), paddingVertical: hp(8), borderRadius: 999, marginTop: hp(2) },
+  hiddenCtaText: { color: '#fff', fontSize: ms(13), fontFamily: font.semibold },
+  footer: { fontSize: ms(11), lineHeight: ms(16), fontFamily: font.regular, textAlign: 'center', paddingHorizontal: wp(16), marginTop: hp(6) },
 
-  // Social
-  socialRow: {
-    flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center',
-    gap: wp(12), paddingHorizontal: wp(16), paddingBottom: hp(16),
+  header: { position: 'absolute', top: 0, left: 0, right: 0, paddingBottom: HEADER_PAD_BOTTOM },
+  headerBar: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    ...Platform.select({
+      ios: { shadowColor: '#0F172A', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8 },
+      android: { elevation: 3 },
+    }),
   },
-  socialIconBtn: {
-    width: ms(42), height: ms(42), borderRadius: ms(21),
+  headerRow: { alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: wp(16) },
+  headerBtn: {
+    width: HEADER_BUTTON, height: HEADER_BUTTON, borderRadius: HEADER_BUTTON / 2, backgroundColor: 'rgba(255,255,255,0.9)',
     alignItems: 'center', justifyContent: 'center',
   },
+  headerSpacer: { width: HEADER_BUTTON },
+  previewPill: { backgroundColor: 'rgba(0,0,0,0.65)', paddingHorizontal: wp(12), paddingVertical: hp(6), borderRadius: 999 },
+  previewPillText: { color: '#fff', fontSize: ms(12), fontFamily: font.semibold },
 
-  // Content
-  contentArea: { paddingHorizontal: wp(16), gap: hp(12) },
-  sectionTitle: {
-    fontSize: ms(16), fontWeight: '700',
-    letterSpacing: -0.2, marginBottom: hp(8),
-  },
-
-  // Generic card
-  card: {
-    borderRadius: ms(18), padding: wp(16),
-    ...Platform.select({
-      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8 },
-      android: { elevation: 1 },
-    }),
-  },
-
-  // Description
-  descriptionCard: {
-    borderRadius: ms(18), padding: wp(16),
-    ...Platform.select({
-      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8 },
-      android: { elevation: 1 },
-    }),
-  },
-  descriptionText: {
-    fontSize: ms(14), lineHeight: ms(22), fontWeight: '400',
-  },
-
-  // Badges
-  badgesWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: wp(8) },
-  badgePill: {
-    flexDirection: 'row', alignItems: 'center', gap: wp(6),
-    paddingHorizontal: wp(12), paddingVertical: hp(6),
-    borderRadius: ms(20), borderWidth: 1,
-  },
-  badgePillText: { fontSize: ms(12), fontWeight: '600' },
-
-  // Hours
-  hoursHeader: {
-    flexDirection: 'row', alignItems: 'center',
-    gap: wp(12), marginBottom: hp(10),
-  },
-  hoursIconBadge: {
-    width: ms(36), height: ms(36), borderRadius: ms(12),
-    alignItems: 'center', justifyContent: 'center',
-  },
-  hoursStatus: { fontSize: ms(12), fontWeight: '700', marginTop: hp(2) },
-  hoursList: { gap: hp(6) },
-  hoursRow: {
-    flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'space-between', paddingVertical: hp(4),
-  },
-  hoursDay: { fontSize: ms(13) },
-  hoursValue: { fontSize: ms(13) },
-
-  // Gallery
-  galleryCard: { paddingHorizontal: 0 },
-  galleryScrollContent: { gap: wp(8), paddingVertical: hp(4) },
-  galleryThumbBtn: { borderRadius: ms(12), overflow: 'hidden' },
-  galleryThumb: {
-    width: wp(140), height: wp(140),
-    borderRadius: ms(12), backgroundColor: '#00000010',
-  },
-
-  // Loyalty
-  loyaltyCard: {
-    borderRadius: ms(18), padding: wp(16),
-    ...Platform.select({
-      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8 },
-      android: { elevation: 1 },
-    }),
-  },
-  loyaltyRow: { flexDirection: 'row', alignItems: 'center', gap: wp(12) },
-  loyaltyDivider: { height: StyleSheet.hairlineWidth, marginVertical: hp(12) },
-  cardIconBadge: {
-    width: ms(36), height: ms(36), borderRadius: ms(12),
-    alignItems: 'center', justifyContent: 'center',
-  },
-  cardLabel: {
-    fontSize: ms(11), fontWeight: '700',
-    textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: hp(4),
-  },
-  cardValue: { fontSize: ms(14), fontWeight: '700', lineHeight: ms(20) },
-  rewardsSectionHeader: {
-    flexDirection: 'row', alignItems: 'center', gap: wp(12), marginBottom: hp(8),
-  },
-  rewardsScrollContent: { gap: wp(10) },
-  rewardCard: {
-    alignItems: 'center', width: wp(120),
-    paddingVertical: hp(12), paddingHorizontal: wp(10),
-    borderRadius: ms(14), borderWidth: 1,
-  },
-  rewardCardTitle: {
-    fontSize: ms(12), fontWeight: '700',
-    lineHeight: ms(16), textAlign: 'center',
-    marginTop: hp(6), marginBottom: hp(6),
-  },
-  rewardCostBadge: {
-    paddingHorizontal: wp(10), paddingVertical: hp(3), borderRadius: ms(8),
-  },
-  rewardCost: { fontSize: ms(11), fontWeight: '700' },
-
-  // Locations
-  locationsCard: {
-    borderRadius: ms(18), padding: wp(14),
-    ...Platform.select({
-      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8 },
-      android: { elevation: 1 },
-    }),
-  },
-  locationsHeader: {
-    flexDirection: 'row', alignItems: 'center', gap: wp(12), marginBottom: hp(6),
-  },
-  locationsCount: { fontSize: ms(12), fontWeight: '500', marginTop: hp(2) },
-  storeItem: {
-    flexDirection: 'row', alignItems: 'center', gap: wp(12),
-    paddingVertical: hp(12),
-    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#00000008',
-    borderRadius: ms(8), paddingHorizontal: wp(4),
-  },
-  storeItemDot: { width: ms(8), height: ms(8), borderRadius: ms(4) },
-  storeItemName: { fontSize: ms(14), fontWeight: '700', lineHeight: ms(20) },
-  storeAddress: { fontSize: ms(12), fontWeight: '400', lineHeight: ms(17), marginTop: hp(2) },
-  storePhoneRow: {
-    flexDirection: 'row', alignItems: 'center', gap: wp(5), marginTop: hp(4),
-  },
-  storePhone: { fontSize: ms(12), fontWeight: '600', lineHeight: ms(17) },
-
-  // Bottom bar
-  bottomBar: {
+  bar: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: wp(16), paddingTop: hp(10),
-  },
-  joinBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: wp(10), paddingVertical: hp(15), borderRadius: ms(16),
+    paddingHorizontal: wp(16), paddingTop: hp(12), borderTopWidth: StyleSheet.hairlineWidth,
     ...Platform.select({
-      ios: { shadowColor: palette.violet, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 12 },
-      android: { elevation: 6 },
+      ios: { shadowColor: '#0F172A', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.06, shadowRadius: 12 },
+      android: { elevation: 12 },
     }),
   },
-  joinBtnText: {
-    color: '#fff', fontSize: ms(15), fontWeight: '700', letterSpacing: 0.2,
+  cta: {
+    alignItems: 'center', justifyContent: 'center', gap: wp(10),
+    minHeight: ms(52), paddingHorizontal: wp(16), borderRadius: ms(16), backgroundColor: palette.violet,
   },
-
-  footerHint: {
-    fontSize: ms(11), textAlign: 'center', paddingHorizontal: wp(24),
-  },
-
-  // Lightbox
-  lightbox: { flex: 1, backgroundColor: 'rgba(0,0,0,0.95)' },
-  lightboxClose: {
-    position: 'absolute', right: wp(16), zIndex: 20,
-    width: ms(38), height: ms(38), borderRadius: ms(19),
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    alignItems: 'center', justifyContent: 'center',
-  },
+  ctaText: { color: '#fff', fontSize: ms(15), fontFamily: font.bold, textAlign: 'center' },
+  ctaCaption: { color: 'rgba(255,255,255,0.78)', fontSize: ms(11), fontFamily: font.medium, textAlign: 'center', marginTop: 1 },
 });

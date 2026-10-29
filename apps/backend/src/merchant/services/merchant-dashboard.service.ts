@@ -39,28 +39,39 @@ export class MerchantDashboardService {
       lucky_wheel_wins: number;
       lucky_wheel_fulfilled: number;
     }>(Prisma.sql`
+      WITH cards AS (
+        SELECT COUNT(*)::int AS total_clients, COALESCE(SUM(stamps), 0)::int AS total_stamps
+        FROM loyalty_cards WHERE merchant_id = ${merchantId}
+      ),
+      tx AS (
+        SELECT
+          COUNT(*)::int AS total_transactions,
+          COALESCE(SUM(stamps) FILTER (WHERE type = 'REDEEM_REWARD'), 0)::int AS total_redeemed_stamps,
+          (COUNT(*) FILTER (WHERE type = 'REDEEM_REWARD'))::int AS total_rewards_given
+        FROM transactions
+        WHERE merchant_id = ${merchantId} AND status = 'ACTIVE'
+      ),
+      wheel AS (
+        SELECT
+          COUNT(*)::int AS lucky_wheel_plays,
+          (COUNT(*) FILTER (WHERE d.result = 'WON'))::int AS lucky_wheel_wins,
+          (COUNT(*) FILTER (WHERE d.fulfilment = 'CLAIMED'))::int AS lucky_wheel_fulfilled
+        FROM lucky_wheel_draws d
+        INNER JOIN lucky_wheel_tickets tk ON tk.id = d.ticket_id
+        INNER JOIN lucky_wheel_campaigns c ON c.id = tk.campaign_id
+        WHERE c.merchant_id = ${merchantId}
+      )
       SELECT
-        (SELECT COUNT(*)::int FROM loyalty_cards WHERE merchant_id = ${merchantId}) AS total_clients,
-        (SELECT COALESCE(SUM(stamps), 0)::int FROM loyalty_cards WHERE merchant_id = ${merchantId}) AS total_stamps,
-        (SELECT COALESCE(SUM(t.stamps), 0)::int FROM transactions t
-         WHERE t.merchant_id = ${merchantId} AND t.status = 'ACTIVE' AND t.type = 'REDEEM_REWARD') AS total_redeemed_stamps,
-        (SELECT COUNT(*)::int FROM transactions t
-         WHERE t.merchant_id = ${merchantId} AND t.status = 'ACTIVE') AS total_transactions,
+        cards.total_clients,
+        cards.total_stamps,
+        tx.total_redeemed_stamps,
+        tx.total_transactions,
         (SELECT profile_views FROM merchants WHERE id = ${merchantId}) AS profile_views,
-        (SELECT COUNT(*)::int FROM transactions t
-         WHERE t.merchant_id = ${merchantId} AND t.status = 'ACTIVE' AND t.type = 'REDEEM_REWARD') AS total_rewards_given,
-        (SELECT COUNT(*)::int FROM lucky_wheel_draws d
-         INNER JOIN lucky_wheel_tickets tk ON tk.id = d.ticket_id
-         INNER JOIN lucky_wheel_campaigns c ON c.id = tk.campaign_id
-         WHERE c.merchant_id = ${merchantId}) AS lucky_wheel_plays,
-        (SELECT COUNT(*)::int FROM lucky_wheel_draws d
-         INNER JOIN lucky_wheel_tickets tk ON tk.id = d.ticket_id
-         INNER JOIN lucky_wheel_campaigns c ON c.id = tk.campaign_id
-         WHERE c.merchant_id = ${merchantId} AND d.result = 'WON') AS lucky_wheel_wins,
-        (SELECT COUNT(*)::int FROM lucky_wheel_draws d
-         INNER JOIN lucky_wheel_tickets tk ON tk.id = d.ticket_id
-         INNER JOIN lucky_wheel_campaigns c ON c.id = tk.campaign_id
-         WHERE c.merchant_id = ${merchantId} AND d.fulfilment = 'CLAIMED') AS lucky_wheel_fulfilled
+        tx.total_rewards_given,
+        wheel.lucky_wheel_plays,
+        wheel.lucky_wheel_wins,
+        wheel.lucky_wheel_fulfilled
+      FROM cards, tx, wheel
     `);
 
     const result = {
@@ -94,32 +105,33 @@ export class MerchantDashboardService {
     const startNextMonth = new Date(Date.UTC(y, mo + 1, 1) - OFFSET_MS);
     const daysInMonth = new Date(Date.UTC(y, mo + 1, 0)).getUTCDate();
 
-    const [agg] = await this.rawQuery.queryRaw<{
-      today_stamps: number;
-      today_clients: number;
-      yesterday_stamps: number;
-    }>(Prisma.sql`
-      SELECT
-        COALESCE(SUM(stamps) FILTER (WHERE created_at >= ${startToday}), 0)::int AS today_stamps,
-        COUNT(DISTINCT client_id) FILTER (WHERE created_at >= ${startToday})::int AS today_clients,
-        COALESCE(SUM(stamps) FILTER (WHERE created_at >= ${startYesterday} AND created_at < ${startToday}), 0)::int AS yesterday_stamps
-      FROM transactions
-      WHERE merchant_id = ${merchantId}
-        AND status = 'ACTIVE'
-        AND type = 'EARN_STAMPS'
-        AND created_at >= ${startYesterday}
-    `);
-
-    const dailyRows = await this.rawQuery.queryRaw<{ day: number; cnt: number }>(Prisma.sql`
-      SELECT EXTRACT(DAY FROM (created_at + interval '1 hour'))::int AS day, COUNT(*)::int AS cnt
-      FROM transactions
-      WHERE merchant_id = ${merchantId}
-        AND status = 'ACTIVE'
-        AND type = 'EARN_STAMPS'
-        AND created_at >= ${startMonth}
-        AND created_at < ${startNextMonth}
-      GROUP BY 1
-    `);
+    const [[agg], dailyRows] = await Promise.all([
+      this.rawQuery.queryRaw<{
+        today_stamps: number;
+        today_clients: number;
+        yesterday_stamps: number;
+      }>(Prisma.sql`
+        SELECT
+          COALESCE(SUM(stamps) FILTER (WHERE created_at >= ${startToday}), 0)::int AS today_stamps,
+          COUNT(DISTINCT client_id) FILTER (WHERE created_at >= ${startToday})::int AS today_clients,
+          COALESCE(SUM(stamps) FILTER (WHERE created_at >= ${startYesterday} AND created_at < ${startToday}), 0)::int AS yesterday_stamps
+        FROM transactions
+        WHERE merchant_id = ${merchantId}
+          AND status = 'ACTIVE'
+          AND type = 'EARN_STAMPS'
+          AND created_at >= ${startYesterday}
+      `),
+      this.rawQuery.queryRaw<{ day: number; cnt: number }>(Prisma.sql`
+        SELECT EXTRACT(DAY FROM (created_at + interval '1 hour'))::int AS day, COUNT(*)::int AS cnt
+        FROM transactions
+        WHERE merchant_id = ${merchantId}
+          AND status = 'ACTIVE'
+          AND type = 'EARN_STAMPS'
+          AND created_at >= ${startMonth}
+          AND created_at < ${startNextMonth}
+        GROUP BY 1
+      `),
+    ]);
 
     const daily = new Array<number>(daysInMonth).fill(0);
     let monthTotal = 0;
@@ -307,31 +319,30 @@ export class MerchantDashboardService {
 
     const now = new Date();
 
+    // Bucket math must be in UTC to match Postgres date_trunc on UTC timestamps.
+    // Local-time math breaks across DST changes (fixed 24h steps land on the
+    // same local day twice), producing duplicate bucket keys.
     const startOfDay = (date: Date) => {
       const d = new Date(date);
-      d.setHours(0, 0, 0, 0);
+      d.setUTCHours(0, 0, 0, 0);
       return d;
     };
 
     const startOfWeek = (date: Date) => {
       const d = startOfDay(date);
-      const day = d.getDay();
+      const day = d.getUTCDay();
       const diff = (day + 6) % 7;
-      d.setDate(d.getDate() - diff);
+      d.setUTCDate(d.getUTCDate() - diff);
       return d;
     };
 
     const startOfMonth = (date: Date) => {
       const d = startOfDay(date);
-      d.setDate(1);
+      d.setUTCDate(1);
       return d;
     };
 
-    const toBucketKey = (date: Date) => {
-      const d = new Date(date);
-      d.setHours(0, 0, 0, 0);
-      return d.toISOString().slice(0, 10);
-    };
+    const toBucketKey = (date: Date) => startOfDay(date).toISOString().slice(0, 10);
 
     const config = {
       day: {
@@ -352,7 +363,7 @@ export class MerchantDashboardService {
         start: (date: Date) => startOfMonth(date),
         add: (date: Date, i: number) => {
           const d = new Date(date);
-          d.setMonth(d.getMonth() + i);
+          d.setUTCMonth(d.getUTCMonth() + i);
           return d;
         },
       },
@@ -362,7 +373,7 @@ export class MerchantDashboardService {
         start: (date: Date) => startOfMonth(date),
         add: (date: Date, i: number) => {
           const d = new Date(date);
-          d.setMonth(d.getMonth() + i);
+          d.setUTCMonth(d.getUTCMonth() + i);
           return d;
         },
       },

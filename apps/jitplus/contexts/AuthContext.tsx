@@ -1,8 +1,9 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '@/services/api';
 import { Client } from '@/types';
 import { logInfo, logWarn } from '@/utils/devLogger';
-import { useAuthStore } from '@/stores/authStore';
+import { useAuthStore, GUEST_MODE_KEY } from '@/stores/authStore';
 import { usePushRegistration } from '@/hooks/usePushRegistration';
 import { useAuthMethods } from '@/hooks/useAuthMethods';
 
@@ -20,7 +21,7 @@ function getJwtExp(token: string): number | null {
 function isTokenExpired(token: string): boolean {
   const exp = getJwtExp(token);
   if (!exp) return true; // malformed token → treat as expired
-  return exp < Date.now() / 1000 - 30;
+  return exp < Date.now() / 1000 + 30;
 }
 
 interface AuthContextType {
@@ -33,7 +34,7 @@ interface AuthContextType {
   enterGuestMode: () => void;
   sendOtpEmail: (email: string, isRegister?: boolean) => Promise<{ success: boolean; error?: string; isNetworkError?: boolean }>;
   verifyOtpEmail: (email: string, code: string, isRegister?: boolean) => Promise<{ success: boolean; isNewUser?: boolean; error?: string }>;
-  loginWithEmail: (email: string, password: string, rememberMe?: boolean) => Promise<{ success: boolean; error?: string; isNetworkError?: boolean }>;
+  loginWithEmail: (email: string, password: string) => Promise<{ success: boolean; error?: string; isNetworkError?: boolean }>;
   setPassword: (password: string) => Promise<{ success: boolean; error?: string; isNetworkError?: boolean }>;
   resetPasswordOtp: (password: string) => Promise<{ success: boolean; error?: string; isNetworkError?: boolean }>;
   googleLogin: (idToken: string) => Promise<{ success: boolean; isNewUser?: boolean; error?: string; rawError?: unknown }>;
@@ -48,30 +49,34 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const store = useAuthStore((s) => s);
   const sessionVersionRef = useRef(0);
+  const methods = useAuthMethods(store, sessionVersionRef);
+  const { clearLocalSession } = methods;
+  const { setClient, setLoading, setNeedsPasswordSetup, setGuest } = store;
 
-  // ── Restore stored session on mount + wire 401 handler ──
+  // ── Restore stored session on mount ──
   useEffect(() => {
-    api.setOnUnauthorized(() => { store.setClient(null); });
-
     let cancelled = false;
     const version = sessionVersionRef.current;
 
     const loadStoredAuth = async () => {
       try {
         logInfo('Auth', 'Chargement de l\'authentification...');
-        const [storedNeedsPw, rememberMe, token, cachedProfile] = await Promise.all([
-          api.getEmailOtpNewUser(), api.getRememberMe(), api.getStoredToken(),
-          api.getCachedProfile<Client>(),
+        const [storedNeedsPw, token, cachedProfile, storedGuest] = await Promise.all([
+          api.getEmailOtpNewUser(), api.getStoredToken(), api.getCachedProfile<Client>(),
+          AsyncStorage.getItem(GUEST_MODE_KEY).catch(() => null),
         ]);
         if (cancelled || sessionVersionRef.current !== version) return;
-        if (storedNeedsPw) store.setNeedsPasswordSetup(true);
+        if (storedNeedsPw) setNeedsPasswordSetup(true);
+        if (!token && storedGuest === '1') setGuest(true);
 
-        if (token && rememberMe) {
+        // Sessions always persist (like JitPlus Pro): a stored token is enough to
+        // restore, including OTP logins that never wrote the rememberMe flag.
+        if (token) {
           // Offline-first: hydrate from cached profile immediately so the user
           // sees their account (and QR) even with no network. The fetch below
           // will refresh it in the background.
           if (cachedProfile?.id) {
-            store.setClient(cachedProfile);
+            setClient(cachedProfile);
             logInfo('Auth', 'Profil restauré depuis le cache:', cachedProfile.prenom, cachedProfile.nom);
           }
 
@@ -85,7 +90,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const profile = await api.getProfile();
             if (cancelled || sessionVersionRef.current !== version) return;
             if (profile?.id) {
-              store.setClient(profile);
+              setClient(profile);
               logInfo('Auth', 'Profil restauré:', profile.prenom, profile.nom);
             } else if (!cachedProfile?.id) {
               await api.clearAuth();
@@ -96,8 +101,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             // cached profile so they can use the app (notably the QR) offline.
             const status = (fetchErr as { response?: { status?: number } })?.response?.status;
             if (status === 401) {
-              await api.clearAuth();
-              store.setClient(null);
+              await clearLocalSession();
               logInfo('Auth', 'Session expirée (401), déconnexion');
             } else if (!cachedProfile?.id) {
               // No cache + network error: stay anonymous but keep token for next launch
@@ -106,8 +110,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               logInfo('Auth', 'Profil indisponible (hors-ligne), utilisation du cache');
             }
           }
-        } else if (token) {
-          await api.clearAuth();
         }
       } catch (error: unknown) {
         if (cancelled || sessionVersionRef.current !== version) return;
@@ -115,24 +117,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } finally {
         if (!cancelled && sessionVersionRef.current === version) {
           logInfo('Auth', 'Chargement terminé');
-          store.setLoading(false);
+          setLoading(false);
         }
       }
     };
 
     loadStoredAuth();
     return () => { cancelled = true; };
-  }, []);
+  }, [clearLocalSession, setClient, setLoading, setNeedsPasswordSetup, setGuest]);
 
   // ── Keep offline profile cache in sync with the store ──
-  // Writes the latest client snapshot to SecureStore whenever it changes so a
-  // subsequent cold-start (even without network) can hydrate the user instantly.
-  // Debounced + content-deduped: SecureStore writes hit the iOS Keychain which
-  // is slow, so we coalesce rapid updates (polling, WS, profile patches) and
-  // skip writes when the serialized snapshot hasn't actually changed.
+  // Writes the latest client snapshot (reduced to non-contact fields, see
+  // setCachedProfile) to AsyncStorage whenever it changes so a subsequent
+  // cold-start (even without network) can hydrate the user instantly.
+  // Debounced + content-deduped: we coalesce rapid updates (polling, WS,
+  // profile patches) and skip writes when the snapshot hasn't actually changed.
   const lastCachedSnapshotRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!store.client?.id) return;
+    if (!store.client?.id) {
+      // Otherwise re-logging into the same account would skip the cache write.
+      lastCachedSnapshotRef.current = null;
+      return;
+    }
     const snapshot = JSON.stringify(store.client);
     if (snapshot === lastCachedSnapshotRef.current) return;
     const handle = setTimeout(() => {
@@ -145,8 +151,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // ── Push notifications ──
   usePushRegistration(store.client?.id);
 
-  // ── Auth methods (extracted hook) ──
-  const methods = useAuthMethods(store, sessionVersionRef);
+  // A rejected refresh or a 401 must wipe the session as thoroughly as an explicit logout.
+  useEffect(() => {
+    api.setOnUnauthorized(() => { void clearLocalSession(); });
+  }, [clearLocalSession]);
 
   const value = useMemo<AuthContextType>(() => ({
     client: store.client,

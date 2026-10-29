@@ -55,38 +55,6 @@ export const MERCHANT_PROFILE_SELECT = {
   updatedAt: true,
 } satisfies Prisma.MerchantSelect;
 
-/**
- * Lightweight merchant list select — used for listing/discovery endpoints.
- * Omits heavy JSON fields (rewards, socialLinks) to reduce
- * payload by ~70% and lower serialization overhead in list responses.
- */
-export const MERCHANT_LIST_SELECT = {
-  id: true,
-  nom: true,
-  categorie: true,
-  secondaryCategories: true,
-  description: true,
-  tagline: true,
-  badges: true,
-  gallery: true,
-  openingHours: true,
-  ville: true,
-  quartier: true,
-  adresse: true,
-  latitude: true,
-  longitude: true,
-  logoUrl: true,
-  coverUrl: true,
-  themeColor: true,
-  themeIcon: true,
-  stampEarningMode: true,
-  amountPerStamp: true,
-  stampsForReward: true,
-  isActive: true,
-  plan: true,
-  createdAt: true,
-} satisfies Prisma.MerchantSelect;
-
 /** Explicit return type for operations that use MERCHANT_PROFILE_SELECT. */
 export type MerchantProfileData = Prisma.MerchantGetPayload<{ select: typeof MERCHANT_PROFILE_SELECT }>;
 

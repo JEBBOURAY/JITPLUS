@@ -1,4 +1,4 @@
-import React, { useState, useEffect, memo, type ComponentProps } from 'react';
+import { useState, useEffect, memo, type ComponentProps } from 'react';
 import { Platform } from 'react-native';
 import { Marker } from '@/components/SafeMapView';
 

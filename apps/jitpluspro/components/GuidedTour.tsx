@@ -23,11 +23,10 @@ import {
 import Svg, { Rect, Mask, Defs } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ShieldCheck } from 'lucide-react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, palette, brandGradient } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { ASYNC_STORAGE_KEYS } from '@/constants/app';
+import { useOnboardingStore } from '@/stores/onboardingStore';
 
 /**
  * Optional guided tour for the Accueil screen.
@@ -49,6 +48,7 @@ export type TourTargetKey =
   | 'stores'
   | 'loyalty'
   | 'games'
+  | 'deals'
   | 'team'
   | 'dashboard'
   | 'clients'
@@ -65,31 +65,31 @@ interface StepDef { key: TourTargetKey; shape: Shape; titleKey: string; textKey:
 
 const STEP_DEFS: StepDef[] = [
   { key: 'avatar', shape: 'circle', titleKey: 'tour.avatarTitle', textKey: 'tour.avatarText' },
+  { key: 'dashboard', shape: 'rect', titleKey: 'tour.dashboardTitle', textKey: 'tour.dashboardText' },
   { key: 'stores', shape: 'circle', titleKey: 'tour.storesTitle', textKey: 'tour.storesText' },
   { key: 'loyalty', shape: 'circle', titleKey: 'tour.loyaltyTitle', textKey: 'tour.loyaltyText' },
   { key: 'games', shape: 'circle', titleKey: 'tour.gamesTitle', textKey: 'tour.gamesText' },
-  { key: 'team', shape: 'circle', titleKey: 'tour.teamTitle', textKey: 'tour.teamText' },
-  { key: 'dashboard', shape: 'circle', titleKey: 'tour.dashboardTitle', textKey: 'tour.dashboardText' },
+  { key: 'deals', shape: 'circle', titleKey: 'tour.dealsTitle', textKey: 'tour.dealsText' },
   { key: 'clients', shape: 'rect', titleKey: 'tour.clientsTitle', textKey: 'tour.clientsText' },
   { key: 'scan', shape: 'circle', titleKey: 'tour.scanTitle', textKey: 'tour.scanText' },
   { key: 'messages', shape: 'rect', titleKey: 'tour.messagesTitle', textKey: 'tour.messagesText' },
-  { key: 'support', shape: 'rect', titleKey: 'tour.supportTitle', textKey: 'tour.supportText' },
+  { key: 'team', shape: 'rect', titleKey: 'tour.teamTitle', textKey: 'tour.teamText' },
+  { key: 'support', shape: 'circle', titleKey: 'tour.supportTitle', textKey: 'tour.supportText' },
 ];
 
 // ── Context ───────────────────────────────────────────────
 interface TourContextValue {
   register: (key: TourTargetKey, node: MeasurableNode) => void;
   start: () => void;
-  requestAutoStart: () => void;
 }
 
 const TourContext = createContext<TourContextValue | null>(null);
 
-/** Access the tour controls (start / auto-start). Returns null outside the provider. */
-export function useTour(): Pick<TourContextValue, 'start' | 'requestAutoStart'> | null {
+/** Access the tour controls. Returns null outside the provider. */
+export function useTour(): Pick<TourContextValue, 'start'> | null {
   const ctx = useContext(TourContext);
-  if (!ctx) return null;
-  return { start: ctx.start, requestAutoStart: ctx.requestAutoStart };
+  // Stable identity so callers can list it in hook deps without re-creating callbacks every render.
+  return useMemo(() => (ctx ? { start: ctx.start } : null), [ctx]);
 }
 
 /**
@@ -112,6 +112,18 @@ type Phase = 'idle' | 'intro' | 'steps';
 
 const OVERLAY_STEPS = 'rgba(11,15,20,0.72)';
 const AnimatedRect = Animated.createAnimatedComponent(Rect);
+const HIT_SLOP = { top: 10, bottom: 10, left: 10, right: 10 };
+
+function computeBox(rect: Rectangle, shape: Shape): Box {
+  if (shape === 'circle') {
+    const d = Math.max(rect.width, rect.height) + 16;
+    const cx = rect.x + rect.width / 2;
+    const cy = rect.y + rect.height / 2;
+    return { x: cx - d / 2, y: cy - d / 2, w: d, h: d, r: d / 2 };
+  }
+  const pad = 10;
+  return { x: rect.x - pad, y: rect.y - pad, w: rect.width + pad * 2, h: rect.height + pad * 2, r: 14 };
+}
 
 // ── Provider ──────────────────────────────────────────────
 export function GuidedTourProvider({ children }: { children: ReactNode }) {
@@ -140,23 +152,19 @@ export function GuidedTourProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const start = useCallback(() => setPhase('intro'), []);
-
-  const requestAutoStart = useCallback(async () => {
-    try {
-      const shown = await AsyncStorage.getItem(ASYNC_STORAGE_KEYS.TOUR_AUTO_SHOWN);
-      if (shown === 'true') return;
-      await AsyncStorage.setItem(ASYNC_STORAGE_KEYS.TOUR_AUTO_SHOWN, 'true');
-      setPhase((p) => (p === 'idle' ? 'intro' : p));
-    } catch {
-      /* ignore storage errors */
-    }
+  // The tour only runs on demand (welcome card, guide sheet) and never on top
+  // of another full-screen onboarding surface.
+  const start = useCallback(() => {
+    if (!useOnboardingStore.getState().request('tour')) return;
+    setPhase('intro');
   }, []);
 
-  const value = useMemo<TourContextValue>(
-    () => ({ register, start, requestAutoStart }),
-    [register, start, requestAutoStart],
-  );
+  useEffect(() => {
+    if (phase === 'idle') useOnboardingStore.getState().release('tour');
+  }, [phase]);
+  useEffect(() => () => useOnboardingStore.getState().release('tour'), []);
+
+  const value = useMemo<TourContextValue>(() => ({ register, start }), [register, start]);
 
   return (
     <TourContext.Provider value={value}>
@@ -198,15 +206,15 @@ function TourOverlay({
   const rootOffset = useRef({ x: 0, y: 0 });
 
   // Animated values (SVG props can't use the native driver → useNativeDriver:false)
-  const overlayOpacity = useRef(new Animated.Value(0)).current;
-  const spotX = useRef(new Animated.Value(0)).current;
-  const spotY = useRef(new Animated.Value(0)).current;
-  const spotW = useRef(new Animated.Value(0)).current;
-  const spotH = useRef(new Animated.Value(0)).current;
-  const spotR = useRef(new Animated.Value(0)).current;
-  const tipTop = useRef(new Animated.Value(0)).current;
-  const tipLeft = useRef(new Animated.Value(0)).current;
-  const tipOpacity = useRef(new Animated.Value(0)).current;
+  const [overlayOpacity] = useState(() => new Animated.Value(0));
+  const [spotX] = useState(() => new Animated.Value(0));
+  const [spotY] = useState(() => new Animated.Value(0));
+  const [spotW] = useState(() => new Animated.Value(0));
+  const [spotH] = useState(() => new Animated.Value(0));
+  const [spotR] = useState(() => new Animated.Value(0));
+  const [tipTop] = useState(() => new Animated.Value(0));
+  const [tipLeft] = useState(() => new Animated.Value(0));
+  const [tipOpacity] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
     let mounted = true;
@@ -232,16 +240,6 @@ function TourOverlay({
     });
   }, [overlayOpacity, tipOpacity, setPhase]);
 
-  const computeBox = useCallback((rect: Rectangle, shape: Shape): Box => {
-    if (shape === 'circle') {
-      const d = Math.max(rect.width, rect.height) + 16;
-      const cx = rect.x + rect.width / 2;
-      const cy = rect.y + rect.height / 2;
-      return { x: cx - d / 2, y: cy - d / 2, w: d, h: d, r: d / 2 };
-    }
-    const pad = 10;
-    return { x: rect.x - pad, y: rect.y - pad, w: rect.width + pad * 2, h: rect.height + pad * 2, r: 14 };
-  }, []);
 
   // Window position of the overlay itself (0,0 when it fills from the window top).
   const measureRoot = useCallback(
@@ -293,7 +291,7 @@ function TourOverlay({
         Animated.timing(spotR, { toValue: nb.r, duration, easing, useNativeDriver: false }),
       ]).start();
     },
-    [steps, measure, close, computeBox, measureRoot, spotX, spotY, spotW, spotH, spotR],
+    [steps, measure, close, measureRoot, spotX, spotY, spotW, spotH, spotR],
   );
 
   // Fade the overlay in per phase; kick off the first step.
@@ -409,7 +407,7 @@ function TourOverlay({
             </TouchableOpacity>
             <TouchableOpacity
               onPress={close}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              hitSlop={HIT_SLOP}
               accessibilityRole="button"
               accessibilityLabel={t('tour.skipIntro')}
             >
@@ -492,7 +490,7 @@ function TourOverlay({
               <View style={[styles.tipActions, isRTL && styles.rowReverse]}>
                 <TouchableOpacity
                   onPress={close}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  hitSlop={HIT_SLOP}
                   accessibilityRole="button"
                   accessibilityLabel={t('tour.skip')}
                 >

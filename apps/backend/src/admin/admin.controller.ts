@@ -160,13 +160,6 @@ export class AdminController {
     return this.adminService.getMerchantSubscriptionHistory(merchantId);
   }
 
-  @Get('merchants/:id/plan')
-  @UseGuards(JwtAuthGuard, AdminGuard)
-  @ApiOperation({ summary: "Resolve a merchant's effective plan + limits" })
-  async getMerchantPlan(@Param('id') merchantId: string) {
-    return this.planService.getPlanLimits(merchantId);
-  }
-
   // ── Plan management ───────────────────────────────────────────────────────
 
   @Post('merchants/:id/activate-premium')

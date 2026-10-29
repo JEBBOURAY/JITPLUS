@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, Pressable, Linking } from 'react-native';
+import { View, Pressable, Linking } from 'react-native';
+import { Text } from '@/components/AppText';
 import { MessageCircle, Mail } from 'lucide-react-native';
 import { palette } from '@/contexts/ThemeContext';
 import { ms } from '@/utils/responsive';
@@ -8,18 +8,17 @@ import { SUPPORT_EMAIL } from '@/constants';
 import type { ThemeColors } from '@/contexts/ThemeContext';
 
 interface ReferralContactCardProps {
-  isRTL: boolean;
   theme: ThemeColors;
   t: (key: string) => string;
 }
 
-export default function ReferralContactCard({ isRTL, theme, t }: ReferralContactCardProps) {
+export default function ReferralContactCard({ theme, t }: ReferralContactCardProps) {
   return (
     <View style={[styles.contactCard, { backgroundColor: theme.bgCard }]}>
-      <Text style={[styles.contactText, { color: theme.textMuted }, isRTL && styles.textRTL]}>
+      <Text style={[styles.contactText, { color: theme.textMuted }]}>
         {t('referral.contactSupportDesc')}
       </Text>
-      <View style={[styles.contactActions, isRTL && styles.codeActionsRTL]}>
+      <View style={styles.contactActions}>
         <Pressable onPress={() => {
           const phone = process.env.EXPO_PUBLIC_SUPPORT_WHATSAPP || '212755073325';
           const msg = encodeURIComponent(t('referral.contactSupportWhatsApp'));

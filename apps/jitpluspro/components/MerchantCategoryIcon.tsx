@@ -1,35 +1,8 @@
-import { 
-  Coffee, 
-  Utensils, 
-  ShoppingBasket,
-  Cake,
-  Pill,
-  Book,
-  Shirt,
-  Laptop,
-  Store,
-  Scissors,
-  Sparkles,
-  Dumbbell,
-  Building2,
-  Beef,
-  Sandwich,
-  Droplets,
-  PawPrint,
-  Flower2,
-  Gem,
-  Glasses,
-  Smartphone,
-  Wrench,
-  Car,
-  CarFront,
-  Gamepad2,
-  BedDouble,
-  SprayCan,
-  ChefHat,
-  type LucideIcon
-} from 'lucide-react-native';
-import { MerchantCategory } from '@/types';
+import { Store } from 'lucide-react-native';
+import type { MerchantCategory } from '@/types';
+import { CATEGORY_ICONS } from '@/constants/categories';
+import { icon } from '@/constants/design';
+import { palette } from '@/contexts/ThemeContext';
 
 interface MerchantCategoryIconProps {
   category: MerchantCategory;
@@ -38,69 +11,12 @@ interface MerchantCategoryIconProps {
   strokeWidth?: number;
 }
 
-// Mapping des catégories aux icônes Lucide
-const categoryIconMap: Record<MerchantCategory, LucideIcon> = {
-  [MerchantCategory.CAFE]: Coffee,
-  [MerchantCategory.RESTAURANT]: Utensils,
-  [MerchantCategory.EPICERIE]: ShoppingBasket,
-  [MerchantCategory.BOULANGERIE]: Cake,
-  [MerchantCategory.PHARMACIE]: Pill,
-  [MerchantCategory.LIBRAIRIE]: Book,
-  [MerchantCategory.VETEMENTS]: Shirt,
-  [MerchantCategory.ELECTRONIQUE]: Laptop,
-  [MerchantCategory.COIFFURE]: Scissors,
-  [MerchantCategory.BEAUTE]: Sparkles,
-  [MerchantCategory.SPORT]: Dumbbell,
-  [MerchantCategory.SUPERMARCHE]: Building2,
-  [MerchantCategory.BOUCHERIE]: Beef,
-  [MerchantCategory.PATISSERIE]: Cake,
-  [MerchantCategory.FASTFOOD]: Sandwich,
-  [MerchantCategory.HAMMAM]: Droplets,
-  [MerchantCategory.ANIMALERIE]: PawPrint,
-  [MerchantCategory.FLEURISTE]: Flower2,
-  [MerchantCategory.BIJOUTERIE]: Gem,
-  [MerchantCategory.OPTIQUE]: Glasses,
-  [MerchantCategory.TELEPHONE]: Smartphone,
-  [MerchantCategory.BRICOLAGE]: Wrench,
-  [MerchantCategory.AUTO]: Car,
-  [MerchantCategory.HOTEL]: BedDouble,
-  [MerchantCategory.PARFUMERIE]: SprayCan,
-  [MerchantCategory.TRAITEUR]: ChefHat,
-  [MerchantCategory.LOCATION_VOITURE]: CarFront,
-  [MerchantCategory.SALLE_JEU]: Gamepad2,
-  [MerchantCategory.AUTRE]: Store,
-};
-
-/**
- * Composant qui affiche une icône dynamique selon la catégorie du commerce
- * 
- * @param category - Catégorie du merchant (enum MerchantCategory)
- * @param size - Taille de l'icône en pixels (défaut: 24)
- * @param color - Couleur de l'icône (défaut: '#7C3AED')
- * @param strokeWidth - Épaisseur du trait (défaut: 1.5)
- * 
- * @example
- * <MerchantCategoryIcon 
- *   category={MerchantCategory.CAFE} 
- *   size={48} 
- *   color="#7C3AED" 
- * />
- */
 export default function MerchantCategoryIcon({
   category,
   size = 24,
-  color = '#7C3AED',
-  strokeWidth = 1.5,
+  color = palette.violet,
+  strokeWidth = icon.stroke,
 }: MerchantCategoryIconProps) {
-  // Récupérer l'icône correspondante ou utiliser Store par défaut
-  const IconComponent = categoryIconMap[category] || Store;
-
-  return (
-    <IconComponent 
-      size={size} 
-      color={color} 
-      strokeWidth={strokeWidth}
-    />
-  );
+  const IconComponent = CATEGORY_ICONS[category] ?? Store;
+  return <IconComponent size={size} color={color} strokeWidth={strokeWidth} />;
 }
-

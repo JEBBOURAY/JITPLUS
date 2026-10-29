@@ -1,6 +1,5 @@
 import {
   Injectable,
-  Logger,
   Inject,
   BadRequestException,
   NotFoundException,
@@ -17,6 +16,7 @@ import {
 } from '../../common/repositories';
 import { MerchantTransactionService } from './merchant-transaction.service';
 import { reassignScratchDataInTx } from '../../scratch-card/scratch-merge';
+import { toE164Phone } from '../../common/utils/phone';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 /** Effectively never — set far in the future so the merchant’s WhatsApp link never goes stale. */
@@ -45,8 +45,6 @@ export interface QuickAddInput {
 
 @Injectable()
 export class ClientClaimService {
-  private readonly logger = new Logger(ClientClaimService.name);
-
   constructor(
     @Inject(CLIENT_REPOSITORY) private clientRepo: IClientRepository,
     @Inject(MERCHANT_REPOSITORY) private merchantRepo: IMerchantRepository,
@@ -54,35 +52,6 @@ export class ClientClaimService {
     @Inject(TRANSACTION_RUNNER) private txRunner: ITransactionRunner,
     private transactionService: MerchantTransactionService,
   ) {}
-
-  /**
-   * Normalize a Moroccan phone number to E.164 (+212…).
-   * Accepts: '0612345678', '+212612345678', '212 612 345 678', etc.
-   * Throws BadRequest if it cannot produce a valid E.164 form.
-   */
-  private normalizePhone(raw: string, countryCode = 'MA'): string {
-    const digits = (raw ?? '').replace(/[^\d+]/g, '');
-    if (!digits) throw new BadRequestException('Numéro de téléphone requis');
-
-    let e164: string;
-    if (digits.startsWith('+')) {
-      e164 = digits;
-    } else if (digits.startsWith('00')) {
-      e164 = '+' + digits.slice(2);
-    } else if (countryCode === 'MA') {
-      // Local Moroccan format: 06xxxxxxxx / 07xxxxxxxx → +2126xxxxxxxx
-      const local = digits.startsWith('0') ? digits.slice(1) : digits;
-      e164 = '+212' + local;
-    } else {
-      e164 = '+' + digits;
-    }
-
-    // Basic E.164 sanity check: 8–15 digits after the +
-    if (!/^\+\d{8,15}$/.test(e164)) {
-      throw new BadRequestException('Numéro de téléphone invalide');
-    }
-    return e164;
-  }
 
   private sha256Hex(input: string): string {
     return createHash('sha256').update(input).digest('hex');
@@ -95,14 +64,16 @@ export class ClientClaimService {
 
   /**
    * Create (or reuse) an anonymous Client for a walk-in customer, credit the
-   * loyalty transaction, and return a single-use magic-link the merchant can
-   * share via WhatsApp (zero SMS cost).
+   * loyalty transaction, and return a magic-link the merchant can share via
+   * WhatsApp (zero SMS cost). The link can be consumed once, but it does not
+   * expire in practice (see CLAIM_TOKEN_TTL_MS): it stays valid until the
+   * customer claims it or the merchant re-issues a new one.
    *
    * Returns `claimUrl` (raw token included once — never persisted) and the
    * full transaction payload so the Pro app can render its usual success UI.
    */
   async quickAddAndClaim(input: QuickAddInput) {
-    const telephone = this.normalizePhone(input.telephone, input.countryCode);
+    const telephone = toE164Phone(input.telephone, input.countryCode);
     const merchantExists = await this.merchantRepo.findUnique({
       where: { id: input.merchantId },
       select: { id: true, isActive: true, deletedAt: true, nom: true },
@@ -143,7 +114,9 @@ export class ClientClaimService {
     }
 
     // 2. Credit the transaction using the existing audited flow
-    //    (covers idempotency, stamp earning rules, anti-fraud caps, etc.)
+    //    (covers idempotency, stamp earning rules, anti-fraud caps, etc.).
+    //    allowEnroll: the merchant typed the customer's phone at the till,
+    //    which is the consent proof for this anonymous account.
     const transaction = await this.transactionService.createTransaction(
       clientId,
       input.merchantId,
@@ -154,9 +127,10 @@ export class ClientClaimService {
       input.teamMemberId,
       input.performedByName,
       input.idempotencyKey,
+      { allowEnroll: true },
     );
 
-    // 3. Mint a single-use claim token (only the SHA-256 digest hits the DB)
+    // 3. Mint a claim token (consumable once; only the SHA-256 digest hits the DB)
     const rawToken = randomBytes(CLAIM_TOKEN_BYTES).toString('base64url');
     const tokenHash = this.sha256Hex(rawToken);
     const expiresAt = new Date(Date.now() + CLAIM_TOKEN_TTL_MS);
@@ -428,16 +402,6 @@ export class ClientClaimService {
       });
     }
     return out;
-  }
-
-  /**
-   * Back-compat: return only the most recent pending claim. Kept for callers
-   * that just need a single merchant reference.
-   */
-  async findPendingClaimForClient(clientId: string): Promise<{ merchantId: string; merchantName: string | null } | null> {
-    const all = await this.findPendingClaimsForClient(clientId);
-    if (all.length === 0) return null;
-    return { merchantId: all[0].merchantId, merchantName: all[0].merchantName };
   }
 
   /**

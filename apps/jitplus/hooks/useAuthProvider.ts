@@ -2,8 +2,9 @@
  * Shared state & lifecycle factory for social auth hooks (Google, Apple).
  * Eliminates duplicated state management, error handling, and navigation logic.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { router } from 'expo-router';
+import { goHomeAfterLogin } from '@/services/pendingDeal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { haptic } from '@/utils/haptics';
 import { isNoAccountError } from '@/utils/authErrors';
@@ -13,7 +14,6 @@ const SHOW_WELCOME_KEY = 'showWelcome';
 
 export interface AuthProviderOptions {
   actionLabel: string;
-  onCancel?: () => void;
 }
 
 export interface AuthProviderResult {
@@ -31,12 +31,12 @@ export interface AuthProviderState {
   mountedRef: React.MutableRefObject<boolean>;
   reset: () => void;
   setLoading: (v: boolean) => void;
-  handleResult: (result: AuthProviderResult, errorKey: string) => void;
-  handleError: (err: unknown, errorKey: string) => void;
+  handleResult: (result: AuthProviderResult, errorKey: string) => Promise<void>;
+  handleError: (errorKey: string) => void;
   dismissNoAccount: () => void;
 }
 
-export function useAuthProvider({ actionLabel, onCancel }: AuthProviderOptions): AuthProviderState {
+export function useAuthProvider({ actionLabel }: AuthProviderOptions): AuthProviderState {
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [error, setError] = useState('');
@@ -69,7 +69,7 @@ export function useAuthProvider({ actionLabel, onCancel }: AuthProviderOptions):
       } else {
         await AsyncStorage.setItem(SHOW_WELCOME_KEY, '1');
         setTimeout(() => {
-          if (mountedRef.current) router.replace('/(tabs)/qr');
+          if (mountedRef.current) goHomeAfterLogin(router);
         }, 600);
       }
     } else {
@@ -83,7 +83,7 @@ export function useAuthProvider({ actionLabel, onCancel }: AuthProviderOptions):
     }
   }, [actionLabel]);
 
-  const handleError = useCallback((err: unknown, errorKey: string) => {
+  const handleError = useCallback((errorKey: string) => {
     if (!mountedRef.current) return;
     setIsLoading(false);
     setError(i18n.t(`${errorKey}.error`, { action: actionLabel }));
@@ -94,8 +94,8 @@ export function useAuthProvider({ actionLabel, onCancel }: AuthProviderOptions):
     setError('');
   }, []);
 
-  return {
+  return useMemo(() => ({
     isLoading, isSuccess, error, noAccount, mountedRef,
     reset, setLoading: setIsLoading, handleResult, handleError, dismissNoAccount,
-  };
+  }), [isLoading, isSuccess, error, noAccount, reset, handleResult, handleError, dismissNoAccount]);
 }

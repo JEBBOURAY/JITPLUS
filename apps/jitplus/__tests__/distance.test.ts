@@ -1,4 +1,4 @@
-import { getDistanceKm, getDistanceSafe, formatDistance } from '@/utils/distance';
+import { getDistanceKm, formatDistance } from '@/utils/distance';
 
 describe('getDistanceKm', () => {
   it('returns 0 for the same point', () => {
@@ -20,22 +20,6 @@ describe('getDistanceKm', () => {
   it('handles across-hemisphere points', () => {
     const d = getDistanceKm(0, 0, 0, 180);
     expect(Math.round(d)).toBe(20015); // half Earth circumference
-  });
-});
-
-describe('getDistanceSafe', () => {
-  it('returns Infinity when lat is null', () => {
-    expect(getDistanceSafe(33, -7, null, -7)).toBe(Infinity);
-  });
-
-  it('returns Infinity when lng is undefined', () => {
-    expect(getDistanceSafe(33, -7, 34, undefined)).toBe(Infinity);
-  });
-
-  it('delegates to getDistanceKm for valid coords', () => {
-    const safe = getDistanceSafe(33.5731, -7.5898, 34.0209, -6.8417);
-    const direct = getDistanceKm(33.5731, -7.5898, 34.0209, -6.8417);
-    expect(safe).toBe(direct);
   });
 });
 

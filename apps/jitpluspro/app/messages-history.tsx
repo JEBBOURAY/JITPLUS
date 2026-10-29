@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react';
+import { memo, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -12,44 +12,104 @@ import {
 } from 'react-native';
 import {
   ArrowLeft,
-  Bell,
-  Clock,
   Send,
   Mail,
+  MessageCircle,
   Eye,
   CheckCircle2,
   XCircle,
 } from 'lucide-react-native';
+import { JitBell } from '@/components/icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useDir } from '@/hooks/useDir';
+import { font, icon } from '@/constants/design';
 import { useGuardedCallback } from '@/hooks/useGuardedCallback';
 import { timeAgo } from '@/utils/date';
 import { useNotificationHistory } from '@/hooks/useQueryHooks';
 import type { NotificationRecord } from '@/types';
 
-type HistoryFilter = 'ALL' | 'PUSH' | 'EMAIL' | 'WHATSAPP';
+type HistoryFilter = 'ALL' | 'PUSH' | 'EMAIL';
 
-const CHANNEL_COLORS = {
-  PUSH: '#7C3AED',
-  EMAIL: '#EA4335',
-  WHATSAPP: '#25D366',
-} as const;
+const HIT_SLOP = { top: 10, bottom: 10, left: 10, right: 10 };
+
+const HistoryCard = memo(function HistoryCard({ item }: { item: NotificationRecord }) {
+  const theme = useTheme();
+  const { t, locale } = useLanguage();
+  const { row, textAlign } = useDir();
+  const channel = item.channel ?? 'PUSH';
+  const ChannelIcon = channel === 'EMAIL' ? Mail : channel === 'WHATSAPP' ? MessageCircle : JitBell;
+  const receivedCount = channel === 'PUSH' ? (item.receivedCount ?? item.recipientCount) : item.recipientCount;
+  const openedCount = item.readCount ?? 0;
+  const isFailed = item.failureCount > 0 && (item.successCount || 0) === 0;
+  const statusColor = isFailed ? theme.danger : theme.textMuted;
+
+  return (
+    <View style={[styles.card, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
+      <View style={[styles.cardHeader, { flexDirection: row }]}>
+        <View style={[styles.iconWrap, { backgroundColor: `${theme.primary}1A` }]}>
+          <ChannelIcon size={18} color={theme.primary} strokeWidth={icon.stroke} />
+        </View>
+        <View style={styles.cardHeaderText}>
+          <Text style={[styles.cardTitle, { color: theme.text, textAlign }]} numberOfLines={2}>
+            {item.title}
+          </Text>
+          <Text style={[styles.timeText, { color: theme.textMuted, textAlign }]}>
+            {timeAgo(item.createdAt, locale)}
+          </Text>
+        </View>
+      </View>
+
+      <Text style={[styles.cardBody, { color: theme.textSecondary, textAlign }]} numberOfLines={3}>
+        {item.body}
+      </Text>
+
+      <View style={[styles.statsRow, { borderTopColor: theme.borderLight, flexDirection: row }]}>
+        <View style={[styles.statItem, { flexDirection: row }]}>
+          {isFailed
+            ? <XCircle size={12} color={statusColor} strokeWidth={icon.strokeSmall} />
+            : <CheckCircle2 size={12} color={statusColor} strokeWidth={icon.strokeSmall} />}
+          <Text style={[styles.statText, { color: statusColor }]}>
+            {isFailed ? t('messages.statusFailed') : t('messages.statusSent')}
+          </Text>
+        </View>
+        <View style={[styles.statItem, { flexDirection: row }]}>
+          <Send size={12} color={theme.textMuted} strokeWidth={icon.strokeSmall} />
+          <Text style={[styles.statText, { color: theme.textMuted }]}>
+            {t('messages.statReceived', { count: receivedCount })}
+          </Text>
+        </View>
+        <View style={[styles.statItem, { flexDirection: row }]}>
+          <Eye size={12} color={theme.textMuted} strokeWidth={icon.strokeSmall} />
+          <Text style={[styles.statText, { color: theme.textMuted }]}>
+            {t('messages.statOpened', { count: openedCount })}
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+});
+
+const keyExtractor = (item: NotificationRecord) => item.id;
+const renderItem = ({ item }: { item: NotificationRecord }) => <HistoryCard item={item} />;
+const ItemSeparator = () => <View style={styles.separator} />;
 
 export default function MessagesHistoryScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const theme = useTheme();
-  const { t, locale } = useLanguage();
-  const [filter, setFilter] = React.useState<HistoryFilter>('ALL');
+  const { t } = useLanguage();
+  const { row, flip } = useDir();
+  const [filter, setFilter] = useState<HistoryFilter>('ALL');
 
   const {
     data: history = [],
     isLoading,
     isRefetching,
     refetch,
-  } = useNotificationHistory(true);
+  } = useNotificationHistory();
 
   const filteredHistory = useMemo(() => {
     if (filter === 'ALL') return history;
@@ -69,81 +129,16 @@ export default function MessagesHistoryScreen() {
     [t],
   );
 
-  const renderItem = useCallback(
-    ({ item }: { item: NotificationRecord }) => {
-      const channel = item.channel ?? 'PUSH';
-      const color =
-        channel === 'EMAIL'
-          ? CHANNEL_COLORS.EMAIL
-          : channel === 'WHATSAPP'
-            ? CHANNEL_COLORS.WHATSAPP
-            : CHANNEL_COLORS.PUSH;
-
-      const ChannelIcon = channel === 'EMAIL' ? Mail : Send;
-      const receivedCount = channel === 'PUSH' ? (item.receivedCount ?? item.recipientCount) : item.recipientCount;
-      const openedCount = item.readCount ?? 0;
-      const isFailed = item.failureCount > 0 && (item.successCount || 0) === 0;
-
-      return (
-        <View style={[styles.card, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}> 
-          <View style={styles.cardHeader}>
-            <View style={[styles.iconWrap, { backgroundColor: color + '14' }]}>
-              <ChannelIcon size={16} color={color} strokeWidth={2} />
-            </View>
-            <View style={styles.cardHeaderText}>
-              <Text style={[styles.cardTitle, { color: theme.text }]} numberOfLines={2}>
-                {item.title}
-              </Text>
-              <View style={styles.timeRow}>
-                <Clock size={11} color={theme.textMuted} />
-                <Text style={[styles.timeText, { color: theme.textMuted }]}>
-                  {timeAgo(item.createdAt, locale)}
-                </Text>
-              </View>
-            </View>
-          </View>
-
-          <Text style={[styles.cardBody, { color: theme.textSecondary }]} numberOfLines={3}>
-            {item.body}
-          </Text>
-
-          <View style={[styles.statsRow, { borderTopColor: theme.borderLight }]}> 
-            <View style={[styles.statusPill, { backgroundColor: (isFailed ? theme.danger : theme.success) + '18' }]}> 
-              {isFailed ? <XCircle size={12} color={theme.danger} /> : <CheckCircle2 size={12} color={theme.success} />}
-              <Text style={[styles.statusText, { color: isFailed ? theme.danger : theme.success }]}>
-                {isFailed ? t('messages.statusFailed') : t('messages.statusSent')}
-              </Text>
-            </View>
-            <View style={styles.statItem}>
-              <Send size={12} color={theme.textMuted} />
-              <Text style={[styles.statText, { color: theme.textMuted }]}>
-                {t('messages.statReceived', { count: receivedCount })}
-              </Text>
-            </View>
-            <View style={styles.statItem}>
-              <Eye size={12} color={color} />
-              <Text style={[styles.statText, { color }]}>
-                {t('messages.statOpened', { count: openedCount })}
-              </Text>
-            </View>
-          </View>
-        </View>
-      );
-    },
-    [locale, t, theme],
-  );
-
   return (
-    <View style={[styles.container, { backgroundColor: theme.bg }]}> 
-      <View style={[styles.headerBar, { paddingTop: insets.top + 12 }]}> 
+    <View style={[styles.container, { backgroundColor: theme.bg }]}>
+      <View style={[styles.headerBar, { paddingTop: insets.top + 12, flexDirection: row }]}>
         <TouchableOpacity
           onPress={() => router.back()}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          style={styles.backBtn}
+          hitSlop={HIT_SLOP}
           accessibilityRole="button"
           accessibilityLabel={t('common.close')}
         >
-          <ArrowLeft size={22} color={theme.text} />
+          <ArrowLeft size={22} color={theme.text} strokeWidth={icon.stroke} style={flip} />
         </TouchableOpacity>
 
         <Text style={[styles.headerTitle, { color: theme.text }]} maxFontSizeMultiplier={1.4}>
@@ -152,7 +147,7 @@ export default function MessagesHistoryScreen() {
       </View>
 
       <View style={styles.filtersWrap}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.filterRow, { flexDirection: row }]}>
           {filterOptions.map((option) => {
             const active = filter === option.key;
             return (
@@ -187,10 +182,10 @@ export default function MessagesHistoryScreen() {
       ) : (
         <FlatList
           data={filteredHistory}
-          keyExtractor={(item) => item.id}
+          keyExtractor={keyExtractor}
           renderItem={renderItem}
-          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 20, paddingTop: 8 }}
-          ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
+          contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 20 }]}
+          ItemSeparatorComponent={ItemSeparator}
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={onRefresh} tintColor={theme.primary} />}
           removeClippedSubviews={Platform.OS === 'android'}
@@ -199,7 +194,7 @@ export default function MessagesHistoryScreen() {
           ListEmptyComponent={
             <View style={styles.center}>
               <View style={[styles.emptyIcon, { backgroundColor: `${palette.charbon}12` }]}>
-                <Bell size={32} color={palette.charbon} strokeWidth={1.5} />
+                <JitBell size={32} color={palette.charbon} strokeWidth={icon.stroke} />
               </View>
               <Text style={[styles.emptyTitle, { color: theme.text }]}>{t('messages.noMessages')}</Text>
               <Text style={[styles.emptyText, { color: theme.textMuted }]}>{t('messages.noMessagesHint')}</Text>
@@ -216,18 +211,14 @@ const styles = StyleSheet.create({
   headerBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 24,
+    gap: 14,
+    paddingHorizontal: 18,
     paddingBottom: 12,
   },
-  backBtn: {
-    marginRight: 2,
-  },
   headerTitle: {
-    fontSize: 28,
-    fontWeight: '700',
-    fontFamily: 'Lexend_700Bold',
-    letterSpacing: -0.5,
+    fontSize: 18,
+    fontFamily: font.bold,
+    letterSpacing: -0.3,
   },
   filtersWrap: {
     paddingHorizontal: 16,
@@ -245,71 +236,56 @@ const styles = StyleSheet.create({
   },
   filterText: {
     fontSize: 13,
-    fontWeight: '700',
-    fontFamily: 'Lexend_600SemiBold',
+    fontFamily: font.semibold,
   },
+  listContent: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+  },
+  separator: { height: 8 },
   card: {
-    borderRadius: 14,
+    borderRadius: 16,
     borderWidth: 1,
     padding: 14,
   },
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 10,
     marginBottom: 8,
   },
   iconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 11,
+    width: 40,
+    height: 40,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
   cardHeaderText: {
     flex: 1,
-    marginLeft: 10,
   },
   cardTitle: {
     fontSize: 14,
-    fontWeight: '700',
-    fontFamily: 'Lexend_600SemiBold',
-  },
-  timeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 3,
+    fontFamily: font.semibold,
   },
   timeText: {
-    fontSize: 11,
-    fontFamily: 'Lexend_500Medium',
+    fontSize: 12,
+    marginTop: 2,
+    fontFamily: font.regular,
   },
   cardBody: {
     fontSize: 14,
     lineHeight: 20,
-    fontFamily: 'Lexend_500Medium',
+    fontFamily: font.regular,
   },
   statsRow: {
     marginTop: 10,
     paddingTop: 10,
-    borderTopWidth: 1,
+    borderTopWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
     flexWrap: 'wrap',
-  },
-  statusPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 12,
-  },
-  statusText: {
-    fontSize: 11,
-    fontWeight: '700',
-    fontFamily: 'Lexend_600SemiBold',
   },
   statItem: {
     flexDirection: 'row',
@@ -318,7 +294,7 @@ const styles = StyleSheet.create({
   },
   statText: {
     fontSize: 12,
-    fontFamily: 'Lexend_600SemiBold',
+    fontFamily: font.medium,
   },
   center: {
     flex: 1,
@@ -329,20 +305,20 @@ const styles = StyleSheet.create({
   emptyIcon: {
     width: 76,
     height: 76,
-    borderRadius: 22,
+    borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 14,
   },
   emptyTitle: {
     fontSize: 16,
-    fontFamily: 'Lexend_600SemiBold',
+    fontFamily: font.semibold,
     marginBottom: 6,
   },
   emptyText: {
     textAlign: 'center',
     lineHeight: 20,
     fontSize: 13,
-    fontFamily: 'Lexend_500Medium',
+    fontFamily: font.regular,
   },
 });

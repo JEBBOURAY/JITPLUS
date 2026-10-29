@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   ActivityIndicator, Alert, I18nManager, Keyboard, KeyboardAvoidingView, Platform,
-  Pressable, ScrollView, StyleSheet, Text, TextInput, View,
+  Pressable, ScrollView, StyleSheet, View,
 } from 'react-native';
-import { useNavigation, useRouter } from 'expo-router';
+import { Text, TextInput } from '@/components/AppText';
+import { useNavigation, usePreventRemove, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ArrowLeft, Calendar, Mail, User } from 'lucide-react-native';
@@ -37,26 +38,8 @@ export default function EditProfileScreen() {
 
   const nomRef = useRef<TextInput>(null);
   const emailRef = useRef<TextInput>(null);
-  const allowLeaveRef = useRef(false);
-  const isDirtyRef = useRef(isDirty);
 
-  useEffect(() => { isDirtyRef.current = isDirty; }, [isDirty]);
-
-  useEffect(() => {
-    if (client?.id) return;
-    allowLeaveRef.current = true;
-    router.replace('/login');
-  }, [client?.id, router]);
-
-  // iOS swipe-back can't be intercepted by beforeRemove on native-stack, so it
-  // is disabled while there are unsaved changes.
-  useEffect(() => {
-    navigation.setOptions({ gestureEnabled: !isDirty });
-  }, [navigation, isDirty]);
-
-  useEffect(() => navigation.addListener('beforeRemove', (e) => {
-    if (allowLeaveRef.current || !isDirtyRef.current) return;
-    e.preventDefault();
+  const disablePrevention = usePreventRemove(isDirty, ({ repeat }) => {
     Alert.alert(t('profile.discardTitle'), t('profile.discardBody'), [
       { text: t('profile.keepEditing'), style: 'cancel' },
       {
@@ -64,21 +47,32 @@ export default function EditProfileScreen() {
         style: 'destructive',
         onPress: () => {
           discardDraft();
-          allowLeaveRef.current = true;
-          navigation.dispatch(e.data.action);
+          repeat();
         },
       },
     ]);
-  }), [navigation, discardDraft, t]);
+  });
+
+  useEffect(() => {
+    if (client?.id) return;
+    disablePrevention();
+    router.replace('/login');
+  }, [client?.id, router, disablePrevention]);
+
+  // iOS swipe-back can't show the discard prompt on native-stack, so it is
+  // disabled while there are unsaved changes.
+  useEffect(() => {
+    navigation.setOptions({ gestureEnabled: !isDirty });
+  }, [navigation, isDirty]);
 
   const handleSave = useCallback(async () => {
     Keyboard.dismiss();
     if (await saveProfile()) {
       hapticSuccess();
-      allowLeaveRef.current = true;
+      disablePrevention();
       router.back();
     }
-  }, [saveProfile, router]);
+  }, [saveProfile, router, disablePrevention]);
 
   const handleDateChange = useCallback((v: string) => setDateNaissance(formatDateInput(v)), [setDateNaissance]);
 

@@ -1,5 +1,6 @@
 import React from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Text } from '@/components/AppText';
 import { palette } from '@/contexts/ThemeContext';
 import type { LuckyWheelTicket } from '@/types';
 import type { TicketGroup } from '@/utils/luckyWheel';

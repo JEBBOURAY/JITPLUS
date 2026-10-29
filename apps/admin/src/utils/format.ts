@@ -99,6 +99,7 @@ export const AUDIENCE_LABELS: Record<string, string> = {
   ALL_CLIENTS: 'Tous les clients',
   ALL_MERCHANTS: 'Tous les commerçants',
   ADMIN: 'Broadcast admin',
+  DEALS_DIGEST: 'Digest bons plans',
 };
 
 // ── Audit action mappings ───────────────────────────────────────────────────
@@ -129,6 +130,9 @@ export const ACTION_LABELS: Record<string, string> = {
   CANCEL_SCRATCH_CAMPAIGN: 'Campagne grattage annulée',
   REDEEM_COUPON: 'Coupon utilisé',
   RESET_PASSWORD: 'Mot de passe réinitialisé',
+  CREATE_DEAL: 'Bon plan publié',
+  REMOVE_DEAL: 'Bon plan retiré',
+  RESTORE_DEAL: 'Bon plan rétabli',
 };
 
 /** Color mapping for audit actions */
@@ -157,6 +161,9 @@ export const ACTION_COLOR: Record<string, string> = {
   CANCEL_SCRATCH_CAMPAIGN: C.amber,
   REDEEM_COUPON: C.cyan,
   RESET_PASSWORD: C.amber,
+  CREATE_DEAL: C.green,
+  REMOVE_DEAL: C.red,
+  RESTORE_DEAL: C.green,
 };
 
 // ── Merchant categories ─────────────────────────────────────────────────────

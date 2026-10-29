@@ -13,7 +13,6 @@ import {
   TRANSACTION_REPOSITORY, type ITransactionRepository,
   TRANSACTION_RUNNER, type ITransactionRunner,
 } from '../../common/repositories';
-import { AuditLogService, AuditAction, AuditTargetType } from '../../admin/audit-log.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { EventsGateway } from '../../events';
 import { MerchantPlanService } from './merchant-plan.service';
@@ -25,6 +24,16 @@ import { withRetry } from '../../common/utils/retry-transaction.helper';
 import { computeEarnedStamps, computeRewardThreshold } from '../utils/loyalty.utils';
 import { awardLuckyWheelTicketsInTx } from '../utils/lucky-wheel-tickets';
 import { getNotifTranslations } from '../../common/utils/notification-i18n';
+
+export interface CreateTransactionOptions {
+  /**
+   * Allow creating or reactivating the loyalty card. Only set when the caller
+   * proved the client agreed to join (scan ticket from a signed QR / exact
+   * phone match, or a merchant Quick-Add); otherwise an existing active card
+   * is required, so a bare clientId cannot enroll anyone.
+   */
+  allowEnroll?: boolean;
+}
 
 @Injectable()
 export class MerchantTransactionService {
@@ -40,7 +49,6 @@ export class MerchantTransactionService {
     private notifications: NotificationsService,
     private eventsGateway: EventsGateway,
     private planService: MerchantPlanService,
-    private auditLogService: AuditLogService,
   ) {}
 
   async createTransaction(
@@ -53,6 +61,7 @@ export class MerchantTransactionService {
     teamMemberId?: string,
     performedByName?: string,
     idempotencyKey?: string,
+    options: CreateTransactionOptions = {},
   ) {
     // Idempotency: if a key was supplied and a transaction with the same
     // (merchantId, idempotencyKey) already exists, return it verbatim instead
@@ -162,12 +171,22 @@ export class MerchantTransactionService {
         });
 
         if (loyaltyCard?.deactivatedAt) {
-          throw new BadRequestException(
-            'Le client a quitté ce programme de fidélité. Il doit rejoindre à nouveau avant de pouvoir accumuler des tampons.',
-          );
+          if (!options.allowEnroll) {
+            throw new BadRequestException(
+              'Le client a quitté ce programme de fidélité. Il doit rejoindre à nouveau avant de pouvoir accumuler des tampons.',
+            );
+          }
+          // A reactivated card counts against the FREE plan limit like a new one.
+          await this.planService.assertCanAddClient(merchantId);
+          loyaltyCard = await prisma.loyaltyCard.update({
+            where: { id: loyaltyCard.id },
+            data: { deactivatedAt: null },
+            select: { id: true, stamps: true, deactivatedAt: true },
+          });
         }
 
         if (!loyaltyCard) {
+          if (!options.allowEnroll) throw new NotFoundException('Client non trouvé');
           // Enforce client limit for FREE plan before creating loyalty card
           await this.planService.assertCanAddClient(merchantId);
           loyaltyCard = await prisma.loyaltyCard.create({
@@ -379,137 +398,6 @@ export class MerchantTransactionService {
     };
   }
 
-  async cancelTransaction(transactionId: string, merchantId: string) {
-    // Race-condition fix: all checks + mutations inside a Serializable transaction
-    const result = await withRetry(() =>
-      this.txRunner.run(async (prisma) => {
-        const transaction = await prisma.transaction.findUnique({
-          where: { id: transactionId },
-          select: { id: true, merchantId: true, clientId: true, type: true, stamps: true, status: true },
-        });
-
-        if (!transaction) throw new NotFoundException('Transaction non trouvée');
-        if (transaction.merchantId !== merchantId) {
-          throw new BadRequestException('Cette transaction ne vous appartient pas');
-        }
-        if (transaction.status === 'CANCELLED') {
-          throw new BadRequestException('Cette transaction est déjà annulée');
-        }
-        if (transaction.type === 'COUPON_REDEEM') {
-          throw new BadRequestException('Un coupon utilisé ne peut pas être annulé');
-        }
-        const cancelledTransaction = await prisma.transaction.update({
-          where: { id: transactionId },
-          data: { status: 'CANCELLED' },
-        });
-
-        const loyaltyCard = await prisma.loyaltyCard.findUnique({
-          where: { clientId_merchantId: { clientId: transaction.clientId, merchantId } },
-          select: { id: true, stamps: true },
-        });
-
-        if (!loyaltyCard) throw new NotFoundException('Carte de fidélité non trouvée');
-
-        let newStamps: number;
-        if (transaction.type === 'EARN_STAMPS') {
-          newStamps = Math.max(0, loyaltyCard.stamps - transaction.stamps);
-        } else if (transaction.type === 'REDEEM_REWARD') {
-          newStamps = loyaltyCard.stamps + transaction.stamps;
-        } else if (transaction.type === 'ADJUST_STAMPS') {
-          newStamps = Math.max(0, loyaltyCard.stamps - transaction.stamps);
-        } else {
-          throw new BadRequestException('Type de transaction invalide');
-        }
-
-        await prisma.loyaltyCard.update({
-          where: { clientId_merchantId: { clientId: transaction.clientId, merchantId } },
-          data: { stamps: newStamps },
-        });
-
-        return cancelledTransaction;
-      }, { isolationLevel: 'Serializable' }),
-    );
-
-    this.auditLogService.log({
-      ctx: { actorType: 'MERCHANT', merchantId },
-      action: AuditAction.CANCEL_TRANSACTION,
-      targetType: AuditTargetType.MERCHANT,
-      targetId: transactionId,
-      metadata: { transactionType: result.type },
-    });
-
-    return result;
-  }
-
-
-  async fulfillGift(transactionId: string, merchantId: string) {
-    return withRetry(() =>
-      this.txRunner.run(async (prisma) => {
-        const transaction = await prisma.transaction.findUnique({
-          where: { id: transactionId },
-          select: { id: true, merchantId: true, type: true, status: true, giftStatus: true },
-        });
-
-        if (!transaction) throw new NotFoundException('Transaction non trouvee');
-        if (transaction.merchantId !== merchantId) {
-          throw new BadRequestException('Cette transaction ne vous appartient pas');
-        }
-        if (transaction.type !== 'REDEEM_REWARD') {
-          throw new BadRequestException('Seules les transactions cadeau peuvent etre marquees comme remises');
-        }
-        if (transaction.status === 'CANCELLED') {
-          throw new BadRequestException('Cette transaction est annulee');
-        }
-        if (transaction.giftStatus === 'FULFILLED') {
-          throw new BadRequestException('Ce cadeau a deja ete remis');
-        }
-
-        return prisma.transaction.update({
-          where: { id: transactionId },
-          data: { giftStatus: 'FULFILLED', fulfilledAt: new Date() },
-        });
-      }, { isolationLevel: 'Serializable' }),
-    );
-  }
-
-  async getPendingGifts(merchantId: string) {
-    const transactions = await this.transactionRepoDelegate.findMany({
-      where: {
-        merchantId,
-        type: 'REDEEM_REWARD',
-        status: 'ACTIVE',
-        giftStatus: 'PENDING',
-      },
-      select: {
-        id: true,
-        clientId: true,
-        rewardId: true,
-        stamps: true,
-        giftStatus: true,
-        createdAt: true,
-        client: { select: { id: true, prenom: true, nom: true, email: true, shareInfoMerchants: true } },
-        reward: { select: { id: true, titre: true, cout: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 50,
-    });
-
-    return transactions.map((tx: any) => {
-      if (tx.client && tx.client.shareInfoMerchants === false) {
-        return {
-          ...tx,
-          client: {
-            ...tx.client,
-            prenom: maskName(tx.client.prenom),
-            nom: maskName(tx.client.nom),
-            email: null,
-          },
-        };
-      }
-      return tx;
-    });
-  }
-
   // ─── Private: Transaction Notifications ──────────────────────────────────
   private async sendTransactionNotifications(
     clientId: string,
@@ -588,36 +476,37 @@ export class MerchantTransactionService {
     const [client, merchant] = await Promise.all([
       this.clientRepo.findUnique({
         where: { id: clientId },
-        select: { id: true, language: true },
+        select: { id: true, language: true, deletedAt: true },
       }),
       this.merchantRepo.findUnique({
         where: { id: merchantId },
-        select: { nom: true, accumulationLimit: true },
+        select: { nom: true, accumulationLimit: true, isActive: true, deletedAt: true },
       }),
     ]);
-    if (!client) throw new NotFoundException('Client non trouvé');
-    if (!merchant) throw new NotFoundException('Commerce non trouvé');
+    if (!client || client.deletedAt) throw new NotFoundException('Client non trouvé');
+    if (!merchant || merchant.deletedAt || !merchant.isActive) throw new NotFoundException('Commerce non trouvé');
 
     const result = await withRetry(() =>
       this.txRunner.run(async (prisma) => {
-        let loyaltyCard = await prisma.loyaltyCard.findUnique({
+        // Re-check inside the transaction (TOCTOU on deletedAt / isActive).
+        const [clientTx, merchantTx] = await Promise.all([
+          prisma.client.findUnique({ where: { id: clientId }, select: { id: true, deletedAt: true } }),
+          prisma.merchant.findUnique({ where: { id: merchantId }, select: { id: true, isActive: true, deletedAt: true } }),
+        ]);
+        if (!clientTx || clientTx.deletedAt) throw new NotFoundException('Client non trouvé');
+        if (!merchantTx || merchantTx.deletedAt || !merchantTx.isActive) throw new NotFoundException('Commerce non trouvé');
+
+        // Adjustments only apply to existing members: they never enroll a client.
+        const loyaltyCard = await prisma.loyaltyCard.findUnique({
           where: { clientId_merchantId: { clientId, merchantId } },
           select: { id: true, stamps: true, deactivatedAt: true },
         });
+        if (!loyaltyCard) throw new NotFoundException('Client non trouvé');
 
-        if (loyaltyCard?.deactivatedAt) {
+        if (loyaltyCard.deactivatedAt) {
           throw new BadRequestException(
             'Le client a quitté ce programme de fidélité. Il doit rejoindre à nouveau.',
           );
-        }
-
-        if (!loyaltyCard) {
-          // Enforce client limit for FREE plan
-          await this.planService.assertCanAddClient(merchantId);
-          loyaltyCard = await prisma.loyaltyCard.create({
-            data: { clientId, merchantId, stamps: 0 },
-            select: { id: true, stamps: true, deactivatedAt: true },
-          });
         }
 
         let newStamps = loyaltyCard.stamps + stamps;

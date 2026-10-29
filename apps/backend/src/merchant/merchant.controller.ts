@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Patch, Delete, Body, Param, Query, Req, Inject,
+  Controller, Get, Post, Patch, Delete, Body, Param, Query, Req, Inject, Headers,
   UseGuards, UseInterceptors, UploadedFile, BadRequestException, Logger,
 } from '@nestjs/common';
 import { Request } from 'express';
@@ -16,7 +16,7 @@ import { MerchantOwnerGuard } from '../auth/guards/merchant-owner.guard';
 import { PremiumGuard } from '../auth/guards/premium.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtPayload } from '../common/interfaces/jwt-payload.interface';
-import { PaginationQueryDto, SearchPaginationQueryDto } from '../common/dto/pagination-query.dto';
+import { PaginationQueryDto, MerchantClientsQueryDto } from '../common/dto/pagination-query.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { UpdatePushTokenDto } from './dto/update-push-token.dto';
@@ -26,13 +26,14 @@ import { VerifyQrDto } from './dto/verify-qr.dto';
 import { VerifyClientDto } from './dto/verify-client.dto';
 import { RegisterDeviceDto } from './dto/register-device.dto';
 import { DeleteAccountDto } from './dto/delete-account.dto';
-import { RecordWhatsappUsageDto } from './dto';
 import { IStorageProvider, STORAGE_PROVIDER } from '../common/interfaces';
 import { ImageOptimizerService } from '../storage/image-optimizer.service';
+import { deleteOwnedFiles, planProfileImageChanges } from '../storage/image-ownership';
 import { MerchantProfileData } from '../common/prisma-selects';
 
 const ALLOWED_MIMES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB (sharp optimizes down to a small WebP)
+const MAX_GALLERY_PHOTOS = 5;
 
 /** Detect MIME from magic bytes — supports JPEG, PNG, WebP only. */
 function detectMimeFromBuffer(buffer: Buffer): string | null {
@@ -53,6 +54,8 @@ import {
   MerchantClientService,
   MerchantPlanService,
   MerchantReferralService,
+  ScanTicketService,
+  SCAN_TICKET_HEADER,
 } from './services';
 import { MerchantInboxService } from '../merchant-inbox/merchant-inbox.service';
 
@@ -74,6 +77,7 @@ export class MerchantController {
     @Inject(STORAGE_PROVIDER) private storageProvider: IStorageProvider,
     private imageOptimizer: ImageOptimizerService,
     private prisma: PrismaService,
+    private scanTickets: ScanTicketService,
   ) {}
 
   // ── Verify QR token (scanned from client app) ─────────────
@@ -145,7 +149,7 @@ export class MerchantController {
           .catch(() => {});
       }
 
-      return this.clientService.verifyClient(clientId, user.userId, true);
+      return this.withScanTicket(await this.clientService.verifyClient(clientId, user.userId, true), user.userId);
     }
 
     // ── v1 / v0 legacy permanent tokens (kept during rollout) ──
@@ -188,7 +192,12 @@ export class MerchantController {
 
     // Verify the client actually exists
     // allowFirstScan=true: HMAC signature already proved the client's consent.
-    return this.clientService.verifyClient(clientId, user.userId, true);
+    return this.withScanTicket(await this.clientService.verifyClient(clientId, user.userId, true), user.userId);
+  }
+
+  /** The ticket lets the follow-up status / transaction calls enroll this client. */
+  private withScanTicket(result: { clientId: string }, merchantId: string) {
+    return { ...result, scanTicket: this.scanTickets.issue(result.clientId, merchantId) };
   }
 
   // ── Verify a legacy client UUID (prevents IDOR from unsigned QR codes) ──
@@ -214,36 +223,30 @@ export class MerchantController {
   @Patch('profile')
   @UseGuards(MerchantOwnerGuard)
   async updateProfile(@Body() dto: UpdateProfileDto, @CurrentUser() user: JwtPayload): Promise<MerchantProfileData> {
-    // Orphan-file cleanup: whenever gallery/logo/cover references are removed or
-    // replaced, delete the previously stored files so no orphans accumulate.
-    const logoProvided = dto.logoUrl !== undefined;
-    const coverProvided = dto.coverUrl !== undefined;
-    if (dto.gallery || logoProvided || coverProvided) {
-      const current = await this.profileService.getProfile(user.userId);
+    const touchesImages =
+      dto.gallery !== undefined || dto.logoUrl !== undefined ||
+      dto.coverUrl !== undefined || dto.cardBackgroundUrl !== undefined;
+    if (!touchesImages) return this.profileService.updateProfile(user.userId, dto);
 
-      if (dto.gallery) {
-        const oldGallery = Array.isArray(current.gallery) ? current.gallery : [];
-        const newGallery = Array.isArray(dto.gallery) ? dto.gallery : [];
+    // Rejects URLs the merchant neither uploaded nor already references, and
+    // lists the files the update stops using (orphan cleanup).
+    const current = await this.profileService.getProfile(user.userId);
+    const replaced = planProfileImageChanges(this.storageProvider, user.userId, current, dto);
 
-        const removedImages = oldGallery.filter(url => !newGallery.includes(url));
-        removedImages.forEach(url => {
-          if (typeof url === 'string') {
-            this.storageProvider.deleteFile(url).catch(() => {});
-          }
-        });
-      }
+    const updated = await this.profileService.updateProfile(user.userId, dto);
+    // Only after the update succeeded, so the profile never points to a deleted file.
+    deleteOwnedFiles(this.storageProvider, user.userId, replaced);
+    return updated;
+  }
 
-      // Logo removed (null) or replaced → delete the old stored file
-      if (logoProvided && current.logoUrl && current.logoUrl !== dto.logoUrl) {
-        this.storageProvider.deleteFile(current.logoUrl).catch(() => {});
-      }
-      // Cover removed (null) or replaced → delete the old stored file
-      if (coverProvided && current.coverUrl && current.coverUrl !== dto.coverUrl) {
-        this.storageProvider.deleteFile(current.coverUrl).catch(() => {});
-      }
+  /** Persist a fresh upload; if persisting fails, remove the upload instead of leaving an orphan. */
+  private async persistUpload(merchantId: string, imageUrl: string, persist: () => Promise<unknown>): Promise<void> {
+    try {
+      await persist();
+    } catch (err) {
+      deleteOwnedFiles(this.storageProvider, merchantId, [imageUrl]);
+      throw err;
     }
-
-    return this.profileService.updateProfile(user.userId, dto);
   }
 
   // ── Upload logo / cover ───────────────────────────────────
@@ -276,8 +279,8 @@ export class MerchantController {
       throw new BadRequestException('Le contenu du fichier ne correspond pas à un format image autorisé (JPG, PNG, WebP).');
     }
 
-    // Logo upload is a Premium feature; covers and reward images are allowed on all plans.
-    if (query.type !== UploadType.COVER && query.type !== UploadType.REWARD) {
+    // Logo upload is a Premium feature; covers, reward and deal images are allowed on all plans.
+    if (query.type !== UploadType.COVER && query.type !== UploadType.REWARD && query.type !== UploadType.DEAL) {
       const isPremium = await this.planService.isPremium(user.userId);
       if (!isPremium) {
         throw new BadRequestException(
@@ -288,54 +291,62 @@ export class MerchantController {
 
     // Gallery: upload photo, append to merchant.gallery array (cap 5), return updated gallery.
     if (query.type === UploadType.GALLERY) {
-      const optimized = await this.imageOptimizer.optimize(file, 'gallery');
-      const imageUrl = await this.storageProvider.uploadFile(optimized, 'gallery');
+      // Limit checked before uploading so a rejected request stores nothing.
       const current = await this.profileService.getProfile(user.userId);
       const existing = Array.isArray(current.gallery) ? current.gallery : [];
-      if (existing.length >= 5) {
+      if (existing.length >= MAX_GALLERY_PHOTOS) {
         throw new BadRequestException('La galerie est limitée à 5 photos. Supprimez-en une avant d’ajouter.');
       }
+      const optimized = await this.imageOptimizer.optimize(file, 'gallery');
+      const imageUrl = await this.storageProvider.uploadFile(optimized, 'gallery', user.userId);
       const next = [...existing, imageUrl];
-      await this.profileService.updateProfile(user.userId, { gallery: next } as Partial<Record<string, unknown>>);
+      await this.persistUpload(user.userId, imageUrl, () =>
+        this.profileService.updateProfile(user.userId, { gallery: next } as Partial<Record<string, unknown>>),
+      );
       return { url: imageUrl, field: 'gallery', gallery: next };
     }
 
     // Reward: just upload + return URL. The caller persists it via POST/PUT /rewards.
     if (query.type === UploadType.REWARD) {
       const optimized = await this.imageOptimizer.optimize(file, 'reward');
-      const imageUrl = await this.storageProvider.uploadFile(optimized, 'rewards');
+      const imageUrl = await this.storageProvider.uploadFile(optimized, 'rewards', user.userId);
+      return { url: imageUrl, field: 'imageUrl' };
+    }
+
+    // Deal: upload + return URL, persisted by POST/PATCH /merchant/deals.
+    if (query.type === UploadType.DEAL) {
+      const optimized = await this.imageOptimizer.optimize(file, 'deal');
+      const imageUrl = await this.storageProvider.uploadFile(optimized, 'deals', user.userId);
       return { url: imageUrl, field: 'imageUrl' };
     }
 
     // Card background: upload, replace any previous, persist on merchant.
     if (query.type === UploadType.CARD_BACKGROUND) {
       const current = await this.profileService.getProfile(user.userId);
-      const oldUrl = (current as any).cardBackgroundUrl as string | null | undefined;
+      const oldUrl = current.cardBackgroundUrl;
       const optimized = await this.imageOptimizer.optimize(file, 'cardBg');
-      const imageUrl = await this.storageProvider.uploadFile(optimized, 'card-backgrounds');
-      await this.profileService.updateProfile(user.userId, { cardBackgroundUrl: imageUrl } as Partial<Record<string, unknown>>);
-      if (oldUrl) {
-        this.storageProvider.deleteFile(oldUrl).catch(() => {});
-      }
+      const imageUrl = await this.storageProvider.uploadFile(optimized, 'card-backgrounds', user.userId);
+      await this.persistUpload(user.userId, imageUrl, () =>
+        this.profileService.updateProfile(user.userId, { cardBackgroundUrl: imageUrl } as Partial<Record<string, unknown>>),
+      );
+      deleteOwnedFiles(this.storageProvider, user.userId, [oldUrl]);
       return { url: imageUrl, field: 'cardBackgroundUrl' };
     }
 
     const profile = query.type === UploadType.COVER ? 'cover' : 'logo';
     const folder = query.type === UploadType.COVER ? 'covers' : 'logos';
-    
+
     const current = await this.profileService.getProfile(user.userId);
     const field = query.type === UploadType.COVER ? 'coverUrl' : 'logoUrl';
-    const oldUrl = current[field as keyof typeof current] as string | undefined | null;
+    const oldUrl = current[field];
 
     const optimized = await this.imageOptimizer.optimize(file, profile);
-    const imageUrl = await this.storageProvider.uploadFile(optimized, folder);
+    const imageUrl = await this.storageProvider.uploadFile(optimized, folder, user.userId);
 
-    await this.profileService.updateProfile(user.userId, { [field]: imageUrl } as Partial<Record<string, string>>);
-    
-    // Opportunistic cleanup of the old image if it was replaced
-    if (oldUrl) {
-      this.storageProvider.deleteFile(oldUrl).catch(() => {});
-    }
+    await this.persistUpload(user.userId, imageUrl, () =>
+      this.profileService.updateProfile(user.userId, { [field]: imageUrl } as Partial<Record<string, string>>),
+    );
+    deleteOwnedFiles(this.storageProvider, user.userId, [oldUrl]);
 
     return { url: imageUrl, field };
   }
@@ -344,10 +355,10 @@ export class MerchantController {
   @UseGuards(MerchantOwnerGuard)
   async deleteCardBackground(@CurrentUser() user: JwtPayload) {
     const current = await this.profileService.getProfile(user.userId);
-    const oldUrl = (current as any).cardBackgroundUrl as string | null | undefined;
+    const oldUrl = current.cardBackgroundUrl;
     if (!oldUrl) return { ok: true };
     await this.profileService.updateProfile(user.userId, { cardBackgroundUrl: null } as Partial<Record<string, unknown>>);
-    this.storageProvider.deleteFile(oldUrl).catch(() => {});
+    deleteOwnedFiles(this.storageProvider, user.userId, [oldUrl]);
     return { ok: true };
   }
 
@@ -393,35 +404,28 @@ export class MerchantController {
     return this.profileService.deleteAccount(user.userId, dto.password, dto.idToken, dto.appleIdentityToken);
   }
 
-  @Get('me')
-  async getMe(@CurrentUser() user: JwtPayload) {
-    return {
-      userId: user.userId,
-      email: user.email,
-      type: user.type,
-      role: user.role,
-      teamMemberId: user.teamMemberId || null,
-      teamMemberName: user.teamMemberName || null,
-    };
-  }
-
   @Get('clients')
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 20 } })
   async getClients(
-    @Query() { search, page, limit }: SearchPaginationQueryDto,
+    @Query() { search, page, limit, view }: MerchantClientsQueryDto,
     @CurrentUser() user: JwtPayload,
   ) {
-    return this.clientService.getClients(user.userId, search, page, limit);
+    return this.clientService.getClients(user.userId, search, page, limit, view);
   }
 
   @Get('clients/scan')
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 30 } })
   async getClientsForScan(@Query('search') search: string, @CurrentUser() user: JwtPayload) {
     return this.clientService.getClientsForScan(user.userId, search);
   }
 
   @Get('client/:id/status')
-  async getClientStatus(@Param('id') clientId: string, @CurrentUser() user: JwtPayload) {
-    return this.clientService.getClientStatus(clientId, user.userId);
+  async getClientStatus(
+    @Param('id') clientId: string,
+    @CurrentUser() user: JwtPayload,
+    @Headers(SCAN_TICKET_HEADER) scanTicket?: string,
+  ) {
+    return this.clientService.getClientStatus(clientId, user.userId, scanTicket);
   }
 
   @Get('client/:id/detail')

@@ -1,5 +1,6 @@
 import { memo } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet } from 'react-native';
+import { Text } from '@/components/AppText';
 import { BadgeCheck, ShieldAlert } from 'lucide-react-native';
 import { palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
