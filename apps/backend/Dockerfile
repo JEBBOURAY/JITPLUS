@@ -10,6 +10,9 @@ RUN corepack enable && corepack prepare pnpm@10.29.3 --activate
 
 # Copy monorepo root dependency files first
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+# pnpm hashes every patchedDependencies file at install time, even for packages
+# the backend filter never installs (expo), so the patches must be present.
+COPY patches ./patches/
 
 # Copy backend package.json and prisma schema
 COPY apps/backend/package.json ./apps/backend/
