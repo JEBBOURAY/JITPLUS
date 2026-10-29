@@ -152,6 +152,10 @@ export default function HomeScreen() {
   const onRefresh = useGuardedCallback(async () => {
     await Promise.all([refetch(), refetchStats()]);
   }, [refetch, refetchStats]);
+  const retry = useCallback(() => {
+    safeImpact(Haptics.ImpactFeedbackStyle.Light);
+    refetch();
+  }, [refetch]);
 
   const avatarTourRef = useTourTarget('avatar');
   const statsTourRef = useTourTarget('dashboard');
@@ -257,7 +261,7 @@ export default function HomeScreen() {
           {!activeOnboardingSurface && <TipsCarousel />}
 
           {!activeOnboardingSurface && showTrialBanner && trialDaysLeft != null && (
-            <View style={{ paddingTop: 12 }}>
+            <View style={styles.bannerWrap}>
               <TrialEndBanner
                 daysRemaining={trialDaysLeft}
                 onPress={goToPlan}
@@ -267,7 +271,7 @@ export default function HomeScreen() {
           )}
 
           {!activeOnboardingSurface && isFreePlan && (
-            <View style={{ paddingTop: 12 }}>
+            <View style={styles.bannerWrap}>
               <ProUpgradeBanner onPress={goToPlan} />
             </View>
           )}
@@ -287,14 +291,7 @@ export default function HomeScreen() {
               <Text style={[styles.emptyText, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.6}>
                 {t('common.errorHint')}
               </Text>
-              <ActionButton
-                label={t('common.retry')}
-                style={styles.retryBtn}
-                onPress={() => {
-                  safeImpact(Haptics.ImpactFeedbackStyle.Light);
-                  refetch();
-                }}
-              />
+              <ActionButton label={t('common.retry')} style={styles.retryBtn} onPress={retry} />
             </View>
           ) : showSkeleton ? (
             <ListSkeleton count={5} />
@@ -396,6 +393,7 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
 
   content: { paddingHorizontal: 16, paddingTop: 14 },
+  bannerWrap: { paddingTop: 12 },
   emptyInline: { alignItems: 'center', paddingTop: 48 },
 
   hero: {

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { memo, useCallback, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -63,6 +63,8 @@ const SECTION_LABEL_KEY: Record<InboxSectionKey, string> = {
 };
 
 const LONG_BODY_CHARS = 110;
+const HIT_SLOP_SMALL = { top: 8, bottom: 8, left: 8, right: 8 };
+const HIT_SLOP_BACK = { top: 10, bottom: 10, left: 10, right: 10 };
 const SELF_ROUTE = '/admin-notifications';
 
 function styleFor(category: AdminNotification['category']) {
@@ -74,12 +76,127 @@ function clockTime(iso: string): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
+const keyExtractor = (item: AdminNotification) => item.id;
+
+const InboxCard = memo(function InboxCard({
+  item,
+  sectionKey,
+  expanded,
+  onPress,
+  onToggleExpand,
+}: {
+  item: AdminNotification;
+  sectionKey: InboxSectionKey;
+  expanded: boolean;
+  onPress: (item: AdminNotification, isLong: boolean) => void;
+  onToggleExpand: (item: AdminNotification) => void;
+}) {
+  const theme = useTheme();
+  const { t, locale } = useLanguage();
+  const { isRTL, row, textAlign, flip } = useDir();
+  const cat = styleFor(item.category);
+  const Icon = cat.icon;
+  const unread = !item.isRead;
+  const isLong = item.body.length > LONG_BODY_CHARS || item.body.includes('\n');
+  const route = routeForAction(item.action);
+  const hasLink = !!route && route !== SELF_ROUTE;
+  const when = sectionKey === 'yesterday' ? clockTime(item.createdAt) : timeAgo(item.createdAt, locale);
+  const categoryLabel = t(cat.labelKey);
+
+  return (
+    <TouchableOpacity
+      activeOpacity={0.75}
+      onPress={() => onPress(item, isLong)}
+      accessibilityRole="button"
+      accessibilityLabel={`${categoryLabel}. ${item.title}. ${item.body}`}
+      style={[
+        styles.card,
+        {
+          flexDirection: row,
+          backgroundColor: unread ? theme.bgCard : theme.bgElevated,
+          borderColor: unread ? `${cat.color}33` : theme.borderLight,
+        },
+        unread && styles.cardUnreadShadow,
+        unread && { shadowColor: cat.color },
+      ]}
+    >
+      <View style={[styles.iconWrap, { backgroundColor: `${cat.color}${unread ? '1F' : '14'}` }]}>
+        <Icon size={ms(18)} color={unread ? cat.color : theme.textMuted} strokeWidth={icon.stroke} />
+      </View>
+
+      <View style={styles.cardBody}>
+        <View style={[styles.metaRow, { flexDirection: row }]}>
+          <Text
+            style={[styles.categoryLabel, { color: unread ? cat.color : theme.textMuted }]}
+            numberOfLines={1}
+          >
+            {categoryLabel}
+          </Text>
+          <Text style={[styles.metaDot, { color: theme.textMuted }]}>·</Text>
+          <Text style={[styles.cardTime, { color: theme.textMuted }]} numberOfLines={1}>
+            {when}
+          </Text>
+          <View style={styles.spacer} />
+          {unread && <View style={[styles.unreadDot, isRTL ? styles.unreadDotRtl : styles.unreadDotLtr, { backgroundColor: cat.color }]} />}
+        </View>
+
+        <Text
+          style={[
+            styles.cardTitle,
+            { color: unread ? theme.text : theme.textSecondary, textAlign },
+            unread && styles.cardTitleUnread,
+          ]}
+          numberOfLines={2}
+        >
+          {item.title}
+        </Text>
+
+        <Text
+          style={[styles.cardText, { color: unread ? theme.textSecondary : theme.textMuted, textAlign }]}
+          numberOfLines={expanded ? undefined : 3}
+        >
+          {item.body}
+        </Text>
+
+        {(isLong || hasLink) && (
+          <View style={[styles.actionsRow, { flexDirection: row }]}>
+            {isLong && (
+              <TouchableOpacity
+                onPress={() => onToggleExpand(item)}
+                hitSlop={HIT_SLOP_SMALL}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={t(expanded ? 'common.collapse' : 'common.expand')}
+              >
+                <Text style={[styles.linkText, { color: theme.textMuted }]}>
+                  {t(expanded ? 'common.collapse' : 'common.expand')}
+                </Text>
+              </TouchableOpacity>
+            )}
+            <View style={styles.spacer} />
+            {hasLink && (
+              <View style={[styles.openChip, isRTL ? styles.openChipRtl : styles.openChipLtr, { flexDirection: row, backgroundColor: `${cat.color}14` }]}>
+                <Text style={[styles.openChipText, { color: cat.color }]}>{t('inbox.open')}</Text>
+                <ChevronRight
+                  size={ms(14)}
+                  color={cat.color}
+                  strokeWidth={icon.strokeSmall}
+                  style={flip}
+                />
+              </View>
+            )}
+          </View>
+        )}
+      </View>
+    </TouchableOpacity>
+  );
+});
 export default function AdminNotificationsScreen() {
   const theme = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { t, locale } = useLanguage();
-  const { isRTL, row, textAlign, flip } = useDir();
+  const { t } = useLanguage();
+  const { row, textAlign, flip } = useDir();
   const {
     data,
     isLoading,
@@ -91,10 +208,10 @@ export default function AdminNotificationsScreen() {
     isFetchingNextPage,
   } = useAdminNotifications();
   const markAllRead = useMarkAdminNotifsRead();
-  const markSingleRead = useMarkSingleAdminNotifRead();
+  const { mutate: markSingleRead } = useMarkSingleAdminNotifRead();
   const { data: unreadData, refetch: refetchUnread } = useAdminNotifUnreadCount();
   const unreadCount = unreadData?.count ?? 0;
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
 
   const sections = useMemo(() => {
     const seen = new Set<string>();
@@ -109,7 +226,7 @@ export default function AdminNotificationsScreen() {
 
   const markRead = useCallback((item: AdminNotification) => {
     if (item.isRead) return;
-    markSingleRead.mutate(item.id, {
+    markSingleRead(item.id, {
       onError: () => logWarn('Notif', 'Failed to mark as read:', item.id),
     });
   }, [markSingleRead]);
@@ -152,105 +269,15 @@ export default function AdminNotificationsScreen() {
     if (hasNextPage && !isFetchingNextPage) fetchNextPage();
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
-  const renderItem = useCallback(({ item, section }: { item: AdminNotification; section: { key: InboxSectionKey } }) => {
-    const cat = styleFor(item.category);
-    const Icon = cat.icon;
-    const unread = !item.isRead;
-    const isExpanded = expandedIds.has(item.id);
-    const isLong = item.body.length > LONG_BODY_CHARS || item.body.includes('\n');
-    const route = routeForAction(item.action);
-    const hasLink = !!route && route !== SELF_ROUTE;
-    const when = section.key === 'yesterday' ? clockTime(item.createdAt) : timeAgo(item.createdAt, locale);
-    const categoryLabel = t(cat.labelKey);
-
-    return (
-      <TouchableOpacity
-        activeOpacity={0.75}
-        onPress={() => handlePress(item, isLong)}
-        accessibilityRole="button"
-        accessibilityLabel={`${categoryLabel}. ${item.title}. ${item.body}`}
-        style={[
-          styles.card,
-          {
-            flexDirection: row,
-            backgroundColor: unread ? theme.bgCard : theme.bgElevated,
-            borderColor: unread ? `${cat.color}33` : theme.borderLight,
-          },
-          unread && styles.cardUnreadShadow,
-          unread && { shadowColor: cat.color },
-        ]}
-      >
-        <View style={[styles.iconWrap, { backgroundColor: `${cat.color}${unread ? '1F' : '14'}` }]}>
-          <Icon size={ms(18)} color={unread ? cat.color : theme.textMuted} strokeWidth={icon.stroke} />
-        </View>
-
-        <View style={styles.cardBody}>
-          <View style={[styles.metaRow, { flexDirection: row }]}>
-            <Text
-              style={[styles.categoryLabel, { color: unread ? cat.color : theme.textMuted }]}
-              numberOfLines={1}
-            >
-              {categoryLabel}
-            </Text>
-            <Text style={[styles.metaDot, { color: theme.textMuted }]}>·</Text>
-            <Text style={[styles.cardTime, { color: theme.textMuted }]} numberOfLines={1}>
-              {when}
-            </Text>
-            <View style={{ flex: 1 }} />
-            {unread && <View style={[styles.unreadDot, isRTL ? styles.unreadDotRtl : styles.unreadDotLtr, { backgroundColor: cat.color }]} />}
-          </View>
-
-          <Text
-            style={[
-              styles.cardTitle,
-              { color: unread ? theme.text : theme.textSecondary, textAlign },
-              unread && styles.cardTitleUnread,
-            ]}
-            numberOfLines={2}
-          >
-            {item.title}
-          </Text>
-
-          <Text
-            style={[styles.cardText, { color: unread ? theme.textSecondary : theme.textMuted, textAlign }]}
-            numberOfLines={isExpanded ? undefined : 3}
-          >
-            {item.body}
-          </Text>
-
-          {(isLong || hasLink) && (
-            <View style={[styles.actionsRow, { flexDirection: row }]}>
-              {isLong && (
-                <TouchableOpacity
-                  onPress={() => toggleExpand(item)}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  activeOpacity={0.7}
-                  accessibilityRole="button"
-                  accessibilityLabel={t(isExpanded ? 'common.collapse' : 'common.expand')}
-                >
-                  <Text style={[styles.linkText, { color: theme.textMuted }]}>
-                    {t(isExpanded ? 'common.collapse' : 'common.expand')}
-                  </Text>
-                </TouchableOpacity>
-              )}
-              <View style={{ flex: 1 }} />
-              {hasLink && (
-                <View style={[styles.openChip, isRTL ? styles.openChipRtl : styles.openChipLtr, { flexDirection: row, backgroundColor: `${cat.color}14` }]}>
-                  <Text style={[styles.openChipText, { color: cat.color }]}>{t('inbox.open')}</Text>
-                  <ChevronRight
-                    size={ms(14)}
-                    color={cat.color}
-                    strokeWidth={icon.strokeSmall}
-                    style={flip}
-                  />
-                </View>
-              )}
-            </View>
-          )}
-        </View>
-      </TouchableOpacity>
-    );
-  }, [theme, locale, t, expandedIds, handlePress, toggleExpand, isRTL, row, textAlign, flip]);
+  const renderItem = useCallback(({ item, section }: { item: AdminNotification; section: { key: InboxSectionKey } }) => (
+    <InboxCard
+      item={item}
+      sectionKey={section.key}
+      expanded={expandedIds.has(item.id)}
+      onPress={handlePress}
+      onToggleExpand={toggleExpand}
+    />
+  ), [expandedIds, handlePress, toggleExpand]);
 
   const renderSectionHeader = useCallback(({ section }: { section: { key: InboxSectionKey } }) => (
     <Text style={[styles.sectionHeader, { color: theme.textMuted, backgroundColor: theme.bg, textAlign }]}>
@@ -269,7 +296,7 @@ export default function AdminNotificationsScreen() {
       <View style={[styles.headerBar, { paddingTop: insets.top + 12, flexDirection: row }]}>
         <TouchableOpacity
           onPress={() => router.back()}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          hitSlop={HIT_SLOP_BACK}
           accessibilityRole="button"
           accessibilityLabel={t('common.back')}
         >
@@ -337,7 +364,7 @@ export default function AdminNotificationsScreen() {
       ) : (
         <SectionList
           sections={sections}
-          keyExtractor={(item) => item.id}
+          keyExtractor={keyExtractor}
           renderItem={renderItem}
           renderSectionHeader={renderSectionHeader}
           stickySectionHeadersEnabled
@@ -460,6 +487,7 @@ const styles = StyleSheet.create({
   cardBody: {
     flex: 1,
   },
+  spacer: { flex: 1 },
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -19,6 +19,11 @@ import { logWarn } from '@/utils/devLogger';
 
 const DEBOUNCE_MS = 350;
 
+/** Pseudo-random Google Places session token: groups autocomplete + details calls for billing. */
+function newSessionToken(): string {
+  return Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
+}
+
 // Google Places Autocomplete types
 interface PlacePrediction {
   place_id: string;
@@ -69,20 +74,15 @@ export default function AddressAutocomplete({
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const abortRef = useRef<AbortController | null>(null);
   const mountedRef = useRef(true);
-
-  // V4 UUID style pseudo-token for Google Places API Session Token (FinOps billing proxy)
-  const sessionTokenRef = useRef(Math.random().toString(36).substring(2, 15) + Date.now().toString(36));
+  // Created on first use, and renewed once a search ends with a place lookup.
+  const sessionTokenRef = useRef<string | null>(null);
+  const userLat = userLocation?.latitude;
+  const userLng = userLocation?.longitude;
 
   // Store geocode fallback results so we can retrieve coords on select
   const geoFallbackRef = useRef<Map<string, { lat: number; lng: number; address: string; city?: string; district?: string }>>(new Map());
 
   const fetchPredictions = useCallback(async (input: string) => {
-    if (input.trim().length < 3) {
-      setPredictions([]);
-      setShowDropdown(false);
-      return;
-    }
-
     // Cancel previous request
     abortRef.current?.abort();
     const controller = new AbortController();
@@ -92,16 +92,16 @@ export default function AddressAutocomplete({
     try {
       const params = new URLSearchParams({ input });
       if (ville) params.set('ville', ville);
-      if (userLocation?.latitude != null && userLocation?.longitude != null) {
-        params.set('lat', String(userLocation.latitude));
-        params.set('lng', String(userLocation.longitude));
+      if (userLat != null && userLng != null) {
+        params.set('lat', String(userLat));
+        params.set('lng', String(userLng));
       }
-      params.set('sessionToken', sessionTokenRef.current);
+      params.set('sessionToken', sessionTokenRef.current ??= newSessionToken());
       const url = `${getServerBaseUrl()}/geocode/autocomplete?${params}`;
       const res = await fetch(url, { signal: controller.signal });
       const json = await res.json();
 
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || controller.signal.aborted) return;
 
       if (json.predictions?.length > 0) {
         geoFallbackRef.current.clear();
@@ -115,7 +115,7 @@ export default function AddressAutocomplete({
         const geoRes = await fetch(geoUrl, { signal: controller.signal });
         const geoJson = await geoRes.json();
 
-        if (!mountedRef.current) return;
+        if (!mountedRef.current || controller.signal.aborted) return;
 
         if (geoJson.results?.length > 0) {
           // Convert geocode results to prediction-like items for the dropdown
@@ -160,9 +160,10 @@ export default function AddressAutocomplete({
         logWarn('AddressAutocomplete', 'fetch error:', e);
       }
     } finally {
-      if (mountedRef.current) setLoading(false);
+      // An aborted search was superseded: its successor owns the spinner.
+      if (mountedRef.current && !controller.signal.aborted) setLoading(false);
     }
-  }, [ville, userLocation, onNotFound]);
+  }, [ville, userLat, userLng, onNotFound]);
 
   // Debounced input handler
   const handleChangeText = useCallback((text: string) => {
@@ -177,7 +178,16 @@ export default function AddressAutocomplete({
     debounceRef.current = setTimeout(() => fetchPredictions(text), DEBOUNCE_MS);
   }, [onChangeText, fetchPredictions]);
 
+  // A pending debounce or in-flight search must not reopen the dropdown
+  // after a selection or a clear.
+  const cancelSearch = useCallback(() => {
+    clearTimeout(debounceRef.current);
+    abortRef.current?.abort();
+    setLoading(false);
+  }, []);
+
   const handleSelectPrediction = useCallback(async (prediction: PlacePrediction) => {
+    cancelSearch();
     Keyboard.dismiss();
     setShowDropdown(false);
     setPredictions([]);
@@ -200,12 +210,11 @@ export default function AddressAutocomplete({
 
     setLoading(true);
     try {
-      const url = `${getServerBaseUrl()}/geocode/place-details?placeId=${encodeURIComponent(prediction.place_id)}&sessionToken=${encodeURIComponent(sessionTokenRef.current)}`;
+      const url = `${getServerBaseUrl()}/geocode/place-details?placeId=${encodeURIComponent(prediction.place_id)}&sessionToken=${encodeURIComponent(sessionTokenRef.current ??= newSessionToken())}`;
       const res = await fetch(url);
       const json = await res.json();
 
-      // Regenerate session token after finalizing the search flow (FinOps)
-      sessionTokenRef.current = Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
+      sessionTokenRef.current = newSessionToken();
 
       if (!mountedRef.current) return;
 
@@ -234,10 +243,10 @@ export default function AddressAutocomplete({
     } finally {
       if (mountedRef.current) setLoading(false);
     }
-  }, [onChangeText, onSelect, onNotFound]);
+  }, [cancelSearch, onChangeText, onSelect, onNotFound]);
 
-  // Cleanup
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
       mountedRef.current = false;
       clearTimeout(debounceRef.current);
@@ -252,7 +261,7 @@ export default function AddressAutocomplete({
         {
           flexDirection: dir.row,
           backgroundColor: theme.bgInput,
-          borderColor: showDropdown ? theme.primary : value ? theme.primary : theme.border,
+          borderColor: showDropdown || value ? theme.primary : theme.border,
         },
       ]}>
         <Search size={18} color={theme.textMuted} strokeWidth={icon.stroke} />
@@ -270,6 +279,7 @@ export default function AddressAutocomplete({
         ) : value.length > 0 ? (
           <TouchableOpacity
             onPress={() => {
+              cancelSearch();
               onChangeText('');
               setPredictions([]);
               setShowDropdown(false);
@@ -306,7 +316,7 @@ export default function AddressAutocomplete({
                 <Text style={[styles.mainText, { color: theme.text, textAlign: dir.textAlign }]} numberOfLines={1}>
                   {item.structured_formatting.main_text}
                 </Text>
-                {item.structured_formatting.secondary_text && (
+                {!!item.structured_formatting.secondary_text && (
                   <Text style={[styles.secondaryText, { color: theme.textMuted, textAlign: dir.textAlign }]} numberOfLines={1}>
                     {item.structured_formatting.secondary_text}
                   </Text>

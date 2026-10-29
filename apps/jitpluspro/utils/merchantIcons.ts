@@ -1,4 +1,3 @@
-import type { ComponentType } from 'react';
 import {
   Store, Coffee, UtensilsCrossed, Pizza, IceCream, Cake, Cookie, Croissant, Soup, Wine, Beer, ChefHat,
   ShoppingBag, Shirt, Watch, Gem, Crown, Footprints, Sparkles,
@@ -11,9 +10,8 @@ import {
   PawPrint,
   Cat,
   BookOpen, Palette, Music, Briefcase,
+  type LucideIcon,
 } from 'lucide-react-native';
-
-type LucideIcon = ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
 
 export const MERCHANT_ICON_MAP: Record<string, LucideIcon> = {
   store: Store,

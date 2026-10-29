@@ -19,12 +19,11 @@ import type { CreateStorePayload, Store as StoreType } from '@/types';
 import {
   Panel, SaveBar, SectionScreen, TextField, OwnerOnlyNotice, useDiscardGuard, queueToast, haptic, fieldFill, ui,
 } from '@/components/stores/StoreUi';
-import { MAP_STYLE } from '@/components/stores/brand';
+import { DEFAULT_MAP_CENTER, MAP_STYLE } from '@/components/stores/brand';
 
 const NAME_MIN = 2;
 const NAME_MAX = 100;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-const CASABLANCA = { latitude: 33.5731, longitude: -7.5898 };
 const MAP_DELTA = { latitudeDelta: 0.045, longitudeDelta: 0.045 };
 
 type StoreForm = {
@@ -188,6 +187,10 @@ export default function StoreFormScreen({ mode, storeId }: Props) {
     }
   }, [placePin, t]);
 
+  const alertAddressNotFound = useCallback(() => {
+    Alert.alert(t('common.error'), t('stores.addressNotFound'));
+  }, [t]);
+
   // Re-entrancy guard: a double-tap in the same frame as the mutation starting
   // must not create the store twice (isPending only disables the button after
   // the next render).
@@ -236,8 +239,8 @@ export default function StoreFormScreen({ mode, storeId }: Props) {
 
   const hasPin = form.latitude != null && form.longitude != null;
   const region = {
-    latitude: form.latitude ?? CASABLANCA.latitude,
-    longitude: form.longitude ?? CASABLANCA.longitude,
+    latitude: form.latitude ?? DEFAULT_MAP_CENTER.latitude,
+    longitude: form.longitude ?? DEFAULT_MAP_CENTER.longitude,
     ...MAP_DELTA,
   };
 
@@ -294,7 +297,7 @@ export default function StoreFormScreen({ mode, storeId }: Props) {
               value={addressQuery}
               onChangeText={setAddressQuery}
               onSelect={selectAddress}
-              onNotFound={() => Alert.alert(t('common.error'), t('stores.addressNotFound'))}
+              onNotFound={alertAddressNotFound}
               notFoundMessage={t('stores.addressNotFoundManual')}
               placeholder={t('stores.addressSearchPlaceholder')}
               ville={form.ville}

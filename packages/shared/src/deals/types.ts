@@ -150,6 +150,11 @@ export interface DealFeedResponse {
   cityKey: string | null;
 }
 
+/** Live deals per merchant category for a tab and an area; categories without deals are absent. */
+export interface DealCategoryCountsResponse {
+  counts: Record<string, number>;
+}
+
 export interface DealTeaserResponse {
   count: number;
   cityKey: string | null;

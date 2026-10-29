@@ -2,13 +2,11 @@ import React from 'react';
 import SharedErrorBoundaryClass from '@jitplus/shared/src/ErrorBoundary';
 import i18n from '@/i18n';
 import { logError } from '@/utils/devLogger';
-
-let Sentry: typeof import('@sentry/react-native') | null = null;
-try { Sentry = require('@sentry/react-native'); } catch {}
+import { captureException } from '@/utils/sentry';
 
 const PII_KEYS = /email|phone|tel|password|token|secret|api_?key|auth|credit|card|ssn|birth|address/i;
 const PII_PATTERNS = [
-  /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g, // emails
+  /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, // emails
   /\b(?:\+?\d{1,3}[-.\s]?)?\(?\d{2,4}\)?[-.\s]?\d{3,4}[-.\s]?\d{3,4}\b/g, // phone numbers
 ];
 
@@ -61,7 +59,7 @@ export default function ErrorBoundary({ children }: { children: React.ReactNode 
         logError('ErrorBoundary', 'Uncaught render error', error, extra as Record<string, unknown>);
         // Scrub PII before sending to Sentry
         const scrubbedExtra = scrubPii(extra) as Record<string, unknown> | undefined;
-        try { Sentry?.captureException(error, { extra: scrubbedExtra }); } catch {}
+        captureException(error, { extra: scrubbedExtra });
       }}
     >
       {children}

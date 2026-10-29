@@ -165,8 +165,8 @@ export default function QuickAddScreen() {
       pendingShareRef.current = data;
       setResult(data);
       logPerf('QuickAdd', `submit:modal-set ${Date.now() - tSubmit}ms`);
-    } catch (err: any) {
-      const status = err?.response?.status;
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } } | null)?.response?.status;
       if (status === 409) {
         Alert.alert(t('common.error'), t('quickAdd.alreadyRegistered'));
       } else {

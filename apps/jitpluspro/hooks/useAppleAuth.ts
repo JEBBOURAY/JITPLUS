@@ -15,26 +15,20 @@ import { isNoAccountError } from '@/utils/authErrors';
 let AppleAuthentication: typeof import('expo-apple-authentication') | null = null;
 if (Platform.OS === 'ios') {
   try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     AppleAuthentication = require('expo-apple-authentication');
   } catch {
     // Not available
   }
 }
 
-interface UseAppleAuthOptions {
-  /** Optional callback when the flow is cancelled */
-  onCancel?: () => void;
-}
-
-export function useAppleAuth({ onCancel }: UseAppleAuthOptions = {}) {
+export function useAppleAuth() {
   const { appleLogin } = useAuth();
   const { t } = useLanguage();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [noAccount, setNoAccount] = useState(false);
   const mountedRef = useRef(true);
-  const onCancelRef = useRef(onCancel);
-  onCancelRef.current = onCancel;
 
   useEffect(() => {
     return () => { mountedRef.current = false; };
@@ -92,16 +86,12 @@ export function useAppleAuth({ onCancel }: UseAppleAuthOptions = {}) {
         } else {
           setError(result.error || t('appleAuth.error'));
         }
-        onCancelRef.current?.();
       }
     } catch (e: unknown) {
       if (!mountedRef.current) return;
 
       const code = (e as { code?: string } | null)?.code;
-      if (code === 'ERR_REQUEST_CANCELED') {
-        onCancelRef.current?.();
-        return;
-      }
+      if (code === 'ERR_REQUEST_CANCELED') return;
       setError(t('appleAuth.error'));
     } finally {
       // Keep the spinner during navigation to avoid a brief re-enable flicker
@@ -119,5 +109,5 @@ export function useAppleAuth({ onCancel }: UseAppleAuthOptions = {}) {
   /** True when Apple Sign-In is available on this device */
   const isAvailable = Platform.OS === 'ios' && !!AppleAuthentication;
 
-  return { promptApple, isLoading, isSuccess: false, error, isAvailable, noAccount, dismissNoAccount };
+  return { promptApple, isLoading, error, isAvailable, noAccount, dismissNoAccount };
 }

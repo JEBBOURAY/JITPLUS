@@ -16,13 +16,13 @@ interface Props {
  * source of long-form text on the Fidéliser screen — everything else uses the
  * ponctual grey "i" InfoHint affordances.
  */
+const GUIDE_STEPS = [1, 2, 3] as const;
+
 function LoyaltyGuideSheet({ visible, onClose }: Props) {
   const theme = useTheme();
   const { t } = useLanguage();
   const { row, textAlign } = useDir();
   const insets = useSafeAreaInsets();
-
-  const items = [1, 2, 3] as const;
 
   return (
     <Modal visible={visible} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
@@ -48,7 +48,7 @@ function LoyaltyGuideSheet({ visible, onClose }: Props) {
           </Text>
 
           <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
-            {items.map((n) => (
+            {GUIDE_STEPS.map((n) => (
               <View key={n} style={[styles.item, { flexDirection: row }]}>
                 <View style={[styles.num, { backgroundColor: theme.primary + '17' }]}>
                   <Text style={[styles.numText, { color: theme.primary }]} maxFontSizeMultiplier={1.3}>{n}</Text>

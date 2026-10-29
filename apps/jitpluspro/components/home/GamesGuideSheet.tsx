@@ -44,11 +44,7 @@ interface Step {
   text: string;
 }
 
-interface Benefit {
-  Icon: LucideIcon;
-  title: string;
-  text: string;
-}
+type Benefit = Step;
 
 /** Numbered 3-step "how it works" timeline, in the colour of one game. */
 function StepsCard({ steps, tone }: { steps: Step[]; tone: PromoTone }) {

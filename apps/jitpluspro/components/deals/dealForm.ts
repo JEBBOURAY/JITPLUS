@@ -23,7 +23,7 @@ export const DEAL_TYPE_OPTIONS: readonly DealType[] = ['PERCENT_OFF', 'PRICE_DRO
 
 export const DEAL_DURATION_PRESETS = [3, 7, 14, 30] as const;
 
-export const TITLE_MIN = 3;
+const TITLE_MIN = 3;
 
 export interface DealForm {
   scope: DealScope;
@@ -301,10 +301,10 @@ export function dealFormToPatch(form: DealForm, started: boolean): DealPatch {
   return started ? patch : { ...patch, startsOn };
 }
 
-export type DealFormPatch = Partial<DealForm>;
+type DealFormPatch = Partial<DealForm>;
 
 /** Moving the first day keeps the length, within the 30-day maximum. */
-export function applyDealPatch(state: DealForm, patch: DealFormPatch): DealForm {
+function applyDealPatch(state: DealForm, patch: DealFormPatch): DealForm {
   const next = { ...state, ...patch };
   if (patch.startsOn && !patch.endsOn && patch.startsOn !== state.startsOn) {
     const length = Math.max(0, Math.min(DEAL_LIMITS.MAX_DURATION_DAYS, diffDaysYmd(state.startsOn, state.endsOn)));
@@ -313,7 +313,7 @@ export function applyDealPatch(state: DealForm, patch: DealFormPatch): DealForm 
   return next;
 }
 
-export type DealFormAction = { type: 'SET'; patch: DealFormPatch } | { type: 'RESET'; form: DealForm };
+type DealFormAction = { type: 'SET'; patch: DealFormPatch } | { type: 'RESET'; form: DealForm };
 
 export function dealFormReducer(state: DealForm, action: DealFormAction): DealForm {
   switch (action.type) {
@@ -353,7 +353,7 @@ export function tabOfStatus(status: DealDisplayStatus): DealListTab {
 
 // ── Backend error codes ───────────────────────────────────────────────────────
 
-export type DealErrorAction =
+type DealErrorAction =
   | { kind: 'needsLocation' }
   | { kind: 'duplicate'; dealId: string }
   | { kind: 'limit' }

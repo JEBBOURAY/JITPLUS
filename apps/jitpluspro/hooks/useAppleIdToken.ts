@@ -15,6 +15,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 let AppleAuthentication: typeof import('expo-apple-authentication') | null = null;
 if (Platform.OS === 'ios') {
   try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     AppleAuthentication = require('expo-apple-authentication');
   } catch {
     // Not available

@@ -11,7 +11,6 @@ export interface MerchantLoyalty {
   balance: number;
   /** Cheapest reward the balance does not cover yet; null once all of them are reachable. */
   nextReward: MerchantReward | null;
-  hasReadyReward: boolean;
   /** Stamps needed for the next reward, or for the dearest one when all are reachable. */
   goal: number;
   earned: number;
@@ -19,7 +18,7 @@ export interface MerchantLoyalty {
   validityLine: string | null;
 }
 
-/** Loyalty state of the page, computed once for the overview, the loyalty tab and the bottom bar. */
+/** Loyalty state of the page, computed once for the overview and the loyalty tab. */
 export function useMerchantLoyalty(merchant: Merchant | undefined): MerchantLoyalty | null {
   const { t, locale } = useLanguage();
   return useMemo(() => {
@@ -42,7 +41,6 @@ export function useMerchantLoyalty(merchant: Merchant | undefined): MerchantLoya
       isMember,
       balance,
       nextReward,
-      hasReadyReward: isMember && rewards[0].cout <= balance,
       goal,
       earned: Math.min(balance, goal),
       earnLine,

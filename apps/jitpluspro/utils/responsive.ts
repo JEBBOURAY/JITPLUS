@@ -17,28 +17,21 @@ function clampScale(raw: number): number {
   return Math.min(Math.max(raw, 0.75), 1.35);
 }
 
-function _wp(size: number): number {
-  return Math.round(clampScale(SCREEN_WIDTH / DESIGN_WIDTH) * size);
-}
-function _ms(size: number, factor: number = 0.5): number {
-  return Math.round(size + (_wp(size) - size) * factor);
-}
-
 function recalcDerived() {
-  radius.sm = _wp(8);
-  radius.md = _wp(12);
-  radius.lg = _wp(16);
-  radius.xl = _wp(20);
-  radius['2xl'] = _wp(24);
+  radius.sm = wp(8);
+  radius.md = wp(12);
+  radius.lg = wp(16);
+  radius.xl = wp(20);
+  radius['2xl'] = wp(24);
 
-  fontSize.xs = _ms(11);
-  fontSize.sm = _ms(13);
-  fontSize.md = _ms(15);
-  fontSize.lg = _ms(17);
-  fontSize.xl = _ms(20);
-  fontSize['2xl'] = _ms(24);
-  fontSize['3xl'] = _ms(28);
-  fontSize['4xl'] = _ms(32);
+  fontSize.xs = ms(11);
+  fontSize.sm = ms(13);
+  fontSize.md = ms(15);
+  fontSize.lg = ms(17);
+  fontSize.xl = ms(20);
+  fontSize['2xl'] = ms(24);
+  fontSize['3xl'] = ms(28);
+  fontSize['4xl'] = ms(32);
 }
 
 Dimensions.addEventListener('change', ({ window }) => {
@@ -66,21 +59,21 @@ type RadiusKey = 'sm' | 'md' | 'lg' | 'xl' | '2xl' | 'full';
 type FontSizeKey = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl';
 
 export const radius: Record<RadiusKey, number> = {
-  sm: _wp(8),
-  md: _wp(12),
-  lg: _wp(16),
-  xl: _wp(20),
-  '2xl': _wp(24),
+  sm: wp(8),
+  md: wp(12),
+  lg: wp(16),
+  xl: wp(20),
+  '2xl': wp(24),
   full: 9999,
 };
 
 export const fontSize: Record<FontSizeKey, number> = {
-  xs: _ms(11),
-  sm: _ms(13),
-  md: _ms(15),
-  lg: _ms(17),
-  xl: _ms(20),
-  '2xl': _ms(24),
-  '3xl': _ms(28),
-  '4xl': _ms(32),
+  xs: ms(11),
+  sm: ms(13),
+  md: ms(15),
+  lg: ms(17),
+  xl: ms(20),
+  '2xl': ms(24),
+  '3xl': ms(28),
+  '4xl': ms(32),
 };

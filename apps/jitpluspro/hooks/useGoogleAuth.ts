@@ -10,20 +10,13 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { GoogleSignin, isErrorWithCode, statusCodes } from '@/utils/googleSignin';
 import { isNoAccountError } from '@/utils/authErrors';
 
-interface UseGoogleAuthOptions {
-  /** Optional callback when the flow is cancelled or errors */
-  onCancel?: () => void;
-}
-
-export function useGoogleAuth({ onCancel }: UseGoogleAuthOptions = {}) {
+export function useGoogleAuth() {
   const { googleLogin } = useAuth();
   const { t } = useLanguage();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [noAccount, setNoAccount] = useState(false);
   const mountedRef = useRef(true);
-  const onCancelRef = useRef(onCancel);
-  onCancelRef.current = onCancel;
 
   useEffect(() => {
     return () => { mountedRef.current = false; };
@@ -49,7 +42,6 @@ export function useGoogleAuth({ onCancel }: UseGoogleAuthOptions = {}) {
       // V16 API: cancellation returns { type: 'cancelled' }
       if ('type' in response && response.type === 'cancelled') {
         setIsLoading(false);
-        onCancelRef.current?.();
         return;
       }
 
@@ -75,7 +67,6 @@ export function useGoogleAuth({ onCancel }: UseGoogleAuthOptions = {}) {
         } else {
           setError(result.error || t('googleAuth.error'));
         }
-        onCancelRef.current?.();
       }
     } catch (err) {
       if (!mountedRef.current) return;
@@ -86,7 +77,6 @@ export function useGoogleAuth({ onCancel }: UseGoogleAuthOptions = {}) {
           err.code === statusCodes.SIGN_IN_CANCELLED ||
           err.code === statusCodes.IN_PROGRESS
         ) {
-          onCancelRef.current?.();
           return;
         }
         if (err.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
@@ -113,5 +103,5 @@ export function useGoogleAuth({ onCancel }: UseGoogleAuthOptions = {}) {
     setError('');
   }, []);
 
-  return { isLoading, error, noAccount, setError, setIsLoading, promptGoogle, dismissNoAccount };
+  return { isLoading, error, noAccount, promptGoogle, dismissNoAccount };
 }

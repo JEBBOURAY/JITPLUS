@@ -6,6 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  ActivityIndicator,
   BackHandler,
   KeyboardAvoidingView,
   Platform,
@@ -189,6 +190,27 @@ export function WizardShell({ title, onBack, stepLabels, index, heading, hint, s
   );
 }
 
+/** Full-screen spinner while the saved campaign loads. */
+export function WizardLoading() {
+  const theme = useTheme();
+  return (
+    <View style={[styles.container, styles.center, { backgroundColor: theme.bg }]}>
+      <ActivityIndicator color={theme.primary} />
+    </View>
+  );
+}
+
+/** Header and a message shown instead of the wizard (no access, load error, not editable). */
+export function WizardMessage({ title, onBack, children }: { title: string; onBack: () => void; children: React.ReactNode }) {
+  const theme = useTheme();
+  return (
+    <View style={[styles.container, { backgroundColor: theme.bg }]}>
+      <ScreenHeader title={title} onBack={onBack} />
+      {children}
+    </View>
+  );
+}
+
 /** "Back" (or a secondary action) next to the main action; each takes half the width. */
 export function WizardFooter({ onBack, secondary, primary }: {
   onBack?: () => void;
@@ -270,6 +292,7 @@ export function ReviewLine({ text, strong }: { text: string; strong?: boolean })
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  center: { alignItems: 'center', justifyContent: 'center' },
   flex: { flex: 1 },
   progress: { paddingHorizontal: 20, paddingBottom: 6, gap: 8 },
   bar: { gap: 4 },

@@ -26,8 +26,6 @@ export const ASYNC_STORAGE_KEYS = {
   // Required so EU/GDPR users can opt out of diagnostic data collection,
   // even though it contains no PII.
   SENTRY_OPT_OUT: 'sentry_opt_out',
-  // Lucky wheel screen: intro/hero card permanently hidden once dismissed.
-  LUCKY_WHEEL_INTRO_DISMISSED: 'lucky_wheel_intro_dismissed',
   // Scanner: first-visit guide modal, and the older "how it works" banner it replaces.
   FIRST_SCAN_GUIDE_DONE: '@jitpluspro_first_scan_guide',
   SCAN_HOW_IT_WORKS_DISMISSED: '@jitpluspro_scan_how_it_works_v2',

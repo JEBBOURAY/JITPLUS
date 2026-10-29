@@ -5,40 +5,36 @@ import type { Merchant, MerchantCategory, SocialLinks, OpeningHours } from '@/ty
 import { ALLOWED_LOGO_MIMES, MAX_LOGO_SIZE_BYTES } from '@/constants/app';
 import { MAX_UPLOAD_SIZE_BYTES, normalizeUploadMimeAndExt, uploadImageNative } from './upload';
 
+interface ImageAsset {
+  uri: string;
+  mimeType?: string | null;
+  merchantName?: string;
+  fileSize?: number | null;
+}
+
+type MerchantImageType = 'logo' | 'cover' | 'gallery' | 'reward' | 'cardBackground';
+
+/** Validates the MIME type, then uploads to POST /merchant/upload-image?type=… */
+async function uploadMerchantImage(asset: ImageAsset, type: MerchantImageType, maxBytes: number) {
+  const { mime } = normalizeUploadMimeAndExt(asset.uri, asset.mimeType);
+  if (!ALLOWED_LOGO_MIMES.has(mime)) {
+    throw new Error(i18n.t('upload.unsupportedFileType', { mime }));
+  }
+  return uploadImageNative({ uri: asset.uri, endpoint: `/merchant/upload-image?type=${type}`, mime, maxBytes });
+}
+
 export function useUploadMerchantLogo() {
   return useMutation({
-    mutationFn: async (asset: { uri: string; mimeType?: string | null; merchantName?: string; fileSize?: number | null }) => {
-      const { mime } = normalizeUploadMimeAndExt(asset.uri, asset.mimeType);
-      if (!ALLOWED_LOGO_MIMES.has(mime)) {
-        throw new Error(i18n.t('upload.unsupportedFileType', { mime }));
-      }
-      const res = await uploadImageNative({
-        uri: asset.uri,
-        endpoint: '/merchant/upload-image?type=logo',
-        mime,
-        maxBytes: MAX_LOGO_SIZE_BYTES,
-      });
-      return res as { url: string };
-    },
+    mutationFn: async (asset: ImageAsset) =>
+      (await uploadMerchantImage(asset, 'logo', MAX_LOGO_SIZE_BYTES)) as { url: string },
   });
 }
 
 export function useUploadMerchantCover() {
   return useMutation({
-    mutationFn: async (asset: { uri: string; mimeType?: string | null; merchantName?: string; fileSize?: number | null }) => {
-      const { mime } = normalizeUploadMimeAndExt(asset.uri, asset.mimeType);
-      if (!ALLOWED_LOGO_MIMES.has(mime)) {
-        throw new Error(i18n.t('upload.unsupportedFileType', { mime }));
-      }
-      // Covers are full-frame (16:9) photos, often > 5MB, hence the larger limit.
-      const res = await uploadImageNative({
-        uri: asset.uri,
-        endpoint: '/merchant/upload-image?type=cover',
-        mime,
-        maxBytes: MAX_UPLOAD_SIZE_BYTES,
-      });
-      return res as { url: string };
-    },
+    // Covers are full-frame (16:9) photos, often > 5MB, hence the larger limit.
+    mutationFn: async (asset: ImageAsset) =>
+      (await uploadMerchantImage(asset, 'cover', MAX_UPLOAD_SIZE_BYTES)) as { url: string },
   });
 }
 
@@ -53,21 +49,10 @@ export function useDeleteMerchantCover() {
 
 export function useUploadMerchantGalleryImage() {
   return useMutation({
-    mutationFn: async (asset: { uri: string; mimeType?: string | null; merchantName?: string; fileSize?: number | null }) => {
-      const { mime } = normalizeUploadMimeAndExt(asset.uri, asset.mimeType);
-      if (!ALLOWED_LOGO_MIMES.has(mime)) {
-        throw new Error(i18n.t('upload.unsupportedFileType', { mime }));
-      }
-      // Gallery photos are picked at full resolution (multi-select, no crop), so they
-      // are far larger than the cropped logo/cover.
-      const res = await uploadImageNative({
-        uri: asset.uri,
-        endpoint: '/merchant/upload-image?type=gallery',
-        mime,
-        maxBytes: MAX_UPLOAD_SIZE_BYTES,
-      });
-      return res as { url: string; field: string; gallery: string[] };
-    },
+    // Gallery photos are picked at full resolution (multi-select, no crop), so they
+    // are far larger than the cropped logo/cover.
+    mutationFn: async (asset: ImageAsset) =>
+      (await uploadMerchantImage(asset, 'gallery', MAX_UPLOAD_SIZE_BYTES)) as { url: string; field: string; gallery: string[] },
   });
 }
 
@@ -82,37 +67,15 @@ export function useDeleteMerchantLogo() {
 
 export function useUploadRewardImage() {
   return useMutation({
-    mutationFn: async (asset: { uri: string; mimeType?: string | null; fileSize?: number | null }) => {
-      const { mime } = normalizeUploadMimeAndExt(asset.uri, asset.mimeType);
-      if (!ALLOWED_LOGO_MIMES.has(mime)) {
-        throw new Error(i18n.t('upload.unsupportedFileType', { mime }));
-      }
-      const res = await uploadImageNative({
-        uri: asset.uri,
-        endpoint: '/merchant/upload-image?type=reward',
-        mime,
-        maxBytes: MAX_UPLOAD_SIZE_BYTES,
-      });
-      return res as { url: string };
-    },
+    mutationFn: async (asset: ImageAsset) =>
+      (await uploadMerchantImage(asset, 'reward', MAX_UPLOAD_SIZE_BYTES)) as { url: string },
   });
 }
 
 export function useUploadMerchantCardBackground() {
   return useMutation({
-    mutationFn: async (asset: { uri: string; mimeType?: string | null; fileSize?: number | null }) => {
-      const { mime } = normalizeUploadMimeAndExt(asset.uri, asset.mimeType);
-      if (!ALLOWED_LOGO_MIMES.has(mime)) {
-        throw new Error(i18n.t('upload.unsupportedFileType', { mime }));
-      }
-      const res = await uploadImageNative({
-        uri: asset.uri,
-        endpoint: '/merchant/upload-image?type=cardBackground',
-        mime,
-        maxBytes: MAX_UPLOAD_SIZE_BYTES,
-      });
-      return res as { url: string };
-    },
+    mutationFn: async (asset: ImageAsset) =>
+      (await uploadMerchantImage(asset, 'cardBackground', MAX_UPLOAD_SIZE_BYTES)) as { url: string },
   });
 }
 

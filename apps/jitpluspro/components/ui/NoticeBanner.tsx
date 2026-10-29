@@ -4,9 +4,10 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { palette } from '@/contexts/ThemeContext';
 import { radius } from '@/utils/responsive';
+import { font } from '@/constants/design';
 
 const GOLD = palette.gold;
-const GRADIENT = ['#0f031e', '#1a0533'] as const;
+const GRADIENT = [palette.premiumBg, palette.premiumBgMid] as const;
 const GRADIENT_START = { x: 0, y: 0 };
 const GRADIENT_END = { x: 1, y: 0 };
 
@@ -57,9 +58,9 @@ const styles = StyleSheet.create({
   },
   content: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1, minHeight: 44 },
   text: { flex: 1 },
-  title: { fontSize: 14, color: '#fff', fontFamily: 'Lexend_600SemiBold' },
-  description: { marginTop: 4, fontSize: 12, color: 'rgba(255,255,255,0.62)', fontFamily: 'Lexend_400Regular' },
-  action: { marginTop: 8, fontSize: 12, color: GOLD, fontFamily: 'Lexend_600SemiBold' },
+  title: { fontSize: 14, color: '#fff', fontFamily: font.semibold },
+  description: { marginTop: 4, fontSize: 12, color: 'rgba(255,255,255,0.62)', fontFamily: font.regular },
+  action: { marginTop: 8, fontSize: 12, color: GOLD, fontFamily: font.semibold },
   dismiss: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   flip: { transform: [{ scaleX: -1 }] },
 });

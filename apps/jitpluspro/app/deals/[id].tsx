@@ -18,7 +18,7 @@ import { Button, Notice, ScreenHeader, Section } from '@/components/scratch/Scra
 import { DateField, formatYmd } from '@/components/scratch/DateField';
 import { moroccoToday, moroccoYmdOf } from '@/components/scratch/campaignForm';
 import DealThumb from '@/components/deals/DealThumb';
-import { DealStatusPill } from '@/components/deals/DealRows';
+import { DealPriceRow, DealStatusPill } from '@/components/deals/DealRows';
 import { dealBadgeLabel, dealPrices, dealTimeLeftLabel, type Translate } from '@/components/deals/dealVisual';
 import { useDealErrorAlert } from '@/components/deals/useDealErrorAlert';
 
@@ -176,24 +176,7 @@ export default function DealDetail() {
               <Text style={[styles.title, { color: theme.text, textAlign }]} numberOfLines={3} maxFontSizeMultiplier={1.3}>
                 {deal.title}
               </Text>
-              {(price || original || badge) && (
-                <View style={[styles.priceRow, { flexDirection: row }]}>
-                  {price ? <Text style={[styles.price, { color: theme.danger }]} maxFontSizeMultiplier={1.3}>{price}</Text> : null}
-                  {original ? (
-                    <Text
-                      style={[styles.original, { color: theme.textMuted }, deal.type === 'PRICE_DROP' && styles.struck]}
-                      maxFontSizeMultiplier={1.3}
-                    >
-                      {deal.type === 'FREE_ITEM' ? t('deals.valueOf', { value: original }) : original}
-                    </Text>
-                  ) : null}
-                  {badge ? (
-                    <View style={[styles.badge, { backgroundColor: theme.danger }]}>
-                      <Text style={styles.badgeText} maxFontSizeMultiplier={1.2}>{badge}</Text>
-                    </View>
-                  ) : null}
-                </View>
-              )}
+              <DealPriceRow type={deal.type} price={price} original={original} badge={badge} large />
               {statusLine ? (
                 <Text
                   style={[styles.meta, { color: time?.urgent ? theme.warning : theme.textSecondary, textAlign }]}
@@ -330,12 +313,6 @@ const styles = StyleSheet.create({
   hero: { gap: 14, alignItems: 'flex-start' },
   heroBody: { flex: 1, gap: 6 },
   title: { fontSize: ms(17), lineHeight: ms(23), fontFamily: font.semibold },
-  priceRow: { alignItems: 'center', flexWrap: 'wrap', gap: 6 },
-  price: { fontSize: ms(16), fontFamily: font.bold },
-  original: { fontSize: ms(13), fontFamily: font.regular },
-  struck: { textDecorationLine: 'line-through' },
-  badge: { borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
-  badgeText: { color: '#FFFFFF', fontSize: ms(12), fontFamily: font.bold },
   meta: { fontSize: ms(13), fontFamily: font.medium },
   actions: { gap: 10 },
   info: { fontSize: ms(14), lineHeight: ms(20), fontFamily: font.regular },

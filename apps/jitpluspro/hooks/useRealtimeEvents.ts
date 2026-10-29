@@ -39,7 +39,6 @@ export function useRealtimeEvents(socket: Socket | null) {
         if (txListStale) queryClient.invalidateQueries({ queryKey: queryKeys.transactions });
         txListStale = false;
         queryClient.invalidateQueries({ queryKey: queryKeys.homeStats });
-        queryClient.invalidateQueries({ queryKey: ['dashboard-stats'], refetchType: 'none' });
         queryClient.invalidateQueries({ queryKey: ['dashboard-trends'], refetchType: 'none' });
       }, 500);
     };

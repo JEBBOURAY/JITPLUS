@@ -58,6 +58,20 @@ const CONTACT_UI: Record<FicheContact['key'], { Icon: LucideIcon; labelKey: stri
   email: { Icon: Mail, labelKey: 'fiche.email' },
 };
 
+type Campaigns = ReturnType<typeof useLuckyWheelCampaigns>['data'];
+
+/** The campaign running right now, with only the prizes still available. */
+function findActiveWheel(campaigns: Campaigns): FicheWheel | null {
+  const now = Date.now();
+  const active = campaigns?.find((c) => c.status === 'ACTIVE'
+    && new Date(c.startsAt).getTime() <= now && new Date(c.endsAt).getTime() >= now);
+  if (!active) return null;
+  return {
+    ...active,
+    prizes: active.prizes.filter((p) => p.remaining > 0).sort((a, b) => b.weight - a.weight),
+  };
+}
+
 function openContact(contact: FicheContact) {
   if (contact.key === 'directions') void openDirections(contact.latitude, contact.longitude, contact.label);
   else void openFirst([contact.url]);
@@ -99,21 +113,13 @@ function FichePreview({ onClose, merchant, stores, onManageLocations }: Omit<Pro
     stores: activeStores,
   }), [merchant.nom, merchant.latitude, merchant.longitude, merchant.socialLinks, activeStores]);
   const profiles = useMemo(() => getSocialProfiles(merchant.socialLinks), [merchant.socialLinks]);
+  const badges = useMemo(() => getKnownBadges(merchant.badges), [merchant.badges]);
   const rewards = useMemo(
     () => getFicheRewards(rewardsData, merchant.stampsForReward, t('fiche.defaultReward')),
     [rewardsData, merchant.stampsForReward, t],
   );
 
-  const wheel = useMemo<FicheWheel | null>(() => {
-    const now = Date.now();
-    const active = campaigns?.find((c) => c.status === 'ACTIVE'
-      && new Date(c.startsAt).getTime() <= now && new Date(c.endsAt).getTime() >= now);
-    if (!active) return null;
-    return {
-      ...active,
-      prizes: active.prizes.filter((p) => p.remaining > 0).sort((a, b) => b.weight - a.weight),
-    };
-  }, [campaigns]);
+  const wheel = useMemo(() => findActiveWheel(campaigns), [campaigns]);
 
   const subtitle = useMemo(() => {
     const categories = [merchant.categorie, ...(merchant.secondaryCategories ?? [])]
@@ -304,7 +310,7 @@ function FichePreview({ onClose, merchant, stores, onManageLocations }: Omit<Pro
               <FicheAbout
                 accent={accent}
                 description={merchant.description?.trim() ?? ''}
-                badges={getKnownBadges(merchant.badges)}
+                badges={badges}
                 profiles={profiles}
               />
             </>
@@ -321,13 +327,13 @@ function FichePreview({ onClose, merchant, stores, onManageLocations }: Omit<Pro
           style={[StyleSheet.absoluteFill, s.headerBar, { backgroundColor: theme.bgCard, borderBottomColor: theme.border, opacity: headerBarOpacity }]}
         />
         <View style={[s.headerRow, { flexDirection: dir.row }]} pointerEvents="box-none">
-        <Pressable onPress={onClose} style={s.headerBtn} hitSlop={8} accessibilityRole="button" accessibilityLabel={t('common.back')}>
-          <ArrowLeft size={ms(20)} color={palette.gray900} strokeWidth={2} style={dir.flip} />
-        </Pressable>
-        <View style={s.previewPill}>
-          <Text style={s.previewPillText} numberOfLines={1}>{t('storePreview.previewBadge')}</Text>
-        </View>
-        <View style={s.headerSpacer} />
+          <Pressable onPress={onClose} style={s.headerBtn} hitSlop={8} accessibilityRole="button" accessibilityLabel={t('common.back')}>
+            <ArrowLeft size={ms(20)} color={palette.gray900} strokeWidth={2} style={dir.flip} />
+          </Pressable>
+          <View style={s.previewPill}>
+            <Text style={s.previewPillText} numberOfLines={1}>{t('storePreview.previewBadge')}</Text>
+          </View>
+          <View style={s.headerSpacer} />
         </View>
       </View>
 

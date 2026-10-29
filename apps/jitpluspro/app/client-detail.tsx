@@ -175,11 +175,14 @@ export default function ClientDetailScreen() {
 
   // Reshare the WhatsApp claim link (anonymous Quick-Add clients only).
   const [resharing, setResharing] = useState(false);
+  const clientId = client?.id;
+  const isAnonymous = client?.isAnonymous;
+  const merchantName = merchant?.nom;
   const handleReshareClaim = useCallback(async () => {
-    if (!client?.id || !client.isAnonymous || resharing) return;
+    if (!clientId || !isAnonymous || resharing) return;
     setResharing(true);
     try {
-      const res = await api.post(`/merchant/clients/${client.id}/reshare-claim`);
+      const res = await api.post(`/merchant/clients/${clientId}/reshare-claim`);
       const data = res.data as {
         claim: { url: string; expiresAt: string };
         client: { telephone: string | null; prenom: string | null };
@@ -190,7 +193,7 @@ export default function ClientDetailScreen() {
         : '';
       const message = t('quickAdd.reshareWaMessage', {
         name: namePart,
-        merchant: merchant?.nom ?? 'JitPlus',
+        merchant: merchantName ?? 'JitPlus',
         url: data.claim.url,
       });
       const waUrl = phoneDigits
@@ -207,8 +210,8 @@ export default function ClientDetailScreen() {
       } catch {
         Alert.alert(t('quickAdd.waNotInstalled'), data.claim.url);
       }
-    } catch (err: any) {
-      const status = err?.response?.status;
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } } | null)?.response?.status;
       if (status === 409) {
         Alert.alert(t('common.error'), t('clientDetail.reshareAlreadyRegistered'));
       } else {
@@ -217,10 +220,9 @@ export default function ClientDetailScreen() {
     } finally {
       setResharing(false);
     }
-  }, [client?.id, client?.isAnonymous, resharing, merchant?.nom, t]);
+  }, [clientId, isAnonymous, resharing, merchantName, t]);
 
-  // Use the dynamically computed threshold from the backend (client.stampsForReward / client.rewardThreshold)
-  // rather than the merchant's static database field, as there might be custom rewards.
+  // Prefer the per-client threshold computed by the backend (custom rewards) over the merchant's static field.
   const stampsForReward = client?.stampsForReward || merchant?.stampsForReward || 10;
 
   // Guard: auth not ready

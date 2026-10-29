@@ -3,6 +3,8 @@ import api from '@/services/api';
 import type { NotificationRecord } from '@/types';
 import { queryKeys, STALE } from './keys';
 
+type SendResult = { recipientCount: number; successCount: number; failureCount: number };
+
 export function useNotificationHistory(enabled = true) {
   return useQuery<NotificationRecord[]>({
     queryKey: queryKeys.notificationHistory,
@@ -32,7 +34,7 @@ export function useSendPushNotification() {
   return useMutation({
     mutationFn: async (payload: { title: string; body: string }) => {
       const res = await api.post('/notifications/send-to-all', payload);
-      return res.data as { recipientCount: number; successCount: number; failureCount: number };
+      return res.data as SendResult;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.notificationHistory });
@@ -45,7 +47,7 @@ export function useSendEmail() {
   return useMutation({
     mutationFn: async (payload: { subject: string; body: string }) => {
       const res = await api.post('/notifications/send-email-to-all', payload);
-      return res.data as { recipientCount: number; successCount: number; failureCount: number };
+      return res.data as SendResult;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.emailQuota });

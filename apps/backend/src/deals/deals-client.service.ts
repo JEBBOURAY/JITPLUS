@@ -4,7 +4,7 @@ import { Cache } from 'cache-manager';
 import { MerchantCategory, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { errMsg } from '../common/utils';
-import type { DealEventType, DealFeedQueryDto, DealPositionQueryDto, ReportDealDto } from './dto';
+import type { DealCategoryCountsQueryDto, DealEventType, DealFeedQueryDto, DealPositionQueryDto, ReportDealDto } from './dto';
 import {
   DEAL_AUTO_HIDE_REPORTS,
   DEAL_BADGES_CACHE_TTL,
@@ -73,6 +73,13 @@ export function interleave<T>(local: T[], online: T[], every: number): T[] {
   });
   while (o < online.length) out.push(online[o++]);
   return out;
+}
+
+/** Stores within this box are candidates for "Près de moi"; served by the stores lat/lng index. */
+function nearbyBox(pos: Position) {
+  const dLat = DEAL_NEARBY_RADIUS_KM / 111.32;
+  const dLng = DEAL_NEARBY_RADIUS_KM / (111.32 * Math.max(0.1, Math.cos((pos.lat * Math.PI) / 180)));
+  return { minLat: pos.lat - dLat, maxLat: pos.lat + dLat, minLng: pos.lng - dLng, maxLng: pos.lng + dLng };
 }
 
 /** "18.2" → local offset 18, online offset 2. */
@@ -198,8 +205,7 @@ export class DealsClientService {
    * to nearby stores only.
    */
   private async nearbyLocalIds(ctx: FeedContext, pos: Position, offset: number, take: number): Promise<string[]> {
-    const dLat = DEAL_NEARBY_RADIUS_KM / 111.32;
-    const dLng = DEAL_NEARBY_RADIUS_KM / (111.32 * Math.max(0.1, Math.cos((pos.lat * Math.PI) / 180)));
+    const box = nearbyBox(pos);
     const category = ctx.category
       ? Prisma.sql`AND (m.categorie = ${ctx.category}::"MerchantCategory" OR ${ctx.category}::"MerchantCategory" = ANY(m.secondary_categories))`
       : Prisma.empty;
@@ -216,8 +222,8 @@ export class DealsClientService {
         AND m.is_active = true
         AND m.deleted_at IS NULL
         AND s.is_active = true
-        AND s.latitude BETWEEN ${pos.lat - dLat} AND ${pos.lat + dLat}
-        AND s.longitude BETWEEN ${pos.lng - dLng} AND ${pos.lng + dLng}
+        AND s.latitude BETWEEN ${box.minLat} AND ${box.maxLat}
+        AND s.longitude BETWEEN ${box.minLng} AND ${box.maxLng}
         AND (d.all_stores OR EXISTS (SELECT 1 FROM deal_stores ds WHERE ds.deal_id = d.id AND ds.store_id = s.id))
         AND NOT EXISTS (SELECT 1 FROM deal_reports r WHERE r.deal_id = d.id AND r.client_id = ${ctx.clientId})
         ${category}
@@ -232,6 +238,61 @@ export class DealsClientService {
       OFFSET ${offset}
       LIMIT ${take}`;
     return rows.map((r) => r.id);
+  }
+
+  /**
+   * Live deals per merchant category for a tab and an area, with the same
+   * filters as the feed (blocked merchants, reported deals). A deal counts for
+   * its merchant's main and secondary categories.
+   */
+  async categoryCounts(clientId: string, q: DealCategoryCountsQueryDto): Promise<{ counts: Record<string, number> }> {
+    const now = new Date();
+    const pos = q.lat != null && q.lng != null ? { lat: q.lat, lng: q.lng } : null;
+    const cityKey = this.resolveCity(q.cityKey, pos);
+    const blockedIds = await this.blockedIds(clientId);
+    const tab = q.tab ?? 'nearby';
+
+    const inCity = cityKey
+      ? Prisma.sql`(d.scope = 'ONLINE' OR (d.scope = 'LOCAL' AND ${cityKey} = ANY(d.city_keys)))`
+      : Prisma.sql`TRUE`;
+    let area: Prisma.Sql;
+    if (tab === 'online') {
+      area = Prisma.sql`d.scope = 'ONLINE'`;
+    } else if (tab === 'nearby' && pos) {
+      const box = nearbyBox(pos);
+      area = Prisma.sql`(d.scope = 'ONLINE' OR (d.scope = 'LOCAL' AND EXISTS (
+        SELECT 1 FROM stores s
+        WHERE s.merchant_id = d.merchant_id
+          AND s.is_active = true
+          AND s.latitude BETWEEN ${box.minLat} AND ${box.maxLat}
+          AND s.longitude BETWEEN ${box.minLng} AND ${box.maxLng}
+          AND (d.all_stores OR EXISTS (SELECT 1 FROM deal_stores ds WHERE ds.deal_id = d.id AND ds.store_id = s.id))
+      )))`;
+    } else {
+      area = inCity;
+    }
+    const ending =
+      tab === 'ending' ? Prisma.sql`AND d.ends_at <= ${new Date(now.getTime() + DEAL_ENDING_SOON_HOURS * 3_600_000)}` : Prisma.empty;
+    const blocked = blockedIds.length ? Prisma.sql`AND d.merchant_id NOT IN (${Prisma.join(blockedIds)})` : Prisma.empty;
+
+    const rows = await this.prisma.$queryRaw<{ category: string; count: number }[]>`
+      SELECT c::text AS category, COUNT(DISTINCT d.id)::int AS count
+      FROM deals d
+      JOIN merchants m ON m.id = d.merchant_id
+      CROSS JOIN LATERAL unnest(array_append(m.secondary_categories, m.categorie)) AS c
+      WHERE d.status = 'ACTIVE'
+        AND d.starts_at <= ${now}
+        AND d.ends_at > ${now}
+        AND m.is_active = true
+        AND m.deleted_at IS NULL
+        AND NOT EXISTS (SELECT 1 FROM deal_reports r WHERE r.deal_id = d.id AND r.client_id = ${clientId})
+        AND ${area}
+        ${ending}
+        ${blocked}
+      GROUP BY c`;
+    const counts: Record<string, number> = {};
+    for (const r of rows) if (CATEGORIES.has(r.category)) counts[r.category] = Number(r.count);
+    return { counts };
   }
 
   private baseWhere(ctx: FeedContext): Prisma.DealWhereInput {

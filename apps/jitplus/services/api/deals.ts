@@ -1,6 +1,6 @@
 import type { AxiosInstance } from 'axios';
 import type {
-  ClientDealDetail, ClientDealSummary, DealAlertPreferences, DealCitiesResponse, DealEventType,
+  ClientDealDetail, ClientDealSummary, DealAlertPreferences, DealCategoryCountsResponse, DealCitiesResponse, DealEventType,
   DealFeedResponse, DealFeedTab, DealReportReason, DealTeaserResponse,
 } from '@jitplus/shared/src/deals';
 
@@ -99,6 +99,16 @@ export function createDealMethods(http: AxiosInstance) {
     async getDealFeed(q: DealFeedQuery): Promise<DealFeedResponse> {
       const { data } = await http.get('/client/deals', { params: buildDealFeedParams(q) });
       return data;
+    },
+    async getDealCategoryCounts(q: Omit<DealFeedQuery, 'category' | 'cursor'>): Promise<DealCategoryCountsResponse> {
+      const { data } = await http.get('/client/deals/categories', { params: buildDealFeedParams(q) });
+      const counts: Record<string, number> = {};
+      if (data?.counts && typeof data.counts === 'object') {
+        for (const [key, value] of Object.entries(data.counts)) {
+          if (CATEGORY_RE.test(key) && typeof value === 'number' && value > 0) counts[key] = value;
+        }
+      }
+      return { counts };
     },
     /** Counts a view server-side (deduplicated there). */
     async getDeal(id: string, q: DealPositionQuery = {}): Promise<ClientDealDetail> {

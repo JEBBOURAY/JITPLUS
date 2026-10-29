@@ -8,7 +8,7 @@ import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
-import { AlertCircle, Ban, Flag, LogOut } from 'lucide-react-native';
+import { AlertCircle, Ban, Flag } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -82,6 +82,7 @@ export default function MerchantDetailScreen() {
 
   const [sheet, setSheet] = useState<SheetMode>('none');
   const [joinLoading, setJoinLoading] = useState(false);
+  const [leaveLoading, setLeaveLoading] = useState(false);
   const busyRef = useRef(false);
 
   const pageBg = theme.bg;
@@ -177,6 +178,7 @@ export default function MerchantDetailScreen() {
         onPress: async () => {
           if (busyRef.current) return;
           busyRef.current = true;
+          setLeaveLoading(true);
           try {
             await api.leaveMerchant(id);
             patchMerchant({ hasCard: false, cardDeactivated: true, cardBalance: 0, cardStampsExpireAt: null });
@@ -187,6 +189,7 @@ export default function MerchantDetailScreen() {
             Alert.alert(t('common.error'), t('merchant.leaveError'));
           } finally {
             busyRef.current = false;
+            setLeaveLoading(false);
           }
         },
       },
@@ -251,11 +254,6 @@ export default function MerchantDetailScreen() {
   }, [merchant, t]);
 
   const handleBack = useCallback(() => router.back(), [router]);
-  const handleShowQr = useCallback(() => {
-    if (!isAuthenticated) { promptLogin(); return; }
-    haptic();
-    router.push('/(tabs)/qr');
-  }, [isAuthenticated, promptLogin, router]);
   const openMore = useCallback(() => {
     if (!isAuthenticated) { promptLogin(); return; }
     setSheet('more');
@@ -269,13 +267,10 @@ export default function MerchantDetailScreen() {
       }));
     }
     return [
-      ...(merchant?.hasCard
-        ? [{ key: 'leave', label: t('merchant.leaveCard'), icon: LogOut, destructive: true, onPress: handleLeave }]
-        : []),
       { key: 'report', label: t('merchant.reportTitle'), icon: Flag, keepOpen: true, onPress: () => setSheet('report') },
       { key: 'block', label: t('merchant.blockTitle'), icon: Ban, destructive: true, onPress: handleBlock },
     ];
-  }, [sheet, merchant?.hasCard, t, submitReport, handleLeave, handleBlock]);
+  }, [sheet, t, submitReport, handleBlock]);
 
   if (isLoading) {
     return (
@@ -418,9 +413,9 @@ export default function MerchantDetailScreen() {
       <MerchantBottomBar
         merchant={merchant}
         joinLoading={joinLoading}
-        rewardReady={loyalty.hasReadyReward}
+        leaveLoading={leaveLoading}
         onJoin={handleJoin}
-        onShowQr={handleShowQr}
+        onLeave={handleLeave}
       />
 
       <ActionSheet

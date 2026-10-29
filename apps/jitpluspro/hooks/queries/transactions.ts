@@ -23,16 +23,18 @@ export function useHomeStats(enabled = true) {
   });
 }
 
+const TRANSACTIONS_PAGE_SIZE = 20;
+
 export function useTransactions(enabled = true) {
   return useInfiniteQuery<TransactionsPage>({
     queryKey: queryKeys.transactions,
     queryFn: async ({ pageParam }) => {
-      const res = await api.get(`/merchant/transactions?page=${pageParam}&limit=20`);
+      const res = await api.get(`/merchant/transactions?page=${pageParam}&limit=${TRANSACTIONS_PAGE_SIZE}`);
       return res.data;
     },
     initialPageParam: 1,
     getNextPageParam: (lastPage, _allPages, lastPageParam) =>
-      lastPage.transactions.length === 20 ? (lastPageParam as number) + 1 : undefined,
+      lastPage.transactions.length === TRANSACTIONS_PAGE_SIZE ? (lastPageParam as number) + 1 : undefined,
     staleTime: STALE.SHORT,
     placeholderData: keepPreviousData,
     enabled,

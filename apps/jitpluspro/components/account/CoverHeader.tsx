@@ -10,6 +10,7 @@ import { wp, hp, ms, fontSize as FS, radius } from '@/utils/responsive';
 import { font, icon } from '@/constants/design';
 import { useDir } from '@/hooks/useDir';
 import type { Merchant } from '@/types';
+import { merchantInitials } from './merchantInitials';
 
 interface Props {
   t: (key: string, opts?: Record<string, unknown>) => string;
@@ -36,12 +37,7 @@ export default React.memo(function CoverHeader({
   onLogoPress, onCoverPress, onBackPress, onEditName, topInset,
 }: Props) {
   const dir = useDir();
-  const initials = useMemo(
-    () => (merchant?.nom
-      ? merchant.nom.split(' ').map((w: string) => w.charAt(0)).join('').slice(0, 2).toUpperCase()
-      : '?'),
-    [merchant?.nom],
-  );
+  const initials = useMemo(() => merchantInitials(merchant?.nom), [merchant?.nom]);
 
   return (
     <View style={styles.cover}>

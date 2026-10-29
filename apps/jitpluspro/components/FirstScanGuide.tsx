@@ -1,8 +1,8 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { View, Text, Pressable, Animated, Easing, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { X, Smartphone, ArrowRight } from 'lucide-react-native';
-import { useTheme, palette } from '@/contexts/ThemeContext';
+import { useTheme, palette, type ThemeColors } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { ms, wp, hp, fontSize, radius } from '@/utils/responsive';
 
@@ -15,35 +15,30 @@ export default function FirstScanGuide({ visible, onClose }: Props) {
   const theme = useTheme();
   const { t } = useLanguage();
 
-  const slideAnim = useRef(new Animated.Value(0)).current;
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-  const pulseLoop = useRef<Animated.CompositeAnimation | null>(null);
+  const [slideAnim] = useState(() => new Animated.Value(0));
+  const [pulseAnim] = useState(() => new Animated.Value(1));
 
+  // Nothing renders while hidden (see below), so only the show transition is animated here;
+  // the hide transition runs in handleClose before onClose flips `visible`.
   useEffect(() => {
-    if (visible) {
-      slideAnim.setValue(0);
-      Animated.spring(slideAnim, {
-        toValue: 1,
-        damping: 16,
-        stiffness: 140,
-        useNativeDriver: true,
-      }).start();
+    if (!visible) return;
+    slideAnim.setValue(0);
+    Animated.spring(slideAnim, {
+      toValue: 1,
+      damping: 16,
+      stiffness: 140,
+      useNativeDriver: true,
+    }).start();
 
-      pulseLoop.current = Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulseAnim, { toValue: 1.05, duration: 1200, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-          Animated.timing(pulseAnim, { toValue: 1, duration: 1200, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        ]),
-      );
-      pulseLoop.current.start();
-    } else {
-      Animated.timing(slideAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start();
-    }
-    return () => {
-      pulseLoop.current?.stop();
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible]);
+    const pulseLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 1.05, duration: 1200, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 1200, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      ]),
+    );
+    pulseLoop.start();
+    return () => pulseLoop.stop();
+  }, [visible, slideAnim, pulseAnim]);
 
   const handleClose = () => {
     Animated.timing(slideAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
@@ -119,7 +114,7 @@ export default function FirstScanGuide({ visible, onClose }: Props) {
   );
 }
 
-function StepRow({ number, text, theme }: { number: string; text: string; theme: any }) {
+function StepRow({ number, text, theme }: { number: string; text: string; theme: ThemeColors }) {
   return (
     <View style={styles.stepRow}>
       <View style={styles.stepBadge}>

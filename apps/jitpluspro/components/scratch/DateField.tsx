@@ -43,6 +43,7 @@ export function DateField({ label, value, onChange, minYmd, maxYmd, disabled }: 
   const theme = useTheme();
   const { locale, isRTL } = useLanguage();
   const [open, setOpen] = useState(false);
+  const formatted = formatYmd(value, locale);
   return (
     <>
       <TouchableOpacity
@@ -50,7 +51,7 @@ export function DateField({ label, value, onChange, minYmd, maxYmd, disabled }: 
         disabled={disabled}
         activeOpacity={0.75}
         accessibilityRole="button"
-        accessibilityLabel={`${label}, ${formatYmd(value, locale)}`}
+        accessibilityLabel={`${label}, ${formatted}`}
         style={[
           styles.field,
           { backgroundColor: theme.inputBg, borderColor: theme.inputBorder, flexDirection: isRTL ? 'row-reverse' : 'row', opacity: disabled ? 0.55 : 1 },
@@ -60,7 +61,7 @@ export function DateField({ label, value, onChange, minYmd, maxYmd, disabled }: 
         <View style={styles.fieldText}>
           <Text style={[styles.fieldLabel, { color: theme.textMuted, textAlign: isRTL ? 'right' : 'left' }]} maxFontSizeMultiplier={1.3}>{label}</Text>
           <Text style={[styles.fieldValue, { color: theme.text, textAlign: isRTL ? 'right' : 'left' }]} maxFontSizeMultiplier={1.3}>
-            {formatYmd(value, locale)}
+            {formatted}
           </Text>
         </View>
       </TouchableOpacity>

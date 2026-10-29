@@ -8,6 +8,7 @@ type ExpoCryptoModule = typeof import('expo-crypto');
 // which expo-router reports as "Cannot read property 'ErrorBoundary' of undefined".
 let ExpoCrypto: ExpoCryptoModule | null = null;
 try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   ExpoCrypto = require('expo-crypto');
 } catch (e) {
   logWarn('Crypto', 'expo-crypto native module unavailable, using JS fallback', e);

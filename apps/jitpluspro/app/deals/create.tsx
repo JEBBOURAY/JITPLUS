@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
-import { View, Text, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Alert } from 'react-native';
 import { Globe, ImagePlus, Save, Send, Trash2 } from 'lucide-react-native';
 import { JitPin, JitStore } from '@/components/icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -15,10 +15,19 @@ import { ms } from '@/utils/responsive';
 import { font } from '@/constants/design';
 import { DEAL_LIMITS, computePercentOff, type DealScope } from '@jitplus/shared/src/deals';
 import { addDaysYmd, diffDaysYmd } from '@jitplus/shared/src/scratch';
-import { Button, Chip, ChipRow, FieldLabel, Input, Notice, OptionCard, ScreenHeader, Section } from '@/components/scratch/ScratchUI';
+import { Button, Chip, ChipRow, FieldLabel, Input, Notice, OptionCard, Section } from '@/components/scratch/ScratchUI';
 import { DateField, formatYmd } from '@/components/scratch/DateField';
 import { moroccoToday, moroccoWallTimeToIso } from '@/components/scratch/campaignForm';
-import { HelpText, ReviewBlock, ReviewLine, WizardFooter, WizardShell, useGameWizard } from '@/components/games/GameWizard';
+import {
+  HelpText,
+  ReviewBlock,
+  ReviewLine,
+  WizardFooter,
+  WizardLoading,
+  WizardMessage,
+  WizardShell,
+  useGameWizard,
+} from '@/components/games/GameWizard';
 import { digitsOnly } from '@/components/games/gameForm';
 import DealThumb from '@/components/deals/DealThumb';
 import { DealPreviewRow, useDealMerchantLook } from '@/components/deals/DealRows';
@@ -177,39 +186,30 @@ export default function DealWizard() {
 
   if (!canManage) {
     return (
-      <View style={[styles.container, { backgroundColor: theme.bg }]}>
-        <ScreenHeader title={title} onBack={leave} />
+      <WizardMessage title={title} onBack={leave}>
         <View style={styles.padded}><Notice text={t('deals.list.ownerOnly')} /></View>
-      </View>
+      </WizardMessage>
     );
   }
 
-  if (editId && loadingExisting) {
-    return (
-      <View style={[styles.container, styles.center, { backgroundColor: theme.bg }]}>
-        <ActivityIndicator color={theme.primary} />
-      </View>
-    );
-  }
+  if (editId && loadingExisting) return <WizardLoading />;
 
   if (editId && !existing) {
     return (
-      <View style={[styles.container, { backgroundColor: theme.bg }]}>
-        <ScreenHeader title={title} onBack={leave} />
+      <WizardMessage title={title} onBack={leave}>
         <View style={[styles.padded, styles.gap]}>
           <Notice tone="danger" text={t('deals.wizard.loadError')} />
           <Button label={t('common.retry')} onPress={() => void refetchExisting()} loading={refetchingExisting} />
         </View>
-      </View>
+      </WizardMessage>
     );
   }
 
   if (existing && existing.displayStatus !== 'LIVE' && existing.displayStatus !== 'SCHEDULED') {
     return (
-      <View style={[styles.container, { backgroundColor: theme.bg }]}>
-        <ScreenHeader title={title} onBack={leave} />
+      <WizardMessage title={title} onBack={leave}>
         <View style={styles.padded}><Notice text={t('deals.wizard.notEditable')} /></View>
-      </View>
+      </WizardMessage>
     );
   }
 
@@ -587,8 +587,6 @@ function Counter({ count, max }: { count: number; max: number }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  center: { alignItems: 'center', justifyContent: 'center' },
   padded: { padding: 16 },
   gap: { gap: 10 },
   flex: { flex: 1 },

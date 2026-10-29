@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  TextInput,
   Keyboard,
   Platform,
   ActivityIndicator,
@@ -89,7 +88,7 @@ const ViewfinderCorner = React.memo(function ViewfinderCorner({ position }: { po
   if (position.includes('l')) borderStyle.borderLeftWidth = 3;
   if (position.includes('r')) borderStyle.borderRightWidth = 3;
 
-  return <View style={[styles.corner, borderStyle, { borderColor: '#A78BFA' }]} />;
+  return <View style={[styles.corner, borderStyle]} />;
 });
 
 type ScanOverlayState = {
@@ -112,7 +111,7 @@ const DetectedOverlay = React.memo(function DetectedOverlay({ overlayState, onRe
       <View style={[styles.detectedCard, isError ? styles.detectedCardError : isSuccess ? styles.detectedCardSuccess : styles.detectedCardNeutral]}>
         <View style={[styles.detectedRow, { flexDirection: dir.row }]}>
           {overlayState.phase === 'verifying' ? (
-            <ActivityIndicator size="small" color={isError ? '#fff' : '#7C3AED'} />
+            <ActivityIndicator size="small" color="#7C3AED" />
           ) : isError ? (
             <AlertCircle size={18} color={ON_CAMERA} strokeWidth={iconTokens.stroke} />
           ) : (
@@ -150,11 +149,11 @@ const HowItWorksBanner = React.memo(function HowItWorksBanner({
   const theme = useTheme();
   const dir = useDir();
   const [shouldRender, setShouldRender] = useState(visible);
-  const collapse = useRef(new Animated.Value(visible ? 1 : 0)).current;
+  const [collapse] = useState(() => new Animated.Value(visible ? 1 : 0));
+  if (visible && !shouldRender) setShouldRender(true);
 
   useEffect(() => {
     if (visible) {
-      setShouldRender(true);
       Animated.timing(collapse, { toValue: 1, duration: 220, useNativeDriver: false }).start();
       return;
     }
@@ -163,13 +162,13 @@ const HowItWorksBanner = React.memo(function HowItWorksBanner({
     });
   }, [collapse, visible]);
 
-  if (!shouldRender) return null;
-
-  const animatedStyle = {
+  const animatedStyle = useMemo(() => ({
     opacity: collapse,
     maxHeight: collapse.interpolate({ inputRange: [0, 1], outputRange: [0, 140] }),
     transform: [{ translateY: collapse.interpolate({ inputRange: [0, 1], outputRange: [-10, 0] }) }],
-  };
+  }), [collapse]);
+
+  if (!shouldRender) return null;
 
   return (
     <Animated.View
@@ -202,6 +201,11 @@ const HowItWorksBanner = React.memo(function HowItWorksBanner({
   );
 });
 type MatchedClient = { id: string; nom: string; telephone?: string; email?: string; scanTicket?: string };
+
+/** "Prénom Nom" from a verify-qr / verify-client response; undefined when the client has no last name. */
+function verifiedClientName(client: { prenom?: string | null; nom?: string | null } | null | undefined): string | undefined {
+  return client?.nom ? [client.prenom, client.nom].filter(Boolean).join(' ') : undefined;
+}
 
 /** The scan ticket is only present for non-members; it lets the next screen enroll them. */
 function transactionParams(clientId: string, scanTicket?: string) {
@@ -262,7 +266,7 @@ const CameraOverlay = React.memo(function CameraOverlay({
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
       <View style={[styles.overlayTop, { height: Math.max((screenHeight - scanSize) / 2 - 40, 100) }]} />
-      <View style={[styles.overlayMiddle, { height: scanSize }]}> 
+      <View style={[styles.overlayMiddle, { height: scanSize }]}>
         <View style={styles.overlaySide} />
         <Animated.View style={[styles.scanArea, { width: scanSize, height: scanSize }, pulseStyle]}>
           <ViewfinderCorner position="tl" />
@@ -350,7 +354,6 @@ export default function ScanQRScreen() {
   const { from } = useLocalSearchParams<{ from?: string }>();
   const openedFromCoupon = from === 'coupon';
   const insets = useSafeAreaInsets();
-  const inputRef = useRef<TextInput | null>(null);
   const { t } = useLanguage();
   const theme = useTheme();
   const queryClient = useQueryClient();
@@ -376,7 +379,9 @@ export default function ScanQRScreen() {
   const [showCountrySheet, setShowCountrySheet] = useState(false);
   const [overlayState, setOverlayState] = useState<ScanOverlayState>({ phase: 'idle', message: null });
   const overlayPhaseRef = useRef(overlayState.phase);
-  overlayPhaseRef.current = overlayState.phase;
+  useEffect(() => {
+    overlayPhaseRef.current = overlayState.phase;
+  }, [overlayState.phase]);
 
   // The first-scan guide and the "how it works" banner tell the same thing, so
   // a merchant only ever gets one of them: the guide on the first visit, the
@@ -424,8 +429,8 @@ export default function ScanQRScreen() {
   }, []);
 
   // Animations — only run when actively scanning to save CPU/battery
-  const pulseScale = useRef(new Animated.Value(1)).current;
-  const pulseOpacity = useRef(new Animated.Value(1)).current;
+  const [pulseScale] = useState(() => new Animated.Value(1));
+  const [pulseOpacity] = useState(() => new Animated.Value(1));
 
   useEffect(() => {
     if (!isScanning) {
@@ -601,10 +606,9 @@ export default function ScanQRScreen() {
         try {
           const res = await api.post('/merchant/verify-qr', { token: payload.token });
           const clientId = res.data?.clientId;
-          const clientName = res.data?.client?.nom ? [res.data.client.prenom, res.data.client.nom].filter(Boolean).join(' ') : undefined;
           if (!clientId) throw new Error('no clientId');
           const scanTicket = typeof res.data?.scanTicket === 'string' ? res.data.scanTicket : undefined;
-          navigateToTransaction(clientId, clientName, scanTicket);
+          navigateToTransaction(clientId, verifiedClientName(res.data?.client), scanTicket);
         } catch (err: unknown) {
           showScanError(getErrorMessage(err, t('scan.qrExpiredFallback')));
         }
@@ -620,12 +624,12 @@ export default function ScanQRScreen() {
       try {
         const res = await api.post('/merchant/verify-client', { clientId: payload.clientId });
         const verifiedClientId = res.data?.clientId;
-        const clientName = res.data?.client?.nom ? [res.data.client.prenom, res.data.client.nom].filter(Boolean).join(' ') : undefined;
         if (!verifiedClientId) throw new Error('Client not verified');
-        navigateToTransaction(verifiedClientId, clientName);
+        navigateToTransaction(verifiedClientId, verifiedClientName(res.data?.client));
       } catch (err: unknown) {
         showScanError(getErrorMessage(err, t('scan.clientNotFoundFallback')));
-      }    },
+      }
+    },
     [isScanning, navigateToTransaction, set, t, router, openedFromCoupon],
   );
 
@@ -718,6 +722,29 @@ export default function ScanQRScreen() {
     set({ isScanning: true });
   }, [set]);
 
+  // Stable handlers so the memoised search bar and bottom controls skip re-renders.
+  const handlePhoneChange = useCallback((v: string) => set({ phoneInput: v }), [set]);
+  const handleSearchFocus = useCallback(() => set({ isSearchFocused: true }), [set]);
+  const handleSearchBlur = useCallback(() => set({ isSearchFocused: false }), [set]);
+  const openCountrySheet = useCallback(() => setShowCountrySheet(true), []);
+  const closeMatchedClients = useCallback(() => set({ matchedClients: [] }), [set]);
+  const handleToggleFlash = useCallback(() => {
+    safeImpact(Haptics.ImpactFeedbackStyle.Light);
+    dispatch({ type: 'TOGGLE_FLASH' });
+  }, []);
+
+  const handleCameraMountError = useCallback((error: unknown) => {
+    logError('CameraView', 'Mount error:', error);
+    Alert.alert(
+      t('scan.cameraErrorTitle'),
+      t('scan.cameraErrorMsg'),
+      [
+        { text: t('common.back'), onPress: handleClose, style: 'cancel' },
+        { text: t('common.retry'), onPress: () => router.replace('/scan-qr') },
+      ],
+    );
+  }, [t, handleClose, router]);
+
   if (!permission) {
     return (
       <View style={[styles.permissionContainer, { backgroundColor: theme.bg }]}>
@@ -773,17 +800,7 @@ export default function ScanQRScreen() {
           enableTorch={isFlashOn}
           barcodeScannerSettings={BARCODE_SCANNER_SETTINGS}
           onBarcodeScanned={scannerHandler}
-          onMountError={(error) => {
-            logError('CameraView', 'Mount error:', error);
-            Alert.alert(
-              t('scan.cameraErrorTitle'),
-              t('scan.cameraErrorMsg'),
-              [
-                { text: t('common.back'), onPress: handleClose, style: 'cancel' },
-                { text: t('common.retry'), onPress: () => router.replace('/scan-qr') },
-              ],
-            );
-          }}
+          onMountError={handleCameraMountError}
         />
       )}
 
@@ -804,25 +821,21 @@ export default function ScanQRScreen() {
 
       <AnimatedSearchBar
         value={phoneInput}
-        onChangeText={(v) => set({ phoneInput: v })}
+        onChangeText={handlePhoneChange}
         onSubmit={handlePhoneSearch}
-        onFocus={() => set({ isSearchFocused: true })}
-        onBlur={() => set({ isSearchFocused: false })}
+        onFocus={handleSearchFocus}
+        onBlur={handleSearchBlur}
         isFocused={isSearchFocused}
         isSearching={isSearching}
-        inputRef={inputRef}
         insetTop={insets.top}
         countryIndex={countryIndex}
-        onToggleCountry={() => setShowCountrySheet(true)}
+        onToggleCountry={openCountrySheet}
       />
 
       <BottomControls
         insetBottom={insets.bottom}
         isFlashOn={isFlashOn}
-        onToggleFlash={() => {
-          safeImpact(Haptics.ImpactFeedbackStyle.Light);
-          dispatch({ type: 'TOGGLE_FLASH' });
-        }}
+        onToggleFlash={handleToggleFlash}
         onClose={handleClose}
         t={t}
       />
@@ -831,12 +844,12 @@ export default function ScanQRScreen() {
         visible={matchedClients.length > 0}
         animationType="slide"
         transparent={false}
-        onRequestClose={() => set({ matchedClients: [] })}
+        onRequestClose={closeMatchedClients}
       >
         <View style={[styles.cpContainer, { paddingTop: insets.top, backgroundColor: theme.bg }]}>
           <View style={[styles.cpHeader, { flexDirection: dir.row, borderBottomColor: theme.borderLight }]}>
             <TouchableOpacity
-              onPress={() => set({ matchedClients: [] })}
+              onPress={closeMatchedClients}
               style={styles.iconPadding}
               accessibilityRole="button"
               accessibilityLabel={t('common.back')}
@@ -925,6 +938,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     width: 28,
     height: 28,
+    borderColor: '#A78BFA',
   },
 
   detectedOverlay: {

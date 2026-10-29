@@ -1,6 +1,6 @@
 // Takes over from the native splash with the same logo, size and background so the
 // handoff is invisible, then fades the logo out once the auth bootstrap is ready.
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, Animated, Easing, StyleSheet, useColorScheme, View } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
 
@@ -26,11 +26,14 @@ const EXIT_MS_REDUCED = 200;
 export default function SplashAnimated({ ready, onFinish }: SplashAnimatedProps) {
   const isDark = useColorScheme() === 'dark';
   const onFinishRef = useRef(onFinish);
-  onFinishRef.current = onFinish;
   const finishedRef = useRef(false);
   const reduceMotionRef = useRef(false);
-  const opacity = useRef(new Animated.Value(1)).current;
-  const scale = useRef(new Animated.Value(1)).current;
+  const [opacity] = useState(() => new Animated.Value(1));
+  const [scale] = useState(() => new Animated.Value(1));
+
+  useEffect(() => {
+    onFinishRef.current = onFinish;
+  }, [onFinish]);
 
   const hideNativeSplash = useCallback(() => {
     SplashScreen.hideAsync().catch(() => {});

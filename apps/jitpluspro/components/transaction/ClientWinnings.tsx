@@ -77,7 +77,9 @@ function ClientWinningsBase({ prizes, coupons, loading, clientId, defaultAmount 
   const [selection, setSelection] = useState<Selection>(null);
   const [amount, setAmount] = useState(defaultAmount);
   // One key per selected coupon: a retry after a network failure replays safely.
-  const idemKeyRef = useRef(randomUUID());
+  // Lazy initial key: randomUUID() is a native call and the amount field re-renders on every keystroke.
+  const [initialIdemKey] = useState(randomUUID);
+  const idemKeyRef = useRef(initialIdemKey);
 
   const fulfil = useFulfilLuckyWheelPrize();
   const redeem = useRedeemCoupon();

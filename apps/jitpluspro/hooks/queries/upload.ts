@@ -6,26 +6,26 @@ import { MAX_LOGO_SIZE_BYTES } from '@/constants/app';
 // Backend ceiling for image uploads (sharp optimizes down afterwards).
 export const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
 
+const EXT_TO_MIME: Record<string, string> = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+};
+const SUPPORTED_MIMES = new Set(Object.values(EXT_TO_MIME));
+
 export function normalizeUploadMimeAndExt(uri: string, mimeType?: string | null): { mime: string; ext: string } {
   const rawExt = (uri.split('.').pop() ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
   const normalizedInputMime = (mimeType ?? '').toLowerCase();
 
-  const extToMime: Record<string, string> = {
-    jpg: 'image/jpeg',
-    jpeg: 'image/jpeg',
-    png: 'image/png',
-    webp: 'image/webp',
-  };
-  const allowedMimes = new Set(Object.values(extToMime));
-
-  const inferredMime = rawExt ? extToMime[rawExt] : undefined;
+  const inferredMime = rawExt ? EXT_TO_MIME[rawExt] : undefined;
 
   let mime = normalizedInputMime || inferredMime || 'image/jpeg';
   if (mime === 'image/jpg') mime = 'image/jpeg';
 
   // iOS can report original HEIC MIME even when picker returns a compatible JPG file.
   // If inferred MIME from file extension is supported, prefer it.
-  if (!allowedMimes.has(mime) && inferredMime && allowedMimes.has(inferredMime)) {
+  if (!SUPPORTED_MIMES.has(mime) && inferredMime && SUPPORTED_MIMES.has(inferredMime)) {
     mime = inferredMime;
   }
 

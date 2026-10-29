@@ -57,6 +57,7 @@ const CARD_OPACITY_DURATION = 280;
 const CONTENT_DURATION = 250;
 const PATH_DURATION = 1300;
 const PATH_DELAY = 100;
+const PATH_STROKE_LENGTH = 1000;
 const STEP_DURATION = 450;
 const STEP_DELAYS = [120, 320, 520, 720];
 const LABEL_DURATION = 400;
@@ -70,6 +71,7 @@ const STEP_Y_REGULAR = [8, 86, 164, 242];
 
 export default function WelcomeGuideCard() {
   const merchant = useAuthStore((s) => s.merchant);
+  const merchantId = merchant?.id;
   const updateMerchant = useAuthStore((s) => s.updateMerchant);
   const isTeamMember = useAuthStore((s) => s.isTeamMember);
   const theme = useTheme();
@@ -82,25 +84,25 @@ export default function WelcomeGuideCard() {
   const requestSurface = useOnboardingStore((s) => s.request);
   const releaseSurface = useOnboardingStore((s) => s.release);
   const closeWelcome = useOnboardingStore((s) => s.closeWelcome);
-  const { value: welcomeSeen, setValue: setWelcomeSeen } = usePersistedFlag(`${ASYNC_STORAGE_KEYS.WELCOME_SEEN}:${merchant?.id ?? ''}`);
+  const { value: welcomeSeen, setValue: setWelcomeSeen } = usePersistedFlag(`${ASYNC_STORAGE_KEYS.WELCOME_SEEN}:${merchantId ?? ''}`);
   const rtl = I18nManager.isRTL || locale === 'ar';
   const reduceMotionRef = useRef(false);
   const [reduceMotion, setReduceMotion] = useState(false);
   const [activeMode, setActiveMode] = useState<JourneyMode>('merchant');
   const [page, setPage] = useState<Page>('poster');
   const [dontShowAgain, setDontShowAgain] = useState(false);
-  const cardScale = useRef(new Animated.Value(0.92)).current;
-  const cardOpacity = useRef(new Animated.Value(0)).current;
-  const contentProgress = useRef(new Animated.Value(0)).current;
-  const pathProgress = useRef(new Animated.Value(0)).current;
-  const stepProgress = useMemo(() => [0, 1, 2, 3].map(() => new Animated.Value(0)), []);
-  const labelProgress = useMemo(() => [0, 1, 2, 3].map(() => new Animated.Value(0)), []);
-  const dotProgress = useRef(new Animated.Value(0)).current;
-  const toggleAnim = useRef(new Animated.Value(0)).current;
+  const [cardScale] = useState(() => new Animated.Value(0.92));
+  const [cardOpacity] = useState(() => new Animated.Value(0));
+  const [contentProgress] = useState(() => new Animated.Value(0));
+  const [pathProgress] = useState(() => new Animated.Value(0));
+  const [stepProgress] = useState(() => [0, 1, 2, 3].map(() => new Animated.Value(0)));
+  const [labelProgress] = useState(() => [0, 1, 2, 3].map(() => new Animated.Value(0)));
+  const [dotProgress] = useState(() => new Animated.Value(0));
+  const [toggleAnim] = useState(() => new Animated.Value(0));
   const runningAnimationRef = useRef<Animated.CompositeAnimation | null>(null);
 
   const wantsGuide =
-    !!merchant?.welcomeGuideVisible && welcomeSeen === false && isFocused && welcomeClosedFor !== merchant?.id;
+    !!merchant?.welcomeGuideVisible && welcomeSeen === false && isFocused && welcomeClosedFor !== merchantId;
   const showGuide = wantsGuide && activeSurface === 'welcome';
   // The tour spotlights owner-only shortcuts, so team members are not offered it.
   const canTour = !!tour && !isTeamMember;
@@ -168,8 +170,10 @@ export default function WelcomeGuideCard() {
     return `M ${points[0].x} ${points[0].y} ${segments.join(' ')}`;
   }, [activeJourney, nodeSize, nodeX, stepY]);
 
-  const pathStrokeLength = 1000;
-  const pathDashOffset = pathProgress.interpolate({ inputRange: [0, 1], outputRange: [pathStrokeLength, 0] });
+  const pathDashOffset = useMemo(
+    () => pathProgress.interpolate({ inputRange: [0, 1], outputRange: [PATH_STROKE_LENGTH, 0] }),
+    [pathProgress],
+  );
 
   // `includeCard` replays the card entrance; page or mode switches only replay the roadmap.
   const playAnimations = useCallback((includeCard: boolean) => {
@@ -292,11 +296,11 @@ export default function WelcomeGuideCard() {
   }, [updateMerchant]);
 
   const commitClose = useCallback(() => {
-    if (!merchant?.id) return;
+    if (!merchantId) return;
     setWelcomeSeen(true);
     if (dontShowAgain) void persistDontShow();
-    closeWelcome(merchant.id);
-  }, [merchant?.id, dontShowAgain, persistDontShow, closeWelcome, setWelcomeSeen]);
+    closeWelcome(merchantId);
+  }, [merchantId, dontShowAgain, persistDontShow, closeWelcome, setWelcomeSeen]);
 
   const startTour = useCallback(() => {
     commitClose();

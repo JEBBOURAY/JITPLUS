@@ -18,7 +18,7 @@ interface Props {
 function KpiCounter({ value, ready = true, style }: Props) {
   const { locale } = useLanguage();
   const [display, setDisplay] = useState(0);
-  const anim = useRef(new Animated.Value(0)).current;
+  const [anim] = useState(() => new Animated.Value(0));
   const countedRef = useRef(false);
   const animatingRef = useRef(false);
 

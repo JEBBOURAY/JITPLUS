@@ -19,10 +19,14 @@ function getStatus(error: unknown): number | undefined {
     ?? (error as { status?: number })?.status;
 }
 
+// Gateway statuses come from a proxy/load balancer (Cloud Run, carrier, Play pre-launch
+// test devices) rather than our API code, so they are noise in Sentry.
+const GATEWAY_STATUSES = new Set([502, 503, 504]);
+
 // Expected HTTP 4xx (business/validation failures) are not reported to Sentry.
 function isServerOrNetworkError(error: unknown): boolean {
   const status = (error as { response?: { status?: number } })?.response?.status;
-  return !status || status >= 500;
+  return !status || (status >= 500 && !GATEWAY_STATUSES.has(status));
 }
 
 export const queryClient = new QueryClient({

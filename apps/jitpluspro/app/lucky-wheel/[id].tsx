@@ -75,11 +75,15 @@ export default function LuckyWheelDetail() {
     return inStock[pickWeighted(inStock.map((p) => p.weight))].id;
   }, [inStock, winProbability]);
 
+  // refetch functions are stable, unlike the query result objects.
+  const { refetch: refetchCampaigns } = campaignsQuery;
+  const { refetch: refetchPending } = pendingQuery;
+  const { refetch: refetchFulfilled } = fulfilledQuery;
   const onRefresh = useCallback(() => {
-    campaignsQuery.refetch();
-    pendingQuery.refetch();
-    fulfilledQuery.refetch();
-  }, [campaignsQuery, pendingQuery, fulfilledQuery]);
+    refetchCampaigns();
+    refetchPending();
+    refetchFulfilled();
+  }, [refetchCampaigns, refetchPending, refetchFulfilled]);
 
   const fail = useCallback((e: unknown) => Alert.alert(t('common.error'), getErrorMessage(e, t('common.genericError'))), [t]);
 

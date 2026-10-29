@@ -41,6 +41,11 @@ import { useAppleIdToken } from '@/hooks/useAppleIdToken';
 import { useDir } from '@/hooks/useDir';
 import { ActionButton } from '@/components/ui/ActionButton';
 import { font, icon as iconTokens } from '@/constants/design';
+import { MIN_PASSWORD_LENGTH } from '@/constants/app';
+
+const HIT_SLOP_8 = { top: 8, bottom: 8, left: 8, right: 8 };
+const HIT_SLOP_12 = { top: 12, bottom: 12, left: 12, right: 12 };
+const NEW_PASSWORD_RULES = `minlength: ${MIN_PASSWORD_LENGTH}; required: upper; required: digit; required: special;`;
 
 // Declared outside SecurityScreen so the TextInput is not re-mounted on every render.
 interface PwdFieldProps {
@@ -53,10 +58,9 @@ interface PwdFieldProps {
   theme: ThemeColors;
   /** iOS + Android autofill hint (newPassword / password) */
   variant?: 'current' | 'new';
-  /** a11y label for the show/hide toggle */
-  showLabel?: string;
-  hideLabel?: string;
-  /** input ref helpers */
+  /** a11y labels for the show/hide toggle */
+  showLabel: string;
+  hideLabel: string;
   returnKeyType?: 'next' | 'done';
   onSubmitEditing?: () => void;
 }
@@ -82,18 +86,18 @@ function PwdField({
           autoCorrect={false}
           autoComplete={variant === 'new' ? 'new-password' : 'current-password'}
           textContentType={variant === 'new' ? 'newPassword' : 'password'}
-          passwordRules={variant === 'new' ? 'minlength: 8; required: upper; required: digit; required: special;' : undefined}
+          passwordRules={variant === 'new' ? NEW_PASSWORD_RULES : undefined}
           maxLength={128}
           maxFontSizeMultiplier={1.4}
           returnKeyType={returnKeyType}
           onSubmitEditing={onSubmitEditing}
-          blurOnSubmit={returnKeyType === 'done'}
+          blurOnSubmit={returnKeyType ? returnKeyType === 'done' : undefined}
         />
         <TouchableOpacity
           onPress={() => setShow(!show)}
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          hitSlop={HIT_SLOP_12}
           accessibilityRole="button"
-          accessibilityLabel={show ? (hideLabel ?? 'Hide password') : (showLabel ?? 'Show password')}
+          accessibilityLabel={show ? hideLabel : showLabel}
           accessibilityState={{ checked: show }}
         >
           {show
@@ -101,6 +105,70 @@ function PwdField({
             : <Eye size={18} color={theme.textMuted} strokeWidth={iconTokens.stroke} />}
         </TouchableOpacity>
       </View>
+    </>
+  );
+}
+
+interface ReauthStatusProps {
+  theme: ThemeColors;
+  verified: boolean;
+  verifiedLabel: string;
+  verifiedColor: string;
+  /** False when the provider cannot be used on this device (Apple on Android). */
+  available: boolean;
+  unavailableLabel: string;
+  buttonLabel: string;
+  buttonColor: string;
+  loading: boolean;
+  onPress: () => void;
+  error?: string | null;
+}
+
+/** Google / Apple re-authentication: verified badge, sign-in button, then any error. */
+function ReauthStatus({
+  theme, verified, verifiedLabel, verifiedColor, available, unavailableLabel,
+  buttonLabel, buttonColor, loading, onPress, error,
+}: ReauthStatusProps) {
+  const dir = useDir();
+  return (
+    <>
+      {verified ? (
+        <View style={[styles.inputWrapper, { flexDirection: dir.row, backgroundColor: theme.bgInput, borderColor: verifiedColor }]} accessible accessibilityLabel={verifiedLabel}>
+          <Check size={18} color={verifiedColor} strokeWidth={iconTokens.stroke} accessibilityElementsHidden importantForAccessibility="no" />
+          <Text style={[styles.input, { color: verifiedColor, fontFamily: font.semibold }]} maxFontSizeMultiplier={1.4}>
+            {verifiedLabel}
+          </Text>
+        </View>
+      ) : available ? (
+        <TouchableOpacity
+          style={[styles.inputWrapper, { flexDirection: dir.row, backgroundColor: theme.bgInput, borderColor: theme.border, justifyContent: 'center' }]}
+          onPress={onPress}
+          disabled={loading}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={buttonLabel}
+          accessibilityState={{ busy: loading, disabled: loading }}
+        >
+          {loading ? (
+            <ActivityIndicator size="small" color={buttonColor} />
+          ) : (
+            <Text style={[styles.input, { color: buttonColor, fontFamily: font.semibold, textAlign: 'center' }]} maxFontSizeMultiplier={1.4}>
+              {buttonLabel}
+            </Text>
+          )}
+        </TouchableOpacity>
+      ) : (
+        <Text style={[styles.fieldLabel, styles.mt8, { color: theme.textMuted, textAlign: dir.textAlign }]} maxFontSizeMultiplier={1.4}>
+          {unavailableLabel}
+        </Text>
+      )}
+      {error ? (
+        <Text
+          style={[styles.errorText, { color: theme.danger, textAlign: dir.textAlign }]}
+          accessibilityLiveRegion="polite"
+          accessibilityRole="alert"
+        >{error}</Text>
+      ) : null}
     </>
   );
 }
@@ -169,7 +237,7 @@ export default function SecurityScreen() {
   const strength = useMemo(() => {
     if (newPwd.length === 0) return { label: '', color: theme.border, width: '0%' as DimensionValue };
     let score = 0;
-    if (newPwd.length >= 8) score++;
+    if (newPwd.length >= MIN_PASSWORD_LENGTH) score++;
     if (newPwd.length >= 10) score++;
     if (/[A-Z]/.test(newPwd)) score++;
     if (/[0-9]/.test(newPwd)) score++;
@@ -181,21 +249,20 @@ export default function SecurityScreen() {
     return { label: t('security.strengthStrong'), color: theme.success, width: '100%' as DimensionValue };
   }, [newPwd, theme, t]);
 
-  const loadDevices = useCallback(async () => {
-    setLoadingDevices(true);
-    try {
-      const res = await api.get('/merchant/devices');
-      setDevices(res.data ?? []);
-    } catch (error) {
-      logError('Security', 'Failed to load devices:', error);
-    } finally {
-      setLoadingDevices(false);
-    }
-  }, []);
-
+  // The spinner is raised by selectTab (and the initial state), so the effect
+  // only sets state from the request callbacks.
   useEffect(() => {
-    if (activeTab === 'devices') loadDevices();
-  }, [activeTab, loadDevices]);
+    if (activeTab !== 'devices') return;
+    api.get('/merchant/devices')
+      .then((res) => setDevices(res.data ?? []))
+      .catch((error) => logError('Security', 'Failed to load devices:', error))
+      .finally(() => setLoadingDevices(false));
+  }, [activeTab]);
+
+  const selectTab = useCallback((id: TabId) => {
+    if (id === 'devices' && id !== activeTab) setLoadingDevices(true);
+    setActiveTab(id);
+  }, [activeTab]);
 
   const executePasswordChange = useCallback(async (logoutOthers: boolean) => {
     setSaving(true);
@@ -218,14 +285,12 @@ export default function SecurityScreen() {
       } else {
         Alert.alert(t('common.success'), t('security.changePwdSuccess'));
       }
-
-      if (activeTab === 'devices') loadDevices();
     } catch (err: unknown) {
       Alert.alert(t('common.error'), getErrorMessage(err, t('security.changePwdError')));
     } finally {
       setSaving(false);
     }
-  }, [isSocialAccount, socialReauth, currentPwd, newPwd, activeTab, loadDevices, t]);
+  }, [isSocialAccount, socialReauth, currentPwd, newPwd, t]);
 
   const handleChangePassword = useCallback(async () => {
     if (isSocialAccount && !hasSocialReauth) return;
@@ -283,6 +348,49 @@ export default function SecurityScreen() {
     );
   }, [t]);
 
+  const handleDeleteAccount = useCallback(() => {
+    Alert.alert(
+      t('security.deleteFinalTitle'),
+      t('security.deleteFinalMsg'),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('security.deleteForeverBtn'),
+          style: 'destructive',
+          onPress: async () => {
+            if (isGoogleAccount && !deleteGoogleToken) {
+              Alert.alert(t('common.error'), t('security.deleteGooglePrompt'));
+              return;
+            }
+            if (isAppleAccount && !deleteAppleToken) {
+              Alert.alert(t('common.error'), t('security.deleteApplePrompt'));
+              return;
+            }
+            setDeleting(true);
+            try {
+              const body = isGoogleAccount
+                ? { idToken: deleteGoogleToken }
+                : isAppleAccount
+                  ? { appleIdentityToken: deleteAppleToken }
+                  : { password: deletePwd };
+              await api.post('/merchant/delete-account', body);
+              Alert.alert(
+                t('security.deletedTitle'),
+                t('security.deletedSuccess'),
+                [{ text: t('common.confirm'), onPress: () => signOut() }],
+                { cancelable: false },
+              );
+            } catch (err: unknown) {
+              Alert.alert(t('common.error'), getErrorMessage(err, t('security.deleteAccountError')));
+            } finally {
+              setDeleting(false);
+            }
+          },
+        },
+      ],
+    );
+  }, [isGoogleAccount, isAppleAccount, deleteGoogleToken, deleteAppleToken, deletePwd, signOut, t]);
+
   const goBack = useCallback(() => router.back(), [router]);
 
   const tabs = useMemo<{ id: TabId; label: string; icon: React.ReactNode }[]>(() => [
@@ -310,7 +418,7 @@ export default function SecurityScreen() {
           label={t('common.back')}
           onPress={goBack}
           style={styles.ownerOnlyBtn}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          hitSlop={HIT_SLOP_8}
         />
       </View>
     );
@@ -326,7 +434,7 @@ export default function SecurityScreen() {
         <TouchableOpacity
           onPress={goBack}
           style={styles.backBtn}
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          hitSlop={HIT_SLOP_12}
           accessibilityRole="button"
           accessibilityLabel={t('common.back')}
         >
@@ -354,7 +462,7 @@ export default function SecurityScreen() {
             <TouchableOpacity
               key={tab.id}
               style={[styles.tab, { flexDirection: dir.row }, isActive && { backgroundColor: tab.id === 'delete' ? theme.danger : theme.primary }]}
-              onPress={() => setActiveTab(tab.id)}
+              onPress={() => selectTab(tab.id)}
               activeOpacity={0.7}
               accessibilityRole="tab"
               accessibilityState={{ selected: isActive }}
@@ -396,39 +504,19 @@ export default function SecurityScreen() {
                   <Text style={[styles.fieldLabel, { color: theme.textSecondary, textAlign: dir.textAlign }]}>
                     {t('security.deleteGooglePrompt')}
                   </Text>
-                  {deleteGoogleToken ? (
-                    <View style={[styles.inputWrapper, { flexDirection: dir.row, backgroundColor: theme.bgInput, borderColor: theme.danger }]} accessible accessibilityLabel={t('security.googleVerified')}>
-                      <Check size={18} color={theme.danger} strokeWidth={iconTokens.stroke} accessibilityElementsHidden importantForAccessibility="no" />
-                      <Text style={[styles.input, { color: theme.danger, fontFamily: font.semibold }]} maxFontSizeMultiplier={1.4}>
-                        {t('security.googleVerified')}
-                      </Text>
-                    </View>
-                  ) : (
-                    <TouchableOpacity
-                      style={[styles.inputWrapper, { flexDirection: dir.row, backgroundColor: theme.bgInput, borderColor: theme.border, justifyContent: 'center' }]}
-                      onPress={googleDelete.promptGoogle}
-                      disabled={googleDelete.isLoading}
-                      activeOpacity={0.7}
-                      accessibilityRole="button"
-                      accessibilityLabel={t('security.deleteGoogleBtn')}
-                      accessibilityState={{ busy: googleDelete.isLoading, disabled: googleDelete.isLoading }}
-                    >
-                      {googleDelete.isLoading ? (
-                        <ActivityIndicator size="small" color={theme.danger} />
-                      ) : (
-                        <Text style={[styles.input, { color: theme.danger, fontFamily: font.semibold, textAlign: 'center' }]} maxFontSizeMultiplier={1.4}>
-                          {t('security.deleteGoogleBtn')}
-                        </Text>
-                      )}
-                    </TouchableOpacity>
-                  )}
-                  {googleDelete.error ? (
-                    <Text
-                      style={[styles.errorText, { color: theme.danger, textAlign: dir.textAlign }]}
-                      accessibilityLiveRegion="polite"
-                      accessibilityRole="alert"
-                    >{googleDelete.error}</Text>
-                  ) : null}
+                  <ReauthStatus
+                    theme={theme}
+                    verified={!!deleteGoogleToken}
+                    verifiedLabel={t('security.googleVerified')}
+                    verifiedColor={theme.danger}
+                    available
+                    unavailableLabel={t('security.appleOnlyIos')}
+                    buttonLabel={t('security.deleteGoogleBtn')}
+                    buttonColor={theme.danger}
+                    loading={googleDelete.isLoading}
+                    onPress={googleDelete.promptGoogle}
+                    error={googleDelete.error}
+                  />
                 </View>
               ) : isAppleAccount ? (
                 /* -- Apple account: re-authenticate with Apple -- */
@@ -436,76 +524,35 @@ export default function SecurityScreen() {
                   <Text style={[styles.fieldLabel, { color: theme.textSecondary, textAlign: dir.textAlign }]}>
                     {t('security.deleteApplePrompt')}
                   </Text>
-                  {deleteAppleToken ? (
-                    <View style={[styles.inputWrapper, { flexDirection: dir.row, backgroundColor: theme.bgInput, borderColor: theme.danger }]} accessible accessibilityLabel={t('security.appleVerified')}>
-                      <Check size={18} color={theme.danger} strokeWidth={iconTokens.stroke} accessibilityElementsHidden importantForAccessibility="no" />
-                      <Text style={[styles.input, { color: theme.danger, fontFamily: font.semibold }]} maxFontSizeMultiplier={1.4}>
-                        {t('security.appleVerified')}
-                      </Text>
-                    </View>
-                  ) : appleDelete.isAvailable ? (
-                    <TouchableOpacity
-                      style={[styles.inputWrapper, { flexDirection: dir.row, backgroundColor: theme.bgInput, borderColor: theme.border, justifyContent: 'center' }]}
-                      onPress={appleDelete.promptApple}
-                      disabled={appleDelete.isLoading}
-                      activeOpacity={0.7}
-                      accessibilityRole="button"
-                      accessibilityLabel={t('security.deleteAppleBtn')}
-                      accessibilityState={{ busy: appleDelete.isLoading, disabled: appleDelete.isLoading }}
-                    >
-                      {appleDelete.isLoading ? (
-                        <ActivityIndicator size="small" color={theme.danger} />
-                      ) : (
-                        <Text style={[styles.input, { color: theme.danger, fontFamily: font.semibold, textAlign: 'center' }]} maxFontSizeMultiplier={1.4}>
-                          {t('security.deleteAppleBtn')}
-                        </Text>
-                      )}
-                    </TouchableOpacity>
-                  ) : (
-                    <Text style={[styles.fieldLabel, styles.mt8, { color: theme.textMuted, textAlign: dir.textAlign }]} maxFontSizeMultiplier={1.4}>
-                      {t('security.appleOnlyIos')}
-                    </Text>
-                  )}
-                  {appleDelete.error ? (
-                    <Text
-                      style={[styles.errorText, { color: theme.danger, textAlign: dir.textAlign }]}
-                      accessibilityLiveRegion="polite"
-                      accessibilityRole="alert"
-                    >{appleDelete.error}</Text>
-                  ) : null}
+                  <ReauthStatus
+                    theme={theme}
+                    verified={!!deleteAppleToken}
+                    verifiedLabel={t('security.appleVerified')}
+                    verifiedColor={theme.danger}
+                    available={appleDelete.isAvailable}
+                    unavailableLabel={t('security.appleOnlyIos')}
+                    buttonLabel={t('security.deleteAppleBtn')}
+                    buttonColor={theme.danger}
+                    loading={appleDelete.isLoading}
+                    onPress={appleDelete.promptApple}
+                    error={appleDelete.error}
+                  />
                 </View>
               ) : (
                 /* -- Email account: enter password -- */
                 <View style={styles.mt16}>
-                  <Text style={[styles.fieldLabel, { color: theme.textSecondary, textAlign: dir.textAlign }]} maxFontSizeMultiplier={1.4}>{t('security.currentPassword')}</Text>
-                  <View style={[styles.inputWrapper, { flexDirection: dir.row, backgroundColor: theme.bgInput, borderColor: theme.border }]}>
-                    <JitLock size={17} color={theme.textMuted} strokeWidth={iconTokens.stroke} />
-                    <TextInput
-                      style={[styles.input, { color: theme.text, textAlign: dir.textAlign }]}
-                      value={deletePwd}
-                      onChangeText={setDeletePwd}
-                      placeholder={t('security.deletePasswordPlaceholder')}
-                      placeholderTextColor={theme.textMuted}
-                      secureTextEntry={!showDeletePwd}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      autoComplete="current-password"
-                      textContentType="password"
-                      maxLength={128}
-                      maxFontSizeMultiplier={1.4}
-                    />
-                    <TouchableOpacity
-                      onPress={() => setShowDeletePwd(!showDeletePwd)}
-                      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                      accessibilityRole="button"
-                      accessibilityLabel={showDeletePwd ? t('security.hidePassword') : t('security.showPassword')}
-                      accessibilityState={{ checked: showDeletePwd }}
-                    >
-                      {showDeletePwd
-                        ? <EyeOff size={18} color={theme.textMuted} strokeWidth={iconTokens.stroke} />
-                        : <Eye size={18} color={theme.textMuted} strokeWidth={iconTokens.stroke} />}
-                    </TouchableOpacity>
-                  </View>
+                  <PwdField
+                    label={t('security.currentPassword')}
+                    value={deletePwd}
+                    setValue={setDeletePwd}
+                    show={showDeletePwd}
+                    setShow={setShowDeletePwd}
+                    placeholder={t('security.deletePasswordPlaceholder')}
+                    theme={theme}
+                    variant="current"
+                    showLabel={t('security.showPassword')}
+                    hideLabel={t('security.hidePassword')}
+                  />
                 </View>
               )}
               <View style={styles.mt12}>
@@ -517,7 +564,7 @@ export default function SecurityScreen() {
                   accessibilityRole="checkbox"
                   accessibilityState={{ checked: deleteConfirmed, disabled: deleting }}
                   accessibilityLabel={t('security.deleteConfirmLabel')}
-                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  hitSlop={HIT_SLOP_12}
                 >
                   <View style={[
                     styles.checkbox,
@@ -539,48 +586,7 @@ export default function SecurityScreen() {
                 loading={deleting}
                 disabled={!deleteReady}
                 style={[styles.deleteBtn, !deleteReady && { backgroundColor: theme.border, borderColor: theme.border }]}
-                onPress={() => {
-                  Alert.alert(
-                    t('security.deleteFinalTitle'),
-                    t('security.deleteFinalMsg'),
-                    [
-                      { text: t('common.cancel'), style: 'cancel' },
-                      {
-                        text: t('security.deleteForeverBtn'),
-                        style: 'destructive',
-                        onPress: async () => {
-                          if (isGoogleAccount && !deleteGoogleToken) {
-                            Alert.alert(t('common.error'), t('security.deleteGooglePrompt'));
-                            return;
-                          }
-                          if (isAppleAccount && !deleteAppleToken) {
-                            Alert.alert(t('common.error'), t('security.deleteApplePrompt'));
-                            return;
-                          }
-                          setDeleting(true);
-                          try {
-                            const body = isGoogleAccount
-                              ? { idToken: deleteGoogleToken }
-                              : isAppleAccount
-                                ? { appleIdentityToken: deleteAppleToken }
-                                : { password: deletePwd };
-                            await api.post('/merchant/delete-account', body);
-                            Alert.alert(
-                              t('security.deletedTitle'),
-                              t('security.deletedSuccess'),
-                              [{ text: t('common.confirm'), onPress: () => signOut() }],
-                              { cancelable: false },
-                            );
-                          } catch (err: unknown) {
-                            Alert.alert(t('common.error'), getErrorMessage(err, t('security.deleteAccountError')));
-                          } finally {
-                            setDeleting(false);
-                          }
-                        },
-                      },
-                    ],
-                  );
-                }}
+                onPress={handleDeleteAccount}
               />
             </View>
           </View>
@@ -591,47 +597,19 @@ export default function SecurityScreen() {
                 <Text style={[styles.dangerText, styles.mb12, { color: theme.textMuted, textAlign: dir.textAlign }]} maxFontSizeMultiplier={1.4}>
                   {t(isAppleAccount ? 'security.appleSetPasswordHint' : 'security.googleSetPasswordHint')}
                 </Text>
-                {hasSocialReauth ? (
-                  <View
-                    style={[styles.inputWrapper, { flexDirection: dir.row, backgroundColor: theme.bgInput, borderColor: theme.success }]}
-                    accessible
-                    accessibilityLabel={t(isGoogleAccount ? 'security.googleVerified' : 'security.appleVerified')}
-                  >
-                    <Check size={18} color={theme.success} strokeWidth={iconTokens.stroke} accessibilityElementsHidden importantForAccessibility="no" />
-                    <Text style={[styles.input, { color: theme.success, fontFamily: font.semibold }]} maxFontSizeMultiplier={1.4}>
-                      {t(isGoogleAccount ? 'security.googleVerified' : 'security.appleVerified')}
-                    </Text>
-                  </View>
-                ) : isGoogleAccount || appleDelete.isAvailable ? (
-                  <TouchableOpacity
-                    style={[styles.inputWrapper, { flexDirection: dir.row, backgroundColor: theme.bgInput, borderColor: theme.border, justifyContent: 'center' }]}
-                    onPress={isGoogleAccount ? googleDelete.promptGoogle : appleDelete.promptApple}
-                    disabled={socialReauthLoading}
-                    activeOpacity={0.7}
-                    accessibilityRole="button"
-                    accessibilityLabel={t(isGoogleAccount ? 'security.deleteGoogleBtn' : 'security.deleteAppleBtn')}
-                    accessibilityState={{ busy: socialReauthLoading, disabled: socialReauthLoading }}
-                  >
-                    {socialReauthLoading ? (
-                      <ActivityIndicator size="small" color={theme.primary} />
-                    ) : (
-                      <Text style={[styles.input, { color: theme.primary, fontFamily: font.semibold, textAlign: 'center' }]} maxFontSizeMultiplier={1.4}>
-                        {t(isGoogleAccount ? 'security.deleteGoogleBtn' : 'security.deleteAppleBtn')}
-                      </Text>
-                    )}
-                  </TouchableOpacity>
-                ) : (
-                  <Text style={[styles.fieldLabel, styles.mt8, { color: theme.textMuted, textAlign: dir.textAlign }]} maxFontSizeMultiplier={1.4}>
-                    {t('security.appleOnlyIos')}
-                  </Text>
-                )}
-                {(isGoogleAccount ? googleDelete.error : appleDelete.error) ? (
-                  <Text
-                    style={[styles.errorText, { color: theme.danger, textAlign: dir.textAlign }]}
-                    accessibilityLiveRegion="polite"
-                    accessibilityRole="alert"
-                  >{isGoogleAccount ? googleDelete.error : appleDelete.error}</Text>
-                ) : null}
+                <ReauthStatus
+                  theme={theme}
+                  verified={hasSocialReauth}
+                  verifiedLabel={t(isGoogleAccount ? 'security.googleVerified' : 'security.appleVerified')}
+                  verifiedColor={theme.success}
+                  available={isGoogleAccount || appleDelete.isAvailable}
+                  unavailableLabel={t('security.appleOnlyIos')}
+                  buttonLabel={t(isGoogleAccount ? 'security.deleteGoogleBtn' : 'security.deleteAppleBtn')}
+                  buttonColor={theme.primary}
+                  loading={socialReauthLoading}
+                  onPress={isGoogleAccount ? googleDelete.promptGoogle : appleDelete.promptApple}
+                  error={isGoogleAccount ? googleDelete.error : appleDelete.error}
+                />
               </View>
             ) : (
               <PwdField
@@ -821,7 +799,7 @@ export default function SecurityScreen() {
                       <TouchableOpacity
                         onPress={() => handleRemoveDevice(device)}
                         style={[styles.removeBtn, { backgroundColor: theme.danger + '12' }]}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        hitSlop={HIT_SLOP_8}
                         accessibilityRole="button"
                         accessibilityLabel={t('security.removeDeviceA11y')}
                       >

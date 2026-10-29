@@ -57,6 +57,7 @@ import type { Reward } from '@/types';
 const NO_REWARDS: Reward[] = [];
 const NO_PRIZES: LuckyWheelPendingDraw[] = [];
 const NO_COUPONS: ClientCouponAtTill[] = [];
+const SKELETON_HEIGHTS = [ms(190), ms(120), ms(150)];
 
 interface SuccessState {
   title: string;
@@ -94,8 +95,11 @@ export default function TransactionAmountScreen() {
   const [success, setSuccess] = useState<SuccessState | null>(null);
 
   // One key per draft: a retry after a network failure is replayed, never doubled.
-  const earnKeyRef = useRef(randomUUID());
-  const redeemKeyRef = useRef(randomUUID());
+  // Initial keys are created lazily: randomUUID() is a native call and this screen re-renders on every keystroke.
+  const [initialEarnKey] = useState(randomUUID);
+  const [initialRedeemKey] = useState(randomUUID);
+  const earnKeyRef = useRef(initialEarnKey);
+  const redeemKeyRef = useRef(initialRedeemKey);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const leavingRef = useRef(false);
 
@@ -293,7 +297,7 @@ export default function TransactionAmountScreen() {
     if (status.isLoading) {
       return (
         <View style={styles.skeletonWrap}>
-          {[ms(190), ms(120), ms(150)].map((height, i) => (
+          {SKELETON_HEIGHTS.map((height, i) => (
             <View key={i} style={[styles.skeleton, { height, backgroundColor: theme.bgSkeleton }]} />
           ))}
         </View>

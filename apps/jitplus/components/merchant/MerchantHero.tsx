@@ -4,13 +4,14 @@ import { Text } from '@/components/AppText';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
-  MIN_MEMBERS_SHOWN, describeOpenStatus, formatCompactCount, getCategoryEmoji, type OpenStatus,
+  MIN_MEMBERS_SHOWN, describeOpenStatus, formatCompactCount, type OpenStatus,
 } from '@jitplus/shared';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAppFonts } from '@/utils/fonts';
 import { resolveImageUrl } from '@/utils/imageUrl';
 import { MERCHANT_ICON_MAP } from '@/utils/merchantIcons';
+import { getCategoryEmoji } from '@/utils/categories';
 import { formatDistance } from '@/utils/distance';
 import { wp, hp, ms } from '@/utils/responsive';
 import type { Merchant } from '@/types';
@@ -98,7 +99,7 @@ function MerchantHero({ merchant, scrollY, openStatus, distanceKm }: Props) {
             <View style={[styles.logo, styles.logoFallback, { backgroundColor: theme.bgInput, borderColor: theme.border }]}>
               {ThemeIcon
                 ? <ThemeIcon size={ms(36)} color={theme.textSecondary} strokeWidth={1.75} />
-                : <Text style={styles.emoji}>{getCategoryEmoji(merchant.categorie)}</Text>}
+                : <Text style={styles.emoji}>{getCategoryEmoji(merchant.categorie ?? undefined)}</Text>}
             </View>
           )}
         </View>

@@ -35,6 +35,9 @@ export function brandColor(input?: string | null): string {
   return input && HEX_RE.test(input) ? input : DEFAULT_COLOR;
 }
 
+/** Map center used when no location is known yet (Casablanca). */
+export const DEFAULT_MAP_CENTER = { latitude: 33.5731, longitude: -7.5898 } as const;
+
 /** Warm ivory map with violet-tinted water, matching the jitplus Discover map. */
 export const MAP_STYLE = [
   { elementType: 'geometry', stylers: [{ color: '#FAFAF8' }] },

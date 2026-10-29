@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Animated } from 'react-native';
 import { useIsFocused } from 'expo-router/react-navigation';
 
@@ -9,7 +9,7 @@ import { useIsFocused } from 'expo-router/react-navigation';
  */
 export function useFocusFade() {
   const isFocused = useIsFocused();
-  const progress = useRef(new Animated.Value(isFocused ? 1 : 0)).current;
+  const [progress] = useState(() => new Animated.Value(isFocused ? 1 : 0));
 
   useEffect(() => {
     const target = isFocused ? 1 : 0;

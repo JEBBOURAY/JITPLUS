@@ -195,6 +195,9 @@ export class DealFeedQueryDto {
   cursor?: string;
 }
 
+/** Same area and tab as the feed, without the category and the cursor. */
+export class DealCategoryCountsQueryDto extends OmitType(DealFeedQueryDto, ['category', 'cursor'] as const) {}
+
 export class DealPositionQueryDto {
   @ApiPropertyOptional()
   @IsOptional()

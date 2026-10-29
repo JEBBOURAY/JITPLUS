@@ -20,6 +20,8 @@ const GRID_GAP = wp(4);
 /** Page side padding, on both sides. */
 const GRID_INSET = wp(16) * 2;
 
+const viewerKey = (url: string, i: number) => `${url}-${i}`;
+
 interface ViewerProps {
   images: string[];
   initialIndex: number;
@@ -37,6 +39,20 @@ function GalleryViewer({ images, initialIndex, onClose }: ViewerProps) {
     setIndex(Math.round(e.nativeEvent.contentOffset.x / width));
   }, [width]);
 
+  // Stable across swipes: the counter update must not re-render the visible pages.
+  const renderItem = useCallback(({ item }: { item: string }) => (
+    <View style={{ width, height, justifyContent: 'center' }}>
+      <Image
+        source={resolveImageUrl(item)}
+        style={{ width, height: height * 0.78 }}
+        contentFit="contain"
+        cachePolicy="memory-disk"
+        recyclingKey={item}
+        transition={150}
+      />
+    </View>
+  ), [width, height]);
+
   const getItemLayout = useCallback(
     (_: unknown, i: number) => ({ length: width, offset: width * i, index: i }),
     [width],
@@ -53,22 +69,11 @@ function GalleryViewer({ images, initialIndex, onClose }: ViewerProps) {
           initialScrollIndex={initialIndex}
           getItemLayout={getItemLayout}
           onMomentumScrollEnd={onMomentumEnd}
-          keyExtractor={(url, i) => `${url}-${i}`}
+          keyExtractor={viewerKey}
           windowSize={3}
           initialNumToRender={1}
           maxToRenderPerBatch={2}
-          renderItem={({ item }) => (
-            <View style={{ width, height, justifyContent: 'center' }}>
-              <Image
-                source={resolveImageUrl(item)}
-                style={{ width, height: height * 0.78 }}
-                contentFit="contain"
-                cachePolicy="memory-disk"
-                recyclingKey={item}
-                transition={150}
-              />
-            </View>
-          )}
+          renderItem={renderItem}
         />
         <View style={[styles.viewerTop, { top: insets.top + hp(8) }]} pointerEvents="box-none">
           <View style={styles.counter}>

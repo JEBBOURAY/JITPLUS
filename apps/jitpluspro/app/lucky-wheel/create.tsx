@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
-import { View, Text, StyleSheet, Alert, ActivityIndicator, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, Alert, useWindowDimensions } from 'react-native';
 import { Layers, Play, Plus, Save, type LucideIcon } from 'lucide-react-native';
 import { JitGift, JitPremium } from '@/components/icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -28,13 +28,21 @@ import {
   MoreOptions,
   Notice,
   OptionCard,
-  ScreenHeader,
   Section,
   useMoreOptions,
 } from '@/components/scratch/ScratchUI';
 import { DateField, formatYmd } from '@/components/scratch/DateField';
 import { moroccoToday, moroccoYmdOf } from '@/components/scratch/campaignForm';
-import { HelpText, ReviewBlock, ReviewLine, WizardFooter, WizardShell, useGameWizard } from '@/components/games/GameWizard';
+import {
+  HelpText,
+  ReviewBlock,
+  ReviewLine,
+  WizardFooter,
+  WizardLoading,
+  WizardMessage,
+  WizardShell,
+  useGameWizard,
+} from '@/components/games/GameWizard';
 import { digitsOnly } from '@/components/games/gameForm';
 import { PrizeEditor, claimLabel } from '@/components/luckyWheel/PrizeEditor';
 import { WheelPreview } from '@/components/luckyWheel/WheelPreview';
@@ -269,42 +277,33 @@ export default function LuckyWheelWizard() {
 
   if (!canManage) {
     return (
-      <View style={[styles.container, { backgroundColor: theme.bg }]}>
-        <ScreenHeader title={title} onBack={leave} />
+      <WizardMessage title={title} onBack={leave}>
         {isTeamMember
           ? <View style={styles.padded}><Notice text={t('luckyWheel.list.ownerOnly')} /></View>
           : <PremiumLockCard titleKey="luckyWheel.list.premiumTitle" descriptionKey="luckyWheel.list.premiumDesc" />}
-      </View>
+      </WizardMessage>
     );
   }
 
-  if (sourceId && campaignsQuery.isLoading) {
-    return (
-      <View style={[styles.container, styles.center, { backgroundColor: theme.bg }]}>
-        <ActivityIndicator color={theme.primary} />
-      </View>
-    );
-  }
+  if (sourceId && campaignsQuery.isLoading) return <WizardLoading />;
 
   // Without the loaded campaign, saving would overwrite it with a blank wheel.
   if (sourceId && !source) {
     return (
-      <View style={[styles.container, { backgroundColor: theme.bg }]}>
-        <ScreenHeader title={title} onBack={leave} />
+      <WizardMessage title={title} onBack={leave}>
         <View style={[styles.padded, styles.gap]}>
           <Notice tone="danger" text={t('luckyWheel.wizard.loadError')} />
           <Button label={t('common.retry')} onPress={() => void campaignsQuery.refetch()} loading={campaignsQuery.isRefetching} />
         </View>
-      </View>
+      </WizardMessage>
     );
   }
 
   if (editing?.status === 'ENDED') {
     return (
-      <View style={[styles.container, { backgroundColor: theme.bg }]}>
-        <ScreenHeader title={title} onBack={leave} />
+      <WizardMessage title={title} onBack={leave}>
         <View style={styles.padded}><Notice text={t('luckyWheel.wizard.notEditable')} /></View>
-      </View>
+      </WizardMessage>
     );
   }
 
@@ -565,8 +564,6 @@ export default function LuckyWheelWizard() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  center: { alignItems: 'center', justifyContent: 'center' },
   padded: { padding: 16 },
   gap: { gap: 12 },
   bigValue: { fontSize: ms(22), fontFamily: font.bold, textAlign: 'center' },

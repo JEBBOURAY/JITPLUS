@@ -4,6 +4,7 @@ import { Check } from 'lucide-react-native';
 import { JitGift } from '@/components/icons';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { font } from '@/constants/design';
 
 interface StampGridProps {
   /** Current number of collected stamps */
@@ -92,6 +93,6 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 14,
     marginTop: 14,
-    fontFamily: 'Lexend_600SemiBold',
+    fontFamily: font.semibold,
   },
 });

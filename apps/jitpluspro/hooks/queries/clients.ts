@@ -32,7 +32,7 @@ const CLIENTS_PAGE_SIZE = 30;
  * Paginated client list for the Clients tab (infinite scroll).
  * `reload` drops the extra pages before refetching, so a refresh costs one request.
  */
-export function useClientList(search: string, view: ClientListView, enabled = true) {
+export function useClientList(search: string, view: ClientListView) {
   const qc = useQueryClient();
   const query = useInfiniteQuery<ClientsPage>({
     queryKey: queryKeys.clientList(search, view),
@@ -56,7 +56,6 @@ export function useClientList(search: string, view: ClientListView, enabled = tr
     // showing the previous filter's clients under a new filter would be misleading.
     placeholderData: (previous, previousQuery) =>
       previousQuery?.queryKey[2] === view ? previous : undefined,
-    enabled,
   });
 
   const { refetch } = query;

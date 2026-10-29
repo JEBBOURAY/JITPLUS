@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef, useDeferredValue } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -287,15 +287,14 @@ export default function ClientsScreen() {
   const searchInputRef = useRef<TextInput>(null);
 
   const [search, setSearch] = useState('');
-  const deferredSearch = useDeferredValue(search);
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [view, setView] = useState<ClientListView>('all');
   const [pullRefreshing, setPullRefreshing] = useState(false);
 
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(deferredSearch.trim()), SEARCH_DEBOUNCE_MS);
+    const timer = setTimeout(() => setDebouncedSearch(search.trim()), SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [deferredSearch]);
+  }, [search]);
 
   const { query, reload, reloadIfStale } = useClientList(debouncedSearch, view);
   const {
@@ -475,7 +474,6 @@ export default function ClientsScreen() {
           {t('clients.title')}
         </Text>
       </View>
-
 
       <View style={styles.searchContainer}>
         <View style={[styles.searchBar, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>

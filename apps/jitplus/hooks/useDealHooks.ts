@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
-  useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData,
+  keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData,
 } from '@tanstack/react-query';
 import { api } from '@/services/api';
 import {
@@ -15,7 +15,8 @@ import {
 import { isEntityId } from '@/utils/ids';
 import type { Coords } from '@/hooks/useKnownLocation';
 import {
-  findMoroccoCity, type ClientDealDetail, type ClientDealSummary, type DealAlertPreferences, type DealCitiesResponse,
+  findMoroccoCity, type ClientDealDetail, type ClientDealSummary, type DealAlertPreferences, type DealCategoryCountsResponse,
+  type DealCitiesResponse,
   type DealEventType, type DealFeedResponse, type DealFeedTab, type DealReportReason, type DealTeaserResponse,
 } from '@jitplus/shared/src/deals';
 
@@ -28,6 +29,8 @@ export const dealKeys = {
   feeds: ['deals', 'feed'] as const,
   feed: (q: Omit<DealFeedQuery, 'cursor'>) =>
     ['deals', 'feed', q.tab, q.cityKey ?? null, q.category ?? null, q.lat ?? null, q.lng ?? null] as const,
+  categoryCounts: (q: Omit<DealFeedQuery, 'category' | 'cursor'>) =>
+    ['deals', 'feed', 'categories', q.tab, q.cityKey ?? null, q.lat ?? null, q.lng ?? null] as const,
   detail: (id: string) => ['deals', 'detail', id] as const,
   merchantLists: ['deals', 'merchant'] as const,
   merchant: (merchantId: string) => ['deals', 'merchant', merchantId] as const,
@@ -43,6 +46,22 @@ export function useDealsFeed(tab: DealFeedTab, area: DealArea, category: string 
     queryFn: ({ pageParam }) => api.getDealFeed({ ...query, cursor: pageParam }),
     initialPageParam: undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
+    staleTime: FEED_STALE_MS,
+    gcTime: LIST_GC_MS,
+    enabled,
+  });
+}
+
+/**
+ * Under dealKeys.feeds, so reporting a deal refreshes the counts with the lists.
+ * The previous counts stay on screen while another tab or area loads.
+ */
+export function useDealCategoryCounts(tab: DealFeedTab, area: DealArea, enabled = true) {
+  const query = { tab, ...area };
+  return useQuery<DealCategoryCountsResponse>({
+    queryKey: dealKeys.categoryCounts(query),
+    queryFn: () => api.getDealCategoryCounts(query),
+    placeholderData: keepPreviousData,
     staleTime: FEED_STALE_MS,
     gcTime: LIST_GC_MS,
     enabled,

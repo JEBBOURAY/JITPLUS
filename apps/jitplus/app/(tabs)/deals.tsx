@@ -19,7 +19,9 @@ import DealAlertCard from '@/components/deals/DealAlertCard';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { dealArea, useDealCities, useDealCityPreference, useDealsFeed } from '@/hooks/useDealHooks';
+import {
+  dealArea, useDealCategoryCounts, useDealCities, useDealCityPreference, useDealsFeed,
+} from '@/hooks/useDealHooks';
 import { useDealLocation } from '@/hooks/useDealLocation';
 import { CATEGORIES } from '@/utils/categories';
 import { suggestAlertCity } from '@/utils/dealAlerts';
@@ -70,6 +72,7 @@ function DealsFeed() {
   const { coords, resolved, request: requestLocation } = useDealLocation(t);
   const area = useMemo(() => dealArea(cityKey, coords), [cityKey, coords]);
   const feed = useDealsFeed(tab, area, category, cityReady && resolved);
+  const categoryCounts = useDealCategoryCounts(tab, area, cityReady && resolved);
   const [citySheet, setCitySheet] = useState(false);
   const cities = useDealCities(coords, citySheet);
   const [refreshing, setRefreshing] = useState(false);
@@ -91,6 +94,17 @@ function DealsFeed() {
   const cityLabel = cityKey
     ? moroccoCityLabel(cityKey, locale)
     : coords ? t('deals.feed.aroundMe') : serverCity ? moroccoCityLabel(serverCity, locale) : t('deals.feed.allMorocco');
+
+  // Only the categories that have deals for this tab and area, most deals first.
+  // The selected one stays so it can be seen and cleared; on error, all of them.
+  const categoryChips = useMemo(() => {
+    const all = CATEGORIES.filter((c) => c.id !== 'all');
+    if (categoryCounts.isError && !categoryCounts.data) return all;
+    const counts = categoryCounts.data?.counts ?? {};
+    return all
+      .filter((c) => (counts[c.id] ?? 0) > 0 || c.id === category)
+      .sort((a, b) => (counts[b.id] ?? 0) - (counts[a.id] ?? 0));
+  }, [categoryCounts.data, categoryCounts.isError, category]);
 
   const scrollTop = useCallback(() => listRef.current?.scrollToOffset({ offset: 0, animated: false }), []);
   const chooseTab = useCallback((next: DealFeedTab) => { haptic(); setTab(next); scrollTop(); }, [scrollTop]);
@@ -225,44 +239,61 @@ function DealsFeed() {
           </Pressable>
         </View>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={[styles.tabs, { borderBottomColor: theme.border }]}
+          contentContainerStyle={styles.tabsContent}
+          accessibilityRole="tablist"
+        >
           {DEAL_FEED_TABS.map((key) => {
             const active = tab === key;
             return (
               <Pressable
                 key={key}
-                onPress={() => chooseTab(key)}
-                style={[styles.tabChip, active ? styles.tabChipActive : { backgroundColor: theme.bgCard, borderColor: theme.border }]}
+                onPress={() => { if (!active) chooseTab(key); }}
+                style={styles.tab}
                 accessibilityRole="tab"
                 accessibilityState={{ selected: active }}
               >
-                <Text style={[styles.tabText, { color: active ? '#FFFFFF' : theme.text, fontFamily: fonts.semibold }]}>{t(`deals.tabs.${key}`)}</Text>
+                <Text
+                  style={[styles.tabText, { color: active ? theme.text : theme.textMuted, fontFamily: active ? fonts.semibold : fonts.medium }]}
+                  numberOfLines={1}
+                >
+                  {t(`deals.tabs.${key}`)}
+                </Text>
+                <View style={[styles.tabIndicator, active && { backgroundColor: theme.text }]} />
               </Pressable>
             );
           })}
         </ScrollView>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-          {CATEGORIES.map((cat) => {
-            const id = cat.id === 'all' ? null : cat.id;
-            const active = category === id;
-            const Icon = cat.icon;
-            return (
-              <Pressable
-                key={cat.id}
-                onPress={() => chooseCategory(id)}
-                style={[styles.catChip, { backgroundColor: active ? `${palette.violet}18` : 'transparent', borderColor: active ? palette.violet : theme.border }]}
-                accessibilityRole="button"
-                accessibilityState={{ selected: active }}
-              >
-                <Icon size={ms(13)} color={active ? palette.violet : theme.textMuted} strokeWidth={2} />
-                <Text style={[styles.catText, { color: active ? palette.violet : theme.textSecondary, fontFamily: fonts.medium }]}>
-                  {id ? t(cat.labelKey) : t('deals.feed.allCategories')}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
+        {categoryChips.length > 0 && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+            {[null, ...categoryChips.map((c) => c.id)].map((id) => {
+              const active = category === id;
+              return (
+                <Pressable
+                  key={id ?? 'all'}
+                  onPress={() => { if (!active) chooseCategory(id); }}
+                  style={({ pressed }) => [
+                    styles.catChip,
+                    active
+                      ? { backgroundColor: palette.violet, borderColor: palette.violet }
+                      : { backgroundColor: theme.bgCard, borderColor: theme.border },
+                    pressed && !active && styles.pressed,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                >
+                  <Text style={[styles.catText, { color: active ? '#FFFFFF' : theme.text, fontFamily: active ? fonts.semibold : fonts.medium }]}>
+                    {id ? t(`categories.${id}`) : t('deals.feed.allCategories')}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        )}
       </View>
 
       <FlatList
@@ -303,7 +334,7 @@ const Separator = () => <View style={styles.separator} />;
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { paddingHorizontal: wp(20), paddingBottom: hp(8), borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'transparent' },
+  header: { paddingHorizontal: wp(20) },
   titleRow: { flexDirection: 'row', alignItems: 'center', minHeight: ms(46), gap: wp(10) },
   title: { flex: 1, fontSize: fontSize['3xl'], letterSpacing: -0.6 },
   cityChip: {
@@ -311,12 +342,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: wp(12), height: ms(36), borderRadius: ms(18), borderWidth: 1,
   },
   cityText: { flexShrink: 1, fontSize: ms(13) },
-  chips: { gap: wp(8), paddingTop: hp(10) },
-  tabChip: { paddingHorizontal: wp(14), paddingVertical: hp(7), borderRadius: ms(18), borderWidth: 1 },
-  tabChipActive: { backgroundColor: palette.violet, borderColor: palette.violet },
-  tabText: { fontSize: ms(13) },
-  catChip: { flexDirection: 'row', alignItems: 'center', gap: wp(5), paddingHorizontal: wp(10), paddingVertical: hp(5), borderRadius: ms(14), borderWidth: 1 },
-  catText: { fontSize: ms(12) },
+  tabs: { flexGrow: 0, marginHorizontal: -wp(20), borderBottomWidth: StyleSheet.hairlineWidth },
+  tabsContent: { flexGrow: 1, paddingHorizontal: wp(8) },
+  tab: { flexGrow: 1, height: ms(44), paddingHorizontal: wp(12), alignItems: 'center', justifyContent: 'flex-end' },
+  tabText: { fontSize: ms(14), marginBottom: hp(10) },
+  tabIndicator: { alignSelf: 'stretch', height: 2 },
+  chips: { gap: wp(8), paddingTop: hp(12), paddingBottom: hp(2) },
+  catChip: { paddingHorizontal: wp(14), height: ms(34), justifyContent: 'center', borderRadius: ms(17), borderWidth: StyleSheet.hairlineWidth },
+  catText: { fontSize: ms(13) },
+  pressed: { opacity: 0.7 },
   list: { paddingHorizontal: wp(16), paddingTop: hp(12), flexGrow: 1 },
   separator: { height: hp(10) },
   hint: {

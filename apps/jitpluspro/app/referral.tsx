@@ -43,6 +43,13 @@ const PRO_IOS_URL = PRO_IOS_APP_ID
   ? `https://apps.apple.com/app/id${PRO_IOS_APP_ID}`
   : 'https://apps.apple.com/search?term=jitplus+pro';
 
+const REFERRAL_STEPS = [
+  { icon: Share2, titleKey: 'referral.step1Title', descKey: 'referral.step1Desc' },
+  { icon: JitPersonAdd, titleKey: 'referral.step2Title', descKey: 'referral.step2Desc' },
+  { icon: JitGift, titleKey: 'referral.step3Title', descKey: 'referral.step3Desc' },
+  { icon: Infinity, titleKey: 'referral.step4Title', descKey: 'referral.step4Desc' },
+] as const;
+
 export default function ReferralScreen() {
   const theme = useTheme();
   const dir = useDir();
@@ -56,30 +63,32 @@ export default function ReferralScreen() {
   const copyTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(copyTimer.current), []);
 
+  const referralCode = stats?.referralCode;
+
   const handleCopy = useCallback(async () => {
-    if (!stats?.referralCode) return;
+    if (!referralCode) return;
     try {
-      await Clipboard.setStringAsync(stats.referralCode);
+      await Clipboard.setStringAsync(referralCode);
       setCopied(true);
       clearTimeout(copyTimer.current);
       copyTimer.current = setTimeout(() => setCopied(false), 2000);
     } catch {
       Alert.alert(t('common.error'), t('referralScreen.copyError'));
     }
-  }, [stats?.referralCode, t]);
+  }, [referralCode, t]);
 
   const handleShare = useCallback(async () => {
-    if (!stats?.referralCode) return;
+    if (!referralCode) return;
     try {
       const links = `Android: ${PRO_ANDROID_URL}\niOS: ${PRO_IOS_URL}`;
       await Share.share({
-        message: t('referralScreen.shareMessage', { code: stats.referralCode, links }),
+        message: t('referralScreen.shareMessage', { code: referralCode, links }),
         title: t('referral.shareCode'),
       });
     } catch {
       Alert.alert(t('common.error'), t('referralScreen.shareError'));
     }
-  }, [stats?.referralCode, t]);
+  }, [referralCode, t]);
 
   const referredCountLabel = useMemo(() => {
     if (!stats) return '';
@@ -197,13 +206,13 @@ export default function ReferralScreen() {
             <Text style={[styles.rewardDesc, { color: theme.textMuted, textAlign: dir.textAlign }]}>
               {t('referral.rewardAutoDesc')}
             </Text>
-            {(stats?.referralMonthsEarned ?? 0) > 0 && (
+            {stats.referralMonthsEarned > 0 && (
               <View style={[styles.statsBanner, styles.monthsBanner, { flexDirection: dir.row, backgroundColor: theme.accent + '15', borderColor: theme.borderLight }]}>
                 <JitPremium size={16} color={theme.accent} strokeWidth={icon.stroke} />
                 <Text style={[styles.statsBannerText, styles.monthsBannerText, { color: theme.accent, textAlign: dir.textAlign }]}>
-                  {stats?.referralMonthsEarned === 1
+                  {stats.referralMonthsEarned === 1
                     ? t('referral.rewardMonthsEarned_one', { count: 1 })
-                    : t('referral.rewardMonthsEarned_other', { count: stats?.referralMonthsEarned ?? 0 })}
+                    : t('referral.rewardMonthsEarned_other', { count: stats.referralMonthsEarned })}
                 </Text>
               </View>
             )}
@@ -264,12 +273,7 @@ export default function ReferralScreen() {
               {t('referral.howItWorksTitle')}
             </Text>
 
-            {([
-              { icon: Share2, titleKey: 'referral.step1Title', descKey: 'referral.step1Desc' },
-              { icon: JitPersonAdd, titleKey: 'referral.step2Title', descKey: 'referral.step2Desc' },
-              { icon: JitGift, titleKey: 'referral.step3Title', descKey: 'referral.step3Desc' },
-              { icon: Infinity, titleKey: 'referral.step4Title', descKey: 'referral.step4Desc' },
-            ] as const).map((step, idx) => {
+            {REFERRAL_STEPS.map((step, idx) => {
               const Icon = step.icon;
               return (
                 <View key={idx} style={[styles.stepRow, { flexDirection: dir.row }]}>
@@ -277,11 +281,11 @@ export default function ReferralScreen() {
                     <View style={[styles.stepIconWrap, { backgroundColor: theme.accent + '15' }]}>
                       <Icon size={18} color={theme.accent} strokeWidth={icon.stroke} />
                     </View>
-                    {idx < 3 && <View style={[styles.stepLine, { backgroundColor: theme.border }]} />}
+                    {idx < REFERRAL_STEPS.length - 1 && <View style={[styles.stepLine, { backgroundColor: theme.border }]} />}
                   </View>
                   <View style={styles.stepContent}>
                     <Text style={[styles.stepNumber, { color: theme.textMuted, textAlign: dir.textAlign }]}>
-                      {t('onboarding.stepOf', { current: idx + 1, total: 4 })}
+                      {t('onboarding.stepOf', { current: idx + 1, total: REFERRAL_STEPS.length })}
                     </Text>
                     <Text style={[styles.stepTitle, { color: theme.text, textAlign: dir.textAlign }]}>
                       {t(step.titleKey)}

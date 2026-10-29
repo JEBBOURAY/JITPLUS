@@ -3,7 +3,7 @@ import api from '@/services/api';
 import type { ClientDetail } from '@/types';
 import { queryKeys, STALE, GC } from './keys';
 
-export function useClientDetail(id: string | undefined, enabled = true) {
+export function useClientDetail(id: string | undefined) {
   return useQuery<ClientDetail>({
     queryKey: queryKeys.clientDetail(id ?? ''),
     queryFn: async () => {
@@ -12,7 +12,7 @@ export function useClientDetail(id: string | undefined, enabled = true) {
     },
     staleTime: STALE.SHORT,
     gcTime: GC.SHORT,
-    enabled: !!id && enabled,
+    enabled: !!id,
   });
 }
 

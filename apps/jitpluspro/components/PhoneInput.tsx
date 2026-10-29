@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect, useRef, forwardRef } from 'react';
+import { useState, useMemo, useCallback, useEffect, forwardRef } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, StyleProp, ViewStyle, TextInputProps, Animated } from 'react-native';
 import { ChevronDown, Phone } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -62,7 +62,7 @@ const PhoneInput = forwardRef<TextInput, PhoneInputProps>(
     const showError = touched && hasContent && !isPhoneValid && showValidation;
     const showSuccess = hasContent && isPhoneValid;
 
-    const borderAnim = useRef(new Animated.Value(0)).current;
+    const [borderAnim] = useState(() => new Animated.Value(0));
 
     useEffect(() => {
       Animated.timing(borderAnim, {
@@ -195,14 +195,14 @@ const PhoneInput = forwardRef<TextInput, PhoneInputProps>(
         </Animated.View>
 
         <View style={[styles.hintRow, { flexDirection: dir.row }]}>
-          {showValidation && hasContent && showError && (
+          {showError && (
             <Text style={[styles.hintText, { color: theme.danger, textAlign: dir.textAlign }]}>
               {selectedCountry.code === 'MA'
                 ? t('phoneInput.maFormat')
                 : t('phoneInput.digitCount', { count: digitCount, max: maxDigits })}
             </Text>
           )}
-          {showValidation && hasContent && showSuccess && (
+          {showValidation && showSuccess && (
             <Text style={[styles.hintText, { color: theme.success, textAlign: dir.textAlign }]}>
               {selectedCountry.dial} {formatPhoneLocal(parsed.localPart)}
             </Text>
@@ -239,6 +239,8 @@ const PhoneInput = forwardRef<TextInput, PhoneInputProps>(
     );
   },
 );
+
+PhoneInput.displayName = 'PhoneInput';
 
 export default PhoneInput;
 

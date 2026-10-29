@@ -32,6 +32,7 @@ import { RewardManager } from '@/components/settings/RewardManager';
 import InfoHint from '@/components/settings/InfoHint';
 import LoyaltyGuideSheet from '@/components/settings/LoyaltyGuideSheet';
 import LoyaltyCardPreview from '@/components/settings/LoyaltyCardPreview';
+import { surfaceShadow, fieldFill } from '@/components/settings/surface';
 import { DEFAULT_CURRENCY } from '@/config/currency';
 import { MAX_STAMPS_PER_TX } from '@/constants/app';
 import {
@@ -46,16 +47,10 @@ import {
   STAMP_VALIDITY_PRESETS,
 } from '@/utils/stamps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { Merchant } from '@/types';
+import type { Merchant, Reward } from '@/types';
 
 const SIM_AMOUNT = 100;
-
-interface Reward {
-  id: string;
-  titre: string;
-  cout: number;
-  description?: string;
-}
+const HIT_SLOP = { top: 10, bottom: 10, left: 10, right: 10 };
 
 interface SettingsState {
   stampEarningMode: 'PER_VISIT' | 'PER_AMOUNT';
@@ -124,16 +119,6 @@ function confirmAsync(title: string, message: string, cancel: string, confirm: s
   });
 }
 
-/** Light elevation used instead of borders for every surface on this screen. */
-function surfaceShadow(theme: ThemeColors) {
-  return theme.mode === 'dark'
-    ? null
-    : { shadowColor: '#0F172A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 14, elevation: 2 };
-}
-
-function fieldFill(theme: ThemeColors) {
-  return theme.mode === 'dark' ? 'rgba(255,255,255,0.06)' : theme.bgInput;
-}
 
 interface SwitchRowProps {
   theme: ThemeColors;
@@ -393,7 +378,7 @@ export default function SettingsScreen() {
       <View style={[styles.headerBar, { flexDirection: row, paddingTop: insets.top + 12 }]}>
         <TouchableOpacity
           onPress={() => router.back()}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          hitSlop={HIT_SLOP}
           accessibilityRole="button"
           accessibilityLabel={t('common.back')}
         >
@@ -411,7 +396,7 @@ export default function SettingsScreen() {
         </Text>
         <TouchableOpacity
           onPress={openGuide}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          hitSlop={HIT_SLOP}
           accessibilityRole="button"
           accessibilityLabel={t('settingsPage.helpButton')}
         >
@@ -830,10 +815,10 @@ const styles = StyleSheet.create({
     height: ms(88),
     borderRadius: 24,
     backgroundColor: `${palette.violet}18`,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   ownerOnlyTitle: { fontSize: 16, marginTop: 16, fontFamily: font.semibold },
-  ownerOnlyMsg: { textAlign: 'center' as const, marginTop: 8, paddingHorizontal: 32, fontFamily: font.regular },
+  ownerOnlyMsg: { textAlign: 'center', marginTop: 8, paddingHorizontal: 32, fontFamily: font.regular },
   ownerOnlyBtn: { marginTop: 16, paddingHorizontal: 24 },
 });

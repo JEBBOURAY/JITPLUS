@@ -28,7 +28,7 @@ import FichePreviewModal from '@/components/FichePreviewModal';
 import MerchantCategoryIcon from '@/components/MerchantCategoryIcon';
 import { getCategoryLabel } from '@/constants/categories';
 import { resolveImageUrl } from '@/utils/imageUrl';
-import type { Merchant, MerchantCategory, Store } from '@/types';
+import type { Merchant, Store } from '@/types';
 import {
   ScreenHeader, OwnerOnlyNotice, Toast, useToast, useQueuedToast, usePressGuard, surfaceShadow, fieldFill, ui,
 } from '@/components/stores/StoreUi';
@@ -211,7 +211,7 @@ export default function StoresScreen() {
               <Text style={[styles.brandName, { color: theme.text, textAlign: dir.textAlign }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>{merchant.nom}</Text>
               <Text style={[ui.caption, { color: theme.textMuted, textAlign: dir.textAlign }]} numberOfLines={1}>
                 {[merchant.categorie, ...(merchant.secondaryCategories ?? [])]
-                  .map((c) => getCategoryLabel(c as MerchantCategory)).join(' · ')}
+                  .map((c) => getCategoryLabel(c)).join(' · ')}
               </Text>
             </View>
           </TouchableOpacity>

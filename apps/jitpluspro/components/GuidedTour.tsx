@@ -88,8 +88,8 @@ const TourContext = createContext<TourContextValue | null>(null);
 /** Access the tour controls. Returns null outside the provider. */
 export function useTour(): Pick<TourContextValue, 'start'> | null {
   const ctx = useContext(TourContext);
-  if (!ctx) return null;
-  return { start: ctx.start };
+  // Stable identity so callers can list it in hook deps without re-creating callbacks every render.
+  return useMemo(() => (ctx ? { start: ctx.start } : null), [ctx]);
 }
 
 /**
@@ -112,6 +112,18 @@ type Phase = 'idle' | 'intro' | 'steps';
 
 const OVERLAY_STEPS = 'rgba(11,15,20,0.72)';
 const AnimatedRect = Animated.createAnimatedComponent(Rect);
+const HIT_SLOP = { top: 10, bottom: 10, left: 10, right: 10 };
+
+function computeBox(rect: Rectangle, shape: Shape): Box {
+  if (shape === 'circle') {
+    const d = Math.max(rect.width, rect.height) + 16;
+    const cx = rect.x + rect.width / 2;
+    const cy = rect.y + rect.height / 2;
+    return { x: cx - d / 2, y: cy - d / 2, w: d, h: d, r: d / 2 };
+  }
+  const pad = 10;
+  return { x: rect.x - pad, y: rect.y - pad, w: rect.width + pad * 2, h: rect.height + pad * 2, r: 14 };
+}
 
 // ── Provider ──────────────────────────────────────────────
 export function GuidedTourProvider({ children }: { children: ReactNode }) {
@@ -194,15 +206,15 @@ function TourOverlay({
   const rootOffset = useRef({ x: 0, y: 0 });
 
   // Animated values (SVG props can't use the native driver → useNativeDriver:false)
-  const overlayOpacity = useRef(new Animated.Value(0)).current;
-  const spotX = useRef(new Animated.Value(0)).current;
-  const spotY = useRef(new Animated.Value(0)).current;
-  const spotW = useRef(new Animated.Value(0)).current;
-  const spotH = useRef(new Animated.Value(0)).current;
-  const spotR = useRef(new Animated.Value(0)).current;
-  const tipTop = useRef(new Animated.Value(0)).current;
-  const tipLeft = useRef(new Animated.Value(0)).current;
-  const tipOpacity = useRef(new Animated.Value(0)).current;
+  const [overlayOpacity] = useState(() => new Animated.Value(0));
+  const [spotX] = useState(() => new Animated.Value(0));
+  const [spotY] = useState(() => new Animated.Value(0));
+  const [spotW] = useState(() => new Animated.Value(0));
+  const [spotH] = useState(() => new Animated.Value(0));
+  const [spotR] = useState(() => new Animated.Value(0));
+  const [tipTop] = useState(() => new Animated.Value(0));
+  const [tipLeft] = useState(() => new Animated.Value(0));
+  const [tipOpacity] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
     let mounted = true;
@@ -228,16 +240,6 @@ function TourOverlay({
     });
   }, [overlayOpacity, tipOpacity, setPhase]);
 
-  const computeBox = useCallback((rect: Rectangle, shape: Shape): Box => {
-    if (shape === 'circle') {
-      const d = Math.max(rect.width, rect.height) + 16;
-      const cx = rect.x + rect.width / 2;
-      const cy = rect.y + rect.height / 2;
-      return { x: cx - d / 2, y: cy - d / 2, w: d, h: d, r: d / 2 };
-    }
-    const pad = 10;
-    return { x: rect.x - pad, y: rect.y - pad, w: rect.width + pad * 2, h: rect.height + pad * 2, r: 14 };
-  }, []);
 
   // Window position of the overlay itself (0,0 when it fills from the window top).
   const measureRoot = useCallback(
@@ -289,7 +291,7 @@ function TourOverlay({
         Animated.timing(spotR, { toValue: nb.r, duration, easing, useNativeDriver: false }),
       ]).start();
     },
-    [steps, measure, close, computeBox, measureRoot, spotX, spotY, spotW, spotH, spotR],
+    [steps, measure, close, measureRoot, spotX, spotY, spotW, spotH, spotR],
   );
 
   // Fade the overlay in per phase; kick off the first step.
@@ -405,7 +407,7 @@ function TourOverlay({
             </TouchableOpacity>
             <TouchableOpacity
               onPress={close}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              hitSlop={HIT_SLOP}
               accessibilityRole="button"
               accessibilityLabel={t('tour.skipIntro')}
             >
@@ -488,7 +490,7 @@ function TourOverlay({
               <View style={[styles.tipActions, isRTL && styles.rowReverse]}>
                 <TouchableOpacity
                   onPress={close}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  hitSlop={HIT_SLOP}
                   accessibilityRole="button"
                   accessibilityLabel={t('tour.skip')}
                 >

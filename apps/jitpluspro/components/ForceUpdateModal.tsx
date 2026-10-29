@@ -19,6 +19,10 @@ interface Props {
   storeUrl: string;
 }
 
+/** Play Store web URL for a `market://` link; any other URL is returned unchanged. */
+const toWebStoreUrl = (url: string) =>
+  url.replace('market://details?id=', 'https://play.google.com/store/apps/details?id=');
+
 export default function ForceUpdateModal({ status, storeUrl }: Props) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
@@ -27,31 +31,20 @@ export default function ForceUpdateModal({ status, storeUrl }: Props) {
   const isUpdate = status === 'update';
 
   const handleCta = async () => {
-    if (isUpdate) {
+    // For maintenance, no CTA action — user must wait
+    if (!isUpdate) return;
+    try {
+      // On some Android emulators 'market://' scheme fails — fallback to web
+      const canOpen = await Linking.canOpenURL(storeUrl);
+      await Linking.openURL(canOpen ? storeUrl : toWebStoreUrl(storeUrl));
+    } catch {
+      // Fallback: try web store URL if native linking fails
       try {
-        const canOpen = await Linking.canOpenURL(storeUrl);
-        // On some Android emulators 'market://' scheme fails — fallback to web
-        if (canOpen) {
-          await Linking.openURL(storeUrl);
-        } else {
-          const webUrl = storeUrl.startsWith('market://')
-            ? storeUrl.replace('market://details?id=', 'https://play.google.com/store/apps/details?id=')
-            : storeUrl;
-          await Linking.openURL(webUrl);
-        }
+        await Linking.openURL(toWebStoreUrl(storeUrl));
       } catch {
-        // Fallback: try web store URL if native linking fails
-        try {
-          const fallback = Platform.OS === 'android'
-            ? storeUrl.replace('market://details?id=', 'https://play.google.com/store/apps/details?id=')
-            : storeUrl;
-          await Linking.openURL(fallback);
-        } catch {
-          // Nothing more we can do
-        }
+        // Nothing more we can do
       }
     }
-    // For maintenance, no CTA action — user must wait
   };
 
   return (

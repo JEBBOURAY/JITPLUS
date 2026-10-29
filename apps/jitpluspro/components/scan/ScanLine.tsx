@@ -1,10 +1,10 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Animated, Platform, StyleSheet, View } from 'react-native';
 
 const SWEEP_DURATION_MS = 2200;
 
 export const ScanLine = React.memo(function ScanLine({ scanSize, active }: { scanSize: number; active: boolean }) {
-  const translateY = useRef(new Animated.Value(0)).current;
+  const [translateY] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
     if (!active) {

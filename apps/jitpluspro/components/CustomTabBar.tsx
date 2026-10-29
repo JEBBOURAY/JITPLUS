@@ -36,6 +36,11 @@ const TAB_TOUR_KEYS: Record<string, TourTargetKey | undefined> = {
   team:     'team',
 };
 
+const TAB_HIT_SLOP = { top: 8, bottom: 8, left: 4, right: 4 };
+const SCAN_HIT_SLOP = { top: 10, bottom: 10, left: 10, right: 10 };
+const SCAN_GRADIENT_START = { x: 0, y: 0 };
+const SCAN_GRADIENT_END = { x: 1, y: 1 };
+
 // Bar geometry, shared with the WhatsApp button so it lines up over the last tab.
 const BAR_SIDE = 16;
 const BAR_BOTTOM = 18;
@@ -49,18 +54,15 @@ const TabButton = React.memo(function TabButton({
   route,
   isFocused,
   navigation,
-  badge,
   tourKey,
 }: {
   route: { key: string; name: string };
   isFocused: boolean;
   navigation: TabNavigation;
-  badge?: number;
   tourKey?: TourTargetKey;
 }) {
   const theme = useTheme();
   const { t } = useLanguage();
-  const { isRTL } = useDir();
   const tourRef = useTourTarget(tourKey);
 
   const onPress = useCallback(() => {
@@ -81,14 +83,13 @@ const TabButton = React.memo(function TabButton({
   return (
     <TouchableOpacity
       ref={tourRef}
-      key={route.key}
       accessibilityRole="button"
       accessibilityState={isFocused ? { selected: true } : {}}
       accessibilityLabel={label}
       onPress={onPress}
       activeOpacity={0.7}
       style={styles.tab}
-      hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+      hitSlop={TAB_HIT_SLOP}
     >
       {isFocused && (
         <View style={[styles.indicator, { backgroundColor: palette.violet }]} />
@@ -104,11 +105,6 @@ const TabButton = React.memo(function TabButton({
           color={isFocused ? palette.violet : theme.textMuted}
           strokeWidth={icon.stroke}
         />
-        {!!badge && badge > 0 && (
-          <View style={[styles.tabBadge, isRTL ? { left: 2 } : { right: 2 }]}>
-            <Text style={styles.tabBadgeText}>{badge > 99 ? '99+' : badge}</Text>
-          </View>
-        )}
       </View>
       <Text
         style={[
@@ -151,13 +147,13 @@ const ScanButton = React.memo(function ScanButton({
       accessibilityHint={t('tabs.scanHint')}
       onPress={onPress}
       activeOpacity={0.85}
-      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      hitSlop={SCAN_HIT_SLOP}
     >
       <View ref={scanTourRef} collapsable={false} style={styles.scanShadow}>
         <LinearGradient
           colors={[palette.violet, palette.violetDark]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
+          start={SCAN_GRADIENT_START}
+          end={SCAN_GRADIENT_END}
           style={styles.scanFab}
         >
           <JitScan size={26} color="#fff" strokeWidth={icon.stroke} />
@@ -175,15 +171,15 @@ export default React.memo(function CustomTabBar({ state, emitter, navigateToTab 
   const dir = useDir();
   const isDark = theme.mode === 'dark';
 
-  const scanRoute = state.routes.find((r) => r.name === 'scan');
   const scanIndex = state.routes.findIndex((r) => r.name === 'scan');
+  const scanRoute = scanIndex >= 0 ? state.routes[scanIndex] : undefined;
   const scanFocused = state.index === scanIndex;
   const scanLabel = t('tabs.scan');
 
   // The WhatsApp support button floats above the Équipe tab on Accueil only.
   const showSupportFab = state.routes[state.index]?.name === 'index';
   // Only routes that draw a column in the bar, so the button lines up with Équipe.
-  const barRoutes = state.routes.filter((r) => r.name === 'scan' || ICONS[r.name]);
+  const barRoutes = state.routes.filter((r) => ICONS[r.name]);
   const teamColumn = barRoutes.findIndex((r) => r.name === 'team');
 
   const barBg = isDark ? 'rgba(20,24,33,0.72)' : 'rgba(255,255,255,0.72)';
@@ -350,21 +346,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 4,
     borderColor: '#fff',
-  },
-  tabBadge: {
-    position: 'absolute',
-    top: -2,
-    backgroundColor: '#ef4444',
-    borderRadius: 9,
-    minWidth: 18,
-    height: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 4,
-  },
-  tabBadgeText: {
-    color: '#fff',
-    fontSize: 11,
-    fontFamily: font.bold,
   },
 });

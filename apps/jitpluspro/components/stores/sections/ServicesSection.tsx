@@ -121,7 +121,6 @@ export default function ServicesSection({ merchant }: { merchant: Merchant }) {
     saveGallery(next);
   }, [gallery, saveGallery]);
 
-
   return (
     <SectionScreen
       title={t('storesHub.servicesTitle')}

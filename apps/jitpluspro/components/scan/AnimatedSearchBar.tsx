@@ -1,4 +1,4 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useMemo, useState } from 'react';
 import { ActivityIndicator, Animated, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { ArrowRight, ChevronDown, Search, X } from 'lucide-react-native';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -26,7 +26,6 @@ interface Props {
   onBlur: () => void;
   isFocused: boolean;
   isSearching: boolean;
-  inputRef: React.RefObject<TextInput | null>;
   insetTop: number;
   countryIndex: number;
   onToggleCountry: () => void;
@@ -40,14 +39,13 @@ export const AnimatedSearchBar = React.memo(function AnimatedSearchBar({
   onBlur,
   isFocused,
   isSearching,
-  inputRef,
   insetTop,
   countryIndex,
   onToggleCountry,
 }: Props) {
   const { t } = useLanguage();
   const dir = useDir();
-  const barScale = useRef(new Animated.Value(1)).current;
+  const [barScale] = useState(() => new Animated.Value(1));
   const country = COUNTRIES[countryIndex];
 
   const animatedBar = useMemo(() => ({ transform: [{ scale: barScale }] }), [barScale]);
@@ -83,7 +81,6 @@ export const AnimatedSearchBar = React.memo(function AnimatedSearchBar({
           <ChevronDown size={12} color={CHIP_FG} strokeWidth={icon.strokeSmall} />
         </TouchableOpacity>
         <TextInput
-          ref={inputRef}
           style={[styles.searchInput, { textAlign: dir.textAlign }]}
           value={value}
           onChangeText={onChangeText}

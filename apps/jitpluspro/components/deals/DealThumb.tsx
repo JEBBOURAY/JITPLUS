@@ -11,7 +11,7 @@ const HEX = /^#[0-9A-Fa-f]{6}$/;
 const FALLBACK_EMOJI = CATEGORY_EMOJI.AUTRE;
 
 /** Merchant theme color, else the brand violet (same rule as the client app's getMerchantAccent). */
-export function dealAccent(themeColor?: string | null): string {
+function dealAccent(themeColor?: string | null): string {
   return themeColor && HEX.test(themeColor) ? themeColor : palette.violet;
 }
 

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -56,6 +56,7 @@ const UPGRADE_EMAIL = process.env.EXPO_PUBLIC_SUPPORT_EMAIL || 'contact@jitplus.
 // comparison table remains visible as purely informational content.
 const IS_IOS = Platform.OS === 'ios';
 const HIT_SLOP = { top: 10, bottom: 10, left: 10, right: 10 };
+const WHATSAPP_GREEN = '#25D366';
 
 interface FeatureRow {
   icon: React.ReactNode;
@@ -74,8 +75,7 @@ export default function PlanScreen() {
 
   const { data: planInfo, isLoading: loading, isRefetching, refetch, error: planError } = usePlan();
   const { data: referral } = useReferral(!isTeamMember);
-  const applyReferralMutation = useApplyReferralMonths();
-  const [applyingMonths, setApplyingMonths] = useState(false);
+  const { mutateAsync: applyReferralMonths, isPending: applyingMonths } = useApplyReferralMonths();
 
   const onRefresh = useCallback(async () => {
     hapticLight();
@@ -97,21 +97,18 @@ export default function PlanScreen() {
         {
           text: t('account.planReferralAlertConfirm'),
           onPress: async () => {
-            setApplyingMonths(true);
             try {
-              await applyReferralMutation.mutateAsync();
+              await applyReferralMonths();
               hapticSuccess();
               Alert.alert(t('account.planReferralSuccess'), t('account.planReferralSuccessMsg'));
             } catch (e) {
               Alert.alert(t('common.error'), getErrorMessage(e, t('common.genericError')));
-            } finally {
-              setApplyingMonths(false);
             }
           },
         },
       ],
     );
-  }, [referral, t, applyReferralMutation]);
+  }, [referral, t, applyReferralMonths]);
 
   const handleContactWhatsApp = useCallback(async () => {
     hapticLight();
@@ -151,9 +148,10 @@ export default function PlanScreen() {
   const { isPremium, isTrial, isAdminPremium: isAdminActivated, trialProgress: elapsedProgress, trialTotalDays } = usePlanStatus(planInfo);
   const trialProgress = elapsedProgress === null ? 0 : 1 - elapsedProgress;
 
+  const planExpiresAt = planInfo?.planExpiresAt;
   const expiryDateLabel = useMemo(() => {
-    if (!planInfo?.planExpiresAt) return '—';
-    const d = new Date(planInfo.planExpiresAt);
+    if (!planExpiresAt) return '—';
+    const d = new Date(planExpiresAt);
     if (isNaN(d.getTime())) return '—';
     try {
       return d.toLocaleDateString(locale === 'ar' ? 'ar-MA' : locale, {
@@ -164,7 +162,27 @@ export default function PlanScreen() {
     } catch {
       return d.toISOString().slice(0, 10);
     }
-  }, [planInfo?.planExpiresAt, locale]);
+  }, [planExpiresAt, locale]);
+
+  const planBadgeLabel = isTrial
+    ? t('account.planTrial')
+    : isPremium
+    ? t('account.planTablePro')
+    : t('account.planTableFree');
+
+  const referralMonths = referral?.referralMonthsEarned ?? 0;
+  const referralTitle = t(
+    referralMonths === 1 ? 'account.planReferralTitle_one' : 'account.planReferralTitle_other',
+    { count: referralMonths },
+  );
+
+  const describeCell = (value: string | boolean) =>
+    typeof value === 'boolean' ? (value ? t('common.included') : t('common.notIncluded')) : value;
+
+  const goBack = useCallback(() => {
+    hapticLight();
+    router.back();
+  }, [router]);
 
   const features: FeatureRow[] = useMemo(
     () => [
@@ -242,10 +260,7 @@ export default function PlanScreen() {
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
       <View style={[styles.headerBar, { flexDirection: dir.row, paddingTop: insets.top + 12 }]}>
         <TouchableOpacity
-          onPress={() => {
-            hapticLight();
-            router.back();
-          }}
+          onPress={goBack}
           style={styles.backBtn}
           hitSlop={HIT_SLOP}
           accessibilityRole="button"
@@ -329,13 +344,7 @@ export default function PlanScreen() {
             style={[styles.heroCard, { borderColor: isPremium ? 'transparent' : theme.border }]}
             accessible
             accessibilityRole="summary"
-            accessibilityLabel={
-              isTrial
-                ? t('account.planTrial')
-                : isPremium
-                ? t('account.planTablePro')
-                : t('account.planTableFree')
-            }
+            accessibilityLabel={planBadgeLabel}
           >
             <View
               style={[
@@ -351,7 +360,7 @@ export default function PlanScreen() {
                 style={[styles.heroBadgeText, { color: isPremium ? palette.gold : theme.textMuted }]}
                 maxFontSizeMultiplier={1.3}
               >
-                {isTrial ? t('account.planTrial') : isPremium ? t('account.planTablePro') : t('account.planTableFree')}
+                {planBadgeLabel}
               </Text>
             </View>
 
@@ -370,9 +379,9 @@ export default function PlanScreen() {
                 style={[styles.heroSub, { color: isPremium ? 'rgba(255,255,255,0.72)' : theme.textMuted, textAlign: dir.textAlign }]}
                 maxFontSizeMultiplier={1.4}
               >
-                {(isAdminActivated && !planInfo?.planExpiresAt)
+                {(isAdminActivated && !planExpiresAt)
                   ? t('account.planHeroSubUnlimited')
-                  : (isAdminActivated && planInfo?.planExpiresAt)
+                  : (isAdminActivated && planExpiresAt)
                   ? t('account.planHeroSubValidUntil', { date: expiryDateLabel })
                   : isTrial
                   ? t(planInfo?.daysRemaining === 1 ? 'account.planHeroSubTrialDays_one' : 'account.planHeroSubTrialDays_other', { count: planInfo?.daysRemaining ?? 0 })
@@ -392,14 +401,14 @@ export default function PlanScreen() {
               </View>
             )}
 
-            {!!isAdminActivated && !!planInfo?.planExpiresAt && planInfo?.daysRemaining != null && (
+            {!!isAdminActivated && !!planExpiresAt && planInfo?.daysRemaining != null && (
               <View style={[styles.expiryChip, { alignSelf: dir.alignStart }]}>
                 <Text style={styles.expiryChipText} maxFontSizeMultiplier={1.3}>{t('account.planExpiryDaysChip', { count: planInfo.daysRemaining })}</Text>
               </View>
             )}
           </LinearGradient>
 
-          {!isPremium && referral && referral.referralMonthsEarned > 0 && (
+          {!isPremium && referralMonths > 0 && (
             <TouchableOpacity
               style={[
                 styles.referralCard,
@@ -411,7 +420,7 @@ export default function PlanScreen() {
               activeOpacity={0.8}
               accessibilityRole="button"
               accessibilityState={{ disabled: applyingMonths, busy: applyingMonths }}
-              accessibilityLabel={t(referral.referralMonthsEarned === 1 ? 'account.planReferralTitle_one' : 'account.planReferralTitle_other', { count: referral.referralMonthsEarned })}
+              accessibilityLabel={referralTitle}
               accessibilityHint={t('account.planReferralSub')}
             >
               {applyingMonths ? (
@@ -426,7 +435,7 @@ export default function PlanScreen() {
                       style={[styles.referralTitle, { color: palette.cyan, textAlign: dir.textAlign }]}
                       maxFontSizeMultiplier={1.4}
                     >
-                      {t(referral.referralMonthsEarned === 1 ? 'account.planReferralTitle_one' : 'account.planReferralTitle_other', { count: referral.referralMonthsEarned })}
+                      {referralTitle}
                     </Text>
                     <Text
                       style={[styles.referralSub, { color: theme.textMuted, textAlign: dir.textAlign }]}
@@ -472,7 +481,7 @@ export default function PlanScreen() {
                     i < features.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.border },
                   ]}
                   accessible
-                  accessibilityLabel={`${f.label}. ${t('account.planTableFree')}: ${typeof f.free === 'boolean' ? (f.free ? t('common.included') : t('common.notIncluded')) : f.free}. ${t('account.planTablePro')}: ${typeof f.premium === 'boolean' ? (f.premium ? t('common.included') : t('common.notIncluded')) : f.premium}.`}
+                  accessibilityLabel={`${f.label}. ${t('account.planTableFree')}: ${describeCell(f.free)}. ${t('account.planTablePro')}: ${describeCell(f.premium)}.`}
                 >
                   <View style={[styles.rowLabel, { flexDirection: dir.row }]}>
                     {f.icon}
@@ -511,15 +520,15 @@ export default function PlanScreen() {
               </Text>
 
               <TouchableOpacity
-                style={[styles.btnOutline, { flexDirection: dir.row, backgroundColor: '#25D36610', borderColor: '#25D36650' }]}
+                style={[styles.btnOutline, { flexDirection: dir.row, backgroundColor: WHATSAPP_GREEN + '10', borderColor: WHATSAPP_GREEN + '50' }]}
                 onPress={handleContactWhatsApp}
                 activeOpacity={0.75}
                 accessibilityRole="button"
                 accessibilityLabel={t('account.planWhatsapp')}
                 accessibilityHint={t('account.planWhatsappSub')}
               >
-                <View style={[styles.btnIcon, { backgroundColor: '#25D36622' }]}>
-                  <MessageCircle size={17} color="#25D366" strokeWidth={icon.stroke} />
+                <View style={[styles.btnIcon, { backgroundColor: WHATSAPP_GREEN + '22' }]}>
+                  <MessageCircle size={17} color={WHATSAPP_GREEN} strokeWidth={icon.stroke} />
                 </View>
                 <View style={styles.flex1}>
                   <Text

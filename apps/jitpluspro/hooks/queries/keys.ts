@@ -38,7 +38,7 @@ export const STALE = {
   SLOW: 5 * 60 * 1000,
 } as const;
 
-// Per-client queries are dropped soon after leaving the screen instead of the default 24h cache.
+// Per-client queries are dropped soon after leaving the screen instead of the default 4h cache (gcTime in app/_layout.tsx).
 export const GC = {
   FAST: 5 * 60 * 1000,
   SHORT: 10 * 60 * 1000,

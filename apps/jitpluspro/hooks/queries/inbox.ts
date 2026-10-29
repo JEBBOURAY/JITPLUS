@@ -1,4 +1,4 @@
-import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useInfiniteQuery, useMutation, useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import api from '@/services/api';
 import { queryKeys, STALE } from './keys';
 
@@ -32,7 +32,7 @@ interface AdminNotificationsPage {
 
 const INBOX_PAGE_SIZE = 20;
 
-export function useAdminNotifications(enabled = true) {
+export function useAdminNotifications() {
   return useInfiniteQuery<AdminNotificationsPage>({
     queryKey: [...queryKeys.adminNotifications, 'feed'],
     queryFn: async ({ pageParam }) => {
@@ -47,11 +47,10 @@ export function useAdminNotifications(enabled = true) {
         ? lastPage.pagination.page + 1
         : undefined,
     staleTime: STALE.MEDIUM,
-    enabled,
   });
 }
 
-export function useAdminNotifUnreadCount(enabled = true) {
+export function useAdminNotifUnreadCount() {
   return useQuery<{ count: number }>({
     queryKey: queryKeys.adminNotifUnreadCount,
     queryFn: async () => {
@@ -59,17 +58,14 @@ export function useAdminNotifUnreadCount(enabled = true) {
       return res.data;
     },
     staleTime: STALE.FAST,
-    enabled,
   });
 }
-
-type InboxCache = { pages: AdminNotificationsPage[]; pageParams: unknown[] };
 
 function patchInboxCache(
   qc: ReturnType<typeof useQueryClient>,
   update: (n: AdminNotification) => AdminNotification,
 ) {
-  qc.setQueriesData<InboxCache>({ queryKey: queryKeys.adminNotifications }, (old) => {
+  qc.setQueriesData<InfiniteData<AdminNotificationsPage>>({ queryKey: queryKeys.adminNotifications }, (old) => {
     if (!old?.pages) return old;
     return {
       ...old,

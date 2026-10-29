@@ -140,6 +140,47 @@ describe('DealsClientService.feed', () => {
   });
 });
 
+describe('DealsClientService.categoryCounts', () => {
+  const sqlOf = (prisma: any) => {
+    const [strings, ...values] = prisma.$queryRaw.mock.calls[0];
+    return { sql: (strings as string[]).join('?'), values: JSON.stringify(values) };
+  };
+
+  it('maps the SQL rows to known categories only', async () => {
+    const { prisma, service } = setup();
+    prisma.$queryRaw.mockResolvedValue([
+      { category: 'CAFE', count: 3 },
+      { category: 'RESTAURANT', count: 1 },
+      { category: 'NOT_A_CATEGORY', count: 9 },
+    ]);
+    expect(await service.categoryCounts(CLIENT, { tab: 'new' })).toEqual({ counts: { CAFE: 3, RESTAURANT: 1 } });
+  });
+
+  it('online tab counts ONLINE deals only, without blocked merchants', async () => {
+    const { prisma, service } = setup();
+    prisma.clientMerchantBlock.findMany.mockResolvedValue([{ merchantId: 'blocked' }]);
+    await service.categoryCounts(CLIENT, { tab: 'online', cityKey: 'rabat' });
+    const { values } = sqlOf(prisma);
+    expect(values).toContain("d.scope = 'ONLINE'");
+    expect(values).toContain('blocked');
+    expect(values).not.toContain('rabat');
+  });
+
+  it('nearby with a position looks at the stores around it', async () => {
+    const { prisma, service } = setup();
+    await service.categoryCounts(CLIENT, { tab: 'nearby', lat: 34.02, lng: -6.84 });
+    expect(sqlOf(prisma).values).toContain('FROM stores s');
+  });
+
+  it('ending tab keeps the city and adds the ending window', async () => {
+    const { prisma, service } = setup();
+    await service.categoryCounts(CLIENT, { tab: 'ending', cityKey: 'rabat' });
+    const { values } = sqlOf(prisma);
+    expect(values).toContain('rabat');
+    expect(values).toContain('d.ends_at <=');
+  });
+});
+
 describe('DealsClientService.detail', () => {
   it('counts one view per client and hides the link of an ended deal', async () => {
     const { prisma, service } = setup();

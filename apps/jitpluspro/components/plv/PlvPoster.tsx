@@ -47,7 +47,6 @@ interface PlvPosterProps {
   t: ReturnType<typeof useLanguage>['t'];
 }
 
-
 function shade(hex: string, amount: number): string {
   const n = parseInt(hex.slice(1), 16);
   const mix = (c: number) => Math.round(amount < 0 ? c * (1 + amount) : c + (255 - c) * amount);

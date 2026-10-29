@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useCallback, useRef, useMemo, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useCallback, useMemo, ReactNode } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
@@ -12,11 +12,10 @@ import api, { onUnauthorized, resetApiTokenCache } from '@/services/api';
 import { sendMerchantPushToken, resetMerchantPushTokenCache } from '@/services/merchantPushToken';
 import { getErrorMessage } from '@/utils/error';
 import { logInfo, logWarn, logError } from '@/utils/devLogger';
+import { captureException } from '@/utils/sentry';
 import i18n from '@/i18n';
 import { Merchant, LoginCredentials, AuthResponse, TeamMember } from '@/types';
 import { useAuthStore } from '@/stores/authStore';
-
-const getNotifications = loadNotifications;
 
 const isNetworkFailure = (e: unknown): boolean => {
   const err = e as { isAxiosError?: boolean; response?: unknown } | null;
@@ -50,6 +49,12 @@ const getDeviceInfo = () => {
   return { deviceName, deviceOS };
 };
 
+/** SecureStore keys of a persisted session. */
+const SESSION_KEYS = ['accessToken', 'refreshToken', 'sessionId', 'rememberMe', 'userType', 'teamMember'];
+
+const clearStoredSession = (extraKeys: string[] = []) =>
+  Promise.allSettled([...SESSION_KEYS, ...extraKeys].map((key) => SecureStore.deleteItemAsync(key)));
+
 const getOrCreateDeviceId = async (): Promise<string> => {
   let deviceId = await SecureStore.getItemAsync('deviceId');
   if (!deviceId) {
@@ -72,7 +77,7 @@ const registerPushToken = async (promptIfNeeded = false) => {
       return;
     }
 
-    const Notif = getNotifications();
+    const Notif = loadNotifications();
     if (!Notif) {
       logInfo('Push', 'Notifications non disponibles, skip');
       return;
@@ -126,7 +131,6 @@ const registerPushToken = async (promptIfNeeded = false) => {
       logWarn('Push', 'Expo token unavailable, skipping push registration:', e);
       return;
     }
-    logInfo('Push', 'Token:', pushToken);
 
     const language = await AsyncStorage.getItem('jitpluspro_language') || 'fr';
 
@@ -138,13 +142,19 @@ const registerPushToken = async (promptIfNeeded = false) => {
   }
 };
 
+/** Fire-and-forget push registration: failures are reported, never thrown. */
+const registerPushTokenInBackground = () => {
+  registerPushToken(true).catch((err) => {
+    logWarn('Auth', 'Push token registration failed:', err);
+    if (!__DEV__) captureException(err, { tags: { source: 'push-registration' } });
+  });
+};
+
 interface AuthContextData {
   merchant: Merchant | null;
   loading: boolean;
-  token: string | null;
   isTeamMember: boolean;
   teamMember: TeamMember | null;
-  onboardingCompleted: boolean;
   signIn: (credentials: LoginCredentials, rememberMe?: boolean) => Promise<void>;
   register: (data: RegisterData) => Promise<void>;
   googleLogin: (idToken: string) => Promise<{ success: boolean; error?: string; rawError?: unknown }>;
@@ -154,7 +164,6 @@ interface AuthContextData {
   signOut: () => Promise<void>;
   loadProfile: () => Promise<Merchant | null>;
   updateMerchant: (data: Partial<Merchant>) => void;
-  completeOnboarding: () => Promise<void>;
 }
 
 /** Actions-only slice — stable across re-renders. */
@@ -169,14 +178,10 @@ type AuthActions = Pick<
   | 'signOut'
   | 'loadProfile'
   | 'updateMerchant'
-  | 'completeOnboarding'
 >;
 
 /** State-only slice — read directly from Zustand. */
-type AuthStateSlice = Pick<
-  AuthContextData,
-  'merchant' | 'token' | 'loading' | 'isTeamMember' | 'teamMember' | 'onboardingCompleted'
->;
+type AuthStateSlice = Pick<AuthContextData, 'merchant' | 'loading' | 'isTeamMember' | 'teamMember'>;
 
 /** Shared business/store fields collected during any registration flow (email, Google, Apple). */
 interface BusinessProfileData {
@@ -221,9 +226,7 @@ const AuthActionsContext = createContext<AuthActions | null>(null);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const queryClient = useQueryClient();
-  const queryClientRef = useRef(queryClient);
-  queryClientRef.current = queryClient;
-  const { merchant, token, loading, isTeamMember, teamMember, onboardingCompleted } = useAuthState();
+  const { merchant, loading, isTeamMember, teamMember } = useAuthState();
 
   const signOut = useCallback(async () => {
     try {
@@ -233,23 +236,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // Fire-and-forget — don't block local cleanup on server response
       api.post('/auth/logout').catch(() => {});
       resetApiTokenCache();
-      await Promise.allSettled([
-        SecureStore.deleteItemAsync('accessToken'),
-        SecureStore.deleteItemAsync('refreshToken'),
-        SecureStore.deleteItemAsync('sessionId'),
-        SecureStore.deleteItemAsync('rememberMe'),
-        SecureStore.deleteItemAsync('userType'),
-        SecureStore.deleteItemAsync('teamMember'),
-        SecureStore.deleteItemAsync('onboardingCompleted'),
-      ]);
-      queryClientRef.current.clear();
+      await clearStoredSession(['onboardingCompleted']);
+      queryClient.clear();
       await AsyncStorage.removeItem('jitpluspro-query-cache').catch(() => {});
       useAuthStore.getState().reset();
       useAuthStore.getState().setLoading(false);
     } catch (error) {
       logError('Auth', 'Erreur lors de la déconnexion:', error);
     }
-  }, []);
+  }, [queryClient]);
 
   const loadProfile = useCallback(async (): Promise<Merchant | null> => {
     try {
@@ -317,15 +312,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               useAuthStore.getState().setOnboardingCompleted(false);
               await SecureStore.deleteItemAsync('onboardingCompleted');
             }
-            registerPushToken(true).catch((err) => {
-              logWarn('Auth', 'Push token registration failed:', err);
-              if (!__DEV__) {
-                try {
-                  const Sentry = require('@sentry/react-native');
-                  Sentry.captureException(err, { tags: { source: 'push-registration' } });
-                } catch {}
-              }
-            });
+            registerPushTokenInBackground();
           } catch (e) {
             logWarn(
               'Auth',
@@ -337,14 +324,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           }
         } else if (storedToken) {
           resetApiTokenCache();
-          await Promise.allSettled([
-            SecureStore.deleteItemAsync('accessToken'),
-            SecureStore.deleteItemAsync('refreshToken'),
-            SecureStore.deleteItemAsync('sessionId'),
-            SecureStore.deleteItemAsync('rememberMe'),
-            SecureStore.deleteItemAsync('userType'),
-            SecureStore.deleteItemAsync('teamMember'),
-          ]);
+          await clearStoredSession();
           s.reset();
         }
       } catch (error) {
@@ -410,15 +390,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       await SecureStore.deleteItemAsync('onboardingCompleted');
     }
 
-    registerPushToken(true).catch((err) => {
-      logWarn('Auth', 'Push token registration failed:', err);
-      if (!__DEV__) {
-        try {
-          const Sentry = require('@sentry/react-native');
-          Sentry.captureException(err, { tags: { source: 'push-registration' } });
-        } catch {}
-      }
-    });
+    registerPushTokenInBackground();
   }, []);
 
   const signIn = useCallback(async (credentials: LoginCredentials, rememberMe = false) => {
@@ -573,18 +545,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, [handleAuthSuccess]);
 
-  const completeOnboarding = useCallback(async () => {
-    try {
-      await api.patch('/merchant/complete-onboarding');
-      await SecureStore.setItemAsync('onboardingCompleted', 'true');
-      useAuthStore.getState().setOnboardingCompleted(true);
-    } catch (error) {
-      logWarn('Auth', 'completeOnboarding API error:', error);
-      // Still update local state so user isn't stuck, backend will sync on next login
-      await SecureStore.setItemAsync('onboardingCompleted', 'true');
-      useAuthStore.getState().setOnboardingCompleted(true);
-    }
-  }, []);
 
   const updateMerchant = useCallback((data: Partial<Merchant>) => {
     useAuthStore.getState().updateMerchant(data);
@@ -592,11 +552,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const contextValue = useMemo<AuthContextData>(() => ({
     merchant,
-    token,
     loading,
     isTeamMember,
     teamMember,
-    onboardingCompleted,
     signIn,
     register,
     googleLogin,
@@ -606,8 +564,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     signOut,
     loadProfile,
     updateMerchant,
-    completeOnboarding,
-  }), [merchant, token, loading, isTeamMember, teamMember, onboardingCompleted, signIn, register, googleLogin, appleLogin, googleRegister, appleRegister, signOut, loadProfile, updateMerchant, completeOnboarding]);
+  }), [merchant, loading, isTeamMember, teamMember, signIn, register, googleLogin, appleLogin, googleRegister, appleRegister, signOut, loadProfile, updateMerchant]);
 
   // Actions-only value: stable identity across state changes. Consumers using
   // useAuthActions() never re-render on auth state mutations.
@@ -621,8 +578,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     signOut,
     loadProfile,
     updateMerchant,
-    completeOnboarding,
-  }), [signIn, register, googleLogin, appleLogin, googleRegister, appleRegister, signOut, loadProfile, updateMerchant, completeOnboarding]);
+  }), [signIn, register, googleLogin, appleLogin, googleRegister, appleRegister, signOut, loadProfile, updateMerchant]);
 
   return (
     <AuthActionsContext.Provider value={actionsValue}>
@@ -659,10 +615,8 @@ export const useAuthState = (): AuthStateSlice =>
   useAuthStore(
     useShallow((s) => ({
       merchant: s.merchant,
-      token: s.token,
       loading: s.loading,
       isTeamMember: s.isTeamMember,
       teamMember: s.teamMember,
-      onboardingCompleted: s.onboardingCompleted,
     })),
   );

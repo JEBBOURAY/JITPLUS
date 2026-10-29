@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -38,6 +38,19 @@ type LoginErrorType = 'none' | 'credentials' | 'generic';
 
 const EMAIL_ANIM_DURATION = 250;
 
+/** First field among `keys` holding a positive number (or numeric string). */
+function readPositiveField(data: Record<string, unknown>, keys: string[]): number | null {
+  for (const key of keys) {
+    const raw = data[key];
+    if (typeof raw === 'number' && raw > 0) return raw;
+    if (typeof raw === 'string') {
+      const val = Number(raw);
+      if (Number.isFinite(val) && val > 0) return val;
+    }
+  }
+  return null;
+}
+
 function parseRetryAfterMs(error: unknown): number | null {
   const err = error as {
     response?: {
@@ -67,35 +80,14 @@ function parseRetryAfterMs(error: unknown): number | null {
 
   const data = err?.response?.data ?? {};
 
-  const msFields = ['retryAfterMs', 'retry_after_ms'];
-  for (const key of msFields) {
-    const raw = data[key];
-    if (typeof raw === 'number' && raw > 0) return raw;
-    if (typeof raw === 'string') {
-      const val = Number(raw);
-      if (Number.isFinite(val) && val > 0) return val;
-    }
-  }
+  const retryMs = readPositiveField(data, ['retryAfterMs', 'retry_after_ms']);
+  if (retryMs !== null) return retryMs;
 
-  const secFields = ['retryAfter', 'retry_after', 'retryAfterSeconds', 'retry_after_seconds', 'waitSeconds'];
-  for (const key of secFields) {
-    const raw = data[key];
-    if (typeof raw === 'number' && raw > 0) return raw * 1000;
-    if (typeof raw === 'string') {
-      const val = Number(raw);
-      if (Number.isFinite(val) && val > 0) return val * 1000;
-    }
-  }
+  const retrySec = readPositiveField(data, ['retryAfter', 'retry_after', 'retryAfterSeconds', 'retry_after_seconds', 'waitSeconds']);
+  if (retrySec !== null) return retrySec * 1000;
 
-  const minuteFields = ['waitMinutes', 'wait_minutes'];
-  for (const key of minuteFields) {
-    const raw = data[key];
-    if (typeof raw === 'number' && raw > 0) return raw * 60 * 1000;
-    if (typeof raw === 'string') {
-      const val = Number(raw);
-      if (Number.isFinite(val) && val > 0) return val * 60 * 1000;
-    }
-  }
+  const retryMin = readPositiveField(data, ['waitMinutes', 'wait_minutes']);
+  if (retryMin !== null) return retryMin * 60 * 1000;
 
   const message = typeof data.message === 'string' ? data.message : '';
   const minMatch = message.match(/(\d+)\s*(min|minute|minutes)/i);
@@ -131,10 +123,10 @@ export default function LoginScreen() {
   const [focusedField, setFocusedField] = useState<'email' | 'password' | null>(null);
 
   const [formMounted, setFormMounted] = useState(false);
-  const emailFormAnim = useRef(new Animated.Value(0)).current;
+  const [emailFormAnim] = useState(() => new Animated.Value(0));
 
-  const logoAnim = useRef(new Animated.Value(0)).current;
-  const cardAnim = useRef(new Animated.Value(0)).current;
+  const [logoAnim] = useState(() => new Animated.Value(0));
+  const [cardAnim] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
     const anim = Animated.stagger(130, [
@@ -143,8 +135,7 @@ export default function LoginScreen() {
     ]);
     anim.start();
     return () => anim.stop();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [logoAnim, cardAnim]);
 
   useEffect(() => {
     const applyOnline = (state: { isConnected: boolean | null; isInternetReachable: boolean | null }) => {
@@ -156,11 +147,9 @@ export default function LoginScreen() {
     return unsubscribe;
   }, []);
 
+  // update() zeroes rateRemainingSec before clearing rateLimitedUntil, so no reset is needed here.
   useEffect(() => {
-    if (!rateLimitedUntil) {
-      setRateRemainingSec(0);
-      return;
-    }
+    if (!rateLimitedUntil) return;
 
     const update = () => {
       const remaining = Math.max(0, Math.ceil((rateLimitedUntil - Date.now()) / 1000));
@@ -173,9 +162,7 @@ export default function LoginScreen() {
     return () => clearInterval(timer);
   }, [rateLimitedUntil]);
 
-  const emailValid = useMemo(() => isValidEmail(email.trim()), [email]);
-  const passwordValid = useMemo(() => password.length > 0, [password]);
-  const canSubmit = emailValid && passwordValid;
+  const canSubmit = isValidEmail(email) && password.length > 0;
   const isRateLimited = rateRemainingSec > 0;
 
   const clearCredentialError = useCallback(() => {
@@ -241,17 +228,6 @@ export default function LoginScreen() {
     setErrorMessage('');
 
     const trimmedEmail = email.trim().toLowerCase();
-    if (!trimmedEmail || !password) {
-      setLoginErrorType('generic');
-      setErrorMessage(t('login.fillAll'));
-      return;
-    }
-
-    if (!isValidEmail(trimmedEmail)) {
-      setLoginErrorType('generic');
-      setErrorMessage(t('login.invalidEmail'));
-      return;
-    }
 
     setIsLoading(true);
     try {
@@ -302,7 +278,7 @@ export default function LoginScreen() {
   const hasCredentialError = loginErrorType === 'credentials';
   const showInlineError = loginErrorType !== 'none' && !!errorMessage;
 
-  const rateMinutesLabel = useMemo(() => Math.max(1, Math.ceil(rateRemainingSec / 60)), [rateRemainingSec]);
+  const rateMinutesLabel = Math.max(1, Math.ceil(rateRemainingSec / 60));
 
   const fieldStyle = useCallback((field: 'email' | 'password') => {
     const isFocused = focusedField === field;

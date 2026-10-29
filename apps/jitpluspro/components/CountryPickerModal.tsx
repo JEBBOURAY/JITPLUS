@@ -15,6 +15,12 @@ import { useDir } from '@/hooks/useDir';
 import { font, icon } from '@/constants/design';
 import { radius } from '@/utils/responsive';
 
+type Country = (typeof COUNTRIES)[number];
+
+const ROW_HEIGHT = 52;
+const keyExtractor = (item: Country) => item.code;
+const getItemLayout = (_: unknown, index: number) => ({ length: ROW_HEIGHT, offset: ROW_HEIGHT * index, index });
+
 interface CountryPickerModalProps {
   visible: boolean;
   selectedCode: string;
@@ -42,7 +48,7 @@ export default function CountryPickerModal({
     );
   }, [search]);
 
-  const renderCountry = useCallback(({ item }: { item: (typeof COUNTRIES)[number] }) => {
+  const renderCountry = useCallback(({ item }: { item: Country }) => {
     const isSelected = item.code === selectedCode;
     return (
       <TouchableOpacity
@@ -109,9 +115,9 @@ export default function CountryPickerModal({
         </View>
         <FlatList
           data={filtered}
-          keyExtractor={(item) => item.code}
+          keyExtractor={keyExtractor}
           keyboardShouldPersistTaps="handled"
-          getItemLayout={(_, index) => ({ length: 52, offset: 52 * index, index })}
+          getItemLayout={getItemLayout}
           maxToRenderPerBatch={15}
           windowSize={7}
           renderItem={renderCountry}

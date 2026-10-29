@@ -579,6 +579,8 @@ export const FicheAbout = memo(function FicheAbout({ accent, description, badges
 
 // ── Gallery ─────────────────────────────────────────────────────────────────
 
+const galleryKey = (url: string, i: number) => `${url}-${i}`;
+
 function GalleryViewer({ images, initialIndex, onClose }: { images: string[]; initialIndex: number; onClose: () => void }) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -588,6 +590,17 @@ function GalleryViewer({ images, initialIndex, onClose }: { images: string[]; in
     setIndex(Math.round(e.nativeEvent.contentOffset.x / width));
   }, [width]);
   const getItemLayout = useCallback((_: unknown, i: number) => ({ length: width, offset: width * i, index: i }), [width]);
+  const renderItem = useCallback(({ item }: { item: string }) => (
+    <View style={{ width, height, justifyContent: 'center' }}>
+      <ExpoImage
+        source={resolveImageUrl(item)}
+        style={{ width, height: height * 0.78 }}
+        contentFit="contain"
+        cachePolicy="memory-disk"
+        recyclingKey={item}
+      />
+    </View>
+  ), [width, height]);
 
   return (
     <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
@@ -600,21 +613,11 @@ function GalleryViewer({ images, initialIndex, onClose }: { images: string[]; in
           initialScrollIndex={initialIndex}
           getItemLayout={getItemLayout}
           onMomentumScrollEnd={onMomentumEnd}
-          keyExtractor={(url, i) => `${url}-${i}`}
+          keyExtractor={galleryKey}
           windowSize={3}
           initialNumToRender={1}
           maxToRenderPerBatch={2}
-          renderItem={({ item }) => (
-            <View style={{ width, height, justifyContent: 'center' }}>
-              <ExpoImage
-                source={resolveImageUrl(item)}
-                style={{ width, height: height * 0.78 }}
-                contentFit="contain"
-                cachePolicy="memory-disk"
-                recyclingKey={item}
-              />
-            </View>
-          )}
+          renderItem={renderItem}
         />
         <View style={[s.viewerTop, { top: insets.top + hp(8) }]} pointerEvents="box-none">
           <View style={s.viewerCounter}>

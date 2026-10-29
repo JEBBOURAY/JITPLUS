@@ -1,6 +1,6 @@
 /**
  * SafeMapView — Wrapper autour de react-native-maps qui ne crash pas dans Expo Go.
- * - Dev build / standalone: Affiche Google Maps (Android) / Apple Maps (iOS)
+ * - Dev build / standalone: Affiche Google Maps (Android et iOS)
  * - Expo Go: react-native-maps n'est pas disponible → graceful text fallback
  *   avec bouton « Ouvrir dans Maps » pour chaque boutique.
  */
@@ -13,6 +13,8 @@ import {
   TouchableOpacity,
   Platform,
   NativeModules,
+  type StyleProp,
+  type ViewStyle,
 } from 'react-native';
 import { requireOptionalNativeModule } from 'expo';
 import { ExternalLink, Navigation } from 'lucide-react-native';
@@ -22,8 +24,9 @@ import { palette } from '@/contexts/ThemeContext';
 import { logInfo, logWarn } from '@/utils/devLogger';
 
 /* ---------- Chargement conditionnel de react-native-maps ---------- */
-let RNMapView: React.ComponentType<any> | null = null;
-let RNMarker: React.ComponentType<any> | null = null;
+type LooseComponent = React.ComponentType<Record<string, unknown>>;
+let RNMapView: LooseComponent | null = null;
+let RNMarker: LooseComponent | null = null;
 let RN_PROVIDER_GOOGLE: string | null = null;
 
 /**
@@ -50,6 +53,8 @@ function isAndroidMapsKeyMissing(): boolean {
 }
 
 try {
+  // Lazy require: the native module is missing in Expo Go, which must not crash.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const maps = require('react-native-maps');
   RNMapView = maps.default;
   RNMarker = maps.Marker;
@@ -80,7 +85,7 @@ function extractAllMarkerCoords(children: React.ReactNode): { latitude: number; 
 
 /* ---------- Fallback : texte + bouton « Ouvrir dans Maps » ---------- */
 interface FallbackProps {
-  style?: import('react-native').StyleProp<import('react-native').ViewStyle>;
+  style?: StyleProp<ViewStyle>;
   markers: { latitude: number; longitude: number; title?: string }[];
   hasCoords: boolean;
 }
@@ -149,7 +154,7 @@ interface SafeMapViewProps {
   children?: React.ReactNode;
   initialRegion?: { latitude: number; longitude: number; latitudeDelta: number; longitudeDelta: number };
   region?: { latitude: number; longitude: number; latitudeDelta: number; longitudeDelta: number };
-  style?: import('react-native').StyleProp<import('react-native').ViewStyle>;
+  style?: StyleProp<ViewStyle>;
   onPress?: (event: { nativeEvent: { coordinate: { latitude: number; longitude: number } } }) => void;
   onLongPress?: (event: { nativeEvent: { coordinate: { latitude: number; longitude: number } } }) => void;
   onMapReady?: () => void;
@@ -168,15 +173,17 @@ interface SafeMapViewProps {
   showsTraffic?: boolean;
 }
 
+// Build-time constants: EXPO_PUBLIC_* variables are inlined by the bundler.
+const CONFIGURED_RENDERER = (process.env.EXPO_PUBLIC_GOOGLE_MAPS_RENDERER ?? '').toUpperCase();
+const ANDROID_RENDERER_PROP =
+  Platform.OS === 'android' && (CONFIGURED_RENDERER === 'LEGACY' || CONFIGURED_RENDERER === 'LATEST')
+    ? { googleRenderer: CONFIGURED_RENDERER }
+    : {};
+
 const SafeMapView = forwardRef<SafeMapViewRef, SafeMapViewProps>((props, ref) => {
   const { children, initialRegion, region, style, onPress, onLongPress, onMapReady: onMapReadyProp, onMapLoaded: onMapLoadedProp, ...rest } = props;
   const nativeMapRef = useRef<{ animateToRegion?: (...args: unknown[]) => void; animateCamera?: (...args: unknown[]) => void; fitToCoordinates?: (...args: unknown[]) => void } | null>(null);
   const [, setMapReady] = useState(false);
-  const configuredRenderer = (process.env.EXPO_PUBLIC_GOOGLE_MAPS_RENDERER ?? '').toUpperCase();
-  const androidRendererProp =
-    Platform.OS === 'android' && (configuredRenderer === 'LEGACY' || configuredRenderer === 'LATEST')
-      ? { googleRenderer: configuredRenderer as 'LEGACY' | 'LATEST' }
-      : {};
 
   /* Expose map methods: forward to native ref when available, no-op otherwise */
   useImperativeHandle(ref, () => ({
@@ -208,7 +215,7 @@ const SafeMapView = forwardRef<SafeMapViewRef, SafeMapViewProps>((props, ref) =>
         ref={nativeMapRef}
         style={style}
         {...providerProp}
-        {...androidRendererProp}
+        {...ANDROID_RENDERER_PROP}
         initialRegion={initialRegion}
         region={region}
         onPress={onPress}
@@ -222,7 +229,7 @@ const SafeMapView = forwardRef<SafeMapViewRef, SafeMapViewProps>((props, ref) =>
               : NativeModules.I18nManager?.localeIdentifier;
             logInfo(
               'SafeMapView',
-              `Map ready: locale=${locale}, provider=${rest.provider ?? 'default'}, renderer=${configuredRenderer || 'default'}, region bias=MA`,
+              `Map ready: locale=${locale}, provider=${rest.provider ?? 'default'}, renderer=${CONFIGURED_RENDERER || 'default'}, region bias=MA`,
             );
           }
           onMapReadyProp?.();
@@ -243,9 +250,8 @@ const SafeMapView = forwardRef<SafeMapViewRef, SafeMapViewProps>((props, ref) =>
 SafeMapView.displayName = 'SafeMapView';
 
 /* ---------- Marker fallback ---------- */
-/** En mode Expo Go, Marker est un no-op View qui ne rend rien de visible */
+/** En mode Expo Go, Marker ne rend rien : MapFallback liste déjà les positions des marqueurs. */
 function MarkerFallback(_props: Record<string, unknown>) {
-  // On ne rend rien : le fallback affiche déjà le marqueur sur l'image statique
   return null;
 }
 

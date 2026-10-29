@@ -11,11 +11,8 @@ export const palette = {
   violetDark: '#5B21B6',
   violetDeep: '#4C1D95',
   violetVivid: '#8B5CF6',
-  violetSoft: '#C4B5FD',
-  violetUltraLight: '#EDE9FE',
   // Charbon Pro accent spectrum
   charbon: '#1F2937',
-  charbonLight: '#374151',
   charbonDark: '#111827',
   charbonSoft: '#4B5563',
   charbonUltraLight: '#9CA3AF',
@@ -51,9 +48,6 @@ export interface ThemeColors {
   bg: string;
   bgCard: string;
   bgElevated: string;
-  bgHeader: string;
-  bgTabBar: string;
-  bgTabBarBorder: string;
   bgInput: string;
   bgSkeleton: string;
   bgSkeletonHighlight: string;
@@ -62,10 +56,8 @@ export interface ThemeColors {
   textMuted: string;
   textInverse: string;
   primary: string;
-  primaryLight: string;
   primaryBg: string;
   accent: string;
-  accentBg: string;
   border: string;
   borderLight: string;
   inputBorder: string;
@@ -82,9 +74,6 @@ const lightTheme: ThemeColors = {
   bg: '#FFFFFF',
   bgCard: '#FFFFFF',
   bgElevated: '#F8FAFC',
-  bgHeader: '#7C3AED',
-  bgTabBar: 'rgba(255,255,255,0.97)',
-  bgTabBarBorder: 'rgba(0,0,0,0.06)',
   bgInput: '#F1F5F9',
   bgSkeleton: 'rgba(124,58,237,0.09)',
   bgSkeletonHighlight: 'rgba(255,255,255,0.90)',
@@ -93,10 +82,8 @@ const lightTheme: ThemeColors = {
   textMuted: '#64748B',
   textInverse: '#FFFFFF',
   primary: '#7C3AED',
-  primaryLight: '#8B5CF6',
   primaryBg: 'rgba(124,58,237,0.08)',
   accent: '#1F2937',
-  accentBg: 'rgba(31,41,55,0.06)',
   border: '#E2E8F0',
   borderLight: '#F1F5F9',
   inputBorder: '#CBD5E1',
@@ -113,9 +100,6 @@ const darkTheme: ThemeColors = {
   bg: '#0B0F14',
   bgCard: '#1A1F2B',
   bgElevated: '#1A1F2B',
-  bgHeader: '#4C1D95',
-  bgTabBar: 'rgba(11,15,20,0.97)',
-  bgTabBarBorder: 'rgba(255,255,255,0.08)',
   bgInput: '#1A1F2B',
   bgSkeleton: 'rgba(167,139,250,0.10)',
   bgSkeletonHighlight: 'rgba(196,181,253,0.35)',
@@ -124,10 +108,8 @@ const darkTheme: ThemeColors = {
   textMuted: '#64748B',
   textInverse: '#0F172A',
   primary: '#A78BFA',
-  primaryLight: '#C4B5FD',
   primaryBg: 'rgba(167,139,250,0.15)',
   accent: '#9CA3AF',
-  accentBg: 'rgba(156,163,175,0.10)',
   border: 'rgba(255,255,255,0.16)',
   borderLight: 'rgba(255,255,255,0.12)',
   inputBorder: '#2D3443',

@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { memo, useCallback } from 'react';
 import { View, StyleSheet, FlatList, RefreshControl, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { Plus } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
@@ -13,16 +13,47 @@ import { ms } from '@/utils/responsive';
 import { resolveImageUrl } from '@/utils/imageUrl';
 import PremiumLockCard from '@/components/PremiumLockCard';
 import { Button, CampaignStatusPill, Notice, ScreenHeader } from '@/components/scratch/ScratchUI';
-import { CampaignRow, GameEmptyState, HeaderAddButton, ListSeparator } from '@/components/games/GameList';
+import { CampaignRow, GameEmptyState, HeaderAddButton, ListSeparator, type CampaignLine } from '@/components/games/GameList';
 import { ScratchPreview, ScratchTile } from '@/components/scratch/ScratchPreview';
 import { formatYmd } from '@/components/scratch/DateField';
 import { moroccoYmdOf } from '@/components/scratch/campaignForm';
 import type { ScratchCampaignListItem } from '@jitplus/shared/src/scratch';
 
+const NO_CAMPAIGNS: ScratchCampaignListItem[] = [];
+
+/** Campaigns list row; memoised so the rows are not rebuilt on every list render. */
+const ScratchCampaignRow = memo(function ScratchCampaignRow({ campaign, onOpen }: {
+  campaign: ScratchCampaignListItem;
+  onOpen: (id: string) => void;
+}) {
+  const { t, locale } = useLanguage();
+  const dateLine = campaign.status === 'SCHEDULED' && campaign.sendAt
+    ? t('scratch.list.sendAt', { date: formatYmd(moroccoYmdOf(new Date(campaign.sendAt)), locale, false) })
+    : campaign.sentAt
+      ? t('scratch.list.sentAt', { date: formatYmd(moroccoYmdOf(new Date(campaign.sentAt)), locale, false) })
+      : t('scratch.list.cardUntil', { date: formatYmd(campaign.cardExpiresOn, locale, false) });
+  const lines: CampaignLine[] = [{ text: dateLine }];
+  if (campaign.recipientCount > 0) {
+    lines.push({
+      text: `${t('scratch.list.recipients', { count: campaign.recipientCount })} · ${t('scratch.list.scratched', { count: campaign.scratchedCount })} · ${t('scratch.list.redeemed', { count: campaign.redeemedCount })}`,
+    });
+  }
+  return (
+    <CampaignRow
+      leading={<ScratchTile designId={campaign.designId} size={ms(52)} />}
+      title={campaign.name}
+      status={<CampaignStatusPill status={campaign.status} />}
+      lines={lines}
+      onPress={() => onOpen(campaign.id)}
+      accessibilityLabel={`${campaign.name}, ${t(`scratch.campaignStatus.${campaign.status}`)}`}
+    />
+  );
+});
+
 export default function ScratchCampaignsScreen() {
   const shouldWait = useRequireAuth();
   const theme = useTheme();
-  const { t, locale } = useLanguage();
+  const { t } = useLanguage();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -31,36 +62,19 @@ export default function ScratchCampaignsScreen() {
   const { isPremium } = usePlanStatus(merchant);
   const canManage = isPremium && !isTeamMember;
 
-  const { data: campaigns = [], isLoading, isError, refetch, isRefetching } = useScratchCampaigns(!shouldWait);
+  const { data: campaigns = NO_CAMPAIGNS, isLoading, isError, refetch, isRefetching } = useScratchCampaigns(!shouldWait);
 
   const openCampaign = useCallback(
     (id: string) => router.push({ pathname: '/scratch-campaigns/[id]', params: { id } }),
     [router],
   );
 
-  const renderItem = useCallback(({ item }: { item: ScratchCampaignListItem }) => {
-    const dateLine = item.status === 'SCHEDULED' && item.sendAt
-      ? t('scratch.list.sendAt', { date: `${formatYmd(moroccoYmdOf(new Date(item.sendAt)), locale, false)}` })
-      : item.sentAt
-        ? t('scratch.list.sentAt', { date: formatYmd(moroccoYmdOf(new Date(item.sentAt)), locale, false) })
-        : t('scratch.list.cardUntil', { date: formatYmd(item.cardExpiresOn, locale, false) });
-    const lines = [{ text: dateLine }];
-    if (item.recipientCount > 0) {
-      lines.push({
-        text: `${t('scratch.list.recipients', { count: item.recipientCount })} · ${t('scratch.list.scratched', { count: item.scratchedCount })} · ${t('scratch.list.redeemed', { count: item.redeemedCount })}`,
-      });
-    }
-    return (
-      <CampaignRow
-        leading={<ScratchTile designId={item.designId} size={ms(52)} />}
-        title={item.name}
-        status={<CampaignStatusPill status={item.status} />}
-        lines={lines}
-        onPress={() => openCampaign(item.id)}
-        accessibilityLabel={`${item.name}, ${t(`scratch.campaignStatus.${item.status}`)}`}
-      />
-    );
-  }, [t, locale, openCampaign]);
+  const create = useCallback(() => router.push('/scratch-campaigns/create'), [router]);
+
+  const renderItem = useCallback(
+    ({ item }: { item: ScratchCampaignListItem }) => <ScratchCampaignRow campaign={item} onOpen={openCampaign} />,
+    [openCampaign],
+  );
 
   if (shouldWait) return null;
 
@@ -89,7 +103,7 @@ export default function ScratchCampaignsScreen() {
           text={t('scratch.list.intro')}
           steps={[t('scratch.list.how1'), t('scratch.list.how2'), t('scratch.list.how3')]}
           action={canManage ? (
-            <Button icon={Plus} label={t('scratch.list.create')} onPress={() => router.push('/scratch-campaigns/create')} style={styles.stretch} />
+            <Button icon={Plus} label={t('scratch.list.create')} onPress={create} style={styles.stretch} />
           ) : undefined}
         />
       )}
@@ -103,7 +117,7 @@ export default function ScratchCampaignsScreen() {
         title={t('scratch.list.title')}
         onBack={() => (router.canGoBack() ? router.back() : router.replace('/games'))}
         right={canManage && campaigns.length > 0 ? (
-          <HeaderAddButton label={t('scratch.list.create')} onPress={() => router.push('/scratch-campaigns/create')} />
+          <HeaderAddButton label={t('scratch.list.create')} onPress={create} />
         ) : undefined}
       />
       {isLoading ? (

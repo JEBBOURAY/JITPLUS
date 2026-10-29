@@ -54,8 +54,8 @@ export default function VerifyEmailScreen() {
   const hasSentInitial = useRef(false);
 
   // Animations
-  const iconAnim = useRef(new Animated.Value(0)).current;
-  const cardAnim = useRef(new Animated.Value(0)).current;
+  const [iconAnim] = useState(() => new Animated.Value(0));
+  const [cardAnim] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
     const anim = Animated.stagger(200, [
@@ -112,13 +112,8 @@ export default function VerifyEmailScreen() {
   // Countdown timer — stops when it reaches 0
   useEffect(() => {
     if (resendTimer <= 0) return;
-    const timer = setInterval(() => {
-      setResendTimer((prev) => {
-        if (prev <= 1) { clearInterval(timer); return 0; }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(timer);
+    const timer = setTimeout(() => setResendTimer((prev) => Math.max(0, prev - 1)), 1000);
+    return () => clearTimeout(timer);
   }, [resendTimer]);
 
   const handleVerify = useCallback(async () => {

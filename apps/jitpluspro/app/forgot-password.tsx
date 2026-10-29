@@ -30,6 +30,9 @@ import api from '@/services/api';
 
 type Step = 'email' | 'otp' | 'password';
 
+const OTP_LENGTH = 6;
+const RESEND_COOLDOWN = 60;
+
 export default function ForgotPasswordScreen() {
   const [step, setStep] = useState<Step>('email');
   const [email, setEmail] = useState('');
@@ -53,7 +56,7 @@ export default function ForgotPasswordScreen() {
     </View>
   );
 
-  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const [fadeAnim] = useState(() => new Animated.Value(0));
   const otpInputRef = useRef<TextInput>(null);
   const passwordInputRef = useRef<TextInput>(null);
 
@@ -77,6 +80,10 @@ export default function ForgotPasswordScreen() {
   }, [step]);
 
   const emailValid = isValidEmail(email);
+  const codeComplete = code.length === OTP_LENGTH;
+  const newPasswordLongEnough = newPassword.length >= MIN_PASSWORD_LENGTH;
+  // Equal strings share a length, so this also implies confirmPassword meets the minimum.
+  const passwordsMatch = newPasswordLongEnough && confirmPassword === newPassword;
 
   const handleSendCode = useCallback(async () => {
     Keyboard.dismiss();
@@ -96,7 +103,7 @@ export default function ForgotPasswordScreen() {
     try {
       await api.post('/auth/forgot-password', { email: trimmedEmail });
       setStep('otp');
-      setCooldown(60);
+      setCooldown(RESEND_COOLDOWN);
     } catch (err: unknown) {
       setError(getErrorMessage(err, t('common.genericError')));
     } finally {
@@ -110,7 +117,7 @@ export default function ForgotPasswordScreen() {
     setIsLoading(true);
     try {
       await api.post('/auth/forgot-password', { email: email.trim().toLowerCase() });
-      setCooldown(60);
+      setCooldown(RESEND_COOLDOWN);
       setCode('');
     } catch (err: unknown) {
       setError(getErrorMessage(err, t('common.genericError')));
@@ -119,17 +126,17 @@ export default function ForgotPasswordScreen() {
     }
   }, [email, cooldown, t]);
 
-  const handleVerifyAndReset = useCallback(async () => {
+  const handleVerifyAndReset = useCallback(() => {
     Keyboard.dismiss();
     setError('');
 
-    if (code.length !== 6) {
+    if (!codeComplete) {
       setError(t('forgotPassword.invalidCode'));
       return;
     }
 
     setStep('password');
-  }, [code, t]);
+  }, [codeComplete, t]);
 
   const handleResetPassword = useCallback(async () => {
     Keyboard.dismiss();
@@ -259,19 +266,19 @@ export default function ForgotPasswordScreen() {
                   <View style={styles.inputContainer}>
                     <View style={[styles.inputWrapper, inputRow, {
                       backgroundColor: theme.inputBg,
-                      borderColor: error ? theme.danger : code.length === 6 ? palette.charbon : theme.inputBorder,
-                      borderWidth: code.length === 6 ? 2 : 1.5,
+                      borderColor: error ? theme.danger : codeComplete ? palette.charbon : theme.inputBorder,
+                      borderWidth: codeComplete ? 2 : 1.5,
                     }]}>
-                      <KeyRound size={ms(18)} color={code.length === 6 ? palette.charbon : theme.inputPlaceholder} strokeWidth={icon.stroke} />
+                      <KeyRound size={ms(18)} color={codeComplete ? palette.charbon : theme.inputPlaceholder} strokeWidth={icon.stroke} />
                       <TextInput
                         ref={otpInputRef}
                         style={[inputText, styles.otpField]}
                         placeholder="000000"
                         placeholderTextColor={theme.inputPlaceholder}
                         value={code}
-                        onChangeText={(v) => { setCode(v.replace(/\D/g, '').slice(0, 6)); setError(''); }}
+                        onChangeText={(v) => { setCode(v.replace(/\D/g, '').slice(0, OTP_LENGTH)); setError(''); }}
                         keyboardType="number-pad"
-                        maxLength={6}
+                        maxLength={OTP_LENGTH}
                         returnKeyType="done"
                         onSubmitEditing={handleVerifyAndReset}
                         editable={!isLoading}
@@ -285,13 +292,13 @@ export default function ForgotPasswordScreen() {
                     label={t('forgotPassword.verify')}
                     onPress={handleVerifyAndReset}
                     loading={isLoading}
-                    disabled={code.length !== 6}
+                    disabled={!codeComplete}
                     size="lg"
                     icon={ArrowRight}
                     iconPosition="end"
                     flipIconInRTL
-                    style={code.length === 6 ? styles.buttonActive : styles.buttonInactive}
-                    labelStyle={code.length === 6 ? undefined : styles.buttonTextMuted}
+                    style={codeComplete ? styles.buttonActive : styles.buttonInactive}
+                    labelStyle={codeComplete ? undefined : styles.buttonTextMuted}
                   />
 
                   <TouchableOpacity
@@ -314,10 +321,10 @@ export default function ForgotPasswordScreen() {
                   <View style={styles.inputContainer}>
                     <View style={[styles.inputWrapper, inputRow, {
                       backgroundColor: theme.inputBg,
-                      borderColor: error ? theme.danger : newPassword.length >= MIN_PASSWORD_LENGTH ? palette.charbon : theme.inputBorder,
-                      borderWidth: newPassword.length >= MIN_PASSWORD_LENGTH ? 2 : 1.5,
+                      borderColor: error ? theme.danger : newPasswordLongEnough ? palette.charbon : theme.inputBorder,
+                      borderWidth: newPasswordLongEnough ? 2 : 1.5,
                     }]}>
-                      <JitLock size={ms(18)} color={newPassword.length >= MIN_PASSWORD_LENGTH ? palette.charbon : theme.inputPlaceholder} strokeWidth={icon.stroke} />
+                      <JitLock size={ms(18)} color={newPasswordLongEnough ? palette.charbon : theme.inputPlaceholder} strokeWidth={icon.stroke} />
                       <TextInput
                         ref={passwordInputRef}
                         style={inputText}
@@ -346,10 +353,10 @@ export default function ForgotPasswordScreen() {
                   <View style={styles.inputContainer}>
                     <View style={[styles.inputWrapper, inputRow, {
                       backgroundColor: theme.inputBg,
-                      borderColor: error ? theme.danger : confirmPassword.length >= MIN_PASSWORD_LENGTH && confirmPassword === newPassword ? palette.charbon : theme.inputBorder,
-                      borderWidth: confirmPassword === newPassword && confirmPassword.length >= MIN_PASSWORD_LENGTH ? 2 : 1.5,
+                      borderColor: error ? theme.danger : passwordsMatch ? palette.charbon : theme.inputBorder,
+                      borderWidth: passwordsMatch ? 2 : 1.5,
                     }]}>
-                      <JitLock size={ms(18)} color={confirmPassword === newPassword && confirmPassword.length >= MIN_PASSWORD_LENGTH ? palette.charbon : theme.inputPlaceholder} strokeWidth={icon.stroke} />
+                      <JitLock size={ms(18)} color={passwordsMatch ? palette.charbon : theme.inputPlaceholder} strokeWidth={icon.stroke} />
                       <TextInput
                         style={inputText}
                         placeholder={t('forgotPassword.confirmPasswordPlaceholder')}
@@ -375,16 +382,8 @@ export default function ForgotPasswordScreen() {
                     icon={ArrowRight}
                     iconPosition="end"
                     flipIconInRTL
-                    style={
-                      newPassword.length >= MIN_PASSWORD_LENGTH && confirmPassword === newPassword
-                        ? styles.buttonActive
-                        : styles.buttonInactive
-                    }
-                    labelStyle={
-                      newPassword.length >= MIN_PASSWORD_LENGTH && confirmPassword === newPassword
-                        ? undefined
-                        : styles.buttonTextMuted
-                    }
+                    style={passwordsMatch ? styles.buttonActive : styles.buttonInactive}
+                    labelStyle={passwordsMatch ? undefined : styles.buttonTextMuted}
                   />
                 </>
               )}

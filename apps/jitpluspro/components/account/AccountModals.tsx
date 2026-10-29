@@ -11,6 +11,7 @@ import { ActionButton } from '@/components/ui/ActionButton';
 import { hp, ms, fontSize as FS, radius } from '@/utils/responsive';
 import { font, icon } from '@/constants/design';
 import type { Merchant } from '@/types';
+import { merchantInitials } from './merchantInitials';
 
 const PICK_BTN_GRADIENT = [palette.violet, palette.violetDark] as const;
 
@@ -25,13 +26,12 @@ interface LogoModalProps {
   onDelete: () => void;
 }
 
-export function LogoEditModal({
-  visible, onClose, theme, t, merchant, uploadIsPending, onPickPhoto, onDelete,
-}: LogoModalProps) {
-  const insets = useSafeAreaInsets();
-  // iOS refuses to present the image picker while a RN Modal is still dismissing.
-  // We flag the intent, close the modal, then launch the picker from onDismiss
-  // (fires only after the native dismissal completes).
+/**
+ * iOS refuses to present the image picker while a RN Modal is still dismissing.
+ * We flag the intent, close the modal, then launch the picker from onDismiss
+ * (fires only after the native dismissal completes).
+ */
+function useDeferredPick(onClose: () => void, onPickPhoto: () => void) {
   const pendingPickRef = useRef(false);
   const handlePickPress = () => {
     if (Platform.OS === 'ios') {
@@ -48,9 +48,15 @@ export function LogoEditModal({
       onPickPhoto();
     }
   };
-  const initials = merchant?.nom
-    ? merchant.nom.split(' ').map((w: string) => w.charAt(0)).join('').slice(0, 2).toUpperCase()
-    : '?';
+  return { handlePickPress, handleDismiss };
+}
+
+export function LogoEditModal({
+  visible, onClose, theme, t, merchant, uploadIsPending, onPickPhoto, onDelete,
+}: LogoModalProps) {
+  const insets = useSafeAreaInsets();
+  const { handlePickPress, handleDismiss } = useDeferredPick(onClose, onPickPhoto);
+  const initials = merchantInitials(merchant?.nom);
 
   return (
     <Modal visible={visible} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose} onDismiss={handleDismiss}>
@@ -134,23 +140,7 @@ export function CoverEditModal({
   visible, onClose, theme, t, merchant, onPickPhoto, onDelete,
 }: LogoModalProps) {
   const insets = useSafeAreaInsets();
-  // Same iOS constraint as the logo modal: defer picker launch to onDismiss.
-  const pendingPickRef = useRef(false);
-  const handlePickPress = () => {
-    if (Platform.OS === 'ios') {
-      pendingPickRef.current = true;
-      onClose();
-    } else {
-      onClose();
-      requestIdleCallback(() => onPickPhoto());
-    }
-  };
-  const handleDismiss = () => {
-    if (pendingPickRef.current) {
-      pendingPickRef.current = false;
-      onPickPhoto();
-    }
-  };
+  const { handlePickPress, handleDismiss } = useDeferredPick(onClose, onPickPhoto);
 
   return (
     <Modal visible={visible} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose} onDismiss={handleDismiss}>

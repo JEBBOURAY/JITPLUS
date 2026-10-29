@@ -15,6 +15,7 @@ import type { AdminAuditContext } from '../admin/audit-log.service';
 import {
   AdminDealsQueryDto,
   CreateDealDto,
+  DealCategoryCountsQueryDto,
   DealAlertsDto,
   DealEventDto,
   DealFeedQueryDto,
@@ -99,6 +100,13 @@ export class DealsClientController {
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 60 } })
   feed(@CurrentUser() user: JwtPayload, @Query() query: DealFeedQueryDto) {
     return this.deals.feed(user.userId, query);
+  }
+
+  /** Declared before deals/:id so "categories" is not taken for an id. */
+  @Get('deals/categories')
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 60 } })
+  categoryCounts(@CurrentUser() user: JwtPayload, @Query() query: DealCategoryCountsQueryDto) {
+    return this.deals.categoryCounts(user.userId, query);
   }
 
   @Get('deals/:id')

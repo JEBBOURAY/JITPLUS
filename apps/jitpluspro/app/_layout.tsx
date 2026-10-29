@@ -23,17 +23,9 @@ import { useAppForegroundRefresh } from '@/hooks/useAppForegroundRefresh';
 import api, { getServerBaseUrl } from '@/services/api';
 import { logError, logWarn, logInfo } from '@/utils/devLogger';
 import { routeForAction } from '@/utils/notificationRoutes';
-
-// GDPR opt-out (honours SENTRY_OPT_OUT AsyncStorage flag)
-// Sentry is configured as PII-free anonymous crash reporting (legitimate
-// interest under GDPR), but we still expose a way for users to opt out.
-// If the flag is set, we close the Sentry client so no events are sent.
-import AsyncStorageForConsent from '@react-native-async-storage/async-storage';
-
-// RTL/LTR direction is applied live via the `direction` style prop
-// in ThemedNavigator. I18nManager.forceRTL() persists the setting for
-// cold starts. No restart alert is needed.
-
+import { Sentry, captureException } from '@/utils/sentry';
+import { queryKeys } from '@/hooks/queries/keys';
+import { ASYNC_STORAGE_KEYS } from '@/constants/app';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { useAuthStore } from '@/stores/authStore';
 import { ThemeProvider, useTheme } from '@/contexts/ThemeContext';
@@ -47,20 +39,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { sendMerchantPushToken } from '@/services/merchantPushToken';
 import MetaAdsManager from '@/services/metaAdsManager';
 import SplashAnimated from '@/components/SplashAnimated';
-
-// Lazy-load Sentry to prevent native module crash on Android
-// The native @sentry/react-native module can crash during require() if the DSN
-// is missing or the native SDK is misconfigured. Lazy-loading ensures the app
-// still boots even if Sentry fails entirely.
-let Sentry: typeof import('@sentry/react-native') | null = null;
-try {
-  Sentry = require('@sentry/react-native');
-} catch (e) {
-  logWarn('Sentry', 'Native module failed to load:', e);
-}
-// Safe no-op wrappers so callers never need null-checks
-const captureException: typeof import('@sentry/react-native').captureException =
-  (...args) => { try { Sentry?.captureException?.(...args); } catch {} return ''; };
 
 // SECURITY: Reduced from 24h to 4h to limit data exposure window if device is
 // seized/rooted. AsyncStorage is unencrypted — shorter TTL = less recoverable data.
@@ -95,11 +73,15 @@ const persistOptions = {
   },
 };
 
+// Gateway statuses come from a proxy/load balancer (Cloud Run, carrier, Play pre-launch
+// test devices) rather than our API code, so they are noise in Sentry.
+const GATEWAY_STATUSES = new Set([502, 503, 504]);
+
 // Skip expected HTTP 4xx errors (business/validation failures) from Sentry.
 // Only report 5xx, network errors, and non-HTTP errors.
 function isServerOrNetworkError(error: unknown): boolean {
   const status = (error as { response?: { status?: number } })?.response?.status;
-  return !status || status >= 500;
+  return !status || (status >= 500 && !GATEWAY_STATUSES.has(status));
 }
 
 let hasHandledColdStart = false;
@@ -219,7 +201,9 @@ try {
   // Sentry init can crash if native module is misconfigured — never block app launch
   logWarn('Sentry', 'init failed:', e);
 }
-AsyncStorageForConsent.getItem('sentry_opt_out')
+// GDPR opt-out: Sentry is PII-free anonymous crash reporting (legitimate
+// interest), but users can still disable it, which closes the client.
+AsyncStorage.getItem(ASYNC_STORAGE_KEYS.SENTRY_OPT_OUT)
   .then((v) => {
     if (v === 'true') {
       try { Sentry?.close?.(); } catch {}
@@ -230,12 +214,15 @@ AsyncStorageForConsent.getItem('sentry_opt_out')
 // Global unhandled promise rejection handler
 // Catches fire-and-forget .then() without .catch() and logs to Sentry.
 if (typeof globalThis !== 'undefined') {
-  const originalHandler = (globalThis as any).onunhandledrejection;
-  (globalThis as any).onunhandledrejection = (event: any) => {
+  const target = globalThis as unknown as {
+    onunhandledrejection?: ((event?: { reason?: unknown }) => void) | null;
+  };
+  const originalHandler = target.onunhandledrejection;
+  target.onunhandledrejection = (event) => {
     const error = event?.reason;
     if (!__DEV__ && error) {
       // Skip expected auth failures — already handled by onAuthFailure / onUnauthorized
-      const msg = error?.message ?? '';
+      const msg = String((error as { message?: unknown }).message ?? '');
       if (!/No refresh (token|credentials)|Session expired/i.test(msg)) {
         try { captureException(error, { tags: { source: 'unhandled-promise' } }); } catch {}
       }
@@ -348,6 +335,34 @@ function RootLayoutNav() {
 // Public routes that don't require authentication
 const PUBLIC_ROUTES = new Set(['login', 'register', 'verify-email', 'forgot-password', 'legal']);
 
+/**
+ * SECURITY: Redirect unauthenticated deep links to login. Without this, a deep
+ * link to e.g. jitpluspro://security could render a protected screen without auth.
+ * Isolated in its own null-rendering component so that useSegments(), which
+ * changes on every navigation, does not re-render the whole navigator.
+ */
+function AuthRedirectGuard() {
+  const hasMerchant = useAuthStore((s) => !!s.merchant);
+  const loading = useAuthStore((s) => s.loading);
+  const router = useRouter();
+  const segments = useSegments();
+
+  useEffect(() => {
+    if (loading) return;
+    const firstSegment = segments[0] ?? '';
+    if (!hasMerchant && !PUBLIC_ROUTES.has(firstSegment)) {
+      router.replace('/login');
+    }
+  }, [loading, hasMerchant, segments, router]);
+
+  return null;
+}
+
+function invalidateAdminNotifications(client: QueryClient) {
+  client.invalidateQueries({ queryKey: queryKeys.adminNotifications });
+  client.invalidateQueries({ queryKey: queryKeys.adminNotifUnreadCount });
+}
+
 function ThemedNavigator() {
   const theme = useTheme();
   const { isDark } = theme;
@@ -356,7 +371,6 @@ function ThemedNavigator() {
   const loading = useAuthStore((s) => s.loading);
   const { status, storeUrl } = useForceUpdate();
   const router = useRouter();
-  const segments = useSegments();
   const queryClient = useQueryClient();
 
   // Navigation theme aligned with OUR design tokens. The stock DefaultTheme /
@@ -380,16 +394,19 @@ function ThemedNavigator() {
     };
   }, [isDark, theme.bg, theme.bgCard, theme.text, theme.border, theme.primary]);
 
-  // SECURITY: Redirect unauthenticated deep links to login.
-  // Without this, a deep link to e.g. jitpluspro://security could
-  // render a protected screen without auth.
-  useEffect(() => {
-    if (loading) return;
-    const firstSegment = segments[0] ?? '';
-    if (!hasMerchant && !PUBLIC_ROUTES.has(firstSegment)) {
-      router.replace('/login');
-    }
-  }, [loading, hasMerchant, segments, router]);
+  const rootStyle = useMemo(
+    () => ({ flex: 1, direction: 'ltr' as const, backgroundColor: theme.bg }),
+    [theme.bg],
+  );
+  const screenOptions = useMemo(
+    () => ({
+      headerShown: false,
+      contentStyle: { backgroundColor: theme.bg },
+      animation: 'slide_from_right' as const,
+      gestureEnabled: true,
+    }),
+    [theme.bg],
+  );
 
   // Warm heavy native modules in background so the FIRST navigation that
   // needs them is instant. Cold-parse of expo-camera (~200ms) is otherwise
@@ -399,13 +416,12 @@ function ThemedNavigator() {
     if (loading || !hasMerchant || didPreloadRef.current) return;
     didPreloadRef.current = true;
     requestIdleCallback(() => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       try { require('expo-camera'); } catch {}
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       try { require('expo-image-picker'); } catch {}
     });
   }, [loading, hasMerchant]);
-  const notificationListener = useRef<{ remove(): void } | null>(null);
-  const responseListener = useRef<{ remove(): void } | null>(null);
-
 
   // Real-time WebSocket connection
   const socket = useRealtimeSocket({
@@ -457,13 +473,10 @@ function ThemedNavigator() {
     // notifications arrive in quick succession, we batch into a single refetch
     // instead of firing 10 HTTP requests (2 per notification).
     let notifDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-    notificationListener.current = Notifications.addNotificationReceivedListener((notification) => {
+    const receivedSub = Notifications.addNotificationReceivedListener((notification) => {
       logInfo('Notifications', 'Notification received:', notification.request.content);
       if (notifDebounceTimer) clearTimeout(notifDebounceTimer);
-      notifDebounceTimer = setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: ['admin-notifications'] });
-        queryClient.invalidateQueries({ queryKey: ['admin-notif-unread-count'] });
-      }, 300);
+      notifDebounceTimer = setTimeout(() => invalidateAdminNotifications(queryClient), 300);
     });
 
     // Route notification tap to the correct merchant-app screen.
@@ -497,11 +510,10 @@ function ThemedNavigator() {
       } catch (e) { logWarn('Notifications', 'Navigation failed', e); }
     };
 
-    responseListener.current = Notifications.addNotificationResponseReceivedListener((response) => {
+    const responseSub = Notifications.addNotificationResponseReceivedListener((response) => {
       logInfo('Notifications', 'Notification tapped:', response.notification.request.content);
       Notifications!.setBadgeCountAsync(0).catch(() => {});
-      queryClient.invalidateQueries({ queryKey: ['admin-notifications'] });
-      queryClient.invalidateQueries({ queryKey: ['admin-notif-unread-count'] });
+      invalidateAdminNotifications(queryClient);
       navigateByPayload(response.notification.request.content.data as Record<string, unknown> | undefined);
     });
 
@@ -511,9 +523,8 @@ function ThemedNavigator() {
       Notifications.getLastNotificationResponseAsync().then((response) => {
         if (response) {
           logInfo('Notifications', 'Cold-start notification:', response.notification.request.content);
-          queryClient.invalidateQueries({ queryKey: ['admin-notifications'] });
-          queryClient.invalidateQueries({ queryKey: ['admin-notif-unread-count'] });
-          
+          invalidateAdminNotifications(queryClient);
+
           // Add a small delay for Expo Router to be fully mounted on cold starts
           setTimeout(() => {
             navigateByPayload(response.notification.request.content.data as Record<string, unknown> | undefined);
@@ -525,8 +536,8 @@ function ThemedNavigator() {
     return () => {
       if (notifDebounceTimer) clearTimeout(notifDebounceTimer);
       tokenSub.remove();
-      notificationListener.current?.remove();
-      responseListener.current?.remove();
+      receivedSub.remove();
+      responseSub.remove();
     };
   }, [router, queryClient]);
 
@@ -535,56 +546,32 @@ function ThemedNavigator() {
       {/* backgroundColor MUST be set here: this persistent root View never
           remounts on theme change, so it covers the white native window
           background and prevents a white flash during the theme swap frame. */}
-      <View style={{ flex: 1, direction: 'ltr', backgroundColor: theme.bg }}>
-      <OfflineBanner />
-      {(status === 'update' || status === 'maintenance') && (
-        <ForceUpdateModal status={status} storeUrl={storeUrl} />
-      )}
-      <StatusBarMemo isDark={isDark} />
-      <Stack
-            screenOptions={{
-              headerShown: false,
-              contentStyle: { backgroundColor: theme.bg },
-              animation: 'slide_from_right',
-              gestureEnabled: true,
-            }}
-          >
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="login" options={{ headerShown: false, animation: 'fade' }} />
-            <Stack.Screen name="register" options={{ headerShown: false, animation: 'slide_from_bottom' }} />
-            <Stack.Screen name="verify-email" options={{ headerShown: false, animation: 'slide_from_bottom' }} />
-            <Stack.Screen
-              name="client-detail"
-              options={{
-                headerShown: false,
-                animation: 'slide_from_right',
-              }}
-            />
-            <Stack.Screen
-              name="scan-qr"
-              options={{
-                headerShown: false,
-                animation: 'slide_from_bottom',
-              }}
-            />
-            <Stack.Screen
-              name="transaction-amount"
-              options={{
-                headerShown: false,
-                animation: 'slide_from_right',
-              }}
-            />
-            <Stack.Screen name="settings" options={{ headerShown: false }} />
-            <Stack.Screen name="dashboard" options={{ headerShown: false }} />
-            <Stack.Screen name="security" options={{ headerShown: false }} />
-            <Stack.Screen name="account" options={{ headerShown: false }} />
-            <Stack.Screen name="stores" options={{ headerShown: false }} />
-            <Stack.Screen name="games" options={{ headerShown: false }} />
-            <Stack.Screen name="referral" options={{ headerShown: false }} />
-            <Stack.Screen name="admin-notifications" options={{ headerShown: false }} />
-            <Stack.Screen name="transactions" options={{ headerShown: false, animation: 'slide_from_right' }} />
-          </Stack>
+      <View style={rootStyle}>
+        <OfflineBanner />
+        {(status === 'update' || status === 'maintenance') && (
+          <ForceUpdateModal status={status} storeUrl={storeUrl} />
+        )}
+        <StatusBarMemo isDark={isDark} />
+        <Stack screenOptions={screenOptions}>
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="login" options={{ headerShown: false, animation: 'fade' }} />
+          <Stack.Screen name="register" options={{ headerShown: false, animation: 'slide_from_bottom' }} />
+          <Stack.Screen name="verify-email" options={{ headerShown: false, animation: 'slide_from_bottom' }} />
+          <Stack.Screen name="client-detail" options={{ headerShown: false, animation: 'slide_from_right' }} />
+          <Stack.Screen name="scan-qr" options={{ headerShown: false, animation: 'slide_from_bottom' }} />
+          <Stack.Screen name="transaction-amount" options={{ headerShown: false, animation: 'slide_from_right' }} />
+          <Stack.Screen name="settings" options={{ headerShown: false }} />
+          <Stack.Screen name="dashboard" options={{ headerShown: false }} />
+          <Stack.Screen name="security" options={{ headerShown: false }} />
+          <Stack.Screen name="account" options={{ headerShown: false }} />
+          <Stack.Screen name="stores" options={{ headerShown: false }} />
+          <Stack.Screen name="games" options={{ headerShown: false }} />
+          <Stack.Screen name="referral" options={{ headerShown: false }} />
+          <Stack.Screen name="admin-notifications" options={{ headerShown: false }} />
+          <Stack.Screen name="transactions" options={{ headerShown: false, animation: 'slide_from_right' }} />
+        </Stack>
+        <AuthRedirectGuard />
       </View>
-        </NavThemeProvider>
-      );
+    </NavThemeProvider>
+  );
 }

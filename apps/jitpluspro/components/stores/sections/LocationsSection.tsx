@@ -11,6 +11,7 @@ import {
   Platform,
   Image as RNImage,
 } from 'react-native';
+import { Image as ExpoImage } from 'expo-image';
 import {
   Plus,
   Trash2,
@@ -22,7 +23,7 @@ import {
   AlertTriangle,
 } from 'lucide-react-native';
 import { JitLock, JitPin, JitStore } from '@/components/icons';
-import MapView, { Marker, SafeMapViewRef } from '@/components/SafeMapView';
+import MapView, { Marker, type SafeMapViewRef } from '@/components/SafeMapView';
 import { useTheme, palette, type ThemeColors } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useDir } from '@/hooks/useDir';
@@ -36,7 +37,7 @@ import { useStoresCRUD, MAX_STORES } from '@/hooks/useStoresCRUD';
 import PremiumLockModal from '@/components/PremiumLockModal';
 import { resolveImageUrl } from '@/utils/imageUrl';
 import { Panel, CountPill, SectionScreen, usePressGuard, useToast, surfaceShadow, fieldFill, ui } from '@/components/stores/StoreUi';
-import { MAP_STYLE } from '@/components/stores/brand';
+import { DEFAULT_MAP_CENTER, MAP_STYLE } from '@/components/stores/brand';
 
 const JITPRO_LOGO = require('@/assets/images/jitplusprologo.png');
 
@@ -44,7 +45,7 @@ const FREE_MAX_STORES = 1;
 const MARKER_SIZE = 38;
 const MARKER_LOGO = 26;
 const LOCKED_GOLD = '#B45309';
-const DEFAULT_REGION = { latitude: 33.5731, longitude: -7.5898, latitudeDelta: 0.5, longitudeDelta: 0.5 };
+const DEFAULT_REGION = { ...DEFAULT_MAP_CENTER, latitudeDelta: 0.5, longitudeDelta: 0.5 };
 
 function formatAddress(store: StoreType): string {
   return [store.adresse, store.quartier, store.ville].filter(Boolean).join(', ');
@@ -55,13 +56,16 @@ const TrackedStoreMarker = React.memo(function TrackedStoreMarker({
   store, logoUrl,
 }: { store: StoreType; logoUrl?: string | null }) {
   const [error, setError] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const [tracking, setTracking] = useState(Platform.OS === 'android');
 
+  // Stop re-rendering the Android marker bitmap shortly after the logo has
+  // loaded, or after 800 ms at the latest.
   useEffect(() => {
     if (!tracking) return;
-    const timer = setTimeout(() => setTracking(false), 800);
+    const timer = setTimeout(() => setTracking(false), loaded ? 100 : 800);
     return () => clearTimeout(timer);
-  }, [tracking]);
+  }, [tracking, loaded]);
 
   const source = logoUrl && !error ? { uri: resolveImageUrl(logoUrl) } : JITPRO_LOGO;
 
@@ -78,7 +82,7 @@ const TrackedStoreMarker = React.memo(function TrackedStoreMarker({
           source={source}
           style={markerStyles.logo}
           resizeMode="cover"
-          onLoad={() => { if (tracking) setTimeout(() => setTracking(false), 100); }}
+          onLoad={() => setLoaded(true)}
           onError={() => setError(true)}
         />
       </View>
@@ -141,7 +145,7 @@ const StoreCard = React.memo(function StoreCard({ store, category, logoUrl, isRe
         <View style={[styles.cardTopRow, { flexDirection: dir.row }]}>
           <View style={[styles.cardAvatar, { backgroundColor: theme.primaryBg }, !store.isActive && styles.dimmed]}>
             {logoUrl
-              ? <RNImage source={{ uri: resolveImageUrl(logoUrl) }} style={styles.cardAvatarLogo} />
+              ? <ExpoImage source={resolveImageUrl(logoUrl)} style={styles.cardAvatarLogo} contentFit="cover" cachePolicy="memory-disk" />
               : <MerchantCategoryIcon category={category} size={24} />}
           </View>
           <View style={styles.cardInfo}>

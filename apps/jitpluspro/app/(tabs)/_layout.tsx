@@ -1,18 +1,30 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Tabs, useRouter } from 'expo-router';
+import type { BottomTabBarProps } from 'expo-router/js-tabs';
 import { useAuthStore } from '@/stores/authStore';
 import { useTheme } from '@/contexts/ThemeContext';
 import { ActivityIndicator, View } from 'react-native';
 import CustomTabBar from '@/components/CustomTabBar';
 import { GuidedTourProvider } from '@/components/GuidedTour';
 
-const renderTabBar = (props: any) => <CustomTabBar {...props} />;
+const renderTabBar = (props: BottomTabBarProps) => <CustomTabBar {...props} />;
 
 export default function TabLayout() {
   const isAuthenticated = useAuthStore((s) => !!s.merchant);
   const loading = useAuthStore((s) => s.loading);
   const theme = useTheme();
   const router = useRouter();
+  const screenOptions = useMemo(
+    () => ({
+      headerShown: false,
+      animation: 'fade' as const,
+      lazy: true,
+      // Scene background = our token so tab screens never flash the stock
+      // navigation background (white/grey) during a theme swap.
+      sceneStyle: { backgroundColor: theme.bg },
+    }),
+    [theme.bg],
+  );
 
   // Auth is the ONLY blocking gate: email verification and business setup are
   // never a forced tunnel.
@@ -38,14 +50,7 @@ export default function TabLayout() {
     <GuidedTourProvider>
       <Tabs
         tabBar={renderTabBar}
-        screenOptions={{
-          headerShown: false,
-          animation: 'fade',
-          lazy: true,
-          // Scene background = our token so tab screens never flash the stock
-          // navigation background (white/grey) during a theme swap.
-          sceneStyle: { backgroundColor: theme.bg },
-        }}
+        screenOptions={screenOptions}
       >
         <Tabs.Screen name="index" />
         <Tabs.Screen name="clients" />
@@ -60,7 +65,6 @@ export default function TabLayout() {
         />
         <Tabs.Screen name="messages" />
         <Tabs.Screen name="team" />
-
       </Tabs>
     </GuidedTourProvider>
   );

@@ -379,7 +379,7 @@ export function validateDates(form: CampaignForm, today: string, nowMs: number =
   if (form.sendMode === 'later' && isSlotTooFar(form.sendDay, form.sendSlot, nowMs)) {
     return { key: 'scratch.wizard.slotTooFar', params: { days: MAX_SCHEDULE_DAYS } };
   }
-  const sendYmd = form.sendMode === 'later' ? form.sendDay : today;
+  const sendYmd = sendYmdOf(form, today);
   const cardDays = diffDaysYmd(sendYmd, form.cardExpiresOn);
   if (cardDays < 1) return { key: 'scratch.wizard.cardBeforeSend' };
   if (cardDays > SCRATCH_LIMITS.MAX_CARD_DAYS) {

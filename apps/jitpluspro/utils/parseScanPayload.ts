@@ -5,7 +5,7 @@ const SIGNED_PREFIX = 'jitplus://scan/';
 const LEGACY_CLIENT_PREFIX = 'jitplus://client/';
 
 /** Hosts accepted when a QR encodes an http(s) URL; any other host is rejected to block QR-phishing. */
-export const QR_ALLOWED_HOSTS: ReadonlySet<string> = new Set<string>([
+const QR_ALLOWED_HOSTS: ReadonlySet<string> = new Set<string>([
   'jitplus.com',
   'www.jitplus.com',
   'jitplus.app',

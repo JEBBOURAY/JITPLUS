@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, useWindowDimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Clock, Layers, Plus, Save, Send, Tag, type LucideIcon } from 'lucide-react-native';
 import { JitStamp } from '@/components/icons';
@@ -46,14 +46,22 @@ import {
   MoreOptions,
   Notice,
   OptionCard,
-  ScreenHeader,
   Section,
   useMoreOptions,
 } from '@/components/scratch/ScratchUI';
 import { DateField, formatYmd } from '@/components/scratch/DateField';
 import { RewardEditor } from '@/components/scratch/RewardEditor';
 import { ScratchPreview } from '@/components/scratch/ScratchPreview';
-import { HelpText, ReviewBlock, ReviewLine, WizardFooter, WizardShell, useGameWizard } from '@/components/games/GameWizard';
+import {
+  HelpText,
+  ReviewBlock,
+  ReviewLine,
+  WizardFooter,
+  WizardLoading,
+  WizardMessage,
+  WizardShell,
+  useGameWizard,
+} from '@/components/games/GameWizard';
 import { digitsOnly } from '@/components/games/gameForm';
 import {
   AUDIENCE_DEFAULT_VALUES,
@@ -328,42 +336,33 @@ export default function ScratchCampaignWizard() {
 
   if (!isPremium || isTeamMember) {
     return (
-      <View style={[styles.container, { backgroundColor: theme.bg }]}>
-        <ScreenHeader title={title} onBack={leave} />
+      <WizardMessage title={title} onBack={leave}>
         {isTeamMember
           ? <View style={styles.padded}><Notice text={t('scratch.list.ownerOnly')} /></View>
           : <PremiumLockCard titleKey="scratch.list.premiumTitle" descriptionKey="scratch.list.premiumDesc" />}
-      </View>
+      </WizardMessage>
     );
   }
 
-  if (editId && loadingExisting) {
-    return (
-      <View style={[styles.container, styles.center, { backgroundColor: theme.bg }]}>
-        <ActivityIndicator color={theme.primary} />
-      </View>
-    );
-  }
+  if (editId && loadingExisting) return <WizardLoading />;
 
   // Without the loaded campaign, saving would replace it with an empty form (PUT is a full replacement).
   if (editId && !existing) {
     return (
-      <View style={[styles.container, { backgroundColor: theme.bg }]}>
-        <ScreenHeader title={title} onBack={leave} />
+      <WizardMessage title={title} onBack={leave}>
         <View style={[styles.padded, styles.gap]}>
           <Notice tone="danger" text={t('scratch.wizard.loadError')} />
           <Button label={t('common.retry')} onPress={() => void refetchExisting()} loading={refetchingExisting} />
         </View>
-      </View>
+      </WizardMessage>
     );
   }
 
   if (existing && existing.status !== 'DRAFT' && existing.status !== 'SCHEDULED') {
     return (
-      <View style={[styles.container, { backgroundColor: theme.bg }]}>
-        <ScreenHeader title={title} onBack={leave} />
+      <WizardMessage title={title} onBack={leave}>
         <View style={styles.padded}><Notice text={t('scratch.wizard.notEditable')} /></View>
-      </View>
+      </WizardMessage>
     );
   }
 
@@ -732,8 +731,6 @@ export default function ScratchCampaignWizard() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  center: { alignItems: 'center', justifyContent: 'center' },
   padded: { padding: 16 },
   gap: { gap: 12 },
   flex: { flex: 1 },

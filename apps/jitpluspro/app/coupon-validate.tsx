@@ -57,7 +57,9 @@ export default function CouponValidateScreen() {
   const checkCoupon = useCheckCoupon();
   const redeemCoupon = useRedeemCoupon();
   // One key per coupon checked: a retry after a network failure replays safely.
-  const idemKeyRef = useRef(randomUUID());
+  // Lazy initial key: randomUUID() is a native call and the amount field re-renders on every keystroke.
+  const [initialIdemKey] = useState(randomUUID);
+  const idemKeyRef = useRef(initialIdemKey);
   const autoCheckRef = useRef(false);
 
   const runCheck = useCallback(

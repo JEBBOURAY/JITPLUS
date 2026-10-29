@@ -14,7 +14,7 @@ import { useEffect, useRef } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { logPerf } from '@jitplus/shared/src/devLogger';
-import * as Sentry from '@sentry/react-native';
+import { Sentry } from '@/utils/sentry';
 import { queryKeys } from './useQueryHooks';
 
 const BACKGROUND_THRESHOLD_MS = 5 * 60 * 1000;
@@ -51,17 +51,19 @@ export function useAppForegroundRefresh() {
           // (camera, navigation, layout) and any HTTP fetch fired in the same
           // tick blocks the JS thread and produces visible jank.
           requestIdleCallback(() => {
-            Sentry.startSpan(
-              { name: 'App Foreground Refresh', op: 'ui.load' },
-              async () => {
-                await Promise.all([
-                  queryClient.invalidateQueries({ queryKey: queryKeys.adminNotifUnreadCount }),
-                  queryClient.invalidateQueries({ queryKey: queryKeys.transactions }),
-                ]);
-                const dt = Date.now() - t0;
-                logPerf('App', `foreground:done ${dt}ms`);
-              },
-            );
+            const refresh = async () => {
+              await Promise.all([
+                queryClient.invalidateQueries({ queryKey: queryKeys.adminNotifUnreadCount }),
+                queryClient.invalidateQueries({ queryKey: queryKeys.transactions }),
+              ]);
+              const dt = Date.now() - t0;
+              logPerf('App', `foreground:done ${dt}ms`);
+            };
+            if (Sentry) {
+              Sentry.startSpan({ name: 'App Foreground Refresh', op: 'ui.load' }, refresh);
+            } else {
+              void refresh();
+            }
           });
         }
       }

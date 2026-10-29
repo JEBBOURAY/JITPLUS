@@ -9,11 +9,11 @@ import { useAuthStore } from '@/stores/authStore';
 import { ms } from '@/utils/responsive';
 import { font, icon } from '@/constants/design';
 import { StatusPill } from '@/components/scratch/ScratchUI';
-import type { DealDisplayStatus, DealOffer, DealScope } from '@jitplus/shared/src/deals';
+import type { DealDisplayStatus, DealOffer, DealScope, DealType } from '@jitplus/shared/src/deals';
 import DealThumb from './DealThumb';
 import { dealBadgeLabel, dealPrices, dealTimeLeftLabel } from './dealVisual';
 
-export const DEAL_ROW_THUMB = 88;
+const DEAL_ROW_THUMB = 88;
 
 function statusColor(theme: ThemeColors, status: DealDisplayStatus): string {
   switch (status) {
@@ -52,6 +52,39 @@ export function useDealMerchantLook(): DealMerchantLook {
   }), [merchant?.nom, merchant?.coverUrl, merchant?.themeColor, merchant?.categorie]);
 }
 
+/** Promo price, original price (struck for a price drop, "value of" for a free item) and badge. */
+export function DealPriceRow({ type, price, original, badge, large }: {
+  type: DealType;
+  price: string | null;
+  original: string | null;
+  badge: string | null;
+  /** Bigger texts, for the deal detail */
+  large?: boolean;
+}) {
+  const theme = useTheme();
+  const { t } = useLanguage();
+  const { row } = useDir();
+  if (!price && !original && !badge) return null;
+  return (
+    <View style={[styles.priceRow, { flexDirection: row }]}>
+      {price ? <Text style={[styles.price, large && styles.priceLarge, { color: theme.danger }]} maxFontSizeMultiplier={1.3}>{price}</Text> : null}
+      {original ? (
+        <Text
+          style={[styles.original, large && styles.originalLarge, { color: theme.textMuted }, type === 'PRICE_DROP' && styles.struck]}
+          maxFontSizeMultiplier={1.3}
+        >
+          {type === 'FREE_ITEM' ? t('deals.valueOf', { value: original }) : original}
+        </Text>
+      ) : null}
+      {badge ? (
+        <View style={[styles.badge, { backgroundColor: theme.danger }]}>
+          <Text style={[styles.badgeText, large && styles.badgeTextLarge]} maxFontSizeMultiplier={1.2}>{badge}</Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 /**
  * The deal as clients see it in the JitPlus list (compact, Dealabs style):
  * square visual, title on two lines, prices and badge, merchant, time left.
@@ -87,24 +120,7 @@ export const DealPreviewRow = React.memo(function DealPreviewRow({ title, offer,
         <Text style={[styles.title, { color: theme.text, textAlign }]} numberOfLines={2} maxFontSizeMultiplier={1.3}>
           {title || t('deals.wizard.titlePlaceholder')}
         </Text>
-        {(price || original || badge) && (
-          <View style={[styles.priceRow, { flexDirection: row }]}>
-            {price ? <Text style={[styles.price, { color: theme.danger }]} maxFontSizeMultiplier={1.3}>{price}</Text> : null}
-            {original ? (
-              <Text
-                style={[styles.original, { color: theme.textMuted }, offer.type === 'PRICE_DROP' && styles.struck]}
-                maxFontSizeMultiplier={1.3}
-              >
-                {offer.type === 'FREE_ITEM' ? t('deals.valueOf', { value: original }) : original}
-              </Text>
-            ) : null}
-            {badge ? (
-              <View style={[styles.badge, { backgroundColor: theme.danger }]}>
-                <Text style={styles.badgeText} maxFontSizeMultiplier={1.2}>{badge}</Text>
-              </View>
-            ) : null}
-          </View>
-        )}
+        <DealPriceRow type={offer.type} price={price} original={original} badge={badge} />
         <View style={[styles.metaRow, { flexDirection: row }]}>
           <ScopeIcon size={13} color={theme.textMuted} strokeWidth={icon.stroke} />
           <Text style={[styles.meta, { color: theme.textSecondary, textAlign }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>
@@ -128,10 +144,13 @@ const styles = StyleSheet.create({
   title: { fontSize: ms(14), lineHeight: ms(19), fontFamily: font.semibold },
   priceRow: { alignItems: 'center', flexWrap: 'wrap', gap: 6 },
   price: { fontSize: ms(15), fontFamily: font.bold },
+  priceLarge: { fontSize: ms(16) },
   original: { fontSize: ms(12), fontFamily: font.regular },
+  originalLarge: { fontSize: ms(13) },
   struck: { textDecorationLine: 'line-through' },
   badge: { borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
   badgeText: { color: '#FFFFFF', fontSize: ms(11), fontFamily: font.bold },
+  badgeTextLarge: { fontSize: ms(12) },
   metaRow: { alignItems: 'center', gap: 5 },
   meta: { flexShrink: 1, fontSize: ms(12), fontFamily: font.regular },
 });

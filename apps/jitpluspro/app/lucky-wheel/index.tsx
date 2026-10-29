@@ -86,11 +86,15 @@ export default function LuckyWheelListScreen() {
     [t],
   );
 
+  // refetch functions are stable, unlike the query result objects.
+  const { refetch: refetchCampaigns } = campaignsQuery;
+  const { refetch: refetchPending } = pendingQuery;
+  const { refetch: refetchFulfilled } = fulfilledQuery;
   const onRefresh = useCallback(() => {
-    campaignsQuery.refetch();
-    pendingQuery.refetch();
-    fulfilledQuery.refetch();
-  }, [campaignsQuery, pendingQuery, fulfilledQuery]);
+    refetchCampaigns();
+    refetchPending();
+    refetchFulfilled();
+  }, [refetchCampaigns, refetchPending, refetchFulfilled]);
 
   const openCampaign = useCallback(
     (id: string) => router.push({ pathname: '/lucky-wheel/[id]', params: { id } }),

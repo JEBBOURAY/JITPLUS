@@ -13,7 +13,6 @@ import {
   UIManager,
   Keyboard,
   ScrollView,
-  Image as RNImage,
   type LayoutChangeEvent,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
@@ -45,16 +44,14 @@ import { getErrorMessage } from '@/utils/error';
 import { useFocusFade } from '@/hooks/useFocusFade';
 import { useEmailQuota, useSendPushNotification, useSendEmail } from '@/hooks/useQueryHooks';
 import { ReminderBanner } from '@/components/ReminderBanner';
-import MerchantLogo from '@/components/MerchantLogo';
 import SendConfirmSheet from '@/components/marketing/SendConfirmSheet';
+import SendButton, { SEND_COOLDOWN_MS } from '@/components/marketing/SendButton';
+import { PushPreview, EmailPreview } from '@/components/marketing/MessagePreview';
 import PremiumLockCard from '@/components/PremiumLockCard';
-import { ActionButton } from '@/components/ui/ActionButton';
 import { ProBadge } from '@/components/ui/ProBadge';
 import { ASYNC_STORAGE_KEYS } from '@/constants/app';
-import { font, shadow, icon } from '@/constants/design';
+import { font, icon } from '@/constants/design';
 import { radius } from '@/utils/responsive';
-
-type IconType = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
 
 const HIT_SLOP_MED = { top: 8, bottom: 8, left: 8, right: 8 };
 // Enable LayoutAnimation on Android (old arch only — New Architecture supports it natively).
@@ -66,8 +63,6 @@ if (
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-const JITPLUS_APP_ICON = require('@/assets/images/jitpluslogo.png');
-
 // Must match backend DTO validation.
 const LIMITS = {
   title: 100,
@@ -76,36 +71,13 @@ const LIMITS = {
   emailBody: 2000,
 } as const;
 
-const SEND_COOLDOWN_MS = 30_000;
-const SEND_COOLDOWN_S = SEND_COOLDOWN_MS / 1000;
-
 type TemplateKey = 'Promo' | 'New' | 'Event' | 'Comeback';
-const TEMPLATES: { key: TemplateKey; Icon: IconType }[] = [
+const TEMPLATES: { key: TemplateKey; Icon: LucideIcon }[] = [
   { key: 'Promo', Icon: Percent },
   { key: 'New', Icon: PenLine },
   { key: 'Event', Icon: CalendarDays },
   { key: 'Comeback', Icon: Heart },
 ];
-
-/**
- * Seconds left until `until`, ticking locally so only the consumer re-renders.
- * The interval stops by itself once the deadline has passed.
- */
-function useSecondsLeft(until: number | null): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (until == null) return;
-    const id = setInterval(() => {
-      const n = Date.now();
-      setNow(n);
-      if (n >= until) clearInterval(id);
-    }, 500);
-    return () => clearInterval(id);
-  }, [until]);
-  if (until == null) return 0;
-  // `now` can lag behind until the first tick, so clamp to the cooldown length.
-  return Math.min(SEND_COOLDOWN_S, Math.max(0, Math.ceil((until - now) / 1000)));
-}
 
 /**
  * Handle 400/403/429 errors from notification endpoints.
@@ -233,7 +205,7 @@ const ChannelCard = memo(function ChannelCard({
 }: {
   channel: ActiveChannel;
   selected: boolean;
-  Icon: IconType;
+  Icon: LucideIcon;
   name: string;
   desc: string;
   locked?: boolean;
@@ -398,111 +370,6 @@ const TemplateChips = memo(function TemplateChips({
   );
 });
 
-const PushPreview = memo(function PushPreview({
-  title,
-  body,
-  logoUrl,
-}: {
-  title: string;
-  body: string;
-  logoUrl?: string | null;
-}) {
-  const theme = useTheme();
-  const { t } = useLanguage();
-  const shownTitle = title.trim();
-  const shownBody = body.trim();
-  const bubbleText = theme.text;
-  const bubbleMuted = theme.textMuted;
-  return (
-    <View
-      style={[styles.previewStage, { backgroundColor: theme.bgElevated, borderColor: theme.border }]}
-      accessible
-      accessibilityLabel={`${t('messages.previewLabel')}. ${shownTitle} ${shownBody}`}
-    >
-      <View style={styles.previewClockWrap} importantForAccessibility="no-hide-descendants">
-        <Text style={[styles.previewClock, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.2}>09:41</Text>
-      </View>
-      <View style={[styles.notifBubble, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }, shadow.sm]}>
-        <View style={styles.notifHeader}>
-          <RNImage source={JITPLUS_APP_ICON} style={styles.notifAppIcon} resizeMode="contain" />
-          <Text style={[styles.notifAppName, { color: bubbleMuted }]} maxFontSizeMultiplier={1.2}>JitPlus</Text>
-          <Text style={[styles.notifTime, { color: bubbleMuted }]} maxFontSizeMultiplier={1.2}>{t('messages.previewNow')}</Text>
-        </View>
-        <View style={styles.notifContent}>
-          <View style={styles.notifTextCol}>
-            <Text
-              style={[styles.notifTitle, { color: shownTitle ? bubbleText : bubbleMuted }]}
-              numberOfLines={1}
-              maxFontSizeMultiplier={1.3}
-            >
-              {shownTitle || t('messages.previewTitlePlaceholder')}
-            </Text>
-            <Text
-              style={[styles.notifBody, { color: shownBody ? bubbleText : bubbleMuted }]}
-              numberOfLines={4}
-              maxFontSizeMultiplier={1.3}
-            >
-              {shownBody || t('messages.previewBodyPlaceholder')}
-            </Text>
-          </View>
-          <MerchantLogo logoUrl={logoUrl} style={styles.notifThumb} />
-        </View>
-      </View>
-    </View>
-  );
-});
-
-const EmailPreview = memo(function EmailPreview({
-  subject,
-  body,
-  senderName,
-  logoUrl,
-}: {
-  subject: string;
-  body: string;
-  senderName: string;
-  logoUrl?: string | null;
-}) {
-  const theme = useTheme();
-  const { t } = useLanguage();
-  const shownSubject = subject.trim();
-  const shownBody = body.trim();
-  return (
-    <View
-      style={[styles.emailPreview, { backgroundColor: theme.bgElevated, borderColor: theme.border }]}
-      accessible
-      accessibilityLabel={`${t('messages.previewLabel')}. ${shownSubject} ${shownBody}`}
-    >
-      <View style={styles.emailHeader}>
-        <MerchantLogo logoUrl={logoUrl} style={styles.emailAvatar} />
-        <View style={styles.flex1}>
-          <Text style={[styles.emailSender, { color: theme.text }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>
-            {senderName}
-          </Text>
-          <Text style={[styles.emailTo, { color: theme.textMuted }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>
-            {t('messages.previewEmailTo')}
-          </Text>
-        </View>
-        <Text style={[styles.emailTime, { color: theme.textMuted }]} maxFontSizeMultiplier={1.2}>{t('messages.previewNow')}</Text>
-      </View>
-      <Text
-        style={[styles.emailSubject, { color: shownSubject ? theme.text : theme.textMuted }]}
-        numberOfLines={2}
-        maxFontSizeMultiplier={1.3}
-      >
-        {shownSubject || t('messages.previewSubjectPlaceholder')}
-      </Text>
-      <Text
-        style={[styles.emailBodyText, { color: shownBody ? theme.textSecondary : theme.textMuted }]}
-        numberOfLines={5}
-        maxFontSizeMultiplier={1.3}
-      >
-        {shownBody || t('messages.previewBodyPlaceholder')}
-      </Text>
-    </View>
-  );
-});
-
 const AudienceRow = memo(function AudienceRow({ text }: { text: string }) {
   const theme = useTheme();
   const { t } = useLanguage();
@@ -557,88 +424,6 @@ const LegalNote = memo(function LegalNote() {
       <Text style={[styles.legalNoteText, { color: theme.textMuted }]} maxFontSizeMultiplier={1.6}>
         {t('messages.legalNote')}
       </Text>
-    </View>
-  );
-});
-
-const IndeterminateBar = memo(function IndeterminateBar() {
-  const theme = useTheme();
-  const [progress] = useState(() => new Animated.Value(0));
-  const [width, setWidth] = useState(0);
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.timing(progress, { toValue: 1, duration: 900, useNativeDriver: true }),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [progress]);
-  const translateX = useMemo(
-    () => progress.interpolate({ inputRange: [0, 1], outputRange: [-width * 0.4, width] }),
-    [progress, width],
-  );
-  return (
-    <View
-      style={[styles.progressTrack, { backgroundColor: theme.border }]}
-      onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
-      importantForAccessibility="no"
-    >
-      <Animated.View style={[styles.progressIndet, { backgroundColor: theme.primary, transform: [{ translateX }] }]} />
-    </View>
-  );
-});
-
-const SendButton = memo(function SendButton({
-  label,
-  Icon,
-  canSend,
-  isSending,
-  cooldownUntil,
-  hint,
-  onPress,
-}: {
-  label: string;
-  Icon: LucideIcon;
-  /** When false the button stays tappable so it can guide the user to the missing field. */
-  canSend: boolean;
-  isSending: boolean;
-  cooldownUntil: number | null;
-  hint?: string;
-  onPress: () => void;
-}) {
-  const theme = useTheme();
-  const { t } = useLanguage();
-  const cooldownRemaining = useSecondsLeft(cooldownUntil);
-  const cooling = cooldownRemaining > 0;
-  const disabled = isSending || cooling;
-  const ready = canSend && !disabled;
-  const coolFraction = cooling ? (SEND_COOLDOWN_S - cooldownRemaining) / SEND_COOLDOWN_S : 0;
-  const cooldownLabel = t('messages.cooldownWait', { s: cooldownRemaining });
-  const active = ready || isSending;
-  return (
-    <View style={styles.sendBlock}>
-      <ActionButton
-        onPress={onPress}
-        disabled={disabled}
-        size="lg"
-        variant={active ? 'primary' : 'secondary'}
-        labelStyle={active ? undefined : { color: theme.textMuted }}
-        iconColor={active ? undefined : theme.textMuted}
-        icon={cooling || isSending ? undefined : Icon}
-        label={cooling ? cooldownLabel : isSending ? t('messages.sendingShort') : label}
-        accessibilityLabel={cooling ? cooldownLabel : label}
-        accessibilityHint={!canSend ? hint : undefined}
-      />
-      {!canSend && !disabled && hint && (
-        <Text style={[styles.sendHint, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>
-          {hint}
-        </Text>
-      )}
-      {isSending && <IndeterminateBar />}
-      {cooling && (
-        <View style={[styles.progressTrack, { backgroundColor: theme.border }]} importantForAccessibility="no">
-          <View style={[styles.progressFill, { backgroundColor: theme.textMuted, width: `${Math.round(coolFraction * 100)}%` }]} />
-        </View>
-      )}
     </View>
   );
 });
@@ -713,7 +498,6 @@ export default function MessagesScreen() {
   const router = useRouter();
   const merchantName = merchant?.nom?.trim() || 'JitPlus';
   const logoUrl = merchant?.logoUrl;
-
 
   const [state, dispatch] = useReducer(msgReducer, initialMsgState);
   const { title, body, emailSubject, emailBody, activeChannel, pushCooldownUntil, emailCooldownUntil } = state;
@@ -865,7 +649,6 @@ export default function MessagesScreen() {
     () => (formHasContent ? <ClearButton onPress={clearForm} /> : null),
     [formHasContent, clearForm],
   );
-
 
   if (isTeamMember) {
     return (
@@ -1034,7 +817,6 @@ export default function MessagesScreen() {
         heading={sheet.heading}
         body={sheet.body}
         audience={sheet.isEmail ? t('messages.audienceEmail') : t('messages.audiencePush')}
-
         isSending={sheet.isEmail ? isEmailSending : isPushSending}
         successMessage={sheet.successMessage}
         onConfirm={confirmSend}
@@ -1044,6 +826,7 @@ export default function MessagesScreen() {
     </Animated.View>
   );
 }
+
 const styles = StyleSheet.create({
   container: { flex: 1 },
   flex1: { flex: 1 },
@@ -1200,55 +983,6 @@ const styles = StyleSheet.create({
   },
   composeTipText: { flex: 1, fontSize: 12, lineHeight: 17, fontFamily: font.medium },
 
-  previewStage: {
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingTop: 10,
-    paddingBottom: 16,
-    overflow: 'hidden',
-  },
-  previewClockWrap: { alignItems: 'center', marginBottom: 10 },
-  previewClock: {
-    fontSize: 26,
-    fontFamily: font.bold,
-    letterSpacing: -0.5,
-  },
-  notifBubble: {
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    padding: 12,
-  },
-  notifHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 6,
-  },
-  notifAppIcon: { width: 18, height: 18, borderRadius: 5 },
-  notifAppName: { flex: 1, fontSize: 11, fontFamily: font.semibold },
-  notifTime: { fontSize: 11, fontFamily: font.regular },
-  notifContent: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
-  notifTextCol: { flex: 1 },
-  notifTitle: { fontSize: 14, fontFamily: font.semibold },
-  notifBody: { fontSize: 13, lineHeight: 18, marginTop: 2, fontFamily: font.regular },
-  notifThumb: { width: 38, height: 38, borderRadius: 8 },
-
-  emailPreview: {
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 14,
-    paddingTop: 16,
-    overflow: 'hidden',
-  },
-  emailHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
-  emailAvatar: { width: 36, height: 36, borderRadius: 18 },
-  emailSender: { fontSize: 14, fontFamily: font.semibold },
-  emailTo: { fontSize: 11, fontFamily: font.regular, marginTop: 1 },
-  emailTime: { fontSize: 11, fontFamily: font.regular },
-  emailSubject: { fontSize: 15, fontFamily: font.bold, marginBottom: 6 },
-  emailBodyText: { fontSize: 13, lineHeight: 19, fontFamily: font.regular },
-
   audienceRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1266,18 +1000,6 @@ const styles = StyleSheet.create({
   quotaTrack: { height: 6, borderRadius: 3, overflow: 'hidden' },
   quotaFill: { height: 6, borderRadius: 3 },
   quotaHint: { fontSize: 11, marginTop: 6, fontFamily: font.medium },
-
-  sendBlock: { marginTop: 16 },
-  sendHint: { fontSize: 11, textAlign: 'center', marginTop: 8, fontFamily: font.medium },
-
-  progressTrack: {
-    height: 3,
-    borderRadius: 2,
-    marginTop: 8,
-    overflow: 'hidden',
-  },
-  progressFill: { height: 3, borderRadius: 2 },
-  progressIndet: { width: '40%', height: 3, borderRadius: 2 },
 
   legalNoteRow: {
     flexDirection: 'row',

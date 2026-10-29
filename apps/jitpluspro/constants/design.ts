@@ -18,10 +18,8 @@ export const typography = {
   title: { fontFamily: font.bold, fontSize: fontSize.xl, letterSpacing: -0.3 },
   headline: { fontFamily: font.semibold, fontSize: fontSize.lg },
   body: { fontFamily: font.regular, fontSize: fontSize.md },
-  bodyStrong: { fontFamily: font.semibold, fontSize: fontSize.md },
   label: { fontFamily: font.medium, fontSize: fontSize.sm },
   caption: { fontFamily: font.regular, fontSize: fontSize.sm },
-  micro: { fontFamily: font.medium, fontSize: fontSize.xs },
 } satisfies Record<string, TextStyle>;
 
 /** Neutral shadows only: coloured glows read as decoration, not depth. */

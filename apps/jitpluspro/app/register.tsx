@@ -123,7 +123,6 @@ export default function RegisterScreen() {
   const confirmRef = useRef<TextInput>(null);
   const referralDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mapRef = useRef<SafeMapViewRef>(null);
-  const userLocationRef = useRef<{ latitude: number; longitude: number } | null>(null);
 
   const handleGoogleToken = useCallback((idToken: string) => {
     setStepError('');
@@ -145,9 +144,9 @@ export default function RegisterScreen() {
   );
   const apple = useAppleIdToken(handleAppleToken);
 
-  const headerAnim = useRef(new Animated.Value(0)).current;
-  const cardAnim = useRef(new Animated.Value(0)).current;
-  const footerAnim = useRef(new Animated.Value(0)).current;
+  const [headerAnim] = useState(() => new Animated.Value(0));
+  const [cardAnim] = useState(() => new Animated.Value(0));
+  const [footerAnim] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
     const anim = Animated.stagger(120, [
@@ -157,8 +156,7 @@ export default function RegisterScreen() {
     ]);
     anim.start();
     return () => anim.stop();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [headerAnim, cardAnim, footerAnim]);
 
   useEffect(() => {
     return () => {
@@ -323,7 +321,6 @@ export default function RegisterScreen() {
       }
       const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
       const { latitude: lat, longitude: lng } = loc.coords;
-      userLocationRef.current = { latitude: lat, longitude: lng };
       setLatitude(lat);
       setLongitude(lng);
       mapRef.current?.animateToRegion({ latitude: lat, longitude: lng, latitudeDelta: 0.045, longitudeDelta: 0.045 });
@@ -335,9 +332,24 @@ export default function RegisterScreen() {
     }
   }, [reverseGeocodeAndLabel, t]);
 
+  const handleMapCoordinate = useCallback(
+    (event: { nativeEvent: { coordinate: { latitude: number; longitude: number } } }) => {
+      const { latitude: lat, longitude: lng } = event.nativeEvent.coordinate;
+      setLatitude(lat);
+      setLongitude(lng);
+      void reverseGeocodeAndLabel(lat, lng);
+    },
+    [reverseGeocodeAndLabel],
+  );
+
+  const markerCoordinate = useMemo(
+    () => (latitude != null && longitude != null ? { latitude, longitude } : null),
+    [latitude, longitude],
+  );
+
   const defaultRegion = useMemo(() => ({
-    latitude: latitude ?? userLocationRef.current?.latitude ?? 33.5731,
-    longitude: longitude ?? userLocationRef.current?.longitude ?? -7.5898,
+    latitude: latitude ?? 33.5731,
+    longitude: longitude ?? -7.5898,
     latitudeDelta: 0.045,
     longitudeDelta: 0.045,
   }), [latitude, longitude]);
@@ -363,41 +375,33 @@ export default function RegisterScreen() {
 
     setIsLoading(true);
     try {
-      if (googleIdToken) {
-        const result = await googleRegister(googleIdToken, { ...storeData, termsAccepted });
-        if (result.success) {
+      const socialResult = googleIdToken
+        ? await googleRegister(googleIdToken, { ...storeData, termsAccepted })
+        : appleIdentityToken
+          ? await appleRegister(
+              appleIdentityToken,
+              appleGivenName,
+              appleFamilyName,
+              { ...storeData, termsAccepted },
+              appleRawNonce ?? undefined,
+            )
+          : null;
+      if (socialResult) {
+        if (socialResult.success) {
           router.replace('/(tabs)');
         } else {
           Alert.alert(
             t('registerExtra.registrationError'),
-            result.error || t('registerExtra.registrationErrorMsg'),
-          );
-        }
-        return;
-      }
-
-      if (appleIdentityToken) {
-        const result = await appleRegister(
-          appleIdentityToken,
-          appleGivenName,
-          appleFamilyName,
-          { ...storeData, termsAccepted },
-          appleRawNonce ?? undefined,
-        );
-        if (result.success) {
-          router.replace('/(tabs)');
-        } else {
-          Alert.alert(
-            t('registerExtra.registrationError'),
-            result.error || t('registerExtra.registrationErrorMsg'),
+            socialResult.error || t('registerExtra.registrationErrorMsg'),
           );
         }
         return;
       }
 
       // Email flow — create the account (pre-verified), then auto-login.
+      const normalizedEmail = email.trim().toLowerCase();
       await authRegister({
-        email: email.trim().toLowerCase(),
+        email: normalizedEmail,
         password,
         ...storeData,
         termsAccepted,
@@ -406,7 +410,7 @@ export default function RegisterScreen() {
       // as "registration failed" (the user would retry and hit a 409 on the now
       // existing email). Retry the auto-login once, then fall back to the login
       // screen so the user is never stuck.
-      const creds = { email: email.trim().toLowerCase(), password };
+      const creds = { email: normalizedEmail, password };
       try {
         await signIn(creds, true);
         router.replace('/(tabs)');
@@ -470,6 +474,16 @@ export default function RegisterScreen() {
   const handleBack = useCallback(() => router.back(), [router]);
 
   const socialProvider = googleIdToken ? 'google' : appleIdentityToken ? 'apple' : null;
+
+  const hasReferralInput = !!referralCode.trim();
+  const referralAccent =
+    referralStatus === 'valid'
+      ? theme.success
+      : referralStatus === 'invalid'
+        ? theme.danger
+        : hasReferralInput
+          ? palette.charbon
+          : null;
 
   return (
     <View style={[styles.gradient, { backgroundColor: theme.bg }]}>
@@ -554,7 +568,7 @@ export default function RegisterScreen() {
                     <Text style={[styles.errorHint, { color: theme.danger, textAlign: dir.textAlign }]}>{google.error}</Text>
                   )}
 
-                  {apple?.isAvailable && (
+                  {apple.isAvailable && (
                     <TouchableOpacity
                       style={[styles.socialBtn, styles.appleBtn, { flexDirection: dir.row }]}
                       onPress={apple.promptApple}
@@ -575,7 +589,7 @@ export default function RegisterScreen() {
                       )}
                     </TouchableOpacity>
                   )}
-                  {!!apple?.error && (
+                  {!!apple.error && (
                     <Text style={[styles.errorHint, { color: theme.danger, textAlign: dir.textAlign }]}>{apple.error}</Text>
                   )}
 
@@ -804,12 +818,7 @@ export default function RegisterScreen() {
                     ref={mapRef}
                     style={styles.map}
                     initialRegion={defaultRegion}
-                    onPress={(event) => {
-                      const { latitude: lat, longitude: lng } = event.nativeEvent.coordinate;
-                      setLatitude(lat);
-                      setLongitude(lng);
-                      void reverseGeocodeAndLabel(lat, lng);
-                    }}
+                    onPress={handleMapCoordinate}
                     showsUserLocation={false}
                     zoomEnabled
                     scrollEnabled
@@ -818,17 +827,12 @@ export default function RegisterScreen() {
                     showsPointsOfInterests={false}
                     showsBuildings={false}
                   >
-                    {latitude != null && longitude != null ? (
+                    {markerCoordinate ? (
                       <Marker
                         draggable
-                        coordinate={{ latitude, longitude }}
+                        coordinate={markerCoordinate}
                         pinColor={palette.violet}
-                        onDragEnd={(event: { nativeEvent: { coordinate: { latitude: number; longitude: number } } }) => {
-                          const { latitude: lat, longitude: lng } = event.nativeEvent.coordinate;
-                          setLatitude(lat);
-                          setLongitude(lng);
-                          void reverseGeocodeAndLabel(lat, lng);
-                        }}
+                        onDragEnd={handleMapCoordinate}
                       />
                     ) : null}
                   </SafeMapView>
@@ -871,30 +875,15 @@ export default function RegisterScreen() {
                       {
                         flexDirection: dir.row,
                         backgroundColor: theme.bgInput,
-                        borderColor:
-                          referralStatus === 'valid'
-                            ? theme.success
-                            : referralStatus === 'invalid'
-                            ? theme.danger
-                            : referralCode.trim()
-                            ? palette.charbon
-                            : theme.border,
-                        borderWidth: referralCode.trim() ? 2 : 1.5,
+                        borderColor: referralAccent ?? theme.border,
+                        borderWidth: hasReferralInput ? 2 : 1.5,
                       },
                     ]}
                   >
                     <JitGift
                       size={ms(18)}
                       strokeWidth={icon.stroke}
-                      color={
-                        referralStatus === 'valid'
-                          ? theme.success
-                          : referralStatus === 'invalid'
-                          ? theme.danger
-                          : referralCode.trim()
-                          ? palette.charbon
-                          : theme.textMuted
-                      }
+                      color={referralAccent ?? theme.textMuted}
                     />
                     <TextInput
                       style={[styles.input, { color: theme.text, textAlign: dir.textAlign }]}

@@ -23,14 +23,8 @@ import { font, icon } from '@/constants/design';
 import { resolveImageUrl } from '@/utils/imageUrl';
 import { useRewards, useUploadRewardImage, queryKeys } from '@/hooks/useQueryHooks';
 import { useQueryClient } from '@tanstack/react-query';
-
-interface Reward {
-  id: string;
-  titre: string;
-  cout: number;
-  description?: string;
-  imageUrl?: string | null;
-}
+import { surfaceShadow, fieldFill } from '@/components/settings/surface';
+import type { Reward } from '@/types';
 
 const EMPTY_REWARDS: Reward[] = [];
 
@@ -67,12 +61,9 @@ function RewardManagerBase({
   const { isRTL, row, textAlign, flip } = useDir();
   const unit = t('common.stamps');
   const stampUnit = (n: number) => (n === 1 ? t('common.stamp') : t('common.stamps'));
-  const isDark = theme.mode === 'dark';
-  const fill = isDark ? 'rgba(255,255,255,0.06)' : theme.bgInput;
-  const rowFill = isDark ? 'rgba(255,255,255,0.04)' : theme.bgElevated;
-  const panelShadow = isDark
-    ? null
-    : { shadowColor: '#0F172A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 14, elevation: 2 };
+  const fill = fieldFill(theme);
+  const rowFill = theme.mode === 'dark' ? 'rgba(255,255,255,0.04)' : theme.bgElevated;
+  const panelShadow = surfaceShadow(theme);
 
   const suggestions = [
     { title: t('settingsPage.suggestCoffee'), cost: stampsForReward },
@@ -103,14 +94,12 @@ function RewardManagerBase({
         Alert.alert(t('common.error'), t('upload.permissionDenied'));
         return;
       }
-      const preferredMode =
-        (ImagePicker as any).UIImagePickerPreferredAssetRepresentationMode?.Compatible ?? 'compatible';
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.8,
-        preferredAssetRepresentationMode: preferredMode,
+        preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
       });
       if (result.canceled || !result.assets?.[0]) return;
       const asset = result.assets[0];
@@ -125,6 +114,24 @@ function RewardManagerBase({
     }
   };
 
+  const openForm = (
+    rewardId: string | null,
+    values: { titre?: string; cout?: string; description?: string; imageUrl?: string | null } = {},
+  ) => {
+    setEditingRewardId(rewardId);
+    setRewardTitle(values.titre ?? '');
+    setRewardCost(values.cout ?? '');
+    setRewardDescription(values.description ?? '');
+    setRewardImageUrl(values.imageUrl ?? null);
+    setShowForm(true);
+  };
+
+  const closeForm = () => {
+    setEditingRewardId(null);
+    setRewardTitle(''); setRewardCost(''); setRewardDescription(''); setRewardImageUrl(null);
+    setShowForm(false);
+  };
+
   const doAddReward = async () => {
     const cost = parseInt(rewardCost, 10);
     setSavingReward(true);
@@ -135,75 +142,13 @@ function RewardManagerBase({
         description: rewardDescription.trim() || undefined,
         imageUrl: rewardImageUrl || undefined,
       });
-      setRewardTitle(''); setRewardCost(''); setRewardDescription(''); setRewardImageUrl(null);
-      setShowForm(false);
+      closeForm();
       await qc.invalidateQueries({ queryKey: queryKeys.rewards });
     } catch (err: unknown) {
       Alert.alert(t('common.error'), getErrorMessage(err, t('settingsPage.saveError')));
     } finally {
       setSavingReward(false);
     }
-  };
-
-  const handleAddReward = () => {
-    const cost = parseInt(rewardCost, 10);
-    if (!rewardTitle.trim()) {
-      Alert.alert(t('common.error'), t('settingsPage.rewardNameRequired'));
-      return;
-    }
-    if (isNaN(cost) || cost <= 0) {
-      Alert.alert(t('common.error'), t('settingsPage.rewardCostError'));
-      return;
-    }
-    const limitVal = parseInt(accumulationLimit, 10);
-    if (hasAccumulationLimit && !isNaN(limitVal) && cost > limitVal) {
-      Alert.alert(
-        t('settingsPage.rewardExceedsLimitTitle'),
-        t('settingsPage.rewardExceedsLimitMessage', { cost, limit: limitVal, unit }),
-        [
-          { text: t('common.cancel'), style: 'cancel' },
-          { text: t('common.confirm'), onPress: doAddReward },
-        ],
-      );
-      return;
-    }
-    doAddReward();
-  };
-
-  const handleEditReward = (reward: Reward) => {
-    setEditingRewardId(reward.id);
-    setRewardTitle(reward.titre);
-    setRewardCost(reward.cout.toString());
-    setRewardDescription(reward.description || '');
-    setRewardImageUrl(reward.imageUrl || null);
-    setShowForm(true);
-  };
-
-  const handleCancelEdit = () => {
-    setEditingRewardId(null);
-    setRewardTitle(''); setRewardCost(''); setRewardDescription(''); setRewardImageUrl(null);
-    setShowForm(false);
-  };
-
-  // "+ Add a reward" — gated at the free-plan limit (1 reward) with an upsell (§9/§5).
-  const handleOpenAddForm = () => {
-    if (!isPremium && rewards.length >= 1) {
-      setPremiumLockVisible(true);
-      return;
-    }
-    setEditingRewardId(null);
-    setRewardTitle(''); setRewardCost(''); setRewardDescription(''); setRewardImageUrl(null);
-    setShowForm(true);
-  };
-
-  // One tap fills the form; the merchant still reviews it before saving.
-  const handleUseSuggestion = (title: string, cost: number) => {
-    setEditingRewardId(null);
-    setRewardTitle(title);
-    setRewardCost(String(cost));
-    setRewardDescription('');
-    setRewardImageUrl(null);
-    setShowForm(true);
   };
 
   const doUpdateReward = async () => {
@@ -216,9 +161,7 @@ function RewardManagerBase({
         description: rewardDescription.trim() || undefined,
         imageUrl: rewardImageUrl,
       });
-      setEditingRewardId(null);
-      setRewardTitle(''); setRewardCost(''); setRewardDescription(''); setRewardImageUrl(null);
-      setShowForm(false);
+      closeForm();
       await qc.invalidateQueries({ queryKey: queryKeys.rewards });
     } catch (err: unknown) {
       Alert.alert(t('common.error'), getErrorMessage(err, t('settingsPage.editRewardError')));
@@ -227,8 +170,8 @@ function RewardManagerBase({
     }
   };
 
-  const handleUpdateReward = () => {
-    if (!editingRewardId) return;
+  /** Validates the form, asks to confirm a cost above the accumulation limit, then saves. */
+  const validateAndSave = (save: () => Promise<void>) => {
     const cost = parseInt(rewardCost, 10);
     if (!rewardTitle.trim()) {
       Alert.alert(t('common.error'), t('settingsPage.rewardNameRequired'));
@@ -245,12 +188,42 @@ function RewardManagerBase({
         t('settingsPage.rewardExceedsLimitMessage', { cost, limit: limitVal, unit }),
         [
           { text: t('common.cancel'), style: 'cancel' },
-          { text: t('common.confirm'), onPress: doUpdateReward },
+          { text: t('common.confirm'), onPress: save },
         ],
       );
       return;
     }
-    doUpdateReward();
+    save();
+  };
+
+  const handleAddReward = () => validateAndSave(doAddReward);
+
+  const handleUpdateReward = () => {
+    if (!editingRewardId) return;
+    validateAndSave(doUpdateReward);
+  };
+
+  const handleEditReward = (reward: Reward) => {
+    openForm(reward.id, {
+      titre: reward.titre,
+      cout: reward.cout.toString(),
+      description: reward.description || '',
+      imageUrl: reward.imageUrl || null,
+    });
+  };
+
+  // "+ Add a reward" — gated at the free-plan limit (1 reward) with an upsell (§9/§5).
+  const handleOpenAddForm = () => {
+    if (!isPremium && rewards.length >= 1) {
+      setPremiumLockVisible(true);
+      return;
+    }
+    openForm(null);
+  };
+
+  // One tap fills the form; the merchant still reviews it before saving.
+  const handleUseSuggestion = (title: string, cost: number) => {
+    openForm(null, { titre: title, cout: String(cost) });
   };
 
   const handleDeleteReward = (rewardId: string) => {
@@ -365,7 +338,7 @@ function RewardManagerBase({
               <View style={[styles.formActions, { flexDirection: row }]}>
                 <TouchableOpacity
                   style={[styles.addRewardBtn, { backgroundColor: fill, flex: 1 }]}
-                  onPress={handleCancelEdit}
+                  onPress={closeForm}
                   activeOpacity={0.8}
                   accessibilityRole="button"
                   accessibilityLabel={t('common.cancel')}
