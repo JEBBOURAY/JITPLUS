@@ -66,6 +66,15 @@ export class ScratchDispatchService {
         if (claimed.count !== 1) continue;
         await this.dispatch(c.id).catch((err) => this.logger.error(`Dispatch of ${c.id} failed: ${errMsg(err)}`));
       }
+    } catch (err) {
+      // Runs every minute: a brief DB outage (Cloud SQL restart/maintenance,
+      // P1001/P1002/P1017) is retried on the next tick, so it is only a warning.
+      const code = (err as { code?: unknown })?.code;
+      if (code === 'P1001' || code === 'P1002' || code === 'P1017') {
+        this.logger.warn(`Scratch dispatch tick skipped, database unreachable (${code})`);
+      } else {
+        this.logger.error(`Scratch dispatch tick failed: ${errMsg(err)}`);
+      }
     } finally {
       this.running = false;
     }

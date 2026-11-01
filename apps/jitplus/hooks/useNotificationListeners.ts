@@ -23,13 +23,16 @@ export function useNotificationListeners(): void {
     };
     const dataOf = (n: { request: { content: { data?: unknown } } }) => n.request.content.data as NotificationData;
 
-    // Re-fetch the Expo push token so the backend keeps a valid
+    // Convert the rotated device token to an Expo push token so the backend keeps a valid
     // ExponentPushToken[…] (raw APNs tokens are rejected by Firebase Admin SDK on iOS).
-    const tokenSub = N.addPushTokenListener(async () => {
+    // Pass `devicePushToken` through: without it getExpoPushTokenAsync calls native
+    // registerForRemoteNotifications, which fires this listener again — an endless
+    // loop on iOS that piles up exp.host requests until Hermes aborts (Sentry JITPLUS-MOBILE-J).
+    const tokenSub = N.addPushTokenListener(async (devicePushToken) => {
       if (__DEV__) console.log('Push token rotated, re-registering');
       try {
         const projectId = Constants.expoConfig?.extra?.eas?.projectId;
-        const expoTokenData = await N.getExpoPushTokenAsync({ projectId });
+        const expoTokenData = await N.getExpoPushTokenAsync({ projectId, devicePushToken });
         await api.updatePushToken(String(expoTokenData.data));
       } catch (e) {
         if (__DEV__) console.warn('Failed to refresh Expo Push Token on rotation', e);

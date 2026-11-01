@@ -39,7 +39,12 @@
         "EXPO_PUBLIC_SENTRY_DSN": "$EXPO_PUBLIC_SENTRY_DSN",
         "EXPO_PUBLIC_SUPPORT_WHATSAPP": "212755073325",
         "EXPO_PUBLIC_IOS_APP_ID": "$EXPO_PUBLIC_IOS_APP_ID",
-        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
+        "SENTRY_ENABLE_BUILD_UPLOAD": "true",
+        "SENTRY_ALLOW_FAILURE": "true",
+        "SENTRY_AUTH_TOKEN": "$SENTRY_AUTH_TOKEN",
+        "SENTRY_ORG": "jitplus",
+        "SENTRY_PROJECT": "jitplus-mobile",
+        "SENTRY_URL": "https://de.sentry.io/"
       }
     },
     "production-apk": {

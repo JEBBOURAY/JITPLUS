@@ -447,13 +447,16 @@ function ThemedNavigator() {
     // We defer the work to an idle callback because Android sometimes
     // delivers the token rotation event on resume, when the JS thread is
     // already busy with screen rendering.
-    const tokenSub = Notifications.addPushTokenListener(() => {
+    // Pass the received `devicePushToken` to getExpoPushTokenAsync: without it the
+    // call re-runs native registration, which fires this listener again (endless
+    // loop on iOS, see Sentry JITPLUS-MOBILE-J).
+    const tokenSub = Notifications.addPushTokenListener((devicePushToken) => {
       logInfo('Notifications', 'Push token rotated, re-registering');
       requestIdleCallback(async () => {
         try {
           const projectId = Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
           if (projectId) {
-            const expoTokenData = await Notifications!.getExpoPushTokenAsync({ projectId });
+            const expoTokenData = await Notifications!.getExpoPushTokenAsync({ projectId, devicePushToken });
             const expoToken = String(expoTokenData.data);
             const lang = await AsyncStorage.getItem('jitpluspro_language');
             // Deduped — the helper drops duplicate / burst PATCHes that Android

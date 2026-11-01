@@ -295,14 +295,16 @@ module.exports = ({ config }) => {
       ],
       // Note: expo-screen-capture is a runtime-only module (no config plugin).
       // Screen capture protection is applied at runtime in app/(tabs)/qr.tsx.
-      // Sentry — DISABLED at build time (auto dSYM/source-map upload).
-      // Native crash reporting via @sentry/react-native still works at runtime.
-      // Upload dSYMs/source maps manually post-build via `npx sentry-cli` if needed.
-      // (The Xcode "Upload Debug Symbols to Sentry" script was failing on EAS builders.)
+      // Sentry — dSYM/source-map upload at build time, enabled only in the eas.json
+      // `production` profile (SENTRY_ENABLE_BUILD_UPLOAD + EAS secret SENTRY_AUTH_TOKEN).
+      // SENTRY_ALLOW_FAILURE keeps a failing upload from breaking the EAS build.
+      // Without dSYMs, native crashes (e.g. JITPLUS-MOBILE-J) can't be symbolicated.
       ...(process.env.SENTRY_AUTH_TOKEN && process.env.SENTRY_ENABLE_BUILD_UPLOAD === 'true'
         ? [['@sentry/react-native/expo', {
             organization: process.env.SENTRY_ORG || '',
             project: process.env.SENTRY_PROJECT || '',
+            // DSN is in the EU region (ingest.de.sentry.io): sentry-cli must target de.sentry.io.
+            url: process.env.SENTRY_URL || 'https://de.sentry.io/',
           }]]
         : []),
     ],
