@@ -4,10 +4,12 @@ import {
   CLIENT_REPOSITORY, type IClientRepository,
   LOYALTY_CARD_REPOSITORY, type ILoyaltyCardRepository,
   REWARD_REPOSITORY, type IRewardRepository,
-  CAMPAIGN_SENT_TRACKER_REPOSITORY, type ICampaignSentTrackerRepository,
+  RAW_QUERY_RUNNER, type IRawQueryRunner,
 } from '../repositories';
 import { IPushProvider, PUSH_PROVIDER } from '../interfaces';
-import { isCronAllowed } from './cron-utils';
+import { cronAllowedOnce } from './cron-utils';
+import { type ClientPush, afterId, clearStaleClientTokens, deliverClientPushes } from './client-campaign';
+import { type AppLang, pickAppLang } from '../utils/app-lang';
 
 // ── Reward reminder messages ────────────────────────────────────────────
 const MESSAGES = {
@@ -49,11 +51,8 @@ const MESSAGES = {
   },
 } as const;
 
-type Lang = 'fr' | 'en' | 'ar';
-
-function lang(v?: string | null): Lang {
-  return v === 'en' || v === 'ar' ? v : 'fr';
-}
+type Lang = AppLang;
+const lang = pickAppLang;
 
 /** Localized fallback when the merchant name is missing. */
 const MERCHANT_FALLBACK: Record<Lang, string> = {
@@ -61,6 +60,15 @@ const MERCHANT_FALLBACK: Record<Lang, string> = {
   en: 'your merchant',
   ar: 'المحل ديالك',
 };
+
+interface ReminderCard {
+  id: string;
+  stamps: number;
+  clientId: string;
+  merchantId: string;
+  merchant: { nom: string | null } | null;
+  client: { pushToken: string | null; language: string | null } | null;
+}
 
 /**
  * Reward reminders: nudge clients who are close to or already have
@@ -82,65 +90,33 @@ export class ClientRewardReminderService {
     @Inject(CLIENT_REPOSITORY) private readonly clientRepo: IClientRepository,
     @Inject(LOYALTY_CARD_REPOSITORY) private readonly loyaltyCardRepo: ILoyaltyCardRepository,
     @Inject(REWARD_REPOSITORY) private readonly rewardRepo: IRewardRepository,
-    @Inject(CAMPAIGN_SENT_TRACKER_REPOSITORY) private readonly campaignTrackerRepo: ICampaignSentTrackerRepository,
+    @Inject(RAW_QUERY_RUNNER) private readonly rawQuery: IRawQueryRunner,
     @Inject(PUSH_PROVIDER) private readonly pushProvider: IPushProvider,
   ) {}
 
-  /** Check if this (client, campaign, PUSH) was already sent — used to dedup cron reruns. */
-  private async alreadySent(clientId: string, campaignId: string): Promise<boolean> {
-    try {
-      const row = await this.campaignTrackerRepo.findUnique({
-        where: { clientId_campaignId_channel: { clientId, campaignId, channel: 'PUSH' } },
-        select: { id: true },
-      });
-      return !!row;
-    } catch {
-      return false;
-    }
-  }
-
-  private async markSent(clientId: string, campaignId: string): Promise<void> {
-    try {
-      await this.campaignTrackerRepo.create({
-        data: { clientId, campaignId, channel: 'PUSH' },
-      });
-    } catch {
-      // race condition — safe to ignore (unique constraint)
-    }
-  }
-
   @Cron('0 14 */2 * *') // Every 2 days at 14:00 UTC = 15:00 Maroc
   async sendRewardReminders(): Promise<void> {
-    if (!isCronAllowed(this.logger, 'ClientRewardReminder.sendRewardReminders')) return;
+    if (!(await cronAllowedOnce(this.logger, 'ClientRewardReminder.sendRewardReminders'))) return;
     this.logger.log('Starting client reward reminders');
 
     const staleTokens: string[] = [];
-    const safeSend = async (
-      token: string,
-      title: string,
-      body: string,
-      data: Record<string, string>,
-    ): Promise<boolean> => {
-      try {
-        const result = await this.pushProvider.sendMulticast([token], title, body, undefined, data);
-        if (result?.invalidTokens?.length) staleTokens.push(...result.invalidTokens);
-        return (result?.successCount ?? 0) > 0;
-      } catch (e) {
-        this.logger.warn(`Push failed: ${e}`);
-        return false;
-      }
-    };
+    const deps = { raw: this.rawQuery, push: this.pushProvider, logger: this.logger };
 
     try {
       let rewardAvailableCount = 0;
       let almostCount = 0;
-      let cursor: string | undefined;
+      let last: string | undefined;
+      // Clients already handled this run (1 notification max per client per run).
+      const notifiedClients = new Set<string>();
+      const dayKey = new Date().toISOString().slice(0, 10);
 
       while (true) {
-        // Fetch active loyalty cards with push-enabled clients
-        const cards = await this.loyaltyCardRepo.findMany({
+        // Active loyalty cards with stamps (a fresh card is not a reason to
+        // ping) of push-enabled clients, with the client's token + language.
+        const cards: ReminderCard[] = await this.loyaltyCardRepo.findMany({
           where: {
             deactivatedAt: null,
+            stamps: { gt: 0 },
             client: {
               deletedAt: null,
               notifPush: true,
@@ -150,6 +126,7 @@ export class ClientRewardReminderService {
               isActive: true,
               deletedAt: null,
             },
+            ...afterId(last),
           },
           select: {
             id: true,
@@ -157,98 +134,86 @@ export class ClientRewardReminderService {
             clientId: true,
             merchantId: true,
             merchant: { select: { nom: true } },
+            client: { select: { pushToken: true, language: true } },
           },
           take: ClientRewardReminderService.BATCH_SIZE,
-          ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
           orderBy: { id: 'asc' },
         });
 
         if (cards.length === 0) break;
-
-        // Track which clients we've already notified this run
-        const notifiedClients = new Set<string>();
+        last = cards[cards.length - 1].id;
 
         // Collect unique merchant IDs for batch reward lookup
-        const merchantIds = [...new Set(cards.map((c: any) => c.merchantId))];
+        const merchantIds = [...new Set(cards.map((c) => c.merchantId))];
 
         // Batch load rewards
-        const rewards = await this.rewardRepo.findMany({
+        const rewards: Array<{ merchantId: string; titre: string; cout: number }> = await this.rewardRepo.findMany({
           where: { merchantId: { in: merchantIds } },
           select: { id: true, merchantId: true, titre: true, cout: true },
           orderBy: { cout: 'asc' },
         });
 
         // Group rewards by merchant, keep cheapest first
-        const rewardsByMerchant = new Map<string, { titre: string; cout: number }[]>();
+        const cheapestByMerchant = new Map<string, { titre: string; cout: number }>();
         for (const r of rewards) {
-          if (!rewardsByMerchant.has(r.merchantId)) rewardsByMerchant.set(r.merchantId, []);
-          rewardsByMerchant.get(r.merchantId)!.push({ titre: r.titre, cout: r.cout });
+          if (!cheapestByMerchant.has(r.merchantId)) cheapestByMerchant.set(r.merchantId, { titre: r.titre, cout: r.cout });
         }
 
-        // Batch load client info (push tokens + language)
-        const clientIds = [...new Set(cards.map((c: any) => c.clientId))];
-        const clients = await this.clientRepo.findMany({
-          where: { id: { in: clientIds } },
-          select: { id: true, pushToken: true, language: true },
-        });
-        const clientMap = new Map<string, any>(clients.map((c: any) => [c.id, c]));
-
+        // First qualifying card per client (id order), then one bulk claim.
+        const items: ClientPush[] = [];
+        const kindOf = new Map<string, 'available' | 'almost'>();
         for (const card of cards) {
           if (notifiedClients.has(card.clientId)) continue;
 
-          const client = clientMap.get(card.clientId);
-          if (!client?.pushToken) continue;
+          const token = card.client?.pushToken;
+          if (!token) continue;
 
-          const merchantRewards = rewardsByMerchant.get(card.merchantId);
-          if (!merchantRewards || merchantRewards.length === 0) continue;
+          const cheapest = cheapestByMerchant.get(card.merchantId);
+          if (!cheapest) continue;
 
-          const cheapest = merchantRewards[0];
-          const l = lang(client.language);
+          const l = lang(card.client?.language);
           const merchantName = card.merchant?.nom || MERCHANT_FALLBACK[l];
-          const dayKey = new Date().toISOString().slice(0, 10);
-
-          // Skip clients with zero stamps — a fresh card is not a reason to ping.
           const stamps = card.stamps || 0;
-          if (stamps <= 0) continue;
+          const data = { event: 'reward_reminder', action: 'open_card', merchantId: card.merchantId };
 
           if (stamps >= cheapest.cout) {
-            const campaignId = `reward_stamps_available_${card.merchantId}_${dayKey}`;
-            if (await this.alreadySent(card.clientId, campaignId)) {
-              notifiedClients.add(card.clientId);
-              continue;
-            }
             const msg = MESSAGES.rewardAvailable[l];
-            await safeSend(
-              client.pushToken,
-              msg.title,
-              msg.body(merchantName, cheapest.titre),
-              { event: 'reward_reminder', action: 'open_card', merchantId: card.merchantId },
-            );
-            await this.markSent(card.clientId, campaignId);
-            rewardAvailableCount++;
-            notifiedClients.add(card.clientId);
+            items.push({
+              clientId: card.clientId,
+              token,
+              campaignId: `reward_stamps_available_${card.merchantId}_${dayKey}`,
+              title: msg.title,
+              body: msg.body(merchantName, cheapest.titre),
+              data,
+            });
+            kindOf.set(card.clientId, 'available');
           } else if (stamps >= cheapest.cout * 0.8) {
             const remaining = cheapest.cout - stamps;
             if (remaining <= 0) continue;
-            const campaignId = `reward_stamps_almost_${card.merchantId}_${dayKey}`;
-            if (await this.alreadySent(card.clientId, campaignId)) {
-              notifiedClients.add(card.clientId);
-              continue;
-            }
             const msg = MESSAGES.stampsAlmost[l];
-            await safeSend(
-              client.pushToken,
-              msg.title,
-              msg.body(merchantName, remaining),
-              { event: 'reward_reminder', action: 'open_card', merchantId: card.merchantId },
-            );
-            await this.markSent(card.clientId, campaignId);
-            almostCount++;
-            notifiedClients.add(card.clientId);
+            items.push({
+              clientId: card.clientId,
+              token,
+              campaignId: `reward_stamps_almost_${card.merchantId}_${dayKey}`,
+              title: msg.title,
+              body: msg.body(merchantName, remaining),
+              data,
+            });
+            kindOf.set(card.clientId, 'almost');
+          } else {
+            continue;
           }
+          // Claimed or already sent by another run: either way this client is done.
+          notifiedClients.add(card.clientId);
         }
 
-        cursor = cards[cards.length - 1].id;
+        const res = await deliverClientPushes(deps, items);
+        staleTokens.push(...res.staleTokens);
+        for (const p of res.claimed) {
+          if (kindOf.get(p.clientId) === 'available') rewardAvailableCount++;
+          else almostCount++;
+        }
+
         if (cards.length < ClientRewardReminderService.BATCH_SIZE) break;
       }
 
@@ -256,17 +221,7 @@ export class ClientRewardReminderService {
         `Reward reminders sent: ${rewardAvailableCount} available, ${almostCount} almost-there`,
       );
 
-      if (staleTokens.length > 0) {
-        try {
-          await this.clientRepo.updateMany({
-            where: { pushToken: { in: staleTokens } },
-            data: { pushToken: null },
-          });
-          this.logger.log(`Cleaned ${staleTokens.length} stale push token(s)`);
-        } catch (e) {
-          this.logger.warn(`Failed to clean stale tokens: ${e}`);
-        }
-      }
+      await clearStaleClientTokens(this.clientRepo, staleTokens, this.logger);
     } catch (error) {
       this.logger.error('Failed to send reward reminders', error);
     }

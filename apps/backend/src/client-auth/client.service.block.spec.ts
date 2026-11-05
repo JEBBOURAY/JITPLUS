@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { ClientService } from './client.service';
+import { invalidateMerchantListCache } from '../common/utils/merchant-list-cache';
 import {
   CLIENT_REPOSITORY,
   LOYALTY_CARD_REPOSITORY,
@@ -9,11 +10,12 @@ import {
   NOTIFICATION_REPOSITORY,
   CLIENT_NOTIFICATION_STATUS_REPOSITORY,
   PROFILE_VIEW_REPOSITORY,
+  CLIENT_MERCHANT_BLOCK_REPOSITORY,
   TRANSACTION_REPOSITORY,
   TRANSACTION_RUNNER,
+  RAW_QUERY_RUNNER,
 } from '../common/repositories';
 import { MailService } from '../mail/mail.service';
-import { PrismaService } from '../prisma/prisma.service';
 import { ClientClaimService } from '../merchant/services/client-claim.service';
 import { DealsClientService } from '../deals/deals-client.service';
 
@@ -71,9 +73,10 @@ describe('ClientService — block / unblock / filter', () => {
         { provide: PROFILE_VIEW_REPOSITORY, useValue: noop },
         { provide: TRANSACTION_REPOSITORY, useValue: noop },
         { provide: TRANSACTION_RUNNER, useValue: { run: jest.fn() } },
+        { provide: RAW_QUERY_RUNNER, useValue: { queryRaw: jest.fn(), executeRaw: jest.fn() } },
         { provide: CACHE_MANAGER, useValue: mockCache },
         { provide: MailService, useValue: { sendContentReport: jest.fn() } },
-        { provide: PrismaService, useValue: mockPrisma },
+        { provide: CLIENT_MERCHANT_BLOCK_REPOSITORY, useValue: mockPrisma.clientMerchantBlock },
         { provide: ClientClaimService, useValue: {} },
         { provide: DealsClientService, useValue: mockDeals },
       ],
@@ -192,7 +195,8 @@ describe('ClientService — block / unblock / filter', () => {
 
   describe('getMerchants()', () => {
     const page = 1;
-    const limit = 50;
+    // The page size jitplus asks for, the only one cached.
+    const limit = 100;
     const sampleMerchants = [
       { id: 'm1', nom: 'A', stores: [] },
       { id: 'm2', nom: 'B', stores: [] },
@@ -200,6 +204,40 @@ describe('ClientService — block / unblock / filter', () => {
     ];
 
     const noBadge = { activeDealCount: 0, topDeal: null };
+
+    describe('list cache', () => {
+      const missWith = (rows: unknown[]) => {
+        mockCache.get.mockResolvedValue(undefined);
+        mockMerchantRepo.count.mockResolvedValue(rows.length);
+        mockDeals.merchantBadges.mockResolvedValue({});
+        mockMerchantRepo.findMany.mockResolvedValue(rows);
+      };
+
+      it('stores a page read with the app page size', async () => {
+        missWith(sampleMerchants);
+        await service.getMerchants(page, limit);
+        expect(mockCache.set).toHaveBeenCalledWith('merchants:list:p1:l100', expect.anything(), expect.any(Number));
+      });
+
+      it('reads other page sizes and far pages straight from the database', async () => {
+        missWith(sampleMerchants);
+        await service.getMerchants(1, 37);
+        await service.getMerchants(21, 100);
+        expect(mockCache.get).not.toHaveBeenCalled();
+        expect(mockCache.set).not.toHaveBeenCalled();
+        expect(mockMerchantRepo.findMany).toHaveBeenCalledTimes(2);
+      });
+
+      it('does not store a page when a write invalidated the list during the read', async () => {
+        missWith([]);
+        mockMerchantRepo.findMany.mockImplementationOnce(async () => {
+          await invalidateMerchantListCache(mockCache as any);
+          return sampleMerchants;
+        });
+        await service.getMerchants(page, limit);
+        expect(mockCache.set).not.toHaveBeenCalled();
+      });
+    });
 
     it('returns the cached list without block lookup when clientId is omitted', async () => {
       const cached = { merchants: sampleMerchants, pagination: { total: 3 } };
@@ -258,6 +296,51 @@ describe('ClientService — block / unblock / filter', () => {
 
       expect(result.merchants).toHaveLength(3);
       expect(result.merchants[0]).toMatchObject(noBadge);
+    });
+
+    describe('map points (cache miss)', () => {
+      const store = (id: string, latitude: number | null, longitude: number | null) => ({
+        id, nom: `Store ${id}`, ville: 'Casa', quartier: null, adresse: null, latitude, longitude,
+      });
+      const load = async (merchant: Record<string, unknown>) => {
+        mockCache.get.mockResolvedValue(undefined);
+        mockMerchantRepo.findMany.mockResolvedValue([{ id: 'm1', nom: 'A', ...merchant }]);
+        mockMerchantRepo.count.mockResolvedValue(1);
+        mockDeals.merchantBadges.mockResolvedValue({});
+        return ((await service.getMerchants(page, limit)) as any).merchants as any[];
+      };
+
+      it('orders by name then id, so same-name merchants are never skipped between pages', async () => {
+        await load({ latitude: 1, longitude: 1, stores: [] });
+        expect(mockMerchantRepo.findMany).toHaveBeenCalledWith(
+          expect.objectContaining({ orderBy: [{ nom: 'asc' }, { id: 'asc' }] }),
+        );
+      });
+
+      it('selects only what the map shows (no profile or loyalty-card fields)', async () => {
+        await load({ latitude: 1, longitude: 1, stores: [] });
+        const { select } = mockMerchantRepo.findMany.mock.calls.at(-1)[0];
+        for (const heavy of ['description', 'coverUrl', 'tagline', 'badges', 'cardBackgroundUrl', 'stampsForReward']) {
+          expect(select).not.toHaveProperty(heavy);
+        }
+        expect(select).toMatchObject({ id: true, nom: true, latitude: true, longitude: true, logoUrl: true });
+      });
+
+      it('shows the main point plus each other store when the main point is a store', async () => {
+        const points = await load({ latitude: 1, longitude: 1, stores: [store('s1', 1, 1), store('s2', 2, 2)] });
+        expect(points.map((p) => p.storeId ?? 'main')).toEqual(['main', 's2']);
+      });
+
+      it('drops stale main coordinates that match no active store', async () => {
+        const points = await load({ latitude: 9, longitude: 9, stores: [store('s1', 1, 1), store('s2', 2, 2)] });
+        expect(points.map((p) => p.storeId)).toEqual(['s1', 's2']);
+      });
+
+      it('keeps the main point when no store has coordinates', async () => {
+        const points = await load({ latitude: 1, longitude: 1, stores: [store('s1', null, null)] });
+        expect(points).toHaveLength(1);
+        expect(points[0].storeId).toBeUndefined();
+      });
     });
   });
 });

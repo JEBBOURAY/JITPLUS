@@ -39,7 +39,7 @@ import { getScratchTexts } from './scratch-notif-i18n';
 
 type Tx = Prisma.TransactionClient;
 
-const COUPON_MERCHANT_SELECT = { id: true, nom: true, logoUrl: true } as const;
+const COUPON_MERCHANT_SELECT = { id: true, nom: true, logoUrl: true, currency: true } as const;
 
 /** Columns of a coupon returned to the apps. */
 export const COUPON_PUBLIC_SELECT = {
@@ -300,6 +300,8 @@ export class CouponService {
     idempotencyKey?: string,
   ) {
     const amount = Math.round(Math.max(0, purchaseAmount || 0) * 100) / 100;
+    // Resolved outside the transaction (see assertCanAddClient).
+    const { plan } = await this.planService.resolveEffectivePlan(merchantId);
 
     const result = await withRetry(() =>
       this.prisma.$transaction(
@@ -377,7 +379,7 @@ export class CouponService {
             select: { id: true, stamps: true, deactivatedAt: true },
           });
           if (!loyaltyCard) {
-            await this.planService.assertCanAddClient(merchantId);
+            await this.planService.assertCanAddClient(merchantId, { tx, plan });
             loyaltyCard = await tx.loyaltyCard.create({
               data: { clientId: coupon.clientId, merchantId, stamps: 0 },
               select: { id: true, stamps: true, deactivatedAt: true },
@@ -606,7 +608,7 @@ export class CouponService {
       case 'hours':
         return 'Ce coupon n\'est pas utilisable à cette heure-ci';
       case 'minPurchase':
-        return `Montant minimum d'achat : ${failed.detail?.min} MAD`;
+        return `Montant minimum d'achat non atteint (${failed.detail?.min})`;
       default:
         return 'Ce coupon ne peut pas être utilisé';
     }

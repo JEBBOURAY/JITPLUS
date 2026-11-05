@@ -57,6 +57,7 @@ import {
 import { openDirections, openFirst } from '@jitplus/shared/src/openLinks';
 import { palette, useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useMoney } from '@/hooks/useCurrency';
 import { useDir } from '@/hooks/useDir';
 import { font } from '@/constants/design';
 import { hapticLight } from '@/utils/haptics';
@@ -390,6 +391,7 @@ export interface FicheWheel {
 
 export const FicheLuckyWheel = memo(function FicheLuckyWheel({ wheel }: { wheel: FicheWheel }) {
   const { t } = useLanguage();
+  const { money } = useMoney();
   const dir = useDir();
   const endsLabel = describeWheelEnd(wheel.endsAt, t, 'fiche');
   const chips: { key: string; Icon: LucideIcon; label: string }[] = [
@@ -397,7 +399,7 @@ export const FicheLuckyWheel = memo(function FicheLuckyWheel({ wheel }: { wheel:
       ? [{ key: 'rate', Icon: Trophy, label: t('fiche.luckyWheelWinRate', { rate: Math.round(wheel.globalWinRate * 100) }) }]
       : []),
     ...(wheel.minSpendAmount > 0
-      ? [{ key: 'min', Icon: ShoppingBag, label: t('fiche.luckyWheelMinSpend', { amount: wheel.minSpendAmount }) }]
+      ? [{ key: 'min', Icon: ShoppingBag, label: t('fiche.luckyWheelMinSpend', { amount: money(wheel.minSpendAmount) }) }]
       : []),
     { key: 'ends', Icon: Clock, label: endsLabel },
   ];

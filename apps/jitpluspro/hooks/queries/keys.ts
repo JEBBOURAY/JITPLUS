@@ -19,6 +19,7 @@ export const queryKeys = {
   notificationHistory: ['notification-history'] as const,
   adminNotifications: ['admin-notifications'] as const,
   adminNotifUnreadCount: ['admin-notif-unread-count'] as const,
+  notificationPrefs: ['notification-prefs'] as const,
   emailQuota: ['email-quota'] as const,
   teamMembers: ['team-members'] as const,
   luckyWheelCampaigns: ['lucky-wheel-campaigns'] as const,
@@ -27,6 +28,9 @@ export const queryKeys = {
   luckyWheelActiveInfo: ['lucky-wheel-active-info'] as const,
   merchantDeals: ['merchant-deals'] as const,
   merchantDeal: (id: string) => ['merchant-deals', id] as const,
+  stampCodeQuota: ['stamp-codes', 'quota'] as const,
+  stampCodeBatches: ['stamp-codes', 'batches'] as const,
+  stampCodeBatch: (id: string) => ['stamp-codes', 'batches', id] as const,
 } as const;
 
 /** Stale times (ms), from the most volatile data (client status) to the most stable (plan, referral). */

@@ -36,6 +36,7 @@ import { formatDate } from '@/utils/date';
 import { ActionButton } from '@/components/ui/ActionButton';
 import { font, icon } from '@/constants/design';
 import { useDir } from '@/hooks/useDir';
+import { getApiBaseUrl } from '@/services/api';
 
 const PRO_ANDROID_URL = 'https://play.google.com/store/apps/details?id=com.jitplus.pro';
 const PRO_IOS_APP_ID = process.env.EXPO_PUBLIC_IOS_APP_ID ?? '';
@@ -81,8 +82,12 @@ export default function ReferralScreen() {
     if (!referralCode) return;
     try {
       const links = `Android: ${PRO_ANDROID_URL}\niOS: ${PRO_IOS_URL}`;
+      // Opens the register screen with the code already filled in.
+      const signupLink = `${getApiBaseUrl()}/pro/register?ref=${encodeURIComponent(referralCode)}`;
       await Share.share({
-        message: t('referralScreen.shareMessage', { code: referralCode, links }),
+        message:
+          `${t('referralScreen.shareMessage', { code: referralCode, links })}\n\n` +
+          t('referralScreen.shareSignupLink', { link: signupLink }),
         title: t('referral.shareCode'),
       });
     } catch {

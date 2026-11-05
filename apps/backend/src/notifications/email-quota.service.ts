@@ -1,105 +1,78 @@
 import { Injectable, ForbiddenException, Inject } from '@nestjs/common';
-import {
-  MERCHANT_REPOSITORY, type IMerchantRepository,
-  TRANSACTION_RUNNER, type ITransactionRunner,
-} from '../common/repositories';
-import { Merchant } from '@prisma/client';
+import { MERCHANT_REPOSITORY, type IMerchantRepository } from '../common/repositories';
+
+export interface EmailQuota {
+  emailQuotaUsed: number;
+  emailQuotaMax: number;
+  emailQuotaResetAt: Date;
+}
+
+const QUOTA_SELECT = { emailQuotaUsed: true, emailQuotaMax: true, emailQuotaResetAt: true } as const;
+
+/** First day of the month following `now`, at 00:00 UTC (no month overflow). */
+export function nextQuotaResetDate(now: Date): Date {
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+}
 
 @Injectable()
 export class EmailQuotaService {
   constructor(
     @Inject(MERCHANT_REPOSITORY) private readonly merchantRepo: IMerchantRepository,
-    @Inject(TRANSACTION_RUNNER) private readonly txRunner: ITransactionRunner,
   ) {}
 
   /**
-   * Returns current email quota for a merchant without modifying it.
-   * Resets the monthly quota if a new period has started.
+   * Returns the merchant's current email quota, resetting it first when a new
+   * monthly period has started.
    */
-  async getQuota(merchantId: string): Promise<Merchant> {
-    const merchant = await this.merchantRepo.findUniqueOrThrow({
-      where: { id: merchantId },
-      select: {
-        id: true,
-        emailQuotaUsed: true,
-        emailQuotaMax: true,
-        emailQuotaResetAt: true,
-        nom: true,
-      },
-    }) as Merchant;
-
-    const now = new Date();
-    if (now > merchant.emailQuotaResetAt) {
-      const nextResetDate = new Date(now);
-      nextResetDate.setMonth(nextResetDate.getMonth() + 1);
-      nextResetDate.setDate(1);
-      nextResetDate.setHours(0, 0, 0, 0);
-
-      return this.merchantRepo.update({
-        where: { id: merchantId },
-        data: { emailQuotaUsed: 0, emailQuotaResetAt: nextResetDate },
-      });
-    }
-
-    return merchant;
+  async getQuota(merchantId: string): Promise<EmailQuota> {
+    return this.loadQuota(merchantId);
   }
 
   /**
-   * Checks if a merchant can send a certain number of emails and updates their quota.
-   * Resets the monthly quota if a new period has started.
+   * Reserves `emailsToSend` emails from the merchant's monthly quota.
    *
-   * @param merchantId The ID of the merchant.
-   * @param emailsToSend The number of emails the merchant intends to send.
-   * @returns The updated merchant with the new quota usage.
-   * @throws An error with name 'EmailQuotaExceededError' if the quota is exceeded.
+   * The increment is a conditional UPDATE (`emailQuotaUsed <= max - n`), so two
+   * concurrent blasts cannot both pass the check and overshoot the quota.
+   *
+   * @throws ForbiddenException when the quota would be exceeded.
    */
-  async checkAndIncrementQuota(
-    merchantId: string,
-    emailsToSend: number,
-  ): Promise<Merchant> {
-    return this.txRunner.run(async (tx) => {
-      let merchant = await tx.merchant.findUniqueOrThrow({
-        where: { id: merchantId },
-      });
+  async checkAndIncrementQuota(merchantId: string, emailsToSend: number): Promise<EmailQuota> {
+    const quota = await this.loadQuota(merchantId);
 
-      const now = new Date();
-      // Reset quota if the reset date is in the past
-      if (now > merchant.emailQuotaResetAt) {
-        const nextResetDate = new Date(now);
-        nextResetDate.setMonth(nextResetDate.getMonth() + 1);
-        nextResetDate.setDate(1);
-        nextResetDate.setHours(0, 0, 0, 0);
-
-        merchant = await tx.merchant.update({
-          where: { id: merchantId },
-          data: {
-            emailQuotaUsed: 0,
-            emailQuotaResetAt: nextResetDate,
-          },
-        });
-      }
-
-      // Check if the new emails exceed the quota
-      if (
-        merchant.emailQuotaUsed + emailsToSend >
-        merchant.emailQuotaMax
-      ) {
-        throw new ForbiddenException(
-          `Quota email dépassé. Utilisé: ${merchant.emailQuotaUsed}, Max: ${merchant.emailQuotaMax}`,
-        );
-      }
-
-      // Increment the quota and return the updated merchant
-      const updatedMerchant = await tx.merchant.update({
-        where: { id: merchantId },
-        data: {
-          emailQuotaUsed: {
-            increment: emailsToSend,
-          },
-        },
-      });
-
-      return updatedMerchant;
+    const reserved = await this.merchantRepo.updateMany({
+      where: {
+        id: merchantId,
+        emailQuotaMax: quota.emailQuotaMax,
+        emailQuotaUsed: { lte: quota.emailQuotaMax - emailsToSend },
+      },
+      data: { emailQuotaUsed: { increment: emailsToSend } },
     });
+
+    if (reserved.count !== 1) {
+      const current = await this.merchantRepo.findUniqueOrThrow({ where: { id: merchantId }, select: QUOTA_SELECT });
+      throw new ForbiddenException(
+        `Quota email dépassé. Utilisé: ${current.emailQuotaUsed}, Max: ${current.emailQuotaMax}`,
+      );
+    }
+
+    return { ...quota, emailQuotaUsed: quota.emailQuotaUsed + emailsToSend };
+  }
+
+  /** Reads the quota, applying the monthly reset when its date has passed. */
+  private async loadQuota(merchantId: string): Promise<EmailQuota> {
+    const quota = await this.merchantRepo.findUniqueOrThrow({ where: { id: merchantId }, select: QUOTA_SELECT });
+
+    const now = new Date();
+    if (now <= quota.emailQuotaResetAt) return quota;
+
+    // Conditional on the old reset date: when two requests race on the reset,
+    // only one zeroes the counter — the other must not wipe emails already
+    // reserved in the new period.
+    const nextReset = nextQuotaResetDate(now);
+    await this.merchantRepo.updateMany({
+      where: { id: merchantId, emailQuotaResetAt: quota.emailQuotaResetAt },
+      data: { emailQuotaUsed: 0, emailQuotaResetAt: nextReset },
+    });
+    return this.merchantRepo.findUniqueOrThrow({ where: { id: merchantId }, select: QUOTA_SELECT });
   }
 }

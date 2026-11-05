@@ -5,6 +5,9 @@ import {
 } from '@nestjs/common';
 import { Inject } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import { Cache } from 'cache-manager';
+import { revokeDeviceSessions } from '../../common/utils/session-cache';
 import {
   TEAM_MEMBER_REPOSITORY, type ITeamMemberRepository,
   MERCHANT_REPOSITORY, type IMerchantRepository,
@@ -27,12 +30,13 @@ export class MerchantTeamService {
     @Inject(TRANSACTION_RUNNER) private txRunner: ITransactionRunner,
     @Inject(DEVICE_SESSION_REPOSITORY) private deviceSessionRepo: IDeviceSessionRepository,
     private auditLogService: AuditLogService,
+    @Inject(CACHE_MANAGER) private cache: Cache,
   ) {}
 
   /** Signs the member out of every device (sessions are keyed by the email used at login). */
   private async revokeMemberSessions(merchantId: string, email: string) {
-    await this.deviceSessionRepo.deleteMany({
-      where: { merchantId, userType: USER_TYPE_TEAM_MEMBER, userEmail: email },
+    await revokeDeviceSessions(this.deviceSessionRepo, this.cache, {
+      merchantId, userType: USER_TYPE_TEAM_MEMBER, userEmail: email,
     });
   }
 

@@ -1,3 +1,4 @@
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException, ConflictException } from '@nestjs/common';
 import { MerchantTeamService } from './merchant-team.service';
@@ -38,7 +39,8 @@ const mockTeamMemberRepo = {
 };
 
 const mockDeviceSessionRepo = {
-  deleteMany: jest.fn(),
+  findMany: jest.fn().mockResolvedValue([]),
+  deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
 };
 
 const mockTxRunner = {
@@ -61,6 +63,7 @@ describe('MerchantTeamService', () => {
         { provide: TRANSACTION_RUNNER, useValue: mockTxRunner },
         { provide: DEVICE_SESSION_REPOSITORY, useValue: mockDeviceSessionRepo },
         { provide: AuditLogService, useValue: { log: jest.fn() } },
+        { provide: CACHE_MANAGER, useValue: { del: jest.fn().mockResolvedValue(undefined) } },
       ],
     }).compile();
 

@@ -22,6 +22,7 @@ import {
 import { openDirections, openFirst } from '@jitplus/shared/src/openLinks';
 import { palette, useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { formatMoney } from '@/config/currency';
 import { useDir } from '@/hooks/useDir';
 import { usePlanStatus } from '@/hooks/usePlanStatus';
 import { useLuckyWheelCampaigns, useRewards } from '@/hooks/useQueryHooks';
@@ -89,7 +90,7 @@ interface Props {
 
 function FichePreview({ onClose, merchant, stores, onManageLocations }: Omit<Props, 'visible'>) {
   const theme = useTheme();
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
   const dir = useDir();
   const insets = useSafeAreaInsets();
   const { isPremium } = usePlanStatus(merchant);
@@ -130,7 +131,7 @@ function FichePreview({ onClose, merchant, stores, onManageLocations }: Omit<Pro
   }, [merchant.categorie, merchant.secondaryCategories, merchant.ville]);
 
   const earnLine = merchant.stampEarningMode === 'PER_AMOUNT' && merchant.amountPerStamp
-    ? t('fiche.earnPerAmount', { amount: merchant.amountPerStamp })
+    ? t('fiche.earnPerAmount', { amount: formatMoney(merchant.amountPerStamp, merchant.currency, locale) })
     : t('fiche.earnPerVisit');
   const statusColor = openStatus?.isOpen ? theme.success : theme.danger;
   const tagline = merchant.tagline?.trim();

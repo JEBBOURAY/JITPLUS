@@ -13,12 +13,14 @@ import {
 } from 'react-native';
 import { Save, ArrowLeft, HelpCircle, Shield, Minus, Plus, Clock, ShieldCheck } from 'lucide-react-native';
 import { JitStamp } from '@/components/icons';
+import { useShallow } from 'zustand/react/shallow';
 import { useAuth } from '@/contexts/AuthContext';
+import { useAuthStore } from '@/stores/authStore';
 import { useTheme, palette, type ThemeColors } from '@/contexts/ThemeContext';
 import { useRouter } from 'expo-router';
 import api from '@/services/api';
 import { useQueryClient } from '@tanstack/react-query';
-import { queryKeys } from '@/hooks/useQueryHooks';
+import { queryKeys, useRewards } from '@/hooks/useQueryHooks';
 import { usePlanStatus } from '@/hooks/usePlanStatus';
 import { getErrorMessage } from '@/utils/error';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -32,8 +34,10 @@ import { RewardManager } from '@/components/settings/RewardManager';
 import InfoHint from '@/components/settings/InfoHint';
 import LoyaltyGuideSheet from '@/components/settings/LoyaltyGuideSheet';
 import LoyaltyCardPreview from '@/components/settings/LoyaltyCardPreview';
-import { surfaceShadow, fieldFill } from '@/components/settings/surface';
-import { DEFAULT_CURRENCY } from '@/config/currency';
+import { surfaceShadow, fieldFill, panelStyles } from '@/components/settings/surface';
+import { type CurrencyCode } from '@/config/currency';
+import { useCurrency } from '@/hooks/useCurrency';
+import CurrencyPicker from '@/components/settings/CurrencyPicker';
 import { MAX_STAMPS_PER_TX } from '@/constants/app';
 import {
   computeStampsForAmount,
@@ -49,6 +53,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Merchant, Reward } from '@/types';
 
+const EMPTY_REWARDS: Reward[] = [];
+
 const SIM_AMOUNT = 100;
 const HIT_SLOP = { top: 10, bottom: 10, left: 10, right: 10 };
 
@@ -61,9 +67,10 @@ interface SettingsState {
   hasAccumulationLimit: boolean;
   accumulationLimit: string;
   saving: boolean;
-  rewards: Reward[];
-  rewardReloadToken: number;
 }
+
+/** Saved loyalty rules the draft is reset from. */
+type SavedLoyalty = Pick<Merchant, 'stampEarningMode' | 'amountPerStamp' | 'stampsForReward' | 'stampValidityDays' | 'accumulationLimit'>;
 
 const initialSettingsState: SettingsState = {
   stampEarningMode: 'PER_VISIT',
@@ -74,21 +81,18 @@ const initialSettingsState: SettingsState = {
   hasAccumulationLimit: false,
   accumulationLimit: '',
   saving: false,
-  rewards: [],
-  rewardReloadToken: 0,
 };
 
 type SettingsAction =
   | { type: 'SET'; payload: Partial<SettingsState> }
-  | { type: 'LOAD_FROM_MERCHANT'; merchant: Merchant }
-  | { type: 'INCREMENT_RELOAD' };
+  | { type: 'LOAD_SAVED'; saved: SavedLoyalty };
 
 function settingsReducer(state: SettingsState, action: SettingsAction): SettingsState {
   switch (action.type) {
     case 'SET':
       return { ...state, ...action.payload };
-    case 'LOAD_FROM_MERCHANT': {
-      const m = action.merchant;
+    case 'LOAD_SAVED': {
+      const m = action.saved;
       return {
         ...state,
         stampEarningMode: m.stampEarningMode || 'PER_VISIT',
@@ -100,8 +104,6 @@ function settingsReducer(state: SettingsState, action: SettingsAction): Settings
         accumulationLimit: m.accumulationLimit?.toString() || '',
       };
     }
-    case 'INCREMENT_RELOAD':
-      return { ...state, rewardReloadToken: state.rewardReloadToken + 1 };
   }
 }
 
@@ -172,9 +174,23 @@ export default function SettingsScreen() {
   const [state, dispatch] = useReducer(settingsReducer, initialSettingsState);
   const {
     stampEarningMode, amountPerStamp, stampsForReward, hasValidity, validityDays,
-    hasAccumulationLimit, accumulationLimit, saving, rewards, rewardReloadToken,
+    hasAccumulationLimit, accumulationLimit, saving,
   } = state;
   const set = useCallback((payload: Partial<SettingsState>) => dispatch({ type: 'SET', payload }), []);
+
+  const currency = useCurrency();
+  const [savingCurrency, setSavingCurrency] = useState(false);
+  const handleCurrencyChange = useCallback(async (code: CurrencyCode) => {
+    setSavingCurrency(true);
+    try {
+      const res = await api.patch('/merchant/currency', { currency: code });
+      updateMerchant(res.data);
+    } catch (err: unknown) {
+      Alert.alert(t('common.error'), getErrorMessage(err, t('settingsPage.saveError')));
+    } finally {
+      setSavingCurrency(false);
+    }
+  }, [updateMerchant, t]);
 
   const [guideVisible, setGuideVisible] = useState(false);
   const [proOfferVisible, setProOfferVisible] = useState(false);
@@ -182,16 +198,25 @@ export default function SettingsScreen() {
   const closeGuide = useCallback(() => setGuideVisible(false), []);
   const openProOffer = useCallback(() => setProOfferVisible(true), []);
   const closeProOffer = useCallback(() => setProOfferVisible(false), []);
-  const handleRewardsChange = useCallback((updatedRewards: Reward[]) => {
-    set({ rewards: updatedRewards });
-  }, [set]);
+  // Shared query (same cache as RewardManager): drives the preview and the rescale checks.
+  const { data: rewards = EMPTY_REWARDS } = useRewards(!!merchant);
+
+  // Only the loyalty rules reset the draft: an unrelated profile update
+  // (currency, logo…) must not wipe unsaved edits.
+  const saved = useAuthStore(useShallow((s): SavedLoyalty | null => (s.merchant ? {
+    stampEarningMode: s.merchant.stampEarningMode,
+    amountPerStamp: s.merchant.amountPerStamp,
+    stampsForReward: s.merchant.stampsForReward,
+    stampValidityDays: s.merchant.stampValidityDays,
+    accumulationLimit: s.merchant.accumulationLimit,
+  } : null)));
 
   useEffect(() => {
-    if (!merchant && !authLoading) {
-      router.replace('/login');
-    } else if (merchant) {
-      dispatch({ type: 'LOAD_FROM_MERCHANT', merchant });
-    }
+    if (saved) dispatch({ type: 'LOAD_SAVED', saved });
+  }, [saved]);
+
+  useEffect(() => {
+    if (!merchant && !authLoading) router.replace('/login');
   }, [merchant, authLoading, router]);
 
   const isPerAmount = stampEarningMode === 'PER_AMOUNT';
@@ -230,7 +255,6 @@ export default function SettingsScreen() {
     qc.invalidateQueries({ queryKey: ['clients'] });
     qc.invalidateQueries({ queryKey: ['client-status'] });
     qc.invalidateQueries({ queryKey: ['client-detail'] });
-    dispatch({ type: 'INCREMENT_RELOAD' });
     Alert.alert(t('common.confirm'), t('settingsPage.saveSuccess'));
   }, [stampEarningMode, isPerAmount, parsedAmountPerStamp, hasAccumulationLimit, accumulationLimit, slotsChanged, stampsForReward, validityChanged, draftValidity, updateMerchant, t, qc]);
 
@@ -356,7 +380,7 @@ export default function SettingsScreen() {
     ? String(parsedAmountPerStamp)
     : String(DEFAULT_AMOUNT_PER_STAMP);
   const ruleText = isPerAmount
-    ? t('settingsPage.ruleAmount', { amount: amountLabel, currency: DEFAULT_CURRENCY.symbol })
+    ? t('settingsPage.ruleAmount', { amount: amountLabel, currency: currency.symbol })
     : t('settingsPage.simPerVisit');
 
   const previewTotal = cardSlots(scaledRewards.map((r) => r.scaled), stampsForReward);
@@ -425,12 +449,12 @@ export default function SettingsScreen() {
           validityText={hasValidity && !locked ? t('settingsPage.validityPreview', { days: validityDays }) : null}
         />
 
-        <View style={[styles.panel, { backgroundColor: theme.bgCard }, surface]}>
-          <View style={[styles.panelHeader, { flexDirection: row }]}>
-            <View style={[styles.panelIcon, { backgroundColor: theme.primaryBg }]}>
+        <View style={[panelStyles.panel, { backgroundColor: theme.bgCard }, surface]}>
+          <View style={[panelStyles.header, { flexDirection: row }]}>
+            <View style={[panelStyles.icon, { backgroundColor: theme.primaryBg }]}>
               <JitStamp size={18} color={theme.primary} strokeWidth={iconTokens.stroke} />
             </View>
-            <Text style={[styles.panelTitle, { color: theme.text, textAlign }]} maxFontSizeMultiplier={1.3} accessibilityRole="header">
+            <Text style={[panelStyles.title, { color: theme.text, textAlign }]} maxFontSizeMultiplier={1.3} accessibilityRole="header">
               {t('settingsPage.loyaltyMode')}
             </Text>
             {locked ? (
@@ -447,8 +471,16 @@ export default function SettingsScreen() {
             )}
           </View>
 
-          <View style={styles.panelBody}>
-            <View>
+          <View style={panelStyles.body}>
+            <CurrencyPicker
+              theme={theme}
+              t={t}
+              value={currency}
+              saving={savingCurrency}
+              onSelect={handleCurrencyChange}
+            />
+
+            <View style={styles.fieldBlock}>
               <View style={[styles.labelRow, { flexDirection: row }]}>
                 <Text style={[styles.fieldLabel, { color: theme.text }]} maxFontSizeMultiplier={1.3}>
                   {t('settingsPage.stampEarningMode')}
@@ -500,7 +532,7 @@ export default function SettingsScreen() {
                     maxFontSizeMultiplier={1.2}
                   />
                   <Text style={[styles.rateSuffix, { color: theme.textMuted }]} maxFontSizeMultiplier={1.2}>
-                    {t('settingsPage.stampRateSuffix', { symbol: DEFAULT_CURRENCY.symbol })}
+                    {t('settingsPage.stampRateSuffix', { symbol: currency.symbol })}
                   </Text>
                 </View>
               </View>
@@ -513,7 +545,7 @@ export default function SettingsScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={[styles.caption, { color: theme.textMuted, textAlign }]} maxFontSizeMultiplier={1.3}>
                   {isPerAmount
-                    ? t('settingsPage.simLabel', { amount: SIM_AMOUNT, currency: DEFAULT_CURRENCY.symbol })
+                    ? t('settingsPage.simLabel', { amount: SIM_AMOUNT, currency: currency.symbol })
                     : t('settingsPage.simLabelVisit')}
                 </Text>
                 {isPerAmount ? (
@@ -685,8 +717,6 @@ export default function SettingsScreen() {
           hasAccumulationLimit={hasAccumulationLimit}
           accumulationLimit={accumulationLimit}
           stampsForReward={savedSlots}
-          onRewardsChange={handleRewardsChange}
-          reloadToken={rewardReloadToken}
         />
       </ScrollView>
       </KeyboardAvoidingView>
@@ -758,12 +788,6 @@ const styles = StyleSheet.create({
   iconBtn: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   headerBar: { alignItems: 'center', paddingHorizontal: 20, paddingBottom: 14, gap: 10 },
   headerTitle: { flex: 1, fontSize: 28, fontFamily: font.bold, letterSpacing: -0.5 },
-
-  panel: { marginHorizontal: 16, marginTop: 18, borderRadius: 16 },
-  panelHeader: { alignItems: 'center', gap: 11, paddingTop: 16, paddingHorizontal: 16 },
-  panelIcon: { width: 34, height: 34, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  panelTitle: { flex: 1, fontSize: 15, fontFamily: font.semibold, letterSpacing: -0.2 },
-  panelBody: { padding: 16, paddingTop: 14 },
 
   fieldBlock: { marginTop: 18 },
   labelRow: { alignItems: 'center', gap: 6, marginBottom: 8 },

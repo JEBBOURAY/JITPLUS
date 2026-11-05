@@ -10,7 +10,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService, JwtVerifyOptions } from '@nestjs/jwt';
 import { Server, Socket } from 'socket.io';
 import { DEVICE_SESSION_REPOSITORY, type IDeviceSessionRepository } from '../common/repositories';
-import { USER_TYPE_MERCHANT, USER_TYPE_TEAM_MEMBER } from '../common/constants';
+import { USER_TYPE_MERCHANT, USER_TYPE_TEAM_MEMBER, getAdminDashboardOrigin } from '../common/constants';
 import {
   WS_EVENTS,
   StampsUpdatedPayload,
@@ -59,8 +59,9 @@ function isDevOrigin(origin: string): boolean {
       }
       const allowed = corsOrigins.split(',').map((o) => o.trim());
       // Forcer l'autorisation admin en prod
-      if (!allowed.includes('https://admin-jitplus-97259.web.app')) {
-        allowed.push('https://admin-jitplus-97259.web.app');
+      const adminOrigin = getAdminDashboardOrigin();
+      if (!allowed.includes(adminOrigin)) {
+        allowed.push(adminOrigin);
       }
       if (allowed.includes(origin)) return cb(null, true);
       cb(new Error('WebSocket CORS rejected'));

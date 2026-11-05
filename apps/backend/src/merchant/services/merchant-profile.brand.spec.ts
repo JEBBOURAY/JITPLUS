@@ -16,6 +16,7 @@ import {
 } from '../../common/repositories';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { AuditLogService } from '../../admin/audit-log.service';
+import { AppleTokenVerifier } from '../../common/apple/apple-token-verifier.service';
 import { MailService } from '../../mail/mail.service';
 
 describe('MerchantProfileService — brand profile', () => {
@@ -47,6 +48,7 @@ describe('MerchantProfileService — brand profile', () => {
         { provide: ConfigService, useValue: { get: jest.fn() } },
         { provide: AuditLogService, useValue: { log: jest.fn() } },
         { provide: MailService, useValue: {} },
+        { provide: AppleTokenVerifier, useValue: { verify: jest.fn() } },
       ],
     }).compile();
 

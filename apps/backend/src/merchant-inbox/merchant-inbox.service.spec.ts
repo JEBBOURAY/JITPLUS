@@ -5,7 +5,8 @@ const CREATED = new Date('2026-01-01T00:00:00Z');
 
 function makeRepos() {
   const inboxRepo = {
-    create: jest.fn().mockResolvedValue({}),
+    create: jest.fn().mockResolvedValue({ id: 'new-1' }),
+    groupBy: jest.fn().mockResolvedValue([]),
     findMany: jest.fn().mockResolvedValue([]),
     count: jest.fn().mockResolvedValue(0),
     findFirst: jest.fn().mockResolvedValue(null),
@@ -38,13 +39,16 @@ function makeRepos() {
 describe('MerchantInboxService', () => {
   it('record() stores the entry and never throws on DB failure', async () => {
     const { service, inboxRepo } = makeRepos();
-    await service.record(MERCHANT_ID, { category: 'PLAN', title: 'T', body: 'B', action: 'open_plan' });
+    await expect(
+      service.record(MERCHANT_ID, { category: 'PLAN', title: 'T', body: 'B', action: 'open_plan' }),
+    ).resolves.toBe('new-1');
     expect(inboxRepo.create).toHaveBeenCalledWith({
       data: { merchantId: MERCHANT_ID, category: 'PLAN', title: 'T', body: 'B', action: 'open_plan' },
+      select: { id: true },
     });
 
     inboxRepo.create.mockRejectedValueOnce(new Error('db down'));
-    await expect(service.record(MERCHANT_ID, { category: 'TIP', title: 'T', body: 'B' })).resolves.toBeUndefined();
+    await expect(service.record(MERCHANT_ID, { category: 'TIP', title: 'T', body: 'B' })).resolves.toBeNull();
   });
 
   it('list() merges broadcasts and personal items newest first, with read state', async () => {

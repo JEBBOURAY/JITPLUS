@@ -43,7 +43,7 @@ export class QuickAddTransactionDto {
 
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0, { message: 'Le montant ne peut pas être négatif' })
-  @Max(1_000_000, { message: 'Le montant ne peut pas dépasser 1 000 000 DH' })
+  @Max(1_000_000, { message: 'Le montant ne peut pas dépasser 1 000 000' })
   amount: number;
 
   @IsInt({ message: 'Le nombre de tampons doit être un entier' })

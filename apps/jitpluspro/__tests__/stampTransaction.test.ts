@@ -99,6 +99,52 @@ describe('computeStampPlan — per amount', () => {
   });
 });
 
+describe('computeStampPlan — stamp-less wheel purchase', () => {
+  const wheel = { amountPerStamp: 150, purchaseMinSpend: 100 };
+
+  it('sends a PURCHASE when the amount reaches the wheel but not one stamp', () => {
+    expect(computeStampPlan(perAmount({ ...wheel, amount: 100 }))).toMatchObject({
+      kind: 'earn',
+      purchaseOnly: true,
+      earnStamps: 0,
+      creditedStamps: 0,
+      balanceAfter: 3,
+      blocker: null,
+    });
+  });
+
+  it('keeps a normal earn once the amount buys a stamp', () => {
+    expect(computeStampPlan(perAmount({ ...wheel, amount: 150 }))).toMatchObject({ kind: 'earn', purchaseOnly: false, earnStamps: 1 });
+  });
+
+  it('still blocks below the wheel minimum', () => {
+    expect(computeStampPlan(perAmount({ ...wheel, amount: 99 }))).toMatchObject({ kind: 'none', purchaseOnly: false, blocker: 'amountTooLow' });
+  });
+
+  it('gives the spin when the card is at the accumulation limit', () => {
+    expect(computeStampPlan(perAmount({ ...wheel, amount: 300, currentStamps: 10, accumulationLimit: 10 }))).toMatchObject({
+      kind: 'earn',
+      purchaseOnly: true,
+      atLimit: true,
+    });
+  });
+
+  it('gives the spin in per-visit mode when the visit is not counted', () => {
+    expect(computeStampPlan(visit({ countVisit: false, amount: 100, purchaseMinSpend: 100 }))).toMatchObject({
+      kind: 'earn',
+      purchaseOnly: true,
+    });
+  });
+
+  it('combines with a reward the client can already afford', () => {
+    expect(computeStampPlan(perAmount({ ...wheel, amount: 100, reward: { cout: 3 } }))).toMatchObject({
+      kind: 'earnAndRedeem',
+      order: 'redeemFirst',
+      purchaseOnly: true,
+    });
+  });
+});
+
 describe('rewardAvailability', () => {
   it('says when a gift can be offered', () => {
     expect(rewardAvailability(5, 6, 7)).toEqual({ state: 'now' });

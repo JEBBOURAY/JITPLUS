@@ -62,7 +62,7 @@ export interface TransactionRecordedPayload {
   clientId: string;
   clientName: string;
   transactionId: string;
-  type: 'EARN_STAMPS' | 'REDEEM_REWARD' | 'ADJUST_STAMPS';
+  type: 'EARN_STAMPS' | 'REDEEM_REWARD' | 'ADJUST_STAMPS' | 'PURCHASE';
   stamps: number;
   newBalance: number;
 }

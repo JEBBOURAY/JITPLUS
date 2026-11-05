@@ -15,6 +15,7 @@ import {
   TrendingDown,
   ChevronRight,
   Clock,
+  Package,
 } from 'lucide-react-native';
 import { JitBell, JitDeals, JitGames, JitPremium, JitStamp, JitStore } from '@/components/icons';
 import * as Haptics from 'expo-haptics';
@@ -42,7 +43,7 @@ import KpiCounter from '@/components/KpiCounter';
 import { useTourTarget } from '@/components/GuidedTour';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusFade } from '@/hooks/useFocusFade';
-import WelcomeGuideCard from '@/components/WelcomeGuideCard';
+import NotificationPermissionSheet from '@/components/NotificationPermissionSheet';
 import { useExitOnBack } from '@/hooks/useExitOnBack';
 import { ms, radius } from '@/utils/responsive';
 import { font, icon } from '@/constants/design';
@@ -178,6 +179,7 @@ export default function HomeScreen() {
       { key: 'loyalty', label: t('home.qaLoyalty'), Icon: JitStamp, route: '/settings', tourKey: 'loyalty' },
       { key: 'games', label: t('home.qaGames'), Icon: JitGames, route: '/games', tourKey: 'games' },
       { key: 'deals', label: t('home.qaDeals'), Icon: JitDeals, route: '/deals', tourKey: 'deals' },
+      { key: 'stampCodes', label: t('home.qaStampCodes'), Icon: Package, route: '/stamp-codes' },
     ],
     [t],
   );
@@ -316,7 +318,7 @@ export default function HomeScreen() {
         </View>
       </ScrollView>
 
-      <WelcomeGuideCard />
+      <NotificationPermissionSheet enabled={!!merchant} />
 
       <View style={[styles.floatingTopBar, { paddingTop: insets.top }]} pointerEvents="box-none">
         <View style={styles.headerTop}>

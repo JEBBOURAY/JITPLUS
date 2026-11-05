@@ -1,8 +1,11 @@
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
+import { AppleAuthModule } from './common/apple/apple-auth.module';
+import { CoordinationModule } from './common/coordination/coordination.module';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { CacheModule } from '@nestjs/cache-manager';
+import { LruMap } from './common/cache/lru-map';
 import { ScheduleModule } from '@nestjs/schedule';
 import { JwtModule } from '@nestjs/jwt';
 import * as Joi from 'joi';
@@ -21,6 +24,7 @@ import { GeocodeModule } from './geocode/geocode.module';
 import { LuckyWheelModule } from './lucky-wheel/lucky-wheel.module';
 import { DeeplinkModule } from './deeplink/deeplink.module';
 import { ScratchCardModule } from './scratch-card/scratch-card.module';
+import { StampCodesModule } from './stamp-codes/stamp-codes.module';
 import { DealsModule } from './deals/deals.module';
 import { MerchantInboxModule } from './merchant-inbox/merchant-inbox.module';
 import { RequestLoggerMiddleware } from './common/middleware/request-logger.middleware';
@@ -29,6 +33,7 @@ import { AccountPurgeService } from './common/tasks/account-purge.service';
 import { MerchantReminderService } from './common/tasks/merchant-reminder.service';
 import { MerchantEngagementService } from './common/tasks/merchant-engagement.service';
 import { MerchantSmartCampaignService } from './common/tasks/merchant-smart-campaign.service';
+import { MerchantRetentionService } from './common/tasks/merchant-retention.service';
 import { MerchantLifecycleService } from './common/tasks/merchant-lifecycle.service';
 import { ClientWelcomeService } from './common/tasks/client-welcome.service';
 import { ClientReengagementService } from './common/tasks/client-reengagement.service';
@@ -38,7 +43,7 @@ import { StampExpiryService } from './common/tasks/stamp-expiry.service';
 import { UserThrottlerGuard } from './common/guards/user-throttler.guard';
 import { RepositoryModule } from './common/repositories';
 import { EventsModule } from './events';
-import { THROTTLE_TTL } from './common/constants';
+import { THROTTLE_TTL, CACHE_MAX_ENTRIES } from './common/constants';
 import { jwtModuleFactory } from './common/jwt/jwt-module.factory';
 
 @Module({
@@ -100,10 +105,14 @@ import { jwtModuleFactory } from './common/jwt/jwt-module.factory';
     CacheModule.register({
       isGlobal: true,
       ttl: THROTTLE_TTL,
-      max: 500,
+      // Bounded in-process store (cache-manager v6 ignores `max`): LRU-evicts
+      // past CACHE_MAX_ENTRIES so the cache cannot exhaust the instance memory.
+      stores: [new LruMap<string, unknown>(CACHE_MAX_ENTRIES)],
     }),
     PrismaModule,
     RepositoryModule,
+    AppleAuthModule,
+    CoordinationModule,
     EventsModule,
     // Register a JwtModule so app-level scheduled services (campaign emails) can
     // sign one-click unsubscribe tokens (RFC 8058). Uses the client JWT config
@@ -124,6 +133,7 @@ import { jwtModuleFactory } from './common/jwt/jwt-module.factory';
     LuckyWheelModule,
     DeeplinkModule,
     ScratchCardModule,
+    StampCodesModule,
     DealsModule,
   ],
   providers: [
@@ -133,6 +143,7 @@ import { jwtModuleFactory } from './common/jwt/jwt-module.factory';
     MerchantReminderService,
     MerchantEngagementService,
     MerchantSmartCampaignService,
+    MerchantRetentionService,
     MerchantLifecycleService,
     ClientWelcomeService,
     ClientReengagementService,

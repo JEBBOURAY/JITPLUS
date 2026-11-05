@@ -13,6 +13,7 @@ import {
 } from '../../common/repositories';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { AuditLogService } from '../../admin/audit-log.service';
+import { AppleTokenVerifier } from '../../common/apple/apple-token-verifier.service';
 import { MailService } from '../../mail/mail.service';
 
 const PASSWORD = 'Current#123';
@@ -21,7 +22,7 @@ const NEW_PASSWORD = 'Brand-New#456';
 describe('MerchantProfileService — re-authentication for sensitive changes', () => {
   let service: MerchantProfileService;
   let merchantRepo: { findUnique: jest.Mock; update: jest.Mock };
-  let deviceSessionRepo: { deleteMany: jest.Mock };
+  let deviceSessionRepo: { findMany: jest.Mock; deleteMany: jest.Mock };
   let verifyIdToken: jest.Mock;
   let passwordHash: string;
 
@@ -34,7 +35,10 @@ describe('MerchantProfileService — re-authentication for sensitive changes', (
       findUnique: jest.fn(),
       update: jest.fn().mockImplementation(async ({ data }: any) => ({ id: 'm1', ...data })),
     };
-    deviceSessionRepo = { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) };
+    deviceSessionRepo = {
+      findMany: jest.fn().mockResolvedValue([{ tokenId: 'other-session' }]),
+      deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -49,6 +53,7 @@ describe('MerchantProfileService — re-authentication for sensitive changes', (
         { provide: ConfigService, useValue: { get: jest.fn(() => 'google-client-id') } },
         { provide: AuditLogService, useValue: { log: jest.fn() } },
         { provide: MailService, useValue: {} },
+        { provide: AppleTokenVerifier, useValue: { verify: jest.fn() } },
       ],
     }).compile();
 

@@ -3,11 +3,11 @@ import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
 import { RAW_QUERY_RUNNER, type IRawQueryRunner } from '../common/repositories';
 import { moroccoParts } from '../common/utils/morocco-time';
+import { MS_PER_DAY } from '../common/constants';
 
-const DAY_MS = 24 * 60 * 60 * 1000;
 const ALERTS_CACHE_TTL = 60_000;
 
-export const NOTIF_STATS_PERIODS = [7, 30, 90] as const;
+const NOTIF_STATS_PERIODS = [7, 30, 90] as const;
 export type NotifStatsPeriod = (typeof NOTIF_STATS_PERIODS)[number];
 
 type Row = Record<string, unknown>;
@@ -33,9 +33,97 @@ function iso(v: unknown): string | null {
 function dayBuckets<T>(days: number, now: Date, empty: () => T): Map<string, T> {
   const map = new Map<string, T>();
   for (let i = days - 1; i >= 0; i--) {
-    map.set(moroccoParts(new Date(now.getTime() - i * DAY_MS)).ymd, empty());
+    map.set(moroccoParts(new Date(now.getTime() - i * MS_PER_DAY)).ymd, empty());
   }
   return map;
+}
+
+// ── Merchant drill-down: pure shapers for the merchant settings/KPI rows ────
+
+function shapeMerchantSettings(merchant: Row) {
+  return {
+    stampEarningMode: String(merchant.stamp_earning_mode),
+    stampsForReward: num(merchant.stamps_for_reward),
+    amountPerStamp: num(merchant.amount_per_stamp),
+    accumulationLimit: merchant.accumulation_limit === null ? null : num(merchant.accumulation_limit),
+    stampValidityDays: merchant.stamp_validity_days === null ? null : num(merchant.stamp_validity_days),
+    language: String(merchant.language ?? 'fr'),
+    onboardingCompleted: Boolean(merchant.onboarding_completed),
+    emailVerified: Boolean(merchant.email_verified),
+    quartier: (merchant.quartier as string | null) ?? null,
+    adresse: (merchant.adresse as string | null) ?? null,
+    deletedAt: iso(merchant.deleted_at),
+  };
+}
+
+/** Profile completeness: 8 checks, `hasReward` = at least one reward configured. */
+function shapeMerchantProfile(merchant: Row, hasReward: boolean) {
+  const profileChecks = {
+    logo: Boolean(merchant.has_logo),
+    cover: Boolean(merchant.has_cover),
+    location: Boolean(merchant.has_location),
+    description: Boolean(merchant.has_description),
+    openingHours: Boolean(merchant.has_hours),
+    socialLinks: Boolean(merchant.has_socials),
+    reward: hasReward,
+    pushEnabled: Boolean(merchant.has_push),
+  };
+  const done = Object.values(profileChecks).filter(Boolean).length;
+  return { checks: profileChecks, score: Math.round((done / Object.keys(profileChecks).length) * 100), galleryCount: num(merchant.gallery_count) };
+}
+
+function shapeMerchantQuotas(merchant: Row) {
+  return {
+    whatsapp: { used: num(merchant.whatsapp_quota_used), max: num(merchant.whatsapp_quota_max) },
+    email: { used: num(merchant.email_quota_used), max: num(merchant.email_quota_max) },
+  };
+}
+
+function shapeMerchantReferral(merchant: Row) {
+  return {
+    code: (merchant.referral_code as string | null) ?? null,
+    monthsEarned: num(merchant.referral_months_earned),
+    referrals: num(merchant.referrals),
+    referredBy: merchant.referred_by_id ? { id: String(merchant.referred_by_id), nom: String(merchant.referred_by_nom) } : null,
+  };
+}
+
+function shapeMerchantTransactions(t: Row) {
+  return {
+    total: num(t.total),
+    cancelled: num(t.cancelled),
+    cancelRate: pct(num(t.cancelled), num(t.total) + num(t.cancelled)),
+    byType: {
+      earn: num(t.earn),
+      redeem: num(t.redeem),
+      adjust: num(t.adjust),
+      wheel: num(t.wheel),
+      coupon: num(t.coupon),
+    },
+    stampsGiven: num(t.stamps_given),
+    amount: Math.round(num(t.amount)),
+    last30: num(t.last30),
+    prev30: num(t.prev30),
+    pendingGifts: num(t.pending_gifts),
+    firstAt: iso(t.first_at),
+    lastAt: iso(t.last_at),
+  };
+}
+
+/** `c` is the loyalty-card row, `t` the transaction row (30-day active clients). */
+function shapeMerchantClients(c: Row, t: Row) {
+  const totalCards = num(c.total);
+  return {
+    cards: totalCards,
+    active: num(c.active),
+    new30: num(c.new30),
+    active30: num(t.active_clients30),
+    returning: num(c.returning),
+    returningRate: pct(num(c.returning), totalCards),
+    rewardReady: num(c.reward_ready),
+    avgStamps: Math.round(num(c.avg_stamps) * 10) / 10,
+    blocks: num(c.blocks),
+  };
 }
 
 /**
@@ -56,7 +144,7 @@ export class AdminDetailsService {
   async merchantActivityByIds(ids: string[]): Promise<Map<string, { lastActivityAt: string | null; transactions30d: number }>> {
     const out = new Map<string, { lastActivityAt: string | null; transactions30d: number }>();
     if (ids.length === 0) return out;
-    const d30 = new Date(Date.now() - 30 * DAY_MS);
+    const d30 = new Date(Date.now() - 30 * MS_PER_DAY);
     const rows = await this.rawQuery.queryRaw<Row>`
       SELECT merchant_id, MAX(created_at) AS last_at, COUNT(*) FILTER (WHERE created_at >= ${d30}) AS n30
       FROM transactions
@@ -120,13 +208,49 @@ export class AdminDetailsService {
   // ── Merchant drill-down ─────────────────────────────────────────────────
 
   async getMerchantActivity(merchantId: string) {
-    const q = this.rawQuery;
     const now = new Date();
-    const d30 = new Date(now.getTime() - 30 * DAY_MS);
-    const d60 = new Date(now.getTime() - 60 * DAY_MS);
-    const d90 = new Date(now.getTime() - 90 * DAY_MS);
+    const d30 = new Date(now.getTime() - 30 * MS_PER_DAY);
+    const d60 = new Date(now.getTime() - 60 * MS_PER_DAY);
+    const d90 = new Date(now.getTime() - 90 * MS_PER_DAY);
 
-    const [merchant] = await q.queryRaw<Row>`
+    const merchant = await this.merchantRow(merchantId);
+    if (!merchant) throw new NotFoundException('Commerçant non trouvé');
+
+    const [t, c, daily, topClients, recentTransactions, rewards, team, stores, features, notifications] =
+      await Promise.all([
+        this.merchantTxRow(merchantId, d30, d60),
+        this.merchantCardRow(merchantId, d30, merchant),
+        this.merchantDaily(merchantId, now, d90),
+        this.merchantTopClients(merchantId),
+        this.merchantRecentTransactions(merchantId),
+        this.merchantRewards(merchantId),
+        this.merchantTeam(merchantId),
+        this.merchantStores(merchantId),
+        this.merchantFeatures(merchantId, now, d30),
+        this.merchantChannels(merchantId),
+      ]);
+
+    return {
+      settings: shapeMerchantSettings(merchant),
+      profile: shapeMerchantProfile(merchant, rewards.length > 0),
+      quotas: shapeMerchantQuotas(merchant),
+      referral: shapeMerchantReferral(merchant),
+      transactions: shapeMerchantTransactions(t),
+      clients: shapeMerchantClients(c, t),
+      daily,
+      topClients,
+      recentTransactions,
+      rewards,
+      team,
+      stores,
+      features,
+      notifications,
+    };
+  }
+
+  /** Settings, profile flags, quotas and referral info; undefined when the merchant does not exist. */
+  private async merchantRow(merchantId: string): Promise<Row | undefined> {
+    const [merchant] = await this.rawQuery.queryRaw<Row>`
       SELECT m.id, m.stamps_for_reward, m.stamp_earning_mode::text AS stamp_earning_mode, m.amount_per_stamp,
              m.accumulation_limit, m.stamp_validity_days, m.language, m.onboarding_completed, m.email_verified,
              m.logo_url IS NOT NULL AS has_logo, m.cover_url IS NOT NULL AS has_cover,
@@ -143,11 +267,12 @@ export class AdminDetailsService {
       LEFT JOIN merchants r ON r.id = m.referred_by_id
       WHERE m.id = ${merchantId}
     `;
-    if (!merchant) throw new NotFoundException('Commerçant non trouvé');
+    return merchant;
+  }
 
-    const [txRows, cardRows, dailyRows, topClientRows, recentRows, rewardRows, teamRows, storeRows, featureRows, channelRows] =
-      await Promise.all([
-        q.queryRaw<Row>`
+  /** Transaction counters (all-time, last 30 d vs previous 30 d). */
+  private async merchantTxRow(merchantId: string, d30: Date, d60: Date): Promise<Row> {
+    const rows = await this.rawQuery.queryRaw<Row>`
           SELECT
             COUNT(*) FILTER (WHERE status = 'ACTIVE') AS total,
             COUNT(*) FILTER (WHERE status = 'CANCELLED') AS cancelled,
@@ -165,8 +290,13 @@ export class AdminDetailsService {
             MIN(created_at) FILTER (WHERE status = 'ACTIVE') AS first_at,
             MAX(created_at) FILTER (WHERE status = 'ACTIVE') AS last_at
           FROM transactions WHERE merchant_id = ${merchantId}
-        `,
-        q.queryRaw<Row>`
+        `;
+    return rows[0] ?? {};
+  }
+
+  /** Loyalty-card counters (returning clients, reward-ready cards vs `merchant.stamps_for_reward`, blocks). */
+  private async merchantCardRow(merchantId: string, d30: Date, merchant: Row): Promise<Row> {
+    const rows = await this.rawQuery.queryRaw<Row>`
           WITH visits AS (
             SELECT client_id, COUNT(*) AS n FROM transactions
             WHERE merchant_id = ${merchantId} AND status = 'ACTIVE' AND type = 'EARN_STAMPS'
@@ -183,8 +313,13 @@ export class AdminDetailsService {
           FROM loyalty_cards lc
           LEFT JOIN visits v ON v.client_id = lc.client_id
           WHERE lc.merchant_id = ${merchantId}
-        `,
-        q.queryRaw<Row>`
+        `;
+    return rows[0] ?? {};
+  }
+
+  /** 90 Morocco-day buckets of transactions, distinct clients and new cards. */
+  private async merchantDaily(merchantId: string, now: Date, d90: Date) {
+    const dailyRows = await this.rawQuery.queryRaw<Row>`
           SELECT 'transactions' AS k, to_char((created_at AT TIME ZONE 'UTC') AT TIME ZONE 'Africa/Casablanca', 'YYYY-MM-DD') AS d, COUNT(*) AS n
           FROM transactions WHERE merchant_id = ${merchantId} AND status = 'ACTIVE' AND created_at >= ${d90} GROUP BY 2
           UNION ALL
@@ -193,8 +328,17 @@ export class AdminDetailsService {
           UNION ALL
           SELECT 'newCards', to_char((created_at AT TIME ZONE 'UTC') AT TIME ZONE 'Africa/Casablanca', 'YYYY-MM-DD'), COUNT(*)
           FROM loyalty_cards WHERE merchant_id = ${merchantId} AND created_at >= ${d90} GROUP BY 2
-        `,
-        q.queryRaw<Row>`
+        `;
+    const daily = dayBuckets(90, now, () => ({ transactions: 0, clients: 0, newCards: 0 }));
+    for (const r of dailyRows) {
+      const b = daily.get(String(r.d));
+      if (b) b[String(r.k) as 'transactions' | 'clients' | 'newCards'] = num(r.n);
+    }
+    return [...daily.entries()].map(([date, v]) => ({ date, ...v }));
+  }
+
+  private async merchantTopClients(merchantId: string) {
+    const topClientRows = await this.rawQuery.queryRaw<Row>`
           SELECT c.id, c.prenom, c.nom, c.telephone, c.is_anonymous, c.deleted_at IS NOT NULL AS deleted,
                  lc.stamps, COUNT(t.id) AS visits, MAX(t.created_at) AS last_at, COALESCE(SUM(t.amount), 0) AS amount
           FROM transactions t
@@ -204,8 +348,22 @@ export class AdminDetailsService {
           GROUP BY c.id, lc.stamps
           ORDER BY visits DESC, last_at DESC
           LIMIT 10
-        `,
-        q.queryRaw<Row>`
+        `;
+    return topClientRows.map((r) => ({
+      id: String(r.id),
+      name: [r.prenom, r.nom].filter(Boolean).join(' ') || null,
+      telephone: (r.telephone as string | null) ?? null,
+      isAnonymous: Boolean(r.is_anonymous),
+      deleted: Boolean(r.deleted),
+      stamps: num(r.stamps),
+      visits: num(r.visits),
+      amount: Math.round(num(r.amount)),
+      lastAt: iso(r.last_at),
+    }));
+  }
+
+  private async merchantRecentTransactions(merchantId: string) {
+    const recentRows = await this.rawQuery.queryRaw<Row>`
           SELECT t.id, t.type::text AS type, t.status::text AS status, t.stamps, t.amount, t.created_at,
                  t.performed_by_name, t.gift_status::text AS gift_status, c.id AS client_id, c.prenom, c.nom, rw.titre AS reward
           FROM transactions t
@@ -214,23 +372,57 @@ export class AdminDetailsService {
           WHERE t.merchant_id = ${merchantId}
           ORDER BY t.created_at DESC
           LIMIT 15
-        `,
-        q.queryRaw<Row>`
+        `;
+    return recentRows.map((r) => ({
+      id: String(r.id),
+      type: String(r.type),
+      status: String(r.status),
+      stamps: num(r.stamps),
+      amount: num(r.amount),
+      createdAt: iso(r.created_at),
+      performedBy: (r.performed_by_name as string | null) ?? null,
+      giftStatus: (r.gift_status as string | null) ?? null,
+      reward: (r.reward as string | null) ?? null,
+      client: { id: String(r.client_id), name: [r.prenom, r.nom].filter(Boolean).join(' ') || null },
+    }));
+  }
+
+  private async merchantRewards(merchantId: string) {
+    const rewardRows = await this.rawQuery.queryRaw<Row>`
           SELECT rw.id, rw.titre, rw.cout, rw.created_at,
                  (SELECT COUNT(*) FROM transactions t WHERE t.reward_id = rw.id AND t.status = 'ACTIVE' AND t.type = 'REDEEM_REWARD') AS redeemed
           FROM rewards rw WHERE rw.merchant_id = ${merchantId}
           ORDER BY rw.cout ASC
-        `,
-        q.queryRaw<Row>`
+        `;
+    return rewardRows.map((r) => ({ id: String(r.id), titre: String(r.titre), cout: num(r.cout), redeemed: num(r.redeemed) }));
+  }
+
+  private async merchantTeam(merchantId: string) {
+    const teamRows = await this.rawQuery.queryRaw<Row>`
           SELECT tm.id, tm.nom, tm.role::text AS role, tm.is_active,
                  (SELECT COUNT(*) FROM transactions t WHERE t.team_member_id = tm.id AND t.status = 'ACTIVE') AS tx
           FROM team_members tm WHERE tm.merchant_id = ${merchantId}
           ORDER BY tm.created_at ASC
-        `,
-        q.queryRaw<Row>`
+        `;
+    return teamRows.map((r) => ({ id: String(r.id), nom: String(r.nom), role: String(r.role), isActive: Boolean(r.is_active), transactions: num(r.tx) }));
+  }
+
+  private async merchantStores(merchantId: string) {
+    const storeRows = await this.rawQuery.queryRaw<Row>`
           SELECT id, nom, ville, quartier, is_active FROM stores WHERE merchant_id = ${merchantId} ORDER BY created_at ASC
-        `,
-        q.queryRaw<Row>`
+        `;
+    return storeRows.map((r) => ({
+      id: String(r.id),
+      nom: String(r.nom),
+      ville: (r.ville as string | null) ?? null,
+      quartier: (r.quartier as string | null) ?? null,
+      isActive: Boolean(r.is_active),
+    }));
+  }
+
+  /** Feature adoption: scratch, lucky wheel, coupons, quick-add claims, profile views. */
+  private async merchantFeatures(merchantId: string, now: Date, d30: Date) {
+    const featureRows = await this.rawQuery.queryRaw<Row>`
           SELECT
             (SELECT COUNT(*) FROM scratch_campaigns WHERE merchant_id = ${merchantId} AND status NOT IN ('DRAFT', 'CANCELLED')) AS scratch_campaigns,
             (SELECT COUNT(*) FROM scratch_cards WHERE merchant_id = ${merchantId}) AS scratch_cards,
@@ -242,252 +434,64 @@ export class AdminDetailsService {
             (SELECT COUNT(*) FROM client_claims WHERE merchant_id = ${merchantId}) AS claims,
             (SELECT COUNT(*) FROM client_claims WHERE merchant_id = ${merchantId} AND consumed_at IS NOT NULL) AS claims_consumed,
             (SELECT COUNT(*) FROM profile_views_log WHERE merchant_id = ${merchantId} AND created_at >= ${d30}) AS views30
-        `,
-        q.queryRaw<Row>`
+        `;
+    const f = featureRows[0] ?? {};
+    return {
+      scratchCampaigns: num(f.scratch_campaigns),
+      scratchCards: num(f.scratch_cards),
+      scratchScratched: num(f.scratch_scratched),
+      wheelCampaigns: num(f.wheel_campaigns),
+      wheelActive: num(f.wheel_active),
+      coupons: num(f.coupons),
+      couponsRedeemed: num(f.coupons_redeemed),
+      claims: num(f.claims),
+      claimsConsumed: num(f.claims_consumed),
+      views30: num(f.views30),
+    };
+  }
+
+  /** Notification campaigns per channel. */
+  private async merchantChannels(merchantId: string) {
+    const channelRows = await this.rawQuery.queryRaw<Row>`
           SELECT COALESCE(channel, 'PUSH') AS channel, COUNT(*) AS campaigns, COALESCE(SUM(recipient_count), 0) AS recipients,
                  COALESCE(SUM(success_count), 0) AS success, MAX(created_at) AS last_at
           FROM notifications WHERE merchant_id = ${merchantId}
           GROUP BY 1 ORDER BY campaigns DESC
-        `,
-      ]);
-
-    const t = txRows[0] ?? {};
-    const c = cardRows[0] ?? {};
-    const f = featureRows[0] ?? {};
-
-    const daily = dayBuckets(90, now, () => ({ transactions: 0, clients: 0, newCards: 0 }));
-    for (const r of dailyRows) {
-      const b = daily.get(String(r.d));
-      if (b) b[String(r.k) as 'transactions' | 'clients' | 'newCards'] = num(r.n);
-    }
-
-    const totalCards = num(c.total);
-    const profileChecks = {
-      logo: Boolean(merchant.has_logo),
-      cover: Boolean(merchant.has_cover),
-      location: Boolean(merchant.has_location),
-      description: Boolean(merchant.has_description),
-      openingHours: Boolean(merchant.has_hours),
-      socialLinks: Boolean(merchant.has_socials),
-      reward: rewardRows.length > 0,
-      pushEnabled: Boolean(merchant.has_push),
-    };
-    const done = Object.values(profileChecks).filter(Boolean).length;
-
-    return {
-      settings: {
-        stampEarningMode: String(merchant.stamp_earning_mode),
-        stampsForReward: num(merchant.stamps_for_reward),
-        amountPerStamp: num(merchant.amount_per_stamp),
-        accumulationLimit: merchant.accumulation_limit === null ? null : num(merchant.accumulation_limit),
-        stampValidityDays: merchant.stamp_validity_days === null ? null : num(merchant.stamp_validity_days),
-        language: String(merchant.language ?? 'fr'),
-        onboardingCompleted: Boolean(merchant.onboarding_completed),
-        emailVerified: Boolean(merchant.email_verified),
-        quartier: (merchant.quartier as string | null) ?? null,
-        adresse: (merchant.adresse as string | null) ?? null,
-        deletedAt: iso(merchant.deleted_at),
-      },
-      profile: { checks: profileChecks, score: Math.round((done / Object.keys(profileChecks).length) * 100), galleryCount: num(merchant.gallery_count) },
-      quotas: {
-        whatsapp: { used: num(merchant.whatsapp_quota_used), max: num(merchant.whatsapp_quota_max) },
-        email: { used: num(merchant.email_quota_used), max: num(merchant.email_quota_max) },
-      },
-      referral: {
-        code: (merchant.referral_code as string | null) ?? null,
-        monthsEarned: num(merchant.referral_months_earned),
-        referrals: num(merchant.referrals),
-        referredBy: merchant.referred_by_id ? { id: String(merchant.referred_by_id), nom: String(merchant.referred_by_nom) } : null,
-      },
-      transactions: {
-        total: num(t.total),
-        cancelled: num(t.cancelled),
-        cancelRate: pct(num(t.cancelled), num(t.total) + num(t.cancelled)),
-        byType: {
-          earn: num(t.earn),
-          redeem: num(t.redeem),
-          adjust: num(t.adjust),
-          wheel: num(t.wheel),
-          coupon: num(t.coupon),
-        },
-        stampsGiven: num(t.stamps_given),
-        amount: Math.round(num(t.amount)),
-        last30: num(t.last30),
-        prev30: num(t.prev30),
-        pendingGifts: num(t.pending_gifts),
-        firstAt: iso(t.first_at),
-        lastAt: iso(t.last_at),
-      },
-      clients: {
-        cards: totalCards,
-        active: num(c.active),
-        new30: num(c.new30),
-        active30: num(t.active_clients30),
-        returning: num(c.returning),
-        returningRate: pct(num(c.returning), totalCards),
-        rewardReady: num(c.reward_ready),
-        avgStamps: Math.round(num(c.avg_stamps) * 10) / 10,
-        blocks: num(c.blocks),
-      },
-      daily: [...daily.entries()].map(([date, v]) => ({ date, ...v })),
-      topClients: topClientRows.map((r) => ({
-        id: String(r.id),
-        name: [r.prenom, r.nom].filter(Boolean).join(' ') || null,
-        telephone: (r.telephone as string | null) ?? null,
-        isAnonymous: Boolean(r.is_anonymous),
-        deleted: Boolean(r.deleted),
-        stamps: num(r.stamps),
-        visits: num(r.visits),
-        amount: Math.round(num(r.amount)),
-        lastAt: iso(r.last_at),
-      })),
-      recentTransactions: recentRows.map((r) => ({
-        id: String(r.id),
-        type: String(r.type),
-        status: String(r.status),
-        stamps: num(r.stamps),
-        amount: num(r.amount),
-        createdAt: iso(r.created_at),
-        performedBy: (r.performed_by_name as string | null) ?? null,
-        giftStatus: (r.gift_status as string | null) ?? null,
-        reward: (r.reward as string | null) ?? null,
-        client: { id: String(r.client_id), name: [r.prenom, r.nom].filter(Boolean).join(' ') || null },
-      })),
-      rewards: rewardRows.map((r) => ({ id: String(r.id), titre: String(r.titre), cout: num(r.cout), redeemed: num(r.redeemed) })),
-      team: teamRows.map((r) => ({ id: String(r.id), nom: String(r.nom), role: String(r.role), isActive: Boolean(r.is_active), transactions: num(r.tx) })),
-      stores: storeRows.map((r) => ({
-        id: String(r.id),
-        nom: String(r.nom),
-        ville: (r.ville as string | null) ?? null,
-        quartier: (r.quartier as string | null) ?? null,
-        isActive: Boolean(r.is_active),
-      })),
-      features: {
-        scratchCampaigns: num(f.scratch_campaigns),
-        scratchCards: num(f.scratch_cards),
-        scratchScratched: num(f.scratch_scratched),
-        wheelCampaigns: num(f.wheel_campaigns),
-        wheelActive: num(f.wheel_active),
-        coupons: num(f.coupons),
-        couponsRedeemed: num(f.coupons_redeemed),
-        claims: num(f.claims),
-        claimsConsumed: num(f.claims_consumed),
-        views30: num(f.views30),
-      },
-      notifications: channelRows.map((r) => ({
-        channel: String(r.channel),
-        campaigns: num(r.campaigns),
-        recipients: num(r.recipients),
-        success: num(r.success),
-        successRate: pct(num(r.success), num(r.recipients)),
-        lastAt: iso(r.last_at),
-      })),
-    };
+        `;
+    return channelRows.map((r) => ({
+      channel: String(r.channel),
+      campaigns: num(r.campaigns),
+      recipients: num(r.recipients),
+      success: num(r.success),
+      successRate: pct(num(r.success), num(r.recipients)),
+      lastAt: iso(r.last_at),
+    }));
   }
 
   // ── Client drill-down ───────────────────────────────────────────────────
 
   async getClientActivity(clientId: string) {
     const q = this.rawQuery;
-    const d30 = new Date(Date.now() - 30 * DAY_MS);
+    const d30 = new Date(Date.now() - 30 * MS_PER_DAY);
 
     const [exists] = await q.queryRaw<Row>`SELECT id, is_anonymous, push_token IS NOT NULL AS has_push, language FROM clients WHERE id = ${clientId}`;
     if (!exists) throw new NotFoundException('Client non trouvé');
 
-    const [txRows, cardRows, recentRows, gameRows, blockRows] = await Promise.all([
-      q.queryRaw<Row>`
-        SELECT
-          COUNT(*) FILTER (WHERE status = 'ACTIVE') AS total,
-          COUNT(*) FILTER (WHERE status = 'CANCELLED') AS cancelled,
-          COUNT(*) FILTER (WHERE status = 'ACTIVE' AND type = 'EARN_STAMPS') AS earn,
-          COUNT(*) FILTER (WHERE status = 'ACTIVE' AND type = 'REDEEM_REWARD') AS redeem,
-          COALESCE(SUM(stamps) FILTER (WHERE status = 'ACTIVE' AND type = 'EARN_STAMPS'), 0) AS stamps_earned,
-          COALESCE(SUM(amount) FILTER (WHERE status = 'ACTIVE'), 0) AS amount,
-          COUNT(*) FILTER (WHERE status = 'ACTIVE' AND created_at >= ${d30}) AS last30,
-          COUNT(DISTINCT merchant_id) FILTER (WHERE status = 'ACTIVE') AS merchants_visited,
-          MIN(created_at) FILTER (WHERE status = 'ACTIVE') AS first_at,
-          MAX(created_at) FILTER (WHERE status = 'ACTIVE') AS last_at
-        FROM transactions WHERE client_id = ${clientId}
-      `,
-      q.queryRaw<Row>`
-        SELECT lc.id, lc.merchant_id, lc.stamps, lc.last_visit_at, lc.deactivated_at, lc.created_at,
-               m.nom, m.categorie::text AS categorie, m.stamps_for_reward,
-               COUNT(t.id) AS visits, MAX(t.created_at) AS last_tx_at
-        FROM loyalty_cards lc
-        JOIN merchants m ON m.id = lc.merchant_id
-        LEFT JOIN transactions t ON t.client_id = lc.client_id AND t.merchant_id = lc.merchant_id AND t.status = 'ACTIVE'
-        WHERE lc.client_id = ${clientId}
-        GROUP BY lc.id, m.id
-        ORDER BY last_tx_at DESC NULLS LAST, lc.created_at DESC
-        LIMIT 100
-      `,
-      q.queryRaw<Row>`
-        SELECT t.id, t.type::text AS type, t.status::text AS status, t.stamps, t.amount, t.created_at,
-               m.id AS merchant_id, m.nom AS merchant, rw.titre AS reward
-        FROM transactions t
-        JOIN merchants m ON m.id = t.merchant_id
-        LEFT JOIN rewards rw ON rw.id = t.reward_id
-        WHERE t.client_id = ${clientId}
-        ORDER BY t.created_at DESC
-        LIMIT 20
-      `,
-      q.queryRaw<Row>`
-        SELECT
-          (SELECT COUNT(*) FROM scratch_cards WHERE client_id = ${clientId}) AS scratch_total,
-          (SELECT COUNT(*) FROM scratch_cards WHERE client_id = ${clientId} AND status = 'SCRATCHED') AS scratch_scratched,
-          (SELECT COUNT(*) FROM coupons WHERE client_id = ${clientId}) AS coupons_total,
-          (SELECT COUNT(*) FROM coupons WHERE client_id = ${clientId} AND status = 'REDEEMED') AS coupons_redeemed,
-          (SELECT COUNT(*) FROM coupons WHERE client_id = ${clientId} AND status = 'ACTIVE') AS coupons_active,
-          (SELECT COUNT(*) FROM lucky_wheel_tickets WHERE client_id = ${clientId}) AS wheel_tickets,
-          (SELECT COUNT(*) FROM client_notification_statuses WHERE client_id = ${clientId}) AS notif_received,
-          (SELECT COUNT(*) FROM client_notification_statuses WHERE client_id = ${clientId} AND is_read) AS notif_read,
-          (SELECT COUNT(*) FROM client_referrals WHERE client_id = ${clientId}) AS referrals
-      `,
-      q.queryRaw<Row>`
-        SELECT b.merchant_id, m.nom, b.created_at FROM client_merchant_blocks b
-        JOIN merchants m ON m.id = b.merchant_id
-        WHERE b.client_id = ${clientId} ORDER BY b.created_at DESC
-      `,
+    const [transactions, cards, recentTransactions, g, blocks] = await Promise.all([
+      this.clientTransactions(clientId, d30),
+      this.clientCards(clientId),
+      this.clientRecentTransactions(clientId),
+      this.clientGamesRow(clientId),
+      this.clientBlocks(clientId),
     ]);
 
-    const t = txRows[0] ?? {};
-    const g = gameRows[0] ?? {};
     return {
       isAnonymous: Boolean(exists.is_anonymous),
       pushReachable: Boolean(exists.has_push),
       language: String(exists.language ?? 'fr'),
-      transactions: {
-        total: num(t.total),
-        cancelled: num(t.cancelled),
-        earn: num(t.earn),
-        redeem: num(t.redeem),
-        stampsEarned: num(t.stamps_earned),
-        amount: Math.round(num(t.amount)),
-        last30: num(t.last30),
-        merchantsVisited: num(t.merchants_visited),
-        firstAt: iso(t.first_at),
-        lastAt: iso(t.last_at),
-      },
-      cards: cardRows.map((r) => ({
-        id: String(r.id),
-        merchant: { id: String(r.merchant_id), nom: String(r.nom), categorie: String(r.categorie) },
-        stamps: num(r.stamps),
-        stampsForReward: num(r.stamps_for_reward),
-        visits: num(r.visits),
-        lastVisitAt: iso(r.last_tx_at) ?? iso(r.last_visit_at),
-        deactivatedAt: iso(r.deactivated_at),
-        createdAt: iso(r.created_at),
-      })),
-      recentTransactions: recentRows.map((r) => ({
-        id: String(r.id),
-        type: String(r.type),
-        status: String(r.status),
-        stamps: num(r.stamps),
-        amount: num(r.amount),
-        createdAt: iso(r.created_at),
-        reward: (r.reward as string | null) ?? null,
-        merchant: { id: String(r.merchant_id), nom: String(r.merchant) },
-      })),
+      transactions,
+      cards,
+      recentTransactions,
       games: {
         scratchTotal: num(g.scratch_total),
         scratchScratched: num(g.scratch_scratched),
@@ -502,8 +506,112 @@ export class AdminDetailsService {
         readRate: pct(num(g.notif_read), num(g.notif_received)),
       },
       referrals: num(g.referrals),
-      blocks: blockRows.map((r) => ({ merchantId: String(r.merchant_id), nom: String(r.nom), createdAt: iso(r.created_at) })),
+      blocks,
     };
+  }
+
+  private async clientTransactions(clientId: string, d30: Date) {
+    const txRows = await this.rawQuery.queryRaw<Row>`
+        SELECT
+          COUNT(*) FILTER (WHERE status = 'ACTIVE') AS total,
+          COUNT(*) FILTER (WHERE status = 'CANCELLED') AS cancelled,
+          COUNT(*) FILTER (WHERE status = 'ACTIVE' AND type = 'EARN_STAMPS') AS earn,
+          COUNT(*) FILTER (WHERE status = 'ACTIVE' AND type = 'REDEEM_REWARD') AS redeem,
+          COALESCE(SUM(stamps) FILTER (WHERE status = 'ACTIVE' AND type = 'EARN_STAMPS'), 0) AS stamps_earned,
+          COALESCE(SUM(amount) FILTER (WHERE status = 'ACTIVE'), 0) AS amount,
+          COUNT(*) FILTER (WHERE status = 'ACTIVE' AND created_at >= ${d30}) AS last30,
+          COUNT(DISTINCT merchant_id) FILTER (WHERE status = 'ACTIVE') AS merchants_visited,
+          MIN(created_at) FILTER (WHERE status = 'ACTIVE') AS first_at,
+          MAX(created_at) FILTER (WHERE status = 'ACTIVE') AS last_at
+        FROM transactions WHERE client_id = ${clientId}
+      `;
+    const t = txRows[0] ?? {};
+    return {
+      total: num(t.total),
+      cancelled: num(t.cancelled),
+      earn: num(t.earn),
+      redeem: num(t.redeem),
+      stampsEarned: num(t.stamps_earned),
+      amount: Math.round(num(t.amount)),
+      last30: num(t.last30),
+      merchantsVisited: num(t.merchants_visited),
+      firstAt: iso(t.first_at),
+      lastAt: iso(t.last_at),
+    };
+  }
+
+  private async clientCards(clientId: string) {
+    const cardRows = await this.rawQuery.queryRaw<Row>`
+        SELECT lc.id, lc.merchant_id, lc.stamps, lc.last_visit_at, lc.deactivated_at, lc.created_at,
+               m.nom, m.categorie::text AS categorie, m.stamps_for_reward,
+               COUNT(t.id) AS visits, MAX(t.created_at) AS last_tx_at
+        FROM loyalty_cards lc
+        JOIN merchants m ON m.id = lc.merchant_id
+        LEFT JOIN transactions t ON t.client_id = lc.client_id AND t.merchant_id = lc.merchant_id AND t.status = 'ACTIVE'
+        WHERE lc.client_id = ${clientId}
+        GROUP BY lc.id, m.id
+        ORDER BY last_tx_at DESC NULLS LAST, lc.created_at DESC
+        LIMIT 100
+      `;
+    return cardRows.map((r) => ({
+      id: String(r.id),
+      merchant: { id: String(r.merchant_id), nom: String(r.nom), categorie: String(r.categorie) },
+      stamps: num(r.stamps),
+      stampsForReward: num(r.stamps_for_reward),
+      visits: num(r.visits),
+      lastVisitAt: iso(r.last_tx_at) ?? iso(r.last_visit_at),
+      deactivatedAt: iso(r.deactivated_at),
+      createdAt: iso(r.created_at),
+    }));
+  }
+
+  private async clientRecentTransactions(clientId: string) {
+    const recentRows = await this.rawQuery.queryRaw<Row>`
+        SELECT t.id, t.type::text AS type, t.status::text AS status, t.stamps, t.amount, t.created_at,
+               m.id AS merchant_id, m.nom AS merchant, rw.titre AS reward
+        FROM transactions t
+        JOIN merchants m ON m.id = t.merchant_id
+        LEFT JOIN rewards rw ON rw.id = t.reward_id
+        WHERE t.client_id = ${clientId}
+        ORDER BY t.created_at DESC
+        LIMIT 20
+      `;
+    return recentRows.map((r) => ({
+      id: String(r.id),
+      type: String(r.type),
+      status: String(r.status),
+      stamps: num(r.stamps),
+      amount: num(r.amount),
+      createdAt: iso(r.created_at),
+      reward: (r.reward as string | null) ?? null,
+      merchant: { id: String(r.merchant_id), nom: String(r.merchant) },
+    }));
+  }
+
+  /** Games, notification inbox and referral counters (one row, shaped by the caller). */
+  private async clientGamesRow(clientId: string): Promise<Row> {
+    const gameRows = await this.rawQuery.queryRaw<Row>`
+        SELECT
+          (SELECT COUNT(*) FROM scratch_cards WHERE client_id = ${clientId}) AS scratch_total,
+          (SELECT COUNT(*) FROM scratch_cards WHERE client_id = ${clientId} AND status = 'SCRATCHED') AS scratch_scratched,
+          (SELECT COUNT(*) FROM coupons WHERE client_id = ${clientId}) AS coupons_total,
+          (SELECT COUNT(*) FROM coupons WHERE client_id = ${clientId} AND status = 'REDEEMED') AS coupons_redeemed,
+          (SELECT COUNT(*) FROM coupons WHERE client_id = ${clientId} AND status = 'ACTIVE') AS coupons_active,
+          (SELECT COUNT(*) FROM lucky_wheel_tickets WHERE client_id = ${clientId}) AS wheel_tickets,
+          (SELECT COUNT(*) FROM client_notification_statuses WHERE client_id = ${clientId}) AS notif_received,
+          (SELECT COUNT(*) FROM client_notification_statuses WHERE client_id = ${clientId} AND is_read) AS notif_read,
+          (SELECT COUNT(*) FROM client_referrals WHERE client_id = ${clientId}) AS referrals
+      `;
+    return gameRows[0] ?? {};
+  }
+
+  private async clientBlocks(clientId: string) {
+    const blockRows = await this.rawQuery.queryRaw<Row>`
+        SELECT b.merchant_id, m.nom, b.created_at FROM client_merchant_blocks b
+        JOIN merchants m ON m.id = b.merchant_id
+        WHERE b.client_id = ${clientId} ORDER BY b.created_at DESC
+      `;
+    return blockRows.map((r) => ({ merchantId: String(r.merchant_id), nom: String(r.nom), createdAt: iso(r.created_at) }));
   }
 
   // ── Notifications performance ───────────────────────────────────────────
@@ -513,20 +621,67 @@ export class AdminDetailsService {
     const cached = await this.cache.get(cacheKey);
     if (cached) return cached;
 
-    const q = this.rawQuery;
     const now = new Date();
-    const since = new Date(now.getTime() - days * DAY_MS);
-    const prevSince = new Date(now.getTime() - 2 * days * DAY_MS);
+    const since = new Date(now.getTime() - days * MS_PER_DAY);
+    const prevSince = new Date(now.getTime() - 2 * days * MS_PER_DAY);
 
-    const [channelRows, totalsRows, dailyRows, senderRows, audienceRows] = await Promise.all([
-      q.queryRaw<Row>`
+    const [channels, t, daily, topSenders, audiences] = await Promise.all([
+      this.notifChannels(since),
+      this.notifTotalsRow(since, prevSince),
+      this.notifDaily(days, now, since),
+      this.notifTopSenders(since),
+      this.notifAudiences(since),
+    ]);
+
+    const recipients = num(t.recipients);
+    const success = channels.reduce((a, c) => a + c.success, 0);
+
+    const result = {
+      period: { days, since: since.toISOString(), generatedAt: now.toISOString() },
+      totals: {
+        campaigns: num(t.campaigns),
+        campaignsPrev: num(t.campaigns_prev),
+        adminCampaigns: num(t.admin_campaigns),
+        senders: num(t.senders),
+        recipients,
+        recipientsPrev: num(t.recipients_prev),
+        success,
+        successRate: pct(success, recipients),
+        inboxDelivered: num(t.delivered_inbox),
+        inboxRead: num(t.read_inbox),
+        readRate: pct(num(t.read_inbox), num(t.delivered_inbox)),
+        blocks: num(t.blocks),
+      },
+      channels,
+      audiences,
+      daily,
+      topSenders,
+    };
+    await this.cache.set(cacheKey, result, ALERTS_CACHE_TTL);
+    return result;
+  }
+
+  private async notifChannels(since: Date) {
+    const channelRows = await this.rawQuery.queryRaw<Row>`
         SELECT COALESCE(channel, 'PUSH') AS channel, COUNT(*) AS campaigns,
                COALESCE(SUM(recipient_count), 0) AS recipients, COALESCE(SUM(success_count), 0) AS success,
                COALESCE(SUM(failure_count), 0) AS failure
         FROM notifications WHERE created_at >= ${since}
         GROUP BY 1 ORDER BY campaigns DESC
-      `,
-      q.queryRaw<Row>`
+      `;
+    return channelRows.map((r) => ({
+      channel: String(r.channel),
+      campaigns: num(r.campaigns),
+      recipients: num(r.recipients),
+      success: num(r.success),
+      failure: num(r.failure),
+      successRate: pct(num(r.success), num(r.recipients)),
+    }));
+  }
+
+  /** Period vs previous-period totals, inbox reads and blocks (one row, shaped by the caller). */
+  private async notifTotalsRow(since: Date, prevSince: Date): Promise<Row> {
+    const totalsRows = await this.rawQuery.queryRaw<Row>`
         SELECT
           COUNT(*) FILTER (WHERE created_at >= ${since}) AS campaigns,
           COUNT(*) FILTER (WHERE created_at >= ${prevSince} AND created_at < ${since}) AS campaigns_prev,
@@ -538,14 +693,31 @@ export class AdminDetailsService {
           (SELECT COUNT(*) FROM client_notification_statuses WHERE created_at >= ${since} AND is_read) AS read_inbox,
           (SELECT COUNT(*) FROM client_merchant_blocks WHERE created_at >= ${since}) AS blocks
         FROM notifications WHERE created_at >= ${prevSince}
-      `,
-      q.queryRaw<Row>`
+      `;
+    return totalsRows[0] ?? {};
+  }
+
+  private async notifDaily(days: NotifStatsPeriod, now: Date, since: Date) {
+    const dailyRows = await this.rawQuery.queryRaw<Row>`
         SELECT to_char((created_at AT TIME ZONE 'UTC') AT TIME ZONE 'Africa/Casablanca', 'YYYY-MM-DD') AS d,
                COUNT(*) AS campaigns, COALESCE(SUM(recipient_count), 0) AS recipients, COALESCE(SUM(success_count), 0) AS success
         FROM notifications WHERE created_at >= ${since}
         GROUP BY 1
-      `,
-      q.queryRaw<Row>`
+      `;
+    const daily = dayBuckets(days, now, () => ({ campaigns: 0, recipients: 0, success: 0 }));
+    for (const r of dailyRows) {
+      const b = daily.get(String(r.d));
+      if (b) {
+        b.campaigns = num(r.campaigns);
+        b.recipients = num(r.recipients);
+        b.success = num(r.success);
+      }
+    }
+    return [...daily.entries()].map(([date, v]) => ({ date, ...v }));
+  }
+
+  private async notifTopSenders(since: Date) {
+    const senderRows = await this.rawQuery.queryRaw<Row>`
         WITH reads AS (
           SELECT n.merchant_id, COUNT(s.*) AS delivered, COUNT(s.*) FILTER (WHERE s.is_read) AS read
           FROM notifications n
@@ -567,68 +739,27 @@ export class AdminDetailsService {
         GROUP BY m.id
         ORDER BY campaigns DESC, recipients DESC
         LIMIT 10
-      `,
-      q.queryRaw<Row>`
+      `;
+    return senderRows.map((r) => ({
+      id: String(r.id),
+      nom: String(r.nom),
+      campaigns: num(r.campaigns),
+      recipients: num(r.recipients),
+      successRate: pct(num(r.success), num(r.recipients)),
+      readRate: pct(num(r.read), num(r.delivered)),
+      blocks: num(r.blocks),
+      lastAt: iso(r.last_at),
+    }));
+  }
+
+  private async notifAudiences(since: Date) {
+    const audienceRows = await this.rawQuery.queryRaw<Row>`
         SELECT COALESCE(audience, CASE WHEN merchant_id IS NULL THEN 'ADMIN' ELSE 'MERCHANT_CLIENTS' END) AS audience,
                COUNT(*) AS campaigns, COALESCE(SUM(recipient_count), 0) AS recipients
         FROM notifications WHERE created_at >= ${since}
         GROUP BY 1 ORDER BY campaigns DESC
-      `,
-    ]);
-
-    const t = totalsRows[0] ?? {};
-    const daily = dayBuckets(days, now, () => ({ campaigns: 0, recipients: 0, success: 0 }));
-    for (const r of dailyRows) {
-      const b = daily.get(String(r.d));
-      if (b) {
-        b.campaigns = num(r.campaigns);
-        b.recipients = num(r.recipients);
-        b.success = num(r.success);
-      }
-    }
-    const channels = channelRows.map((r) => ({
-      channel: String(r.channel),
-      campaigns: num(r.campaigns),
-      recipients: num(r.recipients),
-      success: num(r.success),
-      failure: num(r.failure),
-      successRate: pct(num(r.success), num(r.recipients)),
-    }));
-    const recipients = num(t.recipients);
-    const success = channels.reduce((a, c) => a + c.success, 0);
-
-    const result = {
-      period: { days, since: since.toISOString(), generatedAt: now.toISOString() },
-      totals: {
-        campaigns: num(t.campaigns),
-        campaignsPrev: num(t.campaigns_prev),
-        adminCampaigns: num(t.admin_campaigns),
-        senders: num(t.senders),
-        recipients,
-        recipientsPrev: num(t.recipients_prev),
-        success,
-        successRate: pct(success, recipients),
-        inboxDelivered: num(t.delivered_inbox),
-        inboxRead: num(t.read_inbox),
-        readRate: pct(num(t.read_inbox), num(t.delivered_inbox)),
-        blocks: num(t.blocks),
-      },
-      channels,
-      audiences: audienceRows.map((r) => ({ audience: String(r.audience), campaigns: num(r.campaigns), recipients: num(r.recipients) })),
-      daily: [...daily.entries()].map(([date, v]) => ({ date, ...v })),
-      topSenders: senderRows.map((r) => ({
-        id: String(r.id),
-        nom: String(r.nom),
-        campaigns: num(r.campaigns),
-        recipients: num(r.recipients),
-        successRate: pct(num(r.success), num(r.recipients)),
-        readRate: pct(num(r.read), num(r.delivered)),
-        blocks: num(r.blocks),
-        lastAt: iso(r.last_at),
-      })),
-    };
-    await this.cache.set(cacheKey, result, ALERTS_CACHE_TTL);
-    return result;
+      `;
+    return audienceRows.map((r) => ({ audience: String(r.audience), campaigns: num(r.campaigns), recipients: num(r.recipients) }));
   }
 
   // ── Alert badges ────────────────────────────────────────────────────────
@@ -639,9 +770,9 @@ export class AdminDetailsService {
     if (cached) return cached;
 
     const now = new Date();
-    const d1 = new Date(now.getTime() - DAY_MS);
-    const d7 = new Date(now.getTime() - 7 * DAY_MS);
-    const in7 = new Date(now.getTime() + 7 * DAY_MS);
+    const d1 = new Date(now.getTime() - MS_PER_DAY);
+    const d7 = new Date(now.getTime() - 7 * MS_PER_DAY);
+    const in7 = new Date(now.getTime() + 7 * MS_PER_DAY);
     const [x] = await this.rawQuery.queryRaw<Row>`
       SELECT
         (SELECT COUNT(*) FROM payout_requests WHERE status = 'PENDING') AS payouts_pending,
@@ -652,7 +783,7 @@ export class AdminDetailsService {
         (SELECT COUNT(*) FROM merchants WHERE deleted_at IS NULL AND is_active AND plan = 'PREMIUM'
            AND plan_activated_by_admin AND plan_expires_at > ${now} AND plan_expires_at <= ${in7}) AS paid_ending,
         (SELECT COUNT(*) FROM merchants m WHERE m.deleted_at IS NULL AND m.is_active AND m.created_at < ${d7}
-           AND m.created_at >= ${new Date(now.getTime() - 30 * DAY_MS)}
+           AND m.created_at >= ${new Date(now.getTime() - 30 * MS_PER_DAY)}
            AND NOT EXISTS (SELECT 1 FROM transactions t WHERE t.merchant_id = m.id)) AS stuck_new_merchants,
         (SELECT COUNT(*) FROM merchants WHERE deleted_at IS NULL AND created_at >= ${d1}) AS new_merchants_24h,
         (SELECT COUNT(*) FROM clients WHERE deleted_at IS NULL AND created_at >= ${d1}) AS new_clients_24h,

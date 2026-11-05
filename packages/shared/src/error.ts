@@ -22,6 +22,21 @@ export function sanitizeErrorMessage(msg: string, fallback: string): string {
 }
 
 /**
+ * True for an Axios request that never got an answer from the server
+ * (offline, timeout, DNS…), as opposed to an HTTP error response.
+ */
+export function isNetworkError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const axiosError = error as any;
+  return !!axiosError.isAxiosError && (
+    axiosError.message === 'Network Error' ||
+    axiosError.code === 'ECONNABORTED' ||
+    axiosError.code === 'ERR_NETWORK' ||
+    !axiosError.response
+  );
+}
+
+/**
  * Extract a human-readable message from an unknown error.
  * Handles Axios-style response objects and generic Error instances.
  */
@@ -31,10 +46,10 @@ export function getErrorMessage(error: unknown, fallback = 'Une erreur est surve
   if (error && typeof error === 'object') {
     // Axios-style error
     const axiosError = error as any;
-    if (axiosError.isAxiosError && (axiosError.message === 'Network Error' || axiosError.code === 'ECONNABORTED' || axiosError.code === 'ERR_NETWORK' || !axiosError.response)) {
+    if (isNetworkError(error)) {
       return fallback;
     }
-    
+
     const axiosData = axiosError?.response?.data;
     if (typeof axiosData?.message === 'string') {
       msg = axiosData.message;

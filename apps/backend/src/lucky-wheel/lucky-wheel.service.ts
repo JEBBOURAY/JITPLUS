@@ -22,6 +22,7 @@ import type {
 } from '../common/repositories/repository.types';
 import { withRetry } from '../common/utils/retry-transaction.helper';
 import { weightedRandomPick } from '../common/utils/weighted-draw';
+import { purchaseTriggersWheel } from '../merchant/utils/lucky-wheel-tickets';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -112,13 +113,17 @@ export class LuckyWheelService {
         startsAt: { lte: now },
         endsAt: { gte: now },
       },
-      select: { id: true, name: true, minSpendAmount: true },
+      select: { id: true, name: true, minSpendAmount: true, ticketCostStamps: true },
     });
     // Return the highest minSpendAmount among active campaigns (0 if none configured)
     const maxMinSpend = campaigns.reduce((max: number, c: any) => Math.max(max, c.minSpendAmount), 0);
+    // Lowest amount that gives a spin without any stamp (PURCHASE transaction), 0 = none
+    const purchaseSpends = campaigns.filter(purchaseTriggersWheel).map((c: any) => c.minSpendAmount as number);
+    const purchaseMinSpend = purchaseSpends.length > 0 ? Math.min(...purchaseSpends) : 0;
     return {
       hasActiveLuckyWheel: campaigns.length > 0,
       minSpendAmount: maxMinSpend,
+      purchaseMinSpend,
       campaignName: maxMinSpend > 0 ? campaigns.find((c: any) => c.minSpendAmount === maxMinSpend)?.name : null,
     };
   }

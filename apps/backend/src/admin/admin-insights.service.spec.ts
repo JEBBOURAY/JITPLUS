@@ -77,4 +77,27 @@ describe('AdminInsightsService', () => {
     expect(runner.queryRaw.mock.calls.length).toBe(callsAfterFirst * 2);
     expect(cache.set).toHaveBeenCalledWith('admin:insights:90', expect.any(Object), expect.any(Number));
   });
+
+  it('never runs more than 4 KPI queries at once (pool = 10 connections)', async () => {
+    let inFlight = 0;
+    let peak = 0;
+    const runner = {
+      queryRaw: jest.fn(async () => {
+        inFlight++;
+        peak = Math.max(peak, inFlight);
+        await new Promise((r) => setTimeout(r, 1));
+        inFlight--;
+        return [];
+      }),
+      executeRaw: jest.fn(),
+    };
+    const svc = new AdminInsightsService(runner as never, makeCache() as never);
+
+    await svc.getInsights(30);
+
+    expect(runner.queryRaw.mock.calls.length).toBeGreaterThanOrEqual(18);
+    expect(peak).toBeLessThanOrEqual(4);
+    expect(peak).toBeGreaterThan(1);
+  });
 });
+

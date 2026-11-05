@@ -23,7 +23,8 @@ import { font, icon } from '@/constants/design';
 import { MAX_AMOUNT_DIGITS } from '@/constants/app';
 import { computeStampsForAmount } from '@/utils/stamps';
 import { formatDateTime } from '@/utils/date';
-import { formatCurrency, DEFAULT_CURRENCY, getIntlLocale } from '@/config/currency';
+import { formatCurrency, getIntlLocale, type Currency } from '@/config/currency';
+import { useCurrency, useMoney } from '@/hooks/useCurrency';
 import {
   computeCouponDiscount,
   formatCouponCode,
@@ -37,8 +38,8 @@ import {
 } from '@jitplus/shared/src/scratch';
 import { Button, FieldLabel, Input, Notice, ScreenHeader, Section } from '@/components/scratch/ScratchUI';
 
-function formatMoney(amount: number, locale: string): string {
-  return formatCurrency(amount, DEFAULT_CURRENCY, getIntlLocale(locale));
+function formatMoney(amount: number, locale: string, currency: Currency): string {
+  return formatCurrency(amount, currency, getIntlLocale(locale));
 }
 
 export default function CouponValidateScreen() {
@@ -48,6 +49,8 @@ export default function CouponValidateScreen() {
   const router = useRouter();
   const { token } = useLocalSearchParams<{ token?: string }>();
   const merchant = useAuthStore((s) => s.merchant);
+  const currency = useCurrency();
+  const { money } = useMoney();
 
   const [fromScan, setFromScan] = useState(!!token);
   const [code, setCode] = useState('');
@@ -192,18 +195,18 @@ export default function CouponValidateScreen() {
         case 'minPurchase': {
           const min = Number(d.min ?? 0);
           if (check.ok || (check.ok == null && minPurchaseOk)) {
-            return { label: t('scratch.validate.checkMinPurchase', { amount: min }), state: 'ok' };
+            return { label: t('scratch.validate.checkMinPurchase', { amount: money(min) }), state: 'ok' };
           }
           if (check.ok == null && !amountOk) {
-            return { label: t('scratch.validate.checkMinPurchase', { amount: min }), state: 'pending' };
+            return { label: t('scratch.validate.checkMinPurchase', { amount: money(min) }), state: 'pending' };
           }
-          return { label: t('scratch.validate.minPurchaseNo', { amount: min }), state: 'ko' };
+          return { label: t('scratch.validate.minPurchaseNo', { amount: money(min) }), state: 'ko' };
         }
         default:
           return { label: '', state: 'pending' };
       }
     },
-    [t, locale, amountOk, minPurchaseOk],
+    [t, locale, money, amountOk, minPurchaseOk],
   );
 
   if (shouldWait) return null;
@@ -226,7 +229,7 @@ export default function CouponValidateScreen() {
           <Section style={styles.successCard}>
             {redeemResult.discountAmount > 0 && (
               <Text style={[styles.successLine, { color: theme.text, textAlign }]}>
-                {t('scratch.validate.successDiscount', { amount: formatMoney(redeemResult.discountAmount, locale) })}
+                {t('scratch.validate.successDiscount', { amount: formatMoney(redeemResult.discountAmount, locale, currency) })}
               </Text>
             )}
             {totalStamps > 0 && (
@@ -309,7 +312,7 @@ export default function CouponValidateScreen() {
                   {coupon.label}
                 </Text>
                 <Text style={[styles.rewardValue, { color: theme.primary }]}>
-                  {formatRewardValue(coupon, t)}
+                  {formatRewardValue(coupon, t, money)}
                 </Text>
               </View>
             </Section>
@@ -354,7 +357,7 @@ export default function CouponValidateScreen() {
                           {t('scratch.validate.discount')}
                         </Text>
                         <Text style={[styles.previewValue, { color: theme.danger }]}>
-                          -{formatMoney(preview.discount, locale)}
+                          -{formatMoney(preview.discount, locale, currency)}
                         </Text>
                       </View>
                     )}
@@ -364,7 +367,7 @@ export default function CouponValidateScreen() {
                           {t('scratch.validate.toPay')}
                         </Text>
                         <Text style={[styles.previewValue, { color: theme.text }]}>
-                          {formatMoney(preview.toPay, locale)}
+                          {formatMoney(preview.toPay, locale, currency)}
                         </Text>
                       </View>
                     )}

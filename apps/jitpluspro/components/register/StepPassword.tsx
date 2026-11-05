@@ -1,14 +1,18 @@
-import React, { RefObject, useMemo } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
-import { Eye, EyeOff, Check } from 'lucide-react-native';
+import React, { RefObject, useMemo, useState } from 'react';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, type LayoutChangeEvent } from 'react-native';
+import { Eye, EyeOff, Check, Circle } from 'lucide-react-native';
 import { JitLock } from '@/components/icons';
 import { MIN_PASSWORD_LENGTH } from '@/constants/app';
-import { isValidPassword, getPasswordStrength } from '@/utils/passwordStrength';
+import { getPasswordStrength, getPasswordRules, IOS_PASSWORD_RULES } from '@/utils/passwordStrength';
 import type { ThemeColors } from '@/contexts/ThemeContext';
 import { palette } from '@/contexts/ThemeContext';
 import { useDir } from '@/hooks/useDir';
 import { font, icon } from '@/constants/design';
-import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
+import { wp, hp, ms, fontSize } from '@/utils/responsive';
+import { FieldError } from './FieldError';
+import { formStyles, HIT_SLOP } from './formStyles';
+
+export type PasswordField = 'password' | 'confirm';
 
 interface Props {
   theme: ThemeColors;
@@ -22,56 +26,90 @@ interface Props {
   passwordRef: RefObject<TextInput | null>;
   confirmRef: RefObject<TextInput | null>;
   isLoading: boolean;
+  /** The merchant tapped "create account": show what is still missing. */
+  submitAttempted?: boolean;
+  onFieldLayout?: (field: PasswordField, e: LayoutChangeEvent) => void;
+  onSubmit?: () => void;
 }
 
 function StepPasswordInner({
   theme, t, password, setPassword, confirmPassword, setConfirmPassword,
   showPassword, setShowPassword, passwordRef, confirmRef, isLoading,
+  submitAttempted = false, onFieldLayout, onSubmit,
 }: Props) {
-  const pwValid = isValidPassword(password);
+  const dir = useDir();
+  const [passwordFocused, setPasswordFocused] = useState(false);
+  const [confirmTouched, setConfirmTouched] = useState(false);
+
+  // Same rules as the backend (shared package): the checklist cannot drift from them.
+  const pwRules = useMemo(() => getPasswordRules(password), [password]);
+  const pwValid = pwRules.length && pwRules.upper && pwRules.digit && pwRules.special && pwRules.noSpace;
   const strength = useMemo(() => getPasswordStrength(password, t, 'passwordStrength.weak', 'passwordStrength.medium', 'passwordStrength.strong'), [password, t]);
   const passwordsMatch = password.length > 0 && confirmPassword.length > 0 && password === confirmPassword;
-  const showMismatch = confirmPassword.length > 0 && password !== confirmPassword;
-  const dir = useDir();
+  // Wait until the merchant has typed as much as the password (or left the field)
+  // instead of flagging a mismatch on the first character.
+  const showMismatch =
+    confirmPassword.length > 0 &&
+    password !== confirmPassword &&
+    (confirmTouched || submitAttempted || confirmPassword.length >= password.length);
+  const showConfirmRequired = submitAttempted && confirmPassword.length === 0;
+  const showPasswordError = submitAttempted && !pwValid;
+
+  const rules = useMemo(() => [
+    { key: 'length', ok: pwRules.length, label: t('registerExtra.passwordRuleLength', { count: MIN_PASSWORD_LENGTH }) },
+    { key: 'upper', ok: pwRules.upper, label: t('registerExtra.passwordRuleUpper') },
+    { key: 'digit', ok: pwRules.digit, label: t('registerExtra.passwordRuleDigit') },
+    { key: 'special', ok: pwRules.special, label: t('registerExtra.passwordRuleSpecial') },
+  ], [pwRules, t]);
+  const hasSpace = !pwRules.noSpace;
+  // The checklist stays out of the way until it is useful, and goes once all is green.
+  const showRules = !pwValid && (passwordFocused || password.length > 0 || submitAttempted);
 
   return (
     <>
-      <View style={styles.field}>
-        <Text style={[styles.label, { color: theme.text, textAlign: dir.textAlign }]}>
+      <View style={formStyles.field} onLayout={(e) => onFieldLayout?.('password', e)}>
+        <Text style={[formStyles.label, { color: theme.text, textAlign: dir.textAlign }]}>
           {t('register.passwordLabel')} *
         </Text>
         <View
           style={[
-            styles.inputRow,
+            formStyles.inputRow,
             {
               flexDirection: dir.row,
               backgroundColor: theme.bgInput,
               borderColor:
-                password.length === 0 ? theme.border
-                  : pwValid ? palette.charbon
-                  : theme.danger,
-              borderWidth: pwValid ? 2 : 1.5,
+                pwValid ? palette.charbon
+                  : showPasswordError ? theme.danger
+                  : theme.border,
+              borderWidth: pwValid || showPasswordError ? 2 : 1.5,
             },
           ]}
         >
           <JitLock size={ms(18)} color={pwValid ? palette.charbon : theme.textMuted} strokeWidth={icon.stroke} />
           <TextInput
             ref={passwordRef}
-            style={[styles.input, { color: theme.text, textAlign: dir.textAlign }]}
+            style={[formStyles.input, { color: theme.text, textAlign: dir.textAlign }]}
             value={password}
             onChangeText={setPassword}
+            onFocus={() => setPasswordFocused(true)}
+            onBlur={() => setPasswordFocused(false)}
             placeholder={t('registerExtra.passwordPlaceholder', { count: MIN_PASSWORD_LENGTH })}
             placeholderTextColor={theme.textMuted}
             secureTextEntry={!showPassword}
+            autoCapitalize="none"
+            autoCorrect={false}
+            textContentType="newPassword"
+            autoComplete="new-password"
+            passwordRules={IOS_PASSWORD_RULES}
             editable={!isLoading}
-            autoFocus
             returnKeyType="next"
             onSubmitEditing={() => confirmRef.current?.focus()}
           />
           <TouchableOpacity
             onPress={() => setShowPassword(!showPassword)}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            hitSlop={HIT_SLOP}
             accessibilityRole="button"
+            accessibilityLabel={t(showPassword ? 'registerExtra.hidePassword' : 'registerExtra.showPassword')}
           >
             {showPassword
               ? <EyeOff size={ms(18)} color={theme.textMuted} strokeWidth={icon.stroke} />
@@ -81,7 +119,30 @@ function StepPasswordInner({
             <Check size={ms(16)} color={palette.charbon} strokeWidth={icon.stroke} />
           )}
         </View>
-        {password.length > 0 && (
+
+        {showRules && (
+          <View style={styles.rules}>
+            {rules.map((rule) => {
+              // Missing rules turn red only once the merchant tried to submit.
+              const color = rule.ok ? theme.success : showPasswordError ? theme.danger : theme.textMuted;
+              return (
+                <View key={rule.key} style={[styles.ruleRow, { flexDirection: dir.row }]}>
+                  {rule.ok
+                    ? <Check size={ms(13)} color={color} strokeWidth={icon.strokeSmall} />
+                    : <Circle size={ms(11)} color={color} strokeWidth={icon.strokeSmall} />}
+                  <Text style={[styles.ruleText, { color, textAlign: dir.textAlign }]}>{rule.label}</Text>
+                </View>
+              );
+            })}
+            {hasSpace && (
+              <Text style={[styles.ruleText, { color: theme.danger, textAlign: dir.textAlign }]}>
+                {t('registerExtra.passwordRuleNoSpace')}
+              </Text>
+            )}
+          </View>
+        )}
+
+        {pwValid && (
           <View style={styles.strengthWrap}>
             <View style={[styles.strengthTrack, { backgroundColor: theme.border }]}>
               <View
@@ -91,59 +152,59 @@ function StepPasswordInner({
                 }]}
               />
             </View>
-            <Text
-              style={[
-                styles.hint,
-                styles.hintTight,
-                { color: pwValid ? theme.success : theme.danger, textAlign: dir.textAlign },
-              ]}
-            >
-              {!pwValid
-                ? t('registerExtra.passwordRequirements')
-                : strength.label}
+            <Text style={[formStyles.errorHint, styles.hintTight, { color: theme.success, textAlign: dir.textAlign }]}>
+              {strength.label}
             </Text>
           </View>
         )}
       </View>
 
-      <View style={styles.field}>
-        <Text style={[styles.label, { color: theme.text, textAlign: dir.textAlign }]}>
+      <View style={formStyles.field} onLayout={(e) => onFieldLayout?.('confirm', e)}>
+        <Text style={[formStyles.label, { color: theme.text, textAlign: dir.textAlign }]}>
           {t('registerExtra.confirmPasswordLabel')} *
         </Text>
         <View
           style={[
-            styles.inputRow,
+            formStyles.inputRow,
             {
               flexDirection: dir.row,
               backgroundColor: theme.bgInput,
               borderColor:
-                confirmPassword.length === 0 ? theme.border
-                  : passwordsMatch ? palette.charbon
-                  : theme.danger,
-              borderWidth: passwordsMatch ? 2 : 1.5,
+                passwordsMatch ? palette.charbon
+                  : showMismatch || showConfirmRequired ? theme.danger
+                  : theme.border,
+              borderWidth: passwordsMatch || showMismatch || showConfirmRequired ? 2 : 1.5,
             },
           ]}
         >
           <JitLock size={ms(18)} color={passwordsMatch ? palette.charbon : theme.textMuted} strokeWidth={icon.stroke} />
           <TextInput
             ref={confirmRef}
-            style={[styles.input, { color: theme.text, textAlign: dir.textAlign }]}
+            style={[formStyles.input, { color: theme.text, textAlign: dir.textAlign }]}
             value={confirmPassword}
             onChangeText={setConfirmPassword}
+            onBlur={() => setConfirmTouched(true)}
             placeholder={t('registerExtra.confirmPasswordPlaceholder')}
             placeholderTextColor={theme.textMuted}
             secureTextEntry={!showPassword}
+            autoCapitalize="none"
+            autoCorrect={false}
+            textContentType="newPassword"
+            autoComplete="new-password"
+            passwordRules={IOS_PASSWORD_RULES}
             editable={!isLoading}
             returnKeyType="done"
+            onSubmitEditing={onSubmit}
           />
           {passwordsMatch && (
             <Check size={ms(16)} color={palette.charbon} strokeWidth={icon.stroke} />
           )}
         </View>
         {showMismatch && (
-          <Text style={[styles.hint, { color: theme.danger, textAlign: dir.textAlign }]}>
-            {t('registerExtra.passwordMismatch')}
-          </Text>
+          <FieldError>{t('registerExtra.passwordMismatch')}</FieldError>
+        )}
+        {showConfirmRequired && (
+          <FieldError>{t('registerExtra.confirmRequired')}</FieldError>
         )}
       </View>
     </>
@@ -151,19 +212,10 @@ function StepPasswordInner({
 }
 
 const styles = StyleSheet.create({
-  field: { marginBottom: hp(20) },
-  label: { fontSize: fontSize.sm, fontFamily: font.bold, marginBottom: hp(8) },
-  inputRow: {
-    alignItems: 'center',
-    borderWidth: 1.5,
-    borderRadius: radius.md,
-    paddingHorizontal: wp(14),
-    height: hp(52),
-    gap: wp(10),
-  },
-  input: { flex: 1, fontSize: fontSize.md, fontFamily: font.medium },
-  hint: { fontSize: fontSize.xs, marginTop: hp(6), lineHeight: ms(16), fontFamily: font.regular },
   hintTight: { marginTop: 4 },
+  rules: { marginTop: hp(8), gap: hp(4) },
+  ruleRow: { alignItems: 'center', gap: wp(6) },
+  ruleText: { fontSize: fontSize.xs, lineHeight: ms(16), fontFamily: font.medium },
   strengthWrap: { marginTop: hp(6) },
   strengthTrack: { height: ms(4), borderRadius: ms(2), overflow: 'hidden' },
   strengthBar: { height: '100%', borderRadius: ms(2) },

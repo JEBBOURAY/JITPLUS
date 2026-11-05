@@ -1,19 +1,13 @@
 import { Injectable, Logger, Inject } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import { MERCHANT_REPOSITORY, type IMerchantRepository } from '../repositories';
 import {
-  MERCHANT_REPOSITORY,
-  CAMPAIGN_SENT_TRACKER_REPOSITORY,
-  type IMerchantRepository,
-  type ICampaignSentTrackerRepository,
-} from '../repositories';
-import { IPushProvider, PUSH_PROVIDER } from '../interfaces';
-import { MerchantInboxService } from '../../merchant-inbox/merchant-inbox.service';
-import {
-  isCronEnabled,
-  dayTag,
-  merchantAlreadySent,
-  merchantMarkSent,
-} from './cron-utils';
+  MerchantNotifierService,
+  NOTIFY_TARGET_SELECT,
+  tally,
+} from '../../merchant-inbox/merchant-notifier.service';
+import { weekTag, weekIndexSinceReference, mapLimit, MERCHANT_PUSH_CONCURRENCY, cronEnabledOnce } from './cron-utils';
+import { lang } from './merchant-notif-messages';
 
 // ── Localized issue labels ──
 const ISSUE_LABELS: Record<string, Record<string, string>> = {
@@ -52,25 +46,16 @@ const REFERRAL_MESSAGES: Record<string, { title: string; body: string }> = {
   },
 };
 
-type Lang = 'fr' | 'en' | 'ar';
-function lang(v?: string | null): Lang {
-  return v === 'en' || v === 'ar' ? v : 'fr';
-}
+/** The referral nudge goes out at most once per block of this many weeks. */
+const REFERRAL_EVERY_WEEKS = 4;
 
 /**
- * Scheduled task: send push notification reminders to merchants every 48 hours.
+ * Scheduled task (every 2 days, 09:01 UTC):
+ * 1. **Setup reminder** (SETUP) — logo or reward missing; at most once a week.
+ * 2. **Referral reminder** (OFFER) — setup complete; at most once every 4 weeks.
  *
- * Two reminder types:
- * 1. **Setup reminder** — merchant completed onboarding but is missing a logo
- *    or rewards.
- * 2. **Referral reminder** — nudge merchants to share their referral code.
- *
- * Runs every 48 hours at 10:01 UTC (staggered from the smart-campaign weekly
- * performance push at 10:05 to avoid Monday-morning DB contention).
- *
- * Targets active merchants with a valid push token **and** `notifPush = true`.
- * Dedup keyed on the UTC day tag so a crash/restart cannot cause duplicates.
- * Messages are sent in the merchant's configured language (fr/en/ar).
+ * Running every 2 days with a weekly dedup key means a reminder blocked by
+ * the frequency cap or quiet hours is retried 2 days later.
  */
 @Injectable()
 export class MerchantReminderService {
@@ -78,17 +63,12 @@ export class MerchantReminderService {
 
   constructor(
     @Inject(MERCHANT_REPOSITORY) private readonly merchantRepo: IMerchantRepository,
-    @Inject(CAMPAIGN_SENT_TRACKER_REPOSITORY) private readonly campaignTrackerRepo: ICampaignSentTrackerRepository,
-    @Inject(PUSH_PROVIDER) private readonly pushProvider: IPushProvider,
-    private readonly inbox: MerchantInboxService,
+    private readonly notifier: MerchantNotifierService,
   ) {}
 
-  // Every 48 hours: send setup + referral push reminders.
-  // Cron: at 10:01 UTC every 2nd day (offset from smart-campaign at 10:05).
-  // 09:01 UTC = 10:01 Maroc (matinée calme, tous les 2 jours).
   @Cron('1 9 */2 * *')
   async sendMerchantReminders(): Promise<void> {
-    if (!isCronEnabled(this.logger, 'MerchantReminder.sendMerchantReminders')) return;
+    if (!(await cronEnabledOnce(this.logger, 'MerchantReminder.sendMerchantReminders'))) return;
     this.logger.log('Starting merchant push reminders (48h cycle)');
 
     try {
@@ -101,95 +81,47 @@ export class MerchantReminderService {
           notifPush: true,
         },
         select: {
-          id: true,
-          pushToken: true,
+          ...NOTIFY_TARGET_SELECT,
           language: true,
           logoUrl: true,
           _count: { select: { rewards: true } },
         },
       });
 
-      const today = dayTag();
-      let setupCount = 0;
-      let referralCount = 0;
-      let skippedDup = 0;
-      const staleTokenIds: string[] = [];
-
-      for (const merchant of merchants) {
-        if (!merchant.pushToken) continue;
-
+      const wtag = weekTag();
+      const referralBlock = Math.floor(weekIndexSinceReference() / REFERRAL_EVERY_WEEKS);
+      const results = await mapLimit(merchants, MERCHANT_PUSH_CONCURRENCY, (merchant) => {
         const l = lang(merchant.language);
-        let result: { invalidToken: boolean } = { invalidToken: false };
-
-        // ── Setup reminder ───────────────────────────────────
         const issueKeys: string[] = [];
         if (!merchant.logoUrl) issueKeys.push('logo');
         if (merchant._count.rewards === 0) issueKeys.push('rewards');
 
-        const campaignId = issueKeys.length > 0
-          ? `merchant_setup_reminder_${today}`
-          : `merchant_referral_reminder_${today}`;
-
-        if (await merchantAlreadySent(this.campaignTrackerRepo, merchant.id, campaignId, 'PUSH')) {
-          skippedDup++;
-          continue;
-        }
-
         if (issueKeys.length > 0) {
           const issueLabels = issueKeys.map((k) => ISSUE_LABELS[k][l]).join(LIST_JOINER[l]);
           const msg = SETUP_MESSAGES[l];
-
           // Navigate to the page matching the first missing item
-          const actionMap: Record<string, string> = {
-            logo: 'open_logo',
-            rewards: 'open_settings',
-          };
-          const action = actionMap[issueKeys[0]] || 'open_settings';
-
-          const body = msg.body(issueLabels);
-          result = await this.pushProvider.sendToMerchant(
-            merchant.pushToken,
-            msg.title,
-            body,
-            { action },
-          );
-          if (!result.invalidToken) {
-            setupCount++;
-            await this.inbox.record(merchant.id, { category: 'SETUP', title: msg.title, body, action });
-            await merchantMarkSent(this.campaignTrackerRepo, merchant.id, campaignId, 'PUSH');
-          }
-        } else {
-          // Only send referral reminder if setup is complete
-          // to avoid double notification spam.
-          const msg = REFERRAL_MESSAGES[l];
-          result = await this.pushProvider.sendToMerchant(
-            merchant.pushToken,
-            msg.title,
-            msg.body,
-            { action: 'open_referral' },
-          );
-          if (!result.invalidToken) {
-            referralCount++;
-            await this.inbox.record(merchant.id, { category: 'OFFER', title: msg.title, body: msg.body, action: 'open_referral' });
-            await merchantMarkSent(this.campaignTrackerRepo, merchant.id, campaignId, 'PUSH');
-          }
+          const action = issueKeys[0] === 'logo' ? 'open_logo' : 'open_settings';
+          return this.notifier.notify(merchant, {
+            category: 'SETUP',
+            title: msg.title,
+            body: msg.body(issueLabels),
+            action,
+            event: 'merchant_setup_reminder',
+            campaignId: `merchant_setup_reminder_${wtag}`,
+          });
         }
+        const msg = REFERRAL_MESSAGES[l];
+        return this.notifier.notify(merchant, {
+          category: 'OFFER',
+          title: msg.title,
+          body: msg.body,
+          action: 'open_referral',
+          event: 'merchant_referral_reminder',
+          campaignId: `merchant_referral_reminder_b${referralBlock}`,
+        });
+      });
 
-        if (result.invalidToken) staleTokenIds.push(merchant.id);
-      }
-
-      // Clean stale push tokens
-      if (staleTokenIds.length > 0) {
-        this.logger.log(`Cleaning ${staleTokenIds.length} stale merchant push token(s)`);
-        await this.merchantRepo.updateMany({
-          where: { id: { in: staleTokenIds } },
-          data: { pushToken: null },
-        }).catch((e: unknown) => this.logger.warn(`Failed to clean stale tokens: ${e}`));
-      }
-
-      this.logger.log(
-        `Merchant reminders: ${setupCount} setup, ${referralCount} referral, ${skippedDup} dup-skipped (${merchants.length} eligible)`,
-      );
+      this.logger.log(`Merchant reminders (${merchants.length} eligible): ${tally(results)}`);
     } catch (error) {
       this.logger.error('Failed to send merchant reminders', error);
     }

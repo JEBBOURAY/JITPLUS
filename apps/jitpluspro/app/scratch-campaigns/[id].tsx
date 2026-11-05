@@ -38,7 +38,8 @@ import {
 } from '@/hooks/useScratchHooks';
 import { getErrorMessage } from '@/utils/error';
 import { formatDateTime } from '@/utils/date';
-import { formatCurrency, DEFAULT_CURRENCY, getIntlLocale } from '@/config/currency';
+import { formatCurrency, getIntlLocale } from '@/config/currency';
+import { useCurrency, useMoney } from '@/hooks/useCurrency';
 import { ms } from '@/utils/responsive';
 import { font, icon } from '@/constants/design';
 import {
@@ -60,6 +61,8 @@ export default function ScratchCampaignDetail() {
   const shouldWait = useRequireAuth();
   const theme = useTheme();
   const { t, locale } = useLanguage();
+  const currency = useCurrency();
+  const { money: textMoney } = useMoney();
   const { row, textAlign } = useDir();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -229,7 +232,7 @@ export default function ScratchCampaignDetail() {
   const canEdit = isOwner && isPremium && (status === 'DRAFT' || status === 'SCHEDULED');
   const canCancel = isOwner && ['SCHEDULED', 'SENDING', 'SENT'].includes(status);
   const canExtend = isOwner && isPremium && (status === 'SENDING' || status === 'SENT');
-  const money = (n: number) => formatCurrency(n, DEFAULT_CURRENCY, getIntlLocale(locale));
+  const money = (n: number) => formatCurrency(n, currency, getIntlLocale(locale));
   const probabilities = rewardProbabilities(campaign.rewards.map((r) => r.weight));
 
   return (
@@ -308,7 +311,7 @@ export default function ScratchCampaignDetail() {
               <View key={r.id} style={[styles.rewardRow, { borderBottomColor: theme.borderLight }]}>
                 <View style={[styles.rewardTop, { flexDirection: row }]}>
                   <Text style={[styles.rewardLabel, { color: theme.text, textAlign }]} numberOfLines={2}>{r.label}</Text>
-                  <Text style={[styles.rewardValue, { color: theme.primary }]}>{formatRewardValue(r, t)}</Text>
+                  <Text style={[styles.rewardValue, { color: theme.primary }]}>{formatRewardValue(r, t, textMoney)}</Text>
                 </View>
                 <Text style={[styles.rewardMeta, { color: theme.textMuted, textAlign }]}>
                   {sent && rs

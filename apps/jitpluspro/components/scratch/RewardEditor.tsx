@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { ChevronDown, ChevronUp, ShieldCheck, Trash2 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useMoney } from '@/hooks/useCurrency';
 import { ms } from '@/utils/responsive';
 import { font, icon } from '@/constants/design';
 import { COUPON_REWARD_TYPES, SCRATCH_LIMITS, type CouponRewardType } from '@jitplus/shared/src/scratch';
@@ -40,6 +41,8 @@ export const RewardEditor = React.memo(function RewardEditor({
 }: Props) {
   const theme = useTheme();
   const { t, isRTL } = useLanguage();
+  const { symbol: currencySymbol } = useMoney();
+  const cur = { currency: currencySymbol };
   const isAssured = index === 0;
   const optionCount = countRewardOptions(reward);
   const [showOptions, setShowOptions] = useState(optionCount > 0);
@@ -64,7 +67,7 @@ export const RewardEditor = React.memo(function RewardEditor({
     reward.type === 'PERCENT_DISCOUNT'
       ? t('scratch.wizard.valuePercent')
       : reward.type === 'FIXED_DISCOUNT'
-        ? t('scratch.wizard.valueFixed')
+        ? t('scratch.wizard.valueFixed', cur)
         : t('scratch.wizard.valueStamps');
 
   const toggleDay = (day: number) => {
@@ -93,7 +96,7 @@ export const RewardEditor = React.memo(function RewardEditor({
 
       <ChipRow>
         {COUPON_REWARD_TYPES.map((type) => (
-          <Chip key={type} label={t(`scratch.rewardType.${type}`)} selected={reward.type === type} onPress={() => setType(type)} />
+          <Chip key={type} label={t(`scratch.rewardType.${type}`, cur)} selected={reward.type === type} onPress={() => setType(type)} />
         ))}
       </ChipRow>
 
@@ -194,14 +197,14 @@ export const RewardEditor = React.memo(function RewardEditor({
 
           {reward.type === 'PERCENT_DISCOUNT' && (
             <>
-              <FieldLabel text={t('scratch.wizard.maxDiscount')} />
+              <FieldLabel text={t('scratch.wizard.maxDiscount', cur)} />
               <Input
                 value={reward.maxDiscount}
                 onChangeText={(v) => onChange({ maxDiscount: decimal(v) })}
                 keyboardType="decimal-pad"
                 placeholder="50"
                 maxLength={7}
-                accessibilityLabel={t('scratch.wizard.maxDiscount')}
+                accessibilityLabel={t('scratch.wizard.maxDiscount', cur)}
               />
             </>
           )}
@@ -226,14 +229,14 @@ export const RewardEditor = React.memo(function RewardEditor({
             </>
           )}
 
-          <FieldLabel text={t('scratch.wizard.minPurchase')} />
+          <FieldLabel text={t('scratch.wizard.minPurchase', cur)} />
           <Input
             value={reward.minPurchase}
             onChangeText={(v) => onChange({ minPurchase: decimal(v) })}
             keyboardType="decimal-pad"
             maxLength={7}
             placeholder="100"
-            accessibilityLabel={t('scratch.wizard.minPurchase')}
+            accessibilityLabel={t('scratch.wizard.minPurchase', cur)}
           />
 
           <FieldLabel text={t('scratch.wizard.minDelay')} />

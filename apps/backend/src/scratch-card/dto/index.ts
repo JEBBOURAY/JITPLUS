@@ -27,7 +27,7 @@ export type CouponRewardTypeValue = (typeof COUPON_REWARD_TYPES)[number];
 
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 
-export class ScratchRewardDto {
+class ScratchRewardDto {
   @ApiProperty({ enum: COUPON_REWARD_TYPES })
   @IsIn(COUPON_REWARD_TYPES as unknown as string[], { message: 'Type de récompense invalide' })
   type: CouponRewardTypeValue;
@@ -38,13 +38,13 @@ export class ScratchRewardDto {
   @MaxLength(SCRATCH_LIMITS.LABEL_MAX)
   label: string;
 
-  @ApiPropertyOptional({ example: 20, description: 'Pourcentage, montant (MAD) ou tampons bonus selon le type' })
+  @ApiPropertyOptional({ example: 20, description: 'Pourcentage, montant (devise du commerçant) ou tampons bonus selon le type' })
   @IsOptional()
   @IsNumber({}, { message: 'Valeur invalide' })
   @Min(0)
   value?: number | null;
 
-  @ApiPropertyOptional({ example: 50, description: 'Plafond de remise (MAD) pour un pourcentage' })
+  @ApiPropertyOptional({ example: 50, description: 'Plafond de remise (devise du commerçant) pour un pourcentage' })
   @IsOptional()
   @IsNumber()
   @Min(0)

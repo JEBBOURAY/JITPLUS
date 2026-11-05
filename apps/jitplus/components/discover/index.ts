@@ -2,3 +2,5 @@ export { FallbackMerchantCard, MerchantCallout } from './MerchantCards';
 export { discoverStyles } from './discoverStyles';
 export { MerchantPin, ClusterPin } from './MapPins';
 export { MAP_STYLE, DEFAULT_REGION } from './mapConstants';
+export { MerchantListSheet } from './MerchantListSheet';
+export { SearchResults } from './SearchResults';

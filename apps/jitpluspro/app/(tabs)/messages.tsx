@@ -10,7 +10,6 @@ import {
   Platform,
   Animated,
   LayoutAnimation,
-  UIManager,
   Keyboard,
   ScrollView,
   type LayoutChangeEvent,
@@ -54,14 +53,6 @@ import { font, icon } from '@/constants/design';
 import { radius } from '@/utils/responsive';
 
 const HIT_SLOP_MED = { top: 8, bottom: 8, left: 8, right: 8 };
-// Enable LayoutAnimation on Android (old arch only — New Architecture supports it natively).
-if (
-  Platform.OS === 'android' &&
-  UIManager.setLayoutAnimationEnabledExperimental &&
-  typeof (globalThis as Record<string, unknown>).nativeFabricUIManager === 'undefined'
-) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 
 // Must match backend DTO validation.
 const LIMITS = {
@@ -104,9 +95,10 @@ function handlePremiumError(
   if (status === 403) {
     const rawMsg = axiosErr?.response?.data?.message;
     const msg = Array.isArray(rawMsg) ? rawMsg.join(' ') : (rawMsg ?? '');
-    const isPlanIssue = msg.includes('Premium') || msg.includes('essai');
+    // Only the email quota service mentions "quota"; every other 403 here is the Pro-plan guard.
+    const isQuotaIssue = /quota/i.test(msg);
     Alert.alert(
-      isPlanIssue ? t('messages.premiumOnly') : t('messages.quotaReached'),
+      isQuotaIssue ? t('messages.quotaReached') : t('messages.premiumOnly'),
       msg || t('messages.premiumMsg'),
     );
     return;
@@ -556,7 +548,10 @@ export default function MessagesScreen() {
     (formHeading.trim() ? bodyRef : headingRef).current?.focus();
   }, [formHeading, scrollToY]);
 
-  const sendHint = !formHeading.trim()
+  const emailQuotaReached = isEmail && !!emailQuota && emailQuota.used >= emailQuota.max;
+  const sendHint = emailQuotaReached
+    ? t('messages.emailQuotaReached')
+    : !formHeading.trim()
     ? t(isEmail ? 'messages.missingSubject' : 'messages.missingTitle')
     : !formBody.trim()
       ? t('messages.missingBody')
@@ -603,6 +598,7 @@ export default function MessagesScreen() {
   // Send flow: tap "Send", then recap sheet, then success state.
   const handleSendPress = useCallback(() => {
     safeImpact(Haptics.ImpactFeedbackStyle.Medium);
+    if (emailQuotaReached) return;
     if (!formComplete) {
       focusMissingField();
       return;
@@ -610,10 +606,12 @@ export default function MessagesScreen() {
     Keyboard.dismiss();
     setSheet({ isEmail, heading: formHeading.trim(), body: formBody.trim(), successMessage: null });
     setSheetVisible(true);
-  }, [formComplete, focusMissingField, isEmail, formHeading, formBody]);
+  }, [emailQuotaReached, formComplete, focusMissingField, isEmail, formHeading, formBody]);
 
+  const sendingRef = useRef(false);
   const confirmSend = useCallback(async () => {
-    if (sheet.successMessage != null) return;
+    if (sheet.successMessage != null || sendingRef.current) return;
+    sendingRef.current = true;
     try {
       let message: string;
       if (sheet.isEmail) {
@@ -637,6 +635,8 @@ export default function MessagesScreen() {
       // Sheet stays open so the merchant can go back and edit (e.g. blocked content).
       safeNotification(Haptics.NotificationFeedbackType.Error);
       handlePremiumError(err, t);
+    } finally {
+      sendingRef.current = false;
     }
   }, [sheet, sendEmail, sendPush, t]);
 
@@ -798,7 +798,7 @@ export default function MessagesScreen() {
                 <SendButton
                   label={isEmail ? t('messages.sendEmail') : t('messages.sendToAll')}
                   Icon={isEmail ? Mail : Send}
-                  canSend={formComplete}
+                  canSend={formComplete && !emailQuotaReached}
                   isSending={isEmail ? isEmailSending : isPushSending}
                   cooldownUntil={isEmail ? emailCooldownUntil : pushCooldownUntil}
                   hint={sendHint}

@@ -13,6 +13,7 @@ import {
   REFERRAL_BONUS_DAYS,
   REFERRAL_STATS_CACHE_TTL,
 } from '../../common/constants';
+import { planCacheKey } from './plan-cache-key';
 
 export interface ReferralStats {
   referralCode: string;
@@ -148,7 +149,7 @@ export class MerchantReferralService {
           referralMonthsEarned: { increment: 1 },
         },
       });
-      await this.cache.del(`plan:v1:${referrerId}`);
+      await this.cache.del(planCacheKey(referrerId));
       await this.invalidateReferralCache(referrerId);
       this.logger.log(`Referral bonus: extended PREMIUM for merchant ${referrerId} until ${newExpiry.toISOString()}`);
       this.mailProvider.sendReferralBonus(referrer.email, referrer.nom, newMerchantNom, newExpiry, pickEmailLang(referrer.language))
@@ -168,7 +169,7 @@ export class MerchantReferralService {
         referralMonthsEarned: { increment: 1 },
       },
     });
-    await this.cache.del(`plan:v1:${referrerId}`);
+    await this.cache.del(planCacheKey(referrerId));
     await this.invalidateReferralCache(referrerId);
     this.logger.log(`Referral bonus: auto-activated PREMIUM for FREE merchant ${referrerId} until ${newExpiry.toISOString()}`);
     this.mailProvider.sendReferralBonus(referrer.email, referrer.nom, newMerchantNom, newExpiry, pickEmailLang(referrer.language))

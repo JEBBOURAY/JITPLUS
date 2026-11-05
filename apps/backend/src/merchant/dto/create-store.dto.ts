@@ -47,16 +47,17 @@ export class CreateStoreDto {
   @IsOptional()
   longitude?: number;
 
+  // null is accepted (IsOptional skips validation for null); on update it clears the value.
   @IsString()
   @MaxLength(20)
   @IsOptional()
-  telephone?: string;
+  telephone?: string | null;
 
   @IsEmail({}, { message: 'Email invalide' })
   @IsString()
   @MaxLength(255)
   @IsOptional()
-  email?: string;
+  email?: string | null;
 
   @IsUrl({}, { message: 'URL du logo invalide' })
   @IsOptional()

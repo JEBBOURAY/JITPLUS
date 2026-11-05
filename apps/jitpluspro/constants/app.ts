@@ -1,8 +1,8 @@
 /** API request timeout in milliseconds */
 export const API_TIMEOUT_MS = 10_000;
 
-/** Minimum password length for registration */
-export const MIN_PASSWORD_LENGTH = 8;
+/** Minimum password length — single source in the shared password rules. */
+export { MIN_PASSWORD_LENGTH } from '@jitplus/shared/src/passwordStrength';
 
 /** Search input debounce delay in milliseconds */
 export const SEARCH_DEBOUNCE_MS = 350;
@@ -10,7 +10,6 @@ export const SEARCH_DEBOUNCE_MS = 350;
 export const INACTIVE_CLIENT_DAYS = 30;
 // AsyncStorage keys
 export const ASYNC_STORAGE_KEYS = {
-  WELCOME_SEEN: 'welcome_seen',
   // Contextual reminder banner (messages) dismissal.
   MESSAGES_LOGO_BANNER_DISMISSED: 'messages_logo_banner_dismissed',
   // Premium trial-end reminder (Accueil): stores the YYYY-MM-DD it was dismissed
@@ -49,6 +48,9 @@ export const MAX_AMOUNT_DIGITS = 8;
 
 /** Maximum stamps per single transaction (aligned with backend MAX_STAMPS_PER_TX) */
 export const MAX_STAMPS_PER_TX = 20;
+
+/** E-commerce parcel QR codes per batch (aligned with backend MAX_STAMP_CODES_PER_BATCH) */
+export const MAX_STAMP_CODES_PER_BATCH = 500;
 
 /** Store pages of the JitPlus client app (the one customers install). */
 export const CLIENT_APP_ANDROID_URL = 'https://play.google.com/store/apps/details?id=com.jitplus.client';

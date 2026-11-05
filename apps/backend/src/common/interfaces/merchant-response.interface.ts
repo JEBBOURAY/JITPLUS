@@ -21,6 +21,7 @@ export interface MerchantResponse {
   coverUrl: string | null;
   amountPerStamp: number;
   stampsForReward: number;
+  currency?: string;
   activeRewardId: string | null;
   isActive: boolean;
   emailVerified: boolean;

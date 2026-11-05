@@ -5,6 +5,7 @@ import { JitPin, JitStore } from '@/components/icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useMoney } from '@/hooks/useCurrency';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { useDir } from '@/hooks/useDir';
 import { useAuthStore } from '@/stores/authStore';
@@ -57,6 +58,7 @@ export default function DealWizard() {
   const shouldWait = useRequireAuth();
   const theme = useTheme();
   const { t, locale } = useLanguage();
+  const { symbol: currencySymbol } = useMoney();
   const { row, textAlign } = useDir();
   const router = useRouter();
   const params = useLocalSearchParams<{ id?: string }>();
@@ -312,23 +314,23 @@ export default function DealWizard() {
               <>
                 <View style={[styles.pair, { flexDirection: row }]}>
                   <View style={styles.flex}>
-                    <FieldLabel text={t('deals.wizard.originalPrice')} />
+                    <FieldLabel text={t('deals.wizard.originalPrice', { currency: currencySymbol })} />
                     <Input
                       value={form.originalPrice}
                       onChangeText={(v) => set({ originalPrice: priceInput(v) })}
                       keyboardType="decimal-pad"
                       maxLength={10}
-                      accessibilityLabel={t('deals.wizard.originalPrice')}
+                      accessibilityLabel={t('deals.wizard.originalPrice', { currency: currencySymbol })}
                     />
                   </View>
                   <View style={styles.flex}>
-                    <FieldLabel text={t('deals.wizard.dealPrice')} />
+                    <FieldLabel text={t('deals.wizard.dealPrice', { currency: currencySymbol })} />
                     <Input
                       value={form.dealPrice}
                       onChangeText={(v) => set({ dealPrice: priceInput(v) })}
                       keyboardType="decimal-pad"
                       maxLength={10}
-                      accessibilityLabel={t('deals.wizard.dealPrice')}
+                      accessibilityLabel={t('deals.wizard.dealPrice', { currency: currencySymbol })}
                     />
                   </View>
                 </View>
@@ -363,13 +365,13 @@ export default function DealWizard() {
 
             {form.type === 'FREE_ITEM' && (
               <>
-                <FieldLabel text={t('deals.wizard.itemValue')} hint={t('deals.wizard.optional')} />
+                <FieldLabel text={t('deals.wizard.itemValue', { currency: currencySymbol })} hint={t('deals.wizard.optional')} />
                 <Input
                   value={form.originalPrice}
                   onChangeText={(v) => set({ originalPrice: priceInput(v) })}
                   keyboardType="decimal-pad"
                   maxLength={10}
-                  accessibilityLabel={t('deals.wizard.itemValue')}
+                  accessibilityLabel={t('deals.wizard.itemValue', { currency: currencySymbol })}
                 />
               </>
             )}

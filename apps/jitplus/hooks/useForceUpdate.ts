@@ -50,6 +50,8 @@ function getStoreUrl(): string {
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
 const RECHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6h — version changes are rare, no need to poll every 30min
+/** On a dead network the request otherwise hangs ~30s; a failure counts as 'ok'. */
+const CHECK_TIMEOUT_MS = 8000;
 
 export function useForceUpdate(): ForceUpdateState {
   const [status, setStatus] = useState<ForceUpdateStatus>('checking');
@@ -63,7 +65,7 @@ export function useForceUpdate(): ForceUpdateState {
         min_ios_version: string;
         min_android_version: string;
         maintenance: boolean;
-      }>(`${getServerBaseUrl()}/health/version?app=jitplus`);
+      }>(`${getServerBaseUrl()}/health/version?app=jitplus`, { timeout: CHECK_TIMEOUT_MS });
 
       if (cancelledRef.current) return;
 

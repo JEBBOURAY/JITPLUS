@@ -1,3 +1,4 @@
+import { moneyFormatter } from '@jitplus/shared/src/currency';
 import React from 'react';
 import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text } from '@/components/AppText';
@@ -51,7 +52,7 @@ export default React.memo(function ScratchHistory({ toUse, past, locale, bottomI
     const coupon = card.coupon;
     const merchant = card.merchant.nom || card.campaign.name;
     const title = coupon
-      ? formatRewardValue({ type: coupon.type, value: coupon.value, label: coupon.label }, t)
+      ? formatRewardValue({ type: coupon.type, value: coupon.value, label: coupon.label }, t, moneyFormatter(card.merchant.currency, locale))
       : t('scratch.hub.missed');
     const dateStr = formatDate(card.scratchedAt ?? card.expiresAt, locale);
     const statusLabel = status === 'missed' && card.status === 'CANCELLED'

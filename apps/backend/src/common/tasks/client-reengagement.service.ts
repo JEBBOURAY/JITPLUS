@@ -2,12 +2,13 @@ import { Injectable, Logger, Inject } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import {
   CLIENT_REPOSITORY, type IClientRepository,
-  LOYALTY_CARD_REPOSITORY, type ILoyaltyCardRepository,
-  TRANSACTION_REPOSITORY, type ITransactionRepository,
-  CAMPAIGN_SENT_TRACKER_REPOSITORY, type ICampaignSentTrackerRepository,
+  RAW_QUERY_RUNNER, type IRawQueryRunner,
 } from '../repositories';
 import { IPushProvider, PUSH_PROVIDER } from '../interfaces';
-import { isCronAllowed, weekTag } from './cron-utils';
+import { weekTag, cronAllowedOnce } from './cron-utils';
+import { type ClientPush, CLIENT_CAMPAIGN_CHUNK, afterId, clearStaleClientTokens, deliverClientPushes } from './client-campaign';
+import { type AppLang, pickAppLang } from '../utils/app-lang';
+import { MS_PER_DAY } from '../constants';
 
 // ── Re-engagement messages ──────────────────────────────────────────────
 const MESSAGES = {
@@ -74,15 +75,15 @@ const MESSAGES = {
 } as const;
 
 type MsgKey = keyof typeof MESSAGES;
-type Lang = 'fr' | 'en' | 'ar';
-
-function lang(v?: string | null): Lang {
-  return v === 'en' || v === 'ar' ? v : 'fr';
-}
+type Lang = AppLang;
+const lang = pickAppLang;
 
 function getMsg(key: MsgKey, l: Lang): { title: string; body: string } {
   return MESSAGES[key][l];
 }
+
+type ClientRow = { id: string; pushToken: string | null; language: string | null };
+type Results = { neverUsed: number; inactive7d: number; inactive14d: number; inactive30d: number };
 
 /**
  * Client re-engagement: automated push notifications for inactive clients.
@@ -99,69 +100,41 @@ function getMsg(key: MsgKey, l: Lang): { title: string; body: string } {
 @Injectable()
 export class ClientReengagementService {
   private readonly logger = new Logger(ClientReengagementService.name);
-  private static readonly BATCH_SIZE = 1000;
+  private static readonly BATCH_SIZE = CLIENT_CAMPAIGN_CHUNK;
 
   constructor(
     @Inject(CLIENT_REPOSITORY) private readonly clientRepo: IClientRepository,
-    @Inject(LOYALTY_CARD_REPOSITORY) private readonly loyaltyCardRepo: ILoyaltyCardRepository,
-    @Inject(TRANSACTION_REPOSITORY) private readonly txRepo: ITransactionRepository,
-    @Inject(CAMPAIGN_SENT_TRACKER_REPOSITORY) private readonly campaignTrackerRepo: ICampaignSentTrackerRepository,
+    @Inject(RAW_QUERY_RUNNER) private readonly rawQuery: IRawQueryRunner,
     @Inject(PUSH_PROVIDER) private readonly pushProvider: IPushProvider,
   ) {}
 
-  private async alreadySent(clientId: string, campaignId: string): Promise<boolean> {
-    try {
-      const row = await this.campaignTrackerRepo.findUnique({
-        where: { clientId_campaignId_channel: { clientId, campaignId, channel: 'PUSH' } },
-        select: { id: true },
-      });
-      return !!row;
-    } catch {
-      return false;
-    }
-  }
-
-  private async markSent(clientId: string, campaignId: string): Promise<void> {
-    try {
-      await this.campaignTrackerRepo.create({
-        data: { clientId, campaignId, channel: 'PUSH' },
-      });
-    } catch {
-      // race / unique violation — safe to ignore
-    }
+  private get deps() {
+    return { raw: this.rawQuery, push: this.pushProvider, logger: this.logger };
   }
 
   @Cron('0 14 * * *') // Daily at 14:00 UTC = 15:00 Maroc (après Dohr)
   async sendReengagementPush(): Promise<void> {
-    if (!isCronAllowed(this.logger, 'ClientReengagement.sendReengagementPush')) return;
+    if (!(await cronAllowedOnce(this.logger, 'ClientReengagement.sendReengagementPush'))) return;
     this.logger.log('Starting client re-engagement push');
 
     try {
       const now = new Date();
-      const threeDaysAgo = new Date(now.getTime() - 3 * 86_400_000);
-      const sevenDaysAgo = new Date(now.getTime() - 7 * 86_400_000);
-      const fourteenDaysAgo = new Date(now.getTime() - 14 * 86_400_000);
-      const thirtyDaysAgo = new Date(now.getTime() - 30 * 86_400_000);
-      // Don't notify clients who signed up in the last day (welcome series handles them)
-      const oneDayAgo = new Date(now.getTime() - 86_400_000);
+      const threeDaysAgo = new Date(now.getTime() - 3 * MS_PER_DAY);
+      const sevenDaysAgo = new Date(now.getTime() - 7 * MS_PER_DAY);
+      const fourteenDaysAgo = new Date(now.getTime() - 14 * MS_PER_DAY);
+      const thirtyDaysAgo = new Date(now.getTime() - 30 * MS_PER_DAY);
 
-      const results = { neverUsed: 0, inactive7d: 0, inactive14d: 0, inactive30d: 0 };
-      const staleTokenIds: string[] = [];
+      const results: Results = { neverUsed: 0, inactive7d: 0, inactive14d: 0, inactive30d: 0 };
+      const staleTokens: string[] = [];
 
       // ── Segment 1: Never used (no loyalty cards, signed up 3+ days ago) ──
-      await this.processNeverUsed(threeDaysAgo, oneDayAgo, results, staleTokenIds);
+      await this.processNeverUsed(threeDaysAgo, results, staleTokens);
 
       // ── Segments 2-4: Inactive based on last transaction ──
-      await this.processInactive(sevenDaysAgo, fourteenDaysAgo, thirtyDaysAgo, results, staleTokenIds);
+      await this.processInactive(sevenDaysAgo, fourteenDaysAgo, thirtyDaysAgo, results, staleTokens);
 
       // Clean stale tokens
-      if (staleTokenIds.length > 0) {
-        this.logger.log(`Cleaning ${staleTokenIds.length} stale client push token(s)`);
-        await this.clientRepo.updateMany({
-          where: { id: { in: staleTokenIds } },
-          data: { pushToken: null },
-        }).catch((e: unknown) => this.logger.warn(`Failed to clean stale tokens: ${e}`));
-      }
+      await clearStaleClientTokens(this.clientRepo, staleTokens, this.logger);
 
       this.logger.log(
         `Re-engagement sent: neverUsed=${results.neverUsed}, 7d=${results.inactive7d}, 14d=${results.inactive14d}, 30d=${results.inactive30d}`,
@@ -171,171 +144,121 @@ export class ClientReengagementService {
     }
   }
 
-  private async processNeverUsed(
-    threeDaysAgo: Date,
-    oneDayAgo: Date,
-    results: Record<string, number>,
-    staleTokenIds: string[],
-  ): Promise<void> {
-    // Clients signed up 3-30 days ago with push enabled
-    const thirtyDaysAgo = new Date(threeDaysAgo.getTime() - 27 * 86_400_000);
-    const clients = await this.clientRepo.findMany({
-      where: {
-        createdAt: { gte: thirtyDaysAgo, lte: threeDaysAgo },
-        deletedAt: null,
-        notifPush: true,
-        pushToken: { not: null },
-      },
-      select: { id: true, pushToken: true, language: true },
-      take: ClientReengagementService.BATCH_SIZE,
-    });
-
-    if (clients.length === 0) return;
-
-    // Filter out clients who already have loyalty cards
-    const clientIds = clients.map((c: any) => c.id);
-    const clientsWithCards = await this.loyaltyCardRepo.findMany({
-      where: { clientId: { in: clientIds }, deactivatedAt: null },
-      select: { clientId: true },
-      distinct: ['clientId'],
-    });
-    const engagedIds = new Set(clientsWithCards.map((c: { clientId: string }) => c.clientId));
-    const neverUsedClients = clients.filter((c: any) => !engagedIds.has(c.id));
-
-    if (neverUsedClients.length === 0) return;
-
+  private async processNeverUsed(threeDaysAgo: Date, results: Results, staleTokens: string[]): Promise<void> {
+    // Clients signed up 3-30 days ago with push enabled and no active loyalty card.
+    const thirtyDaysAgo = new Date(threeDaysAgo.getTime() - 27 * MS_PER_DAY);
     // Dedup: only ping each "never used" client once per week.
-    const weekKey = weekTag();
-    const campaignId = `reengagement_never_used_${weekKey}`;
-    const freshClients: typeof neverUsedClients = [];
-    for (const c of neverUsedClients) {
-      if (await this.alreadySent(c.id, campaignId)) continue;
-      freshClients.push(c);
-    }
-    if (freshClients.length === 0) return;
+    const campaignId = `reengagement_never_used_${weekTag()}`;
+    const data = { event: 'reengagement', action: 'open_scan' };
 
-    // Group by language
-    const byLang = new Map<Lang, string[]>();
-    for (const c of freshClients) {
-      const l = lang(c.language);
-      if (!byLang.has(l)) byLang.set(l, []);
-      byLang.get(l)!.push(c.pushToken!);
-    }
+    let last: string | undefined;
+    for (;;) {
+      const clients: ClientRow[] = await this.clientRepo.findMany({
+        where: {
+          createdAt: { gte: thirtyDaysAgo, lte: threeDaysAgo },
+          deletedAt: null,
+          notifPush: true,
+          pushToken: { not: null },
+          loyaltyCards: { none: { deactivatedAt: null } },
+          ...afterId(last),
+        },
+        select: { id: true, pushToken: true, language: true },
+        orderBy: { id: 'asc' },
+        take: ClientReengagementService.BATCH_SIZE,
+      });
+      if (clients.length === 0) break;
+      last = clients[clients.length - 1].id;
 
-    for (const [l, tokens] of byLang) {
-      const msg = getMsg('neverUsed', l);
-      try {
-        const result = await this.pushProvider.sendMulticast(
-          tokens, msg.title, msg.body, undefined,
-          { event: 'reengagement', action: 'open_scan' },
-        );
-        if (result.invalidTokens.length > 0) {
-          // Map invalid tokens back to client IDs
-          const tokenToId = new Map<string, string>(freshClients.map((c: any) => [c.pushToken!, c.id]));
-          for (const t of result.invalidTokens) {
-            const id = tokenToId.get(t);
-            if (id) staleTokenIds.push(id);
-          }
-        }
-      } catch (e) {
-        this.logger.warn(`neverUsed push failed (${l}): ${e}`);
-      }
-    }
+      const items: ClientPush[] = clients
+        .filter((c) => c.pushToken)
+        .map((c) => {
+          const msg = getMsg('neverUsed', lang(c.language));
+          return { clientId: c.id, token: c.pushToken!, campaignId, title: msg.title, body: msg.body, data };
+        });
+      const r = await deliverClientPushes(this.deps, items);
+      staleTokens.push(...r.staleTokens);
+      results.neverUsed += r.claimed.length;
 
-    // Mark all successfully-queued clients as sent (idempotent)
-    for (const c of freshClients) {
-      await this.markSent(c.id, campaignId);
+      if (clients.length < ClientReengagementService.BATCH_SIZE) break;
     }
-
-    results.neverUsed = freshClients.length;
   }
 
   private async processInactive(
     sevenDaysAgo: Date,
     fourteenDaysAgo: Date,
     thirtyDaysAgo: Date,
-    results: Record<string, number>,
-    staleTokenIds: string[],
+    results: Results,
+    staleTokens: string[],
   ): Promise<void> {
-    // Find clients with push enabled who have at least one loyalty card (have used the app)
-    let cursor: string | undefined;
+    // Clients with push enabled who have at least one loyalty card (have used the app)
+    let last: string | undefined;
 
-    while (true) {
-      const batch = await this.clientRepo.findMany({
+    for (;;) {
+      const batch: ClientRow[] = await this.clientRepo.findMany({
         where: {
           deletedAt: null,
           notifPush: true,
           pushToken: { not: null },
           loyaltyCards: { some: { deactivatedAt: null } },
+          ...afterId(last),
         },
         select: { id: true, pushToken: true, language: true },
         take: ClientReengagementService.BATCH_SIZE,
-        ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
         orderBy: { id: 'asc' },
       });
       if (batch.length === 0) break;
+      last = batch[batch.length - 1].id;
 
+      // Most recent qualifying transaction per client of the batch, in one
+      // query: a LATERAL LIMIT 1 walks transactions(client_id, status,
+      // created_at) backwards from the newest row, instead of aggregating every
+      // active transaction of the 1000 clients.
+      const lastTxs = await this.rawQuery.queryRaw<{ client_id: string; last_at: Date }>`
+        SELECT c.id AS client_id, lt.created_at AS last_at
+        FROM unnest(${batch.map((c) => c.id)}::text[]) AS c(id)
+        CROSS JOIN LATERAL (
+          SELECT t.created_at FROM transactions t
+          WHERE t.client_id = c.id AND t.status = 'ACTIVE'
+            AND t.type IN ('EARN_STAMPS', 'REDEEM_REWARD', 'PURCHASE')
+          ORDER BY t.created_at DESC
+          LIMIT 1
+        ) lt`;
+      const lastTxAt = new Map(lastTxs.map((r) => [r.client_id, r.last_at]));
+
+      const items: ClientPush[] = [];
+      const segmentOf = new Map<string, keyof Results>();
       for (const client of batch) {
-        if (!client.pushToken) continue;
+        const lastAt = lastTxAt.get(client.id);
+        if (!client.pushToken || !lastAt) continue;
 
-        // Find most recent transaction for this client
-        const lastTx = await this.txRepo.findFirst({
-          where: {
-            clientId: client.id,
-            type: { in: ['EARN_STAMPS', 'REDEEM_REWARD'] },
-            status: 'ACTIVE',
-          },
-          orderBy: { createdAt: 'desc' },
-          select: { createdAt: true },
-        });
-
-        if (!lastTx) continue;
-
-        const l = lang(client.language);
-        let msgKey: MsgKey | null = null;
-        let resultKey: string | null = null;
-
-        if (lastTx.createdAt < thirtyDaysAgo) {
-          msgKey = 'inactive30d';
-          resultKey = 'inactive30d';
-        } else if (lastTx.createdAt < fourteenDaysAgo) {
-          msgKey = 'inactive14d';
-          resultKey = 'inactive14d';
-        } else if (lastTx.createdAt < sevenDaysAgo) {
-          msgKey = 'inactive7d';
-          resultKey = 'inactive7d';
-        }
-
-        if (!msgKey || !resultKey) continue;
+        let msgKey: 'inactive7d' | 'inactive14d' | 'inactive30d';
+        if (lastAt < thirtyDaysAgo) msgKey = 'inactive30d';
+        else if (lastAt < fourteenDaysAgo) msgKey = 'inactive14d';
+        else if (lastAt < sevenDaysAgo) msgKey = 'inactive7d';
+        else continue;
 
         // Dedup: dedup key derived from the tier + lastTx date, so a client
         // who resumes activity and goes inactive again will receive a new cycle.
-        const txKey = lastTx.createdAt.toISOString().slice(0, 10);
-        const campaignId = `reengagement_${resultKey}_${txKey}`;
-        if (await this.alreadySent(client.id, campaignId)) continue;
-
-        const msg = getMsg(msgKey, l);
+        const txKey = lastAt.toISOString().slice(0, 10);
+        const msg = getMsg(msgKey, lang(client.language));
         // Different actions per tier: 7d/14d push them back to their cards,
         // 30d push them to the explorer so they can discover fresh merchants.
-        const action = resultKey === 'inactive30d' ? 'open_explore' : 'open_cards';
-        try {
-          const pushResult = await this.pushProvider.sendMulticast(
-            [client.pushToken], msg.title, msg.body, undefined,
-            { event: 'reengagement', action },
-          );
-
-          await this.markSent(client.id, campaignId);
-          results[resultKey]++;
-
-          if (pushResult.invalidTokens.length > 0) {
-            staleTokenIds.push(client.id);
-          }
-        } catch (e) {
-          this.logger.warn(`reengagement push failed for ${client.id}: ${e}`);
-        }
+        const action = msgKey === 'inactive30d' ? 'open_explore' : 'open_cards';
+        items.push({
+          clientId: client.id,
+          token: client.pushToken,
+          campaignId: `reengagement_${msgKey}_${txKey}`,
+          title: msg.title,
+          body: msg.body,
+          data: { event: 'reengagement', action },
+        });
+        segmentOf.set(client.id, msgKey);
       }
 
-      cursor = batch[batch.length - 1].id;
+      const r = await deliverClientPushes(this.deps, items);
+      staleTokens.push(...r.staleTokens);
+      for (const p of r.claimed) results[segmentOf.get(p.clientId)!]++;
+
       if (batch.length < ClientReengagementService.BATCH_SIZE) break;
     }
   }

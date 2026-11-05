@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   View, StyleSheet, ScrollView, FlatList, Pressable,
   Platform, TouchableOpacity, Linking, Keyboard,
@@ -6,11 +6,9 @@ import {
 } from 'react-native';
 import { Text, TextInput } from '@/components/AppText';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
-import {
-  Search, MapPin, X, ChevronRight,
-  LocateFixed, SlidersHorizontal,
-} from 'lucide-react-native';
+import { useRouter, useFocusEffect } from 'expo-router';
+import { Search, MapPin, X, LocateFixed, SlidersHorizontal, List } from 'lucide-react-native';
+import { pluralKey } from '@jitplus/shared';
 import { haptic, HapticStyle } from '@/utils/haptics';
 import { useTheme, palette } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -18,25 +16,55 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { Merchant } from '@/types';
 import SafeMapView, { MAPS_AVAILABLE } from '@/components/SafeMapView';
 import StarLoader from '@/components/StarLoader';
-import { CATEGORIES, getCategoryEmoji } from '@/utils/categories';
 import { getDistanceKm } from '@/utils/distance';
 import { wp, hp, ms, fontSize as FS } from '@/utils/responsive';
-import { useAppFonts } from '@/utils/fonts';
 import { useMerchants } from '@/hooks/useQueryHooks';
 import { prefetchImages } from '@/utils/imageCache';
-import { Image } from 'expo-image';
-import { resolveImageUrl } from '@/utils/imageUrl';
 import { COMPACT_SCREEN_HEIGHT } from '@/constants';
 import {
   FallbackMerchantCard, MerchantCallout, discoverStyles as styles,
-  MerchantPin, ClusterPin, MAP_STYLE, DEFAULT_REGION,
+  MerchantPin, ClusterPin, MAP_STYLE, DEFAULT_REGION, MerchantListSheet, SearchResults,
 } from '@/components/discover';
 import { useDiscoverMap } from '@/hooks/useDiscoverMap';
 import { isEntityId } from '@/utils/ids';
+import { pointKey, pointName } from '@/utils/merchantPoint';
 
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 
 const MAX_PREFETCHED_LOGOS = 30;
+/** Stable while loading: a fresh `[]` each render would re-run every memo of the map. */
+const NO_MERCHANTS: Merchant[] = [];
+
+
+/** Sizes of the floating UI, normal vs. very compact screens. Built once per layout. */
+function buildSizes(compact: boolean) {
+  const btn = compact ? ms(42) : ms(48);
+  return {
+    gutter: compact ? wp(12) : wp(16),
+    roundBtn: { width: btn, height: btn, borderRadius: btn / 2 },
+    btnHeight: btn,
+    icon: compact ? ms(18) : ms(20),
+    smallIcon: compact ? ms(12) : ms(13),
+    text: compact ? FS.xs : FS.sm,
+    searchBar: { height: compact ? ms(46) : ms(52), paddingHorizontal: compact ? wp(14) : wp(18) },
+    searchIcon: compact ? ms(16) : ms(18),
+    searchText: compact ? FS.sm : FS.md,
+    closePill: compact ? { width: ms(26), height: ms(26), borderRadius: ms(13) } : { width: ms(30), height: ms(30), borderRadius: ms(15) },
+    closeIcon: compact ? ms(12) : ms(14),
+    counter: { paddingHorizontal: compact ? wp(12) : wp(16), paddingVertical: compact ? hp(7) : hp(10) },
+    filterScroll: { paddingHorizontal: compact ? wp(12) : wp(16), paddingVertical: compact ? hp(2) : hp(4), gap: compact ? wp(4) : wp(6) },
+    chip: { paddingHorizontal: compact ? wp(10) : wp(14), paddingVertical: compact ? hp(6) : hp(8), borderRadius: compact ? ms(16) : ms(20) },
+    chipIcon: compact ? ms(11) : ms(13),
+    chipText: compact ? ms(10.5) : FS.xs,
+    topBarOffset: compact ? ms(6) : ms(10),
+    filterOffset: compact ? ms(54) : ms(64),
+    calloutOffset: compact ? ms(54) : ms(60),
+    filterBarHeight: compact ? ms(48) : ms(54),
+    bottom: compact ? ms(84) : ms(100),
+    fallbackTop: compact ? ms(94) : ms(110),
+    fallbackBottom: compact ? ms(116) : ms(140),
+  };
+}
 
 export default function DiscoverScreen() {
   const theme = useTheme();
@@ -44,20 +72,37 @@ export default function DiscoverScreen() {
   const insets = useSafeAreaInsets();
   const { height: screenHeight } = useWindowDimensions();
   const { client, isGuest } = useAuth();
-  const { t } = useLanguage();
-  const fonts = useAppFonts();
+  const { t, locale } = useLanguage();
   const isVeryCompact = screenHeight < COMPACT_SCREEN_HEIGHT;
+  const ui = useMemo(() => buildSizes(isVeryCompact), [isVeryCompact]);
 
-  const { data: merchants = [], isLoading, isError, refetch } = useMerchants(!!client || isGuest);
+  const { data: merchants = NO_MERCHANTS, isLoading, isError, isStale, isFetching, refetch } = useMerchants(client?.id ?? 'guest', !!client || isGuest);
+  // The tab stays mounted: refresh the list (and its deal badges) when the user
+  // comes back to it, and only then. Read through a ref: with isStale in the
+  // callback's deps, it also re-ran when the stale timer fired on screen (a
+  // 20-page reload every 5 min) and right after a failed first load.
+  const freshnessRef = useRef({ isStale, isFetching });
+  useEffect(() => { freshnessRef.current = { isStale, isFetching }; }, [isStale, isFetching]);
+  useFocusEffect(useCallback(() => {
+    const { isStale: stale, isFetching: fetching } = freshnessRef.current;
+    // cancelRefetch: false joins a load already running instead of restarting it.
+    if (stale && !fetching) refetch({ cancelRefetch: false });
+  }, [refetch]));
+  // With a list already on screen, a failed refresh keeps it: the error card is
+  // only for a first load that failed.
+  const showLoadError = isError && !isLoading && merchants.length === 0;
+  // React Query keeps status 'error' (isLoading false) while a retry runs: show the loader then.
+  const retrying = showLoadError && isFetching;
+  const showLoader = isLoading || retrying;
+  const retry = useCallback(() => { refetch(); }, [refetch]);
 
   const {
-    searchQuery, setSearchQuery, debouncedSearch, selectedCategory,
-    showSearch, setShowSearch, showFilters, userLocation, mapReady,
-    selectedMerchant, mapRef, searchInputRef,
-    filteredMerchants, mappableMerchants, mapItems, sortedMappableMerchants,
-    selectedMerchantDistance, handleRegionChange, handleCategoryPress,
-    handleClusterPress, centerOnUser, handleMapPress,
-    handleMapReady, toggleSearch, toggleFilters, activeFilterCount,
+    searchQuery, setSearchQuery, debouncedSearch, searchResults, searchResultCount, showSearch, toggleSearch, openSearchResults,
+    selectedCategory, categories, showFilters, toggleFilters, handleCategoryPress, resetFilters, activeFilterCount,
+    mappableMerchants, mappableMerchantCount, sortedMappableMerchants, mapItems,
+    mapRef, mapReady, userLocation, handleMapReady, handleRegionChange, handleMapPress, handleClusterPress, centerOnUser,
+    selectedMerchant, selectedMerchantDistance, selectMerchant,
+    listSheet, listMerchants, areaCount, openAreaList, closeList, selectFromList,
   } = useDiscoverMap(merchants);
 
   // Warm the logos shown by the callout on tap, only for the pins on screen.
@@ -92,31 +137,42 @@ export default function DiscoverScreen() {
   }, [client, router, t]);
 
   const openInMaps = useCallback((m: Merchant) => {
-    if (!m.latitude || !m.longitude) return;
-    const label = encodeURIComponent(m.storeName || m.nomBoutique);
+    if (m.latitude == null || m.longitude == null) return;
+    const label = encodeURIComponent(pointName(m));
+    const web = `https://www.google.com/maps/search/?api=1&query=${m.latitude},${m.longitude}`;
     const url = Platform.select({
       ios: `maps://app?daddr=${m.latitude},${m.longitude}&q=${label}`,
       android: `google.navigation:q=${m.latitude},${m.longitude}&label=${label}`,
-      default: `https://www.google.com/maps/search/?api=1&query=${m.latitude},${m.longitude}`,
+      default: web,
     });
-    Linking.openURL(url!).catch(() => {
-      Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${m.latitude},${m.longitude}`).catch(() => {});
-    });
+    Linking.openURL(url).catch(() => { Linking.openURL(web).catch(() => {}); });
   }, []);
 
-  const topBarTop = insets.top + (isVeryCompact ? ms(6) : ms(10));
-  const filterTop = insets.top + (isVeryCompact ? ms(54) : ms(64));
-  const calloutTop = insets.top + (isVeryCompact ? ms(54) : ms(60)) + (showFilters ? (isVeryCompact ? ms(48) : ms(54)) : 0);
-  const locateBottom = isVeryCompact ? ms(84) : ms(100);
-  const fallbackTopPadding = insets.top + (isVeryCompact ? ms(94) : ms(110));
-  const fallbackBottomPadding = isVeryCompact ? ms(116) : ms(140);
-
-  const fallbackKeyExtractor = useCallback((m: Merchant) => m.storeId ? `${m.id}-${m.storeId}` : m.id, []);
+  // A list row or search result: on the map when it has a position, else its page.
+  const handlePickMerchant = useCallback((m: Merchant) => {
+    if (!MAPS_AVAILABLE || m.latitude == null || m.longitude == null) handleMerchantPress(m);
+    else selectFromList(m);
+  }, [handleMerchantPress, selectFromList]);
 
   const renderFallbackItem = useCallback(({ item: m }: { item: Merchant }) => {
     const dist = userLocation ? getDistanceKm(userLocation.latitude, userLocation.longitude, m.latitude!, m.longitude!) : null;
     return <FallbackMerchantCard merchant={m} distance={dist} onPress={handleMerchantPress} onNavigate={openInMaps} />;
   }, [userLocation, handleMerchantPress, openInMaps]);
+
+  const topBarTop = insets.top + ui.topBarOffset;
+  const filterTop = insets.top + ui.filterOffset;
+  const calloutTop = insets.top + ui.calloutOffset + (showFilters ? ui.filterBarHeight : 0);
+  // Without a map the list behind is already filtered live: no dropdown (its
+  // "see all" sheet and preview card only exist on the map).
+  const showDropdown = MAPS_AVAILABLE && showSearch && debouncedSearch.trim().length >= 2;
+  const hasFilter = !!searchQuery || selectedCategory !== 'all';
+
+  const countText = (key: string, count: number) => t(pluralKey(key, count, locale), { count });
+  const listTitle = !listSheet ? '' : countText(
+    listSheet.mode === 'area' ? 'discover.areaListTitle'
+      : listSheet.mode === 'spot' ? 'discover.sameSpotTitle' : 'discover.searchListTitle',
+    listMerchants.length,
+  );
 
   return (
     <View style={styles.container}>
@@ -127,94 +183,70 @@ export default function DiscoverScreen() {
           showsPointsOfInterests={false} showsBuildings={false} showsIndoors={false} showsTraffic={false}
           customMapStyle={MAP_STYLE} onMapReady={handleMapReady} onRegionChangeComplete={handleRegionChange} onPress={handleMapPress}
         >
-          {mapItems.map((item) => {
-            if (item.type === 'cluster') {
-              return (
-                <ClusterPin key={item.id} count={item.count} latitude={item.latitude} longitude={item.longitude}
-                  expansionZoom={item.expansionZoom} onPress={handleClusterPress} />
-              );
-            }
-            const m = item.merchant;
-            return (
-              <MerchantPin key={item.id} merchant={m}
-                latitude={item.latitude} longitude={item.longitude} onPress={handleMerchantPress} />
-            );
-          })}
+          {mapItems.map((item) => (item.type === 'cluster' ? (
+            <ClusterPin key={item.id} count={item.count} latitude={item.latitude} longitude={item.longitude}
+              expansionZoom={item.expansionZoom} clusterId={item.clusterId} onPress={handleClusterPress} />
+          ) : (
+            <MerchantPin key={item.id} merchant={item.merchant}
+              latitude={item.latitude} longitude={item.longitude} onPress={selectMerchant} />
+          )))}
         </SafeMapView>
       ) : (
         <View style={[StyleSheet.absoluteFill, { backgroundColor: theme.bg }]}>
           <FlatList
-            data={sortedMappableMerchants} keyExtractor={fallbackKeyExtractor} renderItem={renderFallbackItem}
-            contentContainerStyle={[styles.fallbackList, { paddingTop: fallbackTopPadding, paddingBottom: fallbackBottomPadding }]}
+            data={sortedMappableMerchants} keyExtractor={pointKey} renderItem={renderFallbackItem}
+            contentContainerStyle={[styles.fallbackList, { paddingTop: insets.top + ui.fallbackTop, paddingBottom: ui.fallbackBottom }]}
             showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" onScrollBeginDrag={Keyboard.dismiss}
             removeClippedSubviews={Platform.OS === 'android'} maxToRenderPerBatch={10} windowSize={5} initialNumToRender={8}
-            ListEmptyComponent={!isLoading ? (
+            ListEmptyComponent={showLoader ? (
+              <View style={styles.emptyState}><StarLoader size={88} /></View>
+            ) : (
               <View style={styles.emptyState}>
-                <View style={{ width: ms(88), height: ms(88), borderRadius: ms(24), backgroundColor: `${palette.gold}15`, alignItems: 'center', justifyContent: 'center', marginBottom: hp(16) }}>
+                <View style={localStyles.fallbackIcon}>
                   <MapPin size={ms(36)} color={palette.gold} strokeWidth={1.5} />
                 </View>
-                <Text style={[styles.emptyTitle, { color: theme.text }]}>{t('discover.noMerchantFound')}</Text>
-                <Text style={[styles.emptyText, { color: theme.textMuted }]}>{searchQuery ? t('discover.noResultsFor', { query: searchQuery }) : t('discover.noGeoMerchant')}</Text>
+                <Text style={[styles.emptyTitle, { color: theme.text }]}>{showLoadError ? t('discover.loadErrorTitle') : t('discover.noMerchantFound')}</Text>
+                <Text style={[styles.emptyText, { color: theme.textMuted }]}>{showLoadError ? t('discover.loadErrorBody') : debouncedSearch ? t('discover.noResultsFor', { query: debouncedSearch }) : t('discover.noGeoMerchant')}</Text>
+                {showLoadError && (
+                  <TouchableOpacity onPress={retry} activeOpacity={0.7} hitSlop={8} accessibilityRole="button" style={localStyles.textAction}>
+                    <Text style={[styles.emptyText, localStyles.actionText]}>{t('common.retry')}</Text>
+                  </TouchableOpacity>
+                )}
               </View>
-            ) : null}
+            )}
           />
         </View>
       )}
 
       {/* Floating UI */}
-      <View style={[styles.topBar, { top: topBarTop, paddingHorizontal: isVeryCompact ? wp(12) : wp(16) }]} pointerEvents="box-none">
+      <View style={[styles.topBar, { top: topBarTop, paddingHorizontal: ui.gutter }]} pointerEvents="box-none">
         {showSearch ? (
           <>
-            <View style={[styles.searchBarExpanded, { backgroundColor: theme.bgCard, height: isVeryCompact ? ms(46) : ms(52), paddingHorizontal: isVeryCompact ? wp(14) : wp(18) }]}>
-              <Search size={isVeryCompact ? ms(16) : ms(18)} color={theme.textMuted} strokeWidth={2} />
-              <TextInput ref={searchInputRef} style={[styles.searchInput, { color: theme.text, fontSize: isVeryCompact ? FS.sm : FS.md }]} placeholder={t('discover.searchPlaceholder')} placeholderTextColor={theme.inputPlaceholder} value={searchQuery} onChangeText={setSearchQuery} returnKeyType="search" autoFocus />
+            <View style={[styles.searchBarExpanded, ui.searchBar, { backgroundColor: theme.bgCard }]}>
+              <Search size={ui.searchIcon} color={theme.textMuted} strokeWidth={2} />
+              <TextInput style={[styles.searchInput, { color: theme.text, fontSize: ui.searchText }]} placeholder={t('discover.searchPlaceholder')} placeholderTextColor={theme.inputPlaceholder} value={searchQuery} onChangeText={setSearchQuery} returnKeyType="search" autoFocus />
               <Pressable onPress={toggleSearch} hitSlop={8} accessibilityRole="button" accessibilityLabel={t('common.close')}>
-                <View style={[styles.closePill, { backgroundColor: theme.bgInput, width: isVeryCompact ? ms(26) : ms(30), height: isVeryCompact ? ms(26) : ms(30), borderRadius: isVeryCompact ? ms(13) : ms(15) }]}>
-                  <X size={isVeryCompact ? ms(12) : ms(14)} color={theme.textMuted} strokeWidth={2} />
+                <View style={[styles.closePill, ui.closePill, { backgroundColor: theme.bgInput }]}>
+                  <X size={ui.closeIcon} color={theme.textMuted} strokeWidth={2} />
                 </View>
               </Pressable>
             </View>
-            {debouncedSearch.trim().length >= 2 && filteredMerchants.length > 0 && (
-              <View style={[searchResultsStyles.dropdown, { backgroundColor: theme.bgCard, borderColor: theme.border }]}>
-                <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} style={searchResultsStyles.scroll}>
-                  {filteredMerchants.slice(0, 6).map((m) => (
-                    <Pressable key={m.storeId ? `${m.id}-${m.storeId}` : m.id} onPress={() => { haptic(); setShowSearch(false); setSearchQuery(''); Keyboard.dismiss(); router.push({ pathname: '/merchant/[id]', params: { id: m.id } }); }}
-                      style={({ pressed }) => [searchResultsStyles.item, { borderBottomColor: theme.border }, pressed && { backgroundColor: `${palette.violet}08` }]}>
-                      {m.logoUrl ? (
-                        <Image source={resolveImageUrl(m.logoUrl)} style={searchResultsStyles.logo} contentFit="cover" transition={200} />
-                      ) : (
-                        <View style={[searchResultsStyles.logoFallback, { backgroundColor: `${palette.violet}10` }]}>
-                          <Text style={searchResultsStyles.emojiText}>{getCategoryEmoji(m.categorie)}</Text>
-                        </View>
-                      )}
-                      <View style={searchResultsStyles.info}>
-                        <Text style={[searchResultsStyles.name, { color: theme.text, fontFamily: fonts.semibold }]} numberOfLines={1}>{m.storeName || m.nomBoutique}</Text>
-                        {(m.ville || m.categorie) && <Text style={[searchResultsStyles.sub, { color: theme.textMuted }]} numberOfLines={1}>{[m.categorie, m.ville].filter(Boolean).join(' · ')}</Text>}
-                      </View>
-                      <ChevronRight size={ms(14)} color={theme.textMuted} strokeWidth={2} />
-                    </Pressable>
-                  ))}
-                </ScrollView>
-              </View>
-            )}
-            {debouncedSearch.trim().length >= 2 && filteredMerchants.length === 0 && (
-              <View style={[searchResultsStyles.dropdown, searchResultsStyles.emptyDropdown, { backgroundColor: theme.bgCard, borderColor: theme.border }]}>
-                <MapPin size={ms(20)} color={theme.textMuted} strokeWidth={2} />
-                <Text style={[searchResultsStyles.emptyText, { color: theme.textMuted }]}>{t('discover.noResultsFor', { query: debouncedSearch })}</Text>
-              </View>
+            {showDropdown && (
+              <SearchResults query={debouncedSearch} results={searchResults} totalCount={searchResultCount}
+                onSelect={handlePickMerchant} onSeeAll={openSearchResults} />
             )}
           </>
         ) : (
           <View style={styles.topButtons}>
-            <TouchableOpacity style={[styles.floatingBtn, { backgroundColor: theme.bgCard, width: isVeryCompact ? ms(42) : ms(48), height: isVeryCompact ? ms(42) : ms(48), borderRadius: isVeryCompact ? ms(21) : ms(24) }]} activeOpacity={0.8} onPress={toggleSearch} accessibilityRole="button" accessibilityLabel={t('discover.searchPlaceholder')}>
-              <Search size={isVeryCompact ? ms(18) : ms(20)} color={theme.text} strokeWidth={2} />
+            <TouchableOpacity style={[styles.floatingBtn, ui.roundBtn, { backgroundColor: theme.bgCard }]} activeOpacity={0.8} onPress={toggleSearch} accessibilityRole="button" accessibilityLabel={t('discover.searchPlaceholder')}>
+              <Search size={ui.icon} color={theme.text} strokeWidth={2} />
             </TouchableOpacity>
-            <View style={[styles.counterBadge, { backgroundColor: theme.bgCard, paddingHorizontal: isVeryCompact ? wp(12) : wp(16), paddingVertical: isVeryCompact ? hp(7) : hp(10) }]}>
-              <MapPin size={isVeryCompact ? ms(12) : ms(13)} color={palette.violet} strokeWidth={2} />
-              <Text style={[styles.counterText, { color: theme.text, fontSize: isVeryCompact ? FS.xs : FS.sm }]}>{t('discover.merchantCount', { count: mappableMerchants.length })}</Text>
+            <View style={[styles.counterBadge, ui.counter, { backgroundColor: theme.bgCard }]}>
+              <MapPin size={ui.smallIcon} color={palette.violet} strokeWidth={2} />
+              <Text style={[styles.counterText, { color: theme.text, fontSize: ui.text }]}>{countText('discover.merchantCount', mappableMerchantCount)}</Text>
             </View>
-            <TouchableOpacity style={[styles.floatingBtn, { backgroundColor: theme.bgCard, width: isVeryCompact ? ms(42) : ms(48), height: isVeryCompact ? ms(42) : ms(48), borderRadius: isVeryCompact ? ms(21) : ms(24) }, showFilters && { backgroundColor: palette.violet }]} activeOpacity={0.8} onPress={toggleFilters} accessibilityRole="button" accessibilityLabel={t('discover.filters')} accessibilityState={{ expanded: showFilters }}>
-              <SlidersHorizontal size={isVeryCompact ? ms(18) : ms(20)} color={showFilters ? '#fff' : theme.text} strokeWidth={2} />
+            <TouchableOpacity style={[styles.floatingBtn, ui.roundBtn, { backgroundColor: showFilters ? palette.violet : theme.bgCard }]} activeOpacity={0.8} onPress={toggleFilters} accessibilityRole="button" accessibilityLabel={t('discover.filters')} accessibilityState={{ expanded: showFilters }}>
+              <SlidersHorizontal size={ui.icon} color={showFilters ? '#fff' : theme.text} strokeWidth={2} />
               {activeFilterCount > 0 && <View style={styles.filterDot} />}
             </TouchableOpacity>
           </View>
@@ -223,15 +255,15 @@ export default function DiscoverScreen() {
 
       {showFilters && (
         <View style={[styles.filterBar, { top: filterTop }]}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.filterScroll, { paddingHorizontal: isVeryCompact ? wp(12) : wp(16), paddingVertical: isVeryCompact ? hp(2) : hp(4), gap: isVeryCompact ? wp(4) : wp(6) }]}>
-            {CATEGORIES.map((cat) => {
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={ui.filterScroll}>
+            {categories.map((cat) => {
               const isActive = selectedCategory === cat.id;
               const Icon = cat.icon;
               return (
                 <Pressable key={cat.id} onPress={() => handleCategoryPress(cat.id)} accessibilityRole="button" accessibilityState={{ selected: isActive }}>
-                  <View style={[styles.chip, { paddingHorizontal: isVeryCompact ? wp(10) : wp(14), paddingVertical: isVeryCompact ? hp(6) : hp(8), borderRadius: isVeryCompact ? ms(16) : ms(20) }, isActive ? { backgroundColor: palette.violet, borderColor: palette.violet } : { backgroundColor: theme.bgCard, borderColor: theme.border }]}>
-                    <Icon size={isVeryCompact ? ms(11) : ms(13)} color={isActive ? '#fff' : theme.textMuted} strokeWidth={2} />
-                    <Text style={[styles.chipLabel, { color: isActive ? '#fff' : theme.text, fontSize: isVeryCompact ? ms(10.5) : FS.xs }]}>{t(cat.labelKey)}</Text>
+                  <View style={[styles.chip, ui.chip, isActive ? localStyles.chipActive : { backgroundColor: theme.bgCard, borderColor: theme.border }]}>
+                    <Icon size={ui.chipIcon} color={isActive ? '#fff' : theme.textMuted} strokeWidth={2} />
+                    <Text style={[styles.chipLabel, { color: isActive ? '#fff' : theme.text, fontSize: ui.chipText }]}>{t(cat.labelKey)}</Text>
                   </View>
                 </Pressable>
               );
@@ -240,20 +272,47 @@ export default function DiscoverScreen() {
         </View>
       )}
 
-      {MAPS_AVAILABLE && (
-        <TouchableOpacity style={[styles.locateBtn, { backgroundColor: theme.bgCard, bottom: locateBottom, right: isVeryCompact ? wp(12) : wp(16), width: isVeryCompact ? ms(42) : ms(48), height: isVeryCompact ? ms(42) : ms(48), borderRadius: isVeryCompact ? ms(21) : ms(24) }]} activeOpacity={0.8} onPress={centerOnUser} accessibilityRole="button" accessibilityLabel={userLocation ? t('discover.locateMe') : t('discover.locationPromptTitle')}>
-          <LocateFixed size={isVeryCompact ? ms(17) : ms(20)} color={userLocation ? palette.violet : theme.textMuted} strokeWidth={2} />
+      {MAPS_AVAILABLE && !listSheet && (
+        <TouchableOpacity style={[styles.locateBtn, ui.roundBtn, { backgroundColor: theme.bgCard, bottom: ui.bottom, right: ui.gutter }]} activeOpacity={0.8} onPress={centerOnUser} accessibilityRole="button" accessibilityLabel={userLocation ? t('discover.locateMe') : t('discover.locationPromptTitle')}>
+          <LocateFixed size={ui.icon} color={userLocation ? palette.violet : theme.textMuted} strokeWidth={2} />
         </TouchableOpacity>
       )}
 
-      {selectedMerchant && (
-        <MerchantCallout key={selectedMerchant.id} merchant={selectedMerchant} distance={selectedMerchantDistance}
-          onPress={() => handleMerchantPress(selectedMerchant)} onNavigate={() => openInMaps(selectedMerchant)}
-          onDealPress={() => handleDealPress(selectedMerchant)}
-          style={{ top: calloutTop, bottom: undefined, left: isVeryCompact ? wp(12) : wp(16), right: isVeryCompact ? wp(12) : wp(16) }} />
+      {/* Area list entry: the merchants of the visible part of the map */}
+      {MAPS_AVAILABLE && !listSheet && mappableMerchants.length > 0 && (
+        <View style={[localStyles.pillWrap, { bottom: ui.bottom }]} pointerEvents="box-none">
+          <TouchableOpacity
+            style={[localStyles.pill, { backgroundColor: theme.bgCard, height: ui.btnHeight }]}
+            activeOpacity={0.8} onPress={openAreaList}
+            accessibilityRole="button"
+            accessibilityLabel={countText('discover.areaListTitle', areaCount)}
+          >
+            <List size={ui.searchIcon} color={palette.violet} strokeWidth={2} />
+            <Text style={[localStyles.pillText, { color: theme.text, fontSize: ui.text }]} numberOfLines={1}>
+              {t('discover.inArea', { count: areaCount })}
+            </Text>
+          </TouchableOpacity>
+        </View>
       )}
 
-      {isLoading && MAPS_AVAILABLE && (
+      {MAPS_AVAILABLE && listSheet && (
+        <MerchantListSheet
+          title={listTitle}
+          merchants={listMerchants}
+          userLocation={userLocation}
+          emptyText={t(listSheet.mode === 'area' ? 'discover.areaListEmpty' : 'discover.noMerchantFound')}
+          onSelect={handlePickMerchant} onClose={closeList}
+          bottom={ui.bottom} maxHeight={screenHeight * 0.5}
+        />
+      )}
+
+      {MAPS_AVAILABLE && selectedMerchant && (
+        <MerchantCallout key={pointKey(selectedMerchant)} merchant={selectedMerchant} distance={selectedMerchantDistance}
+          onPress={handleMerchantPress} onNavigate={openInMaps} onDealPress={handleDealPress}
+          style={{ top: calloutTop, left: ui.gutter, right: ui.gutter }} />
+      )}
+
+      {showLoader && MAPS_AVAILABLE && (
         <View style={styles.emptyOverlay} pointerEvents="box-none">
           <View style={[styles.emptyCard, { backgroundColor: theme.bgCard }]}>
             <StarLoader size={88} />
@@ -262,24 +321,31 @@ export default function DiscoverScreen() {
         </View>
       )}
 
-      {isError && !isLoading && MAPS_AVAILABLE && (
+      {showLoadError && !retrying && MAPS_AVAILABLE && (
         <View style={styles.emptyOverlay} pointerEvents="box-none">
-          <TouchableOpacity style={[styles.emptyCard, { backgroundColor: theme.bgCard }]} activeOpacity={0.7} onPress={() => refetch()} accessibilityRole="button" accessibilityLabel={t('common.retry')}>
+          <TouchableOpacity style={[styles.emptyCard, { backgroundColor: theme.bgCard }]} activeOpacity={0.7} onPress={retry} accessibilityRole="button" accessibilityLabel={t('common.retry')}>
             <MapPin size={ms(32)} color={theme.textMuted} strokeWidth={2} />
-            <Text style={[styles.emptyTitle, { color: theme.text }]}>{t('discover.noMerchantFound')}</Text>
+            <Text style={[styles.emptyTitle, { color: theme.text }]}>{t('discover.loadErrorTitle')}</Text>
+            <Text style={[styles.emptyText, { color: theme.textMuted }]}>{t('discover.loadErrorBody')}</Text>
             <Text style={[styles.emptyText, { color: palette.violet }]}>{t('common.retry')}</Text>
           </TouchableOpacity>
         </View>
       )}
 
-      {mappableMerchants.length === 0 && !isLoading && !isError && mapReady && MAPS_AVAILABLE && (
+      {/* Hidden while the dropdown lists the matches (some may have no position). */}
+      {mappableMerchants.length === 0 && !showDropdown && !showLoader && !showLoadError && mapReady && MAPS_AVAILABLE && (
         <View style={styles.emptyOverlay} pointerEvents="box-none">
           <View style={[styles.emptyCard, { backgroundColor: theme.bgCard }]}>
             <MapPin size={ms(32)} color={theme.textMuted} strokeWidth={2} />
             <Text style={[styles.emptyTitle, { color: theme.text }]}>{t('discover.noMerchantFound')}</Text>
             <Text style={[styles.emptyText, { color: theme.textMuted }]}>
-              {searchQuery ? t('discover.noResultsFor', { query: searchQuery }) : selectedCategory !== 'all' ? t('discover.noCategoryMerchant') : t('discover.noPositionMerchant')}
+              {debouncedSearch ? t('discover.noResultsFor', { query: debouncedSearch }) : selectedCategory !== 'all' ? t('discover.noCategoryMerchant') : t('discover.noPositionMerchant')}
             </Text>
+            {hasFilter && (
+              <TouchableOpacity onPress={resetFilters} activeOpacity={0.7} hitSlop={8} accessibilityRole="button" style={localStyles.textAction}>
+                <Text style={[styles.emptyText, localStyles.actionText]}>{t('discover.resetFilters')}</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       )}
@@ -287,19 +353,18 @@ export default function DiscoverScreen() {
   );
 }
 
-const searchResultsStyles = StyleSheet.create({
-  dropdown: {
-    marginTop: ms(6), borderRadius: ms(16), borderWidth: 1, overflow: 'hidden',
-    ...Platform.select({ ios: { shadowColor: '#000', shadowOpacity: 0.08, shadowOffset: { width: 0, height: 4 }, shadowRadius: 12 }, android: { elevation: 6 } }),
+const localStyles = StyleSheet.create({
+  pillWrap: { position: 'absolute', left: 0, right: 0, alignItems: 'center', zIndex: 10 },
+  pill: {
+    flexDirection: 'row', alignItems: 'center', gap: ms(8), paddingHorizontal: ms(18), borderRadius: ms(24), maxWidth: '60%',
+    ...Platform.select({ ios: { shadowColor: '#000', shadowOpacity: 0.1, shadowOffset: { width: 0, height: 3 }, shadowRadius: 10 }, android: { elevation: 4 } }),
   },
-  scroll: { maxHeight: ms(300) },
-  item: { flexDirection: 'row', alignItems: 'center', paddingVertical: ms(12), paddingHorizontal: ms(14), borderBottomWidth: StyleSheet.hairlineWidth, gap: ms(10) },
-  logo: { width: ms(36), height: ms(36), borderRadius: ms(10) },
-  logoFallback: { width: ms(36), height: ms(36), borderRadius: ms(10), alignItems: 'center', justifyContent: 'center' },
-  emojiText: { fontSize: ms(16) },
-  info: { flex: 1 },
-  name: { fontSize: FS.md, fontWeight: '600', fontFamily: 'Lexend_600SemiBold' },
-  sub: { fontSize: FS.xs, marginTop: ms(2), fontFamily: 'Lexend_400Regular' },
-  emptyDropdown: { alignItems: 'center', justifyContent: 'center', paddingVertical: ms(20), gap: ms(8) },
-  emptyText: { fontSize: FS.sm, fontFamily: 'Lexend_400Regular', textAlign: 'center' },
+  pillText: { fontWeight: '700', fontFamily: 'Lexend_600SemiBold' },
+  chipActive: { backgroundColor: palette.violet, borderColor: palette.violet },
+  fallbackIcon: {
+    width: ms(88), height: ms(88), borderRadius: ms(24), backgroundColor: `${palette.gold}15`,
+    alignItems: 'center', justifyContent: 'center', marginBottom: hp(16),
+  },
+  textAction: { marginTop: hp(10) },
+  actionText: { color: palette.violet, fontWeight: '700' },
 });

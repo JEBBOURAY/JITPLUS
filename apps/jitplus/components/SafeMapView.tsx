@@ -3,12 +3,13 @@
  * - Dev build / standalone: Affiche Google Maps (Android) / Apple Maps (iOS)
  * - Expo Go SDK 51+: react-native-maps n'est plus inclus → graceful fallback
  */
-import React, { forwardRef, useEffect, useState } from 'react';
-import { Platform, View, StyleSheet, NativeModules } from 'react-native';
+import React, { forwardRef, useCallback, useEffect, useRef, useState } from 'react';
+import { Platform, View, StyleSheet, NativeModules, Pressable } from 'react-native';
+import { useTheme, palette } from '@/contexts/ThemeContext';
 import { Text } from '@/components/AppText';
 import { requireOptionalNativeModule } from 'expo';
 import type MapViewType from 'react-native-maps';
-import type { Marker as MarkerType, MapViewProps, MapMarkerProps } from 'react-native-maps';
+import type { Marker as MarkerType, MapViewProps, MapMarkerProps, Region } from 'react-native-maps';
 import { wp, ms } from '@/utils/responsive';
 import i18n from '@/i18n';
 
@@ -53,33 +54,35 @@ try {
   MAPS_AVAILABLE = false;
 }
 
+/**
+ * Delay before telling the user the map is slow. The map stays mounted: on a
+ * slow network the tiles still arrive afterwards, and the hint goes away.
+ */
+const SLOW_LOAD_MS = 8000;
+
 const SafeMapView = forwardRef<MapViewType, MapViewProps>((props, ref) => {
+  const theme = useTheme();
   const [mapLoaded, setMapLoaded] = useState(false);
-  const [renderTimedOut, setRenderTimedOut] = useState(false);
+  const [slowLoad, setSlowLoad] = useState(false);
+  // Bumped by "Retry" to remount the native map (a fresh tile/key handshake).
+  const [mapKey, setMapKey] = useState(0);
+  // Last camera, so a remount reopens where the user was instead of initialRegion.
+  const lastRegionRef = useRef<Region | null>(null);
 
   useEffect(() => {
     if (!MAPS_AVAILABLE || !RNMapView || mapLoaded) return;
-    const t = setTimeout(() => setRenderTimedOut(true), 4000);
+    const t = setTimeout(() => setSlowLoad(true), SLOW_LOAD_MS);
     return () => clearTimeout(t);
-  }, [mapLoaded]);
+  }, [mapLoaded, mapKey]);
 
-  if (!MAPS_AVAILABLE || !RNMapView) {
-    return (
-      <View style={fallbackStyles.container}>
-        <Text style={fallbackStyles.text}>🗺️ {i18n.t('discover.mapUnavailable', { defaultValue: 'Map unavailable in Expo Go' })}</Text>
-        <Text style={fallbackStyles.hint}>{i18n.t('discover.mapUnavailableHint', { defaultValue: 'Use a dev build to see the map' })}</Text>
-      </View>
-    );
-  }
+  const retry = useCallback(() => {
+    setSlowLoad(false);
+    setMapLoaded(false);
+    setMapKey((k) => k + 1);
+  }, []);
 
-  if (renderTimedOut) {
-    return (
-      <View style={fallbackStyles.container}>
-        <Text style={fallbackStyles.text}>{i18n.t('discover.mapTemporarilyUnavailable', { defaultValue: 'Map temporarily unavailable' })}</Text>
-        <Text style={fallbackStyles.hint}>{i18n.t('discover.mapCheckApiKey', { defaultValue: 'Check Google Maps key (package + SHA-1)' })}</Text>
-      </View>
-    );
-  }
+  // Callers check MAPS_AVAILABLE and render their own fallback.
+  if (!MAPS_AVAILABLE || !RNMapView) return null;
 
   // Force Google Maps on BOTH platforms so customMapStyle, tile rendering,
   // POI styling and colors are identical on Android and iOS.
@@ -92,12 +95,21 @@ const SafeMapView = forwardRef<MapViewType, MapViewProps>((props, ref) => {
     Platform.OS === 'android' && (configuredRenderer === 'LEGACY' || configuredRenderer === 'LATEST')
       ? { googleRenderer: configuredRenderer as "LEGACY" | "LATEST" }
       : {};
+  const { style, ...mapProps } = props;
   return (
+    <View style={style}>
     <RNMapView
+      key={mapKey}
       ref={ref}
+      style={StyleSheet.absoluteFill}
       {...(androidRendererProp as Record<string, unknown>)}
       {...providerProp}
-      {...props}
+      {...mapProps}
+      initialRegion={(mapKey > 0 && lastRegionRef.current) || props.initialRegion}
+      onRegionChangeComplete={(region, details) => {
+        lastRegionRef.current = region;
+        props.onRegionChangeComplete?.(region, details);
+      }}
       onMapReady={() => {
         if (__DEV__) {
           const locale = Platform.OS === 'ios'
@@ -114,11 +126,28 @@ const SafeMapView = forwardRef<MapViewType, MapViewProps>((props, ref) => {
       }}
       onMapLoaded={(event) => {
         setMapLoaded(true);
-        setRenderTimedOut(false);
+        setSlowLoad(false);
         // onMapLoaded is not typed in all react-native-maps versions.
         (props as MapViewProps & { onMapLoaded?: (e: unknown) => void }).onMapLoaded?.(event);
       }}
     />
+    {slowLoad && (
+      <View style={slowStyles.slowWrap} pointerEvents="box-none">
+        <Pressable
+          onPress={retry}
+          style={({ pressed }) => [slowStyles.slowCard, { backgroundColor: theme.bgCard }, pressed && { opacity: 0.8 }]}
+          accessibilityRole="button"
+          accessibilityLabel={i18n.t('common.retry')}
+        >
+          <Text style={[slowStyles.slowTitle, { color: theme.text }]}>{i18n.t('discover.mapSlowTitle')}</Text>
+          <Text style={[slowStyles.slowHint, { color: theme.textMuted }]}>
+            {__DEV__ ? 'Dev: check the Google Maps key (package + SHA-1)' : i18n.t('discover.mapSlowHint')}
+          </Text>
+          <Text style={slowStyles.slowRetry}>{i18n.t('common.retry')}</Text>
+        </Pressable>
+      </View>
+    )}
+    </View>
   );
 });
 
@@ -127,15 +156,13 @@ SafeMapView.displayName = 'SafeMapView';
 export const Marker: React.ComponentType<MapMarkerProps> = RNMarker as unknown as React.ComponentType<MapMarkerProps> ?? (() => null);
 export default SafeMapView;
 
-const fallbackStyles = StyleSheet.create({
-  container: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#f0f0f0',
-    borderRadius: ms(16),
-    padding: wp(24),
+const slowStyles = StyleSheet.create({
+  slowWrap: { position: 'absolute', left: 0, right: 0, bottom: ms(170), alignItems: 'center', paddingHorizontal: wp(16) },
+  slowCard: {
+    borderRadius: ms(16), paddingVertical: ms(12), paddingHorizontal: ms(18), alignItems: 'center', maxWidth: 360,
+    ...Platform.select({ ios: { shadowColor: '#000', shadowOpacity: 0.12, shadowOffset: { width: 0, height: 4 }, shadowRadius: 12 }, android: { elevation: 6 } }),
   },
-  text: { fontSize: ms(16), fontWeight: '600', color: '#333', marginBottom: 4 },
-  hint: { fontSize: ms(13), color: '#888' },
+  slowTitle: { fontSize: ms(14), fontWeight: '600', textAlign: 'center' },
+  slowHint: { fontSize: ms(12), marginTop: 2, textAlign: 'center' },
+  slowRetry: { fontSize: ms(13), fontWeight: '700', color: palette.violet, marginTop: ms(6) },
 });

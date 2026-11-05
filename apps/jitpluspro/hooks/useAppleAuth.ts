@@ -10,6 +10,7 @@ import { router } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { isNoAccountError } from '@/utils/authErrors';
+import { hapticSuccess } from '@/utils/haptics';
 
 // Lazy-load so Android/web doesn't crash
 let AppleAuthentication: typeof import('expo-apple-authentication') | null = null;
@@ -78,6 +79,7 @@ export function useAppleAuth() {
 
       if (result.success) {
         navigatingOnSuccess = true;
+        hapticSuccess();
         router.replace('/(tabs)');
       } else {
         if (result.rawError && isNoAccountError(result.rawError)) {

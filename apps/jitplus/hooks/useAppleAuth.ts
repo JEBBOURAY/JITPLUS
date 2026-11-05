@@ -5,15 +5,23 @@
  */
 import { useCallback } from 'react';
 import { Platform } from 'react-native';
-import * as Crypto from 'expo-crypto';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAuthProvider } from './useAuthProvider';
 
 // Lazy-load so Android/web doesn't crash
+// expo-crypto is also lazy-loaded: a top-level import throws "Cannot find native
+// module 'ExpoCrypto'" in Expo Go / builds without the module, which breaks the
+// whole login/register routes even though crypto is only needed for Apple Sign-In.
 let AppleAuthentication: typeof import('expo-apple-authentication') | null = null;
+let Crypto: typeof import('expo-crypto') | null = null;
 if (Platform.OS === 'ios') {
   try {
     AppleAuthentication = require('expo-apple-authentication');
+  } catch {
+    // Not available
+  }
+  try {
+    Crypto = require('expo-crypto');
   } catch {
     // Not available
   }
@@ -33,7 +41,7 @@ export function useAppleAuth({ actionLabel, onCancel }: UseAppleAuthOptions) {
   const promptApple = useCallback(async () => {
     auth.reset();
 
-    if (!AppleAuthentication || Platform.OS !== 'ios') {
+    if (!AppleAuthentication || !Crypto || Platform.OS !== 'ios') {
       auth.handleError('appleAuth');
       return;
     }
@@ -81,7 +89,7 @@ export function useAppleAuth({ actionLabel, onCancel }: UseAppleAuthOptions) {
   }, [appleLogin, auth, onCancel]);
 
   /** True when Apple Sign-In is available on this device */
-  const isAvailable = Platform.OS === 'ios' && !!AppleAuthentication;
+  const isAvailable = Platform.OS === 'ios' && !!AppleAuthentication && !!Crypto;
 
   return {
     promptApple,

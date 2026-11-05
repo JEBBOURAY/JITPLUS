@@ -1,13 +1,13 @@
 import { extname } from 'path';
 import { randomBytes } from 'crypto';
 
-export const ALLOWED_UPLOAD_FOLDERS = new Set(['logos', 'products', 'stores', 'covers', 'gallery', 'rewards', 'card-backgrounds', 'deals']);
+const ALLOWED_UPLOAD_FOLDERS = new Set(['logos', 'products', 'stores', 'covers', 'gallery', 'rewards', 'card-backgrounds', 'deals']);
 
 const OWNER_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 const FILE_NAME_PATTERN = /^[A-Za-z0-9_-]+(\.[A-Za-z0-9]+)?$/;
 
 /** Sanitize a filename: keep only safe chars, strip path separators, add a random suffix. */
-export function safeFilename(original: string): string {
+function safeFilename(original: string): string {
   const ext = extname(original).toLowerCase();
   const base = original
     .slice(0, original.length - ext.length)

@@ -16,7 +16,6 @@ export function pickEmailLang(raw: string | null | undefined): EmailLang {
 }
 
 export const SUPPORT_EMAIL = 'contact@jitplus.com';
-export const CONTACT_EMAIL = 'contact@jitplus.com';
 export const PRIVACY_URL_CLIENT = 'https://jitplus.com/privacy';
 export const TERMS_URL_CLIENT = 'https://jitplus.com/cgu';
 export const PRIVACY_URL_PRO = 'https://jitplus.com/privacy';

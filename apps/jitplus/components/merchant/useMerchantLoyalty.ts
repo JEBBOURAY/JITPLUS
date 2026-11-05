@@ -1,3 +1,4 @@
+import { formatMoney } from '@jitplus/shared/src/currency';
 import { useMemo } from 'react';
 import { getFicheRewards } from '@jitplus/shared';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -29,7 +30,7 @@ export function useMerchantLoyalty(merchant: Merchant | undefined): MerchantLoya
     const nextReward = rewards.find((r) => r.cout > balance) ?? null;
     const goal = nextReward?.cout ?? rewards[rewards.length - 1].cout;
     const earnLine = merchant.stampEarningMode === 'PER_AMOUNT' && merchant.amountPerStamp
-      ? t('merchant.earnPerAmount', { amount: merchant.amountPerStamp })
+      ? t('merchant.earnPerAmount', { amount: formatMoney(merchant.amountPerStamp, merchant.currency, locale) })
       : t('merchant.earnPerVisit');
     const validityLine = merchant.stampValidityDays
       ? isMember && merchant.cardStampsExpireAt

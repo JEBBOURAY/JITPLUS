@@ -49,7 +49,6 @@ export const DEAL_DIGEST_MAX_DEALS = 2000;
 export const DEAL_DIGEST_AUDIENCE = 'DEALS_DIGEST';
 export const DEAL_DIGEST_RETENTION_DAYS = 30;
 
-export const DEAL_FEED_CACHE_TTL = 60_000;
 export const DEAL_BADGES_CACHE_TTL = 60_000;
 export const DEAL_TEASER_CACHE_TTL = 5 * 60_000;
 export const DEAL_CITIES_CACHE_TTL = 10 * 60_000;

@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Storage } from '@google-cloud/storage';
 import { extname } from 'path';
@@ -34,7 +34,7 @@ export class StorageService implements IStorageProvider {
     const ALLOWED_EXT = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.pdf']);
     const extension = extname(file.originalname).toLowerCase();
     if (!ALLOWED_EXT.has(extension)) {
-      throw new Error(`Extension de fichier non autorisée : ${extension}`);
+      throw new BadRequestException(`Extension de fichier non autorisée : ${extension}`);
     }
     // Validates the folder (no path traversal) and the owner segment.
     const fileName = buildUploadKey(folder, ownerId, file.originalname);

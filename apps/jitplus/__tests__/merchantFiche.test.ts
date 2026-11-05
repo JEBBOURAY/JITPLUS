@@ -123,6 +123,13 @@ describe('loyalty and badges', () => {
     expect(pluralKey('merchant.yourStamps', 1)).toBe('merchant.yourStamps_one');
     expect(pluralKey('merchant.yourStamps', 0)).toBe('merchant.yourStamps_other');
   });
+
+  it('puts 0 in the singular in French only', () => {
+    expect(pluralKey('discover.merchantCount', 0, 'fr')).toBe('discover.merchantCount_one');
+    expect(pluralKey('discover.merchantCount', 2, 'fr')).toBe('discover.merchantCount_other');
+    expect(pluralKey('discover.merchantCount', 0, 'en')).toBe('discover.merchantCount_other');
+    expect(pluralKey('discover.merchantCount', 0, 'ar')).toBe('discover.merchantCount_other');
+  });
 });
 
 describe('page tabs', () => {

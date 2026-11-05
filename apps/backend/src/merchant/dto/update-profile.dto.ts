@@ -158,10 +158,6 @@ export class UpdateProfileDto {
   @IsOptional()
   openingHours?: OpeningHoursDto;
 
-  @IsBoolean({ message: 'Valeur invalide pour la visibilité du guide de bienvenue' })
-  @IsOptional()
-  welcomeGuideVisible?: boolean;
-
   /** Current password: required to change the email of a password account. */
   @IsOptional()
   @IsString()

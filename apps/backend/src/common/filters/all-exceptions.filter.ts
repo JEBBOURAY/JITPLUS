@@ -9,6 +9,7 @@ import {
 import { Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
+import { requestLang, resolveErrorKey } from '../i18n/error-messages';
 
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
@@ -79,6 +80,16 @@ export class AllExceptionsFilter implements ExceptionFilter {
     else if (exception instanceof Prisma.PrismaClientValidationError) {
       status = HttpStatus.BAD_REQUEST;
       message = 'Données invalides.';
+    }
+
+    // Services throw i18n keys ('error.auth.emailExists'): send the text in
+    // the request language, and the key as a stable machine-readable `code`.
+    if (typeof message === 'string') {
+      const text = resolveErrorKey(message, requestLang(request.headers));
+      if (text) {
+        code = code ?? message;
+        message = text;
+      }
     }
 
     // Capture unexpected server errors in Sentry (5xx only — skip expected 4xx)

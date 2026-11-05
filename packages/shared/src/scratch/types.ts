@@ -185,6 +185,8 @@ export interface ScratchMerchantInfo {
   id: string;
   nom: string;
   logoUrl: string | null;
+  /** ISO 4217 code of the merchant's currency (absent in old cached payloads → MAD) */
+  currency?: string;
 }
 
 /** What the client sees before scratching: never weights, stocks or rewards. */

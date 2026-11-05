@@ -2,6 +2,9 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  GoneException,
   Logger,
   Inject,
 } from '@nestjs/common';
@@ -12,10 +15,13 @@ import {
   LOYALTY_CARD_REPOSITORY, type ILoyaltyCardRepository,
   TRANSACTION_REPOSITORY, type ITransactionRepository,
   TRANSACTION_RUNNER, type ITransactionRunner,
+  STAMP_CODE_REPOSITORY, type IStampCodeRepository,
+  type TransactionClient,
 } from '../../common/repositories';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { EventsGateway } from '../../events';
 import { MerchantPlanService } from './merchant-plan.service';
+import type { MerchantPlan } from '@prisma/client';
 import { DEFAULT_AMOUNT_PER_STAMP } from '../../common/constants';
 import { errMsg, maskName } from '../../common/utils';
 import { MERCHANT_LOYALTY_SELECT } from '../../common/prisma-selects';
@@ -23,6 +29,7 @@ import { buildPagination } from '../../common/utils';
 import { withRetry } from '../../common/utils/retry-transaction.helper';
 import { computeEarnedStamps, computeRewardThreshold } from '../utils/loyalty.utils';
 import { awardLuckyWheelTicketsInTx } from '../utils/lucky-wheel-tickets';
+import type { MerchantTransactionType } from '../dto/create-transaction.dto';
 import { getNotifTranslations } from '../../common/utils/notification-i18n';
 
 export interface CreateTransactionOptions {
@@ -33,6 +40,43 @@ export interface CreateTransactionOptions {
    * is required, so a bare clientId cannot enroll anyone.
    */
   allowEnroll?: boolean;
+}
+
+/** Shown as "performed by" on transactions credited from an e-commerce QR code. */
+export const STAMP_CODE_PERFORMER = 'E-commerce';
+
+export interface StampCodeRedeemResult {
+  success: true;
+  /** True when this client had already used the code (re-scan): nothing was credited again */
+  alreadyRedeemed: boolean;
+  stamps: number;
+  newBalance: number;
+  merchant: { id: string; nom: string };
+}
+
+interface ApplyTransactionParams {
+  clientId: string;
+  merchantId: string;
+  type: MerchantTransactionType;
+  amount: number;
+  stamps: number;
+  rewardId?: string;
+  teamMemberId?: string;
+  performedByName?: string;
+  idempotencyKey?: string;
+  allowEnroll: boolean;
+  accumulationLimit: number | null;
+  stampCodeId?: string;
+  /** Resolved before the transaction when enrolment is possible (see assertCanAddClient). */
+  plan?: MerchantPlan;
+}
+
+interface AppliedTransaction {
+  transaction: any;
+  newStamps: number;
+  actualStampsAdded: number;
+  luckyWheelTicketsAwarded: number;
+  _replayed?: boolean;
 }
 
 @Injectable()
@@ -49,12 +93,13 @@ export class MerchantTransactionService {
     private notifications: NotificationsService,
     private eventsGateway: EventsGateway,
     private planService: MerchantPlanService,
+    @Inject(STAMP_CODE_REPOSITORY) private stampCodeRepo: IStampCodeRepository,
   ) {}
 
   async createTransaction(
     clientId: string,
     merchantId: string,
-    type: 'EARN_STAMPS' | 'REDEEM_REWARD',
+    type: MerchantTransactionType,
     amount: number,
     stamps: number,
     rewardId?: string,
@@ -124,6 +169,14 @@ export class MerchantTransactionService {
           throw new BadRequestException('Le montant ne peut pas être négatif');
         }
       }
+    } else if (type === 'PURCHASE') {
+      // Stamp-less purchase: only exists to give a lucky-wheel spin (checked in the transaction)
+      if (stamps !== 0) {
+        throw new BadRequestException('Un achat sans tampon ne peut pas attribuer de tampons');
+      }
+      if (amount <= 0) {
+        throw new BadRequestException('Un montant d\'achat est requis');
+      }
     }
 
     let rewardTitle: string | undefined;
@@ -144,122 +197,32 @@ export class MerchantTransactionService {
       rewardTitle = reward.titre;
     }
 
-    let result: {
-      transaction: any;
-      newStamps: number;
-      actualStampsAdded: number;
-      luckyWheelTicketsAwarded: number;
-      _replayed?: boolean;
-    };
+    // Resolved outside the transaction: enrolment checks the FREE client limit.
+    const plan = options.allowEnroll ? (await this.planService.resolveEffectivePlan(merchantId)).plan : undefined;
+
+    let result: AppliedTransaction;
     try {
       result = await withRetry(() =>
-      this.txRunner.run(async (prisma) => {
-        // Re-check client/merchant state INSIDE the transaction to avoid TOCTOU
-        // (time-of-check vs time-of-use) on deletedAt / isActive.
-        const [clientTx, merchantTx] = await Promise.all([
-          prisma.client.findUnique({ where: { id: clientId }, select: { id: true, deletedAt: true } }),
-          prisma.merchant.findUnique({ where: { id: merchantId }, select: { id: true, isActive: true, deletedAt: true } }),
-        ]);
-        if (!clientTx || clientTx.deletedAt) throw new NotFoundException('Client non trouvé');
-        if (!merchantTx || merchantTx.deletedAt || !merchantTx.isActive) throw new NotFoundException('Commerce non trouvé');
-
-        // Read (or create) the loyalty card INSIDE the transaction to prevent
-        // race conditions where two concurrent requests read the same balance.
-        let loyaltyCard = await prisma.loyaltyCard.findUnique({
-          where: { clientId_merchantId: { clientId, merchantId } },
-          select: { id: true, stamps: true, deactivatedAt: true },
-        });
-
-        if (loyaltyCard?.deactivatedAt) {
-          if (!options.allowEnroll) {
-            throw new BadRequestException(
-              'Le client a quitté ce programme de fidélité. Il doit rejoindre à nouveau avant de pouvoir accumuler des tampons.',
-            );
-          }
-          // A reactivated card counts against the FREE plan limit like a new one.
-          await this.planService.assertCanAddClient(merchantId);
-          loyaltyCard = await prisma.loyaltyCard.update({
-            where: { id: loyaltyCard.id },
-            data: { deactivatedAt: null },
-            select: { id: true, stamps: true, deactivatedAt: true },
-          });
-        }
-
-        if (!loyaltyCard) {
-          if (!options.allowEnroll) throw new NotFoundException('Client non trouvé');
-          // Enforce client limit for FREE plan before creating loyalty card
-          await this.planService.assertCanAddClient(merchantId);
-          loyaltyCard = await prisma.loyaltyCard.create({
-            data: { clientId, merchantId, stamps: 0 },
-            select: { id: true, stamps: true, deactivatedAt: true },
-          });
-        }
-
-        // Enforce accumulation limit before creating the transaction
-        if (type === 'EARN_STAMPS' && merchant.accumulationLimit != null) {
-          if (loyaltyCard.stamps >= merchant.accumulationLimit) {
-            throw new BadRequestException(
-              `Le client a atteint la limite d'accumulation (${merchant.accumulationLimit} tampons)`,
-            );
-          }
-        }
-
-        let newStamps: number;
-        let actualStampsAdded = stamps;
-
-        if (type === 'EARN_STAMPS') {
-          newStamps = loyaltyCard.stamps + stamps;
-          // Cap balance at accumulation limit if configured
-          if (merchant.accumulationLimit != null && newStamps > merchant.accumulationLimit) {
-            newStamps = merchant.accumulationLimit;
-            // Provide accurate added stamps (capped)
-            actualStampsAdded = newStamps - loyaltyCard.stamps;
-          }
-        } else if (type === 'REDEEM_REWARD') {
-          if (loyaltyCard.stamps < stamps) {
-            throw new BadRequestException('Pas assez de tampons pour cette récompense');
-          }
-          newStamps = loyaltyCard.stamps - stamps;
-        } else {
-          throw new BadRequestException('Type de transaction invalide');
-        }
-
-        const newTransaction = await prisma.transaction.create({
-          data: {
+        this.txRunner.run(
+          (prisma) => this.applyTransactionInTx(prisma, {
             clientId,
             merchantId,
-            rewardId: rewardId || null,
-            teamMemberId: teamMemberId || null,
-            performedByName: performedByName || null,
             type,
             amount,
-            stamps: type === 'EARN_STAMPS' ? actualStampsAdded : stamps,
-            idempotencyKey: idempotencyKey || null,
-            ...(type === 'REDEEM_REWARD' ? { giftStatus: 'FULFILLED', fulfilledAt: new Date() } : {}),
-          },
-        });
-
-        await prisma.loyaltyCard.update({
-          where: { clientId_merchantId: { clientId, merchantId } },
-          data: { stamps: newStamps, lastVisitAt: new Date(), expiryReminderSentAt: null },
-        });
-
-        const luckyWheelTicketsAwarded = await awardLuckyWheelTicketsInTx(prisma, {
-          clientId,
-          merchantId,
-          type,
-          amount,
-          stamps,
-          transactionId: newTransaction.id,
-        });
-
-        return { transaction: newTransaction, newStamps, actualStampsAdded, luckyWheelTicketsAwarded };
-      }, {
-        // RepeatableRead prevents lost-update race conditions on the loyalty card balance
-        // while being significantly less contended than Serializable.
-        isolationLevel: 'RepeatableRead',
-      }),
-    );
+            stamps,
+            rewardId,
+            teamMemberId,
+            performedByName,
+            idempotencyKey,
+            allowEnroll: !!options.allowEnroll,
+            accumulationLimit: merchant.accumulationLimit,
+            plan,
+          }),
+          // RepeatableRead prevents lost-update race conditions on the loyalty card balance
+          // while being significantly less contended than Serializable.
+          { isolationLevel: 'RepeatableRead' },
+        ),
+      );
     } catch (err: any) {
       // Race-condition idempotency: two concurrent requests with the same
       // (merchantId, idempotencyKey) passed the pre-check and both tried to
@@ -295,16 +258,315 @@ export class MerchantTransactionService {
       return result.transaction;
     }
 
-    // ── Real-time: emit WebSocket events IMMEDIATELY (sub-100ms) ──
-    this.eventsGateway.emitStampsUpdated(clientId, {
+    this.dispatchTransactionSideEffects({
       clientId,
       merchantId,
-      merchantName: merchant!.nom,
-      stamps: type === 'EARN_STAMPS' ? result.actualStampsAdded : stamps,
-      newBalance: result.newStamps,
+      merchant: merchant!,
+      clientLanguage: client.language,
       type,
+      stamps,
+      rewardId,
       rewardTitle,
+      result,
     });
+
+    return result.transaction;
+  }
+
+  // ─── E-commerce QR code (scanned by the client from a parcel) ────────────
+  /**
+   * Credit the stamps of a single-use e-commerce QR code to the scanning
+   * client. Marking the code used and crediting the card happen in the same
+   * database transaction: a failure (plan limit, accumulation cap…) leaves
+   * the code usable, and two concurrent scans can never both succeed.
+   * Scanning again a code this client already used is an idempotent success.
+   */
+  async redeemStampCode(clientId: string, codeId: string): Promise<StampCodeRedeemResult> {
+    const code = await this.stampCodeRepo.findUnique({
+      where: { id: codeId },
+      select: { id: true, merchantId: true, stamps: true, amount: true, status: true, redeemedByClientId: true },
+    });
+    if (!code) throw new NotFoundException({ code: 'STAMP_CODE_INVALID', message: 'QR code invalide' });
+    if (code.status === 'REVOKED') {
+      throw new GoneException({ code: 'STAMP_CODE_REVOKED', message: 'Ce QR code a été désactivé par le commerce' });
+    }
+
+    const [client, merchant] = await Promise.all([
+      this.clientRepo.findUnique({
+        where: { id: clientId },
+        select: { id: true, language: true, deletedAt: true },
+      }),
+      this.merchantRepo.findUnique({
+        where: { id: code.merchantId },
+        select: { id: true, nom: true, isActive: true, deletedAt: true, ...MERCHANT_LOYALTY_SELECT },
+      }),
+    ]);
+    if (!client || client.deletedAt) throw new NotFoundException('Client non trouvé');
+    if (!merchant || merchant.deletedAt || !merchant.isActive) {
+      throw new NotFoundException({ code: 'STAMP_CODE_INVALID', message: 'Commerce non trouvé' });
+    }
+    const merchantInfo = { id: merchant.id, nom: merchant.nom };
+
+    if (code.status === 'REDEEMED') {
+      return this.stampCodeReplay(clientId, code, merchantInfo);
+    }
+
+    const plan = (await this.planService.resolveEffectivePlan(code.merchantId)).plan;
+    const claimAndCredit = () => withRetry(() =>
+      this.txRunner.run(async (prisma) => {
+        // Claim the code first: only one scan can move it out of ACTIVE.
+        const claimed = await prisma.stampCode.updateMany({
+          where: { id: code.id, status: 'ACTIVE' },
+          data: { status: 'REDEEMED', redeemedByClientId: clientId, redeemedAt: new Date() },
+        });
+        if (claimed.count !== 1) {
+          throw new ConflictException({ code: 'STAMP_CODE_USED', message: 'Ce QR code a déjà été utilisé' });
+        }
+
+        // The client scanning the code is the proof of consent to join. Any
+        // refusal below (plan limit, accumulation cap) rolls the claim back.
+        return this.applyTransactionInTx(prisma, {
+          clientId,
+          merchantId: code.merchantId,
+          type: 'EARN_STAMPS',
+          amount: code.amount,
+          stamps: code.stamps,
+          performedByName: STAMP_CODE_PERFORMER,
+          allowEnroll: true,
+          accumulationLimit: merchant.accumulationLimit,
+          stampCodeId: code.id,
+          plan,
+        });
+      }, { isolationLevel: 'RepeatableRead' }),
+    );
+
+    let result: AppliedTransaction;
+    try {
+      try {
+        result = await claimAndCredit();
+      } catch (err: any) {
+        // A new client redeeming two parcels at once: both transactions create
+        // the same loyalty card and the loser hits the unique index (P2002, not
+        // a serialization failure). Its claim rolled back: one retry finds the card.
+        if (err?.code !== 'P2002') throw err;
+        result = await claimAndCredit();
+      }
+    } catch (err) {
+      // Lost a race against a double tap of the same client: same answer as a re-scan.
+      if (err instanceof ConflictException) {
+        const fresh = await this.stampCodeRepo.findUnique({ where: { id: code.id }, select: { redeemedByClientId: true } });
+        if (fresh?.redeemedByClientId === clientId) {
+          return this.stampCodeReplay(clientId, { ...code, redeemedByClientId: clientId }, merchantInfo);
+        }
+      }
+      // FREE plan full: the client must not see the merchant's upsell message.
+      if (err instanceof ForbiddenException) {
+        throw new ForbiddenException({
+          code: 'MERCHANT_CLIENT_LIMIT',
+          message: 'Ce commerce ne peut pas ajouter de nouveaux clients pour le moment',
+        });
+      }
+      throw err;
+    }
+
+    this.dispatchTransactionSideEffects({
+      clientId,
+      merchantId: code.merchantId,
+      merchant,
+      clientLanguage: client.language,
+      type: 'EARN_STAMPS',
+      stamps: code.stamps,
+      result,
+    });
+
+    return {
+      success: true,
+      alreadyRedeemed: false,
+      stamps: result.actualStampsAdded,
+      newBalance: result.newStamps,
+      merchant: merchantInfo,
+    };
+  }
+
+  private async stampCodeReplay(
+    clientId: string,
+    code: { merchantId: string; stamps: number; redeemedByClientId: string | null },
+    merchant: StampCodeRedeemResult['merchant'],
+  ): Promise<StampCodeRedeemResult> {
+    if (code.redeemedByClientId !== clientId) {
+      throw new ConflictException({ code: 'STAMP_CODE_USED', message: 'Ce QR code a déjà été utilisé' });
+    }
+    const card = await this.loyaltyCardRepo.findUnique({
+      where: { clientId_merchantId: { clientId, merchantId: code.merchantId } },
+      select: { stamps: true },
+    });
+    return { success: true, alreadyRedeemed: true, stamps: code.stamps, newBalance: card?.stamps ?? 0, merchant };
+  }
+
+  // ─── Private: credit / debit inside a database transaction ───────────────
+  /**
+   * Card read-or-enroll, balance update, transaction row and lucky-wheel
+   * tickets. Runs inside the caller's database transaction; the caller has
+   * already validated the stamps / amount for the transaction type.
+   */
+  private async applyTransactionInTx(prisma: TransactionClient, p: ApplyTransactionParams): Promise<AppliedTransaction> {
+    const { clientId, merchantId, type, amount, stamps, accumulationLimit } = p;
+
+    // Re-check client/merchant state INSIDE the transaction to avoid TOCTOU
+    // (time-of-check vs time-of-use) on deletedAt / isActive.
+    const [clientTx, merchantTx] = await Promise.all([
+      prisma.client.findUnique({ where: { id: clientId }, select: { id: true, deletedAt: true } }),
+      prisma.merchant.findUnique({ where: { id: merchantId }, select: { id: true, isActive: true, deletedAt: true } }),
+    ]);
+    if (!clientTx || clientTx.deletedAt) throw new NotFoundException('Client non trouvé');
+    if (!merchantTx || merchantTx.deletedAt || !merchantTx.isActive) throw new NotFoundException('Commerce non trouvé');
+
+    if (type === 'PURCHASE') {
+      // Same rule as purchaseTriggersWheel(): free ticket behind a minimum spend this amount reaches
+      const now = new Date();
+      const wheel = await prisma.luckyWheelCampaign.findFirst({
+        where: {
+          merchantId,
+          status: 'ACTIVE',
+          startsAt: { lte: now },
+          endsAt: { gte: now },
+          ticketCostStamps: 0,
+          minSpendAmount: { gt: 0, lte: amount },
+        },
+        select: { id: true },
+      });
+      if (!wheel) {
+        throw new BadRequestException('Aucune roue de la fortune active pour ce montant');
+      }
+    }
+
+    // Read (or create) the loyalty card INSIDE the transaction to prevent
+    // race conditions where two concurrent requests read the same balance.
+    let loyaltyCard = await prisma.loyaltyCard.findUnique({
+      where: { clientId_merchantId: { clientId, merchantId } },
+      select: { id: true, stamps: true, deactivatedAt: true },
+    });
+
+    if (loyaltyCard?.deactivatedAt) {
+      if (!p.allowEnroll) {
+        throw new BadRequestException(
+          'Le client a quitté ce programme de fidélité. Il doit rejoindre à nouveau avant de pouvoir accumuler des tampons.',
+        );
+      }
+      // A reactivated card counts against the FREE plan limit like a new one.
+      await this.planService.assertCanAddClient(merchantId, { tx: prisma, plan: p.plan });
+      loyaltyCard = await prisma.loyaltyCard.update({
+        where: { id: loyaltyCard.id },
+        data: { deactivatedAt: null },
+        select: { id: true, stamps: true, deactivatedAt: true },
+      });
+    }
+
+    if (!loyaltyCard) {
+      if (!p.allowEnroll) throw new NotFoundException('Client non trouvé');
+      // Enforce client limit for FREE plan before creating loyalty card
+      await this.planService.assertCanAddClient(merchantId, { tx: prisma, plan: p.plan });
+      loyaltyCard = await prisma.loyaltyCard.create({
+        data: { clientId, merchantId, stamps: 0 },
+        select: { id: true, stamps: true, deactivatedAt: true },
+      });
+    }
+
+    // Enforce accumulation limit before creating the transaction
+    if (type === 'EARN_STAMPS' && accumulationLimit != null) {
+      if (loyaltyCard.stamps >= accumulationLimit) {
+        // `code` lets the client app explain it in its own language (parcel QR codes)
+        throw new BadRequestException({
+          code: 'ACCUMULATION_LIMIT',
+          message: `Le client a atteint la limite d'accumulation (${accumulationLimit} tampons)`,
+        });
+      }
+    }
+
+    let newStamps: number;
+    let actualStampsAdded = stamps;
+
+    if (type === 'EARN_STAMPS') {
+      newStamps = loyaltyCard.stamps + stamps;
+      // Cap balance at accumulation limit if configured
+      if (accumulationLimit != null && newStamps > accumulationLimit) {
+        newStamps = accumulationLimit;
+        // Provide accurate added stamps (capped)
+        actualStampsAdded = newStamps - loyaltyCard.stamps;
+      }
+    } else if (type === 'REDEEM_REWARD') {
+      if (loyaltyCard.stamps < stamps) {
+        throw new BadRequestException('Pas assez de tampons pour cette récompense');
+      }
+      newStamps = loyaltyCard.stamps - stamps;
+    } else if (type === 'PURCHASE') {
+      newStamps = loyaltyCard.stamps;
+    } else {
+      throw new BadRequestException('Type de transaction invalide');
+    }
+
+    const newTransaction = await prisma.transaction.create({
+      data: {
+        clientId,
+        merchantId,
+        rewardId: p.rewardId || null,
+        teamMemberId: p.teamMemberId || null,
+        performedByName: p.performedByName || null,
+        type,
+        amount,
+        stamps: type === 'EARN_STAMPS' ? actualStampsAdded : stamps,
+        idempotencyKey: p.idempotencyKey || null,
+        stampCodeId: p.stampCodeId ?? null,
+        ...(type === 'REDEEM_REWARD' ? { giftStatus: 'FULFILLED', fulfilledAt: new Date() } : {}),
+      },
+    });
+
+    await prisma.loyaltyCard.update({
+      where: { clientId_merchantId: { clientId, merchantId } },
+      data: { stamps: newStamps, lastVisitAt: new Date(), expiryReminderSentAt: null },
+    });
+
+    const luckyWheelTicketsAwarded = await awardLuckyWheelTicketsInTx(prisma, {
+      clientId,
+      merchantId,
+      type,
+      amount,
+      stamps,
+      transactionId: newTransaction.id,
+    });
+
+    return { transaction: newTransaction, newStamps, actualStampsAdded, luckyWheelTicketsAwarded };
+  }
+
+  // ─── Private: real-time events + pushes after a committed transaction ────
+  private dispatchTransactionSideEffects(p: {
+    clientId: string;
+    merchantId: string;
+    merchant: { nom: string; stampsForReward: number | null; rewards?: { cout: number }[] };
+    clientLanguage?: string | null;
+    type: MerchantTransactionType;
+    stamps: number;
+    rewardId?: string;
+    rewardTitle?: string;
+    result: AppliedTransaction;
+  }): void {
+    const { clientId, merchantId, merchant, type, stamps, rewardId, rewardTitle, result } = p;
+    const shownStamps = type === 'EARN_STAMPS' ? result.actualStampsAdded : stamps;
+
+    // ── Real-time: emit WebSocket events IMMEDIATELY (sub-100ms) ──
+    // A PURCHASE moves no stamp: the client hears about it through the
+    // lucky-wheel ticket push below, and only the merchant devices refresh.
+    if (type !== 'PURCHASE') {
+      this.eventsGateway.emitStampsUpdated(clientId, {
+        clientId,
+        merchantId,
+        merchantName: merchant.nom,
+        stamps: shownStamps,
+        newBalance: result.newStamps,
+        type,
+        rewardTitle,
+      });
+    }
 
     this.eventsGateway.emitTransactionRecorded(merchantId, {
       merchantId,
@@ -312,36 +574,36 @@ export class MerchantTransactionService {
       clientName: '', // Filled by the client lookup below (non-blocking)
       transactionId: result.transaction.id,
       type,
-      stamps: type === 'EARN_STAMPS' ? result.actualStampsAdded : stamps,
+      stamps: shownStamps,
       newBalance: result.newStamps,
     });
 
     // ── Send push notifications (fire-and-forget — FCM fallback for background/offline) ──
-    this.sendTransactionNotifications(
-      clientId,
-      merchantId,
-      merchant!,
-      type,
-      type === 'EARN_STAMPS' ? result.actualStampsAdded : stamps,
-      result.newStamps,
-      client.language,
-      rewardId,
-      rewardTitle,
-    ).catch((err) => this.logger.warn(`Transaction notification failed: ${errMsg(err)}`));
+    if (type !== 'PURCHASE') {
+      this.sendTransactionNotifications(
+        clientId,
+        merchantId,
+        merchant,
+        type,
+        shownStamps,
+        result.newStamps,
+        p.clientLanguage,
+        rewardId,
+        rewardTitle,
+      ).catch((err) => this.logger.warn(`Transaction notification failed: ${errMsg(err)}`));
+    }
 
     // ── Lucky-wheel ticket notification ──
     if (result.luckyWheelTicketsAwarded > 0) {
-      const t = getNotifTranslations(client.language);
+      const t = getNotifTranslations(p.clientLanguage);
       this.notifications.sendToClient(
         merchantId,
         clientId,
         t.luckyWheelTicketTitle(result.luckyWheelTicketsAwarded),
-        t.luckyWheelTicketBody(result.luckyWheelTicketsAwarded, merchant!.nom),
+        t.luckyWheelTicketBody(result.luckyWheelTicketsAwarded, merchant.nom),
         { event: 'lucky_wheel_ticket', merchantId, tickets: String(result.luckyWheelTicketsAwarded) },
       ).catch((err) => this.logger.warn(`Lucky-wheel ticket notification failed: ${errMsg(err)}`));
     }
-
-    return result.transaction;
   }
 
   async getTransactions(merchantId: string, page: number = 1, limit: number = 20) {

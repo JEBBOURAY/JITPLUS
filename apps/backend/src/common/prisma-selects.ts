@@ -35,12 +35,12 @@ export const MERCHANT_PROFILE_SELECT = {
   stampValidityDays: true,
   activeRewardId: true,
   rewards: true,
+  currency: true,
   countryCode: true,
   phoneNumber: true,
   isActive: true,
   emailVerified: true,
   onboardingCompleted: true,
-  welcomeGuideVisible: true,
   termsAccepted: true,
   deletedAt: true,
   googleId: true,
@@ -75,17 +75,8 @@ export const MERCHANT_LOYALTY_SELECT = {
 export const MERCHANT_LOGIN_SELECT = {
   ...MERCHANT_PROFILE_SELECT,
   password: true,
-  pushToken: true,
   failedLoginAttempts: true,
   lockedUntil: true,
-} satisfies Prisma.MerchantSelect;
-
-/**
- * Merchant public select for team-member login (no password).
- */
-export const MERCHANT_OWNER_SELECT = {
-  ...MERCHANT_PROFILE_SELECT,
-  pushToken: true,
 } satisfies Prisma.MerchantSelect;
 
 // ── Client selects ──────────────────────────────────────

@@ -83,7 +83,8 @@ async function googleReverseGeocode(
       country: get('country'),
       postalCode: get('postal_code'),
       name: r.formatted_address ?? null,
-      isoCountryCode: get('country') ? 'MA' : null,
+      isoCountryCode:
+        r.address_components?.find((c: GeoAddressComponent) => c.types?.includes('country'))?.short_name ?? null,
       timezone: null,
       subregion: null,
       formattedAddress: r.formatted_address ?? null,

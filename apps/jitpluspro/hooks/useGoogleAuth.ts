@@ -9,6 +9,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { GoogleSignin, isErrorWithCode, statusCodes } from '@/utils/googleSignin';
 import { isNoAccountError } from '@/utils/authErrors';
+import { hapticSuccess } from '@/utils/haptics';
 
 export function useGoogleAuth() {
   const { googleLogin } = useAuth();
@@ -59,6 +60,7 @@ export function useGoogleAuth() {
 
       setIsLoading(false);
       if (result.success) {
+        hapticSuccess();
         router.replace('/(tabs)');
       } else {
         if (result.rawError && isNoAccountError(result.rawError)) {

@@ -2,6 +2,41 @@ import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as admin from 'firebase-admin';
 import { IPushProvider } from '../common/interfaces';
+import { mapLimit } from '../common/tasks/cron-utils';
+
+const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
+/** Expo accepts at most 100 messages per request. */
+const EXPO_MAX_BATCH = 100;
+/** Per-attempt HTTP timeout for the Expo push API. */
+export const EXPO_TIMEOUT_MS = 10_000;
+/** Retries after the first attempt (429 / 5xx / network error / timeout). */
+export const EXPO_MAX_RETRIES = 2;
+/** First backoff step; doubles per retry, with jitter in [50%, 100%]. */
+const EXPO_BACKOFF_BASE_MS = 500;
+/** Upper bound for any single wait, including a server-sent Retry-After. */
+const EXPO_MAX_BACKOFF_MS = 10_000;
+/** Chunks in flight at once for a multicast. */
+export const EXPO_CHUNK_CONCURRENCY = 4;
+/** Expo's documented per-project send rate; chunk starts are paced to stay under it. */
+const EXPO_MAX_NOTIFICATIONS_PER_SEC = 600;
+
+interface ExpoTicket {
+  status?: string;
+  message?: string;
+  details?: { error?: string };
+}
+
+/** Outcome of one Expo request (after retries). `tickets` is set only for a well-formed 2xx body. */
+type ExpoSendResult = { ok: true; tickets: (ExpoTicket | undefined)[] } | { ok: false; reason: string };
+
+/** Parses Retry-After (delta-seconds or HTTP date) into ms; null when absent/invalid. */
+function parseRetryAfterMs(header: string | null, now = Date.now()): number | null {
+  if (!header) return null;
+  const trimmed = header.trim();
+  if (/^\d+$/.test(trimmed)) return Number(trimmed) * 1000;
+  const date = Date.parse(trimmed);
+  return Number.isNaN(date) ? null : Math.max(0, date - now);
+}
 
 @Injectable()
 export class FirebaseService implements OnModuleInit, IPushProvider {
@@ -78,6 +113,94 @@ export class FirebaseService implements OnModuleInit, IPushProvider {
 
   private static readonly MAX_TOKENS_PER_BATCH = 500;
 
+  /** Overridable in tests. */
+  protected sleep(ms: number): Promise<void> {
+    return new Promise((r) => setTimeout(r, ms));
+  }
+
+  /**
+   * Returns a function that delays each chunk start so that, across all
+   * concurrent workers of one multicast, sends stay under Expo's documented
+   * 600 notifications/s. Slots are reserved synchronously, so it is race-free.
+   */
+  private createExpoPacer(): (messages: number) => Promise<void> {
+    let nextSlot = 0;
+    return async (messages: number) => {
+      const now = Date.now();
+      const start = Math.max(now, nextSlot);
+      nextSlot = start + (messages * 1000) / EXPO_MAX_NOTIFICATIONS_PER_SEC;
+      if (start > now) await this.sleep(start - now);
+    };
+  }
+
+  /** Exponential backoff with jitter, or the server's Retry-After (both capped). */
+  private expoBackoffMs(retryIndex: number, retryAfter: string | null): number {
+    const fromHeader = parseRetryAfterMs(retryAfter);
+    if (fromHeader !== null) return Math.min(fromHeader, EXPO_MAX_BACKOFF_MS);
+    const exp = Math.min(EXPO_BACKOFF_BASE_MS * 2 ** retryIndex, EXPO_MAX_BACKOFF_MS);
+    return Math.round(exp / 2 + Math.random() * (exp / 2));
+  }
+
+  /**
+   * POSTs one Expo request with a per-attempt timeout. Retries up to
+   * EXPO_MAX_RETRIES times on 429, 5xx, network errors and timeouts; other
+   * 4xx and malformed 2xx bodies fail immediately. Never throws.
+   */
+  private async sendExpoRequest(messages: unknown[]): Promise<ExpoSendResult> {
+    let lastReason = 'unknown error';
+    for (let attempt = 0; attempt <= EXPO_MAX_RETRIES; attempt++) {
+      let retryAfter: string | null = null;
+      try {
+        const response = await fetch(EXPO_PUSH_URL, {
+          method: 'POST',
+          headers: {
+            'Accept': 'application/json',
+            'Accept-encoding': 'gzip, deflate',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(messages),
+          signal: AbortSignal.timeout(EXPO_TIMEOUT_MS),
+        });
+
+        if (response.ok) {
+          let payload: unknown;
+          try {
+            payload = await response.json();
+          } catch (err) {
+            return { ok: false, reason: `malformed Expo response (invalid JSON): ${err}` };
+          }
+          const tickets = (payload as { data?: unknown } | null)?.data;
+          if (!Array.isArray(tickets)) {
+            const errors = (payload as { errors?: unknown } | null)?.errors;
+            return {
+              ok: false,
+              reason: `malformed Expo response (no data array)${errors ? `: ${JSON.stringify(errors).slice(0, 300)}` : ''}`,
+            };
+          }
+          return {
+            ok: true,
+            tickets: tickets.map((t) => (t && typeof t === 'object' ? (t as ExpoTicket) : undefined)),
+          };
+        }
+
+        lastReason = `${response.status} ${response.statusText}`;
+        const retryable = response.status === 429 || response.status >= 500;
+        if (!retryable) return { ok: false, reason: lastReason };
+        retryAfter = response.headers.get('retry-after');
+      } catch (error) {
+        // Network failure or AbortSignal timeout (TimeoutError) — retryable.
+        lastReason = `${error}`;
+      }
+
+      if (attempt < EXPO_MAX_RETRIES) {
+        const delay = this.expoBackoffMs(attempt, retryAfter);
+        this.logger.warn(`Expo Push API attempt ${attempt + 1} failed (${lastReason}); retrying in ${delay}ms`);
+        await this.sleep(delay);
+      }
+    }
+    return { ok: false, reason: `${lastReason} (after ${EXPO_MAX_RETRIES + 1} attempts)` };
+  }
+
   /**
    * Send a push notification to a list of FCM or Expo tokens.
    * Automatically routes ExponentPushToken to Expo's API and others to FCM.
@@ -105,10 +228,16 @@ export class FirebaseService implements OnModuleInit, IPushProvider {
     // Handle Expo Tokens
     if (expoTokens.length > 0) {
       // Expo API requires chunking into batches of 100 (Max 100 per request)
-      const EXPO_MAX_BATCH = 100;
+      const batches: string[][] = [];
       for (let i = 0; i < expoTokens.length; i += EXPO_MAX_BATCH) {
-        const batch = expoTokens.slice(i, i + EXPO_MAX_BATCH);
-        
+        batches.push(expoTokens.slice(i, i + EXPO_MAX_BATCH));
+      }
+
+      // Bounded concurrency; results come back in input order so the
+      // invalid-token list keeps the same ordering as a sequential send.
+      const pacer = this.createExpoPacer();
+      const results = await mapLimit(batches, EXPO_CHUNK_CONCURRENCY, async (batch) => {
+        await pacer(batch.length);
         const expoMessages = batch.map(t => ({
           to: t,
           title,
@@ -121,43 +250,27 @@ export class FirebaseService implements OnModuleInit, IPushProvider {
           _displayInForeground: true,
           data: imageUrl ? { ...data, imageUrl } : data,
         }));
+        return { batch, result: await this.sendExpoRequest(expoMessages) };
+      });
 
-        try {
-          const response = await fetch('https://exp.host/--/api/v2/push/send', {
-            method: 'POST',
-            headers: {
-              'Accept': 'application/json',
-              'Accept-encoding': 'gzip, deflate',
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(expoMessages),
-          });
-          
-          if (response.ok) {
-            const ticketsResponse: { data: any[] } = await response.json();
-            ticketsResponse.data.forEach((ticket, idx) => {
-              if (ticket.status === 'ok') {
-                totalSuccess++;
-              } else {
-                totalFailure++;
-                if (ticket.details?.error === 'DeviceNotRegistered') {
-                  invalidTokens.push(batch[idx]);
-                }
-              }
-            });
-          } else {
-            totalFailure += batch.length;
-            this.logger.error(`Expo Push API rejected the request for chunk: ${response.status} ${response.statusText}`);
-          }
-        } catch (error) {
+      for (const { batch, result } of results) {
+        if (!result.ok) {
           totalFailure += batch.length;
-          this.logger.error(`Failed to reach Expo Push API for chunk: ${error}`);
+          this.logger.error(`Expo Push API failed for chunk of ${batch.length}: ${result.reason}`);
+          continue;
         }
-
-        // Small delay between blocks to avoid rate limiting
-        if (i + EXPO_MAX_BATCH < expoTokens.length) {
-          await new Promise((r) => setTimeout(r, 50));
-        }
+        // One ticket per message, in order. A missing/garbled ticket counts as a failure.
+        batch.forEach((token, idx) => {
+          const ticket = result.tickets[idx];
+          if (ticket?.status === 'ok') {
+            totalSuccess++;
+          } else {
+            totalFailure++;
+            if (ticket?.details?.error === 'DeviceNotRegistered') {
+              invalidTokens.push(token);
+            }
+          }
+        });
       }
     }
 
@@ -247,13 +360,14 @@ export class FirebaseService implements OnModuleInit, IPushProvider {
 
   /**
    * Send a push notification to a single merchant FCM or Expo token.
-   * Uses the dedicated `jitpro-default` Android channel.
+   * Uses the `jitpro-default` Android channel unless the caller names another.
    */
   async sendToMerchant(
     token: string,
     title: string,
     body: string,
     data?: Record<string, string>,
+    androidChannelId: string = 'jitpro-default',
   ): Promise<{ invalidToken: boolean }> {
     if (!token) return { invalidToken: false };
 
@@ -265,47 +379,29 @@ export class FirebaseService implements OnModuleInit, IPushProvider {
         sound: 'default',
         badge: 1,
         priority: 'high',
-        channelId: 'jitpro-default',
+        channelId: androidChannelId,
         mutableContent: true,
         _displayInForeground: true,
         data,
       };
 
-      try {
-        const response = await fetch('https://exp.host/--/api/v2/push/send', {
-          method: 'POST',
-          headers: {
-            'Accept': 'application/json',
-            'Accept-encoding': 'gzip, deflate',
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify([expoMessage]),
-        });
-        
-        if (response.ok) {
-          const ticketsResponse: { data: any[] } = await response.json();
-          const ticket = ticketsResponse.data[0];
-          
-          if (ticket.status === 'ok') {
-            this.logger.log(`Expo Merchant push delivered: "${title}"`);
-            return { invalidToken: false };
-          } else {
-            const isInvalid = ticket.details?.error === 'DeviceNotRegistered';
-            if (isInvalid) {
-              this.logger.warn(`Expo Merchant push failed — stale token detected: DeviceNotRegistered`);
-            } else {
-              this.logger.warn(`Expo Merchant push failed: ${ticket.message}`);
-            }
-            return { invalidToken: isInvalid };
-          }
-        } else {
-          this.logger.error(`Expo Push API error: ${response.status}`);
-          return { invalidToken: false };
-        }
-      } catch (error) {
-        this.logger.warn(`Expo Merchant push request failed: ${error}`);
+      const result = await this.sendExpoRequest([expoMessage]);
+      if (!result.ok) {
+        this.logger.warn(`Expo Merchant push request failed: ${result.reason}`);
         return { invalidToken: false };
       }
+      const ticket = result.tickets[0];
+      if (ticket?.status === 'ok') {
+        this.logger.log(`Expo Merchant push delivered: "${title}"`);
+        return { invalidToken: false };
+      }
+      const isInvalid = ticket?.details?.error === 'DeviceNotRegistered';
+      if (isInvalid) {
+        this.logger.warn(`Expo Merchant push failed — stale token detected: DeviceNotRegistered`);
+      } else {
+        this.logger.warn(`Expo Merchant push failed: ${ticket?.message ?? 'missing ticket in Expo response'}`);
+      }
+      return { invalidToken: isInvalid };
     }
 
     // Fallback to FCM for old clients
@@ -321,7 +417,7 @@ export class FirebaseService implements OnModuleInit, IPushProvider {
         android: {
           priority: 'high',
           notification: {
-            channelId: 'jitpro-default',
+            channelId: androidChannelId,
             sound: 'default',
             icon: 'notification_icon',
             color: '#1F2937',

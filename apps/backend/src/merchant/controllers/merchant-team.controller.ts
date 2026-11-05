@@ -1,6 +1,13 @@
 import {
-  Controller, Get, Post, Patch, Delete, Body, Param,
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Body,
+  Param,
   UseGuards,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
@@ -37,14 +44,14 @@ export class MerchantTeamController {
 
   @Patch('team/:id')
   @UseGuards(MerchantOwnerGuard, PremiumGuard)
-  async updateTeamMember(@Param('id') memberId: string, @Body() dto: UpdateTeamMemberDto, @CurrentUser() user: JwtPayload) {
+  async updateTeamMember(@Param('id', ParseUUIDPipe) memberId: string, @Body() dto: UpdateTeamMemberDto, @CurrentUser() user: JwtPayload) {
     return this.teamService.updateTeamMember(user.userId, memberId, dto);
   }
 
   @Delete('team/:id')
   @UseGuards(MerchantOwnerGuard, PremiumGuard)
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 10 } })
-  async deleteTeamMember(@Param('id') memberId: string, @CurrentUser() user: JwtPayload) {
+  async deleteTeamMember(@Param('id', ParseUUIDPipe) memberId: string, @CurrentUser() user: JwtPayload) {
     return this.teamService.deleteTeamMember(user.userId, memberId);
   }
 }

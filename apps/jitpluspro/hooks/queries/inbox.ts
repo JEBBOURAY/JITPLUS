@@ -6,11 +6,14 @@ import { queryKeys, STALE } from './keys';
 export type InboxCategory =
   | 'SECURITY'
   | 'PLAN'
+  | 'STATUS'
+  | 'QUOTA'
   | 'ACTIVITY'
   | 'TIP'
   | 'SETUP'
-  | 'QUOTA'
   | 'OFFER'
+  | 'NEWS'
+  | 'REMINDER'
   | 'ADMIN';
 
 export interface AdminNotification {
@@ -110,4 +113,41 @@ export function useMarkSingleAdminNotifRead() {
       qc.invalidateQueries({ queryKey: queryKeys.adminNotifUnreadCount });
     },
   });
+}
+
+// ── Push preferences per category ────────────────────────────────────────
+
+export type NotificationPrefKey = 'news' | 'tips' | 'reminders' | 'reports';
+export type NotificationPrefs = Record<NotificationPrefKey, boolean>;
+
+export function useNotificationPrefs() {
+  return useQuery<NotificationPrefs>({
+    queryKey: queryKeys.notificationPrefs,
+    queryFn: async () => (await api.get('/merchant/notification-preferences')).data,
+    staleTime: STALE.LONG,
+  });
+}
+
+export function useUpdateNotificationPrefs() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (patch: Partial<NotificationPrefs>) =>
+      (await api.patch('/merchant/notification-preferences', patch)).data as NotificationPrefs,
+    // Optimistic toggle, rolled back on error.
+    onMutate: async (patch) => {
+      await qc.cancelQueries({ queryKey: queryKeys.notificationPrefs });
+      const previous = qc.getQueryData<NotificationPrefs>(queryKeys.notificationPrefs);
+      if (previous) qc.setQueryData(queryKeys.notificationPrefs, { ...previous, ...patch });
+      return { previous };
+    },
+    onError: (_err, _patch, ctx) => {
+      if (ctx?.previous) qc.setQueryData(queryKeys.notificationPrefs, ctx.previous);
+    },
+    onSuccess: (data) => qc.setQueryData(queryKeys.notificationPrefs, data),
+  });
+}
+
+/** The merchant opened the app from this item's push (open-rate tracking). */
+export function trackNotificationOpened(inboxId: string): Promise<void> {
+  return api.post(`/merchant/admin-notifications/${inboxId}/opened`).then(() => undefined);
 }

@@ -12,6 +12,8 @@ export interface StampPlanInput {
   countVisit: boolean;
   amountPerStamp?: number | null;
   accumulationLimit?: number | null;
+  /** Lowest amount that gives a lucky-wheel spin without any stamp, 0 = none. */
+  purchaseMinSpend?: number;
   reward?: { cout: number } | null;
 }
 
@@ -31,6 +33,11 @@ export interface StampPlan {
   order: 'redeemFirst' | 'earnFirst';
   /** Stamps sent with EARN_STAMPS (backend rule), 0 = no earn transaction. */
   earnStamps: number;
+  /**
+   * No stamp is earned but the amount reaches a lucky-wheel minimum spend: the
+   * earn step is sent as a stamp-less PURCHASE that only gives the spin.
+   */
+  purchaseOnly: boolean;
   /** Stamps the card really gains once the accumulation limit is applied. */
   creditedStamps: number;
   /** PER_AMOUNT purchase above MAX_STAMPS_PER_TX. */
@@ -82,7 +89,9 @@ export function computeStampPlan(input: StampPlanInput): StampPlan {
     }
   }
 
-  const earn = earnStamps > 0;
+  const purchaseOnly =
+    earnStamps === 0 && (input.purchaseMinSpend ?? 0) > 0 && input.amount >= input.purchaseMinSpend!;
+  const earn = earnStamps > 0 || purchaseOnly;
   const kind: StampPlan['kind'] =
     blocker ? 'none' : earn && redeem ? 'earnAndRedeem' : earn ? 'earn' : redeem ? 'redeem' : 'none';
 
@@ -97,6 +106,7 @@ export function computeStampPlan(input: StampPlanInput): StampPlan {
     kind,
     order: redeemFirst ? 'redeemFirst' : 'earnFirst',
     earnStamps,
+    purchaseOnly,
     creditedStamps,
     perTxCapped: !!perAmount?.capped && !atLimit,
     limitTrimmed: creditedStamps < earnStamps,

@@ -2,7 +2,7 @@ import { useCallback, useState, useEffect, useRef } from 'react';
 import {
   View, StyleSheet, TouchableOpacity, ScrollView, Image,
   Animated,
-  type NativeSyntheticEvent, type NativeScrollEvent,
+  type NativeSyntheticEvent, type NativeScrollEvent, type LayoutChangeEvent,
 } from 'react-native';
 import { Text } from '@/components/AppText';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -23,6 +23,7 @@ import FadeInView from '@/components/FadeInView';
 import StarLoader from '@/components/StarLoader';
 import GuestGuard from '@/components/GuestGuard';
 import QrActionSheet from '@/components/qr/QrActionSheet';
+import QrCardPattern from '@/components/qr/QrCardPattern';
 import QrRefreshBar from '@/components/qr/QrRefreshBar';
 import QrSuccessOverlay from '@/components/qr/QrSuccessOverlay';
 import { useBrightnessBoost } from '@/hooks/useBrightnessBoost';
@@ -65,6 +66,7 @@ export default function QRScreen() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [successEvent, setSuccessEvent] = useState<StampsEvent | null>(null);
   const [successGoal, setSuccessGoal] = useState<number | null>(null);
+  const [cardSize, setCardSize] = useState<{ width: number; height: number } | null>(null);
 
   useEffect(() => { preloadSounds('stamp', 'reward'); }, []);
 
@@ -107,6 +109,12 @@ export default function QRScreen() {
   }, [qrValue, qrOpacity]);
 
   const handleDismissSuccess = useCallback(() => setSuccessEvent(null), []);
+
+  const handleCardLayout = useCallback((e: LayoutChangeEvent) => {
+    const width = Math.round(e.nativeEvent.layout.width);
+    const height = Math.round(e.nativeEvent.layout.height);
+    setCardSize((prev) => (prev?.width === width && prev?.height === height ? prev : { width, height }));
+  }, []);
 
   const handleScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const scrolled = e.nativeEvent.contentOffset.y > SCROLLED_THRESHOLD;
@@ -178,8 +186,8 @@ export default function QRScreen() {
   };
 
   const card = (
-    <LinearGradient colors={GRADIENT_CARD} start={GRADIENT_START} end={GRADIENT_END} style={styles.card}>
-      <View style={[styles.orb, styles.orbA]} />
+    <LinearGradient colors={GRADIENT_CARD} start={GRADIENT_START} end={GRADIENT_END} style={styles.card} onLayout={handleCardLayout}>
+      {cardSize && <QrCardPattern width={cardSize.width} height={cardSize.height} />}
       <View style={[styles.orb, styles.orbB]} />
 
       <View style={styles.cardTop}>
@@ -384,7 +392,6 @@ const styles = StyleSheet.create({
   },
   card: { borderRadius: radius['2xl'], padding: wp(18), overflow: 'hidden', alignItems: 'center' },
   orb: { position: 'absolute', borderRadius: 999 },
-  orbA: { width: ms(220), height: ms(220), top: -ms(90), right: -ms(70), backgroundColor: 'rgba(255,255,255,0.08)' },
   orbB: { width: ms(160), height: ms(160), bottom: -ms(70), left: -ms(50), backgroundColor: 'rgba(251,191,36,0.14)' },
   cardTop: { flexDirection: 'row', alignItems: 'center', gap: wp(12), alignSelf: 'stretch', marginBottom: hp(18) },
   cardLogoWrap: {

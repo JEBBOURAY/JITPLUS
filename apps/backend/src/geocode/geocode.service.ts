@@ -38,6 +38,10 @@ export class GeocodeService {
   private readonly apiKey: string;
   /** Cache TTL for geocode results (1 hour) */
   private static readonly CACHE_TTL = 60 * 60 * 1000;
+  /** Upper bound on any Google call so a stalled upstream cannot hang requests. */
+  private static readonly FETCH_TIMEOUT_MS = 5_000;
+  /** Longest free-text query forwarded to Google (public endpoint — bounds abuse). */
+  private static readonly MAX_INPUT_LENGTH = 100;
 
   constructor(
     private readonly config: ConfigService,
@@ -50,9 +54,18 @@ export class GeocodeService {
   }
 
   async autocomplete(input: string, ville?: string, lat?: number, lng?: number, sessionToken?: string): Promise<PlacePrediction[]> {
-    if (!this.apiKey || input.trim().length < 2) return [];
+    input = input.trim().slice(0, GeocodeService.MAX_INPUT_LENGTH);
+    ville = ville?.trim().slice(0, 50);
+    if (!this.apiKey || input.length < 2) return [];
 
-    const cacheKey = `geo:ac:${input}:${ville || ''}:${lat ?? ''}:${lng ?? ''}`;
+    // Round the bias point (~1 km) so nearby users share cache entries instead
+    // of every request creating a unique key.
+    const hasBias = lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng);
+    if (hasBias) {
+      lat = Math.round(lat! * 100) / 100;
+      lng = Math.round(lng! * 100) / 100;
+    }
+    const cacheKey = `geo:ac:${input.toLowerCase()}:${ville || ''}:${hasBias ? `${lat},${lng}` : ''}`;
     const cached = await this.cache.get<PlacePrediction[]>(cacheKey);
     if (cached) return cached;
 
@@ -64,12 +77,12 @@ export class GeocodeService {
     }
 
     // Location bias: prioritize results near user (50km radius)
-    if (lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng)) {
+    if (hasBias) {
       url += `&location=${lat},${lng}&radius=50000`;
     }
 
     try {
-      const res = await fetch(url);
+      const res = await fetch(url, { signal: AbortSignal.timeout(GeocodeService.FETCH_TIMEOUT_MS) });
       const json = await res.json();
 
       if (json.status === 'OK' && json.predictions) {
@@ -87,7 +100,7 @@ export class GeocodeService {
   }
 
   async placeDetails(placeId: string, sessionToken?: string): Promise<PlaceDetailsResult | null> {
-    if (!this.apiKey || !placeId) return null;
+    if (!this.apiKey || !placeId || placeId.length > 512) return null;
 
     const cacheKey = `geo:pd:${placeId}`;
     const cached = await this.cache.get<PlaceDetailsResult>(cacheKey);
@@ -99,7 +112,7 @@ export class GeocodeService {
     }
 
     try {
-      const res = await fetch(url);
+      const res = await fetch(url, { signal: AbortSignal.timeout(GeocodeService.FETCH_TIMEOUT_MS) });
       const json = await res.json();
 
       if (json.status === 'OK' && json.result) {
@@ -116,7 +129,7 @@ export class GeocodeService {
   async forwardGeocode(address: string): Promise<GeoResult[]> {
     if (!this.apiKey || !address.trim()) return [];
 
-    const sanitized = address.trim().slice(0, 200);
+    const sanitized = address.trim().slice(0, GeocodeService.MAX_INPUT_LENGTH * 2);
     const cacheKey = `geo:fg:${sanitized}`;
     const cached = await this.cache.get<GeoResult[]>(cacheKey);
     if (cached) return cached;
@@ -124,7 +137,7 @@ export class GeocodeService {
     const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(sanitized)}&region=ma&language=fr&key=${this.apiKey}`;
 
     try {
-      const res = await fetch(url);
+      const res = await fetch(url, { signal: AbortSignal.timeout(GeocodeService.FETCH_TIMEOUT_MS) });
       const json = await res.json();
 
       if (json.status === 'OK' && json.results?.length > 0) {
@@ -153,7 +166,7 @@ export class GeocodeService {
     const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&language=fr&key=${this.apiKey}`;
 
     try {
-      const res = await fetch(url);
+      const res = await fetch(url, { signal: AbortSignal.timeout(GeocodeService.FETCH_TIMEOUT_MS) });
       const json = await res.json();
 
       if (json.status === 'OK' && json.results?.length > 0) {

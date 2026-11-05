@@ -17,6 +17,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { requireOptionalNativeModule } from 'expo';
+import * as Device from 'expo-device';
 import { ExternalLink, Navigation } from 'lucide-react-native';
 import { JitPin } from '@/components/icons';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -180,6 +181,15 @@ const ANDROID_RENDERER_PROP =
     ? { googleRenderer: CONFIGURED_RENDERER }
     : {};
 
+/**
+ * Apple's virtualized iPhones (model id `iPhone99,x`, used by App Review /
+ * automated testing) can't create an OpenGL ES context. The Google Maps iOS
+ * SDK adds the nil EAGLContext to an NSMutableArray without checking it and the
+ * app aborts natively (Sentry JITPLUSPRO-MOBILE-N, 1.7.2 build 50). MapKit
+ * renders fine there, so drop the Google provider on those devices.
+ */
+const IS_IOS_VIRTUAL_DEVICE = Platform.OS === 'ios' && /^(iPhone|iPad)99,/.test(Device.modelId ?? '');
+
 const SafeMapView = forwardRef<SafeMapViewRef, SafeMapViewProps>((props, ref) => {
   const { children, initialRegion, region, style, onPress, onLongPress, onMapReady: onMapReadyProp, onMapLoaded: onMapLoadedProp, ...rest } = props;
   const nativeMapRef = useRef<{ animateToRegion?: (...args: unknown[]) => void; animateCamera?: (...args: unknown[]) => void; fitToCoordinates?: (...args: unknown[]) => void } | null>(null);
@@ -207,7 +217,8 @@ const SafeMapView = forwardRef<SafeMapViewRef, SafeMapViewProps>((props, ref) =>
   // Force Google Maps on BOTH platforms so customMapStyle, tile rendering,
   // POI styling and colors are identical on Android and iOS.
   // Requires ios.config.googleMapsApiKey in app.config.js (already configured).
-  const providerProp = RN_PROVIDER_GOOGLE ? { provider: RN_PROVIDER_GOOGLE } : {};
+  // Except on Apple's virtual iPhones (see IS_IOS_VIRTUAL_DEVICE): MapKit instead.
+  const providerProp = RN_PROVIDER_GOOGLE && !IS_IOS_VIRTUAL_DEVICE ? { provider: RN_PROVIDER_GOOGLE } : {};
 
   if (RNMapView) {
     return (

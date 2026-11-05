@@ -59,20 +59,44 @@ describe('MerchantClientService.getClients', () => {
     service = module.get(MerchantClientService);
   });
 
-  it('lists newest clients first by default and returns the reward threshold', async () => {
-    mockClientRepo.findMany.mockResolvedValue([client('c1')]);
-    mockClientRepo.count.mockResolvedValue(1);
-    mockLoyaltyCardRepo.findMany.mockResolvedValue([{ clientId: 'c1', stamps: 6, createdAt: JOINED }]);
+  it('lists newest clients first by default, driven from the merchant cards, and returns the reward threshold', async () => {
+    mockLoyaltyCardRepo.findMany.mockResolvedValue([
+      { clientId: 'c1', stamps: 6, createdAt: JOINED, client: client('c1') },
+    ]);
+    mockLoyaltyCardRepo.count.mockResolvedValue(1);
 
-    const res = await service.getClients(MERCHANT_ID, undefined, 1, 30);
+    const res = await service.getClients(MERCHANT_ID, 'sara', 1, 30);
 
-    expect(mockClientRepo.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ orderBy: [{ createdAt: 'desc' }], skip: 0, take: 30 }),
-    );
-    expect(mockLoyaltyCardRepo.count).not.toHaveBeenCalled();
+    const args = mockLoyaltyCardRepo.findMany.mock.calls[0][0];
+    // Same member set as before: active cards of this merchant, non-deleted clients, search on the client.
+    expect(args.where).toEqual({
+      merchantId: MERCHANT_ID,
+      deactivatedAt: null,
+      client: { deletedAt: null, OR: expect.any(Array) },
+    });
+    // Same order as before: by the CLIENT's creation date, newest first.
+    expect(args.orderBy).toEqual([{ client: { createdAt: 'desc' } }, { id: 'asc' }]);
+    expect(args.skip).toBe(0);
+    expect(args.take).toBe(30);
+    expect(mockLoyaltyCardRepo.count).toHaveBeenCalledWith({ where: args.where });
+    // The global clients table is never scanned, and cards are not fetched twice.
+    expect(mockClientRepo.findMany).not.toHaveBeenCalled();
+    expect(mockClientRepo.count).not.toHaveBeenCalled();
+    expect(mockLoyaltyCardRepo.findMany).toHaveBeenCalledTimes(1);
     expect(res.rewardThreshold).toBe(8);
     expect(res.pagination).toEqual({ page: 1, limit: 30, total: 1, totalPages: 1 });
     expect(res.clients[0]).toMatchObject({ id: 'c1', stamps: 6, totalTransactions: 4, lastVisit: LAST_TX });
+  });
+
+  it('default view without search has no client search filter', async () => {
+    mockLoyaltyCardRepo.findMany.mockResolvedValue([]);
+    mockLoyaltyCardRepo.count.mockResolvedValue(0);
+
+    await service.getClients(MERCHANT_ID, undefined, 2, 10);
+
+    const args = mockLoyaltyCardRepo.findMany.mock.calls[0][0];
+    expect(args.where).toEqual({ merchantId: MERCHANT_ID, deactivatedAt: null, client: { deletedAt: null } });
+    expect(args.skip).toBe(10);
   });
 
   it('"reward" view keeps only cards that reached the cheapest reward, richest first', async () => {

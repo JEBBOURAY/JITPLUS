@@ -17,7 +17,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 // ── Prize DTO (nested in campaign creation) ──────────────────
 
-export class CreatePrizeDto {
+class CreatePrizeDto {
   @ApiProperty({ example: 'Café gratuit' })
   @IsString()
   @MaxLength(255)
@@ -46,7 +46,7 @@ export class CreatePrizeDto {
   claimWindowHours?: number;
 }
 
-export class UpdatePrizeDto {
+class UpdatePrizeDto {
   @ApiPropertyOptional({ description: 'ID du lot existant (omis pour un nouveau lot)' })
   @IsOptional()
   @IsString()

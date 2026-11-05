@@ -1,3 +1,4 @@
+import { moneyFormatter } from '@jitplus/shared/src/currency';
 import { useCallback, useMemo, useState } from 'react';
 import {
   FlatList, RefreshControl, StyleSheet, TouchableOpacity, View,
@@ -40,7 +41,7 @@ export default function CouponsScreen() {
   const coupons = useMemo(() => query.data ?? [], [query.data]);
 
   const renderCoupon = useCallback(({ item }: { item: CouponDto }) => {
-    const reward = formatRewardValue({ type: item.type, value: item.value, label: item.label }, t);
+    const reward = formatRewardValue({ type: item.type, value: item.value, label: item.label }, t, moneyFormatter(item.merchant?.currency, locale));
     const isCancelled = item.status === 'CANCELLED';
     const expiresInMs = new Date(item.expiresAt).getTime() - Date.now();
     const soon = item.status === 'ACTIVE' && expiresInMs > 0 && expiresInMs < TWO_DAYS_MS;

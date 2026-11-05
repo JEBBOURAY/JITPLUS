@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, ParseUUIDPipe } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { RewardsService } from './rewards.service';
@@ -24,7 +24,7 @@ export class RewardsController {
   }
 
   @Get(':id')
-  async findOne(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+  async findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
     return this.rewardsService.findOne(id, user.userId);
   }
 
@@ -38,14 +38,14 @@ export class RewardsController {
   @Put(':id')
   @UseGuards(MerchantOwnerGuard)
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 20 } })
-  async update(@Param('id') id: string, @Body() dto: UpdateRewardDto, @CurrentUser() user: JwtPayload) {
+  async update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateRewardDto, @CurrentUser() user: JwtPayload) {
     return this.rewardsService.update(id, user.userId, dto);
   }
 
   @Delete(':id')
   @UseGuards(MerchantOwnerGuard)
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 10 } })
-  async remove(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+  async remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
     return this.rewardsService.remove(id, user.userId);
   }
 }

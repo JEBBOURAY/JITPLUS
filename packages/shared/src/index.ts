@@ -13,6 +13,7 @@ export * from './types';
 export * from './imageUrl';
 export * from './passwordStrength';
 export * from './merchantFiche';
+export * from './currency';
 
 // React Native specific — import directly:
 //   import { createApiClient } from '@jitplus/shared/src/apiFactory'

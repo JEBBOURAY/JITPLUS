@@ -54,6 +54,8 @@ export interface Merchant {
   stampsForReward?: number;
   stampEarningMode?: 'PER_VISIT' | 'PER_AMOUNT';
   accumulationLimit?: number | null;
+  /** ISO 4217 code chosen by the merchant (MAD by default). */
+  currency?: string;
   /** Stamps reset after this many days without a visit; null = never expire. */
   stampValidityDays?: number | null;
   plan?: MerchantPlan;
@@ -63,7 +65,6 @@ export interface Merchant {
   isActive?: boolean;
   emailVerified?: boolean;
   onboardingCompleted?: boolean;
-  welcomeGuideVisible?: boolean;
   termsAccepted?: boolean;
   createdAt?: string;
   stores?: Store[];
@@ -124,7 +125,7 @@ export interface Reward {
   imageUrl?: string | null;
 }
 
-export type TransactionType = 'EARN_STAMPS' | 'REDEEM_REWARD' | 'ADJUST_STAMPS' | 'LOYALTY_PROGRAM_CHANGE' | 'LUCKY_WHEEL_WIN' | 'COUPON_REDEEM';
+export type TransactionType = 'EARN_STAMPS' | 'REDEEM_REWARD' | 'ADJUST_STAMPS' | 'LOYALTY_PROGRAM_CHANGE' | 'LUCKY_WHEEL_WIN' | 'COUPON_REDEEM' | 'PURCHASE';
 type GiftStatus = 'PENDING' | 'FULFILLED';
 
 export interface DashboardKpis {
@@ -136,6 +137,10 @@ export interface DashboardKpis {
   profileViews: number;
   luckyWheelPlays: number;
   luckyWheelWins: number;
+  /** E-commerce / delivery: parcel QR codes used, stamps they credited, order amounts */
+  ecommerceRedemptions?: number;
+  ecommerceStamps?: number;
+  ecommerceAmount?: number;
 }
 
 export type RewardDistribution = { rewardId: string | null; title: string; count: number }[];

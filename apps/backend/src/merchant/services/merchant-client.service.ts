@@ -48,7 +48,7 @@ export class MerchantClientService {
       .then((merchant) => computeRewardThreshold(merchant));
     const pagePromise = view
       ? thresholdPromise.then((threshold) => this.findCardsForView(merchantId, view, threshold, search, skip, limit))
-      : this.findClientsByJoinDate(merchantId, search, skip, limit);
+      : this.findCardsForView(merchantId, undefined, 0, search, skip, limit);
     const [rewardThreshold, { clients, cards, total }] = await Promise.all([thresholdPromise, pagePromise]);
 
     const pagination = buildPagination(total, page, limit);
@@ -58,22 +58,15 @@ export class MerchantClientService {
 
     const clientIds = clients.map((c) => c.id);
 
-    // Batch-fetch the remaining stats in parallel (no N+1 sub-queries)
-    const [loyaltyCards, lastTransactions] = await Promise.all([
-      cards ??
-        this.loyaltyCardRepo.findMany({
-          where: { merchantId, clientId: { in: clientIds } },
-          select: CARD_STATS_SELECT,
-        }),
-      this.transactionRepo.groupBy({
-        by: ['clientId'],
-        where: { merchantId, clientId: { in: clientIds }, status: 'ACTIVE' },
-        _max: { createdAt: true },
-        _count: true,
-      }),
-    ]);
+    // Cards come with the page; only the transaction stats remain (one grouped query, no N+1).
+    const lastTransactions = await this.transactionRepo.groupBy({
+      by: ['clientId'],
+      where: { merchantId, clientId: { in: clientIds }, status: 'ACTIVE' },
+      _max: { createdAt: true },
+      _count: true,
+    });
 
-    const loyaltyMap = new Map(loyaltyCards.map((card) => [card.clientId, card]));
+    const loyaltyMap = new Map(cards.map((card) => [card.clientId, card]));
     const txMap = buildTxMap(lastTransactions);
 
     return {
@@ -83,28 +76,18 @@ export class MerchantClientService {
     };
   }
 
-  /** Default list: newest clients first, cards fetched afterwards. */
-  private async findClientsByJoinDate(merchantId: string, search: string | undefined, skip: number, take: number) {
-    const where: Prisma.ClientWhereInput = {
-      loyaltyCards: { some: { merchantId, deactivatedAt: null } },
-      deletedAt: null,
-      ...(search ? { OR: buildClientSearchFilter(search) } : {}),
-    };
-    const [clients, total] = await Promise.all([
-      this.clientRepo.findMany({ where, select: CLIENT_SCAN_SELECT, orderBy: [{ createdAt: 'desc' }], skip, take }),
-      this.clientRepo.count({ where }),
-    ]);
-    return { clients, cards: null, total };
-  }
-
   /**
-   * Filtered views are driven from the merchant's loyalty cards so that the
-   * (merchantId, stamps) and (merchantId, lastVisitAt) indexes serve the sort.
+   * Every list is driven from the merchant's loyalty cards so Postgres only
+   * reads this merchant's members (never the global clients table):
+   * - default view (no `view`): newest clients first, i.e. ordered by the
+   *   CLIENT's account creation date (not the card's), joined from the card side;
+   * - filtered views: the (merchantId, stamps) and (merchantId, lastVisitAt)
+   *   indexes serve the sort.
    * `id` is a tie-breaker that keeps pagination stable between pages.
    */
   private async findCardsForView(
     merchantId: string,
-    view: MerchantClientView,
+    view: MerchantClientView | undefined,
     rewardThreshold: number,
     search: string | undefined,
     skip: number,
@@ -120,7 +103,9 @@ export class MerchantClientService {
       }),
     };
     const orderBy: Prisma.LoyaltyCardOrderByWithRelationInput[] =
-      view === 'inactive' ? [{ lastVisitAt: 'desc' }, { id: 'asc' }] : [{ stamps: 'desc' }, { id: 'asc' }];
+      !view ? [{ client: { createdAt: 'desc' } }, { id: 'asc' }]
+      : view === 'inactive' ? [{ lastVisitAt: 'desc' }, { id: 'asc' }]
+      : [{ stamps: 'desc' }, { id: 'asc' }];
 
     const [rows, total] = await Promise.all([
       this.loyaltyCardRepo.findMany({

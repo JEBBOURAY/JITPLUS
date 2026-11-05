@@ -1,4 +1,4 @@
-import { render, waitFor } from '@testing-library/react-native';
+import { render } from '@testing-library/react-native';
 import { RewardManager } from '@/components/settings/RewardManager';
 import { useRewards } from '@/hooks/useQueryHooks';
 import type { ThemeColors } from '@/contexts/ThemeContext';
@@ -27,19 +27,14 @@ const props = {
 };
 
 describe('reward settings cache', () => {
-  it('uses the shared query and publishes refreshed rewards to the preview', async () => {
-    const refetch = jest.fn();
-    jest.mocked(useRewards).mockReturnValue({ data: [reward], isLoading: false, error: null, refetch } as unknown as ReturnType<typeof useRewards>);
-    const onRewardsChange = jest.fn();
-    const { getByText, rerender } = render(<RewardManager {...props} onRewardsChange={onRewardsChange} />);
+  it('renders the shared rewards query and follows its updates', () => {
+    jest.mocked(useRewards).mockReturnValue({ data: [reward], isLoading: false, error: null } as unknown as ReturnType<typeof useRewards>);
+    const { getByText, rerender } = render(<RewardManager {...props} />);
     expect(getByText('Café offert')).toBeTruthy();
-    await waitFor(() => expect(onRewardsChange).toHaveBeenLastCalledWith([reward]));
 
     const updated = { ...reward, titre: 'Thé offert' };
-    jest.mocked(useRewards).mockReturnValue({ data: [updated], isLoading: false, error: null, refetch } as unknown as ReturnType<typeof useRewards>);
-    rerender(<RewardManager {...props} onRewardsChange={onRewardsChange} reloadToken={1} />);
+    jest.mocked(useRewards).mockReturnValue({ data: [updated], isLoading: false, error: null } as unknown as ReturnType<typeof useRewards>);
+    rerender(<RewardManager {...props} />);
     expect(getByText('Thé offert')).toBeTruthy();
-    await waitFor(() => expect(onRewardsChange).toHaveBeenLastCalledWith([updated]));
-    expect(refetch).toHaveBeenCalledTimes(1);
   });
 });

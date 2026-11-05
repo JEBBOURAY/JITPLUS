@@ -7,17 +7,21 @@ import {
   NOTIFICATION_REPOSITORY, type INotificationRepository,
 } from '../common/repositories';
 import { buildPagination, PaginationResult } from '../common/utils';
-import { isCronEnabled } from '../common/tasks/cron-utils';
+import { cronEnabledOnce } from '../common/tasks/cron-utils';
+import { MS_PER_DAY } from '../common/constants';
 
 /** Kind of automatic notification, drives the icon/colour in the Pro app. */
 export type MerchantInboxCategory =
   | 'SECURITY'
   | 'PLAN'
+  | 'STATUS'
+  | 'QUOTA'
   | 'ACTIVITY'
   | 'TIP'
   | 'SETUP'
-  | 'QUOTA'
-  | 'OFFER';
+  | 'OFFER'
+  | 'NEWS'
+  | 'REMINDER';
 
 export interface MerchantInboxEntry {
   category: MerchantInboxCategory;
@@ -64,10 +68,12 @@ export class MerchantInboxService {
   /**
    * Store an automatic notification in the merchant's inbox. Never throws:
    * the inbox is a history, it must not break the push that triggered it.
+   * Returns the new item id (sent in the push payload for open tracking), or
+   * null when the write failed.
    */
-  async record(merchantId: string, entry: MerchantInboxEntry): Promise<void> {
+  async record(merchantId: string, entry: MerchantInboxEntry): Promise<string | null> {
     try {
-      await this.inboxRepo.create({
+      const row = await this.inboxRepo.create({
         data: {
           merchantId,
           category: entry.category,
@@ -75,12 +81,38 @@ export class MerchantInboxService {
           body: entry.body.slice(0, 2000),
           action: entry.action ? entry.action.slice(0, 40) : null,
         },
+        select: { id: true },
       });
+      return row?.id ?? null;
     } catch (err) {
       this.logger.warn(
         `Inbox record failed for merchant ${merchantId}: ${err instanceof Error ? err.message : String(err)}`,
       );
+      return null;
     }
+  }
+
+  /** The merchant tapped the push of this item: it counts as opened and read. */
+  async markOpened(merchantId: string, id: string): Promise<void> {
+    const now = new Date();
+    await this.inboxRepo.updateMany({ where: { id, merchantId, openedAt: null }, data: { openedAt: now } });
+    await this.inboxRepo.updateMany({ where: { id, merchantId, readAt: null }, data: { readAt: now } });
+  }
+
+  /**
+   * Sent / opened / read counts per category over the last `days` days (admin
+   * dashboard). One scan: `_count` on a column counts its non-null values.
+   */
+  async openStats(days = 30): Promise<Array<{ category: string; sent: number; opened: number; read: number }>> {
+    const since = new Date(Date.now() - days * MS_PER_DAY);
+    const rows = await this.inboxRepo.groupBy({
+      by: ['category'],
+      where: { createdAt: { gte: since } },
+      _count: { _all: true, openedAt: true, readAt: true },
+    });
+    return rows
+      .map((r) => ({ category: r.category, sent: r._count._all, opened: r._count.openedAt, read: r._count.readAt }))
+      .sort((a, b) => b.sent - a.sent);
   }
 
   /** Broadcasts sent before the account existed are hidden (recreated accounts start fresh). */
@@ -230,8 +262,8 @@ export class MerchantInboxService {
   // 03:20 UTC daily — off-peak, away from the morning push crons.
   @Cron('20 3 * * *')
   async purgeOld(): Promise<void> {
-    if (!isCronEnabled(this.logger, 'MerchantInbox.purgeOld')) return;
-    const cutoff = new Date(Date.now() - RETENTION_DAYS * 86_400_000);
+    if (!(await cronEnabledOnce(this.logger, 'MerchantInbox.purgeOld'))) return;
+    const cutoff = new Date(Date.now() - RETENTION_DAYS * MS_PER_DAY);
     try {
       const { count } = await this.inboxRepo.deleteMany({ where: { createdAt: { lt: cutoff } } });
       if (count > 0) this.logger.log(`Purged ${count} inbox notification(s) older than ${RETENTION_DAYS} days`);

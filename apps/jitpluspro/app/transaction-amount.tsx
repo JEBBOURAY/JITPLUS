@@ -13,6 +13,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { randomUUID } from '@/utils/crypto';
 import { hapticSuccess, safeSelection } from '@/utils/haptics';
+import { markNotifPromptWin } from '@/utils/notifPrompt';
 import { AlertTriangle } from 'lucide-react-native';
 
 import { useAuthStore } from '@/stores/authStore';
@@ -23,7 +24,8 @@ import { getErrorMessage } from '@/utils/error';
 import { ms, radius } from '@/utils/responsive';
 import { font, icon } from '@/constants/design';
 import { ActionButton } from '@/components/ui/ActionButton';
-import { formatCurrency, DEFAULT_CURRENCY, getIntlLocale } from '@/config/currency';
+import { formatCurrency, getIntlLocale } from '@/config/currency';
+import { useCurrency } from '@/hooks/useCurrency';
 import { SUCCESS_DISPLAY_MS } from '@/constants/app';
 import {
   useClientStatus,
@@ -78,6 +80,7 @@ export default function TransactionAmountScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { t, locale } = useLanguage();
+  const currency = useCurrency();
 
   const status = useClientStatus(validClientId, true, scanTicket);
   const { data: rewardsData, isLoading: loadingRewards } = useRewards();
@@ -126,13 +129,14 @@ export default function TransactionAmountScreen() {
   const amountNum = parseAmount(amount);
   const amountPerStamp = merchant?.amountPerStamp;
   const accumulationLimit = merchant?.accumulationLimit;
+  const purchaseMinSpend = wheelInfo?.hasActiveLuckyWheel ? wheelInfo.purchaseMinSpend ?? 0 : 0;
   const { plan, stampsAfterPurchase } = useMemo(() => {
-    const input = { mode, currentStamps, amount: amountNum, countVisit, amountPerStamp, accumulationLimit };
+    const input = { mode, currentStamps, amount: amountNum, countVisit, amountPerStamp, accumulationLimit, purchaseMinSpend };
     return {
       plan: computeStampPlan({ ...input, reward: selectedReward }),
       stampsAfterPurchase: computeStampPlan(input).balanceAfter,
     };
-  }, [mode, currentStamps, amountNum, countVisit, amountPerStamp, accumulationLimit, selectedReward]);
+  }, [mode, currentStamps, amountNum, countVisit, amountPerStamp, accumulationLimit, purchaseMinSpend, selectedReward]);
   const goal = useMemo(
     () => cardSlots(rewards.map((r) => r.cout), customer?.stampsForReward ?? merchant?.stampsForReward ?? DEFAULT_STAMPS_FOR_REWARD),
     [rewards, customer?.stampsForReward, merchant?.stampsForReward],
@@ -142,12 +146,12 @@ export default function TransactionAmountScreen() {
   // Formatted once per locale/value so the memoised sections get stable strings.
   const intlLocale = getIntlLocale(locale);
   const amountPerStampLabel = useMemo(
-    () => formatCurrency(amountPerStamp || DEFAULT_AMOUNT_PER_STAMP, DEFAULT_CURRENCY, intlLocale),
-    [amountPerStamp, intlLocale],
+    () => formatCurrency(amountPerStamp || DEFAULT_AMOUNT_PER_STAMP, currency, intlLocale),
+    [amountPerStamp, currency, intlLocale],
   );
   const wheelMinSpendLabel = useMemo(
-    () => formatCurrency(wheelMinSpend, DEFAULT_CURRENCY, intlLocale),
-    [wheelMinSpend, intlLocale],
+    () => formatCurrency(wheelMinSpend, currency, intlLocale),
+    [wheelMinSpend, currency, intlLocale],
   );
   const clientName =
     [customer?.prenom, customer?.nom].filter(Boolean).join(' ') || t('transaction.defaultClient');
@@ -229,7 +233,7 @@ export default function TransactionAmountScreen() {
         if (step === 'earn') {
           const tx = await recordTransaction.mutateAsync({
             clientId: validClientId,
-            type: 'EARN_STAMPS',
+            type: plan.purchaseOnly ? 'PURCHASE' : 'EARN_STAMPS',
             amount: amountNum,
             stamps: plan.earnStamps,
             idempotencyKey: earnKeyRef.current,
@@ -251,6 +255,8 @@ export default function TransactionAmountScreen() {
       }
 
       haptic('success');
+      // First success = best moment to offer notifications (next home visit).
+      markNotifPromptWin().catch(() => {});
       const balance = plan.balanceAfter - plan.creditedStamps + credited;
       const lines: string[] = [];
       if (credited > 0) lines.push(t(credited === 1 ? 'stampScreen.successStamps_one' : 'stampScreen.successStamps_other', { count: credited }));
@@ -259,10 +265,10 @@ export default function TransactionAmountScreen() {
       setSuccess({
         title:
           plan.kind === 'earnAndRedeem'
-            ? t('stampScreen.successEarnAndRedeem')
+            ? t(plan.purchaseOnly ? 'stampScreen.successPurchaseAndRedeem' : 'stampScreen.successEarnAndRedeem')
             : plan.kind === 'redeem'
               ? t('stampScreen.successRedeem')
-              : t('stampScreen.successEarn'),
+              : t(plan.purchaseOnly ? 'stampScreen.successPurchase' : 'stampScreen.successEarn'),
         lines,
       });
       closeTimerRef.current = setTimeout(leave, SUCCESS_DISPLAY_MS);
@@ -278,9 +284,9 @@ export default function TransactionAmountScreen() {
         redeemKeyRef.current = randomUUID();
       }
       const partial = done.has('redeem')
-        ? t('stampScreen.partialRedeemDone')
+        ? t(plan.purchaseOnly ? 'stampScreen.partialRedeemDonePurchase' : 'stampScreen.partialRedeemDone')
         : done.has('earn')
-          ? t('stampScreen.partialEarnDone')
+          ? t(plan.purchaseOnly ? 'stampScreen.partialPurchaseDone' : 'stampScreen.partialEarnDone')
           : null;
       Alert.alert(
         t('common.error'),
@@ -345,6 +351,7 @@ export default function TransactionAmountScreen() {
           amountPerStampLabel={amountPerStampLabel}
           wheelMinSpend={wheelMinSpend}
           wheelMinSpendLabel={wheelMinSpendLabel}
+          purchaseMinSpend={purchaseMinSpend}
           accumulationLimit={accumulationLimit}
           purchaseRecordedByCoupon={purchaseRecordedByCoupon}
         />

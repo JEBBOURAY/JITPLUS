@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { withRetry } from '../common/utils/retry-transaction.helper';
 import { weightedRandomPick } from '../common/utils/weighted-draw';
 import { COUPON_PUBLIC_SELECT, CouponService, withCodeRetry } from './coupon.service';
+import { DEFAULT_CURRENCY } from '../common/constants';
 
 const CARD_SELECT = {
   id: true,
@@ -29,15 +30,15 @@ export class ScratchPlayService {
 
   private async merchantsById(ids: string[]) {
     const unique = [...new Set(ids)];
-    if (unique.length === 0) return new Map<string, { id: string; nom: string; logoUrl: string | null }>();
+    if (unique.length === 0) return new Map<string, { id: string; nom: string; logoUrl: string | null; currency: string }>();
     const rows = await this.prisma.merchant.findMany({
       where: { id: { in: unique } },
-      select: { id: true, nom: true, logoUrl: true },
+      select: { id: true, nom: true, logoUrl: true, currency: true },
     });
     return new Map(rows.map((m) => [m.id, m]));
   }
 
-  private toDto(card: CardRow, merchant: { id: string; nom: string; logoUrl: string | null } | undefined, now: Date) {
+  private toDto(card: CardRow, merchant: { id: string; nom: string; logoUrl: string | null; currency: string } | undefined, now: Date) {
     const cancelled = card.status === 'CANCELLED' || card.campaign.status === 'CANCELLED';
     const status =
       card.status === 'PENDING' && cancelled
@@ -56,7 +57,7 @@ export class ScratchPlayService {
         message: card.campaign.message,
         designId: card.campaign.designId,
       },
-      merchant: merchant ?? { id: card.merchantId, nom: '', logoUrl: null },
+      merchant: merchant ?? { id: card.merchantId, nom: '', logoUrl: null, currency: DEFAULT_CURRENCY },
       coupon: card.coupon ? this.couponService.toDto(card.coupon, {}, now) : null,
     };
   }

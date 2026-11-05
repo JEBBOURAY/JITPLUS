@@ -11,6 +11,7 @@ import ClientDetail from './pages/ClientDetail';
 import AuditLogs from './pages/AuditLogs';
 import Notifications from './pages/Notifications';
 import SendNotification from './pages/SendNotification';
+import MerchantNews from './pages/MerchantNews';
 import Referrals from './pages/Referrals';
 import Deals from './pages/Deals';
 
@@ -59,6 +60,7 @@ export default function App() {
                   <Route path="/clients/:id" element={<ClientDetail />} />
                   <Route path="/notifications" element={<Notifications />} />
                   <Route path="/send-notification" element={<SendNotification />} />
+                  <Route path="/merchant-news" element={<MerchantNews />} />
                   <Route path="/audit-logs" element={<AuditLogs />} />
                   <Route path="/referrals" element={<Referrals />} />
                   <Route path="/deals" element={<Deals />} />

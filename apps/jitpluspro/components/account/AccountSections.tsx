@@ -4,6 +4,7 @@ import {
   LogOut,
   ChevronDown,
   Smartphone,
+  Bell,
   Shield,
   ShieldCheck,
   SlidersHorizontal,
@@ -189,6 +190,7 @@ export function AccountSection({
   goToDevices,
   goToLegal,
   goToStore,
+  goToNotifications,
   openSupport,
   t,
 }: {
@@ -201,6 +203,7 @@ export function AccountSection({
   goToDevices: () => void;
   goToLegal: () => void;
   goToStore: () => void;
+  goToNotifications: () => void;
   openSupport: () => void;
   t: TFn;
 }) {
@@ -253,6 +256,13 @@ export function AccountSection({
               iconBg={VIOLET_ICON_BG}
             />
           )}
+          <InfoRow
+            icon={<Bell size={ms(16)} color={palette.violet} strokeWidth={icon.stroke} />}
+            label={t('notifSettings.title')}
+            subtitle={t('notifSettings.accountRowSubtitle')}
+            onPress={goToNotifications}
+            iconBg={VIOLET_ICON_BG}
+          />
           <InfoRow
             icon={<Shield size={ms(16)} color={palette.violet} strokeWidth={icon.stroke} />}
             label={t('account.legalSection')}

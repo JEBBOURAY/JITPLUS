@@ -3,7 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { IStorageProvider, STORAGE_PROVIDER } from '../common/interfaces';
 import { deleteOwnedFiles } from '../storage/image-ownership';
-import { isCronEnabled } from '../common/tasks/cron-utils';
+import { cronEnabledOnce } from '../common/tasks/cron-utils';
 import { MOROCCO_TZ } from '../common/utils/morocco-time';
 import { errMsg } from '../common/utils';
 import { MerchantInboxService } from '../merchant-inbox/merchant-inbox.service';
@@ -16,6 +16,7 @@ import {
 } from './deal-limits';
 import { dealEndedTexts } from './deal-notif-i18n';
 import { cityKeysOf, isDealImage } from './deals-merchant.service';
+import { MS_PER_DAY } from '../common/constants';
 
 const BATCH = 200;
 const MAX_ROUNDS = 20;
@@ -38,14 +39,14 @@ export class DealsMaintenanceService {
 
   @Cron('*/15 * * * *', { name: 'deals-maintenance' })
   async everyQuarter() {
-    if (!isCronEnabled(this.logger, 'DealsMaintenance.everyQuarter')) return;
+    if (!(await cronEnabledOnce(this.logger, 'DealsMaintenance.everyQuarter'))) return;
     await this.run('expire', () => this.expire());
     await this.run('popular', () => this.refreshPopular());
   }
 
   @Cron('30 3 * * *', { name: 'deals-purge', timeZone: MOROCCO_TZ })
   async nightly() {
-    if (!isCronEnabled(this.logger, 'DealsMaintenance.nightly')) return;
+    if (!(await cronEnabledOnce(this.logger, 'DealsMaintenance.nightly'))) return;
     await this.run('purge', () => this.purge());
     await this.run('city-keys', () => this.refreshCityKeys());
     await this.run('digest-entries', () => this.purgeDigestEntries());
@@ -123,7 +124,7 @@ export class DealsMaintenanceService {
   }
 
   async purge(now: Date = new Date()): Promise<number> {
-    const cutoff = new Date(now.getTime() - DEAL_PURGE_AFTER_DAYS * 86_400_000);
+    const cutoff = new Date(now.getTime() - DEAL_PURGE_AFTER_DAYS * MS_PER_DAY);
     let purged = 0;
     for (let round = 0; round < MAX_ROUNDS; round++) {
       const rows = await this.prisma.deal.findMany({
@@ -152,7 +153,7 @@ export class DealsMaintenanceService {
   /** In-app digest entries (their client statuses cascade). */
   async purgeDigestEntries(now: Date = new Date()): Promise<number> {
     const { count } = await this.prisma.notification.deleteMany({
-      where: { audience: DEAL_DIGEST_AUDIENCE, createdAt: { lt: new Date(now.getTime() - DEAL_DIGEST_RETENTION_DAYS * 86_400_000) } },
+      where: { audience: DEAL_DIGEST_AUDIENCE, createdAt: { lt: new Date(now.getTime() - DEAL_DIGEST_RETENTION_DAYS * MS_PER_DAY) } },
     });
     return count;
   }

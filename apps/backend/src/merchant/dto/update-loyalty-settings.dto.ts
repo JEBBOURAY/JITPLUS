@@ -1,10 +1,16 @@
-import { IsBoolean, IsEnum, IsInt, IsNumber, IsOptional, IsPositive, IsUUID, Min, Max, ValidateIf } from 'class-validator';
-import { MAX_STAMP_VALIDITY_DAYS, MIN_STAMP_VALIDITY_DAYS } from '../../common/constants';
+import { IsBoolean, IsEnum, IsIn, IsInt, IsNumber, IsOptional, IsPositive, IsUUID, Min, Max, ValidateIf } from 'class-validator';
+import { MAX_STAMP_VALIDITY_DAYS, MIN_STAMP_VALIDITY_DAYS, SUPPORTED_CURRENCIES } from '../../common/constants';
 
 export class PreviewAccumulationLimitDto {
   @IsInt()
   @Min(1)
   limit!: number;
+}
+
+/** Currency is open to every plan, unlike the loyalty rules (PremiumGuard). */
+export class UpdateCurrencyDto {
+  @IsIn(SUPPORTED_CURRENCIES, { message: 'Devise non prise en charge' })
+  currency!: (typeof SUPPORTED_CURRENCIES)[number];
 }
 
 export class UpdateLoyaltySettingsDto {

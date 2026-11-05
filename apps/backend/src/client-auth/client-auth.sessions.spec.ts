@@ -1,5 +1,5 @@
 import { UnauthorizedException } from '@nestjs/common';
-import { ClientAuthService } from './client-auth.service';
+import { ClientSessionService } from './client-session.service';
 import { MAX_SESSIONS_PER_CLIENT } from '../common/constants';
 
 const CLIENT = {
@@ -30,20 +30,15 @@ function setup() {
     deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
   };
   const jwtService = { sign: jest.fn().mockReturnValue('access-token') };
-  const service = new ClientAuthService(
+  const service = new ClientSessionService(
     clientRepo as any,
     clientSessionRepo as any,
-    {} as any,
     jwtService as any,
-    {} as any,
-    {} as any,
-    {} as any,
-    {} as any,
   );
   return { service, clientRepo, clientSessionRepo, jwtService };
 }
 
-describe('ClientAuthService — multi-device sessions', () => {
+describe('ClientSessionService — multi-device sessions', () => {
   it('opens a new session per login and binds the access token to it', async () => {
     const { service, clientSessionRepo, jwtService } = setup();
 

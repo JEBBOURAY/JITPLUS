@@ -65,7 +65,7 @@ function setup(opts: { coupon?: any; merchant?: any; card?: any; claimCount?: nu
     prisma as any,
     { get: () => 'x'.repeat(40) } as any,
     { sendToClient: jest.fn().mockResolvedValue(undefined) } as any,
-    { assertCanAddClient: jest.fn().mockResolvedValue(undefined) } as any,
+    { assertCanAddClient: jest.fn().mockResolvedValue(undefined), resolveEffectivePlan: jest.fn().mockResolvedValue({ plan: 'FREE' }) } as any,
     {
       emitCouponUpdated: jest.fn(),
       emitCouponRedeemed: jest.fn(),

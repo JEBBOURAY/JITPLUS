@@ -4,6 +4,7 @@
 import { memo } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Text } from '@/components/AppText';
+import { pluralKey } from '@jitplus/shared';
 import { useLanguage } from '@/contexts/LanguageContext';
 
 const VIOLET = '#7C3AED';
@@ -14,9 +15,9 @@ interface Props {
 }
 
 const ClusterMarker = memo(function ClusterMarker({ count }: Props) {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
   return (
-    <View collapsable={false} style={styles.root} accessibilityLabel={t('discover.merchantCount', { count })} accessibilityRole="image">
+    <View collapsable={false} style={styles.root} accessibilityLabel={t(pluralKey('discover.merchantCount', count, locale), { count })} accessibilityRole="image">
       <View collapsable={false} style={styles.square}>
         <Text style={styles.countText}>{String(count)}</Text>
       </View>

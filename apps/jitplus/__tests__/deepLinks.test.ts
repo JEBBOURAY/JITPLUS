@@ -1,5 +1,5 @@
 import { resolveIncomingUrl } from '@/utils/deepLinks';
-import { isClaimToken, isEntityId } from '@/utils/ids';
+import { isClaimToken, isEntityId, isStampCodeToken } from '@/utils/ids';
 import { redirectSystemPath } from '@/app/+native-intent';
 
 const UUID = '3f2b8c1e-9a4d-4e2b-8f1a-0c5d6e7f8a9b';
@@ -71,5 +71,27 @@ describe('redirectSystemPath', () => {
   it('rewrites known links and passes through the rest', () => {
     expect(redirectSystemPath({ path: `jitplus://merchant/${UUID}`, initial: true })).toBe(`/merchant/${UUID}`);
     expect(redirectSystemPath({ path: '/discover', initial: false })).toBe('/discover');
+  });
+});
+
+describe('parcel QR code links', () => {
+  const TOKEN = 'sc1.PyKcHntNToqcLxorPE1ebw.AAAAAAAAAAAAAAAAAAAAAA';
+
+  it('recognises stamp code tokens only', () => {
+    expect(isStampCodeToken(TOKEN)).toBe(true);
+    expect(isStampCodeToken('sc1.short.token')).toBe(false);
+    expect(isStampCodeToken(`sc2.${TOKEN.slice(4)}`)).toBe(false);
+    expect(isClaimToken(TOKEN)).toBe(false);
+  });
+
+  it('routes the printed https link and the app scheme to /stamp-code', () => {
+    const route = `/stamp-code?token=${encodeURIComponent(TOKEN)}`;
+    expect(resolveIncomingUrl(`https://jitplus.com/q/${TOKEN}`)).toBe(route);
+    expect(resolveIncomingUrl(`/q/${TOKEN}`)).toBe(route);
+    expect(resolveIncomingUrl(`jitplus://stamp-code?token=${TOKEN}`)).toBe(route);
+  });
+
+  it('sends an invalid token to /stamp-code without a token', () => {
+    expect(resolveIncomingUrl('https://jitplus.com/q/not-a-token')).toBe('/stamp-code');
   });
 });

@@ -3,7 +3,6 @@ export const dealsClientFr = {
   title: 'Bons plans',
   scope: { LOCAL: 'En magasin', ONLINE: 'En ligne' },
   badge: { percent: '-%{value} %', bogo: '%{buy}+%{free} OFFERT', free: 'OFFERT' },
-  price: '%{value} DH',
   valueOf: 'Valeur %{value}',
   popular: 'Populaire',
   time: {
@@ -145,7 +144,6 @@ export const dealsClientEn: typeof dealsClientFr = {
   title: 'Deals',
   scope: { LOCAL: 'In store', ONLINE: 'Online' },
   badge: { percent: '-%{value}%', bogo: '%{buy}+%{free} FREE', free: 'FREE' },
-  price: '%{value} MAD',
   valueOf: 'Worth %{value}',
   popular: 'Popular',
   time: {
@@ -287,7 +285,6 @@ export const dealsClientAr: typeof dealsClientFr = {
   title: 'عروض',
   scope: { LOCAL: 'فالمحل', ONLINE: 'فالأنترنيت' },
   badge: { percent: '-%{value} %', bogo: '%{buy}+%{free} فابور', free: 'فابور' },
-  price: '%{value} درهم',
   valueOf: 'قيمتو %{value}',
   popular: 'مطلوب بزاف',
   time: {

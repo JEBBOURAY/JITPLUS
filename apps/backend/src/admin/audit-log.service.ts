@@ -2,7 +2,7 @@ import { Injectable, Logger, Inject } from '@nestjs/common';
 import { AuditAction, AuditActorType, AuditTargetType, Prisma } from '@prisma/client';
 import { AUDIT_LOG_REPOSITORY, type IAuditLogRepository } from '../common/repositories';
 
-export { AuditAction, AuditActorType, AuditTargetType };
+export { AuditAction, AuditTargetType };
 
 export interface AdminAuditContext {
   actorType: 'ADMIN';

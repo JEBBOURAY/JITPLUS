@@ -11,11 +11,20 @@ export type TransactionClient = Omit<
   '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'
 >;
 
+/** Options forwarded to Prisma's interactive $transaction (defaults: maxWait 2s, timeout 5s). */
+export interface TransactionRunOptions {
+  isolationLevel?: Prisma.TransactionIsolationLevel;
+  /** Max time (ms) to wait for a pool connection before the transaction starts. */
+  maxWait?: number;
+  /** Max time (ms) the interactive transaction may run before it is rolled back. */
+  timeout?: number;
+}
+
 export interface ITransactionRunner {
   /** Interactive transaction with a callback that receives a transaction client. */
   run<T>(
     fn: (tx: TransactionClient) => Promise<T>,
-    options?: { isolationLevel?: Prisma.TransactionIsolationLevel },
+    options?: TransactionRunOptions,
   ): Promise<T>;
 
   /** Batched transaction — pass an array of PrismaPromises. */
@@ -28,7 +37,7 @@ export class PrismaTransactionRunner implements ITransactionRunner {
 
   run<T>(
     fn: (tx: TransactionClient) => Promise<T>,
-    options?: { isolationLevel?: Prisma.TransactionIsolationLevel },
+    options?: TransactionRunOptions,
   ): Promise<T> {
     // Cast required: Prisma's interactive $transaction callback type is narrower than our TransactionClient
     return this.prisma.$transaction(fn as any, options) as Promise<T>;

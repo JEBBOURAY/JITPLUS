@@ -132,7 +132,13 @@ export function useFulfilLuckyWheelPrize() {
 
 export async function fetchLuckyWheelActiveInfo() {
   const res = await api.get('/lucky-wheel/merchant/active-info');
-  return res.data as { hasActiveLuckyWheel: boolean; minSpendAmount: number; campaignName: string | null };
+  return res.data as {
+    hasActiveLuckyWheel: boolean;
+    minSpendAmount: number;
+    /** Lowest amount that gives a spin without any stamp; absent on older backends. */
+    purchaseMinSpend?: number;
+    campaignName: string | null;
+  };
 }
 
 export function useLuckyWheelActiveInfo() {

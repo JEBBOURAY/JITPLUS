@@ -5,12 +5,15 @@ import { Resend } from 'resend';
 import { IEmailBlastProvider, EmailBlastResult, MerchantBlastInfo, IMailProvider, MAIL_PROVIDER } from '../common/interfaces';
 import { buildMarketingBlastEmail } from '../mail/email-templates';
 import { pickEmailLang } from '../mail/transactional-i18n';
+import { maskEmail } from '../common/utils/pii-mask';
 
 type Recipient = { email: string; prenom?: string | null; lang?: string | null; clientId?: string };
 
 @Injectable()
 export class ResendService implements IEmailBlastProvider {
   private readonly logger = new Logger(ResendService.name);
+  /** In-flight SMTP sends during a blast; matches MailService's pool maxConnections. */
+  private static readonly SMTP_CONCURRENCY = 3;
   private resend: Resend | null = null;
   private readonly fromAddress: string;
   private readonly replyTo: string;
@@ -165,19 +168,30 @@ export class ResendService implements IEmailBlastProvider {
     let successCount = 0;
     let failureCount = 0;
 
-    for (const r of recipients) {
-      const html = buildMarketingBlastEmail(r.prenom || 'cher client', body, merchant, pickEmailLang(r.lang));
-
-      try {
-        // SMTP fallback: MailService already adds the List-Unsubscribe header
-        // when given a URL — keep parity with the JWT-signed token used elsewhere.
-        await this.mailProvider.sendRaw(r.email, subject, html, this.buildUnsubscribeUrl(r.clientId));
-        successCount++;
-      } catch (err) {
-        this.logger.error(`SMTP send failed for ${r.email}: ${err}`);
-        failureCount++;
+    // MailService sends through ONE shared pooled transport (pool: true,
+    // maxConnections 3, 10s connection/greeting and 20s socket timeouts, closed
+    // on module destroy). Keep at most that many sends in flight so the pool
+    // connections are all used instead of one at a time, without queueing the
+    // whole blast inside nodemailer.
+    let next = 0;
+    const worker = async () => {
+      while (next < recipients.length) {
+        const r = recipients[next++];
+        const html = buildMarketingBlastEmail(r.prenom || 'cher client', body, merchant, pickEmailLang(r.lang));
+        try {
+          // SMTP fallback: MailService already adds the List-Unsubscribe header
+          // when given a URL — keep parity with the JWT-signed token used elsewhere.
+          await this.mailProvider.sendRaw(r.email, subject, html, this.buildUnsubscribeUrl(r.clientId));
+          successCount++;
+        } catch (err) {
+          this.logger.error(`SMTP send failed for ${maskEmail(r.email)}: ${err}`);
+          failureCount++;
+        }
       }
-    }
+    };
+    await Promise.all(
+      Array.from({ length: Math.min(ResendService.SMTP_CONCURRENCY, recipients.length) }, () => worker()),
+    );
 
     this.logger.log(`[SMTP] Email blast "${subject}" completed: ${successCount} success, ${failureCount} failures out of ${total}`);
     return { total, successCount, failureCount };

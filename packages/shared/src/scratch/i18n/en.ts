@@ -10,17 +10,17 @@ export const scratchEn = {
   },
   rewardType: {
     PERCENT_DISCOUNT: 'Percentage discount',
-    FIXED_DISCOUNT: 'Discount in MAD',
+    FIXED_DISCOUNT: 'Discount in %{currency}',
     FREE_PRODUCT: 'Free product',
     BONUS_STAMPS: 'Bonus stamps',
   },
   rewardValue: {
     percent: '-%{value}%',
-    fixed: '-%{value} MAD',
+    fixed: '-%{amount}',
     bonusStamps: 'Bonus stamps: +%{value}',
   },
   conditions: {
-    minPurchase: 'From a %{amount} MAD purchase',
+    minPurchase: 'From a %{amount} purchase',
     weekdays: 'Valid on: %{days}',
     hours: 'From %{from} to %{to}',
     validFrom: 'Usable from %{date}',

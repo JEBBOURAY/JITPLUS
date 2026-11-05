@@ -1,24 +1,13 @@
-import {
-  Controller,
-  Post,
-  Get,
-  Patch,
-  Delete,
-  Body,
-  UseGuards,
-  Query,
-  Param,
-  HttpCode,
-  HttpStatus,
-  Headers,
-  ParseUUIDPipe,
-} from '@nestjs/common';
+import { Controller, Post, Get, Patch, Delete, Body, UseGuards, Query, Param, HttpCode, HttpStatus, Headers, ParseUUIDPipe, BadRequestException } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { JwtService } from '@nestjs/jwt';
 import { Throttle } from '@nestjs/throttler';
 import { THROTTLE_TTL } from '../common/constants';
 import { ClientAuthService } from './client-auth.service';
+import { ClientSessionService } from './client-session.service';
+import { ClientOtpService } from './client-otp.service';
+import { ClientOAuthService } from './client-oauth.service';
 import { ClientService } from './client.service';
 import { ClientReferralService } from './client-referral.service';
 import { ClientOnlyGuard } from '../common/guards/client-only.guard';
@@ -34,6 +23,9 @@ import { ClientClaimService } from '../merchant/services/client-claim.service';
 export class ClientAuthController {
   constructor(
     private readonly clientAuthService: ClientAuthService,
+    private readonly clientSessionService: ClientSessionService,
+    private readonly clientOtpService: ClientOtpService,
+    private readonly clientOAuthService: ClientOAuthService,
     private readonly clientService: ClientService,
     private readonly jwtService: JwtService,
     private readonly clientClaimService: ClientClaimService,
@@ -42,7 +34,7 @@ export class ClientAuthController {
   @Post('refresh')
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 5 } })
   async refreshToken(@Body() dto: RefreshTokenDto) {
-    return this.clientAuthService.refreshAccessToken(dto.refresh_token);
+    return this.clientSessionService.refreshAccessToken(dto.refresh_token);
   }
 
   @Post('logout')
@@ -56,7 +48,7 @@ export class ClientAuthController {
       if (token) payload = this.jwtService.verify<JwtTokenPayload>(token, { ignoreExpiration: true });
     } catch { /* token invalide — on continue quand même */ }
     if (payload?.type === 'client' && payload.sub) {
-      return this.clientAuthService.logout(payload.sub, payload.sid);
+      return this.clientSessionService.logout(payload.sub, payload.sid);
     }
     return { success: true, message: 'Déconnecté' };
   }
@@ -64,25 +56,25 @@ export class ClientAuthController {
   @Post('send-otp-email')
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 3 } })
   async sendOtpEmail(@Body() dto: SendOtpEmailDto) {
-    return this.clientAuthService.sendOtpEmail(dto.email, dto.isRegister ?? false);
+    return this.clientOtpService.sendOtpEmail(dto.email, dto.isRegister ?? false);
   }
 
   @Post('verify-otp-email')
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 5 } })
   async verifyOtpEmail(@Body() dto: VerifyOtpEmailDto) {
-    return this.clientAuthService.verifyOtpEmail(dto.email, dto.code, dto.isRegister ?? false);
+    return this.clientOtpService.verifyOtpEmail(dto.email, dto.code, dto.isRegister ?? false);
   }
 
   @Post('google-login')
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 10 } })
   async googleLogin(@Body() dto: GoogleLoginDto) {
-    return this.clientAuthService.googleLogin(dto.idToken);
+    return this.clientOAuthService.googleLogin(dto.idToken);
   }
 
   @Post('apple-login')
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 10 } })
   async appleLogin(@Body() dto: AppleLoginDto) {
-    return this.clientAuthService.appleLogin(dto.identityToken, dto.givenName, dto.familyName, dto.rawNonce);
+    return this.clientOAuthService.appleLogin(dto.identityToken, dto.givenName, dto.familyName, dto.rawNonce);
   }
 
   @Post('login-email')
@@ -146,14 +138,14 @@ export class ClientAuthController {
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 3 } })
   @UseGuards(AuthGuard('jwt'), ClientOnlyGuard)
   async sendChangeContactOtp(@CurrentUser() user: JwtPayload, @Body() dto: SendChangeContactOtpDto) {
-    return this.clientAuthService.sendChangeContactOtp(user.userId, dto.type, dto.value);
+    return this.clientOtpService.sendChangeContactOtp(user.userId, dto.type, dto.value);
   }
 
   @Post('verify-change-contact-otp')
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 5 } })
   @UseGuards(AuthGuard('jwt'), ClientOnlyGuard)
   async verifyChangeContactOtp(@CurrentUser() user: JwtPayload, @Body() dto: VerifyChangeContactOtpDto) {
-    return this.clientAuthService.verifyChangeContactOtp(user.userId, dto.type, dto.value, dto.code);
+    return this.clientOtpService.verifyChangeContactOtp(user.userId, dto.type, dto.value, dto.code);
   }
 
   @Post('qr-token')
@@ -228,19 +220,19 @@ export class ClientController {
   }
 
   @Get('merchants/:id')
-  async getMerchantById(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+  async getMerchantById(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
     return this.clientService.getMerchantById(id, user.userId);
   }
 
   @Post('merchants/:id/join')
   @HttpCode(HttpStatus.OK)
-  async joinMerchant(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+  async joinMerchant(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
     return this.clientService.joinMerchant(user.userId, id);
   }
 
   @Delete('merchants/:id/leave')
   @HttpCode(HttpStatus.OK)
-  async leaveMerchant(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+  async leaveMerchant(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
     return this.clientService.deactivateCard(user.userId, id);
   }
 
@@ -252,7 +244,7 @@ export class ClientController {
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { ttl: 3_600_000, limit: 5 } })
   async reportMerchant(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: ReportMerchantDto,
     @CurrentUser() user: JwtPayload,
   ) {
@@ -267,13 +259,13 @@ export class ClientController {
   @Post('merchants/:id/block')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { ttl: 60_000, limit: 20 } })
-  async blockMerchant(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+  async blockMerchant(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
     return this.clientService.blockMerchant(user.userId, id);
   }
 
   @Delete('merchants/:id/block')
   @HttpCode(HttpStatus.OK)
-  async unblockMerchant(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+  async unblockMerchant(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
     return this.clientService.unblockMerchant(user.userId, id);
   }
 
@@ -298,7 +290,7 @@ export class ClientController {
   @Patch('notifications/:id/read')
   async markNotificationAsRead(
     @CurrentUser() user: JwtPayload,
-    @Param('id') notificationId: string,
+    @Param('id', ParseUUIDPipe) notificationId: string,
   ) {
     return this.clientService.markAsRead(user.userId, notificationId);
   }
@@ -316,7 +308,7 @@ export class ClientController {
   @Delete('notifications/:id')
   async dismissNotification(
     @CurrentUser() user: JwtPayload,
-    @Param('id') notificationId: string,
+    @Param('id', ParseUUIDPipe) notificationId: string,
   ) {
     return this.clientService.dismissNotification(user.userId, notificationId);
   }
@@ -373,15 +365,15 @@ export class PublicUnsubscribeController {
   }
 
   private async handle(token: string): Promise<{ success: boolean }> {
-    if (!token) throw new Error('Missing token');
+    if (!token) throw new BadRequestException('Lien de désabonnement invalide');
     let payload: { clientId?: string; purpose?: string };
     try {
       payload = this.jwtService.verify(token);
     } catch {
-      throw new Error('Invalid or expired unsubscribe token');
+      throw new BadRequestException('Lien de désabonnement invalide ou expiré');
     }
     if (payload?.purpose !== 'unsubscribe_email' || !payload.clientId) {
-      throw new Error('Invalid unsubscribe token');
+      throw new BadRequestException('Lien de désabonnement invalide');
     }
     await this.clientService.unsubscribeEmail(payload.clientId);
     return { success: true };

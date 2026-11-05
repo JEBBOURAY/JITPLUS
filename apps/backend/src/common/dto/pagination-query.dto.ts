@@ -26,7 +26,7 @@ export class PaginationQueryDto {
 /**
  * Pagination + optional text search.
  */
-export class SearchPaginationQueryDto extends PaginationQueryDto {
+class SearchPaginationQueryDto extends PaginationQueryDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()

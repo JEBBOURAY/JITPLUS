@@ -18,6 +18,9 @@ const ON_GLASS_PLACEHOLDER = 'rgba(255,255,255,0.45)';
 const CHIP_BG = 'rgba(139,92,246,0.22)';
 const CHIP_FG = '#C4B5FD';
 
+/** Digits needed before a phone search can be submitted. */
+export const MIN_PHONE_SEARCH_LENGTH = 6;
+
 interface Props {
   value: string;
   onChangeText: (t: string) => void;
@@ -105,7 +108,7 @@ export const AnimatedSearchBar = React.memo(function AnimatedSearchBar({
             <X size={18} color={ON_GLASS_MUTED} strokeWidth={icon.stroke} />
           </TouchableOpacity>
         )}
-        {value.length >= 6 && (
+        {value.length >= MIN_PHONE_SEARCH_LENGTH && (
           <TouchableOpacity
             style={styles.submitBtn}
             onPress={onSubmit}

@@ -1,3 +1,4 @@
+import { QrTokenService } from './services/qr-token.service';
 import { Module } from '@nestjs/common';
 import { MerchantController } from './merchant.controller';
 import {
@@ -43,8 +44,9 @@ import { EventsModule } from '../events/events.module';
     MerchantStoreService,
     ClientClaimService,
     ScanTicketService,
+    QrTokenService,
     AuditLogService,
   ],
-  exports: [MerchantProfileService, MerchantPlanModule, ClientClaimService],
+  exports: [MerchantProfileService, MerchantPlanModule, ClientClaimService, MerchantTransactionService],
 })
 export class MerchantModule {}

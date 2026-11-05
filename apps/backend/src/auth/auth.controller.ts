@@ -3,6 +3,10 @@ import { ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { THROTTLE_TTL } from '../common/constants';
 import { AuthService } from './auth.service';
+import { MerchantSessionService } from './merchant-session.service';
+import { MerchantSignupService } from './merchant-signup.service';
+import { MerchantOAuthService } from './merchant-oauth.service';
+import { MerchantOtpService } from './merchant-otp.service';
 import { MerchantReferralService } from '../merchant/services/merchant-referral.service';
 import { ClientReferralService } from '../client-auth/client-referral.service';
 import { LoginDto } from './dto/login.dto';
@@ -33,6 +37,10 @@ function isJwtVerificationError(err: unknown): boolean {
 export class AuthController {
   constructor(
     private authService: AuthService,
+    private signupService: MerchantSignupService,
+    private oauthService: MerchantOAuthService,
+    private sessionService: MerchantSessionService,
+    private otpService: MerchantOtpService,
     private referralService: MerchantReferralService,
     private clientReferralService: ClientReferralService,
     private jwtService: JwtService,
@@ -49,7 +57,7 @@ export class AuthController {
   @Post('register')
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 3 } })
   async register(@Body() registerDto: RegisterMerchantDto) {
-    return this.authService.register(registerDto);
+    return this.signupService.register(registerDto);
   }
 
   @Post('google-login')
@@ -57,13 +65,13 @@ export class AuthController {
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 10 } })
   async googleLogin(@Body() dto: GoogleLoginMerchantDto, @Req() req: Request) {
     const ipAddress = req.ip || 'unknown';
-    return this.authService.googleLoginMerchant(dto, ipAddress);
+    return this.oauthService.googleLoginMerchant(dto, ipAddress);
   }
 
   @Post('google-register')
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 3 } })
   async googleRegister(@Body() dto: GoogleRegisterMerchantDto) {
-    return this.authService.googleRegisterMerchant(dto);
+    return this.oauthService.googleRegisterMerchant(dto);
   }
 
   @Post('apple-login')
@@ -71,20 +79,20 @@ export class AuthController {
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 10 } })
   async appleLogin(@Body() dto: AppleLoginMerchantDto, @Req() req: Request) {
     const ipAddress = req.ip || 'unknown';
-    return this.authService.appleLoginMerchant(dto, ipAddress);
+    return this.oauthService.appleLoginMerchant(dto, ipAddress);
   }
 
   @Post('apple-register')
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 3 } })
   async appleRegister(@Body() dto: AppleRegisterMerchantDto) {
-    return this.authService.appleRegisterMerchant(dto);
+    return this.oauthService.appleRegisterMerchant(dto);
   }
 
   @Post('refresh-token')
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 5 } })
   @HttpCode(HttpStatus.OK)
   async refreshWithToken(@Body() dto: RefreshMerchantTokenDto) {
-    return this.authService.refreshWithToken(dto.refresh_token, dto.session_id);
+    return this.sessionService.refreshWithToken(dto.refresh_token, dto.session_id);
   }
 
   @Post('logout')
@@ -102,7 +110,7 @@ export class AuthController {
         if (!isJwtVerificationError(err)) throw err;
       }
     }
-    return this.authService.logout(sessionId);
+    return this.sessionService.logout(sessionId);
   }
 
   // ── Mot de passe oublié ──
@@ -110,14 +118,14 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 3 } })
   async forgotPassword(@Body() dto: ForgotPasswordDto) {
-    return this.authService.requestPasswordReset(dto.email);
+    return this.otpService.requestPasswordReset(dto.email);
   }
 
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 5 } })
   async resetPassword(@Body() dto: ResetPasswordDto) {
-    return this.authService.resetPassword(dto.email, dto.code, dto.newPassword);
+    return this.otpService.resetPassword(dto.email, dto.code, dto.newPassword);
   }
 
   // ── Email Verification ──
@@ -125,29 +133,30 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 3 } })
   async sendVerificationEmail(@Body() dto: SendVerificationEmailDto) {
-    return this.authService.sendVerificationEmail(dto.email);
+    return this.otpService.sendVerificationEmail(dto.email);
   }
 
   @Post('verify-email')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 5 } })
   async verifyEmail(@Body() dto: VerifyEmailDto) {
-    return this.authService.verifyEmail(dto.email, dto.code);
+    return this.otpService.verifyEmail(dto.email, dto.code);
   }
 
   // ── Uniqueness checks (public — used during registration) ──
   @Post('check-email')
   @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 3 } })
+  // Called on field blur: a merchant fixing a typo blurs several times.
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 10 } })
   async checkEmail(@Body() dto: CheckEmailDto) {
-    return this.authService.checkEmailExists(dto.email);
+    return this.signupService.checkEmailExists(dto.email);
   }
 
   @Post('check-phone')
   @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 3 } })
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 10 } })
   async checkPhone(@Body() dto: CheckPhoneDto) {
-    return this.authService.checkPhoneExists(dto.phoneNumber);
+    return this.signupService.checkPhoneExists(dto.phoneNumber);
   }
 
   // ── Parrainage (public — consulté avant inscription) ──

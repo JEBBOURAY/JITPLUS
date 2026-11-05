@@ -19,6 +19,7 @@ import {
 } from '@/components/icons';
 import { DEAL_LIMITS, type DealOffer, type DealScope, type DealType } from '@jitplus/shared/src/deals';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useMoney } from '@/hooks/useCurrency';
 import { useLanguage } from '@/contexts/LanguageContext';
 import PromoSheet, { SheetSectionLabel, useSheetColors, type LucideIcon } from '@/components/home/PromoSheet';
 import { PROMO_TONES, type PromoTone } from '@/components/home/promoTones';
@@ -77,6 +78,7 @@ interface DealsGuideSheetProps {
 function DealsGuideSheet({ visible, onClose, onCreate }: DealsGuideSheetProps) {
   const theme = useTheme();
   const { t } = useLanguage();
+  const { money } = useMoney();
   const { softFill, hairline, muted, ink } = useSheetColors();
   const look = useDealMerchantLook();
   const isRTL = I18nManager.isRTL;
@@ -86,7 +88,7 @@ function DealsGuideSheet({ visible, onClose, onCreate }: DealsGuideSheetProps) {
   const exampleEndsAt = new Date(Date.now() + 5 * DAY_MS).toISOString();
 
   const facts = [
-    { value: t('deals.price', { value: 0 }), label: t('home.dealsGuideFactFree') },
+    { value: money(0), label: t('home.dealsGuideFactFree') },
     { value: String(DEAL_LIMITS.MAX_ACTIVE), label: t('home.dealsGuideFactActive') },
     { value: t('deals.wizard.durationChip', { count: DEAL_LIMITS.MAX_DURATION_DAYS }), label: t('home.dealsGuideFactDays') },
   ];

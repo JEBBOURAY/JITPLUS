@@ -10,17 +10,17 @@ export const scratchAr = {
   },
   rewardType: {
     PERCENT_DISCOUNT: 'تخفيض بالنسبة %',
-    FIXED_DISCOUNT: 'تخفيض بالدرهم',
+    FIXED_DISCOUNT: 'تخفيض بـ %{currency}',
     FREE_PRODUCT: 'منتوج فابور',
     BONUS_STAMPS: 'طوابع إضافية',
   },
   rewardValue: {
     percent: '-%{value}%',
-    fixed: '-%{value} درهم',
+    fixed: '-%{amount}',
     bonusStamps: 'طوابع إضافية: +%{value}',
   },
   conditions: {
-    minPurchase: 'ابتداءً من شراء %{amount} درهم',
+    minPurchase: 'ابتداءً من شراء %{amount}',
     weekdays: 'صالح نهار: %{days}',
     hours: 'من %{from} حتى %{to}',
     validFrom: 'تقدر تستعملو من %{date}',

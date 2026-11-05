@@ -6,7 +6,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { font, icon } from '@/constants/design';
 import { ms, radius } from '@/utils/responsive';
-import { DEFAULT_CURRENCY } from '@/config/currency';
+import { useCurrency } from '@/hooks/useCurrency';
 import { MAX_AMOUNT_DIGITS, MAX_STAMPS_PER_TX } from '@/constants/app';
 import type { EarningMode, StampPlan } from '@/utils/stampTransaction';
 import { cardSurface, cardStyles, TintNotice } from './ui';
@@ -23,6 +23,8 @@ interface Props {
   /** Minimum spend for a lucky-wheel spin, 0 when no wheel needs an amount. */
   wheelMinSpend: number;
   wheelMinSpendLabel: string;
+  /** Lowest amount that gives a spin without any stamp, 0 = none. */
+  purchaseMinSpend: number;
   accumulationLimit?: number | null;
   /** The purchase was already recorded by a coupon redemption. */
   purchaseRecordedByCoupon: boolean;
@@ -38,18 +40,21 @@ function EarnSectionBase({
   amountPerStampLabel,
   wheelMinSpend,
   wheelMinSpendLabel,
+  purchaseMinSpend,
   accumulationLimit,
   purchaseRecordedByCoupon,
 }: Props) {
   const theme = useTheme();
   const { t, isRTL } = useLanguage();
+  const currency = useCurrency();
   const row = isRTL ? 'row-reverse' : 'row';
   const textAlign = isRTL ? 'right' : 'left';
   const [focused, setFocused] = useState(false);
   const amountNum = parseFloat(amount) || 0;
   const isPerAmount = mode === 'PER_AMOUNT';
   const visitOn = countVisit && !plan.atLimit;
-  const showAmount = isPerAmount || (wheelMinSpend > 0 && visitOn);
+  // A stamp-less purchase can still give a spin, so the amount stays reachable without the visit stamp.
+  const showAmount = isPerAmount || (wheelMinSpend > 0 && visitOn) || purchaseMinSpend > 0;
   const amountLabel = isPerAmount ? t('stampScreen.amountLabel') : t('stampScreen.wheelAmountLabel');
   const inputBorder = focused ? theme.primary : amountNum > 0 ? `${theme.primary}66` : 'transparent';
 
@@ -127,7 +132,7 @@ function EarnSectionBase({
                 { color: amountNum > 0 ? theme.primary : theme.textMuted },
               ]}
             >
-              {DEFAULT_CURRENCY.symbol}
+              {currency.symbol}
             </Text>
           </View>
 
@@ -139,7 +144,7 @@ function EarnSectionBase({
                   {t(plan.earnStamps === 1 ? 'stampScreen.stampsPreview_one' : 'stampScreen.stampsPreview_other', { count: plan.earnStamps })}
                 </Text>
               </View>
-            ) : plan.amountTooLow ? (
+            ) : plan.purchaseOnly ? null : plan.amountTooLow ? (
               <TintNotice
                 text={t('stampScreen.amountTooLow', { amount: amountPerStampLabel })}
                 color={theme.warning}
@@ -178,7 +183,9 @@ function EarnSectionBase({
           isRTL={isRTL}
         />
       )}
-      {wheelMinSpend > 0 && plan.earnStamps > 0 && (
+      {plan.purchaseOnly ? (
+        <TintNotice text={t('stampScreen.wheelOnly')} color={theme.success} icon={JitGames} isRTL={isRTL} />
+      ) : wheelMinSpend > 0 && plan.earnStamps > 0 && (
         <TintNotice
           text={
             amountNum >= wheelMinSpend

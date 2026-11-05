@@ -3,7 +3,8 @@ import { Alert } from 'react-native';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useSendPushNotification } from '@/hooks/useQueryHooks';
 import { getErrorMessage } from '@/utils/error';
-import { formatCurrency, DEFAULT_CURRENCY, getIntlLocale } from '@/config/currency';
+import { formatMoney } from '@/config/currency';
+import { getMerchantCurrency } from '@/hooks/useCurrency';
 import { formatWheelPeriod } from './WheelUI';
 import type { WheelCampaign } from './types';
 
@@ -11,8 +12,9 @@ type WheelPushSource = Pick<WheelCampaign, 'name' | 'startsAt' | 'endsAt' | 'min
   prizes: { label: string }[];
 };
 
+/** Amount in running text ("dès 100 DH"), in the merchant's currency. */
 export function formatWheelMoney(amount: number, locale: string): string {
-  return formatCurrency(amount, DEFAULT_CURRENCY, getIntlLocale(locale));
+  return formatMoney(amount, getMerchantCurrency().code, locale);
 }
 
 /** Notification announcing a wheel to every client of the merchant. */

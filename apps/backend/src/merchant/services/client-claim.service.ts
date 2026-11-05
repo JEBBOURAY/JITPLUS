@@ -8,6 +8,8 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { createHash, randomBytes } from 'crypto';
+import { Prisma } from '@prisma/client';
+import { withRetry } from '../../common/utils/retry-transaction.helper';
 import {
   CLIENT_REPOSITORY, type IClientRepository,
   MERCHANT_REPOSITORY, type IMerchantRepository,
@@ -17,17 +19,16 @@ import {
 import { MerchantTransactionService } from './merchant-transaction.service';
 import { reassignScratchDataInTx } from '../../scratch-card/scratch-merge';
 import { toE164Phone } from '../../common/utils/phone';
+import { buildPublicWebUrl } from '../../common/utils/public-web-url';
+import { MS_PER_DAY } from '../../common/constants';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 /** Effectively never — set far in the future so the merchant’s WhatsApp link never goes stale. */
-const CLAIM_TOKEN_TTL_MS = 100 * 365 * 24 * 60 * 60 * 1000;
+const CLAIM_TOKEN_TTL_MS = 100 * 365 * MS_PER_DAY;
 /** 256-bit cryptographically random token, base64url-encoded → 43 chars. */
 const CLAIM_TOKEN_BYTES = 32;
 /** Hard limit to avoid runaway loops if data has been seeded oddly. */
 const MAX_CLAIM_MERGE_CARDS = 200;
-
-/** Default fallback (used only if env var is unset — production MUST set it). */
-const DEFAULT_PUBLIC_WEB_URL = 'https://jitplus.com';
 
 export interface QuickAddInput {
   merchantId: string;
@@ -58,8 +59,7 @@ export class ClientClaimService {
   }
 
   private buildClaimUrl(rawToken: string): string {
-    const base = (process.env.PUBLIC_WEB_URL?.trim() || DEFAULT_PUBLIC_WEB_URL).replace(/\/+$/, '');
-    return `${base}/d/claim?token=${encodeURIComponent(rawToken)}`;
+    return buildPublicWebUrl(`d/claim?token=${encodeURIComponent(rawToken)}`);
   }
 
   /**
@@ -82,36 +82,8 @@ export class ClientClaimService {
       throw new NotFoundException('Commerce non trouvé');
     }
 
-    // 1. Try to reuse an existing record (idempotent per phone)
-    const existing = await this.clientRepo.findUnique({
-      where: { telephone },
-      select: { id: true, isAnonymous: true, deletedAt: true, email: true },
-    });
-
-    let clientId: string;
-    if (existing && !existing.deletedAt) {
-      if (!existing.isAnonymous) {
-        // Real registered user — reject; merchant should use the normal QR flow
-        throw new ConflictException(
-          'Ce numéro appartient déjà à un client inscrit. Demandez-lui de scanner son QR code.',
-        );
-      }
-      clientId = existing.id;
-    } else {
-      // Create a fresh anonymous account
-      const created = await this.clientRepo.create({
-        data: {
-          telephone,
-          isAnonymous: true,
-          prenom: input.prenom?.trim() || null,
-          termsAccepted: false,
-          notifPush: false,
-          notifEmail: false,
-        },
-        select: { id: true },
-      });
-      clientId = created.id;
-    }
+    // 1. Reuse the anonymous record for this phone, or create it.
+    const clientId = await this.resolveAnonymousClient(telephone, input.prenom);
 
     // 2. Credit the transaction using the existing audited flow
     //    (covers idempotency, stamp earning rules, anti-fraud caps, etc.).
@@ -135,7 +107,7 @@ export class ClientClaimService {
     const tokenHash = this.sha256Hex(rawToken);
     const expiresAt = new Date(Date.now() + CLAIM_TOKEN_TTL_MS);
 
-    await this.txRunner.run(async (tx) => {
+    await withRetry(() => this.txRunner.run(async (tx) => {
       // Replace any older un-consumed claim for the SAME (client, merchant) pair
       // so each merchant always has at most one live link, while parallel claims
       // from other merchants on the same anonymous client stay valid.
@@ -151,7 +123,7 @@ export class ClientClaimService {
           expiresAt,
         },
       });
-    }, { isolationLevel: 'Serializable' });
+    }, { isolationLevel: 'Serializable' }));
 
     return {
       transaction,
@@ -165,6 +137,53 @@ export class ClientClaimService {
         isAnonymous: true,
       },
     };
+  }
+
+  /**
+   * Returns the anonymous client for `telephone`, creating it if needed.
+   * Two concurrent Quick-Adds for the same new phone both miss the lookup;
+   * the loser hits the unique index (P2002) and re-reads the winner's row
+   * instead of failing with 409.
+   */
+  private async resolveAnonymousClient(telephone: string, prenom?: string | null): Promise<string> {
+    const reuse = async (): Promise<string | null> => {
+      const existing = await this.clientRepo.findUnique({
+        where: { telephone },
+        select: { id: true, isAnonymous: true, deletedAt: true },
+      });
+      if (!existing || existing.deletedAt) return null;
+      if (!existing.isAnonymous) {
+        // Real registered user — the merchant should use the normal QR flow
+        throw new ConflictException(
+          'Ce numéro appartient déjà à un client inscrit. Demandez-lui de scanner son QR code.',
+        );
+      }
+      return existing.id;
+    };
+
+    const found = await reuse();
+    if (found) return found;
+
+    try {
+      const created = await this.clientRepo.create({
+        data: {
+          telephone,
+          isAnonymous: true,
+          prenom: prenom?.trim() || null,
+          termsAccepted: false,
+          notifPush: false,
+          notifEmail: false,
+        },
+        select: { id: true },
+      });
+      return created.id;
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        const raced = await reuse();
+        if (raced) return raced;
+      }
+      throw err;
+    }
   }
 
   /**
@@ -200,14 +219,14 @@ export class ClientClaimService {
     const tokenHash = this.sha256Hex(rawToken);
     const expiresAt = new Date(Date.now() + CLAIM_TOKEN_TTL_MS);
 
-    await this.txRunner.run(async (tx) => {
+    await withRetry(() => this.txRunner.run(async (tx) => {
       await tx.clientClaim.deleteMany({
         where: { clientId, merchantId, consumedAt: null },
       });
       await tx.clientClaim.create({
         data: { tokenHash, clientId, merchantId, expiresAt },
       });
-    }, { isolationLevel: 'Serializable' });
+    }, { isolationLevel: 'Serializable' }));
 
     return {
       claim: { url: this.buildClaimUrl(rawToken), expiresAt },

@@ -47,11 +47,17 @@ export function useStampsOverview(
 
 // ── Merchants (discover) ──
 
-export function useMerchants(enabled = true) {
+/**
+ * `scope` is the client id, or 'guest': the list differs per account (deal
+ * titles, blocked merchants), so a login never shows the guest list.
+ */
+export function useMerchants(scope: string, enabled = true) {
   return useQuery<Merchant[]>({
-    queryKey: queryKeys.merchants,
+    queryKey: [...queryKeys.merchants, scope],
     queryFn: () => api.getMerchants(),
-    staleTime: 30 * 60 * 1000, // 30 min — merchant list changes very rarely
+    // 5 min, like the server cache: the list itself changes rarely, but it
+    // carries the deal badges, which go stale much faster.
+    staleTime: 5 * 60 * 1000,
     enabled,
   });
 }

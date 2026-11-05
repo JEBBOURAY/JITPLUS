@@ -1,3 +1,4 @@
+import { MS_PER_DAY } from '../constants';
 // Morocco wall-clock helpers based on the IANA zone (not a fixed UTC+1 offset):
 // Africa/Casablanca switches to UTC+0 during Ramadan.
 
@@ -103,7 +104,7 @@ export function diffDaysYmd(fromYmd: string, toYmd: string): number {
   const a = parseYmd(fromYmd);
   const b = parseYmd(toYmd);
   if (!a || !b) return NaN;
-  return Math.round((Date.UTC(b[0], b[1] - 1, b[2]) - Date.UTC(a[0], a[1] - 1, a[2])) / 86_400_000);
+  return Math.round((Date.UTC(b[0], b[1] - 1, b[2]) - Date.UTC(a[0], a[1] - 1, a[2])) / MS_PER_DAY);
 }
 
 /** 'DD/MM' in Morocco time, for push texts. */

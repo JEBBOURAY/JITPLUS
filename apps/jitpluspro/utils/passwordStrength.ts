@@ -5,5 +5,7 @@
 export {
   isValidPassword,
   getPasswordStrength,
+  getPasswordRules,
+  IOS_PASSWORD_RULES,
 } from '@jitplus/shared/src/passwordStrength';
 

@@ -1,20 +1,18 @@
 import { Injectable, Logger, Inject } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import {
-  MERCHANT_REPOSITORY,
-  CAMPAIGN_SENT_TRACKER_REPOSITORY,
-  type IMerchantRepository,
-  type ICampaignSentTrackerRepository,
-} from '../repositories';
-import { IPushProvider, PUSH_PROVIDER, IMailProvider, MAIL_PROVIDER } from '../interfaces';
+import { MERCHANT_REPOSITORY, type IMerchantRepository } from '../repositories';
+import { IMailProvider, MAIL_PROVIDER } from '../interfaces';
 import { pickEmailLang } from '../../mail/transactional-i18n';
-import { MerchantInboxService } from '../../merchant-inbox/merchant-inbox.service';
 import {
-  isCronEnabled,
-  dayTag,
-  merchantAlreadySent,
-  merchantMarkSent,
-} from './cron-utils';
+  MerchantNotifierService,
+  NOTIFY_TARGET_SELECT,
+  tally,
+  type NotifyResult,
+} from '../../merchant-inbox/merchant-notifier.service';
+import { dayTag, mapLimit, MERCHANT_PUSH_CONCURRENCY, cronEnabledOnce } from './cron-utils';
+import { NOTIF_MESSAGES } from './merchant-notif-messages';
+import { type AppLang, pickAppLang } from '../utils/app-lang';
+import { MS_PER_DAY } from '../constants';
 
 /**
  * Merchant lifecycle pushes — premium-aware automated alerts that close
@@ -30,11 +28,8 @@ import {
  * (`CampaignSentTracker` dedup, channel = 'PUSH').
  */
 
-type Lang = 'fr' | 'en' | 'ar';
-
-function lang(v?: string | null): Lang {
-  return v === 'en' || v === 'ar' ? v : 'fr';
-}
+type Lang = AppLang;
+const lang = pickAppLang;
 
 const MESSAGES = {
   trialEnding: {
@@ -129,166 +124,154 @@ const QUOTA_THRESHOLD = 0.8;
 const ENDING_SOON_DAYS = 3;
 const ENDING_TOMORROW_DAYS = 1;
 
+/** Days after the end of Premium at which the win-back offer goes out. */
+const WINBACK_AFTER_DAYS = 7;
+
 @Injectable()
 export class MerchantLifecycleService {
   private readonly logger = new Logger(MerchantLifecycleService.name);
 
   constructor(
     @Inject(MERCHANT_REPOSITORY) private readonly merchantRepo: IMerchantRepository,
-    @Inject(CAMPAIGN_SENT_TRACKER_REPOSITORY) private readonly campaignTrackerRepo: ICampaignSentTrackerRepository,
-    @Inject(PUSH_PROVIDER) private readonly pushProvider: IPushProvider,
     @Inject(MAIL_PROVIDER) private readonly mailProvider: IMailProvider,
-    private readonly inbox: MerchantInboxService,
+    private readonly notifier: MerchantNotifierService,
   ) {}
 
   /** 09:30 UTC daily = 10:30 Maroc (after the 09:00/09:01 reminder slots) */
   @Cron('30 9 * * *')
   async runDaily(): Promise<void> {
-    if (!isCronEnabled(this.logger, 'MerchantLifecycle.runDaily')) return;
+    if (!(await cronEnabledOnce(this.logger, 'MerchantLifecycle.runDaily'))) return;
     this.logger.log('Starting merchant lifecycle pushes');
 
     try {
+      // No push-token filter: plan and quota alerts also land in the in-app inbox.
       const merchants = await this.merchantRepo.findMany({
-        where: {
-          isActive: true,
-          deletedAt: null,
-          pushToken: { not: null },
-          notifPush: true,
-          onboardingCompleted: true,
-        },
+        where: { isActive: true, deletedAt: null, onboardingCompleted: true },
         select: {
-          id: true,
+          ...NOTIFY_TARGET_SELECT,
           email: true,
-          pushToken: true,
           language: true,
           plan: true,
           planExpiresAt: true,
           trialStartedAt: true,
           emailQuotaUsed: true,
           emailQuotaMax: true,
+          emailQuotaResetAt: true,
           whatsappQuotaUsed: true,
           whatsappQuotaMax: true,
+          whatsappQuotaResetAt: true,
         },
       });
 
       const now = Date.now();
-      const tag = dayTag();
-      const staleTokenIds: string[] = [];
-      let trialAlerts = 0;
-      let premiumAlerts = 0;
-      let emailAlerts = 0;
-      let waAlerts = 0;
-
-      for (const m of merchants) {
-        if (!m.pushToken) continue;
+      // Merchants in parallel; the alerts of one merchant stay sequential (frequency cap).
+      const perMerchant = await mapLimit(merchants, MERCHANT_PUSH_CONCURRENCY, async (m) => {
+        const results: NotifyResult[] = [];
         const l = lang(m.language);
 
         // ── Plan / trial expiry ─────────────────────────────────────────
-        if (m.plan === 'PREMIUM' && m.planExpiresAt) {
-          const ms = m.planExpiresAt.getTime() - now;
-          const days = Math.ceil(ms / 86_400_000);
+        if (m.planExpiresAt) {
+          const expiresAt = m.planExpiresAt.getTime();
+          const expiryTag = dayTag(m.planExpiresAt);
+          const days = Math.ceil((expiresAt - now) / MS_PER_DAY);
 
-          // Only fire on exact 3-day or 1-day windows to keep cadence sane
-          if (days === ENDING_SOON_DAYS || days === ENDING_TOMORROW_DAYS) {
+          if (m.plan === 'PREMIUM' && (days === ENDING_SOON_DAYS || days === ENDING_TOMORROW_DAYS)) {
+            // Only fire on exact 3-day or 1-day windows to keep cadence sane
             const isTrial = !!m.trialStartedAt;
-            const msgGroup = isTrial ? MESSAGES.trialEnding : MESSAGES.premiumEnding;
-            const msg = msgGroup[l];
-            const campaignId = `merchant_${isTrial ? 'trial' : 'premium'}_ending_${days}d_${tag}`;
-
-            if (!(await merchantAlreadySent(this.campaignTrackerRepo, m.id, campaignId, 'PUSH'))) {
-              const title = msg.title(days);
-              const body = msg.body(days);
-              const result = await this.pushProvider.sendToMerchant(
-                m.pushToken,
-                title,
-                body,
-                { event: 'plan_expiring', action: 'open_plan', daysLeft: String(days) },
-              );
-              if (result.invalidToken) {
-                staleTokenIds.push(m.id);
-                continue;
-              }
-              await this.inbox.record(m.id, { category: 'PLAN', title, body, action: 'open_plan' });
-              if (isTrial) trialAlerts++;
-              else premiumAlerts++;
-              await merchantMarkSent(this.campaignTrackerRepo, m.id, campaignId, 'PUSH');
-              // Best-effort: also send an email reminder to the merchant
-              if (m.email) {
-                this.mailProvider
-                  .sendPlanExpiring(m.email, days, isTrial ? 'trial' : 'premium', pickEmailLang(m.language))
-                  .catch((err) => this.logger.warn(`Plan-expiring email failed for ${m.id}: ${err?.message || err}`));
-              }
+            const msg = (isTrial ? MESSAGES.trialEnding : MESSAGES.premiumEnding)[l];
+            const r = await this.notifier.notify(m, {
+              category: 'PLAN',
+              title: msg.title(days),
+              body: msg.body(days),
+              action: 'open_plan',
+              event: 'plan_expiring',
+              data: { daysLeft: String(days) },
+              campaignId: `merchant_${isTrial ? 'trial' : 'premium'}_ending_${days}d_${expiryTag}`,
+            });
+            results.push(r);
+            // Best-effort: also send an email reminder to the merchant
+            if (r !== 'duplicate' && m.email) {
+              this.mailProvider
+                .sendPlanExpiring(m.email, days, isTrial ? 'trial' : 'premium', pickEmailLang(m.language))
+                .catch((err) => this.logger.warn(`Plan-expiring email failed for ${m.id}: ${err?.message || err}`));
             }
+          } else if (expiresAt <= now && expiresAt > now - MS_PER_DAY) {
+            // Premium ended in the last 24 h (the plan itself is downgraded lazily).
+            const msg = NOTIF_MESSAGES.planExpired[l];
+            results.push(await this.notifier.notify(m, {
+              category: 'PLAN',
+              title: msg.title,
+              body: msg.body,
+              action: 'open_plan',
+              event: 'plan_expired',
+              campaignId: `merchant_plan_expired_${expiryTag}`,
+            }));
+          } else if (
+            expiresAt <= now - WINBACK_AFTER_DAYS * MS_PER_DAY &&
+            expiresAt > now - (WINBACK_AFTER_DAYS + 1) * MS_PER_DAY
+          ) {
+            const msg = NOTIF_MESSAGES.winback[l];
+            results.push(await this.notifier.notify(m, {
+              category: 'OFFER',
+              title: msg.title,
+              body: msg.body,
+              action: 'open_plan',
+              event: 'plan_winback',
+              campaignId: `merchant_plan_winback_${expiryTag}`,
+            }));
           }
         }
 
-        // ── Quota alerts (Premium-only features) ────────────────────────
+        // ── Quota alerts (Premium-only features), once per quota period ──
         if (m.plan === 'PREMIUM') {
-          // Email quota
-          if (
-            m.emailQuotaMax > 0 &&
-            m.emailQuotaUsed / m.emailQuotaMax >= QUOTA_THRESHOLD &&
-            m.emailQuotaUsed < m.emailQuotaMax
-          ) {
-            const campaignId = `merchant_email_quota_low_${tag}`;
-            if (!(await merchantAlreadySent(this.campaignTrackerRepo, m.id, campaignId, 'PUSH'))) {
-              const msg = MESSAGES.emailQuotaLow[l];
-              const body = msg.body(m.emailQuotaUsed, m.emailQuotaMax);
-              const result = await this.pushProvider.sendToMerchant(
-                m.pushToken,
-                msg.title,
-                body,
-                { event: 'quota_low', action: 'open_plan', channel: 'email' },
-              );
-              if (result.invalidToken) {
-                staleTokenIds.push(m.id);
-                continue;
-              }
-              await this.inbox.record(m.id, { category: 'QUOTA', title: msg.title, body, action: 'open_plan' });
-              emailAlerts++;
-              await merchantMarkSent(this.campaignTrackerRepo, m.id, campaignId, 'PUSH');
-            }
-          }
-
-          // WhatsApp quota
-          if (
-            m.whatsappQuotaMax > 0 &&
-            m.whatsappQuotaUsed / m.whatsappQuotaMax >= QUOTA_THRESHOLD &&
-            m.whatsappQuotaUsed < m.whatsappQuotaMax
-          ) {
-            const campaignId = `merchant_wa_quota_low_${tag}`;
-            if (!(await merchantAlreadySent(this.campaignTrackerRepo, m.id, campaignId, 'PUSH'))) {
-              const msg = MESSAGES.whatsappQuotaLow[l];
-              const body = msg.body(m.whatsappQuotaUsed, m.whatsappQuotaMax);
-              const result = await this.pushProvider.sendToMerchant(
-                m.pushToken,
-                msg.title,
-                body,
-                { event: 'quota_low', action: 'open_plan', channel: 'whatsapp' },
-              );
-              if (result.invalidToken) {
-                staleTokenIds.push(m.id);
-                continue;
-              }
-              await this.inbox.record(m.id, { category: 'QUOTA', title: msg.title, body, action: 'open_plan' });
-              waAlerts++;
-              await merchantMarkSent(this.campaignTrackerRepo, m.id, campaignId, 'PUSH');
-            }
-          }
+          results.push(...await this.quotaAlerts(m, l, 'email'));
+          results.push(...await this.quotaAlerts(m, l, 'whatsapp'));
         }
-      }
+        return results;
+      });
 
-      if (staleTokenIds.length > 0) {
-        await this.merchantRepo
-          .updateMany({ where: { id: { in: staleTokenIds } }, data: { pushToken: null } })
-          .catch((e: unknown) => this.logger.warn(`Failed to clean stale tokens: ${e}`));
-      }
-
-      this.logger.log(
-        `Lifecycle pushes — trial:${trialAlerts}, premium:${premiumAlerts}, email:${emailAlerts}, wa:${waAlerts}`,
-      );
+      this.logger.log(`Lifecycle pushes (${merchants.length} merchants): ${tally(perMerchant.flat())}`);
     } catch (error) {
       this.logger.error('Merchant lifecycle cron failed', error);
     }
+  }
+
+  private async quotaAlerts(
+    m: {
+      id: string; pushToken: string | null; notifPush: boolean; notifPrefs: unknown;
+      emailQuotaUsed: number; emailQuotaMax: number; emailQuotaResetAt: Date;
+      whatsappQuotaUsed: number; whatsappQuotaMax: number; whatsappQuotaResetAt: Date;
+    },
+    l: Lang,
+    channel: 'email' | 'whatsapp',
+  ): Promise<NotifyResult[]> {
+    const used = channel === 'email' ? m.emailQuotaUsed : m.whatsappQuotaUsed;
+    const max = channel === 'email' ? m.emailQuotaMax : m.whatsappQuotaMax;
+    const period = dayTag(channel === 'email' ? m.emailQuotaResetAt : m.whatsappQuotaResetAt);
+    const prefix = channel === 'email' ? 'merchant_email_quota' : 'merchant_wa_quota';
+    if (max <= 0 || used / max < QUOTA_THRESHOLD) return [];
+
+    if (used >= max) {
+      const msg = NOTIF_MESSAGES[channel === 'email' ? 'emailQuotaFull' : 'whatsappQuotaFull'][l];
+      return [await this.notifier.notify(m, {
+        category: 'QUOTA',
+        title: msg.title,
+        body: msg.body,
+        action: 'open_plan',
+        event: 'quota_full',
+        data: { channel },
+        campaignId: `${prefix}_full_${period}`,
+      })];
+    }
+    const msg = MESSAGES[channel === 'email' ? 'emailQuotaLow' : 'whatsappQuotaLow'][l];
+    return [await this.notifier.notify(m, {
+      category: 'QUOTA',
+      title: msg.title,
+      body: msg.body(used, max),
+      action: 'open_plan',
+      event: 'quota_low',
+      data: { channel },
+      campaignId: `${prefix}_low_${period}`,
+    })];
   }
 }

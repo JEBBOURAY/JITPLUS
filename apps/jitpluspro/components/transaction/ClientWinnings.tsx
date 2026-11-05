@@ -16,7 +16,8 @@ import { formatDate, formatDateTime } from '@/utils/date';
 import { MAX_AMOUNT_DIGITS } from '@/constants/app';
 import { computeStampsForAmount } from '@/utils/stamps';
 import { sanitizeAmountInput } from '@/utils/stampTransaction';
-import { formatCurrency, DEFAULT_CURRENCY, getIntlLocale } from '@/config/currency';
+import { formatCurrency, getIntlLocale } from '@/config/currency';
+import { useCurrency, useMoney } from '@/hooks/useCurrency';
 import {
   computeCouponDiscount,
   formatCouponCode,
@@ -85,9 +86,11 @@ function ClientWinningsBase({ prizes, coupons, loading, clientId, defaultAmount 
   const redeem = useRedeemCoupon();
   const busy = fulfil.isPending || redeem.isPending;
 
+  const currency = useCurrency();
+  const { money: textMoney } = useMoney();
   const money = useCallback(
-    (value: number) => formatCurrency(value, DEFAULT_CURRENCY, getIntlLocale(locale)),
-    [locale],
+    (value: number) => formatCurrency(value, currency, getIntlLocale(locale)),
+    [currency, locale],
   );
 
   const select = useCallback(
@@ -298,7 +301,7 @@ function ClientWinningsBase({ prizes, coupons, loading, clientId, defaultAmount 
                 const blocked = item.canRedeem
                   ? null
                   : couponBlockedReason(item.checks, t, locale) ?? t('scratch.validate.anonymous');
-                const value = formatRewardValue(coupon, t);
+                const value = formatRewardValue(coupon, t, textMoney);
                 return (
                   <View
                     key={coupon.id}
@@ -359,7 +362,7 @@ function ClientWinningsBase({ prizes, coupons, loading, clientId, defaultAmount 
                         />
                         {couponRules.minPurchase > 0 && amountNum > 0 && amountNum < couponRules.minPurchase && (
                           <Text style={[styles.meta, { color: theme.danger, textAlign }]}>
-                            {t('scratch.validate.minPurchaseNo', { amount: couponRules.minPurchase })}
+                            {t('scratch.validate.minPurchaseNo', { amount: textMoney(couponRules.minPurchase) })}
                           </Text>
                         )}
                         {(couponRules.discount > 0 || amountNum > 0) && (

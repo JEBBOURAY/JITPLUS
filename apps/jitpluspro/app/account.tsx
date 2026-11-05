@@ -69,7 +69,7 @@ export default function AccountScreen() {
   const { isDark: themeIsDark, setDarkMode } = theme;
   const toggleDark = useCallback(() => setDarkMode(!themeIsDark), [themeIsDark, setDarkMode]);
 
-  const { data: referralData } = useReferral(!isTeamMember);
+  const { data: referralData } = useReferral(!!merchant && !isTeamMember);
   const referralCode = referralData?.referralCode ?? null;
 
   // Inline language switch (pills). Mirrors the RTL-restart flow from LanguageModal.
@@ -143,6 +143,7 @@ export default function AccountScreen() {
   const goToReferral = useCallback(() => router.push('/referral'), [router]);
   const goToLegal = useCallback(() => router.push('/legal'), [router]);
   const goToSecurity = useCallback(() => router.push('/security'), [router]);
+  const goToNotifications = useCallback(() => router.push('/notification-settings'), [router]);
   const goToStore = useCallback(() => router.push('/stores'), [router]);
   const goToDevices = useCallback(() => router.push('/security?tab=devices'), [router]);
   const goToDelete = useCallback(() => router.push('/security?tab=delete'), [router]);
@@ -302,6 +303,7 @@ export default function AccountScreen() {
             goToDevices={goToDevices}
             goToLegal={goToLegal}
             goToStore={goToStore}
+            goToNotifications={goToNotifications}
             openSupport={openSupport}
             t={t}
           />

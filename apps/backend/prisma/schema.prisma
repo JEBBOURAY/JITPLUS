@@ -8,7 +8,7 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
+  provider   = "postgresql"
   url        = env("DATABASE_URL")
   directUrl  = env("DIRECT_DATABASE_URL")
   extensions = [pg_trgm]
@@ -57,6 +57,8 @@ model Merchant {
   /// Last change of stampValidityDays: the expiry countdown never starts before it
   stampValiditySince   DateTime?          @map("stamp_validity_since")
   activeRewardId       String?            @map("active_reward_id")
+  /// ISO 4217 code of the currency amounts are expressed in (MAD, XAF, XOF…)
+  currency             String             @default("MAD") @db.VarChar(3)
   // Plan Freemium — les nouveaux marchands démarrent en FREE (le flow d'inscription attribue un essai PREMIUM via getTrialData())
   plan                 MerchantPlan       @default(FREE)
   planExpiresAt        DateTime?          @map("plan_expires_at")
@@ -66,12 +68,16 @@ model Merchant {
   isActive            Boolean   @default(true) @map("is_active")
   emailVerified       Boolean   @default(false) @map("email_verified")
   onboardingCompleted Boolean   @default(false) @map("onboarding_completed")
+  // Déprécié : plus lu ni écrit. À supprimer (DROP COLUMN) au prochain déploiement, une fois l'ancienne révision retirée.
   welcomeGuideVisible Boolean   @default(false) @map("welcome_guide_visible")
   failedLoginAttempts Int       @default(0) @map("failed_login_attempts")
   lockedUntil         DateTime? @map("locked_until")
   // ── Préférences notifications (crons marketing / opt-out RGPD) ──
   notifPush           Boolean   @default(true) @map("notif_push")
   notifEmail          Boolean   @default(true) @map("notif_email")
+  /// Per-category push opt-outs {news, tips, reminders, reports}: a missing key means ON.
+  /// Plan, quota, status and security pushes ignore it.
+  notifPrefs          Json?     @map("notif_prefs")
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
   deletedAt           DateTime? @map("deleted_at")
@@ -109,7 +115,7 @@ model Merchant {
   emailQuotaResetAt DateTime @default(now())
 
   // Admin notifications
-  lastAdminNotifReadAt DateTime?                  @map("last_admin_notif_read_at")
+  lastAdminNotifReadAt DateTime?                   @map("last_admin_notif_read_at")
   notificationReads    MerchantNotificationRead[]
   inboxNotifications   MerchantInboxNotification[]
 
@@ -132,24 +138,26 @@ model Merchant {
   // Public promotions ("bons plans")
   deals Deal[]
 
-  @@index([isActive])
+  // Single-use QR codes slipped into e-commerce parcels
+  stampCodes StampCode[]
+
   @@index([deletedAt])
   // Discovery queries filter by category + city — composite index avoids full table scans
   @@index([categorie, ville, isActive])
   // Geospatial proximity queries (nearby merchants)
   @@index([latitude, longitude])
-  // Admin dashboard: count by plan, filter active+plan
-  @@index([plan])
+  // Admin dashboard: count by plan / filter active+plan → [isActive, plan] and [plan, isActive, createdAt]
   @@index([isActive, plan])
   // Admin list filtering: plan + active + date sort
   @@index([plan, isActive, createdAt(sort: Desc)])
-  @@index([appleId])
   // Referral analytics: count + list merchants referred by another merchant
   @@index([referredById])
   // Merchant-lifecycle cron: scan PREMIUM merchants with expiring plan (partial index added via raw SQL in migration)
   @@index([plan, planExpiresAt])
   // Trial reminders cron: scan merchants on trial sorted by start date (partial index added via raw SQL in migration)
   @@index([trialStartedAt])
+  // FK referred_by_client_id (ON DELETE SET NULL): client deletion / referral lookups.
+  @@index([referredByClientId])
   @@map("merchants")
 }
 
@@ -176,7 +184,6 @@ model Store {
   merchant   Merchant    @relation(fields: [merchantId], references: [id], onDelete: Cascade)
   dealStores DealStore[]
 
-  @@index([merchantId])
   // Active store lookups by merchant (discovery + nearby)
   @@index([merchantId, isActive])
   // Geospatial store queries for nearby search
@@ -269,6 +276,8 @@ enum AuditAction {
   CREATE_DEAL
   REMOVE_DEAL
   RESTORE_DEAL
+  CREATE_STAMP_CODES
+  REVOKE_STAMP_CODES
   // Future-proof slots
   RESET_PASSWORD
   UPDATE_PLAN_DURATION
@@ -311,7 +320,6 @@ model AuditLog {
   userAgent   String?         @map("user_agent")
   createdAt   DateTime        @default(now()) @map("created_at")
 
-  @@index([adminId])
   @@index([merchantId])
   @@index([action])
   @@index([targetType, targetId])
@@ -388,10 +396,9 @@ model Client {
   coupons              Coupon[]
   sessions             ClientSession[]
   dealReports          DealReport[]
+  stampCodes           StampCode[]
 
   @@index([nom])
-  @@index([email])
-  @@index([telephone])
   // Client search is ILIKE '%term%' (buildClientSearchFilter): only trigram indexes serve it
   @@index([prenom(ops: raw("gin_trgm_ops"))], type: Gin, map: "clients_prenom_trgm_idx")
   @@index([nom(ops: raw("gin_trgm_ops"))], type: Gin, map: "clients_nom_trgm_idx")
@@ -400,12 +407,10 @@ model Client {
   @@index([deletedAt, createdAt])
   @@index([countryCode])
   // refreshTokenHash is @unique — implicit index
-  // Notification broadcast: filters on pushToken IS NOT NULL + notifPush = true
-  @@index([notifPush])
   // Broadcast-optimised: covers WHERE notifPush=true AND deletedAt IS NULL AND pushToken IS NOT NULL
   @@index([notifPush, deletedAt, pushToken])
-  @@index([googleId])
-  @@index([appleId])
+  // Token lookups: dedup on registration (updatePushToken) and stale-token cleanup (pushToken IN …)
+  @@index([pushToken])
   // Daily deal digest: subscribers of a city, read in id order batch by batch
   @@index([dealAlertsEnabled, dealAlertCityKey, id])
   @@map("clients")
@@ -427,6 +432,41 @@ model Otp {
 /// Single-use nonces for v2 QR tokens. A successful scan consumes the nonce so the
 /// same QR cannot be replayed. Expired rows are pruned opportunistically on insert
 /// and (optionally) by a periodic task.
+/// Socket.IO payloads larger than 8 kB, relayed between Cloud Run instances by
+/// @socket.io/postgres-adapter (src/events/postgres-io.adapter.ts), which
+/// inserts, reads and purges this table itself. Schema fixed by the adapter.
+model SocketIoAttachment {
+  id        BigInt    @unique @default(autoincrement())
+  createdAt DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+  payload   Bytes?
+
+  @@map("socket_io_attachments")
+}
+
+/// One row per (cron, scheduled minute). With several Cloud Run instances the
+/// instance whose INSERT succeeds runs the job; the others see the conflict
+/// and skip. Rows older than 30 days are purged opportunistically.
+model CronRun {
+  name String   @db.VarChar(100)
+  slot DateTime
+
+  @@id([name, slot])
+  @@index([slot])
+  @@map("cron_runs")
+}
+
+/// OTP codes sent per identifier (email / phone) and UTC day, shared by every
+/// instance so the daily cap holds across instances and restarts.
+model OtpSendCounter {
+  identifier String   @db.VarChar(320)
+  day        DateTime @db.Date
+  count      Int      @default(0)
+
+  @@id([identifier, day])
+  @@index([day])
+  @@map("otp_send_counters")
+}
+
 model QrNonce {
   nonce     String   @id @db.VarChar(64)
   clientId  String   @map("client_id")
@@ -455,7 +495,6 @@ model ClientClaim {
   client   Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
 
-  @@index([clientId])
   @@index([merchantId])
   @@index([expiresAt])
   @@index([clientId, consumedAt])
@@ -467,7 +506,7 @@ model LoyaltyCard {
   clientId             String    @map("client_id")
   merchantId           String    @map("merchant_id")
   stamps               Int       @default(0)
-  /// Last EARN_STAMPS / REDEEM_REWARD: reference for stamp expiry
+  /// Last EARN_STAMPS / REDEEM_REWARD / PURCHASE: reference for stamp expiry
   lastVisitAt          DateTime  @default(now()) @map("last_visit_at")
   /// Set when the "stamps expire soon" push was sent; cleared on the next visit
   expiryReminderSentAt DateTime? @map("expiry_reminder_sent_at")
@@ -479,8 +518,6 @@ model LoyaltyCard {
   merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Restrict)
 
   @@unique([clientId, merchantId])
-  @@index([merchantId])
-  @@index([clientId])
   // Client-side wallet view: list active cards for a client (filter deactivatedAt IS NULL)
   @@index([clientId, deactivatedAt])
   @@index([merchantId, createdAt])
@@ -510,6 +547,8 @@ model Transaction {
   /// Optional client-supplied key (UUIDv4) that dedupes safe retries of POST /merchant/transactions.
   /// Unique per merchant via a partial index (allows NULL for rows created without a key).
   idempotencyKey  String?           @map("idempotency_key") @db.VarChar(64)
+  /// Set when the stamps came from an e-commerce QR code (parcel / delivery)
+  stampCodeId     String?           @unique @map("stamp_code_id")
   createdAt       DateTime          @default(now()) @map("created_at")
 
   client            Client             @relation(fields: [clientId], references: [id], onDelete: Restrict)
@@ -517,6 +556,7 @@ model Transaction {
   reward            Reward?            @relation(fields: [rewardId], references: [id], onDelete: SetNull)
   teamMember        TeamMember?        @relation(fields: [teamMemberId], references: [id], onDelete: SetNull)
   luckyWheelTickets LuckyWheelTicket[]
+  stampCode         StampCode?         @relation(fields: [stampCodeId], references: [id], onDelete: SetNull)
 
   @@index([merchantId, status, createdAt])
   @@index([clientId, status, createdAt])
@@ -533,8 +573,7 @@ model Transaction {
   @@index([merchantId, giftStatus, createdAt])
   // Dashboard + transaction history: merchant sorted by date
   @@index([merchantId, createdAt(sort: Desc)])
-  // Idempotency lookup — partial unique index added via raw SQL (see migration).
-  @@index([merchantId, idempotencyKey])
+  // Idempotency lookup: served by the partial unique index transactions_merchant_id_idempotency_key_unique (raw SQL, migration 20260424120000).
   @@map("transactions")
 }
 
@@ -545,6 +584,8 @@ enum TransactionType {
   /// Informational history entry (0 stamps), e.g. the points → stamps conversion
   LOYALTY_PROGRAM_CHANGE
   LUCKY_WHEEL_WIN
+  /// Purchase recorded without stamps (0 stamps) because it only reaches a lucky-wheel minimum spend
+  PURCHASE
   /// Coupon used at the till (stamps = bonus stamps for BONUS_STAMPS coupons, 0 otherwise)
   COUPON_REDEEM
 }
@@ -627,6 +668,9 @@ model Notification {
   // Merchant history + client notification list: merchantId + createdAt DESC
   @@index([merchantId, createdAt(sort: Desc)])
   @@index([audience, createdAt(sort: Desc)])
+  // Merchant broadcast history and client feed broadcasts: skips the per-scan
+  // personal rows that dominate a merchant's notifications.
+  @@index([merchantId, isBroadcast, createdAt(sort: Desc)])
   @@map("notifications")
 }
 
@@ -647,7 +691,7 @@ model MerchantNotificationRead {
 /// Personal inbox of a merchant: every automatic push sent to the Pro app
 /// (security, plan, activity, tips…) is recorded here so it also appears in
 /// the in-app Notifications screen, next to admin broadcasts.
-/// category: 'SECURITY' | 'PLAN' | 'ACTIVITY' | 'TIP' | 'SETUP' | 'QUOTA' | 'OFFER'
+/// category: 'SECURITY' | 'PLAN' | 'STATUS' | 'QUOTA' | 'ACTIVITY' | 'TIP' | 'SETUP' | 'OFFER' | 'NEWS' | 'REMINDER'
 /// action: deep-link key handled by the Pro app (e.g. 'open_plan').
 model MerchantInboxNotification {
   id         String    @id @default(uuid())
@@ -657,6 +701,8 @@ model MerchantInboxNotification {
   body       String    @db.VarChar(2000)
   action     String?   @db.VarChar(40)
   readAt     DateTime? @map("read_at")
+  /// Set when the merchant opened the app from the push itself (open-rate tracking)
+  openedAt   DateTime? @map("opened_at")
   createdAt  DateTime  @default(now()) @map("created_at")
 
   merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
@@ -684,7 +730,9 @@ model ClientNotificationStatus {
   @@unique([clientId, notificationId])
   @@index([clientId, isDismissed])
   @@index([clientId, isRead])
-  @@index([notificationId])
+  // Broadcast history read counts (notificationId IN … AND isRead); its prefix
+  // also serves every lookup the former [notificationId] index did.
+  @@index([notificationId, isRead])
   @@map("client_notification_statuses")
 }
 
@@ -703,8 +751,6 @@ model CampaignSentTracker {
 
   @@unique([clientId, campaignId, channel])
   @@unique([merchantId, campaignId, channel])
-  @@index([clientId])
-  @@index([merchantId])
   @@index([campaignId])
   // Retention cleanup: purge old rows
   @@index([sentAt])
@@ -730,7 +776,6 @@ model DeviceSession {
 
   merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
 
-  @@index([merchantId])
   @@index([merchantId, deviceId])
   @@index([merchantId, deviceName])
   // Active sessions list: "ORDER BY lastActiveAt DESC" per merchant
@@ -822,8 +867,6 @@ model PayoutRequest {
 
   client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
-  @@index([clientId])
-  @@index([status])
   @@index([status, createdAt(sort: Desc)])
   // Client payout history filtered by status (most recent first)
   @@index([clientId, status, createdAt(sort: Desc)])
@@ -904,7 +947,6 @@ model LuckyWheelPrize {
   campaign LuckyWheelCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   draws    LuckyWheelDraw[]
 
-  @@index([campaignId])
   @@index([campaignId, remaining])
   @@map("lucky_wheel_prizes")
 }
@@ -971,7 +1013,6 @@ model ClientMerchantBlock {
   merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
 
   @@unique([clientId, merchantId])
-  @@index([clientId])
   @@index([merchantId])
   @@map("client_merchant_blocks")
 }
@@ -1096,22 +1137,22 @@ model ScratchReward {
 }
 
 model ScratchCard {
-  id             String            @id @default(uuid())
-  campaignId     String            @map("campaign_id")
-  clientId       String            @map("client_id")
+  id                 String            @id @default(uuid())
+  campaignId         String            @map("campaign_id")
+  clientId           String            @map("client_id")
   /// Denormalised for merchant-scoped queries
-  merchantId     String            @map("merchant_id")
+  merchantId         String            @map("merchant_id")
   /// Filled when the card is scratched
-  rewardId       String?           @map("reward_id")
-  status         ScratchCardStatus @default(PENDING)
-  pushSentAt     DateTime?         @map("push_sent_at")
-  openedAt       DateTime?         @map("opened_at")
-  scratchedAt    DateTime?         @map("scratched_at")
-  expiresAt      DateTime          @map("expires_at")
-  reminderSentAt DateTime?         @map("reminder_sent_at")
+  rewardId           String?           @map("reward_id")
+  status             ScratchCardStatus @default(PENDING)
+  pushSentAt         DateTime?         @map("push_sent_at")
+  openedAt           DateTime?         @map("opened_at")
+  scratchedAt        DateTime?         @map("scratched_at")
+  expiresAt          DateTime          @map("expires_at")
+  reminderSentAt     DateTime?         @map("reminder_sent_at")
   /// Set when the card moved from a ghost (quick-add) account to a real one
-  claimedFromGhostAt DateTime?     @map("claimed_from_ghost_at")
-  createdAt      DateTime          @default(now()) @map("created_at")
+  claimedFromGhostAt DateTime?         @map("claimed_from_ghost_at")
+  createdAt          DateTime          @default(now()) @map("created_at")
 
   campaign ScratchCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   client   Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
@@ -1123,6 +1164,8 @@ model ScratchCard {
   @@index([campaignId, status])
   @@index([status, expiresAt])
   @@index([merchantId, status])
+  // FK reward_id (ON DELETE SET NULL): deleting a reward must not scan scratch_cards.
+  @@index([rewardId])
   @@map("scratch_cards")
 }
 
@@ -1275,4 +1318,44 @@ model DealReport {
   @@unique([dealId, clientId])
   @@index([clientId])
   @@map("deal_reports")
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── QR e-commerce (single-use codes slipped into parcels / deliveries) ───────
+// ══════════════════════════════════════════════════════════════════════════════
+
+enum StampCodeStatus {
+  ACTIVE
+  REDEEMED
+  REVOKED
+}
+
+/// Single-use QR code a merchant prints and slips into a parcel. Scanning it
+/// credits `stamps` to the client (one EARN_STAMPS transaction). The token in
+/// the QR is derived from the id with an HMAC (StampCodeTokenService), so no
+/// secret is stored and a batch can be reprinted. Codes never expire.
+model StampCode {
+  id                 String          @id @default(uuid())
+  merchantId         String          @map("merchant_id")
+  /// Codes created together share a batchId (one print sheet)
+  batchId            String          @map("batch_id")
+  label              String          @db.VarChar(80)
+  /// Snapshot taken at creation: a printed label keeps its value
+  stamps             Int
+  /// Order amount the stamps were computed from (0 when set as a stamp count)
+  amount             Float           @default(0)
+  status             StampCodeStatus @default(ACTIVE)
+  redeemedAt         DateTime?       @map("redeemed_at")
+  redeemedByClientId String?         @map("redeemed_by_client_id")
+  createdAt          DateTime        @default(now()) @map("created_at")
+
+  merchant         Merchant     @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  redeemedByClient Client?      @relation(fields: [redeemedByClientId], references: [id], onDelete: SetNull)
+  transaction      Transaction?
+
+  // FREE monthly quota + batch listing
+  @@index([merchantId, createdAt])
+  @@index([batchId, status])
+  @@index([redeemedByClientId])
+  @@map("stamp_codes")
 }

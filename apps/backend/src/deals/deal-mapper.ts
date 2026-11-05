@@ -80,6 +80,7 @@ export const CLIENT_DEAL_SELECT = {
       coverUrl: true,
       categorie: true,
       themeColor: true,
+      currency: true,
       stores: { where: { isActive: true }, orderBy: { createdAt: 'asc' }, select: STORE_SELECT },
     },
   },
@@ -108,7 +109,7 @@ export interface Position {
 }
 
 /** Active stores the deal applies to (all of them, or the selected ones). */
-export function concernedStores<T extends { id: string }>(
+function concernedStores<T extends { id: string }>(
   deal: { allStores: boolean; stores: { storeId: string }[] },
   merchantStores: T[],
 ): T[] {
@@ -157,6 +158,7 @@ export function toClientDealSummary(d: ClientDealRow, pos?: Position | null) {
       coverUrl: d.merchant.coverUrl,
       categorie: d.merchant.categorie,
       themeColor: d.merchant.themeColor,
+      currency: d.merchant.currency,
     },
   };
 }

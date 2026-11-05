@@ -16,6 +16,14 @@ export const DEFAULT_PAGE_SIZE = 20;
 /** Milliseconds in a day */
 export const MS_PER_DAY = 86_400_000;
 
+/** Admin dashboard origin, always allowed by HTTP + WebSocket CORS in production. */
+export const ADMIN_DASHBOARD_ORIGIN_DEFAULT = 'https://admin-jitplus-97259.web.app';
+
+/** Admin dashboard origin: env ADMIN_DASHBOARD_ORIGIN, else the hosted dashboard. */
+export function getAdminDashboardOrigin(): string {
+  return process.env.ADMIN_DASHBOARD_ORIGIN?.trim() || ADMIN_DASHBOARD_ORIGIN_DEFAULT;
+}
+
 /** A merchant's client is "inactive" after this many days without a visit */
 export const INACTIVE_CLIENT_DAYS = 30;
 
@@ -52,6 +60,12 @@ export const PREMIUM_MAX_STORES = 10;
 /** Max clients for FREE plan */
 export const FREE_MAX_CLIENTS = 20;
 
+/** E-commerce QR codes a FREE merchant can create per calendar month (PREMIUM: unlimited) */
+export const FREE_MAX_STAMP_CODES_PER_MONTH = 10;
+
+/** Codes created in one batch (one print run), all plans */
+export const MAX_STAMP_CODES_PER_BATCH = 500;
+
 /** Per-identifier OTP send cooldown (60 seconds) — reject re-sends within this window */
 export const OTP_COOLDOWN_MS = 60_000;
 
@@ -61,6 +75,9 @@ export const MAX_OTP_SENDS_PER_DAY = 10;
 // ── Throttle / rate-limit defaults ──────────────────────────
 /** Rate-limit window in milliseconds (1 minute) */
 export const THROTTLE_TTL = 60_000;
+
+/** Global in-process cache: hard cap on entries (LRU eviction beyond it). */
+export const CACHE_MAX_ENTRIES = 5_000;
 
 // ── Cache TTLs ──────────────────────────────────────────────
 /** How long resolved merchant plans are cached (3 min — plans rarely change) */
@@ -95,6 +112,14 @@ export const REFERRAL_STATS_CACHE_TTL = 5 * 60_000;
 export const CLIENT_REFRESH_TOKEN_DAYS = 365;
 /** Devices a client can stay signed in on at once (least recently used evicted) */
 export const MAX_SESSIONS_PER_CLIENT = 10;
+
+// ── Currency ────────────────────────────────────────────────
+/** ISO 4217 codes a merchant can pick for loyalty amounts (keep in sync with jitpluspro config/currency.ts) */
+export const SUPPORTED_CURRENCIES = [
+  'MAD', 'XAF', 'XOF', 'DZD', 'TND', 'EGP', 'MRU', 'NGN', 'GHS', 'KES',
+  'ZAR', 'GNF', 'CDF', 'RWF', 'MGA', 'EUR', 'USD',
+] as const;
+export const DEFAULT_CURRENCY = 'MAD';
 
 // ── Referral ────────────────────────────────────────────────
 /** Characters allowed in referral codes (no ambiguous chars like 0/O, I/1) */
@@ -137,4 +162,4 @@ export const MAX_LOGIN_ATTEMPTS = 5;
 export const MAX_SESSIONS_PER_MERCHANT = 5;
 /** Lockout duration in minutes */
 export const LOGIN_LOCKOUT_MINUTES = 15;
- 
+ 

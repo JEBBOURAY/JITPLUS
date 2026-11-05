@@ -1,8 +1,7 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
-  Image,
   TextInput,
   TouchableOpacity,
   StyleSheet,
@@ -12,31 +11,52 @@ import {
   ScrollView,
   Keyboard,
   Animated,
+  Easing,
+  LayoutAnimation,
 } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme, palette, brandGradient } from '@/contexts/ThemeContext';
 import { getErrorMessage } from '@/utils/error';
 import { isValidEmail } from '@/utils/validation';
 import { Eye, EyeOff, Mail, ArrowRight, ChevronDown, WifiOff, TriangleAlert } from 'lucide-react-native';
 import { JitLock } from '@/components/icons';
-import BrandName from '@/components/BrandName';
 import { useLanguage, LANGUAGES } from '@/contexts/LanguageContext';
 import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
 import { useGoogleAuth } from '@/hooks/useGoogleAuth';
 import { useAppleAuth } from '@/hooks/useAppleAuth';
 import { AppleLogo } from '@/components/AppleLogo';
-import { LinearGradient } from 'expo-linear-gradient';
 import { GoogleLogo } from '@/components/GoogleLogo';
 import { ActionButton } from '@/components/ui/ActionButton';
 import { useDir } from '@/hooks/useDir';
+import { useReduceMotion } from '@/hooks/useReduceMotion';
 import { font, icon } from '@/constants/design';
+import { useSplashStore } from '@/stores/splashStore';
+import { hapticError, hapticLight, hapticSuccess } from '@/utils/haptics';
+import LoginBackdrop from '@/components/login/LoginBackdrop';
+import LoginHeader from '@/components/login/LoginHeader';
+import KhatamDivider from '@/components/login/KhatamDivider';
+import PressScale from '@/components/login/PressScale';
+import FadeSlideIn from '@/components/login/FadeSlideIn';
 
 type LoginErrorType = 'none' | 'credentials' | 'generic';
+interface LoginError { type: LoginErrorType; message: string }
+const NO_ERROR: LoginError = { type: 'none', message: '' };
 
 const EMAIL_ANIM_DURATION = 250;
+const INTRO_ITEMS = 5;
+/** Start the intro anyway if the splash never reports that it opened. */
+const SPLASH_FALLBACK_MS = 3000;
+const AMBER_TEXT = '#92400E';
+const AMBER_TEXT_DARK = '#FCD34D';
+
+/** Layout-only ease (no create/delete), so it never fights the Animated fades. */
+const layoutEase = (duration: number) => ({
+  duration,
+  update: { type: LayoutAnimation.Types.easeInEaseOut },
+});
 
 /** First field among `keys` holding a positive number (or numeric string). */
 function readPositiveField(data: Record<string, unknown>, keys: string[]): number | null {
@@ -110,32 +130,118 @@ export default function LoginScreen() {
 
   const emailRef = useRef<TextInput>(null);
   const passwordRef = useRef<TextInput>(null);
+  // Sent by the register screen when the address already has an account.
+  const { email: prefillEmail } = useLocalSearchParams<{ email?: string }>();
+  // With the address already filled in, the password is what is left to type.
+  const focusPasswordRef = useRef(false);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
-  const [loginErrorType, setLoginErrorType] = useState<LoginErrorType>('none');
-  const [errorMessage, setErrorMessage] = useState('');
+  const [loginError, setLoginError] = useState<LoginError>(NO_ERROR);
   const [rateLimitedUntil, setRateLimitedUntil] = useState<number | null>(null);
-  const [rateRemainingSec, setRateRemainingSec] = useState(0);
+  // Minutes, not seconds: the banner shows minutes, so the screen re-renders once a minute.
+  const [rateRemainingMin, setRateRemainingMin] = useState(0);
   const [focusedField, setFocusedField] = useState<'email' | 'password' | null>(null);
 
   const [formMounted, setFormMounted] = useState(false);
   const [emailFormAnim] = useState(() => new Animated.Value(0));
 
-  const [logoAnim] = useState(() => new Animated.Value(0));
-  const [cardAnim] = useState(() => new Animated.Value(0));
+  const dark = theme.mode === 'dark';
+  const reduceMotion = useReduceMotion();
+  // The screen mounts under the animated splash; hold the intro until it opens.
+  const splashOpened = useSplashStore((s) => s.done);
+  const [splashTimedOut, setSplashTimedOut] = useState(false);
+  const introStarted = splashOpened || splashTimedOut;
 
   useEffect(() => {
-    const anim = Animated.stagger(130, [
-      Animated.spring(logoAnim, { toValue: 1, useNativeDriver: true, speed: 12, bounciness: 6 }),
-      Animated.spring(cardAnim, { toValue: 1, useNativeDriver: true, speed: 10, bounciness: 4 }),
+    if (splashOpened) return;
+    const timer = setTimeout(() => setSplashTimedOut(true), SPLASH_FALLBACK_MS);
+    return () => clearTimeout(timer);
+  }, [splashOpened]);
+
+  const [intro] = useState(() => ({
+    /** JS-driven: SVG stroke offset can't run on the native driver. */
+    draw: new Animated.Value(0),
+    reveal: new Animated.Value(0),
+    keystone: new Animated.Value(0),
+    halo: new Animated.Value(0),
+    text: new Animated.Value(0),
+    /** Google, Apple, divider, email, sign-up — staggered in that order. */
+    items: Array.from({ length: INTRO_ITEMS }, () => new Animated.Value(0)),
+    twinkle: new Animated.Value(0),
+  }));
+  const [compactAnim] = useState(() => new Animated.Value(0));
+  const [shakeAnim] = useState(() => new Animated.Value(0));
+
+  useEffect(() => {
+    if (!introStarted || reduceMotion === null) return;
+    const shown = [intro.reveal, intro.keystone, intro.text, ...intro.items];
+
+    if (reduceMotion) {
+      intro.draw.setValue(1);
+      const fade = Animated.parallel(shown.map((v) => Animated.timing(v, { toValue: 1, duration: 220, useNativeDriver: true })));
+      fade.start();
+      return () => fade.stop();
+    }
+
+    const after = (ms: number, anim: Animated.CompositeAnimation) => Animated.sequence([Animated.delay(ms), anim]);
+    const sequence = Animated.parallel([
+      Animated.timing(intro.draw, { toValue: 1, duration: 480, easing: Easing.inOut(Easing.cubic), useNativeDriver: false }),
+      after(160, Animated.spring(intro.reveal, { toValue: 1, speed: 12, bounciness: 6, useNativeDriver: true })),
+      after(280, Animated.timing(intro.text, { toValue: 1, duration: 320, easing: Easing.out(Easing.cubic), useNativeDriver: true })),
+      after(400, Animated.timing(intro.keystone, { toValue: 1, duration: 300, easing: Easing.out(Easing.back(1.7)), useNativeDriver: true })),
+      after(360, Animated.stagger(50, intro.items.map((v) => Animated.spring(v, { toValue: 1, speed: 16, bounciness: 5, useNativeDriver: true })))),
+      after(900, Animated.sequence([
+        Animated.timing(intro.twinkle, { toValue: 1, duration: 160, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+        Animated.timing(intro.twinkle, { toValue: 0, duration: 280, easing: Easing.inOut(Easing.cubic), useNativeDriver: true }),
+      ])),
     ]);
-    anim.start();
-    return () => anim.stop();
-  }, [logoAnim, cardAnim]);
+    // Lantern-like breathing of the halo behind the logo.
+    const breathe = Animated.loop(Animated.sequence([
+      Animated.timing(intro.halo, { toValue: 1, duration: 1800, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      Animated.timing(intro.halo, { toValue: 0, duration: 1800, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+    ]));
+    sequence.start();
+    breathe.start();
+    return () => {
+      sequence.stop();
+      breathe.stop();
+    };
+  }, [introStarted, reduceMotion, intro]);
+
+  // Animated styles are built once: recreating interpolations on each render
+  // (every keystroke) would detach and re-attach their native nodes.
+  const anim = useMemo(() => ({
+    items: intro.items.map((v) => ({
+      opacity: v,
+      transform: [{ translateY: v.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }],
+    })),
+    form: {
+      opacity: emailFormAnim,
+      transform: [{ translateY: emailFormAnim.interpolate({ inputRange: [0, 1], outputRange: [-6, 0] }) }],
+    },
+    chevron: {
+      transform: [{ rotate: emailFormAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] }) }],
+    },
+    shake: {
+      transform: [{
+        translateX: shakeAnim.interpolate({
+          inputRange: [0, 0.15, 0.3, 0.45, 0.6, 0.75, 1],
+          outputRange: [0, -8, 7, -5, 4, -2, 0],
+        }),
+      }],
+    },
+  }), [intro, emailFormAnim, shakeAnim]);
+
+  const greetingKey = useMemo(() => {
+    const h = new Date().getHours();
+    if (h >= 5 && h < 12) return 'login.greetingMorning';
+    if (h >= 18 || h < 5) return 'login.greetingEvening';
+    return 'login.greetingDay';
+  }, []);
 
   useEffect(() => {
     const applyOnline = (state: { isConnected: boolean | null; isInternetReachable: boolean | null }) => {
@@ -147,13 +253,14 @@ export default function LoginScreen() {
     return unsubscribe;
   }, []);
 
-  // update() zeroes rateRemainingSec before clearing rateLimitedUntil, so no reset is needed here.
+  // update() zeroes rateRemainingMin before clearing rateLimitedUntil, so no reset is needed here.
+  // Ticks every second for an exact unlock, but same-value updates don't re-render.
   useEffect(() => {
     if (!rateLimitedUntil) return;
 
     const update = () => {
-      const remaining = Math.max(0, Math.ceil((rateLimitedUntil - Date.now()) / 1000));
-      setRateRemainingSec(remaining);
+      const remaining = Math.max(0, Math.ceil((rateLimitedUntil - Date.now()) / 60_000));
+      setRateRemainingMin(remaining);
       if (remaining === 0) setRateLimitedUntil(null);
     };
 
@@ -163,14 +270,11 @@ export default function LoginScreen() {
   }, [rateLimitedUntil]);
 
   const canSubmit = isValidEmail(email) && password.length > 0;
-  const isRateLimited = rateRemainingSec > 0;
+  const isRateLimited = rateRemainingMin > 0;
 
   const clearCredentialError = useCallback(() => {
-    if (loginErrorType === 'credentials') {
-      setLoginErrorType('none');
-      setErrorMessage('');
-    }
-  }, [loginErrorType]);
+    setLoginError((e) => (e.type === 'credentials' ? NO_ERROR : e));
+  }, []);
 
   const handleEmailChange = useCallback((v: string) => {
     setEmail(v);
@@ -185,7 +289,15 @@ export default function LoginScreen() {
   const openEmailForm = useCallback(() => {
     if (formMounted) return;
 
+    // The crest shrinks and the content re-centres smoothly instead of jumping.
+    if (!reduceMotion) LayoutAnimation.configureNext(layoutEase(EMAIL_ANIM_DURATION));
     setFormMounted(true);
+    Animated.timing(compactAnim, {
+      toValue: 1,
+      duration: reduceMotion ? 0 : EMAIL_ANIM_DURATION,
+      easing: Easing.inOut(Easing.ease),
+      useNativeDriver: true,
+    }).start();
     requestAnimationFrame(() => {
       Animated.timing(emailFormAnim, {
         toValue: 1,
@@ -194,12 +306,13 @@ export default function LoginScreen() {
       }).start(({ finished }) => {
         if (finished) {
           setTimeout(() => {
-            emailRef.current?.focus();
+            (focusPasswordRef.current ? passwordRef : emailRef).current?.focus();
+            focusPasswordRef.current = false;
           }, 10);
         }
       });
     });
-  }, [formMounted, emailFormAnim]);
+  }, [formMounted, emailFormAnim, compactAnim, reduceMotion]);
 
   const closeEmailForm = useCallback(() => {
     Keyboard.dismiss();
@@ -208,24 +321,56 @@ export default function LoginScreen() {
       duration: 200,
       useNativeDriver: true,
     }).start(({ finished }) => {
-      if (finished) setFormMounted(false);
+      if (!finished) return;
+      if (!reduceMotion) LayoutAnimation.configureNext(layoutEase(EMAIL_ANIM_DURATION));
+      setFormMounted(false);
+      Animated.timing(compactAnim, {
+        toValue: 0,
+        duration: reduceMotion ? 0 : EMAIL_ANIM_DURATION,
+        easing: Easing.inOut(Easing.ease),
+        useNativeDriver: true,
+      }).start();
     });
-  }, [emailFormAnim]);
+  }, [emailFormAnim, compactAnim, reduceMotion]);
+
+  // Wrong credentials: the fields shake once, with an error buzz.
+  useEffect(() => {
+    if (loginError.type !== 'credentials') return;
+    hapticError();
+    if (reduceMotion) return;
+    shakeAnim.setValue(0);
+    const anim = Animated.timing(shakeAnim, { toValue: 1, duration: 380, easing: Easing.linear, useNativeDriver: true });
+    anim.start();
+    return () => anim.stop();
+  }, [loginError.type, reduceMotion, shakeAnim]);
+
+  // Arriving from register with a known address: fill it in and open the form.
+  useEffect(() => {
+    if (!prefillEmail || !isValidEmail(prefillEmail)) return;
+    setEmail(prefillEmail);
+    setPassword('');
+    focusPasswordRef.current = true;
+    if (formMounted) passwordRef.current?.focus();
+    else openEmailForm();
+    // Only when a new address arrives, not on every form toggle.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefillEmail]);
 
   const handleEmailDisclosure = useCallback(() => {
     if (formMounted) closeEmailForm();
     else openEmailForm();
   }, [formMounted, closeEmailForm, openEmailForm]);
 
-  const submitDisabled = isLoading || !canSubmit || !isOnline || isRateLimited;
+  // One sign-in at a time: email, Google and Apple lock each other out.
+  const authBusy = isLoading || google.isLoading || apple.isLoading;
+  const submitDisabled = authBusy || !canSubmit || !isOnline || isRateLimited;
   const submitIdle = submitDisabled && !isLoading;
 
   const handleLogin = useCallback(async () => {
     Keyboard.dismiss();
     if (submitDisabled) return;
 
-    setLoginErrorType('none');
-    setErrorMessage('');
+    setLoginError(NO_ERROR);
 
     const trimmedEmail = email.trim().toLowerCase();
 
@@ -233,6 +378,7 @@ export default function LoginScreen() {
     try {
       // Keep session persistence enabled on mobile by default.
       await signIn({ email: trimmedEmail, password }, true);
+      hapticSuccess();
       router.replace('/(tabs)');
     } catch (err: unknown) {
       const axiosErr = err as {
@@ -250,37 +396,30 @@ export default function LoginScreen() {
 
       if (status === 429) {
         const retryAfterMs = parseRetryAfterMs(err);
-        if (retryAfterMs && retryAfterMs > 0) {
+        if (retryAfterMs) {
           setRateLimitedUntil(Date.now() + retryAfterMs);
-          setLoginErrorType('none');
-          setErrorMessage('');
+          setLoginError(NO_ERROR);
         } else {
-          setLoginErrorType('generic');
-          setErrorMessage(getErrorMessage(err, t('common.genericError')));
+          setLoginError({ type: 'generic', message: getErrorMessage(err, t('common.genericError')) });
         }
       } else if (status === 401 || status === 400) {
-        setLoginErrorType('credentials');
-        setErrorMessage(t('login.invalidCredentialsGeneric'));
+        setLoginError({ type: 'credentials', message: t('login.invalidCredentialsGeneric') });
       } else if (isNetworkError) {
         const net = await NetInfo.fetch();
         setIsOnline(Boolean(net.isConnected) && net.isInternetReachable !== false);
-        setLoginErrorType('generic');
-        setErrorMessage(t('common.networkErrorMsg'));
+        setLoginError({ type: 'generic', message: t('common.networkErrorMsg') });
       } else {
-        setLoginErrorType('generic');
-        setErrorMessage(getErrorMessage(err, t('login.invalidCredentials')));
+        setLoginError({ type: 'generic', message: getErrorMessage(err, t('login.invalidCredentials')) });
       }
     } finally {
       setIsLoading(false);
     }
   }, [submitDisabled, email, password, signIn, router, t]);
 
-  const hasCredentialError = loginErrorType === 'credentials';
-  const showInlineError = loginErrorType !== 'none' && !!errorMessage;
+  const hasCredentialError = loginError.type === 'credentials';
+  const showInlineError = loginError.type !== 'none' && !!loginError.message;
 
-  const rateMinutesLabel = Math.max(1, Math.ceil(rateRemainingSec / 60));
-
-  const fieldStyle = useCallback((field: 'email' | 'password') => {
+  const fieldStyle = (field: 'email' | 'password') => {
     const isFocused = focusedField === field;
     const withError = hasCredentialError;
 
@@ -294,22 +433,27 @@ export default function LoginScreen() {
       isFocused && !withError && styles.inputFocus,
       withError && styles.inputError,
     ];
-  }, [focusedField, hasCredentialError, dir.row, theme.inputBg, theme.inputBorder, theme.danger]);
+  };
 
   return (
     <View style={[styles.screen, { backgroundColor: theme.bg }]}>
-      <View pointerEvents="none" style={styles.glowBg} />
+      <LoginBackdrop dark={dark} />
 
-      <SafeAreaView edges={['top']} style={[styles.langBar, isRTL ? styles.langBarRtl : styles.langBarLtr]}>
+      <SafeAreaView
+        edges={['top']}
+        style={[styles.langBar, isRTL ? styles.langBarRtl : styles.langBarLtr]}
+        // Invisible until the intro starts: don't let taps through the splash reach it.
+        pointerEvents={introStarted ? 'auto' : 'none'}
+      >
         <View style={[styles.langRow, { flexDirection: dir.row }]}>
-          {LANGUAGES.map(({ code, flag }) => {
+          {LANGUAGES.map(({ code, flag, nativeLabel }) => {
             const active = locale === code;
             return (
               <TouchableOpacity
                 key={code}
                 activeOpacity={0.75}
                 accessibilityRole="button"
-                accessibilityLabel={code}
+                accessibilityLabel={nativeLabel}
                 accessibilityState={{ selected: active }}
                 onPress={async () => {
                   if (code !== locale) await setLocale(code);
@@ -329,7 +473,7 @@ export default function LoginScreen() {
         </View>
       </SafeAreaView>
 
-      <SafeAreaView style={styles.container} edges={['bottom']}>
+      <SafeAreaView style={styles.container} edges={['bottom']} pointerEvents={introStarted ? 'auto' : 'none'}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.flex1}
@@ -340,49 +484,23 @@ export default function LoginScreen() {
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
-            <Animated.View style={[
-              styles.header,
-              {
-                opacity: logoAnim,
-                transform: [{ scale: logoAnim.interpolate({ inputRange: [0, 1], outputRange: [0.86, 1] }) }],
-              },
-            ]}>
-              <View style={styles.logoMarkShadow}>
-                <LinearGradient
-                  colors={['#FFFFFF', '#FFFFFF']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.logoMark}
-                >
-                  <Image
-                    source={require('@/assets/images/jitplusprologo.png')}
-                    style={styles.logoMarkImage}
-                    resizeMode="contain"
-                  />
-                  <LinearGradient
-                    pointerEvents="none"
-                    colors={['rgba(255,255,255,0.25)', 'rgba(255,255,255,0.03)', 'transparent']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={StyleSheet.absoluteFill}
-                  />
-                </LinearGradient>
-              </View>
+            <LoginHeader
+              dark={dark}
+              anims={intro}
+              compact={compactAnim}
+              isCompact={formMounted}
+              greeting={t(greetingKey)}
+              tagline={t('login.appTagline')}
+              taglineColor={theme.textMuted}
+            />
 
-              <BrandName fontSize={ms(27)} />
-              <Text style={[styles.tagline, { color: theme.textMuted }]}>{t('login.appTagline')}</Text>
-            </Animated.View>
-
-            <Animated.View style={[
-              styles.formSection,
-              {
-                opacity: cardAnim,
-                transform: [{ translateY: cardAnim.interpolate({ inputRange: [0, 1], outputRange: [24, 0] }) }],
-              },
-            ]}>
+            <View style={styles.formSection}>
+              <PressScale style={anim.items[0]}>
+                {(press) => (
               <TouchableOpacity
-                onPress={google.promptGoogle}
-                disabled={google.isLoading || isLoading}
+                {...press}
+                onPress={() => { hapticLight(); google.promptGoogle(); }}
+                disabled={authBusy}
                 activeOpacity={0.88}
                 accessibilityRole="button"
                 accessibilityLabel={t('login.loginWithGoogle')}
@@ -396,7 +514,7 @@ export default function LoginScreen() {
                 ]}
               >
                 {google.isLoading ? (
-                  <ActivityIndicator color={palette.charbon} size="small" />
+                  <ActivityIndicator color={theme.text} size="small" />
                 ) : (
                   <>
                     <GoogleLogo size={ms(20)} />
@@ -404,25 +522,33 @@ export default function LoginScreen() {
                   </>
                 )}
               </TouchableOpacity>
+                )}
+              </PressScale>
 
               {Platform.OS === 'ios' && apple.isAvailable && (
-                <TouchableOpacity
-                  onPress={apple.promptApple}
-                  disabled={apple.isLoading || isLoading}
-                  activeOpacity={0.88}
-                  accessibilityRole="button"
-                  accessibilityLabel={t('login.loginWithApple')}
-                  style={[styles.socialBtn, styles.appleBtn, { flexDirection: dir.row }]}
-                >
-                  {apple.isLoading ? (
-                    <ActivityIndicator color="#fff" size="small" />
-                  ) : (
-                    <>
-                      <AppleLogo size={ms(19)} color="#fff" />
-                      <Text style={[styles.socialBtnText, styles.appleBtnText]}>{t('login.loginWithApple')}</Text>
-                    </>
+                <PressScale style={anim.items[1]}>
+                  {(press) => (
+                    <TouchableOpacity
+                      {...press}
+                      onPress={() => { hapticLight(); apple.promptApple(); }}
+                      disabled={authBusy}
+                      activeOpacity={0.88}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('login.loginWithApple')}
+                      // Apple's guidelines: white button on dark backgrounds.
+                      style={[styles.socialBtn, dark ? styles.appleBtnDark : styles.appleBtn, { flexDirection: dir.row }]}
+                    >
+                      {apple.isLoading ? (
+                        <ActivityIndicator color={dark ? '#000' : '#fff'} size="small" />
+                      ) : (
+                        <>
+                          <AppleLogo size={ms(19)} color={dark ? '#000' : '#fff'} />
+                          <Text style={[styles.socialBtnText, { color: dark ? '#000' : '#fff' }]}>{t('login.loginWithApple')}</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
                   )}
-                </TouchableOpacity>
+                </PressScale>
               )}
 
               {!!google.error && !google.noAccount && (
@@ -447,7 +573,7 @@ export default function LoginScreen() {
 
               {!!apple.error && !apple.noAccount && (
                 <View style={[styles.errorBanner, { backgroundColor: `${theme.danger}15`, borderColor: `${theme.danger}30` }]}>
-                  <Text style={[styles.errorText, { color: theme.danger, textAlign: dir.textAlign }]}>{apple.error}</Text>
+                  <Text style={[styles.errorText, { color: theme.danger, textAlign: dir.textAlign }]}>{getErrorMessage(apple.error, t('common.genericError'))}</Text>
                 </View>
               )}
 
@@ -463,14 +589,21 @@ export default function LoginScreen() {
                 />
               )}
 
-              <View style={styles.dividerRow}>
-                <View style={[styles.dividerLine, { backgroundColor: theme.inputBorder }]} />
-                <Text style={[styles.dividerText, { color: theme.textMuted }]}>{t('login.orDivider')}</Text>
-                <View style={[styles.dividerLine, { backgroundColor: theme.inputBorder }]} />
-              </View>
+              <Animated.View style={anim.items[2]}>
+                <KhatamDivider
+                  label={t('login.orDivider')}
+                  lineColor={theme.inputBorder}
+                  textColor={theme.textMuted}
+                  dark={dark}
+                  twinkle={intro.twinkle}
+                />
+              </Animated.View>
 
+              <PressScale style={anim.items[3]}>
+                {(press) => (
               <TouchableOpacity
-                onPress={handleEmailDisclosure}
+                {...press}
+                onPress={() => { hapticLight(); handleEmailDisclosure(); }}
                 activeOpacity={0.75}
                 accessibilityRole="button"
                 accessibilityState={{ expanded: formMounted }}
@@ -483,44 +616,32 @@ export default function LoginScreen() {
                 <Text style={[styles.emailDisclosureText, { color: theme.text, textAlign: dir.textAlign }]}>
                   {t('login.continueWithEmail')}
                 </Text>
-                <Animated.View
-                  style={[
-                    styles.chevronWrap,
-                    { transform: [{ rotate: emailFormAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] }) }] },
-                  ]}
-                >
+                <Animated.View style={[styles.chevronWrap, anim.chevron]}>
                   <ChevronDown size={ms(18)} color={palette.violet} strokeWidth={icon.stroke} />
                 </Animated.View>
               </TouchableOpacity>
+                )}
+              </PressScale>
 
-              <TouchableOpacity
-                activeOpacity={0.75}
-                onPress={() => router.push('/register')}
-                style={styles.signupInlineWrap}
-                accessibilityRole="button"
-              >
-                <Text style={styles.signupInlineText}>
-                  <Text style={[styles.signupMuted, { color: theme.textMuted }]}>{t('login.noAccount')} </Text>
-                  <Text style={[styles.signupLink, { color: palette.violet }]}>{t('login.createAccount')}</Text>
-                </Text>
-              </TouchableOpacity>
-            </Animated.View>
+              <Animated.View style={anim.items[4]}>
+                <TouchableOpacity
+                  activeOpacity={0.75}
+                  onPress={() => router.push('/register')}
+                  style={styles.signupInlineWrap}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.signupInlineText}>
+                    <Text style={[styles.signupMuted, { color: theme.textMuted }]}>{t('login.noAccount')} </Text>
+                    <Text style={[styles.signupLink, { color: palette.violet }]}>{t('login.createAccount')}</Text>
+                  </Text>
+                </TouchableOpacity>
+              </Animated.View>
+            </View>
 
             {formMounted && (
-              <Animated.View
-                style={[
-                  styles.formSection,
-                  {
-                    opacity: emailFormAnim,
-                    transform: [
-                      {
-                        translateY: emailFormAnim.interpolate({ inputRange: [0, 1], outputRange: [-6, 0] }),
-                      },
-                    ],
-                  },
-                ]}
-              >
+              <Animated.View style={[styles.formSection, anim.form]}>
                 {!isOnline && (
+                  <FadeSlideIn>
                   <View
                     accessibilityRole="alert"
                     accessibilityLiveRegion="polite"
@@ -531,21 +652,25 @@ export default function LoginScreen() {
                       {t('login.offlineBanner')}
                     </Text>
                   </View>
+                  </FadeSlideIn>
                 )}
 
                 {isRateLimited && (
+                  <FadeSlideIn>
                   <View
                     accessibilityRole="alert"
                     accessibilityLiveRegion="polite"
                     style={[styles.rateLimitBanner, { flexDirection: dir.row }]}
                   >
-                    <TriangleAlert size={ms(15)} color="#92400E" strokeWidth={icon.stroke} />
-                    <Text style={[styles.rateLimitText, { textAlign: dir.textAlign }]}>
-                      {t('login.rateLimitedBanner', { minutes: rateMinutesLabel })}
+                    <TriangleAlert size={ms(15)} color={dark ? AMBER_TEXT_DARK : AMBER_TEXT} strokeWidth={icon.stroke} />
+                    <Text style={[styles.rateLimitText, { color: dark ? AMBER_TEXT_DARK : AMBER_TEXT, textAlign: dir.textAlign }]}>
+                      {t('login.rateLimitedBanner', { minutes: rateRemainingMin })}
                     </Text>
                   </View>
+                  </FadeSlideIn>
                 )}
 
+                <Animated.View style={anim.shake}>
                 <View style={styles.inputContainer}>
                   <View style={fieldStyle('email')}>
                     <Mail size={ms(17)} color={palette.violet} strokeWidth={icon.stroke} />
@@ -605,7 +730,6 @@ export default function LoginScreen() {
                       hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                       accessibilityRole="button"
                       accessibilityLabel={showPassword ? t('login.passwordVisibleA11y') : t('login.passwordHiddenA11y')}
-                      accessibilityState={{ checked: showPassword }}
                       style={styles.eyeTap}
                     >
                       {showPassword ? (
@@ -616,16 +740,19 @@ export default function LoginScreen() {
                     </TouchableOpacity>
                   </View>
                 </View>
+                </Animated.View>
 
                 {showInlineError && (
+                  <FadeSlideIn>
                   <View
                     style={[styles.fieldErrorRow, { flexDirection: dir.row }]}
                     accessibilityRole="alert"
                     accessibilityLiveRegion="polite"
                   >
                     <TriangleAlert size={ms(13)} color={theme.danger} strokeWidth={icon.strokeSmall} />
-                    <Text style={[styles.fieldErrorText, { color: theme.danger, textAlign: dir.textAlign }]}>{errorMessage}</Text>
+                    <Text style={[styles.fieldErrorText, { color: theme.danger, textAlign: dir.textAlign }]}>{loginError.message}</Text>
                   </View>
+                  </FadeSlideIn>
                 )}
 
                 <TouchableOpacity activeOpacity={0.7} onPress={() => router.push('/forgot-password')} accessibilityRole="button">
@@ -667,8 +794,17 @@ function NoAccountBanner({ title, message, actionLabel, onPress }: {
 }) {
   const theme = useTheme();
   const dir = useDir();
+  // Charbon tints vanish on the dark background; use the light violet there.
+  const dark = theme.mode === 'dark';
   return (
-    <View style={[styles.noAccountBanner, { backgroundColor: `${palette.charbon}08`, borderColor: `${palette.charbon}25` }]}>
+    <View
+      style={[
+        styles.noAccountBanner,
+        dark
+          ? { backgroundColor: `${palette.violetLight}14`, borderColor: `${palette.violetLight}40` }
+          : { backgroundColor: `${palette.charbon}08`, borderColor: `${palette.charbon}25` },
+      ]}
+    >
       <Text style={[styles.noAccountTitle, { color: theme.text, textAlign: dir.textAlign }]}>{title}</Text>
       <Text style={[styles.noAccountMsg, { color: theme.textMuted, textAlign: dir.textAlign }]}>{message}</Text>
       <ActionButton
@@ -687,17 +823,6 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   flex1: { flex: 1 },
   container: { flex: 1 },
-
-  glowBg: {
-    position: 'absolute',
-    top: -hp(96),
-    left: '50%',
-    marginLeft: -ms(170),
-    width: ms(340),
-    height: ms(340),
-    borderRadius: ms(170),
-    backgroundColor: 'rgba(124,58,237,0.10)',
-  },
 
   langBar: {
     position: 'absolute',
@@ -736,42 +861,6 @@ const styles = StyleSheet.create({
     paddingVertical: hp(20),
   },
 
-  header: {
-    alignItems: 'center',
-    marginBottom: hp(28),
-  },
-  logoMarkShadow: {
-    borderRadius: radius.lg,
-    marginBottom: hp(14),
-    ...Platform.select({
-      ios: {
-        shadowColor: palette.violet,
-        shadowOpacity: 0.42,
-        shadowRadius: 14,
-        shadowOffset: { width: 0, height: 8 },
-      },
-      android: { elevation: 7 },
-    }),
-  },
-  logoMark: {
-    width: ms(60),
-    height: ms(60),
-    borderRadius: radius.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  logoMarkImage: {
-    width: '100%',
-    height: '100%',
-    zIndex: 1,
-  },
-  tagline: {
-    marginTop: hp(5),
-    fontSize: fontSize.sm,
-    fontFamily: font.medium,
-  },
-
   formSection: { paddingHorizontal: wp(4) },
 
   socialBtn: {
@@ -805,23 +894,15 @@ const styles = StyleSheet.create({
       android: { elevation: 4 },
     }),
   },
-  appleBtnText: { color: '#fff' },
+  appleBtnDark: {
+    backgroundColor: '#fff',
+    borderColor: '#fff',
+  },
   socialBtnText: {
     fontSize: fontSize.md,
     fontFamily: font.semibold,
   },
 
-  dividerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: wp(12),
-    marginVertical: hp(16),
-  },
-  dividerLine: { flex: 1, height: StyleSheet.hairlineWidth },
-  dividerText: {
-    fontSize: fontSize.xs,
-    fontFamily: font.medium,
-  },
 
   emailDisclosure: {
     minHeight: ms(52),
@@ -876,7 +957,6 @@ const styles = StyleSheet.create({
     marginBottom: hp(12),
   },
   rateLimitText: {
-    color: '#92400E',
     flex: 1,
     fontSize: fontSize.sm,
     fontFamily: font.semibold,

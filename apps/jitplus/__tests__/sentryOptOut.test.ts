@@ -11,6 +11,7 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
 }));
 jest.mock('@sentry/react-native', () => ({
   init: jest.fn(),
+  reactNavigationIntegration: jest.fn(() => ({ registerNavigationContainer: jest.fn() })),
   close: jest.fn(() => Promise.resolve()),
   captureException: jest.fn(),
   captureMessage: jest.fn(),

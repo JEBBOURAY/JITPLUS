@@ -1,6 +1,7 @@
-type Lang = 'fr' | 'en' | 'ar';
+import { type AppLang, pickAppLang } from '../common/utils/app-lang';
 
-const pick = (lang: string | null | undefined): Lang => (lang === 'en' || lang === 'ar' ? lang : 'fr');
+type Lang = AppLang;
+const pick = pickAppLang;
 
 /** Inbox entry sent to the merchant when a deal reaches its end date. */
 export function dealEndedTexts(lang: string | null | undefined, title: string, views: number, clicks: number) {

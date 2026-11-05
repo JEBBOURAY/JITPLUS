@@ -1,3 +1,4 @@
+import { moneyFormatter } from '@jitplus/shared/src/currency';
 import React, { useCallback } from 'react';
 import {
   ActivityIndicator, StatusBar, StyleSheet, TouchableOpacity, useWindowDimensions, View,
@@ -55,7 +56,7 @@ export default function ScratchScreen() {
   const design = getScratchDesign(card?.campaign.designId);
 
   const reward = knownCoupon
-    ? rewardDisplay({ type: knownCoupon.type, value: knownCoupon.value, label: knownCoupon.label }, t)
+    ? rewardDisplay({ type: knownCoupon.type, value: knownCoupon.value, label: knownCoupon.label }, t, moneyFormatter(card?.merchant.currency, locale))
     : null;
   const rewardText = reward?.headline ?? null;
 
@@ -154,6 +155,7 @@ export default function ScratchScreen() {
             reduceMotion={reduceMotion}
             scratchable={scratchable}
             merchantName={merchantName}
+            currency={card?.merchant.currency}
             locale={locale}
             fonts={fonts}
             t={t}

@@ -39,8 +39,8 @@ import { ScratchPushService } from './scratch-push.service';
 import { getScratchTexts, legacyCardReceivedTexts } from './scratch-notif-i18n';
 import { ScratchDispatchService } from './scratch-dispatch.service';
 import { nextAllowedSendTime } from '../common/tasks/cron-utils';
+import { MS_PER_DAY } from '../common/constants';
 
-const DAY_MS = 86_400_000;
 const DEFAULT_DESIGN = 'violet';
 const DISMISS_CHUNK = 1000;
 
@@ -304,7 +304,7 @@ export class ScratchCampaignService {
     if (Number.isNaN(sendAt.getTime())) throw new BadRequestException('Date d\'envoi invalide');
     const immediate = sendAt.getTime() <= now.getTime();
     sendAt = immediate ? now : outsideQuietHours(sendAt);
-    if (sendAt.getTime() > now.getTime() + SCRATCH_MAX_SCHEDULE_DAYS * DAY_MS) {
+    if (sendAt.getTime() > now.getTime() + SCRATCH_MAX_SCHEDULE_DAYS * MS_PER_DAY) {
       throw new BadRequestException(`L'envoi peut être programmé au plus ${SCRATCH_MAX_SCHEDULE_DAYS} jours à l'avance`);
     }
 
@@ -317,7 +317,7 @@ export class ScratchCampaignService {
     });
     if (audience.total === 0) throw new BadRequestException('Aucun client ne correspond à ce ciblage');
 
-    const since = new Date(now.getTime() - 30 * DAY_MS);
+    const since = new Date(now.getTime() - 30 * MS_PER_DAY);
     // Serializable so that two campaigns scheduled at the same time cannot
     // both pass the quota count.
     await withRetry(() =>
@@ -550,7 +550,7 @@ export class ScratchCampaignService {
       where: {
         merchantId: r.merchant.id,
         channel: 'PUSH',
-        createdAt: { gte: r.sentAt, lt: new Date(r.sentAt.getTime() + SCRATCH_DISMISS_WINDOW_DAYS * DAY_MS) },
+        createdAt: { gte: r.sentAt, lt: new Date(r.sentAt.getTime() + SCRATCH_DISMISS_WINDOW_DAYS * MS_PER_DAY) },
         title: { in: [...texts.map((t) => t.cardReceivedTitle(r.merchant.nom)), ...legacy.titles].map((s) => s.slice(0, 255)) },
         body: { in: [...texts.map((t) => t.cardReceivedBody(r.message)), ...legacy.bodies].map((s) => s.slice(0, 2000)) },
       },

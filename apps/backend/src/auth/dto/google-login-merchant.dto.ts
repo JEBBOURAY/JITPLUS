@@ -5,10 +5,11 @@ export class GoogleLoginMerchantDto {
   @IsNotEmpty({ message: 'Le token Google est requis' })
   idToken: string;
 
+  /** Required: a sign-in without a device gets no DeviceSession, so its token would be refused. */
   @IsString()
-  @IsOptional()
+  @IsNotEmpty({ message: 'Le nom de l\'appareil est requis' })
   @MaxLength(100)
-  deviceName?: string;
+  deviceName: string;
 
   @IsString()
   @IsOptional()

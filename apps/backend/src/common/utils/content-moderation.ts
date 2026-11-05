@@ -48,7 +48,7 @@ function normalize(input: string): string {
  * Returns the first banned substring found, or null if the input is clean.
  * Callers should reject the payload with a 400 when a match is found.
  */
-export function findBannedContent(input: string | null | undefined): string | null {
+function findBannedContent(input: string | null | undefined): string | null {
   if (!input) return null;
   const needle = normalize(input);
   if (!needle) return null;

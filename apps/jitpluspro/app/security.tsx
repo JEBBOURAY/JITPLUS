@@ -377,7 +377,7 @@ export default function SecurityScreen() {
               Alert.alert(
                 t('security.deletedTitle'),
                 t('security.deletedSuccess'),
-                [{ text: t('common.confirm'), onPress: () => signOut() }],
+                [{ text: t('common.confirm'), onPress: () => signOut({ sessionRevoked: true }) }],
                 { cancelable: false },
               );
             } catch (err: unknown) {

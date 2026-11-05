@@ -1,5 +1,7 @@
 import { Logger } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import type { ICampaignSentTrackerRepository } from '../repositories';
+import { MS_PER_DAY } from '../constants';
 
 // ── Cron enable/disable gate ─────────────────────────────────────────────
 // Scheduled marketing tasks (push + email) must NOT fire in dev/preview/CI
@@ -61,7 +63,7 @@ export function isCronEnabled(logger: Logger, name: string): boolean {
 // numbers. This guarantees stable, documented parity for bi-weekly crons
 // instead of relying on the Unix epoch (which starts on a Thursday).
 const REFERENCE_MONDAY_UTC_MS = Date.UTC(2024, 0, 1); // 2024-01-01 00:00 UTC (Monday)
-const WEEK_MS = 7 * 86_400_000;
+const WEEK_MS = 7 * MS_PER_DAY;
 
 export function weekIndexSinceReference(now: Date = new Date()): number {
   return Math.floor((now.getTime() - REFERENCE_MONDAY_UTC_MS) / WEEK_MS);
@@ -80,7 +82,7 @@ export function weekTag(now: Date = new Date()): string {
   // ISO week: Thursday anchor
   d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
   const yearStart = Date.UTC(d.getUTCFullYear(), 0, 1);
-  const weekNo = Math.ceil(((d.getTime() - yearStart) / 86_400_000 + 1) / 7);
+  const weekNo = Math.ceil(((d.getTime() - yearStart) / MS_PER_DAY + 1) / 7);
   return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
 }
 
@@ -108,16 +110,24 @@ export async function merchantAlreadySent(
   return existing !== null;
 }
 
-export async function merchantMarkSent(
+/**
+ * Claim-first dedup: inserts the tracker row BEFORE delivering. The unique
+ * index (merchantId, campaignId, channel) lets exactly one caller win, even
+ * across Cloud Run instances. Returns false when the campaign was already
+ * claimed; any other database error propagates (the caller skips — fail closed).
+ */
+export async function merchantClaimSend(
   repo: ICampaignSentTrackerRepository,
   merchantId: string,
   campaignId: string,
   channel: 'PUSH' | 'EMAIL' | 'WHATSAPP' = 'EMAIL',
-): Promise<void> {
+): Promise<boolean> {
   try {
     await repo.create({ data: { merchantId, campaignId, channel } });
-  } catch {
-    // Unique constraint race — already marked, safe to ignore.
+    return true;
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') return false;
+    throw err;
   }
 }
 
@@ -135,12 +145,12 @@ export async function merchantMarkSent(
 const MOROCCO_UTC_OFFSET_HOURS = 1; // UTC+1 year-round (Africa/Casablanca)
 
 /** Current hour in Morocco (0-23), based on UTC+1. */
-export function moroccoHour(now: Date = new Date()): number {
+function moroccoHour(now: Date = new Date()): number {
   return (now.getUTCHours() + MOROCCO_UTC_OFFSET_HOURS + 24) % 24;
 }
 
 /** Day of week in Morocco (0 = Sunday … 6 = Saturday). */
-export function moroccoDayOfWeek(now: Date = new Date()): number {
+function moroccoDayOfWeek(now: Date = new Date()): number {
   const shifted = new Date(now.getTime() + MOROCCO_UTC_OFFSET_HOURS * 3_600_000);
   return shifted.getUTCDay();
 }
@@ -185,4 +195,71 @@ export function isCronAllowed(logger: Logger, name: string, now: Date = new Date
     return false;
   }
   return true;
+}
+
+// ── Run-once across instances ────────────────────────────────────────────
+// Cloud Run may run several instances and each one fires every @Cron. The
+// claimer (CronRunLock, registered at boot) lets exactly one instance run a
+// given schedule slot. Without a registered claimer (unit tests) every call
+// is allowed.
+
+type CronRunClaimer = (name: string, now: Date) => Promise<boolean>;
+let cronRunClaimer: CronRunClaimer | null = null;
+
+/** Called by CronRunLock at module init (null on shutdown). */
+export function registerCronRunClaimer(claimer: CronRunClaimer | null): void {
+  cronRunClaimer = claimer;
+}
+
+/**
+ * Run-once only, without the ENABLE_CRONS gate — for housekeeping jobs
+ * (expired OTP / account purge) that must also run outside production.
+ */
+export async function cronRunOnce(name: string, now: Date = new Date()): Promise<boolean> {
+  return cronRunClaimer ? cronRunClaimer(name, now) : true;
+}
+
+/**
+ * `isCronEnabled` + run-once: true only on the single instance that owns this run.
+ *
+ * Usage (inside a @Cron method):
+ *   if (!(await cronEnabledOnce(this.logger, 'MyCron.run'))) return;
+ */
+export async function cronEnabledOnce(logger: Logger, name: string, now: Date = new Date()): Promise<boolean> {
+  return isCronEnabled(logger, name) && cronRunOnce(name, now);
+}
+
+/** `isCronAllowed` (enabled + outside quiet hours) + run-once. */
+export async function cronAllowedOnce(logger: Logger, name: string, now: Date = new Date()): Promise<boolean> {
+  return isCronAllowed(logger, name, now) && cronRunOnce(name, now);
+}
+
+// ── Staged reminders & bounded concurrency ───────────────────────────────
+
+/** Highest stage reached, e.g. stages [5, 10, 21] and 12 days → 10; null below the first. */
+export function reachedStage<T extends number>(stages: readonly T[], value: number): T | null {
+  let hit: T | null = null;
+  for (const s of stages) if (value >= s) hit = s;
+  return hit;
+}
+
+/** Merchants processed in parallel by the push crons (each push is an HTTP call). */
+export const MERCHANT_PUSH_CONCURRENCY = 8;
+
+/**
+ * Runs `fn` over `items` with at most `limit` calls in flight and collects the
+ * results in input order. `fn` must not throw (notify() never does); a thrown
+ * error rejects the whole run like Promise.all.
+ */
+export async function mapLimit<T, R>(items: readonly T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i]);
+    }
+  });
+  await Promise.all(workers);
+  return results;
 }

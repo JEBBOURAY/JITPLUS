@@ -37,14 +37,10 @@ export const SPRING_BOUNCINESS = 8;
 // ── Map (discover) ──
 /** Default map animate duration (ms) */
 export const MAP_ANIMATE_DURATION_MS = 600;
-/** Zoom delta when focusing on a single merchant */
-export const MERCHANT_FOCUS_ZOOM_DELTA = 0.008;
 /** Zoom delta when centering on user location */
 export const USER_LOCATION_ZOOM_DELTA = 0.04;
 /** Zoom delta for 'center on me' button */
 export const USER_CENTER_ZOOM_DELTA = 0.015;
-/** Cluster zoom-in divisor */
-export const CLUSTER_ZOOM_DIVISOR = 2.5;
 /** Screen height threshold for compact layout (px) */
 export const COMPACT_SCREEN_HEIGHT = 710;
 

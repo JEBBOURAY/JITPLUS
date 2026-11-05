@@ -16,6 +16,7 @@ import { createReferralMethods } from './referral';
 import { createLuckyWheelMethods } from './lucky-wheel';
 import { createScratchMethods } from './scratch';
 import { createDealMethods } from './deals';
+import { createStampCodeMethods } from './stamp-codes';
 
 const ENV_URL = process.env.EXPO_PUBLIC_API_URL;
 const IS_DEV = __DEV__;
@@ -91,4 +92,5 @@ export const api = {
   ...createLuckyWheelMethods(http),
   ...createScratchMethods(http),
   ...createDealMethods(http),
+  ...createStampCodeMethods(http),
 };

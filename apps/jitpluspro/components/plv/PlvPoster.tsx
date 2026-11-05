@@ -87,11 +87,12 @@ function accentOn(brand: string): string {
 }
 
 /** Poster text must not follow the OS font scale, or the printed layout breaks. */
-function PText(props: TextProps) {
+export function PText(props: TextProps) {
   return <Text allowFontScaling={false} {...props} />;
 }
 
-function CoBrand({ logoUrl, size, onDark }: { logoUrl?: string | null; size: number; onDark?: boolean }) {
+/** JitPlus × merchant logos, shared by every printed support (PLV posters, parcel QR labels). */
+export function CoBrand({ logoUrl, size, onDark }: { logoUrl?: string | null; size: number; onDark?: boolean }) {
   const box = { width: size, height: size, borderRadius: size * 0.26 };
   const inner = { width: size * 0.72, height: size * 0.72, borderRadius: size * 0.18 };
   return (

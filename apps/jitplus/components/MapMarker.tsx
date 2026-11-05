@@ -16,9 +16,10 @@ const DOT_SIZE = 12;
 const DOT_OVERFLOW = 4;
 const LOGO = require('@/assets/images/jitpluslogo-app.png');
 
-const MapMarker = memo(function MapMarker({ hasDeal = false }: { hasDeal?: boolean }) {
+/** `label`: what screen readers announce (the merchant's name). */
+const MapMarker = memo(function MapMarker({ hasDeal = false, label = 'JitPlus' }: { hasDeal?: boolean; label?: string }) {
   const marker = (
-    <View collapsable={false} style={styles.root} accessibilityLabel="JitPlus" accessibilityRole="image">
+    <View collapsable={false} style={styles.root} accessibilityLabel={label} accessibilityRole="image">
       <Image source={LOGO} style={styles.logo} resizeMode="contain" fadeDuration={0} />
     </View>
   );

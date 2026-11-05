@@ -1,3 +1,4 @@
+import { moneyFormatter } from '@jitplus/shared/src/currency';
 import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { View, StyleSheet, ScrollView, Animated, Easing } from 'react-native';
 import { Text } from '@/components/AppText';
@@ -252,13 +253,15 @@ export default memo(function WalletPasses({
 
   const openCoupon = (coupon: CouponDto) => {
     const merchantName = coupon.merchant?.nom ?? '';
-    const reward = rewardDisplay({ type: coupon.type, value: coupon.value, label: coupon.label }, t);
+    const money = moneyFormatter(coupon.merchant?.currency, locale);
+    const reward = rewardDisplay({ type: coupon.type, value: coupon.value, label: coupon.label }, t, money);
     // Without expiresAt the helper returns [rules…, validFrom?, singleUse]: the
     // expiry has its own row in the sheet and "single use" adds nothing here.
     const conditions = describeCouponConditions(
       { conditions: coupon.conditions, validFrom: coupon.validFrom },
       t,
       (iso) => formatDate(iso, locale),
+      money,
     ).slice(0, -1);
     setDetail({
       kind: 'coupon',
@@ -350,7 +353,7 @@ export default memo(function WalletPasses({
           })}
 
           {sortedCoupons.map((coupon) => {
-            const reward = formatRewardValue({ type: coupon.type, value: coupon.value, label: coupon.label }, t);
+            const reward = formatRewardValue({ type: coupon.type, value: coupon.value, label: coupon.label }, t, moneyFormatter(coupon.merchant?.currency, locale));
             const days = daysUntil(coupon.expiresAt);
             const merchantName = coupon.merchant?.nom ?? '';
             return (

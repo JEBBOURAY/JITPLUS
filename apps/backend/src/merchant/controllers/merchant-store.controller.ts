@@ -1,6 +1,13 @@
 import {
-  Controller, Get, Post, Patch, Delete, Body, Param,
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Body,
+  Param,
   UseGuards,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
@@ -29,7 +36,7 @@ export class MerchantStoreController {
 
   @Get('stores/:id')
   @UseGuards(MerchantOwnerGuard)
-  async getStore(@Param('id') storeId: string, @CurrentUser() user: JwtPayload) {
+  async getStore(@Param('id', ParseUUIDPipe) storeId: string, @CurrentUser() user: JwtPayload) {
     return this.storeService.getStore(user.userId, storeId);
   }
 
@@ -42,14 +49,14 @@ export class MerchantStoreController {
 
   @Patch('stores/:id')
   @UseGuards(MerchantOwnerGuard)
-  async updateStore(@Param('id') storeId: string, @Body() dto: UpdateStoreDto, @CurrentUser() user: JwtPayload) {
+  async updateStore(@Param('id', ParseUUIDPipe) storeId: string, @Body() dto: UpdateStoreDto, @CurrentUser() user: JwtPayload) {
     return this.storeService.updateStore(user.userId, storeId, dto);
   }
 
   @Delete('stores/:id')
   @UseGuards(MerchantOwnerGuard)
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 10 } })
-  async deleteStore(@Param('id') storeId: string, @CurrentUser() user: JwtPayload) {
+  async deleteStore(@Param('id', ParseUUIDPipe) storeId: string, @CurrentUser() user: JwtPayload) {
     return this.storeService.deleteStore(user.userId, storeId);
   }
 }

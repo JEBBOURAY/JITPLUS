@@ -104,6 +104,8 @@ export interface DealMerchantSummary {
   coverUrl: string | null;
   categorie: string;
   themeColor: string | null;
+  /** ISO 4217 code of the merchant's currency (absent in old cached payloads → MAD) */
+  currency?: string;
 }
 
 export interface ClientDealSummary extends Required<DealOffer> {

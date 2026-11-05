@@ -3,9 +3,12 @@ import {
   formatDealEndDate, isSafeDealLink,
 } from '@/utils/dealVisual';
 import type { ClientDealStore } from '@jitplus/shared/src/deals';
+import { moneyFormatter } from '@jitplus/shared/src/currency';
 
 // Echoes the key and its params so the tests check which text is picked.
 const t = (key: string, params?: Record<string, unknown>) => (params ? `${key}:${JSON.stringify(params)}` : key);
+
+const money = moneyFormatter('MAD', 'fr');
 
 const offer = { originalPrice: null, dealPrice: null, percentOff: null, buyQty: null, freeQty: null };
 
@@ -34,15 +37,19 @@ describe('dealTimeLeftLabel', () => {
 
 describe('dealPrices', () => {
   it('gives the promo and struck price of a price drop', () => {
-    expect(dealPrices({ ...offer, type: 'PRICE_DROP', originalPrice: 120, dealPrice: 99 }, t, 'fr')).toEqual({
-      price: 'deals.price:{"value":"99"}',
-      original: 'deals.price:{"value":"120"}',
+    expect(dealPrices({ ...offer, type: 'PRICE_DROP', originalPrice: 120, dealPrice: 99 }, money)).toEqual({
+      price: '99 DH',
+      original: '120 DH',
     });
   });
 
+  it('uses the merchant currency', () => {
+    expect(dealPrices({ ...offer, type: 'FREE_ITEM', originalPrice: 5000 }, moneyFormatter('XAF', 'fr')).original).toBe('5\u202f000 FCFA');
+  });
+
   it('gives the value of a free item and nothing for other offers', () => {
-    expect(dealPrices({ ...offer, type: 'FREE_ITEM', originalPrice: 15 }, t, 'fr')).toEqual({ price: null, original: 'deals.price:{"value":"15"}' });
-    expect(dealPrices({ ...offer, type: 'PERCENT_OFF', percentOff: 10 }, t, 'fr')).toEqual({ price: null, original: null });
+    expect(dealPrices({ ...offer, type: 'FREE_ITEM', originalPrice: 15 }, money)).toEqual({ price: null, original: '15 DH' });
+    expect(dealPrices({ ...offer, type: 'PERCENT_OFF', percentOff: 10 }, money)).toEqual({ price: null, original: null });
   });
 });
 

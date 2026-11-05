@@ -38,6 +38,9 @@ export class MerchantDashboardService {
       lucky_wheel_plays: number;
       lucky_wheel_wins: number;
       lucky_wheel_fulfilled: number;
+      ecommerce_redemptions: number;
+      ecommerce_stamps: number;
+      ecommerce_amount: number;
     }>(Prisma.sql`
       WITH cards AS (
         SELECT COUNT(*)::int AS total_clients, COALESCE(SUM(stamps), 0)::int AS total_stamps
@@ -47,7 +50,10 @@ export class MerchantDashboardService {
         SELECT
           COUNT(*)::int AS total_transactions,
           COALESCE(SUM(stamps) FILTER (WHERE type = 'REDEEM_REWARD'), 0)::int AS total_redeemed_stamps,
-          (COUNT(*) FILTER (WHERE type = 'REDEEM_REWARD'))::int AS total_rewards_given
+          (COUNT(*) FILTER (WHERE type = 'REDEEM_REWARD'))::int AS total_rewards_given,
+          (COUNT(*) FILTER (WHERE stamp_code_id IS NOT NULL))::int AS ecommerce_redemptions,
+          COALESCE(SUM(stamps) FILTER (WHERE stamp_code_id IS NOT NULL), 0)::int AS ecommerce_stamps,
+          COALESCE(SUM(amount) FILTER (WHERE stamp_code_id IS NOT NULL), 0)::float AS ecommerce_amount
         FROM transactions
         WHERE merchant_id = ${merchantId} AND status = 'ACTIVE'
       ),
@@ -70,7 +76,10 @@ export class MerchantDashboardService {
         tx.total_rewards_given,
         wheel.lucky_wheel_plays,
         wheel.lucky_wheel_wins,
-        wheel.lucky_wheel_fulfilled
+        wheel.lucky_wheel_fulfilled,
+        tx.ecommerce_redemptions,
+        tx.ecommerce_stamps,
+        tx.ecommerce_amount
       FROM cards, tx, wheel
     `);
 
@@ -83,6 +92,10 @@ export class MerchantDashboardService {
       profileViews: row?.profile_views ?? 0,
       luckyWheelPlays: row?.lucky_wheel_plays ?? 0,
       luckyWheelWins: row?.lucky_wheel_wins ?? 0,
+      // E-commerce / delivery: stamps credited from parcel QR codes
+      ecommerceRedemptions: row?.ecommerce_redemptions ?? 0,
+      ecommerceStamps: row?.ecommerce_stamps ?? 0,
+      ecommerceAmount: row?.ecommerce_amount ?? 0,
     };
 
     await this.cache.set(cacheKey, result, MerchantDashboardService.STATS_TTL);
@@ -118,7 +131,7 @@ export class MerchantDashboardService {
         FROM transactions
         WHERE merchant_id = ${merchantId}
           AND status = 'ACTIVE'
-          AND type = 'EARN_STAMPS'
+          AND type IN ('EARN_STAMPS', 'PURCHASE')
           AND created_at >= ${startYesterday}
       `),
       this.rawQuery.queryRaw<{ day: number; cnt: number }>(Prisma.sql`
@@ -126,7 +139,7 @@ export class MerchantDashboardService {
         FROM transactions
         WHERE merchant_id = ${merchantId}
           AND status = 'ACTIVE'
-          AND type = 'EARN_STAMPS'
+          AND type IN ('EARN_STAMPS', 'PURCHASE')
           AND created_at >= ${startMonth}
           AND created_at < ${startNextMonth}
         GROUP BY 1

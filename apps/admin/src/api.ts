@@ -317,3 +317,37 @@ export const removeDeal = (id: string, reason: string) =>
 
 export const restoreDeal = (id: string) =>
   req<{ success: boolean }>(`/admin/deals/${encodeURIComponent(id)}/restore`, { method: 'POST' });
+
+// ── JitPlus Pro news (targeted) + push stats ───────────────────────────────────
+export interface MerchantNewsAudience {
+  plan?: 'FREE' | 'PREMIUM';
+  ville?: string;
+  categorie?: string;
+  minAccountAgeDays?: number;
+}
+
+export type MerchantNotifyResult =
+  | 'sent' | 'inbox_only' | 'duplicate' | 'opted_out' | 'capped' | 'quiet_hours' | 'no_device' | 'stale_token' | 'error';
+
+function audienceQuery(a: MerchantNewsAudience): string {
+  const qs = new URLSearchParams();
+  if (a.plan) qs.set('plan', a.plan);
+  if (a.ville) qs.set('ville', a.ville);
+  if (a.categorie) qs.set('categorie', a.categorie);
+  if (a.minAccountAgeDays) qs.set('minAccountAgeDays', String(a.minAccountAgeDays));
+  return qs.toString();
+}
+
+export const countMerchantNewsAudience = (a: MerchantNewsAudience) =>
+  req<{ count: number }>(`/admin/merchant-news/audience?${audienceQuery(a)}`);
+
+export const sendMerchantNews = (payload: MerchantNewsAudience & { title: string; body: string; action?: string }) =>
+  req<{ success: boolean; newsId: string; recipientCount: number; results: Partial<Record<MerchantNotifyResult, number>> }>(
+    '/admin/merchant-news',
+    { method: 'POST', body: JSON.stringify(payload) },
+  );
+
+export const getMerchantNotificationStats = (days = 30) =>
+  req<{ days: number; categories: Array<{ category: string; sent: number; opened: number; read: number }> }>(
+    `/admin/merchant-notifications/stats?days=${days}`,
+  );

@@ -5,6 +5,7 @@ import { JitGift, JitPremium } from '@/components/icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useMoney } from '@/hooks/useCurrency';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { usePlanStatus } from '@/hooks/usePlanStatus';
 import { useDir } from '@/hooks/useDir';
@@ -81,6 +82,7 @@ export default function LuckyWheelWizard() {
   const shouldWait = useRequireAuth();
   const theme = useTheme();
   const { t, locale } = useLanguage();
+  const { symbol: currencySymbol } = useMoney();
   const { textAlign } = useDir();
   const router = useRouter();
   const { width } = useWindowDimensions();
@@ -479,14 +481,14 @@ export default function LuckyWheelWizard() {
               ))}
             </ChipRow>
             <MoreOptions open={spendOptions.open} onToggle={spendOptions.toggle} label={t('luckyWheel.wizard.minSpendCustom')}>
-              <FieldLabel text={t('luckyWheel.wizard.minSpendLabel')} />
+              <FieldLabel text={t('luckyWheel.wizard.minSpendLabel', { currency: currencySymbol })} />
               <Input
                 value={form.minSpend}
                 onChangeText={(v) => set({ minSpend: digitsOnly(v) })}
                 keyboardType="number-pad"
                 maxLength={6}
                 placeholder="0"
-                accessibilityLabel={t('luckyWheel.wizard.minSpendLabel')}
+                accessibilityLabel={t('luckyWheel.wizard.minSpendLabel', { currency: currencySymbol })}
               />
             </MoreOptions>
           </Section>

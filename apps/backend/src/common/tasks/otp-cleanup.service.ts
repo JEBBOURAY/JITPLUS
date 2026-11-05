@@ -1,6 +1,7 @@
 import { Injectable, Logger, Inject } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { OTP_REPOSITORY, type IOtpRepository } from '../repositories';
+import { cronRunOnce } from './cron-utils';
 
 /**
  * Scheduled task: purge expired OTP records from the database.
@@ -17,6 +18,7 @@ export class OtpCleanupService {
 
   @Cron(CronExpression.EVERY_30_MINUTES)
   async cleanupExpiredOtps(): Promise<void> {
+    if (!(await cronRunOnce('OtpCleanup.cleanupExpiredOtps'))) return;
     try {
       const result = await this.otpRepo.deleteMany({
         where: {

@@ -274,6 +274,74 @@ const EmptyState = React.memo(function EmptyState({
   );
 });
 
+/**
+ * Owns the typed text so keystrokes re-render only this bar; the screen gets the
+ * trimmed term once typing pauses (or right away when cleared).
+ */
+const ClientSearchBar = React.memo(function ClientSearchBar({
+  searching,
+  onSearch,
+}: {
+  searching: boolean;
+  onSearch: (term: string) => void;
+}) {
+  const theme = useTheme();
+  const { t } = useLanguage();
+  const inputRef = useRef<TextInput>(null);
+  const [text, setText] = useState('');
+
+  useEffect(() => {
+    const term = text.trim();
+    if (!term) {
+      onSearch('');
+      return;
+    }
+    const timer = setTimeout(() => onSearch(term), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [text, onSearch]);
+
+  const clear = useCallback(() => {
+    setText('');
+    inputRef.current?.blur();
+  }, []);
+
+  return (
+    <View style={styles.searchContainer}>
+      <View style={[styles.searchBar, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
+        {searching ? (
+          <ActivityIndicator size="small" color={theme.primary} style={styles.searchIcon} />
+        ) : (
+          <Search size={16} color={palette.charbon} strokeWidth={iconTokens.stroke} style={styles.searchIcon} />
+        )}
+        <TextInput
+          ref={inputRef}
+          style={[styles.searchInput, { color: theme.text }]}
+          placeholder={t('clients.searchPlaceholder')}
+          placeholderTextColor={theme.textMuted}
+          value={text}
+          onChangeText={setText}
+          autoCapitalize="none"
+          autoCorrect={false}
+          returnKeyType="search"
+          accessibilityLabel={t('clients.searchPlaceholder')}
+          maxFontSizeMultiplier={1.6}
+        />
+        {text.length > 0 && (
+          <TouchableOpacity
+            onPress={clear}
+            hitSlop={HIT_SLOP_LARGE}
+            style={styles.clearBtn}
+            accessibilityRole="button"
+            accessibilityLabel={t('clients.clearSearch')}
+          >
+            <X size={18} color={theme.textMuted} strokeWidth={iconTokens.stroke} />
+          </TouchableOpacity>
+        )}
+      </View>
+    </View>
+  );
+});
+
 const keyExtractor = (item: ClientListItem) => item.id;
 const getItemLayout = (_: unknown, index: number) => ({ length: ROW_HEIGHT, offset: ROW_HEIGHT * index, index });
 
@@ -284,17 +352,10 @@ export default function ClientsScreen() {
   const { focusStyle } = useFocusFade();
   const insets = useSafeAreaInsets();
   const listRef = useRef<FlatList<ClientListItem>>(null);
-  const searchInputRef = useRef<TextInput>(null);
 
-  const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [view, setView] = useState<ClientListView>('all');
   const [pullRefreshing, setPullRefreshing] = useState(false);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(search.trim()), SEARCH_DEBOUNCE_MS);
-    return () => clearTimeout(timer);
-  }, [search]);
 
   const { query, reload, reloadIfStale } = useClientList(debouncedSearch, view);
   const {
@@ -340,10 +401,10 @@ export default function ClientsScreen() {
   }, [reload]);
 
   const onEndReached = useCallback(() => {
-    if (hasNextPage && !isFetchingNextPage && !isFetchNextPageError) {
+    if (hasNextPage && !isFetchingNextPage && !isFetchNextPageError && !isPlaceholderData) {
       fetchNextPage().catch(() => {});
     }
-  }, [hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage]);
+  }, [hasNextPage, isFetchingNextPage, isFetchNextPageError, isPlaceholderData, fetchNextPage]);
 
   const retryNextPage = useCallback(() => {
     fetchNextPage().catch(() => {});
@@ -353,11 +414,6 @@ export default function ClientsScreen() {
     safeSelection();
     setView(next);
     listRef.current?.scrollToOffset({ offset: 0, animated: false });
-  }, []);
-
-  const clearSearch = useCallback(() => {
-    setSearch('');
-    searchInputRef.current?.blur();
   }, []);
 
   const openDetail = useCallback((clientId: string) => {
@@ -385,6 +441,10 @@ export default function ClientsScreen() {
     ? countLabel
     : `${countLabel} · ${t(activeView.hintKey, { days: INACTIVE_CLIENT_DAYS })}`;
   const searching = isFetching && isPlaceholderData;
+  const listContentStyle = useMemo(
+    () => [styles.list, { paddingBottom: insets.bottom + 116 }],
+    [insets.bottom],
+  );
 
   let footer: React.ReactElement | null = null;
   if (isFetchingNextPage) {
@@ -443,7 +503,7 @@ export default function ClientsScreen() {
         renderItem={renderClient}
         keyExtractor={keyExtractor}
         getItemLayout={getItemLayout}
-        contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 116 }]}
+        contentContainerStyle={listContentStyle}
         onEndReached={onEndReached}
         onEndReachedThreshold={0.6}
         removeClippedSubviews={Platform.OS === 'android'}
@@ -475,39 +535,7 @@ export default function ClientsScreen() {
         </Text>
       </View>
 
-      <View style={styles.searchContainer}>
-        <View style={[styles.searchBar, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
-          {searching ? (
-            <ActivityIndicator size="small" color={theme.primary} style={styles.searchIcon} />
-          ) : (
-            <Search size={16} color={palette.charbon} strokeWidth={iconTokens.stroke} style={styles.searchIcon} />
-          )}
-          <TextInput
-            ref={searchInputRef}
-            style={[styles.searchInput, { color: theme.text }]}
-            placeholder={t('clients.searchPlaceholder')}
-            placeholderTextColor={theme.textMuted}
-            value={search}
-            onChangeText={setSearch}
-            autoCapitalize="none"
-            autoCorrect={false}
-            returnKeyType="search"
-            accessibilityLabel={t('clients.searchPlaceholder')}
-            maxFontSizeMultiplier={1.6}
-          />
-          {search.length > 0 && (
-            <TouchableOpacity
-              onPress={clearSearch}
-              hitSlop={HIT_SLOP_LARGE}
-              style={styles.clearBtn}
-              accessibilityRole="button"
-              accessibilityLabel={t('clients.clearSearch')}
-            >
-              <X size={18} color={theme.textMuted} strokeWidth={iconTokens.stroke} />
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
+      <ClientSearchBar searching={searching} onSearch={setDebouncedSearch} />
 
       <View>
         <ScrollView
@@ -530,7 +558,7 @@ export default function ClientsScreen() {
       </View>
 
       <View style={styles.summaryRow}>
-        {data && !isError ? (
+        {data ? (
           <Text
             style={[styles.summaryText, { color: theme.textMuted }]}
             numberOfLines={1}

@@ -63,7 +63,10 @@ export default function TabLayout() {
       />
       <Tabs.Screen
         name="discover"
-        options={{ title: t('tabs.discover') }}
+        // Once opened the map tab stays mounted: freeze its React tree while
+        // another tab is shown, so list refetches don't re-render the map
+        // and its markers in the background.
+        options={{ title: t('tabs.discover'), freezeOnBlur: true }}
       />
       <Tabs.Screen
         name="notifications"

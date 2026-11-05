@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client';
 import type { ScratchAudienceTypeValue } from './dto';
+import { MS_PER_DAY } from '../common/constants';
 
-const DAY_MS = 86_400_000;
 
 /**
  * Loyalty cards targeted by a campaign: active card, client not deleted and
@@ -15,7 +15,7 @@ export function buildAudienceWhere(
   audienceValue: number | null | undefined,
   now: Date,
 ): Prisma.LoyaltyCardWhereInput {
-  const since = audienceValue ? new Date(now.getTime() - audienceValue * DAY_MS) : null;
+  const since = audienceValue ? new Date(now.getTime() - audienceValue * MS_PER_DAY) : null;
 
   const where: Prisma.LoyaltyCardWhereInput = {
     merchantId,

@@ -1,6 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { validate } from 'class-validator';
+import { plainToInstance } from 'class-transformer';
+import { LoginDto } from './dto/login.dto';
+import { AppleTokenVerifier } from '../common/apple/apple-token-verifier.service';
+import { OtpSendLimiter } from '../common/coordination/otp-send-limiter.service';
 import { AuthService } from './auth.service';
+import { MerchantSessionService } from './merchant-session.service';
+import { MerchantSignupService } from './merchant-signup.service';
 import { ConfigService } from '@nestjs/config';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtService } from '@nestjs/jwt';
 import { FirebaseService } from '../firebase/firebase.service';
@@ -9,7 +17,7 @@ import { MerchantPlanService } from '../merchant/services/merchant-plan.service'
 import { MerchantReferralService } from '../merchant/services/merchant-referral.service';
 import { ClientReferralService } from '../client-auth/client-referral.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
-import { UnauthorizedException, ConflictException } from '@nestjs/common';
+import { UnauthorizedException, ConflictException, BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import {
   MERCHANT_REPOSITORY,
@@ -18,8 +26,8 @@ import {
   OTP_REPOSITORY,
   TRANSACTION_RUNNER,
 } from '../common/repositories';
-import { PUSH_PROVIDER, MAIL_PROVIDER } from '../common/interfaces';
-import { MerchantInboxService } from '../merchant-inbox/merchant-inbox.service';
+import { MAIL_PROVIDER } from '../common/interfaces';
+import { MerchantNotifierService } from '../merchant-inbox/merchant-notifier.service';
 import * as bcrypt from 'bcryptjs';
 
 // ── Mocks ──────────────────────────────────────────────────────────────────────
@@ -53,7 +61,6 @@ const mockMerchant = {
   trialStartedAt: null,
   createdAt: new Date(),
   updatedAt: new Date(),
-  pushToken: null,
   failedLoginAttempts: 0,
   lockedUntil: null,
 };
@@ -61,6 +68,8 @@ const mockMerchant = {
 const mockPrismaService = {
   merchant: {
     findUnique: jest.fn(),
+    // Phone uniqueness check run by every signup.
+    findFirst: jest.fn().mockResolvedValue(null),
     update: jest.fn(),
     create: jest.fn(),
   },
@@ -82,10 +91,6 @@ const mockPrismaService = {
 const mockJwtService = {
   sign: jest.fn().mockReturnValue('mock-jwt-token'),
   verify: jest.fn(),
-};
-
-const mockFirebaseService = {
-  sendMulticast: jest.fn().mockResolvedValue(undefined),
 };
 
 const mockMailService = {
@@ -117,6 +122,8 @@ const mockOtpRepo = {
   update: jest.fn().mockResolvedValue({}),
 };
 
+const DEVICE = { deviceName: 'Test Phone', deviceOS: 'ios', deviceId: 'dev-test' };
+
 const mockTxRunner = {
   run: jest.fn().mockImplementation((fn) => fn(mockPrismaService)),
 };
@@ -124,19 +131,24 @@ const mockTxRunner = {
 // ── Tests ──────────────────────────────────────────────────────────────────────
 
 
-describe('AuthService', () => {
+// AuthService (password login) is wired with the real MerchantSessionService and
+// MerchantSignupService so the session / signup flows run end to end on the mocks.
+describe('AuthService + MerchantSessionService + MerchantSignupService', () => {
   let service: AuthService;
+  let sessions: MerchantSessionService;
+  let signupService: MerchantSignupService;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
+        MerchantSessionService,
+        MerchantSignupService,
         { provide: MERCHANT_REPOSITORY, useValue: mockPrismaService.merchant },
         { provide: TEAM_MEMBER_REPOSITORY, useValue: mockPrismaService.teamMember },
         { provide: DEVICE_SESSION_REPOSITORY, useValue: mockPrismaService.deviceSession },
         { provide: OTP_REPOSITORY, useValue: mockOtpRepo },
         { provide: TRANSACTION_RUNNER, useValue: mockTxRunner },
-        { provide: PUSH_PROVIDER, useValue: mockFirebaseService },
         { provide: MAIL_PROVIDER, useValue: mockMailService },
         { provide: JwtService, useValue: mockJwtService },
         { provide: MerchantPlanService, useValue: mockPlanService },
@@ -144,15 +156,58 @@ describe('AuthService', () => {
         { provide: ClientReferralService, useValue: { validateCode: jest.fn(), createReferral: jest.fn() } },
         { provide: JwtStrategy, useValue: { invalidateSession: jest.fn() } },
         { provide: ConfigService, useValue: mockConfigService },
-        { provide: MerchantInboxService, useValue: { record: jest.fn().mockResolvedValue(undefined) } },
+        { provide: MerchantNotifierService, useValue: { notify: jest.fn().mockResolvedValue('sent') } },
+        { provide: CACHE_MANAGER, useValue: { get: jest.fn(), set: jest.fn(), del: jest.fn().mockResolvedValue(undefined) } },
+        { provide: AppleTokenVerifier, useValue: { verify: jest.fn() } },
+        { provide: OtpSendLimiter, useValue: { consume: jest.fn().mockResolvedValue(undefined) } },
       ],
     }).compile();
 
     service = module.get<AuthService>(AuthService);
+    sessions = module.get<MerchantSessionService>(MerchantSessionService);
+    signupService = module.get<MerchantSignupService>(MerchantSignupService);
     jest.clearAllMocks();
+    // Every successful sign-in opens a DeviceSession: default to an unknown device.
+    mockPrismaService.deviceSession.findFirst.mockResolvedValue(null);
+    mockPrismaService.deviceSession.create.mockResolvedValue({});
+    mockPrismaService.deviceSession.findMany.mockResolvedValue([]);
   });
 
   // ── login ──────────────────────────────────────────────────────────────────
+
+  describe('sendLoginNotification()', () => {
+    const send = (...args: unknown[]) => (sessions as any).sendLoginNotification(...args);
+    let notifier: { notify: jest.Mock };
+    beforeEach(() => {
+      notifier = (sessions as any).notifier;
+      notifier.notify.mockClear();
+      (mockMailService as any).sendLoginAlert = jest.fn().mockResolvedValue(undefined);
+    });
+
+    it('does nothing for an already known device', async () => {
+      await send('m1', { kind: 'owner' }, 'iPhone', false);
+      expect(notifier.notify).not.toHaveBeenCalled();
+      expect((mockMailService as any).sendLoginAlert).not.toHaveBeenCalled();
+    });
+
+    it('sends a SECURITY alert + email for a new device, in the merchant language', async () => {
+      mockPrismaService.merchant.findUnique.mockResolvedValueOnce({
+        id: 'm1', pushToken: 'tok', notifPush: false, notifPrefs: null, language: 'en', email: 'o@x.com',
+      });
+      await send('m1', { kind: 'member', name: 'Sara' }, 'Pixel 8', true);
+      expect(notifier.notify).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'm1', pushToken: 'tok' }),
+        expect.objectContaining({
+          category: 'SECURITY',
+          action: 'open_security',
+          title: 'New sign-in to your account',
+          body: expect.stringContaining('Sara (team) signed in on a new device: Pixel 8'),
+        }),
+      );
+      expect((mockMailService as any).sendLoginAlert)
+        .toHaveBeenCalledWith('o@x.com', 'Sara (team)', 'Pixel 8', expect.any(Date), 'en');
+    });
+  });
 
   describe('login()', () => {
     it('returns access_token + merchant for valid credentials', async () => {
@@ -161,7 +216,7 @@ describe('AuthService', () => {
       mockPrismaService.merchant.update.mockResolvedValue(mockMerchant);
 
       const result = await service.login(
-        { email: 'test@jitplus.com', password: 'ValidPass1!' },
+        { email: 'test@jitplus.com', password: 'ValidPass1!', ...DEVICE },
         '1.2.3.4',
       );
 
@@ -169,7 +224,8 @@ describe('AuthService', () => {
       expect(result.merchant.email).toBe('test@jitplus.com');
       expect(result.userType).toBe('merchant');
       expect(result.merchant).not.toHaveProperty('password');
-      expect(result.merchant).not.toHaveProperty('pushToken');
+      // pushToken is never selected, so it cannot leak into the response.
+      expect(mockPrismaService.merchant.findUnique.mock.calls[0][0].select).not.toHaveProperty('pushToken');
     });
 
     it('throws UnauthorizedException on wrong password', async () => {
@@ -178,7 +234,7 @@ describe('AuthService', () => {
       mockPrismaService.merchant.update.mockResolvedValue(mockMerchant);
 
       await expect(
-        service.login({ email: 'test@jitplus.com', password: 'WrongPass!' }, '1.2.3.4'),
+        service.login({ email: 'test@jitplus.com', password: 'WrongPass!', ...DEVICE }, '1.2.3.4'),
       ).rejects.toThrow(UnauthorizedException);
     });
 
@@ -187,7 +243,7 @@ describe('AuthService', () => {
       mockPrismaService.teamMember.findUnique.mockResolvedValueOnce(null);
 
       await expect(
-        service.login({ email: 'ghost@jitplus.com', password: 'anything' }, '1.2.3.4'),
+        service.login({ email: 'ghost@jitplus.com', password: 'anything', ...DEVICE }, '1.2.3.4'),
       ).rejects.toThrow(UnauthorizedException);
     });
 
@@ -201,7 +257,7 @@ describe('AuthService', () => {
       mockPrismaService.teamMember.findUnique.mockResolvedValueOnce(null);
 
       await expect(
-        service.login({ email: 'test@jitplus.com', password: 'ValidPass1!' }, '1.2.3.4'),
+        service.login({ email: 'test@jitplus.com', password: 'ValidPass1!', ...DEVICE }, '1.2.3.4'),
       ).rejects.toThrow(UnauthorizedException);
     });
 
@@ -211,7 +267,7 @@ describe('AuthService', () => {
       mockPrismaService.merchant.update.mockResolvedValue(mockMerchant);
 
       await expect(
-        service.login({ email: 'test@jitplus.com', password: 'Wrong!' }, '1.2.3.4'),
+        service.login({ email: 'test@jitplus.com', password: 'Wrong!', ...DEVICE }, '1.2.3.4'),
       ).rejects.toThrow(UnauthorizedException);
 
       expect(mockPrismaService.merchant.update).toHaveBeenCalledWith(
@@ -228,7 +284,7 @@ describe('AuthService', () => {
       mockPrismaService.teamMember.findUnique.mockResolvedValueOnce(null);
       mockPrismaService.merchant.update.mockResolvedValue(merchantWithAttempts);
 
-      await service.login({ email: 'test@jitplus.com', password: 'ValidPass1!' }, '1.2.3.4');
+      await service.login({ email: 'test@jitplus.com', password: 'ValidPass1!', ...DEVICE }, '1.2.3.4');
 
       expect(mockPrismaService.merchant.update).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -237,18 +293,10 @@ describe('AuthService', () => {
       );
     });
 
-    it('does not return refresh_token when no deviceName (no session)', async () => {
-      mockPrismaService.merchant.findUnique.mockResolvedValueOnce(mockMerchant);
-      mockPrismaService.teamMember.findUnique.mockResolvedValueOnce(null);
-      mockPrismaService.merchant.update.mockResolvedValue(mockMerchant);
-
-      const result = await service.login(
-        { email: 'test@jitplus.com', password: 'ValidPass1!' },
-        '1.2.3.4',
-      );
-
-      // No deviceName → no DeviceSession → no refresh_token
-      expect(result.refresh_token).toBeUndefined();
+    it('rejects a sign-in without deviceName at validation (its token would be refused)', async () => {
+      const dto = plainToInstance(LoginDto, { email: 'test@jitplus.com', password: 'ValidPass1!' });
+      const errors = await validate(dto);
+      expect(errors.map((e) => e.property)).toContain('deviceName');
     });
 
     it('returns refresh_token when deviceName is provided', async () => {
@@ -261,7 +309,7 @@ describe('AuthService', () => {
       mockPrismaService.deviceSession.create.mockResolvedValue({ id: 'session-1' });
 
       const result = await service.login(
-        { email: 'test@jitplus.com', password: 'ValidPass1!', deviceName: 'iPhone 15' },
+        { email: 'test@jitplus.com', password: 'ValidPass1!', ...DEVICE, deviceName: 'iPhone 15' },
         '1.2.3.4',
       );
 
@@ -271,24 +319,71 @@ describe('AuthService', () => {
     });
   });
 
+  // ── registerDeviceSession ─────────────────────────────────────────────────
+
+  describe('registerDeviceSession()', () => {
+    const register = (device: Record<string, unknown>) =>
+      (sessions as any).registerDeviceSession('m1', 'sess-1', device, '1.2.3.4', 'merchant', 'o@x.com', 'Owner', 'hash');
+
+    it('reuses the row of a known deviceId: not a new device, no eviction query', async () => {
+      mockPrismaService.deviceSession.findFirst.mockResolvedValueOnce({ id: 'row-1' });
+      mockPrismaService.deviceSession.update.mockResolvedValueOnce({});
+
+      const res = await register({ deviceName: 'iPhone', deviceOS: 'ios', deviceId: 'dev-1' });
+
+      expect(res).toEqual({ isNewDevice: false });
+      expect(mockPrismaService.deviceSession.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { merchantId: 'm1', deviceId: 'dev-1' } }),
+      );
+      expect(mockPrismaService.deviceSession.create).not.toHaveBeenCalled();
+      expect(mockPrismaService.deviceSession.findMany).not.toHaveBeenCalled();
+    });
+
+    it('without deviceId (old app) recognises the device by name + OS', async () => {
+      mockPrismaService.deviceSession.findFirst.mockResolvedValueOnce({ id: 'row-2' });
+      mockPrismaService.deviceSession.update.mockResolvedValueOnce({});
+
+      const res = await register({ deviceName: 'iPhone', deviceOS: 'ios' });
+
+      expect(res).toEqual({ isNewDevice: false });
+      expect(mockPrismaService.deviceSession.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { merchantId: 'm1', deviceId: null, deviceName: 'iPhone', deviceOS: 'ios' } }),
+      );
+    });
+
+    it('creates a row for an unknown device and evicts beyond the cap', async () => {
+      mockPrismaService.deviceSession.findFirst.mockResolvedValueOnce(null);
+      mockPrismaService.deviceSession.create.mockResolvedValueOnce({});
+      mockPrismaService.deviceSession.findMany.mockResolvedValueOnce([]);
+
+      const res = await register({ deviceName: 'Pixel', deviceOS: 'android', deviceId: 'dev-2' });
+
+      expect(res).toEqual({ isNewDevice: true });
+      expect(mockPrismaService.deviceSession.create).toHaveBeenCalled();
+      expect(mockPrismaService.deviceSession.findMany).toHaveBeenCalled();
+    });
+  });
+
   // ── logout ─────────────────────────────────────────────────────────────────
 
   describe('logout()', () => {
-    it('deletes device session by sessionId', async () => {
-      mockPrismaService.deviceSession.deleteMany.mockResolvedValue({ count: 1 });
+    it('revokes the session but keeps the device known (no new-sign-in alert on re-login)', async () => {
+      mockPrismaService.deviceSession.updateMany.mockResolvedValue({ count: 1 });
 
-      const result = await service.logout('session-uuid-123');
+      const result = await sessions.logout('session-uuid-123');
 
-      expect(mockPrismaService.deviceSession.deleteMany).toHaveBeenCalledWith({
+      expect(mockPrismaService.deviceSession.updateMany).toHaveBeenCalledWith({
         where: { tokenId: 'session-uuid-123' },
+        data: { tokenId: null, refreshTokenHash: null, isCurrentDevice: false },
       });
+      expect(mockPrismaService.deviceSession.deleteMany).not.toHaveBeenCalled();
       expect(result.message).toBe('Déconnecté');
     });
 
     it('returns success even if no sessionId provided', async () => {
-      const result = await service.logout(undefined);
+      const result = await sessions.logout(undefined);
       expect(result.message).toBe('Déconnecté');
-      expect(mockPrismaService.deviceSession.deleteMany).not.toHaveBeenCalled();
+      expect(mockPrismaService.deviceSession.updateMany).not.toHaveBeenCalled();
     });
   });
 
@@ -312,7 +407,7 @@ describe('AuthService', () => {
       mockPrismaService.merchant.findUnique.mockResolvedValueOnce(mockMerchant);
       mockPrismaService.deviceSession.updateMany.mockResolvedValueOnce({ count: 1 });
 
-      const result = await service.refreshWithToken(RT, 'old-session-id');
+      const result = await sessions.refreshWithToken(RT, 'old-session-id');
 
       expect(mockPrismaService.deviceSession.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({ where: { id: baseSession.id, refreshTokenHash: RT_HASH } }),
@@ -326,7 +421,7 @@ describe('AuthService', () => {
       mockPrismaService.merchant.findUnique.mockResolvedValueOnce(mockMerchant);
       mockPrismaService.deviceSession.updateMany.mockResolvedValueOnce({ count: 0 });
 
-      await expect(service.refreshWithToken(RT, 'old-session-id')).rejects.toThrow(UnauthorizedException);
+      await expect(sessions.refreshWithToken(RT, 'old-session-id')).rejects.toThrow(UnauthorizedException);
     });
 
     it('keeps the team member identity in the refreshed token', async () => {
@@ -341,7 +436,7 @@ describe('AuthService', () => {
       });
       mockPrismaService.deviceSession.updateMany.mockResolvedValueOnce({ count: 1 });
 
-      await service.refreshWithToken(RT, 'old-session-id');
+      await sessions.refreshWithToken(RT, 'old-session-id');
 
       expect(mockJwtService.sign).toHaveBeenCalledWith(
         expect.objectContaining({ type: 'team_member', teamMemberId: 'member-1', teamMemberName: 'Alice' }),
@@ -360,7 +455,7 @@ describe('AuthService', () => {
       });
       mockPrismaService.deviceSession.delete.mockResolvedValueOnce({});
 
-      await expect(service.refreshWithToken(RT, 'old-session-id')).rejects.toThrow(UnauthorizedException);
+      await expect(sessions.refreshWithToken(RT, 'old-session-id')).rejects.toThrow(UnauthorizedException);
       expect(mockPrismaService.deviceSession.delete).toHaveBeenCalledWith({ where: { id: baseSession.id } });
       expect(mockPrismaService.deviceSession.updateMany).not.toHaveBeenCalled();
       expect(mockJwtService.sign).not.toHaveBeenCalled();
@@ -369,6 +464,9 @@ describe('AuthService', () => {
 
   // ── register ───────────────────────────────────────────────────────────────
   describe('register()', () => {
+    // A `mockRejectedValueOnce` left unused by a failing test must not leak into the next one.
+    beforeEach(() => mockPrismaService.merchant.create.mockReset());
+
     it('throws ConflictException when the DB raises P2002 on email uniqueness', async () => {
       // Uniqueness is now enforced solely by the DB unique constraint (P2002 catch);
       // there is no pre-check findUnique, which would create a TOCTOU window under
@@ -380,15 +478,72 @@ describe('AuthService', () => {
       mockPrismaService.merchant.create.mockRejectedValueOnce(p2002);
 
       await expect(
-        service.register({
+        signupService.register({
           nom: 'Test',
           email: 'test@jitplus.com',
           password: 'ValidPass1!',
+          phoneNumber: '+212600000000',
           categorie: 'CAFE' as any,
           ville: 'Casablanca',
           termsAccepted: true,
         } as any),
       ).rejects.toThrow(ConflictException);
+    });
+
+    it('saves the language picked at signup on the merchant', async () => {
+      // Stop the flow right after the insert: only its payload matters here.
+      mockPrismaService.merchant.create.mockRejectedValueOnce(new Error('stop'));
+      const base = { nom: 'Test', email: 'lang@jitplus.com', password: 'ValidPass1!', phoneNumber: '+212600000000', termsAccepted: true };
+
+      await expect(signupService.register({ ...base, language: 'ar' } as any)).rejects.toThrow();
+      expect(mockPrismaService.merchant.create.mock.calls[0][0].data.language).toBe('ar');
+    });
+
+    it('keeps the default language when none is sent', async () => {
+      mockPrismaService.merchant.create.mockRejectedValueOnce(new Error('stop'));
+      const base = { nom: 'Test', email: 'nolang@jitplus.com', password: 'ValidPass1!', phoneNumber: '+212600000000', termsAccepted: true };
+
+      await expect(signupService.register(base as any)).rejects.toThrow();
+      expect(mockPrismaService.merchant.create.mock.calls[0][0].data).not.toHaveProperty('language');
+    });
+
+    const signup = { nom: 'Test', email: 'new@jitplus.com', password: 'ValidPass1!', phoneNumber: '+212600000000', termsAccepted: true };
+
+    it('refuses a phone number already used by another merchant', async () => {
+      mockPrismaService.merchant.findFirst.mockResolvedValueOnce({ id: 'other' });
+
+      await expect(signupService.register(signup as any)).rejects.toThrow(ConflictException);
+      expect(mockPrismaService.merchant.create).not.toHaveBeenCalled();
+    });
+
+    it('applies the content policy to the business name', async () => {
+      await expect(signupService.register({ ...signup, nomCommerce: 'heil hitler shop' } as any)).rejects.toThrow(BadRequestException);
+      expect(mockPrismaService.merchant.create).not.toHaveBeenCalled();
+    });
+
+    it('ignores a logo URL sent at signup', async () => {
+      mockPrismaService.merchant.create.mockRejectedValueOnce(new Error('stop'));
+      await expect(signupService.register({ ...signup, logoUrl: 'https://evil.example/x.png' } as any)).rejects.toThrow();
+      expect(mockPrismaService.merchant.create.mock.calls[0][0].data).not.toHaveProperty('logoUrl');
+    });
+
+    it('opens the session right away when the app sends its device', async () => {
+      mockPrismaService.merchant.create.mockResolvedValueOnce({ id: 'm1', email: signup.email, nom: 'Test', language: 'fr', stores: [] });
+
+      const res = await signupService.register({ ...signup, deviceName: 'Pixel 7', deviceOS: 'android' } as any);
+
+      expect(res.access_token).toBe('mock-jwt-token');
+      expect(res.refresh_token).toEqual(expect.any(String));
+      expect(res.requiresEmailVerification).toBe(false);
+    });
+
+    it('returns no session for older apps that do not send their device', async () => {
+      mockPrismaService.merchant.create.mockResolvedValueOnce({ id: 'm1', email: signup.email, nom: 'Test', language: 'fr', stores: [] });
+
+      const res = await signupService.register(signup as any);
+
+      expect(res.access_token).toBeUndefined();
+      expect(mockPrismaService.deviceSession.create).not.toHaveBeenCalled();
     });
   });
 });

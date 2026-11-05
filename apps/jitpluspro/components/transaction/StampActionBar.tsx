@@ -21,8 +21,10 @@ interface Props {
 function actionLabelKey(plan: StampPlan): { key: string; count?: number } {
   switch (plan.kind) {
     case 'earn':
+      if (plan.purchaseOnly) return { key: 'stampScreen.ctaPurchase' };
       return { key: plan.creditedStamps === 1 ? 'stampScreen.ctaEarn_one' : 'stampScreen.ctaEarn_other', count: plan.creditedStamps };
     case 'earnAndRedeem':
+      if (plan.purchaseOnly) return { key: 'stampScreen.ctaPurchaseAndRedeem' };
       return { key: plan.creditedStamps === 1 ? 'stampScreen.ctaEarnAndRedeem_one' : 'stampScreen.ctaEarnAndRedeem_other', count: plan.creditedStamps };
     case 'redeem':
       return { key: 'stampScreen.ctaRedeem' };

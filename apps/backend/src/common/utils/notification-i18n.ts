@@ -1,4 +1,6 @@
-export type NotifLocale = 'fr' | 'en' | 'ar';
+import { type AppLang, pickAppLang } from './app-lang';
+
+export type NotifLocale = AppLang;
 
 const translations = {
   fr: {
@@ -109,6 +111,5 @@ const translations = {
 } as const;
 
 export function getNotifTranslations(locale?: string | null) {
-  const lang = (locale && locale in translations ? locale : 'fr') as NotifLocale;
-  return translations[lang];
+  return translations[pickAppLang(locale)];
 }

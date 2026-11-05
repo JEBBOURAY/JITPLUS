@@ -42,8 +42,11 @@ export {
   useAdminNotifUnreadCount,
   useMarkAdminNotifsRead,
   useMarkSingleAdminNotifRead,
+  useNotificationPrefs,
+  useUpdateNotificationPrefs,
   type InboxCategory,
   type AdminNotification,
+  type NotificationPrefKey,
 } from './queries/inbox';
 export {
   useLuckyWheelCampaigns,

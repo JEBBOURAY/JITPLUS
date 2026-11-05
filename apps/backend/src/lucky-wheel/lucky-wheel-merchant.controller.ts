@@ -59,7 +59,7 @@ export class LuckyWheelMerchantController {
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 10 } })
   async updateStatus(
     @CurrentUser() user: JwtPayload,
-    @Param('id') campaignId: string,
+    @Param('id', ParseUUIDPipe) campaignId: string,
     @Body() dto: UpdateCampaignStatusDto,
   ) {
     return this.LuckyWheelService.updateCampaignStatus(user.sub, campaignId, dto.status);
@@ -96,7 +96,7 @@ export class LuckyWheelMerchantController {
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 10 } })
   async updateCampaign(
     @CurrentUser() user: JwtPayload,
-    @Param('id') campaignId: string,
+    @Param('id', ParseUUIDPipe) campaignId: string,
     @Body() dto: UpdateCampaignDto,
   ) {
     return this.LuckyWheelService.updateCampaign(user.sub, campaignId, {
@@ -115,7 +115,7 @@ export class LuckyWheelMerchantController {
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 5 } })
   async deleteCampaign(
     @CurrentUser() user: JwtPayload,
-    @Param('id') campaignId: string,
+    @Param('id', ParseUUIDPipe) campaignId: string,
   ) {
     return this.LuckyWheelService.deleteCampaign(user.sub, campaignId);
   }

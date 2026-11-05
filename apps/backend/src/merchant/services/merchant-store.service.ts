@@ -6,6 +6,7 @@ import {
 import { Inject } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
+import { invalidateMerchantListCache } from '../../common/utils/merchant-list-cache';
 import { STORE_REPOSITORY, MERCHANT_REPOSITORY, type IStoreRepository, type IMerchantRepository } from '../../common/repositories';
 import { AuditLogService, AuditAction, AuditTargetType } from '../../admin/audit-log.service';
 import { MerchantPlanService } from './merchant-plan.service';
@@ -35,8 +36,7 @@ export class MerchantStoreService {
     await Promise.all([
       this.cache.del(this.storesCacheKey(merchantId)),
       this.cache.del(`merchant:detail:${merchantId}`),
-      // Invalidate the most common merchant list page seen by jitplus clients
-      this.cache.del('merchants:list:p1:l50'),
+      invalidateMerchantListCache(this.cache),
     ]);
   }
 

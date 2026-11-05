@@ -1,4 +1,4 @@
-import { Image } from 'react-native';
+import { Image } from 'expo-image';
 import { resolveImageUrl } from './imageUrl';
 
 /** Set of URLs already prefetched during this session — avoids duplicate network calls. */
@@ -11,7 +11,7 @@ const MAX_CACHE_SIZE = 500;
 const BATCH_SIZE = 6;
 
 /**
- * Prefetch an array of image URLs into the native image cache.
+ * Prefetch image URLs into expo-image's disk cache, the one MerchantLogo reads.
  * Silently ignores failures — best-effort caching.
  * Skips URLs that were already prefetched in this session.
  * Processes in batches to avoid flooding the network/UI thread.
@@ -36,9 +36,9 @@ export function prefetchImages(urls: (string | null | undefined)[]): void {
     const batch = pending.slice(i, i + BATCH_SIZE);
     if (!batch.length) return;
     i += BATCH_SIZE;
-    Promise.allSettled(batch.map((u) => Image.prefetch(u)))
-      .then(nextBatch)
-      .catch((e) => { if (__DEV__) console.warn('[imageCache] batch error:', e); });
+    Image.prefetch(batch, 'disk')
+      .catch((e) => { if (__DEV__) console.warn('[imageCache] batch error:', e); })
+      .then(nextBatch);
   }
   nextBatch();
 }

@@ -16,7 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
 import { BlurView } from 'expo-blur';
 import Svg, { Circle, Defs, Line, LinearGradient as SvgGradient, Path, Stop } from 'react-native-svg';
-import { ArrowLeft, ChevronRight, Eye } from 'lucide-react-native';
+import { ArrowLeft, ChevronRight, Eye, Package } from 'lucide-react-native';
 import { JitClients, JitGames, JitGift, JitScan, JitStamp, JitTicket } from '@/components/icons';
 import type { LucideIcon } from 'lucide-react-native';
 import PremiumLockCard from '@/components/PremiumLockCard';
@@ -35,7 +35,8 @@ import {
   useDashboardDistribution,
   useDashboardGames,
 } from '@/hooks/useQueryHooks';
-import { DEFAULT_CURRENCY, formatCurrency, getIntlLocale } from '@/config/currency';
+import { formatCurrency, getIntlLocale } from '@/config/currency';
+import { useCurrency } from '@/hooks/useCurrency';
 import { font, icon, shadow } from '@/constants/design';
 import { hapticLight } from '@/utils/haptics';
 import type { DashboardGames, DashboardKpis, RewardDistribution, TrendPoint, TrendResponse } from '@/types';
@@ -58,7 +59,6 @@ const METRICS: { id: TrendMetric; labelKey: string }[] = [
 ];
 
 const HIT_SLOP = { top: 10, bottom: 10, left: 10, right: 10 };
-const WHOLE_CURRENCY = { ...DEFAULT_CURRENCY, decimals: 0 };
 
 const CHART_HEIGHT = 180;
 const PLOT_TOP = 40;
@@ -91,15 +91,17 @@ function curvePath(coords: { x: number; y: number }[]) {
 
 function useFormatters() {
   const { locale } = useLanguage();
+  const currency = useCurrency();
   return useMemo(() => {
     const intlLocale = getIntlLocale(locale);
+    const wholeCurrency = { ...currency, decimals: 0 };
     return {
       intlLocale,
       num: (n: number | undefined) => (n ?? 0).toLocaleString(intlLocale),
       pct: (fraction: number) => fraction.toLocaleString(intlLocale, { style: 'percent', maximumFractionDigits: 0 }),
-      money: (n: number) => formatCurrency(n, WHOLE_CURRENCY, intlLocale),
+      money: (n: number) => formatCurrency(n, wholeCurrency, intlLocale),
     };
-  }, [locale]);
+  }, [locale, currency]);
 }
 
 /** Buckets are UTC calendar dates ("YYYY-MM-DD"); read the parts directly so the device timezone cannot shift them. */
@@ -300,6 +302,37 @@ function OverviewCard({ kpis, periodTotals }: { kpis: DashboardKpis | undefined;
         <Text style={[styles.caption, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.3}>
           {t('dashboard.profileViewsLine', { count: num(kpis?.profileViews) })}
         </Text>
+      </View>
+    </Card>
+  );
+}
+
+/** Stamps credited from the QR codes slipped into parcels (e-commerce / delivery). */
+function EcommerceCard({ kpis }: { kpis: DashboardKpis | undefined }) {
+  const theme = useTheme();
+  const dir = useDir();
+  const { t } = useLanguage();
+  const { num, money } = useFormatters();
+  const divider = dir.isRTL
+    ? { borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: theme.border }
+    : { borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: theme.border };
+  const amount = kpis?.ecommerceAmount ?? 0;
+
+  return (
+    <Card style={styles.flushCard}>
+      <View style={{ flexDirection: dir.row }}>
+        <StatTile
+          Icon={Package}
+          label={t('dashboard.ecommerceScans')}
+          value={num(kpis?.ecommerceRedemptions)}
+          note={amount > 0 ? t('dashboard.ecommerceAmount', { amount: money(amount) }) : undefined}
+          style={divider}
+        />
+        <StatTile
+          Icon={JitStamp}
+          label={t('dashboard.ecommerceStamps')}
+          value={num(kpis?.ecommerceStamps)}
+        />
       </View>
     </Card>
   );
@@ -835,6 +868,12 @@ export default function DashboardScreen() {
         <Section title={t('dashboard.sectionProgram')}>
           <OverviewCard kpis={kpis.data} periodTotals={periodTotals} />
         </Section>
+
+        {(kpis.data?.ecommerceRedemptions ?? 0) > 0 ? (
+          <Section title={t('dashboard.sectionEcommerce')}>
+            <EcommerceCard kpis={kpis.data} />
+          </Section>
+        ) : null}
 
         <Section title={t('dashboard.evolution')}>
           <ActivityCard data={trends.data} period={period} loading={trends.isLoading} stale={trends.isPlaceholderData} />

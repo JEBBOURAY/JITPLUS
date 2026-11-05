@@ -18,6 +18,7 @@ function setup(card: { id: string; stamps: number; deactivatedAt: Date | null } 
       update: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: card?.id ?? 'lc-new', stamps: card?.stamps ?? 0, deactivatedAt: null, ...data })),
     },
     transaction: { create: jest.fn().mockResolvedValue({ id: 'tx-1', stamps: 1 }) },
+    luckyWheelCampaign: { findFirst: jest.fn().mockResolvedValue({ id: 'wheel-1' }) },
   };
   const clientRepo = { findUnique: jest.fn().mockResolvedValue({ id: CLIENT_ID, language: 'fr', deletedAt: null }) };
   const merchantRepo = {
@@ -26,7 +27,10 @@ function setup(card: { id: string; stamps: number; deactivatedAt: Date | null } 
       amountPerStamp: null, stampsForReward: 10, stampEarningMode: 'PER_VISIT', rewards: [],
     }),
   };
-  const planService = { assertCanAddClient: jest.fn().mockResolvedValue(undefined) };
+  const planService = {
+    assertCanAddClient: jest.fn().mockResolvedValue(undefined),
+    resolveEffectivePlan: jest.fn().mockResolvedValue({ plan: 'FREE' }),
+  };
   const notifications = { sendToClient: jest.fn().mockResolvedValue(undefined) };
   const eventsGateway = { emitStampsUpdated: jest.fn(), emitTransactionRecorded: jest.fn() };
   const txRunner = { run: jest.fn((fn: (tx: unknown) => unknown) => fn(prisma)) };
@@ -41,8 +45,9 @@ function setup(card: { id: string; stamps: number; deactivatedAt: Date | null } 
     notifications as any,
     eventsGateway as any,
     planService as any,
+    {} as any,
   );
-  return { service, prisma, planService, clientRepo, merchantRepo };
+  return { service, prisma, planService, clientRepo, merchantRepo, eventsGateway, notifications };
 }
 
 describe('MerchantTransactionService enrollment rules', () => {
@@ -65,7 +70,8 @@ describe('MerchantTransactionService enrollment rules', () => {
   it('enrolls a non-member when allowed (scan ticket / quick-add)', async () => {
     const { service, prisma, planService } = setup(null);
     await earn(service, true);
-    expect(planService.assertCanAddClient).toHaveBeenCalledWith(MERCHANT_ID);
+    // Counted inside the transaction, with the plan resolved before it (no 2nd pool connection).
+    expect(planService.assertCanAddClient).toHaveBeenCalledWith(MERCHANT_ID, { tx: prisma, plan: 'FREE' });
     expect(prisma.loyaltyCard.create).toHaveBeenCalled();
   });
 
@@ -82,6 +88,57 @@ describe('MerchantTransactionService enrollment rules', () => {
     expect(prisma.loyaltyCard.update).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: 'lc1' }, data: { deactivatedAt: null } }),
     );
+  });
+});
+
+describe('MerchantTransactionService PURCHASE (stamp-less wheel purchase)', () => {
+  const purchase = (service: MerchantTransactionService, amount: number, stamps = 0) =>
+    service.createTransaction(CLIENT_ID, MERCHANT_ID, 'PURCHASE', amount, stamps);
+
+  it('records the purchase without touching the stamp balance', async () => {
+    const { service, prisma } = setup({ id: 'lc1', stamps: 4, deactivatedAt: null });
+    await purchase(service, 100);
+    expect(prisma.luckyWheelCampaign.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ merchantId: MERCHANT_ID, ticketCostStamps: 0, minSpendAmount: { gt: 0, lte: 100 } }),
+    }));
+    expect(prisma.transaction.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ type: 'PURCHASE', amount: 100, stamps: 0 }),
+    });
+    expect(prisma.loyaltyCard.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ stamps: 4 }),
+    }));
+  });
+
+  it('is accepted when the card is at the accumulation limit', async () => {
+    const { service, prisma, merchantRepo } = setup({ id: 'lc1', stamps: 10, deactivatedAt: null });
+    merchantRepo.findUnique.mockResolvedValue({
+      nom: 'Cafe', isActive: true, deletedAt: null, accumulationLimit: 10,
+      amountPerStamp: 150, stampsForReward: 10, stampEarningMode: 'PER_AMOUNT', rewards: [],
+    });
+    await purchase(service, 300);
+    expect(prisma.transaction.create).toHaveBeenCalled();
+  });
+
+  it('refuses when no active wheel accepts this amount', async () => {
+    const { service, prisma } = setup({ id: 'lc1', stamps: 4, deactivatedAt: null });
+    prisma.luckyWheelCampaign.findFirst.mockResolvedValue(null);
+    await expect(purchase(service, 100)).rejects.toThrow(BadRequestException);
+    expect(prisma.transaction.create).not.toHaveBeenCalled();
+  });
+
+  it('refuses stamps or a missing amount', async () => {
+    const { service, prisma } = setup({ id: 'lc1', stamps: 4, deactivatedAt: null });
+    await expect(purchase(service, 100, 1)).rejects.toThrow(BadRequestException);
+    await expect(purchase(service, 0)).rejects.toThrow(BadRequestException);
+    expect(prisma.transaction.create).not.toHaveBeenCalled();
+  });
+
+  it('sends no stamp event or stamp push to the client', async () => {
+    const { service, eventsGateway, notifications } = setup({ id: 'lc1', stamps: 4, deactivatedAt: null });
+    await purchase(service, 100);
+    expect(eventsGateway.emitStampsUpdated).not.toHaveBeenCalled();
+    expect(eventsGateway.emitTransactionRecorded).toHaveBeenCalledWith(MERCHANT_ID, expect.objectContaining({ type: 'PURCHASE' }));
+    expect(notifications.sendToClient).not.toHaveBeenCalled();
   });
 });
 

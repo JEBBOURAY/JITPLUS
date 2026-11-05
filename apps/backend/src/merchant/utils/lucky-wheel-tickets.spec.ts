@@ -14,7 +14,7 @@ const free = { id: 'free', ticketCostStamps: 0, ticketEveryNVisits: null, minSpe
 const paid = { id: 'paid', ticketCostStamps: 5, ticketEveryNVisits: null, minSpendAmount: 0, startsAt };
 
 describe('awardLuckyWheelTicketsInTx', () => {
-  it('ignores transaction types other than EARN_STAMPS / REDEEM_REWARD', async () => {
+  it('ignores transaction types other than EARN_STAMPS / REDEEM_REWARD / PURCHASE', async () => {
     const tx = makeTx([free]);
     await expect(
       awardLuckyWheelTicketsInTx(tx, { ...base, type: 'COUPON_REDEEM', amount: 100, stamps: 0 }),
@@ -63,6 +63,30 @@ describe('awardLuckyWheelTicketsInTx', () => {
     ).resolves.toBe(1);
     expect(hit.transaction.count).toHaveBeenCalledWith({
       where: { clientId: 'c1', merchantId: 'm1', type: 'EARN_STAMPS', createdAt: { gte: startsAt } },
+    });
+  });
+
+  it('grants a PURCHASE ticket only on free campaigns with a reached minimum spend', async () => {
+    const wheel100 = { ...free, id: 'w100', minSpendAmount: 100 };
+    const tx = makeTx([free, paid, wheel100, { ...free, id: 'w200', minSpendAmount: 200 }]);
+    await expect(
+      awardLuckyWheelTicketsInTx(tx, { ...base, type: 'PURCHASE', amount: 120, stamps: 0 }),
+    ).resolves.toBe(1);
+    expect(tx.luckyWheelTicket.createMany).toHaveBeenCalledWith({
+      data: [{ campaignId: 'w100', clientId: 'c1', transactionId: 't1' }],
+    });
+  });
+
+  it('counts EARN_STAMPS and PURCHASE above the minimum spend for every-N on purchase campaigns', async () => {
+    const tx = makeTx([{ ...free, minSpendAmount: 100, ticketEveryNVisits: 3 }], 3);
+    await expect(
+      awardLuckyWheelTicketsInTx(tx, { ...base, type: 'PURCHASE', amount: 100, stamps: 0 }),
+    ).resolves.toBe(1);
+    expect(tx.transaction.count).toHaveBeenCalledWith({
+      where: {
+        clientId: 'c1', merchantId: 'm1', type: { in: ['EARN_STAMPS', 'PURCHASE'] },
+        createdAt: { gte: startsAt }, amount: { gte: 100 },
+      },
     });
   });
 });

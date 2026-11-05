@@ -8,8 +8,8 @@ import { useFonts } from 'expo-font';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import React, { useEffect, useRef, useState, useMemo } from 'react';
-import { Platform, View } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
+import { Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClient, QueryCache, MutationCache, onlineManager, useQueryClient } from '@tanstack/react-query';
 import NetInfo from '@react-native-community/netinfo';
@@ -22,12 +22,18 @@ import { useRealtimeEvents } from '@/hooks/useRealtimeEvents';
 import { useAppForegroundRefresh } from '@/hooks/useAppForegroundRefresh';
 import api, { getServerBaseUrl } from '@/services/api';
 import { logError, logWarn, logInfo } from '@/utils/devLogger';
-import { routeForAction } from '@/utils/notificationRoutes';
+import { routeForAction, isSpecialAction } from '@/utils/notificationRoutes';
+import { useSpecialAction } from '@/hooks/useSpecialAction';
+import { getAppLanguage } from '@/utils/appLanguage';
+import { registerPushToken } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { trackNotificationOpened } from '@/hooks/queries/inbox';
 import { Sentry, captureException } from '@/utils/sentry';
 import { queryKeys } from '@/hooks/queries/keys';
 import { ASYNC_STORAGE_KEYS } from '@/constants/app';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { useAuthStore } from '@/stores/authStore';
+import { useSplashStore } from '@/stores/splashStore';
 import { ThemeProvider, useTheme } from '@/contexts/ThemeContext';
 import { LanguageProvider } from '@/contexts/LanguageContext';
 import { Notifications, isExpoGo, setupAndroidChannels } from '@/utils/notifications';
@@ -79,9 +85,18 @@ const GATEWAY_STATUSES = new Set([502, 503, 504]);
 
 // Skip expected HTTP 4xx errors (business/validation failures) from Sentry.
 // Only report 5xx, network errors, and non-HTTP errors.
+const httpStatus = (error: unknown): number | undefined =>
+  (error as { response?: { status?: number } } | null)?.response?.status;
+
 function isServerOrNetworkError(error: unknown): boolean {
-  const status = (error as { response?: { status?: number } })?.response?.status;
+  const status = httpStatus(error);
   return !status || (status >= 500 && !GATEWAY_STATUSES.has(status));
+}
+
+// A 4xx (401 after sign-out, 403, 404…) fails the same way on retry; 408/429 are transient.
+function isRetryable(error: unknown): boolean {
+  const status = httpStatus(error);
+  return !status || status >= 500 || status === 408 || status === 429;
 }
 
 let hasHandledColdStart = false;
@@ -99,13 +114,13 @@ const queryClient = new QueryClient({
     onError: (error, _vars, _ctx, mutation) => {
       logError('Mutation', `Mutation failed [${String(mutation.options.mutationKey ?? 'anonymous')}]`, error);
       if (!__DEV__ && isServerOrNetworkError(error)) {
-        captureException(error, { tags: { source: 'react-query-mutation' } });
+        captureException(error, { tags: { source: 'react-query-mutation' }, extra: { httpStatus: httpStatus(error) } });
       }
     },
   }),
   defaultOptions: {
     queries: {
-      retry: 2,
+      retry: (failureCount, error) => failureCount < 2 && isRetryable(error),
       retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 30_000),
       staleTime: 2 * 60 * 1000,
       // Must be >= persister maxAge so in-memory cache isn't GC'd
@@ -294,13 +309,25 @@ export default function RootLayout() {
  */
 function SplashGate({ children }: { children: React.ReactNode }) {
   const loading = useAuthStore((s) => s.loading);
-  const [showApp, setShowApp] = useState(false);
+  // Latched: once auth has resolved the app stays mounted, under the splash while it opens.
+  const [appMounted, setAppMounted] = useState(false);
+  const [splashDone, setSplashDone] = useState(false);
+  useEffect(() => {
+    if (!loading) setAppMounted(true);
+  }, [loading]);
+  // Screens under the splash (login) start their intro as soon as it opens.
+  const openSplash = useCallback(() => useSplashStore.getState().markDone(), []);
+  const finishSplash = useCallback(() => {
+    setSplashDone(true);
+    useSplashStore.getState().markDone();
+  }, []);
 
-  if (!showApp) {
-    return <SplashAnimated ready={!loading} onFinish={() => setShowApp(true)} />;
-  }
-
-  return <>{children}</>;
+  return (
+    <View style={styles.splashGate}>
+      {appMounted && children}
+      {!splashDone && <SplashAnimated ready={appMounted} onOpen={openSplash} onFinish={finishSplash} />}
+    </View>
+  );
 }
 
 // Memoized to avoid the StatusBar native module being called on every parent
@@ -373,6 +400,14 @@ function ThemedNavigator() {
   const router = useRouter();
   const queryClient = useQueryClient();
 
+  // Automatic pushes are written in the merchant's language: tell the backend
+  // whenever it changes (no-op when token and language were already sent).
+  const { locale } = useLanguage();
+  useEffect(() => {
+    if (!hasMerchant) return;
+    registerPushToken(false, locale).catch(() => {});
+  }, [hasMerchant, locale]);
+
   // Navigation theme aligned with OUR design tokens. The stock DefaultTheme /
   // DarkTheme use colors.background = rgb(242,242,242) / near-black, which do
   // NOT match theme.bg (#FFFFFF / #0B0F14). react-native-screens paints each
@@ -437,6 +472,8 @@ function ThemedNavigator() {
     setupAndroidChannels();
   }, []);
 
+  const runSpecialAction = useSpecialAction();
+
   useEffect(() => {
     if (!Notifications || isExpoGo) return;
 
@@ -458,10 +495,9 @@ function ThemedNavigator() {
           if (projectId) {
             const expoTokenData = await Notifications!.getExpoPushTokenAsync({ projectId, devicePushToken });
             const expoToken = String(expoTokenData.data);
-            const lang = await AsyncStorage.getItem('jitpluspro_language');
             // Deduped — the helper drops duplicate / burst PATCHes that Android
             // FCM rotation can otherwise trigger in a tight loop.
-            await sendMerchantPushToken(api, expoToken, lang || 'fr');
+            await sendMerchantPushToken(api, expoToken, await getAppLanguage());
           }
         } catch (e) {
           logWarn('Notifications', 'Token refresh sync failed', e);
@@ -489,6 +525,16 @@ function ThemedNavigator() {
       try {
         const action = typeof data?.action === 'string' ? data.action : undefined;
         const event = typeof data?.event === 'string' ? data.event : undefined;
+
+        // Open-rate tracking: the backend sends the inbox item id with every push.
+        const inboxId = typeof data?.inboxId === 'string' ? data.inboxId : undefined;
+        if (inboxId) trackNotificationOpened(inboxId).catch(() => {});
+
+        // 0. Actions needing context (WhatsApp support, verify-email)
+        if (isSpecialAction(action)) {
+          runSpecialAction(action);
+          return;
+        }
 
         // 1. Action-based deep links from scheduled campaigns / reminders
         if (action) {
@@ -542,7 +588,7 @@ function ThemedNavigator() {
       receivedSub.remove();
       responseSub.remove();
     };
-  }, [router, queryClient]);
+  }, [router, queryClient, runSpecialAction]);
 
   return (
     <NavThemeProvider value={navTheme}>
@@ -571,6 +617,7 @@ function ThemedNavigator() {
           <Stack.Screen name="games" options={{ headerShown: false }} />
           <Stack.Screen name="referral" options={{ headerShown: false }} />
           <Stack.Screen name="admin-notifications" options={{ headerShown: false }} />
+          <Stack.Screen name="notification-settings" options={{ headerShown: false }} />
           <Stack.Screen name="transactions" options={{ headerShown: false, animation: 'slide_from_right' }} />
         </Stack>
         <AuthRedirectGuard />
@@ -578,3 +625,7 @@ function ThemedNavigator() {
     </NavThemeProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  splashGate: { flex: 1 },
+});

@@ -1,20 +1,28 @@
 import { JwtService } from '@nestjs/jwt';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { MerchantSignupService } from './merchant-signup.service';
+import { MerchantOAuthService } from './merchant-oauth.service';
+import { MerchantSessionService } from './merchant-session.service';
+import { MerchantOtpService } from './merchant-otp.service';
 import { MerchantReferralService } from '../merchant/services/merchant-referral.service';
 import { ClientReferralService } from '../client-auth/client-referral.service';
 
 const SECRET = 'test-secret-test-secret-test-secret-123';
 
 describe('AuthController.logout', () => {
-  const authService = { logout: jest.fn().mockResolvedValue({ message: 'Déconnecté' }) };
+  const sessionService = { logout: jest.fn().mockResolvedValue({ message: 'Déconnecté' }) };
   const jwtService = new JwtService({ secret: SECRET, signOptions: { issuer: 'jitplus-api', audience: 'jitplus-merchant' } });
   let controller: AuthController;
 
   beforeEach(() => {
     jest.clearAllMocks();
     controller = new AuthController(
-      authService as unknown as AuthService,
+      {} as AuthService,
+      {} as MerchantSignupService,
+      {} as MerchantOAuthService,
+      sessionService as unknown as MerchantSessionService,
+      {} as MerchantOtpService,
       {} as MerchantReferralService,
       {} as ClientReferralService,
       jwtService,
@@ -29,7 +37,7 @@ describe('AuthController.logout', () => {
 
     await controller.logout(`Bearer ${token}`);
 
-    expect(authService.logout).toHaveBeenCalledWith('session-123');
+    expect(sessionService.logout).toHaveBeenCalledWith('session-123');
   });
 
   it('still revokes the session when the access token has expired', async () => {
@@ -37,7 +45,7 @@ describe('AuthController.logout', () => {
 
     await controller.logout(`Bearer ${token}`);
 
-    expect(authService.logout).toHaveBeenCalledWith('session-expired');
+    expect(sessionService.logout).toHaveBeenCalledWith('session-expired');
   });
 
   it('does not revoke anything for a token signed with another secret', async () => {
@@ -45,27 +53,31 @@ describe('AuthController.logout', () => {
 
     await controller.logout(`Bearer ${forged}`);
 
-    expect(authService.logout).toHaveBeenCalledWith(undefined);
+    expect(sessionService.logout).toHaveBeenCalledWith(undefined);
   });
 
   it('succeeds without a token', async () => {
     await controller.logout(undefined);
     await controller.logout('Basic abc');
 
-    expect(authService.logout).toHaveBeenNthCalledWith(1, undefined);
-    expect(authService.logout).toHaveBeenNthCalledWith(2, undefined);
+    expect(sessionService.logout).toHaveBeenNthCalledWith(1, undefined);
+    expect(sessionService.logout).toHaveBeenNthCalledWith(2, undefined);
   });
 
   it('propagates unexpected verification errors', async () => {
     const failing = { verify: jest.fn(() => { throw new Error('boom'); }) } as unknown as JwtService;
     controller = new AuthController(
-      authService as unknown as AuthService,
+      {} as AuthService,
+      {} as MerchantSignupService,
+      {} as MerchantOAuthService,
+      sessionService as unknown as MerchantSessionService,
+      {} as MerchantOtpService,
       {} as MerchantReferralService,
       {} as ClientReferralService,
       failing,
     );
 
     await expect(controller.logout('Bearer abc.def.ghi')).rejects.toThrow('boom');
-    expect(authService.logout).not.toHaveBeenCalled();
+    expect(sessionService.logout).not.toHaveBeenCalled();
   });
 });

@@ -50,7 +50,7 @@ export function parseCouponConditions(raw: unknown): CouponConditions {
   };
 }
 
-export function weekdaysFromMask(mask: number): number[] {
+function weekdaysFromMask(mask: number): number[] {
   return WEEKDAY_BITS.flatMap((bit, i) => ((mask & bit) !== 0 ? [i + 1] : []));
 }
 

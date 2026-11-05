@@ -4,17 +4,18 @@ import {
   MERCHANT_REPOSITORY, type IMerchantRepository,
   LOYALTY_CARD_REPOSITORY, type ILoyaltyCardRepository,
   TRANSACTION_REPOSITORY, type ITransactionRepository,
+  NOTIFICATION_REPOSITORY, type INotificationRepository,
   CAMPAIGN_SENT_TRACKER_REPOSITORY, type ICampaignSentTrackerRepository,
 } from '../repositories';
-import { IPushProvider, PUSH_PROVIDER } from '../interfaces';
-import { MerchantInboxService } from '../../merchant-inbox/merchant-inbox.service';
 import {
-  isCronEnabled,
-  weekTag,
-  weekIndexSinceReference,
-  merchantAlreadySent,
-  merchantMarkSent,
-} from './cron-utils';
+  MerchantNotifierService,
+  NOTIFY_TARGET_SELECT,
+  tally,
+} from '../../merchant-inbox/merchant-notifier.service';
+import { isEvenWeek, weekTag, mapLimit, MERCHANT_PUSH_CONCURRENCY, cronEnabledOnce } from './cron-utils';
+import { TIP_ACTIONS, TIP_MESSAGES, type TipKey } from './merchant-notif-messages';
+import { type AppLang, pickAppLang } from '../utils/app-lang';
+import { MS_PER_DAY } from '../constants';
 
 // ── Merchant performance digest messages ────────────────────────────────
 const MESSAGES = {
@@ -65,52 +66,7 @@ const MESSAGES = {
         `دابا عندك ${count} كليان فبرنامج الولاء ديالك. برافو!`,
     },
   },
-  // Feature tips: send notifications to clients
-  tipNotifications: {
-    fr: {
-      title: 'Conseil : restez en contact avec vos clients',
-      body: 'Envoyez une notification à tous vos clients en un geste : promo, nouveauté ou événement.',
-    },
-    en: {
-      title: 'Tip: stay in touch with your customers',
-      body: 'Send a notification to all your customers in one tap: a promo, something new or an event.',
-    },
-    ar: {
-      title: 'نصيحة: بقى على تواصل مع الكليان ديالك',
-      body: 'صيفط نوتيفيكاسيون لكاع الكليان ديالك بضغطة وحدة: بروموسيون، جديد ولا مناسبة.',
-    },
-  },
-  // Feature tips: customize rewards
-  tipRewards: {
-    fr: {
-      title: 'Conseil : une récompense qui donne envie',
-      body: 'Un café offert ou -10 % : une récompense simple et concrète motive vos clients à revenir.',
-    },
-    en: {
-      title: 'Tip: a reward worth coming back for',
-      body: 'A free coffee or 10% off: a simple, concrete reward motivates customers to return.',
-    },
-    ar: {
-      title: 'نصيحة: مكافأة كتشوّق',
-      body: 'قهوة فابور ولا -10%: مكافأة بسيطة وواضحة كتحفّز الكليان يرجعو.',
-    },
-  },
-  // Feature tips: email blasts (Premium)
-  tipEmailBlast: {
-    fr: {
-      title: 'Conseil : lancez une campagne email',
-      body: 'Avec Premium, envoyez un email à tous vos clients pour annoncer une offre ou une nouveauté.',
-    },
-    en: {
-      title: 'Tip: launch an email campaign',
-      body: 'With Premium, email all your customers to announce an offer or something new.',
-    },
-    ar: {
-      title: 'نصيحة: طلق حملة إيميل',
-      body: 'مع Premium، صيفط إيميل لكاع الكليان ديالك باش تعلن على عرض ولا جديد.',
-    },
-  },
-  // Upgrade nudge for FREE plan merchants
+  // Upgrade nudge (FREE plan)
   upgradePush: {
     fr: {
       title: 'Passez à Premium',
@@ -127,17 +83,56 @@ const MESSAGES = {
   },
 } as const;
 
-// Each tip opens the screen where the merchant can act on it.
-const TIP_ACTIONS = {
-  tipNotifications: 'open_messages',
-  tipRewards: 'open_settings',
-  tipEmailBlast: 'open_messages',
-} as const;
+type Lang = AppLang;
+const lang = pickAppLang;
 
-type Lang = 'fr' | 'en' | 'ar';
+/** What a merchant already uses, for picking the tip of the week. */
+export interface FeatureUsage {
+  isPremium: boolean;
+  accountAgeDays: number;
+  clients: number;
+  hasCardDesign: boolean;
+  luckyWheels: number;
+  scratchCampaigns: number;
+  deals: number;
+  stampCodes: number;
+  teamMembers: number;
+  stores: number;
+  sentPush: boolean;
+  sentEmail: boolean;
+  sentWhatsapp: boolean;
+}
 
-function lang(v?: string | null): Lang {
-  return v === 'en' || v === 'ar' ? v : 'fr';
+/**
+ * Tips in priority order with the condition that makes them relevant: a tip
+ * is only offered for a feature the merchant has not used yet, and
+ * Premium-only features are never pitched to FREE merchants (the upgrade
+ * nudge covers them).
+ */
+const TIP_RULES: ReadonlyArray<{ key: TipKey; applies: (u: FeatureUsage) => boolean }> = [
+  { key: 'clientQr', applies: (u) => u.clients < 5 && u.accountAgeDays >= 7 },
+  { key: 'clientPush', applies: (u) => !u.sentPush && u.clients > 0 },
+  { key: 'cardDesign', applies: (u) => !u.hasCardDesign },
+  { key: 'deals', applies: (u) => u.deals === 0 },
+  { key: 'luckyWheel', applies: (u) => u.isPremium && u.luckyWheels === 0 },
+  { key: 'scratch', applies: (u) => u.isPremium && u.scratchCampaigns === 0 },
+  { key: 'team', applies: (u) => u.isPremium && u.teamMembers === 0 },
+  { key: 'emailBlast', applies: (u) => u.isPremium && !u.sentEmail && u.clients > 0 },
+  { key: 'whatsappBlast', applies: (u) => u.isPremium && !u.sentWhatsapp && u.clients > 0 },
+  { key: 'stores', applies: (u) => u.isPremium && u.stores <= 1 },
+  { key: 'stampCodes', applies: (u) => u.stampCodes === 0 },
+];
+
+const MILESTONES = [10, 25, 50, 100, 200, 500, 1000] as const;
+
+/** Highest client milestone crossed this week, or null. */
+export function crossedMilestone(previousTotal: number, total: number): number | null {
+  const crossed = MILESTONES.filter((m) => previousTotal < m && total >= m);
+  return crossed.length > 0 ? crossed[crossed.length - 1] : null;
+}
+
+export function candidateTips(u: FeatureUsage): TipKey[] {
+  return TIP_RULES.filter((r) => r.applies(u)).map((r) => r.key);
 }
 
 /**
@@ -145,11 +140,11 @@ function lang(v?: string | null): Lang {
  * grow their business on JIT+ Pro.
  *
  * Planning (UTC — Maroc = UTC+1, toute l'année) :
- * - **Lundi 09:00 UTC / 10:00 Maroc** : Digest hebdomadaire de performance
- * - **Jeudi 14:00 UTC / 15:00 Maroc** : Astuces fonctionnalités (tournantes)
- * - **Samedi 09:00 UTC / 10:00 Maroc** : Relance upgrade (plan FREE uniquement)
+ * - **Lundi 09:00 UTC / 10:00 Maroc** : Bilan hebdomadaire (ACTIVITY, interrupteur « bilans »)
+ * - **Jeudi 14:00 UTC / 15:00 Maroc** : Astuce ciblée sur une fonction pas encore utilisée (TIP)
+ * - **Samedi 09:00 UTC / 10:00 Maroc, une semaine sur deux** : Relance Premium (plan FREE, OFFER)
  *
- * Les paliers clients sont vérifiés pendant le digest hebdomadaire.
+ * Les paliers clients sont vérifiés pendant le bilan hebdomadaire.
  * Vendredi volontairement exclu (prière du Jumu'ah ~12h-14h au Maroc).
  */
 @Injectable()
@@ -160,41 +155,36 @@ export class MerchantSmartCampaignService {
     @Inject(MERCHANT_REPOSITORY) private readonly merchantRepo: IMerchantRepository,
     @Inject(LOYALTY_CARD_REPOSITORY) private readonly loyaltyCardRepo: ILoyaltyCardRepository,
     @Inject(TRANSACTION_REPOSITORY) private readonly txRepo: ITransactionRepository,
-    @Inject(CAMPAIGN_SENT_TRACKER_REPOSITORY) private readonly campaignTrackerRepo: ICampaignSentTrackerRepository,
-    @Inject(PUSH_PROVIDER) private readonly pushProvider: IPushProvider,
-    private readonly inbox: MerchantInboxService,
+    @Inject(NOTIFICATION_REPOSITORY) private readonly notificationRepo: INotificationRepository,
+    @Inject(CAMPAIGN_SENT_TRACKER_REPOSITORY) private readonly trackerRepo: ICampaignSentTrackerRepository,
+    private readonly notifier: MerchantNotifierService,
   ) {}
 
+  private activeMerchantsWhere() {
+    return {
+      isActive: true,
+      deletedAt: null,
+      pushToken: { not: null },
+      onboardingCompleted: true,
+      notifPush: true,
+    };
+  }
+
   // ── Monday: Weekly performance summary ──────────────────────────────────
-  // 09:00 UTC = 10:00 Maroc (heure ouvrable, après ouverture des commerces).
   @Cron('0 9 * * 1')
   async sendWeeklyPerformance(): Promise<void> {
-    if (!isCronEnabled(this.logger, 'MerchantSmartCampaign.sendWeeklyPerformance')) return;
+    if (!(await cronEnabledOnce(this.logger, 'MerchantSmartCampaign.sendWeeklyPerformance'))) return;
     this.logger.log('Starting merchant weekly performance digest');
 
     try {
-      const weekAgo = new Date(Date.now() - 7 * 86_400_000);
+      const weekAgo = new Date(Date.now() - 7 * MS_PER_DAY);
       const wtag = weekTag();
-      let digestCount = 0;
-      let milestoneCount = 0;
-      let skippedDup = 0;
-      const staleTokenIds: string[] = [];
 
       const merchants = await this.merchantRepo.findMany({
-        where: {
-          isActive: true,
-          deletedAt: null,
-          pushToken: { not: null },
-          onboardingCompleted: true,
-          notifPush: true,
-        },
-        select: { id: true, pushToken: true, language: true },
+        where: this.activeMerchantsWhere(),
+        select: { ...NOTIFY_TARGET_SELECT, language: true },
       });
-
-      if (merchants.length === 0) {
-        this.logger.log('No eligible merchants for weekly perf digest');
-        return;
-      }
+      if (merchants.length === 0) return;
 
       const merchantIds = merchants.map((m) => m.id);
 
@@ -235,216 +225,174 @@ export class MerchantSmartCampaignService {
         totalCardsAgg.map((r: { merchantId: string; _count: { _all: number } }) => [r.merchantId, r._count._all]),
       );
 
-      const MILESTONES = [10, 25, 50, 100, 200, 500, 1000];
-
-      for (const merchant of merchants) {
-        if (!merchant.pushToken) continue;
+      // Merchants in parallel; the digest and the milestone of one merchant stay sequential.
+      const perMerchant = await mapLimit(merchants, MERCHANT_PUSH_CONCURRENCY, async (merchant) => {
         const l = lang(merchant.language);
-
         const weekScans = scansMap.get(merchant.id) ?? 0;
         const newClients = newClientsMap.get(merchant.id) ?? 0;
         const totalClients = totalsMap.get(merchant.id) ?? 0;
 
-        // Weekly digest (dédup par semaine ISO)
-        const digestCampaignId = `merchant_weekly_perf_${wtag}`;
-        if (await merchantAlreadySent(this.campaignTrackerRepo, merchant.id, digestCampaignId, 'PUSH')) {
-          skippedDup++;
-        } else {
-          const msg = MESSAGES.weeklyPerf[l];
-          const body = msg.body(weekScans, newClients);
-          const result = await this.pushProvider.sendToMerchant(
-            merchant.pushToken,
-            msg.title,
-            body,
-            { action: 'open_dashboard' },
-          );
-          if (result.invalidToken) {
-            staleTokenIds.push(merchant.id);
-            continue;
-          }
-          digestCount++;
-          await this.inbox.record(merchant.id, { category: 'ACTIVITY', title: msg.title, body, action: 'open_dashboard' });
-          await merchantMarkSent(this.campaignTrackerRepo, merchant.id, digestCampaignId, 'PUSH');
-        }
+        const msg = MESSAGES.weeklyPerf[l];
+        const digest = await this.notifier.notify(merchant, {
+          category: 'ACTIVITY',
+          title: msg.title,
+          body: msg.body(weekScans, newClients),
+          action: 'open_dashboard',
+          event: 'merchant_weekly_perf',
+          campaignId: `merchant_weekly_perf_${wtag}`,
+        });
+        const milestone = crossedMilestone(totalClients - newClients, totalClients);
+        if (!milestone || digest === 'stale_token') return [digest];
 
-        // Détection de franchissement de palier (cette semaine uniquement).
-        const previousTotal = totalClients - newClients;
-        const crossed = MILESTONES.filter((m) => previousTotal < m && totalClients >= m);
-        const milestone = crossed.length > 0 ? crossed[crossed.length - 1] : null;
-        if (milestone) {
-          const mCampaignId = `merchant_milestone_${milestone}_${wtag}`;
-          if (!(await merchantAlreadySent(this.campaignTrackerRepo, merchant.id, mCampaignId, 'PUSH'))) {
-            const milestoneMsg = MESSAGES.clientMilestone[l];
-            const mTitle = milestoneMsg.title(milestone);
-            const mBody = milestoneMsg.body(milestone);
-            await this.pushProvider.sendToMerchant(
-              merchant.pushToken,
-              mTitle,
-              mBody,
-              { action: 'open_clients' },
-            );
-            milestoneCount++;
-            await this.inbox.record(merchant.id, { category: 'ACTIVITY', title: mTitle, body: mBody, action: 'open_clients' });
-            await merchantMarkSent(this.campaignTrackerRepo, merchant.id, mCampaignId, 'PUSH');
-          }
-        }
-      }
+        const milestoneMsg = MESSAGES.clientMilestone[l];
+        return [digest, await this.notifier.notify(merchant, {
+          category: 'ACTIVITY',
+          title: milestoneMsg.title(milestone),
+          body: milestoneMsg.body(milestone),
+          action: 'open_clients',
+          event: 'merchant_milestone',
+          campaignId: `merchant_milestone_${milestone}_${wtag}`,
+        })];
+      });
+      const results = perMerchant.flat();
 
-      // Clean stale tokens
-      if (staleTokenIds.length > 0) {
-        await this.merchantRepo.updateMany({
-          where: { id: { in: staleTokenIds } },
-          data: { pushToken: null },
-        }).catch((e: unknown) => this.logger.warn(`Failed to clean stale tokens: ${e}`));
-      }
-
-      this.logger.log(
-        `Weekly perf: ${digestCount} digests, ${milestoneCount} milestones, ${skippedDup} dup-skipped`,
-      );
+      this.logger.log(`Weekly perf (${merchants.length} eligible): ${tally(results)}`);
     } catch (error) {
       this.logger.error('Failed to send weekly performance', error);
     }
   }
 
-  // ── Thursday: Feature tips & tricks (rotating) ──────────────────────────
+  // ── Thursday: one targeted tip about a feature not used yet ─────────────
   // 14:00 UTC = 15:00 Maroc (début d'après-midi, avant rush de fin de journée).
   @Cron('0 14 * * 4')
   async sendFeatureTips(): Promise<void> {
-    if (!isCronEnabled(this.logger, 'MerchantSmartCampaign.sendFeatureTips')) return;
-    this.logger.log('Starting merchant feature tips push');
+    if (!(await cronEnabledOnce(this.logger, 'MerchantSmartCampaign.sendFeatureTips'))) return;
+    this.logger.log('Starting merchant targeted feature tips');
 
     try {
-      // Rotate tips on a deterministic reference-anchored week index.
-      const wIdx = weekIndexSinceReference();
-      const wtag = weekTag();
-      const tips = ['tipNotifications', 'tipRewards', 'tipEmailBlast'] as const;
-      const tipKey = tips[wIdx % tips.length];
-
-      let pushCount = 0;
-      let skippedDup = 0;
-      const staleTokenIds: string[] = [];
-
       const merchants = await this.merchantRepo.findMany({
-        where: {
-          isActive: true,
-          deletedAt: null,
-          pushToken: { not: null },
-          onboardingCompleted: true,
-          notifPush: true,
+        where: this.activeMerchantsWhere(),
+        select: {
+          ...NOTIFY_TARGET_SELECT,
+          language: true,
+          plan: true,
+          createdAt: true,
+          themeColor: true,
+          cardBackgroundColor: true,
+          cardBackgroundUrl: true,
+          _count: {
+            select: {
+              loyaltyCards: true,
+              luckyWheelCampaigns: true,
+              scratchCampaigns: true,
+              deals: true,
+              stampCodes: true,
+              teamMembers: true,
+              stores: true,
+            },
+          },
         },
-        select: { id: true, pushToken: true, language: true, plan: true },
+      });
+      if (merchants.length === 0) return;
+
+      // Channels each merchant already used to message their customers.
+      const sentAgg = await this.notificationRepo.groupBy({
+        by: ['merchantId', 'channel'],
+        where: { merchantId: { in: merchants.map((m) => m.id) } },
+        _count: { _all: true },
+      });
+      const sentChannels = new Map<string, Set<string>>();
+      for (const r of sentAgg as Array<{ merchantId: string | null; channel: string | null }>) {
+        if (!r.merchantId || !r.channel) continue;
+        if (!sentChannels.has(r.merchantId)) sentChannels.set(r.merchantId, new Set());
+        sentChannels.get(r.merchantId)!.add(r.channel);
+      }
+
+      // Tips already delivered, in one query (each tip is offered once).
+      const sentTips = await this.trackerRepo.findMany({
+        where: { merchantId: { in: merchants.map((m) => m.id) }, campaignId: { startsWith: 'merchant_tip_' }, channel: 'PUSH' },
+        select: { merchantId: true, campaignId: true },
+      });
+      const sentByMerchant = new Map<string, Set<string>>();
+      for (const t of sentTips as Array<{ merchantId: string | null; campaignId: string }>) {
+        if (!t.merchantId) continue;
+        if (!sentByMerchant.has(t.merchantId)) sentByMerchant.set(t.merchantId, new Set());
+        sentByMerchant.get(t.merchantId)!.add(t.campaignId);
+      }
+
+      const now = Date.now();
+      const plans = merchants.flatMap((m) => {
+        const channels = sentChannels.get(m.id) ?? new Set<string>();
+        const usage: FeatureUsage = {
+          isPremium: m.plan === 'PREMIUM',
+          accountAgeDays: Math.floor((now - m.createdAt.getTime()) / MS_PER_DAY),
+          clients: m._count.loyaltyCards,
+          hasCardDesign: !!(m.themeColor || m.cardBackgroundColor || m.cardBackgroundUrl),
+          luckyWheels: m._count.luckyWheelCampaigns,
+          scratchCampaigns: m._count.scratchCampaigns,
+          deals: m._count.deals,
+          stampCodes: m._count.stampCodes,
+          teamMembers: m._count.teamMembers,
+          stores: m._count.stores,
+          sentPush: channels.has('PUSH'),
+          sentEmail: channels.has('EMAIL'),
+          sentWhatsapp: channels.has('WHATSAPP'),
+        };
+        const sent = sentByMerchant.get(m.id);
+        const key = candidateTips(usage).find((k) => !sent?.has(`merchant_tip_${k}`));
+        return key ? [{ m, key }] : [];
       });
 
-      for (const merchant of merchants) {
-        if (!merchant.pushToken) continue;
+      const results = await mapLimit(plans, MERCHANT_PUSH_CONCURRENCY, ({ m, key }) => {
+        const msg = TIP_MESSAGES[key][lang(m.language)];
+        return this.notifier.notify(m, {
+          category: 'TIP',
+          title: msg.title,
+          body: msg.body,
+          action: TIP_ACTIONS[key],
+          event: 'merchant_tip',
+          data: { tip: key },
+          campaignId: `merchant_tip_${key}`,
+        });
+      });
 
-        // Skip Premium-only tips for free merchants
-        if (tipKey === 'tipEmailBlast' && merchant.plan === 'FREE') continue;
-
-        const campaignId = `merchant_tip_${tipKey}_${wtag}`;
-        if (await merchantAlreadySent(this.campaignTrackerRepo, merchant.id, campaignId, 'PUSH')) {
-          skippedDup++;
-          continue;
-        }
-
-        const l = lang(merchant.language);
-        const msg = MESSAGES[tipKey][l];
-
-        const action = TIP_ACTIONS[tipKey];
-        const result = await this.pushProvider.sendToMerchant(
-          merchant.pushToken,
-          msg.title,
-          msg.body,
-          { action },
-        );
-
-        if (result.invalidToken) {
-          staleTokenIds.push(merchant.id);
-        } else {
-          pushCount++;
-          await this.inbox.record(merchant.id, { category: 'TIP', title: msg.title, body: msg.body, action });
-          await merchantMarkSent(this.campaignTrackerRepo, merchant.id, campaignId, 'PUSH');
-        }
-      }
-
-      if (staleTokenIds.length > 0) {
-        await this.merchantRepo.updateMany({
-          where: { id: { in: staleTokenIds } },
-          data: { pushToken: null },
-        }).catch((e: unknown) => this.logger.warn(`Failed to clean stale tokens: ${e}`));
-      }
-
-      this.logger.log(`Feature tip (${tipKey}) sent to ${pushCount} merchants, ${skippedDup} dup-skipped`);
+      this.logger.log(`Feature tips (${merchants.length} eligible): ${tally(results)}`);
     } catch (error) {
       this.logger.error('Failed to send feature tips', error);
     }
   }
 
-  // ── Saturday: Upgrade nudge for free plan merchants ─────────────────────
+  // ── Saturday, every other week: Upgrade nudge for free plan merchants ───
   // 09:00 UTC = 10:00 Maroc (samedi est un jour ouvrable pour la plupart des commerçants).
   @Cron('0 9 * * 6')
   async sendUpgradeNudge(): Promise<void> {
-    if (!isCronEnabled(this.logger, 'MerchantSmartCampaign.sendUpgradeNudge')) return;
+    if (!(await cronEnabledOnce(this.logger, 'MerchantSmartCampaign.sendUpgradeNudge'))) return;
+    if (!isEvenWeek()) return;
     this.logger.log('Starting merchant upgrade nudge');
 
     try {
-      let pushCount = 0;
-      let skippedDup = 0;
-      const staleTokenIds: string[] = [];
       const wtag = weekTag();
-
       // Only target FREE plan merchants who have been active for at least 7 days
-      const sevenDaysAgo = new Date(Date.now() - 7 * 86_400_000);
+      const sevenDaysAgo = new Date(Date.now() - 7 * MS_PER_DAY);
 
       const merchants = await this.merchantRepo.findMany({
-        where: {
-          isActive: true,
-          deletedAt: null,
-          pushToken: { not: null },
-          onboardingCompleted: true,
-          notifPush: true,
-          plan: 'FREE',
-          createdAt: { lte: sevenDaysAgo },
-        },
-        select: { id: true, pushToken: true, language: true },
+        where: { ...this.activeMerchantsWhere(), plan: 'FREE', createdAt: { lte: sevenDaysAgo } },
+        select: { ...NOTIFY_TARGET_SELECT, language: true },
       });
 
-      for (const merchant of merchants) {
-        if (!merchant.pushToken) continue;
+      const results = await mapLimit(merchants, MERCHANT_PUSH_CONCURRENCY, (merchant) => {
+        const msg = MESSAGES.upgradePush[lang(merchant.language)];
+        return this.notifier.notify(merchant, {
+          category: 'OFFER',
+          title: msg.title,
+          body: msg.body,
+          action: 'open_plan',
+          event: 'merchant_upgrade_nudge',
+          campaignId: `merchant_upgrade_nudge_${wtag}`,
+        });
+      });
 
-        const campaignId = `merchant_upgrade_nudge_${wtag}`;
-        if (await merchantAlreadySent(this.campaignTrackerRepo, merchant.id, campaignId, 'PUSH')) {
-          skippedDup++;
-          continue;
-        }
-
-        const l = lang(merchant.language);
-        const msg = MESSAGES.upgradePush[l];
-
-        const result = await this.pushProvider.sendToMerchant(
-          merchant.pushToken,
-          msg.title,
-          msg.body,
-          { action: 'open_plan' },
-        );
-
-        if (result.invalidToken) {
-          staleTokenIds.push(merchant.id);
-        } else {
-          pushCount++;
-          await this.inbox.record(merchant.id, { category: 'OFFER', title: msg.title, body: msg.body, action: 'open_plan' });
-          await merchantMarkSent(this.campaignTrackerRepo, merchant.id, campaignId, 'PUSH');
-        }
-      }
-
-      if (staleTokenIds.length > 0) {
-        await this.merchantRepo.updateMany({
-          where: { id: { in: staleTokenIds } },
-          data: { pushToken: null },
-        }).catch((e: unknown) => this.logger.warn(`Failed to clean stale tokens: ${e}`));
-      }
-
-      this.logger.log(`Upgrade nudge sent to ${pushCount} free merchants, ${skippedDup} dup-skipped`);
+      this.logger.log(`Upgrade nudge (${merchants.length} eligible): ${tally(results)}`);
     } catch (error) {
       this.logger.error('Failed to send upgrade nudge', error);
     }

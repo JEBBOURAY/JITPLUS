@@ -5,19 +5,44 @@ import { ConfigService } from '@nestjs/config';
 import {
   MERCHANT_REPOSITORY, type IMerchantRepository,
   CLIENT_REPOSITORY, type IClientRepository,
+  LOYALTY_CARD_REPOSITORY, type ILoyaltyCardRepository,
   NOTIFICATION_REPOSITORY, type INotificationRepository,
   CLIENT_NOTIFICATION_STATUS_REPOSITORY, type IClientNotificationStatusRepository,
 } from '../common/repositories';
 import { IEmailBlastProvider, EMAIL_BLAST_PROVIDER, IPushProvider, PUSH_PROVIDER, ISmsProvider, SMS_PROVIDER } from '../common/interfaces';
 import { EventsGateway } from '../events';
 import { EmailQuotaService } from './email-quota.service';
-import { Notification } from '@prisma/client';
+import { Notification, Prisma } from '@prisma/client';
 import { SendNotificationDto } from './dto/send-notification.dto';
 import { SendEmailBlastDto } from './dto/send-email-blast.dto';
 import { buildWhatsAppBroadcastMessage } from './templates/whatsapp-templates';
 import { buildPagination, PaginationResult } from '../common/utils';
 import { DEFAULT_NOTIFICATION_LOGO, LOGO_CACHE_TTL, EMAIL_LOGO_JITPLUS_PRO } from '../common/constants';
 import { detectProhibitedContent } from './content-filter';
+import type { SendAdminNotificationDto } from '../admin/dto/admin-notification.dto';
+import { maskPhone } from '../common/utils/pii-mask';
+import { mapLimit } from '../common/tasks/cron-utils';
+import { randomUUID } from 'crypto';
+
+/** Concurrent single-client pushes in a {@link NotificationsService.sendToClients} batch. */
+const CLIENT_PUSH_CONCURRENCY = 8;
+
+/** Client fields the merchant blasts (push / email / WhatsApp) need to pick their recipients. */
+const MEMBER_SELECT = {
+  id: true,
+  pushToken: true,
+  notifPush: true,
+  email: true,
+  notifEmail: true,
+  prenom: true,
+  language: true,
+  telephone: true,
+  notifWhatsapp: true,
+} satisfies Prisma.ClientSelect;
+type MerchantMember = Prisma.ClientGetPayload<{ select: typeof MEMBER_SELECT }>;
+
+/** Rows per IN (...) list when clearing stale push tokens. */
+const STALE_TOKEN_CHUNK = 500;
 
 @Injectable()
 export class NotificationsService {
@@ -26,6 +51,7 @@ export class NotificationsService {
   constructor(
     @Inject(MERCHANT_REPOSITORY) private merchantRepo: IMerchantRepository,
     @Inject(CLIENT_REPOSITORY) private clientRepo: IClientRepository,
+    @Inject(LOYALTY_CARD_REPOSITORY) private loyaltyCardRepo: ILoyaltyCardRepository,
     @Inject(NOTIFICATION_REPOSITORY) private notificationRepo: INotificationRepository,
     @Inject(CLIENT_NOTIFICATION_STATUS_REPOSITORY) private clientNotifStatusRepo: IClientNotificationStatusRepository,
     @Inject(PUSH_PROVIDER) private pushProvider: IPushProvider,
@@ -48,6 +74,49 @@ export class NotificationsService {
   }
 
   private static readonly CLIENT_BATCH_SIZE = 1000;
+
+  /**
+   * Pages (by CLIENT_BATCH_SIZE, ordered by client id) over the clients holding
+   * an ACTIVE card (deactivatedAt null) of the merchant — the same member set
+   * the former `clients WHERE loyaltyCards.some({ merchantId, deactivatedAt: null })`
+   * query returned, in the same order. Driven from loyalty_cards through the
+   * (merchantId, deactivatedAt, clientId) index, then a PK lookup for the
+   * client fields, instead of a semi-join over the global clients table.
+   * (clientId, merchantId) is unique, so each client appears once.
+   */
+  private async *merchantMemberPages(merchantId: string): AsyncGenerator<MerchantMember[]> {
+    let lastClientId: string | undefined;
+    while (true) {
+      const cards = await this.loyaltyCardRepo.findMany({
+        where: {
+          merchantId,
+          deactivatedAt: null,
+          ...(lastClientId ? { clientId: { gt: lastClientId } } : {}),
+        },
+        select: { clientId: true, client: { select: MEMBER_SELECT } },
+        orderBy: { clientId: 'asc' },
+        take: NotificationsService.CLIENT_BATCH_SIZE,
+      });
+      if (cards.length === 0) return;
+      yield cards.map((c) => c.client);
+      lastClientId = cards[cards.length - 1].clientId;
+      if (cards.length < NotificationsService.CLIENT_BATCH_SIZE) return;
+    }
+  }
+
+  /** Clears stale push tokens with bounded IN lists. Errors are logged, never thrown. */
+  private async clearStaleClientTokens(invalidTokens: string[]): Promise<void> {
+    for (let i = 0; i < invalidTokens.length; i += STALE_TOKEN_CHUNK) {
+      try {
+        await this.clientRepo.updateMany({
+          where: { pushToken: { in: invalidTokens.slice(i, i + STALE_TOKEN_CHUNK) } },
+          data: { pushToken: null },
+        });
+      } catch (error) {
+        this.logger.warn(`Failed to clean stale client tokens: ${error}`);
+      }
+    }
+  }
 
   async sendToAll(merchantId: string, dto: SendNotificationDto): Promise<{
     id: string;
@@ -72,29 +141,14 @@ export class NotificationsService {
 
     const allClientIds: string[] = [];
     const pushRecipients: { id: string; pushToken: string }[] = [];
-    let clientCursor: string | undefined;
 
-    while (true) {
-      const batch = await this.clientRepo.findMany({
-        where: {
-          loyaltyCards: { some: { merchantId, deactivatedAt: null } },
-        },
-        select: { id: true, pushToken: true, notifPush: true },
-        take: NotificationsService.CLIENT_BATCH_SIZE,
-        ...(clientCursor ? { skip: 1, cursor: { id: clientCursor } } : {}),
-        orderBy: { id: 'asc' },
-      });
-      if (batch.length === 0) break;
-
-      for (const c of batch as { id: string; pushToken: string | null; notifPush: boolean }[]) {
+    for await (const members of this.merchantMemberPages(merchantId)) {
+      for (const c of members) {
         allClientIds.push(c.id);
         if (c.pushToken && c.notifPush) {
           pushRecipients.push({ id: c.id, pushToken: c.pushToken });
         }
       }
-
-      clientCursor = batch[batch.length - 1].id;
-      if (batch.length < NotificationsService.CLIENT_BATCH_SIZE) break;
     }
 
     const tokens = [...new Set(pushRecipients.map((r) => r.pushToken))];
@@ -190,14 +244,7 @@ export class NotificationsService {
     // Clean up stale/invalid FCM tokens
     if (invalidTokens.length > 0) {
       this.logger.log(`Cleaning ${invalidTokens.length} invalid push token(s)`);
-      try {
-        await this.clientRepo.updateMany({
-          where: { pushToken: { in: invalidTokens } },
-          data: { pushToken: null },
-        });
-      } catch (error) {
-        this.logger.warn(`Failed to clean stale tokens: ${error}`);
-      }
+      await this.clearStaleClientTokens(invalidTokens);
     }
 
     return { id: notification.id, title: notification.title, body: notification.body, recipientCount: uniqueClientIds.length, successCount: uniqueClientIds.length, failureCount: fcmFailureCount, createdAt: notification.createdAt };
@@ -296,6 +343,84 @@ export class NotificationsService {
   }
 
   /**
+   * Batch variant of {@link sendToClient} for jobs that notify many clients of
+   * one merchant (stamp-expiry reminders, loyalty cap changes): the same push,
+   * in-app record, feed status and WebSocket event per client, but one read of
+   * the push preferences, one merchant lookup and two bulk inserts per call
+   * instead of ~4 round-trips per client. Push calls stay one per client (texts
+   * are personalised) with bounded concurrency. Never throws.
+   */
+  async sendToClients(
+    merchantId: string,
+    items: ReadonlyArray<{ clientId: string; title: string; body: string; data?: Record<string, string> }>,
+  ): Promise<void> {
+    if (items.length === 0) return;
+    try {
+      const [clients, mDetails] = await Promise.all([
+        this.clientRepo.findMany({
+          where: { id: { in: [...new Set(items.map((i) => i.clientId))] } },
+          select: { id: true, pushToken: true, notifPush: true },
+        }),
+        this.getMerchantPushDetails(merchantId),
+      ]);
+      const byId = new Map(clients.map((c) => [c.id, c]));
+      const imageUrl = this.buildImageUrl(mDetails?.logoUrl ?? null);
+      const merchantData: Record<string, string> = {};
+      if (imageUrl) merchantData.merchantLogo = imageUrl;
+      if (mDetails?.email) merchantData.merchantEmail = mDetails.email;
+      if (mDetails?.adresse) merchantData.merchantAddress = mDetails.adresse;
+      const socials = mDetails?.socialLinks;
+      if (socials) {
+        if (typeof socials === 'object' && !Array.isArray(socials)) {
+          const website = (socials as Record<string, unknown>).website;
+          if (typeof website === 'string') merchantData.merchantWebsite = website;
+        }
+        merchantData.merchantSocials = JSON.stringify(socials);
+      }
+
+      const staleClientIds: string[] = [];
+      const results = await mapLimit(items, CLIENT_PUSH_CONCURRENCY, async (item) => {
+        const client = byId.get(item.clientId);
+        if (!client?.pushToken || !client.notifPush) return { successCount: 0, failureCount: 0 };
+        try {
+          const r = await this.pushProvider.sendMulticast(
+            [client.pushToken], item.title, item.body, imageUrl, { ...merchantData, ...(item.data ?? {}) },
+          );
+          if (r.invalidTokens.length > 0) staleClientIds.push(item.clientId);
+          return { successCount: r.successCount, failureCount: r.failureCount };
+        } catch (err) {
+          this.logger.warn(`Push to client ${item.clientId} failed: ${err}`);
+          return { successCount: 0, failureCount: 1 };
+        }
+      });
+
+      const ids = items.map(() => randomUUID());
+      await this.notificationRepo.createMany({
+        data: items.map((item, i) => ({
+          id: ids[i], merchantId, title: item.title, body: item.body,
+          recipientCount: 1, ...results[i], channel: 'PUSH' as const,
+        })),
+      });
+      await this.clientNotifStatusRepo.createMany({
+        data: items.map((item, i) => ({ clientId: item.clientId, notificationId: ids[i] })),
+        skipDuplicates: true,
+      });
+      if (staleClientIds.length > 0) {
+        await this.clientRepo
+          .updateMany({ where: { id: { in: staleClientIds } }, data: { pushToken: null } })
+          .catch(() => undefined);
+      }
+      items.forEach((item, i) =>
+        this.eventsGateway.emitNotificationNew(item.clientId, {
+          clientId: item.clientId, notificationId: ids[i], merchantId, title: item.title, body: item.body,
+        }),
+      );
+    } catch (error) {
+      this.logger.warn(`Failed to send ${items.length} notification(s) for merchant ${merchantId}: ${error}`);
+    }
+  }
+
+  /**
    * Send a marketing email blast to all clients with email who have opted in.
    * Enforces a monthly quota per merchant.
    */
@@ -325,29 +450,14 @@ export class NotificationsService {
 
     // 2. Collect all clients with email — cursor pagination to avoid OOM on large merchants
     const recipients: { id: string; email: string; prenom: string | null; language: string }[] = [];
-    let emailCursor: string | undefined;
 
-    while (true) {
-      const batch = await this.clientRepo.findMany({
-        where: {
-          loyaltyCards: { some: { merchantId, deactivatedAt: null } },
-          email: { not: null },
-          notifEmail: true, // Respect client opt-out preference
-        },
-        select: { id: true, email: true, prenom: true, language: true },
-        take: NotificationsService.CLIENT_BATCH_SIZE,
-        ...(emailCursor ? { skip: 1, cursor: { id: emailCursor } } : {}),
-        orderBy: { id: 'asc' },
-      });
-
-      if (batch.length === 0) break;
-
-      recipients.push(
-        ...batch.filter((c: any): c is { id: string; email: string; prenom: string | null; language: string } => !!c.email),
-      );
-      emailCursor = batch[batch.length - 1].id;
-
-      if (batch.length < NotificationsService.CLIENT_BATCH_SIZE) break;
+    for await (const members of this.merchantMemberPages(merchantId)) {
+      for (const c of members) {
+        // Has an email and respects the client opt-out preference
+        if (c.notifEmail && c.email) {
+          recipients.push({ id: c.id, email: c.email, prenom: c.prenom, language: c.language });
+        }
+      }
     }
 
     if (recipients.length === 0) {
@@ -418,29 +528,13 @@ export class NotificationsService {
 
     // 2. Collect all clients with phone who opted in - cursor pagination
     const recipients: { id: string; telephone: string; prenom: string | null }[] = [];
-    let whatsappCursor: string | undefined;
 
-    while (true) {
-      const batch = await this.clientRepo.findMany({
-        where: {
-          loyaltyCards: { some: { merchantId, deactivatedAt: null } },
-          telephone: { not: null },
-          notifWhatsapp: true,
-        },
-        select: { id: true, telephone: true, prenom: true },
-        take: NotificationsService.CLIENT_BATCH_SIZE,
-        ...(whatsappCursor ? { skip: 1, cursor: { id: whatsappCursor } } : {}),
-        orderBy: { id: 'asc' },
-      });
-
-      if (batch.length === 0) break;
-
-      recipients.push(
-        ...batch.filter((c: any): c is { id: string; telephone: string; prenom: string | null } => !!c.telephone),
-      );
-      whatsappCursor = batch[batch.length - 1].id;
-
-      if (batch.length < NotificationsService.CLIENT_BATCH_SIZE) break;
+    for await (const members of this.merchantMemberPages(merchantId)) {
+      for (const c of members) {
+        if (c.notifWhatsapp && c.telephone) {
+          recipients.push({ id: c.id, telephone: c.telephone, prenom: c.prenom });
+        }
+      }
     }
 
     if (recipients.length === 0) {
@@ -464,7 +558,7 @@ export class NotificationsService {
         batch.map(async (recipient) => {
           if (!E164_RE.test(recipient.telephone)) {
             this.logger.warn(
-              `Skipping WhatsApp recipient ${recipient.id}: phone not E.164 (${recipient.telephone})`,
+              `Skipping WhatsApp recipient ${recipient.id}: phone not E.164 (${maskPhone(recipient.telephone)})`,
             );
             return false;
           }
@@ -553,6 +647,40 @@ export class NotificationsService {
     };
   }
 
+  // ── Admin notification routing (audience × channel) ────────────────────
+
+  /**
+   * Dispatches an admin-composed notification to the requested audience over
+   * the requested channel. Throws BadRequestException for combinations that
+   * do not exist (e.g. WhatsApp to every client).
+   */
+  async sendAdminNotification(dto: SendAdminNotificationDto): Promise<{
+    recipientCount?: number;
+    successCount?: number;
+    failureCount?: number;
+  }> {
+    const { audience, channel, title, body, merchantId } = dto;
+
+    if (audience === 'MERCHANT_CLIENTS') {
+      if (!merchantId) throw new BadRequestException('merchantId requis pour cette audience');
+      if (channel === 'PUSH') return this.sendToAll(merchantId, { title, body });
+      if (channel === 'EMAIL') return this.sendEmailToAll(merchantId, { subject: title, body });
+      return this.sendWhatsAppToAll(merchantId, body);
+    }
+
+    if (channel === 'WHATSAPP') {
+      throw new BadRequestException('WhatsApp non disponible pour cette audience');
+    }
+    if (audience === 'ALL_CLIENTS') {
+      return channel === 'PUSH'
+        ? this.sendPushToAllClients(title, body)
+        : this.sendEmailToAllClients(title, body);
+    }
+    return channel === 'PUSH'
+      ? this.sendPushToAllMerchants(title, body)
+      : this.sendEmailToAllMerchants(title, body);
+  }
+
   // ── Admin broadcast: push to all merchants ─────────────────────────────────
   async sendPushToAllMerchants(title: string, body: string): Promise<{
     recipientCount: number;
@@ -627,121 +755,133 @@ export class NotificationsService {
   }
 
   // ── Admin broadcast: push to all clients ──────────────────────────────────
+  /**
+   * Streams every push-enabled, non-deleted client by cursor pages (bounded
+   * memory): each page is pushed, gets its in-app status rows, WebSocket events
+   * and stale-token cleanup before the next page is read. The notification row
+   * is created on the first page (status rows reference it) and its counts are
+   * written once every page is done; the returned counts are the same as when
+   * the whole audience was loaded first.
+   */
   async sendPushToAllClients(title: string, body: string): Promise<{
     recipientCount: number;
     successCount: number;
     failureCount: number;
   }> {
-    // 1. Collect ALL clients with push enabled (for DB status records + WS)
-    const allClients: { id: string; pushToken: string | null }[] = [];
-    let allCursor: string | undefined;
+    let notificationId: string | null = null;
+    let recipientCount = 0;
+    let tokenCount = 0;
+    let fcmSuccessCount = 0;
+    let fcmFailureCount = 0;
+    let invalidTokenCount = 0;
+    let statusesFailed = false;
+    let cursor: string | undefined;
 
     while (true) {
       const batch = await this.clientRepo.findMany({
         where: { notifPush: true, deletedAt: null },
         select: { id: true, pushToken: true },
         take: NotificationsService.CLIENT_BATCH_SIZE,
-        ...(allCursor ? { skip: 1, cursor: { id: allCursor } } : {}),
+        ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
         orderBy: { id: 'asc' },
       });
       if (batch.length === 0) break;
-      allClients.push(...batch);
-      allCursor = batch[batch.length - 1].id;
-      if (batch.length < NotificationsService.CLIENT_BATCH_SIZE) break;
-    }
+      cursor = batch[batch.length - 1].id;
 
-    const pushRecipients = allClients.filter((c): c is { id: string; pushToken: string } => !!c.pushToken);
-
-    if (allClients.length === 0) {
-      return { recipientCount: 0, successCount: 0, failureCount: 0 };
-    }
-
-    const tokens = pushRecipients.map((c) => c.pushToken);
-    this.logger.log(`Admin broadcast push to ${tokens.length} client(s), ${allClients.length} total`);
-
-    // 2. Send FCM push
-    let fcmSuccessCount = 0;
-    let fcmFailureCount = 0;
-    let invalidTokens: string[] = [];
-
-    if (tokens.length > 0) {
-      try {
-        const result = await this.pushProvider.sendMulticast(tokens, title, body, DEFAULT_NOTIFICATION_LOGO, { event: 'admin_broadcast', action: 'open_notifications' });
-        fcmSuccessCount = result.successCount;
-        fcmFailureCount = result.failureCount;
-        invalidTokens = result.invalidTokens;
-      } catch (error) {
-        this.logger.error(`Admin push to clients failed: ${error}`);
-        fcmFailureCount = tokens.length;
+      // 1. Notification record (once) so the status rows can reference it.
+      if (notificationId === null) {
+        const created = await this.notificationRepo.create({
+          data: {
+            title, body,
+            recipientCount: 0,
+            successCount: 0,
+            failureCount: 0,
+            isBroadcast: true,
+            channel: 'PUSH',
+            audience: 'ALL_CLIENTS',
+          },
+          select: { id: true },
+        });
+        notificationId = created.id;
       }
-    }
 
-    // 3. Persist notification record
-    const allClientIds = allClients.map((c) => c.id);
-    // Clients without a push token still get the in-app feed entry, so they count as delivered.
-    const successCount = allClientIds.length - tokens.length + fcmSuccessCount;
-    const notification = await this.notificationRepo.create({
-      data: {
-        title, body,
-        recipientCount: allClientIds.length,
-        successCount,
-        failureCount: fcmFailureCount,
-        isBroadcast: true,
-        channel: 'PUSH',
-        audience: 'ALL_CLIENTS',
-      },
-    });
+      const clientIds = batch.map((c) => c.id);
+      const tokens = batch.flatMap((c) => (c.pushToken ? [c.pushToken] : []));
+      recipientCount += clientIds.length;
+      tokenCount += tokens.length;
 
-    // 4. Create per-client notification status records so it appears in client feeds
-    if (allClientIds.length > 0) {
-      const CHUNK_SIZE = 500;
-      try {
-        for (let i = 0; i < allClientIds.length; i += CHUNK_SIZE) {
-          await this.clientNotifStatusRepo.createMany({
-            data: allClientIds.slice(i, i + CHUNK_SIZE).map((clientId) => ({
-              clientId,
-              notificationId: notification.id,
-            })),
-            skipDuplicates: true,
-          });
+      // 2. FCM push for this page
+      let invalidTokens: string[] = [];
+      if (tokens.length > 0) {
+        try {
+          const result = await this.pushProvider.sendMulticast(tokens, title, body, DEFAULT_NOTIFICATION_LOGO, { event: 'admin_broadcast', action: 'open_notifications' });
+          fcmSuccessCount += result.successCount;
+          fcmFailureCount += result.failureCount;
+          invalidTokens = result.invalidTokens;
+        } catch (error) {
+          this.logger.error(`Admin push to clients failed: ${error}`);
+          fcmFailureCount += tokens.length;
         }
-      } catch (error) {
-        this.logger.warn(`Failed to create client notification statuses for admin broadcast: ${error}`);
       }
-    }
 
-    // 5. Emit WebSocket events in batches
-    const WS_BATCH = 500;
-    try {
-      for (let i = 0; i < allClientIds.length; i += WS_BATCH) {
-        const batch = allClientIds.slice(i, i + WS_BATCH);
-        for (const clientId of batch) {
+      // 3. Per-client status rows (chunks of 500) so it appears in client feeds.
+      // As before, the first failure stops status creation for the rest of the blast.
+      if (!statusesFailed) {
+        const CHUNK_SIZE = 500;
+        try {
+          for (let i = 0; i < clientIds.length; i += CHUNK_SIZE) {
+            await this.clientNotifStatusRepo.createMany({
+              data: clientIds.slice(i, i + CHUNK_SIZE).map((clientId) => ({ clientId, notificationId: notificationId! })),
+              skipDuplicates: true,
+            });
+          }
+        } catch (error) {
+          statusesFailed = true;
+          this.logger.warn(`Failed to create client notification statuses for admin broadcast: ${error}`);
+        }
+      }
+
+      // 4. WebSocket events for this page
+      try {
+        for (const clientId of clientIds) {
           this.eventsGateway.emitNotificationNew(clientId, {
             clientId,
-            notificationId: notification.id,
+            notificationId,
             merchantId: null,
             title,
             body,
           });
         }
-        if (i + WS_BATCH < allClientIds.length) {
-          await new Promise((r) => setImmediate(r));
-        }
+      } catch (error) {
+        this.logger.warn(`WebSocket emit failed for admin broadcast: ${error}`);
       }
-    } catch (error) {
-      this.logger.warn(`WebSocket emit failed for admin broadcast: ${error}`);
+
+      // 5. Stale FCM tokens of this page (bounded IN lists)
+      if (invalidTokens.length > 0) {
+        invalidTokenCount += invalidTokens.length;
+        await this.clearStaleClientTokens(invalidTokens);
+      }
+
+      if (batch.length < NotificationsService.CLIENT_BATCH_SIZE) break;
+      // Yield to the event loop between pages
+      await new Promise((r) => setImmediate(r));
     }
 
-    // 6. Clean stale FCM tokens
-    if (invalidTokens.length > 0) {
-      this.logger.log(`Cleaning ${invalidTokens.length} invalid client push token(s)`);
-      await this.clientRepo.updateMany({
-        where: { pushToken: { in: invalidTokens } },
-        data: { pushToken: null },
-      }).catch((e: any) => this.logger.warn(`Failed to clean stale client tokens: ${e}`));
+    if (notificationId === null) {
+      return { recipientCount: 0, successCount: 0, failureCount: 0 };
     }
 
-    return { recipientCount: allClientIds.length, successCount, failureCount: fcmFailureCount };
+    this.logger.log(`Admin broadcast push to ${tokenCount} client(s), ${recipientCount} total`);
+    if (invalidTokenCount > 0) this.logger.log(`Cleaned ${invalidTokenCount} invalid client push token(s)`);
+
+    // Clients without a push token still get the in-app feed entry, so they count as delivered.
+    const successCount = recipientCount - tokenCount + fcmSuccessCount;
+    await this.notificationRepo.update({
+      where: { id: notificationId },
+      data: { recipientCount, successCount, failureCount: fcmFailureCount },
+    });
+
+    return { recipientCount, successCount, failureCount: fcmFailureCount };
   }
 
   // ── Admin broadcast: email to all merchants ───────────────────────────────
@@ -863,6 +1003,16 @@ export class NotificationsService {
     return { recipientCount: result.total, successCount: result.successCount, failureCount: result.failureCount };
   }
 
+  /**
+   * Merchant broadcast history.
+   * `receivedCount` used to be a COUNT of every status row of every broadcast
+   * on the page. PUSH and WHATSAPP blasts write exactly one status row per
+   * recipient at send time and store that number in `recipientCount`, so it is
+   * used directly. Rows whose stored count cannot stand for the status rows
+   * fall back to the real count, restricted to those ids: EMAIL blasts (they
+   * never write status rows, so this stays 0) and legacy rows (no channel, or
+   * recipientCount left at its default 0).
+   */
   async getHistory(merchantId: string, page = 1, limit = 20): Promise<{
     notifications: (Notification & { readCount: number; receivedCount: number })[];
     pagination: PaginationResult;
@@ -872,11 +1022,6 @@ export class NotificationsService {
     const [notifications, total] = await Promise.all([
       this.notificationRepo.findMany({
         where,
-        include: {
-          _count: {
-            select: { clientStatuses: true },
-          },
-        },
         orderBy: { createdAt: 'desc' },
         skip,
         take: limit,
@@ -884,21 +1029,35 @@ export class NotificationsService {
       this.notificationRepo.count({ where }),
     ]);
 
-    // Batch-fetch read counts for the page
-    const notifIds = notifications.map((n: any) => n.id);
-    const readGroups = notifIds.length
-      ? await this.clientNotifStatusRepo.groupBy({
-          by: ['notificationId'],
-          where: { notificationId: { in: notifIds }, isRead: true },
-          _count: true,
-        })
-      : [];
-    const readMap = new Map(readGroups.map((g: any) => [g.notificationId, g._count]));
+    const storedCountIsExact = (n: Notification) =>
+      (n.channel === 'PUSH' || n.channel === 'WHATSAPP') && n.recipientCount > 0;
+
+    // Batch-fetch read counts for the page (+ status counts for the rows that need them)
+    const notifIds = notifications.map((n) => n.id);
+    const countIds = notifications.filter((n) => !storedCountIsExact(n)).map((n) => n.id);
+    const [readGroups, receivedGroups] = await Promise.all([
+      notifIds.length
+        ? this.clientNotifStatusRepo.groupBy({
+            by: ['notificationId'],
+            where: { notificationId: { in: notifIds }, isRead: true },
+            _count: true,
+          })
+        : [],
+      countIds.length
+        ? this.clientNotifStatusRepo.groupBy({
+            by: ['notificationId'],
+            where: { notificationId: { in: countIds } },
+            _count: true,
+          })
+        : [],
+    ]);
+    const readMap = new Map(readGroups.map((g: any) => [g.notificationId, g._count as number]));
+    const receivedMap = new Map(receivedGroups.map((g: any) => [g.notificationId, g._count as number]));
 
     return {
-      notifications: notifications.map((n: any) => ({
+      notifications: notifications.map((n) => ({
         ...n,
-        receivedCount: n._count?.clientStatuses ?? 0,
+        receivedCount: storedCountIsExact(n) ? n.recipientCount : (receivedMap.get(n.id) ?? 0),
         readCount: readMap.get(n.id) ?? 0,
         _count: undefined,
       })) as (Notification & { readCount: number; receivedCount: number })[],

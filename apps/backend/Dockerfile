@@ -32,32 +32,22 @@ RUN cd apps/backend && pnpm exec prisma generate --schema ./prisma/schema.prisma
 # Build the application
 RUN cd apps/backend && pnpm run build
 
-# ── Stage 2: Production Dependencies (standalone — flat node_modules, no workspace symlinks) ──
-FROM node:22-alpine AS deps
+# ── Stage 2: Production Dependencies ──
+# `pnpm deploy` installs the backend's production dependencies from the
+# workspace lockfile, so the image ships exactly the versions that were
+# resolved, audited and tested — root pnpm.overrides (security patches)
+# included. A standalone `pnpm install` from apps/backend/package.json would
+# re-resolve everything without the lockfile and without those overrides.
+FROM builder AS deps
 
-RUN apk update && apk upgrade --no-cache && apk add --no-cache openssl
-
-WORKDIR /app
-
-# Enable pnpm — pin version to match packageManager in root package.json
-RUN corepack enable && corepack prepare pnpm@10.29.3 --activate
-
-# Copy ONLY backend package.json (no workspace = standalone mode).
-# In standalone mode, pnpm.overrides in this file ARE applied (it acts as the root).
-COPY apps/backend/package.json ./
-COPY apps/backend/prisma ./prisma/
-
-# Install ONLY production dependencies (standalone, flat node_modules)
-# Disable automatic installation scripts to prevent unknown ones from failing,
-# and define only the ones we actually want.
+# Only build scripts allowed by onlyBuiltDependencies run (prisma, sharp…).
+# The backend's own postinstall regenerates the Prisma client in /prod.
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
-    pnpm install --prod --no-frozen-lockfile --ignore-scripts
+    pnpm --filter backend deploy --prod --frozen-lockfile \
+      --config.inject-workspace-packages=true /prod
 
-# Generate Prisma Client (needed for runtime engine binaries)
-RUN pnpm exec prisma generate --schema ./prisma/schema.prisma
-
-# Pre-download Prisma engines (query-engine & schema-engine) into node_modules during build
-RUN node ./node_modules/@prisma/engines/scripts/postinstall.js || true
+# Generate Prisma Client for the deployed tree (engines for linux-musl)
+RUN cd /prod && pnpm exec prisma generate --schema ./prisma/schema.prisma
 
 # ── Stage 3: Runner (Final Image) ──
 FROM node:22-alpine AS runner
@@ -89,7 +79,7 @@ COPY --from=builder /app/apps/backend/dist ./dist
 COPY --from=builder /app/apps/backend/package.json ./
 
 # Copy production node_modules from deps stage
-COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /prod/node_modules ./node_modules
 
 # Copy prisma schema (needed when running migrations from this image)
 COPY --from=builder /app/apps/backend/prisma ./prisma

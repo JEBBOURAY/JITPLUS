@@ -11,3 +11,10 @@ export function isEntityId(value: unknown): value is string {
 export function isClaimToken(value: unknown): value is string {
   return typeof value === 'string' && CLAIM_TOKEN_RE.test(value);
 }
+
+/** E-commerce parcel QR codes: "sc1.<id>.<signature>" (see backend StampCodeTokenService). */
+const STAMP_CODE_TOKEN_RE = /^sc1\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{22}$/;
+
+export function isStampCodeToken(value: unknown): value is string {
+  return typeof value === 'string' && STAMP_CODE_TOKEN_RE.test(value);
+}

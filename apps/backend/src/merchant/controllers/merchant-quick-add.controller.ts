@@ -6,6 +6,7 @@ import {
   Param,
   Post,
   UseGuards,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
@@ -72,7 +73,7 @@ export class MerchantQuickAddController {
   @Post('clients/:clientId/reshare-claim')
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 10 } })
   async reshareClaim(
-    @Param('clientId') clientId: string,
+    @Param('clientId', ParseUUIDPipe) clientId: string,
     @CurrentUser() user: JwtPayload,
   ) {
     const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

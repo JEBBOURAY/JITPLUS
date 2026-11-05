@@ -14,7 +14,7 @@ export interface DigestDeal {
 }
 
 /** Most recent first, then the strongest discount. */
-export function compareDigestDeals(a: DigestDeal, b: DigestDeal): number {
+function compareDigestDeals(a: DigestDeal, b: DigestDeal): number {
   return b.startsAt.getTime() - a.startsAt.getTime() || (b.percentOff ?? 0) - (a.percentOff ?? 0) || a.id.localeCompare(b.id);
 }
 

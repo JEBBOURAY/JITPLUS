@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,8 +7,8 @@ import {
   TextInput,
   ActivityIndicator,
   Alert,
-  Image,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { ChevronRight, Camera, X, Plus, Trash2, Lightbulb } from 'lucide-react-native';
 import { JitGift } from '@/components/icons';
 // expo-image-picker is lazy-loaded inside the reward image picker handler.
@@ -23,7 +23,7 @@ import { font, icon } from '@/constants/design';
 import { resolveImageUrl } from '@/utils/imageUrl';
 import { useRewards, useUploadRewardImage, queryKeys } from '@/hooks/useQueryHooks';
 import { useQueryClient } from '@tanstack/react-query';
-import { surfaceShadow, fieldFill } from '@/components/settings/surface';
+import { surfaceShadow, fieldFill, panelStyles } from '@/components/settings/surface';
 import type { Reward } from '@/types';
 
 const EMPTY_REWARDS: Reward[] = [];
@@ -36,18 +36,14 @@ interface Props {
   accumulationLimit: string;
   /** Saved stampsForReward, used to size the one-tap suggestions. */
   stampsForReward: number;
-  /** Called when rewards change so parent can react (e.g. preview) */
-  onRewardsChange?: (rewards: Reward[]) => void;
-  /** External trigger to reload rewards */
-  reloadToken?: number;
 }
 
 function RewardManagerBase({
   theme, t, isPremium, hasAccumulationLimit, accumulationLimit, stampsForReward,
-  onRewardsChange, reloadToken,
 }: Props) {
-  const { data: rewards = EMPTY_REWARDS, isLoading: loadingRewards, error: rewardsError, refetch } = useRewards();
-  const previousReloadToken = useRef(reloadToken);
+  // Shared query: the settings screen reads the same cache, and invalidating
+  // queryKeys.rewards after any change refreshes both.
+  const { data: rewards = EMPTY_REWARDS, isLoading: loadingRewards, error: rewardsError } = useRewards();
   const [savingReward, setSavingReward] = useState(false);
   const [rewardTitle, setRewardTitle] = useState('');
   const [rewardCost, setRewardCost] = useState('');
@@ -72,19 +68,8 @@ function RewardManagerBase({
   ];
 
   useEffect(() => {
-    onRewardsChange?.(rewards);
-  }, [onRewardsChange, rewards]);
-
-  useEffect(() => {
     if (rewardsError) Alert.alert(t('common.error'), t('settingsPage.loadRewardsError'));
   }, [rewardsError, t]);
-
-  useEffect(() => {
-    if (previousReloadToken.current !== reloadToken) {
-      previousReloadToken.current = reloadToken;
-      void refetch();
-    }
-  }, [reloadToken, refetch]);
 
   const handlePickRewardImage = async () => {
     try {
@@ -132,46 +117,32 @@ function RewardManagerBase({
     setShowForm(false);
   };
 
-  const doAddReward = async () => {
-    const cost = parseInt(rewardCost, 10);
+  /** Creates or updates the reward in the form (PUT sends imageUrl: null to remove the image). */
+  const saveReward = async () => {
+    const body = {
+      titre: rewardTitle.trim(),
+      cout: parseInt(rewardCost, 10),
+      description: rewardDescription.trim() || undefined,
+    };
     setSavingReward(true);
     try {
-      await api.post('/rewards', {
-        titre: rewardTitle.trim(),
-        cout: cost,
-        description: rewardDescription.trim() || undefined,
-        imageUrl: rewardImageUrl || undefined,
-      });
+      if (editingRewardId) {
+        await api.put(`/rewards/${editingRewardId}`, { ...body, imageUrl: rewardImageUrl });
+      } else {
+        await api.post('/rewards', { ...body, imageUrl: rewardImageUrl || undefined });
+      }
       closeForm();
       await qc.invalidateQueries({ queryKey: queryKeys.rewards });
     } catch (err: unknown) {
-      Alert.alert(t('common.error'), getErrorMessage(err, t('settingsPage.saveError')));
-    } finally {
-      setSavingReward(false);
-    }
-  };
-
-  const doUpdateReward = async () => {
-    const cost = parseInt(rewardCost, 10);
-    setSavingReward(true);
-    try {
-      await api.put(`/rewards/${editingRewardId}`, {
-        titre: rewardTitle.trim(),
-        cout: cost,
-        description: rewardDescription.trim() || undefined,
-        imageUrl: rewardImageUrl,
-      });
-      closeForm();
-      await qc.invalidateQueries({ queryKey: queryKeys.rewards });
-    } catch (err: unknown) {
-      Alert.alert(t('common.error'), getErrorMessage(err, t('settingsPage.editRewardError')));
+      const fallback = editingRewardId ? 'settingsPage.editRewardError' : 'settingsPage.saveError';
+      Alert.alert(t('common.error'), getErrorMessage(err, t(fallback)));
     } finally {
       setSavingReward(false);
     }
   };
 
   /** Validates the form, asks to confirm a cost above the accumulation limit, then saves. */
-  const validateAndSave = (save: () => Promise<void>) => {
+  const handleSubmit = () => {
     const cost = parseInt(rewardCost, 10);
     if (!rewardTitle.trim()) {
       Alert.alert(t('common.error'), t('settingsPage.rewardNameRequired'));
@@ -188,19 +159,12 @@ function RewardManagerBase({
         t('settingsPage.rewardExceedsLimitMessage', { cost, limit: limitVal, unit }),
         [
           { text: t('common.cancel'), style: 'cancel' },
-          { text: t('common.confirm'), onPress: save },
+          { text: t('common.confirm'), onPress: saveReward },
         ],
       );
       return;
     }
-    save();
-  };
-
-  const handleAddReward = () => validateAndSave(doAddReward);
-
-  const handleUpdateReward = () => {
-    if (!editingRewardId) return;
-    validateAndSave(doUpdateReward);
+    void saveReward();
   };
 
   const handleEditReward = (reward: Reward) => {
@@ -236,8 +200,8 @@ function RewardManagerBase({
           try {
             await api.delete(`/rewards/${rewardId}`);
             await qc.invalidateQueries({ queryKey: queryKeys.rewards });
-          } catch {
-            Alert.alert(t('common.error'), t('settingsPage.deleteRewardError'));
+          } catch (err: unknown) {
+            Alert.alert(t('common.error'), getErrorMessage(err, t('settingsPage.deleteRewardError')));
           }
         },
       },
@@ -246,17 +210,17 @@ function RewardManagerBase({
 
   return (
     <>
-      <View style={[styles.panel, { backgroundColor: theme.bgCard }, panelShadow]}>
-        <View style={[styles.panelHeader, { flexDirection: row }]}>
-          <View style={[styles.panelIcon, { backgroundColor: theme.primaryBg }]}>
+      <View style={[panelStyles.panel, { backgroundColor: theme.bgCard }, panelShadow]}>
+        <View style={[panelStyles.header, { flexDirection: row }]}>
+          <View style={[panelStyles.icon, { backgroundColor: theme.primaryBg }]}>
             <JitGift size={18} color={theme.primary} strokeWidth={icon.stroke} />
           </View>
-          <Text style={[styles.panelTitle, { color: theme.text, textAlign }]} maxFontSizeMultiplier={1.3} accessibilityRole="header">
+          <Text style={[panelStyles.title, { color: theme.text, textAlign }]} maxFontSizeMultiplier={1.3} accessibilityRole="header">
             {rewards.length > 0 ? t('settingsPage.giftsCount', { count: rewards.length }) : t('settingsPage.giftsSection')}
           </Text>
         </View>
 
-        <View style={styles.panelBody}>
+        <View style={panelStyles.body}>
           {showForm ? (
             <View style={styles.rewardForm}>
               <Text style={[styles.formTitle, { color: theme.text, textAlign }]} maxFontSizeMultiplier={1.3}>
@@ -274,7 +238,7 @@ function RewardManagerBase({
                   {uploadRewardImage.isPending ? (
                     <ActivityIndicator size="small" color={theme.primary} />
                   ) : rewardImageUrl ? (
-                    <Image source={{ uri: resolveImageUrl(rewardImageUrl) as string }} style={styles.imagePickerImg} />
+                    <Image source={resolveImageUrl(rewardImageUrl)} style={styles.imagePickerImg} contentFit="cover" />
                   ) : (
                     <Camera size={ms(22)} color={theme.textMuted} strokeWidth={icon.stroke} />
                   )}
@@ -343,11 +307,11 @@ function RewardManagerBase({
                   accessibilityRole="button"
                   accessibilityLabel={t('common.cancel')}
                 >
-                  <Text style={[styles.addRewardBtnText, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.3}>{t('common.cancel')}</Text>
+                  <Text style={[styles.addGiftBtnText, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.3}>{t('common.cancel')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.addRewardBtn, styles.solidBtn, { flex: 1 }]}
-                  onPress={editingRewardId ? handleUpdateReward : handleAddReward}
+                  onPress={handleSubmit}
                   disabled={savingReward}
                   activeOpacity={0.8}
                   accessibilityRole="button"
@@ -357,7 +321,7 @@ function RewardManagerBase({
                   {savingReward ? (
                     <ActivityIndicator size="small" color="#fff" />
                   ) : (
-                    <Text style={styles.addRewardBtnText} maxFontSizeMultiplier={1.3}>
+                    <Text style={styles.addGiftBtnText} maxFontSizeMultiplier={1.3}>
                       {editingRewardId ? t('settingsPage.saveGift') : t('settingsPage.addGift')}
                     </Text>
                   )}
@@ -432,7 +396,7 @@ function RewardManagerBase({
                     accessibilityLabel={reward.titre}
                   >
                     {reward.imageUrl ? (
-                      <Image source={{ uri: resolveImageUrl(reward.imageUrl) as string }} style={styles.rewardRowThumb} />
+                      <Image source={resolveImageUrl(reward.imageUrl)} style={styles.rewardRowThumb} contentFit="cover" cachePolicy="memory-disk" />
                     ) : (
                       <View style={[styles.rewardRowThumb, styles.rewardRowThumbFallback, { backgroundColor: theme.primaryBg }]}>
                         <JitGift size={ms(20)} color={theme.primary} strokeWidth={icon.stroke} />
@@ -484,11 +448,6 @@ function RewardManagerBase({
 export const RewardManager = React.memo(RewardManagerBase);
 
 const styles = StyleSheet.create({
-  panel: { marginHorizontal: 16, marginTop: 18, borderRadius: 16 },
-  panelHeader: { alignItems: 'center', gap: 11, paddingTop: 16, paddingHorizontal: 16 },
-  panelIcon: { width: 34, height: 34, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  panelTitle: { flex: 1, fontSize: 15, fontFamily: font.semibold, letterSpacing: -0.2 },
-  panelBody: { padding: 16, paddingTop: 14 },
   formTitle: { fontSize: 14, fontFamily: font.semibold, marginBottom: 2 },
   imagePickerLabelRow: { alignItems: 'center', gap: 6 },
   solidBtn: {
@@ -550,7 +509,6 @@ const styles = StyleSheet.create({
   inputSuffixRtl: { marginRight: 12 },
   formActions: { gap: 8 },
   addRewardBtn: { paddingVertical: 12, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  addRewardBtnText: { color: '#fff', fontSize: 14, fontFamily: font.semibold },
   rewardList: { gap: 10 },
   rewardRow: { borderRadius: 16, paddingVertical: 12, paddingHorizontal: 14, alignItems: 'center', gap: 10 },
   rewardRowThumb: { width: ms(44), height: ms(44), borderRadius: ms(12), overflow: 'hidden' },

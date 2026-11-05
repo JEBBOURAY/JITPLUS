@@ -47,9 +47,10 @@ import { useDir } from '@/hooks/useDir';
 import { font, icon as iconTokens } from '@/constants/design';
 
 import { COUNTRIES } from '@/constants/Countries';
+import { useDetectedCountry } from '@/hooks/useDetectedCountry';
 import FirstScanGuide from '@/components/FirstScanGuide';
 import { ActionButton } from '@/components/ui/ActionButton';
-import { AnimatedSearchBar } from '@/components/scan/AnimatedSearchBar';
+import { AnimatedSearchBar, MIN_PHONE_SEARCH_LENGTH } from '@/components/scan/AnimatedSearchBar';
 import { ScanLine } from '@/components/scan/ScanLine';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -94,7 +95,6 @@ const ViewfinderCorner = React.memo(function ViewfinderCorner({ position }: { po
 type ScanOverlayState = {
   phase: 'idle' | 'detected' | 'verifying' | 'found' | 'error';
   message: string | null;
-  name?: string | null;
 };
 
 const DetectedOverlay = React.memo(function DetectedOverlay({ overlayState, onRetry }: { overlayState: ScanOverlayState; onRetry?: () => void }) {
@@ -234,8 +234,7 @@ const initialScanState: ScanState = {
 
 type ScanAction =
   | { type: 'SET'; payload: Partial<ScanState> }
-  | { type: 'TOGGLE_FLASH' }
-  | { type: 'RESET_SCAN' };
+  | { type: 'TOGGLE_FLASH' };
 
 function scanReducer(state: ScanState, action: ScanAction): ScanState {
   switch (action.type) {
@@ -243,8 +242,6 @@ function scanReducer(state: ScanState, action: ScanAction): ScanState {
       return { ...state, ...action.payload };
     case 'TOGGLE_FLASH':
       return { ...state, isFlashOn: !state.isFlashOn };
-    case 'RESET_SCAN':
-      return { ...state, isScanning: true };
   }
 }
 
@@ -274,7 +271,7 @@ const CameraOverlay = React.memo(function CameraOverlay({
           <ViewfinderCorner position="bl" />
           <ViewfinderCorner position="br" />
           <ScanLine scanSize={scanSize} active={isScanning} />
-          {overlayState.phase !== 'idle' ? <DetectedOverlay overlayState={overlayState} onRetry={onRetry} /> : null}
+          <DetectedOverlay overlayState={overlayState} onRetry={onRetry} />
         </Animated.View>
         <View style={styles.overlaySide} />
       </View>
@@ -298,7 +295,7 @@ const BottomControls = React.memo(function BottomControls({
 }) {
   const dir = useDir();
   return (
-    <Animated.View
+    <View
       style={[styles.bottomControls, { paddingBottom: Math.max(insetBottom, 26) }]}
       pointerEvents="box-none"
     >
@@ -344,7 +341,7 @@ const BottomControls = React.memo(function BottomControls({
           <Text style={styles.actionBtnLabel}>{t('common.close')}</Text>
         </TouchableOpacity>
       </View>
-    </Animated.View>
+    </View>
   );
 });
 
@@ -363,9 +360,21 @@ export default function ScanQRScreen() {
   const dir = useDir();
 
   // State
-  const [scan, dispatch] = useReducer(scanReducer, initialScanState);
+  const detectedCountry = useDetectedCountry();
+  const [scan, dispatch] = useReducer(scanReducer, initialScanState, (s): ScanState => ({
+    ...s,
+    countryIndex: Math.max(0, COUNTRIES.findIndex((c) => c.code === detectedCountry)),
+  }));
   const { phoneInput, isSearchFocused, isSearching, isFlashOn, isScanning, countryIndex, matchedClients } = scan;
   const set = useCallback((payload: Partial<ScanState>) => dispatch({ type: 'SET', payload }), []);
+
+  // Follow the detected country until the merchant picks one by hand.
+  const countryPickedRef = useRef(false);
+  useEffect(() => {
+    if (countryPickedRef.current) return;
+    const idx = COUNTRIES.findIndex((c) => c.code === detectedCountry);
+    if (idx >= 0) dispatch({ type: 'SET', payload: { countryIndex: idx } });
+  }, [detectedCountry]);
 
   // Debounce: prevent re-scanning the same barcode data within a cooldown
   const lastScannedRef = useRef<{ data: string; ts: number } | null>(null);
@@ -373,6 +382,7 @@ export default function ScanQRScreen() {
   const overlayTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Navigation mutex: prevents QR scan and phone search from navigating simultaneously
   const isNavigatingRef = useRef(false);
+  const searchInFlightRef = useRef(false);
 
   const [showGuide, setShowGuide] = useState(false);
   const [showHowItWorks, setShowHowItWorks] = useState(false);
@@ -542,7 +552,6 @@ export default function ScanQRScreen() {
     setOverlayState({
       phase: 'found',
       message: clientName ? t('scan.clientFound', { name: clientName }) : t('scan.clientFoundFallback'),
-      name: clientName ?? null,
     });
     prefetchClientStatus(queryClient, clientId, scanTicket).catch(() => {});
     if (navTimeoutRef.current) clearTimeout(navTimeoutRef.current);
@@ -587,6 +596,7 @@ export default function ScanQRScreen() {
       if (payload.kind === 'coupon') {
         const couponToken = payload.token;
         if (overlayTimeoutRef.current) clearTimeout(overlayTimeoutRef.current);
+        if (navTimeoutRef.current) clearTimeout(navTimeoutRef.current);
         isNavigatingRef.current = true;
         navTimeoutRef.current = setTimeout(() => {
           navTimeoutRef.current = null;
@@ -638,7 +648,8 @@ export default function ScanQRScreen() {
   const scannerHandler = isScanning ? handleBarCodeScanned : undefined;
 
   const handlePhoneSearch = useCallback(async () => {
-    if (phoneInput.length < 6 || isSearching || isNavigatingRef.current) return;
+    if (phoneInput.length < MIN_PHONE_SEARCH_LENGTH || searchInFlightRef.current || isNavigatingRef.current) return;
+    searchInFlightRef.current = true;
 
     Keyboard.dismiss();
     set({ isSearching: true });
@@ -648,6 +659,7 @@ export default function ScanQRScreen() {
     // Validate phone number length to prevent malformed requests
     if (normalizedPhone.length > MAX_PHONE_LENGTH) {
       Alert.alert(t('common.error'), t('scan.invalidPhoneNumber'));
+      searchInFlightRef.current = false;
       set({ isSearching: false });
       return;
     }
@@ -704,9 +716,10 @@ export default function ScanQRScreen() {
       logError('ScanQR', 'Phone search error:', err);
       Alert.alert(t('common.error'), t('scan.phoneSearchError'));
     } finally {
+      searchInFlightRef.current = false;
       set({ isSearching: false });
     }
-  }, [phoneInput, isSearching, router, countryIndex, t, set, queryClient]);
+  }, [phoneInput, router, countryIndex, t, set, queryClient]);
 
   const handleClose = useCallback(() => {
     safeImpact(Haptics.ImpactFeedbackStyle.Light);
@@ -718,6 +731,7 @@ export default function ScanQRScreen() {
   }, [router]);
 
   const handleRetryScan = useCallback(() => {
+    lastScannedRef.current = null;
     setOverlayState({ phase: 'idle', message: null });
     set({ isScanning: true });
   }, [set]);
@@ -727,6 +741,7 @@ export default function ScanQRScreen() {
   const handleSearchFocus = useCallback(() => set({ isSearchFocused: true }), [set]);
   const handleSearchBlur = useCallback(() => set({ isSearchFocused: false }), [set]);
   const openCountrySheet = useCallback(() => setShowCountrySheet(true), []);
+  const closeCountrySheet = useCallback(() => setShowCountrySheet(false), []);
   const closeMatchedClients = useCallback(() => set({ matchedClients: [] }), [set]);
   const handleToggleFlash = useCallback(() => {
     safeImpact(Haptics.ImpactFeedbackStyle.Light);
@@ -759,7 +774,7 @@ export default function ScanQRScreen() {
     return (
       <View style={[styles.permissionContainer, { backgroundColor: theme.bg }]}>
         <StatusBar style={theme.mode === 'dark' ? 'light' : 'dark'} />
-        <Animated.View style={styles.permissionContent}>
+        <View style={styles.permissionContent}>
           <View style={[styles.permissionIconCircle, { backgroundColor: theme.primaryBg, borderColor: theme.primary + '40' }]}>
             <Camera size={48} color={theme.primary} strokeWidth={iconTokens.stroke} />
           </View>
@@ -783,7 +798,7 @@ export default function ScanQRScreen() {
             </View>
           )}
           <ActionButton label={t('common.back')} variant="ghost" onPress={handleClose} />
-        </Animated.View>
+        </View>
       </View>
     );
   }
@@ -866,17 +881,13 @@ export default function ScanQRScreen() {
             data={matchedClients}
             keyExtractor={(item) => item.id}
             keyboardShouldPersistTaps="handled"
-            getItemLayout={(_, index) => ({ length: 64, offset: 64 * index, index })}
-            maxToRenderPerBatch={10}
-            windowSize={5}
-            removeClippedSubviews={Platform.OS === 'android'}
             renderItem={renderMatchedClient}
           />
         </View>
       </Modal>
 
-      <Modal visible={showCountrySheet} animationType="slide" transparent>
-        <TouchableOpacity style={styles.sheetOverlay} activeOpacity={1} onPress={() => setShowCountrySheet(false)}>
+      <Modal visible={showCountrySheet} animationType="slide" transparent onRequestClose={closeCountrySheet}>
+        <TouchableOpacity style={styles.sheetOverlay} activeOpacity={1} onPress={closeCountrySheet}>
           <View style={[styles.sheetCard, { backgroundColor: theme.bgCard, maxHeight: SCREEN_H * 0.7 }]}>
             <View style={[styles.sheetHandle, { backgroundColor: `${theme.textMuted}30` }]} />
             <Text style={[styles.sheetTitle, { color: theme.text, textAlign: dir.textAlign }]}>{t('scan.countryPickerTitle')}</Text>
@@ -888,6 +899,7 @@ export default function ScanQRScreen() {
                 <TouchableOpacity
                   style={[styles.countryRow, { flexDirection: dir.row }, countryIndex === index && { backgroundColor: `${theme.primary}16` }]}
                   onPress={() => {
+                    countryPickedRef.current = true;
                     set({ countryIndex: index });
                     setShowCountrySheet(false);
                   }}

@@ -6,10 +6,10 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useDir } from '@/hooks/useDir';
 import { font, icon } from '@/constants/design';
 import CountryPickerModal from '@/components/CountryPickerModal';
-import { COUNTRIES, DEFAULT_COUNTRY } from '@/constants/Countries';
+import { COUNTRIES } from '@/constants/Countries';
 import { isValidPhoneForCountry, formatPhoneLocal } from '@jitplus/shared';
-import type { CountryCode } from '@jitplus/shared';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { parsePhone } from '@/utils/parsePhone';
 
 interface PhoneInputProps extends Omit<TextInputProps, 'onChangeText' | 'value' | 'style'> {
   value: string;
@@ -17,30 +17,18 @@ interface PhoneInputProps extends Omit<TextInputProps, 'onChangeText' | 'value' 
   style?: StyleProp<ViewStyle>;
   /** Show validation state only after user has interacted */
   showValidation?: boolean;
+  /**
+   * Country shown when several share the value's dial code (US / CA on +1),
+   * e.g. the detected country. The merchant's own pick always wins after.
+   */
+  defaultCountry?: string;
 }
 
-/** Parse stored value "+212612..." or local "0612..." into dialCode + localPart + country */
-export function parsePhone(value: string | undefined | null): {
-  dialCode: string;
-  localPart: string;
-  country: CountryCode;
-} {
-  const safeVal = value || '';
-  if (safeVal.startsWith('+')) {
-    // Sort by dial length desc to match longest prefix first (e.g. +212 before +2)
-    const sorted = [...COUNTRIES].sort((a, b) => b.dial.length - a.dial.length);
-    const match = sorted.find((c) => safeVal.startsWith(c.dial));
-    if (match) {
-      return { dialCode: match.dial, localPart: safeVal.slice(match.dial.length), country: match };
-    }
-  }
-  // Default to Morocco, clean leading 0
-  const localPart = safeVal.replace(/^0+/, '');
-  return { dialCode: DEFAULT_COUNTRY.dial, localPart, country: DEFAULT_COUNTRY };
-}
+// Kept here too for existing imports (StoreFormScreen).
+export { parsePhone };
 
 const PhoneInput = forwardRef<TextInput, PhoneInputProps>(
-  ({ value, onChangeText, placeholder, showValidation = true, style, ...rest }, ref) => {
+  ({ value, onChangeText, placeholder, showValidation = true, style, onFocus, onBlur, defaultCountry, ...rest }, ref) => {
     const theme = useTheme();
     const { t } = useLanguage();
     const dir = useDir();
@@ -48,8 +36,11 @@ const PhoneInput = forwardRef<TextInput, PhoneInputProps>(
     const [showPicker, setShowPicker] = useState(false);
     const [touched, setTouched] = useState(false);
     const [isFocused, setIsFocused] = useState(false);
+    // The value only holds the dial code: remember which country was picked,
+    // otherwise Canada would turn back into the United States on +1.
+    const [pickedCode, setPickedCode] = useState<string | undefined>(defaultCountry);
 
-    const parsed = useMemo(() => parsePhone(value), [value]);
+    const parsed = useMemo(() => parsePhone(value, pickedCode), [value, pickedCode]);
 
     // Real validation using shared rules (ANRT-compliant for Morocco)
     const isPhoneValid = useMemo(
@@ -88,6 +79,7 @@ const PhoneInput = forwardRef<TextInput, PhoneInputProps>(
         const newCountry = COUNTRIES[index];
         // Trim local part to new country's maxDigits
         const trimmed = parsed.localPart.slice(0, newCountry.maxDigits);
+        setPickedCode(newCountry.code);
         onChangeText(newCountry.dial + trimmed);
         setShowPicker(false);
       },
@@ -111,14 +103,17 @@ const PhoneInput = forwardRef<TextInput, PhoneInputProps>(
       [parsed.dialCode, parsed.country.maxDigits, onChangeText],
     );
 
-    const handleFocus = useCallback(() => {
+    // Run the caller's handlers too: spreading them via `rest` would replace ours.
+    const handleFocus = useCallback<NonNullable<TextInputProps['onFocus']>>((e) => {
       setIsFocused(true);
-    }, []);
+      onFocus?.(e);
+    }, [onFocus]);
 
-    const handleBlur = useCallback(() => {
+    const handleBlur = useCallback<NonNullable<TextInputProps['onBlur']>>((e) => {
       setTouched(true);
       setIsFocused(false);
-    }, []);
+      onBlur?.(e);
+    }, [onBlur]);
 
     const selectedCountry = parsed.country;
 

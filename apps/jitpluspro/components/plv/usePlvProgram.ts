@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuthStore } from '@/stores/authStore';
 import { useRewards, useLuckyWheelActiveInfo } from '@/hooks/useQueryHooks';
-import { DEFAULT_CURRENCY } from '@/config/currency';
+import { formatMoney } from '@/config/currency';
 import { DEFAULT_AMOUNT_PER_STAMP, DEFAULT_STAMPS_FOR_REWARD, cardSlots } from '@/utils/stamps';
 
 interface PlvRewardLine {
@@ -30,18 +30,13 @@ export interface PlvProgram {
   validityLine: string | null;
 }
 
-function formatAmount(value: number): string {
-  const n = Number.isInteger(value) ? String(value) : value.toFixed(DEFAULT_CURRENCY.decimals);
-  return `${n} ${DEFAULT_CURRENCY.symbol}`;
-}
-
 /**
  * Builds the poster copy from the merchant's real settings (earning mode,
  * rewards, lucky wheel, stamp validity) so every PLV matches what the
  * customer will actually get at this store.
  */
 export function usePlvProgram(): PlvProgram {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
   const merchant = useAuthStore((s) => s.merchant);
   const { data: rewards } = useRewards(!!merchant);
   const { data: wheelInfo } = useLuckyWheelActiveInfo();
@@ -60,7 +55,7 @@ export function usePlvProgram(): PlvProgram {
       : { title: t('home.clientPlvDefaultReward'), cost: stampsForReward };
 
     const earnLine = merchant?.stampEarningMode === 'PER_AMOUNT'
-      ? t('home.clientPlvEarnAmount', { amount: formatAmount(merchant.amountPerStamp || DEFAULT_AMOUNT_PER_STAMP) })
+      ? t('home.clientPlvEarnAmount', { amount: formatMoney(merchant.amountPerStamp || DEFAULT_AMOUNT_PER_STAMP, merchant.currency, locale) })
       : t('home.clientPlvEarnVisit');
 
     const otherRewards = sorted.slice(1, 3).map((r) => ({
@@ -72,7 +67,7 @@ export function usePlvProgram(): PlvProgram {
     let wheelLine: string | null = null;
     if (wheelInfo?.hasActiveLuckyWheel) {
       wheelLine = wheelInfo.minSpendAmount > 0
-        ? t('home.clientPlvWheelMin', { amount: formatAmount(wheelInfo.minSpendAmount) })
+        ? t('home.clientPlvWheelMin', { amount: formatMoney(wheelInfo.minSpendAmount, merchant?.currency, locale) })
         : t('home.clientPlvWheelAlways');
     }
 
@@ -89,5 +84,5 @@ export function usePlvProgram(): PlvProgram {
       wheelLine,
       validityLine,
     };
-  }, [t, merchant, rewards, wheelInfo]);
+  }, [t, locale, merchant, rewards, wheelInfo]);
 }

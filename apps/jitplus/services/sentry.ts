@@ -11,6 +11,13 @@ const SENTRY_OPT_OUT_KEY = 'sentry_opt_out';
 let optOut: Promise<boolean> = Promise.resolve(false);
 let started = false;
 
+/**
+ * Records a breadcrumb on every screen change, so events without a stack trace
+ * (iOS WatchdogTermination) still show which screen the user was on.
+ * Registered with the expo-router navigation container in app/_layout.tsx.
+ */
+export const navigationIntegration = Sentry.reactNavigationIntegration();
+
 function readOptOut(): Promise<boolean> {
   return AsyncStorage.getItem(SENTRY_OPT_OUT_KEY).then((v) => v === 'true').catch(() => false);
 }
@@ -33,7 +40,8 @@ function startSentry(): void {
         : Constants.expoConfig?.android?.versionCode ?? '0',
     ),
     tracesSampleRate: 0.02,
-    maxBreadcrumbs: 10,
+    maxBreadcrumbs: 50,
+    integrations: [navigationIntegration],
     attachScreenshot: false, // Screenshots can capture PII (names, cards, balances)
     attachViewHierarchy: false,
     ignoreErrors: ['No refresh token', 'Session expired', 'Network Error', 'ECONNABORTED'],

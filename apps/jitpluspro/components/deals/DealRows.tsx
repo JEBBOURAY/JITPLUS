@@ -5,6 +5,7 @@ import { JitStore } from '@/components/icons';
 import { useTheme, type ThemeColors } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useDir } from '@/hooks/useDir';
+import { useMoney } from '@/hooks/useCurrency';
 import { useAuthStore } from '@/stores/authStore';
 import { ms } from '@/utils/responsive';
 import { font, icon } from '@/constants/design';
@@ -98,10 +99,11 @@ export const DealPreviewRow = React.memo(function DealPreviewRow({ title, offer,
   merchant: DealMerchantLook;
 }) {
   const theme = useTheme();
-  const { t, locale } = useLanguage();
+  const { t } = useLanguage();
+  const { money } = useMoney();
   const { row, textAlign } = useDir();
   const badge = dealBadgeLabel(offer, t);
-  const { price, original } = dealPrices(offer, t, locale);
+  const { price, original } = dealPrices(offer, money);
   const time = dealTimeLeftLabel(endsAt, t);
   const timeColor = time.urgent ? theme.warning : theme.textMuted;
   const ScopeIcon = scope === 'ONLINE' ? Globe : JitStore;

@@ -75,25 +75,41 @@ else
 fi
 
 # ── Admin bootstrap ─────────────────────────────────────────────────────────
-# If ADMIN_PASSWORD is set, upsert the admin account (idempotent).
+# If ADMIN_PASSWORD is set, create the admin account when it does not exist.
 # Used by the migration Cloud Run Job to bootstrap the first admin.
+#
+# An existing admin is left untouched: its password (possibly changed since),
+# isActive flag and brute-force lockout are NOT reset on every deploy. To
+# deliberately reset the password and unlock the account, run one deploy /
+# job execution with ADMIN_FORCE_RESET=true.
 if [ -n "$ADMIN_PASSWORD" ]; then
-  echo "[Entrypoint] Creating/updating admin account..."
+  echo "[Entrypoint] Ensuring admin account exists..."
   node -e "
     const{PrismaClient}=require('@prisma/client');
     const b=require('bcryptjs');
     (async()=>{
       const p=new PrismaClient();
+      const email='contact@jitplus.com';
+      const force=process.env.ADMIN_FORCE_RESET==='true';
       try{
+        const existing=await p.admin.findUnique({where:{email},select:{id:true}});
+        if(existing&&!force){
+          console.log('[Entrypoint] Admin already exists (id:'+existing.id+') — left unchanged.');
+          return;
+        }
         const h=await b.hash(process.env.ADMIN_PASSWORD,12);
-        const a=await p.admin.upsert({
-          where:{email:'contact@jitplus.com'},
-          update:{password:h,nom:'Admin JitPlus',isActive:true,failedLoginAttempts:0,lockedUntil:null},
-          create:{email:'contact@jitplus.com',password:h,nom:'Admin JitPlus',role:'ADMIN'}
-        });
-        console.log('[Entrypoint] Admin ready:',a.email,'(id:'+a.id+')');
+        if(existing){
+          await p.admin.update({
+            where:{email},
+            data:{password:h,isActive:true,failedLoginAttempts:0,lockedUntil:null}
+          });
+          console.log('[Entrypoint] ADMIN_FORCE_RESET=true — admin password reset and account unlocked (id:'+existing.id+').');
+        }else{
+          const a=await p.admin.create({data:{email,password:h,nom:'Admin JitPlus',role:'ADMIN'}});
+          console.log('[Entrypoint] Admin created (id:'+a.id+').');
+        }
       }finally{await p.\$disconnect();}
-    })();
+    })().catch(e=>{console.error('[Entrypoint] Admin bootstrap failed:',e);process.exit(1);});
   "
 fi
 

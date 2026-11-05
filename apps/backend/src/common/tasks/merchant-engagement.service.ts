@@ -2,20 +2,19 @@ import { Injectable, Logger, Inject } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import {
   MERCHANT_REPOSITORY,
-  TRANSACTION_REPOSITORY,
-  CAMPAIGN_SENT_TRACKER_REPOSITORY,
+  RAW_QUERY_RUNNER,
   type IMerchantRepository,
-  type ITransactionRepository,
-  type ICampaignSentTrackerRepository,
+  type IRawQueryRunner,
 } from '../repositories';
-import { IPushProvider, PUSH_PROVIDER } from '../interfaces';
-import { MerchantInboxService } from '../../merchant-inbox/merchant-inbox.service';
 import {
-  isCronEnabled,
-  dayTag,
-  merchantAlreadySent,
-  merchantMarkSent,
-} from './cron-utils';
+  MerchantNotifierService,
+  NOTIFY_TARGET_SELECT,
+  tally,
+  type MerchantNotification,
+} from '../../merchant-inbox/merchant-notifier.service';
+import { dayTag, reachedStage, mapLimit, MERCHANT_PUSH_CONCURRENCY, cronEnabledOnce } from './cron-utils';
+import { NOTIF_MESSAGES, lang } from './merchant-notif-messages';
+import { MS_PER_DAY } from '../constants';
 
 // ── Localized push messages ──
 const MESSAGES = {
@@ -50,30 +49,64 @@ const MESSAGES = {
 } as const;
 
 type MsgKey = keyof typeof MESSAGES;
-type Lang = 'fr' | 'en' | 'ar';
 
-function getMsg(key: MsgKey, lang?: string): { title: string; body: string } {
-  const l = (lang === 'en' || lang === 'ar' ? lang : 'fr') as Lang;
-  return MESSAGES[key][l];
+function getMsg(key: MsgKey, language: string | null): { title: string; body: string } {
+  return MESSAGES[key][lang(language)];
+}
+
+/** Merchant ids per last-scan lookup. */
+const LAST_SCAN_CHUNK = 1000;
+
+/** Days without a scan at which a reminder goes out (one per stage per gap). */
+export const SCAN_GAP_STAGES = [5, 10, 21] as const;
+/** Days after sign-up at which a merchant who never scanned is reminded. */
+export const FIRST_SCAN_STAGES = [1, 3, 7] as const;
+
+
+/**
+ * The reminder a merchant should get today, or null. Pure: the cron only
+ * fetches data and sends what this returns.
+ */
+export function planEngagementReminder(
+  m: { language: string | null; createdAt: Date },
+  lastScanAt: Date | null,
+  now: number,
+): MerchantNotification | null {
+  let campaignId: string;
+  let msg: { title: string; body: string };
+  let action = 'open_scan';
+
+  if (!lastScanAt) {
+    const stage = reachedStage(FIRST_SCAN_STAGES, Math.floor((now - m.createdAt.getTime()) / MS_PER_DAY));
+    if (!stage) return null;
+    campaignId = `merchant_first_scan_${stage}d`;
+    msg = getMsg('neverScanned', m.language);
+  } else {
+    const stage = reachedStage(SCAN_GAP_STAGES, Math.floor((now - lastScanAt.getTime()) / MS_PER_DAY));
+    if (!stage) return null;
+    // The last scan day is part of the key: a new scan restarts the series.
+    campaignId = `merchant_scan_gap_${stage}d_${dayTag(lastScanAt)}`;
+    if (stage === 5) {
+      msg = getMsg('inactive', m.language);
+    } else {
+      msg = NOTIF_MESSAGES[stage === 10 ? 'scanGap10' : 'scanGap21'][lang(m.language)];
+      if (stage === 21) action = 'open_support';
+    }
+  }
+
+  return { category: 'REMINDER', title: msg.title, body: msg.body, action, event: 'merchant_engagement', campaignId };
 }
 
 /**
- * Scheduled task: encourage merchant engagement via push notifications.
+ * Scheduled task: bring merchants back to scanning.
  *
- * Two segments:
+ * 1. **Never scanned** — onboarding done, zero EARN_STAMPS transaction:
+ *    reminded 1, 3 and 7 days after sign-up, once per stage.
+ * 2. **Scan gap** — last scan 5, 10 or 21 days ago: one reminder per stage,
+ *    reset by the next scan (the dedup key contains the last scan day).
  *
- * 1. **Never scanned** — Merchant completed onboarding, has a push token,
- *    but has **zero** EARN_STAMPS transactions (i.e. never scanned a client).
- *    → Encourage them to scan their first client.
- *
- * 2. **Inactive 5+ days** — Merchant has at least one EARN_STAMPS transaction
- *    but the most recent one is older than 5 days.
- *    → Remind them to stay active and keep clients coming back.
- *
- * Runs once daily at 11:00 AM UTC to avoid overlap with the 48h setup reminder
- * (which runs at 10:00 AM UTC).
- *
- * Messages are sent in the merchant's configured language (fr/en/ar).
+ * Category REMINDER: obeys the merchant's "reminders" switch, quiet hours and
+ * the marketing frequency cap (see MerchantNotifierService).
  */
 @Injectable()
 export class MerchantEngagementService {
@@ -81,22 +114,17 @@ export class MerchantEngagementService {
 
   constructor(
     @Inject(MERCHANT_REPOSITORY) private readonly merchantRepo: IMerchantRepository,
-    @Inject(TRANSACTION_REPOSITORY) private readonly txRepo: ITransactionRepository,
-    @Inject(CAMPAIGN_SENT_TRACKER_REPOSITORY) private readonly campaignTrackerRepo: ICampaignSentTrackerRepository,
-    @Inject(PUSH_PROVIDER) private readonly pushProvider: IPushProvider,
-    private readonly inbox: MerchantInboxService,
+    @Inject(RAW_QUERY_RUNNER) private readonly rawQuery: IRawQueryRunner,
+    private readonly notifier: MerchantNotifierService,
   ) {}
 
   // 08:00 UTC = 09:00 Maroc (début de matinée, hors heures de prière).
-  // Évite 11:00 UTC (= midi Maroc = heure de déjeuner + prière Dohr proche).
   @Cron('0 8 * * *')
   async sendEngagementReminders(): Promise<void> {
-    if (!isCronEnabled(this.logger, 'MerchantEngagement.sendEngagementReminders')) return;
+    if (!(await cronEnabledOnce(this.logger, 'MerchantEngagement.sendEngagementReminders'))) return;
     this.logger.log('Starting merchant engagement reminders');
 
     try {
-      // Fetch all active merchants who completed onboarding, opted-in to push,
-      // and have a push token registered.
       const merchants = await this.merchantRepo.findMany({
         where: {
           isActive: true,
@@ -105,91 +133,49 @@ export class MerchantEngagementService {
           onboardingCompleted: true,
           notifPush: true,
         },
-        select: {
-          id: true,
-          pushToken: true,
-          language: true,
-        },
+        select: { ...NOTIFY_TARGET_SELECT, language: true, createdAt: true },
       });
+      if (merchants.length === 0) return;
 
-      if (merchants.length === 0) {
-        this.logger.log('No eligible merchants found');
-        return;
-      }
+      const lastScanMap = await this.lastScans(merchants.map((m: { id: string }) => m.id));
 
-      const fiveDaysAgo = new Date();
-      fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
-      const today = dayTag();
-
-      // ── N+1 fix: single aggregated query for last-scan per merchant ──
-      // One groupBy replaces one findFirst per merchant (was N queries).
-      const merchantIds = merchants.map((m: { id: string }) => m.id);
-      const lastScans = await this.txRepo.groupBy({
-        by: ['merchantId'],
-        where: {
-          merchantId: { in: merchantIds },
-          type: 'EARN_STAMPS',
-          status: 'ACTIVE',
-        },
-        _max: { createdAt: true },
+      const now = Date.now();
+      const plans = merchants.flatMap((m) => {
+        const n = planEngagementReminder(m, lastScanMap.get(m.id) ?? null, now);
+        return n ? [{ m, n }] : [];
       });
-      const lastScanMap = new Map<string, Date | null>(
-        lastScans.map((r: { merchantId: string; _max: { createdAt: Date | null } }) => [r.merchantId, r._max.createdAt]),
-      );
+      const results = await mapLimit(plans, MERCHANT_PUSH_CONCURRENCY, ({ m, n }) => this.notifier.notify(m, n));
 
-      let neverScannedCount = 0;
-      let inactiveCount = 0;
-      let skippedDup = 0;
-      const staleTokenIds: string[] = [];
-
-      for (const merchant of merchants) {
-        if (!merchant.pushToken) continue;
-
-        const lastScanAt = lastScanMap.get(merchant.id) ?? null;
-        let segment: 'neverScanned' | 'inactive' | null = null;
-        if (!lastScanAt) segment = 'neverScanned';
-        else if (lastScanAt < fiveDaysAgo) segment = 'inactive';
-        if (!segment) continue;
-
-        const campaignId = `merchant_engagement_${segment}_${today}`;
-        if (await merchantAlreadySent(this.campaignTrackerRepo, merchant.id, campaignId, 'PUSH')) {
-          skippedDup++;
-          continue;
-        }
-
-        const msg = getMsg(segment, merchant.language);
-        const result = await this.pushProvider.sendToMerchant(
-          merchant.pushToken,
-          msg.title,
-          msg.body,
-          { action: 'open_scan' },
-        );
-
-        if (result.invalidToken) {
-          staleTokenIds.push(merchant.id);
-          continue;
-        }
-
-        await merchantMarkSent(this.campaignTrackerRepo, merchant.id, campaignId, 'PUSH');
-        await this.inbox.record(merchant.id, { category: 'ACTIVITY', title: msg.title, body: msg.body, action: 'open_scan' });
-        if (segment === 'neverScanned') neverScannedCount++;
-        else inactiveCount++;
-      }
-
-      // Clean stale push tokens
-      if (staleTokenIds.length > 0) {
-        this.logger.log(`Cleaning ${staleTokenIds.length} stale merchant push token(s)`);
-        await this.merchantRepo.updateMany({
-          where: { id: { in: staleTokenIds } },
-          data: { pushToken: null },
-        }).catch((e: unknown) => this.logger.warn(`Failed to clean stale tokens: ${e}`));
-      }
-
-      this.logger.log(
-        `Engagement reminders: ${neverScannedCount} never-scanned, ${inactiveCount} inactive 5d+, ${skippedDup} dup-skipped (${merchants.length} eligible)`,
-      );
+      this.logger.log(`Engagement reminders (${merchants.length} eligible): ${tally(results)}`);
     } catch (error) {
       this.logger.error('Failed to send engagement reminders', error);
     }
+  }
+
+  /**
+   * Last EARN_STAMPS (ACTIVE) per merchant. The LATERAL reads one row per
+   * merchant off transactions(merchant_id, type, status, created_at) backwards,
+   * instead of aggregating every scan ever made. Merchants that never scanned
+   * are absent from the map.
+   */
+  async lastScans(merchantIds: string[]): Promise<Map<string, Date>> {
+    const out = new Map<string, Date>();
+    for (let i = 0; i < merchantIds.length; i += LAST_SCAN_CHUNK) {
+      const ids = merchantIds.slice(i, i + LAST_SCAN_CHUNK);
+      const rows = await this.rawQuery.queryRaw<{ merchant_id: string; last_scan_at: Date }>`
+        SELECT m.id AS merchant_id, lt.created_at AS last_scan_at
+        FROM unnest(${ids}::text[]) AS m(id)
+        CROSS JOIN LATERAL (
+          SELECT t.created_at
+          FROM transactions t
+          WHERE t.merchant_id = m.id
+            AND t.type = 'EARN_STAMPS'
+            AND t.status = 'ACTIVE'
+          ORDER BY t.created_at DESC
+          LIMIT 1
+        ) lt`;
+      for (const r of rows) out.set(r.merchant_id, r.last_scan_at);
+    }
+    return out;
   }
 }

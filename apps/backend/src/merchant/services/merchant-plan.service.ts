@@ -1,15 +1,16 @@
-import { Injectable, Logger, ForbiddenException, BadRequestException, Inject } from '@nestjs/common';
+import { Injectable, Logger, ForbiddenException, BadRequestException, ConflictException, Inject } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
 import {
   MERCHANT_REPOSITORY, type IMerchantRepository,
   LOYALTY_CARD_REPOSITORY, type ILoyaltyCardRepository,
 } from '../../common/repositories';
-import { IPushProvider, PUSH_PROVIDER, IMailProvider, MAIL_PROVIDER } from '../../common/interfaces';
+import { IMailProvider, MAIL_PROVIDER } from '../../common/interfaces';
 import { pickEmailLang } from '../../mail/transactional-i18n';
 import { ClientReferralService } from '../../client-auth/client-referral.service';
 import { MerchantReferralService } from './merchant-referral.service';
-import { MerchantInboxService } from '../../merchant-inbox/merchant-inbox.service';
+import { planCacheKey } from './plan-cache-key';
+import { MerchantNotifierService } from '../../merchant-inbox/merchant-notifier.service';
 import { MerchantPlan } from '@prisma/client';
 import {
   FREE_MAX_CLIENTS,
@@ -19,9 +20,10 @@ import {
   PLAN_CACHE_TTL,
   TRIAL_DURATION_DAYS,
 } from '../../common/constants';
+import { type AppLang, pickAppLang } from '../../common/utils/app-lang';
 
 /** Plan limits by tier */
-export const PLAN_LIMITS = {
+const PLAN_LIMITS = {
   FREE: {
     maxClients: FREE_MAX_CLIENTS,
     maxStores: FREE_MAX_STORES,
@@ -45,10 +47,8 @@ export const PLAN_LIMITS = {
 } as const;
 
 // ── Localized plan push messages ──
-type PlanLang = 'fr' | 'en' | 'ar';
-function planLang(v?: string | null): PlanLang {
-  return v === 'en' || v === 'ar' ? v : 'fr';
-}
+type PlanLang = AppLang;
+const planLang = pickAppLang;
 
 const PLAN_MESSAGES = {
   activated: {
@@ -89,40 +89,36 @@ export class MerchantPlanService {
     @Inject(MERCHANT_REPOSITORY) private readonly merchantRepo: IMerchantRepository,
     @Inject(LOYALTY_CARD_REPOSITORY) private readonly loyaltyCardRepo: ILoyaltyCardRepository,
     @Inject(CACHE_MANAGER) private readonly cache: Cache,
-    @Inject(PUSH_PROVIDER) private readonly pushProvider: IPushProvider,
     @Inject(MAIL_PROVIDER) private readonly mailProvider: IMailProvider,
     private readonly clientReferralService: ClientReferralService,
     private readonly merchantReferralService: MerchantReferralService,
-    private readonly inbox: MerchantInboxService,
+    private readonly notifier: MerchantNotifierService,
   ) {}
 
   /** Records the plan change in the merchant inbox, then pushes it when a device is registered. */
   private async notifyPlanChange(
     merchantId: string,
-    merchant: { pushToken: string | null; language: string | null } | null | undefined,
+    merchant: { pushToken: string | null; language: string | null; notifPush?: boolean } | null | undefined,
     kind: 'activated' | 'revoked',
   ): Promise<void> {
     if (!merchant) return;
     const msg = PLAN_MESSAGES[kind][planLang(merchant.language)];
-    await this.inbox.record(merchantId, { category: 'PLAN', title: msg.title, body: msg.body, action: 'open_plan' });
-    if (merchant.pushToken) {
-      await this.pushProvider.sendToMerchant(
-        merchant.pushToken,
-        msg.title,
-        msg.body,
-        { event: kind === 'activated' ? 'plan_activated' : 'plan_revoked', action: 'open_plan' },
-      );
-    }
+    await this.notifier.notify(
+      { id: merchantId, pushToken: merchant.pushToken, notifPush: merchant.notifPush },
+      {
+        category: 'PLAN',
+        title: msg.title,
+        body: msg.body,
+        action: 'open_plan',
+        event: kind === 'activated' ? 'plan_activated' : 'plan_revoked',
+      },
+    );
   }
 
-  /** Cache key for a merchant's effective plan */
-  private planCacheKey(merchantId: string): string {
-    return `plan:v1:${merchantId}`;
-  }
 
   /** Invalidate the plan cache entry for a merchant (call after any plan mutation) */
   async invalidatePlanCache(merchantId: string): Promise<void> {
-    await this.cache.del(this.planCacheKey(merchantId));
+    await this.cache.del(planCacheKey(merchantId));
   }
 
   /**
@@ -138,7 +134,7 @@ export class MerchantPlanService {
     isTrial: boolean;
     daysRemaining: number | null;
   }> {
-    const cacheKey = this.planCacheKey(merchantId);
+    const cacheKey = planCacheKey(merchantId);
     const cached = await this.cache.get<{
       plan: MerchantPlan;
       planExpiresAt: string | null;
@@ -298,7 +294,7 @@ export class MerchantPlanService {
         planExpiresAt: null,
         referralMonthsEarned: 0,
       },
-      select: { pushToken: true, language: true, email: true },
+      select: { pushToken: true, notifPush: true, language: true, email: true },
     });
     await this.invalidatePlanCache(merchantId);
     this.logger.log(`Admin activated PREMIUM for merchant ${merchantId}`);
@@ -326,26 +322,41 @@ export class MerchantPlanService {
   async applyEarnedReferralMonths(merchantId: string): Promise<{ planExpiresAt: Date; monthsApplied: number }> {
     const merchant = await this.merchantRepo.findUnique({
       where: { id: merchantId },
-      select: { referralMonthsEarned: true },
+      select: { referralMonthsEarned: true, plan: true },
     });
 
     if (!merchant || merchant.referralMonthsEarned <= 0) {
-      throw new Error('Aucun mois gratuit disponible');
+      throw new BadRequestException('Aucun mois gratuit disponible');
+    }
+    // A PREMIUM merchant (admin-permanent or trial) already received each
+    // referral month when it was earned — converting them would either
+    // downgrade a permanent plan to a time-limited one or grant them twice.
+    if (merchant.plan !== 'FREE') {
+      throw new BadRequestException('Les mois de parrainage ne peuvent être utilisés qu\'avec le plan gratuit');
     }
 
     const months = merchant.referralMonthsEarned;
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + months * 30);
 
-    const updated = await this.merchantRepo.update({
-      where: { id: merchantId },
+    // Conditional write: a concurrent apply, plan change or newly credited
+    // referral month (counter moved) makes count=0 instead of silently
+    // overwriting it.
+    const claimed = await this.merchantRepo.updateMany({
+      where: { id: merchantId, plan: 'FREE', referralMonthsEarned: months },
       data: {
         plan: 'PREMIUM',
         planActivatedByAdmin: false,
         planExpiresAt: expiresAt,
         referralMonthsEarned: 0,
       },
-      select: { pushToken: true, language: true, email: true },
+    });
+    if (claimed.count !== 1) {
+      throw new ConflictException('Votre plan a été modifié entre-temps, veuillez réessayer');
+    }
+    const updated = await this.merchantRepo.findUnique({
+      where: { id: merchantId },
+      select: { pushToken: true, notifPush: true, language: true, email: true },
     });
     await this.invalidatePlanCache(merchantId);
     this.logger.log(`Applied ${months} referral months for merchant ${merchantId}, expires ${expiresAt.toISOString()}`);
@@ -375,7 +386,7 @@ export class MerchantPlanService {
         planActivatedByAdmin: false,
         planExpiresAt: null,
       },
-      select: { pushToken: true, language: true, email: true },
+      select: { pushToken: true, notifPush: true, language: true, email: true },
     });
     await this.invalidatePlanCache(merchantId);
     this.logger.log(`Admin revoked PREMIUM for merchant ${merchantId}`);
@@ -409,12 +420,20 @@ export class MerchantPlanService {
   /**
    * Assert the merchant can add a new client.
    * No-op for PREMIUM; throws ForbiddenException for FREE over limit.
+   *
+   * Inside an interactive transaction, pass `tx` (and the `plan` resolved
+   * before the transaction): otherwise this would take a second pool
+   * connection while the transaction holds one, and concurrent enrolments
+   * could exhaust the pool.
    */
-  async assertCanAddClient(merchantId: string): Promise<void> {
-    const { plan } = await this.resolveEffectivePlan(merchantId);
+  async assertCanAddClient(
+    merchantId: string,
+    opts: { tx?: { loyaltyCard: Pick<ILoyaltyCardRepository, 'count'> }; plan?: MerchantPlan } = {},
+  ): Promise<void> {
+    const plan = opts.plan ?? (await this.resolveEffectivePlan(merchantId)).plan;
     if (plan === 'PREMIUM') return;
 
-    const count = await this.loyaltyCardRepo.count({
+    const count = await (opts.tx?.loyaltyCard ?? this.loyaltyCardRepo).count({
       where: { merchantId, deactivatedAt: null },
     });
 
@@ -463,7 +482,7 @@ export class MerchantPlanService {
     const merchant = await this.merchantRepo.update({
       where: { id: merchantId },
       data,
-      select: { pushToken: true, language: true, email: true },
+      select: { pushToken: true, notifPush: true, language: true, email: true },
     });
     await this.invalidatePlanCache(merchantId);
     this.logger.log(`Admin manually set plan dates for merchant ${merchantId}: ${JSON.stringify(dto)}`);

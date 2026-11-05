@@ -1,3 +1,4 @@
+import { moneyFormatter } from '@jitplus/shared/src/currency';
 import { useCallback, useMemo } from 'react';
 import { StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text } from '@/components/AppText';
@@ -49,12 +50,12 @@ export default function CouponDetailScreen() {
   }, [qrShown]));
 
   const reward = coupon
-    ? formatRewardValue({ type: coupon.type, value: coupon.value, label: coupon.label }, t)
+    ? formatRewardValue({ type: coupon.type, value: coupon.value, label: coupon.label }, t, moneyFormatter(coupon.merchant?.currency, locale))
     : '';
 
   const conditionLines = useMemo(() => {
     if (!coupon) return [];
-    return describeCouponConditions(coupon, t, (iso) => formatDate(iso, locale));
+    return describeCouponConditions(coupon, t, (iso) => formatDate(iso, locale), moneyFormatter(coupon.merchant?.currency, locale));
   }, [coupon, t, locale]);
 
   const copyCode = useCallback(async () => {

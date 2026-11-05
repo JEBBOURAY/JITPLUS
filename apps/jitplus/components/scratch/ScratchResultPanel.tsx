@@ -1,3 +1,4 @@
+import { moneyFormatter } from '@jitplus/shared/src/currency';
 import React, { useMemo } from 'react';
 import { ActivityIndicator, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text } from '@/components/AppText';
@@ -20,6 +21,8 @@ interface Props {
   reduceMotion: boolean;
   scratchable: boolean;
   merchantName: string;
+  /** Merchant's ISO currency code (MAD when absent). */
+  currency?: string;
   locale: string;
   fonts: AppFonts;
   t: (key: string, options?: Record<string, unknown>) => string;
@@ -30,12 +33,12 @@ interface Props {
 
 /** Panel under the card once revealed: pending draw, draw error, or the won reward and how to use it. */
 export default React.memo(function ScratchResultPanel({
-  coupon, reward, drawError, reduceMotion, scratchable, merchantName, locale, fonts, t, onRetry, onDone, onOpenMyCard,
+  coupon, reward, drawError, reduceMotion, scratchable, merchantName, currency, locale, fonts, t, onRetry, onDone, onOpenMyCard,
 }: Props) {
   const conditionLines = useMemo(() => {
     if (!coupon) return [];
-    return describeCouponConditions(coupon, t, (iso) => formatDate(iso, locale));
-  }, [coupon, t, locale]);
+    return describeCouponConditions(coupon, t, (iso) => formatDate(iso, locale), moneyFormatter(currency, locale));
+  }, [coupon, t, locale, currency]);
 
   if (!coupon) {
     return (

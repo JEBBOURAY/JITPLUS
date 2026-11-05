@@ -4,7 +4,7 @@ import { IStorageProvider } from '../common/interfaces';
 type MaybeUrl = string | null | undefined;
 type OwnershipChecker = Pick<IStorageProvider, 'isOwnedBy'>;
 
-export const FOREIGN_IMAGE_MESSAGE =
+const FOREIGN_IMAGE_MESSAGE =
   'Image non autorisée : utilisez une image envoyée depuis votre compte.';
 
 const logger = new Logger('ImageOwnership');
@@ -26,7 +26,7 @@ export function assertImageAssignable(
   throw new BadRequestException(FOREIGN_IMAGE_MESSAGE);
 }
 
-export const PROFILE_IMAGE_FIELDS = ['logoUrl', 'coverUrl', 'cardBackgroundUrl'] as const;
+const PROFILE_IMAGE_FIELDS = ['logoUrl', 'coverUrl', 'cardBackgroundUrl'] as const;
 type ProfileImageField = (typeof PROFILE_IMAGE_FIELDS)[number];
 
 export type ProfileImages = { [K in ProfileImageField]?: string | null } & { gallery?: string[] | null };

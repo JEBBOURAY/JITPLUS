@@ -135,7 +135,14 @@ steps:
       - --platform=managed
       - --allow-unauthenticated
       - --port=3000
-      - --min-instances=0
+      # The @Cron jobs (purges, digests, reminders, scratch dispatch) are
+      # in-process timers: with min-instances=0 Cloud Run scales to zero when
+      # idle and they never fire; with request-based CPU they fire late or
+      # not at all between requests. Keep one warm instance with CPU always
+      # allocated. cron_runs (CronRunLock) still makes each slot run once
+      # when several instances are up.
+      - --min-instances=1
+      - --no-cpu-throttling
       - --max-instances=3
       # WebSocket connections are idle 99% of the time; pack many per instance
       # so far fewer instances are needed (major Cloud Run cost saver).

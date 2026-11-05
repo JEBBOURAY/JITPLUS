@@ -7,6 +7,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { useDir } from '@/hooks/useDir';
+import { useMoney } from '@/hooks/useCurrency';
 import { useAuthStore } from '@/stores/authStore';
 import { useDeleteDeal, useDuplicateDeal, useMerchantDeal, useStopDeal, useUpdateDeal } from '@/hooks/queries/deals';
 import { getErrorMessage } from '@/utils/error';
@@ -37,6 +38,7 @@ export default function DealDetail() {
   const shouldWait = useRequireAuth();
   const theme = useTheme();
   const { t, locale } = useLanguage();
+  const { money } = useMoney();
   const { row, textAlign } = useDir();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -139,7 +141,7 @@ export default function DealDetail() {
   const running = status === 'LIVE' || status === 'SCHEDULED';
   const day = (ymd: string) => formatYmd(ymd, locale);
   const badge = dealBadgeLabel(deal, t);
-  const { price, original } = dealPrices(deal, t, locale);
+  const { price, original } = dealPrices(deal, money);
   const reason = endedReasonText(deal, t);
   const time = status === 'LIVE' ? dealTimeLeftLabel(deal.endsAt, t) : null;
   const relaunchDays = Math.max(1, Math.min(DEAL_LIMITS.MAX_DURATION_DAYS, diffDaysYmd(deal.startsOn, deal.endsOn)));

@@ -1,15 +1,26 @@
 import {
-  Controller, Get, Post, Patch, Delete, Body, Param, Query, Req, Inject, Headers,
-  UseGuards, UseInterceptors, UploadedFile, BadRequestException, Logger,
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Body,
+  Param,
+  Query,
+  Inject,
+  Headers,
+  UseGuards,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
+  HttpCode,
+  ParseUUIDPipe,
 } from '@nestjs/common';
-import { Request } from 'express';
-import { ConfigService } from '@nestjs/config';
-import { createHmac, timingSafeEqual } from 'crypto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { THROTTLE_TTL } from '../common/constants';
-import { PrismaService } from '../prisma/prisma.service';
+import { QrTokenService } from './services/qr-token.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { MerchantTypeGuard } from '../auth/guards/merchant-type.guard';
 import { MerchantOwnerGuard } from '../auth/guards/merchant-owner.guard';
@@ -20,12 +31,12 @@ import { PaginationQueryDto, MerchantClientsQueryDto } from '../common/dto/pagin
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { UpdatePushTokenDto } from './dto/update-push-token.dto';
-import { UpdateLoyaltySettingsDto, PreviewAccumulationLimitDto } from './dto/update-loyalty-settings.dto';
+import { UpdateLoyaltySettingsDto, PreviewAccumulationLimitDto, UpdateCurrencyDto } from './dto/update-loyalty-settings.dto';
 import { UploadQueryDto, UploadType } from './dto/upload-logo.dto';
 import { VerifyQrDto } from './dto/verify-qr.dto';
 import { VerifyClientDto } from './dto/verify-client.dto';
-import { RegisterDeviceDto } from './dto/register-device.dto';
 import { DeleteAccountDto } from './dto/delete-account.dto';
+import { UpdateNotificationPrefsDto } from './dto/update-notification-prefs.dto';
 import { IStorageProvider, STORAGE_PROVIDER } from '../common/interfaces';
 import { ImageOptimizerService } from '../storage/image-optimizer.service';
 import { deleteOwnedFiles, planProfileImageChanges } from '../storage/image-ownership';
@@ -64,19 +75,15 @@ import { MerchantInboxService } from '../merchant-inbox/merchant-inbox.service';
 @Controller('merchant')
 @UseGuards(JwtAuthGuard, MerchantTypeGuard)
 export class MerchantController {
-  private readonly logger = new Logger(MerchantController.name);
-
   constructor(
     private profileService: MerchantProfileService,
     private clientService: MerchantClientService,
-    
     private planService: MerchantPlanService,
     private referralService: MerchantReferralService,
     private inboxService: MerchantInboxService,
-    private configService: ConfigService,
     @Inject(STORAGE_PROVIDER) private storageProvider: IStorageProvider,
     private imageOptimizer: ImageOptimizerService,
-    private prisma: PrismaService,
+    private qrTokens: QrTokenService,
     private scanTickets: ScanTicketService,
   ) {}
 
@@ -84,114 +91,8 @@ export class MerchantController {
   @Post('verify-qr')
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 10 } })
   async verifyQrToken(@Body() dto: VerifyQrDto, @CurrentUser() user: JwtPayload) {
-    // Strip invisible control chars / BOM that QR scanners may inject
-    const token = dto.token.replace(/[\x00-\x1f\x7f-\x9f\uFEFF]/g, '').trim();
-
-    const parts = token.split('.');
-    const secret = this.configService.getOrThrow<string>('QR_HMAC_SECRET');
-
-    // ── v2: short-lived single-use — "v2.{idB64}.{exp}.{nonce}.{sig}" ──
-    if (parts[0] === 'v2') {
-      if (parts.length !== 5) throw new BadRequestException('QR code invalide.');
-      const [, idB64, expStr, nonce, sig] = parts;
-      if (!idB64 || !expStr || !nonce || !sig) throw new BadRequestException('QR code invalide.');
-
-      let clientId: string;
-      try {
-        clientId = Buffer.from(idB64, 'base64url').toString();
-      } catch {
-        throw new BadRequestException('QR code invalide.');
-      }
-
-      const exp = Number(expStr);
-      if (!Number.isFinite(exp) || exp <= 0) {
-        throw new BadRequestException('QR code invalide.');
-      }
-      const now = Math.floor(Date.now() / 1000);
-      if (exp < now) {
-        this.logger.warn(`QR verify failed – v2 expired [clientId=${clientId}, lag=${now - exp}s]`);
-        throw new BadRequestException('QR code expiré. Demandez au client de rafraîchir.');
-      }
-
-      const expected = createHmac('sha256', secret)
-        .update(`v2:${clientId}:${exp}:${nonce}`)
-        .digest('base64url');
-      if (
-        sig.length !== expected.length ||
-        !timingSafeEqual(Buffer.from(sig), Buffer.from(expected))
-      ) {
-        this.logger.warn(`QR verify failed – v2 HMAC mismatch [clientId=${clientId}]`);
-        throw new BadRequestException('QR code invalide.');
-      }
-
-      // Single-use nonce: INSERT atomically. A second scan of the same QR collides
-      // on the primary key and is rejected as a replay.
-      try {
-        await this.prisma.qrNonce.create({
-          data: {
-            nonce,
-            clientId,
-            expiresAt: new Date(exp * 1000),
-          },
-        });
-      } catch (e: any) {
-        if (e?.code === 'P2002') {
-          this.logger.warn(`QR verify failed – v2 nonce replay [clientId=${clientId}]`);
-          throw new BadRequestException('QR code déjà utilisé. Demandez au client de rafraîchir.');
-        }
-        throw e;
-      }
-
-      // Opportunistic cleanup of expired nonces (~1% of inserts, best-effort).
-      if (Math.random() < 0.01) {
-        this.prisma.qrNonce
-          .deleteMany({ where: { expiresAt: { lt: new Date() } } })
-          .catch(() => {});
-      }
-
-      return this.withScanTicket(await this.clientService.verifyClient(clientId, user.userId, true), user.userId);
-    }
-
-    // ── v1 / v0 legacy permanent tokens (kept during rollout) ──
-    let version: string;
-    let idB64: string;
-    let sig: string;
-
-    if (parts[0] === 'v1') {
-      version = 'v1';
-      if (parts.length !== 3) throw new BadRequestException('QR code invalide.');
-      idB64 = parts[1];
-      sig = parts[2];
-    } else {
-      // Legacy unversioned format — backward compatible
-      version = 'v0';
-      const dotIdx = token.indexOf('.');
-      if (dotIdx < 1) throw new BadRequestException('QR code invalide.');
-      idB64 = token.substring(0, dotIdx);
-      sig = token.substring(dotIdx + 1);
-    }
-
-    let clientId: string;
-    try {
-      clientId = Buffer.from(idB64, 'base64url').toString();
-    } catch {
-      throw new BadRequestException('QR code invalide.');
-    }
-
-    // v1 includes the version prefix in the HMAC input, v0 does not
-    const hmacInput = version === 'v1' ? `v1:${clientId}` : clientId;
-    const expected = createHmac('sha256', secret).update(hmacInput).digest('base64url');
-
-    if (
-      sig.length !== expected.length ||
-      !timingSafeEqual(Buffer.from(sig), Buffer.from(expected))
-    ) {
-      this.logger.warn(`QR verify failed – HMAC mismatch [version=${version}, len=${token.length}]`);
-      throw new BadRequestException('QR code invalide.');
-    }
-
-    // Verify the client actually exists
-    // allowFirstScan=true: HMAC signature already proved the client's consent.
+    const clientId = await this.qrTokens.resolveClientId(dto.token);
+    // allowFirstScan=true: the HMAC signature already proved the client's consent.
     return this.withScanTicket(await this.clientService.verifyClient(clientId, user.userId, true), user.userId);
   }
 
@@ -382,17 +283,10 @@ export class MerchantController {
     return this.profileService.getDeviceSessions(user.userId, user.sessionId);
   }
 
-  @Post('devices')
-  @UseGuards(MerchantOwnerGuard)
-  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 10 } })
-  async registerDevice(@Body() dto: RegisterDeviceDto, @CurrentUser() user: JwtPayload, @Req() req: Request) {
-    return this.profileService.upsertDeviceSession(user.userId, { ...dto, ipAddress: req.ip });
-  }
-
   @Delete('devices/:id')
   @UseGuards(MerchantOwnerGuard)
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 10 } })
-  async removeDevice(@Param('id') sessionId: string, @CurrentUser() user: JwtPayload) {
+  async removeDevice(@Param('id', ParseUUIDPipe) sessionId: string, @CurrentUser() user: JwtPayload) {
     return this.profileService.removeDeviceSession(sessionId, user.userId, user.sessionId);
   }
 
@@ -421,7 +315,7 @@ export class MerchantController {
 
   @Get('client/:id/status')
   async getClientStatus(
-    @Param('id') clientId: string,
+    @Param('id', ParseUUIDPipe) clientId: string,
     @CurrentUser() user: JwtPayload,
     @Headers(SCAN_TICKET_HEADER) scanTicket?: string,
   ) {
@@ -429,7 +323,7 @@ export class MerchantController {
   }
 
   @Get('client/:id/detail')
-  async getClientDetail(@Param('id') clientId: string, @CurrentUser() user: JwtPayload) {
+  async getClientDetail(@Param('id', ParseUUIDPipe) clientId: string, @CurrentUser() user: JwtPayload) {
     return this.clientService.getClientDetail(clientId, user.userId);
   }
 
@@ -456,6 +350,16 @@ export class MerchantController {
     @CurrentUser() user: JwtPayload,
   ): Promise<MerchantProfileData> {
     return this.profileService.updateLoyaltySettings(user.userId, dto);
+  }
+
+  @Patch('currency')
+  @UseGuards(MerchantOwnerGuard)
+  @Throttle({ default: { ttl: THROTTLE_TTL, limit: 10 } })
+  async updateCurrency(
+    @Body() dto: UpdateCurrencyDto,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<MerchantProfileData> {
+    return this.profileService.updateCurrency(user.userId, dto);
   }
 
 
@@ -508,9 +412,35 @@ export class MerchantController {
   @Patch('admin-notifications/:id/read')
   async markSingleAdminNotificationRead(
     @CurrentUser() user: JwtPayload,
-    @Param('id') notificationId: string,
+    @Param('id', ParseUUIDPipe) notificationId: string,
   ) {
     await this.inboxService.markRead(user.userId, notificationId);
     return { success: true };
+  }
+
+  /** The app was opened from this item's push (open-rate tracking). */
+  @Post('admin-notifications/:id/opened')
+  @HttpCode(200)
+  async markAdminNotificationOpened(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) notificationId: string,
+  ) {
+    await this.inboxService.markOpened(user.userId, notificationId);
+    return { success: true };
+  }
+
+  // ── Push preferences per category ─────────────────────────────────────────
+  @Get('notification-preferences')
+  async getNotificationPrefs(@CurrentUser() user: JwtPayload) {
+    return this.profileService.getNotificationPrefs(user.userId);
+  }
+
+  @Patch('notification-preferences')
+  @UseGuards(MerchantOwnerGuard)
+  async updateNotificationPrefs(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: UpdateNotificationPrefsDto,
+  ) {
+    return this.profileService.updateNotificationPrefs(user.userId, dto);
   }
 }

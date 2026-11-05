@@ -2,6 +2,7 @@ import { memo } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Text } from '@/components/AppText';
 import { Trophy, Clock, ShoppingBag, Gift, type LucideIcon } from 'lucide-react-native';
+import { formatMoney } from '@jitplus/shared/src/currency';
 import { describeWheelEnd } from '@jitplus/shared';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -14,11 +15,13 @@ const MAX_PRIZES = 6;
 
 interface Props {
   wheel: MerchantActiveLuckyWheel;
+  /** Merchant's ISO currency code (MAD when absent). */
+  currency?: string;
 }
 
-function MerchantLuckyWheel({ wheel }: Props) {
+function MerchantLuckyWheel({ wheel, currency }: Props) {
   const theme = useTheme();
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
   const fonts = useAppFonts();
 
   const facts: { key: string; Icon: LucideIcon; label: string }[] = [
@@ -27,7 +30,7 @@ function MerchantLuckyWheel({ wheel }: Props) {
       ? [{ key: 'rate', Icon: Trophy, label: t('merchant.luckyWheelWinRate', { rate: Math.round(wheel.globalWinRate * 100) }) }]
       : []),
     ...(wheel.minSpendAmount > 0
-      ? [{ key: 'min', Icon: ShoppingBag, label: t('merchant.luckyWheelMinSpend', { amount: wheel.minSpendAmount }) }]
+      ? [{ key: 'min', Icon: ShoppingBag, label: t('merchant.luckyWheelMinSpend', { amount: formatMoney(wheel.minSpendAmount, currency, locale) }) }]
       : []),
   ];
   const prizes = wheel.prizes.slice(0, MAX_PRIZES);

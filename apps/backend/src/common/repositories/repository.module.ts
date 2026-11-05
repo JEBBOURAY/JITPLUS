@@ -19,6 +19,9 @@ import {
   ADMIN_USER_REPOSITORY,
   AUDIT_LOG_REPOSITORY,
   PROFILE_VIEW_REPOSITORY,
+  CLIENT_MERCHANT_BLOCK_REPOSITORY,
+  QR_NONCE_REPOSITORY,
+  DEAL_REPOSITORY,
   REWARD_REPOSITORY,
   CLIENT_REFERRAL_REPOSITORY,
   MERCHANT_NOTIFICATION_READ_REPOSITORY,
@@ -29,6 +32,7 @@ import {
   LUCKY_WHEEL_TICKET_REPOSITORY,
   LUCKY_WHEEL_DRAW_REPOSITORY,
   CAMPAIGN_SENT_TRACKER_REPOSITORY,
+  STAMP_CODE_REPOSITORY,
   TRANSACTION_RUNNER,
   RAW_QUERY_RUNNER,
 } from './repository.tokens';
@@ -50,6 +54,9 @@ const modelProviders = [
   { provide: ADMIN_USER_REPOSITORY, useFactory: (p: PrismaService) => p.admin, inject: [PrismaService] },
   { provide: AUDIT_LOG_REPOSITORY, useFactory: (p: PrismaService) => p.auditLog, inject: [PrismaService] },
   { provide: PROFILE_VIEW_REPOSITORY, useFactory: (p: PrismaService) => p.profileView, inject: [PrismaService] },
+  { provide: CLIENT_MERCHANT_BLOCK_REPOSITORY, useFactory: (p: PrismaService) => p.clientMerchantBlock, inject: [PrismaService] },
+  { provide: QR_NONCE_REPOSITORY, useFactory: (p: PrismaService) => p.qrNonce, inject: [PrismaService] },
+  { provide: DEAL_REPOSITORY, useFactory: (p: PrismaService) => p.deal, inject: [PrismaService] },
   { provide: REWARD_REPOSITORY, useFactory: (p: PrismaService) => p.reward, inject: [PrismaService] },
   { provide: CLIENT_REFERRAL_REPOSITORY, useFactory: (p: PrismaService) => p.clientReferral, inject: [PrismaService] },
   { provide: MERCHANT_NOTIFICATION_READ_REPOSITORY, useFactory: (p: PrismaService) => p.merchantNotificationRead, inject: [PrismaService] },
@@ -60,6 +67,7 @@ const modelProviders = [
   { provide: LUCKY_WHEEL_TICKET_REPOSITORY, useFactory: (p: PrismaService) => p.luckyWheelTicket, inject: [PrismaService] },
   { provide: LUCKY_WHEEL_DRAW_REPOSITORY, useFactory: (p: PrismaService) => p.luckyWheelDraw, inject: [PrismaService] },
   { provide: CAMPAIGN_SENT_TRACKER_REPOSITORY, useFactory: (p: PrismaService) => p.campaignSentTracker, inject: [PrismaService] },
+  { provide: STAMP_CODE_REPOSITORY, useFactory: (p: PrismaService) => p.stampCode, inject: [PrismaService] },
 ];
 
 const infraProviders = [
@@ -74,7 +82,7 @@ const allTokens = [
   TRANSACTION_REPOSITORY, STORE_REPOSITORY, TEAM_MEMBER_REPOSITORY,
   DEVICE_SESSION_REPOSITORY, CLIENT_SESSION_REPOSITORY, NOTIFICATION_REPOSITORY, CLIENT_NOTIFICATION_STATUS_REPOSITORY,
   OTP_REPOSITORY, ADMIN_USER_REPOSITORY, AUDIT_LOG_REPOSITORY,
-  PROFILE_VIEW_REPOSITORY, REWARD_REPOSITORY,
+  PROFILE_VIEW_REPOSITORY, CLIENT_MERCHANT_BLOCK_REPOSITORY, QR_NONCE_REPOSITORY, DEAL_REPOSITORY, REWARD_REPOSITORY,
   CLIENT_REFERRAL_REPOSITORY,
   MERCHANT_NOTIFICATION_READ_REPOSITORY,
   MERCHANT_INBOX_REPOSITORY,
@@ -82,6 +90,7 @@ const allTokens = [
   LUCKY_WHEEL_CAMPAIGN_REPOSITORY, LUCKY_WHEEL_PRIZE_REPOSITORY,
   LUCKY_WHEEL_TICKET_REPOSITORY, LUCKY_WHEEL_DRAW_REPOSITORY,
   CAMPAIGN_SENT_TRACKER_REPOSITORY,
+  STAMP_CODE_REPOSITORY,
   TRANSACTION_RUNNER, RAW_QUERY_RUNNER,
 ];
 

@@ -1,48 +1,19 @@
-﻿import { Injectable, UnauthorizedException, BadRequestException, ConflictException, Logger, Inject, HttpException, HttpStatus } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
-import { JwtService } from '@nestjs/jwt';
+import { Injectable, UnauthorizedException, BadRequestException, ConflictException, Logger, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import {
-  CLIENT_REPOSITORY, type IClientRepository,
-  CLIENT_SESSION_REPOSITORY, type IClientSessionRepository,
-  OTP_REPOSITORY, type IOtpRepository,
-} from '../common/repositories';
-import { randomInt, randomBytes, createHash, createHmac, randomUUID } from 'crypto';
+import { CLIENT_REPOSITORY, type IClientRepository } from '../common/repositories';
+import { createHmac } from 'crypto';
 import * as bcrypt from 'bcryptjs';
-import { OTP_MIN, OTP_MAX, OTP_EXPIRY_MS, OTP_COOLDOWN_MS, BCRYPT_SALT_ROUNDS, CLIENT_REFRESH_TOKEN_DAYS, MAX_SESSIONS_PER_CLIENT, MS_PER_DAY } from '../common/constants';
+import { BCRYPT_SALT_ROUNDS } from '../common/constants';
 import { errMsg } from '../common/utils';
 import { checkLockout, handleFailedLogin, resetLoginAttempts, LockoutDbOps } from '../common/utils/login-lockout.helper';
 import { CLIENT_AUTH_SELECT, CLIENT_LOGIN_SELECT } from '../common/prisma-selects';
-import { validateOtp, handleOtpMismatch, hashOtp, checkDailyOtpLimit, OtpDbOps, OtpRecord } from '../common/utils/otp.helper';
 import { IMailProvider, MAIL_PROVIDER, ISmsProvider, SMS_PROVIDER } from '../common/interfaces';
 import { pickEmailLang } from '../mail/transactional-i18n';
-import { OAuth2Client } from 'google-auth-library';
-import * as jwt from 'jsonwebtoken';
-import { createPublicKey } from 'crypto';
 import { ClientClaimService } from '../merchant/services/client-claim.service';
+import { ClientSessionService, type ClientAuthResponse } from './client-session.service';
+import { normalizePhone, isValidPhone, extractCountryCode } from './client-phone.util';
 
-/** Shape returned by buildAuthResponse — access + refresh tokens + client data. */
-export interface ClientAuthResponse {
-  access_token: string;
-  refresh_token: string;
-  isNewUser: boolean;
-  client: {
-    id: string;
-    prenom: string | null;
-    nom: string | null;
-    email: string | null;
-    emailVerified: boolean;
-    telephone: string | null;
-    telephoneVerified: boolean;
-    termsAccepted: boolean;
-    shareInfoMerchants: boolean;
-    notifPush: boolean;
-    notifWhatsapp: boolean;
-    dateNaissance: Date | null;
-    hasPassword: boolean;
-    createdAt: Date;
-  };
-}
+export type { ClientAuthResponse } from './client-session.service';
 
 /** Subset of client fields returned after profile / password update. */
 export interface ClientProfileResult {
@@ -50,26 +21,26 @@ export interface ClientProfileResult {
   client: Omit<ClientAuthResponse['client'], 'isNewUser'>;
 }
 
+/**
+ * Client account: email + password login, password set / reset / change,
+ * profile completion, QR token and personal data export.
+ * Related flows live in sibling services: ClientSessionService (refresh/logout),
+ * ClientOtpService (email OTP, change-contact OTP), ClientOAuthService (Google/Apple).
+ */
 @Injectable()
 export class ClientAuthService {
   private readonly logger = new Logger(ClientAuthService.name);
-  private readonly googleClient: OAuth2Client;
-  private appleJwksCache: { keys: any[]; fetchedAt: number } | null = null;
   // Dummy hash for timing-safe comparison when user not found
   private static readonly DUMMY_HASH = '$2a$12$LJ3m4ys3Lz0KDlu0BRahYOiFMfGHgdOUmrGfEdKnXqJRikMOFbECi';
 
   constructor(
     @Inject(CLIENT_REPOSITORY) private clientRepo: IClientRepository,
-    @Inject(CLIENT_SESSION_REPOSITORY) private clientSessionRepo: IClientSessionRepository,
-    @Inject(OTP_REPOSITORY) private otpRepo: IOtpRepository,
-    private jwtService: JwtService,
     private configService: ConfigService,
     @Inject(MAIL_PROVIDER) private mailProvider: IMailProvider,
     @Inject(SMS_PROVIDER) private smsProvider: ISmsProvider,
     private clientClaimService: ClientClaimService,
-  ) {
-    this.googleClient = new OAuth2Client();
-  }
+    private sessions: ClientSessionService,
+  ) {}
 
   /** Lockout DB ops for Client model */
   private get clientLockoutOps(): LockoutDbOps {
@@ -85,675 +56,6 @@ export class ClientAuthService {
           data: { failedLoginAttempts: 0, lockedUntil: null },
         }).then(() => {}),
     };
-  }
-
-  /**
-   * Normalize phone number to international format and extract country code
-   * Supports formats like: 0XXXXXXXX, 212XXXXXXX, +212XXXXXXXX, 06123456789, etc.
-   */
-  private normalizePhone(telephone: string): string {
-    let phone = telephone.replace(/[\s\-()]/g, '');
-
-    // If starts with 0 (local Moroccan format), convert to +212
-    if (phone.startsWith('0')) {
-      phone = '+212' + phone.substring(1);
-    }
-    // If starts with 212 without +, add +
-    if (phone.startsWith('212') && !phone.startsWith('+')) {
-      phone = '+' + phone;
-    }
-
-    // Ensure it starts with +
-    if (!phone.startsWith('+')) {
-      phone = '+' + phone;
-    }
-
-    return phone;
-  }
-
-  /**
-   * Extract country code from a normalized phone number
-   * E.g., +212612345678 → MA, +33612345678 → FR, +441234567890 → GB
-   */
-  private extractCountryCode(normalizedPhone: string): string {
-    // Map of phone prefixes to country codes
-    const countryMap: Record<string, string> = {
-      '1': 'US', // USA/Canada (1)
-      '212': 'MA', // Morocco
-      '33': 'FR', // France
-      '34': 'ES', // Spain
-      '39': 'IT', // Italy
-      '41': 'CH', // Switzerland
-      '43': 'AT', // Austria
-      '44': 'GB', // UK
-      '45': 'DK', // Denmark
-      '46': 'SE', // Sweden
-      '47': 'NO', // Norway
-      '49': 'DE', // Germany
-      '32': 'BE', // Belgium
-      '352': 'LU', // Luxembourg
-      '31': 'NL', // Netherlands
-      '213': 'DZ', // Algeria
-      '216': 'TN', // Tunisia
-      '221': 'SN', // Senegal
-      '223': 'ML', // Mali
-      '225': 'CI', // Ivory Coast
-    };
-
-    // Remove leading +
-    const phoneWithoutPlus = normalizedPhone.slice(1);
-
-    // Try to match longest prefix first (for multi-digit codes like 212, 213, 216, etc.)
-    for (let len = 3; len >= 1; len--) {
-      const prefix = phoneWithoutPlus.substring(0, len);
-      if (countryMap[prefix]) {
-        return countryMap[prefix];
-      }
-    }
-
-    // Return UNKNOWN for unrecognized country prefixes
-    return 'UNKNOWN';
-  }
-
-  /**
-   * Validate international phone number
-   */
-  private isValidPhone(normalizedPhone: string): boolean {
-    // Must start with + and have at least 10 digits (some countries have 7-8, but we'll be generous)
-    return /^\+\d{10,15}$/.test(normalizedPhone);
-  }
-
-
-
-  /** Shared DB callbacks for OTP helper */
-  private get otpDbOps(): OtpDbOps {
-    return {
-      deleteOtp: (id: string) => this.otpRepo.delete({ where: { id } }),
-      incrementAttempts: (id: string) =>
-        this.otpRepo.update({ where: { id }, data: { attempts: { increment: 1 } } }),
-    };
-  }
-
-  /**
-   * Handle OTP validation errors: mismatch, expiry, max attempts.
-   * Cleans up the OTP record when appropriate and re-throws.
-   */
-  private async handleOtpError(error: unknown, otpRecord: OtpRecord | null): Promise<never> {
-    if (error instanceof UnauthorizedException && error.message === '__OTP_MISMATCH__') {
-      await handleOtpMismatch(otpRecord!, this.otpDbOps);
-    }
-    const errorMessage = error instanceof Error ? error.message : '';
-    if (otpRecord && (errorMessage.includes('expiré') || errorMessage.includes('Trop de tentatives'))) {
-      await this.otpRepo.delete({ where: { id: otpRecord.id } }).catch((err: unknown) =>
-        this.logger.warn('OTP cleanup failed', errMsg(err)),
-      );
-    }
-    throw error;
-  }
-
-
-
-  /** Generate a cryptographically random refresh token */
-  private generateRefreshToken(): string {
-    return randomBytes(48).toString('base64url');
-  }
-
-  /** SHA-256 hash of the refresh token (stored in DB) */
-  private hashRefreshToken(token: string): string {
-    return createHash('sha256').update(token).digest('hex');
-  }
-
-  private refreshTokenExpiry(): Date {
-    return new Date(Date.now() + CLIENT_REFRESH_TOKEN_DAYS * MS_PER_DAY);
-  }
-
-  /** Access token bound to the device session (`sid`) so logout can target that device only. */
-  private signAccessToken(
-    client: { id: string; telephone: string | null; email: string | null },
-    sessionId: string,
-  ): string {
-    return this.jwtService.sign({
-      sub: client.id,
-      jti: randomUUID(),
-      sid: sessionId,
-      telephone: client.telephone,
-      email: client.email,
-      type: 'client' as const,
-      role: 'client' as const,
-    });
-  }
-
-  /**
-   * Opens a session for a new device login. Expired sessions are purged and
-   * the least recently used ones beyond MAX_SESSIONS_PER_CLIENT are evicted.
-   */
-  private async createSession(clientId: string): Promise<{ sessionId: string; refresh_token: string }> {
-    const refresh_token = this.generateRefreshToken();
-    const session = await this.clientSessionRepo.create({
-      data: {
-        clientId,
-        refreshTokenHash: this.hashRefreshToken(refresh_token),
-        expiresAt: this.refreshTokenExpiry(),
-      },
-      select: { id: true },
-    });
-
-    await this.clientSessionRepo.deleteMany({ where: { clientId, expiresAt: { lt: new Date() } } });
-    const evicted = await this.clientSessionRepo.findMany({
-      where: { clientId },
-      orderBy: { lastUsedAt: 'desc' },
-      skip: MAX_SESSIONS_PER_CLIENT,
-      select: { id: true },
-    });
-    if (evicted.length > 0) {
-      await this.clientSessionRepo.deleteMany({ where: { id: { in: evicted.map((s) => s.id) } } });
-    }
-
-    return { sessionId: session.id, refresh_token };
-  }
-
-  /** Revokes every session of the client except `keepSessionId` (the device making the change). */
-  private async revokeOtherSessions(clientId: string, keepSessionId?: string): Promise<void> {
-    await this.clientSessionRepo.deleteMany({
-      where: { clientId, ...(keepSessionId ? { id: { not: keepSessionId } } : {}) },
-    });
-  }
-
-  private async buildAuthResponse(
-    client: {
-      id: string;
-      nom: string | null;
-      prenom?: string | null;
-      email: string | null;
-      emailVerified?: boolean;
-      telephone: string | null;
-      telephoneVerified?: boolean;
-      googleId?: string | null;
-      password?: string | null;
-      shareInfoMerchants?: boolean;
-      notifPush?: boolean;
-      notifWhatsapp?: boolean;
-      termsAccepted?: boolean;
-      dateNaissance?: Date | null;
-      createdAt: Date;
-    },
-    isNewUser: boolean,
-  ): Promise<ClientAuthResponse> {
-    const { sessionId, refresh_token } = await this.createSession(client.id);
-    const access_token = this.signAccessToken(client, sessionId);
-
-      return {
-      access_token,
-      refresh_token,
-      isNewUser,
-      client: {
-        id: client.id,
-        prenom: client.prenom ?? null,
-        nom: client.nom,
-        email: client.email,
-        emailVerified: client.emailVerified ?? false,
-        telephone: client.telephone ?? null,
-        telephoneVerified: client.telephoneVerified ?? false,
-        termsAccepted: client.termsAccepted ?? false,
-        shareInfoMerchants: client.shareInfoMerchants ?? false,
-        notifPush: client.notifPush ?? true,
-        notifWhatsapp: client.notifWhatsapp ?? true,
-        dateNaissance: client.dateNaissance ?? null,
-        hasPassword: !!client.password,
-        createdAt: client.createdAt,
-      },
-    };
-  }
-
-  /**
-   * Logout: revoke this device's session so its refresh token cannot be reused.
-   */
-  async logout(clientId: string, sessionId?: string): Promise<{ success: boolean; message: string }> {
-    // Tokens issued before multi-device sessions carry no sid: revoke them all.
-    await this.clientSessionRepo.deleteMany({
-      where: { clientId, ...(sessionId ? { id: sessionId } : {}) },
-    });
-    await this.clientRepo.update({
-      where: { id: clientId },
-      data: { pushToken: null },
-    });
-    return { success: true, message: 'Déconnexion réussie' };
-  }
-
-  /**
-   * Refresh the access token using a valid refresh token.
-   * Implements token rotation: the old refresh token is invalidated and a new one issued.
-   */
-  async refreshAccessToken(refreshToken: string): Promise<Omit<ClientAuthResponse, 'isNewUser'> & { client: ClientAuthResponse['client'] }> {
-    const hash = this.hashRefreshToken(refreshToken);
-
-    const session = await this.clientSessionRepo.findUnique({
-      where: { refreshTokenHash: hash },
-      select: { id: true, expiresAt: true, client: { select: CLIENT_AUTH_SELECT } },
-    });
-
-    if (!session) {
-      throw new UnauthorizedException('error.auth.refreshInvalid');
-    }
-
-    if (session.expiresAt < new Date()) {
-      await this.clientSessionRepo.delete({ where: { id: session.id } }).catch(() => {});
-      throw new UnauthorizedException('error.auth.refreshExpired');
-    }
-
-    const client = session.client;
-    const new_refresh_token = this.generateRefreshToken();
-
-    // Conditional on the old hash: if two refreshes race with the same token,
-    // only the first one rotates it.
-    const { count } = await this.clientSessionRepo.updateMany({
-      where: { id: session.id, refreshTokenHash: hash },
-      data: {
-        refreshTokenHash: this.hashRefreshToken(new_refresh_token),
-        expiresAt: this.refreshTokenExpiry(),
-        lastUsedAt: new Date(),
-      },
-    });
-    if (count === 0) {
-      throw new UnauthorizedException('error.auth.refreshInvalid');
-    }
-
-    const access_token = this.signAccessToken(client, session.id);
-
-    return {
-      access_token,
-      refresh_token: new_refresh_token,
-      client: {
-        id: client.id,
-        prenom: client.prenom ?? null,
-        nom: client.nom,
-        email: client.email,
-        emailVerified: (client as any).emailVerified ?? false,
-        telephone: client.telephone ?? null,
-        telephoneVerified: (client as any).telephoneVerified ?? false,
-        termsAccepted: client.termsAccepted,
-        shareInfoMerchants: client.shareInfoMerchants,
-        notifPush: client.notifPush,
-        notifWhatsapp: client.notifWhatsapp,
-        dateNaissance: client.dateNaissance ?? null,
-        hasPassword: !!client.password,
-        createdAt: client.createdAt,
-      },
-    };
-  }
-
-  // ── Email OTP ─────────────────────────────────────────
-
-  /**
-   * Send OTP to email address
-   */
-  async sendOtpEmail(email: string, isRegister = false): Promise<{ success: boolean; message: string }> {
-    const normalizedEmail = email.trim().toLowerCase();
-
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
-      throw new BadRequestException('error.auth.emailInvalid');
-    }
-
-    // SECURITY: Anti-enumeration — return identical response regardless of account existence.
-    // Silently skip OTP when account state doesn't match intent (register vs login),
-    // EXCEPT if the account exists but the profile was never completed (ghost account).
-    const existingClient = await this.clientRepo.findUnique({
-      where: { email: normalizedEmail },
-      select: { id: true, nom: true, prenom: true },
-    });
-
-    const isGhostAccount = existingClient && (!existingClient.nom || !existingClient.prenom);
-    const GENERIC_OTP_MESSAGE = 'Si un compte correspond, un code a été envoyé par email.';
-
-    if (isRegister && existingClient && !isGhostAccount) {
-      // Valid account already exists — don't send OTP but return same success response
-      return { success: true, message: GENERIC_OTP_MESSAGE };
-    }
-
-    if (!isRegister && !existingClient) {
-      // No account found — don't send OTP but return same success response
-      return { success: true, message: GENERIC_OTP_MESSAGE };
-    }
-
-    // Daily OTP send limit per email
-    checkDailyOtpLimit(normalizedEmail);
-
-    // Per-identifier cooldown — prevent OTP spam even if IP changes
-    const existingOtp = await this.otpRepo.findUnique({ where: { email: normalizedEmail } });
-    if (existingOtp && existingOtp.expiresAt.getTime() - OTP_EXPIRY_MS + OTP_COOLDOWN_MS > Date.now()) {
-      throw new HttpException('error.auth.otpWait', HttpStatus.TOO_MANY_REQUESTS);
-    }
-
-    const code = randomInt(OTP_MIN, OTP_MAX).toString();
-    const codeHash = hashOtp(code);
-    const expiresAt = new Date(Date.now() + OTP_EXPIRY_MS);
-
-    // Upsert OTP by email (hash only — never store plaintext)
-    await this.otpRepo.upsert({
-      where: { email: normalizedEmail },
-      create: {
-        email: normalizedEmail,
-        code: codeHash,
-        expiresAt,
-      },
-      update: {
-        code: codeHash,
-        expiresAt,
-        attempts: 0,
-      },
-    });
-
-    // Send OTP email — client-facing branding (JitPlus, not JitPlus Pro)
-    try {
-      const existingClient = await this.clientRepo.findUnique({
-        where: { email: normalizedEmail },
-        select: { language: true },
-      });
-      const lang = pickEmailLang(existingClient?.language);
-      await this.mailProvider.sendOtpEmail(normalizedEmail, code, 'client', lang);
-    } catch (error) {
-      const err = error as { message?: string; stack?: string };
-      this.logger.error(`OTP email delivery failed for ${normalizedEmail}: ${err?.message}`, err?.stack);
-      throw new HttpException('error.auth.emailFail', HttpStatus.SERVICE_UNAVAILABLE, { cause: error });
-    }
-
-    this.logger.log(`OTP envoyé à ${normalizedEmail}`);
-
-    return { success: true, message: GENERIC_OTP_MESSAGE };
-  }
-
-  /**
-   * Verify email OTP and return JWT token
-   * @param isRegister - if false (login), reject when no account exists
-   */
-  async verifyOtpEmail(email: string, code: string, isRegister = false): Promise<ClientAuthResponse> {
-    const normalizedEmail = email.trim().toLowerCase();
-
-    const otpRecord = await this.otpRepo.findUnique({
-      where: { email: normalizedEmail },
-    });
-
-    try {
-      validateOtp(otpRecord, code, 'Aucun code n\'a été envoyé à cet email');
-    } catch (error) {
-      await this.handleOtpError(error, otpRecord);
-    }
-
-    const [, client] = await Promise.all([
-      this.otpRepo.delete({ where: { id: otpRecord!.id } }),
-      this.clientRepo.findUnique({ where: { email: normalizedEmail }, select: CLIENT_AUTH_SELECT }),
-    ]);
-
-    let resolvedClient = client;
-    const isNewUser = !resolvedClient || !resolvedClient.nom;
-
-    if (!resolvedClient) {
-      // Login mode: reject if no account exists
-      if (!isRegister) {
-        throw new BadRequestException('Aucun compte n\'est associé à cet email. Veuillez vous inscrire.');
-      }
-      try {
-        resolvedClient = await this.clientRepo.create({
-          data: {
-            email: normalizedEmail,
-            emailVerified: true,
-            nom: null,
-          },
-          select: CLIENT_AUTH_SELECT,
-        });
-      } catch (error: any) {
-        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-          throw new ConflictException('error.auth.emailExists');
-        }
-        throw error;
-      }
-    } else if (isRegister) {
-      // User tried to register but account already exists
-      throw new ConflictException('error.auth.emailExists');
-    }
-
-    // Mark email as verified since OTP was validated
-    if (resolvedClient && !(resolvedClient as any).emailVerified) {
-      await this.clientRepo.update({ where: { id: resolvedClient.id }, data: { emailVerified: true } });
-      (resolvedClient as any).emailVerified = true;
-    }
-
-    return this.buildAuthResponse(resolvedClient, isNewUser);
-  }
-
-  // ── Google Login ──────────────────────────────────────
-
-  /**
-   * Login with Google ID token
-   * Verifies the token using google-auth-library (verifyIdToken)
-   */
-  async googleLogin(idToken: string): Promise<ClientAuthResponse> {
-    try {
-      // Dev bypass: accept fake token ONLY when explicitly opted-in via a dedicated flag
-      if (
-        process.env.NODE_ENV === 'development' &&
-        process.env.ALLOW_DEV_AUTH_BYPASS === 'true' &&
-        idToken === 'dev-google-token'
-      ) {
-        const devEmail = 'dev-google@test.com';
-        let client = await this.clientRepo.findUnique({ where: { email: devEmail }, select: CLIENT_AUTH_SELECT });
-        const isNewUser = !client || !client.nom;
-        if (!client) {
-          client = await this.clientRepo.create({
-            data: { email: devEmail, googleId: 'dev-google-id', prenom: 'Dev', nom: 'Google', termsAccepted: true },
-            select: CLIENT_AUTH_SELECT,
-          });
-        }
-        this.logger.debug('[DEV] Google dev login bypass');
-        return this.buildAuthResponse(client, isNewUser);
-      }
-
-      // Verify Google ID token using google-auth-library (cryptographic verification)
-      // expo-auth-session uses browser flow → token audience is always the Web client ID
-      const webClientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
-      const androidClientIds = (this.configService.get<string>('GOOGLE_ANDROID_CLIENT_ID') || '').split(',').map(s => s.trim()).filter(Boolean);
-      const allowedAudiences = [webClientId, ...androidClientIds].filter(Boolean) as string[];
-
-      if (allowedAudiences.length === 0) {
-        this.logger.error('Google login misconfigured: GOOGLE_CLIENT_ID and GOOGLE_ANDROID_CLIENT_ID are both empty');
-        throw new UnauthorizedException('error.auth.googleNotConfigured');
-      }
-
-      const ticket = await this.googleClient.verifyIdToken({
-        idToken,
-        audience: allowedAudiences,
-      });
-      const payload = ticket.getPayload();
-
-      if (!payload) {
-        throw new UnauthorizedException('error.auth.googleTokenInvalid');
-      }
-
-      const { sub: googleId, email, given_name, family_name } = payload;
-
-      if (!email) {
-        throw new BadRequestException('error.auth.googleEmailMissing');
-      }
-
-      // Try to find client by googleId first, then by email
-      let client = await this.clientRepo.findUnique({ where: { googleId }, select: CLIENT_AUTH_SELECT });
-
-      if (!client) {
-        client = await this.clientRepo.findUnique({ where: { email: email.toLowerCase() }, select: CLIENT_AUTH_SELECT });
-        if (client) {
-          // Link Google account to existing client
-          client = await this.clientRepo.update({
-            where: { id: client.id },
-            data: { googleId },
-            select: CLIENT_AUTH_SELECT,
-          });
-        }
-      }
-
-      if (!client) {
-        try {
-          // Google provides name + email — terms will be accepted during complete-profile step
-          client = await this.clientRepo.create({
-            data: {
-              email: email.toLowerCase(),
-              emailVerified: true,
-              googleId,
-              prenom: given_name || null,
-              nom: family_name || null,
-              termsAccepted: false,
-            },
-            select: CLIENT_AUTH_SELECT,
-          });
-        } catch (error: any) {
-          if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-            throw new ConflictException('error.auth.googleEmailExists');
-          }
-          throw error;
-        }
-      }
-
-      const isNewUser = !client || !client.nom;
-      return this.buildAuthResponse(client, isNewUser);
-    } catch (error) {
-      if (error instanceof UnauthorizedException || error instanceof BadRequestException || error instanceof ConflictException) {
-        throw error;
-      }
-      this.logger.error('Google login failed:', error);
-      throw new UnauthorizedException('error.auth.googleFailed');
-    }
-  }
-
-  // ── Apple Login ────────────────────────────────────────
-
-  /**
-   * Fetch Apple's JWKS public keys (cached for 24 hours).
-   */
-  private async getApplePublicKeys(): Promise<any[]> {
-    const now = Date.now();
-    if (this.appleJwksCache && now - this.appleJwksCache.fetchedAt < 86_400_000) {
-      return this.appleJwksCache.keys;
-    }
-    const res = await fetch('https://appleid.apple.com/auth/keys');
-    if (!res.ok) throw new Error('Failed to fetch Apple JWKS');
-    const { keys } = await res.json();
-    this.appleJwksCache = { keys, fetchedAt: now };
-    return keys;
-  }
-
-  /**
-   * Verify an Apple identity token using Apple's JWKS (public keys).
-   * @returns Decoded JWT payload with sub, email, etc.
-   */
-  private async verifyAppleToken(identityToken: string, rawNonce?: string): Promise<{ sub: string; email?: string; email_verified?: string; nonce?: string }> {
-    const decoded = jwt.decode(identityToken, { complete: true });
-    if (!decoded || typeof decoded === 'string' || !decoded.header.kid) {
-      throw new UnauthorizedException('error.auth.appleTokenInvalid');
-    }
-    // Reject unexpected algorithms early (only RS256 is accepted)
-    if (decoded.header.alg !== 'RS256') {
-      throw new UnauthorizedException('error.auth.appleAlgorithmNotSupported');
-    }
-
-    const keys = await this.getApplePublicKeys();
-    let matchingKey = keys.find((k: any) => k.kid === decoded.header.kid);
-    if (!matchingKey) {
-      // Invalidate cache and retry once (Apple may have rotated keys)
-      this.appleJwksCache = null;
-      const freshKeys = await this.getApplePublicKeys();
-      matchingKey = freshKeys.find((k: any) => k.kid === decoded.header.kid);
-      if (!matchingKey) throw new UnauthorizedException('error.auth.appleKeyNotFound');
-    }
-
-    const publicKey = createPublicKey({ key: matchingKey, format: 'jwk' });
-
-    // APPLE_BUNDLE_IDS: comma-separated list of bundle IDs (e.g. "com.jitplus.client,com.jitplus.pro")
-    const appleBundleIds = (this.configService.get<string>('APPLE_BUNDLE_IDS') || '').split(',').map(s => s.trim()).filter(Boolean);
-    // Without an audience check, a token minted for any other Apple app would be accepted.
-    if (appleBundleIds.length === 0) {
-      this.logger.error('Apple Sign-In misconfigured: APPLE_BUNDLE_IDS is empty');
-      throw new UnauthorizedException('error.auth.appleNotConfigured');
-    }
-
-    const payload = jwt.verify(identityToken, publicKey, {
-      algorithms: ['RS256'],
-      issuer: 'https://appleid.apple.com',
-      audience: appleBundleIds as [string, ...string[]],
-    }) as jwt.JwtPayload & { sub: string; email?: string; email_verified?: string; nonce?: string; nonce_supported?: boolean };
-
-    // Nonce validation — prevents replay attacks.
-    // The client generates a raw nonce, sends sha256(rawNonce) to Apple via signInAsync({nonce}),
-    // and forwards the raw nonce here. Apple embeds the (already-hashed) nonce in the JWT.
-    if (rawNonce) {
-      if (!payload.nonce) {
-        throw new UnauthorizedException('error.auth.appleNonceMissing');
-      }
-      const expected = createHash('sha256').update(rawNonce).digest('hex');
-      if (payload.nonce !== expected) {
-        throw new UnauthorizedException('error.auth.appleNonceMismatch');
-      }
-    }
-
-    return payload;
-  }
-
-  /**
-   * Login with Apple identity token.
-   * Verifies the token using Apple's JWKS endpoint.
-   */
-  async appleLogin(identityToken: string, givenName?: string, familyName?: string, rawNonce?: string): Promise<ClientAuthResponse> {
-    try {
-      const payload = await this.verifyAppleToken(identityToken, rawNonce);
-      const { sub: appleId, email } = payload;
-
-      if (!appleId) {
-        throw new UnauthorizedException('error.auth.appleTokenInvalidId');
-      }
-
-      // Try to find client by appleId first, then by email
-      let client = await this.clientRepo.findFirst({ where: { appleId }, select: CLIENT_AUTH_SELECT });
-
-      if (!client && email) {
-        client = await this.clientRepo.findUnique({ where: { email: email.toLowerCase() }, select: CLIENT_AUTH_SELECT });
-        if (client) {
-          // Link Apple account to existing client
-          client = await this.clientRepo.update({
-            where: { id: client.id },
-            data: { appleId },
-            select: CLIENT_AUTH_SELECT,
-          }) as typeof client;
-        }
-      }
-
-      if (!client) {
-        try {
-          client = await this.clientRepo.create({
-            data: {
-              email: email ? email.toLowerCase() : null,
-              emailVerified: !!email,
-              appleId,
-              prenom: givenName || null,
-              nom: familyName || null,
-              termsAccepted: false,
-            },
-            select: CLIENT_AUTH_SELECT,
-          });
-        } catch (error: any) {
-          if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-            throw new ConflictException('error.auth.appleEmailExists');
-          }
-          throw error;
-        }
-      }
-
-      const isNewUser = !client || !client.nom;
-      return this.buildAuthResponse(client, isNewUser);
-    } catch (error) {
-      if (error instanceof UnauthorizedException || error instanceof BadRequestException || error instanceof ConflictException) {
-        throw error;
-      }
-      this.logger.error('Apple login failed:', error);
-      throw new UnauthorizedException('error.auth.appleFailed');
-    }
   }
 
   /**
@@ -780,15 +82,15 @@ export class ClientAuthService {
 
     // If telephone provided (email-registered users), normalize and save it
     if (telephone) {
-      const normalizedPhone = this.normalizePhone(telephone);
-      if (!this.isValidPhone(normalizedPhone)) {
+      const normalizedPhone = normalizePhone(telephone);
+      if (!isValidPhone(normalizedPhone)) {
         throw new BadRequestException('error.auth.phoneInvalidFormat');
       }
 
       // Check uniqueness among active accounts only
       const existing = await this.clientRepo.findFirst({ where: { telephone: normalizedPhone, deletedAt: null } });
       if (existing && existing.id !== clientId) {
-        if ((existing as any).isAnonymous) {
+        if (existing.isAnonymous) {
           throw new ConflictException(
             await this.clientClaimService.buildAnonymousPhoneConflictPayload(existing.id),
           );
@@ -797,7 +99,7 @@ export class ClientAuthService {
       }
 
       data.telephone = normalizedPhone;
-      data.countryCode = this.extractCountryCode(normalizedPhone);
+      data.countryCode = extractCountryCode(normalizedPhone);
     }
 
     const client = await this.clientRepo.update({
@@ -829,9 +131,9 @@ export class ClientAuthService {
         prenom: client.prenom,
         nom: client.nom,
         email: client.email,
-        emailVerified: (client as any).emailVerified ?? false,
+        emailVerified: client.emailVerified ?? false,
         telephone: client.telephone,
-        telephoneVerified: (client as any).telephoneVerified ?? false,
+        telephoneVerified: client.telephoneVerified ?? false,
         termsAccepted: client.termsAccepted,
         shareInfoMerchants: client.shareInfoMerchants,
         notifPush: client.notifPush,
@@ -879,7 +181,7 @@ export class ClientAuthService {
     // Successful login — reset failed attempts
     await resetLoginAttempts(client, this.clientLockoutOps);
 
-    return this.buildAuthResponse(client, false);
+    return this.sessions.buildAuthResponse(client, false);
   }
 
   /**
@@ -910,9 +212,9 @@ export class ClientAuthService {
         prenom: client.prenom,
         nom: client.nom,
         email: client.email,
-        emailVerified: (client as any).emailVerified ?? false,
+        emailVerified: client.emailVerified ?? false,
         telephone: client.telephone,
-        telephoneVerified: (client as any).telephoneVerified ?? false,
+        telephoneVerified: client.telephoneVerified ?? false,
         termsAccepted: client.termsAccepted,
         shareInfoMerchants: client.shareInfoMerchants,
         notifPush: client.notifPush,
@@ -947,7 +249,7 @@ export class ClientAuthService {
       data: { password: hashedPassword },
       select: CLIENT_AUTH_SELECT,
     });
-    await this.revokeOtherSessions(clientId, currentSessionId);
+    await this.sessions.revokeOtherSessions(clientId, currentSessionId);
 
     return {
       success: true,
@@ -956,9 +258,9 @@ export class ClientAuthService {
         prenom: updated.prenom,
         nom: updated.nom,
         email: updated.email,
-        emailVerified: (updated as any).emailVerified ?? false,
+        emailVerified: updated.emailVerified ?? false,
         telephone: updated.telephone,
-        telephoneVerified: (updated as any).telephoneVerified ?? false,
+        telephoneVerified: updated.telephoneVerified ?? false,
         termsAccepted: updated.termsAccepted,
         shareInfoMerchants: updated.shareInfoMerchants,
         notifPush: updated.notifPush,
@@ -1000,7 +302,7 @@ export class ClientAuthService {
       data: { password: hashedPassword },
       select: CLIENT_AUTH_SELECT,
     });
-    await this.revokeOtherSessions(clientId, currentSessionId);
+    await this.sessions.revokeOtherSessions(clientId, currentSessionId);
 
     return {
       success: true,
@@ -1009,9 +311,9 @@ export class ClientAuthService {
         prenom: updated.prenom,
         nom: updated.nom,
         email: updated.email,
-        emailVerified: (updated as any).emailVerified ?? false,
+        emailVerified: updated.emailVerified ?? false,
         telephone: updated.telephone,
-        telephoneVerified: (updated as any).telephoneVerified ?? false,
+        telephoneVerified: updated.telephoneVerified ?? false,
         termsAccepted: updated.termsAccepted,
         shareInfoMerchants: updated.shareInfoMerchants,
         notifPush: updated.notifPush,
@@ -1047,142 +349,6 @@ export class ClientAuthService {
     const qr_token = `v1.${idPart}.${sig}`;
 
     return { qr_token, expiresAt: null };
-  }
-  // ── Change Contact OTP (profile update) ────────────────────────────
-
-  /**
-   * Send OTP to verify ownership of a new email or phone before applying the change.
-   */
-  async sendChangeContactOtp(
-    clientId: string,
-    type: 'email' | 'telephone',
-    value: string,
-  ): Promise<{ success: boolean; message: string }> {
-    if (type === 'email') {
-      const normalizedEmail = value.trim().toLowerCase();
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
-        throw new BadRequestException('error.auth.emailInvalid');
-      }
-      const existing = await this.clientRepo.findUnique({ where: { email: normalizedEmail }, select: { id: true } });
-      if (existing && existing.id !== clientId) {
-        throw new ConflictException('Cette adresse email est déjà utilisée par un autre compte.');
-      }
-      checkDailyOtpLimit(normalizedEmail);
-      const existingOtp = await this.otpRepo.findUnique({ where: { email: normalizedEmail } });
-      if (existingOtp && existingOtp.expiresAt.getTime() - OTP_EXPIRY_MS + OTP_COOLDOWN_MS > Date.now()) {
-        throw new HttpException('error.auth.otpWait', HttpStatus.TOO_MANY_REQUESTS);
-      }
-      const code = randomInt(OTP_MIN, OTP_MAX).toString();
-      const codeHash = hashOtp(code);
-      const expiresAt = new Date(Date.now() + OTP_EXPIRY_MS);
-      await this.otpRepo.upsert({
-        where: { email: normalizedEmail },
-        create: { email: normalizedEmail, code: codeHash, expiresAt },
-        update: { code: codeHash, expiresAt, attempts: 0 },
-      });
-      if (process.env.NODE_ENV === 'development') {
-        this.logger.debug(`[DEV] OTP changement email ${normalizedEmail}: ${code}`);
-      }
-      try {
-        const existingClient = await this.clientRepo.findUnique({
-          where: { email: normalizedEmail },
-          select: { language: true },
-        });
-        const lang = pickEmailLang(existingClient?.language);
-        await this.mailProvider.sendOtpEmail(normalizedEmail, code, 'client', lang);
-      } catch (error) {
-        const err = error as { message?: string; stack?: string };
-        this.logger.error(`OTP email delivery failed for ${normalizedEmail}: ${err?.message}`, err?.stack);
-        throw new HttpException('error.auth.emailFail', HttpStatus.SERVICE_UNAVAILABLE, { cause: error });
-      }
-      return { success: true, message: 'Code envoyé par email' };
-    } else {
-      const normalizedPhone = this.normalizePhone(value);
-      if (!this.isValidPhone(normalizedPhone)) {
-        throw new BadRequestException('error.auth.phoneInvalidFormat');
-      }
-      const existing = await this.clientRepo.findUnique({ where: { telephone: normalizedPhone }, select: { id: true, isAnonymous: true } });
-      if (existing && existing.id !== clientId) {
-        if ((existing as any).isAnonymous) {
-          throw new ConflictException(
-            await this.clientClaimService.buildAnonymousPhoneConflictPayload(existing.id),
-          );
-        }
-        throw new ConflictException('Ce numéro de téléphone est déjà utilisé par un autre compte.');
-      }
-      checkDailyOtpLimit(normalizedPhone);
-      const existingOtp = await this.otpRepo.findUnique({ where: { telephone: normalizedPhone } });
-      if (existingOtp && existingOtp.expiresAt.getTime() - OTP_EXPIRY_MS + OTP_COOLDOWN_MS > Date.now()) {
-        throw new HttpException('error.auth.otpWait', HttpStatus.TOO_MANY_REQUESTS);
-      }
-      const code = randomInt(OTP_MIN, OTP_MAX).toString();
-      const codeHash = hashOtp(code);
-      const expiresAt = new Date(Date.now() + OTP_EXPIRY_MS);
-      await this.otpRepo.upsert({
-        where: { telephone: normalizedPhone },
-        create: { telephone: normalizedPhone, code: codeHash, expiresAt },
-        update: { code: codeHash, expiresAt, attempts: 0 },
-      });
-      if (process.env.NODE_ENV === 'development') {
-        this.logger.debug(`[DEV] OTP changement tél ${normalizedPhone}: ${code}`);
-      }
-      const sent = await this.smsProvider.sendWhatsAppOtp(normalizedPhone, code);
-      if (!sent) {
-        throw new HttpException('error.auth.whatsappFail', HttpStatus.SERVICE_UNAVAILABLE);
-      }
-      return { success: true, message: 'Code envoyé avec succès' };
-    }
-  }
-
-  /**
-   * Verify OTP and mark the email/phone as verified on the client profile.
-   */
-  async verifyChangeContactOtp(
-    clientId: string,
-    type: 'email' | 'telephone',
-    value: string,
-    code: string,
-  ): Promise<{ success: boolean; message: string }> {
-    if (type === 'email') {
-      const normalizedEmail = value.trim().toLowerCase();
-      const otpRecord = await this.otpRepo.findUnique({ where: { email: normalizedEmail } });
-      try {
-        validateOtp(otpRecord, code, "Aucun code n'a été envoyé à cet email");
-      } catch (error) {
-        await this.handleOtpError(error, otpRecord);
-      }
-      // Verify the client still has this email
-      const client = await this.clientRepo.findUnique({ where: { id: clientId }, select: { email: true } });
-      if (!client || client.email !== normalizedEmail) {
-        await this.otpRepo.delete({ where: { id: otpRecord!.id } });
-        throw new BadRequestException('error.auth.profileEmailMismatch');
-      }
-      await this.otpRepo.delete({ where: { id: otpRecord!.id } });
-      await this.clientRepo.update({
-        where: { id: clientId },
-        data: { emailVerified: true },
-      });
-      return { success: true, message: 'Email vérifié avec succès' };
-    } else {
-      const normalizedPhone = this.normalizePhone(value);
-      const otpRecord = await this.otpRepo.findUnique({ where: { telephone: normalizedPhone } });
-      try {
-        validateOtp(otpRecord, code, "Aucun code n'a été envoyé à ce numéro");
-      } catch (error) {
-        await this.handleOtpError(error, otpRecord);
-      }
-      const client = await this.clientRepo.findUnique({ where: { id: clientId }, select: { telephone: true } });
-      if (!client || client.telephone !== normalizedPhone) {
-        await this.otpRepo.delete({ where: { id: otpRecord!.id } });
-        throw new BadRequestException('error.auth.profilePhoneMismatch');
-      }
-      await this.otpRepo.delete({ where: { id: otpRecord!.id } });
-      await this.clientRepo.update({
-        where: { id: clientId },
-        data: { telephoneVerified: true },
-      });
-      return { success: true, message: 'Numéro de téléphone vérifié avec succès' };
-    }
   }
   // ── Loi 09-08 — Droit d’accès aux données personnelles ────────────────────────
   /**
@@ -1240,9 +406,3 @@ export class ClientAuthService {
     };
   }
 }
-
-
-
-
-
-

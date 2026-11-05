@@ -32,6 +32,7 @@ const NAV: { to: string; label: string; icon: keyof typeof Icons }[] = [
   { to: '/clients', label: 'Clients', icon: 'clients' },
   { to: '/notifications', label: 'Notifications', icon: 'notifications' },
   { to: '/send-notification', label: 'Envoyer', icon: 'send' },
+  { to: '/merchant-news', label: 'Nouveautés Pro', icon: 'notifications' },
   { to: '/referrals', label: 'Parrainages', icon: 'referrals' },
   { to: '/deals', label: 'Bons plans', icon: 'deals' },
   { to: '/audit-logs', label: 'Journal', icon: 'audit' },

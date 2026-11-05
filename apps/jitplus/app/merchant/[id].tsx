@@ -377,7 +377,7 @@ export default function MerchantDetailScreen() {
           {activeTab === 'loyalty' && (
             <>
               <MerchantLoyaltyCard loyalty={loyalty} accent={accent} />
-              {wheel && <MerchantLuckyWheel wheel={wheel} />}
+              {wheel && <MerchantLuckyWheel wheel={wheel} currency={merchant.currency} />}
             </>
           )}
           {activeTab === 'deals' && (

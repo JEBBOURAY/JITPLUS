@@ -10,6 +10,8 @@ import { MerchantPlan, Prisma } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
+import { evictSessionCache, revokeDeviceSessions } from '../../common/utils/session-cache';
+import { invalidateMerchantListCache } from '../../common/utils/merchant-list-cache';
 import {
   MERCHANT_REPOSITORY, type IMerchantRepository,
   DEVICE_SESSION_REPOSITORY, type IDeviceSessionRepository,
@@ -20,11 +22,15 @@ import {
 import { NotificationsService } from '../../notifications/notifications.service';
 import { UpdateProfileDto } from '../dto/update-profile.dto';
 import { ChangePasswordDto } from '../dto/change-password.dto';
-import { UpdateLoyaltySettingsDto } from '../dto/update-loyalty-settings.dto';
+import { UpdateCurrencyDto, UpdateLoyaltySettingsDto } from '../dto/update-loyalty-settings.dto';
 import { AuditLogService, AuditAction, AuditTargetType } from '../../admin/audit-log.service';
 import * as bcrypt from 'bcryptjs';
-import * as jwt from 'jsonwebtoken';
-import { createPublicKey, randomUUID } from 'crypto';
+import { randomUUID } from 'crypto';
+import {
+  MERCHANT_NOTIF_PREF_KEYS, parseNotifPrefs,
+  type MerchantNotifPrefKey, type MerchantNotifPrefs,
+} from '../../merchant-inbox/merchant-notif-policy';
+import { AppleTokenError, AppleTokenVerifier, MERCHANT_APPLE_ERRORS } from '../../common/apple/apple-token-verifier.service';
 import { OAuth2Client } from 'google-auth-library';
 import { BCRYPT_SALT_ROUNDS, DEFAULT_STAMPS_FOR_REWARD } from '../../common/constants';
 import { MERCHANT_PROFILE_SELECT, MerchantProfileData } from '../../common/prisma-selects';
@@ -34,12 +40,12 @@ import { assertClean } from '../../common/utils/content-moderation';
 import { getNotifTranslations } from '../../common/utils/notification-i18n';
 import { MailService } from '../../mail/mail.service';
 import { pickEmailLang } from '../../mail/transactional-i18n';
+import { maskEmail } from '../../common/utils/pii-mask';
 
 @Injectable()
 export class MerchantProfileService {
   private readonly logger = new Logger(MerchantProfileService.name);
   private readonly googleClient: OAuth2Client;
-  private appleJwksCache: { keys: any[]; fetchedAt: number } | null = null;
 
   constructor(
     @Inject(MERCHANT_REPOSITORY) private merchantRepo: IMerchantRepository,
@@ -52,6 +58,7 @@ export class MerchantProfileService {
     private configService: ConfigService,
     private auditLogService: AuditLogService,
     private mailService: MailService,
+    private appleVerifier: AppleTokenVerifier,
   ) {
     this.googleClient = new OAuth2Client(this.configService.get<string>('GOOGLE_CLIENT_ID'));
   }
@@ -139,6 +146,7 @@ export class MerchantProfileService {
     await Promise.all([
       this.cache.del(`merchant:detail:${merchantId}`),
       this.cache.del(`merchant:profile:${merchantId}`),
+      invalidateMerchantListCache(this.cache),
     ]);
     return result;
   }
@@ -179,10 +187,9 @@ export class MerchantProfileService {
     // Default to disconnecting other sessions on password change for security
     const shouldLogoutOthers = dto.logoutOthers !== false;
     if (shouldLogoutOthers && currentTokenId) {
-      const result = await this.deviceSessionRepo.deleteMany({
-        where: { merchantId, tokenId: { not: currentTokenId } },
+      devicesDisconnected = await revokeDeviceSessions(this.deviceSessionRepo, this.cache, {
+        merchantId, tokenId: { not: currentTokenId },
       });
-      devicesDisconnected = result.count;
     }
 
     return { message: 'Mot de passe modifié avec succès', devicesDisconnected };
@@ -208,7 +215,8 @@ export class MerchantProfileService {
 
   async getDeviceSessions(merchantId: string, currentTokenId?: string) {
     const sessions = await this.deviceSessionRepo.findMany({
-      where: { merchantId },
+      // tokenId null = signed out (kept only to recognise the device on next sign-in).
+      where: { merchantId, tokenId: { not: null } },
       orderBy: { lastActiveAt: 'desc' },
       select: {
         id: true, tokenId: true, deviceName: true, deviceOS: true,
@@ -217,51 +225,11 @@ export class MerchantProfileService {
       },
     });
 
-    return sessions.map(({ tokenId, ...session }: any) => ({
+    // "Cet appareil" = la session du token appelant (le flag stocké n'est pas fiable à plusieurs appareils).
+    return sessions.map(({ tokenId, isCurrentDevice: _stored, ...session }) => ({
       ...session,
-      isCurrentDevice: currentTokenId ? tokenId === currentTokenId : session.isCurrentDevice,
+      isCurrentDevice: !!currentTokenId && tokenId === currentTokenId,
     }));
-  }
-
-  async upsertDeviceSession(
-    merchantId: string,
-    deviceInfo: { deviceName: string; deviceOS?: string; ipAddress?: string },
-  ) {
-    // Read outside transaction to minimise lock duration
-    const existing = await this.deviceSessionRepo.findFirst({
-      where: { merchantId, deviceName: deviceInfo.deviceName },
-      select: { id: true },
-    });
-
-    return this.txRunner.run(async (tx) => {
-      // Clear all current-device flags (lightweight bulk UPDATE)
-      await tx.deviceSession.updateMany({
-        where: { merchantId },
-        data: { isCurrentDevice: false },
-      });
-
-      if (existing) {
-        return tx.deviceSession.update({
-          where: { id: existing.id },
-          data: {
-            lastActiveAt: new Date(),
-            isCurrentDevice: true,
-            ipAddress: deviceInfo.ipAddress,
-            deviceOS: deviceInfo.deviceOS,
-          },
-        });
-      }
-
-      return tx.deviceSession.create({
-        data: {
-          merchantId,
-          deviceName: deviceInfo.deviceName,
-          deviceOS: deviceInfo.deviceOS,
-          ipAddress: deviceInfo.ipAddress,
-          isCurrentDevice: true,
-        },
-      });
-    });
   }
 
   async removeDeviceSession(sessionId: string, merchantId: string, currentTokenId?: string): Promise<{ message: string }> {
@@ -276,6 +244,7 @@ export class MerchantProfileService {
       throw new BadRequestException('Vous ne pouvez pas déconnecter votre propre appareil');
     }
     await this.deviceSessionRepo.delete({ where: { id: sessionId } });
+    await evictSessionCache(this.cache, [session.tokenId]);
     return { message: 'Appareil déconnecté' };
   }
 
@@ -364,6 +333,7 @@ export class MerchantProfileService {
     await Promise.all([
       this.cache.del(`merchant:detail:${merchantId}`),
       this.cache.del(`merchant:profile:${merchantId}`),
+      invalidateMerchantListCache(this.cache),
     ]);
 
     this.auditLogService.log({
@@ -378,6 +348,30 @@ export class MerchantProfileService {
         accumulationLimit: dto.accumulationLimit,
         stampValidityDays: dto.stampValidityDays,
       },
+    });
+
+    return updated;
+  }
+
+  /** Currency used to display amounts (no conversion of stored amounts). */
+  async updateCurrency(merchantId: string, dto: UpdateCurrencyDto): Promise<MerchantProfileData> {
+    const updated = (await this.merchantRepo.update({
+      where: { id: merchantId },
+      data: { currency: dto.currency },
+      select: MERCHANT_PROFILE_SELECT,
+    })) as unknown as MerchantProfileData;
+
+    await Promise.all([
+      this.cache.del(`merchant:detail:${merchantId}`),
+      this.cache.del(`merchant:profile:${merchantId}`),
+    ]);
+
+    this.auditLogService.log({
+      ctx: { actorType: 'MERCHANT', merchantId },
+      action: AuditAction.UPDATE_LOYALTY_SETTINGS,
+      targetType: AuditTargetType.MERCHANT,
+      targetId: merchantId,
+      metadata: { currency: dto.currency },
     });
 
     return updated;
@@ -430,23 +424,19 @@ export class MerchantProfileService {
         }),
       });
 
-      // 4. Send push notifications in parallel (fire-and-forget per batch)
-      const NOTIF_CONCURRENCY = 20;
-      for (let i = 0; i < cards.length; i += NOTIF_CONCURRENCY) {
-        const chunk = cards.slice(i, i + NOTIF_CONCURRENCY);
-        await Promise.allSettled(
-          chunk.map((card: any) => {
-            const t = getNotifTranslations(card.client?.language);
-            return this.notifications.sendToClient(
-              merchantId,
-              card.clientId,
-              t.capTitle(merchantName),
-              t.capBody(card.stamps, limit, t.unitStamps(limit), merchantName),
-              { event: 'stamps_updated', merchantId, newBalance: String(limit) },
-            );
-          }),
-        );
-      }
+      // 4. Notify the batch in one call (bulk inserts, bounded push concurrency)
+      await this.notifications.sendToClients(
+        merchantId,
+        cards.map((card: any) => {
+          const t = getNotifTranslations(card.client?.language);
+          return {
+            clientId: card.clientId,
+            title: t.capTitle(merchantName),
+            body: t.capBody(card.stamps, limit, t.unitStamps(limit), merchantName),
+            data: { event: 'stamps_updated', merchantId, newBalance: String(limit) },
+          };
+        }),
+      );
 
       totalCapped += cards.length;
       if (cards.length < BATCH_SIZE) break;
@@ -660,6 +650,7 @@ export class MerchantProfileService {
     await Promise.allSettled([
       this.cache.del(`merchant:profile:${merchantId}`),
       this.cache.del(`merchant:detail:${merchantId}`),
+      invalidateMerchantListCache(this.cache),
     ]);
 
     this.logger.log(
@@ -679,57 +670,38 @@ export class MerchantProfileService {
     if (isEmailReal) {
       this.mailService
         .sendAccountDeleted(originalEmail, originalNom || 'votre commerce', pickEmailLang(originalLanguage))
-        .catch((err) => this.logger.warn(`Failed to send account-deleted email to ${originalEmail}: ${err?.message || err}`));
+        .catch((err) => this.logger.warn(`Failed to send account-deleted email to ${maskEmail(originalEmail)}: ${err?.message || err}`));
     }
 
     return { message: `Le compte "${merchant.nom}" a été supprimé.` };
   }
 
-  /** Verify Apple identity token for account deletion re-auth */
-  private async verifyAppleTokenForDeletion(identityToken: string): Promise<{ sub: string }> {
-    const decoded = jwt.decode(identityToken, { complete: true });
-    if (!decoded || typeof decoded === 'string' || !decoded.header.kid) {
-      throw new UnauthorizedException('Token Apple invalide');
-    }
-    if (decoded.header.alg !== 'RS256') {
-      throw new UnauthorizedException('Algorithme de signature Apple non supporté');
-    }
+  // ── Push preferences per category ──────────────────────────────────────
 
-    const keys = await this.getApplePublicKeys();
-    let matchingKey = keys.find((k: any) => k.kid === decoded.header.kid);
-    if (!matchingKey) {
-      this.appleJwksCache = null;
-      const freshKeys = await this.getApplePublicKeys();
-      matchingKey = freshKeys.find((k: any) => k.kid === decoded.header.kid);
-      if (!matchingKey) throw new UnauthorizedException('Clé Apple introuvable');
-    }
-
-    const publicKey = createPublicKey({ key: matchingKey, format: 'jwk' });
-    const appleBundleIds = (this.configService.get<string>('APPLE_BUNDLE_IDS') || '').split(',').map(s => s.trim()).filter(Boolean);
-    // Without an audience check, a token minted for any other Apple app would be accepted.
-    if (appleBundleIds.length === 0) {
-      this.logger.error('Apple Sign-In misconfigured: APPLE_BUNDLE_IDS is empty');
-      throw new UnauthorizedException('Connexion Apple non configurée');
-    }
-
-    const payload = jwt.verify(identityToken, publicKey, {
-      algorithms: ['RS256'],
-      issuer: 'https://appleid.apple.com',
-      audience: appleBundleIds as [string, ...string[]],
-    }) as jwt.JwtPayload & { sub: string };
-
-    return payload;
+  async getNotificationPrefs(merchantId: string): Promise<MerchantNotifPrefs> {
+    const m = await this.merchantRepo.findUnique({ where: { id: merchantId }, select: { notifPrefs: true } });
+    return parseNotifPrefs(m?.notifPrefs);
   }
 
-  private async getApplePublicKeys(): Promise<any[]> {
-    const now = Date.now();
-    if (this.appleJwksCache && now - this.appleJwksCache.fetchedAt < 86_400_000) {
-      return this.appleJwksCache.keys;
+  async updateNotificationPrefs(
+    merchantId: string,
+    changes: Partial<Record<MerchantNotifPrefKey, boolean>>,
+  ): Promise<MerchantNotifPrefs> {
+    const next = await this.getNotificationPrefs(merchantId);
+    for (const k of MERCHANT_NOTIF_PREF_KEYS) {
+      if (typeof changes[k] === 'boolean') next[k] = changes[k] as boolean;
     }
-    const res = await fetch('https://appleid.apple.com/auth/keys');
-    if (!res.ok) throw new Error('Failed to fetch Apple JWKS');
-    const { keys } = await res.json();
-    this.appleJwksCache = { keys, fetchedAt: now };
-    return keys;
+    await this.merchantRepo.update({ where: { id: merchantId }, data: { notifPrefs: next } });
+    return next;
+  }
+
+  /** Verify Apple identity token for account deletion re-auth */
+  private async verifyAppleTokenForDeletion(identityToken: string): Promise<{ sub: string }> {
+    try {
+      return await this.appleVerifier.verify(identityToken);
+    } catch (err) {
+      if (err instanceof AppleTokenError) throw new UnauthorizedException(MERCHANT_APPLE_ERRORS[err.reason]);
+      throw err;
+    }
   }
 }

@@ -1,6 +1,8 @@
 // Push / in-app texts of the scratch-card feature (fr, en, ar — Darija like the
 // rest of the Arabic notifications).
-export type ScratchLocale = 'fr' | 'en' | 'ar';
+import { type AppLang, pickAppLang } from '../common/utils/app-lang';
+
+export type ScratchLocale = AppLang;
 
 const texts = {
   fr: {
@@ -89,9 +91,7 @@ export function legacyCardReceivedTexts(merchant: string, message: string | null
   };
 }
 
-export function scratchLocale(locale?: string | null): ScratchLocale {
-  return locale === 'en' || locale === 'ar' ? locale : 'fr';
-}
+const scratchLocale = pickAppLang;
 
 export function getScratchTexts(locale?: string | null) {
   return texts[scratchLocale(locale)];

@@ -152,7 +152,7 @@ export function GuidedTourProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  // The tour only runs on demand (welcome card, guide sheet) and never on top
+  // The tour only runs on demand (guide sheet) and never on top
   // of another full-screen onboarding surface.
   const start = useCallback(() => {
     if (!useOnboardingStore.getState().request('tour')) return;

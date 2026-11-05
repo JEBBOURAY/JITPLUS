@@ -1,3 +1,4 @@
+import { moneyFormatter } from '@jitplus/shared/src/currency';
 import React from 'react';
 import { View, Pressable, StyleSheet } from 'react-native';
 import { Flame, Globe, Hourglass, MapPin, Store } from 'lucide-react-native';
@@ -26,7 +27,7 @@ function DealRow({ deal, onPress, hideMerchant }: Props) {
   const fonts = useAppFonts();
   const { t, locale } = useLanguage();
   const badge = dealBadgeLabel(deal, t);
-  const { price, original } = dealPrices(deal, t, locale);
+  const { price, original } = dealPrices(deal, moneyFormatter(deal.merchant.currency, locale));
   const time = dealTimeLeftLabel(deal.endsAt, t);
   const timeColor = time.urgent ? theme.warning : theme.textMuted;
   const online = deal.scope === 'ONLINE';

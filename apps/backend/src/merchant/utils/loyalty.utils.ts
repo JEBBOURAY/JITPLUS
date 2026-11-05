@@ -1,4 +1,4 @@
-import { DEFAULT_STAMPS_FOR_REWARD, MAX_STAMPS_PER_TX } from '../../common/constants';
+import { DEFAULT_STAMPS_FOR_REWARD, MAX_STAMPS_PER_TX, MS_PER_DAY } from '../../common/constants';
 
 /** Determine reward threshold from merchant settings */
 export function computeRewardThreshold(
@@ -21,8 +21,6 @@ export function computeEarnedStamps(amount: number, amountPerStamp: number): num
   return Math.min(Math.floor(amount / amountPerStamp), MAX_STAMPS_PER_TX);
 }
 
-const DAY_MS = 86_400_000;
-
 /**
  * Date at which a card's stamps are reset under the merchant's validity rule,
  * or null when stamps never expire. The countdown starts at the later of the
@@ -35,5 +33,5 @@ export function computeStampsExpiry(
 ): Date | null {
   if (!stampValidityDays || stampValidityDays <= 0) return null;
   const start = stampValiditySince && stampValiditySince > lastVisitAt ? stampValiditySince : lastVisitAt;
-  return new Date(start.getTime() + stampValidityDays * DAY_MS);
+  return new Date(start.getTime() + stampValidityDays * MS_PER_DAY);
 }

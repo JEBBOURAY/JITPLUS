@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { errMsg } from '../common/utils';
-import { isCronAllowed, isCronEnabled } from '../common/tasks/cron-utils';
+import { cronAllowedOnce, cronEnabledOnce } from '../common/tasks/cron-utils';
 import { formatMoroccoDayMonth } from '../common/utils/morocco-time';
 import { ScratchPushService } from './scratch-push.service';
 import { getScratchTexts } from './scratch-notif-i18n';
@@ -27,7 +27,7 @@ export class ScratchReminderService {
 
   @Cron('0 10 * * *') // 10:00 UTC = 11:00 Morocco (10:00 during Ramadan)
   async sendReminders(): Promise<void> {
-    if (!isCronAllowed(this.logger, 'ScratchReminder.sendReminders')) return;
+    if (!(await cronAllowedOnce(this.logger, 'ScratchReminder.sendReminders'))) return;
     try {
       const coupons = await this.remindCoupons();
       const cards = await this.remindCards();
@@ -39,7 +39,7 @@ export class ScratchReminderService {
 
   @Cron('5 * * * *')
   async expire(): Promise<void> {
-    if (!isCronEnabled(this.logger, 'ScratchReminder.expire')) return;
+    if (!(await cronEnabledOnce(this.logger, 'ScratchReminder.expire'))) return;
     try {
       const now = new Date();
       const cards = await this.prisma.scratchCard.updateMany({

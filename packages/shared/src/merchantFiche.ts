@@ -321,9 +321,13 @@ export function getFicheTabs({ hasDeals, photoCount }: { hasDeals: boolean; phot
 
 export const DEFAULT_STAMPS_GOAL = 10;
 
-/** `_one` / `_other` key for a count, the convention of both apps' locale files. */
-export function pluralKey(key: string, count: number): string {
-  return `${key}_${count === 1 ? 'one' : 'other'}`;
+/**
+ * `_one` / `_other` key for a count, the convention of both apps' locale files.
+ * With a locale, French puts 0 in the singular too ("0 commerce", not "0 commerces").
+ */
+export function pluralKey(key: string, count: number, locale?: string): string {
+  const one = count === 1 || (count === 0 && locale?.startsWith('fr') === true);
+  return `${key}_${one ? 'one' : 'other'}`;
 }
 
 export interface FicheReward {

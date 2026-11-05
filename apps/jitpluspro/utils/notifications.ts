@@ -25,7 +25,7 @@ if (Notifications && !isExpoGo) {
 
 /**
  * Create the Android notification channels (required for Android 8+).
- * Must match the channelIds used by the backend Firebase service.
+ * Must match the channelIds used by the backend (CATEGORY_CHANNEL).
  */
 export async function setupAndroidChannels() {
   if (!Notifications || isExpoGo) return;
@@ -44,6 +44,28 @@ export async function setupAndroidChannels() {
         name: i18n.t('notifications.channelLoginAlerts'),
         importance: Notifications.AndroidImportance.HIGH,
         vibrationPattern: [0, 250, 250, 250],
+        showBadge: true,
+      }),
+      // One channel per preference group (backend CATEGORY_CHANNEL), so the
+      // merchant can also mute a group from the Android system settings.
+      Notifications.setNotificationChannelAsync('jitpro-news', {
+        name: i18n.t('notifications.channelNews'),
+        importance: Notifications.AndroidImportance.DEFAULT,
+        showBadge: true,
+      }),
+      Notifications.setNotificationChannelAsync('jitpro-tips', {
+        name: i18n.t('notifications.channelTips'),
+        importance: Notifications.AndroidImportance.DEFAULT,
+        showBadge: true,
+      }),
+      Notifications.setNotificationChannelAsync('jitpro-reminders', {
+        name: i18n.t('notifications.channelReminders'),
+        importance: Notifications.AndroidImportance.DEFAULT,
+        showBadge: true,
+      }),
+      Notifications.setNotificationChannelAsync('jitpro-reports', {
+        name: i18n.t('notifications.channelReports'),
+        importance: Notifications.AndroidImportance.DEFAULT,
         showBadge: true,
       }),
     ]);

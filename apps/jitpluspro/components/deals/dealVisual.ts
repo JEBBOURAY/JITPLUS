@@ -1,5 +1,6 @@
 // Texts shared by the deal list, wizard and detail (no React Native).
-import { dealBadge, dealTimeLeft, formatDealPrice, type DealOffer } from '@jitplus/shared/src/deals';
+import { dealBadge, dealTimeLeft, type DealOffer } from '@jitplus/shared/src/deals';
+import type { MoneyFormatter } from '@jitplus/shared/src/currency';
 
 export type Translate = (key: string, params?: Record<string, unknown>) => string;
 
@@ -28,9 +29,8 @@ export function dealTimeLeftLabel(endsAt: string | Date, t: Translate, now: Date
   return { text, urgent: left.urgent, ended: false };
 }
 
-/** Promo price and struck original price, as shown on the client row. */
-export function dealPrices(offer: DealOffer, t: Translate, locale: string): { price: string | null; original: string | null } {
-  const money = (n: number) => t('deals.price', { value: formatDealPrice(n, locale) });
+/** Promo price and struck original price, in the merchant's currency (see moneyFormatter). */
+export function dealPrices(offer: DealOffer, money: MoneyFormatter): { price: string | null; original: string | null } {
   if (offer.type === 'PRICE_DROP' && offer.dealPrice != null && offer.originalPrice != null) {
     return { price: money(offer.dealPrice), original: money(offer.originalPrice) };
   }

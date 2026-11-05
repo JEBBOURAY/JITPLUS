@@ -1,7 +1,7 @@
 import { ValidationError } from 'class-validator';
 
 /* ── French translation for class-validator default messages ─── */
-export function translateValidationMessage(msg: string): string {
+function translateValidationMessage(msg: string): string {
   const rules: [RegExp, string | ((...m: string[]) => string)][] = [
     [/^(.+) should not be empty$/, (_, p) => `Le champ ${p} est requis`],
     [/^(.+) must be a string$/, (_, p) => `Le champ ${p} doit être du texte`],

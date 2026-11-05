@@ -9,6 +9,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { usePlanStatus } from '@/hooks/usePlanStatus';
 import { useDir } from '@/hooks/useDir';
+import { useMoney } from '@/hooks/useCurrency';
 import { useAuthStore } from '@/stores/authStore';
 import { useRewards } from '@/hooks/useQueryHooks';
 import {
@@ -114,7 +115,8 @@ export default function ScratchCampaignWizard() {
   const isTeamMember = useAuthStore((s) => s.isTeamMember);
   const { isPremium } = usePlanStatus(merchant);
 
-  const labelFor = useCallback<RewardLabelFn>((type, value) => formatRewardValue({ type, value, label: '' }, t), [t]);
+  const { money, symbol: currencySymbol } = useMoney();
+  const labelFor = useCallback<RewardLabelFn>((type, value) => formatRewardValue({ type, value, label: '' }, t, money), [t, money]);
 
   const today = useMemo(() => moroccoToday(), []);
   const [form, dispatch] = useReducer(campaignFormReducer, today, (day: string): CampaignForm => ({
@@ -150,7 +152,11 @@ export default function ScratchCampaignWizard() {
     else router.replace('/scratch-campaigns');
   }, [router]);
 
-  const validate = useCallback((s: WizardStep) => validateStep(form, s, today), [form, today]);
+  // Amount limits are shown in the merchant's currency.
+  const validate = useCallback((s: WizardStep) => {
+    const err = validateStep(form, s, today);
+    return err && { ...err, params: { ...err.params, currency: currencySymbol } };
+  }, [form, today, currencySymbol]);
   const {
     step,
     index: stepIndex,
@@ -308,7 +314,7 @@ export default function ScratchCampaignWizard() {
   const logoUrl = merchant?.logoUrl ? resolveImageUrl(merchant.logoUrl) : null;
   const previewIndex = Math.max(0, form.rewards.findIndex((r) => r.key === previewRewardKey));
   const previewInput = rewardInputs[previewIndex];
-  const previewDisplay = useMemo(() => (previewInput ? rewardDisplay(previewInput, t) : null), [previewInput, t]);
+  const previewDisplay = useMemo(() => (previewInput ? rewardDisplay(previewInput, t, money) : null), [previewInput, t, money]);
   const previewConditions = useMemo(() => {
     if (!previewInput) return [];
     const lines = describeCouponConditions(
@@ -323,12 +329,13 @@ export default function ScratchCampaignWizard() {
       },
       t,
       (iso) => formatYmd(moroccoYmdOf(new Date(iso)), locale, false),
+      money,
     );
     if (previewInput.minDelayHours === 24 || previewInput.minDelayHours === 48) {
       lines.unshift(t(`scratch.wizard.previewDelay${previewInput.minDelayHours}`));
     }
     return lines;
-  }, [previewInput, form.couponExpiresOn, t, locale]);
+  }, [previewInput, form.couponExpiresOn, t, locale, money]);
 
   if (shouldWait) return null;
 
@@ -619,7 +626,7 @@ export default function ScratchCampaignWizard() {
                 {rewardInputs.map((input, i) => (
                   <Chip
                     key={form.rewards[i].key}
-                    label={rewardDisplay(input, t).headline || t('scratch.wizard.rewardN', { n: i + 1 })}
+                    label={rewardDisplay(input, t, money).headline || t('scratch.wizard.rewardN', { n: i + 1 })}
                     selected={previewIndex === i}
                     onPress={() => setPreviewRewardKey(form.rewards[i].key)}
                   />
@@ -701,7 +708,7 @@ export default function ScratchCampaignWizard() {
               {rewardInputs.map((input, i) => (
                 <ReviewLine
                   key={form.rewards[i].key}
-                  text={`• ${rewardDisplay(input, t).headline} · ${t('scratch.wizard.chance', { percent: i === 0 ? assured : input.weight })}${
+                  text={`• ${rewardDisplay(input, t, money).headline} · ${t('scratch.wizard.chance', { percent: i === 0 ? assured : input.weight })}${
                     estimate.data?.total ? ` · ${t('scratch.wizard.expectedCount', { count: expected[i]?.expected ?? 0 })}` : ''
                   }`}
                 />

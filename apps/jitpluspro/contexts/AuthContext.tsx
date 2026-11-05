@@ -3,6 +3,7 @@ import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { loadNotifications } from '@/utils/expoNotifications';
+import { getAppLanguage } from '@/utils/appLanguage';
 import * as Device from 'expo-device';
 import { randomUUID } from '@/utils/crypto';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -70,7 +71,7 @@ const getOrCreateDeviceId = async (): Promise<string> => {
  * Si `promptIfNeeded` est false (défaut), ne demande PAS la permission à l'utilisateur
  * (seulement si déjà accordée). Cela évite un pop-up système dès le premier login.
  */
-const registerPushToken = async (promptIfNeeded = false) => {
+export const registerPushToken = async (promptIfNeeded = false, languageOverride?: string) => {
   try {
     if (!Device.isDevice) {
       logInfo('Push', 'Pas un appareil physique, skip');
@@ -132,7 +133,7 @@ const registerPushToken = async (promptIfNeeded = false) => {
       return;
     }
 
-    const language = await AsyncStorage.getItem('jitpluspro_language') || 'fr';
+    const language = languageOverride ?? await getAppLanguage();
 
     // Deduped, see services/merchantPushToken.ts
     await sendMerchantPushToken(api, pushToken, language);
@@ -142,13 +143,25 @@ const registerPushToken = async (promptIfNeeded = false) => {
   }
 };
 
-/** Fire-and-forget push registration: failures are reported, never thrown. */
+/**
+ * Fire-and-forget push registration: failures are reported, never thrown.
+ * Never shows the system prompt: that is asked by NotificationPermissionSheet,
+ * after explaining what the notifications are for.
+ */
 const registerPushTokenInBackground = () => {
-  registerPushToken(true).catch((err) => {
+  registerPushToken(false).catch((err) => {
     logWarn('Auth', 'Push token registration failed:', err);
     if (!__DEV__) captureException(err, { tags: { source: 'push-registration' } });
   });
 };
+
+interface SignOutOptions {
+  /**
+   * The server already ended the session (e.g. account deletion revokes every
+   * session and clears the push token): skip the server calls, which would 401.
+   */
+  sessionRevoked?: boolean;
+}
 
 interface AuthContextData {
   merchant: Merchant | null;
@@ -156,12 +169,13 @@ interface AuthContextData {
   isTeamMember: boolean;
   teamMember: TeamMember | null;
   signIn: (credentials: LoginCredentials, rememberMe?: boolean) => Promise<void>;
-  register: (data: RegisterData) => Promise<void>;
+  /** Creates the account. `signedIn` is true when the server already opened the session. */
+  register: (data: RegisterData) => Promise<{ signedIn: boolean }>;
   googleLogin: (idToken: string) => Promise<{ success: boolean; error?: string; rawError?: unknown }>;
   appleLogin: (identityToken: string, givenName?: string, familyName?: string, rawNonce?: string) => Promise<{ success: boolean; error?: string; rawError?: unknown }>;
   googleRegister: (idToken: string, businessData: GoogleRegisterData) => Promise<{ success: boolean; error?: string; rawError?: unknown }>;
   appleRegister: (identityToken: string, givenName: string | undefined, familyName: string | undefined, businessData: AppleRegisterData, rawNonce?: string) => Promise<{ success: boolean; error?: string; rawError?: unknown }>;
-  signOut: () => Promise<void>;
+  signOut: (options?: SignOutOptions) => Promise<void>;
   loadProfile: () => Promise<Merchant | null>;
   updateMerchant: (data: Partial<Merchant>) => void;
 }
@@ -195,6 +209,8 @@ interface BusinessProfileData {
   longitude?: number;
   termsAccepted?: boolean;
   referralCode?: string;
+  /** App language picked at signup (fr, en, ar) */
+  language?: string;
   description?: string;
   storePhone?: string;
   instagram?: string;
@@ -213,7 +229,7 @@ interface RegisterData extends BusinessProfileData {
   password: string;
 }
 
-interface RegisterResponse {
+interface RegisterResponse extends Partial<Pick<AuthResponse, 'access_token' | 'refresh_token' | 'session_id'>> {
   merchant: Merchant;
   userType: 'merchant';
   /** Always false while email verification is disabled server-side. */
@@ -228,13 +244,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const queryClient = useQueryClient();
   const { merchant, loading, isTeamMember, teamMember } = useAuthState();
 
-  const signOut = useCallback(async () => {
+  const signOut = useCallback(async (options?: SignOutOptions) => {
     try {
-      // Clear the push token so this device stops receiving notifications.
-      api.patch('/merchant/push-token', { pushToken: '' }).catch(() => {});
+      if (!options?.sessionRevoked) {
+        // Clear the push token so this device stops receiving notifications.
+        api.patch('/merchant/push-token', { pushToken: '' }).catch(() => {});
+        // Fire-and-forget — don't block local cleanup on server response
+        api.post('/auth/logout').catch(() => {});
+      }
       resetMerchantPushTokenCache();
-      // Fire-and-forget — don't block local cleanup on server response
-      api.post('/auth/logout').catch(() => {});
       resetApiTokenCache();
       await clearStoredSession(['onboardingCompleted']);
       queryClient.clear();
@@ -425,18 +443,30 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const register = useCallback(async (data: RegisterData) => {
     try {
       logInfo('Auth', 'Inscription...');
-      const response = await api.post<RegisterResponse>('/auth/register', data);
+      const { deviceName, deviceOS } = getDeviceInfo();
+      const deviceId = await getOrCreateDeviceId();
+      const response = await api.post<RegisterResponse>('/auth/register', {
+        ...data,
+        deviceName,
+        deviceOS,
+        deviceId,
+      });
 
       if (!response.data?.merchant) {
         throw new Error(i18n.t('auth.invalidServerResponse'));
       }
 
       logInfo('Auth', 'Inscription réussie:', response.data.merchant.nom);
+      const { access_token } = response.data;
+      if (!access_token) return { signedIn: false };
+      // Session opened by the signup itself: no second /auth/login round-trip.
+      await handleAuthSuccess({ ...response.data, access_token }, { rememberMe: true });
+      return { signedIn: true };
     } catch (error: unknown) {
       logError('Auth', 'Erreur inscription:', error);
       throw error;
     }
-  }, []);
+  }, [handleAuthSuccess]);
 
   const googleLogin = useCallback(async (idToken: string): Promise<{ success: boolean; error?: string; rawError?: unknown }> => {
     try {

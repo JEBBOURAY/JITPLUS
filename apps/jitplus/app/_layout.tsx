@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Platform, View } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useNavigationContainerRef, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
 import { DarkTheme, DefaultTheme, ThemeProvider as NavThemeProvider } from 'expo-router/react-navigation';
@@ -31,13 +31,13 @@ import { useRealtimeSocket } from '@jitplus/shared/src/useRealtimeSocket';
 import { useRealtimeEvents, useAppForegroundRefresh } from '@/hooks/useRealtimeEvents';
 import { useNotificationListeners } from '@/hooks/useNotificationListeners';
 import { api, getServerBaseUrl } from '@/services/api';
-import { initSentry } from '@/services/sentry';
+import { initSentry, navigationIntegration } from '@/services/sentry';
 import { queryClient, CACHE_MAX_AGE } from '@/services/queryClient';
 import { setupAndroidChannel } from '@/utils/notifications';
 import { useForceUpdate } from '@/hooks/useForceUpdate';
 import ForceUpdateModal from '@/components/ForceUpdateModal';
 import LaunchSplash from '@/components/launch/LaunchSplash';
-import { takePendingClaim } from '@/services/pendingClaim';
+import { takePendingClaim, takePendingStampCode } from '@/services/pendingClaim';
 
 initSentry();
 SplashScreen.preventAutoHideAsync();
@@ -49,6 +49,12 @@ function RootLayoutNav() {
   const { status: forceUpdateStatus, storeUrl: forceUpdateStoreUrl, recheck: recheckForceUpdate } = useForceUpdate();
   const { locale } = useLanguage();
 
+  // Screen-change breadcrumbs for Sentry (see services/sentry.ts).
+  const navigationRef = useNavigationContainerRef();
+  useEffect(() => {
+    if (navigationRef) navigationIntegration.registerNavigationContainer(navigationRef);
+  }, [navigationRef]);
+
   // Redirect to welcome screen whenever the user logs out (client becomes null).
   // Guests keep browsing: they reach auth-only screens through GuestGuard.
   useEffect(() => {
@@ -57,12 +63,19 @@ function RootLayoutNav() {
     }
   }, [client, isGuest, router]);
 
-  // After authentication, if a Quick-Add claim token was stashed (because the
-  // user landed on /claim while logged-out), route back to /claim to confirm it.
+  // After authentication, if a Quick-Add claim token or a parcel QR code was
+  // stashed (because the user opened it while logged-out), route back to its
+  // screen to confirm it.
   useEffect(() => {
     if (!client) return;
-    takePendingClaim().then((pending) => {
-      if (pending) router.replace({ pathname: '/claim', params: { token: pending } });
+    takePendingClaim().then(async (pending) => {
+      if (pending) {
+        router.replace({ pathname: '/claim', params: { token: pending } });
+        return;
+      }
+      // Same for a parcel QR code scanned while logged out.
+      const stampCode = await takePendingStampCode();
+      if (stampCode) router.replace({ pathname: '/stamp-code', params: { token: stampCode } });
     }).catch(() => {});
   }, [client?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 

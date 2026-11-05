@@ -1,6 +1,7 @@
 import { Controller, Get, Param, Query, Res, Header } from '@nestjs/common';
 import { SkipThrottle } from '@nestjs/throttler';
 import type { Response } from 'express';
+import { STAMP_CODE_TOKEN_RE } from '../stamp-codes/stamp-code-token.service';
 
 // ── App identifiers ─────────────────────────────────────────────────────────
 const ANDROID_PACKAGE = 'com.jitplus.client';
@@ -221,6 +222,22 @@ export class DeeplinkController {
   }
 
   /**
+   * Pro sign-up invitation — opens the merchant app on the register screen with
+   * the sponsor's code already filled in. The code is checked against a strict
+   * charset before it reaches the generated page (no injection into the HTML
+   * or the intent URI); an invalid one still opens the register screen.
+   */
+  @Get('pro/register')
+  @Header('Cache-Control', 'no-store')
+  handleProRegisterLink(
+    @Query('ref') ref: string | undefined,
+    @Res() res: Response,
+  ): void {
+    const code = typeof ref === 'string' && /^[A-Za-z0-9_-]{4,20}$/.test(ref) ? ref : '';
+    res.type('html').send(renderSmartRedirect(VARIANT_PRO, code ? `register?ref=${code}` : 'register'));
+  }
+
+  /**
    * Generic app opener — used by email CTAs that only need to open the app
    * on a specific tab (discover, qr, notifications, …). Accepts a whitelisted
    * `?redirect=` query param; unknown values fall back to the app home.
@@ -257,6 +274,23 @@ export class DeeplinkController {
     res
       .type('html')
       .send(renderSmartRedirect(VARIANT_CLIENT, `claim?token=${encodeURIComponent(token)}`));
+  }
+
+  /**
+   * E-commerce QR code slipped into a parcel — the client scans it with the
+   * phone camera and lands on the /stamp-code screen of the client app. The
+   * token format is enforced before being embedded into the redirect HTML.
+   */
+  @Get('q/:token')
+  @Header('Cache-Control', 'no-store')
+  handleStampCodeLink(@Param('token') token: string, @Res() res: Response): void {
+    if (!STAMP_CODE_TOKEN_RE.test(token)) {
+      res.status(400).send('Invalid link');
+      return;
+    }
+    res
+      .type('html')
+      .send(renderSmartRedirect(VARIANT_CLIENT, `stamp-code?token=${encodeURIComponent(token)}`));
   }
 
   /**
@@ -313,7 +347,7 @@ export class DeeplinkController {
         details: [
           {
             appID: `${IOS_TEAM_ID}.${IOS_BUNDLE_ID}`,
-            paths: ['/m/*', '/bp/*', '/referral', '/app', '/d/claim'],
+            paths: ['/m/*', '/bp/*', '/referral', '/app', '/d/claim', '/q/*'],
           },
           {
             appID: `${IOS_TEAM_ID}.${IOS_PRO_BUNDLE_ID}`,

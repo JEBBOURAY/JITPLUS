@@ -31,5 +31,7 @@ export interface IPushProvider {
     title: string,
     body: string,
     data?: Record<string, string>,
+    /** Android channel, one per notification category (default `jitpro-default`). */
+    androidChannelId?: string,
   ): Promise<{ invalidToken: boolean }>;
 }

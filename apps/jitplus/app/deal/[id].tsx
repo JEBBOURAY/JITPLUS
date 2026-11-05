@@ -1,3 +1,4 @@
+import { moneyFormatter } from '@jitplus/shared/src/currency';
 import { useCallback, useMemo, useState } from 'react';
 import { View, ScrollView, Pressable, Share, Alert, Linking, StyleSheet, useWindowDimensions } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -284,7 +285,7 @@ function DealBody({ deal, stores, onMerchant, onDirections }: {
   const { t, locale, isRTL } = useLanguage();
   const accent = getMerchantAccent(deal.merchant.themeColor);
   const badge = dealBadgeLabel(deal, t);
-  const { price, original } = dealPrices(deal, t, locale);
+  const { price, original } = dealPrices(deal, moneyFormatter(deal.merchant.currency, locale));
   const time = dealTimeLeftLabel(deal.endsAt, t);
   const online = deal.scope === 'ONLINE';
   const endDate = formatDealEndDate(deal.endsAt, locale);

@@ -7,12 +7,14 @@ import type { AxiosInstance } from 'axios';
 // the JS thread. AuthContext + the listener both PATCH this endpoint — they
 // all route through this helper so a single dedup gate protects every path.
 //
-// `lastSentToken` only records tokens the backend accepted: recording it before
+// Dedup key = token + language: a language change must reach the backend
+// (automatic pushes are written in it) even when the token did not rotate.
+// `lastSentKey` only records what the backend accepted: recording it before
 // the request would make a single network failure block every later retry.
-let lastSentToken: string | null = null;
+let lastSentKey: string | null = null;
 let lastAttemptAt = 0;
-let inFlight: { token: string; promise: Promise<void> } | null = null;
-let trailing: { timer: ReturnType<typeof setTimeout>; token: string } | null = null;
+let inFlight: { key: string; promise: Promise<void> } | null = null;
+let trailing: { timer: ReturnType<typeof setTimeout>; key: string } | null = null;
 let generation = 0;
 const COOLDOWN_MS = 10_000;
 
@@ -27,7 +29,7 @@ function cancelTrailing() {
 export function resetMerchantPushTokenCache(): void {
   cancelTrailing();
   generation += 1;
-  lastSentToken = null;
+  lastSentKey = null;
   lastAttemptAt = 0;
   inFlight = null;
 }
@@ -37,13 +39,9 @@ export async function sendMerchantPushToken(
   pushToken: string,
   language: string,
 ): Promise<void> {
-  if (!pushToken) {
-    resetMerchantPushTokenCache();
-    await api.patch('/merchant/push-token', { pushToken, language });
-    return;
-  }
-  if (pushToken === lastSentToken) return;
-  if (inFlight?.token === pushToken) return inFlight.promise;
+  const key = `${pushToken}|${language}`;
+  if (key === lastSentKey) return;
+  if (inFlight?.key === key) return inFlight.promise;
 
   const wait = COOLDOWN_MS - (Date.now() - lastAttemptAt);
   if (wait > 0) {
@@ -54,7 +52,7 @@ export async function sendMerchantPushToken(
       trailing = null;
       sendMerchantPushToken(api, pushToken, language).catch(() => {});
     }, wait);
-    trailing = { timer, token: pushToken };
+    trailing = { timer, key };
     return;
   }
 
@@ -65,11 +63,11 @@ export async function sendMerchantPushToken(
     .patch('/merchant/push-token', { pushToken, language })
     .then(() => {
       // A sign-out during the request invalidates this result.
-      if (gen === generation) lastSentToken = pushToken;
+      if (gen === generation) lastSentKey = key;
     })
     .finally(() => {
       if (inFlight?.promise === promise) inFlight = null;
     });
-  inFlight = { token: pushToken, promise };
+  inFlight = { key, promise };
   return promise;
 }

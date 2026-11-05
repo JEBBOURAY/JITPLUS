@@ -1,3 +1,6 @@
+import { plainToInstance } from 'class-transformer';
+import { validate } from 'class-validator';
+import { UpdateCurrencyDto } from '../dto/update-loyalty-settings.dto';
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
@@ -16,6 +19,7 @@ import {
 } from '../../common/repositories';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { AuditLogService } from '../../admin/audit-log.service';
+import { AppleTokenVerifier } from '../../common/apple/apple-token-verifier.service';
 import { MailService } from '../../mail/mail.service';
 
 // ── Tx mock that records SQL and simulates UPDATEs against an in-memory store ──
@@ -102,7 +106,7 @@ describe('MerchantProfileService — stamps loyalty settings', () => {
 
     const auditLogService = { log: jest.fn() };
     const cache = { get: jest.fn(), set: jest.fn(), del: jest.fn().mockResolvedValue(undefined) };
-    const notifications = { sendToClient: jest.fn().mockResolvedValue(undefined), sendToAll: jest.fn() };
+    const notifications = { sendToClient: jest.fn().mockResolvedValue(undefined), sendToClients: jest.fn().mockResolvedValue(undefined), sendToAll: jest.fn() };
     const transactionRepoDelegate = { createMany: jest.fn().mockResolvedValue({ count: 0 }) };
     const loyaltyCardRepo = {
       findMany: jest.fn()
@@ -131,6 +135,7 @@ describe('MerchantProfileService — stamps loyalty settings', () => {
         { provide: ConfigService, useValue: config },
         { provide: AuditLogService, useValue: auditLogService },
         { provide: MailService, useValue: {} },
+        { provide: AppleTokenVerifier, useValue: { verify: jest.fn() } },
       ],
     }).compile();
 
@@ -349,11 +354,42 @@ describe('MerchantProfileService — stamps loyalty settings', () => {
     ]);
     expect(createdTx[0].note).toContain('tampons');
 
-    expect(notifications.sendToClient).toHaveBeenCalledTimes(2);
-    expect(notifications.sendToClient.mock.calls[0][4]).toEqual({
+    expect(notifications.sendToClients).toHaveBeenCalledTimes(1);
+    const [notifiedMerchant, items] = notifications.sendToClients.mock.calls[0];
+    expect(notifiedMerchant).toBe('m1');
+    expect(items).toHaveLength(2);
+    expect(items[0].data).toEqual({
       event: 'stamps_updated',
       merchantId: 'm1',
       newBalance: '30',
     });
+  });
+
+  // ── Currency ──────────────────────────────────────────────────────────────
+
+  it('updates the currency without touching loyalty rules and clears the profile cache', async () => {
+    const { service, merchantRepo, txRunner, auditLogService } = await buildService({
+      merchant: baseMerchant,
+      cards: [],
+      rewards: [],
+    });
+
+    const result = await service.updateCurrency('m1', { currency: 'XAF' });
+
+    expect(merchantRepo.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'm1' }, data: { currency: 'XAF' } }),
+    );
+    expect(result).toEqual(expect.objectContaining({ currency: 'XAF' }));
+    expect(txRunner.run).not.toHaveBeenCalled();
+    expect(auditLogService.log.mock.calls[0][0].metadata).toEqual({ currency: 'XAF' });
+  });
+
+  it('accepts supported currencies only', async () => {
+    const ok = plainToInstance(UpdateCurrencyDto, { currency: 'XAF' });
+    expect(await validate(ok)).toHaveLength(0);
+    const bad = plainToInstance(UpdateCurrencyDto, { currency: 'BTC' });
+    expect(await validate(bad)).not.toHaveLength(0);
+    const missing = plainToInstance(UpdateCurrencyDto, {});
+    expect(await validate(missing)).not.toHaveLength(0);
   });
 });

@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
 import {
@@ -32,9 +32,10 @@ import {
   LOGIN_ALERT_I18N,
   PLAN_EMAIL_I18N,
 } from './transactional-i18n';
+import { maskEmail } from '../common/utils/pii-mask';
 
 @Injectable()
-export class MailService implements IMailProvider {
+export class MailService implements IMailProvider, OnModuleDestroy {
   private readonly logger = new Logger(MailService.name);
   private transporter: nodemailer.Transporter;
   private readonly fromAddress: string | { name: string; address: string };
@@ -74,6 +75,14 @@ export class MailService implements IMailProvider {
         port,
         secure: port === 465,
         auth: { user, pass },
+        // Reuse a few SMTP connections instead of a TCP+TLS+AUTH handshake per
+        // email, and fail fast: OTP / login / password-reset requests await
+        // these sends (nodemailer defaults are 2 min connect, 10 min socket).
+        pool: true,
+        maxConnections: 3,
+        connectionTimeout: 10_000,
+        greetingTimeout: 10_000,
+        socketTimeout: 20_000,
       });
       this.logger.log(`Mail transporter configured (${host}:${port}) from=${JSON.stringify(this.fromAddress)}`);
       // Best-effort verify so any auth/connectivity issue is logged at startup
@@ -85,6 +94,11 @@ export class MailService implements IMailProvider {
     } else {
       this.logger.warn('SMTP not configured — emails will be logged to console only');
     }
+  }
+
+  /** Close pooled SMTP connections on shutdown. */
+  onModuleDestroy(): void {
+    this.transporter?.close();
   }
 
   /**
@@ -103,7 +117,12 @@ export class MailService implements IMailProvider {
     const subject = getOtpSubject(code, source, lang, purpose);
 
     if (!this.transporter) {
-      this.logger.warn(`[NO SMTP] OTP email for ${to}: ${code}`);
+      // Never log the code outside local development: it is a live credential.
+      if (process.env.NODE_ENV === 'development') {
+        this.logger.warn(`[NO SMTP] OTP email for ${to}: ${code}`);
+      } else {
+        this.logger.error('[NO SMTP] Cannot send OTP email: SMTP transport is not configured');
+      }
       throw new Error('SMTP not configured — cannot send OTP email');
     }
 
@@ -115,9 +134,9 @@ export class MailService implements IMailProvider {
         html,
         replyTo: this.replyToAddress,
       });
-      this.logger.log(`OTP email sent to ${to} (${source}/${lang})`);
+      this.logger.log(`OTP email sent to ${maskEmail(to)} (${source}/${lang})`);
     } catch (error) {
-      this.logger.error(`Failed to send OTP email to ${to}`, error);
+      this.logger.error(`Failed to send OTP email to ${maskEmail(to)}`, error);
       throw error;
     }
   }
@@ -324,15 +343,15 @@ export class MailService implements IMailProvider {
     tag: string,
   ): Promise<void> {
     if (!this.transporter) {
-      this.logger.warn(`[NO SMTP] ${tag} email to ${to} not sent`);
+      this.logger.warn(`[NO SMTP] ${tag} email to ${maskEmail(to)} not sent`);
       return;
     }
 
     try {
       await this.transporter.sendMail({ from, to, subject, html, replyTo: this.replyToAddress });
-      this.logger.log(`${tag} email sent to ${to}`);
+      this.logger.log(`${tag} email sent to ${maskEmail(to)}`);
     } catch (error) {
-      this.logger.error(`Failed to send ${tag} email to ${to}`, error);
+      this.logger.error(`Failed to send ${tag} email to ${maskEmail(to)}`, error);
     }
   }
 

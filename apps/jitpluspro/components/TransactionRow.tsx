@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import {
   ArrowUpRight,
   RefreshCw,
+  ShoppingBag,
   SlidersHorizontal,
   type LucideIcon,
 } from 'lucide-react-native';
@@ -15,7 +16,8 @@ import {
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useDir } from '@/hooks/useDir';
-import { formatCurrency, DEFAULT_CURRENCY, getIntlLocale } from '@/config/currency';
+import { formatCurrency, getIntlLocale } from '@/config/currency';
+import { useCurrency } from '@/hooks/useCurrency';
 import { font, icon } from '@/constants/design';
 import type { ClientDetailTransaction, Transaction, TransactionType } from '@/types';
 
@@ -104,6 +106,7 @@ const ACTIVITY_ICONS: Record<TransactionType, LucideIcon> = {
   LOYALTY_PROGRAM_CHANGE: RefreshCw,
   LUCKY_WHEEL_WIN: JitGames,
   COUPON_REDEEM: JitTicket,
+  PURCHASE: ShoppingBag,
 };
 
 const TYPE_LABEL_KEYS: Record<TransactionType, string> = {
@@ -113,6 +116,7 @@ const TYPE_LABEL_KEYS: Record<TransactionType, string> = {
   LOYALTY_PROGRAM_CHANGE: 'clientDetail.txProgramChange',
   LUCKY_WHEEL_WIN: 'common.luckyWheelWin',
   COUPON_REDEEM: 'clientDetail.txCoupon',
+  PURCHASE: 'clientDetail.txPurchase',
 };
 
 function formatTime(date: Date): string {
@@ -151,6 +155,7 @@ export const TransactionRow = React.memo(function TransactionRow({
 }) {
   const theme = useTheme();
   const { t, locale } = useLanguage();
+  const currency = useCurrency();
   const dir = useDir();
   const isEarn = item.type === 'EARN_STAMPS';
   const isReward = item.type === 'REDEEM_REWARD';
@@ -158,6 +163,7 @@ export const TransactionRow = React.memo(function TransactionRow({
   const isProgram = item.type === 'LOYALTY_PROGRAM_CHANGE';
   const isWheel = item.type === 'LUCKY_WHEEL_WIN';
   const isCoupon = item.type === 'COUPON_REDEEM';
+  const isPurchase = item.type === 'PURCHASE';
   const isCancelled = item.status === 'CANCELLED';
 
   // Single brand color for every activity type; cancelled rows fade to muted instead of turning red.
@@ -178,6 +184,9 @@ export const TransactionRow = React.memo(function TransactionRow({
     amountText = t('home.redeemed');
   } else if (isProgram) {
     amountText = showType ? null : t('home.programChanged');
+  } else if (isPurchase && !detailed && item.amount > 0) {
+    // No stamp moved: the purchase amount is the meaningful value (detailed rows show it in the sub-line).
+    amountText = formatCurrency(item.amount, currency, getIntlLocale(locale));
   } else if (item.stamps) {
     amountText = `${item.stamps < 0 ? '−' : '+'}${Math.abs(item.stamps)}`;
     amountColor = isCancelled ? theme.textMuted : theme.text;
@@ -189,7 +198,7 @@ export const TransactionRow = React.memo(function TransactionRow({
   const performerName = item.performedByName || item.teamMember?.nom || null;
   const subLine = [
     when,
-    detailed && item.amount > 0 ? formatCurrency(item.amount, DEFAULT_CURRENCY, getIntlLocale(locale)) : null,
+    detailed && item.amount > 0 ? formatCurrency(item.amount, currency, getIntlLocale(locale)) : null,
     detailed && performerName ? t('activity.by', { name: performerName }) : null,
     isCancelled ? t('activity.cancelled') : null,
   ].filter(Boolean).join(' · ');

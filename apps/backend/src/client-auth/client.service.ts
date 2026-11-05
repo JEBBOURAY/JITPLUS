@@ -8,19 +8,64 @@ import {
   NOTIFICATION_REPOSITORY, type INotificationRepository,
   CLIENT_NOTIFICATION_STATUS_REPOSITORY, type IClientNotificationStatusRepository,
   PROFILE_VIEW_REPOSITORY, type IProfileViewRepository,
+  CLIENT_MERCHANT_BLOCK_REPOSITORY, type IClientMerchantBlockRepository,
   TRANSACTION_RUNNER, type ITransactionRunner,
+  RAW_QUERY_RUNNER, type IRawQueryRunner,
 } from '../common/repositories';
 import * as bcrypt from 'bcryptjs';
 import { buildPagination } from '../common/utils';
 import { MERCHANTS_LIST_CACHE_TTL, MERCHANT_DETAIL_CACHE_TTL, UNREAD_COUNT_CACHE_TTL, EMAIL_LOGO_JITPLUS } from '../common/constants';
 import { MailService } from '../mail/mail.service';
 import { pickEmailLang } from '../mail/transactional-i18n';
-import { PrismaService } from '../prisma/prisma.service';
+import { Prisma } from '@prisma/client';
 import { ClientClaimService } from '../merchant/services/client-claim.service';
 import { withRetry } from '../common/utils/retry-transaction.helper';
+import { merchantListCacheKey, merchantListGeneration } from '../common/utils/merchant-list-cache';
 import { computeStampsExpiry } from '../merchant/utils/loyalty.utils';
 import { DealsClientService, type MerchantDealBadge } from '../deals/deals-client.service';
 import { DEAL_DIGEST_AUDIENCE } from '../deals/deal-limits';
+import { maskEmail } from '../common/utils/pii-mask';
+
+/**
+ * The client map (jitplus Discover) is the only reader of the merchants list:
+ * it shows names, categories, address, position and logo. Profile and loyalty
+ * fields (description, card colours, badges, cover, stamp rules...) belong to
+ * the merchant page; selecting them here sent them for every map point and
+ * stored them in the client's persisted cache for nothing.
+ */
+const MERCHANT_MAP_SELECT = {
+  id: true,
+  nom: true,
+  categorie: true,
+  secondaryCategories: true,
+  ville: true,
+  quartier: true,
+  adresse: true,
+  latitude: true,
+  longitude: true,
+  logoUrl: true,
+  stores: {
+    where: { isActive: true },
+    select: { id: true, nom: true, ville: true, quartier: true, adresse: true, latitude: true, longitude: true },
+  },
+} satisfies Prisma.MerchantSelect;
+
+type MerchantMapRow = Prisma.MerchantGetPayload<{ select: typeof MERCHANT_MAP_SELECT }>;
+
+/** One point of the client map: a merchant, or one of its other stores. */
+interface MerchantMapPoint {
+  id: string;
+  nomBoutique: string;
+  categorie: MerchantMapRow['categorie'];
+  secondaryCategories: MerchantMapRow['secondaryCategories'];
+  ville: string | null;
+  adresse: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  logoUrl: string | null;
+  storeId?: string;
+  storeName?: string;
+}
 
 @Injectable()
 export class ClientService {
@@ -33,10 +78,11 @@ export class ClientService {
     @Inject(NOTIFICATION_REPOSITORY) private notificationRepo: INotificationRepository,
     @Inject(CLIENT_NOTIFICATION_STATUS_REPOSITORY) private clientNotifStatusRepo: IClientNotificationStatusRepository,
     @Inject(PROFILE_VIEW_REPOSITORY) private profileViewRepo: IProfileViewRepository,
+    @Inject(CLIENT_MERCHANT_BLOCK_REPOSITORY) private blockRepo: IClientMerchantBlockRepository,
     @Inject(TRANSACTION_RUNNER) private txRunner: ITransactionRunner,
+    @Inject(RAW_QUERY_RUNNER) private rawQuery: IRawQueryRunner,
     @Inject(CACHE_MANAGER) private cache: Cache,
     private mailService: MailService,
-    private prisma: PrismaService,
     private clientClaimService: ClientClaimService,
     private deals: DealsClientService,
   ) {}
@@ -290,7 +336,7 @@ export class ClientService {
     if (isEmailReal) {
       this.mailService
         .sendClientAccountDeleted(originalEmail, originalPrenom || undefined, pickEmailLang(originalLanguage))
-        .catch((err) => this.logger.warn(`Failed to send client account-deleted email to ${originalEmail}: ${err?.message || err}`));
+        .catch((err) => this.logger.warn(`Failed to send client account-deleted email to ${maskEmail(originalEmail)}: ${err?.message || err}`));
     }
 
     return { success: true, message: 'Compte supprimé avec succès' };
@@ -338,6 +384,7 @@ export class ClientService {
               categorie: true,
               stampEarningMode: true,
               amountPerStamp: true,
+              currency: true,
               stampsForReward: true,
               latitude: true,
               longitude: true,
@@ -380,6 +427,7 @@ export class ClientService {
               categorie: card.merchant.categorie,
               stampEarningMode: card.merchant.stampEarningMode,
               amountPerStamp: card.merchant.amountPerStamp,
+              currency: card.merchant.currency,
               stampsForReward: card.merchant.stampsForReward,
               // null if the merchant has no rewards configured yet
               minRewardCost: card.merchant.rewards[0]?.cout ?? null,
@@ -400,7 +448,7 @@ export class ClientService {
   async getMerchantById(id: string, clientId?: string) {
     // Apple 1.2 — a blocked merchant must be invisible to the client.
     if (clientId) {
-      const blocked = await this.prisma.clientMerchantBlock.findUnique({
+      const blocked = await this.blockRepo.findUnique({
         where: { clientId_merchantId: { clientId, merchantId: id } },
         select: { id: true },
       });
@@ -432,6 +480,7 @@ export class ClientService {
           longitude: true,
           stampEarningMode: true,
           amountPerStamp: true,
+          currency: true,
           stampsForReward: true,
           stampValidityDays: true,
           stampValiditySince: true,
@@ -547,6 +596,7 @@ export class ClientService {
       longitude: m.longitude,
       stampEarningMode: m.stampEarningMode,
       amountPerStamp: m.amountPerStamp,
+      currency: m.currency,
       stampsForReward: m.stampsForReward,
       stampValidityDays: m.stampValidityDays ?? null,
       logoUrl: m.logoUrl ?? null,
@@ -693,7 +743,7 @@ export class ClientService {
     if (!merchant) throw new NotFoundException('Commerce introuvable');
 
     // Upsert-by-unique-constraint; idempotent.
-    await this.prisma.clientMerchantBlock.upsert({
+    await this.blockRepo.upsert({
       where: { clientId_merchantId: { clientId, merchantId } },
       update: {},
       create: { clientId, merchantId },
@@ -723,14 +773,14 @@ export class ClientService {
   }
 
   async unblockMerchant(clientId: string, merchantId: string) {
-    await this.prisma.clientMerchantBlock.deleteMany({
+    await this.blockRepo.deleteMany({
       where: { clientId, merchantId },
     });
     return { success: true };
   }
 
   async getBlockedMerchants(clientId: string) {
-    const blocks = await this.prisma.clientMerchantBlock.findMany({
+    const blocks = await this.blockRepo.findMany({
       where: { clientId },
       select: {
         merchantId: true,
@@ -749,7 +799,7 @@ export class ClientService {
   }
 
   private async getBlockedMerchantIds(clientId: string): Promise<Set<string>> {
-    const rows = await this.prisma.clientMerchantBlock.findMany({
+    const rows = await this.blockRepo.findMany({
       where: { clientId },
       select: { merchantId: true },
     });
@@ -757,9 +807,10 @@ export class ClientService {
   }
 
   async getMerchants(page: number = 1, limit: number = 50, clientId?: string) {
-    const cacheKey = `merchants:list:p${page}:l${limit}`;
-    const cached = await this.cache.get<ReturnType<typeof this.formatMerchantList>>(cacheKey);
+    const cacheKey = merchantListCacheKey(page, limit);
+    const cached = cacheKey ? await this.cache.get<ReturnType<typeof this.formatMerchantList>>(cacheKey) : undefined;
     const baseResult = cached ?? await (async () => {
+      const generation = merchantListGeneration();
       const skip = (page - 1) * limit;
       const [merchants, total] = await Promise.all([
         this.merchantRepo.findMany({
@@ -768,43 +819,9 @@ export class ClientService {
             deletedAt: null,
             stores: { some: { isActive: true } },
           },
-          select: {
-            id: true,
-            nom: true,
-            categorie: true,
-            secondaryCategories: true,
-            description: true,
-            ville: true,
-            quartier: true,
-            adresse: true,
-            latitude: true,
-            longitude: true,
-            stampEarningMode: true,
-            amountPerStamp: true,
-            stampsForReward: true,
-            logoUrl: true,
-            coverUrl: true,
-            tagline: true,
-            badges: true,
-            themeColor: true,
-            themeIcon: true,
-            cardBackgroundUrl: true,
-            cardBackgroundColor: true,
-            cardTextColor: true,
-            stores: {
-              where: { isActive: true },
-              select: {
-                id: true,
-                nom: true,
-                ville: true,
-                quartier: true,
-                adresse: true,
-                latitude: true,
-                longitude: true,
-              },
-            },
-          },
-          orderBy: { nom: 'asc' },
+          select: MERCHANT_MAP_SELECT,
+          // id breaks ties between same-name merchants: without it, paging can skip or repeat them.
+          orderBy: [{ nom: 'asc' }, { id: 'asc' }],
           skip,
           take: limit,
         }),
@@ -818,7 +835,10 @@ export class ClientService {
       ]);
 
       const result = this.formatMerchantList(merchants, total, page, limit);
-      await this.cache.set(cacheKey, result, MERCHANTS_LIST_CACHE_TTL);
+      // Not stored when a write invalidated the list during the read.
+      if (cacheKey && generation === merchantListGeneration()) {
+        await this.cache.set(cacheKey, result, MERCHANTS_LIST_CACHE_TTL);
+      }
       return result;
     })();
 
@@ -844,42 +864,33 @@ export class ClientService {
     return { ...baseResult, merchants };
   }
 
-  private formatMerchantList(merchants: any[], total: number, page: number, limit: number) {
-    const entries: any[] = [];
+  private formatMerchantList(merchants: MerchantMapRow[], total: number, page: number, limit: number) {
+    const entries: MerchantMapPoint[] = [];
 
     for (const m of merchants) {
-      const base = {
+      const base: MerchantMapPoint = {
         id: m.id,
         nomBoutique: m.nom,
         categorie: m.categorie,
         secondaryCategories: m.secondaryCategories ?? [],
-        description: m.description,
         ville: m.ville,
         adresse: m.adresse || (m.quartier ? `${m.quartier}, ${m.ville}` : m.ville),
         latitude: m.latitude,
         longitude: m.longitude,
-        stampEarningMode: m.stampEarningMode,
-        amountPerStamp: m.amountPerStamp,
-        stampsForReward: m.stampsForReward,
         logoUrl: m.logoUrl ?? null,
-        coverUrl: m.coverUrl ?? null,
-        tagline: m.tagline ?? null,
-        badges: m.badges ?? [],
-        themeColor: m.themeColor ?? null,
-        themeIcon: m.themeIcon ?? null,
-        cardBackgroundUrl: m.cardBackgroundUrl ?? null,
-        cardBackgroundColor: m.cardBackgroundColor ?? null,
-        cardTextColor: m.cardTextColor ?? null,
       };
 
-      // Always include the merchant as a primary entry
-      entries.push(base);
+      // One map point per active store. The merchant's own coordinates mirror
+      // its reference store: they only get a point of their own when they match
+      // an active store, or when no store has coordinates. Otherwise they are
+      // stale (reference store deactivated) and showed a ghost duplicate pin.
+      const locatedStores = (m.stores ?? []).filter((s) => s.latitude != null && s.longitude != null);
+      const mainIsAStore = locatedStores.some((s) => s.latitude === m.latitude && s.longitude === m.longitude);
+      if (locatedStores.length === 0 || mainIsAStore) entries.push(base);
 
-      // Add each store that has its own coordinates as a separate map point
-      if (m.stores?.length) {
-        for (const s of m.stores) {
-          if (s.latitude == null || s.longitude == null) continue;
-          // Skip if store coords are identical to merchant's main coords
+      if (locatedStores.length) {
+        for (const s of locatedStores) {
+          // Already shown as the merchant's main point
           if (s.latitude === m.latitude && s.longitude === m.longitude) continue;
           entries.push({
             ...base,
@@ -901,84 +912,110 @@ export class ClientService {
   }
 
   /**
-   * Notifications a client can see: those of the merchants they hold a card
-   * of, plus their own deal digests (no merchant, addressed through a
-   * ClientNotificationStatus row).
+   * SQL body (columns `id`, `created_at`) of the notifications a client can see.
+   *
+   * Visibility rules (unchanged):
+   * - merchant notifications, only from merchants the client holds a card of
+   *   (active or not) and only those created at/after that card's creation;
+   *   among them, broadcasts (visible to every member) and personal rows
+   *   addressed to this client through a ClientNotificationStatus row;
+   *   only the in-app channel: PUSH, or legacy rows with channel NULL
+   *   (EMAIL / WHATSAPP blasts stay out of the feed);
+   * - when `includeDigests`, the client's own deal digests (audience
+   *   DEALS_DIGEST, no merchant, addressed through a status row), whatever
+   *   their channel or date. markAll / dismissAll never targeted digests.
+   *
+   * Access paths (instead of walking a merchant's whole history with an
+   * EXISTS per row):
+   * - broadcasts: per card of the client, notifications by
+   *   (merchant_id, is_broadcast, created_at >= card.created_at);
+   * - personal rows + digests (+ broadcasts already touched): the client's
+   *   own status rows (client_id-leading unique index), then PK lookup.
+   * UNION removes broadcasts reached by both branches.
    */
-  private notificationVisibility(clientId: string, cards: { merchantId: string; createdAt: Date }[]) {
-    const digests = { audience: DEAL_DIGEST_AUDIENCE, clientStatuses: { some: { clientId } } };
-    if (cards.length === 0) return digests;
-    return {
-      OR: [
-        {
-          AND: [
-            // Only notifications created after the client joined each merchant
-            { OR: cards.map((card) => ({ merchantId: card.merchantId, createdAt: { gte: card.createdAt } })) },
-            // Either it's a broadcast (visible to every client of that merchant)
-            // or it's a personal notification explicitly addressed to this client
-            // via a ClientNotificationStatus row created at send time.
-            { OR: [{ isBroadcast: true }, { clientStatuses: { some: { clientId } } }] },
-            // In-app notification feed only surfaces PUSH-channel broadcasts.
-            // Email/WhatsApp blasts are stored for the merchant's history but must
-            // NOT appear in the client's notifications page (the client already
-            // got them through the chosen channel — duplicating in-app is wrong).
-            // Legacy rows with channel=null are kept (they predate channel tagging).
-            { OR: [{ channel: 'PUSH' }, { channel: null }] },
-          ],
-        },
-        digests,
-      ],
-    };
+  private visibleNotificationsSql(clientId: string, includeDigests: boolean): Prisma.Sql {
+    const digests = includeDigests ? Prisma.sql`n.audience = ${DEAL_DIGEST_AUDIENCE} OR ` : Prisma.empty;
+    return Prisma.sql`
+      SELECT n.id, n.created_at
+      FROM loyalty_cards c
+      JOIN notifications n
+        ON n.merchant_id = c.merchant_id
+       AND n.is_broadcast = true
+       AND n.created_at >= c.created_at
+      WHERE c.client_id = ${clientId}
+        AND (n.channel = 'PUSH' OR n.channel IS NULL)
+      UNION
+      SELECT n.id, n.created_at
+      FROM client_notification_statuses s
+      JOIN notifications n ON n.id = s.notification_id
+      WHERE s.client_id = ${clientId}
+        AND (
+          ${digests}(
+            (n.channel = 'PUSH' OR n.channel IS NULL)
+            AND EXISTS (
+              SELECT 1 FROM loyalty_cards c2
+              WHERE c2.client_id = ${clientId}
+                AND c2.merchant_id = n.merchant_id
+                AND n.created_at >= c2.created_at
+            )
+          )
+        )`;
   }
 
   /**
    * Get notifications relevant to the client.
-   * Returns notifications from merchants where the client holds a loyalty card,
-   * excluding dismissed ones, with per-client read status.
+   * Returns notifications from merchants where the client holds a loyalty card
+   * (plus the client's deal digests), excluding dismissed ones, newest first,
+   * with per-client read status.
    */
   async getNotifications(clientId: string, page: number = 1, limit: number = 30) {
-    // Parallelize the two independent lookups: loyalty cards + dismissed notification IDs
-    const [cards, dismissedStatuses] = await Promise.all([
-      this.loyaltyCardRepo.findMany({
-        where: { clientId },
-        select: { merchantId: true, createdAt: true },
-      }),
-      this.clientNotifStatusRepo.findMany({
-        where: { clientId, isDismissed: true },
-        select: { notificationId: true },
-      }),
-    ]);
-
-    const dismissedIds = dismissedStatuses.map((s: any) => s.notificationId);
-
-    const where = {
-      ...this.notificationVisibility(clientId, cards),
-      ...(dismissedIds.length > 0 ? { id: { notIn: dismissedIds } } : {}),
-    };
-
     const skip = (page - 1) * limit;
-    const [notifications, total] = await Promise.all([
-      this.notificationRepo.findMany({
-        where,
-        select: {
-          id: true,
-          title: true,
-          body: true,
-          createdAt: true,
-          audience: true,
-          merchant: { select: { id: true, nom: true, categorie: true, logoUrl: true } },
-          clientStatuses: {
-            where: { clientId },
-            select: { isRead: true, readAt: true },
-            take: 1,
+
+    // One round-trip: total of the non-dismissed visible set + ids of the
+    // requested page. The LEFT JOIN keeps a row (with id NULL) when the page is
+    // past the end, so `total` is always returned.
+    const rows = await this.rawQuery.queryRaw<{ id: string | null; total: number }>(Prisma.sql`
+      WITH visible AS (${this.visibleNotificationsSql(clientId, true)}),
+      live AS (
+        SELECT v.id, v.created_at FROM visible v
+        WHERE NOT EXISTS (
+          SELECT 1 FROM client_notification_statuses d
+          WHERE d.client_id = ${clientId} AND d.notification_id = v.id AND d.is_dismissed = true
+        )
+      )
+      SELECT p.id, t.total
+      FROM (SELECT count(*)::int AS total FROM live) t
+      LEFT JOIN LATERAL (
+        SELECT l.id, l.created_at FROM live l
+        ORDER BY l.created_at DESC, l.id DESC
+        LIMIT ${limit}::int OFFSET ${skip}::int
+      ) p ON true
+      ORDER BY p.created_at DESC, p.id DESC`);
+
+    const total = Number(rows[0]?.total ?? 0);
+    const pageIds = rows.map((r) => r.id).filter((id): id is string => id !== null);
+
+    const found = pageIds.length
+      ? await this.notificationRepo.findMany({
+          where: { id: { in: pageIds } },
+          select: {
+            id: true,
+            title: true,
+            body: true,
+            createdAt: true,
+            audience: true,
+            merchant: { select: { id: true, nom: true, categorie: true, logoUrl: true } },
+            clientStatuses: {
+              where: { clientId },
+              select: { isRead: true, readAt: true },
+              take: 1,
+            },
           },
-        },
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: limit,
-      }),
-      this.notificationRepo.count({ where }),
-    ]);
+        })
+      : [];
+    // Keep the page order computed in SQL (newest first).
+    const byId = new Map(found.map((n: any) => [n.id, n]));
+    const notifications = pageIds.map((id) => byId.get(id)).filter(Boolean);
 
     return {
       notifications: notifications.map((n: any) => {
@@ -1001,39 +1038,69 @@ export class ClientService {
   }
 
   /**
-   * Count unread notifications for the client (not dismissed).
+   * Count unread notifications for the client: visible ones the client has
+   * neither read nor dismissed.
    */
   async getUnreadCount(clientId: string): Promise<{ unreadCount: number }> {
     const cacheKey = `client:unread:${clientId}`;
     const cached = await this.cache.get<{ unreadCount: number }>(cacheKey);
     if (cached) return cached;
 
-    const cards = await this.loyaltyCardRepo.findMany({
-      where: { clientId },
-      select: { merchantId: true, createdAt: true },
-    });
+    const [row] = await this.rawQuery.queryRaw<{ unread: number }>(Prisma.sql`
+      WITH visible AS (${this.visibleNotificationsSql(clientId, true)})
+      SELECT count(*)::int AS unread
+      FROM visible v
+      WHERE NOT EXISTS (
+        SELECT 1 FROM client_notification_statuses s
+        WHERE s.client_id = ${clientId} AND s.notification_id = v.id
+          AND (s.is_read = true OR s.is_dismissed = true)
+      )`);
 
-    const visibilityFilter = this.notificationVisibility(clientId, cards);
-
-    // Parallelize the two independent counts
-    const [totalNotifs, readOrDismissedCount] = await Promise.all([
-      // Total non-dismissed notifications (only since client joined)
-      this.notificationRepo.count({
-        where: visibilityFilter,
-      }),
-      // Notifications the client has explicitly read or dismissed
-      this.clientNotifStatusRepo.count({
-        where: {
-          clientId,
-          notification: visibilityFilter,
-          OR: [{ isRead: true }, { isDismissed: true }],
-        },
-      }),
-    ]);
-
-    const result = { unreadCount: Math.max(0, totalNotifs - readOrDismissedCount) };
+    const result = { unreadCount: Math.max(0, Number(row?.unread ?? 0)) };
     await this.cache.set(cacheKey, result, UNREAD_COUNT_CACHE_TTL);
     return result;
+  }
+
+  /**
+   * Set-based bulk status write over the client's merchant notifications
+   * (digests excluded, as before): updates the existing status rows and
+   * inserts the missing ones in ONE statement, without loading any id.
+   * Returns how many notifications were targeted (updated + inserted), i.e.
+   * the size of the targeted set, as the former id list length was.
+   * Both data-modifying CTEs see the same snapshot: the UPDATE never sees the
+   * rows the INSERT adds, and the INSERT skips (ON CONFLICT) every row that
+   * already existed, so no notification is counted twice.
+   */
+  private async bulkSetStatus(clientId: string, mode: 'read' | 'dismiss'): Promise<number> {
+    // Same UTC wall-clock value Prisma would write into these TIMESTAMP(3) columns.
+    const now = Prisma.sql`(${new Date().toISOString()}::timestamptz AT TIME ZONE 'UTC')`;
+    const setClause = mode === 'read'
+      ? Prisma.sql`is_read = true, read_at = ${now}`
+      : Prisma.sql`is_dismissed = true, dismissed_at = ${now}`;
+    // A dismissed-without-status row is also created as read (as dismissNotification does).
+    const insertValues = mode === 'read'
+      ? Prisma.sql`true, ${now}, false, NULL::timestamp`
+      : Prisma.sql`true, ${now}, true, ${now}`;
+
+    const [row] = await this.rawQuery.queryRaw<{ count: number }>(Prisma.sql`
+      WITH target AS (${this.visibleNotificationsSql(clientId, false)}),
+      upd AS (
+        UPDATE client_notification_statuses s
+        SET ${setClause}
+        FROM target t
+        WHERE s.client_id = ${clientId} AND s.notification_id = t.id
+        RETURNING s.notification_id
+      ),
+      ins AS (
+        INSERT INTO client_notification_statuses
+          (id, client_id, notification_id, is_read, read_at, is_dismissed, dismissed_at)
+        SELECT gen_random_uuid()::text, ${clientId}, t.id, ${insertValues}
+        FROM target t
+        ON CONFLICT (client_id, notification_id) DO NOTHING
+        RETURNING notification_id
+      )
+      SELECT ((SELECT count(*) FROM upd) + (SELECT count(*) FROM ins))::int AS count`);
+    return Number(row?.count ?? 0);
   }
 
   /**
@@ -1050,70 +1117,14 @@ export class ClientService {
   }
 
   /**
-   * Mark all visible notifications as read for the client.
-   * Uses bulk updateMany + createMany instead of N individual upserts.
+   * Mark all visible merchant notifications as read for the client
+   * (deal digests are not targeted). Set-based: no id list is loaded.
    */
   async markAllAsRead(clientId: string) {
-    const cards = await this.loyaltyCardRepo.findMany({
-      where: { clientId },
-      select: { merchantId: true, createdAt: true },
-    });
-    if (cards.length === 0) return { success: true, count: 0 };
-
-    // Only target notifications created after the client joined each merchant
-    const merchantFilters = cards.map((card: any) => ({
-      merchantId: card.merchantId,
-      createdAt: { gte: card.createdAt },
-    }));
-
-    const notifIds = (
-      await this.notificationRepo.findMany({
-        where: {
-          AND: [
-            { OR: merchantFilters },
-            {
-              OR: [
-                { isBroadcast: true },
-                { clientStatuses: { some: { clientId } } },
-              ],
-            },
-            {
-              OR: [
-                { channel: 'PUSH' },
-                { channel: null },
-              ],
-            },
-          ],
-        },
-        select: { id: true },
-      })
-    ).map((n: any) => n.id);
-
-    if (notifIds.length === 0) return { success: true, count: 0 };
-
-    const now = new Date();
-
-    // Bulk update existing statuses + bulk create missing ones in a single transaction
-    await this.txRunner.batch([
-      // 1. Update all existing status rows for this client
-      this.clientNotifStatusRepo.updateMany({
-        where: { clientId, notificationId: { in: notifIds } },
-        data: { isRead: true, readAt: now },
-      }),
-      // 2. Create rows for notifications the client hasn't interacted with yet
-      this.clientNotifStatusRepo.createMany({
-        data: notifIds.map((notificationId: string) => ({
-          clientId,
-          notificationId,
-          isRead: true,
-          readAt: now,
-        })),
-        skipDuplicates: true,
-      }),
-    ]);
-
+    const count = await this.bulkSetStatus(clientId, 'read');
+    if (count === 0) return { success: true, count: 0 };
     await this.cache.del(`client:unread:${clientId}`);
-    return { success: true, count: notifIds.length };
+    return { success: true, count };
   }
 
   /**
@@ -1141,69 +1152,13 @@ export class ClientService {
   }
 
   /**
-   * Dismiss (soft-delete) all notifications for the client.
-   * Uses bulk updateMany + createMany instead of N individual upserts.
+   * Dismiss (soft-delete) all visible merchant notifications for the client
+   * (deal digests are not targeted). Set-based: no id list is loaded.
    */
   async dismissAllNotifications(clientId: string) {
-    const cards = await this.loyaltyCardRepo.findMany({
-      where: { clientId },
-      select: { merchantId: true, createdAt: true },
-    });
-    if (cards.length === 0) return { success: true, count: 0 };
-
-    // Only target notifications created after the client joined each merchant
-    const merchantFilters = cards.map((card: any) => ({
-      merchantId: card.merchantId,
-      createdAt: { gte: card.createdAt },
-    }));
-
-    const notifIds = (
-      await this.notificationRepo.findMany({
-        where: {
-          AND: [
-            { OR: merchantFilters },
-            {
-              OR: [
-                { isBroadcast: true },
-                { clientStatuses: { some: { clientId } } },
-              ],
-            },
-            {
-              OR: [
-                { channel: 'PUSH' },
-                { channel: null },
-              ],
-            },
-          ],
-        },
-        select: { id: true },
-      })
-    ).map((n: any) => n.id);
-
-    if (notifIds.length === 0) return { success: true, count: 0 };
-
-    const now = new Date();
-
-    // Bulk update existing + bulk create missing in a single transaction
-    await this.txRunner.batch([
-      this.clientNotifStatusRepo.updateMany({
-        where: { clientId, notificationId: { in: notifIds } },
-        data: { isDismissed: true, dismissedAt: now },
-      }),
-      this.clientNotifStatusRepo.createMany({
-        data: notifIds.map((notificationId: string) => ({
-          clientId,
-          notificationId,
-          isDismissed: true,
-          dismissedAt: now,
-          isRead: true,
-          readAt: now,
-        })),
-        skipDuplicates: true,
-      }),
-    ]);
-
+    const count = await this.bulkSetStatus(clientId, 'dismiss');
+    if (count === 0) return { success: true, count: 0 };
     await this.cache.del(`client:unread:${clientId}`);
-    return { success: true, count: notifIds.length };
+    return { success: true, count };
   }
 }

@@ -2,7 +2,7 @@ import { createHmac, randomInt, timingSafeEqual } from 'crypto';
 
 /** Content of the QR shown on a coupon: jitplus://coupon/<token> */
 export const COUPON_QR_PREFIX = 'jitplus://coupon/';
-export const COUPON_CODE_LENGTH = 6;
+const COUPON_CODE_LENGTH = 6;
 
 /** "c1." + base64url(couponId) + "." + HMAC-SHA256(secret, "c1:" + couponId) */
 export function signCouponToken(couponId: string, secret: string): string {

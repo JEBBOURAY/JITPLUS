@@ -62,6 +62,8 @@ export interface Merchant {
   /** PER_VISIT: 1 stamp per visit. PER_AMOUNT: 1 stamp per `amountPerStamp` spent. */
   stampEarningMode?: 'PER_VISIT' | 'PER_AMOUNT';
   amountPerStamp?: number | null;
+  /** ISO 4217 code of the merchant's currency (MAD by default). */
+  currency?: string;
   /** Stamps reset after this many days without a visit; null = never expire. */
   stampValidityDays?: number | null;
   /** When the client's current stamps expire if they do not come back (ISO). */

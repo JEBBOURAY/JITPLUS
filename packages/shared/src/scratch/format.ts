@@ -1,6 +1,7 @@
 // ── Scratch cards & coupons — pure formatting helpers (no React Native) ──────
 import { ALL_WEEKDAYS_MASK, COUPON_CODE_LENGTH, WEEKDAY_BITS } from './constants';
 import type { CouponConditions, CouponRewardType } from './types';
+import type { MoneyFormatter } from '../currency';
 
 /** Translator compatible with i18n-js `t(key, params)` */
 export type ScratchTranslate = (key: string, params?: Record<string, unknown>) => string;
@@ -88,16 +89,20 @@ export function expectedRewardCounts(
   });
 }
 
-/** '-20 %', '-30 MAD', 'Café offert', '+5 tampons' */
+/**
+ * '-20 %', '-30 DH', 'Café offert', '+5 tampons'.
+ * `money` formats an amount in the merchant's currency (see moneyFormatter).
+ */
 export function formatRewardValue(
   reward: { type: CouponRewardType; value?: number | null; label: string },
   t: ScratchTranslate,
+  money: MoneyFormatter,
 ): string {
   switch (reward.type) {
     case 'PERCENT_DISCOUNT':
       return t('scratch.rewardValue.percent', { value: reward.value ?? 0 });
     case 'FIXED_DISCOUNT':
-      return t('scratch.rewardValue.fixed', { value: reward.value ?? 0 });
+      return t('scratch.rewardValue.fixed', { amount: money(reward.value ?? 0) });
     case 'BONUS_STAMPS':
       return t('scratch.rewardValue.bonusStamps', { count: reward.value ?? 0, value: reward.value ?? 0 });
     default:
@@ -112,8 +117,9 @@ export function formatRewardValue(
 export function rewardDisplay(
   reward: { type: CouponRewardType; value?: number | null; label: string },
   t: ScratchTranslate,
+  money: MoneyFormatter,
 ): { headline: string; detail: string | null } {
-  const headline = formatRewardValue(reward, t);
+  const headline = formatRewardValue(reward, t, money);
   const label = reward.label.trim();
   const detail = reward.type !== 'FREE_PRODUCT' && label && label !== headline ? label : null;
   return { headline, detail };
@@ -127,12 +133,13 @@ export function describeCouponConditions(
   coupon: { conditions?: CouponConditions | null; validFrom?: string | null; expiresAt?: string | null },
   t: ScratchTranslate,
   formatDate: (iso: string) => string,
+  money: MoneyFormatter,
   now: Date = new Date(),
 ): string[] {
   const c = coupon.conditions ?? {};
   const lines: string[] = [];
   if (c.minPurchaseAmount != null && c.minPurchaseAmount > 0) {
-    lines.push(t('scratch.conditions.minPurchase', { amount: c.minPurchaseAmount }));
+    lines.push(t('scratch.conditions.minPurchase', { amount: money(c.minPurchaseAmount) }));
   }
   if (c.allowedWeekdays != null) {
     const days = weekdaysFromMask(c.allowedWeekdays).map((d) => t(`scratch.weekdayShort.${d}`));

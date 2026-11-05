@@ -23,8 +23,9 @@ import helmet from 'helmet';
 import compression from 'compression';
 import { join } from 'path';
 import { AppModule } from './app.module';
+import { PostgresIoAdapter } from './events/postgres-io.adapter';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
-import { DEFAULT_PORT } from './common/constants';
+import { DEFAULT_PORT, getAdminDashboardOrigin } from './common/constants';
 import { flattenValidationErrors } from './common/utils/validation-i18n';
 
 async function bootstrap() {
@@ -99,8 +100,9 @@ async function bootstrap() {
 
   // Autoriser statiquement le dashboard Admin en PROD pour éviter l'erreur CORS
   if (isProd && Array.isArray(allowedOrigins)) {
-    if (!allowedOrigins.includes('https://admin-jitplus-97259.web.app')) {
-      allowedOrigins.push('https://admin-jitplus-97259.web.app');
+    const adminOrigin = getAdminDashboardOrigin();
+    if (!allowedOrigins.includes(adminOrigin)) {
+      allowedOrigins.push(adminOrigin);
     }
   }
 
@@ -147,6 +149,17 @@ async function bootstrap() {
   // Disable JSON pretty-print in production (saves ~15% bandwidth)
   if (isProd) {
     app.getHttpAdapter().getInstance().set('json spaces', 0);
+  }
+
+  // ── Socket.IO across instances ─────────────────────────────
+  // Cloud Run runs up to max-instances copies: relay emits through Postgres so
+  // a socket on one instance receives events produced on another. Opt out with
+  // SOCKET_IO_RELAY=false (e.g. a single local instance).
+  const relayEnabled = (process.env.SOCKET_IO_RELAY ?? (isProd ? 'true' : 'false')).toLowerCase() === 'true';
+  if (relayEnabled && process.env.DATABASE_URL) {
+    const ioAdapter = new PostgresIoAdapter(app);
+    await ioAdapter.connect(process.env.DATABASE_URL);
+    app.useWebSocketAdapter(ioAdapter);
   }
 
   // Enable graceful shutdown hooks (required for Prisma disconnect)

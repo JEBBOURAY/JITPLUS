@@ -2,11 +2,13 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, Easing, View, Pressable, TouchableOpacity, StyleSheet } from 'react-native';
 import { Text } from '@/components/AppText';
 import { useReducedMotion } from 'react-native-reanimated';
+import Svg, { Path } from 'react-native-svg';
 import { Check, Gift, Stamp } from 'lucide-react-native';
 import { palette, type ThemeColors } from '@/contexts/ThemeContext';
 import type { StampsEvent } from '@/stores/wsStore';
 import { hapticSuccess } from '@/utils/haptics';
 import { playSound } from '@/utils/sounds';
+import { khatamPath } from '@/utils/khatam';
 import { wp, hp, ms, fontSize, radius } from '@/utils/responsive';
 
 interface AppFonts { regular: string; medium: string; semibold: string; bold: string }
@@ -29,7 +31,10 @@ const SLOT_STAGGER_MS = 240;
 const MAX_GRID_SLOTS = 12;
 
 const HALO_SIZE = ms(112);
-const SLOT_SIZE = ms(26);
+const SEAL_SIZE = ms(96);
+const BADGE_SIZE = ms(80);
+const RIPPLE_SIZE = ms(92);
+const SLOT_SIZE = ms(28);
 const SLOT_GAP = wp(6);
 
 const PARTICLES = Array.from({ length: 10 }, (_, i) => {
@@ -38,9 +43,35 @@ const PARTICLES = Array.from({ length: 10 }, (_, i) => {
   return {
     dx: Math.cos(angle) * distance,
     dy: Math.sin(angle) * distance,
-    size: ms(i % 3 === 0 ? 9 : 6),
+    size: ms(i % 3 === 0 ? 12 : 8),
     colorIndex: i % 3,
   };
+});
+
+interface KhatamProps {
+  size: number;
+  fill?: string;
+  stroke?: string;
+  strokeWidth?: number;
+  dashed?: boolean;
+  rotation?: number;
+}
+
+/** Khatam (zellige 8-point star) drawn to fit a `size` square; the stroke stays inside it. */
+const Khatam = React.memo(function Khatam({ size, fill = 'none', stroke, strokeWidth = 0, dashed, rotation = 0 }: KhatamProps) {
+  const c = size / 2;
+  return (
+    <Svg width={size} height={size} style={StyleSheet.absoluteFill}>
+      <Path
+        d={khatamPath(c, c, c - strokeWidth / 2, rotation)}
+        fill={fill}
+        stroke={stroke}
+        strokeWidth={strokeWidth}
+        strokeLinejoin="round"
+        strokeDasharray={dashed ? [3, 2.5] : undefined}
+      />
+    </Svg>
+  );
 });
 
 interface StampGrid { goal: number; prevEarned: number; nowEarned: number }
@@ -52,7 +83,8 @@ function getStampGrid(event: StampsEvent, goal: number | null | undefined): Stam
 }
 
 /** Full-screen confirmation shown when the merchant scans the QR while it is displayed:
- *  a rubber stamp slams onto the card with a sound, then the new stamps fill their slots. */
+ *  a khatam seal (tabaa) slams onto the card with a sound, gold stars burst out, then the
+ *  new stamps fill their khatam slots. */
 export default React.memo(function QrSuccessOverlay({ event, goal, onDismiss, theme, fonts, t }: QrSuccessOverlayProps) {
   const reduceMotion = useReducedMotion();
   const [shown, setShown] = useState<{ event: StampsEvent; grid: StampGrid | null } | null>(null);
@@ -168,18 +200,23 @@ export default React.memo(function QrSuccessOverlay({ event, goal, onDismiss, th
           },
         ]}
       >
-        <View style={[styles.halo, { backgroundColor: `${tint}1F` }]}>
+        <View style={styles.halo}>
+          <Khatam size={HALO_SIZE} fill={`${tint}1F`} rotation={22.5} />
           <Animated.View
             pointerEvents="none"
             style={[
               styles.ripple,
               {
-                borderColor: tint,
                 opacity: impact.interpolate({ inputRange: [0, 0.05, 1], outputRange: [0, 0.6, 0] }),
-                transform: [{ scale: impact.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1.9] }) }],
+                transform: [
+                  { scale: impact.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1.9] }) },
+                  { rotate: impact.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '22.5deg'] }) },
+                ],
               },
             ]}
-          />
+          >
+            <Khatam size={RIPPLE_SIZE} stroke={tint} strokeWidth={3} />
+          </Animated.View>
           {PARTICLES.map((p, i) => (
             <Animated.View
               key={i}
@@ -187,30 +224,33 @@ export default React.memo(function QrSuccessOverlay({ event, goal, onDismiss, th
               style={[
                 styles.particle,
                 {
-                  width: p.size, height: p.size, borderRadius: p.size / 2,
+                  width: p.size, height: p.size,
                   left: (HALO_SIZE - p.size) / 2, top: (HALO_SIZE - p.size) / 2,
-                  backgroundColor: particleColors[p.colorIndex],
                   opacity: impact.interpolate({ inputRange: [0, 0.1, 0.7, 1], outputRange: [0, 1, 1, 0] }),
                   transform: [
                     { translateX: impact.interpolate({ inputRange: [0, 1], outputRange: [0, p.dx] }) },
                     { translateY: impact.interpolate({ inputRange: [0, 1], outputRange: [0, p.dy] }) },
                     { scale: impact.interpolate({ inputRange: [0, 1], outputRange: [1, 0.4] }) },
+                    { rotate: impact.interpolate({ inputRange: [0, 1], outputRange: ['0deg', `${i % 2 ? -90 : 90}deg`] }) },
                   ],
                 },
               ]}
-            />
+            >
+              <Khatam size={p.size} fill={particleColors[p.colorIndex]} />
+            </Animated.View>
           ))}
           <Animated.View
             style={[
-              styles.stampRing,
+              styles.seal,
               {
-                borderColor: tint,
                 opacity: slam.interpolate({ inputRange: [0, 0.25, 1], outputRange: [0, 1, 1] }),
                 transform: stampTransform,
               },
             ]}
           >
-            <View style={[styles.circle, { backgroundColor: tint }]}>
+            <Khatam size={SEAL_SIZE} stroke={tint} strokeWidth={2.5} rotation={22.5} />
+            <View style={styles.badge}>
+              <Khatam size={BADGE_SIZE} fill={tint} />
               {isRedeem
                 ? <Gift size={ms(36)} color="#fff" strokeWidth={2.2} />
                 : <Stamp size={ms(36)} color="#fff" strokeWidth={2.2} />}
@@ -233,19 +273,22 @@ export default React.memo(function QrSuccessOverlay({ event, goal, onDismiss, th
               const k = i - grid.prevEarned;
               return (
                 <View key={i} style={styles.slot}>
-                  <View style={[StyleSheet.absoluteFill, styles.slotEmpty, { borderColor: `${tint}66` }]} />
+                  <Khatam size={SLOT_SIZE} stroke={`${tint}66`} strokeWidth={1.5} dashed />
                   {(i < grid.prevEarned || isNew) && (
                     <Animated.View
                       style={[
                         StyleSheet.absoluteFill,
                         styles.slotFilled,
-                        { backgroundColor: tint },
                         isNew && {
                           opacity: slots.interpolate({ inputRange: [k, k + 0.35], outputRange: [0, 1], extrapolate: 'clamp' }),
-                          transform: [{ scale: slots.interpolate({ inputRange: [k, k + 0.6, k + 1], outputRange: [2.2, 0.9, 1], extrapolate: 'clamp' }) }],
+                          transform: [
+                            { scale: slots.interpolate({ inputRange: [k, k + 0.6, k + 1], outputRange: [2.2, 0.9, 1], extrapolate: 'clamp' }) },
+                            { rotate: slots.interpolate({ inputRange: [k, k + 1], outputRange: ['45deg', '0deg'], extrapolate: 'clamp' }) },
+                          ],
                         },
                       ]}
                     >
+                      <Khatam size={SLOT_SIZE} fill={tint} />
                       <Check size={ms(14)} color="#fff" strokeWidth={3} />
                     </Animated.View>
                   )}
@@ -275,17 +318,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: wp(22), paddingTop: hp(28), paddingBottom: hp(20),
     shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.2, shadowRadius: 28, elevation: 12,
   },
-  halo: { width: HALO_SIZE, height: HALO_SIZE, borderRadius: HALO_SIZE / 2, alignItems: 'center', justifyContent: 'center', marginBottom: hp(18) },
-  ripple: { position: 'absolute', width: ms(88), height: ms(88), borderRadius: ms(44), borderWidth: 3 },
+  halo: { width: HALO_SIZE, height: HALO_SIZE, alignItems: 'center', justifyContent: 'center', marginBottom: hp(18) },
+  ripple: { position: 'absolute', width: RIPPLE_SIZE, height: RIPPLE_SIZE },
   particle: { position: 'absolute' },
-  stampRing: { width: ms(92), height: ms(92), borderRadius: ms(46), borderWidth: 3, alignItems: 'center', justifyContent: 'center' },
-  circle: { width: ms(76), height: ms(76), borderRadius: ms(38), alignItems: 'center', justifyContent: 'center' },
+  seal: { width: SEAL_SIZE, height: SEAL_SIZE, alignItems: 'center', justifyContent: 'center' },
+  badge: { width: BADGE_SIZE, height: BADGE_SIZE, alignItems: 'center', justifyContent: 'center' },
   title: { fontSize: fontSize['2xl'], textAlign: 'center', letterSpacing: -0.4 },
   subtitle: { fontSize: fontSize.md, textAlign: 'center', marginTop: hp(6), lineHeight: ms(21) },
   grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: SLOT_GAP, marginTop: hp(16), maxWidth: '100%' },
   slot: { width: SLOT_SIZE, height: SLOT_SIZE },
-  slotEmpty: { borderRadius: SLOT_SIZE / 2, borderWidth: 1.5, borderStyle: 'dashed' },
-  slotFilled: { borderRadius: SLOT_SIZE / 2, alignItems: 'center', justifyContent: 'center' },
+  slotFilled: { alignItems: 'center', justifyContent: 'center' },
   balancePill: { marginTop: hp(14), paddingHorizontal: wp(14), paddingVertical: hp(6), borderRadius: 999 },
   balanceText: { fontSize: fontSize.sm },
   cta: { alignSelf: 'stretch', height: ms(50), borderRadius: radius.lg, alignItems: 'center', justifyContent: 'center', marginTop: hp(22) },

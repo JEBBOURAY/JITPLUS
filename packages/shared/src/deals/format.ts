@@ -53,11 +53,3 @@ export function dealTimeLeft(endsAt: string | Date, now: Date = new Date()): Dea
   };
 }
 
-/** Prices are shown without decimals when they are whole: 799 DH, 12,50 DH. */
-export function formatDealPrice(value: number, locale = 'fr'): string {
-  const whole = Number.isInteger(value);
-  return new Intl.NumberFormat(locale === 'ar' ? 'ar-MA' : locale === 'en' ? 'en-US' : 'fr-FR', {
-    minimumFractionDigits: whole ? 0 : 2,
-    maximumFractionDigits: 2,
-  }).format(value);
-}

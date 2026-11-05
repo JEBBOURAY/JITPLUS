@@ -1,15 +1,12 @@
 import { EMAIL_LOGO_JITPLUS, EMAIL_LOGO_JITPLUS_PRO } from '../common/constants';
 import { EmailSource, MerchantBlastInfo } from '../common/interfaces';
 import {
-  EmailLang, pickEmailLang, FOOTER_I18N, OTP_I18N, OtpPurpose,
+  EmailLang, FOOTER_I18N, OTP_I18N, OtpPurpose,
   WELCOME_CLIENT_I18N, WELCOME_MERCHANT_I18N, REFERRAL_I18N, ACCOUNT_DELETED_I18N,
   LOGIN_ALERT_I18N, PLAN_EMAIL_I18N, PAYOUT_I18N, MARKETING_BLAST_I18N,
   PRIVACY_URL_CLIENT, TERMS_URL_CLIENT, PRIVACY_URL_PRO, TERMS_URL_PRO,
   SUPPORT_EMAIL, COMPANY_LEGAL,
 } from './transactional-i18n';
-
-export { pickEmailLang };
-export type { EmailLang, OtpPurpose };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 

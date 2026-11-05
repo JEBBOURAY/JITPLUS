@@ -4,7 +4,7 @@ import { Cron } from '@nestjs/schedule';
 import type { MerchantCategory } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { IPushProvider, PUSH_PROVIDER } from '../common/interfaces';
-import { dayTag, isCronAllowed, weekTag } from '../common/tasks/cron-utils';
+import { dayTag, weekTag, cronAllowedOnce } from '../common/tasks/cron-utils';
 import { MOROCCO_TZ } from '../common/utils/morocco-time';
 import { errMsg } from '../common/utils';
 import {
@@ -25,6 +25,7 @@ import {
   type DigestDeal,
 } from './deal-digest';
 import type { DealAlertsDto } from './dto';
+import { MS_PER_DAY } from '../common/constants';
 
 export interface DealAlertPreferences {
   enabled: boolean;
@@ -103,14 +104,14 @@ export class DealsAlertsService {
 
   @Cron('0 12 * * 0-4,6', { name: 'deals-digest', timeZone: MOROCCO_TZ })
   async dailyDigest() {
-    if (!isCronAllowed(this.logger, 'DealsAlerts.dailyDigest')) return;
+    if (!(await cronAllowedOnce(this.logger, 'DealsAlerts.dailyDigest'))) return;
     await this.safeRun();
   }
 
   /** On Fridays 12:00 falls in the Jumu'ah quiet hours (11:30-14:00). */
   @Cron('0 14 * * 5', { name: 'deals-digest-friday', timeZone: MOROCCO_TZ })
   async fridayDigest() {
-    if (!isCronAllowed(this.logger, 'DealsAlerts.fridayDigest')) return;
+    if (!(await cronAllowedOnce(this.logger, 'DealsAlerts.fridayDigest'))) return;
     await this.safeRun();
   }
 
@@ -133,7 +134,7 @@ export class DealsAlertsService {
         ...liveDealWhere(now),
         alertSentAt: null,
         reportCount: 0,
-        startsAt: { lte: now, gte: new Date(now.getTime() - DEAL_ALERT_FRESH_DAYS * 86_400_000) },
+        startsAt: { lte: now, gte: new Date(now.getTime() - DEAL_ALERT_FRESH_DAYS * MS_PER_DAY) },
       },
       select: {
         id: true,

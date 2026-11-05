@@ -20,6 +20,10 @@ import {
   BellOff,
   ChevronRight,
   RefreshCw,
+  Sparkles,
+  BellRing,
+  BadgeInfo,
+  Settings2,
   type LucideIcon,
 } from 'lucide-react-native';
 import { JitGift, JitMessages, JitPremium } from '@/components/icons';
@@ -40,13 +44,18 @@ import {
 } from '@/hooks/useQueryHooks';
 import { timeAgo } from '@/utils/date';
 import { groupInboxByDate, type InboxSectionKey } from '@/utils/inboxGroups';
-import { routeForAction } from '@/utils/notificationRoutes';
+import { routeForAction, isSpecialAction } from '@/utils/notificationRoutes';
+import { useSpecialAction } from '@/hooks/useSpecialAction';
+import NotificationsDisabledBanner from '@/components/NotificationsDisabledBanner';
 import { wp, hp, ms, fontSize as FS, radius } from '@/utils/responsive';
 import { logWarn } from '@/utils/devLogger';
 
 const CATEGORY_STYLE: Record<InboxCategory, { icon: LucideIcon; color: string; labelKey: string }> = {
   SECURITY: { icon: ShieldAlert, color: '#DC2626', labelKey: 'inbox.catSecurity' },
   PLAN: { icon: JitPremium, color: '#D97706', labelKey: 'inbox.catPlan' },
+  STATUS: { icon: BadgeInfo, color: '#0F766E', labelKey: 'inbox.catStatus' },
+  NEWS: { icon: Sparkles, color: '#7C3AED', labelKey: 'inbox.catNews' },
+  REMINDER: { icon: BellRing, color: '#4F46E5', labelKey: 'inbox.catReminder' },
   ACTIVITY: { icon: TrendingUp, color: '#059669', labelKey: 'inbox.catActivity' },
   TIP: { icon: Lightbulb, color: '#0284C7', labelKey: 'inbox.catTip' },
   SETUP: { icon: ListChecks, color: '#4F46E5', labelKey: 'inbox.catSetup' },
@@ -194,6 +203,7 @@ const InboxCard = memo(function InboxCard({
 export default function AdminNotificationsScreen() {
   const theme = useTheme();
   const router = useRouter();
+  const runSpecialAction = useSpecialAction();
   const insets = useSafeAreaInsets();
   const { t } = useLanguage();
   const { row, textAlign, flip } = useDir();
@@ -242,6 +252,11 @@ export default function AdminNotificationsScreen() {
   }, [markRead]);
 
   const handlePress = useCallback((item: AdminNotification, isLong: boolean) => {
+    if (isSpecialAction(item.action)) {
+      markRead(item);
+      runSpecialAction(item.action);
+      return;
+    }
     const route = routeForAction(item.action);
     if (route && route !== SELF_ROUTE) {
       markRead(item);
@@ -251,7 +266,7 @@ export default function AdminNotificationsScreen() {
     } else {
       markRead(item);
     }
-  }, [markRead, router, toggleExpand]);
+  }, [markRead, router, toggleExpand, runSpecialAction]);
 
   const handleMarkAllRead = useCallback(() => {
     if (unreadCount === 0 || markAllRead.isPending) return;
@@ -333,7 +348,18 @@ export default function AdminNotificationsScreen() {
             <Text style={[styles.markAllText, { color: theme.primary }]}>{t('inbox.markAllRead')}</Text>
           </TouchableOpacity>
         )}
+        <TouchableOpacity
+          onPress={() => router.push('/notification-settings')}
+          hitSlop={HIT_SLOP_SMALL}
+          accessibilityRole="button"
+          accessibilityLabel={t('notifSettings.title')}
+          style={styles.settingsBtn}
+        >
+          <Settings2 size={ms(20)} color={theme.textMuted} strokeWidth={icon.stroke} />
+        </TouchableOpacity>
       </View>
+
+      <NotificationsDisabledBanner style={styles.disabledBanner} />
 
       {isLoading ? (
         <View style={styles.center}>
@@ -391,6 +417,8 @@ export default function AdminNotificationsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  settingsBtn: { marginStart: 10, padding: 4 },
+  disabledBanner: { marginHorizontal: 16, marginBottom: 8 },
   headerBar: {
     flexDirection: 'row',
     alignItems: 'center',

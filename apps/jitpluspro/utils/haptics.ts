@@ -25,3 +25,4 @@ export function safeSelection(): void {
 
 export const hapticLight = () => safeImpact(Haptics.ImpactFeedbackStyle.Light);
 export const hapticSuccess = () => safeNotification(Haptics.NotificationFeedbackType.Success);
+export const hapticError = () => safeNotification(Haptics.NotificationFeedbackType.Error);
