@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, BadRequestException, ConflictException, Logger, Inject } from '@nestjs/common';
+import { Injectable, UnauthorizedException, BadRequestException, ConflictException, ForbiddenException, Logger, Inject } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { OAuth2Client } from 'google-auth-library';
@@ -6,6 +6,7 @@ import { CLIENT_REPOSITORY, type IClientRepository } from '../common/repositorie
 import { CLIENT_AUTH_SELECT } from '../common/prisma-selects';
 import { AppleTokenError, AppleTokenVerifier, type AppleTokenFailure, type AppleTokenPayload } from '../common/apple/apple-token-verifier.service';
 import { ClientSessionService, type ClientAuthResponse } from './client-session.service';
+import { isProviderEmailVerified, releaseUnverifiedEmail } from './email-ownership.util';
 
 /** i18n keys (resolved by the client app) for rejected Apple tokens. */
 const CLIENT_APPLE_ERRORS: Record<AppleTokenFailure, string> = {
@@ -81,6 +82,7 @@ export class ClientOAuthService {
       }
 
       const { sub: googleId, email, given_name, family_name } = payload;
+      const googleEmailVerified = isProviderEmailVerified(payload.email_verified);
 
       if (!email) {
         throw new BadRequestException('error.auth.googleEmailMissing');
@@ -90,15 +92,7 @@ export class ClientOAuthService {
       let client = await this.clientRepo.findUnique({ where: { googleId }, select: CLIENT_AUTH_SELECT });
 
       if (!client) {
-        client = await this.clientRepo.findUnique({ where: { email: email.toLowerCase() }, select: CLIENT_AUTH_SELECT });
-        if (client) {
-          // Link Google account to existing client
-          client = await this.clientRepo.update({
-            where: { id: client.id },
-            data: { googleId },
-            select: CLIENT_AUTH_SELECT,
-          });
-        }
+        client = await this.linkByEmail(email.toLowerCase(), googleEmailVerified, 'googleId', googleId, 'error.auth.googleEmailExists');
       }
 
       if (!client) {
@@ -107,7 +101,7 @@ export class ClientOAuthService {
           client = await this.clientRepo.create({
             data: {
               email: email.toLowerCase(),
-              emailVerified: true,
+              emailVerified: googleEmailVerified,
               googleId,
               prenom: given_name || null,
               nom: family_name || null,
@@ -126,12 +120,47 @@ export class ClientOAuthService {
       const isNewUser = !client || !client.nom;
       return this.sessions.buildAuthResponse(client, isNewUser);
     } catch (error) {
-      if (error instanceof UnauthorizedException || error instanceof BadRequestException || error instanceof ConflictException) {
+      if (error instanceof UnauthorizedException || error instanceof BadRequestException || error instanceof ConflictException || error instanceof ForbiddenException) {
         throw error;
       }
       this.logger.error('Google login failed:', error);
       throw new UnauthorizedException('error.auth.googleFailed');
     }
+  }
+
+  /**
+   * Finds the account holding `email` and links the provider identity to it —
+   * only when BOTH sides proved ownership of the email (the account verified
+   * it, the provider asserts email_verified). Otherwise:
+   * - account claim unverified + provider verified → the claim is dropped
+   *   (pre-hijack protection) and null is returned so a new account is created;
+   * - provider unverified, or the account is already bound to another
+   *   identity of that provider → conflict, nothing is linked.
+   */
+  private async linkByEmail(
+    email: string,
+    providerEmailVerified: boolean,
+    field: 'googleId' | 'appleId',
+    providerId: string,
+    conflictKey: string,
+  ) {
+    const existing = await this.clientRepo.findUnique({ where: { email }, select: CLIENT_AUTH_SELECT });
+    if (!existing) return null;
+
+    if (!existing.emailVerified && providerEmailVerified) {
+      await releaseUnverifiedEmail(this.clientRepo, existing.id, email);
+      this.logger.warn(`Unverified email claim dropped from client ${existing.id} on ${field} sign-in`);
+      return null;
+    }
+    if (!existing.emailVerified || !providerEmailVerified || (existing[field] && existing[field] !== providerId)) {
+      throw new ConflictException(conflictKey);
+    }
+
+    return this.clientRepo.update({
+      where: { id: existing.id },
+      data: { [field]: providerId },
+      select: CLIENT_AUTH_SELECT,
+    });
   }
 
   // ── Apple Login ────────────────────────────────────────
@@ -166,16 +195,10 @@ export class ClientOAuthService {
       // Try to find client by appleId first, then by email
       let client = await this.clientRepo.findFirst({ where: { appleId }, select: CLIENT_AUTH_SELECT });
 
+      const appleEmailVerified = isProviderEmailVerified(payload.email_verified);
+
       if (!client && email) {
-        client = await this.clientRepo.findUnique({ where: { email: email.toLowerCase() }, select: CLIENT_AUTH_SELECT });
-        if (client) {
-          // Link Apple account to existing client
-          client = await this.clientRepo.update({
-            where: { id: client.id },
-            data: { appleId },
-            select: CLIENT_AUTH_SELECT,
-          }) as typeof client;
-        }
+        client = await this.linkByEmail(email.toLowerCase(), appleEmailVerified, 'appleId', appleId, 'error.auth.appleEmailExists');
       }
 
       if (!client) {
@@ -183,7 +206,7 @@ export class ClientOAuthService {
           client = await this.clientRepo.create({
             data: {
               email: email ? email.toLowerCase() : null,
-              emailVerified: !!email,
+              emailVerified: !!email && appleEmailVerified,
               appleId,
               prenom: givenName || null,
               nom: familyName || null,
@@ -202,7 +225,7 @@ export class ClientOAuthService {
       const isNewUser = !client || !client.nom;
       return this.sessions.buildAuthResponse(client, isNewUser);
     } catch (error) {
-      if (error instanceof UnauthorizedException || error instanceof BadRequestException || error instanceof ConflictException) {
+      if (error instanceof UnauthorizedException || error instanceof BadRequestException || error instanceof ConflictException || error instanceof ForbiddenException) {
         throw error;
       }
       this.logger.error('Apple login failed:', error);

@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ThrottlerGuard, ThrottlerRequest } from '@nestjs/throttler';
 
 /** Public auth controllers whose routes take the account identifier in the body. */
-const IDENTIFIER_THROTTLED_CONTROLLERS = new Set(['AuthController', 'ClientAuthController']);
+const IDENTIFIER_THROTTLED_CONTROLLERS = new Set(['AuthController', 'ClientAuthController', 'AdminController']);
 const IDENTIFIER_FIELDS = ['email', 'telephone', 'phoneNumber'] as const;
 const MAX_IDENTIFIER_LENGTH = 255;
 

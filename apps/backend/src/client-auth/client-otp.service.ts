@@ -15,6 +15,7 @@ import { ClientClaimService } from '../merchant/services/client-claim.service';
 import { maskEmail } from '../common/utils/pii-mask';
 import { ClientSessionService, type ClientAuthResponse } from './client-session.service';
 import { normalizePhone, isValidPhone } from './client-phone.util';
+import { releaseUnverifiedEmail } from './email-ownership.util';
 
 /**
  * Client OTP flows: email OTP sign-in / sign-up, and the change-contact OTP
@@ -151,6 +152,20 @@ export class ClientOtpService {
     }
 
     let resolvedClient = client;
+
+    // The account only *claims* this email (set via profile edit, never
+    // verified): proving the inbox must not log into it — that would hand the
+    // inbox owner's future data to whoever typed the email (pre-hijack).
+    // Login: behave as if no account exists. Register: drop the claim and
+    // create the owner's own account.
+    if (resolvedClient && !resolvedClient.emailVerified) {
+      if (!isRegister) {
+        throw new BadRequestException('Aucun compte n\'est associé à cet email. Veuillez vous inscrire.');
+      }
+      await releaseUnverifiedEmail(this.clientRepo, resolvedClient.id, normalizedEmail);
+      resolvedClient = null;
+    }
+
     const isNewUser = !resolvedClient || !resolvedClient.nom;
 
     if (!resolvedClient) {
@@ -178,13 +193,8 @@ export class ClientOtpService {
       throw new ConflictException('error.auth.emailExists');
     }
 
-    // Mark email as verified since OTP was validated
-    if (resolvedClient && !resolvedClient.emailVerified) {
-      await this.clientRepo.update({ where: { id: resolvedClient.id }, data: { emailVerified: true } });
-      resolvedClient.emailVerified = true;
-    }
-
-    return this.sessions.buildAuthResponse(resolvedClient, isNewUser);
+    // otpVerified: this session may reset the password once (forgot-password flow).
+    return this.sessions.buildAuthResponse(resolvedClient, isNewUser, { otpVerified: true });
   }
 
   // ── Change Contact OTP (profile update) ────────────────────────────

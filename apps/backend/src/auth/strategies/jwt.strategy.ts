@@ -4,8 +4,8 @@ import { Injectable, Inject, UnauthorizedException, Logger } from '@nestjs/commo
 import { ConfigService } from '@nestjs/config';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
-import { DEVICE_SESSION_REPOSITORY } from '../../common/repositories';
-import type { IDeviceSessionRepository } from '../../common/repositories';
+import { DEVICE_SESSION_REPOSITORY, CLIENT_SESSION_REPOSITORY } from '../../common/repositories';
+import type { IDeviceSessionRepository, IClientSessionRepository } from '../../common/repositories';
 import { JwtPayload, JwtTokenPayload } from '../../common/interfaces/jwt-payload.interface';
 import { sessionCacheKey } from '../../common/utils/session-cache';
 import { SESSION_CACHE_TTL, LAST_ACTIVE_THROTTLE_MS } from '../../common/constants';
@@ -19,6 +19,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
   constructor(
     @Inject(DEVICE_SESSION_REPOSITORY) private deviceSessionRepo: IDeviceSessionRepository,
+    @Inject(CLIENT_SESSION_REPOSITORY) private clientSessionRepo: IClientSessionRepository,
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
     config: ConfigService,
   ) {
@@ -78,6 +79,24 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
             data: { lastActiveAt: new Date() },
           }).catch((err: unknown) => this.logger.warn('lastActiveAt update failed', errMsg(err)));
         }
+      }
+    }
+
+    // Client access tokens are bound to their ClientSession (`sid`): logout,
+    // password reset, account deletion and admin deactivation delete the
+    // session, so the token must stop working then — not at its expiry.
+    // Tokens issued before multi-device sessions carry no sid (they expire).
+    if (payload.type === 'client' && payload.sid) {
+      const key = `client-session:${payload.sid}`;
+      if (!(await this.cacheManager.get<number>(key))) {
+        const session = await this.clientSessionRepo.findUnique({
+          where: { id: payload.sid },
+          select: { clientId: true },
+        });
+        if (!session || session.clientId !== payload.sub) {
+          throw new UnauthorizedException('Session expirée. Veuillez vous reconnecter.');
+        }
+        await this.cacheManager.set(key, Date.now() + JwtStrategy.CACHE_TTL, JwtStrategy.CACHE_TTL);
       }
     }
 

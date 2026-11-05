@@ -1,5 +1,5 @@
-import { UnauthorizedException } from '@nestjs/common';
-import { ClientSessionService } from './client-session.service';
+import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import { ClientSessionService, OTP_PASSWORD_RESET_WINDOW_MS } from './client-session.service';
 import { MAX_SESSIONS_PER_CLIENT } from '../common/constants';
 
 const CLIENT = {
@@ -20,7 +20,10 @@ const CLIENT = {
 };
 
 function setup() {
-  const clientRepo = { update: jest.fn().mockResolvedValue({}) };
+  const clientRepo = {
+    update: jest.fn().mockResolvedValue({}),
+    findUnique: jest.fn().mockResolvedValue({ deletedAt: null }),
+  };
   const clientSessionRepo = {
     create: jest.fn().mockResolvedValue({ id: 'session-new' }),
     findUnique: jest.fn(),
@@ -121,5 +124,64 @@ describe('ClientSessionService — multi-device sessions', () => {
     await service.logout(CLIENT.id);
 
     expect(clientSessionRepo.deleteMany).toHaveBeenCalledWith({ where: { clientId: CLIENT.id } });
+  });
+
+  // ── Security audit 2026-11-05 ──
+
+  it('refuses to open a session for a client deactivated by an admin', async () => {
+    const { service, clientRepo, clientSessionRepo } = setup();
+    clientRepo.findUnique.mockResolvedValue({ deletedAt: new Date() });
+
+    await expect(service.buildAuthResponse(CLIENT, false)).rejects.toThrow(new ForbiddenException('error.auth.accountDisabled'));
+    expect(clientSessionRepo.create).not.toHaveBeenCalled();
+  });
+
+  it('refuses to refresh a deactivated client and revokes all its sessions', async () => {
+    const { service, clientSessionRepo } = setup();
+    clientSessionRepo.findUnique.mockResolvedValue({
+      id: 'session-a',
+      expiresAt: new Date(Date.now() + 60_000),
+      client: { ...CLIENT, deletedAt: new Date() },
+    });
+
+    await expect(service.refreshAccessToken('old')).rejects.toThrow(new UnauthorizedException('error.auth.accountDisabled'));
+    expect(clientSessionRepo.deleteMany).toHaveBeenCalledWith({ where: { clientId: CLIENT.id } });
+    expect(clientSessionRepo.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('marks the session opened by an email OTP login (password reset proof)', async () => {
+    const { service, clientSessionRepo } = setup();
+
+    await service.buildAuthResponse(CLIENT, false, { otpVerified: true });
+
+    expect(clientSessionRepo.create.mock.calls[0][0].data.otpVerifiedAt).toEqual(expect.any(Date));
+  });
+
+  it('does not mark sessions opened by other login methods', async () => {
+    const { service, clientSessionRepo } = setup();
+
+    await service.buildAuthResponse(CLIENT, false);
+
+    expect(clientSessionRepo.create.mock.calls[0][0].data.otpVerifiedAt).toBeUndefined();
+  });
+
+  it('consumes the OTP proof once, scoped to the session, client and window', async () => {
+    const { service, clientSessionRepo } = setup();
+
+    await expect(service.consumeOtpProof(CLIENT.id, 'session-a')).resolves.toBe(true);
+    const { where, data } = clientSessionRepo.updateMany.mock.calls[0][0];
+    expect(where).toEqual({ id: 'session-a', clientId: CLIENT.id, otpVerifiedAt: { gte: expect.any(Date) } });
+    expect(Date.now() - where.otpVerifiedAt.gte.getTime()).toBeCloseTo(OTP_PASSWORD_RESET_WINDOW_MS, -3);
+    expect(data).toEqual({ otpVerifiedAt: null });
+
+    clientSessionRepo.updateMany.mockResolvedValue({ count: 0 });
+    await expect(service.consumeOtpProof(CLIENT.id, 'session-a')).resolves.toBe(false);
+  });
+
+  it('has no OTP proof without a session id', async () => {
+    const { service, clientSessionRepo } = setup();
+
+    await expect(service.consumeOtpProof(CLIENT.id, undefined)).resolves.toBe(false);
+    expect(clientSessionRepo.updateMany).not.toHaveBeenCalled();
   });
 });

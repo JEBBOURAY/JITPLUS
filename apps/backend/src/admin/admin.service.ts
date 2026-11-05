@@ -1,13 +1,16 @@
-import { Injectable, UnauthorizedException, ForbiddenException, Logger, Inject } from '@nestjs/common';
+import { Injectable, UnauthorizedException, Logger, Inject } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
 import { ADMIN_USER_REPOSITORY, type IAdminUserRepository } from '../common/repositories';
-import { checkLockout, handleFailedLogin, resetLoginAttempts, LockoutDbOps } from '../common/utils/login-lockout.helper';
-import { MS_PER_DAY } from '../common/constants';
+import { checkLockout, resetLoginAttempts, LockoutDbOps } from '../common/utils/login-lockout.helper';
+import { MS_PER_DAY, MAX_LOGIN_ATTEMPTS, LOGIN_LOCKOUT_MINUTES } from '../common/constants';
 import { maskEmail } from '../common/utils/pii-mask';
+
+/** Single response for every failed admin login (no account-state oracle). */
+const ADMIN_LOGIN_FAILED = 'Email ou mot de passe incorrect';
 
 /** TTL for admin session revocation cache entries (24 hours) */
 const ADMIN_REVOKE_TTL = MS_PER_DAY;
@@ -68,27 +71,38 @@ export class AdminAuthService {
       where: { email: email.toLowerCase().trim() },
     });
 
-    // Always run bcrypt.compare to prevent timing attacks (email enumeration)
+    // Lockout is checked BEFORE the password: while locked, the password is
+    // not evaluated and the lock is not extended, so the response cannot
+    // reveal a correct guess and attempts cannot keep the admin locked out.
+    // checkLockout also clears an expired lock on the in-memory record.
+    let locked = false;
+    if (admin) {
+      try {
+        checkLockout(admin);
+      } catch {
+        locked = true;
+      }
+    }
+
+    // Always run bcrypt.compare to keep timing uniform (email enumeration)
     const passwordValid = await bcrypt.compare(
       password,
-      admin?.password ?? AdminAuthService.DUMMY_HASH,
+      admin && !locked ? admin.password : AdminAuthService.DUMMY_HASH,
     );
 
-    if (!admin || !passwordValid) {
-      // If admin exists, track failed attempt for lockout
-      if (admin) {
-        await handleFailedLogin(admin, this.adminLockoutOps);
+    // One generic message for every failure (unknown email, wrong password,
+    // locked, deactivated): no oracle on the account state.
+    if (!admin || locked || !passwordValid || !admin.isActive) {
+      if (admin && !locked && !passwordValid) {
+        const newAttempts = (admin.failedLoginAttempts || 0) + 1;
+        const lockedUntil = newAttempts >= MAX_LOGIN_ATTEMPTS
+          ? new Date(Date.now() + LOGIN_LOCKOUT_MINUTES * 60_000)
+          : undefined;
+        await this.adminLockoutOps.incrementFailedAttempts(admin.id, newAttempts, lockedUntil);
+        if (lockedUntil) this.logger.warn(`Admin account ${maskEmail(admin.email)} locked after ${newAttempts} failed attempts`);
       }
-      throw new UnauthorizedException('Email ou mot de passe incorrect');
+      throw new UnauthorizedException(ADMIN_LOGIN_FAILED);
     }
-
-    // Check if account is active
-    if (!admin.isActive) {
-      throw new ForbiddenException('Ce compte administrateur est désactivé.');
-    }
-
-    // Check lockout (too many failed attempts)
-    checkLockout(admin);
 
     // Successful login — reset failed attempts
     await resetLoginAttempts(admin, this.adminLockoutOps);

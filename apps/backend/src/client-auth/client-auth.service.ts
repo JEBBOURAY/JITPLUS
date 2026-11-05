@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, BadRequestException, ConflictException, Logger, Inject } from '@nestjs/common';
+import { Injectable, UnauthorizedException, BadRequestException, ConflictException, ForbiddenException, Logger, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { CLIENT_REPOSITORY, type IClientRepository } from '../common/repositories';
 import { createHmac } from 'crypto';
@@ -75,8 +75,14 @@ export class ClientAuthService {
       ...(dateNaissance ? { dateNaissance: new Date(dateNaissance) } : {}),
     };
 
-    // If password provided, hash it and include in the atomic update
+    // If password provided, hash it and include in the atomic update.
+    // Never overwrite an existing one: that would bypass change-password's
+    // current-password check (and reset-password-otp's OTP proof).
     if (password) {
+      const current = await this.clientRepo.findUnique({ where: { id: clientId }, select: { password: true } });
+      if (current?.password) {
+        throw new BadRequestException('Un mot de passe existe déjà. Utilisez le changement de mot de passe.');
+      }
       data.password = await bcrypt.hash(password, BCRYPT_SALT_ROUNDS);
     }
 
@@ -228,7 +234,10 @@ export class ClientAuthService {
 
   /**
    * Reset password for a client who verified identity via OTP (forgot password flow).
-   * Unlike setPassword(), this allows overwriting an existing password.
+   * Unlike setPassword(), this allows overwriting an existing password, so the
+   * caller's session must have been opened by an email OTP login within the
+   * last OTP_PASSWORD_RESET_WINDOW_MS — a bare access token is not enough
+   * (stolen token / unlocked phone would otherwise allow a takeover).
    */
   async resetPasswordOtp(clientId: string, newPassword: string, currentSessionId?: string): Promise<ClientProfileResult> {
     const client = await this.clientRepo.findUnique({
@@ -241,6 +250,11 @@ export class ClientAuthService {
     if (client.password) {
       const isSame = await bcrypt.compare(newPassword, client.password);
       if (isSame) throw new BadRequestException('error.auth.samePassword');
+    }
+
+    // Single use, consumed only once the new password is known to be valid.
+    if (!(await this.sessions.consumeOtpProof(clientId, currentSessionId))) {
+      throw new ForbiddenException('error.auth.otpReverifyRequired');
     }
 
     const hashedPassword = await bcrypt.hash(newPassword, BCRYPT_SALT_ROUNDS);

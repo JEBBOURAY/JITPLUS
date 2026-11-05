@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, Inject } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ForbiddenException, Inject } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { randomBytes, createHash, randomUUID } from 'crypto';
 import {
@@ -50,6 +50,9 @@ export interface ClientAuthSubject {
   createdAt: Date;
 }
 
+/** How long after an email OTP login the session may reset the password. */
+export const OTP_PASSWORD_RESET_WINDOW_MS = 15 * 60_000;
+
 /**
  * Client multi-device sessions: one ClientSession (hashed refresh token) per
  * device, access tokens bound to it (`sid`), rotation on refresh, logout.
@@ -96,13 +99,14 @@ export class ClientSessionService {
    * Opens a session for a new device login. Expired sessions are purged and
    * the least recently used ones beyond MAX_SESSIONS_PER_CLIENT are evicted.
    */
-  private async createSession(clientId: string): Promise<{ sessionId: string; refresh_token: string }> {
+  private async createSession(clientId: string, otpVerified: boolean): Promise<{ sessionId: string; refresh_token: string }> {
     const refresh_token = this.generateRefreshToken();
     const session = await this.clientSessionRepo.create({
       data: {
         clientId,
         refreshTokenHash: this.hashRefreshToken(refresh_token),
         expiresAt: this.refreshTokenExpiry(),
+        ...(otpVerified ? { otpVerifiedAt: new Date() } : {}),
       },
       select: { id: true },
     });
@@ -128,8 +132,19 @@ export class ClientSessionService {
     });
   }
 
-  async buildAuthResponse(client: ClientAuthSubject, isNewUser: boolean): Promise<ClientAuthResponse> {
-    const { sessionId, refresh_token } = await this.createSession(client.id);
+  /**
+   * Every client login path ends here. Accounts deactivated or deleted by an
+   * admin (deletedAt set) are refused: no repository filters soft-deleted rows.
+   * `otpVerified`: the login proved inbox ownership via an email OTP, which
+   * authorises one password reset on this session (see consumeOtpProof).
+   */
+  async buildAuthResponse(
+    client: ClientAuthSubject,
+    isNewUser: boolean,
+    opts: { otpVerified?: boolean } = {},
+  ): Promise<ClientAuthResponse> {
+    await this.assertActive(client.id);
+    const { sessionId, refresh_token } = await this.createSession(client.id, opts.otpVerified === true);
     const access_token = this.signAccessToken(client, sessionId);
 
     return {
@@ -153,6 +168,31 @@ export class ClientSessionService {
         createdAt: client.createdAt,
       },
     };
+  }
+
+  /** Throws if the client was deactivated / deleted (deletedAt set) or no longer exists. */
+  async assertActive(clientId: string): Promise<void> {
+    const row = await this.clientRepo.findUnique({ where: { id: clientId }, select: { deletedAt: true } });
+    if (!row || row.deletedAt) {
+      throw new ForbiddenException('error.auth.accountDisabled');
+    }
+  }
+
+  /**
+   * Consumes the OTP proof of `sessionId` (single use). Returns false when the
+   * session was not opened by an email OTP login within the reset window.
+   */
+  async consumeOtpProof(clientId: string, sessionId: string | undefined): Promise<boolean> {
+    if (!sessionId) return false;
+    const { count } = await this.clientSessionRepo.updateMany({
+      where: {
+        id: sessionId,
+        clientId,
+        otpVerifiedAt: { gte: new Date(Date.now() - OTP_PASSWORD_RESET_WINDOW_MS) },
+      },
+      data: { otpVerifiedAt: null },
+    });
+    return count === 1;
   }
 
   /**
@@ -179,11 +219,16 @@ export class ClientSessionService {
 
     const session = await this.clientSessionRepo.findUnique({
       where: { refreshTokenHash: hash },
-      select: { id: true, expiresAt: true, client: { select: CLIENT_AUTH_SELECT } },
+      select: { id: true, expiresAt: true, client: { select: { ...CLIENT_AUTH_SELECT, deletedAt: true } } },
     });
 
     if (!session) {
       throw new UnauthorizedException('error.auth.refreshInvalid');
+    }
+
+    if (session.client.deletedAt) {
+      await this.clientSessionRepo.deleteMany({ where: { clientId: session.client.id } }).catch(() => {});
+      throw new UnauthorizedException('error.auth.accountDisabled');
     }
 
     if (session.expiresAt < new Date()) {

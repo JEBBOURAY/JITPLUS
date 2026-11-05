@@ -1,6 +1,9 @@
 import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { CLIENT_REPOSITORY, type IClientRepository } from '../common/repositories';
+import {
+  CLIENT_REPOSITORY, type IClientRepository,
+  CLIENT_SESSION_REPOSITORY, type IClientSessionRepository,
+} from '../common/repositories';
 import { MS_PER_DAY } from '../common/constants';
 import { maskEmail } from '../common/utils/pii-mask';
 import { AdminDetailsService } from './admin-details.service';
@@ -15,10 +18,15 @@ export class AdminClientService {
 
   constructor(
     @Inject(CLIENT_REPOSITORY) private readonly clientRepo: IClientRepository,
+    @Inject(CLIENT_SESSION_REPOSITORY) private readonly clientSessionRepo: IClientSessionRepository,
     private readonly details: AdminDetailsService,
   ) {}
 
-  /** findUnique that also returns soft-deleted rows, which the Prisma extension hides by default. */
+  /**
+   * Lookup that tolerates soft-deleted rows. No Prisma extension filters
+   * deletedAt: the client login paths and JwtStrategy enforce it instead
+   * (ClientSessionService.assertActive / refresh, session deletion below).
+   */
   private async findIncludingDeleted<S extends Prisma.ClientSelect>(id: string, select: S) {
     return (await this.clientRepo.findUnique({ where: { id }, select }))
       ?? this.clientRepo.findFirst({ where: { id, deletedAt: { not: null } }, select });
@@ -196,8 +204,11 @@ export class AdminClientService {
 
     await this.clientRepo.update({
       where: { id: clientId },
-      data: { deletedAt: new Date() },
+      data: { deletedAt: new Date(), pushToken: null },
     });
+    // Revoke every device: refresh tokens die now, access tokens at the next
+    // request (JwtStrategy checks the session). Logins refuse deletedAt.
+    await this.clientSessionRepo.deleteMany({ where: { clientId } });
 
     this.logger.log(`Client ${clientId} deactivated`);
     return { nom: client.nom, email: client.email };
@@ -244,6 +255,8 @@ export class AdminClientService {
         prenom: null,
       },
     });
+
+    await this.clientSessionRepo.deleteMany({ where: { clientId } });
 
     this.logger.warn(`Client ${clientId} (${maskEmail(client.email)}) soft-deleted`);
     return { nom: client.nom, email: client.email };

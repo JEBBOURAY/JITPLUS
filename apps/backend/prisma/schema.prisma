@@ -792,6 +792,9 @@ model ClientSession {
   expiresAt        DateTime @map("expires_at")
   lastUsedAt       DateTime @default(now()) @map("last_used_at")
   createdAt        DateTime @default(now()) @map("created_at")
+  /// Set when the session was opened by an email OTP login: proof of inbox
+  /// ownership that authorises ONE password reset shortly after (consumed).
+  otpVerifiedAt    DateTime? @map("otp_verified_at")
 
   client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 

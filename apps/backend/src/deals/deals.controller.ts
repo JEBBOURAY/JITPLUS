@@ -168,8 +168,8 @@ export class DealsGuestController {
 }
 
 function adminCtx(user: JwtPayload, req: Request): AdminAuditContext {
-  const forwarded = req.headers['x-forwarded-for'];
-  const ip = forwarded ? (Array.isArray(forwarded) ? forwarded[0] : forwarded.split(',')[0]).trim() : req.ip;
+  // req.ip honours `trust proxy`; the raw left-most X-Forwarded-For is spoofable.
+  const ip = req.ip;
   return {
     actorType: 'ADMIN',
     adminId: user.sub,

@@ -148,6 +148,16 @@ export const ERROR_MESSAGES: Record<string, Record<AppLang, string>> = {
     en: 'The new password must be different from the current one.',
     ar: 'يجب أن تكون كلمة المرور الجديدة مختلفة عن الحالية.',
   },
+  'error.auth.accountDisabled': {
+    fr: 'Ce compte a été désactivé. Contactez le support JitPlus.',
+    en: 'This account has been deactivated. Please contact JitPlus support.',
+    ar: 'تم تعطيل هذا الحساب. يرجى التواصل مع دعم JitPlus.',
+  },
+  'error.auth.otpReverifyRequired': {
+    fr: 'Pour des raisons de sécurité, veuillez redemander un code de vérification avant de changer votre mot de passe.',
+    en: 'For security reasons, please request a new verification code before changing your password.',
+    ar: 'لأسباب أمنية، يرجى طلب رمز تحقق جديد قبل تغيير كلمة المرور.',
+  },
   'error.auth.refreshInvalid': {
     fr: 'Session invalide. Veuillez vous reconnecter.',
     en: 'Invalid session. Please sign in again.',
