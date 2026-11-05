@@ -14,7 +14,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useDir } from '@/hooks/useDir';
 import { font, icon } from '@/constants/design';
-import { getServerBaseUrl } from '@/services/api';
+import { getServerBaseUrl, geocodeFetch } from '@/services/api';
 import { logWarn } from '@/utils/devLogger';
 
 const DEBOUNCE_MS = 350;
@@ -98,7 +98,7 @@ export default function AddressAutocomplete({
       }
       params.set('sessionToken', sessionTokenRef.current ??= newSessionToken());
       const url = `${getServerBaseUrl()}/geocode/autocomplete?${params}`;
-      const res = await fetch(url, { signal: controller.signal });
+      const res = await geocodeFetch(url, { signal: controller.signal });
       const json = await res.json();
 
       if (!mountedRef.current || controller.signal.aborted) return;
@@ -112,7 +112,7 @@ export default function AddressAutocomplete({
         // Fallback: try forward geocode (same as Google Maps search)
         const query = ville ? `${input}, ${ville}` : input;
         const geoUrl = `${getServerBaseUrl()}/geocode/forward?address=${encodeURIComponent(query)}`;
-        const geoRes = await fetch(geoUrl, { signal: controller.signal });
+        const geoRes = await geocodeFetch(geoUrl, { signal: controller.signal });
         const geoJson = await geoRes.json();
 
         if (!mountedRef.current || controller.signal.aborted) return;
@@ -211,7 +211,7 @@ export default function AddressAutocomplete({
     setLoading(true);
     try {
       const url = `${getServerBaseUrl()}/geocode/place-details?placeId=${encodeURIComponent(prediction.place_id)}&sessionToken=${encodeURIComponent(sessionTokenRef.current ??= newSessionToken())}`;
-      const res = await fetch(url);
+      const res = await geocodeFetch(url);
       const json = await res.json();
 
       sessionTokenRef.current = newSessionToken();

@@ -7,12 +7,15 @@ import { resetPushTokenDedup } from '@/services/api/auth';
 import { QUERY_CACHE_KEY } from '@/utils/queryPersister';
 import { DEAL_ALERT_CARD_DISMISSED_KEY } from '@/utils/dealAlerts';
 import { GUEST_MODE_KEY } from '@/stores/authStore';
+import { PENDING_STAMP_CODE_KEY } from '@/services/pendingClaim';
 
 const ASYNC_STORAGE_KEYS = [
   QUERY_CACHE_KEY, 'showWelcome', 'showGuidBadge', 'profile_draft', GUEST_MODE_KEY, DEAL_ALERT_CARD_DISMISSED_KEY,
 ];
 // profile_draft: legacy location, drafts lived in SecureStore before the 2048-byte limit fix.
-const SECURE_STORE_KEYS = ['qr_permanent_token', 'profile_draft', 'pendingClaimToken'];
+// PENDING_STAMP_CODE_KEY: a parcel code scanned before login must not be
+// credited to the NEXT account signing in on this device.
+const SECURE_STORE_KEYS = ['qr_permanent_token', 'profile_draft', 'pendingClaimToken', PENDING_STAMP_CODE_KEY];
 
 let inFlight: Promise<void> | null = null;
 

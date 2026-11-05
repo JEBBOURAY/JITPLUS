@@ -91,6 +91,13 @@ export class MerchantOAuthService {
               'Un compte existe avec cet email. Connectez-vous avec votre mot de passe, puis liez votre compte Google depuis les paramètres.',
             );
           }
+          // The lookup by googleId missed, so the account is bound to ANOTHER
+          // Google identity that shows the same email (e.g. unverified address,
+          // Workspace vs consumer account): never log it in (security audit
+          // 2026-11-05 — Apple already enforced this).
+          if (merchant.googleId !== googleId) {
+            throw new UnauthorizedException('Ce compte est lié à un autre compte Google.');
+          }
         }
       }
 
@@ -169,6 +176,11 @@ export class MerchantOAuthService {
 
       if (!googleEmail) {
         throw new BadRequestException("Impossible de récupérer l'email du compte Google");
+      }
+      // The merchant account is created with this email as its identity:
+      // Google must vouch for it (security audit 2026-11-05).
+      if (payload.email_verified !== true) {
+        throw new BadRequestException("L'email de ce compte Google n'est pas vérifié");
       }
     } catch (error) {
       if (error instanceof UnauthorizedException || error instanceof BadRequestException) {

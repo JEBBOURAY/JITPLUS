@@ -45,6 +45,18 @@ const getCachedToken = async (): Promise<string | null> => {
 /** Current access token — for native uploads (expo-file-system) that bypass axios interceptors. */
 export const getAccessToken = getCachedToken;
 
+/**
+ * fetch() to the /geocode proxy with the merchant's Bearer token: the backend
+ * can then refuse anonymous calls (each one is billed by Google).
+ */
+export const geocodeFetch = async (url: string, init: RequestInit = {}): Promise<Response> => {
+  const token = await getCachedToken();
+  return fetch(url, {
+    ...init,
+    headers: { ...(init.headers as Record<string, string> | undefined), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+  });
+};
+
 const setCachedToken = async (token: string): Promise<void> => {
   cachedToken = token;
   cachedTokenLoaded = true;

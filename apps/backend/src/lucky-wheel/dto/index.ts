@@ -11,6 +11,7 @@ import {
   MaxLength,
   IsEnum,
   ArrayMinSize,
+  ArrayMaxSize,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -32,11 +33,13 @@ class CreatePrizeDto {
   @ApiProperty({ example: 3, description: 'Poids relatif pour le tirage pondéré' })
   @IsInt()
   @Min(1)
+  @Max(1_000_000) // Int column: larger values overflowed into a 500
   weight: number;
 
   @ApiProperty({ example: 50, description: 'Stock total pour ce lot' })
   @IsInt()
   @Min(1)
+  @Max(1_000_000)
   totalStock: number;
 
   @ApiPropertyOptional({ example: 72, description: 'Durée en heures pour réclamer le lot' })
@@ -66,11 +69,13 @@ class UpdatePrizeDto {
   @ApiProperty({ example: 3 })
   @IsInt()
   @Min(1)
+  @Max(1_000_000) // Int column: larger values overflowed into a 500
   weight: number;
 
   @ApiProperty({ example: 50 })
   @IsInt()
   @Min(1)
+  @Max(1_000_000)
   totalStock: number;
 
   @ApiPropertyOptional({ example: 72 })
@@ -129,6 +134,7 @@ export class CreateCampaignDto {
   @ApiProperty({ type: [CreatePrizeDto] })
   @IsArray()
   @ArrayMinSize(1)
+  @ArrayMaxSize(20) // a wheel shows a handful of slices; bounds the nested writes
   @ValidateNested({ each: true })
   @Type(() => CreatePrizeDto)
   prizes: CreatePrizeDto[];
@@ -180,6 +186,7 @@ export class UpdateCampaignDto {
   @IsOptional()
   @IsArray()
   @ArrayMinSize(1)
+  @ArrayMaxSize(20) // a wheel shows a handful of slices; bounds the nested writes
   @ValidateNested({ each: true })
   @Type(() => UpdatePrizeDto)
   prizes?: UpdatePrizeDto[];

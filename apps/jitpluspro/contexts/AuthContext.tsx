@@ -237,6 +237,9 @@ interface RegisterResponse extends Partial<Pick<AuthResponse, 'access_token' | '
   verificationSent: boolean;
 }
 
+/** Max wait for the server-side logout before wiping the local session. */
+const LOGOUT_SERVER_TIMEOUT_MS = 4000;
+
 const AuthContext = createContext<AuthContextData | null>(null);
 const AuthActionsContext = createContext<AuthActions | null>(null);
 
@@ -247,10 +250,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const signOut = useCallback(async (options?: SignOutOptions) => {
     try {
       if (!options?.sessionRevoked) {
-        // Clear the push token so this device stops receiving notifications.
-        api.patch('/merchant/push-token', { pushToken: '' }).catch(() => {});
-        // Fire-and-forget — don't block local cleanup on server response
-        api.post('/auth/logout').catch(() => {});
+        // Both calls need the session token, so they must complete BEFORE the
+        // token cache is reset below: fired-and-forgotten, the interceptor ran
+        // after the reset and sent them without a Bearer — the server session
+        // and the push token were never revoked (security audit 2026-11-05).
+        // Bounded so a dead network cannot keep the user signed in.
+        await Promise.race([
+          Promise.allSettled([
+            api.patch('/merchant/push-token', { pushToken: '' }),
+            api.post('/auth/logout'),
+          ]),
+          new Promise<void>((resolve) => setTimeout(resolve, LOGOUT_SERVER_TIMEOUT_MS)),
+        ]);
       }
       resetMerchantPushTokenCache();
       resetApiTokenCache();

@@ -1,3 +1,4 @@
+import { buildClientSearchFilter } from '../../common/utils';
 import { NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { MerchantClientService } from './merchant-client.service';
@@ -109,7 +110,16 @@ describe('MerchantClientService.getClients', () => {
 
     const args = mockLoyaltyCardRepo.findMany.mock.calls[0][0];
     expect(args.where).toMatchObject({ merchantId: MERCHANT_ID, deactivatedAt: null, stamps: { gte: 8 } });
-    expect(args.where.client.OR).toHaveLength(4);
+    expect(args.where.client.OR).toEqual(buildClientSearchFilter('sara'));
+    // Security audit 2026-11-05: partial email / phone match only for clients who share them
+    expect(args.where.client.OR).toContainEqual({
+      shareInfoMerchants: true,
+      OR: [
+        { email: { contains: 'sara', mode: 'insensitive' } },
+        { telephone: { contains: 'sara', mode: 'insensitive' } },
+      ],
+    });
+    expect(args.where.client.OR).not.toContainEqual({ email: { contains: 'sara', mode: 'insensitive' } });
     expect(args.orderBy).toEqual([{ stamps: 'desc' }, { id: 'asc' }]);
     expect(args.skip).toBe(20);
     expect(mockClientRepo.findMany).not.toHaveBeenCalled();
@@ -213,7 +223,8 @@ describe('MerchantClientService scan lookup and status', () => {
       expect(clientRepo.findUnique).toHaveBeenCalledWith(
         expect.objectContaining({ where: { telephone: '+212612345678' } }),
       );
-      expect(scanTickets.issue).toHaveBeenCalledWith('c9', MERCHANT_ID);
+      // 'phone' kind: may enroll a new member, never revive a left card.
+      expect(scanTickets.issue).toHaveBeenCalledWith('c9', MERCHANT_ID, expect.any(Number), 'phone');
       expect(res).toEqual([
         expect.objectContaining({ id: 'c9', prenom: 'S.', nom: 'A.', email: null, telephone: null, scanTicket: 'ticket-1' }),
       ]);

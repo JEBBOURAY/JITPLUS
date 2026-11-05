@@ -18,6 +18,7 @@ import {
 import { MailService } from '../mail/mail.service';
 import { ClientClaimService } from '../merchant/services/client-claim.service';
 import { DealsClientService } from '../deals/deals-client.service';
+import { MerchantPlanService } from '../merchant/services/merchant-plan.service';
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -79,6 +80,7 @@ describe('ClientService — block / unblock / filter', () => {
         { provide: CLIENT_MERCHANT_BLOCK_REPOSITORY, useValue: mockPrisma.clientMerchantBlock },
         { provide: ClientClaimService, useValue: {} },
         { provide: DealsClientService, useValue: mockDeals },
+        { provide: MerchantPlanService, useValue: { resolveEffectivePlan: jest.fn().mockResolvedValue({ plan: 'PREMIUM' }), assertCanAddClient: jest.fn() } },
       ],
     }).compile();
 

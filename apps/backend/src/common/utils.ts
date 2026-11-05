@@ -19,14 +19,26 @@ export function stripUndefined<T extends object>(obj: T): Partial<T> {
 
 /**
  * Build a Prisma OR filter for client text search (nom, email, telephone).
- * Replaces duplicated search WHERE blocks.
+ *
+ * Email / phone are hidden from the merchant when the client does not share
+ * its info: a partial ("contains") match on them would let the merchant
+ * rebuild them one character at a time through the result count (security
+ * audit 2026-11-05). For those clients only an exact email / phone matches —
+ * i.e. the merchant already knows it, typically the client told it at the till.
  */
 export function buildClientSearchFilter(search: string) {
   return [
     { prenom: { contains: search, mode: 'insensitive' as const } },
     { nom: { contains: search, mode: 'insensitive' as const } },
-    { email: { contains: search, mode: 'insensitive' as const } },
-    { telephone: { contains: search, mode: 'insensitive' as const } },
+    {
+      shareInfoMerchants: true,
+      OR: [
+        { email: { contains: search, mode: 'insensitive' as const } },
+        { telephone: { contains: search, mode: 'insensitive' as const } },
+      ],
+    },
+    { email: { equals: search.trim(), mode: 'insensitive' as const } },
+    { telephone: search.trim() },
   ];
 }
 

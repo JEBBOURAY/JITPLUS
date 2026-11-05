@@ -52,7 +52,7 @@ function setup() {
       update: jest.fn(),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
-    dealReport: { create: jest.fn() },
+    dealReport: { create: jest.fn(), count: jest.fn().mockResolvedValue(0) },
     clientMerchantBlock: { findMany: jest.fn().mockResolvedValue([]), findUnique: jest.fn().mockResolvedValue(null) },
     $queryRaw: jest.fn().mockResolvedValue([]),
   };
@@ -213,15 +213,33 @@ describe('DealsClientService.detail', () => {
 });
 
 describe('DealsClientService.report', () => {
-  it('hides the deal after enough distinct reports', async () => {
+  it('hides the deal after enough distinct reports from established accounts', async () => {
     const { prisma, service } = setup();
     prisma.deal.findFirst.mockResolvedValue({ id: 'd1' });
     prisma.deal.update.mockResolvedValue({ reportCount: 5 });
+    prisma.dealReport.count.mockResolvedValue(5);
     await service.report(CLIENT, 'd1', { reason: 'MISLEADING' });
+    const where = prisma.dealReport.count.mock.calls[0][0].where;
+    expect(where.dealId).toBe('d1');
+    expect(where.client).toMatchObject({
+      deletedAt: null,
+      createdAt: { lte: expect.any(Date) },
+      OR: [{ emailVerified: true }, { telephoneVerified: true }],
+    });
     expect(prisma.deal.updateMany).toHaveBeenCalledWith({
       where: { id: 'd1', status: 'ACTIVE' },
       data: { status: 'REMOVED', endedReason: 'AUTO_REPORTS' },
     });
+  });
+
+  // Security audit 2026-11-05: throwaway accounts cannot take a deal down.
+  it('keeps the deal up when the reports come from fresh / unverified accounts', async () => {
+    const { prisma, service } = setup();
+    prisma.deal.findFirst.mockResolvedValue({ id: 'd1' });
+    prisma.deal.update.mockResolvedValue({ reportCount: 12 });
+    prisma.dealReport.count.mockResolvedValue(2);
+    await service.report(CLIENT, 'd1', { reason: 'MISLEADING' });
+    expect(prisma.deal.updateMany).not.toHaveBeenCalled();
   });
 
   it('is idempotent per client', async () => {

@@ -7,6 +7,9 @@
  * ghost card was scratched. Ghosts cannot scratch, so in practice the ghost
  * card is the one dropped; it had not been drawn yet, so stocks are untouched.
  *
+ * `merchantId`: only move the data of that merchant (a claim link only
+ * transfers what its issuing merchant gave — security audit 2026-11-05).
+ *
  * Returns the number of pending (still scratchable) cards now on the real account.
  */
 export async function reassignScratchDataInTx(
@@ -14,9 +17,11 @@ export async function reassignScratchDataInTx(
   anonymousId: string,
   realClientId: string,
   now: Date = new Date(),
+  merchantId?: string,
 ): Promise<number> {
+  const scope = merchantId ? { merchantId } : {};
   const ghostCards: { id: string; campaignId: string; status: string }[] = await tx.scratchCard.findMany({
-    where: { clientId: anonymousId },
+    where: { clientId: anonymousId, ...scope },
     select: { id: true, campaignId: true, status: true },
   });
 
@@ -47,7 +52,7 @@ export async function reassignScratchDataInTx(
     }
   }
 
-  await tx.coupon.updateMany({ where: { clientId: anonymousId }, data: { clientId: realClientId } });
+  await tx.coupon.updateMany({ where: { clientId: anonymousId, ...scope }, data: { clientId: realClientId } });
 
   return tx.scratchCard.count({
     where: {

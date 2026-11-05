@@ -103,7 +103,8 @@ export class MerchantReferralService {
 
   /**
    * Credit the referrer when a new merchant registers with their code.
-   * - Admin-permanent PREMIUM: record the month only (plan is permanent, nothing to extend).
+   * - Admin-permanent PREMIUM: bank the month in referralMonthsEarned (pending
+   *   months, converted by applyEarnedReferralMonths if the plan becomes FREE).
    * - Time-limited PREMIUM: extend planExpiresAt by 30 days automatically.
    * - FREE merchant: automatically activate PREMIUM for 30 days.
    */
@@ -144,9 +145,12 @@ export class MerchantReferralService {
       newExpiry.setDate(newExpiry.getDate() + REFERRAL_BONUS_DAYS);
       await this.merchantRepo.update({
         where: { id: referrerId },
+        // The month is applied right now: it must NOT also be banked in
+        // referralMonthsEarned (the "pending months" counter that
+        // applyEarnedReferralMonths converts once the plan is FREE again),
+        // or each referral would be worth 60 days (security audit 2026-11-05).
         data: {
           planExpiresAt: newExpiry,
-          referralMonthsEarned: { increment: 1 },
         },
       });
       await this.cache.del(planCacheKey(referrerId));
@@ -166,7 +170,7 @@ export class MerchantReferralService {
         plan: 'PREMIUM',
         planActivatedByAdmin: false,
         planExpiresAt: newExpiry,
-        referralMonthsEarned: { increment: 1 },
+        // Applied immediately — not banked (see the trial branch above).
       },
     });
     await this.cache.del(planCacheKey(referrerId));

@@ -8,12 +8,21 @@ function makeTx(campaigns: any[], qualifyingCount = 1) {
   };
 }
 
-const base = { clientId: 'c1', merchantId: 'm1', transactionId: 't1' };
+const base = { clientId: 'c1', merchantId: 'm1', transactionId: 't1', plan: 'PREMIUM' };
 const startsAt = new Date('2026-01-01T00:00:00Z');
 const free = { id: 'free', ticketCostStamps: 0, ticketEveryNVisits: null, minSpendAmount: 0, startsAt };
 const paid = { id: 'paid', ticketCostStamps: 5, ticketEveryNVisits: null, minSpendAmount: 0, startsAt };
 
 describe('awardLuckyWheelTicketsInTx', () => {
+  // Security audit 2026-11-05: premium feature, must stop when the plan ends.
+  it('grants nothing once the merchant is back on the FREE plan', async () => {
+    const tx = makeTx([free]);
+    await expect(
+      awardLuckyWheelTicketsInTx(tx, { ...base, plan: 'FREE', type: 'EARN_STAMPS', amount: 50, stamps: 1 }),
+    ).resolves.toBe(0);
+    expect(tx.luckyWheelTicket.createMany).not.toHaveBeenCalled();
+  });
+
   it('ignores transaction types other than EARN_STAMPS / REDEEM_REWARD / PURCHASE', async () => {
     const tx = makeTx([free]);
     await expect(

@@ -15,7 +15,7 @@ import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { CreateTransactionDto } from '../dto/create-transaction.dto';
 import { AdjustStampsDto } from '../dto/adjust-stamps.dto';
 import { DashboardQueryDto } from '../dto/dashboard-query.dto';
-import { MerchantTransactionService, MerchantDashboardService, ScanTicketService, SCAN_TICKET_HEADER } from '../services';
+import { MerchantTransactionService, MerchantDashboardService, ScanTicketService, SCAN_TICKET_HEADER, type ScanTicketKind } from '../services';
 
 @ApiTags('Merchant – Transactions')
 @ApiBearerAuth()
@@ -56,8 +56,13 @@ export class MerchantTransactionController {
       user.teamMemberId ?? undefined,
       user.teamMemberName ?? undefined,
       normalizedKey,
-      { allowEnroll: this.scanTickets.verify(scanTicket, clientId, user.userId) },
+      this.enrollOptions(this.scanTickets.verifyKind(scanTicket, clientId, user.userId)),
     );
+  }
+
+  /** A QR ticket proves consent (enroll + revive a left card); a phone ticket only enrolls. */
+  private enrollOptions(kind: ScanTicketKind | null) {
+    return { allowEnroll: kind !== null, allowReactivate: kind === 'qr' };
   }
 
   @Get('transactions')

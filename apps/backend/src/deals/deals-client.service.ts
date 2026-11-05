@@ -7,6 +7,7 @@ import { errMsg } from '../common/utils';
 import type { DealCategoryCountsQueryDto, DealEventType, DealFeedQueryDto, DealPositionQueryDto, ReportDealDto } from './dto';
 import {
   DEAL_AUTO_HIDE_REPORTS,
+  DEAL_REPORTER_MIN_ACCOUNT_AGE_DAYS,
   DEAL_BADGES_CACHE_TTL,
   DEAL_CITIES_CACHE_TTL,
   DEAL_ENDING_SOON_HOURS,
@@ -18,6 +19,7 @@ import {
   DEAL_TEASER_CACHE_TTL,
   DEAL_VIEW_DEDUP_MS,
 } from './deal-limits';
+import { MS_PER_DAY } from '../common/constants';
 import { liveDealWhere } from './deal-rules';
 import {
   CLIENT_DEAL_DETAIL_SELECT,
@@ -393,12 +395,22 @@ export class DealsClientService {
       }
       throw err;
     }
-    const updated = await this.prisma.deal.update({
+    await this.prisma.deal.update({
       where: { id },
       data: { reportCount: { increment: 1 } },
       select: { reportCount: true },
     });
-    if (updated.reportCount >= DEAL_AUTO_HIDE_REPORTS) {
+    const credibleReports = await this.prisma.dealReport.count({
+      where: {
+        dealId: id,
+        client: {
+          deletedAt: null,
+          createdAt: { lte: new Date(Date.now() - DEAL_REPORTER_MIN_ACCOUNT_AGE_DAYS * MS_PER_DAY) },
+          OR: [{ emailVerified: true }, { telephoneVerified: true }],
+        },
+      },
+    });
+    if (credibleReports >= DEAL_AUTO_HIDE_REPORTS) {
       // Hidden until an admin reviews it (restore or confirm the removal).
       await this.prisma.deal.updateMany({
         where: { id, status: 'ACTIVE' },

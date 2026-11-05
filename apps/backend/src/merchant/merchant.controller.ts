@@ -17,6 +17,7 @@ import {
   ParseUUIDPipe,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { UploadConcurrencyGuard } from '../common/guards/upload-concurrency.guard';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { THROTTLE_TTL } from '../common/constants';
@@ -152,12 +153,13 @@ export class MerchantController {
 
   // ── Upload logo / cover ───────────────────────────────────
   @Post('upload-image')
-  @UseGuards(MerchantOwnerGuard)
+  @UseGuards(MerchantOwnerGuard, UploadConcurrencyGuard)
   @Throttle({ default: { ttl: THROTTLE_TTL, limit: 10 } })
   @UseInterceptors(
     FileInterceptor('file', {
       // storage: memoryStorage() // Default behavior
-      limits: { fileSize: MAX_FILE_SIZE },
+      // One file, a handful of fields: a multipart body cannot fan out.
+      limits: { fileSize: MAX_FILE_SIZE, files: 1, fields: 10, parts: 12 },
       fileFilter: (_req, file, cb) => {
         if (!ALLOWED_MIMES.includes(file.mimetype)) {
           return cb(new BadRequestException('Format non supporté. Utilisez JPG, PNG ou WebP.'), false);

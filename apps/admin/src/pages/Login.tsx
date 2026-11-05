@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { login, getEnv, setEnv, onEnvChange } from '../api';
+import { login, getEnv, setEnv, onEnvChange, canSwitchEnv } from '../api';
 import type { AdminEnv } from '../api';
 import { C, S } from '../theme';
 import { getErrorMessage } from '@jitplus/shared';
@@ -107,7 +107,7 @@ export default function Login() {
           borderRadius: 'var(--radius-sm)',
           padding: 3,
         }}>
-          {(['dev', 'prod'] as const).map((e) => {
+          {(canSwitchEnv() ? (['dev', 'prod'] as const) : (['prod'] as const)).map((e) => {
             const active = env === e;
             const col = e === 'prod' ? C.red : C.green;
             return (

@@ -302,7 +302,9 @@ model AuditLog {
   actorType   AuditActorType  @default(ADMIN) @map("actor_type")
   /// Admin who performed the action (nullable for merchant-initiated actions)
   adminId     String?         @map("admin_id")
-  admin       Admin?          @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  /// SetNull, not Cascade: deleting an admin must not erase its audit trail
+  /// (adminEmail keeps who acted).
+  admin       Admin?          @relation(fields: [adminId], references: [id], onDelete: SetNull)
   adminEmail  String?         @map("admin_email")
   /// Merchant who performed the action (nullable for admin-initiated actions)
   merchantId  String?         @map("merchant_id")

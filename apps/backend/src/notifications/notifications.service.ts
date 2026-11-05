@@ -1,4 +1,4 @@
-import { Injectable, Logger, Inject, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, Inject, BadRequestException, HttpException, HttpStatus } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
 import { ConfigService } from '@nestjs/config';
@@ -17,7 +17,7 @@ import { SendNotificationDto } from './dto/send-notification.dto';
 import { SendEmailBlastDto } from './dto/send-email-blast.dto';
 import { buildWhatsAppBroadcastMessage } from './templates/whatsapp-templates';
 import { buildPagination, PaginationResult } from '../common/utils';
-import { DEFAULT_NOTIFICATION_LOGO, LOGO_CACHE_TTL, EMAIL_LOGO_JITPLUS_PRO } from '../common/constants';
+import { DEFAULT_NOTIFICATION_LOGO, LOGO_CACHE_TTL, EMAIL_LOGO_JITPLUS_PRO, MS_PER_DAY } from '../common/constants';
 import { detectProhibitedContent } from './content-filter';
 import type { SendAdminNotificationDto } from '../admin/dto/admin-notification.dto';
 import { maskPhone } from '../common/utils/pii-mask';
@@ -43,6 +43,9 @@ type MerchantMember = Prisma.ClientGetPayload<{ select: typeof MEMBER_SELECT }>;
 
 /** Rows per IN (...) list when clearing stale push tokens. */
 const STALE_TOKEN_CHUNK = 500;
+
+/** Marketing pushes to all clients a merchant may send per rolling 24 h. */
+export const MERCHANT_PUSH_BROADCASTS_PER_DAY = 3;
 
 @Injectable()
 export class NotificationsService {
@@ -131,6 +134,23 @@ export class NotificationsService {
     // Server-side content moderation (anti-phishing / anti-spam)
     const violation = detectProhibitedContent(dto.title, dto.body);
     if (violation) throw new BadRequestException(violation.message);
+
+    // Persistent per-merchant quota: the route throttle is per IP and per
+    // instance, so it did not bound how often one merchant can push to all
+    // its clients (security audit 2026-11-05). Uses the
+    // notifications(merchant_id, is_broadcast, created_at) index.
+    const sentLastDay = await this.notificationRepo.count({
+      where: { merchantId, isBroadcast: true, channel: 'PUSH', createdAt: { gte: new Date(Date.now() - MS_PER_DAY) } },
+    });
+    if (sentLastDay >= MERCHANT_PUSH_BROADCASTS_PER_DAY) {
+      throw new HttpException(
+        {
+          code: 'PUSH_DAILY_LIMIT',
+          message: `Limite atteinte : ${MERCHANT_PUSH_BROADCASTS_PER_DAY} notifications à tous vos clients par 24 h. Réessayez plus tard.`,
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
 
     // Collect ALL clients with a loyalty card + push info.
     // Single paginated query fetches both client IDs and push tokens,

@@ -40,6 +40,13 @@ export interface CreateTransactionOptions {
    * is required, so a bare clientId cannot enroll anyone.
    */
   allowEnroll?: boolean;
+  /**
+   * Allow reviving a card the client deactivated (left / blocked the
+   * merchant). Requires the client's own consent: signed QR scan, scanning the
+   * merchant's e-commerce code, or a Quick-Add on an anonymous account.
+   * Defaults to `allowEnroll`; a phone-number scan ticket sets it to false.
+   */
+  allowReactivate?: boolean;
 }
 
 /** Shown as "performed by" on transactions credited from an e-commerce QR code. */
@@ -65,6 +72,7 @@ interface ApplyTransactionParams {
   performedByName?: string;
   idempotencyKey?: string;
   allowEnroll: boolean;
+  allowReactivate: boolean;
   accumulationLimit: number | null;
   stampCodeId?: string;
   /** Resolved before the transaction when enrolment is possible (see assertCanAddClient). */
@@ -198,7 +206,8 @@ export class MerchantTransactionService {
     }
 
     // Resolved outside the transaction: enrolment checks the FREE client limit.
-    const plan = options.allowEnroll ? (await this.planService.resolveEffectivePlan(merchantId)).plan : undefined;
+    // Always resolved (cached): enrolment limits AND premium-only features (lucky wheel).
+    const plan = (await this.planService.resolveEffectivePlan(merchantId)).plan;
 
     let result: AppliedTransaction;
     try {
@@ -215,6 +224,7 @@ export class MerchantTransactionService {
             performedByName,
             idempotencyKey,
             allowEnroll: !!options.allowEnroll,
+            allowReactivate: !!(options.allowReactivate ?? options.allowEnroll),
             accumulationLimit: merchant.accumulationLimit,
             plan,
           }),
@@ -333,6 +343,7 @@ export class MerchantTransactionService {
           stamps: code.stamps,
           performedByName: STAMP_CODE_PERFORMER,
           allowEnroll: true,
+          allowReactivate: true,
           accumulationLimit: merchant.accumulationLimit,
           stampCodeId: code.id,
           plan,
@@ -447,8 +458,23 @@ export class MerchantTransactionService {
       select: { id: true, stamps: true, deactivatedAt: true },
     });
 
+    // Apple 1.2: a client who blocked this merchant can never be (re)enrolled
+    // by the merchant — whatever the proof. The client must unblock first.
+    if ((!loyaltyCard || loyaltyCard.deactivatedAt) && p.allowEnroll) {
+      const blocked = await prisma.clientMerchantBlock.findUnique({
+        where: { clientId_merchantId: { clientId, merchantId } },
+        select: { id: true },
+      });
+      if (blocked) {
+        throw new ForbiddenException({
+          code: 'CLIENT_BLOCKED_MERCHANT',
+          message: 'Ce client a bloqué votre commerce : il ne peut pas être inscrit.',
+        });
+      }
+    }
+
     if (loyaltyCard?.deactivatedAt) {
-      if (!p.allowEnroll) {
+      if (!p.allowEnroll || !p.allowReactivate) {
         throw new BadRequestException(
           'Le client a quitté ce programme de fidélité. Il doit rejoindre à nouveau avant de pouvoir accumuler des tampons.',
         );
@@ -533,6 +559,7 @@ export class MerchantTransactionService {
       amount,
       stamps,
       transactionId: newTransaction.id,
+      plan: p.plan ?? (await this.planService.resolveEffectivePlan(merchantId)).plan,
     });
 
     return { transaction: newTransaction, newStamps, actualStampsAdded, luckyWheelTicketsAwarded };

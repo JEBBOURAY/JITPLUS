@@ -1,4 +1,4 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { MerchantTransactionService } from './merchant-transaction.service';
 
 jest.mock('../utils/lucky-wheel-tickets', () => ({
@@ -19,6 +19,7 @@ function setup(card: { id: string; stamps: number; deactivatedAt: Date | null } 
     },
     transaction: { create: jest.fn().mockResolvedValue({ id: 'tx-1', stamps: 1 }) },
     luckyWheelCampaign: { findFirst: jest.fn().mockResolvedValue({ id: 'wheel-1' }) },
+    clientMerchantBlock: { findUnique: jest.fn().mockResolvedValue(null) },
   };
   const clientRepo = { findUnique: jest.fn().mockResolvedValue({ id: CLIENT_ID, language: 'fr', deletedAt: null }) };
   const merchantRepo = {
@@ -51,8 +52,8 @@ function setup(card: { id: string; stamps: number; deactivatedAt: Date | null } 
 }
 
 describe('MerchantTransactionService enrollment rules', () => {
-  const earn = (service: MerchantTransactionService, allowEnroll?: boolean) =>
-    service.createTransaction(CLIENT_ID, MERCHANT_ID, 'EARN_STAMPS', 0, 1, undefined, undefined, undefined, undefined, { allowEnroll });
+  const earn = (service: MerchantTransactionService, allowEnroll?: boolean, allowReactivate?: boolean) =>
+    service.createTransaction(CLIENT_ID, MERCHANT_ID, 'EARN_STAMPS', 0, 1, undefined, undefined, undefined, undefined, { allowEnroll, allowReactivate });
 
   it('credits an existing active member without a scan ticket', async () => {
     const { service, prisma } = setup({ id: 'lc1', stamps: 2, deactivatedAt: null });
@@ -88,6 +89,30 @@ describe('MerchantTransactionService enrollment rules', () => {
     expect(prisma.loyaltyCard.update).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: 'lc1' }, data: { deactivatedAt: null } }),
     );
+  });
+
+  // Security audit 2026-11-05
+  it('never revives a left card from a phone-number ticket (enroll only)', async () => {
+    const { service, prisma } = setup({ id: 'lc1', stamps: 0, deactivatedAt: new Date() });
+    await expect(earn(service, true, false)).rejects.toThrow(BadRequestException);
+    expect(prisma.loyaltyCard.update).not.toHaveBeenCalled();
+    expect(prisma.transaction.create).not.toHaveBeenCalled();
+  });
+
+  it('a phone-number ticket still enrolls a brand-new member', async () => {
+    const { service, prisma } = setup(null);
+    await earn(service, true, false);
+    expect(prisma.loyaltyCard.create).toHaveBeenCalled();
+  });
+
+  it('refuses to (re)enroll a client who blocked the merchant, whatever the proof', async () => {
+    for (const card of [null, { id: 'lc1', stamps: 0, deactivatedAt: new Date() }]) {
+      const { service, prisma } = setup(card);
+      prisma.clientMerchantBlock.findUnique.mockResolvedValue({ id: 'block-1' });
+      await expect(earn(service, true, true)).rejects.toThrow(ForbiddenException);
+      expect(prisma.loyaltyCard.create).not.toHaveBeenCalled();
+      expect(prisma.loyaltyCard.update).not.toHaveBeenCalled();
+    }
   });
 });
 

@@ -39,4 +39,15 @@ describe('ScanTicketService', () => {
       expect(service.verify(bad as string | undefined, 'client-1', 'merchant-1', NOW)).toBe(false);
     }
   });
+
+  // Security audit 2026-11-05: a phone-match ticket must not pass as a QR (consent) ticket.
+  it('reports the kind of a valid ticket', () => {
+    expect(service.verifyKind(service.issue('client-1', 'merchant-1', NOW), 'client-1', 'merchant-1', NOW)).toBe('qr');
+    expect(service.verifyKind(service.issue('client-1', 'merchant-1', NOW, 'phone'), 'client-1', 'merchant-1', NOW)).toBe('phone');
+  });
+
+  it('cannot upgrade a phone ticket to a QR ticket by editing its version', () => {
+    const [, exp, sig] = service.issue('client-1', 'merchant-1', NOW, 'phone').split('.');
+    expect(service.verifyKind(`st1.${exp}.${sig}`, 'client-1', 'merchant-1', NOW)).toBeNull();
+  });
 });

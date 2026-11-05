@@ -11,6 +11,14 @@ import { sessionCacheKey } from '../../common/utils/session-cache';
 import { SESSION_CACHE_TTL, LAST_ACTIVE_THROTTLE_MS } from '../../common/constants';
 import { errMsg } from '../../common/utils';
 
+/** Audience each token type is signed with (see the JwtModule of each auth module). */
+const TYPE_AUDIENCE: Record<string, string> = {
+  merchant: 'jitplus-merchant',
+  team_member: 'jitplus-merchant',
+  client: 'jitplus-client',
+  admin: 'jitplus-admin',
+};
+
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   private readonly logger = new Logger(JwtStrategy.name);
@@ -43,6 +51,18 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: JwtTokenPayload): Promise<JwtPayload> {
+    // Only session tokens of a known type, signed for the audience of that
+    // type, authenticate. Other JWTs sharing the secret — e.g. the 365-day
+    // email-unsubscribe token (aud jitplus-client, no type/sub) — must never
+    // pass as a login, even on a route guarded by JwtAuthGuard alone
+    // (security audit 2026-11-05).
+    const expectedAud = payload?.type ? TYPE_AUDIENCE[payload.type] : undefined;
+    const aud = (payload as { aud?: string | string[] }).aud;
+    const audOk = expectedAud !== undefined && (Array.isArray(aud) ? aud.includes(expectedAud) : aud === expectedAud);
+    if (!payload?.sub || !audOk || (payload as { purpose?: unknown }).purpose !== undefined) {
+      throw new UnauthorizedException('Jeton invalide');
+    }
+
     // Check admin session revocation (cache-based blacklist)
     if (payload.jti && payload.type === 'admin') {
       const revoked = await this.cacheManager.get<boolean>(`admin-revoked:${payload.jti}`);

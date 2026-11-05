@@ -23,6 +23,7 @@ import { withRetry } from '../common/utils/retry-transaction.helper';
 import { merchantListCacheKey, merchantListGeneration } from '../common/utils/merchant-list-cache';
 import { computeStampsExpiry } from '../merchant/utils/loyalty.utils';
 import { DealsClientService, type MerchantDealBadge } from '../deals/deals-client.service';
+import { MerchantPlanService } from '../merchant/services/merchant-plan.service';
 import { DEAL_DIGEST_AUDIENCE } from '../deals/deal-limits';
 import { maskEmail } from '../common/utils/pii-mask';
 
@@ -85,6 +86,7 @@ export class ClientService {
     private mailService: MailService,
     private clientClaimService: ClientClaimService,
     private deals: DealsClientService,
+    private planService: MerchantPlanService,
   ) {}
 
   /** Live-deal badges; a failure only hides the badges, never the merchants. */
@@ -652,11 +654,25 @@ export class ClientService {
     });
     if (!merchant) throw new NotFoundException('Merchant not found');
 
-    const card = await this.loyaltyCardRepo.upsert({
+    const existing = await this.loyaltyCardRepo.findUnique({
       where: { clientId_merchantId: { clientId, merchantId } },
-      create: { clientId, merchantId, stamps: 0 },
-      update: { deactivatedAt: null },
-      select: { id: true, stamps: true, createdAt: true },
+      select: { id: true, stamps: true, createdAt: true, deactivatedAt: true },
+    });
+    if (existing && !existing.deactivatedAt) {
+      return { success: true, card: { id: existing.id, stamps: existing.stamps, createdAt: existing.createdAt } };
+    }
+
+    // A self-join counts against the merchant's FREE plan limit like any other
+    // enrolment (it used to bypass it — security audit 2026-11-05).
+    const { plan } = await this.planService.resolveEffectivePlan(merchantId);
+    const card = await this.txRunner.run(async (tx) => {
+      await this.planService.assertCanAddClient(merchantId, { tx, plan });
+      return tx.loyaltyCard.upsert({
+        where: { clientId_merchantId: { clientId, merchantId } },
+        create: { clientId, merchantId, stamps: 0 },
+        update: { deactivatedAt: null },
+        select: { id: true, stamps: true, createdAt: true },
+      });
     });
 
     return { success: true, card };

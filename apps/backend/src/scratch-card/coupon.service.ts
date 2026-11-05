@@ -419,6 +419,7 @@ export class CouponService {
               amount: paidAmount,
               stamps: stampsEarned,
               transactionId: earnTx.id,
+              plan,
               now,
             });
           }

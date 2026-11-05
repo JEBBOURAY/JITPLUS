@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { C } from '../theme';
-import { logout, getEnv, setEnv, onEnvChange } from '../api';
+import { logout, getEnv, setEnv, onEnvChange, canSwitchEnv } from '../api';
 import type { AdminEnv } from '../api';
 import { AlertsContext, buildAlerts, navBadges, useAlerts } from '../utils/alerts';
 
@@ -49,7 +49,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const badges = useMemo(() => (alerts ? navBadges(buildAlerts(alerts)) : {}), [alerts]);
 
   const handleEnvSwitch = (newEnv: AdminEnv) => {
-    if (newEnv === env) return;
+    if (newEnv === env || !canSwitchEnv()) return;
     setEnv(newEnv);
     navigate('/login');
   };

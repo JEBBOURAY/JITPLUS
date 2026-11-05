@@ -9,7 +9,10 @@ import { Inject, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService, JwtVerifyOptions } from '@nestjs/jwt';
 import { Server, Socket } from 'socket.io';
-import { DEVICE_SESSION_REPOSITORY, type IDeviceSessionRepository } from '../common/repositories';
+import {
+  DEVICE_SESSION_REPOSITORY, type IDeviceSessionRepository,
+  CLIENT_SESSION_REPOSITORY, type IClientSessionRepository,
+} from '../common/repositories';
 import { USER_TYPE_MERCHANT, USER_TYPE_TEAM_MEMBER, getAdminDashboardOrigin } from '../common/constants';
 import {
   WS_EVENTS,
@@ -89,6 +92,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect, 
     private jwtService: JwtService,
     private config: ConfigService,
     @Inject(DEVICE_SESSION_REPOSITORY) private deviceSessionRepo: IDeviceSessionRepository,
+    @Inject(CLIENT_SESSION_REPOSITORY) private clientSessionRepo?: IClientSessionRepository,
   ) {}
 
   afterInit() {
@@ -192,6 +196,19 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect, 
           select: { id: true },
         });
         if (!session) {
+          this.kick(client, 'Session revoked');
+          return;
+        }
+      }
+
+      // Same for client tokens bound to a ClientSession (sid): a logged-out,
+      // reset or banned client must not keep receiving its live events.
+      if (userType === 'client' && payload.sid && this.clientSessionRepo) {
+        const session = await this.clientSessionRepo.findUnique({
+          where: { id: payload.sid },
+          select: { clientId: true },
+        });
+        if (!session || session.clientId !== userId) {
           this.kick(client, 'Session revoked');
           return;
         }

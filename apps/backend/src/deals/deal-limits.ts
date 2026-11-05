@@ -25,6 +25,13 @@ export const DEAL_ENDING_SOON_HOURS = 48;
 export const DEAL_PURGE_AFTER_DAYS = 90;
 /** Distinct client reports that hide a deal until an admin reviews it */
 export const DEAL_AUTO_HIDE_REPORTS = 5;
+/**
+ * Only reports from established accounts count toward the auto-hide: a client
+ * account costs one email OTP, so 5 throwaway accounts could otherwise take
+ * down any competitor's deal (security audit 2026-11-05). Every report is
+ * still stored and counted in reportCount for the admin review.
+ */
+export const DEAL_REPORTER_MIN_ACCOUNT_AGE_DAYS = 7;
 export const DEAL_FEED_PAGE_SIZE = 20;
 /** "Près de moi": one ONLINE deal after every this many LOCAL ones */
 export const DEAL_ONLINE_INTERLEAVE = 8;

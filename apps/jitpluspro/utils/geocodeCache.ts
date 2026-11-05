@@ -1,5 +1,5 @@
 import * as Location from 'expo-location';
-import { getServerBaseUrl } from '@/services/api';
+import { getServerBaseUrl, geocodeFetch } from '@/services/api';
 import { logWarn } from '@/utils/devLogger';
 
 // Google Geocoding API response shape.
@@ -67,7 +67,7 @@ async function googleReverseGeocode(
 ): Promise<Location.LocationGeocodedAddress[]> {
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) return [];
   const url = `${getServerBaseUrl()}/geocode/reverse?lat=${lat}&lng=${lng}`;
-  const res = await fetch(url);
+  const res = await geocodeFetch(url);
   const json = await res.json();
   const results: GeoResult[] | undefined = json.results;
   if (results && results.length > 0) {

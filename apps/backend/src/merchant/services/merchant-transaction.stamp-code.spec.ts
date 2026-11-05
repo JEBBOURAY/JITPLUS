@@ -34,6 +34,7 @@ function setup(opts: {
       update: jest.fn().mockResolvedValue({}),
     },
     transaction: { create: jest.fn().mockResolvedValue({ id: 'tx-1', stamps: 3 }) },
+    clientMerchantBlock: { findUnique: jest.fn().mockResolvedValue(null) },
   };
   const clientRepo = { findUnique: jest.fn().mockResolvedValue({ id: CLIENT_ID, language: 'fr', deletedAt: null }) };
   const merchantRepo = {

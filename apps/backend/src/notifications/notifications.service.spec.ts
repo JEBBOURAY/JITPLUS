@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { ConfigService } from '@nestjs/config';
-import { NotificationsService } from './notifications.service';
+import { NotificationsService, MERCHANT_PUSH_BROADCASTS_PER_DAY } from './notifications.service';
 import { EmailQuotaService } from './email-quota.service';
 import { EventsGateway } from '../events';
 import {
@@ -91,6 +91,17 @@ describe('NotificationsService', () => {
       expect(push.sendMulticast.mock.calls[0][0]).toEqual(['tok']);
       expect(res.recipientCount).toBe(BATCH + 1);
       expect(statusRepo.createMany).toHaveBeenCalledTimes(3); // 1001 rows in chunks of 500
+    });
+
+    // Security audit 2026-11-05: persistent per-merchant quota
+    it('sendToAll refuses once the merchant reached its daily broadcast quota', async () => {
+      notificationRepo.count.mockResolvedValueOnce(MERCHANT_PUSH_BROADCASTS_PER_DAY);
+
+      await expect(service.sendToAll(MERCHANT_ID, { title: 'Promo', body: 'Hello' })).rejects.toMatchObject({ status: 429 });
+
+      expect(notificationRepo.count.mock.calls[0][0].where).toMatchObject({ merchantId: MERCHANT_ID, isBroadcast: true, channel: 'PUSH' });
+      expect(loyaltyCardRepo.findMany).not.toHaveBeenCalled();
+      expect(push.sendMulticast).not.toHaveBeenCalled();
     });
 
     it('sendEmailToAll keeps only members with an email who did not opt out', async () => {

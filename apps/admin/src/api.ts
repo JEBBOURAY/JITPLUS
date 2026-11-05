@@ -49,10 +49,25 @@ const ENV_URLS: Record<AdminEnv, string> = {
 
 const STORAGE_KEY = 'admin_env';
 
+/**
+ * A production build always talks to the production API. Defaulting to 'dev'
+ * made the hosted dashboard send the admin's email + password to whatever
+ * listened on the admin's localhost:3000 (security audit 2026-11-05). The
+ * environment switch only exists in development builds.
+ */
+const ENV_SWITCH_ENABLED = !import.meta.env.PROD;
+
 function loadEnv(): AdminEnv {
-  const stored = localStorage.getItem(STORAGE_KEY);
-  return stored === 'prod' ? 'prod' : 'dev';
+  if (!ENV_SWITCH_ENABLED) return 'prod';
+  try {
+    return localStorage.getItem(STORAGE_KEY) === 'prod' ? 'prod' : 'dev';
+  } catch {
+    return 'dev';
+  }
 }
+
+/** False in production builds: the UI should hide the dev/prod switch. */
+export function canSwitchEnv(): boolean { return ENV_SWITCH_ENABLED; }
 
 let _env: AdminEnv = loadEnv();
 let _envListeners: Array<(env: AdminEnv) => void> = [];
@@ -61,8 +76,9 @@ export function getEnv(): AdminEnv { return _env; }
 export function getBaseUrl(): string { return ENV_URLS[_env]; }
 
 export function setEnv(env: AdminEnv) {
+  if (!ENV_SWITCH_ENABLED) return;
   _env = env;
-  localStorage.setItem(STORAGE_KEY, env);
+  try { localStorage.setItem(STORAGE_KEY, env); } catch { /* private mode */ }
   // Clear auth when switching environments
   setToken(null);
   _envListeners.forEach((fn) => fn(env));

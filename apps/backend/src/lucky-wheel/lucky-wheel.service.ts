@@ -1,3 +1,4 @@
+import { maskName } from '../common/utils';
 import {
   Injectable,
   Inject,
@@ -24,6 +25,26 @@ import { withRetry } from '../common/utils/retry-transaction.helper';
 import { weightedRandomPick } from '../common/utils/weighted-draw';
 import { purchaseTriggersWheel } from '../merchant/utils/lucky-wheel-tickets';
 import { PrismaService } from '../prisma/prisma.service';
+
+/** Pending prizes are listed in full; bounded to keep the response small. */
+const MAX_PRIZE_LIST = 200;
+
+/**
+ * Prize lists are visible to the whole merchant team: honour the client's
+ * shareInfoMerchants choice like every other merchant-side client list
+ * (initials only, no phone) — security audit 2026-11-05.
+ */
+function maskPrizeClient<C extends { prenom?: string | null; nom?: string | null; telephone?: string | null; shareInfoMerchants?: boolean } | null>(c: C) {
+  if (!c) return c;
+  const { shareInfoMerchants, ...rest } = c;
+  if (shareInfoMerchants !== false) return rest;
+  return {
+    ...rest,
+    prenom: maskName(rest.prenom),
+    nom: maskName(rest.nom),
+    ...('telephone' in rest ? { telephone: null } : {}),
+  };
+}
 
 @Injectable()
 export class LuckyWheelService {
@@ -614,7 +635,7 @@ export class LuckyWheelService {
       data: { fulfilment: 'EXPIRED' },
     });
 
-    return this.drawRepo.findMany({
+    const draws = await this.drawRepo.findMany({
       where: {
         result: 'WON',
         fulfilment: 'PENDING',
@@ -625,13 +646,15 @@ export class LuckyWheelService {
         ticket: {
           select: {
             clientId: true,
-            client: { select: { prenom: true, nom: true, telephone: true } },
+            client: { select: { prenom: true, nom: true, telephone: true, shareInfoMerchants: true } },
             campaign: { select: { id: true, name: true } },
           },
         },
       },
       orderBy: { createdAt: 'desc' },
+      take: MAX_PRIZE_LIST,
     });
+    return draws.map((d: any) => ({ ...d, ticket: { ...d.ticket, client: maskPrizeClient(d.ticket.client) } }));
   }
 
   async getFulfilledPrizes(merchantId: string) {
@@ -648,7 +671,7 @@ export class LuckyWheelService {
         prize: { select: { label: true } },
         ticket: {
           select: {
-            client: { select: { prenom: true, nom: true } },
+            client: { select: { prenom: true, nom: true, shareInfoMerchants: true } },
             campaign: { select: { id: true, name: true } },
           },
         },
@@ -656,10 +679,11 @@ export class LuckyWheelService {
       orderBy: { fulfilledAt: 'desc' },
       take: 50,
     });
+    const masked = draws.map((d: any) => ({ ...d, ticket: { ...d.ticket, client: maskPrizeClient(d.ticket.client) } }));
 
     // Resolve fulfilledBy IDs to names
-    const fulfillerIds = [...new Set(draws.map((d: any) => d.fulfilledBy).filter(Boolean))];
-    if (fulfillerIds.length === 0) return draws;
+    const fulfillerIds = [...new Set(masked.map((d: any) => d.fulfilledBy).filter(Boolean))];
+    if (fulfillerIds.length === 0) return masked;
 
     const teamMembers = await this.prisma.teamMember.findMany({
       where: { id: { in: fulfillerIds } },
@@ -667,7 +691,7 @@ export class LuckyWheelService {
     });
     const tmMap = new Map(teamMembers.map((tm: any) => [tm.id, tm.nom]));
 
-    return draws.map((d: any) => ({
+    return masked.map((d: any) => ({
       ...d,
       fulfilledByName: tmMap.get(d.fulfilledBy) ?? null,
     }));

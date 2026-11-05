@@ -170,6 +170,7 @@ describe('MerchantReferralService', () => {
       // New expiry should be ~30 days further than the current expiry
       const diff = updateCall.data.planExpiresAt.getTime() - futureExpiry.getTime();
       expect(diff).toBeGreaterThan(29 * 24 * 60 * 60 * 1000);
+      expect(updateCall.data.referralMonthsEarned).toBeUndefined();
       expect(mockCache.del).toHaveBeenCalledWith(`plan:v1:${REFERRER_ID}`);
     });
 
@@ -190,9 +191,10 @@ describe('MerchantReferralService', () => {
         data: expect.objectContaining({
           plan: 'PREMIUM',
           planActivatedByAdmin: false,
-          referralMonthsEarned: { increment: 1 },
         }),
       });
+      // Applied now → not banked as a pending month (no double credit)
+      expect(mockMerchantRepo.update.mock.calls[0][0].data.referralMonthsEarned).toBeUndefined();
       expect(mockCache.del).toHaveBeenCalledWith(`plan:v1:${REFERRER_ID}`);
     });
 

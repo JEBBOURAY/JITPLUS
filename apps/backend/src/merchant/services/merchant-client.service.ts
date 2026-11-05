@@ -228,7 +228,9 @@ export class MerchantClientService {
         lastVisit: null,
         memberSince: null,
         cardDeactivated: false,
-        scanTicket: this.scanTickets.issue(client.id, merchantId),
+        // 'phone' ticket: can enroll a new member, never revive a card the
+        // client left or blocked (that needs their QR or their own action).
+        scanTicket: this.scanTickets.issue(client.id, merchantId, Date.now(), 'phone'),
       },
     ];
   }

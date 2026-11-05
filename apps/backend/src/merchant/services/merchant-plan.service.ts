@@ -428,10 +428,23 @@ export class MerchantPlanService {
    */
   async assertCanAddClient(
     merchantId: string,
-    opts: { tx?: { loyaltyCard: Pick<ILoyaltyCardRepository, 'count'> }; plan?: MerchantPlan } = {},
+    opts: {
+      tx?: {
+        loyaltyCard: Pick<ILoyaltyCardRepository, 'count'>;
+        $queryRaw?: (query: TemplateStringsArray, ...values: unknown[]) => Promise<unknown>;
+      };
+      plan?: MerchantPlan;
+    } = {},
   ): Promise<void> {
     const plan = opts.plan ?? (await this.resolveEffectivePlan(merchantId)).plan;
     if (plan === 'PREMIUM') return;
+
+    // Serialise FREE enrolments of one merchant: without the row lock, two
+    // concurrent enrolments both count 19 under RepeatableRead (write skew)
+    // and the merchant ends above the limit. Held until the caller's tx ends.
+    if (opts.tx?.$queryRaw) {
+      await opts.tx.$queryRaw`SELECT 1 FROM merchants WHERE id = ${merchantId} FOR UPDATE`;
+    }
 
     const count = await (opts.tx?.loyaltyCard ?? this.loyaltyCardRepo).count({
       where: { merchantId, deactivatedAt: null },

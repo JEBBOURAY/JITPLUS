@@ -293,10 +293,17 @@ export class ClientClaimService {
         throw new ForbiddenException('Ce lien ne peut pas être utilisé');
       }
 
+      // A claim link only transfers what ITS merchant gave. The anonymous
+      // client is shared by every merchant who Quick-Added this phone, and the
+      // link bearer is not proven to own the phone: merging everything let a
+      // merchant Quick-Add a number and consume their own link to take the
+      // cards other merchants created for it (security audit 2026-11-05).
+      const merchantId = found.merchantId;
+
       // 1) Merge loyalty cards (sum stamps if the real client already has one
       //    for the same merchant, otherwise reassign).
       const anonCards = await tx.loyaltyCard.findMany({
-        where: { clientId: anonymousId },
+        where: { clientId: anonymousId, merchantId },
         take: MAX_CLAIM_MERGE_CARDS,
       });
       let mergedCards = 0;
@@ -324,22 +331,22 @@ export class ClientClaimService {
         }
         mergedCards++;
       }
-      // Wipe any remaining anonymous cards (the ones we summed into real cards)
-      await tx.loyaltyCard.deleteMany({ where: { clientId: anonymousId } });
+      // Wipe this merchant's remaining anonymous cards (the ones summed into real cards)
+      await tx.loyaltyCard.deleteMany({ where: { clientId: anonymousId, merchantId } });
 
-      // 2) Reassign all FKs that would otherwise block the soft-delete.
+      // 2) Reassign this merchant's FKs that would otherwise block the soft-delete.
       //    Transactions & LuckyWheelTickets use onDelete: Restrict.
       await tx.transaction.updateMany({
-        where: { clientId: anonymousId },
+        where: { clientId: anonymousId, merchantId },
         data: { clientId: realClientId },
       });
       await tx.luckyWheelTicket.updateMany({
-        where: { clientId: anonymousId },
+        where: { clientId: anonymousId, campaign: { merchantId } },
         data: { clientId: realClientId },
       });
       // Scratch cards / coupons cascade on hard delete only: without this the
       // card would stay on the soft-deleted ghost and never be seen.
-      const pendingScratchCards = await reassignScratchDataInTx(tx, anonymousId, realClientId);
+      const pendingScratchCards = await reassignScratchDataInTx(tx, anonymousId, realClientId, new Date(), merchantId);
 
       // 3) Mark the claim consumed (single-use)
       await tx.clientClaim.update({
@@ -347,36 +354,26 @@ export class ClientClaimService {
         data: { consumedAt: new Date() },
       });
 
-      // 4) Soft-delete the anonymous shell and free its unique phone slot
-      //    (so the same phone can be re-used later if the customer ever
-      //    deletes their real account).
-      await tx.client.update({
-        where: { id: anonymousId },
-        data: {
-          deletedAt: new Date(),
-          telephone: null,
-          isAnonymous: false,
-        },
-      });
-
-      // 5) Inherit the anon's phone on the real account when it has none
-      //    (e.g. user registered via Google/Apple/email without a phone).
-      //    Done AFTER the anon's phone is nulled so the unique constraint
-      //    doesn't collide.
-      if (anonymous.telephone) {
-        const real = await tx.client.findUnique({
-          where: { id: realClientId },
-          select: { telephone: true, countryCode: true },
+      // 4) Other merchants' data (and their own claim links) stay on the
+      //    anonymous client. Only once nothing is left is the shell
+      //    soft-deleted and its phone slot freed.
+      //    The phone is NOT inherited by the real account: the link bearer
+      //    never proved owning it, so inheriting let anyone squat a number
+      //    (the owner can add it from the profile with a WhatsApp OTP).
+      const [remainingCards, remainingTx, remainingClaims] = await Promise.all([
+        tx.loyaltyCard.count({ where: { clientId: anonymousId } }),
+        tx.transaction.count({ where: { clientId: anonymousId } }),
+        tx.clientClaim.count({ where: { clientId: anonymousId, consumedAt: null } }),
+      ]);
+      if (remainingCards === 0 && remainingTx === 0 && remainingClaims === 0) {
+        await tx.client.update({
+          where: { id: anonymousId },
+          data: {
+            deletedAt: new Date(),
+            telephone: null,
+            isAnonymous: false,
+          },
         });
-        if (real && !real.telephone) {
-          await tx.client.update({
-            where: { id: realClientId },
-            data: {
-              telephone: anonymous.telephone,
-              countryCode: real.countryCode || anonymous.countryCode || 'MA',
-            },
-          });
-        }
       }
 
       return { claim: found, alreadyConsumed: false, anonymousClient: { id: anonymousId }, mergedCards, pendingScratchCards };
@@ -446,7 +443,7 @@ export class ClientClaimService {
       message = `Ce numéro est déjà lié à une carte de fidélité créée par ${names[0]} sur WhatsApp. Pour activer ton compte avec ce numéro, tu dois d’abord ouvrir le lien WhatsApp envoyé par ${names[0]} et cliquer sur « Récupérer mes tampons ». Si tu as supprimé le message, demande à ${names[0]} de te renvoyer le lien.`;
     } else {
       const list = names.slice(0, -1).join(', ') + ' et ' + names[names.length - 1];
-      message = `Ce numéro est déjà lié à plusieurs cartes de fidélité créées sur WhatsApp par : ${list}. Pour activer ton compte avec ce numéro, ouvre n’importe lequel de leurs liens WhatsApp et clique sur « Récupérer mes tampons » — toutes tes cartes seront fusionnées automatiquement. Si tu as supprimé les messages, demande à l’un d’eux de te renvoyer le lien.`;
+      message = `Ce numéro est déjà lié à plusieurs cartes de fidélité créées sur WhatsApp par : ${list}. Pour récupérer tes tampons, ouvre le lien WhatsApp de chacun d’eux et clique sur « Récupérer mes tampons ». Si tu as supprimé les messages, demande-leur de te renvoyer le lien.`;
     }
 
     return {

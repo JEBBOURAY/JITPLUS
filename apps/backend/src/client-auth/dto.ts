@@ -232,12 +232,13 @@ export class RequestPayoutDto {
   @Min(100, { message: 'Le montant minimum est de 100 DH' })
   amount: number;
 
-  @IsString()
-  @IsNotEmpty()
-  method: string;
+  // Enum, not a free string: an unknown value reached Prisma as a 500.
+  @IsIn(['BANK_TRANSFER', 'CASH'], { message: 'Méthode de paiement invalide' })
+  method: 'BANK_TRANSFER' | 'CASH';
 
   @IsOptional()
   @IsString()
+  @MaxLength(500)
   accountDetails?: string;
 }
 

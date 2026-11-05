@@ -1,11 +1,13 @@
-import { Controller, Get, Query, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Query, BadRequestException, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { GeocodeService } from './geocode.service';
+import { GeocodeAuthGuard } from './geocode-auth.guard';
 
 @ApiTags('Geocode')
 @Controller('geocode')
 @Throttle({ default: { limit: 20, ttl: 60000 } })
+@UseGuards(GeocodeAuthGuard)
 export class GeocodeController {
   constructor(private readonly geocodeService: GeocodeService) {}
 

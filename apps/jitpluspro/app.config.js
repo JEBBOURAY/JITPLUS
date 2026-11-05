@@ -119,6 +119,9 @@ module.exports = ({ config }) => {
     },
     android: {
       versionCode: 38,
+      // Keeps the cached plan / clients / dashboard data out of Google Drive
+      // and adb backups, like the client app (security audit 2026-11-05).
+      allowBackup: false,
       adaptiveIcon: {
         foregroundImage: './assets/images/adaptive-icon.png',
         monochromeImage: './assets/images/adaptive-icon-monochrome.png',

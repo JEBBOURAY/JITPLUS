@@ -16,6 +16,7 @@ import {
 import { MailService } from '../mail/mail.service';
 import { ClientClaimService } from '../merchant/services/client-claim.service';
 import { DealsClientService } from '../deals/deals-client.service';
+import { MerchantPlanService } from '../merchant/services/merchant-plan.service';
 import { DEAL_DIGEST_AUDIENCE } from '../deals/deal-limits';
 import { EMAIL_LOGO_JITPLUS } from '../common/constants';
 
@@ -52,6 +53,7 @@ describe('ClientService — notification feed', () => {
         { provide: MailService, useValue: {} },
         { provide: ClientClaimService, useValue: {} },
         { provide: DealsClientService, useValue: {} },
+        { provide: MerchantPlanService, useValue: { resolveEffectivePlan: jest.fn().mockResolvedValue({ plan: 'PREMIUM' }), assertCanAddClient: jest.fn() } },
       ],
     }).compile();
     service = module.get(ClientService);

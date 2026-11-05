@@ -27,10 +27,17 @@ export async function awardLuckyWheelTicketsInTx(
     amount: number;
     stamps: number;
     transactionId: string;
+    /**
+     * Effective plan of the merchant. The lucky wheel is a PREMIUM feature:
+     * a campaign left ACTIVE when the trial / subscription ended must stop
+     * granting tickets (security audit 2026-11-05).
+     */
+    plan: 'FREE' | 'PREMIUM' | string;
     now?: Date;
   },
 ): Promise<number> {
   const { clientId, merchantId, type, amount, stamps, transactionId } = params;
+  if (params.plan !== 'PREMIUM') return 0;
   if (type !== 'EARN_STAMPS' && type !== 'REDEEM_REWARD' && type !== 'PURCHASE') return 0;
   const now = params.now ?? new Date();
 
