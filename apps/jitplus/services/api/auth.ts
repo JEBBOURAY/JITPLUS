@@ -38,10 +38,6 @@ export function createAuthMethods(http: AxiosInstance) {
       await persistTokens(data);
       return data;
     },
-    async setPassword(password: string): Promise<{ success: boolean; client: Client }> {
-      const { data } = await http.post('/client-auth/set-password', { password });
-      return data;
-    },
     async resetPasswordOtp(password: string): Promise<{ success: boolean; client: Client }> {
       const { data } = await http.post('/client-auth/reset-password-otp', { password });
       return data;

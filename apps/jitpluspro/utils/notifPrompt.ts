@@ -13,13 +13,13 @@ const STORAGE_KEY = 'jitpluspro_notif_prompt';
 const DAY_MS = 86_400_000;
 
 /** Delay before asking again, indexed by the number of "Plus tard" taps. */
-export const REASK_DELAYS_DAYS = [0, 3, 7, 14] as const;
+const REASK_DELAYS_DAYS = [0, 3, 7, 14] as const;
 /** After this many "Plus tard", stop asking (the settings banner remains). */
 export const MAX_DISMISSALS = REASK_DELAYS_DAYS.length;
 /** Without a first success, a merchant becomes eligible this long after first launch. */
-export const ELIGIBLE_AFTER_MS = DAY_MS;
+const ELIGIBLE_AFTER_MS = DAY_MS;
 
-export interface NotifPromptState {
+interface NotifPromptState {
   /** First time the app evaluated the prompt (epoch ms). */
   firstSeenAt: number;
   /** A first scan / transaction succeeded: the best moment to ask. */
@@ -63,7 +63,7 @@ export async function loadPromptState(now: number = Date.now()): Promise<NotifPr
   return fresh;
 }
 
-export async function savePromptState(state: NotifPromptState): Promise<void> {
+async function savePromptState(state: NotifPromptState): Promise<void> {
   try {
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch (e) {

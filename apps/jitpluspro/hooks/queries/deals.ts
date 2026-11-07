@@ -71,8 +71,8 @@ export function useStopDeal() {
 export function useDuplicateDeal() {
   const saved = useDealSaved();
   return useMutation({
-    mutationFn: async ({ id, startsOn, endsOn }: { id: string; startsOn?: string; endsOn?: string }) =>
-      (await api.post<MerchantDealDto>(`${BASE}/${id}/duplicate`, { startsOn, endsOn })).data,
+    mutationFn: async ({ id }: { id: string }) =>
+      (await api.post<MerchantDealDto>(`${BASE}/${id}/duplicate`, {})).data,
     onSuccess: saved,
   });
 }

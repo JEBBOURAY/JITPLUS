@@ -86,7 +86,7 @@ export function useGuideProgress(active: boolean): GuideProgressState {
   const ownerEnabled = enabled && !isTeamMember;
 
   const rewardsQuery = useRewards(ownerEnabled);
-  const clientsQuery = useClients('', enabled);
+  const clientsQuery = useClients(enabled);
   const transactionsQuery = useTransactions(enabled);
   const notificationsQuery = useNotificationHistory(ownerEnabled);
   const rewards = rewardsQuery.data;

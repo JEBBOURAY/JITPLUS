@@ -135,7 +135,7 @@ export default function AppearanceSection({ merchant }: { merchant: Merchant }) 
         return;
       }
       // The upload endpoint also stores the URL on the merchant.
-      const { url } = await uploadCardBackground.mutateAsync({ uri: asset.uri, mimeType: asset.mimeType, fileSize: asset.fileSize });
+      const { url } = await uploadCardBackground.mutateAsync({ uri: asset.uri, mimeType: asset.mimeType });
       updateMerchant({ cardBackgroundUrl: url });
       haptic();
     } catch (err) {

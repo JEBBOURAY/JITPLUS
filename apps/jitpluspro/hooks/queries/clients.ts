@@ -10,13 +10,11 @@ import api from '@/services/api';
 import type { ClientListItem, ClientListView, ClientsPage } from '@/types';
 import { queryKeys, STALE } from './keys';
 
-export function useClients(search: string, enabled = true) {
+export function useClients(enabled = true) {
   return useQuery<ClientListItem[]>({
-    queryKey: queryKeys.clients(search),
+    queryKey: queryKeys.clients(''),
     queryFn: async () => {
-      const res = await api.get('/merchant/clients', {
-        params: search ? { search: search.trim() } : undefined,
-      });
+      const res = await api.get('/merchant/clients');
       const data = res.data;
       return Array.isArray(data) ? data : data?.clients ?? [];
     },

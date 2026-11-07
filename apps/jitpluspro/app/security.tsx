@@ -62,12 +62,11 @@ interface PwdFieldProps {
   showLabel: string;
   hideLabel: string;
   returnKeyType?: 'next' | 'done';
-  onSubmitEditing?: () => void;
 }
 
 function PwdField({
   label, value, setValue, show, setShow, placeholder, theme,
-  variant = 'current', showLabel, hideLabel, returnKeyType, onSubmitEditing,
+  variant = 'current', showLabel, hideLabel, returnKeyType,
 }: PwdFieldProps) {
   const dir = useDir();
   return (
@@ -90,7 +89,6 @@ function PwdField({
           maxLength={128}
           maxFontSizeMultiplier={1.4}
           returnKeyType={returnKeyType}
-          onSubmitEditing={onSubmitEditing}
           blurOnSubmit={returnKeyType ? returnKeyType === 'done' : undefined}
         />
         <TouchableOpacity
@@ -178,12 +176,10 @@ interface DeviceSession {
   deviceName: string;
   deviceOS?: string;
   userType?: string;
-  userEmail?: string;
   userName?: string;
   lastActiveAt: string;
   ipAddress?: string;
   isCurrentDevice: boolean;
-  createdAt: string;
 }
 
 type TabId = 'password' | 'devices' | 'delete';
@@ -358,14 +354,6 @@ export default function SecurityScreen() {
           text: t('security.deleteForeverBtn'),
           style: 'destructive',
           onPress: async () => {
-            if (isGoogleAccount && !deleteGoogleToken) {
-              Alert.alert(t('common.error'), t('security.deleteGooglePrompt'));
-              return;
-            }
-            if (isAppleAccount && !deleteAppleToken) {
-              Alert.alert(t('common.error'), t('security.deleteApplePrompt'));
-              return;
-            }
             setDeleting(true);
             try {
               const body = isGoogleAccount

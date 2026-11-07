@@ -47,6 +47,7 @@ import { ActionButton } from '@/components/ui/ActionButton';
 import { ProBadge } from '@/components/ui/ProBadge';
 import { font, icon } from '@/constants/design';
 import { useDir } from '@/hooks/useDir';
+import { DemoVideoButton } from '@/components/demo/DemoVideoButton';
 
 const UPGRADE_WHATSAPP = process.env.EXPO_PUBLIC_SUPPORT_WHATSAPP || (__DEV__ ? '212600000000' : '');
 const UPGRADE_EMAIL = process.env.EXPO_PUBLIC_SUPPORT_EMAIL || 'contact@jitplus.com';
@@ -281,6 +282,7 @@ export default function PlanScreen() {
         >
           {t('account.planPageTitle')}
         </Text>
+        <DemoVideoButton id="forfait" variant="header" />
       </View>
 
       {loading ? (
@@ -327,7 +329,7 @@ export default function PlanScreen() {
               dir.isRTL
                 ? { borderRightWidth: 3, borderRightColor: theme.primary }
                 : { borderLeftWidth: 3, borderLeftColor: theme.primary },
-              { backgroundColor: theme.primaryBg || (theme.primary + '10') },
+              { backgroundColor: theme.primaryBg },
             ]}
           >
             <Text

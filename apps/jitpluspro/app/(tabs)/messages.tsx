@@ -43,6 +43,7 @@ import { getErrorMessage } from '@/utils/error';
 import { useFocusFade } from '@/hooks/useFocusFade';
 import { useEmailQuota, useSendPushNotification, useSendEmail } from '@/hooks/useQueryHooks';
 import { ReminderBanner } from '@/components/ReminderBanner';
+import { DemoVideoButton } from '@/components/demo/DemoVideoButton';
 import SendConfirmSheet from '@/components/marketing/SendConfirmSheet';
 import SendButton, { SEND_COOLDOWN_MS } from '@/components/marketing/SendButton';
 import { PushPreview, EmailPreview } from '@/components/marketing/MessagePreview';
@@ -131,22 +132,25 @@ const MessagesHeader = memo(function MessagesHeader({
           {t('messages.subtitle')}
         </Text>
       </View>
-      {onOpenHistory && (
-        <TouchableOpacity
-          onPress={onOpenHistory}
-          activeOpacity={0.8}
-          style={[styles.historyHeaderBtn, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}
-          accessibilityRole="button"
-          accessibilityLabel={t('messages.showHistory')}
-          accessibilityHint={t('messages.showHistoryHint')}
-          hitSlop={HIT_SLOP_MED}
-        >
-          <History size={16} color={theme.textMuted} strokeWidth={icon.stroke} />
-          <Text style={[styles.historyHeaderBtnText, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>
-            {t('messages.historyShort')}
-          </Text>
-        </TouchableOpacity>
-      )}
+      <View style={styles.headerRight}>
+        <DemoVideoButton id="messages" variant="header" />
+        {onOpenHistory && (
+          <TouchableOpacity
+            onPress={onOpenHistory}
+            activeOpacity={0.8}
+            style={[styles.historyHeaderBtn, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}
+            accessibilityRole="button"
+            accessibilityLabel={t('messages.showHistory')}
+            accessibilityHint={t('messages.showHistoryHint')}
+            hitSlop={HIT_SLOP_MED}
+          >
+            <History size={16} color={theme.textMuted} strokeWidth={icon.stroke} />
+            <Text style={[styles.historyHeaderBtnText, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>
+              {t('messages.historyShort')}
+            </Text>
+          </TouchableOpacity>
+        )}
+      </View>
     </View>
   );
 });
@@ -846,6 +850,7 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   headerTextCol: { flex: 1 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-start' },
   headerTitle: {
     fontSize: 28,
     fontFamily: font.bold,

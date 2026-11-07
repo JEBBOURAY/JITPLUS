@@ -4,9 +4,9 @@ import { queryKeys, STALE } from './keys';
 
 const BASE = '/stamp-codes/merchant';
 
-export type StampCodeStatus = 'ACTIVE' | 'REDEEMED' | 'REVOKED';
+type StampCodeStatus = 'ACTIVE' | 'REDEEMED' | 'REVOKED';
 
-export interface StampCodeQuota {
+interface StampCodeQuota {
   used: number;
   /** null on the Pro plan: unlimited */
   limit: number | null;
@@ -34,11 +34,11 @@ export interface StampCodeItem {
   redeemedBy: { prenom: string | null; nom: string | null } | null;
 }
 
-export interface StampCodeBatchDetail extends StampCodeBatchSummary {
+interface StampCodeBatchDetail extends StampCodeBatchSummary {
   codes: StampCodeItem[];
 }
 
-export interface CreateStampCodeBatchInput {
+interface CreateStampCodeBatchInput {
   label: string;
   quantity: number;
   stamps?: number;

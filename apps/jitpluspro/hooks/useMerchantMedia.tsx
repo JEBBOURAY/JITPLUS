@@ -31,7 +31,6 @@ export function useMerchantMedia() {
   const closeSheet = useCallback(() => setSheet(null), []);
 
   const { isPremium } = usePlanStatus(merchant);
-  const merchantName = merchant?.nom;
 
   const pickLogo = useCallback(async () => {
     if (uploadLogo.isPending) return;
@@ -47,12 +46,12 @@ export function useMerchantMedia() {
       });
       if (result.canceled || !result.assets?.[0]) return;
       const asset = result.assets[0];
-      const { url } = await uploadLogo.mutateAsync({ uri: asset.uri, mimeType: asset.mimeType, merchantName });
+      const { url } = await uploadLogo.mutateAsync({ uri: asset.uri, mimeType: asset.mimeType });
       updateMerchant({ logoUrl: url });
     } catch (err) {
       Alert.alert(t('common.error'), getErrorMessage(err, t('account.logoUploadError')));
     }
-  }, [uploadLogo, merchantName, updateMerchant, t]);
+  }, [uploadLogo, updateMerchant, t]);
 
   const pickCover = useCallback(async () => {
     if (uploadCover.isPending) return;
@@ -72,14 +71,12 @@ export function useMerchantMedia() {
       const { url } = await uploadCover.mutateAsync({
         uri: asset.uri,
         mimeType: asset.mimeType,
-        merchantName,
-        fileSize: asset.fileSize,
       });
       updateMerchant({ coverUrl: url });
     } catch (err) {
       Alert.alert(t('common.error'), getErrorMessage(err, t('account.coverUploadError')));
     }
-  }, [uploadCover, merchantName, updateMerchant, t]);
+  }, [uploadCover, updateMerchant, t]);
 
   const removeLogo = useCallback(() => {
     setSheet(null);

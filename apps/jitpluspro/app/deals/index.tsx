@@ -17,6 +17,7 @@ import { CampaignRow, GameEmptyState, HeaderAddButton, ListSeparator, type Campa
 import { formatYmd } from '@/components/scratch/DateField';
 import { moroccoYmdOf } from '@/components/scratch/campaignForm';
 import DealThumb from '@/components/deals/DealThumb';
+import { DemoHeaderActions } from '@/components/demo/DemoVideoButton';
 import { DealStatusPill, useDealMerchantLook, type DealMerchantLook } from '@/components/deals/DealRows';
 import { dealBadgeLabel, dealTimeLeftLabel } from '@/components/deals/dealVisual';
 import { DEAL_LIST_TABS, dealLimitReached, dealsForTab, type DealListTab } from '@/components/deals/dealForm';
@@ -155,11 +156,15 @@ export default function DealsScreen() {
       <ScreenHeader
         title={t('deals.title')}
         onBack={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)'))}
-        right={canManage && !empty ? (
-          <View style={limitMessage ? styles.dimmed : undefined}>
-            <HeaderAddButton label={t('deals.list.create')} onPress={create} />
-          </View>
-        ) : undefined}
+        right={(
+          <DemoHeaderActions id="bonsplans">
+            {canManage && !empty ? (
+              <View style={limitMessage ? styles.dimmed : undefined}>
+                <HeaderAddButton label={t('deals.list.create')} onPress={create} />
+              </View>
+            ) : null}
+          </DemoHeaderActions>
+        )}
       />
       {isLoading ? (
         <View style={styles.loader}><ActivityIndicator color={theme.primary} /></View>

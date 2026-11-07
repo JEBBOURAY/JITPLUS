@@ -8,7 +8,6 @@ import { DEFAULT_CURRENCY, numberFormat, type Currency } from '@jitplus/shared/s
 // La liste des devises vit dans @jitplus/shared (partagée avec l'app client).
 export {
   CURRENCY_LIST,
-  DEFAULT_CURRENCY,
   getCurrency,
   currencySymbol,
   formatMoney,

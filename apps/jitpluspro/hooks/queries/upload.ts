@@ -1,7 +1,6 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import api, { getApiBaseUrl, getAccessToken } from '@/services/api';
 import i18n from '@/i18n';
-import { MAX_LOGO_SIZE_BYTES } from '@/constants/app';
 
 // Backend ceiling for image uploads (sharp optimizes down afterwards).
 export const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
@@ -43,7 +42,7 @@ export function normalizeUploadMimeAndExt(uri: string, mimeType?: string | null)
  * `getErrorMessage` and the Sentry filter treat it like an API error, and the
  * native exception as `cause` (Sentry reports it as a linked exception).
  */
-export class UploadError extends Error {
+class UploadError extends Error {
   readonly response?: { status: number; data?: unknown };
 
   constructor(message: string, opts: { status?: number; data?: unknown; cause?: unknown } = {}) {
@@ -80,9 +79,9 @@ export async function uploadImageNative(opts: {
   uri: string;
   endpoint: string; // e.g. '/merchant/upload-image?type=logo'
   mime: string;
-  maxBytes?: number;
+  maxBytes: number;
 }): Promise<Record<string, unknown> & { url: string }> {
-  const { uri, endpoint, mime, maxBytes = MAX_LOGO_SIZE_BYTES } = opts;
+  const { uri, endpoint, mime, maxBytes } = opts;
 
   const info = await FileSystem.getInfoAsync(uri);
   if (!info.exists) {

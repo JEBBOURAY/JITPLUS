@@ -31,7 +31,6 @@ interface DealThumbProps {
   /** Translated badge ("-30 %", "1+1 OFFERT"), shown on the generated visuals */
   badge?: string | null;
   width: number;
-  height?: number;
   radius?: number;
 }
 
@@ -39,9 +38,9 @@ interface DealThumbProps {
  * Deal visual: the photo, else the merchant cover darkened with the badge on
  * top, else a gradient of the merchant color with the category emoji.
  */
-function DealThumb({ imageUrl, coverUrl, themeColor, category, badge, width, height = width, radius = 12 }: DealThumbProps) {
-  const box = { width, height, borderRadius: radius };
-  const scale = Math.min(width, height);
+function DealThumb({ imageUrl, coverUrl, themeColor, category, badge, width, radius = 12 }: DealThumbProps) {
+  const box = { width, height: width, borderRadius: radius };
+  const scale = width;
   const badgeStyle = { fontSize: Math.max(11, Math.round(scale * 0.17)), lineHeight: Math.max(14, Math.round(scale * 0.22)) };
 
   if (imageUrl) {

@@ -3,28 +3,22 @@ import { Merchant, TeamMember } from '@/types';
 
 interface AuthState {
   merchant: Merchant | null;
-  token: string | null;
   loading: boolean;
   isTeamMember: boolean;
   teamMember: TeamMember | null;
-  onboardingCompleted: boolean;
 
   setMerchant: (merchant: Merchant | null) => void;
   updateMerchant: (data: Partial<Merchant>) => void;
-  setToken: (token: string | null) => void;
   setLoading: (loading: boolean) => void;
   setTeamMember: (isTeam: boolean, member: TeamMember | null) => void;
-  setOnboardingCompleted: (completed: boolean) => void;
   reset: () => void;
 }
 
-const initialState: Pick<AuthState, 'merchant' | 'token' | 'loading' | 'isTeamMember' | 'teamMember' | 'onboardingCompleted'> = {
+const initialState: Pick<AuthState, 'merchant' | 'loading' | 'isTeamMember' | 'teamMember'> = {
   merchant: null,
-  token: null,
   loading: true,
   isTeamMember: false,
   teamMember: null,
-  onboardingCompleted: false,
 };
 
 /**
@@ -39,9 +33,7 @@ export const useAuthStore = create<AuthState>()((set) => ({
   setMerchant: (merchant) => set({ merchant }),
   updateMerchant: (data) =>
     set((s) => ({ merchant: s.merchant ? { ...s.merchant, ...data } : s.merchant })),
-  setToken: (token) => set({ token }),
   setLoading: (loading) => set({ loading }),
   setTeamMember: (isTeamMember, teamMember) => set({ isTeamMember, teamMember }),
-  setOnboardingCompleted: (onboardingCompleted) => set({ onboardingCompleted }),
   reset: () => set(initialState),
 }));

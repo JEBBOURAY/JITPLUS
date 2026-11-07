@@ -18,7 +18,7 @@ export default {
     clients: 'Clients',
     scan: 'Scan',
     scanHint: 'Ouvre le scanner QR',
-    messages: 'Messages',
+    messages: 'Notifications',
     team: 'Équipe',
   },
 
@@ -550,12 +550,12 @@ export default {
 
   // ── Push Marketing (messages) ──
   messages: {
-    title: 'Messages',
-    noMessages: 'Aucun message envoyé',
+    title: 'Notifications',
+    noMessages: 'Aucune notification envoyée',
     noMessagesHint: 'Vos notifications envoyées apparaîtront ici.',
-    messageTitle: 'Titre du message',
+    messageTitle: 'Titre de la notification',
     messageTitlePlaceholder: 'Ex : -30 % sur tout le menu',
-    messageBody: 'Contenu du message',
+    messageBody: 'Contenu de la notification',
     messageBodyPlaceholder: 'Décrivez votre offre en détail : quoi, quand, conditions…',
     composeTip: 'Un titre court se lit mieux. Mettez une offre claire dans le contenu.',
     sendToAll: 'Envoyer à tous mes clients',
@@ -592,21 +592,21 @@ export default {
     cooldownWait: 'Patientez %{s} s…',
     sendingShort: 'Envoi…',
     ownerOnly: 'Accès réservé au propriétaire',
-    ownerOnlyMsg: 'L\'envoi de messages est réservé au propriétaire du compte. Demandez-lui d\'envoyer le message.',
+    ownerOnlyMsg: 'L\'envoi de notifications est réservé au propriétaire du compte. Demandez-lui d\'envoyer la notification.',
     showHistory: 'Afficher l\'historique',
     showHistoryHint: "Touchez pour charger l'historique de vos envois",
     filterAll: 'Tout',
     filterPush: 'Push',
     filterEmail: 'E-mail',
-    legalNote: 'En envoyant, vous confirmez que ce message respecte nos CGU et la loi 09-08 (CNDP). Seuls les clients ayant accepté les notifications recevront ce message.',
+    legalNote: 'En envoyant, vous confirmez que cette notification respecte nos CGU et la loi 09-08 (CNDP). Seuls les clients ayant accepté les notifications recevront ce message.',
     rateLimited: 'Trop d\'envois récents. Patientez quelques minutes avant de renvoyer.',
     contentBlockedTitle: 'Contenu non autorisé',
-    contentBlockedMsg: 'Votre message contient des termes interdits (phishing, arnaque ou contenu inapproprié). Merci de le reformuler.',
+    contentBlockedMsg: 'Votre notification contient des termes interdits (phishing, arnaque ou contenu inapproprié). Merci de le reformuler.',
     // Guided 3-step composer
     subtitle: 'Envoyez une offre à vos clients en 3 étapes',
     historyShort: 'Historique',
     step1Title: 'Choisissez un canal',
-    step2Title: 'Rédigez votre message',
+    step2Title: 'Rédigez votre notification',
     step3Title: 'Aperçu et envoi',
     channelPushName: 'Notification',
     channelPushDesc: 'Gratuit et illimité',
@@ -633,7 +633,7 @@ export default {
     previewNow: 'maintenant',
     previewTitlePlaceholder: 'Votre titre apparaîtra ici',
     previewSubjectPlaceholder: 'Votre objet apparaîtra ici',
-    previewBodyPlaceholder: 'Le contenu de votre message apparaîtra ici.',
+    previewBodyPlaceholder: 'Le contenu de votre notification apparaîtra ici.',
     previewEmailTo: 'À : vos clients fidèles',
     audienceLabel: 'Destinataires',
     audiencePush: 'Tous vos clients ayant activé les notifications',
@@ -643,11 +643,11 @@ export default {
     emailQuotaReached: 'Limite mensuelle atteinte, contactez le support',
     missingTitle: 'Ajoutez un titre pour continuer',
     missingSubject: 'Ajoutez un objet pour continuer',
-    missingBody: 'Ajoutez le contenu du message pour continuer',
+    missingBody: 'Ajoutez le contenu de la notification pour continuer',
     confirmSheetTitle: 'Prêt à envoyer ?',
-    confirmIrreversible: 'Une fois envoyé, le message ne peut plus être annulé.',
+    confirmIrreversible: 'Une fois envoyée, la notification ne peut plus être annulée.',
     sendNow: 'Envoyer maintenant',
-    editMessage: 'Modifier le message',
+    editMessage: 'Modifier la notification',
     done: 'Terminé',
     viewHistory: 'Voir l\'historique',
   },
@@ -658,7 +658,6 @@ export default {
     limitMsg: 'Vous avez atteint la limite de %{max} boutiques du forfait Pro. Contactez-nous si vous avez besoin de plus.',
     storesLockedTitle: 'Boutique supplémentaire (forfait Pro)',
     storesLockedMsg: 'Le forfait gratuit est limité à 1 boutique. Passez au forfait Pro pour gérer jusqu\'à 10 boutiques.',
-    nameRequired: 'Le nom de la boutique est obligatoire.',
     saveError: 'Impossible d\'enregistrer. Réessayez.',
     deleteError: 'Impossible de supprimer la boutique.',
     toggleError: 'Impossible de modifier le statut.',
@@ -1372,8 +1371,6 @@ export default {
     termsText: "J'accepte les",
     termsLink: "conditions générales d'utilisation",
     mapTitle: 'Position exacte sur la carte',
-    welcomeTitle: 'Bienvenue sur JitPlus Pro',
-    welcomeMsg: 'Votre boutique « %{nom} » a été créée.\nConnectez-vous pour commencer.',
     registrationError: 'Impossible de créer votre compte',
     passwordPlaceholder: 'Min. %{count} caractères',
     confirmPasswordLabel: 'Confirmer le mot de passe',
@@ -1625,7 +1622,6 @@ export default {
   // ── Onboarding ──
   onboarding: {
     // Navigation
-    skipDontShow: 'Ne plus afficher',
     stepOf: 'Étape %{current} sur %{total}',
   },
 
@@ -1730,7 +1726,6 @@ export default {
   transactionAmount: {
     noClientSelected: 'Aucun client sélectionné.',
     winningsHint: 'Sélectionnez un lot ou un coupon gagné par le client, puis remettez-le.',
-    winningsEmpty: "Ce client n'a aucun lot ni coupon à récupérer.",
     wheelSection: 'Roue de la chance',
     scratchSection: 'Cartes à gratter',
     claimBefore: 'À remettre avant le %{date}',
@@ -1937,5 +1932,12 @@ export default {
   // ── Bons plans ──
   deals: dealsProFr,
   stampCodes: stampCodesProFr,
+
+  // ── Demo videos ──
+  demo: {
+    watch: 'Voir la démo',
+    error: 'Impossible de lire la vidéo. Vérifiez votre connexion.',
+    retry: 'Réessayer',
+  },
 
 };

@@ -63,13 +63,6 @@ describe('StampGrid', () => {
     expect(getByText(/3\/10/)).toBeTruthy();
   });
 
-  it('hides label when showLabel=false', () => {
-    const { queryByText } = render(
-      <StampGrid current={3} total={10} showLabel={false} />,
-    );
-    expect(queryByText(/3\/10/)).toBeNull();
-  });
-
   it('renders with custom size', () => {
     const { toJSON } = render(
       <StampGrid current={2} total={5} size={50} />,

@@ -16,7 +16,7 @@ export default {
     clients: 'Customers',
     scan: 'Scan',
     scanHint: 'Opens the QR code scanner',
-    messages: 'Messages',
+    messages: 'Notifications',
     team: 'Team',
   },
 
@@ -540,7 +540,7 @@ export default {
   },
 
   messages: {
-    title: 'Messages',
+    title: 'Notifications',
     noMessages: 'No messages sent yet',
     noMessagesHint: 'Your sent notifications will appear here.',
     messageTitle: 'Message title',
@@ -645,7 +645,6 @@ export default {
     limitMsg: 'You have reached the %{max}-store limit on the Pro plan. Contact our team if you need more.',
     storesLockedTitle: 'Additional store (Pro plan)',
     storesLockedMsg: 'The free plan is limited to 1 store. Upgrade to Pro to manage up to 10 stores.',
-    nameRequired: 'Store name is required.',
     saveError: 'Couldn\'t save. Try again.',
     deleteError: 'Couldn\'t delete the store.',
     toggleError: 'Unable to change the status.',
@@ -1348,8 +1347,6 @@ export default {
     termsText: 'I accept the',
     termsLink: 'terms of use',
     mapTitle: 'Exact location on the map',
-    welcomeTitle: 'Welcome to JitPlus Pro',
-    welcomeMsg: 'Your store "%{nom}" has been created.\nSign in to get started.',
     registrationError: 'Could not create your account',
     passwordPlaceholder: 'Min. %{count} characters',
     confirmPasswordLabel: 'Confirm password',
@@ -1599,7 +1596,6 @@ export default {
 
   // ── Onboarding ──
   onboarding: {
-    skipDontShow: 'Don\'t show again',
     stepOf: 'Step %{current} of %{total}',
   },
 
@@ -1704,7 +1700,6 @@ export default {
   transactionAmount: {
     noClientSelected: 'No customer selected.',
     winningsHint: 'Select a prize or coupon the customer won, then hand it over.',
-    winningsEmpty: 'This customer has no prize or coupon to collect.',
     wheelSection: 'Lucky wheel',
     scratchSection: 'Scratch cards',
     claimBefore: 'Hand over before %{date}',
@@ -1908,5 +1903,12 @@ export default {
   // ── Deals ──
   deals: dealsProEn,
   stampCodes: stampCodesProEn,
+
+  // ── Demo videos ──
+  demo: {
+    watch: 'Watch the demo',
+    error: "Couldn't play the video. Check your connection.",
+    retry: 'Try again',
+  },
 
 };

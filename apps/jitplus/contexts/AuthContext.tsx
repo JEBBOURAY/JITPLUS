@@ -34,9 +34,10 @@ interface AuthContextType {
   enterGuestMode: () => void;
   sendOtpEmail: (email: string, isRegister?: boolean) => Promise<{ success: boolean; error?: string; isNetworkError?: boolean }>;
   verifyOtpEmail: (email: string, code: string, isRegister?: boolean) => Promise<{ success: boolean; isNewUser?: boolean; error?: string }>;
+  verifyOtpForReset: (email: string, code: string) => Promise<{ success: boolean; error?: string; isNetworkError?: boolean }>;
   loginWithEmail: (email: string, password: string) => Promise<{ success: boolean; error?: string; isNetworkError?: boolean }>;
-  setPassword: (password: string) => Promise<{ success: boolean; error?: string; isNetworkError?: boolean }>;
-  resetPasswordOtp: (password: string) => Promise<{ success: boolean; error?: string; isNetworkError?: boolean }>;
+  resetPasswordOtp: (password: string) => Promise<{ success: boolean; error?: string; isNetworkError?: boolean; sessionExpired?: boolean }>;
+  cancelPasswordReset: () => Promise<void>;
   googleLogin: (idToken: string) => Promise<{ success: boolean; isNewUser?: boolean; error?: string; rawError?: unknown }>;
   appleLogin: (identityToken: string, givenName?: string, familyName?: string, rawNonce?: string) => Promise<{ success: boolean; isNewUser?: boolean; error?: string; rawError?: unknown }>;
   completeProfile: (prenom: string, nom: string, termsAccepted: boolean, telephone?: string, dateNaissance?: string, password?: string) => Promise<{ success: boolean; error?: string; isNetworkError?: boolean }>;

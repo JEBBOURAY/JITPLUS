@@ -36,6 +36,7 @@ import { formatDate } from '@/utils/date';
 import { ActionButton } from '@/components/ui/ActionButton';
 import { font, icon } from '@/constants/design';
 import { useDir } from '@/hooks/useDir';
+import { DemoVideoButton } from '@/components/demo/DemoVideoButton';
 import { getApiBaseUrl } from '@/services/api';
 
 const PRO_ANDROID_URL = 'https://play.google.com/store/apps/details?id=com.jitplus.pro';
@@ -116,6 +117,7 @@ export default function ReferralScreen() {
           <ArrowLeft size={22} color={theme.text} strokeWidth={icon.stroke} style={dir.flip} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: theme.text, textAlign: dir.textAlign }]}>{t('referral.title')}</Text>
+        <DemoVideoButton id="forfait" variant="header" />
       </View>
 
       {loading ? (

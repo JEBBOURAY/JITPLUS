@@ -28,6 +28,7 @@ import { SEARCH_DEBOUNCE_MS, INACTIVE_CLIENT_DAYS } from '@/constants/app';
 import { ms, radius } from '@/utils/responsive';
 import { font, icon as iconTokens } from '@/constants/design';
 import { ActionButton } from '@/components/ui/ActionButton';
+import { DemoVideoButton } from '@/components/demo/DemoVideoButton';
 import { timeAgo } from '@/utils/date';
 import type { ClientListItem, ClientListView } from '@/types';
 
@@ -533,6 +534,7 @@ export default function ClientsScreen() {
         <Text style={[styles.headerTitle, { color: theme.text }]} maxFontSizeMultiplier={1.4} accessibilityRole="header">
           {t('clients.title')}
         </Text>
+        <DemoVideoButton id="clients" variant="header" />
       </View>
 
       <ClientSearchBar searching={searching} onSearch={setDebouncedSearch} />
@@ -582,6 +584,8 @@ const styles = StyleSheet.create({
   headerBar: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
     paddingHorizontal: 24,
     paddingBottom: 8,
   },

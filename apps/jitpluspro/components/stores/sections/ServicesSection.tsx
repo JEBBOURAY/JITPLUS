@@ -97,14 +97,14 @@ export default function ServicesSection({ merchant }: { merchant: Merchant }) {
       if (result.canceled || !result.assets?.length) return;
       for (const asset of result.assets.slice(0, remaining)) {
         // The server appends the photo and returns the whole gallery.
-        const res = await uploadGalleryImage.mutateAsync({ uri: asset.uri, mimeType: asset.mimeType, merchantName: merchant.nom, fileSize: asset.fileSize });
+        const res = await uploadGalleryImage.mutateAsync({ uri: asset.uri, mimeType: asset.mimeType });
         updateMerchant({ gallery: res.gallery });
       }
       haptic();
     } catch (err) {
       Alert.alert(t('common.error'), getErrorMessage(err, t('storePreview.galleryUploadError')));
     }
-  }, [uploadGalleryImage, isPremium, gallery.length, merchant.nom, updateMerchant, t]);
+  }, [uploadGalleryImage, isPremium, gallery.length, updateMerchant, t]);
 
   const removePhoto = useCallback((url: string) => {
     Alert.alert(t('storePreview.galleryDeleteTitle'), t('storePreview.galleryDeleteMsg'), [

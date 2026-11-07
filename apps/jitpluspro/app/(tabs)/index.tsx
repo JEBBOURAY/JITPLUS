@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -38,6 +38,7 @@ import PremiumLockModal from '@/components/PremiumLockModal';
 import TipsCarousel from '@/components/TipsCarousel';
 import QuickActionsRow, { type QuickAction } from '@/components/QuickActionsRow';
 import MonthOverviewCard from '@/components/MonthOverviewCard';
+import { DemoVideoButton } from '@/components/demo/DemoVideoButton';
 import RecentActivityCard from '@/components/RecentActivityCard';
 import KpiCounter from '@/components/KpiCounter';
 import { useTourTarget } from '@/components/GuidedTour';
@@ -49,6 +50,7 @@ import { ms, radius } from '@/utils/responsive';
 import { font, icon } from '@/constants/design';
 import { useDir } from '@/hooks/useDir';
 import { ASYNC_STORAGE_KEYS } from '@/constants/app';
+import { DemoVideoModal } from '@/components/demo/DemoVideoModal';
 import type { Transaction } from '@/types';
 
 const HIT_SLOP_LARGE = { top: 12, bottom: 12, left: 12, right: 12 };
@@ -188,6 +190,22 @@ export default function HomeScreen() {
   const today = new Date();
   const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   const { value: trialBannerDismissed, setValue: setTrialBannerDismissed } = usePersistedFlag(ASYNC_STORAGE_KEYS.TRIAL_END_BANNER_DISMISSED_DAY, todayKey);
+  // First sign-in / sign-up: play the intro demo once per account on this device.
+  const { value: introSeen, setValue: setIntroSeen } = usePersistedFlag(`${ASYNC_STORAGE_KEYS.INTRO_DEMO_SEEN}_${merchant?.id ?? 'anon'}`);
+  const [introOpen, setIntroOpen] = useState(false);
+  useEffect(() => {
+    if (!merchant?.id || introSeen !== false) return;
+    const timer = setTimeout(() => {
+      if (!useOnboardingStore.getState().request('introVideo')) return;
+      setIntroSeen(true);
+      setIntroOpen(true);
+    }, 900);
+    return () => clearTimeout(timer);
+  }, [merchant?.id, introSeen, setIntroSeen]);
+  const closeIntro = useCallback(() => {
+    setIntroOpen(false);
+    useOnboardingStore.getState().release('introVideo');
+  }, []);
   const dismissTrialBanner = useCallback(() => {
     setTrialBannerDismissed(true);
   }, [setTrialBannerDismissed]);
@@ -260,9 +278,10 @@ export default function HomeScreen() {
         </LinearGradient>
 
         <View style={styles.content}>
+          <DemoVideoButton id="intro" style={styles.introDemo} />
           {!activeOnboardingSurface && <TipsCarousel />}
 
-          {!activeOnboardingSurface && showTrialBanner && trialDaysLeft != null && (
+          {!activeOnboardingSurface && showTrialBanner && (
             <View style={styles.bannerWrap}>
               <TrialEndBanner
                 daysRemaining={trialDaysLeft}
@@ -381,6 +400,7 @@ export default function HomeScreen() {
         </View>
       </View>
 
+      <DemoVideoModal id="intro" visible={introOpen} onClose={closeIntro} />
       <PremiumLockModal
         visible={premiumModal.visible}
         onClose={closePremiumModal}
@@ -497,6 +517,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
   },
+  introDemo: { alignSelf: 'stretch', justifyContent: 'center', minHeight: 44, marginBottom: 12 },
   iconBtn: {
     width: 38,
     height: 38,

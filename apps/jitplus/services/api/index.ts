@@ -4,7 +4,7 @@ import { logInfo, logApiError } from '@/utils/devLogger';
 import {
   getToken, setToken, removeToken,
   getRefreshToken, setRefreshToken, removeRefreshToken,
-  getStoredToken, clearAuth, setRememberMe, getRememberMe, clearRememberMe,
+  getStoredToken, clearAuth, setRememberMe, persistSession, getRememberMe, clearRememberMe,
   setEmailOtpNewUser, getEmailOtpNewUser, clearEmailOtpNewUser,
   setCachedProfile, getCachedProfile, clearCachedProfile,
 } from './storage';
@@ -79,7 +79,7 @@ export const api = {
 
   // Token / session management
   getStoredToken, clearAuth,
-  setRememberMe, getRememberMe, clearRememberMe,
+  setRememberMe, persistSession, getRememberMe, clearRememberMe,
   setEmailOtpNewUser, getEmailOtpNewUser, clearEmailOtpNewUser,
   setCachedProfile, getCachedProfile, clearCachedProfile,
 

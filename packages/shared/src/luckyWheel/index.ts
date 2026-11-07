@@ -14,13 +14,13 @@ interface PrizeLike {
   weight?: number;
 }
 
-export const PRIZE_COLORS = ['#7C3AED', '#F59E0B', '#10B981', '#3B82F6', '#EC4899', '#F97316'];
+const PRIZE_COLORS = ['#7C3AED', '#F59E0B', '#10B981', '#3B82F6', '#EC4899', '#F97316'];
 export const LOST_COLOR = '#475569';
 const MIN_SEGMENTS = 8;
 const MAX_SEGMENTS = 14;
 
 /** Splits `total` into integer parts proportional to `weights` (largest-remainder), each at least `min`. */
-export function apportion(weights: number[], total: number, min = 0): number[] {
+function apportion(weights: number[], total: number, min = 0): number[] {
   const sum = weights.reduce((s, w) => s + w, 0) || 1;
   const base = weights.map(() => min);
   const free = Math.max(0, total - min * weights.length);

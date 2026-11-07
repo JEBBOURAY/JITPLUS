@@ -39,9 +39,6 @@ export const SCRATCH_DEFAULTS = {
 /** Share of the card that must be scratched before it reveals itself */
 export const SCRATCH_REVEAL_THRESHOLD = 0.55;
 
-export const COUPON_REMINDER_HOURS = 48;
-export const SCRATCH_CARD_REMINDER_HOURS = 24;
-
 /** Weekday bits, ISO order: index 0 = Monday … 6 = Sunday */
 export const WEEKDAY_BITS = [1, 2, 4, 8, 16, 32, 64] as const;
 export const ALL_WEEKDAYS_MASK = 127;

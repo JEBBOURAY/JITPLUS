@@ -27,6 +27,7 @@ import {
   useDeleteTeamMember,
 } from '@/hooks/useQueryHooks';
 import { ActionButton } from '@/components/ui/ActionButton';
+import { DemoVideoButton } from '@/components/demo/DemoVideoButton';
 import MemberCard from '@/components/team/MemberCard';
 import AddEditMemberModal, { type MemberFormPayload } from '@/components/team/MemberFormModal';
 import { font, icon } from '@/constants/design';
@@ -285,6 +286,7 @@ export default function TeamScreen() {
       >
         {t('team.title')}
       </Text>
+      <DemoVideoButton id="equipe" variant="header" />
     </View>
   );
 
@@ -392,6 +394,8 @@ const styles = StyleSheet.create({
   headerBar: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
     paddingHorizontal: 24,
     paddingBottom: 8,
   },

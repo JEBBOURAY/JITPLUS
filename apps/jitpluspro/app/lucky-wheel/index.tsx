@@ -19,6 +19,7 @@ import { moroccoToday } from '@/components/scratch/campaignForm';
 import { CampaignRow, GameEmptyState, HeaderAddButton, ListSeparator, type CampaignLine } from '@/components/games/GameList';
 import { WheelStage, WheelTile } from '@/components/luckyWheel/WheelStage';
 import { GameStage } from '@/components/games/GameStage';
+import { DemoHeaderActions } from '@/components/demo/DemoVideoButton';
 import { WheelStatusPill, formatWheelPeriod } from '@/components/luckyWheel/WheelUI';
 import { FulfilledPrizeList, PendingPrizeList } from '@/components/luckyWheel/PendingPrizes';
 import { initialWheelForm, liveState, previewSegments } from '@/components/luckyWheel/wheelForm';
@@ -168,7 +169,11 @@ export default function LuckyWheelListScreen() {
       <ScreenHeader
         title={t('luckyWheel.list.title')}
         onBack={() => (router.canGoBack() ? router.back() : router.replace('/games'))}
-        right={canManage && campaigns.length > 0 ? <HeaderAddButton label={t('luckyWheel.list.create')} onPress={create} /> : undefined}
+        right={(
+          <DemoHeaderActions id="roue">
+            {canManage && campaigns.length > 0 ? <HeaderAddButton label={t('luckyWheel.list.create')} onPress={create} /> : null}
+          </DemoHeaderActions>
+        )}
       />
       {loading ? (
         <View style={styles.loader}><ActivityIndicator color={theme.primary} /></View>

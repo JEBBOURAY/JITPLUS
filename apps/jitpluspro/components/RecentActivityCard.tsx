@@ -25,8 +25,6 @@ function RecentActivityCard({
   const { t } = useLanguage();
   const dir = useDir();
 
-  if (transactions.length === 0) return null;
-
   return (
     <View style={[styles.card, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }]}>
       {transactions.map((tx, i) => (

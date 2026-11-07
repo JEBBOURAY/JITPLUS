@@ -28,6 +28,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { useDir } from '@/hooks/useDir';
 import { ActionButton } from '@/components/ui/ActionButton';
+import { DemoVideoButton } from '@/components/demo/DemoVideoButton';
 import { font, icon } from '@/constants/design';
 import { getErrorMessage } from '@/utils/error';
 import { logPerf } from '@jitplus/shared/src/devLogger';
@@ -53,7 +54,7 @@ export default function QuickAddScreen() {
   const { t } = useLanguage();
   const dir = useDir();
   const merchant = useAuthStore((s) => s.merchant);
-  const params = useLocalSearchParams<{ localPhone?: string; countryCode?: string; prenom?: string }>();
+  const params = useLocalSearchParams<{ localPhone?: string; countryCode?: string }>();
 
   const [countryIndex, setCountryIndex] = useState<number>(() => {
     // Priority: countryCode passed by scan-qr (preserves user choice) > merchant default
@@ -65,7 +66,7 @@ export default function QuickAddScreen() {
   const [phone, setPhone] = useState<string>(() =>
     (params.localPhone ?? '').replace(/[^\d]/g, '').slice(0, MAX_PHONE_LEN),
   );
-  const [prenom, setPrenom] = useState<string>(params.prenom ?? '');
+  const [prenom, setPrenom] = useState<string>('');
   const [amount, setAmount] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<QuickAddResult | null>(null);
@@ -152,7 +153,7 @@ export default function QuickAddScreen() {
           countryCode: country.code,
           prenom: prenom.trim() || undefined,
           type: 'EARN_STAMPS',
-          amount: isPerVisit ? Math.max(amountNum, 0) : amountNum,
+          amount: amountNum,
           stamps: computedStamps,
         },
         { headers: { 'Idempotency-Key': idempotencyKey } },
@@ -268,7 +269,7 @@ export default function QuickAddScreen() {
           <ArrowLeft size={24} color={theme.text} strokeWidth={icon.stroke} style={dir.flip} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: theme.text }]}>{t('quickAdd.title')}</Text>
-        <View style={styles.headerBtn} />
+        <DemoVideoButton id="sansapp" variant="header" />
       </View>
 
       <KeyboardAvoidingView

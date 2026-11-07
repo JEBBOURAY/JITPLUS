@@ -542,12 +542,6 @@ const styles = StyleSheet.create({
     height: hp(54), borderRadius: radius.lg, gap: wp(10),
     marginBottom: hp(12), borderWidth: 1.5, borderColor: 'transparent',
   },
-  socialIcon: { width: ms(22), height: ms(22) },
-  googleIconWrap: {
-    width: ms(24), height: ms(24), borderRadius: ms(12),
-    alignItems: 'center', justifyContent: 'center',
-  },
-  googleG: { fontSize: ms(18), fontWeight: '700', color: '#EA4335' },
   socialBtnText: { fontSize: fontSize.md, fontWeight: '600', letterSpacing: 0.2 },
 
   // Separator
@@ -621,10 +615,6 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg, paddingHorizontal: wp(14), height: hp(58),
   },
   emailInput: { flex: 1, fontSize: fontSize.md, fontWeight: '500', marginLeft: wp(10) },
-  phonePrefix: { fontSize: fontSize.md, fontWeight: '600', marginLeft: wp(8) },
-  phoneSeparator: {
-    width: 1, height: ms(24), backgroundColor: '#ddd', marginHorizontal: wp(8),
-  },
 
 
 

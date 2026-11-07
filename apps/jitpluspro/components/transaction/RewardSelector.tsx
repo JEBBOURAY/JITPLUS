@@ -7,6 +7,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { font, icon } from '@/constants/design';
 import { ms } from '@/utils/responsive';
 import { resolveImageUrl } from '@/utils/imageUrl';
+import { DemoVideoButton } from '@/components/demo/DemoVideoButton';
 import { rewardAvailability, type RewardAvailability } from '@/utils/stampTransaction';
 import type { Reward } from '@/types';
 import { cardSurface, cardStyles } from './ui';
@@ -118,6 +119,7 @@ function RewardSelectorBase({ rewards, loading, selectedRewardId, onSelect, curr
         <View style={[styles.optional, { backgroundColor: theme.bgInput }]}>
           <Text style={[styles.optionalText, { color: theme.textMuted }]}>{t('stampScreen.rewardsOptional')}</Text>
         </View>
+        <DemoVideoButton id="offrir" variant="header" style={styles.demoBtn} />
       </View>
 
       {loading ? (
@@ -164,6 +166,7 @@ const styles = StyleSheet.create({
   header: { alignItems: 'center', gap: 10 },
   headerIcon: { width: ms(34), height: ms(34), borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   title: { flex: 1, fontSize: ms(16), fontFamily: font.semibold },
+  demoBtn: { marginStart: 8 },
   optional: { borderRadius: 999, paddingHorizontal: 9, paddingVertical: 3 },
   optionalText: { fontSize: ms(12), fontFamily: font.medium },
   loading: { paddingVertical: 16 },

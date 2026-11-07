@@ -524,7 +524,6 @@ function ThemedNavigator() {
     const navigateByPayload = (data?: Record<string, unknown>) => {
       try {
         const action = typeof data?.action === 'string' ? data.action : undefined;
-        const event = typeof data?.event === 'string' ? data.event : undefined;
 
         // Open-rate tracking: the backend sends the inbox item id with every push.
         const inboxId = typeof data?.inboxId === 'string' ? data.inboxId : undefined;
@@ -546,14 +545,7 @@ function ThemedNavigator() {
           logWarn('Notifications', 'Unknown FCM action:', action);
         }
 
-        // 2. Event-based fallback (admin broadcasts, future server-side events)
-        switch (event) {
-          case 'admin_broadcast':
-            router.push('/admin-notifications');
-            return;
-        }
-
-        // 3. Default: open the in-app admin notifications feed so the user
+        // 2. Default (admin broadcasts included): open the in-app admin notifications feed so the user
         // can still find the message — never the generic home tab.
         router.push('/admin-notifications');
       } catch (e) { logWarn('Notifications', 'Navigation failed', e); }
@@ -602,23 +594,13 @@ function ThemedNavigator() {
         )}
         <StatusBarMemo isDark={isDark} />
         <Stack screenOptions={screenOptions}>
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="login" options={{ headerShown: false, animation: 'fade' }} />
-          <Stack.Screen name="register" options={{ headerShown: false, animation: 'slide_from_bottom' }} />
-          <Stack.Screen name="verify-email" options={{ headerShown: false, animation: 'slide_from_bottom' }} />
-          <Stack.Screen name="client-detail" options={{ headerShown: false, animation: 'slide_from_right' }} />
-          <Stack.Screen name="scan-qr" options={{ headerShown: false, animation: 'slide_from_bottom' }} />
-          <Stack.Screen name="transaction-amount" options={{ headerShown: false, animation: 'slide_from_right' }} />
-          <Stack.Screen name="settings" options={{ headerShown: false }} />
-          <Stack.Screen name="dashboard" options={{ headerShown: false }} />
-          <Stack.Screen name="security" options={{ headerShown: false }} />
-          <Stack.Screen name="account" options={{ headerShown: false }} />
-          <Stack.Screen name="stores" options={{ headerShown: false }} />
-          <Stack.Screen name="games" options={{ headerShown: false }} />
-          <Stack.Screen name="referral" options={{ headerShown: false }} />
-          <Stack.Screen name="admin-notifications" options={{ headerShown: false }} />
-          <Stack.Screen name="notification-settings" options={{ headerShown: false }} />
-          <Stack.Screen name="transactions" options={{ headerShown: false, animation: 'slide_from_right' }} />
+          <Stack.Screen name="login" options={{ animation: 'fade' }} />
+          <Stack.Screen name="register" options={{ animation: 'slide_from_bottom' }} />
+          <Stack.Screen name="verify-email" options={{ animation: 'slide_from_bottom' }} />
+          <Stack.Screen name="client-detail" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="scan-qr" options={{ animation: 'slide_from_bottom' }} />
+          <Stack.Screen name="transaction-amount" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="transactions" options={{ animation: 'slide_from_right' }} />
         </Stack>
         <AuthRedirectGuard />
       </View>

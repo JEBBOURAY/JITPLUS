@@ -12,7 +12,6 @@ export const referralStyles = StyleSheet.create({
   balanceCard: { borderRadius: radius.xl, padding: wp(20), alignItems: 'center', marginBottom: hp(16) },
   balanceLabel: { fontSize: FS.sm, color: 'rgba(255,255,255,0.8)', fontWeight: '500', marginBottom: hp(4) },
   balanceAmount: { fontSize: ms(32), fontWeight: '800', color: '#fff', marginBottom: hp(6) },
-  balanceHint: { fontSize: FS.xs, color: 'rgba(255,255,255,0.7)', textAlign: 'center' },
 
   codeCard: {
     borderRadius: radius.xl, padding: wp(20), alignItems: 'center', marginBottom: hp(20),

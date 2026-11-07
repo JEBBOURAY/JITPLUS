@@ -16,6 +16,7 @@ import api from '@/services/api';
 import { getErrorMessage } from '@/utils/error';
 import PremiumLockModal from '@/components/PremiumLockModal';
 import InfoHint from '@/components/settings/InfoHint';
+import { DemoVideoButton } from '@/components/demo/DemoVideoButton';
 import { palette, type ThemeColors } from '@/contexts/ThemeContext';
 import { ms } from '@/utils/responsive';
 import { useDir } from '@/hooks/useDir';
@@ -91,7 +92,6 @@ function RewardManagerBase({
       const data = await uploadRewardImage.mutateAsync({
         uri: asset.uri,
         mimeType: asset.mimeType,
-        fileSize: asset.fileSize ?? null,
       });
       setRewardImageUrl(data.url);
     } catch (err: unknown) {
@@ -218,6 +218,7 @@ function RewardManagerBase({
           <Text style={[panelStyles.title, { color: theme.text, textAlign }]} maxFontSizeMultiplier={1.3} accessibilityRole="header">
             {rewards.length > 0 ? t('settingsPage.giftsCount', { count: rewards.length }) : t('settingsPage.giftsSection')}
           </Text>
+          <DemoVideoButton id="cadeaux" style={styles.demoPill} />
         </View>
 
         <View style={panelStyles.body}>
@@ -448,6 +449,7 @@ function RewardManagerBase({
 export const RewardManager = React.memo(RewardManagerBase);
 
 const styles = StyleSheet.create({
+  demoPill: { alignSelf: 'center' },
   formTitle: { fontSize: 14, fontFamily: font.semibold, marginBottom: 2 },
   imagePickerLabelRow: { alignItems: 'center', gap: 6 },
   solidBtn: {

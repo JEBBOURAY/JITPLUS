@@ -5,7 +5,7 @@ import { create } from 'zustand';
  * new merchant never gets a tour and a modal stacked on top of each other.
  * Inline banners and the setup checklist are not tracked here.
  */
-type BlockingSurface = 'tour' | 'notif';
+type BlockingSurface = 'tour' | 'notif' | 'introVideo';
 
 interface OnboardingState {
   active: BlockingSurface | null;

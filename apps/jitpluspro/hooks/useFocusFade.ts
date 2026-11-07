@@ -3,7 +3,7 @@ import { Animated } from 'react-native';
 import { useIsFocused } from 'expo-router/react-navigation';
 
 /**
- * Returns `{ isFocused, focusStyle }` — an animated style that
+ * Returns `{ focusStyle }` — an animated style that
  * fades + scales in when the screen gains focus.
  * Uses React Native core Animated (no Reanimated dependency).
  */
@@ -42,5 +42,5 @@ export function useFocusFade() {
     [progress],
   );
 
-  return { isFocused, focusStyle };
+  return { focusStyle };
 }

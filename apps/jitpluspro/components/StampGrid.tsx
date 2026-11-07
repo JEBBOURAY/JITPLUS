@@ -13,15 +13,12 @@ interface StampGridProps {
   total: number;
   /** Circle diameter in px (default: 38) */
   size?: number;
-  /** Show the label below (default: true) */
-  showLabel?: boolean;
 }
 
 export default React.memo(function StampGrid({
   current,
   total,
   size = 38,
-  showLabel = true,
 }: StampGridProps) {
   const theme = useTheme();
   const { t } = useLanguage();
@@ -65,12 +62,10 @@ export default React.memo(function StampGrid({
         })}
       </View>
 
-      {showLabel && (
-        <Text style={[styles.label, { color: theme.textSecondary }]}>
-          {t('stampGrid.count', { current: clamped, total })}
-          {clamped >= total && `  ${t('stampGrid.rewardReady')}`}
-        </Text>
-      )}
+      <Text style={[styles.label, { color: theme.textSecondary }]}>
+        {t('stampGrid.count', { current: clamped, total })}
+        {clamped >= total && `  ${t('stampGrid.rewardReady')}`}
+      </Text>
     </View>
   );
 });

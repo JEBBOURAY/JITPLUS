@@ -118,7 +118,7 @@ export function useMarkSingleAdminNotifRead() {
 // ── Push preferences per category ────────────────────────────────────────
 
 export type NotificationPrefKey = 'news' | 'tips' | 'reminders' | 'reports';
-export type NotificationPrefs = Record<NotificationPrefKey, boolean>;
+type NotificationPrefs = Record<NotificationPrefKey, boolean>;
 
 export function useNotificationPrefs() {
   return useQuery<NotificationPrefs>({

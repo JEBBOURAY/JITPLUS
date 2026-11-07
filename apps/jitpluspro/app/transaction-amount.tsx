@@ -38,6 +38,7 @@ import {
 import type { ClientCouponAtTill } from '@jitplus/shared/src/scratch';
 import { useClientCouponsAtTill } from '@/hooks/useScratchHooks';
 import { ScreenHeader } from '@/components/scratch/ScratchUI';
+import { DemoVideoButton } from '@/components/demo/DemoVideoButton';
 import { StampClientCard } from '@/components/transaction/StampClientCard';
 import { EarnSection } from '@/components/transaction/EarnSection';
 import { RewardSelector } from '@/components/transaction/RewardSelector';
@@ -82,7 +83,7 @@ export default function TransactionAmountScreen() {
   const { t, locale } = useLanguage();
   const currency = useCurrency();
 
-  const status = useClientStatus(validClientId, true, scanTicket);
+  const status = useClientStatus(validClientId, scanTicket);
   const { data: rewardsData, isLoading: loadingRewards } = useRewards();
   const { data: wheelInfo } = useLuckyWheelActiveInfo();
   const { data: clientPrizes = NO_PRIZES, isLoading: loadingPrizes } = useLuckyWheelClientPrizes(validClientId);
@@ -374,7 +375,11 @@ export default function TransactionAmountScreen() {
         style={[styles.container, { backgroundColor: theme.bg }]}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        <ScreenHeader title={t('stampScreen.title')} onBack={handleBack} />
+        <ScreenHeader
+          title={t('stampScreen.title')}
+          onBack={handleBack}
+          right={<DemoVideoButton id="caisse" variant="header" />}
+        />
         <ScrollView
           style={styles.content}
           contentContainerStyle={styles.contentInner}

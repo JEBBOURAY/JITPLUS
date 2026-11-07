@@ -12,7 +12,7 @@ import ArchCrest from './ArchCrest';
 /** Brass readable on white (≈5:1); the lighter palette.gold is used in dark mode. */
 const BRASS_TEXT = '#8A6420';
 
-export interface LoginHeaderAnims {
+interface LoginHeaderAnims {
   draw: Animated.Value;
   reveal: Animated.Value;
   keystone: Animated.Value;

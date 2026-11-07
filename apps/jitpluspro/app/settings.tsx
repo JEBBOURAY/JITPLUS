@@ -31,6 +31,7 @@ import { ActionButton } from '@/components/ui/ActionButton';
 import { ProBadge } from '@/components/ui/ProBadge';
 import PremiumLockModal from '@/components/PremiumLockModal';
 import { RewardManager } from '@/components/settings/RewardManager';
+import { DemoVideoButton } from '@/components/demo/DemoVideoButton';
 import InfoHint from '@/components/settings/InfoHint';
 import LoyaltyGuideSheet from '@/components/settings/LoyaltyGuideSheet';
 import LoyaltyCardPreview from '@/components/settings/LoyaltyCardPreview';
@@ -418,6 +419,7 @@ export default function SettingsScreen() {
         >
           {t('settingsPage.title')}
         </Text>
+        <DemoVideoButton id="carte" variant="header" />
         <TouchableOpacity
           onPress={openGuide}
           hitSlop={HIT_SLOP}

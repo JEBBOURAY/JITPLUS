@@ -45,20 +45,14 @@ export const USER_CENTER_ZOOM_DELTA = 0.015;
 export const COMPACT_SCREEN_HEIGHT = 710;
 
 // ── Cards / Loyalty ──
-/** Max visible stamp dots before showing "+N" */
-export const MAX_VISIBLE_STAMPS = 20;
 /** Default stamps needed for reward when merchant doesn't configure one */
 export const DEFAULT_STAMPS_GOAL = 10;
 
 // ── Profile / OTP ──
 /** Cooldown before allowing OTP resend (seconds) */
 export const OTP_RESEND_COOLDOWN_S = 60;
-/** Expected OTP code length */
-export const OTP_CODE_LENGTH = 6;
 /** Draft persist debounce when going to background (ms) */
 export const DRAFT_PERSIST_DEBOUNCE_MS = 300;
-/** Minimum password length */
-export const MIN_PASSWORD_LENGTH = 8;
 
 // ── Store URLs ──
 /** Android package name on Google Play */

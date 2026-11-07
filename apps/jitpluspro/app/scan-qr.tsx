@@ -32,6 +32,7 @@ import {
   Info,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { DemoVideoButton } from '@/components/demo/DemoVideoButton';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useFocusEffect } from 'expo-router/react-navigation';
 import { useQueryClient } from '@tanstack/react-query';
@@ -285,12 +286,14 @@ const BottomControls = React.memo(function BottomControls({
   isFlashOn,
   onToggleFlash,
   onClose,
+  onDemoOpenChange,
   t,
 }: {
   insetBottom: number;
   isFlashOn: boolean;
   onToggleFlash: () => void;
   onClose: () => void;
+  onDemoOpenChange: (open: boolean) => void;
   t: (key: string, params?: Record<string, unknown>) => string;
 }) {
   const dir = useDir();
@@ -299,6 +302,14 @@ const BottomControls = React.memo(function BottomControls({
       style={[styles.bottomControls, { paddingBottom: Math.max(insetBottom, 26) }]}
       pointerEvents="box-none"
     >
+      <DemoVideoButton
+        id="scanner"
+        size="lg"
+        color={ON_CAMERA}
+        backgroundColor="#7C3AED"
+        style={styles.demoPill}
+        onOpenChange={onDemoOpenChange}
+      />
       <View style={[styles.actionsRow, { flexDirection: dir.row }]}>
         <TouchableOpacity
           style={styles.actionBtn}
@@ -506,6 +517,8 @@ export default function ScanQRScreen() {
   // setter to avoid double mount/unmount when focus and AppState fire in the
   // same frame (cost ~1–2 s on Android Camera2 reconfiguration).
   const [cameraMounted, setCameraMounted] = useState(false);
+  // The demo player covers the scanner: pause the camera so nothing is scanned behind it.
+  const [demoOpen, setDemoOpen] = useState(false);
   const appStateRef = useRef(AppState.currentState);
   const isFocusedRef = useRef(false);
 
@@ -811,7 +824,7 @@ export default function ScanQRScreen() {
         <CameraView
           style={StyleSheet.absoluteFill}
           facing="back"
-          active={isScanning}
+          active={isScanning && !demoOpen}
           enableTorch={isFlashOn}
           barcodeScannerSettings={BARCODE_SCANNER_SETTINGS}
           onBarcodeScanned={scannerHandler}
@@ -852,6 +865,7 @@ export default function ScanQRScreen() {
         isFlashOn={isFlashOn}
         onToggleFlash={handleToggleFlash}
         onClose={handleClose}
+        onDemoOpenChange={setDemoOpen}
         t={t}
       />
 
@@ -1010,6 +1024,17 @@ const styles = StyleSheet.create({
     right: 0,
     paddingHorizontal: 20,
     paddingTop: 16,
+  },
+  demoPill: {
+    alignSelf: 'center',
+    marginBottom: 18,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.35)',
+    shadowColor: '#000',
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
   },
   actionsRow: {
     justifyContent: 'center',

@@ -83,6 +83,18 @@ export async function setRememberMe(value: boolean): Promise<void> {
   await setStored(REMEMBER_ME_KEY, String(value));
 }
 
+/**
+ * Writes to SecureStore the tokens of a session opened with
+ * setRememberMe(false), once it is confirmed (forgot-password flow).
+ */
+export async function persistSession(): Promise<void> {
+  await setRememberMe(true);
+  await persistTokens({
+    access_token: memoryTokens[TOKEN_KEY] ?? undefined,
+    refresh_token: memoryTokens[REFRESH_TOKEN_KEY] ?? undefined,
+  });
+}
+
 export async function getRememberMe(): Promise<boolean> {
   const val = await getStored(REMEMBER_ME_KEY);
   return val === 'true';

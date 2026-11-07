@@ -13,7 +13,7 @@ const QR_ALLOWED_HOSTS: ReadonlySet<string> = new Set<string>([
   'www.yams.app',
 ]);
 
-export type ScanPayload =
+type ScanPayload =
   /** Coupon QR (`jitplus://coupon/{token}` or a bare `c1.` token); `token` is the raw scanned data. */
   | { kind: 'coupon'; token: string }
   /** Signed client QR `jitplus://scan/{JWT}`. */

@@ -15,6 +15,7 @@ import { ms } from '@/utils/responsive';
 import { font, icon } from '@/constants/design';
 import { Button, Notice, ScreenHeader, StatusPill } from '@/components/scratch/ScratchUI';
 import { CampaignRow, GameEmptyState, HeaderAddButton, ListSeparator } from '@/components/games/GameList';
+import { DemoHeaderActions } from '@/components/demo/DemoVideoButton';
 
 /** E-commerce parcel QR codes: batches the merchant prints and slips into parcels. */
 export default function StampCodesScreen() {
@@ -100,11 +101,15 @@ export default function StampCodesScreen() {
       <ScreenHeader
         title={t('stampCodes.title')}
         onBack={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)'))}
-        right={canManage && !empty ? (
-          <View style={quotaReached ? styles.dimmed : undefined}>
-            <HeaderAddButton label={t('stampCodes.list.create')} onPress={quotaReached ? goPlan : create} />
-          </View>
-        ) : undefined}
+        right={(
+          <DemoHeaderActions id="qrcolis">
+            {canManage && !empty ? (
+              <View style={quotaReached ? styles.dimmed : undefined}>
+                <HeaderAddButton label={t('stampCodes.list.create')} onPress={quotaReached ? goPlan : create} />
+              </View>
+            ) : null}
+          </DemoHeaderActions>
+        )}
       />
       {isLoading ? (
         <View style={styles.loader}><ActivityIndicator color={theme.primary} /></View>

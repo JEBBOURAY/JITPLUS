@@ -40,10 +40,6 @@ export function useStoresCRUD() {
     payload: CreateStorePayload,
     editingStoreId?: string,
   ): Promise<boolean> => {
-    if (!payload.nom?.trim()) {
-      Alert.alert(t('common.error'), t('storesCrud.nameRequired'));
-      return false;
-    }
     try {
       if (editingStoreId) {
         await updateStore({ id: editingStoreId, payload });

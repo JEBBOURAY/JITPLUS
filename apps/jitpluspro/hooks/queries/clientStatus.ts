@@ -13,13 +13,13 @@ async function fetchClientStatus(clientId: string, scanTicket?: string): Promise
   return res.data;
 }
 
-export function useClientStatus(clientId: string | undefined, enabled = true, scanTicket?: string) {
+export function useClientStatus(clientId: string | undefined, scanTicket?: string) {
   return useQuery<CustomerStatus>({
     queryKey: queryKeys.clientStatus(clientId ?? ''),
     queryFn: () => fetchClientStatus(clientId!, scanTicket),
     staleTime: STALE.FAST,
     gcTime: GC.FAST,
-    enabled: !!clientId && enabled,
+    enabled: !!clientId,
   });
 }
 

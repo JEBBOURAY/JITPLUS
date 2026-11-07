@@ -25,6 +25,9 @@ export const ASYNC_STORAGE_KEYS = {
   // Required so EU/GDPR users can opt out of diagnostic data collection,
   // even though it contains no PII.
   SENTRY_OPT_OUT: 'sentry_opt_out',
+  // Intro demo video: auto-played once per merchant account on this device
+  // (first sign-in / sign-up). Suffixed with the merchant id.
+  INTRO_DEMO_SEEN: 'intro_demo_seen',
   // Scanner: first-visit guide modal, and the older "how it works" banner it replaces.
   FIRST_SCAN_GUIDE_DONE: '@jitpluspro_first_scan_guide',
   SCAN_HOW_IT_WORKS_DISMISSED: '@jitpluspro_scan_how_it_works_v2',

@@ -28,6 +28,7 @@ import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { usePlanStatus } from '@/hooks/usePlanStatus';
 import { useGuardedCallback } from '@/hooks/useGuardedCallback';
 import { useDir } from '@/hooks/useDir';
+import { DemoVideoButton } from '@/components/demo/DemoVideoButton';
 import {
   queryKeys,
   useDashboardKpis,
@@ -856,6 +857,7 @@ export default function DashboardScreen() {
         <Text style={[styles.headerTitle, { color: theme.text, textAlign: dir.textAlign }]} accessibilityRole="header" maxFontSizeMultiplier={1.3}>
           {t('dashboard.title')}
         </Text>
+        <DemoVideoButton id="stats" variant="header" />
       </View>
 
       <ScrollView

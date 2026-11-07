@@ -9,7 +9,6 @@ export const scratchClientFr = {
     unavailable: 'Cette carte n\'est plus disponible.',
     revealAll: 'Tout révéler',
     hint: 'Grattez avec le doigt pour découvrir votre cadeau',
-    wonReward: 'Vous avez gagné : %{reward}',
     conditions: 'Conditions',
     headline: 'Un cadeau vous attend',
     revealing: 'Révélation de votre cadeau…',
@@ -46,8 +45,6 @@ export const scratchClientFr = {
     },
   },
   home: {
-    banner: 'Vous avez une carte à gratter !',
-    bannerMulti: 'Vous avez %{count} cartes à gratter !',
     cta: 'Gratter',
   },
   claim: {
@@ -82,7 +79,6 @@ export const scratchClientEn: typeof scratchClientFr = {
     unavailable: 'This card is no longer available.',
     revealAll: 'Reveal all',
     hint: 'Scratch with your finger to reveal your gift',
-    wonReward: 'You won: %{reward}',
     conditions: 'Conditions',
     headline: 'A gift is waiting for you',
     revealing: 'Revealing your gift…',
@@ -119,8 +115,6 @@ export const scratchClientEn: typeof scratchClientFr = {
     },
   },
   home: {
-    banner: 'You have a scratch card!',
-    bannerMulti: 'You have %{count} scratch cards!',
     cta: 'Scratch',
   },
   claim: {
@@ -155,7 +149,6 @@ export const scratchClientAr: typeof scratchClientFr = {
     unavailable: 'هاد البطاقة ما بقاتش متوفرة.',
     revealAll: 'كشف كولشي',
     hint: 'حك بصبعك باش تكشف الهدية ديالك',
-    wonReward: 'ربحتي : %{reward}',
     conditions: 'الشروط',
     headline: 'هدية كتسناك',
     revealing: 'كنكشفو الهدية ديالك…',
@@ -192,8 +185,6 @@ export const scratchClientAr: typeof scratchClientFr = {
     },
   },
   home: {
-    banner: 'عندك بطاقة د الحك !',
-    bannerMulti: 'عندك %{count} بطائق د الحك !',
     cta: 'حك',
   },
   claim: {

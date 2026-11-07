@@ -63,7 +63,6 @@ export interface ThemeColors {
   inputBorder: string;
   inputBg: string;
   inputPlaceholder: string;
-  shadowColor: string;
   success: string;
   warning: string;
   danger: string;
@@ -89,7 +88,6 @@ const lightTheme: ThemeColors = {
   inputBorder: '#CBD5E1',
   inputBg: '#F8FAFC',
   inputPlaceholder: '#94A3B8',
-  shadowColor: 'rgba(0,0,0,0.08)',
   success: '#10B981',
   warning: '#F59E0B',
   danger: '#EF4444',
@@ -115,7 +113,6 @@ const darkTheme: ThemeColors = {
   inputBorder: '#2D3443',
   inputBg: '#1A1F2B',
   inputPlaceholder: '#64748B',
-  shadowColor: 'rgba(0,0,0,0.50)',
   success: '#34D399',
   warning: '#FBBF24',
   danger: '#F87171',

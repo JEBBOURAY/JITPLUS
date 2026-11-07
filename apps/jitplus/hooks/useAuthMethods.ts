@@ -1,5 +1,6 @@
 import { useCallback, useMemo, MutableRefObject } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { isAxiosError } from 'axios';
 import { api } from '@/services/api';
 import { clearLocalSession as clearLocalSessionData } from '@/services/localSession';
 import { notifyServerLogout } from '@/services/serverLogout';
@@ -79,27 +80,42 @@ export function useAuthMethods(
     }
   }, [setClient, sessionVersionRef]);
 
-  const setPassword = useCallback(async (password: string) => {
+  /**
+   * Forgot-password OTP check. The session stays in memory and the client is
+   * not published: the app remains logged out (no socket, push prompt or
+   * pending-claim redirect while the user types) until resetPasswordOtp
+   * succeeds, and killing the app midway leaves no session on the device.
+   */
+  const verifyOtpForReset = useCallback(async (email: string, code: string) => {
+    sessionVersionRef.current++;
     try {
-      const response = await api.setPassword(password);
-      setClient(response.client);
-      await api.clearEmailOtpNewUser();
-      setNeedsPasswordSetup(false);
+      await api.setRememberMe(false);
+      await api.verifyOtpEmail(email, code);
       return { success: true };
     } catch (error: unknown) {
       return { success: false, error: extractErrorMessage(error), isNetworkError: checkNetworkError(error) };
     }
-  }, [setClient, setNeedsPasswordSetup]);
+  }, [sessionVersionRef]);
 
   const resetPasswordOtp = useCallback(async (password: string) => {
     try {
       const response = await api.resetPasswordOtp(password);
+      await api.persistSession();
       setClient(response.client);
       return { success: true };
     } catch (error: unknown) {
-      return { success: false, error: extractErrorMessage(error), isNetworkError: checkNetworkError(error) };
+      return {
+        success: false,
+        error: extractErrorMessage(error),
+        isNetworkError: checkNetworkError(error),
+        // 403: the OTP proof is spent or older than the server's reset window.
+        sessionExpired: isAxiosError(error) && error.response?.status === 403,
+      };
     }
   }, [setClient]);
+
+  /** Forgets a reset session the user walked away from. Its tokens never left memory. */
+  const cancelPasswordReset = useCallback(() => api.clearAuth(), []);
 
   const completeProfile = useCallback(async (prenom: string, nom: string, termsAccepted: boolean, telephone?: string, dateNaissance?: string, password?: string) => {
     try {
@@ -148,12 +164,12 @@ export function useAuthMethods(
   }, [setGuest]);
 
   return useMemo(() => ({
-    sendOtpEmail, verifyOtpEmail, googleLogin, appleLogin,
-    loginWithEmail, setPassword, resetPasswordOtp, completeProfile,
+    sendOtpEmail, verifyOtpEmail, verifyOtpForReset, googleLogin, appleLogin,
+    loginWithEmail, resetPasswordOtp, cancelPasswordReset, completeProfile,
     logout, refreshProfile, enterGuestMode, clearLocalSession,
   }), [
-    sendOtpEmail, verifyOtpEmail, googleLogin, appleLogin,
-    loginWithEmail, setPassword, resetPasswordOtp, completeProfile,
+    sendOtpEmail, verifyOtpEmail, verifyOtpForReset, googleLogin, appleLogin,
+    loginWithEmail, resetPasswordOtp, cancelPasswordReset, completeProfile,
     logout, refreshProfile, enterGuestMode, clearLocalSession,
   ]);
 }

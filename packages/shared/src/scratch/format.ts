@@ -168,13 +168,6 @@ export function addDaysYmd(ymd: string, days: number): string {
   return toYmd(new Date(y, m - 1, d + days));
 }
 
-export function isValidYmd(value: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return false;
-  const [y, m, d] = value.split('-').map(Number);
-  const date = new Date(y, m - 1, d);
-  return date.getFullYear() === y && date.getMonth() === m - 1 && date.getDate() === d;
-}
-
 /** Whole days from `fromYmd` to `toYmd` (negative when to < from) */
 export function diffDaysYmd(fromYmd: string, toYmdValue: string): number {
   const [y1, m1, d1] = fromYmd.split('-').map(Number);

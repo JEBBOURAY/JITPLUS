@@ -4,7 +4,7 @@ import { View, Text, Image, StyleSheet, type StyleProp, type ViewStyle } from 'r
 import { LinearGradient } from 'expo-linear-gradient';
 import { getScratchDesign } from './designs';
 
-export const SCRATCH_CARD_ASPECT_RATIO = 1.6;
+const SCRATCH_CARD_ASPECT_RATIO = 1.6;
 
 const PADDING = 16;
 const LOGO_SIZE = 34;

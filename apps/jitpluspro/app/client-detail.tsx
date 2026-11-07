@@ -336,7 +336,7 @@ export default function ClientDetailScreen() {
 
         <Text style={sectionTitleStyle}>{t('clientDetail.loyaltyCard')}</Text>
         <View style={cardStyle}>
-          <StampGrid current={client.stamps} total={stampsForReward} size={38} />
+          <StampGrid current={client.stamps} total={stampsForReward} />
         </View>
 
         <Text style={sectionTitleStyle}>{t('clientDetail.contact')}</Text>

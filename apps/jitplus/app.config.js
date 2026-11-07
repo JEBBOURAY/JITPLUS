@@ -41,7 +41,7 @@ module.exports = ({ config }) => {
     name: 'JitPlus',
     slug: 'jitplus',
     description: 'Digital loyalty cards app — collect stamps and earn rewards at your favorite local shops.',
-    version: '1.5.3',
+    version: '1.5.5',
     orientation: 'portrait',
     icon: './assets/images/icon-white.png',
     scheme: 'jitplus',
@@ -61,7 +61,7 @@ module.exports = ({ config }) => {
       supportsTablet: false,
       bundleIdentifier: 'com.jitplus.client',
       // Initial build number — EAS autoIncrement bumps this on every production build
-      buildNumber: '57',
+      buildNumber: '59',
       // Portrait-only app: disable iPad Split View / Slide Over to avoid orientation-support review issues
       requiresFullScreen: true,
       // Firebase config for iOS — download from Firebase Console
@@ -93,7 +93,7 @@ module.exports = ({ config }) => {
       ],
     },
     android: {
-      versionCode: 66,
+      versionCode: 68,
       icon: './assets/images/icon-white.png',
       adaptiveIcon: {
         foregroundImage: './assets/images/adaptive-icon-white.png',
@@ -212,6 +212,15 @@ module.exports = ({ config }) => {
             // and the Play Console to keep them readable.
             enableMinifyInReleaseBuilds: true,
             enableShrinkResourcesInReleaseBuilds: true,
+            // react-native-maps ships no consumer R8 rules: keep the map view,
+            // its events and the Google Maps SDK so release builds render tiles
+            // (minify-only regression: the map worked in dev, not in prod).
+            extraProguardRules: [
+              '-keep class com.rnmaps.** { *; }',
+              '-keep class com.google.android.gms.maps.** { *; }',
+              '-keep interface com.google.android.gms.maps.** { *; }',
+              '-dontwarn com.rnmaps.**',
+            ].join('\n'),
           },
         },
       ],

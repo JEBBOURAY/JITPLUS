@@ -41,7 +41,7 @@ export default function VerifyEmailScreen() {
   const { t } = useLanguage();
   const dir = useDir();
   const { merchant, updateMerchant } = useAuth();
-  const { email, fromRegister } = useLocalSearchParams<{ email: string; fromRegister?: string }>();
+  const { email } = useLocalSearchParams<{ email: string }>();
   const isLoggedIn = !!merchant;
 
   const [code, setCode] = useState('');
@@ -73,21 +73,12 @@ export default function VerifyEmailScreen() {
     }
   }, [isLoggedIn, merchant?.emailVerified, router]);
 
-  // Auto-send OTP on mount — skips if the backend already sent one during
-  // registration (fromRegister param) or if this component remounts.
+  // Auto-send OTP on mount — skips if this component remounts.
   useEffect(() => {
     if (!email || hasSentInitial.current) return;
     // Don't send if already verified
     if (isLoggedIn && merchant?.emailVerified) return;
     const normalizedEmail = email.trim().toLowerCase();
-    // If we just came from registration, the backend already sent the OTP
-    if (fromRegister === '1') {
-      hasSentInitial.current = true;
-      _lastSentEmail = normalizedEmail;
-      _lastSentAt = Date.now();
-      setResendTimer(RESEND_COOLDOWN);
-      return;
-    }
     // Module-level dedup: skip if we already sent for this email recently
     if (_lastSentEmail === normalizedEmail && Date.now() - _lastSentAt < RESEND_COOLDOWN * 1000) {
       hasSentInitial.current = true;
@@ -107,7 +98,7 @@ export default function VerifyEmailScreen() {
         // Silently fail — user can tap resend
       }
     })();
-  }, [email, isLoggedIn, merchant?.emailVerified, fromRegister]);
+  }, [email, isLoggedIn, merchant?.emailVerified]);
 
   // Countdown timer — stops when it reaches 0
   useEffect(() => {

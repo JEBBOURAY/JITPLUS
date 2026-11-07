@@ -16,7 +16,7 @@ export default {
     clients: 'الزبناء',
     scan: 'سكاني',
     scanHint: 'كيحل سكانير QR',
-    messages: 'الرسائل',
+    messages: 'الإشعارات',
     team: 'الفريق',
   },
 
@@ -539,7 +539,7 @@ export default {
   },
 
   messages: {
-    title: 'الرسائل',
+    title: 'الإشعارات',
     noMessages: 'مازال ما صيفطتي حتى رسالة',
     noMessagesHint: 'الإشعارات اللي صيفطتي غادي يبانو هنا.',
     messageTitle: 'عنوان الرسالة',
@@ -644,7 +644,6 @@ export default {
     limitMsg: 'وصلتي لحد %{max} حوانت فعرض Pro. تواصل معانا إلا بغيتي كثر.',
     storesLockedTitle: 'حانوت زايد (عرض Pro)',
     storesLockedMsg: 'العرض المجاني فيه غير حانوت واحد. دوّز لعرض Pro باش تسيّر حتى 10 حوانت.',
-    nameRequired: 'سمية الحانوت ضرورية.',
     saveError: 'ماقدرناش نسجلو. عاود.',
     deleteError: 'ماقدرناش نمسحو الحانوت.',
     toggleError: 'ماقدرناش نبدلو الحالة.',
@@ -1348,8 +1347,6 @@ export default {
     termsText: 'كنوافق على',
     termsLink: 'شروط الاستعمال',
     mapTitle: 'البلاصة الدقيقة على الخريطة',
-    welcomeTitle: 'مرحبا بيك ف JitPlus Pro',
-    welcomeMsg: 'الحانوت ديالك "%{nom}" تصاوب.\nدخل باش تبدا.',
     registrationError: 'ماقدرناش نصايبو الحساب ديالك',
     passwordPlaceholder: 'على الأقل %{count} حروف',
     confirmPasswordLabel: 'تأكيد كلمة السر',
@@ -1599,7 +1596,6 @@ export default {
 
   // ── الإعداد اللول ──
   onboarding: {
-    skipDontShow: 'ماتوريهاش عاود',
     stepOf: 'الخطوة %{current} من %{total}',
   },
 
@@ -1704,7 +1700,6 @@ export default {
   transactionAmount: {
     noClientSelected: 'ما ختارتي حتى زبون.',
     winningsHint: 'ختار الجائزة ولا الكوبون اللي ربح الزبون، ومن بعد عطيه ليه.',
-    winningsEmpty: 'هاد الزبون ما عندو حتى جائزة ولا كوبون ياخدو.',
     wheelSection: 'عجلة الحظ',
     scratchSection: 'بطاقات الحكّ',
     claimBefore: 'خاصو يتعطى قبل %{date}',
@@ -1907,5 +1902,12 @@ export default {
   // ── Deals ──
   deals: dealsProAr,
   stampCodes: stampCodesProAr,
+
+  // ── Demo videos ──
+  demo: {
+    watch: 'شوف الديمو',
+    error: 'ما قدرناش نشغلو الفيديو. تأكد من الأنترنيت ديالك.',
+    retry: 'عاود',
+  },
 
 };

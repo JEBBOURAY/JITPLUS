@@ -13,7 +13,6 @@ import {
   parseDecimal,
   previewOffer,
   priceInput,
-  tabOfStatus,
   validateDealDates,
   validateDealStep,
   withHttps,
@@ -232,7 +231,7 @@ describe('number inputs', () => {
 });
 
 describe('deal list', () => {
-  it('sorts each tab and maps the statuses to tabs', () => {
+  it('sorts each tab', () => {
     const deals = [
       deal({ id: 'live-late', endsAt: '2026-10-20T22:59:59.000Z' }),
       deal({ id: 'live-soon', endsAt: '2026-10-09T22:59:59.000Z' }),
@@ -243,8 +242,6 @@ describe('deal list', () => {
     expect(dealsForTab(deals, 'live').map((d) => d.id)).toEqual(['live-soon', 'live-late']);
     expect(dealsForTab(deals, 'scheduled').map((d) => d.id)).toEqual(['sched']);
     expect(dealsForTab(deals, 'ended').map((d) => d.id)).toEqual(['removed', 'ended-old']);
-    expect(tabOfStatus('REMOVED')).toBe('ended');
-    expect(tabOfStatus('SCHEDULED')).toBe('scheduled');
   });
 
   it('reports the limit reached, active deals first', () => {

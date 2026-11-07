@@ -103,10 +103,9 @@ export default function AccountScreen() {
   const [savingName, setSavingName] = useState(false);
 
   const handleEditName = useCallback(() => {
-    if (isTeamMember) return;
     setProfileName(merchant?.nom ?? '');
     setShowNameModal(true);
-  }, [merchant?.nom, isTeamMember]);
+  }, [merchant?.nom]);
 
   const closeNameModal = useCallback(() => setShowNameModal(false), []);
 

@@ -226,11 +226,6 @@ function ClientWinningsBase({ prizes, coupons, loading, clientId, defaultAmount 
         <View style={styles.loading}>
           <ActivityIndicator size="small" color={theme.primary} />
         </View>
-      ) : prizes.length === 0 && coupons.length === 0 ? (
-        <View style={styles.empty}>
-          <JitGift size={ms(32)} color={theme.textMuted} strokeWidth={icon.stroke} />
-          <Text style={[styles.emptyText, { color: theme.textMuted }]}>{t('transactionAmount.winningsEmpty')}</Text>
-        </View>
       ) : (
         <>
           <View style={[styles.divider, { backgroundColor: rowBorder }]} />
@@ -431,8 +426,6 @@ const styles = StyleSheet.create({
   divider: { height: StyleSheet.hairlineWidth, marginVertical: 2 },
   hint: { fontSize: ms(13), lineHeight: ms(18), fontFamily: font.regular },
   loading: { paddingVertical: 20, alignItems: 'center' },
-  empty: { alignItems: 'center', gap: 8, paddingVertical: 16 },
-  emptyText: { fontSize: ms(14), textAlign: 'center', fontFamily: font.medium },
   group: { gap: 8, marginTop: 4 },
   groupHeader: { alignItems: 'center', gap: 6, marginTop: 2 },
   groupTitle: { fontSize: ms(12), fontFamily: font.semibold },

@@ -57,7 +57,7 @@ type FormField = AccountField | StoreField;
 export default function RegisterScreen() {
   const router = useRouter();
   const theme = useTheme();
-  const { googleRegister, appleRegister, register: authRegister, signIn } = useAuth();
+  const { googleRegister, appleRegister, register: authRegister } = useAuth();
   const { t, locale } = useLanguage();
   const dir = useDir();
 
@@ -439,29 +439,9 @@ export default function RegisterScreen() {
         return;
       }
 
-      // E-mail flow: create the account (pre-verified), then sign in.
-      const { signedIn } = await authRegister({ email: normalizedEmail, password, ...storeData, termsAccepted });
-      if (signedIn) {
-        finishSignup();
-        return;
-      }
-      // The account exists from here on. A later sign-in failure must NOT surface
-      // as "registration failed" (a retry would hit a 409 on the now existing
-      // e-mail). Retry the sign-in once, then fall back to the login screen.
-      const creds = { email: normalizedEmail, password };
-      try {
-        await signIn(creds, true);
-        finishSignup();
-      } catch {
-        try {
-          await signIn(creds, true);
-          finishSignup();
-        } catch {
-          Alert.alert(t('registerExtra.welcomeTitle'), t('registerExtra.welcomeMsg', { nom: nomCommerce.trim() }));
-          clearDraft();
-          router.replace('/login');
-        }
-      }
+      // E-mail flow: the signup itself opens the session (account pre-verified).
+      await authRegister({ email: normalizedEmail, password, ...storeData, termsAccepted });
+      finishSignup();
     } catch (error: unknown) {
       // 409: the e-mail or phone was taken after (or despite) the live checks.
       if (getErrorStatus(error) === 409 && (await showSignupConflict())) return;
@@ -478,8 +458,8 @@ export default function RegisterScreen() {
     canSubmit, firstInvalidAccountField, firstInvalidStoreField, goToStep, revealMissing, showSignupConflict,
     locationValues, referralCode, nomCommerce, normalizedPhone, categorie, locale,
     googleIdToken, appleIdentityToken, appleGivenName, appleFamilyName, appleRawNonce,
-    normalizedEmail, password, termsAccepted, googleRegister, appleRegister, authRegister, signIn,
-    finishSignup, clearDraft, router, t,
+    normalizedEmail, password, termsAccepted, googleRegister, appleRegister, authRegister,
+    finishSignup, t,
   ]);
 
   // ── Back navigation ──

@@ -4,6 +4,3 @@ export * from './types';
 export * from './constants';
 export * from './format';
 export * from './designs';
-export { scratchFr } from './i18n/fr';
-export { scratchEn } from './i18n/en';
-export { scratchAr } from './i18n/ar';

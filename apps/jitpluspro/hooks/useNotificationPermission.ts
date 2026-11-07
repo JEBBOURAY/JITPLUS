@@ -6,14 +6,13 @@ import { registerPushToken } from '@/contexts/AuthContext';
 import { logWarn } from '@/utils/devLogger';
 import type { PermissionStatus } from '@/utils/notifPrompt';
 
-export interface NotificationPermission {
+interface NotificationPermission {
   /** null while loading, or when push is unavailable (Expo Go, simulator). */
   status: PermissionStatus | null;
   canAskAgain: boolean;
   /** Shows the system dialog (if still possible) then registers the token. */
   request: () => Promise<PermissionStatus | null>;
   openSystemSettings: () => void;
-  refresh: () => Promise<void>;
 }
 
 /**
@@ -62,5 +61,5 @@ export function useNotificationPermission(): NotificationPermission {
     Linking.openSettings().catch((e) => logWarn('NotifPermission', 'openSettings failed', e));
   }, []);
 
-  return { status, canAskAgain, request, openSystemSettings, refresh };
+  return { status, canAskAgain, request, openSystemSettings };
 }

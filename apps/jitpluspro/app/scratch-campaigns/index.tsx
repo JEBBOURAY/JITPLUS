@@ -15,6 +15,7 @@ import PremiumLockCard from '@/components/PremiumLockCard';
 import { Button, CampaignStatusPill, Notice, ScreenHeader } from '@/components/scratch/ScratchUI';
 import { CampaignRow, GameEmptyState, HeaderAddButton, ListSeparator, type CampaignLine } from '@/components/games/GameList';
 import { ScratchPreview, ScratchTile } from '@/components/scratch/ScratchPreview';
+import { DemoHeaderActions } from '@/components/demo/DemoVideoButton';
 import { formatYmd } from '@/components/scratch/DateField';
 import { moroccoYmdOf } from '@/components/scratch/campaignForm';
 import type { ScratchCampaignListItem } from '@jitplus/shared/src/scratch';
@@ -116,9 +117,13 @@ export default function ScratchCampaignsScreen() {
       <ScreenHeader
         title={t('scratch.list.title')}
         onBack={() => (router.canGoBack() ? router.back() : router.replace('/games'))}
-        right={canManage && campaigns.length > 0 ? (
-          <HeaderAddButton label={t('scratch.list.create')} onPress={create} />
-        ) : undefined}
+        right={(
+          <DemoHeaderActions id="gratter">
+            {canManage && campaigns.length > 0 ? (
+              <HeaderAddButton label={t('scratch.list.create')} onPress={create} />
+            ) : null}
+          </DemoHeaderActions>
+        )}
       />
       {isLoading ? (
         <View style={styles.loader}><ActivityIndicator color={theme.primary} /></View>

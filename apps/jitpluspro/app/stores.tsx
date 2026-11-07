@@ -25,6 +25,7 @@ import { font, icon } from '@/constants/design';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { useStores, queryKeys } from '@/hooks/useQueryHooks';
 import FichePreviewModal from '@/components/FichePreviewModal';
+import { DemoVideoButton } from '@/components/demo/DemoVideoButton';
 import MerchantCategoryIcon from '@/components/MerchantCategoryIcon';
 import { getCategoryLabel } from '@/constants/categories';
 import { resolveImageUrl } from '@/utils/imageUrl';
@@ -182,7 +183,11 @@ export default function StoresScreen() {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />}
       >
-        <ScreenHeader title={t('stores.title')} caption={t('storesHub.caption')} />
+        <ScreenHeader
+          title={t('stores.title')}
+          caption={t('storesHub.caption')}
+          right={<DemoVideoButton id="boutique" variant="header" />}
+        />
 
         <View style={[styles.brandCard, { backgroundColor: theme.bgCard }, shadow]}>
           <TouchableOpacity

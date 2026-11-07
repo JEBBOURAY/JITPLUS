@@ -347,10 +347,6 @@ export function dealsForTab<T extends Pick<MerchantDealDto, 'displayStatus' | 's
   return list.sort((a, b) => time(b.endsAt) - time(a.endsAt));
 }
 
-export function tabOfStatus(status: DealDisplayStatus): DealListTab {
-  return status === 'LIVE' ? 'live' : status === 'SCHEDULED' ? 'scheduled' : 'ended';
-}
-
 // ── Backend error codes ───────────────────────────────────────────────────────
 
 type DealErrorAction =

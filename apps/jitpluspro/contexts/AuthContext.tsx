@@ -169,8 +169,8 @@ interface AuthContextData {
   isTeamMember: boolean;
   teamMember: TeamMember | null;
   signIn: (credentials: LoginCredentials, rememberMe?: boolean) => Promise<void>;
-  /** Creates the account. `signedIn` is true when the server already opened the session. */
-  register: (data: RegisterData) => Promise<{ signedIn: boolean }>;
+  /** Creates the account; the server opens the session in the same call. */
+  register: (data: RegisterData) => Promise<void>;
   googleLogin: (idToken: string) => Promise<{ success: boolean; error?: string; rawError?: unknown }>;
   appleLogin: (identityToken: string, givenName?: string, familyName?: string, rawNonce?: string) => Promise<{ success: boolean; error?: string; rawError?: unknown }>;
   googleRegister: (idToken: string, businessData: GoogleRegisterData) => Promise<{ success: boolean; error?: string; rawError?: unknown }>;
@@ -229,12 +229,9 @@ interface RegisterData extends BusinessProfileData {
   password: string;
 }
 
-interface RegisterResponse extends Partial<Pick<AuthResponse, 'access_token' | 'refresh_token' | 'session_id'>> {
+interface RegisterResponse extends Pick<AuthResponse, 'access_token' | 'refresh_token' | 'session_id'> {
   merchant: Merchant;
   userType: 'merchant';
-  /** Always false while email verification is disabled server-side. */
-  requiresEmailVerification: boolean;
-  verificationSent: boolean;
 }
 
 /** Max wait for the server-side logout before wiping the local session. */
@@ -313,8 +310,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
 
         if (storedToken && rememberMe === 'true') {
-          s.setToken(storedToken);
-
           if (storedUserType === 'team_member' && storedTeamMember) {
             try {
               const tmData = JSON.parse(storedTeamMember);
@@ -327,20 +322,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
           }
 
-          const storedOnboarding = await SecureStore.getItemAsync('onboardingCompleted');
-          if (storedOnboarding === 'true') {
-            s.setOnboardingCompleted(true);
-          }
-
           try {
-            const profile = await loadProfileWithRetry(loadProfile);
-            if (profile?.onboardingCompleted) {
-              useAuthStore.getState().setOnboardingCompleted(true);
-              await SecureStore.setItemAsync('onboardingCompleted', 'true');
-            } else {
-              useAuthStore.getState().setOnboardingCompleted(false);
-              await SecureStore.deleteItemAsync('onboardingCompleted');
-            }
+            await loadProfileWithRetry(loadProfile);
             registerPushTokenInBackground();
           } catch (e) {
             logWarn(
@@ -371,7 +354,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       logInfo('Auth', '401 détecté, déconnexion automatique');
       resetMerchantPushTokenCache();
       const s = useAuthStore.getState();
-      s.setToken(null);
       s.setMerchant(null);
       s.setTeamMember(false, null);
     });
@@ -408,16 +390,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       s.setTeamMember(false, null);
     }
 
-    s.setToken(access_token);
     s.setMerchant(merchantData);
-
-    if (merchantData.onboardingCompleted) {
-      s.setOnboardingCompleted(true);
-      await SecureStore.setItemAsync('onboardingCompleted', 'true');
-    } else {
-      s.setOnboardingCompleted(false);
-      await SecureStore.deleteItemAsync('onboardingCompleted');
-    }
 
     registerPushTokenInBackground();
   }, []);
@@ -468,11 +441,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
 
       logInfo('Auth', 'Inscription réussie:', response.data.merchant.nom);
-      const { access_token } = response.data;
-      if (!access_token) return { signedIn: false };
       // Session opened by the signup itself: no second /auth/login round-trip.
-      await handleAuthSuccess({ ...response.data, access_token }, { rememberMe: true });
-      return { signedIn: true };
+      await handleAuthSuccess(response.data, { rememberMe: true });
     } catch (error: unknown) {
       logError('Auth', 'Erreur inscription:', error);
       throw error;

@@ -20,6 +20,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useDir } from '@/hooks/useDir';
 import { font, icon } from '@/constants/design';
 import { ActionButton } from '@/components/ui/ActionButton';
+import { DemoVideoButton } from '@/components/demo/DemoVideoButton';
 import { useAuthStore } from '@/stores/authStore';
 import PlvPoster, { PLV_TEMPLATES, type PlvTemplateId } from '@/components/plv/PlvPoster';
 import { usePlvProgram } from '@/components/plv/usePlvProgram';
@@ -104,6 +105,7 @@ export default function ClientAppQrScreen() {
         <Text style={[styles.headerTitle, { color: theme.text, textAlign }]} maxFontSizeMultiplier={1.3}>
           {t('home.clientQrHeader')}
         </Text>
+        <DemoVideoButton id="affiche" variant="header" style={styles.demoBtn} />
       </View>
 
       <ScrollView
@@ -260,6 +262,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
     flex: 1,
   },
+  demoBtn: {},
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: 16, paddingTop: 4 },
   title: { fontSize: 19, lineHeight: 25, fontFamily: font.bold, letterSpacing: -0.3 },

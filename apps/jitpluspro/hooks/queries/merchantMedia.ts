@@ -8,8 +8,6 @@ import { MAX_UPLOAD_SIZE_BYTES, normalizeUploadMimeAndExt, uploadImageNative } f
 interface ImageAsset {
   uri: string;
   mimeType?: string | null;
-  merchantName?: string;
-  fileSize?: number | null;
 }
 
 type MerchantImageType = 'logo' | 'cover' | 'gallery' | 'reward' | 'cardBackground';

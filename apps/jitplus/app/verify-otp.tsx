@@ -1,7 +1,6 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, memo } from 'react';
 import {
   View,
-  
   TouchableOpacity,
   StyleSheet,
   KeyboardAvoidingView,
@@ -24,9 +23,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { wp, hp, ms, fontSize, radius, SCREEN } from '@/utils/responsive';
 import FormError from '@/components/FormError';
 import StarLoader from '@/components/StarLoader';
+import { useFocusAfterTransition } from '@/hooks/useFocusAfterTransition';
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/ScreenErrorBoundary';
 
 const OTP_LENGTH = 6;
+const RESEND_DELAY_S = 60;
 const MAX_ATTEMPTS = 5;
 const COOLDOWN_MS = 5_000; // 5 seconds between attempts
 const LOCKOUT_MS = 2 * 60 * 1_000; // 2-minute lockout after max attempts
@@ -38,14 +39,14 @@ export default function VerifyOtpScreen() {
   const theme = useTheme();
   const { t } = useLanguage();
   const { telephone, isRegister, isForgotPassword } = useLocalSearchParams<{ telephone: string; isEmail?: string; isRegister?: string; isForgotPassword?: string }>();
-  const { verifyOtpEmail, sendOtpEmail } = useAuth();
+  const { verifyOtpEmail, verifyOtpForReset, sendOtpEmail } = useAuth();
   const isRegisterFlow = isRegister === '1';
   const isForgotPasswordFlow = isForgotPassword === '1';
   const [code, setCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [resendTimer, setResendTimer] = useState(60);
   const inputRef = useRef<TextInput>(null);
+  useFocusAfterTransition(inputRef);
   const verifyingRef = useRef(false);
   /** Client-side brute-force protection: cooldown between OTP attempts */
   const attemptCountRef = useRef(0);
@@ -53,8 +54,8 @@ export default function VerifyOtpScreen() {
   const lockoutUntilRef = useRef(0);
 
   // Animations
-  const headerAnim = useRef(new Animated.Value(0)).current;
-  const cardAnim = useRef(new Animated.Value(0)).current;
+  const [headerAnim] = useState(() => new Animated.Value(0));
+  const [cardAnim] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
     const anim = Animated.stagger(200, [
@@ -63,8 +64,7 @@ export default function VerifyOtpScreen() {
     ]);
     anim.start();
     return () => anim.stop();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [headerAnim, cardAnim]);
 
   // Restore persisted lockout state (survives app restart)
   useEffect(() => {
@@ -76,13 +76,6 @@ export default function VerifyOtpScreen() {
       if (lockStr) lockoutUntilRef.current = Number(lockStr);
       if (attStr) attemptCountRef.current = Number(attStr);
     })().catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setResendTimer((prev) => (prev > 0 ? prev - 1 : 0));
-    }, 1000);
-    return () => clearInterval(timer);
   }, []);
 
   const handleVerify = useCallback(async () => {
@@ -118,32 +111,32 @@ export default function VerifyOtpScreen() {
     setIsLoading(true);
     setError('');
 
-    const result = await verifyOtpEmail(telephone, code, isRegisterFlow);
+    const result = isForgotPasswordFlow
+      ? await verifyOtpForReset(telephone, code)
+      : await verifyOtpEmail(telephone, code, isRegisterFlow);
     setIsLoading(false);
     verifyingRef.current = false;
 
-    if (result.success) {
-      // Clear persisted lockout state on success
-      SecureStore.deleteItemAsync(SS_LOCKOUT_UNTIL).catch(() => {});
-      SecureStore.deleteItemAsync(SS_ATTEMPT_COUNT).catch(() => {});
-      if (isForgotPasswordFlow) {
-        // Forgot password: user is now authenticated via OTP, go to set new password
-        router.replace({ pathname: '/set-password', params: { isForgotPassword: '1' } });
-      } else if (result.isNewUser) {
-        router.push({
-          pathname: '/complete-profile',
-          params: { needsPassword: '1' },
-        });
-      } else {
-        await AsyncStorage.setItem('showWelcome', '1');
-        goHomeAfterLogin(router);
-      }
-    } else {
+    if (!result.success) {
       // Server returns remaining attempts in the error message
       setError(result.error || t('verifyOtp.invalidCode'));
       setCode('');
+      return;
     }
-  }, [code, telephone, isRegisterFlow, isForgotPasswordFlow, verifyOtpEmail, t]);
+    SecureStore.deleteItemAsync(SS_LOCKOUT_UNTIL).catch(() => {});
+    SecureStore.deleteItemAsync(SS_ATTEMPT_COUNT).catch(() => {});
+    if (isForgotPasswordFlow) {
+      router.replace('/set-password');
+    } else if ('isNewUser' in result && result.isNewUser) {
+      router.push({
+        pathname: '/complete-profile',
+        params: { needsPassword: '1' },
+      });
+    } else {
+      await AsyncStorage.setItem('showWelcome', '1');
+      goHomeAfterLogin(router);
+    }
+  }, [code, telephone, isRegisterFlow, isForgotPasswordFlow, verifyOtpEmail, verifyOtpForReset, t]);
 
   useEffect(() => {
     if (code.length === OTP_LENGTH && !isLoading) {
@@ -152,16 +145,13 @@ export default function VerifyOtpScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code, handleVerify]);
 
-  const handleResend = async () => {
-    if (resendTimer > 0 || !telephone) return;
+  const handleResend = useCallback(async () => {
+    if (!telephone) return false;
     setError('');
     const result = await sendOtpEmail(telephone, isRegisterFlow);
-    if (result.success) {
-      setResendTimer(60);
-    } else {
-      setError(result.error || t('verifyOtp.resendError'));
-    }
-  };
+    if (!result.success) setError(result.error || t('verifyOtp.resendError'));
+    return result.success;
+  }, [telephone, isRegisterFlow, sendOtpEmail, t]);
 
   // Responsive OTP box size
   const codeBoxSize = SCREEN.isSmall ? ms(40) : ms(46);
@@ -197,10 +187,10 @@ export default function VerifyOtpScreen() {
               />
               <BrandText size={16} />
             </View>
-            <Text style={styles.title}>{isForgotPasswordFlow ? t('verifyOtp.resetTitle') : t('verifyOtp.verifyTitle')}</Text>
-            <Text style={styles.subtitle}>
+            <Text style={[styles.title, { color: theme.text }]}>{isForgotPasswordFlow ? t('verifyOtp.resetTitle') : t('verifyOtp.verifyTitle')}</Text>
+            <Text style={[styles.subtitle, { color: theme.textMuted }]}>
               {t('verifyOtp.codeSentTo')}{' '}{'\n'}
-              <Text style={styles.phone}>{telephone || ''}</Text>
+              <Text style={[styles.phone, { color: theme.text }]}>{telephone || ''}</Text>
             </Text>
           </Animated.View>
 
@@ -247,7 +237,6 @@ export default function VerifyOtpScreen() {
               value={code}
               onChangeText={(text) => setCode(text.replace(/\D/g, '').slice(0, OTP_LENGTH))}
               keyboardType="number-pad"
-              autoFocus
               maxLength={OTP_LENGTH}
             />
 
@@ -262,21 +251,7 @@ export default function VerifyOtpScreen() {
               </View>
             )}
 
-            <View style={styles.resendContainer}>
-              <Text style={[styles.resendText, { color: theme.textMuted }]}>
-                {t('verifyOtp.noCodeReceived')}
-              </Text>
-              <TouchableOpacity onPress={handleResend} disabled={resendTimer > 0}>
-                <Text
-                  style={[
-                    styles.resendButton,
-                    { color: resendTimer > 0 ? theme.textMuted : palette.violet },
-                  ]}
-                >
-                  {resendTimer > 0 ? t('verifyOtp.resendTimer', { seconds: resendTimer }) : t('verifyOtp.resendCode')}
-                </Text>
-              </TouchableOpacity>
-            </View>
+            <ResendCode onResend={handleResend} />
           </Animated.View>
           </ScrollView>
         </KeyboardAvoidingView>
@@ -284,6 +259,40 @@ export default function VerifyOtpScreen() {
     </View>
   );
 }
+
+/**
+ * Resend link with its countdown. Kept apart so the 1 s tick re-renders this
+ * line only, not the whole screen.
+ */
+const ResendCode = memo(function ResendCode({ onResend }: { onResend: () => Promise<boolean> }) {
+  const theme = useTheme();
+  const { t } = useLanguage();
+  const [seconds, setSeconds] = useState(RESEND_DELAY_S);
+  const waiting = seconds > 0;
+
+  useEffect(() => {
+    if (!waiting) return;
+    const timer = setInterval(() => setSeconds((s) => Math.max(0, s - 1)), 1000);
+    return () => clearInterval(timer);
+  }, [waiting]);
+
+  const handlePress = useCallback(async () => {
+    if (await onResend()) setSeconds(RESEND_DELAY_S);
+  }, [onResend]);
+
+  return (
+    <View style={styles.resendContainer}>
+      <Text style={[styles.resendText, { color: theme.textMuted }]}>
+        {t('verifyOtp.noCodeReceived')}
+      </Text>
+      <TouchableOpacity onPress={handlePress} disabled={waiting}>
+        <Text style={[styles.resendButton, { color: waiting ? theme.textMuted : palette.violet }]}>
+          {waiting ? t('verifyOtp.resendTimer', { seconds }) : t('verifyOtp.resendCode')}
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
+});
 
 const styles = StyleSheet.create({
   gradient: { flex: 1 },
@@ -308,9 +317,9 @@ const styles = StyleSheet.create({
     gap: ms(6),
   },
   logoImage: { width: ms(32), height: ms(32) },
-  title: { fontSize: fontSize['3xl'], fontWeight: '700', color: palette.gray900, marginBottom: hp(10), letterSpacing: -0.3 },
-  subtitle: { fontSize: fontSize.md, color: palette.gray500, textAlign: 'center', lineHeight: ms(24) },
-  phone: { fontWeight: '700', color: palette.gray900 },
+  title: { fontSize: fontSize['3xl'], fontWeight: '700', marginBottom: hp(10), letterSpacing: -0.3 },
+  subtitle: { fontSize: fontSize.md, textAlign: 'center', lineHeight: ms(24) },
+  phone: { fontWeight: '700' },
 
   card: {
     borderRadius: radius['2xl'], padding: wp(28),
@@ -322,8 +331,6 @@ const styles = StyleSheet.create({
   codeDigit: { fontSize: fontSize['2xl'], fontWeight: '700' },
   cursor: { position: 'absolute', bottom: hp(10), width: wp(18), height: 2.5, borderRadius: 2 },
   hiddenInput: { position: 'absolute', opacity: 0, width: 1, height: 1 },
-
-
 
   loadingContainer: { alignItems: 'center', marginBottom: hp(16) },
   loadingText: { marginTop: hp(12), fontSize: fontSize.sm },

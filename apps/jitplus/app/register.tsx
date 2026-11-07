@@ -350,11 +350,6 @@ const styles = StyleSheet.create({
     height: hp(54), borderRadius: radius.lg, gap: wp(10),
     marginBottom: hp(12), borderWidth: 1.5,
   },
-  googleIconWrap: {
-    width: ms(24), height: ms(24), borderRadius: ms(12),
-    alignItems: 'center', justifyContent: 'center',
-  },
-  googleG: { fontSize: ms(18), fontWeight: '700', color: '#EA4335' },
   googleBtnText: { fontSize: fontSize.md, fontWeight: '600', letterSpacing: 0.2 },
 
   // Separator

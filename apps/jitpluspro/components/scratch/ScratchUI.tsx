@@ -48,26 +48,22 @@ export function ScreenHeader({ title, onBack, right }: { title: string; onBack: 
   );
 }
 
-export function Section({ title, children, style, right }: {
+export function Section({ title, children, style }: {
   title?: string;
   children: React.ReactNode;
   style?: StyleProp<ViewStyle>;
-  right?: React.ReactNode;
 }) {
   const theme = useTheme();
   const { isRTL } = useLanguage();
   return (
     <View style={[styles.section, { backgroundColor: theme.bgCard, borderColor: theme.borderLight }, style]}>
-      {(title || right) && (
+      {title ? (
         <View style={[styles.sectionHeader, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-          {title ? (
-            <Text style={[styles.sectionTitle, { color: theme.text, textAlign: isRTL ? 'right' : 'left' }]} maxFontSizeMultiplier={1.4}>
-              {title}
-            </Text>
-          ) : <View />}
-          {right}
+          <Text style={[styles.sectionTitle, { color: theme.text, textAlign: isRTL ? 'right' : 'left' }]} maxFontSizeMultiplier={1.4}>
+            {title}
+          </Text>
         </View>
-      )}
+      ) : null}
       {children}
     </View>
   );
@@ -103,12 +99,11 @@ export function Input(props: TextInputProps) {
 }
 
 /** Tinted outline chip, same style as the "Ma boutique" chips (components/stores/FicheControls). */
-export function Chip({ label, selected, onPress, disabled, accessibilityLabel }: {
+export function Chip({ label, selected, onPress, disabled }: {
   label: string;
   selected: boolean;
   onPress: () => void;
   disabled?: boolean;
-  accessibilityLabel?: string;
 }) {
   const theme = useTheme();
   const { isRTL } = useLanguage();
@@ -120,7 +115,7 @@ export function Chip({ label, selected, onPress, disabled, accessibilityLabel }:
       activeOpacity={0.75}
       accessibilityRole="button"
       accessibilityState={{ selected, disabled }}
-      accessibilityLabel={accessibilityLabel ?? label}
+      accessibilityLabel={label}
       style={[
         styles.chip,
         {

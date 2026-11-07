@@ -129,7 +129,7 @@ function RootLayoutNav() {
           <Stack.Screen name="register" options={{ animation: 'slide_from_right', contentStyle: { backgroundColor: '#fff' } }} />
           <Stack.Screen name="verify-otp" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="complete-profile" options={{ animation: 'slide_from_bottom' }} />
-          <Stack.Screen name="set-password" options={{ animation: 'slide_from_right', contentStyle: { backgroundColor: '#fff' } }} />
+          <Stack.Screen name="set-password" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="change-password" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="edit-profile" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="profile" options={{ animation: 'slide_from_right' }} />

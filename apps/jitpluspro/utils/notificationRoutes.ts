@@ -34,7 +34,7 @@ const ACTION_ROUTES: Record<string, Href> = {
  * Actions that do not map to a plain screen: the caller handles them with
  * context (support WhatsApp link, verify-email needs the merchant's email).
  */
-export const SPECIAL_ACTIONS = ['open_support', 'open_verify_email'] as const;
+const SPECIAL_ACTIONS = ['open_support', 'open_verify_email'] as const;
 export type SpecialAction = (typeof SPECIAL_ACTIONS)[number];
 
 export function isSpecialAction(action: string | null | undefined): action is SpecialAction {
