@@ -1,4 +1,8 @@
+import type React from 'react';
+
 // ── Design tokens ────────────────────────────────────────────────────────────
+// Values live in index.html (light + dark). Neutral surfaces, one accent
+// (JitPlus violet) for links and selection, status colours only for status.
 export const C = {
   bg: 'var(--theme-bg)',
   surface: 'var(--theme-surface)',
@@ -8,6 +12,8 @@ export const C = {
   borderLight: 'var(--theme-border-light)',
   text: 'var(--theme-text)',
   textMuted: 'var(--theme-text-muted)',
+  ink: 'var(--theme-ink)',
+  onInk: 'var(--theme-on-ink)',
   primary: 'var(--theme-primary)',
   primaryLight: 'var(--theme-primary-light)',
   primaryDark: 'var(--theme-primary-dark)',
@@ -19,64 +25,85 @@ export const C = {
   redAlpha: 'var(--theme-red-alpha)',
   amber: 'var(--theme-amber)',
   blue: 'var(--theme-blue)',
+  whatsapp: '#1DA851',
+  chart: ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)'] as const,
+  chartGrid: 'var(--chart-grid)',
 } as const;
+
+const btnBase: React.CSSProperties = {
+  borderRadius: 'var(--radius-sm)',
+  padding: '7px 12px',
+  cursor: 'pointer',
+  fontSize: 13,
+  fontWeight: 500,
+  fontFamily: 'inherit',
+  lineHeight: '18px',
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 6,
+  whiteSpace: 'nowrap',
+  textDecoration: 'none',
+};
 
 export const S = {
   card: {
     background: C.surface,
     border: `1px solid ${C.border}`,
     borderRadius: 'var(--radius-lg)',
-    padding: 24,
-    boxShadow: 'var(--shadow-sm)',
+    padding: 20,
   } as React.CSSProperties,
-  btn: (color: string = C.primary): React.CSSProperties => ({
+  /** Filled button. Default = ink (neutral primary action). */
+  btn: (color: string = C.ink): React.CSSProperties => ({
+    ...btnBase,
     background: color,
-    color: '#fff',
-    border: 'none',
-    borderRadius: 'var(--radius-sm)',
-    padding: '8px 16px',
-    cursor: 'pointer',
-    fontSize: 13,
-    fontWeight: 600,
-    fontFamily: 'inherit',
-    letterSpacing: '0.01em',
-    transition: 'all 0.15s ease',
-  }),
-  btnOutline: (color: string = C.primary): React.CSSProperties => ({
-    background: 'transparent',
-    color: color,
+    color: color === C.ink ? C.onInk : '#fff',
     border: `1px solid ${color}`,
-    borderRadius: 'var(--radius-sm)',
-    padding: '8px 16px',
-    cursor: 'pointer',
-    fontSize: 13,
-    fontWeight: 600,
-    fontFamily: 'inherit',
-    letterSpacing: '0.01em',
-    transition: 'all 0.15s ease',
+  }),
+  /** Secondary button: surface with a border; `color` tints the label. */
+  btnOutline: (color: string = C.text): React.CSSProperties => ({
+    ...btnBase,
+    background: C.surface,
+    color,
+    border: `1px solid ${C.border}`,
+  }),
+  /** Text-only button / link. */
+  btnGhost: (color: string = C.textMuted): React.CSSProperties => ({
+    ...btnBase,
+    background: 'transparent',
+    color,
+    border: '1px solid transparent',
+    padding: '5px 8px',
   }),
   badge: (color: string, alphaColor?: string): React.CSSProperties => ({
-    background: alphaColor || `color-mix(in srgb, ${color} 12%, transparent)`,
-    color: color,
-    borderRadius: 'var(--radius-sm)',
-    padding: '3px 10px',
-    fontSize: 11,
-    fontWeight: 600,
+    background: alphaColor || `color-mix(in srgb, ${color} 11%, transparent)`,
+    color,
+    borderRadius: 4,
+    padding: '1px 7px',
+    fontSize: 11.5,
+    fontWeight: 500,
     display: 'inline-block',
-    letterSpacing: '0.02em',
-    lineHeight: '16px',
+    lineHeight: '18px',
+    whiteSpace: 'nowrap',
   }),
   input: {
     width: '100%',
-    background: C.bg,
+    background: C.surface,
     border: `1px solid ${C.border}`,
     borderRadius: 'var(--radius-sm)',
-    padding: '9px 12px',
+    padding: '7px 10px',
     color: C.text,
     fontSize: 13,
     fontFamily: 'inherit',
     outline: 'none',
     boxSizing: 'border-box',
-    transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
+    transition: 'border-color 0.12s ease, box-shadow 0.12s ease',
+  } as React.CSSProperties,
+  label: {
+    display: 'block',
+    fontSize: 12,
+    color: C.textMuted,
+    marginBottom: 5,
+    fontWeight: 500,
   } as React.CSSProperties,
 } as const;

@@ -8,10 +8,10 @@ export function PageHeader({ title, count, subtitle, right }: { title: React.Rea
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
       <div>
-        <h2 style={{ margin: 0, fontWeight: 700, fontSize: 22, letterSpacing: '-0.02em', color: C.text }}>
+        <h1 style={{ margin: 0, fontWeight: 600, fontSize: 19, color: C.text }}>
           {title}
-          {count !== undefined && <span style={{ color: C.textMuted, fontSize: 14, fontWeight: 400 }}> ({fmtNumber(count)})</span>}
-        </h2>
+          {count !== undefined && <span className="num" style={{ color: C.textMuted, fontSize: 14, fontWeight: 400, marginLeft: 8 }}>{fmtNumber(count)}</span>}
+        </h1>
         {subtitle && <p style={{ margin: '4px 0 0', fontSize: 13, color: C.textMuted }}>{subtitle}</p>}
       </div>
       {right && <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>{right}</div>}
@@ -22,14 +22,14 @@ export function PageHeader({ title, count, subtitle, right }: { title: React.Rea
 // ── Filters ──────────────────────────────────────────────────────────────────
 
 export const pillStyle = (active: boolean): React.CSSProperties => ({
-  padding: '5px 12px',
-  fontSize: 12,
+  padding: '4px 10px',
+  fontSize: 12.5,
   fontWeight: 500,
   fontFamily: 'inherit',
   borderRadius: 'var(--radius-sm)',
-  border: `1px solid ${active ? C.primary : C.border}`,
-  background: active ? C.primary : 'transparent',
-  color: active ? '#fff' : C.textMuted,
+  border: `1px solid ${active ? C.ink : C.border}`,
+  background: active ? C.ink : C.surface,
+  color: active ? C.onInk : C.textMuted,
   cursor: 'pointer',
   transition: 'all 0.15s ease',
   whiteSpace: 'nowrap',
@@ -44,7 +44,7 @@ export interface Option<V extends string = string> {
 export function PillGroup<V extends string>({ label, options, value, onChange }: { label?: string; options: Option<V>[]; value: V; onChange: (v: V) => void }) {
   return (
     <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
-      {label && <span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginRight: 4 }}>{label}</span>}
+      {label && <span style={{ fontSize: 12, color: C.textMuted, fontWeight: 500, marginRight: 4 }}>{label}</span>}
       {options.map((o) => (
         <button key={o.value} title={o.hint} onClick={() => onChange(o.value)} style={pillStyle(value === o.value)}>
           {o.label}
@@ -63,10 +63,12 @@ export function SelectFilter({ value, onChange, options, style }: { value: strin
       style={{
         ...S.input,
         width: 'auto',
-        padding: '5px 10px',
-        fontSize: 12,
-        background: on ? C.primary : C.surface,
-        color: on ? '#fff' : C.text,
+        padding: '4px 8px',
+        fontSize: 12.5,
+        background: C.surface,
+        color: on ? C.text : C.textMuted,
+        borderColor: on ? C.ink : C.border,
+        fontWeight: on ? 500 : 400,
         cursor: 'pointer',
         ...style,
       }}
@@ -80,14 +82,14 @@ export function SelectFilter({ value, onChange, options, style }: { value: strin
 
 export function FilterBar({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ ...S.card, padding: '12px 16px', marginBottom: 16, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+    <div style={{ padding: '0 0 12px', marginBottom: 12, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', borderBottom: `1px solid ${C.border}` }}>
       {children}
     </div>
   );
 }
 
 export function Divider() {
-  return <div style={{ width: 1, height: 24, background: C.border }} />;
+  return <div style={{ width: 1, height: 20, background: C.border }} />;
 }
 
 export function SearchInput({ value, onChange, placeholder, width = 280 }: { value: string; onChange: (v: string) => void; placeholder: string; width?: number | string }) {
@@ -174,13 +176,13 @@ export function useToast(): [React.ReactNode, (msg: string, tone?: 'ok' | 'error
         right: 20,
         background: C.surface,
         border: `1px solid ${toast.tone === 'error' ? C.red : C.border}`,
-        borderLeft: `4px solid ${toast.tone === 'error' ? C.red : C.green}`,
-        borderRadius: 10,
-        padding: '12px 18px',
+        borderLeft: `3px solid ${toast.tone === 'error' ? C.red : C.green}`,
+        borderRadius: 'var(--radius-md)',
+        padding: '10px 14px',
         color: C.text,
         fontSize: 13,
-        zIndex: 999,
-        boxShadow: 'var(--shadow-sm)',
+        zIndex: 1100,
+        boxShadow: 'var(--shadow-lg)',
         maxWidth: 380,
       }}
     >

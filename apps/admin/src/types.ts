@@ -31,6 +31,8 @@ export interface MerchantRow {
   isTrial?: boolean;
   lastActivityAt?: string | null;
   transactions30d?: number;
+  premiumGrant?: PremiumGrant | null;
+  followUp?: { status: FollowUpStatus; nextActionAt: string | null } | null;
 }
 
 export interface MerchantDetail extends MerchantRow {
@@ -38,6 +40,8 @@ export interface MerchantDetail extends MerchantRow {
   socialLinks: { website?: string; instagram?: string; tiktok?: string; facebook?: string; snapchat?: string; youtube?: string } | null;
   notificationCount: number;
   transactionCount: number;
+  premiumGrant: PremiumGrant | null;
+  premiumGrantNote: string | null;
 }
 
 export interface SubscriptionHistoryEvent {
@@ -338,7 +342,7 @@ export interface MerchantListParams {
   page?: number;
   limit?: number;
   search?: string;
-  plan?: '' | 'FREE' | 'PREMIUM' | 'TRIAL' | 'PAID';
+  plan?: '' | 'FREE' | 'PREMIUM' | 'TRIAL' | 'PAID' | 'OFFERED';
   status?: '' | 'active' | 'banned' | 'deleted';
   categorie?: string;
   ville?: string;
@@ -552,6 +556,8 @@ export interface AdminAlerts {
   notifSuccessRate24h: number | null;
   cancelled24h: number;
   transactions24h: number;
+  followUpsDue: number;
+  dealsReported: number;
 }
 
 // ── Insights (GET /admin/stats/insights) ─────────────────────────────────────
@@ -821,4 +827,151 @@ export interface AdminDealListParams {
   search?: string;
   page?: number;
   limit?: number;
+}
+
+// ── Back-office: follow-up, billing, worklist ────────────────────────────────
+
+export type PremiumGrant = 'PAID' | 'OFFERED';
+export type FollowUpStatus = 'TO_CONTACT' | 'CONTACTED' | 'INTERESTED' | 'ONBOARDING' | 'CONVERTED' | 'LOST';
+export type FollowUpKind = 'NOTE' | 'CALL' | 'WHATSAPP' | 'EMAIL' | 'VISIT';
+export type SubscriptionPaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'CHEQUE' | 'CARD' | 'OTHER';
+/** Effective plan: FREE, trial, paid, offered, or admin-activated without a recorded type */
+export type PlanKind = 'FREE' | 'TRIAL' | 'PAID' | 'OFFERED' | 'ADMIN';
+
+export interface FollowUp {
+  merchantId: string;
+  status: FollowUpStatus;
+  nextActionAt: string | null;
+  nextAction: string | null;
+  owner: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FollowUpNote {
+  id: string;
+  merchantId: string;
+  kind: FollowUpKind;
+  body: string;
+  adminId: string | null;
+  adminEmail: string | null;
+  createdAt: string;
+}
+
+export interface FollowUpInput {
+  status?: FollowUpStatus;
+  /** ISO date; '' clears */
+  nextActionAt?: string;
+  nextAction?: string;
+  owner?: string;
+}
+
+export interface MerchantBrief {
+  id: string;
+  nom: string;
+  email: string;
+  phone: string | null;
+  ville: string | null;
+  categorie: string;
+  plan: MerchantPlan;
+  planKind: PlanKind;
+  planExpiresAt: string | null;
+  createdAt: string;
+  onboarded: boolean;
+  hasReward: boolean;
+  clients: number;
+  transactions30d: number;
+  lastActivityAt: string | null;
+  followUp: { status: FollowUpStatus; nextActionAt: string | null; nextAction: string | null; owner: string | null } | null;
+}
+
+export interface FollowUpRow extends MerchantBrief {
+  noteCount: number;
+  lastNote: { kind: FollowUpKind; body: string; createdAt: string; adminEmail: string | null } | null;
+}
+
+export interface FollowUpsResponse {
+  followUps: FollowUpRow[];
+  counts: { byStatus: Record<FollowUpStatus, number>; overdue: number; dueToday: number; unplanned: number };
+  pagination: Pagination;
+}
+
+export interface FollowUpListParams {
+  page?: number;
+  limit?: number;
+  status?: FollowUpStatus | '';
+  due?: '' | 'overdue' | 'today' | 'week' | 'none';
+  closed?: '' | '1';
+  search?: string;
+  owner?: string;
+}
+
+export interface SubscriptionPayment {
+  id: string;
+  merchantId: string;
+  amount: number;
+  currency: string;
+  method: SubscriptionPaymentMethod;
+  paidAt: string;
+  periodStart: string | null;
+  periodEnd: string | null;
+  reference: string | null;
+  note: string | null;
+  adminEmail: string | null;
+  voidedAt: string | null;
+  voidReason: string | null;
+  createdAt: string;
+  merchant?: { id: string; nom: string };
+}
+
+export interface PaymentInput {
+  amount: number;
+  method: SubscriptionPaymentMethod;
+  paidAt?: string;
+  periodStart?: string;
+  periodEnd?: string;
+  reference?: string;
+  note?: string;
+}
+
+export interface ActivatePremiumInput {
+  grant?: PremiumGrant;
+  grantNote?: string;
+  endDate?: string;
+  payment?: PaymentInput;
+}
+
+export interface RevenueReport {
+  generatedAt: string;
+  months: number;
+  totals: { thisMonth: number; lastMonth: number; window: number; allTime: number };
+  monthly: { month: string; amount: number; payments: number; merchants: number }[];
+  byMethod: { method: SubscriptionPaymentMethod; amount: number; payments: number }[];
+  premium: { paid: number; offered: number; unknown: number; trial: number; renewals30d: number };
+  subscribers: {
+    id: string;
+    nom: string;
+    email: string;
+    phone: string | null;
+    ville: string | null;
+    grant: PremiumGrant | null;
+    grantNote: string | null;
+    planExpiresAt: string | null;
+    lastPaidAt: string | null;
+    lastAmount: number | null;
+    totalPaid: number;
+    payments: number;
+  }[];
+  recentPayments: SubscriptionPayment[];
+}
+
+export interface Worklist {
+  generatedAt: string;
+  followUpsDue: MerchantBrief[];
+  trialsEnding: MerchantBrief[];
+  renewals: MerchantBrief[];
+  stuckNew: MerchantBrief[];
+  dormantPremium: MerchantBrief[];
+  payouts: { id: string; amount: number; method: string; createdAt: string; client: { id: string; name: string | null; telephone: string | null } }[];
+  reportedDeals: { id: string; title: string; reportCount: number; endsAt: string; createdAt: string; merchant: { id: string; nom: string } }[];
 }

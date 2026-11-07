@@ -27,6 +27,9 @@ export {
   PAYOUT_REQUEST_REPOSITORY,
   CAMPAIGN_SENT_TRACKER_REPOSITORY,
   STAMP_CODE_REPOSITORY,
+  MERCHANT_FOLLOW_UP_REPOSITORY,
+  MERCHANT_FOLLOW_UP_NOTE_REPOSITORY,
+  SUBSCRIPTION_PAYMENT_REPOSITORY,
   TRANSACTION_RUNNER,
   RAW_QUERY_RUNNER,
 } from './repository.tokens';
@@ -58,6 +61,9 @@ export type {
   IPayoutRequestRepository,
   ICampaignSentTrackerRepository,
   IStampCodeRepository,
+  IMerchantFollowUpRepository,
+  IMerchantFollowUpNoteRepository,
+  ISubscriptionPaymentRepository,
 } from './repository.types';
 
 // Infrastructure

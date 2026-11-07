@@ -133,6 +133,11 @@ export const ACTION_LABELS: Record<string, string> = {
   CREATE_DEAL: 'Bon plan publié',
   REMOVE_DEAL: 'Bon plan retiré',
   RESTORE_DEAL: 'Bon plan rétabli',
+  CREATE_STAMP_CODES: 'Codes tampons créés',
+  REVOKE_STAMP_CODES: 'Codes tampons révoqués',
+  RECORD_SUBSCRIPTION_PAYMENT: 'Paiement enregistré',
+  VOID_SUBSCRIPTION_PAYMENT: 'Paiement annulé',
+  UPDATE_PREMIUM_GRANT: 'Type de Premium modifié',
 };
 
 /** Color mapping for audit actions */
@@ -164,6 +169,9 @@ export const ACTION_COLOR: Record<string, string> = {
   CREATE_DEAL: C.green,
   REMOVE_DEAL: C.red,
   RESTORE_DEAL: C.green,
+  RECORD_SUBSCRIPTION_PAYMENT: C.green,
+  VOID_SUBSCRIPTION_PAYMENT: C.red,
+  UPDATE_PREMIUM_GRANT: C.blue,
 };
 
 // ── Merchant categories ─────────────────────────────────────────────────────
@@ -227,11 +235,9 @@ export function deltaPct(current: number, previous: number): number | null {
 
 export const tableHeaderStyle: React.CSSProperties = {
   padding: '10px 12px',
-  fontSize: 11,
-  fontWeight: 700,
+  fontSize: 12,
+  fontWeight: 500,
   color: C.textMuted,
-  textTransform: 'uppercase',
-  letterSpacing: 0.5,
 };
 
 export const tableCellStyle: React.CSSProperties = {

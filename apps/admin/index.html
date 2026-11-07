@@ -6,68 +6,149 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>JitPlus — Admin</title>
+    <meta name="color-scheme" content="light dark" />
+    <title>JitPlus Admin</title>
     <style>
       :root {
-        --theme-bg: #F7F8FA;
+        --theme-bg: #F5F5F3;
         --theme-surface: #FFFFFF;
-        --theme-surface-hover: #F1F3F5;
-        --theme-surface-alt: #F0F2F5;
-        --theme-border: #E4E7EC;
-        --theme-border-light: #F0F2F5;
-        --theme-text: #101828;
-        --theme-text-muted: #667085;
-        --theme-primary: #6C47FF;
-        --theme-primary-light: #8B6FFF;
-        --theme-primary-dark: #5234CC;
-        --theme-cyan: #0EA5E9;
-        --theme-green: #12B76A;
-        --theme-red: #F04438;
-        --theme-amber: #F79009;
-        --theme-blue: #2E90FA;
+        --theme-surface-hover: #F7F7F5;
+        --theme-surface-alt: #F0F0ED;
+        --theme-border: #E3E2DE;
+        --theme-border-light: #EEEDEA;
+        --theme-text: #1B1B19;
+        --theme-text-muted: #6E6D68;
+        --theme-ink: #1B1B19;
+        --theme-on-ink: #FFFFFF;
+        /* JitPlus brand violet, used sparingly: links, selection, focus */
+        --theme-primary: #6D28D9;
+        --theme-primary-light: #8B5CF6;
+        --theme-primary-dark: #5B21B6;
+        --theme-cyan: #0E7490;
+        --theme-green: #15803D;
+        --theme-red: #B91C1C;
+        --theme-amber: #B45309;
+        --theme-blue: #1D4ED8;
 
-        --theme-primary-alpha: rgba(108, 71, 255, 0.10);
-        --theme-green-alpha: rgba(18, 183, 106, 0.10);
-        --theme-red-alpha: rgba(240, 68, 56, 0.10);
+        --theme-primary-alpha: rgba(109, 40, 217, 0.08);
+        --theme-green-alpha: rgba(21, 128, 61, 0.09);
+        --theme-red-alpha: rgba(185, 28, 28, 0.08);
 
-        --shadow-sm: 0 1px 2px rgba(16,24,40,0.05);
-        --shadow-md: 0 4px 12px rgba(16,24,40,0.08);
-        --shadow-lg: 0 12px 40px rgba(16,24,40,0.12);
-        --radius-sm: 6px;
-        --radius-md: 10px;
-        --radius-lg: 14px;
+        --chart-1: #6D28D9;
+        --chart-2: #0E7490;
+        --chart-3: #15803D;
+        --chart-4: #B45309;
+        --chart-grid: #ECEBE7;
+
+        --shadow-sm: 0 1px 0 rgba(0,0,0,0.03);
+        --shadow-md: 0 2px 8px rgba(0,0,0,0.06);
+        --shadow-lg: 0 16px 48px rgba(0,0,0,0.18);
+        --radius-sm: 5px;
+        --radius-md: 7px;
+        --radius-lg: 8px;
+        --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) {
+          --theme-bg: #111110;
+          --theme-surface: #191918;
+          --theme-surface-hover: #21211F;
+          --theme-surface-alt: #232321;
+          --theme-border: #2E2E2B;
+          --theme-border-light: #262624;
+          --theme-text: #EDEDEA;
+          --theme-text-muted: #9B9A94;
+          --theme-ink: #EDEDEA;
+          --theme-on-ink: #111110;
+          --theme-primary: #A78BFA;
+          --theme-primary-light: #C4B5FD;
+          --theme-primary-dark: #8B5CF6;
+          --theme-cyan: #22D3EE;
+          --theme-green: #4ADE80;
+          --theme-red: #F87171;
+          --theme-amber: #FBBF24;
+          --theme-blue: #60A5FA;
+          --theme-primary-alpha: rgba(167, 139, 250, 0.12);
+          --theme-green-alpha: rgba(74, 222, 128, 0.10);
+          --theme-red-alpha: rgba(248, 113, 113, 0.10);
+          --chart-1: #A78BFA;
+          --chart-2: #22D3EE;
+          --chart-3: #4ADE80;
+          --chart-4: #FBBF24;
+          --chart-grid: #2A2A27;
+          --shadow-lg: 0 16px 48px rgba(0,0,0,0.5);
+        }
+      }
+      :root[data-theme="dark"] {
+        --theme-bg: #111110;
+        --theme-surface: #191918;
+        --theme-surface-hover: #21211F;
+        --theme-surface-alt: #232321;
+        --theme-border: #2E2E2B;
+        --theme-border-light: #262624;
+        --theme-text: #EDEDEA;
+        --theme-text-muted: #9B9A94;
+        --theme-ink: #EDEDEA;
+        --theme-on-ink: #111110;
+        --theme-primary: #A78BFA;
+        --theme-primary-light: #C4B5FD;
+        --theme-primary-dark: #8B5CF6;
+        --theme-cyan: #22D3EE;
+        --theme-green: #4ADE80;
+        --theme-red: #F87171;
+        --theme-amber: #FBBF24;
+        --theme-blue: #60A5FA;
+        --theme-primary-alpha: rgba(167, 139, 250, 0.12);
+        --theme-green-alpha: rgba(74, 222, 128, 0.10);
+        --theme-red-alpha: rgba(248, 113, 113, 0.10);
+        --chart-1: #A78BFA;
+        --chart-2: #22D3EE;
+        --chart-3: #4ADE80;
+        --chart-4: #FBBF24;
+        --chart-grid: #2A2A27;
+        --shadow-lg: 0 16px 48px rgba(0,0,0,0.5);
       }
       *, *::before, *::after { box-sizing: border-box; }
+      html { background: var(--theme-bg); }
       body {
         margin: 0;
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        font-size: 13px;
+        line-height: 1.45;
         background: var(--theme-bg);
         color: var(--theme-text);
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
-        font-feature-settings: 'cv11', 'ss01';
+        font-variant-numeric: tabular-nums;
       }
       #root { min-height: 100vh; }
-      ::selection {
-        background: var(--theme-primary-alpha);
-        color: var(--theme-primary);
-      }
-      ::-webkit-scrollbar { width: 6px; height: 6px; }
+      ::selection { background: var(--theme-primary-alpha); color: var(--theme-text); }
+      ::-webkit-scrollbar { width: 8px; height: 8px; }
       ::-webkit-scrollbar-track { background: transparent; }
-      ::-webkit-scrollbar-thumb { background: var(--theme-border); border-radius: 3px; }
+      ::-webkit-scrollbar-thumb { background: var(--theme-border); border-radius: 4px; }
       ::-webkit-scrollbar-thumb:hover { background: var(--theme-text-muted); }
       input:focus, textarea:focus, select:focus {
         outline: none;
         border-color: var(--theme-primary) !important;
-        box-shadow: 0 0 0 3px var(--theme-primary-alpha) !important;
+        box-shadow: 0 0 0 2px var(--theme-primary-alpha) !important;
       }
-      button { transition: all 0.15s ease; }
-      button:hover { opacity: 0.9; }
-      button:active { transform: scale(0.98); }
-      a { transition: color 0.15s ease; }
+      button:focus-visible, a:focus-visible { outline: 2px solid var(--theme-primary); outline-offset: 1px; }
+      button { transition: background-color .12s ease, border-color .12s ease, color .12s ease, opacity .12s ease; }
+      button:disabled { cursor: not-allowed; }
+      button:not(:disabled):hover { filter: brightness(0.97); }
+      a { transition: color 0.12s ease; }
       table { border-spacing: 0; }
+      .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+      .row-link:hover { background: var(--theme-surface-hover); }
+      .nav-link:hover { background: var(--theme-surface-hover); color: var(--theme-text) !important; }
+      .icon-btn:hover { background: var(--theme-surface-hover) !important; color: var(--theme-text) !important; }
+      .tab-btn:hover { color: var(--theme-text) !important; }
+      @media (max-width: 860px) {
+        .hide-sm { display: none !important; }
+        .stack-sm { grid-template-columns: 1fr !important; }
+      }
     </style>
   </head>
   <body>

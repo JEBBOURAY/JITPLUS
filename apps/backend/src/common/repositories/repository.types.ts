@@ -34,3 +34,6 @@ export type ILuckyWheelTicketRepository = PrismaService['luckyWheelTicket'];
 export type ILuckyWheelDrawRepository = PrismaService['luckyWheelDraw'];
 export type ICampaignSentTrackerRepository = PrismaService['campaignSentTracker'];
 export type IStampCodeRepository = PrismaService['stampCode'];
+export type IMerchantFollowUpRepository = PrismaService['merchantFollowUp'];
+export type IMerchantFollowUpNoteRepository = PrismaService['merchantFollowUpNote'];
+export type ISubscriptionPaymentRepository = PrismaService['merchantSubscriptionPayment'];

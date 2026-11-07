@@ -1,4 +1,5 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { moroccoDayStart } from './admin-crm.service';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
 import { RAW_QUERY_RUNNER, type IRawQueryRunner } from '../common/repositories';
@@ -790,7 +791,11 @@ export class AdminDetailsService {
         (SELECT COALESCE(SUM(recipient_count), 0) FROM notifications WHERE created_at >= ${d1}) AS notif_recipients_24h,
         (SELECT COALESCE(SUM(success_count), 0) FROM notifications WHERE created_at >= ${d1}) AS notif_success_24h,
         (SELECT COUNT(*) FROM transactions WHERE status = 'CANCELLED' AND created_at >= ${d1}) AS cancelled_24h,
-        (SELECT COUNT(*) FROM transactions WHERE created_at >= ${d1}) AS tx_24h
+        (SELECT COUNT(*) FROM transactions WHERE created_at >= ${d1}) AS tx_24h,
+        (SELECT COUNT(*) FROM merchant_follow_ups f JOIN merchants m ON m.id = f.merchant_id
+           WHERE m.deleted_at IS NULL AND f.status NOT IN ('CONVERTED', 'LOST')
+           AND f.next_action_at < ${moroccoDayStart(now, 1)}) AS follow_ups_due,
+        (SELECT COUNT(*) FROM deals WHERE status = 'ACTIVE' AND report_count > 0 AND ends_at > ${now}) AS deals_reported
     `;
     const r = x ?? {};
     const recipients = num(r.notif_recipients_24h);
@@ -808,6 +813,8 @@ export class AdminDetailsService {
       notifSuccessRate24h: recipients > 0 ? pct(num(r.notif_success_24h), recipients) : null,
       cancelled24h: num(r.cancelled_24h),
       transactions24h: num(r.tx_24h),
+      followUpsDue: num(r.follow_ups_due),
+      dealsReported: num(r.deals_reported),
     };
     await this.cache.set(cacheKey, result, ALERTS_CACHE_TTL);
     return result;

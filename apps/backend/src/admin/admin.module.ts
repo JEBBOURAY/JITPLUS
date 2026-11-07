@@ -7,6 +7,8 @@ import { AdminMerchantsController } from './admin-merchants.controller';
 import { AdminClientsController } from './admin-clients.controller';
 import { AdminNotificationsController } from './admin-notifications.controller';
 import { AdminReferralsController } from './admin-referrals.controller';
+import { AdminCrmController } from './admin-crm.controller';
+import { AdminCrmService } from './admin-crm.service';
 import { AdminAuthService } from './admin.service';
 import { AdminDashboardService } from './admin-dashboard.service';
 import { AdminMerchantService } from './admin-merchants.service';
@@ -36,6 +38,7 @@ import { AdminGuard } from '../auth/guards/admin.guard';
     AdminClientsController,
     AdminNotificationsController,
     AdminReferralsController,
+    AdminCrmController,
   ],
   providers: [
     AdminAuthService,
@@ -45,6 +48,7 @@ import { AdminGuard } from '../auth/guards/admin.guard';
     AdminReferralService,
     AdminInsightsService,
     AdminDetailsService,
+    AdminCrmService,
     AuditLogService,
     AdminGuard,
   ],

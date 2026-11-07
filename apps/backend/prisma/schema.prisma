@@ -141,6 +141,15 @@ model Merchant {
   // Single-use QR codes slipped into e-commerce parcels
   stampCodes StampCode[]
 
+  // ── Admin back-office ──
+  /// How the current admin-activated PREMIUM was granted (null = trial, FREE, or not recorded)
+  premiumGrant         PremiumGrant?                 @map("premium_grant")
+  /// Why PREMIUM was offered for free, or a note on the deal
+  premiumGrantNote     String?                       @map("premium_grant_note") @db.VarChar(300)
+  followUp             MerchantFollowUp?
+  followUpNotes        MerchantFollowUpNote[]
+  subscriptionPayments MerchantSubscriptionPayment[]
+
   @@index([deletedAt])
   // Discovery queries filter by category + city — composite index avoids full table scans
   @@index([categorie, ville, isActive])
@@ -282,6 +291,10 @@ enum AuditAction {
   RESET_PASSWORD
   UPDATE_PLAN_DURATION
   UPDATE_PAYOUT
+  // Back-office billing
+  RECORD_SUBSCRIPTION_PAYMENT
+  VOID_SUBSCRIPTION_PAYMENT
+  UPDATE_PREMIUM_GRANT
 }
 
 enum AuditTargetType {
@@ -1363,4 +1376,102 @@ model StampCode {
   @@index([batchId, status])
   @@index([redeemedByClientId])
   @@map("stamp_codes")
+}
+
+// ── Admin back-office: merchant follow-up (CRM) and subscription billing ──────
+
+enum PremiumGrant {
+  /// The merchant pays for PREMIUM
+  PAID
+  /// PREMIUM given for free (partner, test, goodwill…)
+  OFFERED
+}
+
+enum FollowUpStatus {
+  TO_CONTACT
+  CONTACTED
+  INTERESTED
+  ONBOARDING
+  CONVERTED
+  LOST
+}
+
+enum FollowUpKind {
+  NOTE
+  CALL
+  WHATSAPP
+  EMAIL
+  VISIT
+}
+
+enum SubscriptionPaymentMethod {
+  CASH
+  BANK_TRANSFER
+  CHEQUE
+  CARD
+  OTHER
+}
+
+/// One row per merchant the team follows: pipeline status and next planned action.
+model MerchantFollowUp {
+  merchantId   String         @id @map("merchant_id")
+  status       FollowUpStatus @default(TO_CONTACT)
+  /// When the next action is due (null = nothing planned)
+  nextActionAt DateTime?      @map("next_action_at")
+  nextAction   String?        @map("next_action") @db.VarChar(200)
+  /// Admin in charge (email)
+  owner        String?        @db.VarChar(255)
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  // "À relancer" queue: open follow-ups sorted by due date
+  @@index([status, nextActionAt])
+  @@index([nextActionAt])
+  @@map("merchant_follow_ups")
+}
+
+/// Timeline of contacts and notes written by admins about a merchant.
+model MerchantFollowUpNote {
+  id         String       @id @default(uuid())
+  merchantId String       @map("merchant_id")
+  kind       FollowUpKind @default(NOTE)
+  body       String       @db.VarChar(2000)
+  adminId    String?      @map("admin_id")
+  adminEmail String?      @map("admin_email") @db.VarChar(255)
+  createdAt  DateTime     @default(now()) @map("created_at")
+
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@index([merchantId, createdAt(sort: Desc)])
+  @@index([createdAt(sort: Desc)])
+  @@map("merchant_follow_up_notes")
+}
+
+/// Money actually received for a PREMIUM subscription (recorded by an admin).
+/// Never deleted: a mistaken entry is voided so revenue history stays auditable.
+model MerchantSubscriptionPayment {
+  id          String                    @id @default(uuid())
+  merchantId  String                    @map("merchant_id")
+  amount      Float
+  currency    String                    @default("MAD") @db.VarChar(3)
+  method      SubscriptionPaymentMethod
+  paidAt      DateTime                  @map("paid_at")
+  /// Period covered by the payment
+  periodStart DateTime?                 @map("period_start")
+  periodEnd   DateTime?                 @map("period_end")
+  reference   String?                   @db.VarChar(120)
+  note        String?                   @db.VarChar(500)
+  adminId     String?                   @map("admin_id")
+  adminEmail  String?                   @map("admin_email") @db.VarChar(255)
+  voidedAt    DateTime?                 @map("voided_at")
+  voidReason  String?                   @map("void_reason") @db.VarChar(300)
+  createdAt   DateTime                  @default(now()) @map("created_at")
+
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@index([merchantId, paidAt(sort: Desc)])
+  @@index([paidAt(sort: Desc)])
+  @@map("merchant_subscription_payments")
 }

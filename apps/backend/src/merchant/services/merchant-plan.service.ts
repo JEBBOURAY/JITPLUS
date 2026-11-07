@@ -285,7 +285,7 @@ export class MerchantPlanService {
    * Admin activates premium for a merchant (permanent until admin revokes).
    * Also resets any pending referral months (superseded by permanent premium).
    */
-  async adminActivatePremium(merchantId: string): Promise<void> {
+  async adminActivatePremium(merchantId: string, opts: { creditReferrals?: boolean } = {}): Promise<void> {
     const merchant = await this.merchantRepo.update({
       where: { id: merchantId },
       data: {
@@ -299,12 +299,15 @@ export class MerchantPlanService {
     await this.invalidatePlanCache(merchantId);
     this.logger.log(`Admin activated PREMIUM for merchant ${merchantId}`);
 
-    // Credit client referrer if this merchant was referred by a client (fire-and-forget)
-    this.clientReferralService.creditClientForMerchant(merchantId)
-      .catch((err) => this.logger.error(`Client referral credit failed for merchant ${merchantId}`, err?.stack));
-    // Credit merchant referrer now that this merchant has paid (fire-and-forget)
-    this.merchantReferralService.creditReferrerOnPayment(merchantId)
-      .catch((err) => this.logger.error(`Merchant referral credit failed for merchant ${merchantId}`, err?.stack));
+    // Referrers are rewarded when the merchant pays; an offered (free) PREMIUM skips them.
+    if (opts.creditReferrals !== false) {
+      // Credit client referrer if this merchant was referred by a client (fire-and-forget)
+      this.clientReferralService.creditClientForMerchant(merchantId)
+        .catch((err) => this.logger.error(`Client referral credit failed for merchant ${merchantId}`, err?.stack));
+      // Credit merchant referrer now that this merchant has paid (fire-and-forget)
+      this.merchantReferralService.creditReferrerOnPayment(merchantId)
+        .catch((err) => this.logger.error(`Merchant referral credit failed for merchant ${merchantId}`, err?.stack));
+    }
     // ── Push notification ────────────────────────────────────────
     await this.notifyPlanChange(merchantId, merchant, 'activated');
     if (merchant?.email) {
@@ -385,6 +388,8 @@ export class MerchantPlanService {
         plan: 'FREE',
         planActivatedByAdmin: false,
         planExpiresAt: null,
+        premiumGrant: null,
+        premiumGrantNote: null,
       },
       select: { pushToken: true, notifPush: true, language: true, email: true },
     });
@@ -473,6 +478,7 @@ export class MerchantPlanService {
   async adminSetPlanDates(
     merchantId: string,
     dto: { startDate?: string; endDate?: string },
+    opts: { creditReferrals?: boolean } = {},
   ): Promise<void> {
     const data: Record<string, unknown> = {};
 
@@ -502,10 +508,12 @@ export class MerchantPlanService {
 
     // Credit referrers when admin sets plan to PREMIUM (fire-and-forget)
     if (data.plan === 'PREMIUM') {
-      this.clientReferralService.creditClientForMerchant(merchantId)
-        .catch((err) => this.logger.error(`Client referral credit failed for merchant ${merchantId}`, err?.stack));
-      this.merchantReferralService.creditReferrerOnPayment(merchantId)
-        .catch((err) => this.logger.error(`Merchant referral credit failed for merchant ${merchantId}`, err?.stack));
+      if (opts.creditReferrals !== false) {
+        this.clientReferralService.creditClientForMerchant(merchantId)
+          .catch((err) => this.logger.error(`Client referral credit failed for merchant ${merchantId}`, err?.stack));
+        this.merchantReferralService.creditReferrerOnPayment(merchantId)
+          .catch((err) => this.logger.error(`Merchant referral credit failed for merchant ${merchantId}`, err?.stack));
+      }
 
       // ── Push notification: Premium activated by admin (with end date) ──
       await this.notifyPlanChange(merchantId, merchant, 'activated');

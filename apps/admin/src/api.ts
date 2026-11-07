@@ -28,6 +28,18 @@ import type {
   AdminDealsResponse,
   AdminDealReport,
   AdminDealListParams,
+  ActivatePremiumInput,
+  FollowUp,
+  FollowUpInput,
+  FollowUpKind,
+  FollowUpListParams,
+  FollowUpNote,
+  FollowUpsResponse,
+  PaymentInput,
+  PremiumGrant,
+  RevenueReport,
+  SubscriptionPayment,
+  Worklist,
 } from './types';
 
 /** Query string from a params object, dropping empty values. */
@@ -197,8 +209,8 @@ export const getMerchantDetail = (id: string) =>
 export const getMerchantSubscriptionHistory = (id: string) =>
   req<MerchantSubscriptionHistoryResponse>(`/admin/merchants/${id}/subscription-history`);
 
-export const activatePremium = (id: string) =>
-  req<{ success: boolean }>(`/admin/merchants/${id}/activate-premium`, { method: 'POST' });
+export const activatePremium = (id: string, input: ActivatePremiumInput = {}) =>
+  req<{ success: boolean }>(`/admin/merchants/${id}/activate-premium`, { method: 'POST', body: JSON.stringify(input) });
 
 export const revokePremium = (id: string) =>
   req<{ success: boolean }>(`/admin/merchants/${id}/revoke-premium`, { method: 'POST' });
@@ -367,3 +379,35 @@ export const getMerchantNotificationStats = (days = 30) =>
   req<{ days: number; categories: Array<{ category: string; sent: number; opened: number; read: number }> }>(
     `/admin/merchant-notifications/stats?days=${days}`,
   );
+
+// ── Back-office: worklist, follow-up, billing ──────────────────────────────────
+export const getWorklist = () => req<Worklist>('/admin/worklist');
+
+export const getRevenue = (months = 12) => req<RevenueReport>(`/admin/revenue?months=${months}`);
+
+export const getFollowUps = (params: FollowUpListParams = {}) =>
+  req<FollowUpsResponse>(`/admin/follow-ups?${qs({ page: 1, limit: 30, ...params })}`);
+
+export const getMerchantFollowUp = (id: string) =>
+  req<{ followUp: FollowUp | null; notes: FollowUpNote[] }>(`/admin/merchants/${id}/follow-up`);
+
+export const updateMerchantFollowUp = (id: string, input: FollowUpInput) =>
+  req<FollowUp>(`/admin/merchants/${id}/follow-up`, { method: 'PATCH', body: JSON.stringify(input) });
+
+export const addFollowUpNote = (id: string, input: FollowUpInput & { kind: FollowUpKind; body: string }) =>
+  req<{ note: FollowUpNote; followUp: FollowUp }>(`/admin/merchants/${id}/follow-up/notes`, { method: 'POST', body: JSON.stringify(input) });
+
+export const deleteFollowUpNote = (noteId: string) =>
+  req<{ success: boolean }>(`/admin/follow-up-notes/${noteId}`, { method: 'DELETE' });
+
+export const getMerchantPayments = (id: string) =>
+  req<{ payments: SubscriptionPayment[]; totals: { count: number; amount: number; lastPaidAt: string | null } }>(`/admin/merchants/${id}/payments`);
+
+export const recordMerchantPayment = (id: string, input: PaymentInput) =>
+  req<SubscriptionPayment>(`/admin/merchants/${id}/payments`, { method: 'POST', body: JSON.stringify(input) });
+
+export const voidPayment = (paymentId: string, reason: string) =>
+  req<SubscriptionPayment>(`/admin/payments/${paymentId}/void`, { method: 'POST', body: JSON.stringify({ reason }) });
+
+export const setPremiumGrant = (id: string, grant: PremiumGrant, note?: string) =>
+  req<{ success: boolean }>(`/admin/merchants/${id}/premium-grant`, { method: 'PATCH', body: JSON.stringify({ grant, note }) });

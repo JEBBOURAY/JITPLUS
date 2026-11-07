@@ -73,29 +73,13 @@ export default function Login() {
         background: C.bg,
       }}
     >
-      <div style={{ ...S.card, width: 400, padding: 36, boxShadow: 'var(--shadow-md)' }}>
+      <div style={{ ...S.card, width: 380, maxWidth: 'calc(100vw - 32px)', padding: 28 }}>
         {/* Logo */}
-        <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <div style={{
-            width: 48,
-            height: 48,
-            borderRadius: 'var(--radius-md)',
-            background: `linear-gradient(135deg, ${C.primary}, ${C.cyan})`,
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginBottom: 16,
-          }}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-            </svg>
-          </div>
-          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: C.text, letterSpacing: '-0.02em' }}>
-            JitPlus Admin
+        <div style={{ marginBottom: 24 }}>
+          <h1 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: C.text }}>
+            JitPlus <span style={{ color: C.textMuted, fontWeight: 400 }}>admin</span>
           </h1>
-          <p style={{ color: C.textMuted, fontSize: 13, marginTop: 6 }}>
-            Tableau de bord d'administration
-          </p>
+          <p style={{ color: C.textMuted, fontSize: 13, margin: '4px 0 0' }}>Connexion réservée à l'équipe</p>
         </div>
 
         {/* Environment selector */}
@@ -201,7 +185,7 @@ export default function Login() {
             type="submit"
             disabled={loading || isLocked}
             style={{
-              ...S.btn(C.primary),
+              ...S.btn(),
               padding: '11px',
               fontSize: 14,
               marginTop: 4,

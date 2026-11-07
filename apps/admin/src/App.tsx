@@ -3,7 +3,10 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { getToken, setToken, getStats } from './api';
 import Layout from './components/Layout';
 import Login from './pages/Login';
-import Overview from './pages/Overview';
+import Dashboard from './pages/Dashboard';
+import Analytics from './pages/Analytics';
+import FollowUps from './pages/FollowUps';
+import Revenue from './pages/Revenue';
 import Merchants from './pages/Merchants';
 import MerchantDetail from './pages/MerchantDetail';
 import Clients from './pages/Clients';
@@ -37,7 +40,7 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
   }, []);
 
   if (status === 'loading') {
-    return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', color: '#888' }}>Chargement…</div>;
+    return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', color: 'var(--theme-text-muted)' }}>Chargement…</div>;
   }
   return status === 'ok' ? <>{children}</> : <Navigate to="/login" replace />;
 }
@@ -53,7 +56,10 @@ export default function App() {
             <PrivateRoute>
               <Layout>
                 <Routes>
-                  <Route path="/" element={<Overview />} />
+                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/follow-ups" element={<FollowUps />} />
+                  <Route path="/revenue" element={<Revenue />} />
+                  <Route path="/analytics" element={<Analytics />} />
                   <Route path="/merchants" element={<Merchants />} />
                   <Route path="/merchants/:id" element={<MerchantDetail />} />
                   <Route path="/clients" element={<Clients />} />

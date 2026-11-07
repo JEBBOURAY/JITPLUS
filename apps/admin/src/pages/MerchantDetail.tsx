@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { getErrorMessage } from '@jitplus/shared';
 import {
-  activatePremium,
   banMerchant,
   deleteMerchant,
   getMerchantActivity,
@@ -13,7 +12,9 @@ import {
   unbanMerchant,
 } from '../api';
 import type { MerchantActivity, MerchantDetail, SubscriptionHistoryEvent } from '../types';
-import PlanBadge from '../components/PlanBadge';
+import { ActivatePremiumModal, PlanKindBadge } from '../components/crm';
+import { BillingPanel, FollowUpPanel } from '../components/MerchantPanels';
+import { PLAN_KIND, WA_TEMPLATES, planKindOf, waLink } from '../utils/crm';
 import ConfirmModal from '../components/ConfirmModal';
 import StatCard from '../components/StatCard';
 import { Card, DataTable, Empty, Grid, Legend, LineChart, MiniStat } from '../components/charts';
@@ -89,6 +90,7 @@ export default function MerchantDetailPage() {
   const [history, setHistory] = useState<SubscriptionHistoryEvent[]>([]);
   const [historyError, setHistoryError] = useState('');
   const [series, setSeries] = useState<Set<string>>(new Set(['transactions', 'clients']));
+  const [activateOpen, setActivateOpen] = useState(false);
   const [confirmModal, setConfirmModal] = useState<{
     title: string;
     message: string;
@@ -150,7 +152,8 @@ export default function MerchantDetailPage() {
   const deleted = !!merchant.deletedAt;
   const a = activity;
   const signals = a ? buildSignals(merchant, a) : [];
-  const waNumber = merchant.phoneNumber?.replace(/[^\d]/g, '');
+  const kind = planKindOf(merchant);
+  const wa = waLink(merchant.phoneNumber, WA_TEMPLATES.generic(merchant.nom));
 
   return (
     <div style={{ paddingBottom: 48 }}>
@@ -165,7 +168,7 @@ export default function MerchantDetailPage() {
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em' }}>{merchant.nom}</h2>
-            {deleted ? <span style={S.badge(C.textMuted)}>Supprimé</span> : <PlanBadge plan={merchant.plan} isTrial={isTrial} isActive={merchant.isActive} />}
+            <PlanKindBadge kind={kind} expiresAt={merchant.planExpiresAt} deleted={deleted} banned={!merchant.isActive} />
             {a && !a.settings.onboardingCompleted && <span style={S.badge(C.amber)}>Onboarding non terminé</span>}
             {a && !a.settings.emailVerified && <span style={S.badge(C.textMuted)}>Email non vérifié</span>}
           </div>
@@ -179,14 +182,14 @@ export default function MerchantDetailPage() {
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {!deleted && <a href={`mailto:${merchant.email}`} style={{ ...S.btnOutline(C.cyan), textDecoration: 'none' }}>Email</a>}
           {merchant.phoneNumber && <a href={`tel:${merchant.phoneNumber}`} style={{ ...S.btnOutline(C.green), textDecoration: 'none' }}>Appeler</a>}
-          {waNumber && <a href={`https://wa.me/${waNumber}`} target="_blank" rel="noreferrer" style={{ ...S.btnOutline('#25D366'), textDecoration: 'none' }}>WhatsApp</a>}
+          {wa && <a href={wa} target="_blank" rel="noreferrer" style={{ ...S.btnOutline(C.whatsapp), textDecoration: 'none' }}>WhatsApp</a>}
           <Link to={`/notifications?merchantId=${merchant.id}`} style={{ ...S.btnOutline(C.primary), textDecoration: 'none' }}>Ses notifications</Link>
         </div>
       </div>
 
       {/* Signals */}
       {signals.length > 0 && (
-        <div style={{ ...S.card, marginBottom: 16, padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ ...S.card, marginBottom: 16, padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
           {signals.map((s) => (
             <div key={s.text} style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 13 }}>
               <span style={{ width: 8, height: 8, borderRadius: '50%', background: s.tone, flexShrink: 0 }} />
@@ -220,7 +223,7 @@ export default function MerchantDetailPage() {
         </>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.6fr) minmax(300px, 1fr)', gap: 16, alignItems: 'start' }}>
+      <div className="stack-sm" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.6fr) minmax(320px, 1fr)', gap: 16, alignItems: 'start' }}>
         {/* Left column */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
           {a && (
@@ -296,12 +299,12 @@ export default function MerchantDetailPage() {
 
           {/* Plan */}
           <Card title="Plan et abonnement">
-            <KeyValue label="Plan actuel" value={deleted ? 'Supprimé' : isTrial ? 'Premium (essai)' : merchant.plan === 'PREMIUM' ? 'Premium (payant)' : 'Free'} />
-            <KeyValue label="Activé par un admin" value={merchant.planActivatedByAdmin ? 'Oui' : 'Non'} />
+            <KeyValue label="Plan actuel" value={deleted ? 'Supprimé' : PLAN_KIND[kind].label} color={kind === 'ADMIN' ? C.amber : undefined} />
+            {kind === 'ADMIN' && <KeyValue label="Payé ou offert ?" value="Non renseigné · à préciser dans Facturation" color={C.amber} />}
             <KeyValue label="Expiration" value={merchant.planExpiresAt ? fmtDateTime(merchant.planExpiresAt) : 'Aucune'} />
             <KeyValue label="Essai démarré" value={merchant.trialStartedAt ? fmtDateTime(merchant.trialStartedAt) : '—'} />
 
-            <p style={{ margin: '18px 0 10px', fontSize: 11, color: C.textMuted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+            <p style={{ margin: '18px 0 10px', fontSize: 12.5, color: C.textMuted, fontWeight: 500 }}>
               Modifier les dates manuellement
             </p>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
@@ -344,10 +347,10 @@ export default function MerchantDetailPage() {
                 {history.map((event) => (
                   <div
                     key={event.id}
-                    style={{ background: C.bg, border: `1px solid ${C.border}`, borderLeft: `4px solid ${historyEventColor(event.action)}`, borderRadius: 8, padding: '10px 12px' }}
+                    style={{ borderTop: `1px solid ${C.borderLight}`, borderLeft: `2px solid ${historyEventColor(event.action)}`, padding: '8px 10px' }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, marginBottom: 4 }}>
-                      <span style={{ fontSize: 13, fontWeight: 700 }}>{historyEventLabel(event.action)}</span>
+                      <span style={{ fontSize: 13, fontWeight: 500 }}>{historyEventLabel(event.action)}</span>
                       <span style={{ fontSize: 11, color: C.textMuted, whiteSpace: 'nowrap' }}>{fmtDateTime(event.createdAt)}</span>
                     </div>
                     <p style={{ margin: 0, fontSize: 12, color: C.textMuted }}>{event.summary}</p>
@@ -361,6 +364,8 @@ export default function MerchantDetailPage() {
 
         {/* Right column */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
+          {!deleted && <FollowUpPanel merchantId={merchant.id} toast={showToast} />}
+          <BillingPanel merchant={merchant} toast={showToast} onChanged={load} />
           <Card title="Informations">
             <KeyValue label="Email" value={deleted ? <Dash /> : merchant.email} />
             <KeyValue label="Téléphone" value={merchant.phoneNumber ?? <Dash />} />
@@ -450,8 +455,8 @@ export default function MerchantDetailPage() {
             ) : (
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 {!isPremium || isTrial ? (
-                  <button disabled={actionLoading} onClick={() => run(() => activatePremium(merchant.id), 'Premium activé')} style={S.btn(C.primary)}>
-                    Activer Premium
+                  <button disabled={actionLoading} onClick={() => setActivateOpen(true)} style={S.btn()}>
+                    Activer Premium…
                   </button>
                 ) : merchant.planActivatedByAdmin ? (
                   <button
@@ -504,6 +509,12 @@ export default function MerchantDetailPage() {
         </div>
       </div>
 
+      <ActivatePremiumModal
+        open={activateOpen}
+        merchant={merchant}
+        onClose={() => setActivateOpen(false)}
+        onDone={(msg) => { showToast(msg); load(); }}
+      />
       <ConfirmModal
         open={!!confirmModal}
         title={confirmModal?.title ?? ''}
@@ -524,6 +535,9 @@ function historyEventLabel(action: string) {
     case 'ACTIVATE_PREMIUM': return 'Premium activé';
     case 'REVOKE_PREMIUM': return 'Premium révoqué';
     case 'UPDATE_PLAN_DURATION': return 'Dates modifiées';
+    case 'RECORD_SUBSCRIPTION_PAYMENT': return 'Paiement enregistré';
+    case 'VOID_SUBSCRIPTION_PAYMENT': return 'Paiement annulé';
+    case 'UPDATE_PREMIUM_GRANT': return 'Type de Premium modifié';
     case 'CURRENT_STATE': return 'État actuel';
     default: return action;
   }

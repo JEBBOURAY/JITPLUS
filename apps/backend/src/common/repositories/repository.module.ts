@@ -33,6 +33,9 @@ import {
   LUCKY_WHEEL_DRAW_REPOSITORY,
   CAMPAIGN_SENT_TRACKER_REPOSITORY,
   STAMP_CODE_REPOSITORY,
+  MERCHANT_FOLLOW_UP_REPOSITORY,
+  MERCHANT_FOLLOW_UP_NOTE_REPOSITORY,
+  SUBSCRIPTION_PAYMENT_REPOSITORY,
   TRANSACTION_RUNNER,
   RAW_QUERY_RUNNER,
 } from './repository.tokens';
@@ -68,6 +71,9 @@ const modelProviders = [
   { provide: LUCKY_WHEEL_DRAW_REPOSITORY, useFactory: (p: PrismaService) => p.luckyWheelDraw, inject: [PrismaService] },
   { provide: CAMPAIGN_SENT_TRACKER_REPOSITORY, useFactory: (p: PrismaService) => p.campaignSentTracker, inject: [PrismaService] },
   { provide: STAMP_CODE_REPOSITORY, useFactory: (p: PrismaService) => p.stampCode, inject: [PrismaService] },
+  { provide: MERCHANT_FOLLOW_UP_REPOSITORY, useFactory: (p: PrismaService) => p.merchantFollowUp, inject: [PrismaService] },
+  { provide: MERCHANT_FOLLOW_UP_NOTE_REPOSITORY, useFactory: (p: PrismaService) => p.merchantFollowUpNote, inject: [PrismaService] },
+  { provide: SUBSCRIPTION_PAYMENT_REPOSITORY, useFactory: (p: PrismaService) => p.merchantSubscriptionPayment, inject: [PrismaService] },
 ];
 
 const infraProviders = [
@@ -91,6 +97,7 @@ const allTokens = [
   LUCKY_WHEEL_TICKET_REPOSITORY, LUCKY_WHEEL_DRAW_REPOSITORY,
   CAMPAIGN_SENT_TRACKER_REPOSITORY,
   STAMP_CODE_REPOSITORY,
+  MERCHANT_FOLLOW_UP_REPOSITORY, MERCHANT_FOLLOW_UP_NOTE_REPOSITORY, SUBSCRIPTION_PAYMENT_REPOSITORY,
   TRANSACTION_RUNNER, RAW_QUERY_RUNNER,
 ];
 

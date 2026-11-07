@@ -1,14 +1,12 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useCallback, useEffect, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { getErrorMessage } from '@jitplus/shared';
 import { getInsights, getStats } from '../api';
 import type { AdminInsights, AuditLogBrief, GlobalStats, InsightPeriod, MerchantRow } from '../types';
 import StatCard from '../components/StatCard';
 import PlanBadge from '../components/PlanBadge';
-import AlertsPanel from '../components/AlertsPanel';
 import { ExportButton } from '../components/ui';
 import { exportCsv } from '../utils/csv';
-import { useAlertsContext } from '../utils/alerts';
 import {
   BarRow, Card, DataTable, Empty, Funnel, GroupLabel, Grid, Heatmap, Legend, LineChart, MiniStat, ShareList,
 } from '../components/charts';
@@ -16,28 +14,21 @@ import { C, S } from '../theme';
 import {
   ACTION_COLOR, ACTION_LABELS, CATEGORY_LABELS, deltaPct, fmtDate, fmtDateShort, fmtMAD, fmtNumber, fmtTime, sharePct,
 } from '../utils/format';
-import { buildRecommendations, type InsightLevel, type OverviewTab, type Recommendation } from '../utils/insights';
+type OverviewTab = 'summary' | 'merchants' | 'clients' | 'games' | 'communication';
 
 const PERIODS: { value: InsightPeriod; label: string }[] = [
-  { value: 7, label: '7 jours' },
-  { value: 30, label: '30 jours' },
-  { value: 90, label: '90 jours' },
+  { value: 7, label: '7 j' },
+  { value: 30, label: '30 j' },
+  { value: 90, label: '90 j' },
 ];
 
 const TABS: { key: OverviewTab; label: string }[] = [
-  { key: 'summary', label: 'Synthèse' },
+  { key: 'summary', label: 'Vue générale' },
   { key: 'merchants', label: 'Commerçants (Pro)' },
   { key: 'clients', label: 'Clients (JitPlus)' },
   { key: 'games', label: 'Jeux & coupons' },
   { key: 'communication', label: 'Communication & ops' },
 ];
-
-const LEVEL_STYLE: Record<InsightLevel, { color: string; label: string }> = {
-  critical: { color: C.red, label: 'Urgent' },
-  warning: { color: C.amber, label: 'À surveiller' },
-  info: { color: C.blue, label: 'Opportunité' },
-  success: { color: C.green, label: 'Bonne nouvelle' },
-};
 
 const COUPON_TYPE_LABELS: Record<string, string> = {
   PERCENT_DISCOUNT: 'Remise en %',
@@ -53,18 +44,6 @@ const COUPON_SOURCE_LABELS: Record<string, string> = {
 };
 
 const LANGUAGE_LABELS: Record<string, string> = { fr: 'Français', ar: 'Arabe', en: 'Anglais', es: 'Espagnol' };
-
-const pillStyle = (active: boolean): React.CSSProperties => ({
-  padding: '6px 12px',
-  fontSize: 12,
-  fontWeight: 600,
-  fontFamily: 'inherit',
-  borderRadius: 'var(--radius-sm)',
-  border: `1px solid ${active ? C.primary : C.border}`,
-  background: active ? C.primary : C.surface,
-  color: active ? '#fff' : C.textMuted,
-  cursor: 'pointer',
-});
 
 function shortDay(ymd: string): string {
   const [y, m, d] = ymd.split('-').map(Number);
@@ -83,70 +62,14 @@ function ActionBadge({ action }: { action: string }) {
   return <span style={S.badge(ACTION_COLOR[action] ?? C.textMuted)}>{ACTION_LABELS[action] ?? action}</span>;
 }
 
-// ── Recommendations panel ─────────────────────────────────────────────────────
-
-function RecommendationsPanel({ items, onOpen }: { items: Recommendation[]; onOpen: (r: Recommendation) => void }) {
-  const [expanded, setExpanded] = useState(false);
-  const visible = expanded ? items : items.slice(0, 6);
-  return (
-    <Card
-      title={`Actions recommandées (${items.length})`}
-      right={items.length > 6 && (
-        <button onClick={() => setExpanded((v) => !v)} style={{ ...S.btnOutline(C.textMuted), borderColor: C.border, padding: '5px 12px', fontSize: 12 }}>
-          {expanded ? 'Réduire' : 'Tout afficher'}
-        </button>
-      )}
-    >
-      {items.length === 0 ? (
-        <Empty>Rien d'urgent : tous les indicateurs sont dans le vert.</Empty>
-      ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 10 }}>
-          {visible.map((r) => {
-            const st = LEVEL_STYLE[r.level];
-            return (
-              <div
-                key={r.id}
-                style={{
-                  borderRadius: 'var(--radius-sm)',
-                  border: `1px solid ${C.borderLight}`,
-                  borderLeft: `3px solid ${st.color}`,
-                  background: C.bg,
-                  padding: '10px 14px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 4,
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
-                  <span style={{ ...S.badge(st.color), padding: '1px 8px', fontSize: 10 }}>{st.label}</span>
-                  {r.link && (
-                    <button
-                      onClick={() => onOpen(r)}
-                      style={{ background: 'none', border: 'none', color: C.primary, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}
-                    >
-                      {r.link.label} →
-                    </button>
-                  )}
-                </div>
-                <span style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{r.title}</span>
-                <span style={{ fontSize: 12, color: C.textMuted, lineHeight: 1.45 }}>{r.detail}</span>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </Card>
-  );
-}
-
 // ── Tabs ──────────────────────────────────────────────────────────────────────
 
 function SummaryTab({ d, stats, navigate }: { d: AdminInsights; stats: GlobalStats | null; navigate: (to: string) => void }) {
   const seriesDefs = [
-    { key: 'transactions', label: 'Transactions', color: '#6C47FF' },
-    { key: 'activeClients', label: 'Clients actifs', color: '#0EA5E9' },
-    { key: 'clients', label: 'Nouveaux clients', color: '#12B76A' },
-    { key: 'merchants', label: 'Nouveaux commerçants', color: '#F79009' },
+    { key: 'transactions', label: 'Transactions', color: C.chart[0] },
+    { key: 'activeClients', label: 'Clients actifs', color: C.chart[1] },
+    { key: 'clients', label: 'Nouveaux clients', color: C.chart[2] },
+    { key: 'merchants', label: 'Nouveaux commerçants', color: C.chart[3] },
   ] as const;
   const [activeSeries, setActiveSeries] = useState<Set<string>>(new Set(['transactions', 'activeClients']));
   const toggle = (k: string) =>
@@ -746,14 +669,18 @@ function CommunicationTab({ d, stats, navigate }: { d: AdminInsights; stats: Glo
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
-export default function Overview() {
+const TAB_KEYS = TABS.map((t) => t.key);
+
+export default function Analytics() {
   const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
+  const tabParam = params.get('tab') as OverviewTab | null;
+  const tab: OverviewTab = tabParam && TAB_KEYS.includes(tabParam) ? tabParam : 'summary';
+  const setTab = (t: OverviewTab) => setParams((p) => { const n = new URLSearchParams(p); if (t === 'summary') n.delete('tab'); else n.set('tab', t); return n; }, { replace: true });
   const [days, setDays] = useState<InsightPeriod>(() => {
     const v = Number(sessionStorage.getItem('overview_days'));
     return v === 7 || v === 90 ? v : 30;
   });
-  const [tab, setTab] = useState<OverviewTab>('summary');
-  const alerts = useAlertsContext();
   const [insights, setInsights] = useState<AdminInsights | null>(null);
   const [stats, setStats] = useState<GlobalStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -778,34 +705,30 @@ export default function Overview() {
     load(days);
   }, [days, load]);
 
-  const recommendations = useMemo(() => (insights ? buildRecommendations(insights) : []), [insights]);
-
-  const openRecommendation = (r: Recommendation) => {
-    if (r.link?.tab) {
-      setTab(r.link.tab);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    } else if (r.link?.to) navigate(r.link.to);
-  };
-
-  const today = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-
   return (
     <div style={{ paddingBottom: 48 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 16, flexWrap: 'wrap', marginBottom: 20 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 16, flexWrap: 'wrap', marginBottom: 12 }}>
         <div>
-          <h2 style={{ margin: 0, fontWeight: 700, fontSize: 22, color: C.text, letterSpacing: '-0.02em' }}>Vue d'ensemble</h2>
-          <p style={{ margin: '4px 0 0', fontSize: 13, color: C.textMuted, textTransform: 'capitalize' }}>
-            {today}
-            {insights && <span style={{ textTransform: 'none' }}> · données à {fmtTime(insights.generatedAt)} (cache 2 min)</span>}
+          <h1 style={{ margin: 0, fontWeight: 600, fontSize: 19, color: C.text }}>Analyses</h1>
+          <p style={{ margin: '2px 0 0', fontSize: 12.5, color: C.textMuted }}>
+            Statistiques détaillées sur {days} jours, comparées aux {days} jours précédents
+            {insights && <> · données de {fmtTime(insights.generatedAt)}</>}
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          {PERIODS.map((p) => (
-            <button key={p.value} onClick={() => setDays(p.value)} style={pillStyle(days === p.value)} disabled={loading && days === p.value}>
-              {p.label}
-            </button>
-          ))}
-          <button onClick={() => load(days)} disabled={loading} style={{ ...S.btnOutline(C.textMuted), borderColor: C.border, padding: '6px 12px', fontSize: 12 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div style={{ display: 'inline-flex', border: `1px solid ${C.border}`, borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}>
+            {PERIODS.map((p, i) => (
+              <button
+                key={p.value}
+                onClick={() => setDays(p.value)}
+                disabled={loading && days === p.value}
+                style={{ padding: '5px 12px', fontSize: 12.5, fontFamily: 'inherit', border: 'none', borderLeft: i ? `1px solid ${C.border}` : 'none', background: days === p.value ? C.ink : C.surface, color: days === p.value ? C.onInk : C.text, cursor: 'pointer' }}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+          <button onClick={() => load(days)} disabled={loading} style={S.btnOutline()}>
             {loading ? 'Chargement…' : 'Actualiser'}
           </button>
         </div>
@@ -815,44 +738,35 @@ export default function Overview() {
         <div style={{ ...S.card, borderColor: C.red, color: C.red, fontSize: 13, marginBottom: 16, whiteSpace: 'pre-line' }}>{error}</div>
       )}
 
-      {alerts && (
-        <div style={{ marginBottom: 16 }}>
-          <AlertsPanel alerts={alerts} />
-        </div>
-      )}
+      <div style={{ display: 'flex', gap: 2, borderBottom: `1px solid ${C.border}`, marginBottom: 16, overflowX: 'auto' }}>
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            className="tab-btn"
+            onClick={() => setTab(t.key)}
+            style={{
+              padding: '8px 10px',
+              fontSize: 13,
+              fontWeight: tab === t.key ? 500 : 400,
+              fontFamily: 'inherit',
+              background: 'none',
+              border: 'none',
+              borderBottom: `2px solid ${tab === t.key ? C.ink : 'transparent'}`,
+              color: tab === t.key ? C.text : C.textMuted,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              marginBottom: -1,
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
 
       {!insights && loading && <p style={{ color: C.textMuted, fontSize: 13 }}>Chargement des statistiques…</p>}
 
       {insights && (
         <div style={{ opacity: loading ? 0.6 : 1, transition: 'opacity .2s' }}>
-          <div style={{ marginBottom: 20 }}>
-            <RecommendationsPanel items={recommendations} onOpen={openRecommendation} />
-          </div>
-
-          <div style={{ display: 'flex', gap: 4, borderBottom: `1px solid ${C.border}`, marginBottom: 20, overflowX: 'auto' }}>
-            {TABS.map((t) => (
-              <button
-                key={t.key}
-                onClick={() => setTab(t.key)}
-                style={{
-                  padding: '10px 14px',
-                  fontSize: 13,
-                  fontWeight: tab === t.key ? 600 : 500,
-                  fontFamily: 'inherit',
-                  background: 'none',
-                  border: 'none',
-                  borderBottom: `2px solid ${tab === t.key ? C.primary : 'transparent'}`,
-                  color: tab === t.key ? C.primary : C.textMuted,
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                  marginBottom: -1,
-                }}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-
           {tab === 'summary' && <SummaryTab d={insights} stats={stats} navigate={navigate} />}
           {tab === 'merchants' && <MerchantsTab d={insights} navigate={navigate} />}
           {tab === 'clients' && <ClientsTab d={insights} />}

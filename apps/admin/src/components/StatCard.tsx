@@ -17,50 +17,42 @@ interface Props {
 export function DeltaBadge({ delta, invert = false }: { delta: number | null | undefined; invert?: boolean }) {
   if (delta === undefined) return null;
   if (delta === null) {
-    return <span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>nouveau</span>;
+    return <span style={{ fontSize: 11.5, color: C.textMuted }}>nouveau</span>;
   }
   const good = invert ? delta < 0 : delta > 0;
   const color = delta === 0 ? C.textMuted : good ? C.green : C.red;
-  const arrow = delta > 0 ? '▲' : delta < 0 ? '▼' : '•';
+  const sign = delta > 0 ? '+' : delta < 0 ? '−' : '±';
   return (
-    <span style={{ fontSize: 11, fontWeight: 700, color, whiteSpace: 'nowrap' }}>
-      {arrow} {Math.abs(delta)}%
+    <span className="num" title="vs période précédente" style={{ fontSize: 12, fontWeight: 500, color, whiteSpace: 'nowrap' }}>
+      {sign}{Math.abs(delta)} %
     </span>
   );
 }
 
-export default function StatCard({ label, value, sub, color = C.primary, delta, invertDelta, hint, onClick }: Props) {
+/** KPI tile: label, big number, change vs previous period, one line of context. `color` only tints a warning value. */
+export default function StatCard({ label, value, sub, color, delta, invertDelta, hint, onClick }: Props) {
+  const tinted = color === C.red || color === C.amber;
   return (
     <div
       title={hint}
       onClick={onClick}
+      className={onClick ? 'row-link' : undefined}
       style={{
         ...S.card,
+        padding: '14px 16px',
         display: 'flex',
         flexDirection: 'column',
-        gap: 6,
-        position: 'relative',
-        overflow: 'hidden',
+        gap: 4,
         cursor: onClick ? 'pointer' : 'default',
+        minWidth: 0,
       }}
     >
-      <div style={{
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        height: 3,
-        background: color,
-        borderRadius: '14px 14px 0 0',
-      }} />
-      <span style={{ color: C.textMuted, fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-        {label}
-      </span>
+      <span style={{ color: C.textMuted, fontSize: 12, fontWeight: 500 }}>{label}</span>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 28, fontWeight: 700, color: C.text, letterSpacing: '-0.02em', lineHeight: 1 }}>{value}</span>
+        <span className="num" style={{ fontSize: 24, fontWeight: 500, color: tinted ? color : C.text, lineHeight: 1.15 }}>{value}</span>
         <DeltaBadge delta={delta} invert={invertDelta} />
       </div>
-      {sub && <span style={{ fontSize: 12, color: C.textMuted, fontWeight: 400 }}>{sub}</span>}
+      {sub && <span style={{ fontSize: 12, color: C.textMuted }}>{sub}</span>}
     </div>
   );
 }

@@ -1,7 +1,7 @@
-import { Controller, Post, Get, Patch, Delete, Param, Query, Body, UseGuards, HttpCode, Req, ParseUUIDPipe } from '@nestjs/common';
+import { BadRequestException, Controller, Post, Get, Patch, Delete, Param, Query, Body, UseGuards, HttpCode, Req, ParseUUIDPipe } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { Request } from 'express';
-import { AuditAction } from '@prisma/client';
+import { AuditAction, PremiumGrant } from '@prisma/client';
 import { AuditLogService } from './audit-log.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AdminGuard } from '../auth/guards/admin.guard';
@@ -14,6 +14,8 @@ import { MerchantListQueryDto } from '../common/dto/pagination-query.dto';
 import { BanMerchantDto } from './dto/ban-merchant.dto';
 import { SetPlanDatesDto } from './dto/set-plan-dates.dto';
 import { buildCtx } from './admin-request.util';
+import { AdminCrmService } from './admin-crm.service';
+import { ActivatePremiumDto } from './dto/crm.dto';
 
 /**
  * Merchant list, drill-down, plan management and lifecycle.
@@ -29,6 +31,7 @@ export class AdminMerchantsController {
     private readonly detailsService: AdminDetailsService,
     private readonly planService: MerchantPlanService,
     private readonly auditLog: AuditLogService,
+    private readonly crm: AdminCrmService,
   ) {}
 
   @Get('merchants')
@@ -75,25 +78,56 @@ export class AdminMerchantsController {
   @Post('merchants/:id/activate-premium')
   @UseGuards(JwtAuthGuard, AdminGuard)
   @HttpCode(200)
-  @ApiOperation({ summary: 'Permanently activate PREMIUM for a merchant' })
+  @ApiOperation({ summary: 'Activate PREMIUM (paid or offered, optional end date and payment)' })
   async activatePremium(
     @Param('id', ParseUUIDPipe) merchantId: string,
+    @Body() dto: ActivatePremiumDto,
     @CurrentUser() user: JwtPayload,
     @Req() req: Request,
   ) {
+    if (dto.payment && dto.grant !== PremiumGrant.PAID) {
+      throw new BadRequestException('Un paiement ne peut être enregistré que pour un Premium payé');
+    }
+    if (dto.endDate && new Date(dto.endDate).getTime() <= Date.now()) {
+      throw new BadRequestException('La date de fin doit être dans le futur');
+    }
     // Fetch merchant label before mutation for a meaningful audit entry
     const detail = await this.merchantService.getMerchantDetail(merchantId);
+    // Referrers are only rewarded for a paying merchant
+    const creditReferrals = dto.grant !== PremiumGrant.OFFERED;
 
-    await this.planService.adminActivatePremium(merchantId);
+    if (dto.endDate) {
+      await this.planService.adminSetPlanDates(merchantId, { endDate: dto.endDate }, { creditReferrals });
+    } else {
+      await this.planService.adminActivatePremium(merchantId, { creditReferrals });
+    }
+    await this.crm.setPremiumGrant(merchantId, dto.grant ?? null, dto.grantNote ?? null);
 
+    const ctx = buildCtx(user, req);
     await this.auditLog.log({
-      ctx: buildCtx(user, req),
+      ctx,
       action: AuditAction.ACTIVATE_PREMIUM,
       targetType: 'MERCHANT',
       targetId: merchantId,
       targetLabel: `${detail.nom} <${detail.email}>`,
-      metadata: { previousPlan: detail.plan },
+      metadata: { previousPlan: detail.plan, grant: dto.grant ?? null, grantNote: dto.grantNote ?? null, endDate: dto.endDate ?? null },
     });
+
+    if (dto.payment) {
+      const payment = await this.crm.recordPayment(
+        merchantId,
+        { ...dto.payment, periodEnd: dto.payment.periodEnd ?? dto.endDate },
+        { adminId: ctx.adminId, adminEmail: ctx.adminEmail },
+      );
+      await this.auditLog.log({
+        ctx,
+        action: AuditAction.RECORD_SUBSCRIPTION_PAYMENT,
+        targetType: 'MERCHANT',
+        targetId: merchantId,
+        targetLabel: `${detail.nom} <${detail.email}>`,
+        metadata: { paymentId: payment.id, amount: payment.amount, method: payment.method, paidAt: payment.paidAt.toISOString() },
+      });
+    }
 
     return { success: true, message: 'Plan Premium activé avec succès.' };
   }

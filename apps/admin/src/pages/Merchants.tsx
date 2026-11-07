@@ -3,10 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { getErrorMessage } from '@jitplus/shared';
 import { getMerchantFacets, getMerchants } from '../api';
 import type { MerchantFacets, MerchantListParams, MerchantRow, Pagination as PaginationT } from '../types';
-import PlanBadge from '../components/PlanBadge';
+import { ContactButtons, FollowUpBadge, PlanKindBadge, QuickNoteModal } from '../components/crm';
+import { PLAN_KIND, WA_TEMPLATES, planKindOf } from '../utils/crm';
 import { DataTable, type Column } from '../components/charts';
 import {
-  Dash, Divider, ExportButton, FilterBar, LastActivity, Muted, PageHeader, Pagination, PillGroup, SearchInput, SelectFilter, pillStyle,
+  Dash, Divider, ExportButton, FilterBar, LastActivity, Muted, PageHeader, Pagination, PillGroup, SearchInput, SelectFilter, pillStyle, useToast,
 } from '../components/ui';
 import { C, S } from '../theme';
 import { CATEGORY_LABELS, daysSince, fmtDate, fmtNumber } from '../utils/format';
@@ -20,7 +21,8 @@ const PLANS = [
   { value: '', label: 'Tous' },
   { value: 'FREE', label: 'Free' },
   { value: 'TRIAL', label: 'Essai', hint: 'Premium en période d\'essai, non expiré' },
-  { value: 'PAID', label: 'Payant', hint: 'Premium activé par un admin' },
+  { value: 'PAID', label: 'Payant', hint: 'Premium activé par un admin, payé (ou type non renseigné)' },
+  { value: 'OFFERED', label: 'Offert', hint: 'Premium offert gratuitement' },
 ];
 
 const ACTIVITY = [
@@ -61,8 +63,7 @@ function toParams(f: Filters, page: number, limit = 20): MerchantListParams {
 }
 
 function planLabel(m: MerchantRow): string {
-  if (m.plan !== 'PREMIUM') return 'Free';
-  return m.isTrial ? 'Essai' : 'Payant';
+  return PLAN_KIND[planKindOf(m)].label;
 }
 
 function statusLabel(m: MerchantRow): string {
@@ -79,6 +80,8 @@ export default function Merchants() {
   const [facets, setFacets] = useState<MerchantFacets | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [noteFor, setNoteFor] = useState<MerchantRow | null>(null);
+  const [toastNode, showToast] = useToast();
 
   useEffect(() => { getMerchantFacets().then(setFacets).catch(() => setFacets(null)); }, []);
 
@@ -126,6 +129,7 @@ export default function Merchants() {
       { header: 'Ville', value: (m) => m.ville },
       { header: 'Catégorie', value: (m) => CATEGORY_LABELS[m.categorie] ?? m.categorie },
       { header: 'Plan', value: planLabel },
+      { header: 'Suivi', value: (m) => m.followUp?.status ?? '' },
       { header: 'Expiration du plan', value: (m) => m.planExpiresAt?.slice(0, 10) },
       { header: 'Clients', value: (m) => m.clientCount },
       { header: 'Boutiques', value: (m) => m.storeCount },
@@ -142,36 +146,20 @@ export default function Merchants() {
       header: 'Commerçant',
       render: (m) => (
         <div>
-          <div style={{ fontWeight: 600, color: m.isActive && !m.deletedAt ? C.text : C.red }}>{m.nom}</div>
-          <div style={{ fontSize: 11, color: C.textMuted }}>{m.email}</div>
+          <div style={{ fontWeight: 500, color: m.isActive && !m.deletedAt ? C.text : C.red }}>{m.nom}</div>
+          <div style={{ fontSize: 12, color: C.textMuted }}>{m.phoneNumber ?? m.email}</div>
         </div>
       ),
     },
     {
-      header: 'Téléphone',
-      render: (m) => m.phoneNumber
-        ? <a href={`tel:${m.phoneNumber}`} onClick={(e) => e.stopPropagation()} style={{ color: C.green, textDecoration: 'none', whiteSpace: 'nowrap' }}>{m.phoneNumber}</a>
-        : <Dash />,
+      header: 'Ville · catégorie',
+      render: (m) => <span style={{ whiteSpace: 'nowrap' }}>{m.ville ?? <Dash />}<Muted> · {CATEGORY_LABELS[m.categorie] ?? m.categorie}</Muted></span>,
     },
-    { header: 'Ville', render: (m) => m.ville ?? <Dash /> },
-    { header: 'Catégorie', render: (m) => <Muted>{CATEGORY_LABELS[m.categorie] ?? m.categorie}</Muted> },
     {
       header: 'Plan',
-      render: (m) => {
-        if (m.deletedAt) return <span style={S.badge(C.textMuted)}>Supprimé</span>;
-        const left = m.planExpiresAt ? Math.ceil((new Date(m.planExpiresAt).getTime() - Date.now()) / 86_400_000) : null;
-        return (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <PlanBadge plan={m.plan} isTrial={m.isTrial} isActive={m.isActive} />
-            {m.plan === 'PREMIUM' && left !== null && (
-              <span style={{ fontSize: 10, color: left <= 7 ? C.red : C.textMuted }}>
-                {left > 0 ? `expire dans ${left} j` : 'expiré'}
-              </span>
-            )}
-          </div>
-        );
-      },
+      render: (m) => <PlanKindBadge kind={planKindOf(m)} expiresAt={m.planExpiresAt} deleted={!!m.deletedAt} banned={!m.isActive} />,
     },
+    { header: 'Suivi', render: (m) => <FollowUpBadge status={m.followUp?.status} /> },
     { header: 'Clients', align: 'right', render: (m) => <b>{fmtNumber(m.clientCount)}</b> },
     {
       header: 'Trans. 30 j',
@@ -185,14 +173,20 @@ export default function Merchants() {
         <span title={`${daysSince(m.createdAt)} jours`} style={{ color: C.textMuted, whiteSpace: 'nowrap' }}>{fmtDate(m.createdAt)}</span>
       ),
     },
+    {
+      header: '',
+      align: 'right',
+      render: (m) => (m.deletedAt ? null : <ContactButtons phone={m.phoneNumber} email={m.email} waText={WA_TEMPLATES.generic(m.nom)} onNote={() => setNoteFor(m)} />),
+    },
   ];
 
   return (
     <div style={{ paddingBottom: 48 }}>
+      {toastNode}
       <PageHeader
         title="Commerçants"
         count={pagination?.total}
-        subtitle="Comptes JitPlus Pro : plan, activité réelle et contacts. Les filtres sont dans l'URL, vous pouvez partager une vue."
+        subtitle="Comptes JitPlus Pro : plan, activité et suivi. Les filtres sont dans l'URL : une vue filtrée se partage par lien."
         right={
           <>
             <SearchInput value={search} onChange={setSearch} placeholder="Nom, email ou téléphone…" />
@@ -216,7 +210,7 @@ export default function Merchants() {
         )}
       </FilterBar>
 
-      <div style={S.card}>
+      <div style={{ ...S.card, padding: '4px 6px' }}>
         {loading ? (
           <p style={{ color: C.textMuted, margin: 0 }}>Chargement…</p>
         ) : error ? (
@@ -226,6 +220,13 @@ export default function Merchants() {
         ) : (
           <DataTable rows={rows} columns={columns} rowKey={(m) => m.id} onRowClick={(m) => navigate(`/merchants/${m.id}`)} />
         )}
+        <QuickNoteModal
+          open={!!noteFor}
+          merchant={noteFor}
+          currentStatus={noteFor?.followUp?.status}
+          onClose={() => setNoteFor(null)}
+          onSaved={() => { showToast('Suivi enregistré'); load(); }}
+        />
         {pagination && (
           <Pagination page={page} totalPages={pagination.totalPages} total={pagination.total} onPage={(p) => update({ page: p })} />
         )}

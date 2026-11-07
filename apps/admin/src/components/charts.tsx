@@ -7,7 +7,7 @@ import { fmtNumber } from '../utils/format';
 export function SectionTitle({ children, right }: { children: React.ReactNode; right?: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-      <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: C.text, letterSpacing: '-0.01em' }}>{children}</h3>
+      <h3 style={{ margin: 0, fontSize: 13.5, fontWeight: 600, color: C.text }}>{children}</h3>
       {right}
     </div>
   );
@@ -15,9 +15,9 @@ export function SectionTitle({ children, right }: { children: React.ReactNode; r
 
 export function GroupLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p style={{ margin: '0 0 10px', fontSize: 11, fontWeight: 600, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+    <h2 style={{ margin: '4px 0 10px', fontSize: 13, fontWeight: 600, color: C.textMuted }}>
       {children}
-    </p>
+    </h2>
   );
 }
 
@@ -46,8 +46,8 @@ export function Empty({ children = 'Aucune donnée sur la période' }: { childre
 export function MiniStat({ label, value, color, hint }: { label: string; value: React.ReactNode; color?: string; hint?: string }) {
   return (
     <div title={hint}>
-      <p style={{ margin: 0, fontSize: 11, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</p>
-      <p style={{ margin: '4px 0 0', fontSize: 20, fontWeight: 700, color: color ?? C.text, letterSpacing: '-0.01em' }}>{value}</p>
+      <p style={{ margin: 0, fontSize: 12, color: C.textMuted }}>{label}</p>
+      <p style={{ margin: '2px 0 0', fontSize: 18, fontWeight: 500, color: color ?? C.text }}>{value}</p>
     </div>
   );
 }
@@ -75,10 +75,10 @@ export function BarRow({
     <div title={hint}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
         <span style={{ fontSize: 13, color: C.text, fontWeight: 500 }}>{label}</span>
-        <span style={{ fontSize: 12, color: C.textMuted, whiteSpace: 'nowrap' }}>{suffix ?? fmtNumber(value)}</span>
+        <span className="num" style={{ fontSize: 12, color: C.textMuted, whiteSpace: 'nowrap' }}>{suffix ?? fmtNumber(value)}</span>
       </div>
-      <div style={{ background: C.borderLight, borderRadius: 4, height: 6, overflow: 'hidden' }}>
-        <div style={{ width: `${width}%`, height: '100%', background: color, borderRadius: 4, transition: 'width .4s ease' }} />
+      <div style={{ background: C.borderLight, borderRadius: 2, height: 5, overflow: 'hidden' }}>
+        <div style={{ width: `${width}%`, height: '100%', background: color, borderRadius: 2, transition: 'width .3s ease' }} />
       </div>
     </div>
   );
@@ -126,15 +126,15 @@ export function Funnel({ steps, color = C.primary }: { steps: { label: string; v
                 {i > 0 && <> · {ofTop}% du total · <span style={{ color: step < 50 ? C.red : step < 75 ? C.amber : C.green, fontWeight: 600 }}>{step}% étape</span></>}
               </span>
             </div>
-            <div style={{ background: C.borderLight, borderRadius: 6, height: 22, overflow: 'hidden' }}>
+            <div style={{ background: C.borderLight, borderRadius: 3, height: 18, overflow: 'hidden' }}>
               <div
                 style={{
                   width: `${width}%`,
                   height: '100%',
                   background: color,
                   opacity: 1 - i * (0.5 / Math.max(1, steps.length - 1)),
-                  borderRadius: 6,
-                  transition: 'width .4s ease',
+                  borderRadius: 3,
+                  transition: 'width .3s ease',
                 }}
               />
             </div>
@@ -190,7 +190,7 @@ export function LineChart({ labels, series, height = 200 }: { labels: string[]; 
       >
         {ticks.map((t) => (
           <g key={t}>
-            <line x1={PAD.left} y1={y(t)} x2={W - PAD.right} y2={y(t)} stroke={C.border} strokeDasharray="4 4" />
+            <line x1={PAD.left} y1={y(t)} x2={W - PAD.right} y2={y(t)} stroke={C.chartGrid} />
             <text x={PAD.left - 6} y={y(t) + 3} textAnchor="end" fontSize={9} fill={C.textMuted}>
               {Number.isInteger(t) ? t : t.toFixed(1)}
             </text>
@@ -208,8 +208,8 @@ export function LineChart({ labels, series, height = 200 }: { labels: string[]; 
           const area = `${x(0)},${y(0)} ${pts} ${x(n - 1)},${y(0)}`;
           return (
             <g key={s.key}>
-              <polygon points={area} fill={s.color} opacity={0.07} />
-              <polyline points={pts} fill="none" stroke={s.color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+              <polygon points={area} fill={s.color} opacity={0.05} />
+              <polyline points={pts} fill="none" stroke={s.color} strokeWidth={1.6} strokeLinejoin="round" strokeLinecap="round" />
             </g>
           );
         })}
@@ -217,7 +217,7 @@ export function LineChart({ labels, series, height = 200 }: { labels: string[]; 
           <g>
             <line x1={x(hover)} y1={PAD.top} x2={x(hover)} y2={PAD.top + chartH} stroke={C.textMuted} strokeOpacity={0.4} />
             {series.map((s) => (
-              <circle key={s.key} cx={x(hover)} cy={y(s.values[hover] ?? 0)} r={3.5} fill={s.color} stroke="#fff" strokeWidth={1.5} />
+              <circle key={s.key} cx={x(hover)} cy={y(s.values[hover] ?? 0)} r={3.5} fill={s.color} stroke="var(--theme-surface)" strokeWidth={1.5} />
             ))}
           </g>
         )}
@@ -232,7 +232,7 @@ export function LineChart({ labels, series, height = 200 }: { labels: string[]; 
             background: C.surface,
             border: `1px solid ${C.border}`,
             borderRadius: 8,
-            boxShadow: 'var(--shadow-sm)',
+            boxShadow: 'var(--shadow-md)',
             padding: '8px 10px',
             fontSize: 12,
             pointerEvents: 'none',
@@ -246,7 +246,7 @@ export function LineChart({ labels, series, height = 200 }: { labels: string[]; 
                 <span style={{ width: 8, height: 8, borderRadius: 2, background: s.color, display: 'inline-block' }} />
                 {s.label}
               </span>
-              <b>{fmtNumber(s.values[hover] ?? 0)}</b>
+              <b className="num" style={{ fontWeight: 500 }}>{fmtNumber(s.values[hover] ?? 0)}</b>
             </div>
           ))}
         </div>
@@ -271,9 +271,9 @@ export function Legend({ items, active, onToggle }: { items: { key: string; labe
               fontSize: 11,
               fontFamily: 'inherit',
               padding: '4px 10px',
-              borderRadius: 999,
-              border: `1px solid ${on ? it.color : C.border}`,
-              background: on ? `color-mix(in srgb, ${it.color} 10%, transparent)` : 'transparent',
+              borderRadius: 4,
+              border: `1px solid ${on ? C.border : C.borderLight}`,
+              background: on ? C.surface : 'transparent',
               color: on ? C.text : C.textMuted,
               cursor: onToggle ? 'pointer' : 'default',
             }}
@@ -291,7 +291,7 @@ export function Legend({ items, active, onToggle }: { items: { key: string; labe
 
 const DAYS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
 
-export function Heatmap({ matrix, color = '108, 71, 255' }: { matrix: number[][]; color?: string }) {
+export function Heatmap({ matrix, color = 'var(--chart-1)' }: { matrix: number[][]; color?: string }) {
   const max = Math.max(1, ...matrix.flat());
   const total = matrix.flat().reduce((a, b) => a + b, 0);
   if (total === 0) return <Empty />;
@@ -319,7 +319,7 @@ export function Heatmap({ matrix, color = '108, 71, 255' }: { matrix: number[][]
                   style={{
                     height: 16,
                     borderRadius: 3,
-                    background: v === 0 ? C.borderLight : `rgba(${color}, ${0.15 + 0.85 * (v / max)})`,
+                    background: v === 0 ? C.borderLight : `color-mix(in srgb, ${color} ${Math.round(15 + 85 * (v / max))}%, transparent)`,
                   }}
                 />
               ))}
@@ -329,7 +329,7 @@ export function Heatmap({ matrix, color = '108, 71, 255' }: { matrix: number[][]
       </div>
       <p style={{ margin: '12px 0 0', fontSize: 12, color: C.textMuted }}>
         Pic : <b style={{ color: C.text }}>{DAYS[peak.d]} {peak.h}h–{peak.h + 1}h</b> ({peak.v} transactions) · Jour le plus actif :{' '}
-        <b style={{ color: C.text }}>{DAYS[bestDay]}</b>. Idéal pour programmer les campagnes juste avant ces créneaux.
+        <b style={{ color: C.text }}>{DAYS[bestDay]}</b>.
       </p>
     </div>
   );
@@ -353,7 +353,7 @@ export function DataTable<T>({ rows, columns, onRowClick, rowKey }: { rows: T[];
             {columns.map((c) => (
               <th
                 key={c.header}
-                style={{ textAlign: c.align ?? 'left', padding: '8px 10px', color: C.textMuted, fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}
+                style={{ textAlign: c.align ?? 'left', padding: '7px 10px', color: C.textMuted, fontWeight: 500, fontSize: 12, whiteSpace: 'nowrap', background: C.surface }}
               >
                 {c.header}
               </th>
@@ -365,12 +365,11 @@ export function DataTable<T>({ rows, columns, onRowClick, rowKey }: { rows: T[];
             <tr
               key={rowKey(r)}
               onClick={onRowClick ? () => onRowClick(r) : undefined}
+              className={onRowClick ? 'row-link' : undefined}
               style={{ borderBottom: `1px solid ${C.borderLight}`, cursor: onRowClick ? 'pointer' : 'default' }}
-              onMouseEnter={(e) => { if (onRowClick) e.currentTarget.style.background = C.surfaceHover; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
             >
               {columns.map((c) => (
-                <td key={c.header} style={{ padding: '9px 10px', textAlign: c.align ?? 'left', color: C.text }}>
+                <td key={c.header} className={c.align === 'right' ? 'num' : undefined} style={{ padding: '8px 10px', textAlign: c.align ?? 'left', color: C.text, verticalAlign: 'middle' }}>
                   {c.render(r)}
                 </td>
               ))}
@@ -378,6 +377,82 @@ export function DataTable<T>({ rows, columns, onRowClick, rowKey }: { rows: T[];
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+// ── Vertical bar chart (e.g. revenue per month) ──────────────────────────────
+
+export function BarChart({ labels, values, format = fmtNumber, height = 180, color = 'var(--chart-1)', highlightLast = true }: {
+  labels: string[];
+  values: number[];
+  format?: (n: number) => string;
+  height?: number;
+  color?: string;
+  highlightLast?: boolean;
+}) {
+  const [hover, setHover] = useState<number | null>(null);
+  const max = Math.max(1, ...values);
+  const n = values.length;
+  if (n === 0) return <Empty />;
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height, borderBottom: `1px solid ${C.border}` }}>
+        {values.map((v, i) => {
+          const h = v > 0 ? Math.max(2, (v / max) * (height - 22)) : 0;
+          const last = highlightLast && i === n - 1;
+          return (
+            <div
+              key={labels[i] + i}
+              onMouseEnter={() => setHover(i)}
+              onMouseLeave={() => setHover(null)}
+              title={`${labels[i]} : ${format(v)}`}
+              style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%' }}
+            >
+              <span className="num" style={{ fontSize: 10.5, color: hover === i || last ? C.text : 'transparent', marginBottom: 3, whiteSpace: 'nowrap' }}>
+                {v > 0 ? format(v) : ''}
+              </span>
+              <div
+                style={{
+                  width: '100%',
+                  maxWidth: 40,
+                  height: h,
+                  background: color,
+                  opacity: hover === null ? (last ? 1 : 0.55) : hover === i ? 1 : 0.35,
+                  borderRadius: '2px 2px 0 0',
+                  transition: 'opacity .12s',
+                }}
+              />
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+        {labels.map((l, i) => (
+          <span key={l + i} style={{ flex: 1, minWidth: 0, textAlign: 'center', fontSize: 10.5, color: C.textMuted, overflow: 'hidden', whiteSpace: 'nowrap' }}>{l}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Horizontal strip of numbers separated by rules: the dense KPI row. */
+export function KpiStrip({ items }: { items: { label: string; value: React.ReactNode; sub?: React.ReactNode; tone?: string; onClick?: () => void; hint?: string }[] }) {
+  return (
+    <div style={{ ...S.card, padding: 0, display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(150px, 1fr))` }}>
+      {items.map((it, i) => (
+        <div
+          key={it.label}
+          title={it.hint}
+          onClick={it.onClick}
+          className={it.onClick ? 'row-link' : undefined}
+          style={{ padding: '12px 16px', borderLeft: i ? `1px solid ${C.borderLight}` : 'none', cursor: it.onClick ? 'pointer' : 'default', minWidth: 0 }}
+        >
+          <div style={{ fontSize: 12, color: C.textMuted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.label}</div>
+          <div className="num" style={{ fontSize: 22, fontWeight: 500, color: it.tone ?? C.text, lineHeight: 1.25, marginTop: 2 }}>{it.value}</div>
+          {it.sub && <div style={{ fontSize: 12, color: C.textMuted, marginTop: 1 }}>{it.sub}</div>}
+        </div>
+      ))}
     </div>
   );
 }

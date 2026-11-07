@@ -90,8 +90,14 @@ export class AdminMerchantService {
       where.planActivatedByAdmin = false;
       where.planExpiresAt = { gt: now };
     } else if (plan === 'PAID') {
+      // Admin-activated and not marked as offered (paid, or not recorded yet)
       where.plan = 'PREMIUM';
       where.planActivatedByAdmin = true;
+      where.AND = [{ OR: [{ premiumGrant: null }, { premiumGrant: 'PAID' }] }];
+    } else if (plan === 'OFFERED') {
+      where.plan = 'PREMIUM';
+      where.planActivatedByAdmin = true;
+      where.premiumGrant = 'OFFERED';
     }
 
     if (status === 'active') {
@@ -117,6 +123,7 @@ export class AdminMerchantService {
       where.transactions = { some: { status: 'ACTIVE', createdAt: { gte: d30 } } };
     } else if (opts.activity === 'dormant') {
       where.AND = [
+        ...(Array.isArray(where.AND) ? where.AND : []),
         { transactions: { some: { status: 'ACTIVE' } } },
         { transactions: { none: { status: 'ACTIVE', createdAt: { gte: d30 } } } },
       ];
@@ -152,10 +159,12 @@ export class AdminMerchantService {
           planExpiresAt: true,
           planActivatedByAdmin: true,
           trialStartedAt: true,
+          premiumGrant: true,
           profileViews: true,
           isActive: true,
           deletedAt: true,
           createdAt: true,
+          followUp: { select: { status: true, nextActionAt: true } },
           _count: {
             select: {
               loyaltyCards: { where: { deactivatedAt: null } },
@@ -206,6 +215,8 @@ export class AdminMerchantService {
       planExpiresAt: true,
       planActivatedByAdmin: true,
       trialStartedAt: true,
+      premiumGrant: true,
+      premiumGrantNote: true,
       profileViews: true,
       socialLinks: true,
       isActive: true,
