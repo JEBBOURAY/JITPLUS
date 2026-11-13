@@ -74,6 +74,31 @@ steps:
       - $_IMAGE
     waitFor: [build]
 
+  # ── 3-pre. Free database connections held by old revisions ─────────────────
+  #  A revision that no longer receives traffic keeps running while its
+  #  websockets stay open (--timeout=3600), with its Postgres pool and crons.
+  #  Two or three of them at once exhausted Cloud SQL connections after the
+  #  2026-11-13 deploy, and a new revision could not even start. Delete the
+  #  recent revisions that serve no traffic before migrating and deploying.
+  #  Never touches a serving revision; any failure only logs and continues.
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    id: cleanup-stale-revisions
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        SERVING=$$(gcloud run services describe $_SERVICE_NAME --region=$_REGION \
+          --format='value(status.traffic.revisionName)' | tr ';,' '\n\n' | sed '/^$$/d')
+        if [ -z "$$SERVING" ]; then echo "No serving revision found — skipping cleanup"; exit 0; fi
+        echo "Serving: $$SERVING"
+        for REV in $$(gcloud run revisions list --service=$_SERVICE_NAME --region=$_REGION \
+            --sort-by=~metadata.creationTimestamp --limit=8 --format='value(metadata.name)'); do
+          if echo "$$SERVING" | grep -qx "$$REV"; then continue; fi
+          echo "Deleting stale revision $$REV"
+          gcloud run revisions delete "$$REV" --region=$_REGION --quiet || echo "Could not delete $$REV — continuing"
+        done
+    waitFor: [push]
+
   # ── 3. Run database migrations (Cloud Run Job — one-off) ───────────────────
   #  Crée ou met à jour un Cloud Run Job "jitplus-migrate" puis l'exécute.
   #  Le job utilise l'entrypoint.sh avec SKIP_MIGRATIONS=0 pour lancer migrate deploy.
@@ -94,7 +119,7 @@ steps:
       - --args=echo,migrations-complete
       - --task-timeout=300s
       - --max-retries=0
-    waitFor: [push]
+    waitFor: [cleanup-stale-revisions]
 
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     id: run-migrations
@@ -107,24 +132,6 @@ steps:
       - --region=$_REGION
       - --wait
     waitFor: [deploy-migrate-job]
-
-  # ── 4-pre. Detach SMTP_FROM secret binding (one-shot migration) ────────────
-  #  SMTP_FROM was previously bound as a Secret Manager reference. We now ship
-  #  it as a plain string in --set-env-vars below, but `gcloud run deploy`
-  #  forbids combining --remove-secrets with --set-secrets in a single call.
-  #  Run a dedicated update first; idempotent / no-op once the secret link is
-  #  gone (the flag silently succeeds even if SMTP_FROM is no longer a secret).
-  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
-    id: detach-smtp-from-secret
-    entrypoint: bash
-    args:
-      - -c
-      - |
-        gcloud run services update $_SERVICE_NAME \
-          --region=$_REGION \
-          --remove-secrets=SMTP_FROM \
-          || echo "SMTP_FROM not bound as secret (already migrated) — continuing"
-    waitFor: [run-migrations]
 
   # ── 4. Deploy the Cloud Run service ─────────────────────────────────────────
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
@@ -162,9 +169,9 @@ steps:
       # Extend request timeout to 1h to keep long-lived WebSocket connections alive.
       - --timeout=3600
       - --set-cloudsql-instances=$_CLOUD_SQL_INSTANCE
-      - --set-env-vars=^;;^NODE_ENV=production;;ENABLE_CRONS=true;;SKIP_MIGRATIONS=1;;GCP_PROJECT_ID=${PROJECT_ID};;GCP_STORAGE_BUCKET_NAME=jitplus-uploads-prod;;FIREBASE_PROJECT_ID=jitplus-97259;;MODERATION_EMAIL=contact@jitplus.com;;SMTP_FROM=contact@jitplus.com;;SMTP_FROM_NAME=JitPlus;;SMTP_REPLY_TO=contact@jitplus.com;;PUBLIC_WEB_URL=https://jitplus.com;;GOOGLE_CLIENT_ID=290470991104-71koh2ac0h2ai8tppb5t8bsnmoo9mdtj.apps.googleusercontent.com;;GOOGLE_ANDROID_CLIENT_ID=290470991104-5av1uiocig1l5k2rfq9ehb9ui5vb9oj9.apps.googleusercontent.com,290470991104-rcumid1oof1j80luvo62n05rc7or4ve9.apps.googleusercontent.com;;ANDROID_SHA256_FINGERPRINT=26:6C:F3:12:5F:51:32:2A:03:A8:FD:26:F2:A5:92:02:48:61:F8:B7:03:1B:B7:DB:92:CA:AE:2C:78:8E:8C:1B;;ANDROID_PRO_SHA256_FINGERPRINT=54:55:81:CB:46:7F:D1:B7:8E:26:88:89:EA:C9:F7:3C:A1:04:F5:82:BC:D2:1E:FE:B3:3D:F8:3C:9D:34:BE:F4;;APPLE_TEAM_ID=53X2DQJH29;;APPLE_BUNDLE_IDS=com.jitplus.client,com.jitplus.pro;;IOS_APP_ID=6762307929;;IOS_PRO_APP_ID=6762308251;;MAINTENANCE_MODE=${_MAINTENANCE_MODE};;GEOCODE_REQUIRE_AUTH=${_GEOCODE_REQUIRE_AUTH};;MIN_IOS_VERSION=${_MIN_VERSION_LEGACY};;MIN_ANDROID_VERSION=${_MIN_VERSION_LEGACY};;MIN_IOS_VERSION_JITPLUS=${_MIN_VERSION_JITPLUS};;MIN_ANDROID_VERSION_JITPLUS=${_MIN_VERSION_JITPLUS};;MIN_IOS_VERSION_JITPLUSPRO=${_MIN_VERSION_JITPLUSPRO};;MIN_ANDROID_VERSION_JITPLUSPRO=${_MIN_VERSION_JITPLUSPRO}
+      - --set-env-vars=^;;^NODE_ENV=production;;ENABLE_CRONS=true;;DATABASE_POOL_SIZE=5;;SKIP_MIGRATIONS=1;;GCP_PROJECT_ID=${PROJECT_ID};;GCP_STORAGE_BUCKET_NAME=jitplus-uploads-prod;;FIREBASE_PROJECT_ID=jitplus-97259;;MODERATION_EMAIL=contact@jitplus.com;;SMTP_FROM=contact@jitplus.com;;SMTP_FROM_NAME=JitPlus;;SMTP_REPLY_TO=contact@jitplus.com;;PUBLIC_WEB_URL=https://jitplus.com;;GOOGLE_CLIENT_ID=290470991104-71koh2ac0h2ai8tppb5t8bsnmoo9mdtj.apps.googleusercontent.com;;GOOGLE_ANDROID_CLIENT_ID=290470991104-5av1uiocig1l5k2rfq9ehb9ui5vb9oj9.apps.googleusercontent.com,290470991104-rcumid1oof1j80luvo62n05rc7or4ve9.apps.googleusercontent.com;;ANDROID_SHA256_FINGERPRINT=26:6C:F3:12:5F:51:32:2A:03:A8:FD:26:F2:A5:92:02:48:61:F8:B7:03:1B:B7:DB:92:CA:AE:2C:78:8E:8C:1B;;ANDROID_PRO_SHA256_FINGERPRINT=54:55:81:CB:46:7F:D1:B7:8E:26:88:89:EA:C9:F7:3C:A1:04:F5:82:BC:D2:1E:FE:B3:3D:F8:3C:9D:34:BE:F4;;APPLE_TEAM_ID=53X2DQJH29;;APPLE_BUNDLE_IDS=com.jitplus.client,com.jitplus.pro;;IOS_APP_ID=6762307929;;IOS_PRO_APP_ID=6762308251;;MAINTENANCE_MODE=${_MAINTENANCE_MODE};;GEOCODE_REQUIRE_AUTH=${_GEOCODE_REQUIRE_AUTH};;MIN_IOS_VERSION=${_MIN_VERSION_LEGACY};;MIN_ANDROID_VERSION=${_MIN_VERSION_LEGACY};;MIN_IOS_VERSION_JITPLUS=${_MIN_VERSION_JITPLUS};;MIN_ANDROID_VERSION_JITPLUS=${_MIN_VERSION_JITPLUS};;MIN_IOS_VERSION_JITPLUSPRO=${_MIN_VERSION_JITPLUSPRO};;MIN_ANDROID_VERSION_JITPLUSPRO=${_MIN_VERSION_JITPLUSPRO}
       - --set-secrets=DATABASE_URL=DATABASE_URL:latest,JWT_SECRET=JWT_SECRET:latest,QR_HMAC_SECRET=QR_HMAC_SECRET:latest,SENTRY_DSN=SENTRY_DSN:latest,CORS_ORIGINS=CORS_ORIGINS:latest,BACKEND_URL=BACKEND_URL:latest,RESEND_API_KEY=RESEND_API_KEY:latest,FIREBASE_CLIENT_EMAIL=FIREBASE_CLIENT_EMAIL:latest,FIREBASE_PRIVATE_KEY=FIREBASE_PRIVATE_KEY:latest,SMTP_HOST=SMTP_HOST:latest,SMTP_PORT=SMTP_PORT:latest,SMTP_USER=SMTP_USER:latest,SMTP_PASS=SMTP_PASS:latest,GOOGLE_MAPS_API_KEY=GOOGLE_MAPS_API_KEY:latest
-    waitFor: [detach-smtp-from-secret]
+    waitFor: [run-migrations]
 
 images:
   - $_IMAGE:$COMMIT_SHA
